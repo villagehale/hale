@@ -1,7 +1,8 @@
 import { QrCode } from '~/components/qr-code';
 import { TextEntryAnalytics } from '~/components/text-entry-analytics';
 import { EmailCta } from '~/components/email-cta';
-import { CONTACT_EMAIL, buildSmsBody, buildSmsHref, displaySmsNumber } from '~/lib/text-entry';
+import { CopyNumberButton } from '~/components/copy-number';
+import { CONTACT_EMAIL, buildSmsBody, buildSmsHref } from '~/lib/text-entry';
 
 /**
  * The /text entry surface (VIL-240 · M5) — what a QR card at an EarlyON drop-in,
@@ -53,10 +54,16 @@ export function TextEntry({ source, smsNumber }: { source: string | null; smsNum
             <QrCode value={smsHref} />
             <div>
               <span className="eyebrow">On a laptop?</span>
-              <p className="mt-2 font-mono text-lg text-spruce">{displaySmsNumber(smsNumber)}</p>
+              <p className="mt-2">
+                <CopyNumberButton
+                  number={smsNumber}
+                  className="link font-medium"
+                  label="Copy my number"
+                />
+              </p>
               <p className="meta mt-2">
-                Scan the code with your phone’s camera, or text that number yourself. Standard
-                message rates apply; reply STOP any time.
+                Scan the code with your phone’s camera, or copy the number and text it from your
+                phone. Standard message rates apply; reply STOP any time.
               </p>
             </div>
           </div>

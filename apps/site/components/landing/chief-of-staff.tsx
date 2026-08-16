@@ -1,10 +1,12 @@
+import { CopyNumberButton } from '~/components/copy-number';
 import { EmailCta } from '~/components/email-cta';
 import { LandingCta } from '~/components/landing-cta';
+import { LogoMark } from '~/components/logo-mark';
 import { QrCode } from '~/components/qr-code';
 import { APP_URL } from '~/lib/app-url';
 import { type ImpactNumber, impactNumbers } from '~/lib/landing/impact';
 import { siteJsonLd } from '~/lib/site/structured-data';
-import { CONTACT_EMAIL, buildSmsHref, displaySmsNumber } from '~/lib/text-entry';
+import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
 
 /**
  * villagehale.com under NEXT_PUBLIC_F14_LANDING (VIL-250 · M14) — the landing
@@ -123,8 +125,11 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
           here — the header stays the quiet Sign in link it has always been. */}
       <header className="sticky top-0 z-50 border-b border-rule bg-linen/85 backdrop-blur-md">
         <div className="shell flex items-center justify-between py-3">
-          <a href="/" className="font-serif text-[1.35rem] font-semibold leading-none text-spruce">
-            Hale
+          <a href="/" className="flex items-center gap-2.5">
+            <LogoMark size={30} />
+            <span className="font-serif text-[1.35rem] font-semibold leading-none text-spruce">
+              Hale
+            </span>
           </a>
           <div className="flex items-center gap-3">
             <a
@@ -174,15 +179,12 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
               <LandingCta event="landing_cta_text" href={smsHref} className="btn-primary">
                 Text me
               </LandingCta>
-              {/* The number as readable text, under the button on every viewport. An
-                  `sms:` link is a silent no-op on Windows and Linux, and the QR card
-                  below is desktop-only, so a Windows reader had nothing to dial and a
-                  phone reader never saw the number at all. */}
+              {/* The founder's rule: digits are never printed. An `sms:` link is a
+                  silent no-op on Windows and Linux, so the desktop way in is the copy
+                  chip — the number lands on the clipboard without ever rendering. */}
               <p className="mt-4 text-slate-green">
-                or text{' '}
-                <a href={smsHref} className="link font-mono">
-                  {displaySmsNumber(smsNumber)}
-                </a>
+                or <CopyNumberButton number={smsNumber} className="link" /> to text from another
+                device.
               </p>
               <p className="meta mt-4">
                 Your message is already written. You send it; I never text first. Standard message
@@ -195,11 +197,16 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
                 <QrCode value={smsHref} size={132} />
                 <div>
                   <span className="eyebrow">On a laptop?</span>
-                  <p className="mt-2 font-mono text-lg text-spruce">
-                    {displaySmsNumber(smsNumber)}
+                  <p className="mt-2">
+                    <CopyNumberButton
+                      number={smsNumber}
+                      className="link font-medium"
+                      label="Copy my number"
+                    />
                   </p>
                   <p className="meta mt-2">
-                    Scan the code with your phone’s camera, or text that number yourself.
+                    Scan the code with your phone’s camera, or copy the number and text it from
+                    your phone.
                   </p>
                 </div>
               </div>

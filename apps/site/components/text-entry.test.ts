@@ -78,8 +78,15 @@ describe('TextEntry (number live)', () => {
     expect(liveNoSourceHtml).toContain('href="sms:+16475551234?&amp;body=Hi"');
   });
 
-  it('shows the number in readable form for anyone who would rather type it', () => {
-    expect(liveHtml).toContain('+1 (647) 555-1234');
+  it('never prints the digits — a copy chip stands in for the readable number', () => {
+    // Positive controls so the absences cannot pass vacuously: the composer link
+    // and the copy chip are both present…
+    expect(liveHtml).toContain('sms:+16475551234');
+    expect(liveHtml).toContain('Copy my number');
+    // …and the number never renders as text (the founder rule: reachable, never
+    // displayed).
+    expect(liveHtml).not.toContain('+1 (647) 555-1234');
+    expect(liveHtml).not.toContain('(647) 555-1234');
   });
 
   it('renders a scannable QR of the same sms: URI — the desktop path, where sms: links are dead', () => {
