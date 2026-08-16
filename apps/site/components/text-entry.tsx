@@ -6,8 +6,13 @@ import { CONTACT_EMAIL, buildSmsBody, buildSmsHref } from '~/lib/text-entry';
 
 /**
  * The /text entry surface (VIL-240 · M5) — what a QR card at an EarlyON drop-in,
- * a swim lobby, or a daycare foyer opens. Persona-led and deliberately thin: one
- * thing to do, no account, no form, no way back into the funnel.
+ * a swim lobby, or a daycare foyer opens, and now also what a parent's forwarded
+ * referral link opens. Persona-led and deliberately thin: one thing to do, no
+ * account, no form, no way back into the funnel.
+ *
+ * The `?s=` tag is therefore either a venue or a `friend-…` referral code, which is
+ * why the line under the button says "where you came from" rather than naming a
+ * spot: a friend is not a place, and the disclosure has to be true of both.
  *
  * Two honest states, driven by whether the SMS number is provisioned:
  *   live  → "Text me" opens the composer pre-filled; the number and a QR of the
@@ -46,7 +51,7 @@ export function TextEntry({ source, smsNumber }: { source: string | null; smsNum
           </a>
           <p className="meta mt-4">
             {source
-              ? `Your message is already written — “${buildSmsBody(source)}”. The tag just tells me which spot sent you.`
+              ? `Your message is already written — “${buildSmsBody(source)}”. The tag just tells me where you came from.`
               : 'Your message is already written. You send it; I never text first.'}
           </p>
 
