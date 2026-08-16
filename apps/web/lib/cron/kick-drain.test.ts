@@ -85,13 +85,54 @@ describe('kickDrain', () => {
     expect(errors[0]?.[0]).toMatchObject({ reason: 'http_401' });
   });
 
+  /**
+   * THE COLD-START TIMEOUT, as a test. Measured in production 2026-08-15 22:21: the
+   * kick aborted on its 60s timeout, the drain never effectively ran, and the parent's
+   * text waited 81s for the NEXT inbound's kick. A single bounded retry is safe by
+   * construction — pg-boss job locking plus the turn ledger make a double drain a
+   * no-op — and it converts "cron will reap" into a served turn.
+   */
+  it('retries once when the request fails, and succeeds quietly on the retry', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('The operation was aborted due to timeout'));
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await kickDrain(ORIGIN);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The first failure is still visible (named, logged), marked as retried.
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.[0]).toMatchObject({ reason: 'request_failed', retrying: true });
+  });
+
+  it('retries a 5xx once, but never a 4xx — config errors do not heal on retry', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 503 }));
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    await kickDrain(ORIGIN);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
+    await kickDrain(ORIGIN);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up after one retry, and the final failure still says the cron will reap', async () => {
+    fetchMock.mockRejectedValue(new Error('ECONNREFUSED'));
+
+    await kickDrain(ORIGIN);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(errors).toHaveLength(2);
+    expect(errors[1]?.[0]).toMatchObject({ reason: 'request_failed' });
+    expect(errors[1]?.[1]).toContain('cron will reap');
+  });
+
   it('logs a reason when the drain request throws', async () => {
     fetchMock.mockRejectedValue(new Error('ECONNREFUSED'));
 
     await kickDrain(ORIGIN);
 
-    expect(errors).toHaveLength(1);
-    expect(errors[0]?.[0]).toMatchObject({ reason: 'request_failed' });
+    expect(errors[errors.length - 1]?.[0]).toMatchObject({ reason: 'request_failed' });
   });
 
   it('logs a reason when no cron secret is configured', async () => {

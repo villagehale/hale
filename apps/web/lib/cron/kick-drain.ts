@@ -45,10 +45,37 @@ function reportSkipped(reason: KickFailure, detail?: unknown): void {
   );
 }
 
+/** A retryable failure this attempt hit, or null when the kick landed. 4xx-class
+ * outcomes are reported inside and returned as null: config errors do not heal on
+ * retry, so retrying them would just double the noise. */
+async function attemptKick(
+  url: URL,
+  secret: string,
+): Promise<{ reason: KickFailure; detail?: unknown } | null> {
+  try {
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${secret}` },
+      signal: AbortSignal.timeout(KICK_TIMEOUT_MS),
+    });
+    if (response.ok) return null;
+    if (response.status >= 500) return { reason: `http_${response.status}` };
+    reportSkipped(`http_${response.status}`);
+    return null;
+  } catch (err) {
+    return { reason: 'request_failed', detail: err };
+  }
+}
+
 /**
  * @param queues Restrict the kicked run to this slice of the drain plan (see
  * `INBOUND_TURN_QUEUES`); omitted kicks a full drain. A slice is what stops a parent's
  * text queueing behind the outbound and LLM queues that share the tick.
+ *
+ * ONE RETRY, and only for failures that can heal (network/timeout, 5xx). Measured in
+ * production 2026-08-15 22:21: a cold-start kick aborted on its timeout and the parent's
+ * text waited 81 seconds for the next inbound to kick for it. A second attempt is safe
+ * by construction — the drain route is idempotent (pg-boss job locking; the turn ledger
+ * dedupes replies) — so the retry converts "cron will reap" into a served turn.
  */
 export async function kickDrain(origin: string, queues?: readonly string[]): Promise<void> {
   const secret = process.env.CRON_SECRET;
@@ -60,15 +87,19 @@ export async function kickDrain(origin: string, queues?: readonly string[]): Pro
   const url = new URL('/api/cron/drain', origin);
   if (queues) url.searchParams.set('queues', queues.join(','));
 
-  try {
-    const response = await fetch(url, {
-      headers: { authorization: `Bearer ${secret}` },
-      signal: AbortSignal.timeout(KICK_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      reportSkipped(`http_${response.status}`);
-    }
-  } catch (err) {
-    reportSkipped('request_failed', err);
+  const first = await attemptKick(url, secret);
+  if (first === null) return;
+
+  console.error(
+    {
+      reason: first.reason,
+      retrying: true,
+      detail: first.detail instanceof Error ? first.detail.message : first.detail,
+    },
+    'kick-drain: first attempt failed — retrying once',
+  );
+  const second = await attemptKick(url, secret);
+  if (second !== null) {
+    reportSkipped(second.reason, second.detail);
   }
 }
