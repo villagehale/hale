@@ -183,14 +183,12 @@
   gap: 0.5rem;
 }
 
-.v2b-header-num {
-  display: none;
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  color: var(--v2b-dim);
+.v2b-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
   text-decoration: none;
 }
-@media (min-width: 720px) { .v2b-header-num { display: inline; } }
 
 .v2b-themetoggle {
   display: inline-flex;
@@ -265,14 +263,53 @@
   color: var(--v2b-faint);
 }
 
-.v2b-num {
-  font-family: var(--font-mono);
-  font-size: 1.05rem;
-  color: var(--v2b-ink);
-  text-decoration: none;
-  border-bottom: 1px solid var(--v2b-rule);
+/* ── The desktop fallback ────────────────────────────────────────────────── *
+ * A laptop cannot open an sms: composer and cannot scan its own screen, so the
+ * number has to travel to the phone. It travels as a QR code or through the
+ * clipboard — never as digits on the page. */
+
+.v2b-qr {
+  display: none;
+  align-items: center;
+  gap: 1.1rem;
+  margin-top: 1.9rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--v2b-rule);
+  border-radius: 18px;
+  background: var(--v2b-surface);
+  max-width: 25rem;
 }
-.v2b-num:hover { border-bottom-color: var(--v2b-ink); }
+@media (min-width: 720px) { .v2b-qr { display: flex; } }
+
+/* The code needs its own white quiet zone in both themes — the module path is
+ * drawn in the site's fixed navy. */
+.v2b-qr-tile {
+  flex: none;
+  padding: 6px;
+  border-radius: 10px;
+  background: #ffffff;
+  line-height: 0;
+}
+
+.v2b-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.95rem;
+  border: 1.5px solid var(--v2b-rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--v2b-ink);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 240ms var(--v2b-smooth), color 240ms var(--v2b-smooth);
+}
+.v2b-copy:hover { border-color: var(--v2b-ink); }
+.v2b-copy[data-state="copied"] { border-color: var(--v2b-amber); }
+@media (prefers-reduced-motion: reduce) { .v2b-copy { transition: none; } }
 
 /* The template's highlight line — an amber WASH block behind navy ink, never
  * amber type. Amber as text is 4.6:1; the wash is 11.5:1 and reads louder. */
@@ -469,10 +506,79 @@
   top: 0;
   width: var(--v2b-card-w);
   min-height: var(--v2b-card-min-h);
-  /* The choreography writes this whole string each frame; -50%/-50% centres any
-   * card height on the deck origin so the ladder pitch stays exact. */
-  transform: translate(-50%, -50%);
+  z-index: var(--zfan, 1);
+  /* The fan pose arrives as custom properties from a generated per-breakpoint
+   * stylesheet, so the first painted frame is already the fan — no JS, no flash,
+   * nothing to hydrate. The choreography overwrites this whole string each frame
+   * once it takes over; -50%/-50% centres any card height on the deck origin so
+   * the ladder pitch stays exact. */
+  transform: translate(-50%, -50%) translate3d(var(--fx, 0px), var(--fy, 0px), 0)
+    rotate(var(--fr, 0deg)) scale(var(--fs, 1));
   will-change: transform, opacity;
+}
+
+.v2b-deck[data-phase="ladder"] .v2b-card { z-index: var(--zslot, 1); }
+
+/* ── The entrance: one card in three phases, six revealed in its wake ────── */
+
+.v2b-deck[data-intro] .v2b-card {
+  opacity: 0;
+  animation: v2b-card-reveal 620ms var(--v2b-smooth) var(--v2b-reveal-delay, 0ms) both;
+}
+
+.v2b-deck[data-intro] .v2b-card[data-lead="true"] {
+  z-index: 20;
+  animation: v2b-lead-in 2920ms linear both;
+}
+
+/* Handover: the scroll loop owns the transform from here, so the animation has
+ * to stop holding its final frame. */
+.v2b-deck[data-intro="done"] .v2b-card,
+.v2b-deck[data-intro="done"] .v2b-card[data-lead="true"] {
+  animation: none;
+  opacity: 1;
+}
+
+@keyframes v2b-card-reveal {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%)
+      translate3d(var(--fx, 0px), calc(var(--fy, 0px) + 46px), 0) rotate(var(--fr, 0deg))
+      scale(calc(var(--fs, 1) * 0.94));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate3d(var(--fx, 0px), var(--fy, 0px), 0)
+      rotate(var(--fr, 0deg)) scale(var(--fs, 1));
+  }
+}
+
+@keyframes v2b-lead-in {
+  /* rise — 0 to 720ms */
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate3d(0, calc(var(--fy, 0px) + 300px), 0) rotate(0deg)
+      scale(0.9);
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  6% { opacity: 1; }
+  /* fly right — 720 to 1320ms */
+  24.66% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate3d(0, var(--fy, 0px), 0) rotate(0deg) scale(1);
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  /* sweep left — 1320 to 2920ms */
+  45.21% {
+    transform: translate(-50%, -50%) translate3d(var(--v2b-fly-x, 480px), var(--fy, 0px), 0)
+      rotate(9deg) scale(0.95);
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate3d(var(--fx, 0px), var(--fy, 0px), 0)
+      rotate(var(--fr, 0deg)) scale(var(--fs, 1));
+  }
 }
 
 .v2b-card-face {
@@ -719,20 +825,16 @@
   background: var(--v2b-page);
   color: var(--v2b-ink);
 }
-.v2b-close-num {
-  display: inline-block;
-  margin-top: 1.1rem;
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  color: color-mix(in srgb, var(--v2b-page) 82%, transparent);
-  text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--v2b-page) 34%, transparent);
+.v2b-close .v2b-copy {
+  color: var(--v2b-page);
+  border-color: color-mix(in srgb, var(--v2b-page) 34%, transparent);
 }
-.v2b-turtle {
-  display: block;
-  width: clamp(84px, 12vw, 120px);
-  height: auto;
-  margin: 0 auto 1.5rem;
+.v2b-close .v2b-copy:hover { border-color: var(--v2b-page); }
+
+.v2b-close-note {
+  margin-top: 1.4rem;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--v2b-page) 60%, transparent);
 }
 
 .v2b-footer {
@@ -848,9 +950,13 @@
   opacity: 1 !important;
 }
 
+.v2b[data-static="true"] .v2b-deck[data-intro] .v2b-card { animation: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .v2b-word,
   .v2b-bubble,
+  .v2b-deck[data-intro] .v2b-card,
+  .v2b-deck[data-intro] .v2b-card[data-lead="true"],
   .v2b-tags[data-pop="true"] .v2b-tag {
     animation: none;
     opacity: 1;
