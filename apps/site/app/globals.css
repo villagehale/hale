@@ -188,10 +188,12 @@
   --v3-caret: light-dark(#b26b1f, #e2a75a);
 
   /* The amber edge and halo on the serif accent word. A halo that is a warmth
-   * on cream is a neon tube on navy: same device, roughly half the alpha. */
-  --v3-accent-stroke: light-dark(rgb(178 107 31 / 0.38), rgb(226 167 90 / 0.28));
-  --v3-accent-glow-near: light-dark(rgb(178 107 31 / 0.26), rgb(226 167 90 / 0.15));
-  --v3-accent-glow-far: light-dark(rgb(178 107 31 / 0.12), rgb(226 167 90 / 0.07));
+   * on cream is a neon tube on navy: same device, roughly half the alpha.
+   * Un-prefixed because the device is the brand's, not the landing's: `.accent`
+   * (subpages) and `.v3-accent` (landing) are now one rule reading these. */
+  --accent-stroke: light-dark(rgb(178 107 31 / 0.38), rgb(226 167 90 / 0.28));
+  --accent-glow-near: light-dark(rgb(178 107 31 / 0.26), rgb(226 167 90 / 0.15));
+  --accent-glow-far: light-dark(rgb(178 107 31 / 0.12), rgb(226 167 90 / 0.07));
 
   /* The hairline that fades toward a card's edges. */
   --v3-edge: light-dark(rgb(23 41 74 / 0.20), rgb(247 244 236 / 0.22));
@@ -204,6 +206,28 @@
   --v3-shore-ground: light-dark(#0c1424, #0c1a36);
   --v3-shore-scrim: light-dark(#091226, #0c1a36);
   --v3-shore-ink: #f7f4ec;
+
+  /* ── The subpage language (2026-08) ──────────────────────────────────── *
+   * The glass a card wears. Same recipe as the chrome's bar (--glass-*), taken
+   * from the CARD surface instead of the page ground: a panel that is a wash of
+   * the ground it sits on is invisible on that ground, which is fine for a bar
+   * fixed over scrolling content and useless for a card. */
+  --glass-panel-bg: light-dark(rgb(255 255 255 / 0.74), rgb(29 49 87 / 0.55));
+
+  /* One word of a pulled-up headline waits this long behind the one before it. */
+  --pull-stagger: 80ms;
+
+  /* Film grain over a section ground — the INK the noise is printed in, not an
+   * opacity. `light-dark()` only takes colours: as a bare number it is invalid
+   * at computed-value time, and `opacity: var(--grain-alpha)` then falls back to
+   * the initial value, which is 1. That shipped a full-strength grey noise field
+   * over the cream band (measured: #f7f5f0 rendered as rgb(217,216,213)).
+   *
+   * Printing it as a themed colour through a noise MASK also fixes what the grey
+   * was doing to the palette: the tooth now carries the ground's own hue — navy
+   * on the warm band, cream on the navy one — instead of laying grey over both.
+   * The mask averages about half coverage, so the effective texture is ~3%. */
+  --grain-ink: light-dark(rgb(23 41 74 / 0.055), rgb(247 244 236 / 0.07));
 }
 
 /* Component + presentational classes live in @layer components so Tailwind v4
@@ -336,12 +360,23 @@ strong { font-weight: 700; }
   overflow-wrap: anywhere;
 }
 
-/* The single title accent word — the homepage's serif-italic device (Source
- * Serif 4), inheriting the heading's ink colour rather than tinting it. */
-.accent {
+/* The single title accent segment — Source Serif 4 italic, inheriting the
+ * heading's ink colour rather than tinting it, with an amber hairline stroke on
+ * the glyph edges and a warm halo behind them. Two layers on ONE element rather
+ * than an absolutely-positioned duplicate, which cannot follow the real text
+ * when a phrase wraps — and these phrases wrap at 390px.
+ *
+ * `.v3-accent` is the landing's name for the same device. They are one rule
+ * because they are one device: the landing had the glow and eight subpages had
+ * a plain italic, which is a fork of the brand's most-repeated gesture. Amber
+ * stays at low alpha, so the fill is still ink and AA holds. */
+.accent,
+.v3-accent {
   font-family: var(--font-serif);
   font-style: italic;
   font-weight: 500;
+  -webkit-text-stroke: 0.4px var(--accent-stroke);
+  text-shadow: 0 0 18px var(--accent-glow-near), 0 0 44px var(--accent-glow-far);
 }
 
 /* ── Shell ─────────────────────────────────────────────────────────────── */
@@ -758,7 +793,11 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * since the global h1/h2 scale is built for hero headlines and is far too large
  * for dense policy copy. Same token palette as every other subpage. */
 
-.legal-measure { max-width: 46rem; }
+/* 38rem holds the 1.05rem policy body to roughly 72 characters a line. At the
+ * 46rem this replaces, a clause ran to about 87 — past the point where the eye
+ * reliably finds the start of the next line, which is exactly the wrong failure
+ * on a document a reader is trying to be careful with. */
+.legal-measure { max-width: 38rem; }
 
 .legal-title { font-size: clamp(2.2rem, 5vw, 3rem); }
 
@@ -880,18 +919,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * only what it says: a namespace, keeping the landing's kit from colliding with
  * the subpage design system. */
 
-/* The serif accent word, with a warm bloom behind it. Two layers on ONE element
- * — an amber hairline stroke on the glyph edges plus an amber halo — rather than
- * an absolutely-positioned duplicate, which cannot follow the real text when a
- * phrase wraps, and these phrases wrap at 390px. Amber at low alpha, so the fill
- * stays ink and AA holds. */
-.v3-accent {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
-  -webkit-text-stroke: 0.4px var(--v3-accent-stroke);
-  text-shadow: 0 0 18px var(--v3-accent-glow-near), 0 0 44px var(--v3-accent-glow-far);
-}
+/* The serif accent word with its warm bloom is declared once, up in the type
+ * utilities, as `.accent, .v3-accent` — one device for the whole site. */
 
 /* ── The thread column ──────────────────────────────────────────────────── *
  * A measure, not a container: the hero has no card, so the only thing holding
@@ -1218,6 +1247,9 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   position: absolute;
   inset: 0;
   padding: 1px;
+  /* No-op on the square bar; required by the rounded surfaces (.glass-panel)
+   * that compose this same recipe. */
+  border-radius: inherit;
   pointer-events: none;
   background: linear-gradient(180deg, var(--glass-edge-top), var(--glass-edge-bottom));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -1325,6 +1357,316 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .chrome-link,
   .chrome-icon-btn,
   .theme-choice-option { transition: none; }
+}
+
+}
+@layer components {
+
+/* ══ The subpage language (2026-08) ═══════════════════════════════════════ *
+ * The landing got a cinematic hero and the ten subpages behind it stayed a
+ * documentation site wearing the same tokens: eyebrow, heading, grey lede, card
+ * grid. This block is the five devices that close that gap — and it is
+ * deliberately five, not fifty. Every one of them is CSS the browser runs on its
+ * own, because a marketing site whose argument is that Hale is faster than an
+ * app cannot ship an animation library to make the argument.
+ *
+ *   1. .pull-word   — the headline arrives a word at a time.
+ *   2. .accent      — one serif-italic segment per headline, lit. (Declared up
+ *                     in the type utilities; every subpage h1 already wears it.)
+ *   3. .char-reveal — one paragraph on /about that reads itself as you scroll.
+ *   4. .glass-panel / .numbered-card — the card, given anatomy.
+ *   5. .grain       — a section ground with tooth.
+ *
+ * Each has a static fallback, and prefers-reduced-motion turns all of them off.
+ */
+
+/* ── 1 · The pulled-up headline ─────────────────────────────────────────── *
+ * Words rise into place a beat apart. The reveal IS the landing's hero-word
+ * animation (hale-hero-word) — same curve, same distance — so the subpages and
+ * the homepage share one gesture rather than two that nearly match.
+ *
+ * Load-time rather than scroll-triggered, and that is the design rather than a
+ * shortcut. Every headline wearing this is the first thing on its page, so "in
+ * view" is settled before the reader can scroll; and a CSS animation runs with
+ * no JavaScript at all, where an IntersectionObserver reveal leaves the page's
+ * <h1> at opacity 0 for a reader whose JS never arrives. The one primitive we
+ * already ship with that flaw (FadeInUp) is trusted with a CTA band, never with
+ * a heading.
+ *
+ * --w is the word's index, set inline by components/words-pull-up.tsx. */
+.pull-word {
+  display: inline-block;
+  opacity: 0;
+  animation: hale-hero-word 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--w, 0) * var(--pull-stagger));
+}
+
+/* ── 3 · The scroll-read paragraph ──────────────────────────────────────── *
+ * One paragraph on /about — the founder's own account — surfaces a character at
+ * a time as it crosses the viewport, so it reads at the speed of the scroll
+ * instead of arriving whole.
+ *
+ * Settled text is the DEFAULT here, not the fallback: a character is fully
+ * opaque unless BOTH scroll-driven animations exist and the reader has not
+ * asked for less motion. A browser without `animation-timeline` — and every
+ * crawler — sees ordinary prose. The timeline is named on the paragraph so all
+ * of its characters share one clock; each character driving its own `view()`
+ * would reveal the paragraph line by line, since every glyph on a line crosses
+ * the viewport at the same moment. */
+@keyframes char-lift {
+  from { opacity: 0.2; }
+  to   { opacity: 1; }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .char-reveal {
+      view-timeline-name: --char-reveal;
+      view-timeline-axis: block;
+    }
+    /* --c is the character's index and --n the paragraph's length, both set
+     * inline. The window is tuned against where a paragraph is actually READ,
+     * not where it fits: the last character finishes at 48% of the cover range,
+     * which puts the whole paragraph settled by the time its top sits ~40% down
+     * the viewport. The first tuning ran to 70% and measured 0.32 opacity on the
+     * closing characters at that same reading position — the reader had to keep
+     * scrolling to finish a sentence, which is the effect wearing the copy
+     * rather than carrying it. */
+    .char-reveal-char {
+      animation: char-lift linear both;
+      animation-timeline: --char-reveal;
+      animation-range:
+        cover calc(8% + (var(--c) / var(--n)) * 26%)
+        cover calc(22% + (var(--c) / var(--n)) * 26%);
+    }
+  }
+}
+
+/* ── 4 · Glass, and the card that has anatomy ───────────────────────────── *
+ * The bar's recipe at card scale: a translucent surface, a short blur, an inset
+ * highlight along the top inside edge, and a hairline drawn as a masked ring
+ * (see .site-glass). Taken from the CARD surface rather than the page ground,
+ * because a panel that is a wash of the ground it sits on is invisible on that
+ * ground — fine for a bar fixed over scrolling content, useless for a card. */
+.glass-panel {
+  position: relative;
+  border-radius: var(--r-xl);
+  background: var(--glass-panel-bg);
+  -webkit-backdrop-filter: blur(6px) saturate(1.3);
+  backdrop-filter: blur(6px) saturate(1.3);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 1px 2px rgb(13 27 61 / 0.04);
+}
+
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--glass-edge-top), var(--glass-edge-bottom));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* The one card the ladder points at. The amber wash and its ring sit ON the
+ * glass rather than replacing it: a flat tint that skips the lift reads as
+ * RECESSED against the navy ground — measured at rgb(21,36,66) beside its
+ * neighbours' rgb(26,45,82), which is the opposite of featured. */
+.glass-panel.numbered-card-marked {
+  background:
+    linear-gradient(0deg, var(--color-apricot-tint), var(--color-apricot-tint)),
+    var(--glass-panel-bg);
+  box-shadow:
+    inset 0 0 0 1px var(--color-amber-ring),
+    inset 0 1px 0 var(--glass-highlight),
+    0 1px 2px rgb(13 27 61 / 0.04);
+}
+
+/* The card, read top to bottom: what kind of thing this is, where it sits in the
+ * sequence, what it is called, what you get, and one quiet way onward.
+ *
+ * The number is only ever worn by content that IS a sequence — the pricing
+ * ladder, the three rungs of how Hale acts. It is information, not decoration:
+ * a numbered grid of unordered things is a lie told in monospace. */
+.numbered-card {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(1.5rem, 2.4vw, 2.25rem);
+}
+
+.numbered-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.numbered-card-num {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-faded-sage);
+}
+
+/* The checklist. Lucide's Check in the "handled" tone, held to the first line of
+ * its item rather than centred against the block. */
+.numbered-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+}
+
+.numbered-card-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  line-height: 1.45;
+  color: var(--color-slate-green);
+}
+
+.numbered-card-list svg {
+  flex: none;
+  margin-top: 0.28em;
+  color: var(--color-sage);
+}
+
+/* The quiet way onward — a label and an arrow that steps out on hover. Not a
+ * button: a card ending in a second button competes with the one action the
+ * page actually wants. */
+.quiet-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-slate-green);
+  text-decoration: none;
+}
+.quiet-link svg { transition: transform 220ms var(--ease-breathe); }
+.quiet-link:hover { color: var(--color-spruce); }
+.quiet-link:hover svg { transform: translate(2px, -2px); }
+.quiet-link:focus-visible {
+  outline: 2px solid var(--color-spruce);
+  outline-offset: 4px;
+  border-radius: var(--r-sm);
+}
+
+/* ── 5 · Grain ──────────────────────────────────────────────────────────── *
+ * Fractal noise over a section's ground, at a few percent. Grounds only — never
+ * a card or a text container, where it would sit between the reader and the
+ * words. The negative z-index paints it above the section's own background and
+ * below its content; `isolation` is what keeps it from falling behind the page
+ * instead (the same trick .v3-bloom uses). */
+.grain {
+  position: relative;
+  isolation: isolate;
+}
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  /* Or a rounded band gets square corners of noise. */
+  border-radius: inherit;
+  pointer-events: none;
+  /* The noise is the MASK and the ink is a themed colour, so the tooth carries
+   * the ground's own hue rather than laying grey over it (see --grain-ink). */
+  background-color: var(--grain-ink);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+/* ── Editorial measure ──────────────────────────────────────────────────── *
+ * Long-form prose wants 65–75 characters a line. At the body's 17px that is
+ * about 38rem — the answer pages and the policies were running to 46–48rem,
+ * which is a 90-character line the eye loses its place on. */
+.reading-measure { max-width: 38rem; }
+
+/* A stage or category label, said quietly: a pill in the pale-navy wash rather
+ * than a tracked uppercase eyebrow. On an editorial page the eyebrow shouts over
+ * the headline it is there to introduce. */
+.pill-quiet {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--r-full);
+  padding: 0.25rem 0.7rem;
+  background: var(--color-sky-tint);
+  color: var(--color-slate-green);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ── The FAQ disclosure ─────────────────────────────────────────────────── *
+ * A native <details>, which is the element this always was: keyboard, focus,
+ * find-in-page and the no-JavaScript reader all come with it, and the React
+ * accordion it replaces left six of seven answers unopenable when its JavaScript
+ * did not arrive. The marker is ours, so the UA triangle is turned off on both
+ * spellings. */
+.disclosure { padding-inline: clamp(1.1rem, 2vw, 1.6rem); }
+.disclosure + .disclosure { margin-top: 0.75rem; }
+
+.disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-block: clamp(1.1rem, 2vw, 1.5rem);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-display);
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  font-weight: 500;
+  letter-spacing: var(--tracking-display);
+  line-height: 1.3;
+  color: var(--color-spruce);
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary:focus-visible {
+  outline: 2px solid var(--color-spruce);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* The marker swaps by state rather than rotating: a plus becoming a minus is the
+ * clearer promise of what the click will do. Both glyphs are in the markup and
+ * CSS picks one off [open], so the marker is correct in the first painted frame
+ * — the same reasoning as the theme icon in the bar. */
+.disclosure-mark {
+  flex: none;
+  color: var(--color-slate-green);
+  transition: color 200ms var(--ease-breathe);
+}
+.disclosure[open] .disclosure-mark { color: var(--color-apricot-deep); }
+.disclosure > summary:hover .disclosure-mark { color: var(--color-spruce); }
+.disclosure-mark-open { display: none; }
+.disclosure[open] .disclosure-mark-closed { display: none; }
+.disclosure[open] .disclosure-mark-open { display: block; }
+
+.disclosure-body {
+  padding-bottom: clamp(1.1rem, 2vw, 1.5rem);
+  color: var(--color-slate-green);
+  line-height: 1.65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pull-word { animation: none; opacity: 1; }
+  .quiet-link svg,
+  .disclosure-mark { transition: none; }
+}
+
+/* Paper has no scroll and no page-load, so both reveals resolve to their settled
+ * state. Without this a printed /about carries a paragraph at 20% opacity. */
+@media print {
+  .pull-word,
+  .char-reveal-char { animation: none; opacity: 1; }
 }
 
 }
