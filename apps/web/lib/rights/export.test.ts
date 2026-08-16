@@ -214,6 +214,8 @@ describe('assembleFamilyExport', () => {
       link: null,
       childLabel: 'Sam',
       teenRedacted: true,
+      actionId: 'ac710000-0000-4000-8000-000000000001',
+      reversalKept: false,
     };
     const loadTrail = vi.fn().mockResolvedValue([redactedTeenRow]);
     const { db } = fakeDb({ family: FAMILY, children: [], members: [] });

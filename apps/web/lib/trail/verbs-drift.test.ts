@@ -186,8 +186,11 @@ function scanWriteSites(): WriteSite {
           const match = line.match(/actionTaken:\s*(.+?)(,|\s*\}|$)/);
           if (!match) return;
           const expression = (match[1] ?? '').trim().replace(/[,;]$/, '');
-          // A type annotation or the column definition, not a write.
-          if (/^(string|AuditVerb|text\()/.test(expression)) return;
+          // A type annotation, the column definition, or a READ that projects the
+          // column (`actionTaken: schema.auditLog.actionTaken` in a select) — none of
+          // them write a verb, and a reader registered as an indirect write site
+          // would owe an enumeration of verbs it never produces.
+          if (/^(string|AuditVerb|text\(|schema\.)/.test(expression)) return;
           const verb = expression.match(/^'([^']*)'$/)?.[1];
           if (verb === undefined) {
             indirect.add(relative);

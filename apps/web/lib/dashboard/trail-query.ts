@@ -70,7 +70,10 @@ export async function familyHasTeenager(database: Database, familyId: string): P
  * so Hale's own (agent-run) work and a departed user's actions can't masquerade
  * as the parent reading the trail.
  */
-async function buildActorResolver(database: Database, familyId: string): Promise<ActorResolver> {
+export async function buildActorResolver(
+  database: Database,
+  familyId: string,
+): Promise<ActorResolver> {
   const members = await database
     .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
     .from(schema.familyMembers)

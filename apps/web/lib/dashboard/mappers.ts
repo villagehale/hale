@@ -47,6 +47,19 @@ export interface TrailView {
    * — the redaction is already structural in `summary`; this only names it, and
    * carries no content of its own. */
   teenRedacted: boolean;
+  /**
+   * The action this row is a step of, when it targets one — the key the timeline
+   * groups a lifecycle by, and the anchor a channel message can point at. Null for
+   * every other target table, which is most of the trail. It is an opaque id, so it
+   * is deliberately not in the CSV export and never rendered as text.
+   */
+  actionId: string | null;
+  /**
+   * True when this execution row's stored detail carried a reversal handle — i.e.
+   * Hale kept a way to take the placement back. The handle itself is a provider id
+   * (machinery, and third-party data), so only its EXISTENCE crosses into the view.
+   */
+  reversalKept: boolean;
 }
 
 /**
@@ -107,6 +120,19 @@ export function effectiveTeenContent(
  * hale/you/co-parent from the family's member set (an unknown id → hale, never a
  * human). The `now` seam keeps the other-year day heading testable.
  */
+/**
+ * Whether an EXECUTION row's recorded detail kept a reversal handle. The executed
+ * audit row's `after` is the executor's `detail` verbatim, and only the three
+ * calendar placements nest a handle in it (executor.ts) — so this is a fact about
+ * what Hale can still undo, read from the row that proves it.
+ */
+function keptReversalHandle(entry: AuditLogEntry): boolean {
+  if (entry.actionTaken !== 'action.executed') return false;
+  const after = entry.after;
+  if (typeof after !== 'object' || after === null) return false;
+  return typeof (after as { reversalHandle?: unknown }).reversalHandle === 'string';
+}
+
 export function toTrailView(
   entry: AuditLogEntry,
   teenContent: boolean,
@@ -117,6 +143,8 @@ export function toTrailView(
 ): TrailView {
   const { sentence, family } = trailVerb(entry.actionTaken);
   return {
+    actionId: entry.targetTable === 'actions' ? entry.targetId : null,
+    reversalKept: keptReversalHandle(entry),
     id: entry.id,
     time: formatTime(entry.occurredAt, timeZone),
     date: formatDayHeading(entry.occurredAt, timeZone, now),

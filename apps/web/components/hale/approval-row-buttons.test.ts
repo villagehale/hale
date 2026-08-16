@@ -1,7 +1,8 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { ApprovalView } from '~/lib/dashboard/approvals';
+import type { ActionReview } from '~/lib/dashboard/action-review';
+import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { HistoryView } from '~/lib/dashboard/history';
 import { ApprovalCard, ReversibleCard } from './approval-card';
 import { DismissButton } from './dismiss-button';
@@ -66,7 +67,22 @@ function accessibleName(html: string, visible: string): string {
 
 const PREVIEW = 'Reply to Dr. Okafor about the referral';
 
-const approval: ApprovalView = {
+/** A realistic review block: the reviewer's own sentence, the checks it invoked, and
+ * the rail — the three things the transparency layer renders. */
+const REVIEW: ActionReview = {
+  note: 'The clinic is already on your recipient list and nothing else is on the calendar that morning.',
+  checks: [
+    { label: 'known recipient', ok: true, capUsd: null },
+    { label: 'calendar clear', ok: true, capUsd: null },
+  ],
+  steps: [
+    { key: 'drafted', label: 'drafted', at: 'today at 8:04 am', tone: 'done' },
+    { key: 'reviewed', label: 'verified', at: 'today at 8:05 am', tone: 'done' },
+    { key: 'open', label: 'waiting on your yes', at: null, tone: 'awaiting' },
+  ],
+};
+
+const approval: PendingApprovalView = {
   id: 'a1',
   actionType: 'reply_to_email',
   summary: 'Hale matched this to the referral thread',
@@ -78,6 +94,7 @@ const approval: ApprovalView = {
   draftedAt: 'today at 8:04 am',
   teenRedacted: false,
   teenUnlockable: false,
+  review: REVIEW,
 };
 
 const reversible: HistoryView = {

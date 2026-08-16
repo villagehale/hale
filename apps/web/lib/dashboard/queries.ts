@@ -13,11 +13,17 @@ import {
 import { type FamilyBasicsView, toFamilyBasics } from './family-basics';
 import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 import { type FamilyMembersView, toFamilyMembersView } from './family-members';
-import { type ApprovalView, toApprovalView } from './approvals';
+import { type PendingApprovalView, toPendingApprovalView } from './approvals';
 import { type HistoryActionRow, type HistoryView, toHistoryView } from './history';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { type TrailView, effectiveTeenContent } from './mappers';
-import { familyHasTeenager, loadTrailForFamily, readFamilyTimezone } from './trail-query';
+import { NO_AUDIT_FACTS, loadActionAuditFacts } from './reviewer-notes';
+import {
+  buildActorResolver,
+  familyHasTeenager,
+  loadTrailForFamily,
+  readFamilyTimezone,
+} from './trail-query';
 
 /**
  * The remaining family-scoped reads (the family band, the Family page, and the
@@ -190,13 +196,19 @@ export function loadTrail(): Promise<TrailView[]> {
  * falls back to familyHasTeen — every approval row resolves to an event, so a
  * family-wide draft in a family with a teen redacts. Same empty-state degradation as
  * the other reads: no DB or no resolved family → empty queue.
+ *
+ * Each row also carries its PROVENANCE (see action-review.ts): the reviewer's stored
+ * tool results, and — from a second, batched audit read, because neither is a column
+ * on `actions` — the reviewer's rationale and the human approval that has already
+ * been given but not yet carried out.
  */
-export function loadPendingApprovals(): Promise<ApprovalView[]> {
+export function loadPendingApprovals(): Promise<PendingApprovalView[]> {
   return readForFamily(async (database, familyId) => {
-    const [familyHasTeen, timeZone, unlocks] = await Promise.all([
+    const [familyHasTeen, timeZone, unlocks, resolveActor] = await Promise.all([
       familyHasTeenager(database, familyId),
       readFamilyTimezone(database, familyId),
       loadTeenAccessUnlocks(database, familyId, await currentUserId(database)),
+      buildActorResolver(database, familyId),
     ]);
     const rows = await database
       .select({
@@ -204,6 +216,8 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
         actionType: schema.actions.actionType,
         payload: schema.actions.payload,
         reviewerVerdict: schema.actions.reviewerVerdict,
+        reviewerVerdictAt: schema.actions.reviewerVerdictAt,
+        reviewerToolResults: schema.actions.reviewerToolResults,
         draftedAt: schema.actions.draftedAt,
         teenContent: schema.events.teenContent,
         contentProvenance: schema.events.contentProvenance,
@@ -222,6 +236,12 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
       )
       .orderBy(desc(schema.actions.draftedAt))
       .limit(50);
+    const auditFacts = await loadActionAuditFacts(
+      database,
+      familyId,
+      rows.map((row) => row.id),
+      resolveActor,
+    );
     return rows.map((row) => {
       // The child tag names the attributed child by NAME — including a teenager
       // (policy 1: the parent entered it, and two teen rows must never both read
@@ -229,7 +249,8 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
       // effectiveTeenContent (the payload/preview placeholder), so the name never
       // implies the content is visible. VIL-147: an ACTIVE, in-scope grant for this
       // child unredacts it — redactsTeenContent is the one seam that decides.
-      return toApprovalView(
+      const facts = auditFacts.get(row.id) ?? NO_AUDIT_FACTS;
+      return toPendingApprovalView(
         {
           id: row.id,
           actionType: row.actionType,
@@ -249,6 +270,12 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
           ),
           childId: row.childId ?? null,
           childLabel: row.childName ?? null,
+        },
+        {
+          reviewerVerdictAt: row.reviewerVerdictAt,
+          reviewerToolResults: row.reviewerToolResults,
+          reviewerNote: facts.note,
+          approval: facts.approval,
         },
         timeZone,
       );

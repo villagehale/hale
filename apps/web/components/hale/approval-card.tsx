@@ -1,4 +1,5 @@
 import { Shield } from 'lucide-react';
+import { ActionProgress, ReviewNote } from '~/components/hale/action-progress';
 import { actionGlyph } from '~/components/hale/action-glyph';
 import { ApproveButton } from '~/components/hale/approve-button';
 import { ChildTag } from '~/components/hale/child-tag';
@@ -8,7 +9,7 @@ import { RequestTeenAccessButton } from '~/components/hale/request-teen-access-b
 import { ToneLabel } from '~/components/hale/tone';
 import { UndoButton } from '~/components/hale/undo-button';
 import { TintChip } from '~/components/ui/tint-chip';
-import type { ApprovalView } from '~/lib/dashboard/approvals';
+import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { HistoryView } from '~/lib/dashboard/history';
 import { actionTypeLabel } from '~/lib/format/labels';
 
@@ -119,7 +120,7 @@ function CardHead({
  * button — the same weighting the surface has always had, because the visual
  * hierarchy of a consent queue IS part of what the consent means.
  */
-export function ApprovalCard({ approval }: { approval: ApprovalView }) {
+export function ApprovalCard({ approval }: { approval: PendingApprovalView }) {
   const previewId = previewIdFor(approval.id);
   return (
     // VIL-244 · M9: the draft's action id is its anchor, so an outbound channel
@@ -141,8 +142,11 @@ export function ApprovalCard({ approval }: { approval: ApprovalView }) {
         ) : (
           <p className="meta mt-3 text-ink-2">{approval.summary}</p>
         )}
-        <p className="meta mt-2 text-ink-3">drafted {approval.draftedAt}</p>
+        {/* The rail carries the drafted stamp as its first rung, so the standalone
+          * "drafted …" line it replaced is gone rather than repeated beside it. */}
+        <ActionProgress review={approval.review} />
         {approval.teenRedacted ? <TeenRecess /> : null}
+        <ReviewNote review={approval.review} />
         <DraftDetail actionType={approval.actionType} payload={approval.payload} />
       </div>
       {/* A divider above right-aligned Reject / Approve (design handoff §4.6:

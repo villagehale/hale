@@ -65,7 +65,33 @@ describe('toTrailView — the honest frame', () => {
     const view = trail({ targetTable: 'actions', targetId: 'act-9' });
     expect(view.noun).toBe('draft');
     expect(view.link).toBe('/approvals');
-    expect(JSON.stringify(view)).not.toContain('act-9');
+    // W5: the action id IS carried, structurally — it is the anchor a channel link
+    // targets and the key the timeline folds a lifecycle by, the same role the audit
+    // row's own `id` has always had. What must never happen is a parent READING it,
+    // so every field the surface renders as text is checked instead of the blob.
+    expect(view.actionId).toBe('act-9');
+    const rendered = [view.time, view.date, view.summary, view.noun, view.link, view.childLabel];
+    for (const value of rendered) {
+      expect(value ?? '').not.toContain('act-9');
+    }
+  });
+
+  it('carries no action id for a row that targets something other than an action', () => {
+    expect(trail({ targetTable: 'family_plans', targetId: 'plan-3' }).actionId).toBeNull();
+  });
+
+  it('reports a kept reversal handle from the execution row, never the handle itself', () => {
+    const reversible = trail({
+      actionTaken: 'action.executed',
+      targetTable: 'actions',
+      targetId: 'act-9',
+      after: { kind: 'calendar_placed', reversalHandle: 'fe-77' },
+    });
+    expect(reversible.reversalKept).toBe(true);
+    expect(JSON.stringify(reversible)).not.toContain('fe-77');
+    // Only an EXECUTION row can carry one; a draft row with the same blob cannot.
+    expect(trail({ actionTaken: 'action.drafted', after: { reversalHandle: 'fe-77' } }).reversalKept).toBe(false);
+    expect(trail({ actionTaken: 'action.executed', after: { kind: 'email_sent' } }).reversalKept).toBe(false);
   });
 
   it('shows a noun with no link when the target has no viewable surface', () => {

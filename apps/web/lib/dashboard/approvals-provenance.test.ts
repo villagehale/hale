@@ -45,6 +45,8 @@ function approvalRow(contentProvenance: string) {
     actionType: 'add_to_digest_only',
     payload: SHORTLIST_PAYLOAD,
     reviewerVerdict: 'approved',
+    reviewerVerdictAt: new Date('2026-08-02T08:05:00.000Z'),
+    reviewerToolResults: [],
     draftedAt: new Date('2026-08-01T10:00:00Z'),
     teenContent: false,
     childId: null,
@@ -67,6 +69,16 @@ function fakeDb(row: Record<string, unknown>) {
     }
     if (keys.includes('safetyEscalation') && keys.includes('scope')) {
       return { from: () => ({ where: async () => [] }) };
+    }
+    // buildActorResolver: select({ userId, role }) from family_members — an empty
+    // household means every audit actor resolves to Hale, which is the safe default
+    // these fixtures want (none of them exercise a human approval).
+    if (keys.length === 2 && keys.includes('userId') && keys.includes('role')) {
+      return { from: () => ({ where: async () => [] }) };
+    }
+    // loadActionAuditFacts: the reviewer-note + human-approval audit read.
+    if (keys.includes('actionTaken') && keys.includes('occurredAt')) {
+      return { from: () => ({ where: () => ({ orderBy: async () => [] }) }) };
     }
     const node = () =>
       Object.assign(Promise.resolve([row]), {
