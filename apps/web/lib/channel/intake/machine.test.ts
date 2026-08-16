@@ -1,25 +1,30 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { matchHealthCheckpoints } from '~/lib/health/match';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   AMBIGUOUS_CLARIFY,
   ASSENT_ACK,
+  COLD_START_ASK,
   DECLINE_ACK,
   HELP_REPLY,
   REGION_UNAVAILABLE_REPLY,
   STOP_ACK,
   WATCH_OFFER,
+  WATCH_OFFER_ASK,
   detailsBlocked,
 } from './copy';
 import {
+  FakeAnswerComposer,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
   type FakeDb,
   fakeAckComposer,
   fakeRadar,
+  fakeSilentAnswerComposer,
   makeFakeDb,
 } from './fakes';
 import type { IntakeCollected } from './extract';
@@ -61,6 +66,9 @@ function harness(options: {
   limiter?: FakeRateLimiter;
   resolveCenter?: IntakeDeps['resolveCenter'];
   identityAsk?: FakeIdentityAsk;
+  /** Defaults to the composer that finds nothing to answer — every test written before
+   * the escape existed is asserting the script, and that is the script. */
+  answerComposer?: IntakeDeps['answerComposer'];
 }): {
   fake: FakeDb;
   transport: FakeTransport;
@@ -89,6 +97,7 @@ function harness(options: {
         },
       },
       ackComposer: fakeAckComposer,
+      answerComposer: options.answerComposer ?? fakeSilentAnswerComposer,
       identityAsk,
       seedCivic: async (_db, familyId, areaCoarse, center) => {
         const placed = center === null ? 'unplaced' : `${center.lat},${center.lng}`;
@@ -722,6 +731,108 @@ describe('intake · ambiguity', () => {
   });
 });
 
+describe('intake · a question mid-signup gets an answer', () => {
+  /**
+   * THE LIVE INCIDENT (founder's test, 2026-08-12). Three texts in, consent outstanding,
+   * the parent asked "Does Sebastian needs eye exam?" and Hale replied with its own
+   * question again. Nobody answered them.
+   *
+   * The composed body is deliberately not a plausible sentence: what Hale SAYS is the
+   * gates' job (answer.test.ts) and the eval's (rule #8). What this file owns is that the
+   * turn is ANSWERED, that Hale's question comes back with it, and that the step holds.
+   */
+  const ANSWER = 'ANSWER';
+  const RETURN = 'RETURN?';
+
+  it('answers the question, returns to the ask, and does not move the step', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({
+      intents: [ambiguous('Does Sebastian needs eye exam?')],
+      answerComposer: composer,
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const answered = await text(fake, transport, deps, 'Does Sebastian needs eye exam?');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+
+    // BOTH halves in the one text: their answer, and Hale's question back — and never
+    // the sentence the machine would have re-asked with.
+    const reply = transport.bodies().at(-1) as string;
+    expect(reply).toContain(ANSWER);
+    expect(reply).toContain(RETURN);
+    expect(reply).not.toBe(AMBIGUOUS_CLARIFY);
+
+    // The composer saw the parent's words and Hale's own ask — and no session state,
+    // no postal code, no family id (rule #1).
+    expect(composer.calls).toEqual([
+      {
+        parentWords: 'Does Sebastian needs eye exam?',
+        pendingAsk: WATCH_OFFER_ASK,
+        children: MAYA_AND_LEO.children,
+      },
+    ]);
+
+    // THE STEP HELD: still awaiting the watch reply, no clarification spent, and not one
+    // consent row written out of a question.
+    const [session] = fake.rows(schema.smsIntakeSessions);
+    expect(session).toMatchObject({ state: 'awaiting_watch_reply', clarifyCount: 0 });
+    expect(inserts(fake, schema.consentRecords).filter((c) => c.consentType === 'proactive_watch'))
+      .toHaveLength(0);
+  });
+
+  it('still clarifies once when the reply is a wobble rather than a question', async () => {
+    // Same seam, composer finding nothing to answer: the pre-existing behaviour, intact.
+    const { fake, transport, deps } = harness({ intents: [ambiguous('hmm, maybe')] });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    expect(await text(fake, transport, deps, 'hmm, maybe')).toEqual({ status: 'clarified' });
+    expect(transport.bodies().at(-1)).toBe(AMBIGUOUS_CLARIFY);
+  });
+
+  it('answers a question asked before the family exists, keeping the follow-up unspent', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }, MAYA_AND_LEO],
+      answerComposer: composer,
+    });
+    await text(fake, transport, deps, 'hi');
+
+    const answered = await text(fake, transport, deps, 'who is this exactly?');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
+    expect(composer.calls[0]?.pendingAsk).toBe(COLD_START_ASK);
+
+    // Nothing was consumed by answering: the ask is still open and still provisions.
+    const [session] = fake.rows(schema.smsIntakeSessions);
+    expect(session).toMatchObject({ state: 'awaiting_details', followUpCount: 0 });
+    expect((await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6')).status).toBe(
+      'provisioned',
+    );
+  });
+
+  it('sends the fixed safety line alone - no signup question after it', async () => {
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    const { fake, transport, deps } = harness({
+      intents: [ambiguous("she's not breathing")],
+      answerComposer: composer,
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const answered = await text(fake, transport, deps, "she's not breathing");
+    expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(transport.bodies().at(-1)).toBe(SAFETY_REPLY);
+  });
+});
+
 describe('intake · CASL keywords', () => {
   it('STOP before provisioning acks and provisions nothing', async () => {
     const { fake, transport, deps } = harness({});
@@ -762,6 +873,7 @@ describe('intake · CASL keywords', () => {
       intentReader,
       radar: fakeRadar,
       ackComposer: fakeAckComposer,
+      answerComposer: fakeSilentAnswerComposer,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => NOW.getTime()),
       now: NOW,
