@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the draft cap of 2, drafts both swim cancellations, names them clearly with their times, uses the required YES confirmation format, and correctly states it will handle the remaining two (soccer and Wednesday) afterward — which is exactly the right handling of overflow. The Wednesday appointment is a private calendar item, but the parent referenced it as \"the appointment on Wednesday\" and there is only one item on Wednesday (the private 9:00am item), so that reference is resolved and Hale could have noted it will sort that one too, which it does implicitly by saying \"Wednesday.\" One small blemish: \"sort soccer and Wednesday\" is slightly vague — soccer is unambiguous (Sat 10am) but \"Wednesday\" is a private item whose content Hale can't see; it could have been slightly cleaner. However, the core structure is correct: cap respected, drafts named, YES requested, overflow acknowledged without itemising it or sending to the app. This is essentially the product working correctly.",
+    "score": 5
+  }
+}

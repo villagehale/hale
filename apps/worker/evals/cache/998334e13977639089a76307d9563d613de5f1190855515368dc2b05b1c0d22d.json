@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply identifies the correct event (Thursday 5:15pm swim at East pool — the only Thursday swim, so no ambiguity), drafts the move, names the destination time and location, and ends with the required YES confirmation prompt. It is concise, contains no invented details, no app referral, no greeting or sign-off. This is exactly the correct shape for a drafted change.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not visible on this week's calendar. However, it ends with \"Want me to check next week?\" — this is an unnecessary question and a small shape issue. Hale can simply say piano isn't on the schedule this week; asking if it should check next week adds a dangling question where one isn't needed. The core answer is correct (no piano visible, private items are not surfaced as possibilities). The question at the end is a minor blemish — it's not harmful but it is an extra question where a plain statement would have sufficed.",
+    "score": 4
+  }
+}

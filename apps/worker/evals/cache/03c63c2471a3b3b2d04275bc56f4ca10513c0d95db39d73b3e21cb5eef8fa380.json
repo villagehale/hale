@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names one event (soccer), the week shows exactly one soccer event (Sat 10:00am at Cedarvale Park), so the reference is fully resolved. Hale correctly drafted the move and produced a clean confirmation-request reply naming the event and ending with \"YES to confirm.\" — exactly the required contract shape. No invented details, no app referral, no greeting or sign-off, no markdown. Perfect.",
+    "score": 5
+  }
+}
