@@ -4305,3 +4305,64 @@ html, body, .sidebar, .panel, .card, .field {
     box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WEB PHASE W5 — the audit TRACE on /trail. Several audit rows about one action
+ * are one thing that happened, so the timeline folds them into a native
+ * <details> whose summary is the row it already rendered and whose body is the
+ * lifecycle underneath.
+ *
+ * Three rules made this three classes rather than a component library: the
+ * summary reuses the timeline's own 12-column row verbatim (so a folded and an
+ * unfolded entry sit on the same grid), the steps are a plain indented list
+ * hung off one hairline, and the only thing a disclosure needs that the
+ * timeline did not already have is a focus ring on <summary>.
+ *
+ * Inside `@layer components`, which is the rule for new CSS in this file
+ * (globals-layer.test.ts ratchets the unlayered debt DOWN). Every value is a
+ * role token, so both themes derive with no new colour.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* The row's own vertical rhythm, moved onto <summary> so the closed trace is
+   * exactly as tall as the standalone <article> beside it. */
+  .trace-summary {
+    cursor: pointer;
+    padding-block: 2rem;
+    list-style-position: outside;
+  }
+  @media (min-width: 1024px) {
+    .trace-summary { padding-block: 2.5rem; }
+  }
+  .trace-summary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
+    border-radius: var(--r-sm);
+  }
+
+  /* The lifecycle, hung off one hairline so the steps read as belonging to the
+   * summary above rather than as more timeline rows. Aligned under the summary's
+   * text column at the same breakpoint the grid uses. */
+  .trace-steps {
+    margin: 0 0 2rem;
+    padding: 0 0 0 1rem;
+    border-left: 1px solid var(--color-rule);
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  @media (min-width: 768px) {
+    .trace-steps { margin-left: calc((100% / 12) * 2); }
+  }
+
+  /* Time · actor · what happened. Stacks on a phone, columns from md — the same
+   * shape as the row above it, one scale down. */
+  .trace-step {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.25rem 1rem;
+  }
+  @media (min-width: 768px) {
+    .trace-step { grid-template-columns: 4.5rem 6.5rem 1fr; align-items: baseline; }
+  }
+}
