@@ -10,14 +10,11 @@ import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
 
 /**
- * Landing v3 — the candidate homepage, served only at /preview/landing-v3 while
- * the founder decides. `chief-of-staff.tsx` is the live page and this file must
- * not touch it: the copy below is a deliberate parallel copy, not an extraction,
- * so a change here can never reach villagehale.com by accident.
+ * villagehale.com — the landing.
  *
- * What changes, and why. v1 and v2 both open with a column of copy beside a card
- * of conversation — a layout that says "here is a product that texts" while
- * looking like every other AI landing page. v3 deletes the split. There is one
+ * The layout it replaced opened with a column of copy beside a card of
+ * conversation: a shape that says "here is a product that texts" while looking
+ * like every other AI landing page. This one deletes the split. There is one
  * centred column, and the first thing in it is Hale typing the message a real
  * stranger receives, with the questions parents actually send sitting underneath
  * where a keyboard's suggestion strip would be. The hero is not a picture of the
@@ -31,9 +28,9 @@ import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
  *   · The mark in the header is the flat white-on-navy turtle tile, and the page
  *     closes on the same tile beside the wordmark. No mascot art anywhere.
  *
- * Every claim below the hero is carried over from v1 word for word: the fifteen
+ * Every claim below the hero survived the redesign word for word: the fifteen
  * named municipalities, the radar, the ladder, the coaching boundary, the
- * privacy register, the JSON-LD graph.
+ * privacy register, the JSON-LD graph. app/landing.test.ts is the gate on that.
  */
 
 const SIGN_IN = `${APP_URL}/sign-in`;
@@ -128,8 +125,9 @@ export function ConversationalLanding({ smsNumber }: { smsNumber: string }) {
 
   return (
     // `v3-theme` is the whole dark-mode mechanism: the class re-points the design
-    // system's custom properties under prefers-color-scheme: dark, for this
-    // subtree only, so the live page and every subpage stay light-only.
+    // system's custom properties to the Prussian-navy ladder under
+    // prefers-color-scheme: dark, for this subtree only, so every subpage stays
+    // on the light-only palette it was drawn for.
     <main id="main" tabIndex={-1} className="v3-theme">
       <script
         type="application/ld+json"
@@ -252,7 +250,7 @@ export function ConversationalLanding({ smsNumber }: { smsNumber: string }) {
             ))}
           </ul>
           {/* The second sentence's phone half depends on claim-by-phone shipping first —
-              see the merge-order note in landing-f14.test.ts. A texted family has no
+              see the merge-order note in app/landing.test.ts. A texted family has no
               email address, so "sign in" was untrue for them until that flow exists. */}
           <p className="mt-6 text-slate-green" style={{ lineHeight: 1.6 }}>
             Receipts for everything: every message names exactly what I did. Say yes to a date and

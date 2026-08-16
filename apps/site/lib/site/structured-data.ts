@@ -1,5 +1,4 @@
 import { APP_URL, SITE_URL } from '~/lib/app-url';
-import { f14LandingEnabled } from '~/lib/flags/landing';
 
 /**
  * The site-identity JSON-LD for the homepage: the three nodes an answer engine or
@@ -11,10 +10,9 @@ import { f14LandingEnabled } from '~/lib/flags/landing';
  * than eyeballed in the browser. No user input ever reaches it (hard rule #1).
  */
 export function siteJsonLd(): Record<string, unknown> {
-  // Structured data follows the landing flag exactly like the page metadata does
-  // (launch-day review P2, 2026-08-11): an answer engine must never describe a
-  // homepage visitors don't see.
-  const chief = f14LandingEnabled();
+  // These descriptions are what an answer engine repeats back, so they have to say
+  // what the homepage says — a graph that drifts from the page describes a product
+  // no visitor sees.
   const organization = {
     '@type': 'Organization',
     '@id': `${SITE_URL}/#organization`,
@@ -22,9 +20,8 @@ export function siteJsonLd(): Record<string, unknown> {
     legalName: 'Village Hale Technologies Inc.',
     url: SITE_URL,
     logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.png` },
-    description: chief
-      ? 'Hale is a family chief of staff you text — it watches city registration windows, plans the week, and handles the admin with your say-so. Every family’s data stays in Canada.'
-      : 'Hale is a private, passive household assistant for families — it finds the classes, groups, and drop-ins near you worth a look, and keeps every family’s data in Canada.',
+    description:
+      'Hale is a family chief of staff you text — it watches city registration windows, plans the week, and handles the admin with your say-so. Every family’s data stays in Canada.',
     areaServed: { '@type': 'Country', name: 'Canada' },
   };
 
@@ -46,9 +43,8 @@ export function siteJsonLd(): Record<string, unknown> {
     url: APP_URL,
     inLanguage: 'en-CA',
     publisher: { '@id': `${SITE_URL}/#organization` },
-    description: chief
-      ? 'A number your family texts: Hale watches registration dates across the GTA, plans the week, and executes with your approval — receipts for everything, and your family’s data never leaves Canada.'
-      : 'A private, passive assistant for parents across every stage of childhood (0–18): it surfaces trusted local activities, quietly keeps track of what matters, and never sends your family’s data outside Canada.',
+    description:
+      'A number your family texts: Hale watches registration dates across the GTA, plans the week, and executes with your approval — receipts for everything, and your family’s data never leaves Canada.',
     // Free to start — the launch tier. A concrete Offer node is the signal an answer
     // engine reads when a parent asks whether Hale costs anything.
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'CAD' },

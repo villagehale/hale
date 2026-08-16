@@ -2,7 +2,6 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_DISPLAY, PLAN_TIERS_ORDERED } from '@hale/types';
-import { F14_LANDING_ENV } from '~/lib/flags/landing.js';
 import { chromeCta } from '~/lib/site/chrome-cta.js';
 import { PricingSection } from './pricing-section.js';
 
@@ -57,12 +56,11 @@ describe('PricingSection (landing pricing)', () => {
 
   /**
    * The regression this replaced a label-pin with. Every tier CTA used to hardcode the
-   * app's /onboarding wizard, which F14 deleted — so the pricing page's only action
-   * 308'd the reader back to the marketing homepage. Asserted under the LIVE config,
-   * because that is what a reader actually gets.
+   * app's /onboarding wizard, which no longer exists — so the pricing page's only
+   * action 308'd the reader back to the marketing homepage. Asserted under the LIVE
+   * config, because that is what a reader actually gets.
    */
   it('sends a reader to the texting door under the live config — never the deleted wizard', () => {
-    vi.stubEnv(F14_LANDING_ENV, 'true');
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
     const live = renderToStaticMarkup(createElement(PricingSection));
     expect(chromeCta().href).toMatch(/^sms:/);

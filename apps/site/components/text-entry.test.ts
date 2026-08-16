@@ -43,7 +43,7 @@ describe('TextEntry (persona copy)', () => {
   });
 
   it('names only watched things that exist — no school paperwork Hale cannot see', () => {
-    // Same bar the landing holds (landing-f14.test.ts): the health timeline and the
+    // Same bar the landing holds (app/landing.test.ts): the health timeline and the
     // weather read are real; there is no school-paperwork ingestion in the product.
     for (const html of [liveHtml, unsetHtml]) {
       expect(html).not.toContain('school paperwork');

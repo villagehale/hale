@@ -4,8 +4,8 @@ import { socialCardCopy } from '~/lib/site/social-card-copy';
 
 // Branded social-share card (og:image + twitter:image). Current marketing palette:
 // navy canvas, cream ink, amber rule, and the real Hale mark. This is what renders when the
-// landing is shared into a parent group — the free-traction surface. The words follow
-// NEXT_PUBLIC_F14_LANDING so the card can never describe a homepage nobody sees.
+// landing is shared into a parent group — the free-traction surface. The words come from
+// lib/site/social-card-copy so the card and the page it opens sell the same product.
 export const alt = socialCardCopy().alt;
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';

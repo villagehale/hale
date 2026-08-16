@@ -4,9 +4,7 @@ import { LandingCta } from '~/components/landing-cta';
 import { ProductFaqAccordion } from '~/components/product-faq-accordion';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
-import { APP_URL } from '~/lib/app-url';
-import { faqJsonLd, productFaq } from '~/lib/faq/index';
-import { f14LandingEnabled } from '~/lib/flags/landing';
+import { FAQ, faqJsonLd } from '~/lib/faq/index';
 import { chromeCta } from '~/lib/site/chrome-cta';
 
 const TITLE = 'Is Hale free, private, and right for your family? · Hale';
@@ -51,35 +49,19 @@ export default function FaqPage() {
         </div>
 
         <div className="mt-14 max-w-3xl rise rise-2">
-          <ProductFaqAccordion items={productFaq()} />
+          <ProductFaqAccordion items={FAQ} />
         </div>
       </section>
 
       <CtaBand>
-        <h2 className="mx-auto max-w-2xl font-display text-2xl">
-          {f14LandingEnabled() ? 'Still wondering? Just ask me.' : 'Ready to find your village?'}
-        </h2>
+        <h2 className="mx-auto max-w-2xl font-display text-2xl">Still wondering? Just ask me.</h2>
         <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
           Free to start. Your data stays in Canada.
         </p>
         <div className="mt-8 flex justify-center">
-          {f14LandingEnabled() ? (
-            <LandingCta
-              event="landing_cta_text"
-              href={chromeCta().href}
-              className="btn-on-navy"
-            >
-              {chromeCta().label}
-            </LandingCta>
-          ) : (
-            <LandingCta
-              event="faq_cta_signin"
-              href={`${APP_URL}/onboarding`}
-              className="btn-on-navy"
-            >
-              Join the village
-            </LandingCta>
-          )}
+          <LandingCta event="landing_cta_text" href={chromeCta().href} className="btn-on-navy">
+            {chromeCta().label}
+          </LandingCta>
         </div>
       </CtaBand>
 
