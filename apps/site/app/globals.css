@@ -747,3 +747,328 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 }
 
 }
+@layer components {
+
+/* ══ Landing v3 (preview, /preview/landing-v3) — the conversational hero ═══ *
+ * The kit for the candidate homepage whose hero IS the product: one centred
+ * column in which Hale types its real opening message, with the parent's likely
+ * first questions sitting under it the way a keyboard's suggestion strip sits
+ * under a thread. No card frame, no device chrome, no send-arrow — strip those
+ * away and the page itself reads as the conversation, which is the whole claim.
+ *
+ * Nothing here is used by the live page and every class is `v3-`-prefixed, so
+ * the live landing and the parallel v2 preview can never collide with it.
+ *
+ * Motion is CSS plus one small typewriter hook: a landing page whose argument is
+ * that Hale is faster than an app cannot ship an animation library to say so.
+ * Every rule has a prefers-reduced-motion reset at the foot of this block.
+ *
+ * ── Theme ────────────────────────────────────────────────────────────────
+ * Dark mode arrives as custom properties re-pointed on `.v3-theme`. Custom
+ * properties inherit, so re-declaring `--color-spruce` there re-tints every
+ * Tailwind utility and every `.card` / `.pill` / `.btn-*` INSIDE v3 and nowhere
+ * else — villagehale.com/ and every subpage keep their light-only palette.
+ *
+ * The dark values are the app's own measured ladder (apps/web/app/globals.css
+ * `.dark`) under the site's token names: warm near-black #14120E, card #1E1B15,
+ * cream ink #F6F1E7, the #C7D3E6 / #9BB0D0 text ladder, amber #E0A44E. Amber is
+ * FILL, glow and hairline in both themes; no body text is ever amber. */
+
+.v3-theme {
+  /* Hale's bubble: warm white lifted off the page by a hairline and a soft
+   * shadow, not by a card. Named separately from --color-oat because the bubble
+   * is the one surface on the page that must read as a message. */
+  --v3-bubble-bg: #ffffff;
+  --v3-bubble-border: rgb(23 41 74 / 0.10);
+  --v3-bubble-shadow: 0 20px 48px -34px rgb(23 41 74 / 0.55);
+
+  /* The warm bloom the thread column sits in — the page's only gradient, and
+   * the reason a lone bubble on a wide screen still has a centre of gravity. */
+  --v3-bloom-warm: rgb(178 107 31 / 0.16);
+  --v3-bloom-cool: rgb(23 41 74 / 0.07);
+
+  /* The suggestion strip. Unpressed reads as an offer, pressed as the message
+   * about to be sent — navy fill, so the chosen one is unmistakable. */
+  --v3-chip-bg: rgb(23 41 74 / 0.045);
+  --v3-chip-border: rgb(23 41 74 / 0.14);
+  --v3-chip-hover: rgb(23 41 74 / 0.09);
+
+  --v3-caret: #b26b1f;
+
+  /* The amber edge and halo on the serif accent word. */
+  --v3-accent-stroke: rgb(178 107 31 / 0.38);
+  --v3-accent-glow-near: rgb(178 107 31 / 0.26);
+  --v3-accent-glow-far: rgb(178 107 31 / 0.12);
+
+  /* The hairline that fades toward a card's edges. */
+  --v3-edge: rgb(23 41 74 / 0.20);
+}
+
+@media (prefers-color-scheme: dark) {
+  .v3-theme {
+    color-scheme: dark;
+
+    /* Surfaces — the app's warm near-black ladder, canvas → band → card. */
+    --color-linen: #14120e;
+    --color-page: #14120e;
+    --color-band: #1b1813;
+    --color-oat: #1e1b15;
+    --color-rule: #2a251c;
+    --color-rule-strong: #3a3327;
+    --color-line: #2a251c;
+    --color-hair: #221e17;
+
+    /* Ink ladder — measured on #14120E: 16.6 / 12.4 / 8.5:1. */
+    --color-spruce: #f6f1e7;
+    --color-ink: #f6f1e7;
+    --color-slate-green: #c7d3e6;
+    --color-dim: #c7d3e6;
+    --color-faded-sage: #9bb0d0;
+    --color-faint: #9bb0d0;
+
+    /* The navy/cream pair INVERTS rather than darkening. --color-navy is both a
+     * fill (.btn-primary, .cta-band) and an ink (.link); on a near-black page a
+     * navy fill disappears and a navy link is unreadable, so cream takes the
+     * fill role and the ink that sits on it becomes the canvas. Every rule that
+     * pairs them — button, link, closing band, and .btn-on-navy inside it —
+     * inverts correctly with no extra rules. */
+    --color-navy: #f6f1e7;
+    --color-navy-deep: #ffffff;
+    --color-cream: #14120e;
+    --color-on-spruce: #14120e;
+    --color-on-spruce-soft: rgb(20 18 14 / 0.76);
+    --color-on-spruce-faint: rgb(20 18 14 / 0.58);
+
+    /* Washes — the app's dark amber tint (cream ink on it, 13.1:1). */
+    --color-apricot-tint: #33260f;
+    --color-sky-tint: #1c2436;
+    --color-amber: #e0a44e;
+    --color-amber-bg: #33260f;
+    /* Focus ring: warm amber reads on the near-black page at 8.5:1. */
+    --color-apricot-deep: #e0a44e;
+
+    --v3-bubble-bg: #232019;
+    --v3-bubble-border: rgb(246 241 231 / 0.13);
+    --v3-bubble-shadow: 0 20px 48px -34px rgb(0 0 0 / 0.75);
+
+    --v3-bloom-warm: rgb(224 164 78 / 0.13);
+    --v3-bloom-cool: rgb(154 166 230 / 0.07);
+
+    --v3-chip-bg: rgb(246 241 231 / 0.06);
+    --v3-chip-border: rgb(246 241 231 / 0.16);
+    --v3-chip-hover: rgb(246 241 231 / 0.12);
+
+    --v3-caret: #e0a44e;
+
+    /* A halo that is a warmth on cream is a neon tube on charcoal: same device,
+     * roughly half the alpha, and the lighter dark-mode amber. */
+    --v3-accent-stroke: rgb(224 164 78 / 0.26);
+    --v3-accent-glow-near: rgb(224 164 78 / 0.14);
+    --v3-accent-glow-far: rgb(224 164 78 / 0.07);
+
+    --v3-edge: rgb(246 241 231 / 0.16);
+  }
+}
+
+/* The theme wrapper paints its own ground — <html> is outside it and stays on
+ * the site's light-only canvas. */
+.v3-theme {
+  background: var(--color-linen);
+  color: var(--color-spruce);
+  min-height: 100vh;
+}
+
+/* The serif accent word, with a warm bloom behind it. Two layers on ONE element
+ * — an amber hairline stroke on the glyph edges plus an amber halo — rather than
+ * an absolutely-positioned duplicate, which cannot follow the real text when a
+ * phrase wraps, and these phrases wrap at 390px. Amber at low alpha, so the fill
+ * stays ink and AA holds. */
+.v3-accent {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  -webkit-text-stroke: 0.4px var(--v3-accent-stroke);
+  text-shadow: 0 0 18px var(--v3-accent-glow-near), 0 0 44px var(--v3-accent-glow-far);
+}
+
+/* ── The thread column ──────────────────────────────────────────────────── *
+ * A measure, not a container: the hero has no card, so the only thing holding
+ * the conversation together is that everything in it shares one narrow width. */
+
+.v3-thread {
+  width: 100%;
+  max-width: 37rem;
+  margin-inline: auto;
+}
+
+/* The one gradient on the page, behind the column. Sized in vmax so it stays a
+ * wash on a phone and a room on a 1440. */
+.v3-bloom { position: relative; isolation: isolate; }
+.v3-bloom::before {
+  content: "";
+  position: absolute;
+  inset: -12% -20% -30%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 38% at 50% 22%, var(--v3-bloom-warm), transparent 72%),
+    radial-gradient(58% 46% at 50% 96%, var(--v3-bloom-cool), transparent 74%);
+}
+
+/* ── Hale's bubble ──────────────────────────────────────────────────────── *
+ * Tail on the bottom-left, the way an incoming message reads. Grid rather than
+ * flow so the full greeting can sit in the box as an invisible sizer while the
+ * typed slice paints on top of it: the bubble is its final size from the first
+ * frame, so nothing below it moves for seven seconds. */
+
+.v3-bubble {
+  display: grid;
+  border-radius: 22px 22px 22px 7px;
+  background: var(--v3-bubble-bg);
+  border: 1px solid var(--v3-bubble-border);
+  box-shadow: var(--v3-bubble-shadow);
+  padding: clamp(1.1rem, 3.4vw, 1.65rem) clamp(1.15rem, 3.6vw, 1.8rem);
+  color: var(--color-spruce);
+  font-size: clamp(1.02rem, 2.7vw, 1.2rem);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.v3-bubble > * { grid-area: 1 / 1; }
+
+/* The full greeting, holding the box open. aria-hidden + visibility:hidden, so
+ * it is neither announced nor painted — but it is real text in the DOM, which is
+ * what a crawler and a reader with JavaScript off get. */
+.v3-bubble-sizer { visibility: hidden; }
+
+.v3-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 0.12em;
+  vertical-align: -0.16em;
+  border-radius: 1px;
+  background: var(--v3-caret);
+  animation: v3-caret 1.05s steps(1, end) infinite;
+}
+
+@keyframes v3-caret {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* ── The suggestion strip ───────────────────────────────────────────────── *
+ * Real buttons: tapping one is an action (it writes the parent's first text),
+ * not navigation, and a screen reader is told which one is chosen via
+ * aria-pressed rather than by colour alone. */
+
+.v3-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.6rem 1.05rem;
+  border-radius: var(--r-full);
+  border: 1px solid var(--v3-chip-border);
+  background: var(--v3-chip-bg);
+  color: var(--color-spruce);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 220ms var(--ease-breathe), border-color 220ms var(--ease-breathe);
+}
+
+.v3-chip:hover { background: var(--v3-chip-hover); }
+
+.v3-chip[aria-pressed="true"] {
+  background: var(--color-navy);
+  border-color: var(--color-navy);
+  color: var(--color-cream);
+  font-weight: 600;
+}
+
+.v3-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* ── The draft line ─────────────────────────────────────────────────────── *
+ * What tapping a chip actually did, in words: the message now sitting in the
+ * composer link. Not an input — nothing here is typed and nothing is submitted
+ * from this page. The mono label says "machine state", the quoted body says
+ * "your words". */
+
+.v3-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--v3-chip-border);
+  background: var(--v3-chip-bg);
+  text-align: left;
+}
+
+.v3-draft-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-faded-sage);
+}
+
+.v3-draft-body {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-spruce);
+  line-height: 1.45;
+}
+
+/* A card whose hairline border fades out toward both edges. The XOR mask paints
+ * the 1px padding ring only, so the card's own surface is untouched. */
+.v3-edge-card {
+  position: relative;
+  border-radius: var(--r-xl);
+  background: var(--color-oat);
+  box-shadow: 0 1px 2px rgb(13 27 61 / 0.04);
+  padding: clamp(1.5rem, 2.4vw, 2.25rem);
+}
+.v3-edge-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--v3-edge) 22%,
+    var(--v3-edge) 78%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* The closing lockup: the brand tile on the navy band needs a hairline to lift
+ * its own navy ground off the band's. */
+.v3-logo-tile {
+  box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22);
+}
+
+/* Reduced motion: the caret is dropped by the component (it never blinks and
+ * the greeting is whole from the first frame); this is the belt to that brace,
+ * and it stills the chip transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .v3-caret { animation: none; }
+  .v3-chip { transition: none; }
+}
+
+}
