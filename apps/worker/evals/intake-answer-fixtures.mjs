@@ -1,8 +1,10 @@
 // The mid-signup answer — the corpus.
 //
-// PII (rule #1): every message here is synthetic. The opening fixture is the live
-// incident's SHAPE (founder's test, 2026-08-12 — a question about a child's eye exam
-// arriving while the consent ask was outstanding), rewritten with an invented child.
+// PII (rule #1): every message here is synthetic. The opening fixture reproduces the
+// live incident (founder's test, 2026-08-12 — a question about a child's eye exam
+// arriving while the consent ask was outstanding); the child is the repo's standing
+// invented fixture name, the same one six other test files use, and no real family's
+// details appear anywhere in this corpus.
 //
 // Expectations are derived from the SPEC (packages/agent/skills/intake-answer.md), not
 // from what the model happened to answer.
