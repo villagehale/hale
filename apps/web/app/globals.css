@@ -2907,12 +2907,14 @@ html, body, .sidebar, .panel, .card, .field {
 }
 .hale-tip-dismiss:hover { opacity: 1; }
 
-/* ── Home §4.2 Row 1 — the row-of-4 grid (1.05fr 1fr 1fr 1.15fr), and a dedicated
- * "from your village" 4th column. Collapses 4 → 2 → 1 at lg / md / sm so nothing
- * overflows below 1024px. Columns are TOP-aligned at their natural content height
- * (align-items: start): a sparse card — an empty village pick, a caught-up "up
- * next" — sizes to its content instead of being force-stretched to the tallest
- * column, which left tall empty voids and pushed the Hale tip to the column foot. */
+/* ── Home §4.2 Row 1 — the row-of-3 grid (1.05fr 1fr 1.15fr), ending in a dedicated
+ * "from your village" column. (The 4th column was the quick-links + Hale-tip stack;
+ * every one of its links pointed at the retired /companion and /coach surfaces, so it
+ * went with them in the receipts-room slimdown.) Collapses 3 → 2 → 1 at lg / md / sm
+ * so nothing overflows below 1024px. Columns are TOP-aligned at their natural content
+ * height (align-items: start): a sparse card — an empty village pick, a caught-up "up
+ * next" — sizes to its content instead of being force-stretched to the tallest column,
+ * which left tall empty voids. */
 .home-row1 {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2923,7 +2925,7 @@ html, body, .sidebar, .panel, .card, .field {
   .home-row1 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 1024px) {
-  .home-row1 { grid-template-columns: 1.05fr 1fr 1fr 1.15fr; }
+  .home-row1 { grid-template-columns: 1.05fr 1fr 1.15fr; }
 }
 /* A column is a flex stack sized to its content (no forced full-column height): the
  * eyebrow sits on top and the card sits below at its natural height. The two-card

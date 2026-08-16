@@ -1,4 +1,4 @@
-import { Bookmark, CreditCard, MessageSquare, SquareCheck } from 'lucide-react';
+import { CreditCard, MessageSquare, SquareCheck } from 'lucide-react';
 import Link from 'next/link';
 import { PLAN_DISPLAY } from '@hale/types';
 import { FamilyHubCard } from '~/components/hale/family-hub-card';
@@ -54,7 +54,6 @@ export default async function FamilyPage() {
           subtitle="From your village"
           href="/messages"
         />
-        <FamilyHubCard icon={Bookmark} title="Saved" subtitle="Your saved items" href="/saved" />
         <FamilyHubCard
           icon={CreditCard}
           title="Plan & billing"

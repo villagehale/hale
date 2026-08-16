@@ -1,8 +1,15 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { allAnswers, getAnswer } from '~/lib/answers/index.js';
-import { APP_URL } from '~/lib/app-url.js';
+import { F14_LANDING_ENV } from '~/lib/flags/landing.js';
+import { chromeCta } from '~/lib/site/chrome-cta.js';
 import AnswerPageRoute, { generateMetadata, generateStaticParams } from './[slug]/page.js';
+
+const LIVE_NUMBER = '+16475551234';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 /**
  * The slug route is the public YMYL surface. These assertions lock the three
@@ -62,10 +69,35 @@ describe('answers/[slug] route', () => {
     expect(html).toContain('href="/answers"');
   });
 
-  it('wires the "Ask Hale about your child" CTA to the onboarding wizard', async () => {
+  /**
+   * The guide's CTA delegates to the SAME front-door helper the site chrome uses,
+   * rather than hardcoding a door of its own. That is the whole fix: the page used to
+   * hardcode the app's /onboarding wizard, which F14 deleted, so an acquisition page's
+   * only action 308'd the reader back to the marketing homepage — a funnel in a circle.
+   *
+   * Asserted under the LIVE config (flag on, number provisioned), because that is what
+   * a reader actually gets; the delegation check below runs in both flag states, so a
+   * page that re-hardcoded a URL would fail even with the flag off.
+   */
+  it('delegates its CTA to the shared front door in both flag states', async () => {
+    for (const flag of ['true', '']) {
+      vi.stubEnv(F14_LANDING_ENV, flag);
+      vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+      const html = await render(SLUG);
+      const { href, label } = chromeCta();
+      // The sms href carries a `&`, which the renderer escapes in the attribute.
+      expect(html).toContain(href.replace(/&/g, '&amp;'));
+      expect(html).toContain(label);
+    }
+  });
+
+  it('sends a reader to the texting door under the live config — never the deleted wizard', async () => {
+    vi.stubEnv(F14_LANDING_ENV, 'true');
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
     const html = await render(SLUG);
-    expect(html).toContain(`${APP_URL}/onboarding`);
-    expect(html).toContain('Ask Hale about your child');
+    expect(chromeCta().href).toMatch(/^sms:/);
+    expect(html).toContain(`sms:${LIVE_NUMBER}`);
+    expect(html).not.toContain('/onboarding');
   });
 
   it('noindexes every unpublished (unreviewed) page (review-before-index gate)', async () => {

@@ -4,7 +4,7 @@ import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { publishedAnswers } from '~/lib/answers/index';
-import { APP_URL } from '~/lib/app-url';
+import { chromeCta } from '~/lib/site/chrome-cta';
 
 const STAGE_LABEL: Record<string, string> = {
   newborn: 'Newborn · 0–11 months',
@@ -26,6 +26,9 @@ export const metadata: Metadata = {
 
 export default function AnswersIndexPage() {
   const answers = publishedAnswers;
+  // Texting Hale is the one front door: the app's /onboarding wizard was deleted in
+  // F14, so both CTAs on this page were 308ing readers back to the homepage.
+  const cta = chromeCta();
 
   return (
     <main id="main" tabIndex={-1} className="relative">
@@ -82,8 +85,8 @@ export default function AnswersIndexPage() {
               Ask Hale.
             </p>
             <div className="mt-8">
-              <a href={`${APP_URL}/onboarding`} className="btn-primary">
-                Ask Hale about your child
+              <a href={cta.href} className="btn-primary">
+                {cta.label}
               </a>
             </div>
           </div>
@@ -103,12 +106,8 @@ export default function AnswersIndexPage() {
             data stays in Canada.
           </p>
           <div className="mt-8 flex justify-center">
-            <LandingCta
-              event="answers_cta_signin"
-              href={`${APP_URL}/onboarding`}
-              className="btn-on-navy"
-            >
-              Ask Hale about your child
+            <LandingCta event="answers_cta_signin" href={cta.href} className="btn-on-navy">
+              {cta.label}
             </LandingCta>
           </div>
         </CtaBand>

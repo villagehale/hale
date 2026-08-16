@@ -6,7 +6,7 @@ import { SiteHeader } from '~/components/site-header';
 import { FRAMEWORK_SOURCES } from '~/lib/answers/frameworks';
 import { allAnswers, getAnswer } from '~/lib/answers/index';
 import { answerJsonLd } from '~/lib/answers/structured-data';
-import { APP_URL } from '~/lib/app-url';
+import { chromeCta } from '~/lib/site/chrome-cta';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -58,6 +58,8 @@ export default async function AnswerRoute({ params }: PageProps) {
   if (!page) notFound();
 
   const related = page.related.map(getAnswer).filter((p) => p !== undefined);
+  // Texting Hale is the one front door: /onboarding was deleted in F14.
+  const cta = chromeCta();
 
   return (
     <main id="main" tabIndex={-1} className="relative">
@@ -231,8 +233,8 @@ export default async function AnswerRoute({ params }: PageProps) {
             Have a question about your own child? Hale answers with your child’s age and your family
             in mind.
           </p>
-          <a href={`${APP_URL}/onboarding`} className="btn-primary shrink-0">
-            Ask Hale about your child
+          <a href={cta.href} className="btn-primary shrink-0">
+            {cta.label}
           </a>
         </div>
       </section>

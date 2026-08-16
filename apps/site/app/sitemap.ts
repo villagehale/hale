@@ -2,9 +2,10 @@ import type { MetadataRoute } from 'next';
 import { publishedCities } from '~/lib/activities/index';
 import { publishedAnswers } from '~/lib/answers/index';
 import { SITE_URL } from '~/lib/app-url';
-import { publishedCheckpoints } from '~/lib/milestones/index';
 
 // Static marketing routes. Add new public pages here as they ship.
+// /milestones is NOT here: it is retired (permanent redirect to /), and a retired
+// route must never be advertised for indexing.
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
   const staticRoutes: MetadataRoute.Sitemap = ['', '/about', '/contact', '/faq', '/pricing'].map((path) => ({
@@ -35,27 +36,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
           })),
         ];
 
-  // Milestone age pages ride the same review-before-index gate: excluded until a
-  // human re-verifies an age's copy against its cited CDC URL and flips
-  // `published`. The /milestones hub enters with them.
-  const milestoneRoutes: MetadataRoute.Sitemap =
-    publishedCheckpoints.length === 0
-      ? []
-      : [
-          {
-            url: `${SITE_URL}/milestones`,
-            lastModified,
-            changeFrequency: 'monthly',
-            priority: 0.6,
-          },
-          ...publishedCheckpoints.map((checkpoint) => ({
-            url: `${SITE_URL}/milestones/${checkpoint.slug}`,
-            lastModified: new Date(checkpoint.updated),
-            changeFrequency: 'monthly' as const,
-            priority: 0.6,
-          })),
-        ];
-
   // City activity guides ride the same review-before-index gate: excluded until a
   // human verifies a city's provincial-program details and flips `published`. The
   // /activities hub enters with them.
@@ -77,5 +57,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
           })),
         ];
 
-  return [...staticRoutes, ...answerRoutes, ...milestoneRoutes, ...activityRoutes];
+  return [...staticRoutes, ...answerRoutes, ...activityRoutes];
 }

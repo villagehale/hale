@@ -5,8 +5,8 @@ import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { allCities, publishedCities } from '~/lib/activities/index';
-import { APP_URL } from '~/lib/app-url';
 import { hubJsonLd } from '~/lib/activities/structured-data';
+import { chromeCta } from '~/lib/site/chrome-cta';
 
 const TITLE = 'Things to do with kids, by city · Hale';
 const DESCRIPTION =
@@ -31,6 +31,11 @@ export const metadata: Metadata = {
 };
 
 export default function ActivitiesHub() {
+  // The one front door, resolved the same way the header and footer resolve theirs:
+  // texting Hale (or the honest email fallback when no number is provisioned). This
+  // used to point at the app's /onboarding wizard, which F14 deleted — the CTA was
+  // 308ing readers back to this site's homepage, a funnel that led in a circle.
+  const cta = chromeCta();
   return (
     <main id="main" tabIndex={-1} className="relative">
       {publishedCities.length > 0 ? (
@@ -88,8 +93,8 @@ export default function ActivitiesHub() {
           groups, and drop-ins near you worth a look. Free to start — your data stays in Canada.
         </p>
         <div className="mt-8 flex justify-center">
-          <LandingCta event="activities_cta_signin" href={`${APP_URL}/onboarding`} className="btn-on-navy">
-            Find activities near you
+          <LandingCta event="activities_cta_signin" href={cta.href} className="btn-on-navy">
+            {cta.label}
           </LandingCta>
         </div>
       </CtaBand>

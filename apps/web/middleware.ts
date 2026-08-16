@@ -5,6 +5,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { bridgeBearerToSessionCookie } from '~/lib/auth/bearer-bridge';
 import { isProtectedPath } from '~/lib/auth/protected-routes';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
+import { RETIRED_TARGET, isRetiredPath } from '~/lib/routes/retired';
 
 // The middleware runs on the Edge runtime, so it builds `auth` from the Edge-safe
 // base config (Google + identity callbacks) — NOT from ~/auth, whose Credentials
@@ -50,6 +51,15 @@ export default auth((req) => {
   // (The beta invite gate stood here. It gated exactly one path — /onboarding — and
   // that route is deleted (F14), so the gate had nothing left to admit anyone to.
   // BETA_INVITE_ONLY / BETA_INVITE_CODE are now read by nothing.)
+
+  // Retired surfaces (receipts-room slimdown) answer with a real 308 before anything
+  // else. Ahead of the auth gate on purpose: a route that no longer exists should not
+  // cost a session lookup or a DB round trip to say so, and a signed-out visitor
+  // holding an old link deserves the same honest answer as a signed-in one. See
+  // lib/routes/retired.ts for why this cannot live in the page alone.
+  if (isRetiredPath(pathname)) {
+    return NextResponse.redirect(new URL(RETIRED_TARGET, req.nextUrl), 308);
+  }
 
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();

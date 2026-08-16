@@ -5,8 +5,6 @@ import {
   History,
   House,
   Settings,
-  Sparkles,
-  User,
   Users,
   UsersRound,
 } from 'lucide-react';
@@ -28,9 +26,6 @@ export interface NavItem {
 
 export const PRIMARY_NAV = [
   { href: '/home', label: 'Home', icon: House },
-  { href: '/companion', label: 'Companion', icon: User },
-  { href: '/coach', label: 'Ask', icon: Sparkles },
-  { href: '/village', label: 'Village', icon: Users },
   { href: '/family', label: 'Family', icon: UsersRound },
 ] as const satisfies ReadonlyArray<NavItem>;
 
@@ -54,16 +49,26 @@ export const ALL_NAV = [
 /**
  * VIL-244 · M9 — the receipts-room stops (D4/D20), behind F14_RECEIPTS_IA. The app's
  * job stops being "a place to read a daily feed" and becomes "the place you check what
- * Hale did and decide what's next": the decision queue, the week, the record, the
- * village, the dials. The daily feed and the Ask chat are not stops — both routes stay
- * reachable by direct URL (their removal is a later PR).
+ * Hale did and decide what's next": the decision queue, the record, the dials. A stop
+ * has to earn its place as a receipt or as a control that cannot live in a text; the
+ * week and the village are neither, so they are demoted (see DEMOTED_NAV).
  */
 export const RECEIPTS_NAV = [
   { href: '/approvals', label: 'Approvals', icon: ClipboardCheck },
-  { href: '/plan', label: 'Week', icon: CalendarDays },
   { href: '/trail', label: 'Trail', icon: History },
-  { href: '/village', label: 'Village', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings },
+] as const satisfies ReadonlyArray<NavItem>;
+
+/**
+ * Reachable by direct URL, but no longer a nav destination. These are LABELS ONLY —
+ * neither the sidebar nor the drawer renders them. They exist so the running-head
+ * eyebrow can still name the page a parent is looking at: a demoted route still
+ * RENDERS (unlike a retired one, which permanently redirects), and a page with no
+ * label loses its eyebrow.
+ */
+export const DEMOTED_NAV = [
+  { href: '/plan', label: 'Week', icon: CalendarDays },
+  { href: '/village', label: 'Village', icon: Users },
 ] as const satisfies ReadonlyArray<NavItem>;
 
 /**
@@ -86,12 +91,12 @@ export function brandHref(receiptsIa: boolean): Route {
 }
 
 /**
- * The label table the running-head eyebrow resolves the current route against. Under
- * the reframe the five stops lead (so a shared route reads its receipts label), then
- * the demoted-but-still-reachable routes follow so their pages keep an eyebrow.
+ * The label table the running-head eyebrow resolves the current route against: the
+ * stops for the resolved flag lead (so a shared route reads its own label), then the
+ * demoted-but-still-reachable routes follow so their pages keep an eyebrow.
  */
 export function allNav(receiptsIa: boolean): ReadonlyArray<NavItem> {
-  if (!receiptsIa) return ALL_NAV;
-  const stops = new Set<string>(RECEIPTS_NAV.map((item) => item.href));
-  return [...RECEIPTS_NAV, ...ALL_NAV.filter((item) => !stops.has(item.href))];
+  const stops = receiptsIa ? RECEIPTS_NAV : ALL_NAV;
+  const seen = new Set<string>(stops.map((item) => item.href));
+  return [...stops, ...DEMOTED_NAV.filter((item) => !seen.has(item.href))];
 }

@@ -6,7 +6,7 @@ import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { allCities, getCity, universalIdeas } from '~/lib/activities/index';
 import { cityJsonLd } from '~/lib/activities/structured-data';
-import { APP_URL } from '~/lib/app-url';
+import { chromeCta } from '~/lib/site/chrome-cta';
 
 interface PageProps {
   params: Promise<{ city: string }>;
@@ -49,6 +49,8 @@ export default async function ActivityCityRoute({ params }: PageProps) {
   if (!city) notFound();
 
   const ideas = universalIdeas(city);
+  // Texting Hale is the one front door (see the hub page's note): /onboarding is gone.
+  const cta = chromeCta();
 
   return (
     <main id="main" tabIndex={-1} className="relative">
@@ -124,12 +126,8 @@ export default async function ActivityCityRoute({ params }: PageProps) {
           Canada.
         </p>
         <div className="mt-8 flex justify-center">
-          <LandingCta
-            event="activities_cta_signin"
-            href={`${APP_URL}/onboarding`}
-            className="btn-on-navy"
-          >
-            Find activities near you
+          <LandingCta event="activities_cta_signin" href={cta.href} className="btn-on-navy">
+            {cta.label}
           </LandingCta>
         </div>
       </CtaBand>
