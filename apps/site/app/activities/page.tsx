@@ -4,6 +4,7 @@ import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { WordsPullUp } from '~/components/words-pull-up';
 import { allCities, publishedCities } from '~/lib/activities/index';
 import { hubJsonLd } from '~/lib/activities/structured-data';
 import { chromeCta } from '~/lib/site/chrome-cta';
@@ -48,35 +49,43 @@ export default function ActivitiesHub() {
       <SiteHeader />
 
       <section className="shell pt-10 sm:pt-16 pb-12 lg:pb-16">
-        <div className="max-w-2xl rise rise-1">
+        <div className="max-w-2xl">
           <span className="pill-eyebrow">
             <MapPin size={14} strokeWidth={2} aria-hidden="true" />
             Near you
           </span>
-          <h1 className="mt-4">
-            Things to do with your kids, <span className="accent">by city</span>.
-          </h1>
-          <p className="meta mt-6 text-lg" style={{ lineHeight: 1.6 }}>
+          <WordsPullUp
+            className="mt-4"
+            segments={[
+              { text: 'Things to do with your kids,' },
+              { text: 'by city.', accent: true },
+            ]}
+          />
+          <p className="meta reading-measure mt-6 text-lg" style={{ lineHeight: 1.6 }}>
             The free and low-cost outings families actually use — story-times, drop-in play,
             parent-and-tot swim, parks, and local programs. Pick your city to start.
           </p>
         </div>
       </section>
 
-      <div className="band-cream">
+      <div className="band-cream grain">
         <section className="shell py-16 lg:py-24">
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {allCities.map((city) => (
-              <li key={city.slug} className="rise rise-2">
+              <li key={city.slug}>
                 <a
                   href={`/activities/${city.slug}`}
-                  className="panel-oat lift px-6 py-5 flex items-center justify-between gap-4"
+                  className="glass-panel lift px-6 py-5 flex items-center justify-between gap-4"
                 >
                   <span>
                     <span className="font-display text-lg text-spruce">{city.city}</span>
                     <span className="meta block text-sm">{city.province}</span>
                   </span>
-                  <ArrowUpRight className="text-apricot-deep shrink-0" size={20} aria-hidden="true" />
+                  <ArrowUpRight
+                    className="text-apricot-deep shrink-0"
+                    size={20}
+                    aria-hidden="true"
+                  />
                 </a>
               </li>
             ))}
@@ -89,8 +98,8 @@ export default function ActivitiesHub() {
           Let Hale find these for you, near you
         </h2>
         <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
-          Tell Hale your neighbourhood and what your kids love, and it gathers the classes,
-          groups, and drop-ins near you worth a look. Free to start — your data stays in Canada.
+          Tell Hale your neighbourhood and what your kids love, and it gathers the classes, groups,
+          and drop-ins near you worth a look. Free to start — your data stays in Canada.
         </p>
         <div className="mt-8 flex justify-center">
           <LandingCta event="activities_cta_signin" href={cta.href} className="btn-on-navy">
