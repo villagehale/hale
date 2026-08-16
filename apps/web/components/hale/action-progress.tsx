@@ -52,7 +52,8 @@ function CheckChip({ check }: { check: ReviewCheck }) {
       {check.label}
       {/* Only the per-action OVERRUN branch of check_spending_cap stores the figure it
         * measured against, so the cap appears exactly where it is real. */}
-      {check.capUsd !== null ? <span className="tabular"> ({CAP_USD.format(check.capUsd)})</span> : null}
+      {/* `.pill` is a flex row with its own gap, so no leading space here. */}
+      {check.capUsd !== null ? <span className="tabular">({CAP_USD.format(check.capUsd)})</span> : null}
     </span>
   );
 }

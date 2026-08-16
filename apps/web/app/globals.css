@@ -4328,8 +4328,12 @@ html, body, .sidebar, .panel, .card, .field {
   .trace-summary {
     cursor: pointer;
     padding-block: 2rem;
-    list-style-position: outside;
+    /* The native marker renders OUTSIDE the summary's box, which would place it
+     * outside the focus ring and off the timeline's 12-column grid. It is replaced
+     * by `.trace-caret`, which rides the time column instead. */
+    list-style: none;
   }
+  .trace-summary::-webkit-details-marker { display: none; }
   @media (min-width: 1024px) {
     .trace-summary { padding-block: 2.5rem; }
   }
@@ -4337,6 +4341,16 @@ html, body, .sidebar, .panel, .card, .field {
     outline: none;
     box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
     border-radius: var(--r-sm);
+  }
+
+  .trace-caret {
+    flex: none;
+    color: var(--color-ink-3);
+    transition: transform 260ms var(--ease-breathe);
+  }
+  details[open] > .trace-summary .trace-caret { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) {
+    .trace-caret { transition: none; }
   }
 
   /* The lifecycle, hung off one hairline so the steps read as belonging to the

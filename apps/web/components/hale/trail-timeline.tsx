@@ -1,6 +1,6 @@
 'use client';
 
-import { RotateCcw, Shield, Sparkles, User, Users, type LucideIcon } from 'lucide-react';
+import { ChevronRight, RotateCcw, Shield, Sparkles, User, Users, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import type { TrailView } from '~/lib/dashboard/mappers';
@@ -144,7 +144,11 @@ function TrailTrace({ actionId, rows }: { actionId: string; rows: TrailView[] })
     <details id={actionId} className="scroll-mt-24 border-b border-rule last:border-b-0">
       <summary className="trace-summary">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-y-3 md:gap-x-8">
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 flex items-center gap-1.5">
+            {/* The native marker sits outside the summary's box, which would put it
+              * outside the focus ring and off the timeline's own grid. This one rides
+              * the time column, so a trace lines up with the rows around it. */}
+            <ChevronRight className="trace-caret" size={14} strokeWidth={2} aria-hidden="true" />
             <p className="meta tabular text-ink-3">{latest.time}</p>
           </div>
           <div className="md:col-span-3 flex items-start gap-3">
