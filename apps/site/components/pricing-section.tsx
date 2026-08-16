@@ -7,15 +7,15 @@ import { chromeCta } from '~/lib/site/chrome-cta';
 // (@hale/types · PLAN_DISPLAY) so they never drift from the app.
 const TIER_PRESENTATION = {
   free: {
-    panel: 'panel-oat',
+    panel: 'glass-panel',
     line: 'Join the village, see what families near you recommend, and share what you love. The whole core — every stage, every child — free, always.',
   },
   plus: {
-    panel: 'panel-apricot-tint',
+    panel: 'glass-panel numbered-card-marked',
     line: 'For when you want Hale to do more: once it has earned your trust, it acts on your approval — reminders, drafts, and your calendar, every child, as integrations roll out.',
   },
   family: {
-    panel: 'panel-oat',
+    panel: 'glass-panel',
     line: 'For when you want Hale to handle it: full autonomy on your approval, commerce and booking as they roll out, concierge and priority support.',
   },
 } as const satisfies Record<PlanTier, { panel: string; line: string }>;
@@ -39,16 +39,13 @@ export function PricingSection() {
         <p className="mt-5 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
           Joining the village, seeing what families near you recommend, asking Hale, sharing what
           you love — free, always, every stage and every child. The paid tiers are for when you want
-          Hale to do more of the work itself. Each is a little less monthly when you pay
-          yearly — about two months free.
+          Hale to do more of the work itself. Each is a little less monthly when you pay yearly —
+          about two months free.
         </p>
       </div>
 
       <div className="panel-apricot-tint px-8 py-6 mb-10 lg:mb-12 flex flex-wrap items-baseline justify-between gap-x-10 gap-y-2">
-        <p
-          className="font-display text-xl font-semibold"
-          style={{ color: 'var(--color-spruce)' }}
-        >
+        <p className="font-display text-xl font-semibold" style={{ color: 'var(--color-spruce)' }}>
           Founding families join free.
         </p>
         <p className="meta text-slate-green">
@@ -57,60 +54,57 @@ export function PricingSection() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+      {/* An <ol>, because the three tiers ARE a sequence — each one is the one
+       * below it plus more of the work. That is also why the cards carry 01/02/03:
+       * the number is the ladder position, not decoration. */}
+      <ol className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
         {PLAN_TIERS_ORDERED.map((tier, i) => {
           const plan = PLAN_DISPLAY[tier];
           const presentation = TIER_PRESENTATION[tier];
           const isFree = tier === 'free';
           return (
-            <div
-              key={tier}
-              className={`${presentation.panel} px-8 py-10 flex flex-col rise rise-${i + 1}`}
-            >
-              <h3>{plan.name}</h3>
-              <p className="mt-2 font-mono text-xl font-semibold accent">
+            <li key={tier} className={`${presentation.panel} numbered-card`}>
+              <div className="numbered-card-head">
+                <span className="eyebrow">{plan.name}</span>
+                <span className="numbered-card-num">0{i + 1}</span>
+              </div>
+              {/* The price is what a pricing card is titled by — the tier's name is
+               * the label above it. */}
+              <h3
+                className="mt-5"
+                style={{ fontSize: 'clamp(1.5rem, 2.6vw, 1.9rem)', lineHeight: 1.1 }}
+              >
                 {formatPlanPrice(tier, 'monthly')}
-                {isFree ? null : (
-                  <span style={{ color: 'var(--color-slate-green)' }}>
-                    {' '}
-                    · {formatPlanPrice(tier, 'annual')}
-                  </span>
-                )}
-              </p>
+              </h3>
               {isFree ? null : (
-                <p className="meta mt-1 text-slate-green">billed yearly — about two months free</p>
+                <p className="meta mt-2">
+                  <span className="tabular">{formatPlanPrice(tier, 'annual')}</span> billed yearly —
+                  about two months free
+                </p>
               )}
               <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
                 {presentation.line}
               </p>
-              <ul className="mt-6 flex flex-col gap-2.5">
+              <ul className="numbered-card-list">
                 {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2.5">
-                    <Check
-                      size={16}
-                      strokeWidth={2.5}
-                      aria-hidden="true"
-                      className="shrink-0"
-                      style={{ marginTop: 4, color: 'var(--color-sage)' }}
-                    />
-                    <span style={{ color: 'var(--color-slate-green)', lineHeight: 1.45 }}>
-                      {feature}
-                    </span>
+                  <li key={feature}>
+                    <Check size={16} strokeWidth={2.5} aria-hidden="true" />
+                    <span>{feature}</span>
                   </li>
                 ))}
               </ul>
               {/* Every tier opens the same door — you start by texting Hale — so the
-                * free and paid cards differ only in emphasis, not destination. */}
-              <a
-                href={cta.href}
-                className={`${isFree ? 'btn-primary' : 'btn-secondary'} self-start mt-8`}
-              >
-                {cta.label}
-              </a>
-            </div>
+               * free and paid cards differ only in emphasis, not destination.
+               * `mt-auto` drops the three actions onto one line across the grid. */}
+              <div className="mt-auto pt-8">
+                <a href={cta.href} className={isFree ? 'btn-primary' : 'btn-secondary'}>
+                  {cta.label}
+                </a>
+              </div>
+            </li>
           );
         })}
-      </div>
+      </ol>
       <p className="meta mt-6">
         The village is free to start. Plus and Family open as their integrations ship.
       </p>

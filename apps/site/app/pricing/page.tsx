@@ -4,6 +4,7 @@ import { CtaBand } from '~/components/cta-band';
 import { PricingSection } from '~/components/pricing-section';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { WordsPullUp } from '~/components/words-pull-up';
 import { chromeCta } from '~/lib/site/chrome-cta';
 
 const TITLE = 'Pricing · Hale';
@@ -33,15 +34,16 @@ export default function PricingPage() {
       <SiteHeader />
 
       <section className="shell pt-10 sm:pt-16 pb-8 lg:pb-10">
-        <div className="max-w-2xl rise rise-1">
+        <div className="max-w-2xl">
           <span className="pill-eyebrow">
             <Sparkles size={14} strokeWidth={2} aria-hidden="true" />
             Pricing
           </span>
-          <h1 className="mt-4">
-            Hale is free while we <span className="accent">build the village</span>.
-          </h1>
-          <p className="meta mt-6 text-lg" style={{ lineHeight: 1.6 }}>
+          <WordsPullUp
+            className="mt-4"
+            segments={[{ text: 'Free while Hale is' }, { text: 'new.', accent: true }]}
+          />
+          <p className="meta reading-measure mt-6 text-lg" style={{ lineHeight: 1.6 }}>
             The whole core — every stage, every child — is free. Plus and Family add more of the
             work Hale does for you, on your approval, as each integration ships.
           </p>
