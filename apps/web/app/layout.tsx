@@ -36,12 +36,13 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   // Match the mobile browser chrome to the real page canvas in each scheme — Shore
-  // warm white in light, deep charcoal-navy in dark — instead of a single navy that
+  // warm white in light, deep Prussian navy in dark — instead of a single navy that
   // clashes over the light page. These MUST track globals.css --color-canvas in
-  // :root / .dark; a literal is unavoidable here (Next needs a static value).
+  // :root / .dark; a literal is unavoidable here (Next needs a static value), and
+  // globals-tokens.test.ts is the gate that keeps the two in step.
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#FDFCFA' },
-    { media: '(prefers-color-scheme: dark)', color: '#14120E' },
+    { media: '(prefers-color-scheme: dark)', color: '#0E1A2F' },
   ],
 };
 

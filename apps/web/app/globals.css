@@ -57,10 +57,10 @@
  *   berry*   = the terracotta accent (#C2543F / #FDEBE8) — needs-you / danger
  *   lavender/purple = the purple accent (#7A6FB3 / #F1EEFA) — insight / AI
  *
- * Dark mode is DERIVED (the handoff is light-only) and BRAND-ANCHORED, not
- * brand-flooded: the content canvas is a calm desaturated deep warm charcoal-navy
- * (easy for long/night reading), the app frame (sidebar) keeps a brand-navy
- * anchor, and surfaces climb a clear elevation ladder (canvas → card → raised).
+ * Dark mode is DERIVED (the handoff is light-only) and BRAND-GROUNDED: the content
+ * canvas is a deep Prussian navy hue-locked to the brand ink #17294A, the app frame
+ * (sidebar) keeps a more saturated brand-navy anchor, and surfaces climb a clear
+ * elevation ladder (canvas → card → raised) that lands ON #17294A at the top.
  * Every dark text/surface pair is re-derived to meet the SAME WCAG bar its light
  * counterpart holds — the ratios in the comments are computed, not guessed.
  *
@@ -268,142 +268,171 @@
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Dark mode = Hale Shore's derived dark (VIL-209 W2) ──────────────────── *
- * Converged onto apps/mobile/src/global.css: the canvas is Shore's warm-dark
- * near-black #14120E (surfaces climb canvas → card → raised), ink inverts to
- * cream, and the navy brand LIGHTENS to the periwinkle #9AA6E6 so it still reads
- * as the one committed accent against dark — with --color-on-ink inverting to
- * ink navy #17294A for the label on that fill. The app FRAME (sidebar + sticky
- * header) keeps the brand-navy anchor, which on dark is Shore's own #1B2160
- * (see --color-chrome and the .dark .sidebar/.runninghead rules below), so the
- * identity is unmistakable while the content stage stays warm and neutral.
+/* ── Dark mode = Prussian navy, derived from the brand ink #17294A ───────── *
+ * Founder directive: dark mode is the navy Prussian-blue palette, NOT just black.
+ * The ground is therefore hue-locked to the brand: #17294A is hsl(219 53% 19%),
+ * and the whole surface ladder is that same 219° hue walked down in lightness —
+ * so the app reads as one deep navy field rather than a neutral dark chrome that
+ * happens to have a blue logo in it. It replaces the warm near-black #14120E
+ * ladder (VIL-209 W2), which converged on apps/mobile but read as plain black.
  *
- * We re-point the same token *roles*, so every existing component flips for
- * free: --color-spruce is "ink" (now cream) and --color-linen is "canvas" (now
- * the warm near-black), so .btn-primary (brand fill / on-ink label) becomes a
- * periwinkle fill with navy text, and focus rings (inner ring = canvas) stay
- * matched to the surface.
+ * The ladder climbs canvas → card → raised and LANDS ON THE BRAND: `raised` is
+ * #17294A exactly, so "surfaces step toward the brand ink" is literal, not a
+ * metaphor. Each rung holds the 1.10:1 notch the warm ladder held, so every
+ * elevation reads the same as before — only the hue moved.
  *
- * EVERY ratio below was recomputed against THIS ground — none was carried over
- * from the charcoal-navy palette this replaces. Tokens that exist in Shore take
- * Shore's dark value verbatim; the roles apps/web owns alone (tile, alt-surface,
- * apricot-tint, brand-hover, the chrome lifts) are re-derived to reproduce the
- * step they held before, on the new warm ground. */
+ * Ink stays WARM cream (#F6F1E7) against the cool ground: the warmth that used to
+ * live in the canvas now lives entirely in the type, which is what kept the old
+ * palette feeling like Hale. The navy brand still LIGHTENS to periwinkle #9AA6E6
+ * (a navy accent on a navy ground would vanish), with --color-on-ink inverting to
+ * ink navy #17294A for the label on that fill. NOTE: --color-on-ink and
+ * --color-raised now share the value #17294A. That is a coincidence of the
+ * derivation, not a hazard — every --color-on-spruce consumer sits on a `spruce`
+ * (cream) or `brand` (periwinkle) fill, never on `raised`.
+ *
+ * The app FRAME (sidebar + sticky header) keeps Shore's brand navy #1B2160, which
+ * is a MORE saturated, more indigo 235° against the calmer 219° stage — so the
+ * frame still separates by hue even though its lightness step vs the canvas
+ * relaxes from 1.28:1 to 1.19:1 (light mode's own frame step is 1.06:1, so 1.19
+ * is comfortably the stronger of the two).
+ *
+ * EVERY ratio below is computed against THIS ground, not carried over. The new
+ * navy card (#13223E) is LIGHTER than the warm card it replaces (#1E1B15), so
+ * every dark tint that sits ON the card compressed — some to 1.00:1, i.e. gone.
+ * Each one is re-lifted to hold its LIGHT-mode step (chips 1.12–1.16, cream 1.07,
+ * washes 1.22), which is the system's own standard rather than the unusually
+ * generous separation a near-black card gave away for free. */
 .dark {
-  /* Surfaces — Shore's warm-dark ladder, canvas → card → raised. */
-  --color-canvas: #14120E;       /* CANVAS — Shore warm-dark near-black */
-  --color-card: #1E1B15;         /* CARD surface — one notch above canvas (1.09:1) */
-  --color-linen: #14120E;        /* legacy name for `canvas` */
-  --color-oat: #1E1B15;          /* legacy name for `card` */
-  --color-raised: #282318;       /* RAISED — two notches up (1.10:1 on card) */
-  --color-tile: #241F17;         /* inner tile — subtle lift on card (1.05:1); web-only role */
-  --color-chrome: #1B2160;       /* CHROME ANCHOR — Shore brand navy, sidebar frame only */
-  --color-alt-surface: #1E2740;  /* selected row — cool lift on the warm card (1.16:1) */
+  /* Surfaces — the brand-hue navy ladder, canvas → card → raised → #17294A. */
+  --color-canvas: #0E1A2F;       /* CANVAS — deep Prussian navy ground, hsl(218 54% 12%) */
+  --color-card: #13223E;         /* CARD surface — one notch above canvas (1.10:1) */
+  --color-linen: #0E1A2F;        /* legacy name for `canvas` */
+  --color-oat: #13223E;          /* legacy name for `card` */
+  --color-raised: #17294A;       /* RAISED — the BRAND ink navy itself (1.10:1 on card) */
+  --color-tile: #152541;         /* inner tile — subtle lift on card (1.04:1); web-only role */
+  --color-chrome: #1B2160;       /* CHROME ANCHOR — Shore brand navy, sidebar frame only (1.19:1 on canvas) */
+  --color-alt-surface: #192D52;  /* selected row — lift on the card (1.16:1) */
 
-  /* Ink + text ladder — Shore's cream/blue-gray ladder, re-measured on #14120E. */
-  --color-ink: #F6F1E7;          /* PRIMARY INK — cream — 16.62:1 on canvas, 15.26:1 on card */
-  --color-ink-2: #C7D3E6;        /* secondary text — 12.37:1 on canvas */
-  --color-ink-3: #9BB0D0;        /* tertiary / meta / nav-inactive / .eyebrow — 8.48:1 on canvas */
-  --color-caption: #8B93A1;      /* Shore caption gray — 6.04:1 on canvas (still the decorative-only role) */
+  /* Ink + text ladder — the SAME warm cream/blue-gray hexes, re-measured on the
+   * navy ground. The navy canvas is lighter than the near-black it replaces, so
+   * every ratio drops ~7% and every one still clears its bar by a wide margin. */
+  --color-ink: #F6F1E7;          /* PRIMARY INK — warm cream — 15.45:1 on canvas, 14.07:1 on card */
+  --color-ink-2: #C7D3E6;        /* secondary text — 11.50:1 on canvas, 9.56:1 on raised */
+  --color-ink-3: #9BB0D0;        /* tertiary / meta / nav-inactive / .eyebrow — 7.88:1 on canvas, 6.55:1 on raised */
+  --color-caption: #8B93A1;      /* Shore caption gray — 5.62:1 on canvas, 4.67:1 on raised (clears AA on every surface) */
   --color-on-ink: #17294A;       /* Shore — the label ON an ink / brand fill inverts to ink navy */
   --color-spruce: #F6F1E7;       /* legacy name for `ink` */
   --color-slate-green: #C7D3E6;  /* legacy name for `ink-2` */
   --color-faded-sage: #9BB0D0;   /* legacy name for `ink-3` */
   --color-muted: #8B93A1;        /* legacy name for `caption` */
-  --color-faint: #79879E;        /* Skip / placeholders / chevrons — 5.14:1 on canvas, decorative */
-  --color-mist: #6C7A92;         /* dropdown labels / timestamps — 4.31:1 on canvas, decorative */
+  --color-faint: #79879E;        /* Skip / placeholders / chevrons — 4.78:1 on canvas, decorative */
+  --color-mist: #6C7A92;         /* dropdown labels / timestamps — 4.01:1 on canvas, decorative
+                                  * (light mode's counterpart is 1.95:1, so dark stays the safer mode) */
 
   /* Brand — Shore lightens the navy to periwinkle so it stays the one committed
    * accent on dark (a cream brand would collapse into the ink it sits beside). */
-  --color-brand: #9AA6E6;        /* 7.99:1 on canvas · on-ink label on it 6.18:1 */
+  --color-brand: #9AA6E6;        /* 7.43:1 on canvas · on-ink label on it 6.18:1 */
   --color-brand-hover: #B3BCEE;  /* +1 step lighter, mirroring light's navy→lighter-navy hover */
 
   /* Accent (apricot*) — follows INK, not brand: the light palette re-points it to
    * ink navy, so dark inverts it to cream. Small content accents + focus rings
-   * (ring on canvas 16.62:1 · on card 15.26:1 · on chrome 13.02:1). */
+   * (ring on canvas 15.45:1 · on card 14.07:1 · on chrome 13.02:1). */
   --color-apricot: #F6F1E7;
-  --color-apricot-deep: #F6F1E7;     /* 16.62:1 on canvas */
-  --color-apricot-tint: #302B21;     /* warm-neutral wash — avatars / chips / "You" pill;
-                                      * 1.22:1 on card, matching light's #ECE8DE-on-white step */
+  --color-apricot-deep: #F6F1E7;     /* 15.45:1 on canvas */
+  --color-apricot-tint: #273145;     /* the neutral wash — avatars / chips / "You" pill. Light's
+                                      * #ECE8DE is a WARM-neutral wash on warm white; on a navy
+                                      * ground the analogous wash is the ground's own hue,
+                                      * desaturated (hsl 221 28%) — 1.22:1 on card, exactly light's
+                                      * step. Brand on it 5.57:1 (.avatar-child), ink 11.58:1. */
 
   /* Decorative illustration blue — dark variant, kept for the illo kit only. */
   --color-illustration: #8AA2F2;
-  --color-illustration-tint: #1B2748;
+  --color-illustration-tint: #1E2B4E;  /* re-lifted 1.08 → 1.14:1 on the navy card */
 
   /* Teal accent (sky*) — coach / calm. */
   --color-sky: #56B9AE;
-  --color-sky-deep: #56B9AE;     /* 7.97:1 on canvas · 5.87:1 on sky-tint */
-  --color-sky-tint: #123230;
+  --color-sky-deep: #56B9AE;     /* 7.41:1 on canvas · 5.87:1 on sky-tint */
+  --color-sky-tint: #123230;     /* already 1.15:1 on the navy card — unchanged */
 
   --color-sea: #9AA6E6;          /* follows `brand`, exactly as it does in light */
 
   /* Green accent (sage/success) — done / health. */
-  --color-sage: #6FCB8F;         /* 9.46:1 on canvas · 7.19:1 on sage-tint */
-  --color-sage-tint: #16301F;
+  --color-sage: #6FCB8F;         /* 8.79:1 on canvas · 7.19:1 on sage-tint */
+  --color-sage-tint: #16301F;    /* already 1.11:1 on the navy card — unchanged */
   --color-success: #6FCB8F;
 
-  /* Amber accent — awaiting / tip. */
-  --color-amber: #E0A44E;        /* 8.54:1 on canvas · 6.73:1 on amber-tint */
-  --color-amber-tint: #33260F;   /* ink on it 13.09:1 (.pill-amber) */
+  /* Amber accent — awaiting / tip. The amber TONE is a pre-existing semantic
+   * (like sage / berry / sky); it is not part of the app's brand palette, which
+   * stays navy + warm-neutral. Only its wash moved, to hold its step. */
+  --color-amber: #E0A44E;        /* 7.94:1 on canvas · 6.45:1 on amber-tint */
+  --color-amber-tint: #372910;   /* re-lifted 1.07 → 1.12:1 on card; ink on it 12.54:1 (.pill-amber) */
 
   /* Purple accent (lavender) — insight / AI. */
-  --color-lavender: #241F3A;
-  --color-purple: #B3A6E6;       /* 8.47:1 on canvas · 7.14:1 on lavender */
+  --color-lavender: #2B2546;     /* re-lifted 1.00 → 1.10:1 on card (it VANISHED on the navy card) */
+  --color-purple: #B3A6E6;       /* 7.88:1 on canvas · 6.54:1 on lavender */
 
   /* Terracotta accent (berry*) — needs-you / danger / sign-out. */
-  --color-berry: #E58C78;        /* 7.44:1 on canvas · 6.01:1 on berry-tint */
-  --color-berry-tint: #3A1F1A;
+  --color-berry: #E58C78;        /* 6.92:1 on canvas · 5.60:1 on berry-tint */
+  --color-berry-tint: #42231E;   /* re-lifted 1.05 → 1.12:1 on card */
 
   /* Accent inks on their dark tint — the already-light accent reads high-contrast
    * on the deep tint, so no separate darkening is needed (unlike light mode). */
-  --color-amber-ink: #E0A44E;    /* on dark amber-tint #33260F */
-  --color-berry-ink: #E58C78;    /* on dark berry-tint #3A1F1A */
-  --color-sage-ink: #6FCB8F;     /* on dark sage-tint #16301F */
+  --color-amber-ink: #E0A44E;    /* on dark amber-tint #372910 — 6.45:1 */
+  --color-berry-ink: #E58C78;    /* on dark berry-tint #42231E — 5.60:1 */
+  --color-sage-ink: #6FCB8F;     /* on dark sage-tint #16301F — 7.19:1 */
 
   /* Sleep mini-chart bar — periwinkle, lightened to read on the dark card. */
-  --color-sleep-bar: #7981C9;
+  --color-sleep-bar: #7981C9;    /* 4.80:1 on canvas — decorative data mark, not text */
 
-  /* ── Hale Shore roles apps/web had no name for — dark ────────────────────── *
-   * Shore's own hand-tuned dark pairs from apps/mobile/src/global.css, verbatim. */
-  --color-accent: #FB923C;       /* text-safe apricot — 8.27:1 on canvas · 6.75:1 on accent-tint */
+  /* ── Hale Shore roles apps/web had no name for — dark ────────────────────── */
+  --color-accent: #FB923C;       /* text-safe apricot — 7.68:1 on canvas · 6.37:1 on accent-tint */
   --color-accent-fill: #F97316;
-  --color-accent-tint: #2F2318;
+  --color-accent-tint: #35271B;  /* re-lifted 1.04 → 1.10:1 on the navy card */
 
   --color-badge: #EF9350;
   --color-destructive: #E58C78;  /* Shore name for `berry` */
 
-  --color-cream: #2A2114;        /* ink on it 14.07:1 · 1.18:1 vs canvas */
-  --color-cream-border: #3C3020; /* 1.23:1 on cream — edge, non-text */
-  --color-cream-accent: #E0A44E; /* Shore name for `amber` — 7.23:1 on the dark cream */
+  /* Cream highlight card — Shore's "great news" tile (.village-rec). It stays the
+   * one WARM surface in the app, which is the whole point of it: against a navy
+   * field a warm tile is unmistakably "good news". At the old #2A2114 it measured
+   * 1.00:1 on the navy card — identical luminance, so it disappeared entirely and
+   * only its hue survived. Re-lifted to 1.10:1 on card / 1.21:1 on canvas. */
+  --color-cream: #332819;        /* ink on it 12.79:1 · ink-2 9.52:1 */
+  --color-cream-border: #3F3222; /* 1.16:1 on cream — matches light's border step exactly */
+  --color-cream-accent: #E0A44E; /* Shore name for `amber` — 6.58:1 on the dark cream */
 
-  /* Tint chips — Shore's dark pairs. Measured icon-on-chip contrast: blue 7.65:1 ·
-   * green 7.04:1 · yellow 6.83:1 · red 6.89:1 · teal 6.10:1 · gray 6.45:1. Every
-   * pair clears the 3:1 non-text floor for the icon it carries with room to spare
-   * (dark deepens the ground and lightens the icon, so dark is the easier mode) —
-   * but the light-mode rule still stands: a chip tone is never small-text colour. */
-  --color-chip-blue: #1B2440;
+  /* Tint chips — the warm-hued grounds (blue/yellow/red) compressed to 1.04–1.07:1
+   * on the navy card and are re-lifted to their LIGHT-mode steps; green / teal /
+   * gray already cleared 1.10:1 and are unchanged. Measured icon-on-chip contrast:
+   * blue 6.95:1 · green 7.04:1 · yellow 6.37:1 · red 6.37:1 · teal 6.10:1 ·
+   * gray 6.45:1 — every pair clears the 3:1 non-text floor for the icon it carries
+   * with room to spare, but the light-mode rule still stands: a chip tone is never
+   * small-text colour. */
+  --color-chip-blue: #202B4C;    /* 1.14:1 on card (was 1.04) */
   --color-chip-blue-icon: #A3B6F0;
-  --color-chip-green: #16301F;
+  --color-chip-green: #16301F;   /* 1.11:1 — unchanged */
   --color-chip-green-icon: #78C795;
-  --color-chip-yellow: #2E2614;
+  --color-chip-yellow: #342B17;  /* 1.13:1 on card (was 1.06) */
   --color-chip-yellow-icon: #DBA64F;
-  --color-chip-red: #3A211D;
+  --color-chip-red: #422621;     /* 1.15:1 on card (was 1.07) */
   --color-chip-red-icon: #E79F8E;
-  --color-chip-teal: #12302D;
+  --color-chip-teal: #12302D;    /* 1.12:1 — unchanged */
   --color-chip-teal-icon: #57BAB1;
-  --color-chip-gray: #262A31;
+  --color-chip-gray: #262A31;    /* 1.10:1 — unchanged */
   --color-chip-gray-icon: #A6AEBD;
 
-  /* Hairlines — Shore's cream alphas. Composited on the card these render
-   * #38352E (rule, 1.40:1) and #2F2C26 (hairline, 1.23:1): the same quiet edge
-   * light mode draws with #E4E7EE on white (1.24:1), not a stronger one.
-   * `rule-strong` takes Shore's 0.24 (was 0.20) — composited #4A4842, 2.05:1 on
-   * canvas, up from 1.78:1. It is still short of the 3:1 WCAG 1.4.11 floor for
-   * an input boundary, and light mode is further short at 1.32:1 (#D9DEE8 on
-   * #FDFCFA) — a PRE-EXISTING, mode-symmetric gap this phase improves but does
-   * not close, because `.field` is filled with the canvas and so is identified by
-   * its border alone. Closing it means re-toning every input, composer, segmented
-   * control and scrollbar in BOTH modes — a surface phase, not a token swap. */
+  /* Hairlines — the same cream alphas, which is why they need no new values: an
+   * alpha edge re-composites against whatever ground it lands on, so the navy
+   * ladder carries them for free. On the navy card they render #2E3B52 (rule,
+   * 1.41:1) and #25334C (hairline, 1.25:1) — the same quiet edge light mode draws
+   * with #E4E7EE on white (1.24:1), and within 0.02 of what they measured on the
+   * warm ground. `rule-strong` composites to #495467, 2.07:1 on canvas. It is
+   * still short of the 3:1 WCAG 1.4.11 floor for an input boundary, and light mode
+   * is further short at 1.32:1 (#D9DEE8 on #FDFCFA) — a PRE-EXISTING,
+   * mode-symmetric gap this change carries forward unaltered, because `.field` is
+   * filled with the canvas and so is identified by its border alone. Closing it
+   * means re-toning every input, composer, segmented control and scrollbar in BOTH
+   * modes — a surface phase, not a token swap. */
   --color-rule: rgb(246 241 231 / 0.12);
   --color-rule-strong: rgb(246 241 231 / 0.24);
   --color-warm-border: rgb(246 241 231 / 0.12);  /* on chrome → #353A70, 1.39:1 — sidebar edge */
@@ -416,7 +445,7 @@
 
   /* Shore drops the card shadow on dark — "surfaces separate by lightness and
    * shadows don't render" (apps/mobile/src/components/ui/card.tsx). The elevation
-   * ladder above does that work here; a 4%-ink shadow on a near-black ground is
+   * ladder above does that work here; a 4%-ink shadow on a deep navy ground is
    * invisible anyway, and the light-mode lift would be pure noise. The HOVER lift
    * goes with it: `.dark .card-interactive:hover` already climbs card → raised,
    * which this file calls "the tangible dark-mode equivalent of the light-mode
@@ -430,6 +459,8 @@
 /* ── Chrome anchor (dark only) ───────────────────────────────────────────── *
  * The app frame — sidebar + sticky mobile header + the off-canvas drawer — wears
  * brand navy so the identity is unmistakable while the content canvas stays calm.
+ * The content ground is now navy too, so the frame separates by HUE and saturation
+ * (chrome is 235° / 56%, the stage 219° / 53%) on top of its 1.19:1 lightness step.
  * We paint the frame with --color-chrome and locally re-point the "surface" tokens
  * nested controls lift onto (canvas / card), so a nav hover or theme-toggle thumb
  * steps UP from the navy frame instead of dropping back to the calm canvas —
@@ -3136,7 +3167,7 @@ html, body, .sidebar, .panel, .card, .field {
    * used to carry the village block's ONLY colour literal — a hardcoded cream
    * gradient plus a `.dark` override to keep it from glaring. Both are gone; the
    * card now derives in each mode from the role token, like everything else.
-   * ink on cream 14.07 light / 14.07 dark, ink-2 8.05 / 10.49, border 1.16 / 1.23. */
+   * ink on cream 14.07 light / 12.79 dark, ink-2 8.05 / 9.52, border 1.16 / 1.16. */
   .village-rec {
     padding: 1.1rem 1.15rem 1.2rem;
     border-radius: var(--r-xl);
@@ -3144,7 +3175,7 @@ html, body, .sidebar, .panel, .card, .field {
     border: 1px solid var(--color-cream-border);
   }
   /* The tip INK, not the base accent: `cream-accent` (#B26B1F) is only 3.6–4.0:1
-   * on cream, so the eyebrow keeps the darker ink at 5.89:1 light / 7.23:1 dark —
+   * on cream, so the eyebrow keeps the darker ink at 5.89:1 light / 6.58:1 dark —
    * the same pair `.hale-tip-eyebrow` uses. */
   .village-rec-eyebrow { display: block; margin-bottom: 0.4rem; color: var(--color-amber-ink); }
   /* Shore's title role (22/28, 500) — a recommendation is a card confirmation, the
@@ -3159,7 +3190,7 @@ html, body, .sidebar, .panel, .card, .field {
     border: 0;
     background: transparent;
     /* Brand on the warm card: navy in light (13.55:1 on cream), periwinkle in dark
-     * (6.75:1) — AA in both modes, unlike the sub-4.5 accent-on-cream a body link
+     * (6.15:1) — AA in both modes, unlike the sub-4.5 accent-on-cream a body link
      * would be. */
     color: var(--color-brand);
     font-family: var(--font-body);
@@ -3495,7 +3526,7 @@ html, body, .sidebar, .panel, .card, .field {
 /* Amber "worth a look" pill — the honest neutral caution for a WHO 'review' band.
  * Mirrors the existing .pill-* pattern (tint ground + spruce ink): contrast-safe in
  * both themes because BOTH tokens re-point in .dark (light #FEF0C7/#1F3A34 ≈ 9.9:1;
- * dark #33260F/ink ≈ 11:1). */
+ * dark #372910/ink ≈ 12.5:1). */
 .pill-amber { background: var(--color-amber-tint); color: var(--color-spruce); }
 
 /* ── Child-hub header (.comp-hub): identity + up-to-three WHO percentile stats ── */
@@ -3947,6 +3978,25 @@ html, body, .sidebar, .panel, .card, .field {
   color: var(--color-slate-green);
   font-size: 1rem;
   line-height: 1.55;
+}
+
+/* The name, said out loud — the auth card's closing line. A hairline lifts it off the
+ * trust copy above so it reads as a signature rather than more fine print. Ink-3 holds
+ * AA on every surface this panel can take (7.88:1 canvas · 7.18:1 card).
+ *
+ * Layered, unlike its unlayered `.auth-*` siblings above: globals-layer.test.ts is a
+ * ratchet on that pre-existing debt, and new classes go inside `@layer components` so a
+ * utility can still win. Re-opening the layer here keeps the rule beside the surface it
+ * belongs to instead of exiling it to the layered block further down. */
+@layer components {
+  .auth-pronounce {
+    margin-top: 0.25rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-hairline);
+    color: var(--color-faded-sage);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
 }
 
 /* Full-width "Continue with Google" — on the card surface with the brand G. */

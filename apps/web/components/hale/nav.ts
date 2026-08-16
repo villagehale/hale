@@ -83,11 +83,12 @@ export function primaryNav(receiptsIa: boolean): ReadonlyArray<NavItem> {
 
 /**
  * Where the brand mark goes. It has to follow the same demotion the nav does: with
- * the reframe on, `/home` is a 302 to `/plan`, so pointing the brand there would
- * make every logo click pay a redirect hop to reach the landing surface.
+ * the reframe on, `/home` is a 302 to `/approvals`, so pointing the brand there would
+ * make every logo click pay a redirect hop to reach the landing surface. Keeping this
+ * equal to the middleware's forward target is what receipts-ia.test.ts asserts.
  */
 export function brandHref(receiptsIa: boolean): Route {
-  return receiptsIa ? '/plan' : '/home';
+  return receiptsIa ? '/approvals' : '/home';
 }
 
 /**

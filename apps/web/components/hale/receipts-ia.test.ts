@@ -225,9 +225,15 @@ describe('the demoted daily feed', () => {
   );
   const page = app('(authed)/home/page.tsx');
 
-  it('forwards /home to the week view as a real 302, in the middleware', () => {
+  // The forward target moved /plan → /approvals: #455 demoted the week view out of the
+  // nav, so it could no longer be the surface a parent lands on. Approvals is the
+  // receipts room the IA is named for and the nav's first stop.
+  it('forwards /home to the receipts room as a real 302, and no longer to the week view', () => {
     expect(middleware).toContain('receiptsIaEnabled()');
-    expect(middleware).toContain("NextResponse.redirect(new URL('/plan', req.nextUrl), 302)");
+    // Positive control first: if this passes, `middleware` really is the source text,
+    // so the absence check below cannot pass vacuously on an empty/misread file.
+    expect(middleware).toContain("NextResponse.redirect(new URL('/approvals', req.nextUrl), 302)");
+    expect(middleware).not.toContain("new URL('/plan'");
   });
 
   it('forwards the sub-paths too, so no bookmark under /home escapes the demotion', () => {
@@ -265,8 +271,8 @@ describe('sign-in under the flag', () => {
 });
 
 describe('the brand mark follows the demotion (VIL-256)', () => {
-  it('lands on the week view under the reframe, so a logo click costs no 302 hop', () => {
-    expect(brandHref(true)).toBe('/plan');
+  it('lands on the receipts room under the reframe, so a logo click costs no 302 hop', () => {
+    expect(brandHref(true)).toBe('/approvals');
   });
 
   it('still lands on the daily feed with the flag off', () => {
