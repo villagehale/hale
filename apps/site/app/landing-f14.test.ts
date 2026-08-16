@@ -385,6 +385,14 @@ describe('flag-on landing (the transcript is the real script)', () => {
     expect(html).toContain('what part of the week wears you out the most?');
   });
 
+  it('keeps the name story — pronunciation and meaning — on the page', () => {
+    // "Hale /HAH-leh/ — Hawaiian for home." lives in the shared subpage footer and
+    // was silently dropped when the F14 landing shipped its own footer. The name IS
+    // the brand (home; the honu; aloha@) — it must survive every redesign.
+    expect(html).toContain('/HAH-leh/');
+    expect(html).toContain('Hawaiian for home');
+  });
+
   it('labels the thread as an example rather than passing it off as a screenshot', () => {
     expect(html.toLowerCase()).toContain('example');
     // The one <img> allowed is the decorative turtle brand tile in the header —
