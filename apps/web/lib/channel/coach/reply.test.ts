@@ -262,3 +262,55 @@ describe('the plan offer line', () => {
     expect(reply).toBe(OFFER_LINE);
   });
 });
+
+describe('the referral block', () => {
+  const child = { name: 'Milo', gender: 'boy', dateOfBirth: '2021-05-01' };
+  const teen = { name: 'Nora', gender: 'girl', dateOfBirth: '2010-03-04' };
+  const now = new Date('2026-08-12T12:00:00.000Z');
+  // What share_referral_link registered: the model's forwardable line, then the link the
+  // RUNTIME assembled. The model never composed the URL.
+  const BLOCK =
+    "It's a text line that keeps the family week straight. https://www.villagehale.com/text?s=friend-0123456789ab";
+
+  it('is appended after the answer, with the link last', () => {
+    const reply = toSmsReply('Forward this to them - when they text me, that is their yes.', {
+      children: [child],
+      now,
+      referral: BLOCK,
+    });
+
+    expect(reply).toBe(
+      `Forward this to them - when they text me, that is their yes. ${BLOCK}`,
+    );
+  });
+
+  it('trims the ANSWER, never the link — a truncated URL is a broken referral', () => {
+    // Sharper than the offer case: the trim takes from the END, and the last thing in
+    // this block is the only part of the message that does any work.
+    const long = `${'Happy to pass this along whenever you like. '.repeat(8)}One trailing clause.`;
+
+    const reply = toSmsReply(long, { children: [child], now, referral: BLOCK });
+
+    expect(reply.endsWith('https://www.villagehale.com/text?s=friend-0123456789ab')).toBe(true);
+    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+  });
+
+  it('redacts a teen name inside the forwarded line (rule #1 — a parent sends this OUT)', () => {
+    // The one piece of outbound text that leaves the family. The teen floor is
+    // age-derived, so it has to cover the suffix and not just the answer.
+    const reply = toSmsReply('Forward this to them.', {
+      children: [teen],
+      now,
+      referral: "Nora's family uses it to keep the week straight. https://www.villagehale.com/text?s=friend-0123456789ab",
+    });
+
+    expect(reply).not.toContain('Nora');
+    expect(reply).toContain('https://www.villagehale.com/text?s=friend-0123456789ab');
+  });
+
+  it('does not append when the turn shared nothing', () => {
+    expect(toSmsReply('Cancel Thursday swim? YES to confirm.', { children: [child], now })).toBe(
+      'Cancel Thursday swim? YES to confirm.',
+    );
+  });
+});

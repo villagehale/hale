@@ -7,6 +7,7 @@ import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import { z } from 'zod';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import { type PlanOffer, offerFullPlanTool } from '~/lib/channel/plan/offer';
+import { type ReferralShare, shareReferralLinkTool } from '~/lib/channel/referral/share';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
@@ -104,6 +105,14 @@ export interface ChannelCoachToolArgs {
    * so there is no path that can report an offer nobody is listening for.
    */
   onOffer?: (offer: PlanOffer) => void;
+  /**
+   * Told when the turn hands the parent their own referral link. Same shape and same
+   * reason as `onOffer`: the tool composes nothing that can be sent on its own, and the
+   * runtime is what appends the finished block to a reply that has been fitted around
+   * it. Absent in a test that is not exercising it; the verb is then not registered, so
+   * there is no path that promises a parent a link nobody collected (rule #11).
+   */
+  onShare?: (share: ReferralShare) => void;
   now: Date;
 }
 
@@ -360,6 +369,10 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   // nothing to resolve against — so the absent collector removes the VERB rather than
   // silently discarding what it produces (rule #11).
   if (args.onOffer) tools.push(offerFullPlanTool(args.onOffer));
+  // The one fact the coach holds about Hale itself. Same registration rule as the offer,
+  // and the same reason: a share the runtime is not collecting is a parent told to
+  // forward a message with no link in it.
+  if (args.onShare) tools.push(shareReferralLinkTool(familyId, args.onShare));
   return tools;
 }
 

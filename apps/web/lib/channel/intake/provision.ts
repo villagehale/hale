@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { POLICY_VERSION } from '~/lib/consent';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
 import type { TranscriptEntry } from './session';
@@ -102,6 +103,15 @@ export async function provisionFromIntake(
 ): Promise<ProvisionResult> {
   const { phoneE164, phoneHash, location, now } = input;
   const externalAuthId = `sms:${phoneHash}`;
+
+  // Resolved BEFORE the transaction and stamped into the audit row rather than
+  // recomputed on demand, for one reason: the code is HMAC(family id) under a versioned
+  // context label, so rotating that label would silently orphan every historical
+  // attribution. Who referred whom is a fact about the moment of arrival; recording it
+  // then is what makes it survive a key rotation, a code-shape change, or the referrer
+  // exercising their right to erasure. Null for a QR venue, an untagged arrival, or a
+  // tag that matches no family — all ordinary (see resolveReferrerFamilyId).
+  const referredByFamilyId = await resolveReferrerFamilyId(database, input.sourceCode);
 
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
@@ -239,6 +249,7 @@ export async function provisionFromIntake(
           childCount: childRows.length,
           areaCoarse: location.areaCoarse,
           sourceCode: input.sourceCode,
+          referredByFamilyId,
           maskedPhone: maskPhoneE164(phoneE164),
         },
       },

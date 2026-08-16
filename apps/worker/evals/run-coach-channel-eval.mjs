@@ -219,6 +219,23 @@ const GSM7_BASIC = new Set(
 );
 const GSM7_EXTENDED = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '€']);
 
+/**
+ * Mirrors `smsEncoding` in apps/web/lib/channel/sms-segments.ts.
+ *
+ * It was MISSING, and `offerViolations` had been calling it since the offer sentence
+ * became a tool argument. Every `offer_full_plan` call in this suite therefore came back
+ * to the model as "Tool call failed: smsEncoding is not defined", so the plan-offer arc
+ * was never actually graded here — the model wrote the offer into its own answer instead
+ * and the corpus scored that. Surfaced by the referral gate, which replicates the same
+ * check and hit the same ReferenceError on its first live run.
+ */
+function smsEncoding(text) {
+  for (const char of text) {
+    if (!GSM7_BASIC.has(char) && !GSM7_EXTENDED.has(char)) return 'ucs2';
+  }
+  return 'gsm7';
+}
+
 function smsSegments(text) {
   let gsm7 = true;
   for (const char of text) {
@@ -347,14 +364,64 @@ function dropDuplicateOffer(body, offer) {
   return haystack.slice(0, haystack.length - needle.length).trim();
 }
 
-function toSmsReply(raw, children, planOffer) {
+/**
+ * Mirrors `forwardViolations` in apps/web/lib/channel/referral/share.ts. The gate is
+ * what the model actually reads when a line is refused, so a replica that let something
+ * through would be grading a tool that does not ship.
+ */
+const EVAL_MAX_FORWARD_CHARS = 120;
+const EVAL_APP_POINTER = /\b(app|apps|settings|account|dashboard|website|download)\b/i;
+const EVAL_ANY_URL = /(https?:\/\/|www\.|villagehale|\.com\b|\.ca\b)/i;
+
+function forwardViolations(forward) {
+  const violations = [];
+  const text = (forward ?? '').trim();
+  if (text === '') return ['The line was empty.'];
+  if (text.length > EVAL_MAX_FORWARD_CHARS) {
+    violations.push(
+      `The line is ${text.length} characters; it must be at most ${EVAL_MAX_FORWARD_CHARS} so the link still fits beside it.`,
+    );
+  }
+  if (EVAL_ANY_URL.test(text)) {
+    violations.push(
+      'The line contains a link. Do not write one - the real link is added after your message, and any URL you compose is one you invented.',
+    );
+  }
+  if (EVAL_APP_POINTER.test(text)) {
+    violations.push(
+      'The line points at an app, a website or an account. Hale is a number their friend texts; there is nothing for them to open, download or sign up for.',
+    );
+  }
+  if (smsEncoding(text) !== 'gsm7') violations.push('The line contains a character that doubles the cost to send.');
+  if (smsSegments(text) > 1) violations.push('The line is longer than one SMS segment.');
+  return violations;
+}
+
+/**
+ * The fixture family's referral link.
+ *
+ * A FIXED string, not the real HMAC: the derivation is unit-tested against the key
+ * (apps/web/lib/channel/referral/code.test.ts) and computing it here would make the eval
+ * depend on APP_ENCRYPTION_KEY for nothing. What this suite grades is whether the model
+ * calls the tool and lets the link be appended rather than writing one of its own — and
+ * that question is the same whatever digest is on the end.
+ */
+const FIXTURE_REFERRAL_LINK = 'https://www.villagehale.com/text?s=friend-0123456789ab';
+
+function toSmsReply(raw, children, planOffer, referral) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
   const redacted = redactTeenNames(flattened, children, NOW);
-  const offer = planOffer?.trim();
-  if (!offer) return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
-  const fitted = fitToBudget(dropDuplicateOffer(redacted, offer), MAX_REPLY_SEGMENTS, offer);
-  return `${fitted} ${offer}`;
+  // The protected tail, mirroring reply.ts: both halves are appended after the fit, and
+  // the referral block is redacted with the answer because a parent forwards it OUT.
+  const suffix = redactTeenNames(
+    [planOffer, referral].map((part) => part?.trim() ?? '').filter((part) => part !== '').join(' '),
+    children,
+    NOW,
+  );
+  if (!suffix) return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  const fitted = fitToBudget(dropDuplicateOffer(redacted, suffix), MAX_REPLY_SEGMENTS, suffix);
+  return `${fitted} ${suffix}`;
 }
 
 // ── replicated: apps/web/lib/channel/coach/tools.ts buildChannelCoachTools ──
@@ -535,7 +602,42 @@ function buildFixtureTools(agent, calls, village) {
     },
   });
 
-  return [lookupWeek, proposeMove, proposeCancel, proposeAdd, searchVillage, offerFullPlan];
+  // Replicated from apps/web/lib/channel/referral/share.ts `shareReferralLinkTool` —
+  // behind the `~/` alias, so it cannot be imported. The DESCRIPTION is copied verbatim,
+  // because it is the only thing telling the model that a link exists at all and that it
+  // must not write one; and the return value is copied verbatim too, because `{ shared:
+  // true }` withholding the URL is the property this fixture is actually testing.
+  const shareReferralLink = agent.defineTool({
+    name: 'share_referral_link',
+    inputSchema: z.object({ forward: z.string() }),
+    inputExamples: [
+      { forward: "It's a text line that keeps track of the family week - registrations, plans, the stuff that slips." },
+    ],
+    monetary: false,
+    touchesChildContent: false,
+    description:
+      "Get this family's own link for telling somebody else about Hale — call it whenever a parent asks how to refer, invite, share, or recommend Hale to a friend, or asks whether there is a referral link. `forward` is the line THEY will forward to their friend, in your voice: what Hale is, at most 120 plain-ASCII characters, no link and nothing about this family. The real link is added onto the end of your message for you, so never write a URL yourself and never write the forwarded line twice. Nothing is sent to anyone by this tool — the parent forwards it, and their friend texting in is that friend's own consent.",
+    handler: async (input) => {
+      const violations = forwardViolations(input.forward);
+      if (violations.length > 0) {
+        throw new Error(
+          `That line cannot be sent. ${violations.join(' ')} Call share_referral_link again with a fixed one.`,
+        );
+      }
+      record('share_referral_link', { forward: input.forward.trim() });
+      return { shared: true };
+    },
+  });
+
+  return [
+    lookupWeek,
+    proposeMove,
+    proposeCancel,
+    proposeAdd,
+    searchVillage,
+    offerFullPlan,
+    shareReferralLink,
+  ];
 }
 
 /**
@@ -733,7 +835,9 @@ function villageFor(fixture) {
 
 function groundedHay(fixture, toolResults) {
   // The app URL is NOT grounding. The model is handed no URL, so a link in a reply is
-  // an invention and the fabrication gate should say so.
+  // an invention and the fabrication gate should say so. The ONE exception is passed in
+  // by the caller and only on a turn that called share_referral_link — see the call
+  // site; it is a link the RUNTIME appended, not one the model wrote.
   const parts = [fixture.text, FIXTURE_WEEK_SUMMARY, JSON.stringify(toolResults)];
   // The injected context grounds too: loadAgentContext hands the model every NON-teen
   // child by name (a teenager arrives as stage only), so naming one of them is recall,
@@ -904,11 +1008,18 @@ function checkFixture(fixture, reply, calls, auditLog) {
   // one sentence to answer in — measuring the appended line instead of the prose the
   // gate exists to hold. The QUESTION count above deliberately still sees it: "one
   // question per message" is about what lands on the phone, and the offer is that one.
-  const offerSentence = calls.find((call) => call.tool === 'offer_full_plan')?.offer;
+  // The referral block is appended for the same reason and gets the same treatment: the
+  // model wrote one line of it and the runtime added a URL, and charging a parent's
+  // sentence budget for a link is how the answer around it gets squeezed out.
+  const referralForward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
+  const appended = [
+    calls.find((call) => call.tool === 'offer_full_plan')?.offer,
+    referralForward ? `${referralForward} ${FIXTURE_REFERRAL_LINK}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' ');
   const authored =
-    offerSentence && reply.endsWith(offerSentence)
-      ? reply.slice(0, -offerSentence.length).trim()
-      : reply;
+    appended && reply.endsWith(appended) ? reply.slice(0, -appended.length).trim() : reply;
   const sentenceCount = sentences(authored).length;
   if (sentenceCount > MAX_SENTENCES) {
     failures.push(`${sentenceCount} sentences > ${MAX_SENTENCES}`);
@@ -950,6 +1061,18 @@ const JUDGE_SYSTEM = [
   'something it could not do. The thread is the whole product and the app is a receipts',
   'room the parent never needs, so "check the app" is the job handed back to the person',
   'who texted to be rid of it. Score any reply that does it a 2 at most.',
+  'A PRIVATE ITEM IS NOT A CANDIDATE MATCH. `week` shows some rows as "A private calendar',
+  "item\" — a teenager's or a sensitive appointment (rule #1). Hale cannot see what they",
+  'are either, so it must never guess that one of them MIGHT be the thing the parent',
+  'named, and never hedge a denial with them. When nothing visible matches, "I do not see',
+  'X on this week" is the complete and correct answer; do not mark it down for failing to',
+  'raise the private rows as possibilities. Surfacing their day and time is right only',
+  'when the parent asked ABOUT one.',
+  'HALE HAS ONE LINK, AND ONLY WHEN `knows.referralLinkAppended` IS SET. That is the',
+  "family's own referral link for telling a friend, appended by the runtime — not written",
+  'by Hale and not a link to the app. When it is present the reply SHOULD carry it, and a',
+  'sentence telling the parent to forward it themselves is correct. When it is null, any',
+  'URL in the reply is invented; score that a 2 at most.',
   'ACTIVITIES. `search_village` returns OFFERABLE candidates — each with a checked venue',
   'and day — plus a COUNT of finds still being checked, which Hale is given no names for.',
   'Offering a verified one WHOLE (name, place, day) is right. When nothing has checked',
@@ -1110,10 +1233,12 @@ async function main() {
         results.push({ fixture, reply: null, score: null, failures: ['agent returned no answer'] });
         continue;
       }
+      const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
       reply = toSmsReply(
         run.answer,
         children,
         calls.find((call) => call.tool === 'offer_full_plan')?.offer,
+        forward ? `${forward} ${FIXTURE_REFERRAL_LINK}` : undefined,
       );
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.
@@ -1135,6 +1260,11 @@ async function main() {
       // The companion content this turn returned. A milestone window the model quotes
       // back is recall; the same numbers with no call behind them are not.
       guidance,
+      // The referral link, but ONLY on a turn that called the tool. The runtime appends
+      // it, so it is grounded by construction there — and on every other turn it stays
+      // out of the hay, which is what keeps "a URL Hale was not handed is a URL it
+      // invented" a real gate rather than a blanket exemption for one domain.
+      calls.some((call) => call.tool === 'share_referral_link') ? FIXTURE_REFERRAL_LINK : null,
     ]);
     const invented = reply === null ? [] : fabrications(reply, hay);
     const verdict =
@@ -1165,7 +1295,12 @@ async function main() {
                       },
                 ),
                 // No appLink: Hale is handed no URL, so the judge must not treat a link
-                // as recall. What THIS text's Village read returned, split the way the
+                // as recall — except the referral link, which the runtime appends and
+                // which is named below when this turn shared one.
+                referralLinkAppended: calls.some((call) => call.tool === 'share_referral_link')
+                  ? FIXTURE_REFERRAL_LINK
+                  : null,
+                // What THIS text's Village read returned, split the way the
                 // tool splits it — a judge shown only titles cannot tell an offer Hale
                 // could stand behind from one it could not.
                 offerable: villageFor(fixture).candidates.map(
@@ -1186,6 +1321,7 @@ async function main() {
                   'draft a move, a cancel, or a new calendar item for the parent to approve',
                   'search what is on nearby',
                   'coach a parenting question from curated child-development guidance',
+                  "hand the parent their own link for telling a friend about Hale — the parent forwards it themselves; Hale never texts the friend",
                 ],
                 draftCapPerMessage: MAX_DRAFTS_PER_TURN,
               },

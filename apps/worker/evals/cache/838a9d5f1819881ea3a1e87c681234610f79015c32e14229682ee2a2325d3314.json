@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly uses the referral link that was appended by the runtime (knows.referralLinkAppended), explains what Hale is, and tells the parent to forward the link themselves. The link is accurate and matches exactly. The reply is slightly longer than needed — it describes Hale's features in a way that adds a clause or two beyond what was necessary — but the core job is done correctly: the link is present, the parent is told to send it, and Hale is not sending it to the friend itself. No app redirect, no invented URL, no markdown. A minor blemish in length/detail but functionally correct.",
+    "score": 4
+  }
+}

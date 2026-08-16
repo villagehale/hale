@@ -66,6 +66,28 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(sourceCodeFromBody('we went (via the highway) to the park')).toBeNull();
   });
 
+  it('reads a REFERRAL tag by its shape — a parent forwarded the link, there is no venue', () => {
+    // The registry cannot list these: there is one per family and they are derived, not
+    // enrolled. Recognising the shape is what lets a referred friend be attributed at
+    // all — before this, `friend-…` fell through to null and the referral was lost.
+    expect(sourceCodeFromBody('Hi (via friend-0123456789ab)')).toBe('friend-0123456789ab');
+    expect(sourceCodeFromBody('HALE friend-0123456789AB')).toBe('friend-0123456789ab');
+  });
+
+  it('resolves a referral tag to NO venue, so nothing about a place is claimed or inferred', () => {
+    // The consequence that matters: `venueForCode` null means the generic greeting and
+    // no coarse area, so the friend is still asked for their postal code. A friend of a
+    // Toronto family may live in Calgary.
+    expect(venueForCode('friend-0123456789ab')).toBeNull();
+    // Positive control through the same reader — a real venue still resolves.
+    expect(venueForCode('LIBRARY')?.name).toBe('library');
+  });
+
+  it('still refuses a tag that is neither a venue nor a referral shape', () => {
+    expect(sourceCodeFromBody('Hi (via friend-nothex123456)')).toBeNull();
+    expect(sourceCodeFromBody('Hi (via friend-0123456789)')).toBeNull();
+  });
+
   it('carries a coarse area per venue — never a precise address (rule #1)', () => {
     const venue = venueForCode('LIBRARY');
     expect(venue?.areaCoarse).toMatch(/^[A-Z]\d[A-Z]$/); // an FSA, not a full postal code

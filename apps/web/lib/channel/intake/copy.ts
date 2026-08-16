@@ -1,3 +1,4 @@
+import { isReferralCode } from '~/lib/channel/referral/code';
 import { PRIVACY_URL } from '~/lib/legal-links';
 
 /**
@@ -52,12 +53,27 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
  *   2. `Hi (via <code>)` — the /text entry page's convention (VIL-240): a human first
  *      message with the tag as a trailing, visibly-disclosed suffix. Suffix-anchored so
  *      an ordinary sentence containing "(via …)" mid-message never matches.
+ *
+ * A `<code>` is either a QR VENUE (the registry below) or a per-family REFERRAL tag
+ * (`friend-…`, lib/channel/referral/code.ts) forwarded by a parent. Both ride the same
+ * `?s=` funnel and the same suffix; they differ only in what they resolve to, which is
+ * `resolveCode`'s job.
  */
 const SOURCE_TAG = /^hale[\s:-]+([a-z0-9-]{2,48})$/i;
 const SOURCE_TAG_SUFFIX = /\(via\s+([a-z0-9]+(?:-[a-z0-9]+)*)\)$/i;
 
-/** The canonical registry key for a raw tag, matched case-insensitively. */
+/**
+ * The canonical registry key for a raw tag, matched case-insensitively.
+ *
+ * A REFERRAL tag is recognised by its shape rather than by the registry. The registry
+ * exists because a venue's NAME is read back to the parent in the greeting, so an
+ * unrecognised venue would have Hale claiming to know a place it has never heard of. A
+ * referral tag is echoed nowhere and selects nothing — `venueForCode` returns null for
+ * it, so the arrival gets the ordinary no-venue greeting and is still asked for a postal
+ * code, which is correct: a friend of a Toronto family may live anywhere.
+ */
 function resolveCode(raw: string): string | null {
+  if (isReferralCode(raw)) return raw.toLowerCase();
   if (raw in SOURCE_VENUES) return raw;
   const upper = raw.toUpperCase();
   if (upper in SOURCE_VENUES) return upper;
