@@ -1,32 +1,42 @@
-import { CopyNumberButton } from '~/components/copy-number';
+import Image from 'next/image';
+import shore from '~/assets/hale-shore-night.webp';
 import { EmailCta } from '~/components/email-cta';
+import { HeroConversation } from '~/components/landing/v3/hero-conversation';
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
-import { QrCode } from '~/components/qr-code';
 import { APP_URL } from '~/lib/app-url';
 import { type ImpactNumber, impactNumbers } from '~/lib/landing/impact';
 import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
 
 /**
- * villagehale.com under NEXT_PUBLIC_F14_LANDING (VIL-250 · M14) — the landing
- * repositioned around the persona (D20): Hale is the family's quiet chief of
- * staff, and the number is how you reach it, never what it is.
+ * villagehale.com — the landing.
  *
- * Two rules shape everything below:
- *   · The only way in is texting Hale. There is no signup funnel — one quiet
- *     "Sign in" text link in the header and one in the footer, for the families
- *     who already have a receipts room (and for PIPEDA access rights).
- *   · Nothing claims a capability that isn't live. The impact band renders only
- *     once real counts exist, the thread is labelled an example, and with no
- *     number provisioned the page offers email rather than a dead sms: link.
+ * The layout it replaced opened with a column of copy beside a card of
+ * conversation: a shape that says "here is a product that texts" while looking
+ * like every other AI landing page. This one deletes the split. There is one
+ * centred column, and the first thing in it is Hale typing the message a real
+ * stranger receives, with the questions parents actually send sitting underneath
+ * where a keyboard's suggestion strip would be. The hero is not a picture of the
+ * product; it is the product's first turn.
+ *
+ * Two consequences worth naming:
+ *   · The number's digits never appear. `sms:` links carry it invisibly and the
+ *     laptop path is a copy button (components/copy-number.tsx) — a public
+ *     number printed in the DOM gets scraped, and scraped numbers get the
+ *     traffic Hale exists to keep out of a parent's thread.
+ *   · The mark in the header is the flat white-on-navy turtle tile, and the page
+ *     closes on the same tile beside the wordmark. No mascot art anywhere.
+ *
+ * Every claim below the hero survived the redesign word for word: the fifteen
+ * named municipalities, the radar, the ladder, the coaching boundary, the
+ * privacy register, the JSON-LD graph. app/landing.test.ts is the gate on that.
  */
 
 const SIGN_IN = `${APP_URL}/sign-in`;
 
-/** The hero's CTA block — the one place on the page that carries both the composer
- * link and the number as readable text, and so the target the header CTA scrolls a
- * laptop reader to. `scroll-padding-top` in globals.css clears the sticky bar. */
+/** The hero's CTA block — where the header's laptop CTA scrolls a reader to.
+ * `scroll-padding-top` in globals.css clears the sticky bar. */
 const CTA_ANCHOR = 'start';
 
 /** The municipalities the radar tracks by name — every one backed by verified
@@ -107,23 +117,28 @@ const LADDER = [
   { rung: 'with your ok, I handle it', body: '— nothing reaches the outside world until you say so.' },
 ] as const;
 
-export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
+export function ConversationalLanding({ smsNumber }: { smsNumber: string }) {
+  // The bare-greeting composer link, for the header CTA only. The hero builds
+  // its own from whichever question the reader picked.
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
   const impact = impactNumbers();
 
   return (
-    <main id="main" tabIndex={-1}>
+    // `v3-theme` is the whole dark-mode mechanism: the class re-points the design
+    // system's custom properties to the Prussian-navy ladder under
+    // prefers-color-scheme: dark, for this subtree only, so every subpage stays
+    // on the light-only palette it was drawn for.
+    <main id="main" tabIndex={-1} className="v3-theme">
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()) }}
       />
 
-      {/* Sticky, not fixed: the bar keeps its space in the flow, so nothing under it
-          jumps. The page's only two CTAs sat ~5 viewports apart, so the way in has to
-          travel with the reader. With no number provisioned there is nothing to offer
-          here — the header stays the quiet Sign in link it has always been. */}
-      <header className="sticky top-0 z-50 border-b border-rule bg-linen/85 backdrop-blur-md">
+      {/* Sticky, not fixed: the bar keeps its space in the flow, so nothing under
+          it jumps. With no number provisioned there is nothing to offer here — the
+          header stays the quiet Sign in link it has always been. */}
+      <header className="sticky top-0 z-50 border-b border-rule bg-linen/90 backdrop-blur-md">
         <div className="shell flex items-center justify-between py-3">
           <a href="/" className="flex items-center gap-2.5">
             <LogoMark size={30} />
@@ -140,10 +155,9 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
             </a>
             {smsHref && (
               <>
-                {/* One action, split by where it actually works — the same reason the QR
-                    card below is desktop-only. On a phone the composer opens; on a laptop
-                    `sms:` is a silent no-op, so the button carries the reader to the hero
-                    number instead of appearing to do nothing. */}
+                {/* One action, split by where it actually works. On a phone the
+                    composer opens; on a laptop `sms:` is a silent no-op, so the
+                    button carries the reader back to the hero's CTA block. */}
                 <LandingCta
                   event="landing_cta_text"
                   href={smsHref}
@@ -163,65 +177,16 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
         </div>
       </header>
 
-      {/* ── Hero — the persona, the one action, and the real thread ────────── */}
-      <section className="shell grid items-center gap-12 pb-20 pt-8 sm:pt-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:pb-28">
-        <div className="rise rise-1 max-w-xl">
-          <h1 className="text-balance text-[clamp(2.1rem,5.2vw,3.4rem)]">
-            Hi, I’m Hale — your family’s quiet chief of staff.
-          </h1>
-          <p className="mt-6 text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
-            I keep watch over your week — registrations, programs, checkups, weather — and text you
-            before things matter.
-          </p>
+      {/* ── Hero — one column, and Hale takes the first turn ───────────────── */}
+      <section className="v3-bloom shell pb-20 pt-12 sm:pt-16 lg:pb-28 lg:pt-20">
+        {/* The h1 stays for search and for the reader who needs the claim in one
+            line, but it is deliberately small: the bubble under it is the hero. */}
+        <h1 className="v3-thread mb-8 text-balance text-center text-[clamp(1.15rem,3.2vw,1.6rem)] font-semibold leading-snug">
+          Hale is a number you text — your family’s{' '}
+          <span className="v3-accent">quiet chief of staff.</span>
+        </h1>
 
-          {smsHref ? (
-            <div id={CTA_ANCHOR} className="mt-9">
-              <LandingCta event="landing_cta_text" href={smsHref} className="btn-primary">
-                Text me
-              </LandingCta>
-              {/* The founder's rule: digits are never printed. An `sms:` link is a
-                  silent no-op on Windows and Linux, so the desktop way in is the copy
-                  chip — the number lands on the clipboard without ever rendering. */}
-              <p className="mt-4 text-slate-green">
-                or <CopyNumberButton number={smsNumber} className="link" /> to text from another
-                device.
-              </p>
-              <p className="meta mt-4">
-                Your message is already written. You send it; I never text first. Standard message
-                rates apply; reply STOP any time.
-              </p>
-
-              {/* Desktop-only: a phone can't scan its own screen, and on mobile this card
-                  only pushed the example conversation below the fold. */}
-              <div className="card mt-8 hidden gap-6 sm:flex sm:items-center">
-                <QrCode value={smsHref} size={132} />
-                <div>
-                  <span className="eyebrow">On a laptop?</span>
-                  <p className="mt-2">
-                    <CopyNumberButton
-                      number={smsNumber}
-                      className="link font-medium"
-                      label="Copy my number"
-                    />
-                  </p>
-                  <p className="meta mt-2">
-                    Scan the code with your phone’s camera, or copy the number and text it from
-                    your phone.
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-9">
-              <EmailCta email={CONTACT_EMAIL} buttonClassName="btn-primary" />
-              <p className="meta mt-4">
-                The number’s coming. Until it answers, email is the honest way to reach me.
-              </p>
-            </div>
-          )}
-        </div>
-
-        <FirstConversation />
+        <HeroConversation smsNumber={smsNumber} />
       </section>
 
       {/* ── What I watch — the radar, by name ─────────────────────────────── */}
@@ -229,7 +194,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
         <div className="shell">
           <span className="eyebrow">What I watch</span>
           <h2 className="mt-3 max-w-2xl text-balance">
-            {MUNICIPALITIES.length} municipalities, <span className="accent">by name.</span>
+            {MUNICIPALITIES.length} municipalities, <span className="v3-accent">by name.</span>
           </h2>
           <p className="mt-6 max-w-2xl text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
             Registration opens at 7 a.m. on a Tuesday and fills before breakfast. I follow the
@@ -246,7 +211,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
 
           <ul className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {WATCHED.map((item) => (
-              <li key={item.title} className="card">
+              <li key={item.title} className="v3-edge-card">
                 <h3 className="text-[1.05rem] leading-snug">{item.title}</h3>
                 <p className="meta mt-3">{item.body}</p>
               </li>
@@ -259,7 +224,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
       <section className="shell py-20 lg:py-28">
         <span className="eyebrow">How I work</span>
         <h2 className="mt-3 max-w-2xl text-balance">
-          Three texts, then I’m <span className="accent">quiet.</span>
+          Three texts, then I’m <span className="v3-accent">quiet.</span>
         </h2>
 
         <ol className="mt-10 grid gap-8 lg:grid-cols-3">
@@ -285,7 +250,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
             ))}
           </ul>
           {/* The second sentence's phone half depends on claim-by-phone shipping first —
-              see the merge-order note in landing-f14.test.ts. A texted family has no
+              see the merge-order note in app/landing.test.ts. A texted family has no
               email address, so "sign in" was untrue for them until that flow exists. */}
           <p className="mt-6 text-slate-green" style={{ lineHeight: 1.6 }}>
             Receipts for everything: every message names exactly what I did. Say yes to a date and
@@ -301,7 +266,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
         <div className="shell">
           <span className="eyebrow">When you ask me something</span>
           <h2 className="mt-3 max-w-2xl text-balance">
-            Sleep, solids, potty — <span className="accent">answered, then planned.</span>
+            Sleep, solids, potty — <span className="v3-accent">answered, then planned.</span>
           </h2>
           <p className="mt-6 max-w-2xl text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
             A chief of staff who only moved appointments would be a calendar. Ask me the 3 a.m.
@@ -322,14 +287,14 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
           </ol>
 
           <div className="mt-12 grid gap-6 lg:grid-cols-2">
-            <div className="card">
+            <div className="v3-edge-card">
               <h3 className="text-[1.15rem] leading-snug">What I’ll plan with you</h3>
               <p className="mt-3 text-slate-green" style={{ lineHeight: 1.6 }}>
                 Sleep, starting solids, potty training, picky eating, tantrums, screen time, and the
                 routines that hold a week together.
               </p>
             </div>
-            <div className="card">
+            <div className="v3-edge-card">
               <h3 className="text-[1.15rem] leading-snug">Where I stop</h3>
               <p className="mt-3 text-slate-green" style={{ lineHeight: 1.6 }}>
                 I don’t diagnose and I never name a dose. A plan says what’s common and what
@@ -340,25 +305,22 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
         </div>
       </section>
 
-      {/* ── The caregivers, scoped ────────────────────────────────────────── *
-       * "Village" is the family-to-family intros product; the people below are
-       * scoped caregivers on this family's own account, which is a different
-       * thing and was borrowing the wrong word. */}
+      {/* ── The caregivers, scoped ────────────────────────────────────────── */}
       <section className="shell py-20 lg:py-28">
         <span className="eyebrow">Your helpers</span>
         <h2 className="mt-3 max-w-2xl text-balance">
-          Your helpers, <span className="accent">only what they need.</span>
+          Your helpers, <span className="v3-accent">only what they need.</span>
         </h2>
 
         <div className="mt-10 grid gap-6 lg:grid-cols-2">
-          <div className="card">
+          <div className="v3-edge-card">
             <h3 className="text-[1.15rem] leading-snug">Grandparents and the nanny</h3>
             <p className="mt-3 text-slate-green" style={{ lineHeight: 1.6 }}>
               They get just the schedule — who’s where, and when to be there. Nothing else about
               your family travels with it, and everyone opts in for themselves.
             </p>
           </div>
-          <div className="card">
+          <div className="v3-edge-card">
             <h3 className="text-[1.15rem] leading-snug">Your co-parent</h3>
             <p className="mt-3 text-slate-green" style={{ lineHeight: 1.6 }}>
               Always free. The same radar and the same reminders, on their own number — never a
@@ -373,7 +335,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
         <div className="shell">
           <span className="eyebrow">Privacy</span>
           <h2 className="mt-3 max-w-2xl text-balance">
-            Privacy, the <span className="accent">Canadian way.</span>
+            Privacy, the <span className="v3-accent">Canadian way.</span>
           </h2>
           <div className="mt-6 max-w-2xl text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
             <p>
@@ -397,29 +359,50 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
       {/* ── Impact numbers — rendered only once the counts are real ───────── */}
       {impact && <ImpactBand numbers={impact} />}
 
-      {/* ── Founding families ─────────────────────────────────────────────── */}
+      {/* ── Founding families — the shore, and the brand lockup ───────────── *
+       * Hale is Hawaiian for home and the mark is a honu, so the page closes on
+       * the shoreline the name comes from rather than on a flat band. One image,
+       * one placement, decorative: the argument is still entirely in the words. */}
       <section className="px-4 pb-16 sm:px-6 lg:pb-24">
-        <div className="cta-band mx-auto max-w-[1100px] rounded-[28px] px-6 py-14 text-center sm:px-12 md:py-20">
-          <h2 className="mx-auto max-w-2xl text-[clamp(1.8rem,3.4vw,2.6rem)]">Founding families</h2>
-          <p className="cta-sub mx-auto mt-5 max-w-xl text-lg" style={{ lineHeight: 1.6 }}>
-            I’m free while I’m new, and the families who start now keep their founding rate for
-            good. No countdown, no waiting list — just the number.
-          </p>
-          {smsHref ? (
-            <div className="mt-9 flex justify-center">
-              <LandingCta event="landing_cta_text" href={smsHref} className="btn-on-navy">
-                Text me
-              </LandingCta>
-            </div>
-          ) : (
-            <div className="mt-9 flex justify-center">
-              <EmailCta
-                email={CONTACT_EMAIL}
-                buttonClassName="btn-on-navy"
-                copyClassName="btn-on-navy"
-              />
-            </div>
-          )}
+        <div className="v3-shore-band mx-auto max-w-[1100px] rounded-[28px]">
+          <div className="v3-shore-copy px-6 pb-12 pt-14 text-center sm:px-12 lg:ml-auto lg:max-w-[30rem] lg:py-24 lg:text-left">
+            <span className="inline-flex items-center gap-3">
+              <LogoMark size={44} className="v3-logo-tile" />
+              <span className="font-serif text-[1.6rem] font-semibold leading-none">Hale</span>
+            </span>
+            <h2 className="mt-6 text-[clamp(1.8rem,3.4vw,2.6rem)]">Founding families</h2>
+            <p className="v3-shore-sub mt-5 text-lg" style={{ lineHeight: 1.6 }}>
+              I’m free while I’m new, and the families who start now keep their founding rate for
+              good. No countdown, no waiting list — just the number.
+            </p>
+            {smsHref ? (
+              <div className="mt-9 flex justify-center lg:justify-start">
+                <LandingCta event="landing_cta_text" href={smsHref} className="v3-btn-shore">
+                  Text me
+                </LandingCta>
+              </div>
+            ) : (
+              <div className="mt-9 flex justify-center lg:justify-start">
+                <EmailCta
+                  email={CONTACT_EMAIL}
+                  buttonClassName="v3-btn-shore"
+                  copyClassName="v3-btn-shore"
+                />
+              </div>
+            )}
+          </div>
+          {/* After the copy in the DOM as well as under it on screen: decorative
+              art belongs behind the words in reading order too. */}
+          <div className="v3-shore-frame">
+            <Image
+              src={shore}
+              alt=""
+              aria-hidden="true"
+              fill
+              sizes="(max-width: 1148px) 100vw, 1100px"
+              className="v3-shore-art"
+            />
+          </div>
         </div>
       </section>
 
@@ -434,11 +417,15 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
       <footer className="border-t border-rule">
         <div className="shell flex flex-col gap-6 py-10 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <span className="font-serif text-[1.2rem] font-semibold leading-none text-spruce">
-              Hale
+            <span className="flex items-center gap-2.5">
+              <LogoMark size={24} />
+              <span className="font-serif text-[1.2rem] font-semibold leading-none text-spruce">
+                Hale
+              </span>
             </span>
-            {/* The name is the brand story — it must survive every redesign (it was
-                dropped once when this footer replaced the shared one). */}
+            {/* The name, said out loud. It carries the whole brand — Hawaiian for
+                home, a honu for a mark, aloha@ for an address — and the live
+                landing is the one surface that dropped it. */}
             <p className="meta mt-3">
               Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
             </p>
@@ -471,87 +458,8 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
 }
 
 /**
- * The first ten minutes, as an SMS thread — the script from the F14 Conversation
- * Design book, not a dramatisation and not a screenshot. (The parent's opening
- * "Hi" is the one line dropped: the CTA above already pre-writes it, and it cost
- * the teaser a bubble to say so twice.) Real DOM text in a
- * plain card: no device frame, no status bar, nothing pretending to be a photo
- * of a phone. Emoji-free on purpose: the real transport is GSM-7 and Hale sends
- * none. (The em dashes and curly quotes here are the site's typographic render
- * of the plain-ASCII originals in intake/copy.ts — WORDS match the script
- * exactly; punctuation is display-layer.)
- */
-function FirstConversation() {
-  return (
-    <figure className="rise rise-2 card m-0">
-      <figcaption>
-        <span className="eyebrow">An example conversation</span>
-        <p className="meta mt-2">
-          This is the script I follow. The names, the dates and the places change with your family.
-        </p>
-      </figcaption>
-
-      <ol className="mt-6 flex flex-col gap-3">
-        <Bubble from="hale">
-          Hi, I’m Hale — an AI that quietly runs the family week. Registration dates, weekend
-          plans, the stuff that slips. Tell me your kids’ names and ages, plus your postal code —
-          and I’ll get to work.
-        </Bubble>
-        <Bubble from="parent">Max is 4, Mia is 18 months, L4C</Bubble>
-        <Bubble from="hale">
-          Mark this: Richmond Hill fall swim registration opens Tue Aug 12 at 7am — spots for
-          Max’s age go in minutes. You’ll have the plan the evening before, and a text right
-          before it opens.
-          Saturday looks warm too — the Mill Pond splash pad is 6 minutes from you, free. Want me
-          to keep an eye on all of this for you?
-          <span className="mt-2 block text-[0.8rem] opacity-70">
-            (how I handle your family’s info: villagehale.com/privacy)
-          </span>
-        </Bubble>
-      </ol>
-
-      {/* The thread ran the full first ten minutes before a reader reached anything
-          else on the page. The teaser above is the greeting, the family in one line
-          and the catch; the rest of the script stays whole, one tap away, and stays
-          in order. Native <details> — no JS, keyboard- and screen-reader-native. */}
-      <details className="mt-4">
-        <summary className="cursor-pointer py-3 text-sm font-medium text-slate-green hover:text-spruce">
-          The rest of the thread
-        </summary>
-        <ol className="flex flex-col gap-3">
-          <Bubble from="parent">yes please</Bubble>
-          <Bubble from="hale">
-            Done — you’re covered. I only text when something actually matters, and STOP always
-            works. While I dig in: what part of the week wears you out the most?
-          </Bubble>
-        </ol>
-      </details>
-    </figure>
-  );
-}
-
-function Bubble({ from, children }: { from: 'parent' | 'hale'; children: React.ReactNode }) {
-  const parent = from === 'parent';
-  return (
-    <li className={parent ? 'flex justify-end' : 'flex justify-start'}>
-      <p
-        className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[0.95rem] ${
-          parent
-            ? 'rounded-br-sm bg-spruce text-on-spruce'
-            : 'rounded-bl-sm bg-sky-tint text-spruce'
-        }`}
-        style={{ lineHeight: 1.5 }}
-      >
-        <span className="sr-only">{parent ? 'Parent:' : 'Hale:'}</span>
-        {children}
-      </p>
-    </li>
-  );
-}
-
-/**
- * The Boardy-shaped metrics band. Never rendered with placeholder zeros — the
- * caller only reaches it once `impactNumbers()` returns real counts.
+ * The metrics band. Never rendered with placeholder zeros — the caller only
+ * reaches it once `impactNumbers()` returns real counts.
  */
 function ImpactBand({ numbers }: { numbers: readonly ImpactNumber[] }) {
   return (

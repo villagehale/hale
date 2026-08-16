@@ -1,14 +1,11 @@
-import { f14LandingEnabled } from '~/lib/flags/landing';
-
 /**
- * The words on the homepage share card, following the landing flag exactly like
- * the page metadata and the JSON-LD graph do.
+ * The words on the homepage share card, saying what the page metadata and the
+ * JSON-LD graph say.
  *
  * The card is the free-traction surface — it is what renders when a parent drops
- * villagehale.com into a group chat — so a card still selling "the village every
- * parent needs" over a page about a number you text is the pivot's loudest
- * remaining seam. Pure + exported so both variants are asserted without rendering
- * a PNG through satori.
+ * villagehale.com into a group chat — so copy that sells a different product than
+ * the page it opens is the loudest seam there is. Pure + exported so the words are
+ * asserted without rendering a PNG through satori.
  */
 export interface SocialCardCopy {
   /** The `alt` Next serves as the og:image:alt. */
@@ -24,12 +21,6 @@ const CHIEF_OF_STAFF: SocialCardCopy = {
     'Registration dates watched, the week planned, nothing sent without your say-so. Your data stays in Canada.',
 };
 
-const VILLAGE: SocialCardCopy = {
-  alt: 'Hale — the village every parent needs',
-  headline: 'The village every parent needs',
-  subline: 'Find what families near you actually do. Your data stays in Canada.',
-};
-
 export function socialCardCopy(): SocialCardCopy {
-  return f14LandingEnabled() ? CHIEF_OF_STAFF : VILLAGE;
+  return CHIEF_OF_STAFF;
 }

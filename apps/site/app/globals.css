@@ -747,3 +747,496 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 }
 
 }
+@layer components {
+
+/* ══ The landing — the conversational hero ════════════════════════════════ *
+ * The kit for the homepage whose hero IS the product: one centred column in
+ * which Hale types its real opening message, with the parent's likely first
+ * questions sitting under it the way a keyboard's suggestion strip sits under a
+ * thread. No card frame, no device chrome, no send-arrow — strip those away and
+ * the page itself reads as the conversation, which is the whole claim.
+ *
+ * Every class is `v3-`-prefixed, from the preview this page was auditioned as,
+ * and the prefix is load-bearing rather than historical: it is what keeps the
+ * landing's kit from colliding with the subpage design system above.
+ *
+ * Motion is CSS plus one small typewriter hook: a landing page whose argument is
+ * that Hale is faster than an app cannot ship an animation library to say so.
+ * Every rule has a prefers-reduced-motion reset at the foot of this block.
+ *
+ * ── Theme ────────────────────────────────────────────────────────────────
+ * Dark mode arrives as custom properties re-pointed on `.v3-theme`. Custom
+ * properties inherit, so re-declaring `--color-spruce` there re-tints every
+ * Tailwind utility and every `.card` / `.pill` / `.btn-*` INSIDE the landing and
+ * nowhere else — every subpage stays on the light-only palette it was drawn for,
+ * and a dark rule that escaped this wrapper would flip the whole marketing site
+ * in the same deploy.
+ *
+ * The dark ladder is Hale's own brand navy, not a neutral dark. Ground is a deep
+ * Prussian navy (#0C1A36) and the surfaces step UP toward the brand navy itself
+ * (#17294A, which is the card): the page reads as night navy rather than as
+ * black, and the night-shore art that closes it needs no separate treatment
+ * because its own edges are already #051C3B–#081E3D.
+ *
+ * Amber is FILL, glow and hairline in both themes — never body text. #B26B1F
+ * cannot carry that job in dark (4.12:1 on the ground, and only 3.81:1 under
+ * cream ink when used as a fill), so dark uses the lighter #E2A75A at 8.14:1 for
+ * marks, and the #FEF0C7 wash becomes low-alpha amber composited live over
+ * whatever navy is behind it. */
+
+.v3-theme {
+  /* Hale's bubble: warm white lifted off the page by a hairline and a soft
+   * shadow, not by a card. Named separately from --color-oat because the bubble
+   * is the one surface on the page that must read as a message. */
+  --v3-bubble-bg: #ffffff;
+  --v3-bubble-border: rgb(23 41 74 / 0.10);
+  --v3-bubble-shadow: 0 20px 48px -34px rgb(23 41 74 / 0.55);
+
+  /* The warm bloom the thread column sits in — the page's only gradient, and
+   * the reason a lone bubble on a wide screen still has a centre of gravity. */
+  --v3-bloom-warm: rgb(178 107 31 / 0.24);
+  --v3-bloom-cool: rgb(23 41 74 / 0.09);
+
+  /* The suggestion strip. Unpressed reads as an offer, pressed as the message
+   * about to be sent — navy fill, so the chosen one is unmistakable. */
+  --v3-chip-bg: rgb(23 41 74 / 0.045);
+  --v3-chip-border: rgb(23 41 74 / 0.14);
+  --v3-chip-hover: rgb(23 41 74 / 0.09);
+
+  --v3-caret: #b26b1f;
+
+  /* The amber edge and halo on the serif accent word. */
+  --v3-accent-stroke: rgb(178 107 31 / 0.38);
+  --v3-accent-glow-near: rgb(178 107 31 / 0.26);
+  --v3-accent-glow-far: rgb(178 107 31 / 0.12);
+
+  /* The hairline that fades toward a card's edges. */
+  --v3-edge: rgb(23 41 74 / 0.20);
+
+  /* The closing shore band's own night, and the scrim ramped over the art. In
+   * light these are a statement surface against the warm page; in dark they
+   * become the page ground itself, so the band stops being a card. */
+  --v3-shore-ground: #0c1424;
+  --v3-shore-scrim: 9 18 38;
+  --v3-shore-ink: #f7f4ec;
+}
+
+@media (prefers-color-scheme: dark) {
+  .v3-theme {
+    color-scheme: dark;
+
+    /* Surfaces — a Prussian-navy ladder derived from the brand navy. Ground is
+     * the deepest step and each surface rises TOWARD #17294A, which is the card:
+     * the brand colour is the lit surface rather than the dark. */
+    --color-linen: #0c1a36;       /* page ground — deep Prussian navy */
+    --color-page: #0c1a36;
+    --color-band: #101f3f;        /* section band, one step up */
+    --color-oat: #17294a;         /* card — the brand navy itself */
+    --color-rule: #26375c;
+    --color-rule-strong: #556da8; /* .btn-secondary's 1.5px edge — 3.40:1 on the ground */
+    --color-line: #26375c;
+    --color-hair: #182a4b;
+
+    /* Ink ladder, measured on the ground / on the card (the lightest surface any
+     * of it sits on): cream 15.70 / 13.15, body 9.82 / 8.22, meta 6.79 / 5.69.
+     * Every step clears AA on every surface, including the amber wash. */
+    --color-spruce: #f7f4ec;
+    --color-ink: #f7f4ec;
+    --color-slate-green: #b7c4dc;
+    --color-dim: #b7c4dc;
+    --color-faded-sage: #93a3c2;
+    --color-faint: #93a3c2;
+
+    /* The navy/cream pair INVERTS rather than darkening. --color-navy is both a
+     * fill (.btn-primary, .cta-band) and an ink (.link); on a navy page a navy
+     * fill disappears and a navy link is unreadable, so cream takes the fill
+     * role and the ink that sits on it becomes the ground. Every rule that pairs
+     * them — button, link, closing band, and .btn-on-navy inside it — inverts
+     * correctly with no extra rules. */
+    --color-navy: #f7f4ec;
+    --color-navy-deep: #ffffff;
+    --color-cream: #0c1a36;
+    --color-on-spruce: #0c1a36;
+    --color-on-spruce-soft: rgb(12 26 54 / 0.76);
+    --color-on-spruce-faint: rgb(12 26 54 / 0.58);
+
+    /* The amber wash, navy-tinted. Left at low alpha rather than flattened to a
+     * hex so it composites over whichever navy is behind it — the pills sit on
+     * the band, the ladder panel on the ground — and both stay in the navy
+     * family instead of becoming one brown block.
+     *
+     * The alpha is set by the LARGEST surface that wears it, not the smallest.
+     * Amber and navy are near-complementary, so any wash strong enough to read
+     * as amber on a 12px pill turns an 800px panel into warm grey and punches a
+     * hole in the navy world (measured: 0.15 did exactly that). At 0.08 both
+     * composites stay blue-dominant — #1D2539 on the ground, #212A41 on the band
+     * — and the amber signal is carried by the hairline below instead. Cream on
+     * either: >12:1. */
+    --color-apricot-tint: rgb(226 167 90 / 0.08);
+    --color-amber-bg: rgb(226 167 90 / 0.08);
+    --color-sky-tint: #16233f;
+    /* Marks and the focus ring. #B26B1F is 4.12:1 here and cannot carry either;
+     * the lighter amber is 8.14:1 on the ground and 6.82:1 on the card. */
+    --color-amber: #e2a75a;
+    --color-apricot-deep: #e2a75a;
+
+    /* The bubble is the one surface that must read as an incoming message, so it
+     * sits a step ABOVE the card rather than level with it. */
+    --v3-bubble-bg: #1d3157;
+    --v3-bubble-border: rgb(247 244 236 / 0.15);
+    --v3-bubble-shadow: 0 20px 48px -34px rgb(2 6 16 / 0.85);
+
+    --v3-bloom-warm: rgb(226 167 90 / 0.13);
+    --v3-bloom-cool: rgb(120 152 224 / 0.10);
+
+    /* Chip fill and edge both lift, because a navy chip on a navy ground has
+     * only its hairline to be found by. */
+    --v3-chip-bg: rgb(247 244 236 / 0.07);
+    --v3-chip-border: rgb(247 244 236 / 0.24);
+    --v3-chip-hover: rgb(247 244 236 / 0.13);
+
+    --v3-caret: #e2a75a;
+
+    /* A halo that is a warmth on cream is a neon tube on navy: same device,
+     * roughly half the alpha, and the lighter dark-mode amber. */
+    --v3-accent-stroke: rgb(226 167 90 / 0.28);
+    --v3-accent-glow-near: rgb(226 167 90 / 0.15);
+    --v3-accent-glow-far: rgb(226 167 90 / 0.07);
+
+    --v3-edge: rgb(247 244 236 / 0.22);
+
+    /* The shore band stops being a card: its night and the page's are the same
+     * navy, so the 28px corners dissolve and the art runs into the ground it
+     * was painted for. */
+    --v3-shore-ground: #0c1a36;
+    --v3-shore-scrim: 12 26 54;
+  }
+
+  /* With the wash held down to 0.08 so the big surfaces stay navy, the hairline
+   * is what actually carries amber and what gives a pill or a panel its edge.
+   * Inset, so gaining it costs no layout. */
+  .v3-theme .pill-apricot,
+  .v3-theme .pill-eyebrow,
+  .v3-theme .panel-apricot-tint {
+    box-shadow: inset 0 0 0 1px rgb(226 167 90 / 0.30);
+  }
+}
+
+/* The theme wrapper paints its own ground — <html> is outside it and stays on
+ * the site's light-only canvas. */
+.v3-theme {
+  background: var(--color-linen);
+  color: var(--color-spruce);
+  min-height: 100vh;
+}
+
+/* The serif accent word, with a warm bloom behind it. Two layers on ONE element
+ * — an amber hairline stroke on the glyph edges plus an amber halo — rather than
+ * an absolutely-positioned duplicate, which cannot follow the real text when a
+ * phrase wraps, and these phrases wrap at 390px. Amber at low alpha, so the fill
+ * stays ink and AA holds. */
+.v3-accent {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  -webkit-text-stroke: 0.4px var(--v3-accent-stroke);
+  text-shadow: 0 0 18px var(--v3-accent-glow-near), 0 0 44px var(--v3-accent-glow-far);
+}
+
+/* ── The thread column ──────────────────────────────────────────────────── *
+ * A measure, not a container: the hero has no card, so the only thing holding
+ * the conversation together is that everything in it shares one narrow width. */
+
+.v3-thread {
+  width: 100%;
+  max-width: 37rem;
+  margin-inline: auto;
+}
+
+/* The one gradient on the page, behind the column. It bleeds DOWN past the hero
+ * so the wash has somewhere to end, but never sideways: a negative inline inset
+ * on an absolutely-positioned pseudo-element widens the document's scroll box
+ * even though no element reports as overflowing, which is a horizontal
+ * scrollbar nothing in the DOM inspector accounts for. */
+.v3-bloom { position: relative; isolation: isolate; }
+.v3-bloom::before {
+  content: "";
+  position: absolute;
+  inset: -10% 0 -26%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(46% 34% at 50% 26%, var(--v3-bloom-warm), transparent 70%),
+    radial-gradient(70% 44% at 50% 98%, var(--v3-bloom-cool), transparent 72%);
+}
+
+/* ── Hale's bubble ──────────────────────────────────────────────────────── *
+ * Tail on the bottom-left, the way an incoming message reads. Grid rather than
+ * flow so the full greeting can sit in the box as an invisible sizer while the
+ * typed slice paints on top of it: the bubble is its final size from the first
+ * frame, so nothing below it moves for seven seconds. */
+
+.v3-bubble {
+  display: grid;
+  border-radius: 22px 22px 22px 7px;
+  background: var(--v3-bubble-bg);
+  border: 1px solid var(--v3-bubble-border);
+  box-shadow: var(--v3-bubble-shadow);
+  padding: clamp(1.1rem, 3.4vw, 1.65rem) clamp(1.15rem, 3.6vw, 1.8rem);
+  color: var(--color-spruce);
+  font-size: clamp(1.02rem, 2.7vw, 1.2rem);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.v3-bubble > * { grid-area: 1 / 1; }
+
+/* The full greeting, holding the box open. aria-hidden + visibility:hidden, so
+ * it is neither announced nor painted — but it is real text in the DOM, which is
+ * what a crawler and a reader with JavaScript off get. */
+.v3-bubble-sizer { visibility: hidden; }
+
+.v3-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 0.12em;
+  vertical-align: -0.16em;
+  border-radius: 1px;
+  background: var(--v3-caret);
+  animation: v3-caret 1.05s steps(1, end) infinite;
+}
+
+@keyframes v3-caret {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* ── The suggestion strip ───────────────────────────────────────────────── *
+ * Real buttons: tapping one is an action (it writes the parent's first text),
+ * not navigation, and a screen reader is told which one is chosen via
+ * aria-pressed rather than by colour alone. */
+
+.v3-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.6rem 1.05rem;
+  border-radius: var(--r-full);
+  border: 1px solid var(--v3-chip-border);
+  background: var(--v3-chip-bg);
+  color: var(--color-spruce);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 220ms var(--ease-breathe), border-color 220ms var(--ease-breathe);
+}
+
+.v3-chip:hover { background: var(--v3-chip-hover); }
+
+.v3-chip[aria-pressed="true"] {
+  background: var(--color-navy);
+  border-color: var(--color-navy);
+  color: var(--color-cream);
+  font-weight: 600;
+}
+
+.v3-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* ── The draft line ─────────────────────────────────────────────────────── *
+ * What tapping a chip actually did, in words: the message now sitting in the
+ * composer link. Not an input — nothing here is typed and nothing is submitted
+ * from this page. The mono label says "machine state", the quoted body says
+ * "your words". */
+
+.v3-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--v3-chip-border);
+  background: var(--v3-chip-bg);
+  text-align: left;
+}
+
+.v3-draft-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-faded-sage);
+}
+
+.v3-draft-body {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-spruce);
+  line-height: 1.45;
+}
+
+/* A card whose hairline border fades out toward both edges. The XOR mask paints
+ * the 1px padding ring only, so the card's own surface is untouched. */
+.v3-edge-card {
+  position: relative;
+  border-radius: var(--r-xl);
+  background: var(--color-oat);
+  box-shadow: 0 1px 2px rgb(13 27 61 / 0.04);
+  padding: clamp(1.5rem, 2.4vw, 2.25rem);
+}
+.v3-edge-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--v3-edge) 22%,
+    var(--v3-edge) 78%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* ── The shore, closing the page ────────────────────────────────────────── *
+ * Hale is Hawaiian for home, the mark is a honu, and the support address is
+ * aloha@ — the shoreline is the brand's own world rather than decoration
+ * borrowed for atmosphere. It appears once, at the foot of the page.
+ *
+ * The band is night in BOTH themes — it never inverts, which is why it cannot
+ * use `--color-navy` (that flips to cream in dark and would put a moonlit scene
+ * behind navy-on-cream text) and why the art needs no light/dark fork. What DOES
+ * change is only how the night meets the page: against the warm-white page it is
+ * a statement card, and on the navy ground it is the same navy, so the 28px
+ * corners dissolve and the art runs straight into the page. That is the whole
+ * job of --v3-shore-ground / --v3-shore-scrim.
+ *
+ * The scrim is a vertical ramp rather than a flat wash: the moon and the sky at
+ * the top stay legible as art, and it deepens toward the foot where the cream
+ * sand would otherwise sit under the CTA. Contrast is measured, not assumed —
+ * the screenshots are sampled under each text box. */
+
+.v3-shore-band {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--v3-shore-ground);
+  color: var(--v3-shore-ink);
+}
+
+/* The scene is a 4:1 panorama composed with its copy space on the right, and a
+ * phone is not 4:1. Cropping it to fit was tried and thrown away: a fifth of a
+ * panorama at full height is abstract smudges, and the wide navy the artwork
+ * reserves for words showed no shore at all.
+ *
+ * So the frame changes shape instead of the crop. On a phone the panorama keeps
+ * its own aspect and closes the card as a horizon strip, in flow beneath the
+ * copy — no overlap to pad around, and the whole scene is legible. From lg it
+ * becomes the full-bleed ground the composition was drawn for, with the copy in
+ * the open right side. */
+.v3-shore-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 2508 / 627;
+}
+
+.v3-shore-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    var(--v3-shore-ground) 0%,
+    rgb(var(--v3-shore-scrim) / 0.55) 30%,
+    transparent 62%
+  );
+}
+
+.v3-shore-art { object-fit: cover; }
+
+@media (min-width: 1024px) {
+  .v3-shore-frame {
+    position: absolute;
+    inset: 0;
+    aspect-ratio: auto;
+  }
+  .v3-shore-art { object-position: 20% 50%; }
+  /* Copy has moved right, so the scrim ramps the same way: the shore keeps its
+   * own light on the left, and the half the words sit on goes to deep navy. */
+  .v3-shore-frame::after {
+    background: linear-gradient(
+      90deg,
+      rgb(var(--v3-shore-scrim) / 0.10) 0%,
+      rgb(var(--v3-shore-scrim) / 0.20) 32%,
+      rgb(var(--v3-shore-scrim) / 0.64) 50%,
+      rgb(var(--v3-shore-scrim) / 0.82) 68%,
+      rgb(var(--v3-shore-scrim) / 0.86) 100%
+    );
+  }
+}
+
+/* Above both the art and the scrim, which are z-index auto and so paint in tree
+ * order — the pseudo-element is the last child and would otherwise cover this. */
+.v3-shore-copy { position: relative; z-index: 1; }
+
+.v3-shore-band :is(h2, p) { color: var(--v3-shore-ink); }
+.v3-shore-sub { color: rgb(247 244 236 / 0.84); }
+
+/* The CTA on that band. Night in both themes, for the same reason the band is. */
+.v3-btn-shore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.75rem;
+  background: var(--v3-shore-ink);
+  color: #101c33;
+  border: 0;
+  border-radius: var(--r-full);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 200ms var(--ease-breathe);
+}
+.v3-btn-shore:hover { transform: translateY(-1px); }
+.v3-btn-shore:active { transform: none; }
+.v3-btn-shore:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px #101c33, 0 0 0 5px var(--v3-shore-ink);
+}
+
+/* The closing lockup: the brand tile on the navy band needs a hairline to lift
+ * its own navy ground off the band's. */
+.v3-logo-tile {
+  box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22);
+}
+
+/* Reduced motion: the caret is dropped by the component (it never blinks and
+ * the greeting is whole from the first frame); this is the belt to that brace,
+ * and it stills the chip transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .v3-caret { animation: none; }
+  .v3-chip { transition: none; }
+  .v3-btn-shore { transition: none; }
+  .v3-btn-shore:hover { transform: none; }
+}
+
+}

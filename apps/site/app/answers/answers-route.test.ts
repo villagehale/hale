@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { allAnswers, getAnswer } from '~/lib/answers/index.js';
-import { F14_LANDING_ENV } from '~/lib/flags/landing.js';
 import { chromeCta } from '~/lib/site/chrome-cta.js';
 import AnswerPageRoute, { generateMetadata, generateStaticParams } from './[slug]/page.js';
 
@@ -14,8 +13,8 @@ afterEach(() => {
 /**
  * The slug route is the public YMYL surface. These assertions lock the three
  * things that must hold for every draft: the page renders its answer + JSON-LD,
- * an unreviewed (unpublished) page is noindexed, and the join funnel (onboarding) is wired.
- * Rendered to static markup so no browser/DOM is needed.
+ * an unreviewed (unpublished) page is noindexed, and its CTA reaches the site's
+ * front door. Rendered to static markup so no browser/DOM is needed.
  */
 
 const SLUG = 'introducing-peanuts-to-baby';
@@ -72,17 +71,16 @@ describe('answers/[slug] route', () => {
   /**
    * The guide's CTA delegates to the SAME front-door helper the site chrome uses,
    * rather than hardcoding a door of its own. That is the whole fix: the page used to
-   * hardcode the app's /onboarding wizard, which F14 deleted, so an acquisition page's
-   * only action 308'd the reader back to the marketing homepage — a funnel in a circle.
+   * hardcode the app's /onboarding wizard, which no longer exists, so an acquisition
+   * page's only action 308'd the reader back to the marketing homepage — a funnel in
+   * a circle.
    *
-   * Asserted under the LIVE config (flag on, number provisioned), because that is what
-   * a reader actually gets; the delegation check below runs in both flag states, so a
-   * page that re-hardcoded a URL would fail even with the flag off.
+   * Run against both configs the helper can be in (number provisioned, and not), so a
+   * page that re-hardcoded either URL fails on the other.
    */
-  it('delegates its CTA to the shared front door in both flag states', async () => {
-    for (const flag of ['true', '']) {
-      vi.stubEnv(F14_LANDING_ENV, flag);
-      vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+  it('delegates its CTA to the shared front door rather than hardcoding one', async () => {
+    for (const number of [LIVE_NUMBER, '']) {
+      vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', number);
       const html = await render(SLUG);
       const { href, label } = chromeCta();
       // The sms href carries a `&`, which the renderer escapes in the attribute.
@@ -92,7 +90,6 @@ describe('answers/[slug] route', () => {
   });
 
   it('sends a reader to the texting door under the live config — never the deleted wizard', async () => {
-    vi.stubEnv(F14_LANDING_ENV, 'true');
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
     const html = await render(SLUG);
     expect(chromeCta().href).toMatch(/^sms:/);

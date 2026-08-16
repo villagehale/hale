@@ -3,7 +3,6 @@ import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { SITE_URL } from '~/lib/app-url';
-import { f14LandingEnabled } from '~/lib/flags/landing';
 import './globals.css';
 
 // Self-hosted variable fonts (app/fonts/, Fontsource-packaged, OFL). next/font/google
@@ -33,19 +32,9 @@ const jetbrainsMono = localFont({
   display: 'swap',
 });
 
-// Metadata follows the landing flag (D21): the same deploy that turns on the
-// chief-of-staff homepage turns on its positioning — link previews and search
-// snippets must never describe a page visitors don't see.
-const VILLAGE_META = {
-  title: 'Hale · your parenting village, near you',
-  description:
-    'Hale brings back the village — the trusted local classes, groups, and drop-ins near you that GTA parents actually value — with a quiet AI that prepares the reminders and plans and never acts without your say-so. Your data stays in Canada.',
-  ogDescription:
-    'The trusted local village near you — the classes and groups other GTA parents actually value — with a quiet, approval-first AI helper, across every stage of childhood. Your data stays in Canada.',
-  twitterDescription:
-    'The trusted local village near you, plus a quiet AI that prepares and never acts without you. Your data stays in Canada.',
-};
-const CHIEF_OF_STAFF_META = {
+// The homepage's positioning in one object (D21): link previews and search snippets
+// must describe the page a visitor actually lands on.
+const meta = {
   title: 'Hale · your family’s quiet chief of staff',
   description:
     'Hale is a number your family texts. It watches registration dates, plans the weekend, and handles the stuff that slips — always with your say-so. Your data stays in Canada.',
@@ -54,7 +43,6 @@ const CHIEF_OF_STAFF_META = {
   twitterDescription:
     'A number your family texts. Registration dates watched, weekends planned, nothing sent without your say-so. Your data stays in Canada.',
 };
-const meta = f14LandingEnabled() ? CHIEF_OF_STAFF_META : VILLAGE_META;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
