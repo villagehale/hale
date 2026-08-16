@@ -749,15 +749,16 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 }
 @layer components {
 
-/* ══ Landing v3 (preview, /preview/landing-v3) — the conversational hero ═══ *
- * The kit for the candidate homepage whose hero IS the product: one centred
- * column in which Hale types its real opening message, with the parent's likely
- * first questions sitting under it the way a keyboard's suggestion strip sits
- * under a thread. No card frame, no device chrome, no send-arrow — strip those
- * away and the page itself reads as the conversation, which is the whole claim.
+/* ══ The landing — the conversational hero ════════════════════════════════ *
+ * The kit for the homepage whose hero IS the product: one centred column in
+ * which Hale types its real opening message, with the parent's likely first
+ * questions sitting under it the way a keyboard's suggestion strip sits under a
+ * thread. No card frame, no device chrome, no send-arrow — strip those away and
+ * the page itself reads as the conversation, which is the whole claim.
  *
- * Nothing here is used by the live page and every class is `v3-`-prefixed, so
- * the live landing and the parallel v2 preview can never collide with it.
+ * Every class is `v3-`-prefixed, from the preview this page was auditioned as,
+ * and the prefix is load-bearing rather than historical: it is what keeps the
+ * landing's kit from colliding with the subpage design system above.
  *
  * Motion is CSS plus one small typewriter hook: a landing page whose argument is
  * that Hale is faster than an app cannot ship an animation library to say so.
@@ -766,13 +767,22 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * ── Theme ────────────────────────────────────────────────────────────────
  * Dark mode arrives as custom properties re-pointed on `.v3-theme`. Custom
  * properties inherit, so re-declaring `--color-spruce` there re-tints every
- * Tailwind utility and every `.card` / `.pill` / `.btn-*` INSIDE v3 and nowhere
- * else — villagehale.com/ and every subpage keep their light-only palette.
+ * Tailwind utility and every `.card` / `.pill` / `.btn-*` INSIDE the landing and
+ * nowhere else — every subpage stays on the light-only palette it was drawn for,
+ * and a dark rule that escaped this wrapper would flip the whole marketing site
+ * in the same deploy.
  *
- * The dark values are the app's own measured ladder (apps/web/app/globals.css
- * `.dark`) under the site's token names: warm near-black #14120E, card #1E1B15,
- * cream ink #F6F1E7, the #C7D3E6 / #9BB0D0 text ladder, amber #E0A44E. Amber is
- * FILL, glow and hairline in both themes; no body text is ever amber. */
+ * The dark ladder is Hale's own brand navy, not a neutral dark. Ground is a deep
+ * Prussian navy (#0C1A36) and the surfaces step UP toward the brand navy itself
+ * (#17294A, which is the card): the page reads as night navy rather than as
+ * black, and the night-shore art that closes it needs no separate treatment
+ * because its own edges are already #051C3B–#081E3D.
+ *
+ * Amber is FILL, glow and hairline in both themes — never body text. #B26B1F
+ * cannot carry that job in dark (4.12:1 on the ground, and only 3.81:1 under
+ * cream ink when used as a fill), so dark uses the lighter #E2A75A at 8.14:1 for
+ * marks, and the #FEF0C7 wash becomes low-alpha amber composited live over
+ * whatever navy is behind it. */
 
 .v3-theme {
   /* Hale's bubble: warm white lifted off the page by a hairline and a soft
@@ -802,71 +812,113 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 
   /* The hairline that fades toward a card's edges. */
   --v3-edge: rgb(23 41 74 / 0.20);
+
+  /* The closing shore band's own night, and the scrim ramped over the art. In
+   * light these are a statement surface against the warm page; in dark they
+   * become the page ground itself, so the band stops being a card. */
+  --v3-shore-ground: #0c1424;
+  --v3-shore-scrim: 9 18 38;
+  --v3-shore-ink: #f7f4ec;
 }
 
 @media (prefers-color-scheme: dark) {
   .v3-theme {
     color-scheme: dark;
 
-    /* Surfaces — the app's warm near-black ladder, canvas → band → card. */
-    --color-linen: #14120e;
-    --color-page: #14120e;
-    --color-band: #1b1813;
-    --color-oat: #1e1b15;
-    --color-rule: #2a251c;
-    --color-rule-strong: #3a3327;
-    --color-line: #2a251c;
-    --color-hair: #221e17;
+    /* Surfaces — a Prussian-navy ladder derived from the brand navy. Ground is
+     * the deepest step and each surface rises TOWARD #17294A, which is the card:
+     * the brand colour is the lit surface rather than the dark. */
+    --color-linen: #0c1a36;       /* page ground — deep Prussian navy */
+    --color-page: #0c1a36;
+    --color-band: #101f3f;        /* section band, one step up */
+    --color-oat: #17294a;         /* card — the brand navy itself */
+    --color-rule: #26375c;
+    --color-rule-strong: #556da8; /* .btn-secondary's 1.5px edge — 3.40:1 on the ground */
+    --color-line: #26375c;
+    --color-hair: #182a4b;
 
-    /* Ink ladder — measured on #14120E: 16.6 / 12.4 / 8.5:1. */
-    --color-spruce: #f6f1e7;
-    --color-ink: #f6f1e7;
-    --color-slate-green: #c7d3e6;
-    --color-dim: #c7d3e6;
-    --color-faded-sage: #9bb0d0;
-    --color-faint: #9bb0d0;
+    /* Ink ladder, measured on the ground / on the card (the lightest surface any
+     * of it sits on): cream 15.70 / 13.15, body 9.82 / 8.22, meta 6.79 / 5.69.
+     * Every step clears AA on every surface, including the amber wash. */
+    --color-spruce: #f7f4ec;
+    --color-ink: #f7f4ec;
+    --color-slate-green: #b7c4dc;
+    --color-dim: #b7c4dc;
+    --color-faded-sage: #93a3c2;
+    --color-faint: #93a3c2;
 
     /* The navy/cream pair INVERTS rather than darkening. --color-navy is both a
-     * fill (.btn-primary, .cta-band) and an ink (.link); on a near-black page a
-     * navy fill disappears and a navy link is unreadable, so cream takes the
-     * fill role and the ink that sits on it becomes the canvas. Every rule that
-     * pairs them — button, link, closing band, and .btn-on-navy inside it —
-     * inverts correctly with no extra rules. */
-    --color-navy: #f6f1e7;
+     * fill (.btn-primary, .cta-band) and an ink (.link); on a navy page a navy
+     * fill disappears and a navy link is unreadable, so cream takes the fill
+     * role and the ink that sits on it becomes the ground. Every rule that pairs
+     * them — button, link, closing band, and .btn-on-navy inside it — inverts
+     * correctly with no extra rules. */
+    --color-navy: #f7f4ec;
     --color-navy-deep: #ffffff;
-    --color-cream: #14120e;
-    --color-on-spruce: #14120e;
-    --color-on-spruce-soft: rgb(20 18 14 / 0.76);
-    --color-on-spruce-faint: rgb(20 18 14 / 0.58);
+    --color-cream: #0c1a36;
+    --color-on-spruce: #0c1a36;
+    --color-on-spruce-soft: rgb(12 26 54 / 0.76);
+    --color-on-spruce-faint: rgb(12 26 54 / 0.58);
 
-    /* Washes — the app's dark amber tint (cream ink on it, 13.1:1). */
-    --color-apricot-tint: #33260f;
-    --color-sky-tint: #1c2436;
-    --color-amber: #e0a44e;
-    --color-amber-bg: #33260f;
-    /* Focus ring: warm amber reads on the near-black page at 8.5:1. */
-    --color-apricot-deep: #e0a44e;
+    /* The amber wash, navy-tinted. Left at low alpha rather than flattened to a
+     * hex so it composites over whichever navy is behind it — the pills sit on
+     * the band, the ladder panel on the ground — and both stay in the navy
+     * family instead of becoming one brown block.
+     *
+     * The alpha is set by the LARGEST surface that wears it, not the smallest.
+     * Amber and navy are near-complementary, so any wash strong enough to read
+     * as amber on a 12px pill turns an 800px panel into warm grey and punches a
+     * hole in the navy world (measured: 0.15 did exactly that). At 0.08 both
+     * composites stay blue-dominant — #1D2539 on the ground, #212A41 on the band
+     * — and the amber signal is carried by the hairline below instead. Cream on
+     * either: >12:1. */
+    --color-apricot-tint: rgb(226 167 90 / 0.08);
+    --color-amber-bg: rgb(226 167 90 / 0.08);
+    --color-sky-tint: #16233f;
+    /* Marks and the focus ring. #B26B1F is 4.12:1 here and cannot carry either;
+     * the lighter amber is 8.14:1 on the ground and 6.82:1 on the card. */
+    --color-amber: #e2a75a;
+    --color-apricot-deep: #e2a75a;
 
-    --v3-bubble-bg: #232019;
-    --v3-bubble-border: rgb(246 241 231 / 0.13);
-    --v3-bubble-shadow: 0 20px 48px -34px rgb(0 0 0 / 0.75);
+    /* The bubble is the one surface that must read as an incoming message, so it
+     * sits a step ABOVE the card rather than level with it. */
+    --v3-bubble-bg: #1d3157;
+    --v3-bubble-border: rgb(247 244 236 / 0.15);
+    --v3-bubble-shadow: 0 20px 48px -34px rgb(2 6 16 / 0.85);
 
-    --v3-bloom-warm: rgb(224 164 78 / 0.13);
-    --v3-bloom-cool: rgb(154 166 230 / 0.07);
+    --v3-bloom-warm: rgb(226 167 90 / 0.13);
+    --v3-bloom-cool: rgb(120 152 224 / 0.10);
 
-    --v3-chip-bg: rgb(246 241 231 / 0.06);
-    --v3-chip-border: rgb(246 241 231 / 0.16);
-    --v3-chip-hover: rgb(246 241 231 / 0.12);
+    /* Chip fill and edge both lift, because a navy chip on a navy ground has
+     * only its hairline to be found by. */
+    --v3-chip-bg: rgb(247 244 236 / 0.07);
+    --v3-chip-border: rgb(247 244 236 / 0.24);
+    --v3-chip-hover: rgb(247 244 236 / 0.13);
 
-    --v3-caret: #e0a44e;
+    --v3-caret: #e2a75a;
 
-    /* A halo that is a warmth on cream is a neon tube on charcoal: same device,
+    /* A halo that is a warmth on cream is a neon tube on navy: same device,
      * roughly half the alpha, and the lighter dark-mode amber. */
-    --v3-accent-stroke: rgb(224 164 78 / 0.26);
-    --v3-accent-glow-near: rgb(224 164 78 / 0.14);
-    --v3-accent-glow-far: rgb(224 164 78 / 0.07);
+    --v3-accent-stroke: rgb(226 167 90 / 0.28);
+    --v3-accent-glow-near: rgb(226 167 90 / 0.15);
+    --v3-accent-glow-far: rgb(226 167 90 / 0.07);
 
-    --v3-edge: rgb(246 241 231 / 0.16);
+    --v3-edge: rgb(247 244 236 / 0.22);
+
+    /* The shore band stops being a card: its night and the page's are the same
+     * navy, so the 28px corners dissolve and the art runs into the ground it
+     * was painted for. */
+    --v3-shore-ground: #0c1a36;
+    --v3-shore-scrim: 12 26 54;
+  }
+
+  /* With the wash held down to 0.08 so the big surfaces stay navy, the hairline
+   * is what actually carries amber and what gives a pill or a panel its edge.
+   * Inset, so gaining it costs no layout. */
+  .v3-theme .pill-apricot,
+  .v3-theme .pill-eyebrow,
+  .v3-theme .panel-apricot-tint {
+    box-shadow: inset 0 0 0 1px rgb(226 167 90 / 0.30);
   }
 }
 
@@ -1065,22 +1117,25 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * aloha@ — the shoreline is the brand's own world rather than decoration
  * borrowed for atmosphere. It appears once, at the foot of the page.
  *
- * The band's colours are FIXED, not tokens: `--color-navy` inverts to cream in
- * dark, which would have put a moonlit night scene behind navy-on-cream text.
- * One navy band, one night, both themes — which is also why the art needs no
- * light/dark fork.
+ * The band is night in BOTH themes — it never inverts, which is why it cannot
+ * use `--color-navy` (that flips to cream in dark and would put a moonlit scene
+ * behind navy-on-cream text) and why the art needs no light/dark fork. What DOES
+ * change is only how the night meets the page: against the warm-white page it is
+ * a statement card, and on the navy ground it is the same navy, so the 28px
+ * corners dissolve and the art runs straight into the page. That is the whole
+ * job of --v3-shore-ground / --v3-shore-scrim.
  *
  * The scrim is a vertical ramp rather than a flat wash: the moon and the sky at
  * the top stay legible as art, and it deepens toward the foot where the cream
  * sand would otherwise sit under the CTA. Contrast is measured, not assumed —
- * the preview screenshots are sampled under each text box. */
+ * the screenshots are sampled under each text box. */
 
 .v3-shore-band {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  background: #0c1424;
-  color: #f6f1e7;
+  background: var(--v3-shore-ground);
+  color: var(--v3-shore-ink);
 }
 
 /* The scene is a 4:1 panorama composed with its copy space on the right, and a
@@ -1104,7 +1159,12 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, #0c1424 0%, rgb(12 20 36 / 0.55) 30%, transparent 62%);
+  background: linear-gradient(
+    180deg,
+    var(--v3-shore-ground) 0%,
+    rgb(var(--v3-shore-scrim) / 0.55) 30%,
+    transparent 62%
+  );
 }
 
 .v3-shore-art { object-fit: cover; }
@@ -1121,11 +1181,11 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v3-shore-frame::after {
     background: linear-gradient(
       90deg,
-      rgb(9 18 38 / 0.10) 0%,
-      rgb(9 18 38 / 0.20) 32%,
-      rgb(9 18 38 / 0.64) 50%,
-      rgb(9 18 38 / 0.82) 68%,
-      rgb(9 18 38 / 0.86) 100%
+      rgb(var(--v3-shore-scrim) / 0.10) 0%,
+      rgb(var(--v3-shore-scrim) / 0.20) 32%,
+      rgb(var(--v3-shore-scrim) / 0.64) 50%,
+      rgb(var(--v3-shore-scrim) / 0.82) 68%,
+      rgb(var(--v3-shore-scrim) / 0.86) 100%
     );
   }
 }
@@ -1134,17 +1194,17 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * order — the pseudo-element is the last child and would otherwise cover this. */
 .v3-shore-copy { position: relative; z-index: 1; }
 
-.v3-shore-band :is(h2, p) { color: #f6f1e7; }
-.v3-shore-sub { color: rgb(246 241 231 / 0.84); }
+.v3-shore-band :is(h2, p) { color: var(--v3-shore-ink); }
+.v3-shore-sub { color: rgb(247 244 236 / 0.84); }
 
-/* The CTA on that band. Fixed colours for the same reason the band has them. */
+/* The CTA on that band. Night in both themes, for the same reason the band is. */
 .v3-btn-shore {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   padding: 0.9rem 1.75rem;
-  background: #f6f1e7;
+  background: var(--v3-shore-ink);
   color: #101c33;
   border: 0;
   border-radius: var(--r-full);
@@ -1160,7 +1220,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 .v3-btn-shore:active { transform: none; }
 .v3-btn-shore:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px #101c33, 0 0 0 5px #f6f1e7;
+  box-shadow: 0 0 0 3px #101c33, 0 0 0 5px var(--v3-shore-ink);
 }
 
 /* The closing lockup: the brand tile on the navy band needs a hairline to lift
