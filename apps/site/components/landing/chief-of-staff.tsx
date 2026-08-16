@@ -437,7 +437,12 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
             <span className="font-serif text-[1.2rem] font-semibold leading-none text-spruce">
               Hale
             </span>
+            {/* The name is the brand story — it must survive every redesign (it was
+                dropped once when this footer replaced the shared one). */}
             <p className="meta mt-3">
+              Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
+            </p>
+            <p className="meta mt-1">
               Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada.
             </p>
             <p className="meta mt-1">© {new Date().getFullYear()} Hale.</p>
