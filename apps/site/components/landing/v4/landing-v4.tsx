@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import heroShore from '~/assets/hale-shore-hero.webp';
+import nightShore from '~/assets/hale-shore-night.webp';
 import { CopyNumberButton } from '~/components/copy-number';
 import { FooterThemeSwitch } from '~/components/landing/v4/theme-switch';
 import { LandingCta } from '~/components/landing-cta';
@@ -46,6 +47,83 @@ const STEPS = [
   {
     step: 'I keep watch',
     body: 'A brief on Monday. A heads-up the week a window opens, the plan the night before. Quiet in between.',
+  },
+] as const;
+
+/** The autonomy ladder — suggest → prepare → handle-with-consent. Nothing
+ * reaches the outside world without a yes. */
+const LADDER = [
+  { rung: 'I suggest', body: 'the thing worth knowing this week, and why it matters now.' },
+  { rung: 'I prepare', body: 'the shortlist, the links, the times — ready before the window opens.' },
+  {
+    rung: 'with your ok, I handle it',
+    body: '— nothing reaches the outside world until you say so.',
+  },
+] as const;
+
+/** The 15 municipalities the radar tracks by name — every one backed by verified
+ * registration_windows rows in prod. Kept in sync with the v3 landing. */
+const MUNICIPALITIES = [
+  'Toronto',
+  'Mississauga',
+  'Brampton',
+  'Markham',
+  'Vaughan',
+  'Richmond Hill',
+  'Oakville',
+  'Burlington',
+  'Halton Hills',
+  'Caledon',
+  'Ajax',
+  'Pickering',
+  'Whitby',
+  'Oshawa',
+  'Aurora',
+] as const;
+
+const WATCHED = [
+  {
+    title: 'Swim lessons',
+    body: 'The sessions that fill in minutes — and the towns that register them on a date of their own, weeks after everything else.',
+  },
+  {
+    title: 'Camps',
+    body: 'Fall programs, and the winter-break camps that quietly open for registration back in August.',
+  },
+  {
+    title: 'After-school care',
+    body: 'Where a city books it apart from the rest, on its own morning.',
+  },
+  {
+    title: 'Waitlist clocks',
+    body: 'Some towns give you a day to accept a spot, some two. I watch the clock either way.',
+  },
+] as const;
+
+/** The coaching arc — a real sequence separated by days. */
+const COACHING = [
+  {
+    step: 'You ask',
+    body: 'An answer in two sentences, pitched at how old your child actually is — what’s common right now, and the thing to try tonight.',
+  },
+  {
+    step: 'I offer the whole plan',
+    body: 'Say yes and it arrives as two or three texts — the real method by name, whether that’s Ferber’s check-in tables, the three-day potty protocol, or Health Canada’s allergen introduction. Minutes and counts, not principles.',
+  },
+  {
+    step: 'A few days later, I ask how it went',
+    body: 'I name the day in the plan and set that reminder myself, so remembering to report back was never your job.',
+  },
+] as const;
+
+const CAREGIVERS = [
+  {
+    title: 'Grandparents and the nanny',
+    body: 'They get just the schedule — who’s where, and when to be there. Nothing else about your family travels with it, and everyone opts in for themselves.',
+  },
+  {
+    title: 'Your co-parent',
+    body: 'Always free. The same radar and the same reminders, on their own number — never a second household to pay for.',
   },
 ] as const;
 
@@ -165,13 +243,138 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
             </article>
           ))}
         </div>
+
+        <div className="v4-panel v4-glass mt-14">
+          <p className="v4-eyebrow">And when something needs doing</p>
+          <ul className="mt-6 flex flex-col gap-4">
+            {LADDER.map((item) => (
+              <li key={item.rung} className="text-[1.05rem] leading-snug text-spruce">
+                <strong className="font-semibold">{item.rung}</strong>{' '}
+                <span className="text-slate-green">{item.body}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-6 text-[15px] leading-[1.6] text-slate-green">
+            Receipts for everything: every message names exactly what I did. Say yes to a date and it
+            arrives as a calendar invite — a real event, at whatever address you give me. The full
+            record — who, what, when — is yours any time: ask me in the thread, or sign in with your
+            phone number.
+          </p>
+        </div>
+      </section>
+
+      {/* ── What I watch — the radar, by name ─────────────────────────────── */}
+      <section className="shell py-20 lg:py-28">
+        <p className="v4-eyebrow">What I watch</p>
+        <h2 className="v4-display v4-h2 mt-4">
+          {MUNICIPALITIES.length} municipalities,{' '}
+          <span className="v4-italic text-amber">by name.</span>
+        </h2>
+        <p className="v4-lede">
+          Registration opens at 7 a.m. on a Tuesday and fills before breakfast. I follow the
+          calendars where you live, so nobody has to keep a tab open.
+        </p>
+        <ul className="v4-pills mt-8">
+          {MUNICIPALITIES.map((city) => (
+            <li key={city} className="v4-pill v4-glass">
+              {city}
+            </li>
+          ))}
+        </ul>
+        <div className="v4-cardgrid-4 mt-12">
+          {WATCHED.map((item) => (
+            <article key={item.title} className="v4-card v4-glass">
+              <h3 className="text-spruce">{item.title}</h3>
+              <p>{item.body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Coaching — the questions that aren't scheduling ───────────────── */}
+      <section className="shell py-20 lg:py-28">
+        <p className="v4-eyebrow">When you ask me something</p>
+        <h2 className="v4-display v4-h2 mt-4">
+          Sleep, solids, potty —{' '}
+          <span className="v4-italic text-amber">answered, then planned.</span>
+        </h2>
+        <p className="v4-lede">
+          A chief of staff who only moved appointments would be a calendar. Ask me the 3 a.m.
+          question and you get a real answer in the same thread — never a link telling you to go read
+          someone else’s.
+        </p>
+        <ol className="v4-cardgrid mt-12">
+          {COACHING.map((item, i) => (
+            <li key={item.step} className="v4-card v4-glass">
+              <p className="v4-card-n">0{i + 1}</p>
+              <h3 className="text-spruce">{item.step}</h3>
+              <p>{item.body}</p>
+            </li>
+          ))}
+        </ol>
+        <div className="v4-cardgrid-2 mt-6">
+          <article className="v4-card v4-glass">
+            <h3 className="text-spruce">What I’ll plan with you</h3>
+            <p>
+              Sleep, starting solids, potty training, picky eating, tantrums, screen time, and the
+              routines that hold a week together.
+            </p>
+          </article>
+          <article className="v4-card v4-glass">
+            <h3 className="text-spruce">Where I stop</h3>
+            <p>
+              I don’t diagnose and I never name a dose. A plan says what’s common and what families
+              try, and it names the one situation worth raising with your doctor.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      {/* ── The caregivers, scoped ────────────────────────────────────────── */}
+      <section className="shell py-20 lg:py-28">
+        <p className="v4-eyebrow">Your helpers</p>
+        <h2 className="v4-display v4-h2 mt-4">
+          Your helpers, <span className="v4-italic text-amber">only what they need.</span>
+        </h2>
+        <div className="v4-cardgrid-2 mt-10">
+          {CAREGIVERS.map((item) => (
+            <article key={item.title} className="v4-card v4-glass">
+              <h3 className="text-spruce">{item.title}</h3>
+              <p>{item.body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Privacy, the Canadian way ─────────────────────────────────────── */}
+      <section className="shell py-20 lg:py-28">
+        <p className="v4-eyebrow">Privacy</p>
+        <h2 className="v4-display v4-h2 mt-4">
+          Privacy, the <span className="v4-italic text-amber">Canadian way.</span>
+        </h2>
+        <div className="v4-lede">
+          <p>
+            Your family’s data stays in Canada. Every permission is granular, auditable, and
+            revocable — you grant it in a text and withdraw it in a text. A child’s information is
+            sensitive by default, and a teenager’s more so.
+          </p>
+          <p className="mt-5">
+            Texting is not private the way a sealed app is: a message crosses your carrier and my
+            messaging provider before it reaches you. So I write to that reality — I name the task,
+            never the diagnosis.{' '}
+            <a href="/privacy" className="link">
+              How I handle your data
+            </a>
+            .
+          </p>
+        </div>
       </section>
 
       {/* ── Closing — the shore, and the founding invitation ──────────────── */}
       <section className="shell pb-24">
         <div className="v4-hero" style={{ minHeight: 'auto', borderRadius: 'var(--r-xl)' }}>
           <Image
-            src={heroShore}
+            src={nightShore}
             alt=""
             aria-hidden="true"
             fill
