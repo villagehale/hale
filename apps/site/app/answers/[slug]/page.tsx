@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { WordsPullUp } from '~/components/words-pull-up';
 import { FRAMEWORK_SOURCES } from '~/lib/answers/frameworks';
 import { allAnswers, getAnswer } from '~/lib/answers/index';
 import { answerJsonLd } from '~/lib/answers/structured-data';
@@ -18,6 +19,20 @@ const STAGE_LABEL: Record<string, string> = {
   child: 'School age · 4–12 years',
   teenager: 'Teenager · 13+ years',
 };
+
+/**
+ * The headline here is data — the reader's own question — so its accent segment
+ * has to be chosen by a rule rather than written. The rule is the last word: the
+ * subject the question lands on (…in the evening? …to my baby? …tantrums?), which
+ * is the word the reader came for. A one-word question has nothing to contrast
+ * with, so it stays plain.
+ */
+function questionSegments(question: string): { text: string; accent?: boolean }[] {
+  const words = question.split(' ');
+  const last = words.at(-1);
+  if (words.length < 2 || !last) return [{ text: question }];
+  return [{ text: words.slice(0, -1).join(' ') }, { text: last, accent: true }];
+}
 
 export function generateStaticParams(): { slug: string }[] {
   return allAnswers.map((a) => ({ slug: a.slug }));
@@ -72,32 +87,35 @@ export default async function AnswerRoute({ params }: PageProps) {
 
       <article className="shell pt-10 sm:pt-16 pb-16 lg:pb-24">
         <div className="max-w-3xl">
-          <nav aria-label="Breadcrumb" className="rise rise-1">
+          <nav aria-label="Breadcrumb">
             <a href="/answers" className="link text-sm">
               Parenting guides
             </a>
           </nav>
 
-          <div className="mt-4 rise rise-1">
-            <span className="eyebrow">{STAGE_LABEL[page.stage]}</span>
-            <h1 className="mt-3">{page.question}</h1>
+          <div className="mt-5">
+            <span className="pill-quiet">{STAGE_LABEL[page.stage]}</span>
+            {/* An editorial scale, not the hero one: a parent's question is often
+                a dozen words, and the site's h1 clamp tops out at 4.75rem — which
+                set this page's title as four lines of 76px display type. */}
+            <WordsPullUp
+              className="mt-4 text-[clamp(2rem,3.6vw,3.1rem)]"
+              segments={questionSegments(page.question)}
+            />
           </div>
 
           <p
-            className="mt-7 text-lg rise rise-2"
-            style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
+            className="reading-measure mt-7 text-lg"
+            style={{ color: 'var(--color-slate-green)', lineHeight: 1.7 }}
           >
             {page.answer}
           </p>
 
-          <p className="meta mt-4 rise rise-2">
+          <p className="meta mt-4">
             General guidance, last reviewed {page.updated} — not medical advice.
           </p>
 
-          <section
-            aria-labelledby="key-takeaways"
-            className="panel-oat mt-8 px-6 py-6 sm:px-8 rise rise-2"
-          >
+          <section aria-labelledby="key-takeaways" className="glass-panel mt-8 px-6 py-6 sm:px-8">
             <h2 id="key-takeaways" className="eyebrow" style={{ marginBottom: 0 }}>
               Key takeaways
             </h2>
@@ -119,14 +137,14 @@ export default async function AnswerRoute({ params }: PageProps) {
 
           <div className="mt-12 flex flex-col gap-12">
             {page.sections.map((section) => (
-              <section key={section.heading} className="rise rise-2">
+              <section key={section.heading}>
                 <h2 style={{ fontSize: 'clamp(1.5rem, 3vw, 2.1rem)' }}>{section.heading}</h2>
-                <div className="mt-4 flex flex-col gap-4">
+                <div className="reading-measure mt-4 flex flex-col gap-4">
                   {section.body.map((paragraph) => (
                     <p
                       key={paragraph.slice(0, 48)}
                       className="text-lg"
-                      style={{ color: 'var(--color-slate-green)', lineHeight: 1.65 }}
+                      style={{ color: 'var(--color-slate-green)', lineHeight: 1.7 }}
                     >
                       {paragraph}
                     </p>
@@ -137,11 +155,11 @@ export default async function AnswerRoute({ params }: PageProps) {
           </div>
 
           {page.faqs.length > 0 && (
-            <section className="mt-14 rise rise-2">
+            <section className="mt-14">
               <h2 style={{ fontSize: 'clamp(1.5rem, 3vw, 2.1rem)' }}>Parents also ask</h2>
               <dl className="mt-6 flex flex-col gap-6">
                 {page.faqs.map((faq) => (
-                  <div key={faq.question} className="panel-oat px-6 py-6 sm:px-8">
+                  <div key={faq.question} className="glass-panel px-6 py-6 sm:px-8">
                     <dt className="font-display" style={{ fontWeight: 600, fontSize: '1.15rem' }}>
                       {faq.question}
                     </dt>
@@ -157,9 +175,9 @@ export default async function AnswerRoute({ params }: PageProps) {
             </section>
           )}
 
-          <section className="mt-14 rise rise-2">
+          <section className="mt-14">
             <h2 style={{ fontSize: 'clamp(1.5rem, 3vw, 2.1rem)' }}>Sources</h2>
-            <p className="meta mt-3">
+            <p className="meta reading-measure mt-3">
               Every claim on this page is attributed to one of the parenting-health frameworks Hale
               draws from. Follow a source to read it directly.
             </p>
@@ -240,7 +258,7 @@ export default async function AnswerRoute({ params }: PageProps) {
       </section>
 
       {related.length > 0 && (
-        <div className="band-cream">
+        <div className="band-cream grain">
           <section className="shell py-16 lg:py-24">
             <span className="eyebrow">Related guides</span>
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
@@ -248,9 +266,9 @@ export default async function AnswerRoute({ params }: PageProps) {
                 <a
                   key={rel.slug}
                   href={`/answers/${rel.slug}`}
-                  className="card lift flex flex-col gap-3"
+                  className="glass-panel lift flex flex-col items-start gap-3 p-6 sm:p-7"
                 >
-                  <span className="eyebrow">{STAGE_LABEL[rel.stage]}</span>
+                  <span className="pill-quiet">{STAGE_LABEL[rel.stage]}</span>
                   <span
                     className="font-display"
                     style={{ fontWeight: 600, fontSize: '1.2rem', lineHeight: 1.25 }}

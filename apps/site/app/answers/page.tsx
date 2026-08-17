@@ -3,6 +3,7 @@ import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { WordsPullUp } from '~/components/words-pull-up';
 import { publishedAnswers } from '~/lib/answers/index';
 import { chromeCta } from '~/lib/site/chrome-cta';
 
@@ -35,13 +36,17 @@ export default function AnswersIndexPage() {
       <SiteHeader />
 
       <section className="shell pt-10 sm:pt-16 pb-12">
-        <div className="max-w-2xl rise rise-1">
+        <div className="max-w-2xl">
           <span className="eyebrow">Parenting guides</span>
-          <h1 className="mt-3">
-            Calm, cited guidance for <span className="accent">every stage</span>.
-          </h1>
+          <WordsPullUp
+            className="mt-3"
+            segments={[
+              { text: 'Calm, cited guidance for' },
+              { text: 'every stage.', accent: true },
+            ]}
+          />
           <p
-            className="mt-6 text-lg"
+            className="reading-measure mt-6 text-lg"
             style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
           >
             Practical guides for the questions parents actually search — each one grounded in
@@ -52,16 +57,16 @@ export default function AnswersIndexPage() {
       </section>
 
       {answers.length > 0 ? (
-        <div className="band-cream">
+        <div className="band-cream grain">
           <section className="shell py-16 lg:py-24">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
               {answers.map((page) => (
                 <a
                   key={page.slug}
                   href={`/answers/${page.slug}`}
-                  className="card lift flex flex-col gap-3"
+                  className="glass-panel lift flex flex-col items-start gap-3 p-6 sm:p-7"
                 >
-                  <span className="eyebrow">{STAGE_LABEL[page.stage]}</span>
+                  <span className="pill-quiet">{STAGE_LABEL[page.stage]}</span>
                   <span
                     className="font-display"
                     style={{ fontWeight: 600, fontSize: '1.2rem', lineHeight: 1.25 }}
@@ -78,11 +83,11 @@ export default function AnswersIndexPage() {
         </div>
       ) : (
         <section className="shell pb-20 lg:pb-28">
-          <div className="panel-oat px-8 py-14 sm:px-12 max-w-2xl rise rise-2">
+          <div className="glass-panel px-8 py-14 sm:px-12 max-w-2xl">
             <p className="text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
               Our first parenting guides are in review. In the meantime, the fastest way to get
-              guidance for your own child — with their age and your family in mind — is to ask
-              Ask Hale.
+              guidance for your own child — with their age and your family in mind — is to ask Ask
+              Hale.
             </p>
             <div className="mt-8">
               <a href={cta.href} className="btn-primary">
@@ -102,8 +107,8 @@ export default function AnswersIndexPage() {
             Have a question about your own child?
           </h2>
           <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
-            Ask Hale — with your child’s age and your family in mind. Free to start, and your
-            data stays in Canada.
+            Ask Hale — with your child’s age and your family in mind. Free to start, and your data
+            stays in Canada.
           </p>
           <div className="mt-8 flex justify-center">
             <LandingCta event="answers_cta_signin" href={cta.href} className="btn-on-navy">
