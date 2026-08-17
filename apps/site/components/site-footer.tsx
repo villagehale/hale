@@ -1,5 +1,5 @@
+import { FooterThemeSwitch } from '~/components/landing/v4/theme-switch';
 import { LogoMark } from '~/components/logo-mark';
-import { ThemeChoice } from '~/components/theme-toggle';
 import { APP_URL } from '~/lib/app-url';
 
 /**
@@ -64,11 +64,8 @@ export function SiteFooter() {
             <p className="mt-4 text-[12px] leading-[1.6] text-slate-green">
               Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
             </p>
-            <p className="mt-1 text-[12px] leading-[1.6] text-slate-green">
-              Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada.
-            </p>
             <div className="mt-6">
-              <ThemeChoice />
+              <FooterThemeSwitch />
             </div>
           </div>
 
@@ -96,9 +93,12 @@ export function SiteFooter() {
         <hr className="mb-6 mt-12 border-hair" />
 
         <div className="flex flex-col-reverse items-start justify-between gap-4 md:flex-row md:items-center">
-          <p className="text-[13px] text-slate-green">
-            © {new Date().getFullYear()} Hale. All rights reserved.
-          </p>
+          <div className="text-[13px] leading-[1.6] text-slate-green">
+            <p>© {new Date().getFullYear()} Hale. All rights reserved.</p>
+            <p className="mt-1">
+              Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada.
+            </p>
+          </div>
           <div className="flex flex-wrap gap-6">
             {LEGAL.map((item) => (
               <a

@@ -93,7 +93,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${instrumentSans.variable} ${sourceSerif.variable} ${jetbrainsMono.variable}`}
+      className={`${instrumentSans.variable} ${sourceSerif.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <head>

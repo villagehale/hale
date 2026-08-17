@@ -341,15 +341,17 @@ strong { font-weight: 700; }
 .font-mono { font-family: var(--font-mono); }
 .tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-/* Eyebrow label — Instrument Sans 600, tracked + uppercase, matching the
- * homepage's section eyebrows. */
+/* Eyebrow label — Instrument Sans 600, tracked + uppercase, in amber to match the
+ * v4 hero's eyebrow (.v4-eyebrow). Amber is the site's one accent, carried here
+ * and by the single serif-italic accent word; body text stays navy for AA. Never
+ * sits on a navy ground (audited), so the fill reads on every surface it lands on. */
 .eyebrow {
   font-family: var(--font-body);
   font-size: 0.8rem;
   letter-spacing: var(--tracking-eyebrow);
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--color-slate-green);
+  color: var(--color-amber);
 }
 
 .meta {
@@ -799,7 +801,12 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * on a document a reader is trying to be careful with. */
 .legal-measure { max-width: 38rem; }
 
-.legal-title { font-size: clamp(2.2rem, 5vw, 3rem); }
+.legal-title {
+  font-family: var(--font-serif-display), Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  font-size: clamp(2.2rem, 5vw, 3rem);
+}
 
 .legal-section h2 {
   font-size: clamp(1.45rem, 3vw, 1.85rem);

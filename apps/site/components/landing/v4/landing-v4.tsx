@@ -2,14 +2,16 @@ import Image from 'next/image';
 import heroShore from '~/assets/hale-shore-hero.webp';
 import nightShore from '~/assets/hale-shore-night.webp';
 import { CopyNumberButton } from '~/components/copy-number';
-import { FooterThemeSwitch } from '~/components/landing/v4/theme-switch';
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
-import { APP_URL } from '~/lib/app-url';
+import { SiteFooter } from '~/components/site-footer';
+import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref, buildSmsHrefForBody } from '~/lib/text-entry';
 
 /**
- * v4 — the liquid-glass shore. A CANDIDATE at /v4, never the live landing.
+ * v4 — the liquid-glass shore. The live landing, and the design the whole
+ * marketing site now wears: the shared chrome (SiteHeader/SiteFooter) and every
+ * subpage speak this idiom, so a visitor never crosses from here into the old look.
  *
  * The thesis: the name is Hawaiian for home, so the page opens on the shoreline
  * the name comes from — navy-scrimmed behind frosted glass — with the display in
@@ -127,24 +129,16 @@ const CAREGIVERS = [
   },
 ] as const;
 
-const FOOTER_PRODUCT = [
-  { label: 'Pricing', href: '/pricing' },
-  { label: 'FAQ', href: '/faq' },
-  { label: 'Activities', href: '/activities' },
-] as const;
-
-const FOOTER_RESOURCES = [
-  { label: 'Parenting guides', href: '/answers' },
-  { label: 'About', href: '/about' },
-  { label: 'Contact', href: '/contact' },
-  { label: 'Sign in', href: `${APP_URL}/sign-in` },
-] as const;
-
 export function LandingV4({ smsNumber }: { smsNumber: string }) {
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
 
   return (
     <main id="main" tabIndex={-1}>
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()) }}
+      />
       {/* ── Hero — the shore behind glass ─────────────────────────────────── */}
       <section className="v4-hero">
         <Image
@@ -211,7 +205,7 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
                 Email Hale
               </a>
             )}
-            <CopyNumberButton number={smsNumber} className="v4-btn v4-glass" />
+            {smsNumber && <CopyNumberButton number={smsNumber} className="v4-btn v4-glass" />}
           </div>
 
           {smsNumber && (
@@ -441,73 +435,8 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
         </div>
       </section>
 
-      {/* ── Footer — the theme switch lives here, not the header ───────────── */}
-      <footer className="border-t border-rule">
-        <div className="shell py-12 lg:py-16">
-          <div className="flex flex-col justify-between gap-12 lg:flex-row lg:gap-16">
-            <div className="lg:max-w-[22rem]">
-              <a href="/" className="flex items-center gap-2.5" aria-label="Hale, home">
-                <LogoMark size={28} />
-                <span className="font-serif text-[1.2rem] font-semibold leading-none text-spruce">
-                  Hale
-                </span>
-              </a>
-              <p className="mt-5 text-[13px] leading-[1.6] text-slate-green">
-                Hale is the quiet helper for busy families — always prepared, never acting without
-                you.
-              </p>
-              <p className="mt-4 text-[12px] leading-[1.6] text-slate-green">
-                Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
-              </p>
-              <div className="mt-6">
-                <FooterThemeSwitch />
-              </div>
-            </div>
-
-            <nav aria-label="Footer" className="grid grid-cols-2 gap-8 md:gap-12 lg:w-[38%]">
-              <div>
-                <h2 className="mb-5 text-[14px] font-semibold text-spruce">Product</h2>
-                <ul className="flex flex-col gap-3.5">
-                  {FOOTER_PRODUCT.map((item) => (
-                    <li key={item.label}>
-                      <a
-                        href={item.href}
-                        className="text-[13px] text-slate-green transition-colors hover:text-spruce"
-                      >
-                        {item.label}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h2 className="mb-5 text-[14px] font-semibold text-spruce">Resources</h2>
-                <ul className="flex flex-col gap-3.5">
-                  {FOOTER_RESOURCES.map((item) => (
-                    <li key={item.label}>
-                      <a
-                        href={item.href}
-                        className="text-[13px] text-slate-green transition-colors hover:text-spruce"
-                      >
-                        {item.label}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </nav>
-          </div>
-
-          <hr className="mb-6 mt-12 border-hair" />
-
-          <div className="text-[13px] leading-[1.6] text-slate-green">
-            <p>© {new Date().getFullYear()} Hale. All rights reserved.</p>
-            <p className="mt-1">
-              Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada.
-            </p>
-          </div>
-        </div>
-      </footer>
+      {/* ── Footer — shared with every subpage; the theme switch lives here ── */}
+      <SiteFooter />
     </main>
   );
 }
