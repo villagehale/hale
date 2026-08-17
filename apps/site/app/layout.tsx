@@ -25,6 +25,18 @@ const sourceSerif = localFont({
   display: 'swap',
 });
 
+// v4 display face — Instrument Serif, the serif sibling of our body Instrument Sans.
+// Same self-hosted OFL discipline as the others (fetched from Fontsource, not a runtime
+// Google request). Only the v4 landing binds it, via --font-serif-display.
+const instrumentSerif = localFont({
+  src: [
+    { path: './fonts/instrument-serif-latin-400-normal.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/instrument-serif-latin-400-italic.woff2', weight: '400', style: 'italic' },
+  ],
+  variable: '--font-serif-display',
+  display: 'swap',
+});
+
 const jetbrainsMono = localFont({
   // Only the 400 weight renders (the footer pronunciation); the site's other
   // mono spots resolve to the serif accent.
