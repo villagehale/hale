@@ -154,7 +154,7 @@ describe('/about — the paragraph that reads itself', () => {
     // Split into characters, and every one of them still in the markup: the
     // paragraph is a reveal over real content, never content the reveal creates.
     expect(rawText(html)).toContain(
-      'Hale is built by Anzhe Dong — an AI agent engineer who builds production agentic systems for a living.',
+      'Hale is built by Anzhe Dong — a father, husband, and founder who spent years shipping production agentic systems.',
     );
     expect(rawText(html)).toContain(
       'So he built the thing he kept wishing someone would text him.',
