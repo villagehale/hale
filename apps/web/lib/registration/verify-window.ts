@@ -35,7 +35,12 @@ export const REGISTRATION_TIME_ZONE = 'America/Toronto';
  * civic hours parser, for the same reason: better silent than wrong about a time. */
 export const MIN_VERIFY_CONFIDENCE = 0.7;
 
-const MAX_TOKENS = 1024;
+// The read transcribes verbatim page quotes (evidence, year_evidence) whose
+// length the page dictates, so a dense page can overrun a tight ceiling — a
+// truncated answer that surfaced as "extract_failed". No finite ceiling makes
+// truncation impossible while those fields are unbounded; forceToolJson's
+// stop_reason guard is the real fix, this is headroom over observed ~600-tok reads.
+const MAX_TOKENS = 2048;
 
 /** Why a page yielded no dates for the cycle asked about. Each is a real, common
  * state of a municipal page — none of them is an error. */
@@ -229,6 +234,20 @@ const publishedDateSchema = z.object({
   time: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
 });
 
+/** The model has two ways of saying "no date for this field": a plain `null`, and
+ * a present object whose date is null (`{date:null,time:null}`) — it flip-flops
+ * between them run to run. Both mean the same absence; collapse the object form to
+ * `null` at the parse boundary so the rest of the module keeps its one invariant:
+ * a PublishedDate always carries a real date, and absence is `null` (compareWindow's
+ * `=== null` skip and publishedInstant both depend on it). */
+const nullableWindowDate = z.preprocess(
+  (value) =>
+    value && typeof value === 'object' && (value as { date?: unknown }).date == null
+      ? null
+      : value,
+  publishedDateSchema.nullable(),
+);
+
 const extractionSchema = z.object({
   found: z.boolean(),
   reason: z
@@ -236,9 +255,9 @@ const extractionSchema = z.object({
     .nullable(),
   cycle_on_page: z.string().nullable(),
   year_evidence: z.string().nullable(),
-  preview: publishedDateSchema.nullable(),
-  resident_open: publishedDateSchema.nullable(),
-  general_open: publishedDateSchema.nullable(),
+  preview: nullableWindowDate,
+  resident_open: nullableWindowDate,
+  general_open: nullableWindowDate,
   evidence: z.string().nullable(),
   confidence: z.number().min(0).max(1),
 });
@@ -313,6 +332,13 @@ export type CycleIdentity = Pick<StoredWindow, 'municipality' | 'programDomain' 
 
 export interface ExtractDeps {
   client: AgentClient;
+}
+
+/** Parse a raw model tool-input into the module's shape. Exported so the parse
+ * boundary — the same `extractionSchema` forceToolJson runs in production — is
+ * testable directly, including the {date:null} → null collapse. */
+export function parseExtraction(raw: unknown): ExtractedWindow {
+  return toExtractedWindow(extractionSchema.parse(raw));
 }
 
 /** Normalise the skill's snake_case answer into the module's shape. */

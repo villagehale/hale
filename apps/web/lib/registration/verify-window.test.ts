@@ -4,6 +4,7 @@ import {
   type StoredWindow,
   compareWindow,
   corroborationFailure,
+  parseExtraction,
   publishedInstant,
 } from './verify-window';
 
@@ -219,6 +220,39 @@ describe('compareWindow — a guess is never a verification', () => {
       extracted({ preview: null, residentOpen: null, generalOpen: null }),
     );
     expect(outcome).toEqual({ kind: 'unverified', reason: 'no_dates_for_cycle' });
+  });
+});
+
+describe('parseExtraction — {date:null} is the same absence as null', () => {
+  // A full, valid model answer; each case overrides only the `preview` field.
+  const RAW = {
+    found: true,
+    reason: null,
+    cycle_on_page: '2026 Fall Programs',
+    year_evidence: '2026 Fall Programs',
+    preview: null,
+    resident_open: null,
+    general_open: null,
+    evidence: 'Register starting Aug. 11 at 6:30 AM',
+    confidence: 0.9,
+  };
+
+  it('collapses a {date:null} object to null — the model\'s other "no date" encoding', () => {
+    // The model flip-flops between `null` and `{date:null,time:null}` for a slot
+    // with no published date. Both must arrive as null: compareWindow's `=== null`
+    // skip and publishedInstant both assume a PublishedDate carries a real date, so
+    // an un-collapsed {date:null} would slip a null date into instant construction.
+    const parsed = parseExtraction({ ...RAW, preview: { date: null, time: null } });
+    expect(parsed.preview).toBeNull();
+  });
+
+  it('keeps a real published date (positive control)', () => {
+    const parsed = parseExtraction({ ...RAW, preview: { date: '2026-08-03', time: null } });
+    expect(parsed.preview).toEqual({ date: '2026-08-03', time: null });
+  });
+
+  it('still rejects a malformed date — the collapse is not a catch-all', () => {
+    expect(() => parseExtraction({ ...RAW, preview: { date: 'August 3', time: null } })).toThrow();
   });
 });
 

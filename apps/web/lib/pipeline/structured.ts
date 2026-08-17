@@ -50,6 +50,15 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
     messages: [{ role: 'user', content: args.userMessage }],
   });
 
+  // A response cut off at max_tokens leaves the forced tool call incomplete —
+  // often `input: {}` — and parsing that empty object reports every required field
+  // as missing, a ZodError indistinguishable from a genuine bad-shape answer.
+  // Surface truncation as itself so a caller (and the founder-facing sweep) sees
+  // the real cause instead of a false "the model returned nothing valid".
+  if (response.stop_reason === 'max_tokens') {
+    throw new Error(`${args.toolName}: tool call truncated at max_tokens (${args.maxTokens})`);
+  }
+
   const toolUse = response.content.find(
     (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === args.toolName,
   );
