@@ -1,4 +1,3 @@
-import { Sparkles } from 'lucide-react';
 import type { Metadata } from 'next';
 import { CtaBand } from '~/components/cta-band';
 import { PricingSection } from '~/components/pricing-section';
@@ -35,10 +34,7 @@ export default function PricingPage() {
 
       <section className="shell pt-10 sm:pt-16 pb-8 lg:pb-10">
         <div className="max-w-2xl">
-          <span className="pill-eyebrow">
-            <Sparkles size={14} strokeWidth={2} aria-hidden="true" />
-            Pricing
-          </span>
+          <span className="eyebrow">Pricing</span>
           <WordsPullUp
             className="mt-4"
             segments={[{ text: 'Free while Hale is' }, { text: 'new.', accent: true }]}

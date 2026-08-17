@@ -1,5 +1,5 @@
+import { FooterThemeSwitch } from '~/components/landing/v4/theme-switch';
 import { LogoMark } from '~/components/logo-mark';
-import { ThemeChoice } from '~/components/theme-toggle';
 import { APP_URL } from '~/lib/app-url';
 
 /**
@@ -65,7 +65,7 @@ export function SiteFooter() {
               Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
             </p>
             <div className="mt-6">
-              <ThemeChoice />
+              <FooterThemeSwitch />
             </div>
           </div>
 

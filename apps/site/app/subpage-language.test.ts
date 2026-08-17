@@ -94,12 +94,23 @@ describe('the pulled-up headline', () => {
 
   it.each(PULLED_UP)('gives %s exactly one accent segment', (_name, html) => {
     const h1 = heading(html);
-    const accented = [...h1.matchAll(/class="pull-word accent"/g)];
+    // The accent word is the v4 device — amber serif-italic — the same one the
+    // v4 landing hero wears (`v4-italic text-amber`), not the old glow class.
+    const accented = [...h1.matchAll(/class="pull-word v4-italic text-amber"/g)];
     expect(accented.length).toBeGreaterThan(0);
     // One RUN of accented words, not two — the device is a single segment per
     // headline, and two would read as a mistake rather than an emphasis.
-    const runs = h1.split(/class="pull-word"/).filter((part) => part.includes('pull-word accent'));
+    const runs = h1
+      .split(/class="pull-word"/)
+      .filter((part) => part.includes('pull-word v4-italic text-amber'));
     expect(runs).toHaveLength(1);
+  });
+
+  it.each(PULLED_UP)('sets %s in the v4 display serif', (_name, html) => {
+    // The re-skin in one pin: every subpage headline is now Instrument Serif
+    // (.v4-display), the same display face the v4 landing hero wears, rather than
+    // the old sans display. The class rides on the heading tag WordsPullUp emits.
+    expect(html).toMatch(/<h1[^>]*class="v4-display[^"]*"/);
   });
 
   it('staggers by word index, from zero, across the whole headline', () => {
@@ -121,16 +132,18 @@ describe('the pulled-up headline', () => {
     expect(blocks.some((block) => block.includes('.hale-hero-word'))).toBe(true);
   });
 
-  it('leaves the homepage on its own hero-word reveal', () => {
-    // Home is untouched by this language: it already had the gesture, and its h1
-    // is the one headline on the site that is deliberately small.
+  it('leaves the homepage on its own v4 hero display, not the subpage reveal', () => {
+    // Home is the v4 liquid-glass shore: its hero display is Instrument Serif set
+    // large (.v4-display / .v4-italic), not the subpage pulled-up reveal. The two
+    // never share the pull-word device — only the amber serif-italic accent.
     const landing = readFileSync(
-      fileURLToPath(new URL('../components/landing/conversational.tsx', import.meta.url)),
+      fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
       'utf8',
     );
     expect(landing).not.toContain('pull-word');
     expect(landing).not.toContain('WordsPullUp');
-    expect(landing).toContain('v3-accent');
+    expect(landing).toContain('v4-display');
+    expect(landing).toContain('v4-italic');
   });
 });
 

@@ -1,4 +1,4 @@
-import { ArrowUpRight, MapPin } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import type { Metadata } from 'next';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
@@ -50,10 +50,7 @@ export default function ActivitiesHub() {
 
       <section className="shell pt-10 sm:pt-16 pb-12 lg:pb-16">
         <div className="max-w-2xl">
-          <span className="pill-eyebrow">
-            <MapPin size={14} strokeWidth={2} aria-hidden="true" />
-            Near you
-          </span>
+          <span className="eyebrow">Near you</span>
           <WordsPullUp
             className="mt-4"
             segments={[

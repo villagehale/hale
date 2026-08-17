@@ -341,15 +341,17 @@ strong { font-weight: 700; }
 .font-mono { font-family: var(--font-mono); }
 .tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-/* Eyebrow label — Instrument Sans 600, tracked + uppercase, matching the
- * homepage's section eyebrows. */
+/* Eyebrow label — Instrument Sans 600, tracked + uppercase, in amber to match the
+ * v4 hero's eyebrow (.v4-eyebrow). Amber is the site's one accent, carried here
+ * and by the single serif-italic accent word; body text stays navy for AA. Never
+ * sits on a navy ground (audited), so the fill reads on every surface it lands on. */
 .eyebrow {
   font-family: var(--font-body);
   font-size: 0.8rem;
   letter-spacing: var(--tracking-eyebrow);
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--color-slate-green);
+  color: var(--color-amber);
 }
 
 .meta {
@@ -799,7 +801,12 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * on a document a reader is trying to be careful with. */
 .legal-measure { max-width: 38rem; }
 
-.legal-title { font-size: clamp(2.2rem, 5vw, 3rem); }
+.legal-title {
+  font-family: var(--font-serif-display), Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  font-size: clamp(2.2rem, 5vw, 3rem);
+}
 
 .legal-section h2 {
   font-size: clamp(1.45rem, 3vw, 1.85rem);
@@ -1669,4 +1676,355 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .char-reveal-char { animation: none; opacity: 1; }
 }
 
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * v4 landing — the liquid-glass shore.  A CANDIDATE (rendered at /v4), never the
+ * live page. It extends the glass recipe the chrome already ships (#466) into a
+ * full hero: the Hawaiian shoreline the name comes from, navy-scrimmed behind
+ * frosted glass, with the display set in Instrument Serif — the serif sibling of
+ * the body Instrument Sans. Every colour is a themed light-dark() token, so the
+ * footer switch drives the whole page, hero included.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* The display face. Instrument Serif is high-contrast and tight; it carries the
+   * hero alone, so it is only ever set large. */
+  .v4-display {
+    font-family: var(--font-serif-display), Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.015em;
+    line-height: 0.96;
+  }
+  .v4-italic { font-style: italic; }
+
+  /* Liquid glass — the #466 recipe as a reusable class. The gradient ring is
+   * bright at top and bottom, gone in the middle, masked to the border only, so
+   * it reads as light on the leading edge of glass rather than a flat tint. */
+  .v4-glass {
+    position: relative;
+    overflow: hidden;
+    background: var(--glass-bg);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    box-shadow:
+      inset 0 1px 1px var(--glass-highlight),
+      0 18px 50px -34px rgb(12 26 54 / 0.55);
+  }
+  .v4-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.4px;
+    background: linear-gradient(
+      180deg,
+      var(--glass-edge-top) 0%,
+      transparent 32%,
+      transparent 68%,
+      var(--glass-edge-top) 100%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* ── Hero ─────────────────────────────────────────────────────────────── */
+  .v4-hero {
+    position: relative;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  /* The shore, and the theme-driven scrim over it. The image is one file; what
+   * the toggle changes is only how much night is poured over it — a warm daylit
+   * wash in light, deep Prussian in dark — so the same shore reads as morning or
+   * evening and the switch visibly transforms the hero. */
+  .v4-hero-art {
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 32%;
+    filter: light-dark(saturate(1.03) brightness(1.02), saturate(0.92) brightness(0.66));
+  }
+  .v4-hero-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(
+        130% 90% at 50% 20%,
+        light-dark(rgb(253 252 250 / 0.06), rgb(12 26 54 / 0.26)) 0%,
+        light-dark(rgb(253 252 250 / 0.40), rgb(12 26 54 / 0.62)) 52%,
+        light-dark(rgb(253 252 250 / 0.74), rgb(12 26 54 / 0.90)) 100%
+      ),
+      linear-gradient(
+        180deg,
+        light-dark(rgb(253 252 250 / 0.34), rgb(12 26 54 / 0.50)) 0%,
+        transparent 28%,
+        transparent 60%,
+        var(--color-linen) 100%
+      );
+  }
+
+  /* ── Floating glass nav pill ──────────────────────────────────────────── */
+  .v4-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    max-width: 64rem;
+    margin: 1.25rem auto 0;
+    padding: 0.6rem 0.7rem 0.6rem 1.15rem;
+    border-radius: var(--r-full);
+  }
+  .v4-navlinks { display: none; }
+  @media (min-width: 768px) {
+    .v4-navlinks { display: flex; align-items: center; gap: 1.75rem; }
+  }
+  .v4-navlink {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-navy);
+    opacity: 0.78;
+    transition: opacity 160ms var(--ease-breathe);
+  }
+  .v4-navlink:hover { opacity: 1; }
+
+  /* Glass button (secondary) and the solid navy primary. */
+  .v4-btn,
+  .v4-btn-solid {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.4rem;
+    border-radius: var(--r-full);
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      transform 160ms var(--ease-breathe),
+      background 160ms var(--ease-breathe);
+  }
+  .v4-btn { color: var(--color-navy); }
+  .v4-btn-solid {
+    background: var(--color-navy);
+    color: var(--color-cream);
+  }
+  .v4-btn:hover,
+  .v4-btn-solid:hover { transform: translateY(-1px); }
+  .v4-btn-solid:hover { background: var(--color-navy-deep); }
+
+  /* ── Hero content ─────────────────────────────────────────────────────── */
+  .v4-hero-body {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.6rem;
+    padding: 3rem 1.5rem 5rem;
+    text-align: center;
+  }
+  .v4-eyebrow {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--color-amber);
+  }
+  .v4-hero-h1 {
+    font-size: clamp(2.9rem, 8.5vw, 6.5rem);
+    color: var(--color-ink);
+    max-width: 15ch;
+    text-shadow: light-dark(0 1px 30px rgb(253 252 250 / 0.65), 0 2px 40px rgb(12 26 54 / 0.7));
+  }
+  .v4-hero-h1 .v4-italic { color: var(--color-amber); }
+  .v4-hero-sub {
+    max-width: 42ch;
+    font-size: clamp(1rem, 1.6vw, 1.15rem);
+    line-height: 1.6;
+    color: var(--color-navy);
+    opacity: 0.9;
+    text-shadow: light-dark(0 1px 18px rgb(253 252 250 / 0.8), none);
+  }
+
+  /* The reply-chip row — the questions parents actually send, echoing v3, as
+   * glass pills that scroll to the thread section. */
+  .v4-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    justify-content: center;
+    max-width: 40rem;
+  }
+  .v4-chip {
+    padding: 0.5rem 0.95rem;
+    border-radius: var(--r-full);
+    font-size: 0.86rem;
+    color: var(--color-navy);
+    cursor: pointer;
+    transition: transform 140ms var(--ease-breathe);
+  }
+  .v4-chip:hover { transform: translateY(-1px); }
+
+  /* ── Glass numbered cards (how it works) ──────────────────────────────── */
+  .v4-cardgrid {
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 768px) {
+    .v4-cardgrid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .v4-card {
+    border-radius: var(--r-lg);
+    padding: 1.75rem;
+  }
+  .v4-card-n {
+    font-family: var(--font-serif-display), Georgia, serif;
+    font-size: 2.4rem;
+    line-height: 1;
+    color: var(--color-amber);
+  }
+  .v4-card h3 { margin-top: 0.9rem; font-size: 1.15rem; line-height: 1.25; }
+  .v4-card p { margin-top: 0.6rem; color: var(--color-slate-green); line-height: 1.6; }
+
+  /* ── Footer theme switch ──────────────────────────────────────────────── */
+  .v4-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+  }
+  .v4-switch-track {
+    position: relative;
+    width: 3.4rem;
+    height: 1.85rem;
+    flex: none;
+    border-radius: var(--r-full);
+    background: var(--v3-chip-bg);
+    border: 1px solid var(--v3-chip-border);
+    transition: background 220ms var(--ease-breathe);
+  }
+  .v4-switch-knob {
+    position: absolute;
+    top: 50%;
+    left: 0.22rem;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 50%;
+    background: var(--color-navy);
+    color: var(--color-cream);
+    display: grid;
+    place-items: center;
+    transform: translateY(-50%);
+    transition: left 240ms var(--ease-breathe);
+  }
+  .v4-switch[aria-checked='true'] .v4-switch-knob { left: calc(100% - 1.62rem); }
+  .v4-switch-label { font-size: 0.85rem; color: var(--color-slate-green); }
+  .v4-switch:focus-visible { outline: none; }
+  .v4-switch:focus-visible .v4-switch-track {
+    outline: 2px solid var(--color-spruce);
+    outline-offset: 2px;
+  }
+
+  /* ── Content sections (ported from v3 into the glass idiom) ───────────── */
+  /* Section heading + lede. The display face carries the heading; the amber
+   * italic is the accent, matching the hero. */
+  .v4-h2 {
+    font-size: clamp(1.9rem, 4.4vw, 3rem);
+    color: var(--color-ink);
+    max-width: 20ch;
+  }
+  .v4-lede {
+    margin-top: 1.4rem;
+    max-width: 46ch;
+    font-size: clamp(1.02rem, 1.5vw, 1.18rem);
+    line-height: 1.6;
+    color: var(--color-slate-green);
+  }
+
+  /* The named towns the radar watches — glass pills, non-interactive. */
+  .v4-pills { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+  .v4-pill {
+    padding: 0.42rem 0.9rem;
+    border-radius: var(--r-full);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-navy);
+  }
+
+  /* Plain glass cards (radar 4-up, coaching/caregivers 2-up). Reuses .v4-card
+   * for type; these variants drop the numbered top margin since the heading is
+   * the first child. */
+  .v4-card > h3:first-child { margin-top: 0; }
+  .v4-cardgrid-4 { display: grid; gap: 1.1rem; grid-template-columns: 1fr; }
+  @media (min-width: 640px) { .v4-cardgrid-4 { grid-template-columns: repeat(2, 1fr); } }
+  @media (min-width: 1024px) { .v4-cardgrid-4 { grid-template-columns: repeat(4, 1fr); } }
+  .v4-cardgrid-2 { display: grid; gap: 1.25rem; grid-template-columns: 1fr; }
+  @media (min-width: 1024px) { .v4-cardgrid-2 { grid-template-columns: repeat(2, 1fr); } }
+
+  /* Glass panel — the autonomy ladder + receipts. */
+  .v4-panel {
+    border-radius: var(--r-xl);
+    padding: clamp(1.75rem, 4vw, 2.75rem);
+  }
+
+  /* ── Texting demo — what talking to Hale actually looks like ───────────── */
+  .v4-thread {
+    max-width: 30rem;
+    margin-inline: auto;
+    border-radius: var(--r-xl);
+    padding: 1.4rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+  .v4-thread-cap {
+    align-self: center;
+    margin-bottom: 0.2rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-slate-green);
+  }
+  .v4-bubble {
+    max-width: 84%;
+    padding: 0.7rem 1rem;
+    border-radius: 1.25rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  .v4-bubble-out {
+    align-self: flex-end;
+    border-bottom-right-radius: 0.4rem;
+    background: var(--color-navy);
+    color: var(--color-cream);
+  }
+  .v4-bubble-in {
+    align-self: flex-start;
+    border-bottom-left-radius: 0.4rem;
+    background: light-dark(rgb(255 255 255 / 0.74), rgb(255 255 255 / 0.09));
+    color: var(--color-spruce);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .v4-hero-art { filter: light-dark(none, brightness(0.66)); }
+    .v4-switch-knob,
+    .v4-btn,
+    .v4-btn-solid,
+    .v4-chip { transition: none; }
+  }
 }

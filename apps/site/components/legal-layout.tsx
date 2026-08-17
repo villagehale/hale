@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { LogoMark } from '~/components/logo-mark';
 import { APP_URL } from '~/lib/app-url';
 
 /**
@@ -37,8 +38,9 @@ export function LegalLayout({
   return (
     <main id="main" tabIndex={-1}>
       <header className="shell legal-print-hide flex items-center justify-between py-6">
-        <a href="/" className="font-serif text-[1.35rem] font-semibold leading-none text-spruce">
-          Hale
+        <a href="/" className="flex items-center gap-2.5" aria-label="Hale, home">
+          <LogoMark size={28} />
+          <span className="font-serif text-[1.2rem] font-semibold leading-none text-spruce">Hale</span>
         </a>
         <a href={`${APP_URL}/sign-in`} className="py-1 text-sm font-medium text-slate-green">
           Sign in
