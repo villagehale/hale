@@ -61,7 +61,7 @@ const LADDER = [
 
 /** One paragraph, read at the speed of the scroll. See components/char-reveal.tsx. */
 const FOUNDER_STORY =
-  'Hale is built by Anzhe Dong — an AI agent engineer who builds production agentic systems for a living. He started it raising a kid far from the village his own parents had: no elders down the street, no one who just knew which class was worth it. The trust was still out there, in what other parents told each other; it just couldn’t reach him. So he built the thing he kept wishing someone would text him.';
+  'Hale is built by Anzhe Dong — a father, husband, and founder who spent years shipping production agentic systems. He started it raising a kid far from the village his own parents had: no elders down the street, no one who just knew which class was worth it. The trust was still out there, in what other parents told each other; it just couldn’t reach him. So he built the thing he kept wishing someone would text him.';
 
 export default function AboutPage() {
   // The one front door the site chrome offers. This page used to close on the
