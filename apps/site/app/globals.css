@@ -1975,6 +1975,44 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     padding: clamp(1.75rem, 4vw, 2.75rem);
   }
 
+  /* ── Texting demo — what talking to Hale actually looks like ───────────── */
+  .v4-thread {
+    max-width: 30rem;
+    margin-inline: auto;
+    border-radius: var(--r-xl);
+    padding: 1.4rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+  .v4-thread-cap {
+    align-self: center;
+    margin-bottom: 0.2rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-slate-green);
+  }
+  .v4-bubble {
+    max-width: 84%;
+    padding: 0.7rem 1rem;
+    border-radius: 1.25rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  .v4-bubble-out {
+    align-self: flex-end;
+    border-bottom-right-radius: 0.4rem;
+    background: var(--color-navy);
+    color: var(--color-cream);
+  }
+  .v4-bubble-in {
+    align-self: flex-start;
+    border-bottom-left-radius: 0.4rem;
+    background: light-dark(rgb(255 255 255 / 0.74), rgb(255 255 255 / 0.09));
+    color: var(--color-spruce);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .v4-hero-art { filter: light-dark(none, brightness(0.66)); }
     .v4-switch-knob,

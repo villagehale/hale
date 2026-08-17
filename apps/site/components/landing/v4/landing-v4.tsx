@@ -228,6 +228,33 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
         </div>
       </section>
 
+      {/* ── What texting Hale is like — the thread, made concrete ─────────── */}
+      <section className="shell pt-20 lg:pt-28">
+        <p className="v4-eyebrow text-center">Texting Hale looks like this</p>
+        <h2 className="v4-display mx-auto mt-4 max-w-[18ch] text-center text-[clamp(1.9rem,4.4vw,3rem)] text-ink">
+          Text me like you’d text <span className="v4-italic text-amber">a friend.</span>
+        </h2>
+        <p className="v4-lede mx-auto text-center">
+          No app, no commands, no menus. Say what’s on your mind in plain words — I answer in the
+          same thread, and I only act when you say so.
+        </p>
+
+        <div className="v4-thread v4-glass mt-10">
+          <p className="v4-thread-cap">Your thread with Hale</p>
+          <p className="v4-bubble v4-bubble-out">When does swim registration open in Oakville?</p>
+          <p className="v4-bubble v4-bubble-in">
+            I’m watching Oakville’s swim registration for you. I’ll text you the morning the date is
+            set, remind you the night before, and nudge you the minute it opens.
+          </p>
+          <p className="v4-bubble v4-bubble-out">my 2-year-old keeps waking at 5am 😩</p>
+          <p className="v4-bubble v4-bubble-in">
+            Common at this age — usually an early bedtime or too much day sleep. Want the full plan?
+            It’s three texts, and I’ll check in with you in a few days.
+          </p>
+          <p className="v4-bubble v4-bubble-out">yes please</p>
+        </div>
+      </section>
+
       {/* ── How it works — three glass cards ──────────────────────────────── */}
       <section className="shell py-20 lg:py-28">
         <p className="v4-eyebrow text-center">How Hale works</p>
