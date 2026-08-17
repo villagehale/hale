@@ -9,7 +9,7 @@ import { chromeCta } from '~/lib/site/chrome-cta';
 
 const TITLE = 'Pricing · Hale';
 const DESCRIPTION =
-  'Hale is free while we build the village — every stage, every child. Plus and Family add more automation and booking on your approval as integrations ship. Your data stays in Canada.';
+  'Free while Hale is new — every stage, every child. Plus and Family add more automation and booking on your approval as integrations ship. Your data stays in Canada.';
 
 export const metadata: Metadata = {
   title: TITLE,
