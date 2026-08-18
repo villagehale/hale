@@ -1,3 +1,4 @@
+import { SONNET_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { type DiscoverDeps, type DiscoveryAnthropicClient, discoverForFamily } from './discover.js';
@@ -157,7 +158,7 @@ function deps(client: DiscoveryAnthropicClient): DiscoverDeps {
   return {
     client,
     loadPrompt: async () => 'SYSTEM',
-    loadModel: async () => 'claude-test',
+    loadModel: async () => SONNET_MODEL,
     geocode: async () => null,
     geocodeArea: async () => null,
   };

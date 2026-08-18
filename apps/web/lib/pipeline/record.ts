@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
+import { type AgentUsage, agentRunCostUsd } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, DraftedAction, ReviewerVerdict } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
-import { haikuCostUsd, recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
+import { recordAgentRun } from '~/lib/agent-run';
 
 /**
  * The pipeline's deterministic DB writes — the web-side analogue of the worker's
@@ -49,7 +50,7 @@ export interface RecordEventInput {
   suggestion: import('@hale/types').ClassifierSuggestion;
   teenContent: boolean;
   childId: string | null;
-  usage: { promptTokens: number; completionTokens: number };
+  usage: AgentUsage;
   model: string;
   langfuseTraceId?: string | null;
 }
@@ -114,7 +115,7 @@ export async function recordEvent(
     modelUsed: input.model,
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
-    costUsd: haikuCostUsd(input.usage),
+    costUsd: agentRunCostUsd(input.model, input.usage),
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });
@@ -135,7 +136,7 @@ export interface RecordDraftInput {
   familyId: string;
   eventId: string;
   draft: DraftedAction;
-  usage: { promptTokens: number; completionTokens: number };
+  usage: AgentUsage;
   model: string;
   langfuseTraceId?: string | null;
 }
@@ -157,7 +158,7 @@ export async function recordDraft(
     modelUsed: input.model,
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
-    costUsd: sonnetCostUsd(input.usage),
+    costUsd: agentRunCostUsd(input.model, input.usage),
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });
@@ -219,6 +220,11 @@ export interface RecordVerdictInput {
   actionType: ActionType;
   verdict: ReviewerVerdict;
   usage: { promptTokens: number; completionTokens: number };
+  /** Priced by the reviewer loop itself, which is the only place that still holds
+   * the per-turn tier split — `usage.promptTokens` here is the sum the row records
+   * (full-rate + cache reads), so re-deriving from it would bill every cached
+   * token at 10x its rate. */
+  costUsd: number;
   model: string;
   langfuseTraceId?: string | null;
 }
@@ -241,7 +247,7 @@ export async function recordVerdict(
     modelUsed: input.model,
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
-    costUsd: sonnetCostUsd(input.usage),
+    costUsd: input.costUsd,
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });

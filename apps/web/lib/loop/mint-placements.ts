@@ -162,6 +162,7 @@ export async function mintCalendarDraftsForWeekPlan(
       actionType: 'calendar_add',
       verdict: verdict.verdict,
       usage: verdict.usage,
+      costUsd: verdict.costUsd,
       model: SONNET_MODEL,
     });
 

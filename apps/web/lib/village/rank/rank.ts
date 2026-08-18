@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickModel, runAgent } from '@hale/agent';
+import { type AgentClient, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
+import { recordAgentRun } from '~/lib/agent-run';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { buildRankTools } from './rank-tools';
@@ -143,7 +143,7 @@ export async function rankRecommendations(
         modelUsed,
         promptTokens: result.usage.promptTokens,
         completionTokens: result.usage.completionTokens,
-        costUsd: sonnetCostUsd(result.usage),
+        costUsd: agentRunCostUsd(modelUsed, result.usage),
         latencyMs: Date.now() - startedAt,
         status,
         langfuseTraceId: trace.traceId,
