@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRIVACY_URL } from '~/lib/legal-links';
+import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 import {
   ASSENT_ACK,
   DECLINE_ACK,
@@ -67,6 +68,11 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(sourceCodeFromBody('HALE earlyon-georgetown')).toBe('earlyon-georgetown');
     expect(sourceCodeFromBody('Hi (via earlyon-georgetown)')).toBe('earlyon-georgetown');
     expect(venueForCode('earlyon-georgetown')?.name).toBe('EarlyON centre');
+    expect(sourceCodeFromBody('Hi (via earlyon-acton)')).toBe('earlyon-acton');
+    expect(venueForCode('earlyon-acton')?.name).toBe('EarlyON centre');
+    // both Halton Hills poster codes carry the lifetime Family comp
+    expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-georgetown')).toBe(true);
+    expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-acton')).toBe(true);
   });
 
   it('refuses an unknown suffix code and ignores a mid-message "(via …)"', () => {

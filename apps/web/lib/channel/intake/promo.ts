@@ -7,4 +7,4 @@
  * where it writes its own immutable audit row (rule #6). Billing is inert and nothing
  * downgrades a tier, so a family granted 'family' this way keeps it for life.
  */
-export const LIFETIME_FAMILY_SOURCE_CODES = new Set<string>(['earlyon-georgetown']);
+export const LIFETIME_FAMILY_SOURCE_CODES = new Set<string>(['earlyon-georgetown', 'earlyon-acton']);
