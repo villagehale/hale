@@ -317,7 +317,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
 
       {/* ── Closing — the shore, and the founding invitation ──────────────── */}
       <section className="shell pb-24">
-        <div className="v4-hero" style={{ minHeight: 'auto', borderRadius: 'var(--r-xl)' }}>
+        <div className="v4-hero v4-close-band" style={{ minHeight: 'auto', borderRadius: 'var(--r-xl)' }}>
           <Image
             src={nightShore}
             alt=""
