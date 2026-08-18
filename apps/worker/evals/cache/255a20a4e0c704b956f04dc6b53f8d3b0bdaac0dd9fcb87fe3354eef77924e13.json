@@ -1,0 +1,9 @@
+{
+  "value": {
+    "clinical_query": "vomiting, watery diarrhea, lethargy, difficult to wake, sunken eyes, no wet diaper 12 hours - signs of severe dehydration, toddler",
+    "age_band": "toddler",
+    "duration": "2 days",
+    "language": "en"
+  },
+  "latencyMs": 3442
+}

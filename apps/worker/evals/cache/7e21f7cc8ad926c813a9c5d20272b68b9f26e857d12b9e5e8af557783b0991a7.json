@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Correctly calibrated emergency response. The query presents a red-flag case of respiratory distress (rapid breathing, rib retractions, cyanosis) in a preschooler—a true pediatric emergency. The answer: (1) directs to 911 immediately and clearly (\"Call 911 now\"), (2) explains why in plain language (not getting enough oxygen), (3) provides explicit triage by explicitly excluding 811 as inappropriate, (4) advises ambulance over self-driving, (5) is written in English matching the parent's language, (6) contains no invented specifics, no diagnosis stated as certainty, and is appropriately brief. This is exactly the calibration needed for a red-flag presentation."
+  }
+}

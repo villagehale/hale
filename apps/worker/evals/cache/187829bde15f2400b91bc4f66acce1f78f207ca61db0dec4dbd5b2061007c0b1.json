@@ -1,0 +1,14 @@
+{
+  "value": {
+    "answer": "This sounds like classic hand-foot-mouth disease - a common, usually mild virus in preschoolers causing low fever, painful mouth sores, and a rash on hands/feet (sometimes buttocks). Most kids feel better in 7-10 days. Painful mouth sores can put kids off eating/drinking, so that's the main thing to watch, not the virus itself.",
+    "triage": "Call 811 if fever lasts more than 3 days, no urination in 8+ hours, dry/sticky mouth, sunken eyes, unusual sleepiness, or a stiff neck. Go to the ER or call 911 if very hard to wake, seizure, trouble breathing, severe headache, persistent vomiting, or no urine for 12+ hours.",
+    "sources": [
+      "CDC",
+      "Nemours KidsHealth",
+      "Mayo Clinic",
+      "Nationwide Children's Hospital",
+      "Seattle Children's Hospital"
+    ]
+  },
+  "latencyMs": 3994
+}

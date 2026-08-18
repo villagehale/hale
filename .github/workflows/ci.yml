@@ -91,6 +91,9 @@ jobs:
       - name: General-answer composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:general-answer
 
+      - name: Medical-symptom answer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:medical-symptom
+
       - name: Turn-apology composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:turn-apology
 

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "clinical_query": "runny nose and mild cough, no fever, preschooler",
+    "age_band": "preschooler",
+    "duration": "2 days",
+    "language": "fr"
+  },
+  "latencyMs": 2028
+}

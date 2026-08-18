@@ -232,6 +232,12 @@ describe('detectRedFlag', () => {
  * The emergency-directive check: the positive half of the escalation invariant. It must
  * accept a real "seek emergency care" instruction and REJECT the presence of 811 alone —
  * "watch and wait, call 811" is exactly the under-escalation this lane must catch.
+ *
+ * It is checked in all THREE languages the lane answers in, because the check is what
+ * decides whether a red-flag answer may ship: an English-only matcher reading a French or
+ * Chinese body finds no directive in a perfectly good "allez aux urgences" and falls the
+ * turn closed, and — the direction that actually hurts — would have no way to tell that
+ * body apart from a French under-escalation. Both directions are asserted per language.
  */
 describe('hasEmergencyDirective', () => {
   it('accepts an explicit emergency instruction', () => {
@@ -242,10 +248,46 @@ describe('hasEmergencyDirective', () => {
     expect(hasEmergencyDirective('This needs urgent medical care now.')).toBe(true);
   });
 
+  it('accepts an explicit emergency instruction in French', () => {
+    expect(hasEmergencyDirective('Emmenez-la aux urgences maintenant.')).toBe(true);
+    expect(hasEmergencyDirective("Allez a l'urgence tout de suite.")).toBe(true);
+    expect(hasEmergencyDirective("Allez à l'urgence tout de suite.")).toBe(true);
+    expect(hasEmergencyDirective("Elle a besoin de soins d'urgence immédiats.")).toBe(true);
+    expect(hasEmergencyDirective('Appelez une ambulance.')).toBe(true);
+    // The digits need no translation — the universal anchor.
+    expect(hasEmergencyDirective('Composez le 911 tout de suite.')).toBe(true);
+  });
+
+  it('accepts an explicit emergency instruction in Chinese', () => {
+    expect(hasEmergencyDirective('请立即就医。')).toBe(true);
+    expect(hasEmergencyDirective('马上去急诊。')).toBe(true);
+    expect(hasEmergencyDirective('立刻叫救护车。')).toBe(true);
+    expect(hasEmergencyDirective('马上就医，不要等。')).toBe(true);
+    expect(hasEmergencyDirective('立即拨打911。')).toBe(true);
+  });
+
   it('rejects a body that only names the non-urgent nurse line', () => {
     expect(hasEmergencyDirective('Probably viral, watch and wait, call 811 if worried.')).toBe(false);
     expect(hasEmergencyDirective('Call 811 any time to talk it through with a nurse.')).toBe(false);
     expect(hasEmergencyDirective('Keep an eye on her and use your judgement.')).toBe(false);
+  });
+
+  /**
+   * The FR/ZH half of the same refusal, and the reason the French matcher is written
+   * around DIRECTIVES ("aux urgences", "soins d'urgence") rather than around the bare noun
+   * "urgence": a body that says "ce n'est pas une urgence" contains the word and escalates
+   * nothing, so a bare-noun matcher would wave through exactly the under-escalation this
+   * check exists to catch.
+   */
+  it('rejects a soft FR/ZH line that names only the nurse line', () => {
+    expect(hasEmergencyDirective('Appelle le 811 si inquiet.')).toBe(false);
+    expect(
+      hasEmergencyDirective("Ce n'est pas une urgence - surveille-la et appelle le 811."),
+    ).toBe(false);
+    expect(hasEmergencyDirective('Surveillez-la à la maison et appelez le 811 au besoin.')).toBe(
+      false,
+    );
+    expect(hasEmergencyDirective('在家观察即可，有疑问可拨打811咨询护士。')).toBe(false);
   });
 });
 
@@ -293,6 +335,82 @@ describe('a detected red flag must be escalated (runtime invariant)', () => {
 
     expect(out.replySource).toBe('web_grounded');
     expect(out.reply).toContain('911');
+  });
+
+  /**
+   * The same invariant with the answer written in the parent's language — the pair that
+   * proves the escalation gate reads the body it is actually given. The Chinese directive
+   * carries NO 911 digits on purpose: if the gate were still English-keyed it would read
+   * a correct Chinese emergency answer as an under-escalation and fall it closed, and it
+   * would read the Chinese under-escalation below the same way. One of those is a bug and
+   * the other is the whole point, so both are asserted.
+   */
+  it('ships a red-flag answer whose emergency directive is Chinese, with no 911 digits', async () => {
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language: 'zh' }),
+        ground: groundResult(2),
+        compose: composeResult({
+          answer: '呼吸急促、肋骨凹陷和嘴唇发紫是呼吸窘迫的表现，请立即就医。',
+          triage: '马上去急诊，不要在家等待。非紧急的问题可以拨打811咨询护士。',
+        }),
+      }),
+    ).answer('raw message');
+
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).toContain('急诊');
+  });
+
+  it('falls closed on a Chinese under-escalation (811 named, no emergency directive)', async () => {
+    const log = quiet();
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language: 'zh' }),
+        ground: groundResult(2),
+        compose: composeResult({
+          answer: '这多半只是普通病毒感染，在家观察就好。',
+          triage: '如果你仍然担心，可以拨打811咨询护士。',
+        }),
+      }),
+    ).answer('raw message');
+
+    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
+    expect(reasons).toContain('under_escalated');
+    log.mockRestore();
+  });
+
+  it('falls closed on a French under-escalation, and ships the French escalation', async () => {
+    const log = quiet();
+    const softFrench = {
+      answer: "C'est probablement viral et il n'y a rien d'inquiétant pour l'instant.",
+      triage: "Ce n'est pas une urgence - surveillez-la et appelez le 811 au besoin.",
+    };
+    expect(
+      await createMedicalComposer(
+        makeClient({
+          sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language: 'fr' }),
+          ground: groundResult(2),
+          compose: composeResult(softFrench),
+        }),
+      ).answer('raw message'),
+    ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    log.mockRestore();
+
+    const escalated = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language: 'fr' }),
+        ground: groundResult(2),
+        compose: composeResult({
+          answer:
+            'Emmenez-la aux urgences maintenant: des tirages et des lèvres bleuâtres sont des signes de détresse respiratoire.',
+          triage:
+            'Composez le 911 si elle a du mal à respirer. Le 811 reste là pour les questions non urgentes.',
+        }),
+      }),
+    ).answer('raw message');
+    expect(escalated.replySource).toBe('web_grounded');
+    expect(escalated.reply).toContain('urgences');
   });
 });
 
@@ -382,6 +500,71 @@ describe('de-identification before search', () => {
     expect(ground?.userMessage).toContain('[redacted]');
     // ...while the symptom that makes the search useful survived (positive control).
     expect(ground?.userMessage).toContain('rash');
+  });
+});
+
+/**
+ * The parent's language is decided by the ONE stage that sees their words, and it travels
+ * to the composer alone. It is deliberately kept out of the search: `clinical_query` and
+ * `duration` are English by contract (the red-flag lexicon and the pediatric search are
+ * English-keyed), so a language tag on the search turn could only invite the model to
+ * answer the search in French — it buys nothing and risks the one field the safety gate
+ * reads. Compose is where it belongs, because compose is what writes to the parent.
+ */
+describe('the parent language reaches compose and nothing else', () => {
+  it('carries the sanitizer-detected language into the compose payload only', async () => {
+    const seen: Seen[] = [];
+    await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult({ ...OK_SANITIZE, language: 'fr' }),
+          ground: groundResult(2),
+          compose: composeResult(OK_COMPOSE),
+        },
+        seen,
+      ),
+    ).answer('raw message');
+
+    const compose = seen.find((s) => s.toolChoice === 'medical_answer');
+    expect(compose?.userMessage).toContain('"language":"fr"');
+    const ground = seen.find(
+      (s) => Array.isArray(s.tools) && s.tools[0]?.type === 'web_search_20250305',
+    );
+    expect(ground?.userMessage).not.toContain('language');
+    // positive control: the search still got the clinical query it exists to run.
+    expect(ground?.userMessage).toContain('fever');
+  });
+
+  it('falls back to English when the sanitizer omits or garbles the language', async () => {
+    const seen: Seen[] = [];
+    await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult(OK_SANITIZE), // no language field at all
+          ground: groundResult(2),
+          compose: composeResult(OK_COMPOSE),
+        },
+        seen,
+      ),
+    ).answer('raw message');
+    expect(seen.find((s) => s.toolChoice === 'medical_answer')?.userMessage).toContain(
+      '"language":"en"',
+    );
+
+    const garbled: Seen[] = [];
+    await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult({ ...OK_SANITIZE, language: 'Klingon' }),
+          ground: groundResult(2),
+          compose: composeResult(OK_COMPOSE),
+        },
+        garbled,
+      ),
+    ).answer('raw message');
+    expect(garbled.find((s) => s.toolChoice === 'medical_answer')?.userMessage).toContain(
+      '"language":"en"',
+    );
   });
 });
 
@@ -506,52 +689,72 @@ describe('triage is required', () => {
 });
 
 describe('the body must be sendable', () => {
-  it('falls closed when the composed body is not GSM-7', async () => {
-    const log = quiet();
-    const emoji = {
-      answer: 'Usually mild at this age and rest helps a lot 🤒.',
-      triage: 'Call 811 for nurse advice; go to the ER or call 911 if breathing gets hard.',
-    };
-    expect(
-      await createMedicalComposer(
-        makeClient({
-          sanitize: sanitizeResult(OK_SANITIZE),
-          ground: groundResult(2),
-          compose: composeResult(emoji),
+  /**
+   * The gate that used to stand here refused any body that was not GSM-7, which meant a
+   * French answer with one "ç" and every Chinese answer ever written fell closed to the
+   * English safety line. What makes a message sendable is not its alphabet, it is what the
+   * carrier will bill and deliver: `smsSegments` counts UCS-2 bodies in their own currency
+   * (67 units a part against GSM-7's 153), so ONE ceiling is correct in all three
+   * languages — the same move answer.ts made for the general answer.
+   */
+  it('ships a Chinese body inside the UCS-2 segment budget', async () => {
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult({ ...OK_SANITIZE, language: 'zh' }),
+        ground: groundResult(2),
+        compose: composeResult({
+          answer: '这个年龄发烧几天多半是病毒感染，多喝水、多休息通常就能过去。',
+          triage:
+            '有疑问随时拨打811找护士。如果出现呼吸困难、叫不醒或嘴唇发紫，请立即拨打911或去急诊。',
         }),
-      ).answer('raw message'),
-    ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
-    log.mockRestore();
+      }),
+    ).answer('raw message');
+
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).toContain('811');
+    expect(out.reply).toContain('急诊');
+  });
+
+  it('ships an accented French body', async () => {
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult({ ...OK_SANITIZE, language: 'fr' }),
+        ground: groundResult(2),
+        compose: composeResult({
+          answer:
+            "Une fièvre de quelques jours à cet âge est le plus souvent virale; l'hydratation et le repos suffisent en général.",
+          triage:
+            'Appelez le 811 pour parler à une infirmière. Composez le 911 ou allez aux urgences si elle respire mal ou ne se réveille pas.',
+        }),
+      }),
+    ).answer('raw message');
+
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).toContain('fièvre');
+    expect(out.reply).toContain('811');
   });
 
   /**
-   * FR/ZH FOLLOW-UP GUARD. Medical answers ship in ENGLISH for v1: compose is
-   * language-blind (it never sees the raw message, rule #1), and this GSM-7 gate would
-   * reject a French or Chinese body anyway. This proves the fail-closed is SAFE — a
-   * Chinese body, triage numbers and all, falls to the fixed 811/911 line rather than
-   * crashing or putting an unsendable UCS-2 message on the wire. It fails at the ENCODING
-   * gate, NOT for missing triage (the triage names 911), so it isolates exactly the
-   * behaviour a later "medical in-language" ticket must change. When that ticket relaxes
-   * this gate to a UCS-2 segment budget and threads a language field sanitizer->compose
-   * (plus a multilingual emergency-directive check — hasEmergencyDirective is English-keyed
-   * today), THIS test is the tripwire that a UCS-2 medical body is now meant to ship.
+   * The other half of that move: the ceiling is counted in the body's OWN currency. 400
+   * Chinese characters is well under the skill's 600-character English budget and more
+   * than SEVEN UCS-2 segments, so a gate that had been left counting characters would wave
+   * this through.
    */
-  it('falls closed to the English safety line when the composed body is Chinese (non-GSM-7)', async () => {
+  it('falls closed when a UCS-2 body runs past the UCS-2 segment ceiling', async () => {
     const log = quiet();
-    const chinese = {
-      answer: '三个月以下的宝宝发烧需要立即就医。',
-      triage: '立即拨打911或前往急诊室，有疑问可拨打811。',
-    };
     const out = await createMedicalComposer(
       makeClient({
-        sanitize: sanitizeResult(OK_SANITIZE),
+        sanitize: sanitizeResult({ ...OK_SANITIZE, language: 'zh' }),
         ground: groundResult(2),
-        compose: composeResult(chinese),
+        compose: composeResult({
+          answer: '宝宝发烧的时候要多喝水多休息。'.repeat(27),
+          triage: '有疑问可拨打811，紧急情况请拨打911。',
+        }),
       }),
     ).answer('raw message');
 
     expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
-    // Closed by the ENCODING gate, not for missing triage: the triage names 911.
+    // Closed by the SEGMENT gate, not for missing triage: the triage names both numbers.
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('unsendable');
     log.mockRestore();

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This response correctly handles a benign teething presentation in a toddler. Strengths: (1) Reassures with normal home comfort measures (cool rings, gum rubs) and does not over-escalate to ER, matching the watchFor instruction against alarm fatigue. (2) Explicitly educates that teething itself does not cause fever, diarrhea, or rash—crucial safety point that redirects caregiver attention to other causes. (3) Clear triage hierarchy: 811 for fever ≥38°C, refusal of fluids, or excessive fussiness; ER/911 for red flags (stiff neck, non-blanching rash, drowsiness, breathing trouble, seizure). (4) Age-appropriate language for a toddler context. (5) Plain language, no fabricated doses or statistics, no diagnosis stated as certainty (uses \"signs\" not \"teething disease\"). (6) Concise (6 sentences). (7) In English, matching parent language. (8) No invented specifics. Fully calibrated to a benign case with appropriate reassurance, realistic home care, and actionable triage guidance."
+  }
+}
