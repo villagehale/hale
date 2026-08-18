@@ -44,6 +44,8 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   SCHOOL: { name: 'school', areaCoarse: 'L7G' },
   'earlyon-richmondhill': { name: 'EarlyON centre', areaCoarse: 'L4C' },
   'earlyon-georgetown': { name: 'EarlyON centre', areaCoarse: 'L7G' },
+  // Per-location Halton Hills posters, so the source code says WHICH centre.
+  'earlyon-acton': { name: 'EarlyON centre', areaCoarse: 'L7J' },
 };
 
 /**
