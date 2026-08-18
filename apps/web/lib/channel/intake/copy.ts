@@ -43,6 +43,7 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   CLINIC: { name: 'clinic', areaCoarse: 'M4K' },
   SCHOOL: { name: 'school', areaCoarse: 'L7G' },
   'earlyon-richmondhill': { name: 'EarlyON centre', areaCoarse: 'L4C' },
+  'earlyon-georgetown': { name: 'EarlyON centre', areaCoarse: 'L7G' },
 };
 
 /**

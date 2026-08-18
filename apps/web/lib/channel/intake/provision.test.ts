@@ -72,13 +72,13 @@ function channelMessageRows(inserts: Array<{ table: string; values: unknown }>) 
 
 const NOW = new Date('2026-08-12T14:00:00Z');
 
-function input() {
+function input(sourceCode: string | null = null) {
   return {
     phoneE164: '+14165551234',
     phoneHash: 'blind-index-hash',
     children: [{ name: 'Maya', ageMonths: 30, agePrecision: 'years' as const }],
     location: { postalCode: 'M4C 1B5', areaCoarse: 'M4C' },
-    sourceCode: null,
+    sourceCode,
     firstMessage: 'Maya is 2, we are at M4C 1B5',
     transcript: [
       { direction: 'out' as const, body: 'greeting', providerId: 'SM_out_1', at: NOW.toISOString() },
@@ -127,5 +127,59 @@ describe('provisionFromIntake — replayed transcript status', () => {
     const inbound = channelMessageRows(inserts).filter((row) => row.direction === 'in');
     expect(inbound).toHaveLength(1);
     expect(inbound[0]?.status).toBe('delivered');
+  });
+});
+
+describe('provisionFromIntake — lifetime Family comp (EarlyON Georgetown poster)', () => {
+  beforeEach(() => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  function familyValues(inserts: Array<{ table: string; values: unknown }>) {
+    return inserts.find((row) => row.table === 'families')?.values as Record<string, unknown>;
+  }
+
+  function compAuditRows(inserts: Array<{ table: string; values: unknown }>) {
+    return inserts
+      .filter((row) => row.table === 'audit_log')
+      .flatMap((row) => row.values as Array<Record<string, unknown>>)
+      .filter((row) => row.actionTaken === 'family_plan_comped');
+  }
+
+  it('provisions a family arriving via the comped code at the Family tier, for life', async () => {
+    const { database, inserts } = fakeDatabase();
+
+    await provisionFromIntake(database, input('earlyon-georgetown'));
+
+    expect(familyValues(inserts)?.planTier).toBe('family');
+    const comped = compAuditRows(inserts);
+    expect(comped).toHaveLength(1);
+    expect(comped[0]?.before).toEqual({ planTier: 'free' });
+    expect(comped[0]?.after).toEqual({
+      planTier: 'family',
+      source: 'earlyon-georgetown',
+      lifetime: true,
+    });
+  });
+
+  // Positive control through the SAME provision path: an untagged arrival is NOT comped,
+  // so the two negatives below can only pass because the grant genuinely did not fire.
+  it('does NOT comp an untagged arrival — the tier is left at the table default', async () => {
+    const { database, inserts } = fakeDatabase();
+
+    await provisionFromIntake(database, input(null));
+
+    expect(familyValues(inserts)?.planTier).not.toBe('family');
+    expect(compAuditRows(inserts)).toHaveLength(0);
+  });
+
+  it('does NOT comp a non-comp venue — a library poster is not the promo', async () => {
+    const { database, inserts } = fakeDatabase();
+
+    await provisionFromIntake(database, input('LIBRARY'));
+
+    expect(familyValues(inserts)?.planTier).not.toBe('family');
+    expect(compAuditRows(inserts)).toHaveLength(0);
   });
 });
