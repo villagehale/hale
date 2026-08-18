@@ -73,3 +73,85 @@ describe('replyLanguage — everything else is English', () => {
     expect(replyLanguage('She is 3 ans et Noah is 5')).toBe('fr');
   });
 });
+
+/**
+ * THE CORPUS, and the reason it exists rather than more unit cases.
+ *
+ * This is a word-list heuristic, and word-list heuristics fail ONE way: somebody adds a
+ * useful-looking word that is also English, and a slice of ordinary traffic starts coming
+ * back in the wrong language. No single unit test catches that — the offending word is
+ * always in a sentence nobody thought to write down. So both directions are measured
+ * against a body of messages this channel actually receives, and a failure names the
+ * message rather than a count.
+ *
+ * The English half is the half that matters, and it is MUTATION-CHECKED rather than
+ * merely written: adding `est`, `pour` and `son` back to FRENCH_MARKERS turns it red. An
+ * earlier version of this corpus did NOT catch that — the two-marker rule absorbs a
+ * single careless entry, so a corpus of ordinary sentences passes while the detector
+ * quietly rots. The four dense sentences at the end of the list are what fixed it.
+ */
+describe('replyLanguage — measured against real traffic, both directions', () => {
+  const ENGLISH = [
+    'Hi there',
+    'HALE LIBRARY',
+    'Hi (via earlyon-georgetown)',
+    'Maya is 4 and Leo is 2, M5V 3A8',
+    'Chloé is 3 and Zoé is 5',
+    'yes please',
+    'no thanks',
+    'STOP',
+    'HELP',
+    'START',
+    'Can you help me find a daycare near High Park?',
+    "what's the weather tomorrow",
+    'My son fell off the couch and is crying',
+    'she has a fever of 39 and a rash',
+    "I don't want any more texts about swim",
+    'Swim class is at 5pm EST on Mon and Wed',
+    'We just moved to Toronto and need a family doctor',
+    'Her name is Anne-Sophie and she is 6',
+    'We live near Notre Dame, in Montreal',
+    'The daycare is called Les Petits Amis',
+    'Book an eye exam for Zoe please',
+    'Ok sounds good, see you then',
+    '2 kids, 3 and 6, L7G 4B9',
+    'who is this',
+    // The four below are the corpus's actual TEETH, and they are dense on purpose: each
+    // packs several of the words the marker list had to exclude, so adding any TWO of
+    // them back turns this red. A corpus of ordinary sentences would not — the
+    // two-marker rule absorbs a single bad entry silently, which is precisely how a
+    // careless addition would otherwise reach production.
+    'Can you comment on how much formula to pour for my son?',
+    'Swim is at 5pm EST and the car seat is in the main hall',
+    'Mon and Tue work, but not Sat - a ton of stuff on the calendar',
+    'Note the sale on her coat, plus the pain relief for her ear',
+  ];
+
+  const FRENCH = [
+    'Bonjour',
+    'Salut!',
+    'Allo, je suis nouvelle ici',
+    'oui',
+    'Non',
+    'Merci beaucoup',
+    "Bonjour, j'ai deux enfants",
+    'Mes enfants ont 4 et 2 ans, code postal H2X 1Y4',
+    'Je cherche une garderie dans le quartier',
+    'Pouvez-vous surveiller les inscriptions?',
+    'Combien ca coute',
+    'Pourquoi vous me textez',
+    "Ma fille est tombee, qu'est-ce que je fais",
+    'Je ne veux plus recevoir de messages',
+    'ARRET',
+    "C'est parfait, allez-y",
+    'Quand est-ce que les inscriptions ouvrent',
+  ];
+
+  it('reads none of these English messages as French', () => {
+    expect(ENGLISH.filter((body) => replyLanguage(body) !== 'en')).toEqual([]);
+  });
+
+  it('reads every one of these French messages as French', () => {
+    expect(FRENCH.filter((body) => replyLanguage(body) !== 'fr')).toEqual([]);
+  });
+});
