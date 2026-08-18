@@ -100,9 +100,10 @@ export interface MedicalComposer {
 
 /**
  * Why a medical turn could not be answered — four different operational stories plus the
- * three ways the model's own output is unusable, deliberately not folded into one.
+ * ways the model's own output is unusable, deliberately not folded into one.
  * `not_grounded` is the invariant this lane exists to hold: a medical answer that did not
- * actually search is not a medical answer.
+ * actually search is not a medical answer. `under_escalated` is its safety twin: a detected
+ * red flag whose composed body never said "seek emergency care" (see {@link detectRedFlag}).
  */
 export type MedicalFallback =
   | 'client_unavailable'
@@ -112,6 +113,7 @@ export type MedicalFallback =
   | 'not_grounded'
   | 'compose_failed'
   | 'missing_triage'
+  | 'under_escalated'
   | 'unsendable';
 
 class MedicalUnresolvable extends Error {
@@ -209,6 +211,71 @@ function namesUrgentCare(body: string): boolean {
   return /\b(?:811|911)\b/.test(body);
 }
 
+/** Fever mentioned and not explicitly negated. Used ONLY inside the age-aware
+ * under-3-months rule below — everywhere else a fever is not itself a red flag, so this
+ * stays private to {@link detectRedFlag}. The negation guard stops "no fever"/"afebrile"
+ * from firing the infant rule on a well baby. */
+const FEVER_TERMS = /\bfever\b|\bfebrile\b|\btemperature\b|\btemp\b|\b\d{2,3}(?:\.\d)?\s?°?[cf]\b/i;
+const FEVER_NEGATED = /\bno fever\b|\bwithout fever\b|\bafebrile\b|\bno temperature\b/i;
+function mentionsFever(t: string): boolean {
+  return FEVER_TERMS.test(t) && !FEVER_NEGATED.test(t);
+}
+
+/** A young infant, from the coarse band OR an explicit "under 3 months" left in the query
+ * (a coarse band, not an exact age, so it survives the sanitizer). */
+const YOUNG_INFANT_TEXT = /under (?:3|three) months|younger than (?:3|three) months|\bnewborn\b/i;
+
+/** Neck stiffness — a meningitis red flag only ALONGSIDE fever, never on its own (a stiff
+ * neck from sleeping awkwardly is benign). */
+const STIFF_NECK = /\bstiff neck\b|\bneck (?:is )?stiff\b|neck stiffness/i;
+
+/**
+ * The unambiguous pediatric emergencies — each a red flag on its own, at any age.
+ * Deliberately CONSERVATIVE: every term here is one that does not turn up describing a well
+ * child (a mild cold, teething), because a detector that over-fires would replace a good
+ * grounded answer with the fixed line — its own harm (alarm fatigue, a product that "can't
+ * help"). Fever, sore throat and an ordinary rash are absent on purpose; they are red flags
+ * only in the compound rules ({@link STIFF_NECK} + fever; fever in a young infant) below.
+ */
+const RED_FLAG_TERMS: RegExp[] = [
+  /trouble breathing|difficulty breathing|labou?red breathing|struggling to breathe|working (?:really |very )?hard to breathe|can'?t breathe|cannot breathe|not breathing|gasping for (?:air|breath)|\bgrunting\b/i,
+  /ribs? (?:are )?pulling in|pulling in (?:with|under|between)[^.]{0,20}(?:breath|rib)|\bretractions?\b|chest (?:is )?(?:sucking|caving) in/i,
+  /blue lips|dusky lips|lips (?:look|turning|are|went|are turning) (?:a bit )?(?:blue|dusky|grey|gray)|blue (?:around|round) the (?:lips|mouth)|turning blue|going blue/i,
+  /\bseizure\b|\bseizing\b|\bconvulsion\b|\bconvulsing\b/i,
+  /\bunresponsive\b|won'?t wake|will not wake|can'?t wake|cannot wake|hard to wake|difficult to wake|not waking|won'?t respond|not responding|\blimp\b|\bfloppy\b|\blethargic\b|\blethargy\b|\bunconscious\b|passed out/i,
+  /non-?blanching|\bpetechiae?\b|petechial|\bpurpura\b|does ?n[o']?t fade|do not fade|don'?t fade|will not fade|won'?t fade/i,
+  /anaphyla|face (?:is )?swelling|swelling of (?:the |her |his )?face|swollen face|lips (?:are )?swelling|swollen lips|tongue (?:is )?swelling|swollen tongue|throat (?:is )?(?:swelling|closing|tightening)/i,
+  /sunken eyes|sunken fontanelle|no wet (?:diaper|nappy)|not urinating|no urine|no tears when (?:crying|she cries|he cries)|severe(?:ly)? dehydrat/i,
+];
+
+/**
+ * Whether the de-identified clinical query describes a genuine pediatric emergency. Runs on
+ * the SANITIZED (and scrubbed) query plus the coarse age band — the same inputs the search
+ * saw. This is the conservative half of the escalation invariant: if this fires, the answer
+ * that ships MUST carry an emergency directive ({@link hasEmergencyDirective}) or the lane
+ * falls closed. Exported for direct unit testing and mirrored by the eval gate.
+ */
+export function detectRedFlag(clinicalQuery: string, ageBand: AgeBand | null): boolean {
+  const t = clinicalQuery.toLowerCase();
+  if (RED_FLAG_TERMS.some((re) => re.test(t))) return true;
+  if (STIFF_NECK.test(t) && mentionsFever(t)) return true;
+  if ((ageBand === 'infant_under_3mo' || YOUNG_INFANT_TEXT.test(t)) && mentionsFever(t)) return true;
+  return false;
+}
+
+/**
+ * Whether a body carries an explicit EMERGENCY instruction — the positive half of the
+ * escalation invariant. Unlike {@link namesUrgentCare}, the presence of 811 (the non-urgent
+ * nurse line) does NOT satisfy this: "watch and wait, call 811" names a number but escalates
+ * nothing. Only a real "call 911 / go to the ER / seek emergency care now" counts. Exported
+ * for direct unit testing and mirrored by the eval gate.
+ */
+const EMERGENCY_DIRECTIVE =
+  /\b911\b|\bER\b|\bA&E\b|emergency (?:room|department|care|services|help)|\bambulance\b|seek (?:emergency|immediate|urgent) (?:medical )?care|urgent medical care/i;
+export function hasEmergencyDirective(body: string): boolean {
+  return EMERGENCY_DIRECTIVE.test(body);
+}
+
 /** How many real web-search results the model produced. An error result is not a result,
  * so a search that ran but failed counts as zero — which is the point (rule #11:
  * "did the work, found nothing" is not "was grounded"). Mirrors web-grounded.ts. */
@@ -240,15 +307,26 @@ function researchText(content: Anthropic.ContentBlock[]): string {
  *
  * Deliberately tuned NOT to touch the clinical values that make a search useful: a
  * temperature (39.5), a small count (vomited 4 times), a duration (3 days) have too few
- * consecutive digits to hit any pattern here. The unit test's positive controls hold that
- * line. Long runs are stripped BEFORE the phone pattern so a >10-digit run is redacted whole
- * rather than leaving a trailing fragment.
+ * consecutive digits to hit any pattern here. The age/DOB patterns hold the same line: an
+ * age is only redacted when it is unambiguously an age — with an "old" anchor ("6 weeks
+ * old"), the compound "N years N months" form, a bare year, or a bare month-count of 12+
+ * (a toddler age, never a symptom duration). A bare "3 months" or "2 weeks" reads as a
+ * duration and survives. The unit test's positive controls hold that line. Long runs are
+ * stripped BEFORE the phone pattern so a >10-digit run is redacted whole rather than leaving
+ * a trailing fragment.
  */
 const RESIDUAL_PII_PATTERNS: RegExp[] = [
   /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, // email
   /\d{7,}/g, // long digit runs (health-card / account numbers)
   /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, // NANP phone
   /\b[a-z]\d[a-z]\s?\d[a-z]\d\b/gi, // Canadian postal code
+  /\b(?:19|20)\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/g, // DOB YYYY-MM-DD / YYYY/MM/DD
+  /\b\d{1,2}\/\d{1,2}\/(?:19|20)\d{2}\b/g, // DOB M/D/YYYY or D/M/YYYY
+  /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+(?:19|20)\d{2}\b/gi, // DOB "Month D, YYYY"
+  /\b\d{1,2}\s?(?:years?|yrs?)\s?(?:and\s)?\d{1,2}\s?(?:months?|mos?)(?:[\s-]?old)?\b/gi, // exact age "2 years 3 months (old)"
+  /\b\d{1,3}[\s-]?(?:year|yr|month|mo|week|wk|day)s?[\s-]?old\b/gi, // exact age "6 weeks old", "18-month-old"
+  /\b(?:1[2-9]|[2-9]\d)\s?months?\b/gi, // exact age "18 months", "27 months" (12+ = toddler age, not a duration)
+  /\b\d{1,2}\s?years?\b/gi, // exact age "2 years", "3 years"
 ];
 const REDACTED = '[redacted]';
 
@@ -353,6 +431,14 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
     throw new MedicalUnresolvable('unsendable', 'over_segment_cap');
   }
   if (!namesUrgentCare(body)) throw new MedicalUnresolvable('missing_triage', 'lost in assembly');
+  // The escalation invariant. namesUrgentCare only proves a number is PRESENT — 811 alone
+  // passes it, so a mis-triaged emergency ("probably viral, watch and wait, call 811") ships
+  // through every gate above. This is the one that catches it: a detected red flag whose body
+  // never says "seek emergency care" fails CLOSED to the fixed line, which itself names 911 —
+  // strictly safer than shipping an under-escalation.
+  if (detectRedFlag(query.clinicalQuery, query.ageBand) && !hasEmergencyDirective(body)) {
+    throw new MedicalUnresolvable('under_escalated');
+  }
   return body;
 }
 

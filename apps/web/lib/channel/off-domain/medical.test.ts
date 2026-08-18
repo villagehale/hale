@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { SAFETY_REPLY } from './copy';
 import {
   createMedicalComposer,
+  detectRedFlag,
   groundUserMessage,
+  hasEmergencyDirective,
   sanitizeUserMessage,
   scrubResidualPii,
 } from './medical';
@@ -159,6 +161,138 @@ describe('scrubResidualPii', () => {
     expect(scrubResidualPii('temp 38.2C, cough, 3 days, toddler')).toBe(
       'temp 38.2C, cough, 3 days, toddler',
     );
+  });
+
+  it('redacts a date of birth in the formats a parent actually types', () => {
+    expect(scrubResidualPii('born 2021-03-05')).toBe('born [redacted]');
+    expect(scrubResidualPii('DOB 3/5/2021')).toBe('DOB [redacted]');
+    expect(scrubResidualPii('date of birth 05/03/2021')).toBe('date of birth [redacted]');
+    expect(scrubResidualPii('born March 5, 2021')).toBe('born [redacted]');
+    expect(scrubResidualPii('born Mar 5 2021')).toBe('born [redacted]');
+  });
+
+  it('redacts an exact age while leaving the coarse clinical picture', () => {
+    expect(scrubResidualPii('she is 27 months')).toBe('she is [redacted]');
+    expect(scrubResidualPii('exactly 2 years 3 months old')).toBe('exactly [redacted]');
+    expect(scrubResidualPii('he is 6 weeks old')).toBe('he is [redacted]');
+    expect(scrubResidualPii('my 18-month-old')).toBe('my [redacted]');
+    expect(scrubResidualPii('she just turned 2 years old')).toBe('she just turned [redacted]');
+  });
+
+  it('never eats a clinical duration, temperature, or count (positive controls)', () => {
+    // "weeks" is redacted ONLY as an age ("6 weeks old"); a duration keeps it.
+    expect(scrubResidualPii('symptoms for 2 weeks')).toBe('symptoms for 2 weeks');
+    // Small month-counts read as durations, not toddler ages, and survive.
+    expect(scrubResidualPii('congestion for 3 months')).toBe('congestion for 3 months');
+    expect(scrubResidualPii('fever 39.5 for 3 days')).toBe('fever 39.5 for 3 days');
+    expect(scrubResidualPii('vomited 4 times')).toBe('vomited 4 times');
+  });
+});
+
+/**
+ * The red-flag detector, tested as a pure decision. It must FIRE on each unambiguous
+ * pediatric emergency and must NOT fire on the benign path (a mild cold, teething) — an
+ * over-firing detector replaces a good grounded answer with the fixed line, which is its
+ * own harm. Inputs are the SANITIZED clinical query + coarse age band, exactly what the
+ * runtime hands it. Expected values are derived from published pediatric red-flags.
+ */
+describe('detectRedFlag', () => {
+  it('fires on each red-flag class', () => {
+    expect(detectRedFlag('trouble breathing, ribs pulling in', null)).toBe(true);
+    expect(detectRedFlag('rapid breathing with rib retractions and dusky lips', null)).toBe(true);
+    expect(detectRedFlag('her lips look blue', null)).toBe(true);
+    expect(detectRedFlag('febrile seizure, now floppy and drowsy', null)).toBe(true);
+    expect(detectRedFlag('unresponsive and hard to wake', null)).toBe(true);
+    expect(detectRedFlag('fever with non-blanching purple spot rash on legs', null)).toBe(true);
+    expect(detectRedFlag('purple spots that do not fade when pressed', null)).toBe(true);
+    expect(detectRedFlag('face and lips are swelling, anaphylaxis', null)).toBe(true);
+    expect(detectRedFlag('sunken eyes and no wet diaper in 12 hours', null)).toBe(true);
+    // stiff neck is a red flag only alongside fever (meningitis), not on its own
+    expect(detectRedFlag('high fever, headache, stiff neck', null)).toBe(true);
+    // ANY fever under 3 months, from the band or an explicit "under 3 months"
+    expect(detectRedFlag('fever', 'infant_under_3mo')).toBe(true);
+    expect(detectRedFlag('fever 38.2C in infant under 3 months', null)).toBe(true);
+  });
+
+  it('does NOT fire on the benign path', () => {
+    expect(detectRedFlag('runny nose, mild cough, no fever, active and eating well', 'preschooler')).toBe(false);
+    expect(detectRedFlag('drooling, chewing on objects, fussiness, teething', 'toddler')).toBe(false);
+    expect(detectRedFlag('tugging at ear, crying overnight, possible ear infection', 'toddler')).toBe(false);
+    expect(detectRedFlag('sore throat and fever, sibling with recent strep', 'preschooler')).toBe(false);
+    expect(detectRedFlag('watery diarrhea and vomiting, still drinking, wet diapers present', 'toddler')).toBe(false);
+    // fever alone in an OLDER child is not a red flag, and a stiff neck alone is not either
+    expect(detectRedFlag('fever 39C 3 days', 'toddler')).toBe(false);
+    expect(detectRedFlag('stiff neck after sleeping awkwardly', 'school_age')).toBe(false);
+    // an under-3-months infant with an EXPLICIT no-fever is not the infant-fever red flag
+    expect(detectRedFlag('stuffy nose, no fever', 'infant_under_3mo')).toBe(false);
+  });
+});
+
+/**
+ * The emergency-directive check: the positive half of the escalation invariant. It must
+ * accept a real "seek emergency care" instruction and REJECT the presence of 811 alone —
+ * "watch and wait, call 811" is exactly the under-escalation this lane must catch.
+ */
+describe('hasEmergencyDirective', () => {
+  it('accepts an explicit emergency instruction', () => {
+    expect(hasEmergencyDirective('Go to the ER or call 911 now.')).toBe(true);
+    expect(hasEmergencyDirective('This needs emergency care now.')).toBe(true);
+    expect(hasEmergencyDirective('Seek immediate care.')).toBe(true);
+    expect(hasEmergencyDirective('Call an ambulance right away.')).toBe(true);
+    expect(hasEmergencyDirective('This needs urgent medical care now.')).toBe(true);
+  });
+
+  it('rejects a body that only names the non-urgent nurse line', () => {
+    expect(hasEmergencyDirective('Probably viral, watch and wait, call 811 if worried.')).toBe(false);
+    expect(hasEmergencyDirective('Call 811 any time to talk it through with a nurse.')).toBe(false);
+    expect(hasEmergencyDirective('Keep an eye on her and use your judgement.')).toBe(false);
+  });
+});
+
+const RED_FLAG_SANITIZE = {
+  clinical_query: 'rapid breathing with rib retractions and dusky lips',
+  age_band: 'preschooler',
+  duration: '1 hour',
+};
+
+/**
+ * The escalation invariant, end-to-end: a genuine red flag whose composed body names 811
+ * but never says "seek emergency care" is an under-escalation, and it must fall CLOSED to
+ * the fixed line (which itself names 911) rather than ship. Paired with a positive control:
+ * the same red flag WITH a real directive ships.
+ */
+describe('a detected red flag must be escalated (runtime invariant)', () => {
+  it('falls closed when a red-flag body under-escalates (811 present, no emergency directive)', async () => {
+    const log = quiet();
+    const underEscalated = {
+      answer: 'A cough like this at this age is usually just a viral thing, watch and wait.',
+      triage: 'Call 811 any time to talk it through with a nurse if you stay worried.',
+    };
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult(RED_FLAG_SANITIZE),
+        ground: groundResult(2),
+        compose: composeResult(underEscalated),
+      }),
+    ).answer('raw message');
+
+    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
+    expect(reasons).toContain('under_escalated');
+    log.mockRestore();
+  });
+
+  it('positive control: the same red flag ships when the body carries a real directive', async () => {
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult(RED_FLAG_SANITIZE),
+        ground: groundResult(2),
+        compose: composeResult(OK_COMPOSE),
+      }),
+    ).answer('raw message');
+
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).toContain('911');
   });
 });
 
