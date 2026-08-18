@@ -391,6 +391,37 @@ describe('VIL-229 voice — email uses voice fields, facts stay deterministic', 
   });
 });
 
+describe('voice honors the child_name_level dial (privacy — rule #1)', () => {
+  // The gap the existing matrix missed: (voice present) × (non-first_name level) × (a
+  // baked first name INSIDE a voice string). The composed voice is per-family
+  // (pre-parent), so re-leveling must happen at render time.
+  const mayaVoiceLeak = payload({
+    children: [maya],
+    summary: 'a deterministic fallback sentence',
+    items: [healthAppt],
+    voice: {
+      greeting: 'Hi, here is what Maya has coming up',
+      weekFraming: "Maya's week is calm, with one checkup to book",
+      itemLines: { '0': 'a quick check for Maya, nothing more' },
+      signOff: 'reply any time, we are here for you and Maya',
+    },
+  });
+
+  it('generic re-levels the baked name out of every voice slot', () => {
+    const r = email(mayaVoiceLeak, 'generic');
+    expect(r.html).not.toContain('Maya');
+    // Positive control: the greeting was RE-LEVELED to "your kid" (not merely absent),
+    // pairing the negative assertion with a positive one through the same path.
+    expect(r.html).toContain('here is what your kid has coming up');
+    // The resolution is shared, so the plain-text path is scrubbed too.
+    expect(r.text).not.toContain('Maya');
+  });
+
+  it('first_name keeps the baked name in the voice (positive control, same path)', () => {
+    expect(email(mayaVoiceLeak, 'first_name').html).toContain('Maya');
+  });
+});
+
 describe('the pending heading agrees with itself in the singular', () => {
   const one = payload({
     children: [maya],

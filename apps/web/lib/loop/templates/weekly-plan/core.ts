@@ -128,6 +128,62 @@ export function leveledWhat(
   return item.title.includes(child.name) ? item.title.replace(child.name, leveled) : item.title;
 }
 
+// ── Voice re-leveling (render-time privacy for the model-composed strings) ──────
+// The email voice (greeting/framing/item lines/sign-off) is composed once per FAMILY
+// with the baked first name, but child_name_level is a per-PARENT render-time transform
+// — so a name baked into the voice must be re-leveled HERE, the same seam the titles use
+// (loopChildName), or the narrative leaks a name the deterministic facts already redact.
+
+/** Escape a literal for embedding in a RegExp source. */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** A whole-word matcher for a child's name: not flanked by a letter on either side, so
+ * "Maya" and the possessive "Maya's" match (apostrophe is a non-letter boundary) but a
+ * name that is a substring of another word ("Al" in "Also") does not. Unicode-aware so
+ * accented names ("Chloé") are bounded correctly. */
+function nameWordRegExp(name: string, flags: string): RegExp {
+  return new RegExp(`(?<!\\p{L})${escapeRegExp(name)}(?!\\p{L})`, flags);
+}
+
+/** Re-level every baked child first name inside a model-composed voice string to the
+ * parent's dial. For each child whose leveled name differs from their real name
+ * (relation/generic, or the teen age gate at any level), the name and its possessive are
+ * swapped for the leveled identifier; first_name is a no-op. */
+export function relevelNames(
+  text: string,
+  children: readonly PlanChild[],
+  level: ChildNameLevel,
+  now: Date,
+): string {
+  let out = text;
+  for (const child of children) {
+    const leveled = loopChildName(child, level, now);
+    if (leveled === child.name) continue;
+    out = out.replace(nameWordRegExp(child.name, 'gu'), leveled);
+  }
+  return out;
+}
+
+/** Re-level a voice line, then fail closed: if any child whose leveled name differs from
+ * their real name STILL appears by name (a paraphrase the substitution could not catch,
+ * e.g. a different casing), return null so the caller drops to its deterministic fallback
+ * rather than leak a name past the dial (rule #1 + rule #8). */
+export function safeVoiceLine(
+  text: string,
+  children: readonly PlanChild[],
+  level: ChildNameLevel,
+  now: Date,
+): string | null {
+  const releveled = relevelNames(text, children, level, now);
+  for (const child of children) {
+    if (loopChildName(child, level, now) === child.name) continue;
+    if (nameWordRegExp(child.name, 'iu').test(releveled)) return null;
+  }
+  return releveled;
+}
+
 // ── Ordering, counts, labels ──────────────────────────────────────────────────
 
 // Undated (month-coarse / undated) items sort after every real date key.

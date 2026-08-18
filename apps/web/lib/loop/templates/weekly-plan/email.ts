@@ -10,6 +10,8 @@ import {
   needsYourOkHeading,
   partitionByNeed,
   provenanceLabel,
+  relevelNames,
+  safeVoiceLine,
   timeLabel,
   weekRangeLabel,
   weekSubject,
@@ -165,13 +167,15 @@ function renderText(
   handled: readonly WeekPlanItem[],
   level: ChildNameLevel,
   now: Date,
+  greeting: string | null,
+  framing: string | null,
+  signOff: string,
   voiceLine: VoiceLineFn,
 ): string {
-  // VIL-229: voice greeting + framing (framing falls back to the deterministic summary).
-  const voice = payload.voice;
-  const framing = voice?.weekFraming ?? payload.summary;
+  // greeting/framing/sign-off are resolved once by the caller (re-leveled to the parent's
+  // dial), so the plain-text and HTML paths render the same words and cannot drift.
   const lines: string[] = [subjectLine, weekRangeLabel(payload.weekStart), ''];
-  if (voice?.greeting) lines.push(voice.greeting, '');
+  if (greeting) lines.push(greeting, '');
   if (framing) lines.push(framing, '');
   if (pending.length === 0 && handled.length === 0) {
     lines.push(QUIET_LINE, '');
@@ -201,7 +205,7 @@ function renderText(
     }
     lines.push('');
   }
-  lines.push(voice?.signOff ?? REPLY_INVITE, '', EM_DASH, `Sent by ${SENDER_NAME} ${MIDDLE_DOT} ${BUSINESS_ADDRESS}`);
+  lines.push(signOff, '', EM_DASH, `Sent by ${SENDER_NAME} ${MIDDLE_DOT} ${BUSINESS_ADDRESS}`);
   lines.push(`Unsubscribe: ${payload.unsubscribeUrl}`);
   return lines.join('\n');
 }
@@ -223,18 +227,29 @@ export function renderWeeklyPlanEmail(
   const { pending, handled } = partitionByNeed(payload.items);
 
   // VIL-229 · the voice slots. Facts stay in the deterministic shell; the model wrote
-  // only the words. Each maps to a slot with a deterministic fallback: framing ←
-  // summary, sign-off ← reply invite; greeting + per-item lines are voice-only (they
-  // simply don't render without voice). `voiceLineFor` is keyed by item index — the id
-  // the composer handed the model — and survives partition/group reordering by identity.
+  // only the words. The voice is composed once per FAMILY with the baked first name, but
+  // child_name_level is a per-PARENT render-time transform — so each slot is re-leveled
+  // HERE, resolved ONCE and shared by the HTML and text paths. Each has a deterministic
+  // fallback: framing ← the re-leveled summary, sign-off ← the reply invite; greeting +
+  // per-item lines are voice-only (they simply don't render without voice). safeVoiceLine
+  // drops a line it cannot fully redact rather than leak a name past the dial (rule #1).
   const voice = payload.voice;
-  const framing = voice?.weekFraming ?? payload.summary;
+  const children = payload.children;
+  const greeting = voice?.greeting ? safeVoiceLine(voice.greeting, children, level, now) : null;
+  const framing =
+    (voice?.weekFraming ? safeVoiceLine(voice.weekFraming, children, level, now) : null) ??
+    (payload.summary ? relevelNames(payload.summary, children, level, now) : null);
+  const signOff =
+    (voice?.signOff ? safeVoiceLine(voice.signOff, children, level, now) : null) ?? REPLY_INVITE;
+  // `voiceLineFor` is keyed by item index — the id the composer handed the model — and
+  // survives partition/group reordering by identity.
   const voiceLineFor: VoiceLineFn = (item) => {
     if (!voice) return null;
     const idx = payload.items.indexOf(item);
     if (idx < 0) return null;
     const line = voice.itemLines[String(idx)];
-    return line && line.trim().length > 0 ? line : null;
+    if (!line || line.trim().length === 0) return null;
+    return safeVoiceLine(line, children, level, now);
   };
 
   const kicker = `<p style="margin:16px 0 0;color:${KICKER};font-family:${SANS};font-size:12px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;">${escapeHtml(weekRangeLabel(payload.weekStart))}</p>`;
@@ -245,8 +260,8 @@ export function renderWeeklyPlanEmail(
   // the serif framing line. The framing is the assistant's serif *voice* — quieter than
   // the headline (smaller, slate) so scale ranks the one signature above it — and falls
   // back to the deterministic summary when voice is absent.
-  const greetingHtml = voice?.greeting
-    ? `<p style="margin:0 0 10px;color:${NAVY};font-family:${SERIF};font-size:18px;line-height:1.5;">${escapeHtml(voice.greeting)}</p>`
+  const greetingHtml = greeting
+    ? `<p style="margin:0 0 10px;color:${NAVY};font-family:${SERIF};font-size:18px;line-height:1.5;">${escapeHtml(greeting)}</p>`
     : '';
   const summaryHtml = framing
     ? `<p style="margin:0 0 20px;color:${SLATE};font-family:${SERIF};font-size:18px;line-height:1.6;">${escapeHtml(framing)}</p>`
@@ -261,8 +276,8 @@ export function renderWeeklyPlanEmail(
     body = `${pendingHtml}${handledHtml}`;
   }
 
-  // The sign-off falls back to the deterministic reply invite when voice is absent.
-  const reply = `<tr><td style="padding:22px 0 0;"><p style="margin:0;color:${SLATE};font-family:${SANS};font-size:15px;line-height:1.6;">${escapeHtml(voice?.signOff ?? REPLY_INVITE)}</p></td></tr>`;
+  // The sign-off is the resolved (re-leveled) voice line, or the deterministic reply invite.
+  const reply = `<tr><td style="padding:22px 0 0;"><p style="margin:0;color:${SLATE};font-family:${SANS};font-size:15px;line-height:1.6;">${escapeHtml(signOff)}</p></td></tr>`;
 
   const cardInner = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${body}${reply}</table>`;
   const card = `<tr><td style="background:${CARD};border:1px solid ${CARD_BORDER};border-top:none;border-radius:0 0 22px 22px;padding:28px 34px 16px;">${greetingHtml}${summaryHtml}${cardInner}</td></tr>`;
@@ -271,6 +286,6 @@ export function renderWeeklyPlanEmail(
 
   const html = `<div style="margin:0;background:${PAGE};font-family:${SANS};padding:24px 0 40px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;">${header}${card}${footer}</table></div>`;
 
-  const text = renderText(payload, subjectLine, pending, handled, level, now, voiceLineFor);
+  const text = renderText(payload, subjectLine, pending, handled, level, now, greeting, framing, signOff, voiceLineFor);
   return { kind: 'email', subject: subjectLine, html, text };
 }
