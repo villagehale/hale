@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This response is correctly calibrated for a benign case. It appropriately reassures the parent that a runny nose and mild cough with good activity and intake is a normal cold at this age, avoiding unnecessary ER escalation. It provides clear, practical home-care guidance (saline, fluids, nose-blowing help) without invented specifics. The triage is explicit and well-graded: 811 for prolonged symptoms (7–10 days), fever, poor intake, or seeming unwell; ER/911 for red-flag respiratory signs (fast/laboured breathing, rib retractions, grunting, cyanosis). The language is plain, age-aware, avoids stating diagnosis with false certainty, and stays concise. It directly addresses the watchFor requirement by naming the concerning symptoms to monitor while reassuring the parent that this presentation does not warrant emergency care."
+  }
+}

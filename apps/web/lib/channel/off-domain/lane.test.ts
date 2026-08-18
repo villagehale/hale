@@ -9,10 +9,12 @@ import {
 } from './copy';
 import {
   type OffDomainPorts,
+  type ReplySource,
   type UnmetSignalOutcome,
   offDomainLane,
   recordUnmetIntent,
 } from './lane';
+import type { MedicalReply } from './medical';
 import type { LaneReading, LaneScreenFallback } from './screen';
 
 /**
@@ -31,6 +33,8 @@ import type { LaneReading, LaneScreenFallback } from './screen';
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const MESSAGE = '33333333-3333-4333-8333-333333333333';
 const ANSWER = "Messi, for me - the closest thing to a complete player I've watched.";
+const MEDICAL_ANSWER =
+  'A fever like this is often viral at this age; fluids and rest usually help. Call 811 any time, or go to the ER / call 911 if she has trouble breathing.';
 
 function reading(overrides: Partial<LaneReading> = {}): LaneReading {
   return { lane: 'off_domain_general', category: 'weather', fallback: null, ...overrides };
@@ -44,6 +48,8 @@ interface Recorded {
 
 interface Harness extends OffDomainPorts {
   composeCalls: number;
+  medicalCalls: number;
+  medicalSeen: string[];
   recorded: Recorded[];
 }
 
@@ -52,19 +58,31 @@ function ports(
     read?: LaneReading;
     signal?: UnmetSignalOutcome;
     answer?: GeneralAnswerOutcome;
+    medical?: MedicalReply;
   } = {},
 ): Harness {
   const read = overrides.read ?? reading();
   const signal = overrides.signal ?? 'recorded';
   const answer = overrides.answer ?? ({ status: 'composed', reply: ANSWER } as const);
+  const medical =
+    overrides.medical ?? ({ reply: MEDICAL_ANSWER, replySource: 'web_grounded' } as const);
   const harness: Harness = {
     composeCalls: 0,
+    medicalCalls: 0,
+    medicalSeen: [],
     recorded: [],
     screen: { read: async () => read },
     answer: {
       compose: async () => {
         harness.composeCalls += 1;
         return answer;
+      },
+    },
+    medical: {
+      answer: async (text) => {
+        harness.medicalCalls += 1;
+        harness.medicalSeen.push(text);
+        return medical;
       },
     },
     recordUnmetIntent: async (input) => {
@@ -83,15 +101,27 @@ const consider = (p: OffDomainPorts, text = 'anything') =>
   offDomainLane(p).consider({ familyId: FAMILY, channelMessageId: MESSAGE, text });
 
 describe('what each lane says', () => {
-  it('answers a safety ask with the fixed line, exactly', async () => {
-    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+  /** Every safety_critical category EXCEPT medical-symptom still gets the fixed line,
+   * with no model between a parent and what they are told about a crisis. medical-symptom
+   * moved to its own answered lane (see the dedicated describe below). */
+  it.each(['mental-health', 'child-safety', 'emergency'] as const)(
+    'answers a %s safety ask with the fixed line, exactly',
+    async (category) => {
+      const p = ports({ read: reading({ lane: 'safety_critical', category }) });
 
-    const verdict = await consider(p);
+      const verdict = await consider(p);
 
-    expect(verdict).toMatchObject({ status: 'deflected', reply: SAFETY_REPLY });
-    expect(SAFETY_REPLY).toContain('811');
-    expect(SAFETY_REPLY).toContain('911');
-  });
+      expect(verdict).toMatchObject({
+        status: 'deflected',
+        reply: SAFETY_REPLY,
+        replySource: 'fixed',
+      });
+      expect(SAFETY_REPLY).toContain('811');
+      expect(SAFETY_REPLY).toContain('911');
+      // The medical composer is only for medical-symptom — never woken for these.
+      expect(p.medicalCalls).toBe(0);
+    },
+  );
 
   /**
    * Skill audit P0 #3. The general terminal has a fourth outcome: the composer wrote a
@@ -251,6 +281,75 @@ describe('what each lane says', () => {
     if (verdict.status !== 'deflected') throw new Error('x');
     expect(verdict.reply).not.toMatch(/\bthe app\b/i);
     expect(verdict.reply).not.toMatch(/waiting on your OK/i);
+  });
+});
+
+/**
+ * The medical-symptom answer lane (founder-locked 2026-08-17). A symptom is no longer
+ * deflected to a fixed line — Hale ANSWERS it with a web-grounded composer. The composer's
+ * QUALITY (does it triage correctly) is measured against real cached Claude in
+ * apps/worker/evals/run-medical-symptom-eval.mjs; its mechanics and fail-closed behaviour
+ * in medical.test.ts. What is asserted HERE is the routing: only medical-symptom reaches
+ * the composer, its answer is sent, and it is never stamped as an unmet intent.
+ */
+describe('the medical-symptom answer lane', () => {
+  it('answers a medical-symptom text with the web-grounded composer, not the fixed line', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+
+    const verdict = await consider(p, 'she has had a fever for three days');
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      lane: 'safety_critical',
+      category: 'medical-symptom',
+      reply: MEDICAL_ANSWER,
+      replySource: 'web_grounded' satisfies ReplySource,
+    });
+    expect(p.medicalCalls).toBe(1);
+    // The general-answer composer is a different lane and is never woken here.
+    expect(p.composeCalls).toBe(0);
+  });
+
+  it('hands the composer the raw text — de-identification is the composer job, not the lane', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+
+    await consider(p, 'my son Milo, exactly 2, has a fever of 39');
+
+    expect(p.medicalSeen).toEqual(['my son Milo, exactly 2, has a fever of 39']);
+  });
+
+  /**
+   * Decision #4: a medical-symptom Hale ANSWERS is no longer an unmet intent, so the
+   * demand-signal write is skipped entirely and the outcome says `not_applicable` rather
+   * than faking a failed write (rule #11). This is the one path that answers off-domain
+   * WITHOUT a demand-signal row — deliberately, and named.
+   */
+  it('does NOT stamp an answered medical-symptom as an unmet intent', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+
+    const verdict = await consider(p);
+
+    expect(p.recorded).toEqual([]);
+    expect(verdict).toMatchObject({ signal: 'not_applicable' });
+  });
+
+  /** The composer's own last-resort fixed line rides out unchanged, and STILL is not
+   * recorded — the medical lane never writes a demand-signal row, answered or not. */
+  it('carries the composer last-resort fixed line out, still unrecorded', async () => {
+    const p = ports({
+      read: reading({ lane: 'safety_critical', category: 'medical-symptom' }),
+      medical: { reply: SAFETY_REPLY, replySource: 'fixed' },
+    });
+
+    const verdict = await consider(p);
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: SAFETY_REPLY,
+      replySource: 'fixed',
+      signal: 'not_applicable',
+    });
+    expect(p.recorded).toEqual([]);
   });
 });
 

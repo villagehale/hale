@@ -1,0 +1,8 @@
+{
+  "value": {
+    "clinical_query": "vomiting, watery diarrhea, lethargy, hard to wake, sunken eyes, no urine output over 12 hours - signs of dehydration",
+    "age_band": "toddler",
+    "duration": "2 days"
+  },
+  "latencyMs": 2116
+}
