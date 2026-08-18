@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) The answer invents specific weather data (24 degrees, sunny) without access to live data - a direct fabrication. (2) It mentions \"the park\" - a family/location detail Hale cannot know. (3) It includes greeting (\"Great question!\"), emoji, and a question at the end - all prohibited. (4) It points to a website/app. (5) It offers to do something next (\"set a reminder\"). The answer should have simply stated: \"I don't have access to family information.\" Instead, it fabricates weather and family context."
+  }
+}

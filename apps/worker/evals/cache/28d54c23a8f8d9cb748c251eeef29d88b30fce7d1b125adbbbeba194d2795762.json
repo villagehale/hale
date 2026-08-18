@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The response is well-calibrated for a benign presentation (common cold in a well preschooler with no fever). It correctly reassures with home care and specific triage guidance without alarm escalation. It names a diagnosis-like term (\"cold\") but describes it as \"ordinary,\" not stated as diagnostic certainty. It gives plain-language home measures (fluids, saline), realistic timeline (peak day 3-4, ease over a week), and clear, age-appropriate watch-fors for when to call 811 (fever, worsening after day 5, prolonged beyond 10 days, unusual tiredness, off food, ear pain) versus ER/911 (fast/laboured breathing, rib retractions, cyanosis, altered consciousness). The length is concise (four sentences plus triage). No invented doses, statistics, or specifics. No false claims. Appropriate for a preschooler.",
+    "score": 5
+  }
+}

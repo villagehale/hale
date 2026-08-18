@@ -1,7 +1,7 @@
 import { type AgentClient, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { smsEncoding } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { reachesForTheHealthLine } from './copy';
@@ -37,14 +37,18 @@ import { reachesForTheHealthLine } from './copy';
  */
 
 /**
- * The hard ceiling on what goes out, in characters.
+ * The hard ceiling on what goes out, in SMS segments.
  *
- * 300 GSM-7 characters is two SMS segments (153 each) — the same budget the coach's own
- * replies are fitted to, and about two sentences, which is what the skill asks for. It
- * is stated in the skill too, and the eval gates on it: a model told a number and then
- * measured against it is the only version of this that stays true.
+ * Two segments is about two sentences — the same budget the coach's own replies are
+ * fitted to (coach/reply.ts MAX_REPLY_SEGMENTS), and what the skill asks for. It is a
+ * SEGMENT count rather than a character count on purpose: a parent who texts in French
+ * or Chinese gets an answer in kind (general-answer.md), and a non-Latin body is UCS-2,
+ * where two segments is 134 characters rather than 306. `smsSegments` counts in the
+ * currency the carrier actually bills, so the one ceiling is correct in every language —
+ * which is exactly why the older GSM-7-only reject is gone: it fell every accented-French
+ * and every Chinese answer closed to the English line.
  */
-export const MAX_ANSWER_CHARS = 300;
+export const MAX_ANSWER_SEGMENTS = 2;
 
 const MAX_TOKENS = 256;
 
@@ -108,9 +112,15 @@ function unavailable(reason: GeneralAnswerFallback, detail?: string): GeneralAns
  * The cap is a REFUSAL rather than a trim. The coach can trim, because it has an app
  * link to hand the remainder to; this stage has nothing to point at and nothing worth
  * pointing at, so an answer cut mid-clause would just be a worse message than the fixed
- * line it would have replaced. `detail` separates the three ways a body can be
- * unsendable in the LOG without splitting the outcome the caller acts on — every one of
- * them means the same thing to the lane.
+ * line it would have replaced. `detail` separates the ways a body can be unsendable in
+ * the LOG without splitting the outcome the caller acts on — every one of them means the
+ * same thing to the lane.
+ *
+ * There is no GSM-7 gate. A parent who writes in French or Chinese is answered in kind
+ * (general-answer.md), and those bodies are UCS-2 by nature — an em dash or an emoji that
+ * a model reaches for gratuitously is still folded to ASCII by `plainText`, but an
+ * accented é or a Chinese character is content the answer cannot exist without. The
+ * segment budget is what keeps the message cheap, in the currency the carrier bills.
  */
 /** "No links, ever" (general-answer.md), held structurally: a URL this stage composes
  * is a URL it invented — there is no tool it could have gotten one from. */
@@ -126,8 +136,9 @@ function sendable(raw: string): GeneralAnswerOutcome {
     return { status: 'safety' };
   }
   if (flattened === '') return unavailable('unsendable', 'empty');
-  if (flattened.length > MAX_ANSWER_CHARS) return unavailable('unsendable', 'over_char_cap');
-  if (smsEncoding(flattened) !== 'gsm7') return unavailable('unsendable', 'not_gsm7');
+  if (smsSegments(flattened) > MAX_ANSWER_SEGMENTS) {
+    return unavailable('unsendable', 'over_segment_budget');
+  }
   if (LINK_SHAPE.test(flattened)) return unavailable('unsendable', 'carries_link');
   return { status: 'composed', reply: flattened };
 }

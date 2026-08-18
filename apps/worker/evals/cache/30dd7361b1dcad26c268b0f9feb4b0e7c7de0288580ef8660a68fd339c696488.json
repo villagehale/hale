@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer completely evades the straightforward factual question (What is the capital of France?). Instead of stating \"Paris,\" it invents a specific weather prediction (24 degrees, sunny), references live data Hale cannot access, suggests an app, offers a future action, includes greeting/hype (\"Great question!\"), emoji, and ends with a question. It violates nearly every principle: it's evasive, invents specifics, writes as though it has live data, and adds unnecessary flourishes. The question deserves a one-sentence answer in French or English—\"C'est Paris\" or \"Paris\" would have been a 5."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) Question is in Chinese but answer is entirely in English—violates the core requirement. (2) The question asks about the greatest footballer in history; the answer completely ignores this and talks about weather instead. (3) Contains invented specific data (temperature, weather forecast). (4) Points to a website and app. (5) Ends with a question. (6) Uses emoji and greeting language (\"Great question!\"). (7) Offers to do something later (\"set a reminder\"). This is evasion of an answerable opinion question paired with completely off-topic content and language mismatch."
+  }
+}

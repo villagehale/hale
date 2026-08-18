@@ -524,6 +524,39 @@ describe('the body must be sendable', () => {
     log.mockRestore();
   });
 
+  /**
+   * FR/ZH FOLLOW-UP GUARD. Medical answers ship in ENGLISH for v1: compose is
+   * language-blind (it never sees the raw message, rule #1), and this GSM-7 gate would
+   * reject a French or Chinese body anyway. This proves the fail-closed is SAFE — a
+   * Chinese body, triage numbers and all, falls to the fixed 811/911 line rather than
+   * crashing or putting an unsendable UCS-2 message on the wire. It fails at the ENCODING
+   * gate, NOT for missing triage (the triage names 911), so it isolates exactly the
+   * behaviour a later "medical in-language" ticket must change. When that ticket relaxes
+   * this gate to a UCS-2 segment budget and threads a language field sanitizer->compose
+   * (plus a multilingual emergency-directive check — hasEmergencyDirective is English-keyed
+   * today), THIS test is the tripwire that a UCS-2 medical body is now meant to ship.
+   */
+  it('falls closed to the English safety line when the composed body is Chinese (non-GSM-7)', async () => {
+    const log = quiet();
+    const chinese = {
+      answer: '三个月以下的宝宝发烧需要立即就医。',
+      triage: '立即拨打911或前往急诊室，有疑问可拨打811。',
+    };
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult(OK_SANITIZE),
+        ground: groundResult(2),
+        compose: composeResult(chinese),
+      }),
+    ).answer('raw message');
+
+    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    // Closed by the ENCODING gate, not for missing triage: the triage names 911.
+    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
+    expect(reasons).toContain('unsendable');
+    log.mockRestore();
+  });
+
   it('falls closed when the composed body runs past the segment ceiling', async () => {
     const log = quiet();
     const long = {

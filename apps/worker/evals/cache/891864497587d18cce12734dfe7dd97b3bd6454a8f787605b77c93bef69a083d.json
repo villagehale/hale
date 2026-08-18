@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "This is likely just a common cold - very typical at this age, especially with no fever. Clear fluids, rest, saline drops/suction for the nose, and honey (if over 1 year) for cough can help. Watch for: fever developing, fast/labored breathing, ribs pulling in, not drinking, unusual sleepiness, or symptoms lasting well over 10 days or worsening after improving.",
+    "triage": "If she's still eating, drinking, and playing fairly normally, this is likely fine to watch at home. Call 811 (Health811) if symptoms drag on past 10-14 days, worsen, or you're unsure. Go to the ER or call 911 if breathing looks fast, labored, or ribs are pulling in, lips look blue/dusky, or she becomes hard to wake or very floppy.",
+    "sources": [
+      "CDC - Common Cold",
+      "HealthyChildren.org (AAP)",
+      "Health811 Ontario"
+    ]
+  },
+  "latencyMs": 6613
+}

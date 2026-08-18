@@ -62,11 +62,26 @@ OMIT `age_band` entirely - never guess one.
 - `preschooler` - 3 years up to 5 years
 - `school_age` - 5 years and older
 
+## Always in English, whatever language the parent wrote in
+
+Parents text Hale in French and Chinese too, and the clinical picture must come out
+the same either way: write `clinical_query` and `duration` in plain ENGLISH clinical
+language, never in the language of the message. "bebe a du mal a respirer" becomes
+"infant trouble breathing"; "宝宝发烧两天了" becomes "fever 2 days infant".
+
+This is load-bearing, not cosmetic. Everything downstream is English-keyed: the
+pediatric search reads English, and the deterministic red-flag check that decides
+whether a message escalates matches ENGLISH terms (trouble breathing, seizure, fever
+under 3 months). A query left in French or Chinese would slip straight past that
+check, and a real emergency would not be flagged. So translate the symptom into
+English as you de-identify it; keep the numbers and the coarse age band exactly as
+the rules above say.
+
 ## Shape
 
 - `clinical_query` is a SEARCH QUERY, not a sentence to the parent: a few plain
-  clinical words plus the band, e.g. what a clinician would type to look the
-  symptom up. Keep it tight.
+  clinical words plus the band, in ENGLISH, e.g. what a clinician would type to
+  look the symptom up. Keep it tight.
 - Write nothing that is not in the parent's message. You are de-identifying, not
   diagnosing - do not add a suspected cause, a severity you were not told, or a
   symptom that was not mentioned.
