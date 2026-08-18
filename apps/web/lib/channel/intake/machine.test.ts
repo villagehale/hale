@@ -13,9 +13,12 @@ import {
   DECLINE_ACK,
   DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY,
+  HELP_REPLY_BY_LANGUAGE,
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  START_ACK_BY_LANGUAGE,
   STOP_ACK,
+  STOP_ACK_BY_LANGUAGE,
   WATCH_OFFER,
   WATCH_OFFER_ASK,
   detailsBlocked,
@@ -1066,5 +1069,66 @@ describe('intake · answers in the language the parent wrote in', () => {
     expect(transport.bodies().at(-1)).toBe(SAFETY_REPLY_BY_LANGUAGE.fr);
     expect(transport.bodies().at(-1)).toContain('811');
     expect(transport.bodies().at(-1)).toContain('911');
+  });
+});
+
+/**
+ * THE FRENCH CARRIER KEYWORDS, end to end — the CTA v2.1 §3.1 obligation proven as
+ * behaviour rather than as a table entry.
+ *
+ * These are the turns `replyLanguage` structurally could not get right: the body IS the
+ * token, so AIDE and DEBUT carry no sentence to read French out of. Each assertion is
+ * therefore about the KEYWORD's language reaching the send site, and each has its
+ * English twin beside it so a table that always answered French would fail.
+ */
+describe('intake · the French CASL keywords', () => {
+  it('unsubscribes on ARRET exactly as on STOP, and confirms in French', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const result = await text(fake, transport, deps, 'ARRÊT');
+
+    expect(result).toEqual({ status: 'stopped' });
+    expect(transport.bodies().at(-1)).toBe(STOP_ACK_BY_LANGUAGE.fr);
+    // The legal half: the same revocation and the same withdrawal record an English STOP
+    // writes. A French unsubscribe that only answered politely would be the CASL failure.
+    const revoke = fake.writes.find(
+      (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
+    );
+    expect(revoke).toBeDefined();
+    const withdrawal = inserts(fake, schema.consentRecords).find(
+      (c) => c.consentType === 'sms_service_messages' && c.granted === false,
+    );
+    expect(withdrawal).toBeDefined();
+  });
+
+  it('answers AIDE with the French capability line and HELP with the English one', async () => {
+    const fr = harness({});
+    await text(fr.fake, fr.transport, fr.deps, 'hi');
+    expect(await text(fr.fake, fr.transport, fr.deps, 'AIDE')).toEqual({ status: 'helped' });
+    expect(fr.transport.bodies().at(-1)).toBe(HELP_REPLY_BY_LANGUAGE.fr);
+
+    const en = harness({});
+    await text(en.fake, en.transport, en.deps, 'hi');
+    await text(en.fake, en.transport, en.deps, 'HELP');
+    expect(en.transport.bodies().at(-1)).toBe(HELP_REPLY);
+  });
+
+  it('re-enrols on DEBUT after an ARRET, and welcomes the parent back in French', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    await text(fake, transport, deps, 'ARRET');
+
+    const restarted = await text(fake, transport, deps, 'DEBUT');
+
+    expect(restarted).toEqual({ status: 'restarted' });
+    expect(transport.bodies().at(-1)).toBe(START_ACK_BY_LANGUAGE.fr);
+    // Re-consent is the keyword itself, and the record has to hold what was actually sent.
+    const consents = inserts(fake, schema.consentRecords).filter(
+      (c) => c.consentType === 'sms_service_messages' && c.granted === true,
+    );
+    expect(consents.at(-1)?.evidence).toMatchObject({ verbatimReply: 'DEBUT' });
   });
 });

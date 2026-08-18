@@ -106,11 +106,12 @@ const AFFIRMATIVE = new Set([
  * the same reason.
  *
  * NEITHER ARE ITS TRANSLATIONS — annule, annuler, arrête, 取消 — and the rule is stronger
- * for them, not weaker. `matchKeyword` holds the English STOP list only, so a French parent
- * texting "arrête" is not claimed upstream the way "stop" is; if this set claimed it, a
- * request to be left alone would be answered as a declined calendar change and the family
- * would keep hearing from us. Leaving them unread is not silence — an unmatched body goes
- * to the coach, which answers in the parent's language and can ask which they meant.
+ * for them, not weaker. `matchKeyword` now holds the French keyword the carriers mandate
+ * (`arret`) but not these, so a parent texting "arrête" is still not claimed upstream the
+ * way "stop" is; if this set claimed it, a request to be left alone would be answered as a
+ * declined calendar change and the family would keep hearing from us. Leaving them unread
+ * is not silence — an unmatched body goes to the coach, which answers in the parent's
+ * language and can ask which they meant.
  */
 const NEGATIVE = new Set([
   'no',

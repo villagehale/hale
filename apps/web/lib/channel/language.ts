@@ -37,9 +37,14 @@ export type ReplyLanguage = 'en' | 'fr';
  *
  * That bar is what keeps `aide` out (an English noun), `mon` out (Monday), `est` out
  * (the timezone) and `pardon` out, and it is why the list is this short. `arret` is here
- * for a reason of its own: it is the French STOP keyword Canadian carriers require
- * (CTA CSC Compliance Policies v2.1 §3.1), and although `matchKeyword` does not yet act
- * on it, a parent who texts it has unmistakably written French.
+ * for a reason of its own: a parent who texts it has unmistakably written French, whether
+ * or not the whole body is the bare CASL keyword.
+ *
+ * IT IS NOT WHAT DECIDES A KEYWORD TURN, and `aide` is the proof of why. A body that IS
+ * a keyword is one token long, and this detector cannot rule on `aide` without ruling
+ * wrongly on the English noun — so `matchKeyword` (intake/keywords.ts) carries the
+ * language of the WORD alongside the match and the keyword branch reads that instead.
+ * A fact about a word beats evidence weighed out of a sentence that isn't there.
  */
 const FRENCH_ALONE = new Set([
   'bonjour',
