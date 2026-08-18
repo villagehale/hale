@@ -13,6 +13,7 @@ import {
   SAFETY_REPLY,
   asksAboutEyeCare,
 } from './copy';
+import { type MedicalComposer, createMedicalComposer } from './medical';
 import {
   type InboundLaneScreen,
   type LaneScreenFallback,
@@ -64,16 +65,19 @@ import {
 
 /** Whether the demand signal actually landed. `not_recorded` is a real, countable
  * outcome — the deflection still went out, and the founder's weekly count is short one
- * row that the log line accounts for. */
-export type UnmetSignalOutcome = 'recorded' | 'not_recorded';
+ * row that the log line accounts for. `not_applicable` is the medical-symptom answer
+ * lane: Hale ANSWERED it, so it was never an unmet intent and no row was written
+ * (founder-locked 2026-08-17) — named rather than faked as a failed write (rule #11). */
+export type UnmetSignalOutcome = 'recorded' | 'not_recorded' | 'not_applicable';
 
 /**
  * Where the words that went out came from. `fixed` is one of the two door lines in
- * copy.ts; `composed` is the general answer; anything else is a
- * {@link GeneralAnswerFallback} naming why the composer could not run and the deflect
- * line stood in for it (rule #11).
+ * copy.ts (or the medical lane's last-resort 811/911 line); `composed` is the general
+ * answer; `web_grounded` is the medical-symptom answer, searched and composed; anything
+ * else is a {@link GeneralAnswerFallback} naming why the composer could not run and the
+ * deflect line stood in for it (rule #11).
  */
-export type ReplySource = 'fixed' | 'composed' | GeneralAnswerFallback;
+export type ReplySource = 'fixed' | 'composed' | 'web_grounded' | GeneralAnswerFallback;
 
 export type OffDomainVerdict =
   /** Hale's job. The turn continues to the coach exactly as it did before this stage
@@ -96,6 +100,10 @@ export interface OffDomainPorts {
    * #11): "no composer wired" is not a state this lane has — a composer that cannot run
    * says so by name and the fixed line goes out instead. */
   answer: GeneralAnswerComposer;
+  /** Answers a medical-symptom text: a web-grounded, coarse-age-aware reply with its own
+   * triage, or the fixed 811/911 line as a last resort. Non-nullable for the same reason
+   * (rule #11) — its own failure modes are named inside it, never a missing dependency. */
+  medical: MedicalComposer;
   /** Stamps the inbound row with the lane + bucket. Never throws — see
    * {@link UnmetSignalOutcome}. */
   recordUnmetIntent(input: {
@@ -122,6 +130,25 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         return { status: 'in_domain', fallback: reading.fallback };
       }
       const lane = reading.lane;
+
+      // MEDICAL SYMPTOMS ARE ANSWERED NOW (founder-locked 2026-08-17), not deflected to a
+      // fixed line. Hale composes a web-grounded, coarse-age-aware reply with its own
+      // triage (medical.ts) — every word model-generated, the 811/911 line kept only as
+      // the last-resort fallback inside the composer. It leaves by its own branch BEFORE
+      // the demand-signal write: a question Hale answered is not an unmet intent, and its
+      // `signal` says `not_applicable` rather than pretending a write was even attempted
+      // (rule #11). Every OTHER safety_critical category still gets SAFETY_REPLY below.
+      if (lane === 'safety_critical' && reading.category === 'medical-symptom') {
+        const { reply, replySource } = await ports.medical.answer(input.text);
+        return {
+          status: 'deflected',
+          lane,
+          category: reading.category,
+          reply,
+          replySource,
+          signal: 'not_applicable',
+        };
+      }
 
       // The two doors are fixed sentences and the composer is never woken for them. Not
       // a prompt asked nicely to decline — a branch it cannot reach. Letting a model
@@ -240,9 +267,10 @@ export function recordUnmetIntent(database: Database) {
 }
 
 /**
- * The production lane. Both model stages share ONE client resolver — they are two calls
- * on the same turn, and a screen that could reach Anthropic while the composer could not
- * is not a state worth being able to represent.
+ * The production lane. Every model stage — the screen, the general answer, and the
+ * medical composer — shares ONE client resolver: they are calls on the same turn, and a
+ * screen that could reach Anthropic while a composer could not is not a state worth being
+ * able to represent.
  *
  * It used to take a `pendingApprovals` reader as well, bound to the approvals query so
  * the count in the deflect could never disagree with the list a "YES 1" would hit. The
@@ -256,6 +284,7 @@ export function productionOffDomainLane(
   return offDomainLane({
     screen: createInboundLaneScreen(client),
     answer: createGeneralAnswer(client),
+    medical: createMedicalComposer(client),
     recordUnmetIntent: recordUnmetIntent(database),
   });
 }

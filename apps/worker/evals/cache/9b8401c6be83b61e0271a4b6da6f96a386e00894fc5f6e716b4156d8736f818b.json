@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This response correctly handles a true red-flag presentation (fever ≥38°C rectal in infant <3 months). It directs to emergency care immediately and up front (\"go to the ER or call your doctor's after-hours line immediately\"). The language is plain and age-aware, explains the urgency (babies can get seriously ill quickly), explicitly lists red-flag escalators (sleepiness, floppy, breathing changes, poor color), mentions 811 as an option but makes clear it's not a substitute for in-person assessment, and avoids stating diagnosis with certainty, invented specifics, or false claims. Triage is explicit and appropriate. Four sentences, concise, calibrated to the genuine danger at this age."
+  }
+}

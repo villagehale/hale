@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "This needs urgent medical care now - go to the ER or call your doctor's after-hours line immediately. Any fever of 38C or higher (rectal) in a baby under 3 months needs same-day in-person assessment, since babies this young can get seriously ill quickly and often without other obvious signs.",
+    "triage": "Do not wait and watch at this age. Go to the ER now, or call 911 if your baby is also very sleepy, hard to wake, floppy, breathing fast or hard, or has a poor color. You can call Health811 (811) for guidance too, but a fever like this in a baby under 3 months means in-person medical assessment right away, not a phone-only decision.",
+    "sources": [
+      "CDC - Fever in Infants",
+      "HealthyChildren.org (AAP) - Fever and Your Baby",
+      "Health811 Ontario"
+    ]
+  },
+  "latencyMs": 4574
+}
