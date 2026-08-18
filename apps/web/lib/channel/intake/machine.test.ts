@@ -1,20 +1,25 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
 import { matchHealthCheckpoints } from '~/lib/health/match';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   AMBIGUOUS_CLARIFY,
+  AMBIGUOUS_CLARIFY_BY_LANGUAGE,
   ASSENT_ACK,
+  ASSENT_ACK_BY_LANGUAGE,
   COLD_START_ASK,
   DECLINE_ACK,
+  DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY,
   REGION_UNAVAILABLE_REPLY,
+  REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   STOP_ACK,
   WATCH_OFFER,
   WATCH_OFFER_ASK,
   detailsBlocked,
+  greeting,
 } from './copy';
 import {
   FakeAnswerComposer,
@@ -956,5 +961,110 @@ describe('intake · guards', () => {
     const result = await handleInboundSms(fake.db, transport.inbound('12345', 'hi'), deps);
     expect(result).toEqual({ status: 'ignored', reason: 'invalid_number' });
     expect(transport.sent).toHaveLength(0);
+  });
+});
+
+/**
+ * THE FRENCH ROUTING, proven through the machine rather than through the table.
+ *
+ * copy.test.ts pins the words; this pins that a parent who wrote French actually
+ * RECEIVES them — the detector is read at the send site, off the body that just arrived.
+ * Every assertion has its English twin beside it, because a table that always returned
+ * French would pass the first half of each of these on its own.
+ */
+describe('intake · answers in the language the parent wrote in', () => {
+  it('greets a French first message in French, and an English one in English', async () => {
+    const fr = harness({});
+    expect(await text(fr.fake, fr.transport, fr.deps, 'Bonjour')).toEqual({ status: 'greeted' });
+    expect(fr.transport.bodies()[0]).toBe(greeting(null, 'fr'));
+
+    const en = harness({});
+    await text(en.fake, en.transport, en.deps, 'hi');
+    expect(en.transport.bodies()[0]).toBe(greeting(null, 'en'));
+  });
+
+  it('refuses an out-of-region French family in French, and provisions nothing', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: MAYA_AND_LEO.children, postalCode: '75008' }],
+    });
+    await text(fake, transport, deps, 'Bonjour');
+    const result = await text(fake, transport, deps, 'Mes enfants ont 4 ans et 1 an, 75008');
+
+    expect(result).toEqual({ status: 'region_unavailable' });
+    expect(transport.bodies().at(-1)).toBe(REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.fr);
+    expect(inserts(fake, schema.families)).toHaveLength(0);
+  });
+
+  it('clarifies a wobbly French answer in French', async () => {
+    const { fake, transport, deps } = harness({
+      intents: [ambiguous('vous surveillez quoi au juste?')],
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const clarified = await text(fake, transport, deps, 'vous surveillez quoi au juste?');
+    expect(clarified).toEqual({ status: 'clarified' });
+    expect(transport.bodies().at(-1)).toBe(AMBIGUOUS_CLARIFY_BY_LANGUAGE.fr);
+  });
+
+  it('takes a French no in French and an English no in English', async () => {
+    const fr = harness({ intents: [decline('non merci')] });
+    await text(fr.fake, fr.transport, fr.deps, 'hi');
+    await text(fr.fake, fr.transport, fr.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    await text(fr.fake, fr.transport, fr.deps, 'non merci');
+    expect(fr.transport.bodies().at(-1)).toBe(DECLINE_ACK_BY_LANGUAGE.fr);
+
+    const en = harness({ intents: [decline('no thanks')] });
+    await text(en.fake, en.transport, en.deps, 'hi');
+    await text(en.fake, en.transport, en.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    await text(en.fake, en.transport, en.deps, 'no thanks');
+    expect(en.transport.bodies().at(-1)).toBe(DECLINE_ACK);
+  });
+
+  /**
+   * The consent acknowledgment, and the one place the French turn deliberately gives
+   * something up. `identityAsk` composes in English and is handed no way to know what the
+   * parent wrote, so the French ack goes out WHOLE and unasked rather than with an English
+   * question stapled to it. `nameAsked: false` is the same outcome a deferred compose
+   * produces, and the intros sweep asks again later if it ever actually needs a name.
+   */
+  it('confirms a French yes in French, and sends no English tail with it', async () => {
+    const fr = harness({ intents: [assent('oui')] });
+    await text(fr.fake, fr.transport, fr.deps, 'hi');
+    await text(fr.fake, fr.transport, fr.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    const recorded = await text(fr.fake, fr.transport, fr.deps, 'oui');
+
+    expect(recorded).toMatchObject({ status: 'watch_recorded', granted: true, nameAsked: false });
+    expect(fr.transport.bodies().at(-1)).toBe(ASSENT_ACK_BY_LANGUAGE.fr);
+    expect(fr.transport.bodies().at(-1)).not.toContain('ASK');
+
+    // The English twin still gets its tail, so the assertion above is about French and not
+    // about the name ask having quietly stopped working for everybody.
+    const en = harness({ intents: [assent('yes')] });
+    await text(en.fake, en.transport, en.deps, 'hi');
+    await text(en.fake, en.transport, en.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    const enRecorded = await text(en.fake, en.transport, en.deps, 'yes');
+
+    expect(enRecorded).toMatchObject({ nameAsked: true });
+    expect(en.transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
+  });
+
+  /**
+   * The safety line, on the intake path that reaches it: a mid-intake question the
+   * composer reads as being about a hurt child. This is the message where the language
+   * matters most, and both numbers have to survive the translation.
+   */
+  it('sends the safety line in French when the French question is about a hurt child', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }],
+      answerComposer: new FakeAnswerComposer({ status: 'safety' }),
+    });
+    await text(fake, transport, deps, 'hi');
+    const out = await text(fake, transport, deps, 'Mon fils est tombé, je ne sais pas quoi faire');
+
+    expect(out).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(transport.bodies().at(-1)).toBe(SAFETY_REPLY_BY_LANGUAGE.fr);
+    expect(transport.bodies().at(-1)).toContain('811');
+    expect(transport.bodies().at(-1)).toContain('911');
   });
 });

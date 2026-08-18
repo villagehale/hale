@@ -1,10 +1,26 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_TAIL_ASK_CHARS } from '~/lib/channel/identity/ask-voice';
+import { replyLanguage } from '~/lib/channel/language';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 import {
+  AMBIGUOUS_CLARIFY,
+  AMBIGUOUS_CLARIFY_BY_LANGUAGE,
   ASSENT_ACK,
+  ASSENT_ACK_BY_LANGUAGE,
+  COLD_START_ASK,
+  COLD_START_ASK_BY_LANGUAGE,
   DECLINE_ACK,
+  DECLINE_ACK_BY_LANGUAGE,
+  HELP_REPLY,
+  HELP_REPLY_BY_LANGUAGE,
+  REGION_UNAVAILABLE_REPLY,
+  REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  START_ACK,
+  START_ACK_BY_LANGUAGE,
   WATCH_OFFER,
+  WATCH_OFFER_BY_LANGUAGE,
   detailsBlocked,
   greeting,
   followUp,
@@ -14,7 +30,7 @@ import {
 
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {
-    expect(greeting(null)).toBe(
+    expect(greeting(null, 'en')).toBe(
       "Hi, I'm Hale - an AI that quietly runs the family week. Registration dates, weekend plans, the stuff that slips. Tell me your kids' names and ages, plus your postal code - and I'll get to work.",
     );
   });
@@ -22,18 +38,18 @@ describe('greeting', () => {
   it('is the verbatim venue line, naming the venue, and does NOT ask for a postal code', () => {
     // The QR venue already tells us the area, so asking for the postal code would be
     // asking for data we don't need — the whole point of the venue variant.
-    expect(greeting('library')).toBe(
+    expect(greeting('library', 'en')).toBe(
       "Hi, I'm Hale - an AI that quietly runs the family week for parents around here. You found me at the library, so I already know the area. Kids' names and ages, and I'll get to work.",
     );
-    expect(greeting('library')).not.toContain('postal');
+    expect(greeting('library', 'en')).not.toContain('postal');
   });
 
   // v2 folded the AI disclosure INTO the first sentence rather than trailing it as a
   // parenthetical. It is the same promise made better: a stranger reads "an AI" in the
   // words Hale introduces itself with, not in a footnote after the ask.
   it('discloses that Hale is an AI in the greeting itself, in BOTH variants', () => {
-    expect(greeting(null)).toContain("I'm Hale - an AI");
-    expect(greeting('library')).toContain("I'm Hale - an AI");
+    expect(greeting(null, 'en')).toContain("I'm Hale - an AI");
+    expect(greeting('library', 'en')).toContain("I'm Hale - an AI");
   });
 });
 
@@ -181,5 +197,152 @@ describe('detailsBlocked', () => {
     expect(detailsBlocked(['ages', 'location'])).toBe(
       "I can't set your family up until I know your kids' ages and your postal code - send them whenever you're ready.",
     );
+  });
+});
+
+/**
+ * THE FRENCH SCRIPT.
+ *
+ * Every assertion here is a copy review written down. These are the same promises the
+ * English lines above make — the AI disclosure, the restraint, the STOP escape, the
+ * region boundary — and a translation that drops one of them is a promise nobody made,
+ * so the properties are asserted separately from the verbatim strings rather than being
+ * assumed to have survived the trip.
+ *
+ * ALL OF IT IS PENDING FOUNDER REVIEW. The verbatim expectations are what make that
+ * review possible: a reworded line is a diff in this file, not a silent drift.
+ */
+describe('the French script', () => {
+  it('asks a French parent for the same two facts, in the same order', () => {
+    expect(COLD_START_ASK_BY_LANGUAGE.fr).toBe(
+      "Dites-moi le nom et l'age de vos enfants, plus votre code postal - et je me mets au travail.",
+    );
+    // The ask is the whole point of the turn: names, ages, postal code, nothing else.
+    expect(COLD_START_ASK_BY_LANGUAGE.fr).toContain('nom');
+    expect(COLD_START_ASK_BY_LANGUAGE.fr).toContain("l'age");
+    expect(COLD_START_ASK_BY_LANGUAGE.fr).toContain('code postal');
+  });
+
+  it('introduces Hale as an AI in French too, and closes on the same ask', () => {
+    expect(greeting(null, 'fr')).toBe(
+      "Bonjour, je suis Hale - une IA qui gère discrètement la semaine familiale. Les dates d'inscription, les sorties de fin de semaine, ce qui risque de vous échapper. Dites-moi le nom et l'age de vos enfants, plus votre code postal - et je me mets au travail.",
+    );
+    // The disclosure is IN the first sentence, exactly as the English one is.
+    expect(greeting(null, 'fr')).toContain('je suis Hale - une IA');
+    expect(greeting(null, 'fr')).toContain(COLD_START_ASK_BY_LANGUAGE.fr);
+  });
+
+  /**
+   * The venue arrival stays English, and this pins it as a decision rather than an
+   * oversight. A parent who scanned a QR code sends the PREFILLED body — "HALE LIBRARY",
+   * or "Hi (via earlyon-georgetown)" — which is machine-authored English carrying no
+   * evidence about the person holding the phone, so per-message detection can never
+   * route this branch to French anyway. On top of that the venue names in SOURCE_VENUES
+   * are English nouns ("library", "rec centre") that no French sentence can carry
+   * without an article that would have to be picked per venue.
+   */
+  it('leaves the venue greeting in English, because its trigger is a machine-authored tag', () => {
+    expect(greeting('library', 'fr')).toBe(greeting('library', 'en'));
+  });
+
+  it('asks the watch question in French and carries the SAME privacy link constant', () => {
+    expect(WATCH_OFFER_BY_LANGUAGE.fr).toBe(
+      `Voulez-vous que je garde un oeil sur tout cela pour vous? (comment je traite les infos de votre famille : ${PRIVACY_URL})`,
+    );
+    // The constant, never a second copy of the URL — a policy move must not leave a
+    // stale address inside a French consent record's own question.
+    expect(WATCH_OFFER_BY_LANGUAGE.fr).toContain(PRIVACY_URL);
+  });
+
+  it('confirms coverage in French, names the STOP escape, and asks nothing itself', () => {
+    expect(ASSENT_ACK_BY_LANGUAGE.fr).toBe(
+      "C'est fait - tout est couvert. Je texte juste quand il le faut, et STOP marche toujours.",
+    );
+    // CASL: the unsubscribe instruction survives translation, and it survives as the
+    // LITERAL token, because that is the only word `matchKeyword` acts on today.
+    expect(ASSENT_ACK_BY_LANGUAGE.fr).toContain('STOP');
+    // Same reason as the English twin: the turn's one question is the composed identity
+    // ask the machine appends, so this half must carry none of its own.
+    expect(ASSENT_ACK_BY_LANGUAGE.fr).not.toContain('?');
+  });
+
+  /**
+   * The identity ask's tail budget is DERIVED from the English acknowledgment
+   * (`MAX_TAIL_ASK_CHARS = MAX_ASK_CHARS - ASSENT_ACK.length - 1`), so a French twin
+   * longer than its English original would push the consent turn — the one message that
+   * both confirms consent and asks a parent their name — into two segments without
+   * anything failing. The budget is not language-aware; the copy is what has to fit.
+   */
+  it('keeps the French acknowledgment inside the tail budget the English one sized', () => {
+    expect(smsSegments(`${ASSENT_ACK_BY_LANGUAGE.fr} ${'a'.repeat(MAX_TAIL_ASK_CHARS)}`)).toBe(1);
+  });
+
+  it('takes a no without friction in French and leaves the door open', () => {
+    expect(DECLINE_ACK_BY_LANGUAGE.fr).toBe(
+      'Pas de problème - textez-moi quand vous voulez. Les dates et les trouvailles sont là quand vous en aurez besoin.',
+    );
+  });
+
+  it('offers the one narrow watch in French when the answer was a wobble', () => {
+    expect(AMBIGUOUS_CLARIFY_BY_LANGUAGE.fr).toBe(
+      "Comme vous voulez - je surveille au moins les dates d'inscription? Celles-là sont faciles à manquer.",
+    );
+  });
+
+  it('answers HELP in French with the same capability line and the same STOP instruction', () => {
+    expect(HELP_REPLY_BY_LANGUAGE.fr).toBe(
+      "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez STOP pour vous désabonner.",
+    );
+    expect(HELP_REPLY_BY_LANGUAGE.fr).toContain('STOP');
+    // AIDE is deliberately NOT offered as a keyword here: `matchKeyword` does not read
+    // it, so naming it would be Hale promising a word that does nothing. See the note
+    // on HELP_REPLY_BY_LANGUAGE.
+    expect(HELP_REPLY_BY_LANGUAGE.fr).not.toContain('AIDE');
+  });
+
+  it('welcomes a re-subscribing parent back in French', () => {
+    expect(START_ACK_BY_LANGUAGE.fr).toBe(
+      'Vous voilà de retour - je vous texte quand quelque chose demande votre attention.',
+    );
+  });
+
+  it('closes honestly in French when the postal code is outside the region', () => {
+    expect(REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.fr).toBe(
+      "Je fonctionne seulement pour les familles au Canada pour l'instant, donc je ne peux pas encore vous aider - je n'ai rien mis en place.",
+    );
+    // The honest half: nothing was provisioned, and the reply says so.
+    expect(REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.fr).toContain('Canada');
+    expect(REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.fr).toContain("je n'ai rien mis en place");
+  });
+
+  /**
+   * The English half of every table IS the exported constant, not a copy of it. That is
+   * what makes an English copy edit impossible to half-apply: there is one string, and
+   * the table points at it.
+   */
+  it('holds the English constant itself, so the two can never drift apart', () => {
+    expect(COLD_START_ASK_BY_LANGUAGE.en).toBe(COLD_START_ASK);
+    expect(WATCH_OFFER_BY_LANGUAGE.en).toBe(WATCH_OFFER);
+    expect(ASSENT_ACK_BY_LANGUAGE.en).toBe(ASSENT_ACK);
+    expect(DECLINE_ACK_BY_LANGUAGE.en).toBe(DECLINE_ACK);
+    expect(AMBIGUOUS_CLARIFY_BY_LANGUAGE.en).toBe(AMBIGUOUS_CLARIFY);
+    expect(HELP_REPLY_BY_LANGUAGE.en).toBe(HELP_REPLY);
+    expect(START_ACK_BY_LANGUAGE.en).toBe(START_ACK);
+    expect(REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.en).toBe(REGION_UNAVAILABLE_REPLY);
+  });
+
+  /**
+   * The routing itself, end to end at the copy layer: a body goes in, the words a parent
+   * actually receives come out. Both directions, because a table that always returned
+   * French would pass the French half of this file on its own.
+   */
+  it('sends the French line to a parent who wrote French and the English one to everyone else', () => {
+    const frenchReply = 'Oui, avec plaisir';
+    const englishReply = 'yes please';
+
+    expect(ASSENT_ACK_BY_LANGUAGE[replyLanguage(frenchReply)]).toBe(ASSENT_ACK_BY_LANGUAGE.fr);
+    expect(ASSENT_ACK_BY_LANGUAGE[replyLanguage(englishReply)]).toBe(ASSENT_ACK);
+    expect(DECLINE_ACK_BY_LANGUAGE[replyLanguage('Non merci')]).toBe(DECLINE_ACK_BY_LANGUAGE.fr);
+    expect(DECLINE_ACK_BY_LANGUAGE[replyLanguage('no thanks')]).toBe(DECLINE_ACK);
   });
 });
