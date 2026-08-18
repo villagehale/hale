@@ -14,8 +14,8 @@ const TIER_PANEL = {
 } as const satisfies Record<PlanTier, string>;
 
 /**
- * The landing pricing section. Free leads — the village is free; Plus and Family
- * are framed as "for when you want Hale to do more." Monthly and annual are both
+ * The landing pricing section. Free leads — the whole core is free; Plus and Family
+ * are framed as "for the doing, never the watching." Monthly and annual are both
  * shown, with annual as the better value (about two months free). Every tier's CTA
  * is the one front door the site chrome offers — texting Hale — because there is no
  * other way in: these buttons pointed at the app's /onboarding wizard, which F14

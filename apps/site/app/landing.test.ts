@@ -61,7 +61,10 @@ describe('landing — the v4 hero', () => {
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
     const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1).toContain('v4-display');
-    expect(visibleText(h1)).toBe('Your family’s quiet chief of staff.');
+    // The wedge, not the metaphor: the h1 names the job a GTA parent recognizes.
+    // "Chief of staff" is demoted to the sub, where it explains rather than introduces.
+    expect(visibleText(h1)).toBe('The good spots are gone by 7:02.');
+    expect(h1).not.toContain('chief of');
     // The accent word is the v4 amber serif-italic — one segment, not the old glow.
     expect(h1).toContain('class="v4-italic"');
   });
@@ -94,6 +97,19 @@ describe('landing — the v4 hero', () => {
     expect(html).toContain('When does swim registration open near me?');
     // Each chip pre-writes a question into the composer, not the bare greeting.
     expect(html).toContain('sms:+16475551234?&amp;body=When%20does%20swim');
+  });
+
+  it('declares the hierarchy in the chips — three logistics questions, then one coaching one', () => {
+    // Registration is the lead job; coaching is why the thread stays open between
+    // windows. Four chips of equal billing made the page read as three products.
+    const order = [
+      'When does swim registration open near me?',
+      'When do winter-break camps open?',
+      'What’s on this weekend for a toddler?',
+      'My 2-year-old won’t nap — what do I try?',
+    ].map((chip) => html.indexOf(chip));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 });
 
@@ -245,6 +261,19 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text).not.toContain('school paperwork');
   });
 
+  it('proves the pain with the sourced facts instead of asserting usefulness', () => {
+    // The four "wait, really?" facts, each sourced in the positioning doc §9:
+    // the 7:02 fill, the ~12× private-vs-city swing, the resident head start, and
+    // the waitlist clock. Anything not on that list is an invented number.
+    expect(text).toContain('gone by 7:02');
+    expect(text).toContain('$54');
+    expect(text).toContain('twelve times');
+    expect(text).toContain('head start of four days to two weeks');
+    // The unsourced claim the doc explicitly parks until a per-town check exists.
+    expect(text).not.toContain('20%');
+    expect(text).not.toContain('non-resident');
+  });
+
   it('does not promise one town’s waitlist clock to every family', () => {
     // waitlistResponseHours varies across the seed (24/36/48/null). "The 36 hours"
     // promised every family the one value a single row carries.
@@ -253,7 +282,9 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('tells the three texts and the suggest → prepare → handle ladder with receipts', () => {
     expect(text).toContain('You say hi');
-    expect(text).toContain('I send your radar');
+    // Step 2 is where Hale proves itself, so it is written in a parent's words —
+    // "radar" is internal vocabulary and cannot be the first description.
+    expect(text).toContain('I text back your week');
     expect(text).toContain('I keep watch');
     expect(text).toContain('I suggest');
     expect(text).toContain('I prepare');
@@ -297,7 +328,7 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      'family’s quiet',
+      'The good spots are',
       'Texting Hale looks like this',
       'How Hale works',
       'What I watch',
