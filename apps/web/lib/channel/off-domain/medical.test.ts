@@ -862,7 +862,10 @@ describe('the body must be sendable', () => {
   it('falls closed to the FRENCH safety line when the parent asked in French', async () => {
     const log = quiet();
     const french = {
-      answer: "Une fièvre chez un bébé de moins de trois mois demande un avis tout de suite.",
+      // ô makes the body UCS-2 (~67 chars/segment); repeated past the ceiling it throws
+      // unsendable/over_segment_cap — the surviving fail-closed path now that the
+      // encoding gate is gone and an in-budget French answer legitimately ships.
+      answer: 'Une fièvre chez un bébé de moins de trois mois demande un avis à l’hôpital tout de suite. '.repeat(8),
       triage: "Composez le 911 ou allez à l'hôpital; le 811 répond aux questions.",
     };
     const out = await createMedicalComposer(
@@ -876,7 +879,7 @@ describe('the body must be sendable', () => {
     expect(out).toEqual({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
     expect(out.reply).toContain('811');
     expect(out.reply).toContain('911');
-    // Closed by the ENCODING gate on the circumflex, not for missing triage.
+    // Closed by the SEGMENT ceiling (UCS-2 over-budget), not for missing triage.
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('unsendable');
     log.mockRestore();
