@@ -336,13 +336,13 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             <span className="inline-flex items-center gap-3">
               <LogoMark size={40} />
               <span
-                className="font-serif text-[1.5rem] font-semibold leading-none text-navy"
+                className="font-serif text-[1.5rem] font-semibold leading-none text-[#f7f4ec]"
                 translate="no"
               >
                 Hale
               </span>
             </span>
-            <h2 className="v4-display mt-4 text-[clamp(1.9rem,4vw,2.8rem)] text-ink">
+            <h2 className="v4-display mt-4 text-[clamp(1.9rem,4vw,2.8rem)] text-[#f7f4ec]">
               {t('closingH2a')} <span className="v4-italic text-amber">{t('closingH2Accent')}</span>
             </h2>
             <p className="v4-hero-sub">{t('closingSub')}</p>
