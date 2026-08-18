@@ -140,7 +140,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             <br />
             {t('heroH1b')} <span className="v4-italic">{t('heroH1Accent')}</span>
           </h1>
-          <p className="v4-hero-sub">{t('heroSub')}</p>
+          <p className="v4-hero-sub">{t('heroSub', { count: MUNICIPALITIES.length })}</p>
 
           <div className="flex flex-wrap items-center justify-center gap-3">
             {smsHref ? (

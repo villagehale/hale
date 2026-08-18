@@ -33,9 +33,24 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).toContain('$159 CAD/yr');
   });
 
-  it('leads with the village being free', () => {
+  it('leads with the core being free, and argues it without a metaphor to decode', () => {
     expect(html).toContain('Free');
-    expect(html).toContain('The village is free');
+    expect(html).toContain('The whole core is free');
+    // "The village" as a synonym for Hale was a third governing metaphor at the
+    // close (after chief of staff and radar) — a word the reader has to translate
+    // before learning the price. It is earned in exactly one place now: the About
+    // page's story of the village we lost. The tier FEATURE lines are a different
+    // thing — they name the shipped family-to-family Village product — so the
+    // assertion is against the band's own argument, not the feature list.
+    const argument = html
+      .replace(/<ul class="numbered-card-list">[\s\S]*?<\/ul>/g, '')
+      // Visible prose only — the brand domain lives in an href, not in the argument.
+      .replace(/<[^>]+>/g, ' ');
+    expect(argument).not.toContain('village');
+    // Positive control: the word IS still on the page, in the feature lines this
+    // strips — so "absent" means the metaphor was retired, not that the whole
+    // section went missing.
+    expect(html).toContain('Your village feed');
   });
 
   it('routes every tier to a LIVE action — no dead waitlist, checkout, or "Coming soon"', () => {

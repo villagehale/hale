@@ -56,15 +56,15 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · Hawaiian for home",
-    "heroH1a": "Your family’s quiet",
-    "heroH1b": "chief of",
-    "heroH1Accent": "staff.",
-    "heroSub": "A number you text. Registration dates watched, weekends planned — and nothing sent without your say-so. Your data stays in Canada.",
+    "heroH1a": "The good spots are",
+    "heroH1b": "gone by",
+    "heroH1Accent": "7:02.",
+    "heroSub": "Hale is a number you text — a quiet chief of staff for your family. It watches registration day across {count} GTA municipalities, gets everything ready the night before, and nudges you the minute the window opens. Nothing sent without your say-so, and your data stays in Canada.",
     "chips": [
       "When does swim registration open near me?",
-      "My 2-year-old won’t nap — what do I try?",
+      "When do winter-break camps open?",
       "What’s on this weekend for a toddler?",
-      "Help me start solids."
+      "My 2-year-old won’t nap — what do I try?"
     ],
     "threadEyebrow": "Texting Hale looks like this",
     "threadH2a": "Text me like you’d text",
@@ -83,7 +83,7 @@
     "howH2Accent": "quiet.",
     "steps": [
       { "step": "You say hi", "body": "One text to my number. No app, no account, no form to fill in." },
-      { "step": "I send your radar", "body": "Names and ages, a postal code — then the week that actually matters near you." },
+      { "step": "I text back your week", "body": "Names and ages, a postal code — and I reply with every registration date I’m now watching for you, plus what’s actually worth knowing near you this week." },
       { "step": "I keep watch", "body": "A brief on Monday. A heads-up the week a window opens, the plan the night before. Quiet in between." }
     ],
     "howRail": "How Hale works, in three steps",
@@ -97,7 +97,7 @@
     "watchEyebrow": "What I watch",
     "watchH2Count": "{count} municipalities,",
     "watchH2Accent": "by name.",
-    "watchLede": "Registration opens at 7 a.m. on a Tuesday and fills before breakfast. I follow the calendars where you live, so nobody has to keep a tab open.",
+    "watchLede": "Registration opens at 7 a.m. on a Tuesday, and the good spots are gone by 7:02. Lose the $54 city session and the private one runs about twelve times that. Some towns give residents a head start of four days to two weeks; some give you a single day to accept a waitlist spot. I follow the calendars where you live — all fifteen municipalities — so nobody has to keep a tab open.",
     "watched": [
       { "title": "Swim lessons", "body": "The sessions that fill in minutes — and the towns that register them on a date of their own, weeks after everything else." },
       { "title": "Camps", "body": "Fall programs, and the winter-break camps that quietly open for registration back in August." },
@@ -108,7 +108,7 @@
     "coachingEyebrow": "When you ask me something",
     "coachingH2a": "Sleep, solids, potty —",
     "coachingH2Accent": "answered, then planned.",
-    "coachingLede": "A chief of staff who only moved appointments would be a calendar. Ask me the 3 a.m. question and you get a real answer in the same thread — never a link telling you to go read someone else’s.",
+    "coachingLede": "Registration day is why families text me first. This is why the thread stays open: ask me the 3 a.m. question and you get a real answer in the same thread — pitched at your child’s age, never a link telling you to go read someone else’s.",
     "coaching": [
       { "step": "You ask", "body": "An answer in two sentences, pitched at how old your child actually is — what’s common right now, and the thing to try tonight." },
       { "step": "I offer the whole plan", "body": "Say yes and it arrives as two or three texts — the real method by name, whether that’s Ferber’s check-in tables, the three-day potty protocol, or Health Canada’s allergen introduction. Minutes and counts, not principles." },
@@ -187,14 +187,14 @@
   },
   "PricingSection": {
     "eyebrow": "Three sizes of help",
-    "headline": "The village is free. Pay only when you want Hale to do more.",
-    "lede": "Joining the village, seeing what families near you recommend, asking Hale, sharing what you love — free, always, every stage and every child. The paid tiers are for when you want Hale to do more of the work itself. Each is a little less monthly when you pay yearly — about two months free.",
+    "headline": "The whole core is free. Paid plans are for the doing, never the watching.",
+    "lede": "Everything Hale does today — the watching, the plans, the answers — is free, for every stage and every child. Paid plans open only when Hale can do more of the work itself. Families who start now keep their founding rate for good. A co-parent is always free.",
     "foundingTitle": "Founding families join free.",
     "foundingNote": "The first 100 families get a permanent founding badge — and first access when Plus and Family open.",
     "annualNote": "billed yearly — about two months free",
-    "footnote": "The village is free to start. Plus and Family open as their integrations ship.",
+    "footnote": "Hale is free to start. Plus and Family open as their integrations ship.",
     "tierLines": {
-      "free": "Join the village, see what families near you recommend, and share what you love. The whole core — every stage, every child — free, always.",
+      "free": "Text Hale, see what families near you recommend, and share what you love. The whole core — every stage, every child — free, always.",
       "plus": "For when you want Hale to do more: once it has earned your trust, it acts on your approval — reminders, drafts, and your calendar, every child, as integrations roll out.",
       "family": "For when you want Hale to handle it: full autonomy on your approval, commerce and booking as they roll out, concierge and priority support."
     }

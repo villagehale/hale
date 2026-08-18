@@ -263,10 +263,10 @@ describe('/pricing — the tier cards have anatomy', () => {
     expect(text).toContain(
       'The whole core — every stage, every child — is free. Plus and Family add more of the work Hale does for you, on your approval, as each integration ships.',
     );
-    expect(text).toContain('The village is free. Pay only when you want Hale to do more.');
+    expect(text).toContain('The whole core is free. Paid plans are for the doing, never the watching.');
     expect(text).toContain('Founding families join free.');
     expect(text).toContain(
-      'The village is free to start. Plus and Family open as their integrations ship.',
+      'Hale is free to start. Plus and Family open as their integrations ship.',
     );
   });
 

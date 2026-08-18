@@ -56,15 +56,15 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · hawaïen pour « maison »",
-    "heroH1a": "Le chef de cabinet",
-    "heroH1b": "discret de",
-    "heroH1Accent": "votre famille.",
-    "heroSub": "Un numéro que vous textez. Les dates d’inscription surveillées, les fins de semaine planifiées — et rien d’envoyé sans votre accord. Vos données restent au Canada.",
+    "heroH1a": "Les bonnes places sont",
+    "heroH1b": "parties dès",
+    "heroH1Accent": "7:02.",
+    "heroSub": "Hale est un numéro que vous textez — un chef de cabinet discret pour votre famille. Il surveille les journées d’inscription dans {count} municipalités du Grand Toronto, prépare tout la veille au soir, et vous relance à la minute où la fenêtre s’ouvre. Rien n’est envoyé sans votre accord, et vos données restent au Canada.",
     "chips": [
       "Quand ouvrent les inscriptions à la natation près de chez moi?",
-      "Mon enfant de 2 ans refuse de faire la sieste — qu’est-ce que j’essaie?",
+      "Quand ouvrent les inscriptions aux camps du congé des Fêtes?",
       "Qu’y a-t-il à faire cette fin de semaine avec un tout-petit?",
-      "Aide-moi à commencer les aliments solides."
+      "Mon enfant de 2 ans refuse de faire la sieste — qu’est-ce que j’essaie?"
     ],
     "threadEyebrow": "Texter Hale, ça ressemble à ça",
     "threadH2a": "Textez-moi comme vous textez",
@@ -83,7 +83,7 @@
     "howH2Accent": "le silence.",
     "steps": [
       { "step": "Vous dites bonjour", "body": "Un texto à mon numéro. Pas d’appli, pas de compte, pas de formulaire à remplir." },
-      { "step": "Je vous envoie votre radar", "body": "Des noms et des âges, un code postal — puis la semaine qui compte vraiment près de chez vous." },
+      { "step": "Je vous texte votre semaine", "body": "Des noms et des âges, un code postal — et je vous réponds avec toutes les dates d’inscription que je surveille désormais pour vous, plus ce qui vaut vraiment la peine d’être su près de chez vous cette semaine." },
       { "step": "Je monte la garde", "body": "Un topo le lundi. Un avis la semaine où une fenêtre s’ouvre, le plan la veille au soir. Le silence entre les deux." }
     ],
     "howRail": "Comment Hale fonctionne, en trois étapes",
@@ -97,7 +97,7 @@
     "watchEyebrow": "Ce que je surveille",
     "watchH2Count": "{count} municipalités,",
     "watchH2Accent": "nommément.",
-    "watchLede": "Les inscriptions ouvrent à 7 h un mardi matin et se remplissent avant le déjeuner. Je suis les calendriers de votre région, pour que personne n’ait à garder un onglet ouvert.",
+    "watchLede": "Les inscriptions ouvrent à 7 h un mardi matin, et les bonnes places sont parties dès 7:02. Ratez la session municipale à 54 $ et le privé coûte environ douze fois plus. Certaines villes donnent aux résidents une longueur d’avance de quatre jours à deux semaines; d’autres ne laissent qu’une seule journée pour accepter une place sur la liste d’attente. Je suis les calendriers de votre région — les quinze municipalités — pour que personne n’ait à garder un onglet ouvert.",
     "watched": [
       { "title": "Cours de natation", "body": "Les sessions qui se remplissent en quelques minutes — et les villes qui les ouvrent à une date bien à elles, des semaines après tout le reste." },
       { "title": "Camps", "body": "Les programmes d’automne, et les camps du congé des Fêtes dont les inscriptions ouvrent discrètement dès le mois d’août." },
@@ -108,7 +108,7 @@
     "coachingEyebrow": "Quand vous me demandez quelque chose",
     "coachingH2a": "Sommeil, solides, propreté —",
     "coachingH2Accent": "une réponse, puis un plan.",
-    "coachingLede": "Un chef de cabinet qui ne ferait que déplacer des rendez-vous ne serait qu’un calendrier. Posez-moi la question de 3 h du matin et vous obtenez une vraie réponse dans le même fil — jamais un lien qui vous dit d’aller lire celle de quelqu’un d’autre.",
+    "coachingLede": "La journée d’inscription, c’est pour ça que les familles me textent en premier. Voici pourquoi le fil reste ouvert : posez-moi la question de 3 h du matin et vous obtenez une vraie réponse dans le même fil — ajustée à l’âge de votre enfant, jamais un lien qui vous dit d’aller lire celle de quelqu’un d’autre.",
     "coaching": [
       { "step": "Vous demandez", "body": "Une réponse en deux phrases, ajustée à l’âge réel de votre enfant — ce qui est fréquent en ce moment, et la chose à essayer ce soir." },
       { "step": "Je vous propose le plan complet", "body": "Dites oui et il arrive en deux ou trois textos — la vraie méthode nommée, que ce soit les tableaux de vérification de Ferber, le protocole de propreté en trois jours, ou l’introduction des allergènes selon Santé Canada. Des minutes et des quantités, pas des principes." },
@@ -187,14 +187,14 @@
   },
   "PricingSection": {
     "eyebrow": "Trois tailles d’aide",
-    "headline": "Le village est gratuit. Payez seulement quand vous voulez que Hale en fasse plus.",
-    "lede": "Rejoindre le village, voir ce que les familles près de chez vous recommandent, poser vos questions à Hale, partager ce que vous aimez — gratuit, toujours, à chaque étape et pour chaque enfant. Les forfaits payants, c’est pour quand vous voulez que Hale fasse une plus grande part du travail lui-même. Chacun coûte un peu moins par mois quand vous payez à l’année — environ deux mois gratuits.",
+    "headline": "Tout l’essentiel est gratuit. Les forfaits payants, c’est pour l’action, jamais pour la surveillance.",
+    "lede": "Tout ce que Hale fait aujourd’hui — la surveillance, les plans, les réponses — est gratuit, à chaque étape et pour chaque enfant. Les forfaits payants n’ouvriront que lorsque Hale pourra faire une plus grande part du travail lui-même. Les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Un coparent est toujours gratuit.",
     "foundingTitle": "Les familles fondatrices adhèrent gratuitement.",
     "foundingNote": "Les 100 premières familles reçoivent un insigne de fondateur permanent — et un accès prioritaire à l’ouverture de Plus et Famille.",
     "annualNote": "facturé à l’année — environ deux mois gratuits",
-    "footnote": "Le village est gratuit pour commencer. Plus et Famille s’ouvrent à mesure que leurs intégrations arrivent.",
+    "footnote": "Hale est gratuit pour commencer. Plus et Famille s’ouvrent à mesure que leurs intégrations arrivent.",
     "tierLines": {
-      "free": "Rejoignez le village, voyez ce que les familles près de chez vous recommandent, et partagez ce que vous aimez. Tout l’essentiel — chaque étape, chaque enfant — gratuit, toujours.",
+      "free": "Textez Hale, voyez ce que les familles près de chez vous recommandent, et partagez ce que vous aimez. Tout l’essentiel — chaque étape, chaque enfant — gratuit, toujours.",
       "plus": "Pour quand vous voulez que Hale en fasse plus : une fois qu’il a gagné votre confiance, il agit avec votre accord — rappels, brouillons et votre calendrier, pour chaque enfant, à mesure que les intégrations se déploient.",
       "family": "Pour quand vous voulez que Hale s’en occupe : autonomie complète avec votre accord, achats et réservations à mesure de leur déploiement, service de conciergerie et soutien prioritaire."
     }
