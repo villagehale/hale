@@ -24,6 +24,25 @@
  * The phrases are drawn from the sets the repo already shipped (party/reply.ts's
  * `do it`/`make it`, health/reply.ts's checkmarks) plus the ones the VIL-260 audit found
  * real parents sending, rather than invented here.
+ *
+ * IT NOW READS THREE LANGUAGES, because Hale already writes in three. The coach and the
+ * general-answer path reply in French and Chinese, and this table did not — so Hale asked
+ * a question in French and could not hear "oui", which is why its French copy still had to
+ * spell the English token YES inside a French sentence to get an answer back at all.
+ *
+ * That was two defects wearing one coat, and the words are only half of it:
+ *
+ *   THE NORMALIZER ERASED CJK. Reducing a body to /[a-z0-9]/ turned every Chinese reply
+ *   into the empty string, so "好" and an empty message were the same input. A Han
+ *   character is a WORD here, not punctuation, and the class has to say so — putting 好 in
+ *   the set below without that is a change that reads like a fix and does nothing.
+ *
+ *   THE NORMALIZER SPLIT ACCENTS. "bien sûr" came out "bien s r". Folding the diacritic
+ *   before the class runs is what lets one entry cover both spellings a phone sends, and
+ *   it is invisible to the English words, which have none.
+ *
+ * WHAT DID NOT COME ACROSS is as deliberate as what did. 'cancel' is barred from the NO set
+ * below, and its translations are barred for the same reason — see that comment.
  */
 
 /** The affirmative family. Multi-word entries are matched whole, like the single words. */
@@ -53,6 +72,31 @@ const AFFIRMATIVE = new Set([
   'looks good',
   'that works',
   'works for me',
+  // French, spelled as the normalizer leaves it: the apostrophe closes up ("d'accord" →
+  // daccord), the hyphen opens out ("allons-y" → allons y), and the circumflex is folded.
+  'oui',
+  'ouais',
+  'daccord',
+  'cest bon',
+  'parfait',
+  'allons y',
+  'vas y',
+  'absolument',
+  'certainement',
+  'bien sur',
+  // Chinese. Whole-string costs nothing to enforce in a script written without spaces —
+  // a longer sentence beginning 好的 arrives as one token and is simply not this one.
+  '好',
+  '好的',
+  '好啊',
+  '可以',
+  '行',
+  '嗯',
+  '是',
+  '是的',
+  '要',
+  '确认',
+  '没问题',
 ]);
 
 /**
@@ -60,6 +104,13 @@ const AFFIRMATIVE = new Set([
  * refusal AND a carrier-recognised STOP synonym, so a NO set containing it would turn an
  * unsubscribe into an approval decline. The CASL matcher is consulted before this one for
  * the same reason.
+ *
+ * NEITHER ARE ITS TRANSLATIONS — annule, annuler, arrête, 取消 — and the rule is stronger
+ * for them, not weaker. `matchKeyword` holds the English STOP list only, so a French parent
+ * texting "arrête" is not claimed upstream the way "stop" is; if this set claimed it, a
+ * request to be left alone would be answered as a declined calendar change and the family
+ * would keep hearing from us. Leaving them unread is not silence — an unmatched body goes
+ * to the coach, which answers in the parent's language and can ask which they meant.
  */
 const NEGATIVE = new Set([
   'no',
@@ -70,6 +121,17 @@ const NEGATIVE = new Set([
   'never mind',
   'nevermind',
   'dont',
+  // French.
+  'non',
+  'pas maintenant',
+  'pas cette fois',
+  // Chinese. 别 and 算了 are the twins of 'dont' and 'never mind' already above.
+  '不',
+  '不要',
+  '不用',
+  '不行',
+  '别',
+  '算了',
 ]);
 
 /**
@@ -98,13 +160,25 @@ const EMOJI_MODIFIERS =
 const FILLER = new Set(['please', 'pls', 'thanks', 'thank', 'you', 'thx']);
 
 /**
- * A body reduced to the phrase it IS: emoji translated, apostrophes closed up so
- * "let's" reads as "lets", every other symbol dropped, filler trimmed off both ends, and
- * an immediately repeated word collapsed ("👍👍", "ok ok" — a phone keyboard's emphasis,
- * not a different message).
+ * A body reduced to the phrase it IS: emoji translated, accents folded onto their base
+ * letter, apostrophes closed up so "let's" reads as "lets", every other symbol dropped,
+ * filler trimmed off both ends, and an immediately repeated word collapsed ("👍👍",
+ * "ok ok" — a phone keyboard's emphasis, not a different message).
  *
- * Digits survive untouched and are never collapsed: the ordinal in "yes 2" is the
- * difference between two drafted actions.
+ * WHAT SURVIVES THE SYMBOL SWEEP IS THE WHOLE DESIGN, and it is three things rather than
+ * one, because two of them were missing and each cost a language:
+ *
+ *   Digits, never collapsed: the ordinal in "yes 2" is the difference between two drafted
+ *   actions.
+ *
+ *   Han characters, because in Chinese the glyph IS the word. They were swept out with the
+ *   punctuation, which is why every Chinese reply used to normalize to "" and read as
+ *   silence. `Script=Han` is the precise class for this: it takes 好 and 不 and leaves
+ *   ，。！？ to be swept as the separators they are, so the whole-string rule still holds.
+ *
+ *   Base letters under their accents. Decomposing first and dropping the combining marks
+ *   turns "bien sûr" into "bien sur" instead of "bien s r" — one entry in the table above
+ *   covers however a given phone spelled it, and English, having no marks, cannot notice.
  */
 export function normalizeReply(body: string): string {
   let text = body.toLowerCase().replace(EMOJI_MODIFIERS, '');
@@ -112,8 +186,10 @@ export function normalizeReply(body: string): string {
     text = text.replace(pattern, ` ${word} `);
   }
   const words = text
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
     .replace(/['’ʼ`]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/[^a-z0-9\p{Script=Han}]+/gu, ' ')
     .trim()
     .split(' ')
     .filter(Boolean);
