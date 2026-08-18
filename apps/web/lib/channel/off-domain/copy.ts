@@ -21,7 +21,19 @@
  * GSM-7 (VIL-265): plain hyphens, straight apostrophes, no em dashes, no emoji. Every
  * string here is scanned by lib/channel/sms-copy-encoding.test.ts and the rendered
  * results are segment-counted below it.
+ *
+ * THREE OF THEM NOW HAVE A FRENCH TWIN, picked by `replyLanguage` from the message that
+ * just arrived (lib/channel/language.ts). The safety line is the reason this could not
+ * wait: a French medical turn falls closed onto it BY CONSTRUCTION, because medical.ts
+ * refuses any composed body that is not GSM-7 and a real French answer carries accents
+ * the alphabet cannot always take. Until now that meant the parent most likely to get
+ * the fixed line was the one least able to read it.
+ *
+ * The French is written INSIDE the GSM-7 alphabet rather than folded into it afterwards —
+ * é è à ù are in it, â ê î ô û ç are not, and the wording works around them. See the
+ * same note at the top of intake/copy.ts.
  */
+import type { ReplyLanguage } from '~/lib/channel/language';
 
 /**
  * What a parent hears when the general answer could not be composed — a missing key, a
@@ -49,6 +61,13 @@
 export const ANSWER_UNAVAILABLE_REPLY =
   "Sorry - I couldn't get to that one just now. Try me again in a minute.";
 
+/** `Mes excuses` rather than `Désolé(e)`: the apology carries no gender, which is the
+ * same choice made everywhere else Hale speaks French about itself. */
+export const ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: ANSWER_UNAVAILABLE_REPLY,
+  fr: "Mes excuses - je n'ai pas réussi à répondre à celle-là. Réessayez dans une minute.",
+};
+
 /**
  * The safety answer. Fixed, never composed, never conditioned on anything in the
  * message.
@@ -64,6 +83,26 @@ export const ANSWER_UNAVAILABLE_REPLY =
  */
 export const SAFETY_REPLY =
   "That's not something I should advise on. Health811 (call 811) can help any time - and if it's an emergency, call 911.";
+
+/**
+ * The safety answer in French — the single most load-bearing translation in this change,
+ * for two reasons that compound.
+ *
+ * It is the line a French medical turn falls closed onto (see the file header), so a
+ * francophone parent is MORE likely to receive it than an anglophone one. And it is the
+ * line whose job is to get someone off their phone and onto a telephone: the two numbers
+ * are the message, and everything else is there to make them act on it.
+ *
+ * FOUNDER REVIEW, on the proper noun specifically: "Santé811" is the French face of
+ * Ontario's Health811 service. It was written from the same source as the English line
+ * and NOT re-fetched in this change. The failure mode is bounded — 811 and 911 are the
+ * same digits in both languages, so a wrong service name still dials the right place —
+ * but it should be confirmed before this goes live.
+ */
+export const SAFETY_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: SAFETY_REPLY,
+  fr: "Ce n'est pas à moi de vous conseiller là-dessus. Santé811 (composez le 811) peut vous aider à toute heure - et en cas d'urgence, faites le 911.",
+};
 
 /**
  * The tokens that make {@link SAFETY_REPLY} go out with no model in the loop at all —
@@ -170,6 +209,24 @@ export function reachesForTheHealthLine(body: string): boolean {
  */
 export const PROVIDER_ACCESS_REPLY =
   "Finding you a doctor isn't something I can do - but Health Care Connect is Ontario's list for a family doctor or pediatrician, and you register by calling 811. That same number answers health questions any time.";
+
+/**
+ * The registry answer in French. Same two sentences, same refusals — no clinic names, no
+ * URL, no wait-time estimate — and the same Ontario-only assumption stated above.
+ *
+ * FOUNDER REVIEW, on the proper noun: "Accès Soins" is the French name of the Health Care
+ * Connect program. Like "Santé811" above it was written from the same source as the
+ * English line and not re-fetched here. It matters more than the other one, because this
+ * is the name a parent has to say on the phone — a wrong program name is a wasted call,
+ * which is exactly the discouragement this line exists to prevent.
+ *
+ * `Ce numéro répond aussi` rather than `Ce même numéro`: GSM-7 has no ê, and "aussi"
+ * carries the "that same number" sense without it.
+ */
+export const PROVIDER_ACCESS_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: PROVIDER_ACCESS_REPLY,
+  fr: "Trouver un médecin pour vous, je ne peux pas - mais Accès Soins est la liste de l'Ontario pour un médecin de famille ou un pédiatre, et on s'y inscrit en composant le 811. Ce numéro répond aussi aux questions de santé à toute heure.",
+};
 
 /**
  * The DIRECT-ACCESS answer, for the provider classes an Ontario parent does not need a

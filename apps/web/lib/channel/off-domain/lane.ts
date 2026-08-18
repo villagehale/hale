@@ -6,11 +6,12 @@ import {
   type GeneralAnswerFallback,
   createGeneralAnswer,
 } from './answer';
+import { replyLanguage } from '~/lib/channel/language';
 import {
-  ANSWER_UNAVAILABLE_REPLY,
+  ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
-  PROVIDER_ACCESS_REPLY,
-  SAFETY_REPLY,
+  PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
+  SAFETY_REPLY_BY_LANGUAGE,
   asksAboutEyeCare,
 } from './copy';
 import { type MedicalComposer, createMedicalComposer } from './medical';
@@ -163,14 +164,20 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // answer, it was a WRONG one (founder, live gate). The split is deterministic for
       // the same reason the door itself is: this is what a parent is told about getting
       // care, and a cheap model choosing between two of them buys nothing.
+      // Which LANGUAGE those fixed sentences go out in is decided the same way and for
+      // the same reason — off the words in front of it, with no model consulted.
+      // DIRECT_ACCESS_EYE_REPLY has no French twin yet, and its token list is English, so
+      // a French eye question does not match it and leaves by the registry door in French
+      // rather than by this one in English.
+      const language = replyLanguage(input.text);
       const { reply, replySource } =
         lane === 'safety_critical'
-          ? { reply: SAFETY_REPLY, replySource: 'fixed' as const }
+          ? { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
           : lane === 'provider_access'
             ? {
                 reply: asksAboutEyeCare(input.text)
                   ? DIRECT_ACCESS_EYE_REPLY
-                  : PROVIDER_ACCESS_REPLY,
+                  : PROVIDER_ACCESS_REPLY_BY_LANGUAGE[language],
                 replySource: 'fixed' as const,
               }
             : await answerOrFallback(ports, input.text);
@@ -209,12 +216,15 @@ async function answerOrFallback(
 ): Promise<{ reply: string; replySource: ReplySource }> {
   const composed = await ports.answer.compose(text);
   if (composed.status === 'composed') return { reply: composed.reply, replySource: 'composed' };
+  const language = replyLanguage(text);
   // A question about the world that turned out to be about a hurt child. It leaves by
   // the same door a screened symptom does, words and all, and `fixed` says so — crediting
   // the composer for a sentence it did not write would cost the founder's weekly count
   // the one distinction it is for (skill audit P0 #3).
-  if (composed.status === 'safety') return { reply: SAFETY_REPLY, replySource: 'fixed' };
-  return { reply: ANSWER_UNAVAILABLE_REPLY, replySource: composed.reason };
+  if (composed.status === 'safety') {
+    return { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' };
+  }
+  return { reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE[language], replySource: composed.reason };
 }
 
 /**

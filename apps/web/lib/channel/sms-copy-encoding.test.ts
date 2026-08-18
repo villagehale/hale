@@ -13,22 +13,33 @@ import {
 import { mediaUnsupportedReply } from '~/lib/channel/twilio/copy';
 import {
   AMBIGUOUS_CLARIFY,
+  AMBIGUOUS_CLARIFY_BY_LANGUAGE,
   ASSENT_ACK,
+  ASSENT_ACK_BY_LANGUAGE,
+  COLD_START_ASK_BY_LANGUAGE,
   DECLINE_ACK,
+  DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY,
+  HELP_REPLY_BY_LANGUAGE,
   REGION_UNAVAILABLE_REPLY,
+  REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   START_ACK,
+  START_ACK_BY_LANGUAGE,
   STOP_ACK,
   WATCH_OFFER,
+  WATCH_OFFER_BY_LANGUAGE,
   detailsBlocked,
   followUp,
   greeting,
 } from '~/lib/channel/intake/copy';
 import {
   ANSWER_UNAVAILABLE_REPLY,
+  ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
   PROVIDER_ACCESS_REPLY,
+  PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY,
+  SAFETY_REPLY_BY_LANGUAGE,
 } from '~/lib/channel/off-domain/copy';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
@@ -145,8 +156,8 @@ describe('outbound SMS copy stays in the GSM-7 alphabet', () => {
  */
 describe('the intake script stays GSM-7 once rendered', () => {
   const RENDERED: Record<string, string> = {
-    'greeting (no venue)': greeting(null),
-    'greeting (venue)': greeting('EarlyON centre'),
+    'greeting (no venue)': greeting(null, 'en'),
+    'greeting (venue)': greeting('EarlyON centre', 'en'),
     WATCH_OFFER,
     ASSENT_ACK,
     DECLINE_ACK,
@@ -170,6 +181,64 @@ describe('the intake script stays GSM-7 once rendered', () => {
   it('keeps the consent ask, privacy link and all, inside one GSM-7 segment', () => {
     expect(WATCH_OFFER).toContain(PRIVACY_URL);
     expect(smsSegments(WATCH_OFFER)).toBe(1);
+  });
+});
+
+/**
+ * THE FRENCH SCRIPT, AGAINST THE SAME ALPHABET — and this is the gate the French copy was
+ * written to pass, not one it was checked against afterwards.
+ *
+ * GSM-7 carries é è à ù and refuses â ê î ô û ç, which is not a detail: ONE circumflex
+ * flips a French message to UCS-2, where a segment is 70 characters instead of 160. The
+ * greeting alone would go from two segments to four, on every French arrival, forever.
+ * So the wording works around the missing characters (see the notes at each constant),
+ * and this suite is what stops a later "improvement" putting one back.
+ *
+ * The whole-file scan above already covers these strings as SOURCE. What is added here is
+ * the thing the scan cannot see — what each one costs once rendered, in the same currency
+ * the carrier bills, and against the same ceilings the English twins are held to.
+ */
+describe('the French script stays GSM-7 and inside the English budgets', () => {
+  const RENDERED: Record<string, { body: string; maxSegments: number }> = {
+    'greeting (no venue)': { body: greeting(null, 'fr'), maxSegments: 2 },
+    COLD_START_ASK: { body: COLD_START_ASK_BY_LANGUAGE.fr, maxSegments: 1 },
+    // One segment, for the same reason the English consent ask is: it rides on the end
+    // of the radar payload, where every septet comes out of the same budget.
+    WATCH_OFFER: { body: WATCH_OFFER_BY_LANGUAGE.fr, maxSegments: 1 },
+    ASSENT_ACK: { body: ASSENT_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
+    DECLINE_ACK: { body: DECLINE_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
+    AMBIGUOUS_CLARIFY: { body: AMBIGUOUS_CLARIFY_BY_LANGUAGE.fr, maxSegments: 1 },
+    HELP_REPLY: { body: HELP_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
+    START_ACK: { body: START_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
+    REGION_UNAVAILABLE_REPLY: { body: REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
+    ANSWER_UNAVAILABLE_REPLY: { body: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
+    SAFETY_REPLY: { body: SAFETY_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
+    PROVIDER_ACCESS_REPLY: { body: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
+  };
+
+  it.each(Object.entries(RENDERED))('%s', (_name, { body, maxSegments }) => {
+    expect({ encoding: smsEncoding(body), overBudget: smsSegments(body) > maxSegments }).toEqual({
+      encoding: 'gsm7',
+      overBudget: false,
+    });
+  });
+
+  /**
+   * The alphabet's refusals, named. A test that only checked `smsEncoding` would pass on
+   * the day someone "fixed" the spelling of `l'age` and could not say why the bill
+   * tripled — this one says which character did it.
+   */
+  it('names the characters French copy may not use here', () => {
+    const forbidden = [...'âêîôûçœ«»’—'];
+    const offenders = Object.entries(RENDERED).flatMap(([name, { body }]) =>
+      forbidden.filter((char) => body.includes(char)).map((char) => `${name}: ${char}`),
+    );
+
+    expect(offenders).toEqual([]);
+    // The positive control: the characters French copy MAY use are genuinely in the
+    // alphabet, so the assertion above is a real constraint and not a vacuous one.
+    expect(smsEncoding('é è à ù')).toBe('gsm7');
+    expect(smsEncoding('â ê î ô û ç')).toBe('ucs2');
   });
 });
 

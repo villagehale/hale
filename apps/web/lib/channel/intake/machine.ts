@@ -28,18 +28,19 @@ import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName } from '~/lib/channel/identity/name-reply';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
+import { SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
 import type { IntakeAnswerComposer } from './answer';
 import { findRevokedChannelOwner, reenrolOnStart } from './channel-state';
 import {
-  AMBIGUOUS_CLARIFY,
-  ASSENT_ACK,
-  COLD_START_ASK,
-  DECLINE_ACK,
-  HELP_REPLY,
+  AMBIGUOUS_CLARIFY_BY_LANGUAGE,
+  ASSENT_ACK_BY_LANGUAGE,
+  COLD_START_ASK_BY_LANGUAGE,
+  DECLINE_ACK_BY_LANGUAGE,
+  HELP_REPLY_BY_LANGUAGE,
   type IntakeGap,
-  REGION_UNAVAILABLE_REPLY,
-  START_ACK,
+  REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  START_ACK_BY_LANGUAGE,
   STOP_ACK,
   WATCH_OFFER,
   WATCH_OFFER_ASK,
@@ -379,8 +380,12 @@ async function offScriptReply(
 ): Promise<{ body: string; source: 'composed' | 'safety' } | null> {
   const outcome = await deps.answerComposer.compose(args);
   // The fixed line goes out ALONE. A parent standing over a hurt child should be
-  // dialling, not choosing whether Hale may watch their registration dates.
-  if (outcome.status === 'safety') return { body: SAFETY_REPLY, source: 'safety' };
+  // dialling, not choosing whether Hale may watch their registration dates. In the
+  // language they wrote it in: this is the one message in intake where not being
+  // understood has a physical cost.
+  if (outcome.status === 'safety') {
+    return { body: SAFETY_REPLY_BY_LANGUAGE[replyLanguage(args.parentWords)], source: 'safety' };
+  }
   if (outcome.status !== 'answered') return null;
   return { body: outcome.body, source: 'composed' };
 }
@@ -405,7 +410,7 @@ async function greet(
   // ONE message, disclosure included: the greeting introduces Hale as an AI in its own
   // first sentence, so there is no second paragraph to append (and no second segment to
   // pay for). The privacy link rides on the consent ask instead — see WATCH_OFFER.
-  const body = greeting(venue?.name ?? null);
+  const body = greeting(venue?.name ?? null, replyLanguage(args.inbound.body));
   const { transcript } = await sendAndRecord(database, ctx, body, deps, recorded.transcript);
 
   await saveSession(
@@ -426,6 +431,7 @@ async function handleDetails(
   const ctx: SendContext = { session, phoneE164: args.phoneE164, now };
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
+  const language = replyLanguage(inbound.body);
 
   const collected = await deps.extractor.extract({
     message: inbound.body,
@@ -440,7 +446,13 @@ async function handleDetails(
   // neither of them.
   if (collected.children.length === 0) {
     const offScript = await offScriptReply(
-      { parentWords: inbound.body, pendingAsk: COLD_START_ASK, children: collected.children },
+      {
+        parentWords: inbound.body,
+        // The pending ask is handed to the composer so it can get back to the question in
+        // its own words — in French when that is the question the parent was asked.
+        pendingAsk: COLD_START_ASK_BY_LANGUAGE[language],
+        children: collected.children,
+      },
       deps,
     );
     if (offScript) {
@@ -450,14 +462,26 @@ async function handleDetails(
       await saveSession(database, session, { ...base, transcript }, now);
       return { status: 'question_answered', source: offScript.source };
     }
-    ({ transcript } = await sendAndRecord(database, ctx, HELP_REPLY, deps, transcript));
+    ({ transcript } = await sendAndRecord(
+      database,
+      ctx,
+      HELP_REPLY_BY_LANGUAGE[language],
+      deps,
+      transcript,
+    ));
     await saveSession(database, session, { ...base, transcript }, now);
     return { status: 'helped' };
   }
 
   const location = resolveLocation(collected, session.sourceCode);
   if (location === 'unsupported_region') {
-    ({ transcript } = await sendAndRecord(database, ctx, REGION_UNAVAILABLE_REPLY, deps, transcript));
+    ({ transcript } = await sendAndRecord(
+      database,
+      ctx,
+      REGION_UNAVAILABLE_REPLY_BY_LANGUAGE[language],
+      deps,
+      transcript,
+    ));
     await saveSession(
       database,
       session,
@@ -716,7 +740,12 @@ async function handleWatchReply(
   const { session, inbound, now } = args;
   const ctx: SendContext = { session, phoneE164: args.phoneE164, now };
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+  const language = replyLanguage(inbound.body);
 
+  // The QUESTION stays English because the question that was actually asked was English:
+  // WATCH_OFFER rides out appended to the model-composed radar line, which has no
+  // language of its own yet (see the note in copy.ts). What the reader is given must be
+  // what the parent read.
   const reading = await deps.intentReader.read({ question: WATCH_OFFER, reply: inbound.body });
 
   // A PARENT WHO ASKED SOMETHING IS NOT A PARENT GIVING A WOBBLY ANSWER, and until this
@@ -745,7 +774,13 @@ async function handleWatchReply(
   // One gentle clarification, then Hale decides conservatively. Asking twice about
   // the same yes/no is pestering; guessing "yes" would manufacture consent.
   if (reading.intent === 'ambiguous' && session.clarifyCount === 0) {
-    await sendAndRecord(database, ctx, AMBIGUOUS_CLARIFY, deps, recorded.transcript);
+    await sendAndRecord(
+      database,
+      ctx,
+      AMBIGUOUS_CLARIFY_BY_LANGUAGE[language],
+      deps,
+      recorded.transcript,
+    );
     await saveSession(
       database,
       session,
@@ -775,7 +810,9 @@ async function handleWatchReply(
     now,
   );
 
-  const ack = granted ? await assentAck(database, session, deps) : { body: DECLINE_ACK, asked: false };
+  const ack = granted
+    ? await assentAck(database, session, deps, language)
+    : { body: DECLINE_ACK_BY_LANGUAGE[language], asked: false };
   await sendAndRecord(
     database,
     ctx,
@@ -812,17 +849,29 @@ async function assentAck(
   database: Database,
   session: IntakeSession,
   deps: IntakeDeps,
+  language: ReplyLanguage,
 ): Promise<{ body: string; asked: boolean }> {
+  const ack = ASSENT_ACK_BY_LANGUAGE[language];
   // Asked only when there is genuinely nothing on file. Intake always creates a nameless
   // user, but the same phone can resolve to an existing account, and asking a parent
   // their name when Hale already knows it is the tell of a system that does not read.
   if (!(await parentNeedsName(database, session.userId as string))) {
-    return { body: ASSENT_ACK, asked: false };
+    return { body: ack, asked: false };
+  }
+  // A FRENCH ACKNOWLEDGMENT GETS NO TAIL. `identityAsk` composes in English — it is given
+  // the reason and the gap and nothing else, so it has no way to know what the parent
+  // wrote — and a French sentence with an English question stapled to it is a worse
+  // message than a French sentence. This takes the branch the composer's own deferral
+  // already has: the ack is whole on its own, `asked: false` says the name was not
+  // collected, and the intros gap-fill asks again later if it ever actually needs one.
+  if (language === 'fr') {
+    console.info('intake: skipped the English name ask on a French acknowledgment');
+    return { body: ack, asked: false };
   }
 
   const ask = await deps.identityAsk.compose({ reason: 'getting_started', missing: ['name'] });
-  if (ask.status !== 'composed') return { body: ASSENT_ACK, asked: false };
-  return { body: `${ASSENT_ACK} ${ask.body}`, asked: true };
+  if (ask.status !== 'composed') return { body: ack, asked: false };
+  return { body: `${ack} ${ask.body}`, asked: true };
 }
 
 async function handleKeyword(
@@ -837,6 +886,12 @@ async function handleKeyword(
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
   const { keyword, phoneE164, inbound, session, now } = args;
+  // Read for the same reason every other branch reads it, and honest about what it can
+  // find: the body that got here IS the token ("HELP", "START"), so it carries no French
+  // evidence and this resolves to English every time. It becomes real the day
+  // keywords.ts learns AIDE and DEBUT, which Canadian carriers require of a bilingual
+  // program (see the note on HELP_REPLY_BY_LANGUAGE).
+  const language = replyLanguage(inbound.body);
 
   if (keyword === 'stop') {
     return handleStop(database, { phoneE164, inbound, session, now }, deps);
@@ -846,12 +901,18 @@ async function handleKeyword(
     if (!session) {
       // No conversation to record against (channel_messages needs a family, and the
       // session is what holds a pre-family transcript). Answer and stop there.
-      await deps.transport.send({ to: phoneE164, body: HELP_REPLY });
+      await deps.transport.send({ to: phoneE164, body: HELP_REPLY_BY_LANGUAGE[language] });
       return { status: 'helped' };
     }
     const ctx: SendContext = { session, phoneE164, now };
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    const { transcript } = await sendAndRecord(database, ctx, HELP_REPLY, deps, recorded.transcript);
+    const { transcript } = await sendAndRecord(
+      database,
+      ctx,
+      HELP_REPLY_BY_LANGUAGE[language],
+      deps,
+      recorded.transcript,
+    );
     await saveSession(database, session, { transcript, lastProviderId: inbound.providerId }, now);
     return { status: 'helped' };
   }
@@ -865,7 +926,7 @@ async function handleKeyword(
       { ...owner, phoneE164, verbatimReply: inbound.body },
       now,
     );
-    await deps.transport.send({ to: phoneE164, body: START_ACK });
+    await deps.transport.send({ to: phoneE164, body: START_ACK_BY_LANGUAGE[language] });
     return { status: 'restarted' };
   }
   if (session) {

@@ -3,9 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { GeneralAnswerFallback, GeneralAnswerOutcome } from './answer';
 import {
   ANSWER_UNAVAILABLE_REPLY,
+  ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
   PROVIDER_ACCESS_REPLY,
+  PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY,
+  SAFETY_REPLY_BY_LANGUAGE,
 } from './copy';
 import {
   type OffDomainPorts,
@@ -489,5 +492,60 @@ describe('recordUnmetIntent', () => {
     // Named, not swallowed: the failure class and the lane, and nothing else.
     expect(log.mock.calls[0]?.[0]).toEqual({ err: 'deadlock detected', lane: 'off_domain_general' });
     log.mockRestore();
+  });
+});
+
+/**
+ * THE FRENCH DOORS.
+ *
+ * The choice of door is unchanged — that is the screen's job and it is measured by the
+ * eval. What is asserted here is that once a door is chosen, the words that go through it
+ * are in the language the parent used, and that the English twin still goes out for
+ * everybody else. Both halves, every time: a lane that always answered in French would
+ * pass the first assertion of each of these on its own.
+ */
+describe('the lane answers in the language the question was asked in', () => {
+  it('sends the safety line in French to a French safety ask', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'child-safety' }) });
+
+    const fr = await consider(p, "Ma fille a avale quelque chose, je fais quoi");
+    expect(fr).toMatchObject({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
+
+    const en = await consider(p, 'my daughter swallowed something, what do I do');
+    expect(en).toMatchObject({ reply: SAFETY_REPLY, replySource: 'fixed' });
+  });
+
+  it('sends the registry line in French to a French provider ask', async () => {
+    const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
+
+    const fr = await consider(p, 'Je cherche un medecin de famille pour mes enfants');
+    expect(fr).toMatchObject({ reply: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr });
+
+    const en = await consider(p, 'we just moved and need a family doctor');
+    expect(en).toMatchObject({ reply: PROVIDER_ACCESS_REPLY });
+  });
+
+  it('says in French that the answer could not be written', async () => {
+    const p = ports({ answer: { status: 'unavailable', reason: 'model_failed' } });
+
+    const fr = await consider(p, "Quel temps fait-il demain? J'aimerais aller au parc");
+    expect(fr).toMatchObject({
+      reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.fr,
+      replySource: 'model_failed',
+    });
+
+    const en = await consider(p, "what's the weather tomorrow");
+    expect(en).toMatchObject({ reply: ANSWER_UNAVAILABLE_REPLY, replySource: 'model_failed' });
+  });
+
+  /**
+   * The composer reaching for a referral on a French question. The words are the reviewed
+   * French ones, and `fixed` still says the model did not write them.
+   */
+  it('substitutes the French safety line when the composer reached for a referral', async () => {
+    const p = ports({ answer: { status: 'safety' } });
+
+    const fr = await consider(p, "Mon fils est tombe de la table, il pleure beaucoup");
+    expect(fr).toMatchObject({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
   });
 });
