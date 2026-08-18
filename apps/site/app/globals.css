@@ -1859,19 +1859,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 
   /* The reply-chip row — the questions parents actually send, echoing v3, as
    * glass pills that scroll to the thread section. */
-  /* The closing band sits on the NIGHT shore, so it stays dark in BOTH themes —
-   * a fixed Prussian scrim over a darkened shore with light type, not the hero's
-   * theme-driven day/night wash (which left dark navy text on a dark image in light mode). */
-  .v4-close-band .v4-hero-art { filter: saturate(0.95) brightness(0.55); }
-  .v4-close-band .v4-hero-scrim {
-    background:
-      radial-gradient(130% 90% at 50% 20%, rgb(12 26 54 / 0.44) 0%, rgb(12 26 54 / 0.78) 52%, rgb(12 26 54 / 0.94) 100%),
-      linear-gradient(180deg, rgb(12 26 54 / 0.60) 0%, transparent 30%, transparent 62%, var(--color-linen) 100%);
-  }
-  .v4-close-band .v4-display,
-  .v4-close-band [translate="no"] { color: #f7f4ec; }
-  .v4-close-band .v4-hero-sub { color: rgb(253 252 250 / 0.92); text-shadow: none; }
-
   .v4-chips {
     display: flex;
     flex-wrap: wrap;
