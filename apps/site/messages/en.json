@@ -86,6 +86,7 @@
       { "step": "I send your radar", "body": "Names and ages, a postal code — then the week that actually matters near you." },
       { "step": "I keep watch", "body": "A brief on Monday. A heads-up the week a window opens, the plan the night before. Quiet in between." }
     ],
+    "howRail": "How Hale works, in three steps",
     "ladderEyebrow": "And when something needs doing",
     "ladder": [
       { "rung": "I suggest", "body": "the thing worth knowing this week, and why it matters now." },
@@ -103,6 +104,7 @@
       { "title": "After-school care", "body": "Where a city books it apart from the rest, on its own morning." },
       { "title": "Waitlist clocks", "body": "Some towns give you a day to accept a spot, some two. I watch the clock either way." }
     ],
+    "watchRail": "What I watch",
     "coachingEyebrow": "When you ask me something",
     "coachingH2a": "Sleep, solids, potty —",
     "coachingH2Accent": "answered, then planned.",
@@ -112,10 +114,12 @@
       { "step": "I offer the whole plan", "body": "Say yes and it arrives as two or three texts — the real method by name, whether that’s Ferber’s check-in tables, the three-day potty protocol, or Health Canada’s allergen introduction. Minutes and counts, not principles." },
       { "step": "A few days later, I ask how it went", "body": "I name the day in the plan and set that reminder myself, so remembering to report back was never your job." }
     ],
+    "coachingRail": "What happens when you ask",
     "coachingPlanTitle": "What I’ll plan with you",
     "coachingPlanBody": "Sleep, starting solids, potty training, picky eating, tantrums, screen time, and the routines that hold a week together.",
     "coachingStopTitle": "Where I stop",
     "coachingStopBody": "I don’t diagnose and I never name a dose. A plan says what’s common and what families try, and it names the one situation worth raising with your doctor.",
+    "coachingCardsRail": "What I’ll plan, and where I stop",
     "helpersEyebrow": "Your helpers",
     "helpersH2a": "Your helpers,",
     "helpersH2Accent": "only what they need.",
@@ -123,6 +127,7 @@
       { "title": "Grandparents and the nanny", "body": "They get just the schedule — who’s where, and when to be there. Nothing else about your family travels with it, and everyone opts in for themselves." },
       { "title": "Your co-parent", "body": "Always free. The same radar and the same reminders, on their own number — never a second household to pay for." }
     ],
+    "helpersRail": "Your helpers",
     "privacyEyebrow": "Privacy",
     "privacyH2a": "Privacy, the",
     "privacyH2Accent": "Canadian way.",

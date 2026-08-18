@@ -86,6 +86,7 @@
       { "step": "Je vous envoie votre radar", "body": "Des noms et des âges, un code postal — puis la semaine qui compte vraiment près de chez vous." },
       { "step": "Je monte la garde", "body": "Un topo le lundi. Un avis la semaine où une fenêtre s’ouvre, le plan la veille au soir. Le silence entre les deux." }
     ],
+    "howRail": "Comment Hale fonctionne, en trois étapes",
     "ladderEyebrow": "Et quand il y a quelque chose à faire",
     "ladder": [
       { "rung": "Je suggère", "body": "ce qui vaut la peine d’être su cette semaine, et pourquoi ça compte maintenant." },
@@ -103,6 +104,7 @@
       { "title": "Service de garde parascolaire", "body": "Là où une ville l’ouvre à part du reste, un matin bien à elle." },
       { "title": "Le chrono des listes d’attente", "body": "Certaines villes vous donnent une journée pour accepter une place, d’autres deux. Je surveille le chrono dans tous les cas." }
     ],
+    "watchRail": "Ce que je surveille",
     "coachingEyebrow": "Quand vous me demandez quelque chose",
     "coachingH2a": "Sommeil, solides, propreté —",
     "coachingH2Accent": "une réponse, puis un plan.",
@@ -112,10 +114,12 @@
       { "step": "Je vous propose le plan complet", "body": "Dites oui et il arrive en deux ou trois textos — la vraie méthode nommée, que ce soit les tableaux de vérification de Ferber, le protocole de propreté en trois jours, ou l’introduction des allergènes selon Santé Canada. Des minutes et des quantités, pas des principes." },
       { "step": "Quelques jours plus tard, je demande comment ça s’est passé", "body": "Je nomme le jour dans le plan et je programme ce rappel moi-même, pour que penser à m’en redonner des nouvelles n’ait jamais été votre travail." }
     ],
+    "coachingRail": "Ce qui se passe quand vous me demandez quelque chose",
     "coachingPlanTitle": "Ce que je planifie avec vous",
     "coachingPlanBody": "Le sommeil, l’introduction des solides, l’apprentissage de la propreté, les repas difficiles, les crises de colère, le temps d’écran, et les routines qui font tenir une semaine.",
     "coachingStopTitle": "Là où je m’arrête",
     "coachingStopBody": "Je ne pose pas de diagnostic et je ne nomme jamais de dose. Un plan dit ce qui est fréquent et ce que les familles essaient, et il nomme la seule situation qui mérite d’être signalée à votre médecin.",
+    "coachingCardsRail": "Ce que je planifie, et là où je m’arrête",
     "helpersEyebrow": "Vos aidants",
     "helpersH2a": "Vos aidants,",
     "helpersH2Accent": "seulement ce qu’il leur faut.",
@@ -123,6 +127,7 @@
       { "title": "Les grands-parents et la gardienne", "body": "Ils reçoivent seulement l’horaire — qui est où, et quand y être. Rien d’autre sur votre famille ne circule avec, et chacun donne lui-même son accord." },
       { "title": "Votre coparent", "body": "Toujours gratuit. Le même radar et les mêmes rappels, sur son propre numéro — jamais un deuxième foyer à payer." }
     ],
+    "helpersRail": "Vos aidants",
     "privacyEyebrow": "Confidentialité",
     "privacyH2a": "La confidentialité,",
     "privacyH2Accent": "à la canadienne.",
