@@ -504,6 +504,88 @@ describe('de-identification before search', () => {
 });
 
 /**
+ * The ENGLISH-QUERY CONTRACT, enforced rather than asked for.
+ *
+ * Everything downstream of the sanitizer is English-keyed: the pediatric search, and —
+ * the one that matters — `detectRedFlag`, whose entire lexicon is English. A query left in
+ * French or Chinese does not fail loudly; it BLINDS the detector, and a blind detector
+ * turns every escalation gate below it into a check that cannot fail. The skill is
+ * emphatic about translating, but a skill is a request, so the runtime refuses the query
+ * instead: an untranslated query is a `sanitize_failed`, which retries once and then falls
+ * to the fixed line that names 911 itself.
+ */
+describe('the clinical query must come back in English', () => {
+  it('falls closed when the sanitizer leaves the query in the parent language', async () => {
+    const log = quiet();
+    const french = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult({
+          clinical_query: 'bébé a du mal à respirer',
+          age_band: 'infant',
+          language: 'fr',
+        }),
+        ground: groundResult(2),
+        compose: composeResult(OK_COMPOSE),
+      }),
+    ).answer('raw message');
+
+    expect(french).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
+    expect(reasons).toContain('sanitize_failed');
+    log.mockRestore();
+
+    const quietZh = quiet();
+    expect(
+      await createMedicalComposer(
+        makeClient({
+          sanitize: sanitizeResult({ clinical_query: '宝宝发烧两天了', language: 'zh' }),
+          ground: groundResult(2),
+          compose: composeResult(OK_COMPOSE),
+        }),
+      ).answer('raw message'),
+    ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    quietZh.mockRestore();
+  });
+
+  it('falls closed when the DURATION is left in the parent language', async () => {
+    const log = quiet();
+    expect(
+      await createMedicalComposer(
+        makeClient({
+          sanitize: sanitizeResult({
+            clinical_query: 'infant trouble breathing with retractions',
+            age_band: 'infant',
+            duration: 'depuis hier après-midi',
+            language: 'fr',
+          }),
+          ground: groundResult(2),
+          compose: composeResult(OK_COMPOSE),
+        }),
+      ).answer('raw message'),
+    ).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    log.mockRestore();
+  });
+
+  it('positive control: the English translation of the same French message composes', async () => {
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult({
+          clinical_query: 'infant trouble breathing with retractions',
+          age_band: 'infant',
+          duration: '1 hour',
+          language: 'fr',
+        }),
+        ground: groundResult(2),
+        compose: composeResult(OK_COMPOSE),
+      }),
+    ).answer('raw message');
+
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).toContain('911');
+  });
+});
+
+/**
  * The parent's language is decided by the ONE stage that sees their words, and it travels
  * to the composer alone. It is deliberately kept out of the search: `clinical_query` and
  * `duration` are English by contract (the red-flag lexicon and the pediatric search are

@@ -44,7 +44,8 @@ import { SAFETY_REPLY } from './copy';
  * IN THE PARENT'S LANGUAGE. A parent who texts a symptom in French or Chinese is answered
  * in it. Two things make that safe rather than merely nice: the clinical query stays
  * ENGLISH whatever the parent wrote (the red-flag lexicon and the pediatric search are
- * English-keyed — medical-sanitize.md is emphatic about it), and the escalation gate
+ * English-keyed — medical-sanitize.md is emphatic about it, and {@link NON_ENGLISH_LETTERS}
+ * REFUSES a query that ignored it rather than trusting the prompt), and the escalation gate
  * below reads all three languages, so a correct "allez aux urgences" is not mistaken for
  * an under-escalation and a French under-escalation is not mistaken for a directive.
  *
@@ -78,10 +79,15 @@ import { SAFETY_REPLY } from './copy';
  * founder): tighten to 4 if the extra segment is unwanted.
  *
  * A SEGMENT count, not a character count, and that is what makes the one number correct
- * in three languages: the same five segments are ~765 GSM-7 characters of English and
- * ~335 UCS-2 characters of French or Chinese, because one accented or CJK character
- * flips the whole body to UCS-2 and 153 units a part becomes 67. medical-symptom.md
- * states the FR/ZH budget in those characters, so the skill and this cap agree. */
+ * in three languages. Five segments is ~765 characters of GSM-7 and ~335 of UCS-2, because
+ * UCS-2 bills 67 units a part where GSM-7 bills 153. CHINESE is always the UCS-2 case: a
+ * CJK character is never in the GSM-7 alphabet, so a Chinese answer has ~335 characters to
+ * work in — which is a lot of Chinese. FRENCH usually is NOT: e, e-grave, a-grave and
+ * u-grave are all IN the GSM-7 alphabet, so most French answers bill as GSM-7 like English
+ * — but c-cedilla, a-circumflex, o-circumflex and their kin are not, and one of them
+ * anywhere in the body drops the whole thing to ~335. Which side of that line a French
+ * answer lands on is not something the composer can plan around, so medical-symptom.md
+ * asks FR and ZH alike to write to the tighter budget; the cap is the same either way. */
 export const MAX_MEDICAL_SEGMENTS = 5;
 
 const MAX_SEARCHES = 4;
@@ -133,6 +139,8 @@ export interface MedicalComposer {
  * `not_grounded` is the invariant this lane exists to hold: a medical answer that did not
  * actually search is not a medical answer. `under_escalated` is its safety twin: a detected
  * red flag whose composed body never said "seek emergency care" (see {@link detectRedFlag}).
+ * `sanitize_failed` carries one more than its name suggests: a query the sanitizer left in
+ * the parent's language (detail `query_not_english`), which would blind that detector.
  */
 export type MedicalFallback =
   | 'client_unavailable'
@@ -250,6 +258,30 @@ function normalizeLanguage(raw: unknown): ReplyLanguage {
   return typeof raw === 'string' && (REPLY_LANGUAGES as readonly string[]).includes(raw)
     ? (raw as ReplyLanguage)
     : 'en';
+}
+
+/**
+ * The ENGLISH-QUERY CONTRACT, held in code rather than asked for in a prompt.
+ *
+ * medical-sanitize.md instructs the sanitizer to write `clinical_query` and `duration` in
+ * English whatever language the parent wrote in, and it explains why at length. That
+ * instruction is load-bearing in a way no other prompt line here is: everything downstream
+ * is English-keyed, and {@link detectRedFlag}'s lexicon is English ENTIRELY. A French or
+ * Chinese query does not fail loudly — it BLINDS the detector, which turns the whole
+ * escalation invariant below into a check that cannot fire. A safety property that depends
+ * on a model following an instruction is not a safety property, so the query is CHECKED.
+ *
+ * The pattern is the eval's (run-medical-symptom-eval.mjs), which calibrates it over the
+ * FR/ZH corpus: any CJK/Kana/Hangul character, or one of the Latin accents French carries.
+ * It is deliberately blind to the things a real English clinical query contains — a degree
+ * sign, a decimal temperature, a plain ASCII word — and every English query the live corpus
+ * produced passes it untouched.
+ */
+const NON_ENGLISH_LETTERS =
+  /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]|[\u00e0\u00e2\u00e4\u00e3\u00e9\u00e8\u00ea\u00eb\u00ed\u00ec\u00ee\u00ef\u00f3\u00f2\u00f4\u00f6\u00f5\u00fa\u00f9\u00fb\u00fc\u00fd\u00ff\u00e7\u00f1\u0153\u00e6]/iu;
+
+function isEnglish(text: string): boolean {
+  return !NON_ENGLISH_LETTERS.test(text);
 }
 
 /** Whether a body carries the triage numbers. The positive requirement that makes
@@ -468,6 +500,13 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
     ageBand: normalizeAgeBand(sanitized.age_band),
     ...(duration ? { duration: scrubResidualPii(duration) } : {}),
   };
+  // The English-query contract (see NON_ENGLISH_LETTERS): an untranslated query would
+  // blind detectRedFlag rather than fail, so it is refused here. The detail names the
+  // reason and carries none of the text (rule #1). A sanitize_failed is retried once,
+  // which gives the model a second chance to translate before the fixed line.
+  if (!isEnglish(query.clinicalQuery) || (query.duration && !isEnglish(query.duration))) {
+    throw new MedicalUnresolvable('sanitize_failed', 'query_not_english');
+  }
 
   // Phase 1 — GROUND (web_search on the de-identified query only).
   let research: Anthropic.Message;
