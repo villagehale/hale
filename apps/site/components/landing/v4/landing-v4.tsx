@@ -9,6 +9,7 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref, buildSmsHrefForBody } from '~/lib/text-entry';
+import { ScrollRail } from './scroll-rail';
 
 /**
  * v4 — the liquid-glass shore. The live landing, and the design the whole
@@ -203,7 +204,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         <h2 className="v4-display mx-auto mt-4 max-w-[16ch] text-center text-[clamp(2rem,5vw,3.4rem)] text-ink">
           {t('howH2a')} <span className="v4-italic text-amber">{t('howH2Accent')}</span>
         </h2>
-        <div className="v4-cardgrid mt-7 sm:mt-12">
+        <ScrollRail className="v4-cardgrid mt-7 sm:mt-12" label={t('howRail')}>
           {steps.map((s, i) => (
             <article key={s.step} className="v4-card v4-glass">
               <p className="v4-card-n">0{i + 1}</p>
@@ -211,7 +212,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               <p>{s.body}</p>
             </article>
           ))}
-        </div>
+        </ScrollRail>
 
         <div className="v4-panel v4-glass mt-8 sm:mt-14">
           <p className="v4-eyebrow">{t('ladderEyebrow')}</p>
@@ -242,14 +243,14 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             </li>
           ))}
         </ul>
-        <div className="v4-cardgrid-4 mt-7 sm:mt-12">
+        <ScrollRail className="v4-cardgrid-4 mt-7 sm:mt-12" label={t('watchRail')}>
           {watched.map((item) => (
             <article key={item.title} className="v4-card v4-glass">
               <h3 className="text-spruce">{item.title}</h3>
               <p>{item.body}</p>
             </article>
           ))}
-        </div>
+        </ScrollRail>
       </section>
 
       {/* ── Coaching — the questions that aren't scheduling ───────────────── */}
@@ -259,7 +260,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           {t('coachingH2a')} <span className="v4-italic text-amber">{t('coachingH2Accent')}</span>
         </h2>
         <p className="v4-lede">{t('coachingLede')}</p>
-        <ol className="v4-cardgrid mt-7 sm:mt-12">
+        <ScrollRail as="ol" className="v4-cardgrid mt-7 sm:mt-12" label={t('coachingRail')}>
           {coaching.map((item, i) => (
             <li key={item.step} className="v4-card v4-glass">
               <p className="v4-card-n">0{i + 1}</p>
@@ -267,8 +268,8 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               <p>{item.body}</p>
             </li>
           ))}
-        </ol>
-        <div className="v4-cardgrid-2 mt-4 sm:mt-6">
+        </ScrollRail>
+        <ScrollRail className="v4-cardgrid-2 mt-4 sm:mt-6" label={t('coachingCardsRail')}>
           <article className="v4-card v4-glass">
             <h3 className="text-spruce">{t('coachingPlanTitle')}</h3>
             <p>{t('coachingPlanBody')}</p>
@@ -277,7 +278,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             <h3 className="text-spruce">{t('coachingStopTitle')}</h3>
             <p>{t('coachingStopBody')}</p>
           </article>
-        </div>
+        </ScrollRail>
       </section>
 
       {/* ── The caregivers, scoped ────────────────────────────────────────── */}
@@ -286,14 +287,14 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         <h2 className="v4-display v4-h2 mt-4">
           {t('helpersH2a')} <span className="v4-italic text-amber">{t('helpersH2Accent')}</span>
         </h2>
-        <div className="v4-cardgrid-2 mt-6 sm:mt-10">
+        <ScrollRail className="v4-cardgrid-2 mt-6 sm:mt-10" label={t('helpersRail')}>
           {caregivers.map((item) => (
             <article key={item.title} className="v4-card v4-glass">
               <h3 className="text-spruce">{item.title}</h3>
               <p>{item.body}</p>
             </article>
           ))}
-        </div>
+        </ScrollRail>
       </section>
 
       {/* ── Privacy, the Canadian way ─────────────────────────────────────── */}

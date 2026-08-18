@@ -1978,6 +1978,17 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-cardgrid-2 { display: grid; gap: 1.25rem; grid-template-columns: 1fr; }
   @media (min-width: 1024px) { .v4-cardgrid-2 { grid-template-columns: repeat(2, 1fr); } }
 
+  /* A rail only takes focus while it actually scrolls (ScrollRail attaches the
+   * tabindex from a measurement, never a breakpoint), so this ring needs no media
+   * query — nothing else here is focusable. Inset, unlike the site's other 2px
+   * rings: a phone rail is full-bleed, and an outside ring falls off both edges. */
+  .v4-cardgrid:focus-visible,
+  .v4-cardgrid-4:focus-visible,
+  .v4-cardgrid-2:focus-visible {
+    outline: 2px solid var(--color-spruce);
+    outline-offset: -2px;
+  }
+
   /* Glass panel — the autonomy ladder + receipts. */
   .v4-panel {
     border-radius: var(--r-xl);

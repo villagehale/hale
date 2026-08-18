@@ -351,6 +351,26 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
   });
 });
 
+describe('landing — the phone snap rails', () => {
+  it('ships them with no focus attributes baked into the server markup', () => {
+    // The five card sets that become horizontal snap rails under 640px. Matching
+    // the opening tags is the positive control: the absences below are attributes
+    // withheld from rails that are demonstrably here, not five missing sections.
+    const rails = [...render().matchAll(/<(?:div|ol)[^>]*class="v4-cardgrid[^"]*"[^>]*>/g)].map(
+      (match) => match[0],
+    );
+    expect(rails).toHaveLength(5);
+    // tabindex/role/aria-label are attached on mount and only while a rail really
+    // overflows. Static ones would be five dead tab stops on the desktop
+    // composition, where the grid wraps and there is nothing to scroll.
+    for (const rail of rails) {
+      expect(rail).not.toContain('tabindex');
+      expect(rail).not.toContain('role=');
+      expect(rail).not.toContain('aria-label');
+    }
+  });
+});
+
 describe('landing — structured data', () => {
   it('emits its own JSON-LD graph describing the page a visitor actually sees', () => {
     const html = render();
