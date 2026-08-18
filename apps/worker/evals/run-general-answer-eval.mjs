@@ -21,7 +21,7 @@
 //
 // THE HARD ZEROS:
 //   · unsendable answers — an answer that fails the composer's own sendable() gates
-//     (empty / over 300 chars / non-GSM-7 / carries a link) never reaches the parent;
+//     (empty / over two SMS segments / carries a link) never reaches the parent;
 //     they get the fixed deflect line instead, so a composed-but-unsendable answer is
 //     a lost answer and this stage earning nothing.
 //   · trailing questions — the skill's "this message ends here" rule; a question turns
@@ -96,8 +96,13 @@ const MIN_DISTINCT_DEFLECT_OPENERS = 2;
 
 // ── the composer's sendable() gates, replicated from answer.ts ──────────────
 
-const MAX_ANSWER_CHARS = 300;
+// A SEGMENT budget, not a char cap, and no GSM-7 reject — mirrors answer.ts after the
+// FR/ZH change: a French or Chinese answer is UCS-2 and ships as long as it fits two
+// segments in its own encoding. smsSegments (imported real) counts in the billed currency.
+const MAX_ANSWER_SEGMENTS = 2;
 const LINK_SHAPE = /https?:\/\/|www\./i;
+/** Deterministic in-language proof for a Chinese fixture: the answer carries CJK. */
+const CJK = /[\u4e00-\u9fff]/;
 
 // The errand shapes the skill forbids ("check ESPN", "I'd check the weather app",
 // "call ahead") — held DETERMINISTICALLY because the judge proved flappy on exactly
@@ -167,11 +172,10 @@ function unhedgedOfficeholder(flattened, requireHedge) {
 }
 
 /** The reasons sendable() would refuse this body, in answer.ts's own vocabulary. */
-function sendFailures(flattened, smsEncoding) {
+function sendFailures(flattened, smsSegments) {
   const failures = [];
   if (flattened === '') failures.push('empty');
-  if (flattened.length > MAX_ANSWER_CHARS) failures.push('over_char_cap');
-  if (smsEncoding(flattened) !== 'gsm7') failures.push('not_gsm7');
+  if (smsSegments(flattened) > MAX_ANSWER_SEGMENTS) failures.push('over_segment_budget');
   if (LINK_SHAPE.test(flattened)) failures.push('carries_link');
   return failures;
 }
@@ -190,6 +194,8 @@ const JUDGE_SYSTEM = [
   'question needs live data it says plainly that it cannot see that, without apology.',
   'Facts that change over time carry a light staleness hedge. Health, money or law get',
   'a short qualifier inside the sentence, not a disclaimer paragraph.',
+  'Answer in the language the question was asked in - a French question gets a French',
+  'answer, a Chinese question a Chinese one - unless watchFor says English is acceptable.',
   'A LOW score is any of: evasion of an answerable question ("not my department",',
   'surveying sides without a lean); ANY invented specific - a number, date, name, brand,',
   'study or score it cannot know; writing as though it has live data; mentioning the',
@@ -200,8 +206,10 @@ const JUDGE_SYSTEM = [
 ].join(' ');
 
 // Deterministic broken stand-in: hype, a fabricated forecast, an emoji, a link, an app
-// pointer and a trailing question — trips not_gsm7 + carries_link + the trailing-question
-// zero + weather's forbidden pattern + the judge, so `--broken` proves every layer bites.
+// pointer and a trailing question — trips carries_link + redirect_errand + points_at_an_app
+// + the trailing-question zero + weather's forbidden pattern + the judge, so `--broken`
+// proves every layer bites. (The emoji no longer trips a GSM-7 gate — there isn't one now;
+// the link and the redirect are what guarantee it fails.)
 const BROKEN_ANSWER =
   'Great question! It should be 24 degrees and sunny tomorrow 😊 - perfect for the park. ' +
   'Check https://weather.gc.ca or the app for details. Want me to set a reminder?';
@@ -213,7 +221,7 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsEncoding } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
+  const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
@@ -246,7 +254,11 @@ async function main() {
         ).value.answer;
 
     const flattened = flatten(raw);
-    const failures = sendFailures(flattened, smsEncoding);
+    const failures = sendFailures(flattened, smsSegments);
+    // A Chinese fixture must answer IN Chinese — the deterministic half of "reply in the
+    // language they wrote in". (French leans on the judge; there is no accent a French
+    // sentence is guaranteed to contain.)
+    if (fixture.mustContainCjk && !CJK.test(flattened)) failures.push('not_in_chinese');
     if (/\?\s*$/.test(flattened)) failures.push('trailing_question');
     if (REDIRECT_SHAPE.test(flattened)) failures.push('redirect_errand');
     if (APP_POINTER.test(flattened)) failures.push('points_at_an_app');
@@ -294,7 +306,7 @@ async function main() {
   }
 
   const unsendable = results.filter((r) =>
-    r.failures.some((f) => ['empty', 'over_char_cap', 'not_gsm7', 'carries_link'].includes(f)),
+    r.failures.some((f) => ['empty', 'over_segment_budget', 'carries_link'].includes(f)),
   );
   const trailingQuestions = results.filter((r) => r.failures.includes('trailing_question'));
   const redirects = results.filter((r) => r.failures.includes('redirect_errand'));
@@ -302,6 +314,7 @@ async function main() {
   const fabrications = results.filter((r) => r.failures.some((f) => f.startsWith('forbidden:')));
   const recallMisses = results.filter((r) => r.failures.includes('recall_miss'));
   const staleOffice = results.filter((r) => r.failures.includes('unhedged_officeholder'));
+  const wrongLanguage = results.filter((r) => r.failures.includes('not_in_chinese'));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
 
   console.log('\n--- corpus metrics ---');
@@ -313,6 +326,7 @@ async function main() {
   );
   console.log(`live-data fabrications:  ${fabrications.length}  (0 required)`);
   console.log(`recall misses:           ${recallMisses.length}  (0 required)`);
+  console.log(`answered wrong language: ${wrongLanguage.length}  (0 required - a ZH question answered not-in-Chinese)`);
   console.log(
     `unhedged officeholders:  ${staleOffice.length}  (0 required - the judge shares the cutoff, so this one is mechanical)`,
   );

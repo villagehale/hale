@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) completely ignores the question about im8 supplement brand and answers about weather instead; (2) invents live weather data (24 degrees, sunny); (3) mentions family plans (\"perfect for the park\"); (4) points to websites and apps; (5) offers to do something next (\"set a reminder\"); (6) uses greeting, emoji, and hype (\"Great question!\"); (7) ends with a question. For a brand opinion question, the correct answer is either a brief take OR a plain \"I do not know that one\" - this does neither."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Critical failures: (1) The answer is completely off-topic - it addresses weather and park plans instead of the Euros streaming question. (2) Contains a link (https://weather.gc.ca) which violates the watchFor note about no links. (3) Uses greeting hype (\"Great question!\") and emoji. (4) Ends with a question (\"Want me to set a reminder?\"). (5) Invents a specific temperature (24 degrees) it cannot know. (6) Mentions family plans (the park). The answer doesn't engage with the actual question at all, which is answerable with a hedged mention of typical regional broadcasters."
+  }
+}

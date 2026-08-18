@@ -1,6 +1,11 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { MAX_ANSWER_CHARS, createGeneralAnswer, generalAnswerUserMessage } from './answer';
+import { MAX_ANSWER_SEGMENTS, createGeneralAnswer, generalAnswerUserMessage } from './answer';
+
+/** GSM-7 concatenation part size (sms-segments.ts GSM7_CONCAT_PART). A GSM-7 body of
+ * this many characters is exactly {@link MAX_ANSWER_SEGMENTS} segments; one more tips it
+ * over. Kept local so the cap tests track the constant rather than a magic 306/307. */
+const GSM7_CONCAT_PART = 153;
 
 /**
  * Boundary v3 — the general answer's MECHANICS. Not its judgement.
@@ -145,11 +150,12 @@ describe('createGeneralAnswer', () => {
   /**
    * The cap is a REFUSAL, not a trim. A trivia answer cut mid-clause reads as broken
    * software, and unlike the coach's reply there is no app link to hand the rest to —
-   * so the lane's fixed line is the better outcome, and it is a named one.
+   * so the lane's fixed line is the better outcome, and it is a named one. The budget is
+   * SEGMENTS, so it holds in whatever currency the body's encoding is billed in.
    */
-  it('refuses an answer past the character cap instead of truncating it', async () => {
+  it('refuses an answer past the segment budget instead of truncating it', async () => {
     const log = quiet();
-    const tooLong = `${'a'.repeat(MAX_ANSWER_CHARS)} and one more clause.`;
+    const tooLong = 'a'.repeat(MAX_ANSWER_SEGMENTS * GSM7_CONCAT_PART + 1);
 
     expect(await createGeneralAnswer(clientReturning({ answer: tooLong })).compose(ASK)).toEqual({
       status: 'unavailable',
@@ -158,8 +164,8 @@ describe('createGeneralAnswer', () => {
     log.mockRestore();
   });
 
-  it('accepts an answer exactly at the cap', async () => {
-    const exact = 'a'.repeat(MAX_ANSWER_CHARS);
+  it('accepts an answer exactly at the segment budget', async () => {
+    const exact = 'a'.repeat(MAX_ANSWER_SEGMENTS * GSM7_CONCAT_PART);
     expect(await createGeneralAnswer(clientReturning({ answer: exact })).compose(ASK)).toEqual({
       status: 'composed',
       reply: exact,
@@ -174,13 +180,41 @@ describe('createGeneralAnswer', () => {
     log.mockRestore();
   });
 
-  /** An emoji has no ASCII twin to fold to, and one of them re-encodes the whole body to
-   * UCS-2. Nothing is guessed at: the answer is refused and the fixed line goes out. */
-  it('refuses an answer that is still outside GSM-7 after flattening', async () => {
-    const log = quiet();
+  /**
+   * The gate is UCS-2-aware, not GSM-7-only: a parent who writes in French or Chinese is
+   * answered in kind (general-answer.md), and an accented or CJK body — which is UCS-2 —
+   * SHIPS as long as it fits the segment budget. This is the capability the old
+   * `not_gsm7` reject silently blocked; it fell every such answer closed to the English
+   * line. `plainText` still folds a gratuitous curly quote or em dash to ASCII, but the é
+   * and the Chinese character are content, not flourish, so they survive.
+   */
+  it('ships a short accented-French answer (UCS-2 within budget)', async () => {
+    // "drôle" carries ô, which is outside GSM-7 (é/è/à are not) — so this body is genuinely
+    // UCS-2, the exact case the old not_gsm7 reject would have fallen closed.
     expect(
-      await createGeneralAnswer(clientReturning({ answer: 'Messi, no contest 🐐' })).compose(ASK),
-    ).toEqual({ status: 'unavailable', reason: 'unsendable' });
+      await createGeneralAnswer(
+        clientReturning({ answer: "A mon avis, c'est un peu drôle mais délicieux." }),
+      ).compose('cest quoi ton avis'),
+    ).toEqual({ status: 'composed', reply: "A mon avis, c'est un peu drôle mais délicieux." });
+  });
+
+  it('ships a short Chinese answer (UCS-2 within budget)', async () => {
+    expect(
+      await createGeneralAnswer(clientReturning({ answer: '梅西,无可争议。' })).compose(
+        '足球界谁最强',
+      ),
+    ).toEqual({ status: 'composed', reply: '梅西,无可争议。' });
+  });
+
+  /** The segment budget bites in UCS-2 too: a long Chinese body is three segments at 135
+   * characters where an English one takes 460, and it is refused just the same. */
+  it('refuses a Chinese answer that runs past the segment budget', async () => {
+    const log = quiet();
+    const tooLong = '中'.repeat(MAX_ANSWER_SEGMENTS * 67 + 1);
+    expect(await createGeneralAnswer(clientReturning({ answer: tooLong })).compose(ASK)).toEqual({
+      status: 'unavailable',
+      reason: 'unsendable',
+    });
     log.mockRestore();
   });
 

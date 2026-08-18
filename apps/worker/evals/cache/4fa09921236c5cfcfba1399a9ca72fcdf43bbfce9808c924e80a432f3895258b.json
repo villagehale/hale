@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) Invents a specific forecast (\"24 degrees and sunny\") when Hale has no live data access - this is fabrication; (2) Mentions the park, implying knowledge of family plans; (3) Points to a website/app; (4) Offers to do something next (\"set a reminder\"); (5) Greeting/hype (\"Great question!\") and emoji; (6) Ends with a question. The answer should plainly state it cannot see the forecast, per watchFor."
+  }
+}
