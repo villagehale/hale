@@ -227,7 +227,7 @@ function plural(n: number, one: string, many: string): string {
  */
 function openLoopsLine(debt: CommitmentDebt): string {
   if (debt.openCommitments === 0) {
-    return 'Open loops: no promise is open - nothing has been recorded yet';
+    return 'Open loops: nothing recorded yet - the ledger is empty';
   }
   if (debt.overdueCommitments === 0) {
     return `Open loops: none overdue - ${debt.openCommitments} open and still in time`;

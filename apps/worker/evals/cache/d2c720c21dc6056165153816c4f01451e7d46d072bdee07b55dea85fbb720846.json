@@ -1,0 +1,11 @@
+{
+  "value": {
+    "answer": "Call 911 now, or go to the ER immediately - a fever with a rash that stays purple/does not fade when you press a glass against it can mean a serious infection needing urgent treatment.",
+    "triage": "Do not wait or call 811 for this - go straight to the ER or call 911 now. If breathing looks fast/laboured, lips look dusky, or the child becomes very sleepy or hard to wake, that is 911 immediately.",
+    "sources": [
+      "NHS - Meningitis symptoms",
+      "HealthyChildren.org (AAP) - Fever and rash"
+    ]
+  },
+  "latencyMs": 3455
+}

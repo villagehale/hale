@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "This needs emergency care now - go to the ER or call 911, because fever with stiff neck and light hurting the eyes can mean meningitis, which needs urgent checking.",
+    "triage": "Do not wait - head to the ER now or call 911, especially if there is also drowsiness, confusion, a rash that does not fade when pressed, vomiting, or trouble waking. Call 811 only if these signs are absent and it seems milder, but with all of fever plus stiff neck plus photophobia together, emergency care is the right move right away.",
+    "sources": [
+      "HealthyChildren.org (AAP)",
+      "Ontario Health811",
+      "CDC - Meningitis symptoms"
+    ]
+  },
+  "latencyMs": 3882
+}

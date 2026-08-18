@@ -1,0 +1,11 @@
+{
+  "value": {
+    "answer": "Drooling, chewing on things, and fussiness are classic, usually harmless teething signs at this age, sometimes with gum swelling or disrupted sleep. Fever, vomiting, diarrhea, or a runny nose aren't caused by teething itself. Cold teething rings, gum massage, and something safe to chew usually help.",
+    "triage": "Call 811 (Health811) if fussiness seems more than mild, feeding drops off, or you're unsure. Go to the ER (or call 911) for real fever (100.4F/38C+), vomiting, diarrhea, rash, lethargy, or refusal to drink - those point to something other than teething.",
+    "sources": [
+      "AAP HealthyChildren.org - Teething",
+      "CDC/pediatric guidance on teething symptoms"
+    ]
+  },
+  "latencyMs": 3431
+}

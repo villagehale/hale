@@ -1,0 +1,11 @@
+{
+  "value": {
+    "answer": "Call 911 now if this seizure is still happening, or go to the ER right away since your child is still floppy and drowsy afterward - this needs to be checked in person now.",
+    "triage": "Call 911 now for any seizure lasting over 5 minutes, repeat seizures, trouble breathing, blue lips, or a child who won't wake or stay alert - get to an ER now given the current drowsiness/floppiness. Once fully back to normal and staying that way, call 811 to talk through next steps and follow-up.",
+    "sources": [
+      "Health811 Ontario",
+      "Caring for Kids (Canadian Paediatric Society)"
+    ]
+  },
+  "latencyMs": 3636
+}

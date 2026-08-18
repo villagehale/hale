@@ -349,6 +349,6 @@ describe('formatLoopHealthDigest — overdue commitments', () => {
         ...base,
         commitmentDebt: { overdueFamilies: 0, overdueCommitments: 0, openCommitments: 0 },
       }),
-    ).toBe('Open loops: no promise is open - nothing has been recorded yet');
+    ).toBe('Open loops: nothing recorded yet - the ledger is empty');
   });
 });
