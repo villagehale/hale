@@ -177,14 +177,14 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       </section>
 
       {/* ── What texting Hale is like — the thread, made concrete ─────────── */}
-      <section className="shell pt-20 lg:pt-28">
+      <section className="shell pt-12 sm:pt-20 lg:pt-28">
         <p className="v4-eyebrow text-center">{t('threadEyebrow')}</p>
         <h2 className="v4-display mx-auto mt-4 max-w-[18ch] text-center text-[clamp(1.9rem,4.4vw,3rem)] text-ink">
           {t('threadH2a')} <span className="v4-italic text-amber">{t('threadH2Accent')}</span>
         </h2>
         <p className="v4-lede mx-auto text-center">{t('threadLede')}</p>
 
-        <div className="v4-thread v4-glass mt-10">
+        <div className="v4-thread v4-glass mt-6 sm:mt-10">
           <p className="v4-thread-cap">{t('threadCap')}</p>
           {bubbles.map((bubble, i) => (
             <p
@@ -198,12 +198,12 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       </section>
 
       {/* ── How it works — three glass cards ──────────────────────────────── */}
-      <section className="shell py-20 lg:py-28">
+      <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow text-center">{t('howEyebrow')}</p>
         <h2 className="v4-display mx-auto mt-4 max-w-[16ch] text-center text-[clamp(2rem,5vw,3.4rem)] text-ink">
           {t('howH2a')} <span className="v4-italic text-amber">{t('howH2Accent')}</span>
         </h2>
-        <div className="v4-cardgrid mt-12">
+        <div className="v4-cardgrid mt-7 sm:mt-12">
           {steps.map((s, i) => (
             <article key={s.step} className="v4-card v4-glass">
               <p className="v4-card-n">0{i + 1}</p>
@@ -213,9 +213,9 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           ))}
         </div>
 
-        <div className="v4-panel v4-glass mt-14">
+        <div className="v4-panel v4-glass mt-8 sm:mt-14">
           <p className="v4-eyebrow">{t('ladderEyebrow')}</p>
-          <ul className="mt-6 flex flex-col gap-4">
+          <ul className="mt-5 flex flex-col gap-3 sm:mt-6 sm:gap-4">
             {ladder.map((item) => (
               <li key={item.rung} className="text-[1.05rem] leading-snug text-spruce">
                 <strong className="font-semibold">{item.rung}</strong>{' '}
@@ -223,26 +223,26 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               </li>
             ))}
           </ul>
-          <p className="mt-6 text-[15px] leading-[1.6] text-slate-green">{t('receipts')}</p>
+          <p className="mt-5 text-[15px] leading-[1.6] text-slate-green sm:mt-6">{t('receipts')}</p>
         </div>
       </section>
 
       {/* ── What I watch — the radar, by name ─────────────────────────────── */}
-      <section className="shell py-20 lg:py-28">
+      <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('watchEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
           {t('watchH2Count', { count: MUNICIPALITIES.length })}{' '}
           <span className="v4-italic text-amber">{t('watchH2Accent')}</span>
         </h2>
         <p className="v4-lede">{t('watchLede')}</p>
-        <ul className="v4-pills mt-8">
+        <ul className="v4-pills mt-5 sm:mt-8">
           {MUNICIPALITIES.map((city) => (
             <li key={city} className="v4-pill v4-glass">
               {city}
             </li>
           ))}
         </ul>
-        <div className="v4-cardgrid-4 mt-12">
+        <div className="v4-cardgrid-4 mt-7 sm:mt-12">
           {watched.map((item) => (
             <article key={item.title} className="v4-card v4-glass">
               <h3 className="text-spruce">{item.title}</h3>
@@ -253,13 +253,13 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       </section>
 
       {/* ── Coaching — the questions that aren't scheduling ───────────────── */}
-      <section className="shell py-20 lg:py-28">
+      <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('coachingEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
           {t('coachingH2a')} <span className="v4-italic text-amber">{t('coachingH2Accent')}</span>
         </h2>
         <p className="v4-lede">{t('coachingLede')}</p>
-        <ol className="v4-cardgrid mt-12">
+        <ol className="v4-cardgrid mt-7 sm:mt-12">
           {coaching.map((item, i) => (
             <li key={item.step} className="v4-card v4-glass">
               <p className="v4-card-n">0{i + 1}</p>
@@ -268,7 +268,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             </li>
           ))}
         </ol>
-        <div className="v4-cardgrid-2 mt-6">
+        <div className="v4-cardgrid-2 mt-4 sm:mt-6">
           <article className="v4-card v4-glass">
             <h3 className="text-spruce">{t('coachingPlanTitle')}</h3>
             <p>{t('coachingPlanBody')}</p>
@@ -281,12 +281,12 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       </section>
 
       {/* ── The caregivers, scoped ────────────────────────────────────────── */}
-      <section className="shell py-20 lg:py-28">
+      <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('helpersEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
           {t('helpersH2a')} <span className="v4-italic text-amber">{t('helpersH2Accent')}</span>
         </h2>
-        <div className="v4-cardgrid-2 mt-10">
+        <div className="v4-cardgrid-2 mt-6 sm:mt-10">
           {caregivers.map((item) => (
             <article key={item.title} className="v4-card v4-glass">
               <h3 className="text-spruce">{item.title}</h3>
@@ -297,7 +297,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       </section>
 
       {/* ── Privacy, the Canadian way ─────────────────────────────────────── */}
-      <section className="shell py-20 lg:py-28">
+      <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('privacyEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
           {t('privacyH2a')} <span className="v4-italic text-amber">{t('privacyH2Accent')}</span>
@@ -315,7 +315,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       </section>
 
       {/* ── Closing — the shore, and the founding invitation ──────────────── */}
-      <section className="shell pb-24">
+      <section className="shell pb-14 sm:pb-24">
         <div className="v4-hero" style={{ minHeight: 'auto', borderRadius: 'var(--r-xl)' }}>
           <Image
             src={heroShore}
@@ -331,7 +331,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             aria-hidden="true"
             style={{ borderRadius: 'var(--r-xl)' }}
           />
-          <div className="v4-hero-body" style={{ padding: '4.5rem 1.5rem' }}>
+          <div className="v4-hero-body v4-closing-body">
             <span className="inline-flex items-center gap-3">
               <LogoMark size={40} />
               <span

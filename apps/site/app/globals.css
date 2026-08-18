@@ -2022,6 +2022,57 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     color: var(--color-spruce);
   }
 
+  /* The closing shore. Same body as the hero, but it sits inside a rounded card
+   * rather than a full viewport, so it carries its own (smaller) padding. */
+  .v4-hero-body.v4-closing-body { padding: 2.75rem 1.25rem; }
+  @media (min-width: 640px) {
+    .v4-hero-body.v4-closing-body { padding: 4.5rem 1.5rem; }
+  }
+
+  /* ── Phone density ────────────────────────────────────────────────────────
+   * The page ran ~10.7 phone screens, and a parent gives it far less than that.
+   * Nothing is removed: every card set becomes a snap rail with the next card
+   * peeking past the edge (the affordance), and the interior rhythm tightens.
+   * Bounded by max-width, so the desktop composition is untouched. */
+  @media (max-width: 639.98px) {
+    .v4-cardgrid,
+    .v4-cardgrid-4,
+    .v4-cardgrid-2 {
+      grid-auto-flow: column;
+      grid-template-columns: none;
+      grid-auto-columns: 78%;
+      gap: 0.7rem;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scroll-snap-type: x mandatory;
+      /* Full-bleed the rail so the last card can reach the edge, while the
+       * first still lines up with the heading above it. */
+      margin-inline: calc(var(--shell-pad-x) * -1);
+      padding-inline: var(--shell-pad-x);
+      scroll-padding-inline: var(--shell-pad-x);
+      /* overflow-x also clips the y axis, and the glass drop shadow (offset 18,
+       * blur 50, spread -34) only ever falls BELOW the card — so give the rail
+       * room underneath and take it straight back. Bottom longhands only: the
+       * rails carry `mt-*` utilities, and a utility always outranks this layer,
+       * so a `margin-block` here would silently apply to one side. */
+      padding-bottom: 0.6rem;
+      margin-bottom: -0.6rem;
+    }
+    .v4-cardgrid > *,
+    .v4-cardgrid-4 > *,
+    .v4-cardgrid-2 > * { scroll-snap-align: start; }
+
+    .v4-card { padding: 1.3rem; }
+    .v4-card-n { font-size: 1.9rem; }
+    .v4-card h3 { margin-top: 0.55rem; font-size: 1.08rem; }
+    .v4-card p { margin-top: 0.45rem; font-size: 0.95rem; line-height: 1.55; }
+
+    .v4-panel { padding: 1.4rem 1.25rem; }
+    .v4-lede { margin-top: 0.9rem; }
+    .v4-pills { gap: 0.4rem; }
+    .v4-pill { padding: 0.34rem 0.72rem; font-size: 0.8rem; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .v4-hero-art { filter: light-dark(none, brightness(0.66)); }
     .v4-switch-knob,
