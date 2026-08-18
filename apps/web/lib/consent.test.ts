@@ -82,12 +82,12 @@ describe('recordConsent', () => {
  * actually renders. Re-dating a policy without moving its constant fails this test.
  */
 function lastUpdatedOnLivePage(page: 'terms' | 'privacy'): string {
-  const source = readFileSync(new URL(`../../site/app/${page}/page.tsx`, import.meta.url), 'utf8');
-  const match = source.match(/lastUpdated="([^"]+)"/);
+  const source = readFileSync(new URL(`../../site/app/[locale]/${page}/page.tsx`, import.meta.url), 'utf8');
+  const match = source.match(/lastUpdatedIso="([^"]+)"/);
   if (!match?.[1]) {
-    throw new Error(`no lastUpdated="…" found on the ${page} page — the drift gate cannot bind`);
+    throw new Error(`no lastUpdatedIso="…" found on the ${page} page — the drift gate cannot bind`);
   }
-  return match[1];
+  return new Date(`${match[1]}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 describe('policy versions bind to the live policy pages', () => {

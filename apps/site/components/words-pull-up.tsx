@@ -10,11 +10,13 @@ import type { CSSProperties, ElementType } from 'react';
  * have not split, and once they are split the accent segment is simply the words
  * carrying a different class.
  *
- * A segment is a run of the headline in one style. Marking one `accent: true`
- * sets it in Source Serif italic with the amber halo (`.accent`), the brand's one
- * title gesture; every subpage headline gets exactly one. Segments are joined
- * with a single space, so punctuation that must hug the accent goes INSIDE the
- * accent segment ("a number," not "a number" + ", …").
+ * A segment is a run of the headline in one style. The whole headline is set in
+ * the v4 display face (Instrument Serif, `.v4-display`); marking one segment
+ * `accent: true` tips it into the amber serif-italic (`.v4-italic text-amber`) —
+ * the exact gesture the v4 landing hero wears, so the subpages and the homepage
+ * share one title device. Every subpage headline gets exactly one accent segment.
+ * Segments are joined with a single space, so punctuation that must hug the accent
+ * goes INSIDE the accent segment ("a number," not "a number" + ", …").
  *
  * No client JavaScript: the words are real text in the server-rendered HTML and
  * the stagger is a per-word `animation-delay` (`.pull-word` in globals.css).
@@ -47,11 +49,11 @@ export function WordsPullUp({
   );
 
   return (
-    <Tag className={className}>
+    <Tag className={['v4-display', className].filter(Boolean).join(' ')}>
       {words.map((word, index) => (
         <Fragment key={`${index}-${word.text}`}>
           <span
-            className={`pull-word${word.accent ? ' accent' : ''}`}
+            className={`pull-word${word.accent ? ' v4-italic text-amber' : ''}`}
             style={{ '--w': index } as CSSProperties}
           >
             {word.text}

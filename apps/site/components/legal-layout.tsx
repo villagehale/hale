@@ -1,4 +1,8 @@
 import type { ReactNode } from 'react';
+import { LogoMark } from '~/components/logo-mark';
+import { localeHref } from '~/i18n/navigation';
+import type { Locale } from '~/i18n/routing';
+import { getTranslator, isoToDate } from '~/i18n/server';
 import { APP_URL } from '~/lib/app-url';
 
 /**
@@ -10,6 +14,11 @@ import { APP_URL } from '~/lib/app-url';
  * Deliberately without the site header and footer. The policies are a
  * destination a parent arrives at from a text message or an email footer, not a
  * step in a funnel — and the marketing chrome would pull them back into one.
+ *
+ * The shell chrome (the "Legal" eyebrow, the last-updated line, the
+ * not-legal-advice note, the table-of-contents heading, the cross-link lead-in)
+ * is localized; the policy title, sections, and body are supplied by the page and
+ * remain in English until a professional legal translation lands.
  */
 
 export interface LegalSection {
@@ -18,30 +27,37 @@ export interface LegalSection {
 }
 
 export function LegalLayout({
+  locale,
   title,
-  lastUpdated,
+  lastUpdatedIso,
   intro,
   sections,
   children,
   crossLinkHref,
   crossLinkLabel,
 }: {
+  locale: Locale;
   title: string;
-  lastUpdated: string;
+  lastUpdatedIso: string;
   intro: ReactNode;
   sections: LegalSection[];
   children: ReactNode;
   crossLinkHref: string;
   crossLinkLabel: string;
 }) {
+  const t = getTranslator(locale, 'Legal');
+
   return (
     <main id="main" tabIndex={-1}>
       <header className="shell legal-print-hide flex items-center justify-between py-6">
-        <a href="/" className="font-serif text-[1.35rem] font-semibold leading-none text-spruce">
-          Hale
+        <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
+          <LogoMark size={28} />
+          <span className="font-serif text-[1.2rem] font-semibold leading-none text-spruce" translate="no">
+            Hale
+          </span>
         </a>
         <a href={`${APP_URL}/sign-in`} className="py-1 text-sm font-medium text-slate-green">
-          Sign in
+          {t('signIn')}
         </a>
       </header>
 
@@ -50,23 +66,20 @@ export function LegalLayout({
             document a reader may be checking a legal promise in should not be
             performing while they read it. */}
         <div className="legal-measure rise rise-1">
-          <span className="eyebrow">Legal</span>
+          <span className="eyebrow">{t('eyebrow')}</span>
           <h1 className="legal-title mt-4">{title}</h1>
-          <p className="meta mt-3">Last updated {lastUpdated}</p>
+          <p className="meta mt-3">{t('lastUpdated', { date: isoToDate(lastUpdatedIso) })}</p>
 
           <div className="legal-intro mt-8">{intro}</div>
 
           <p className="legal-disclaimer mt-6">
-            <em>
-              This document is provided in good faith but is not legal advice. Hale should have it
-              reviewed by a qualified lawyer before relying on it.
-            </em>
+            <em>{t('disclaimer')}</em>
           </p>
         </div>
 
         <div className="mt-12 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-16">
-          <nav className="legal-toc lg:sticky lg:top-8" aria-label="On this page">
-            <p className="eyebrow">On this page</p>
+          <nav className="legal-toc lg:sticky lg:top-8" aria-label={t('onThisPage')}>
+            <p className="eyebrow">{t('onThisPage')}</p>
             <ol className="mt-3">
               {sections.map((section) => (
                 <li key={section.id}>
@@ -84,8 +97,8 @@ export function LegalLayout({
         <div className="legal-measure mt-16">
           <hr className="border-rule" />
           <p className="meta mt-6">
-            See also our{' '}
-            <a href={crossLinkHref} className="link">
+            {t('seeAlsoPre')}{' '}
+            <a href={localeHref(locale, crossLinkHref)} className="link">
               {crossLinkLabel}
             </a>
             .

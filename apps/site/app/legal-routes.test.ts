@@ -1,9 +1,10 @@
-import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import sitemap from './sitemap.js';
-import PrivacyPage, { metadata as privacyMetadata } from './privacy/page.js';
-import TermsPage, { metadata as termsMetadata } from './terms/page.js';
+import PrivacyPage, { generateMetadata as privacyGenerateMetadata } from './[locale]/privacy/page.js';
+import TermsPage, { generateMetadata as termsGenerateMetadata } from './[locale]/terms/page.js';
+
+const EN = () => ({ params: Promise.resolve({ locale: 'en' as const }) });
 
 /**
  * B-legal (VIL-250 · M14) — terms and privacy get canonical homes on the
@@ -19,8 +20,10 @@ import TermsPage, { metadata as termsMetadata } from './terms/page.js';
  * way — noindex is not unreachable.
  */
 
-const termsHtml = renderToStaticMarkup(createElement(TermsPage));
-const privacyHtml = renderToStaticMarkup(createElement(PrivacyPage));
+const termsHtml = renderToStaticMarkup(await TermsPage(EN()));
+const privacyHtml = renderToStaticMarkup(await PrivacyPage(EN()));
+const termsMetadata = await termsGenerateMetadata(EN());
+const privacyMetadata = await privacyGenerateMetadata(EN());
 
 /** Every TOC target must exist in the body — a dead anchor in a policy is a broken policy. */
 function danglingAnchors(html: string): string[] {

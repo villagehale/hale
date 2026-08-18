@@ -12,10 +12,16 @@ export function EmailCta({
   email,
   buttonClassName,
   copyClassName = 'btn-secondary',
+  emailMeLabel = 'Email me',
+  copyLabel,
+  copiedLabel = 'Copied ✓',
 }: {
   email: string;
   buttonClassName: string;
   copyClassName?: string;
+  emailMeLabel?: string;
+  copyLabel?: string;
+  copiedLabel?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -28,7 +34,7 @@ export function EmailCta({
   return (
     <div className="flex flex-wrap items-center justify-center gap-3">
       <a href={`mailto:${email}`} className={buttonClassName}>
-        Email me
+        {emailMeLabel}
       </a>
       <button
         type="button"
@@ -46,7 +52,7 @@ export function EmailCta({
           }
         }}
       >
-        {copied ? 'Copied ✓' : `Copy ${email}`}
+        {copied ? copiedLabel : (copyLabel ?? `Copy ${email}`)}
       </button>
     </div>
   );

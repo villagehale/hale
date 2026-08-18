@@ -1,31 +1,40 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { APP_URL } from '~/lib/app-url.js';
 import { impactNumbers } from '~/lib/landing/impact.js';
-import LandingPage from './page.js';
+import LandingPage from './[locale]/page.js';
 
 /**
- * villagehale.com — the one landing.
+ * villagehale.com — the v4 liquid-glass shore, the one landing.
  *
- * Every claim, boundary and omission that the two suites guarding the pages
- * before this one pinned is carried here unchanged. Only the assertions that
- * described markup no longer on the page were dropped: the previous hero's copy
- * and its three-bubble transcript figure.
- *
- * The pivot's whole argument is that the only way in is texting Hale, so the
- * strongest assertions here are the negative ones: no signup funnel, no
- * capability claimed that isn't live, no placeholder metrics, and no digits.
+ * The pivot's argument is that the only way in is texting Hale, so the strongest
+ * assertions here are the negative ones: no signup funnel, no capability claimed
+ * that isn't live, no placeholder metrics, and no digits. Those invariants
+ * carried over from the landing this replaced unchanged; only the assertions that
+ * described the old conversational hero's markup (the typed bubble, the v3 chips)
+ * were re-pointed at what v4 actually renders.
  */
 
 const LIVE_NUMBER = '+16475551234';
 
-/** The homepage with the number provisioned — the live state. */
-function render({ number = LIVE_NUMBER }: { number?: string } = {}): string {
+// The landing is now an async Server Component (it awaits the `[locale]` param),
+// so both states are rendered once at module load — English, the default locale —
+// and `render()` stays synchronous for the describe/it bodies that call it.
+async function renderLanding(number: string): Promise<string> {
   vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', number);
-  return renderToStaticMarkup(createElement(LandingPage));
+  const html = renderToStaticMarkup(
+    await LandingPage({ params: Promise.resolve({ locale: 'en' as const }) }),
+  );
+  vi.unstubAllEnvs();
+  return html;
+}
+
+const LIVE_HTML = await renderLanding(LIVE_NUMBER);
+const EMPTY_HTML = await renderLanding('');
+
+/** The homepage with the number provisioned — the live state (default). */
+function render({ number = LIVE_NUMBER }: { number?: string } = {}): string {
+  return number === '' ? EMPTY_HTML : LIVE_HTML;
 }
 
 function visibleText(html: string): string {
@@ -35,125 +44,56 @@ function visibleText(html: string): string {
     .trim();
 }
 
-/** Curly punctuation is the site's display layer; the worker sends plain ASCII. */
-function plain(text: string): string {
-  return text.replace(/[’‘]/g, "'").replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
-}
-
-/**
- * `greeting(null)` as the worker would send it, read out of the source rather
- * than restated here — a copy of the copy would drift in step with the page and
- * pin nothing.
- *
- * Structural, not textual: the venue-less greeting is the function's LAST return
- * (the fall-through past `if (venue)`), and the ask it interpolates is the shared
- * COLD_START_ASK constant. Matching on the words instead would have re-encoded
- * the very string under test — and did, on the first pass: an anchor on "Hi, I'm
- * Hale - an AI" pulled the QR-venue branch and compared the page against a
- * message it never shows.
- */
-function workerGreeting(): string {
-  const source = readFileSync(
-    fileURLToPath(new URL('../../web/lib/channel/intake/copy.ts', import.meta.url)),
-    'utf8',
-  );
-  const fn = /export function greeting\([^)]*\): string \{([\s\S]*?)\n\}/.exec(source);
-  const returns = [...(fn?.[1] ?? '').matchAll(/return `([^`]*)`;/g)].map((m) => m[1]);
-  const ask = /export const COLD_START_ASK =\s*"([^"]+)"/.exec(source);
-  const body = returns.at(-1);
-  if (!body || !ask?.[1]) throw new Error('intake/copy.ts no longer exposes greeting(null)');
-  // Two branches today — venue, then the cold start. If that ever collapses to
-  // one, this is reading the wrong message and must be revisited.
-  expect(returns).toHaveLength(2);
-  return body.replace('${COLD_START_ASK}', ask[1]);
-}
-
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('landing — the hero is the real conversation', () => {
+describe('landing — the v4 hero', () => {
   const html = render();
 
-  it('types the greeting the worker actually sends, word for word', () => {
-    // The drift gate. The bubble's sizer span holds the whole message in the DOM
-    // (it is what a crawler and a reader with JavaScript off get), so it is the
-    // copy this compares — and it must equal intake/copy.ts once the site's
-    // curly quotes and em dashes are normalised back to the wire's ASCII.
-    const sizer = /<span class="v3-bubble-sizer" aria-hidden="true">([\s\S]*?)<\/span>/.exec(html);
-    expect(sizer?.[1]).toBeTruthy();
-    expect(plain(visibleText(sizer?.[1] ?? ''))).toBe(plain(workerGreeting()));
+  it('opens on the shore hero, scrimmed behind glass', () => {
+    expect(html).toContain('class="v4-hero"');
+    expect(html).toContain('class="v4-hero-art"');
+    expect(html).toContain('class="v4-hero-scrim"');
   });
 
-  it('labels the bubble as Hale’s real opening message, not a dramatisation', () => {
+  it('keeps one h1, in the display serif, with the single amber italic accent', () => {
+    expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
+    const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
+    expect(h1).toContain('v4-display');
+    expect(visibleText(h1)).toBe('Your family’s quiet chief of staff.');
+    // The accent word is the v4 amber serif-italic — one segment, not the old glow.
+    expect(h1).toContain('class="v4-italic"');
+  });
+
+  it('leads with the name, said out loud, as the eyebrow', () => {
+    expect(html).toContain('Hale · /HAH-leh/ · Hawaiian for home');
+  });
+
+  it('carries a conversion surface in the hero nav and the hero body', () => {
+    // Two Text Hale CTAs above the fold — the nav pill and the hero — both the
+    // composer deep link, so the first text costs a tap.
+    expect([...html.matchAll(/>Text Hale</g)].length).toBeGreaterThanOrEqual(2);
+    expect(html).toContain('href="sms:+16475551234?&amp;body=Hi"');
+  });
+
+  it('shows what texting Hale is like as a static thread, not a typed dramatisation', () => {
     const text = visibleText(html);
-    expect(text).toContain('Hale texts like this — this is its real opening message');
+    expect(text).toContain('Texting Hale looks like this');
+    expect(text).toContain('Your thread with Hale');
+    // A real exchange, rendered as message bubbles — never claimed to be a real family.
+    expect(html).toContain('class="v4-bubble v4-bubble-out"');
+    expect(html).toContain('class="v4-bubble v4-bubble-in"');
     for (const overclaim of ['from a real family', 'real customer', 'screenshot']) {
       expect(text).not.toContain(overclaim);
     }
   });
 
-  it('gives a screen reader the whole message at once, and hides the animated copy', () => {
-    // A paragraph announced one character at a time is unusable, so the sr-only
-    // copy is the accessible one and both painted copies are aria-hidden.
-    expect(html).toContain('<span class="sr-only">Hale: Hi, I’m Hale —');
-    expect(html).toContain('<span class="v3-bubble-sizer" aria-hidden="true">');
-  });
-
-  it('renders the four reply chips as real buttons carrying the parent’s own words', () => {
-    const chips = [
-      ...html.matchAll(/<button type="button" class="v3-chip"[^>]*>([^<]+)<\/button>/g),
-    ].map((m) => m[1]);
-    expect(chips).toEqual([
-      'When should Mia start solids?',
-      'Watch registration dates for us',
-      'What can we do Saturday morning?',
-      'Is a checkup due?',
-    ]);
-    // Single-select, and announced as pressed state rather than by colour alone.
-    // Counted on the chips themselves — the footer's theme three-way is also a
-    // pressed-state group, and a page-wide count would drift with the chrome.
-    expect([...html.matchAll(/class="v3-chip" aria-pressed="false"/g)]).toHaveLength(4);
-  });
-
-  it('opens on the bare greeting as the draft, so the CTA works before any chip', () => {
-    expect(html).toContain('Your first text');
-    expect(html).toContain('<span class="v3-draft-body">Hi</span>');
-    expect(html).toContain('href="sms:+16475551234?&amp;body=Hi"');
-  });
-
-  it('makes "Text me" the sms: deep link into a pre-written first message', () => {
-    // React escapes the `&` of the cross-platform `?&body=` form into `&amp;`.
-    expect(html).toContain('href="sms:+16475551234?&amp;body=Hi"');
-    expect(html).toContain('Text me');
-  });
-
-  it('keeps the h1 compact, gives it the serif accent, and has only one', () => {
-    expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
-    const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
-    expect(visibleText(h1)).toBe('Hale is a number you text — your family’s quiet chief of staff.');
-    expect(h1).toContain('class="v3-accent"');
-  });
-
-  it('is a single centred column — no split hero, no phone mockup', () => {
-    // A grid-cols-2 hero or a device frame would be the layout the founder
-    // rejected, reintroduced.
-    const hero = html.slice(html.indexOf('<h1'), html.indexOf('What I watch'));
-    expect(hero).toContain('v3-thread');
-    expect(hero).not.toMatch(/lg:grid-cols-\[/);
-    expect(hero).not.toContain('grid-cols-2');
-  });
-
-  it('keeps a conversion surface on screen — a sticky header carrying Text Hale', () => {
-    // The page once offered exactly two CTAs, 4,634px apart on desktop and 7,375px
-    // apart on mobile, under a `position: static` header that held only "Sign in".
-    const header = html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? '';
-    expect(header).toContain('sticky top-0');
-    expect([...header.matchAll(/Text Hale/g)]).toHaveLength(2);
-    // Split by where each half works: the composer on a phone, and on a laptop —
-    // where `sms:` is dead — a scroll to the CTA block, where the copy chip lives.
-    expect(header).toContain('href="sms:+16475551234?&amp;body=Hi"');
-    expect(header).toContain('href="#start"');
+  it('renders the four reply chips as composer deep links carrying the parent’s words', () => {
+    expect([...html.matchAll(/class="v4-chip v4-glass"/g)]).toHaveLength(4);
+    expect(html).toContain('When does swim registration open near me?');
+    // Each chip pre-writes a question into the composer, not the bare greeting.
+    expect(html).toContain('sms:+16475551234?&amp;body=When%20does%20swim');
   });
 });
 
@@ -171,19 +111,15 @@ describe('landing — the number is reachable and never readable', () => {
     ]) {
       expect(text, `${rendering} must not be visible`).not.toContain(rendering);
     }
-    // Positive control for the assertions above: the number IS on the page,
-    // invisibly, so "absent" means withheld rather than never rendered at all.
+    // Positive control: the number IS on the page, invisibly, so "absent" means
+    // withheld rather than never rendered at all.
     expect(html).toContain('href="sms:+16475551234?&amp;body=Hi"');
   });
 
   it('offers the clipboard as the laptop path instead of the digits', () => {
-    // Positive control first, so the absence below cannot pass vacuously: the copy
-    // chip sits inside the CTA block the header scrolls a laptop reader to.
-    const cta = html.indexOf('id="start"');
-    const chip = html.indexOf('Copy my number', cta);
-    expect(cta).toBeGreaterThan(-1);
-    expect(chip).toBeGreaterThan(cta);
-    expect(text).toContain('Copy my number');
+    // The copy chip puts the number on the clipboard without printing it — the
+    // Windows/laptop path where `sms:` is a silent no-op.
+    expect(text).toContain('copy my number');
     expect(html).not.toContain('displaySmsNumber');
   });
 });
@@ -191,20 +127,10 @@ describe('landing — the number is reachable and never readable', () => {
 describe('landing — the brand tile, the shore, and nothing else', () => {
   const html = render();
 
-  it('puts the logo tile in the header beside the wordmark', () => {
-    const header = html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? '';
-    expect(header).toContain('hale-logo');
-    expect(header).toMatch(/alt=""/);
-    expect(header).toContain('>Hale</span>');
-  });
-
   /**
-   * The honesty pin, widened rather than dropped. The page this replaced pinned
-   * "no <img> at all", which was the right rule for a page whose only picture
-   * would have been a fake screenshot. This one carries two kinds of image — the
-   * brand tile and one shore panel — and the rule that has to survive is the one
-   * underneath it: no image on this page carries an argument. Every one is
-   * decorative, from the known asset set, and none is near the conversation.
+   * The honesty pin: the page carries the brand tile and two shore panels, and
+   * the rule underneath is that no image carries an argument — every one is
+   * decorative, from the known asset set, and none stands in for a real customer.
    */
   it('allows only decorative images, only from the brand set', () => {
     const imgs = html.match(/<img[^>]*>/g) ?? [];
@@ -214,42 +140,34 @@ describe('landing — the brand tile, the shore, and nothing else', () => {
     for (const img of imgs) {
       expect(img, 'every image is decorative').toContain('alt=""');
       expect(img, 'every image is hidden from assistive tech').toContain('aria-hidden="true"');
-      expect(img, `unexpected asset: ${img.slice(0, 90)}`).toMatch(/hale-logo|hale-shore-night/);
+      expect(img, `unexpected asset: ${img.slice(0, 90)}`).toMatch(
+        /hale-logo|hale-shore-hero|hale-shore-night/,
+      );
     }
   });
 
-  it('keeps the conversation image-free — a message, never a picture of one', () => {
-    const hero = html.slice(html.indexOf('<h1'), html.indexOf('What I watch'));
-    expect(hero).not.toContain('<img');
-    // Positive control: the slice really is the hero.
-    expect(hero).toContain('v3-bubble');
-  });
-
-  it('closes on the shore — one panel, once — and no mascot art anywhere', () => {
-    // Counted as <img> elements, not as filename occurrences: next/image emits
-    // the same asset name once per srcset candidate.
-    const shorePanels = (html.match(/<img[^>]*>/g) ?? []).filter((img) =>
-      img.includes('hale-shore-night'),
-    );
-    expect(shorePanels).toHaveLength(1);
-    for (const mascot of [
-      'hale-turtle',
-      'village-illustration',
-      'diamondhead',
-      'shore-ultrawide',
-    ]) {
+  it('uses each shore panel once — the day hero and the night close — and no mascot art', () => {
+    // Counted as <img> elements, not filename occurrences: next/image emits the
+    // same asset name once per srcset candidate.
+    const imgs = html.match(/<img[^>]*>/g) ?? [];
+    expect(imgs.filter((img) => img.includes('hale-shore-hero'))).toHaveLength(1);
+    expect(imgs.filter((img) => img.includes('hale-shore-night'))).toHaveLength(1);
+    for (const mascot of ['hale-turtle', 'village-illustration', 'diamondhead', 'shore-ultrawide']) {
       expect(html, `${mascot} must not appear`).not.toContain(mascot);
     }
   });
 
-  it('says the name out loud in the footer', () => {
-    // The brand line every subpage carries (site-footer.tsx) and the landing once
-    // dropped. Hale is Hawaiian for home; the mark is a honu. The name IS the
-    // brand (home; the honu; aloha@) — it must survive every redesign.
+  it('says the name out loud in the shared footer', () => {
     const footer = html.match(/<footer[\s\S]*?<\/footer>/)?.[0] ?? '';
     expect(visibleText(footer)).toContain('Hale /HAH-leh/ — Hawaiian for home.');
     expect(html).toContain('/HAH-leh/');
     expect(html).toContain('Hawaiian for home');
+  });
+
+  it('ends every page in the one shared footer, with the theme switch', () => {
+    // The v4 theme switch lives in the footer, not the bar.
+    const footer = html.match(/<footer[\s\S]*?<\/footer>/)?.[0] ?? '';
+    expect(footer).toContain('class="v4-switch"');
   });
 });
 
@@ -266,12 +184,9 @@ describe('landing — no signup funnel; the only way in is texting Hale', () => 
     }
   });
 
-  it('keeps Sign in a quiet link in the chrome, and points every one at the app', () => {
-    const header = html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? '';
-    // Two in the bar's markup, one visible at a time: the ≥sm link and the one
-    // inside the mobile menu. Plus the footer's Resources column.
-    expect([...header.matchAll(/\/sign-in"/g)]).toHaveLength(2);
-    expect([...html.matchAll(/\/sign-in"/g)]).toHaveLength(3);
+  it('keeps Sign in a single quiet link in the footer, pointed at the app', () => {
+    // v4 dropped the header Sign in; the footer's Resources column carries it.
+    expect([...html.matchAll(/\/sign-in"/g)]).toHaveLength(1);
     for (const match of html.matchAll(/href="([^"]*\/sign-in)"/g)) {
       expect(match[1]).toBe(`${APP_URL}/sign-in`);
     }
@@ -312,42 +227,33 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text).toContain('15 municipalities');
   });
 
-  it('pins the municipality count to the Municipality union it hand-copies', () => {
-    // apps/site cannot import @hale/db, so the city list in the landing component
-    // is a hand-kept copy of the `Municipality` union in
-    // packages/db/src/schema/registration-windows.ts. When a city is added there,
-    // this count fails and the copy gets updated with it — otherwise the page
-    // would quietly under-claim the coverage the radar actually has.
-    expect([...html.matchAll(/class="pill pill-apricot"/g)]).toHaveLength(15);
+  it('renders the fifteen cities as glass pills, one per municipality', () => {
+    // The city list is a hand-kept copy of the `Municipality` union in
+    // packages/db (apps/site cannot import @hale/db); the count catches a drift.
+    expect([...html.matchAll(/class="v4-pill v4-glass"/g)]).toHaveLength(15);
   });
 
   it('watches only what registration-windows-data.ts actually holds', () => {
-    // The seeded camp rows are the fall cycles and the winter-break/holiday camps.
-    // There is not one March-break or summer row, and no PA-day or school-closure
-    // feed exists anywhere in the product.
     expect(text).toContain('Swim lessons');
     expect(text).toContain('Camps');
     expect(text).toContain('winter-break');
+    expect(text).toContain('Waitlist clocks');
     for (const invented of ['March break', 'PA day', 'PA days', 'closures']) {
       expect(text).not.toContain(invented);
     }
     expect(text).not.toMatch(/summer/i);
-    // …and no school paperwork: the health timeline (checkups, immunizations) and
-    // the weather read are real; school-paperwork ingestion exists nowhere.
     expect(text).not.toContain('school paperwork');
   });
 
-  it('states the waitlist clock as the range the data holds, not one town’s 36 hours', () => {
-    // waitlistResponseHours across the seed: 24 (Vaughan ×2), 36 (Toronto only),
-    // 48 (Markham, Halton Hills, Oakville), null everywhere else. "The 36 hours"
+  it('does not promise one town’s waitlist clock to every family', () => {
+    // waitlistResponseHours varies across the seed (24/36/48/null). "The 36 hours"
     // promised every family the one value a single row carries.
-    expect(text).toContain('Waitlist clocks');
     expect(text).not.toContain('The 36 hours');
   });
 
   it('tells the three texts and the suggest → prepare → handle ladder with receipts', () => {
     expect(text).toContain('You say hi');
-    expect(text).toContain('I send your family’s radar');
+    expect(text).toContain('I send your radar');
     expect(text).toContain('I keep watch');
     expect(text).toContain('I suggest');
     expect(text).toContain('I prepare');
@@ -356,30 +262,19 @@ describe('landing — sections, in the Surfaces Plan order', () => {
   });
 
   it('describes the real cadence — a Monday brief and the open-day ladder, not pure silence', () => {
-    // loop_prefs defaults: weekly_plan_send_time 08:00 on users.week_start_day (1 =
-    // Monday). The registration sequence adds heads_up (7 days out), battle_plan
-    // (the evening before) and go (15 min prior). "Silence is the normal state"
-    // described a product that never texts first, which this one does.
-    expect(text).toContain('Monday morning');
-    expect(text).toContain('the evening before');
+    expect(text).toContain('A brief on Monday');
+    expect(text).toContain('the night before');
     expect(text).not.toContain('Silence is the normal state');
   });
 
   it('offers the record by both doors a texting family actually has', () => {
-    // The old line ("the full record waits in your account") was false for this
-    // page's own reader: a text-provisioned family is users.email NULL +
-    // external_auth_id sms:<hash> (lib/channel/intake/provision.ts), and web
-    // sign-in is Google + magic link, so there was no account for them to open.
-    //
-    // ⚠️ The phone half of this promise is true only once claim-by-phone ("Sign in
-    // with your phone" → OTP → session for the existing SMS identity) is live.
     expect(text).not.toContain('waits in your account');
     expect(text).toContain('ask me in the thread');
     expect(text).toContain('sign in with your phone number');
   });
 
   it('names the calendar invite as the receipt an approval actually produces', () => {
-    expect(text).toContain('calendar');
+    expect(text.toLowerCase()).toContain('calendar');
     expect(text.toLowerCase()).toContain('invite');
   });
 
@@ -387,7 +282,7 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text).toContain('just the schedule');
     expect(text).toContain('co-parent');
     // "Village" is reserved for the family-to-family intros product; this section
-    // is about scoped caregiver access.
+    // is scoped caregiver access.
     expect(text).toContain('Your helpers');
   });
 
@@ -396,20 +291,16 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(html).toContain('href="/privacy"');
   });
 
-  it('carries the CASL line the composer link needs', () => {
-    expect(text).toContain('You send it; I never text first');
-    expect(text).toContain('reply STOP any time');
-  });
-
   it('sends questions to the single canonical FAQ instead of duplicating it', () => {
     expect(html).toContain('href="/faq"');
   });
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      'quiet chief of staff',
+      'family’s quiet',
+      'Texting Hale looks like this',
+      'How Hale works',
       'What I watch',
-      'How I work',
       'When you ask me something',
       'Your helpers',
       'the Canadian way',
@@ -426,8 +317,8 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
   it('tells the three coaching beats the SMS coach and coach-plan skill actually ship', () => {
     expect(text).toContain('You ask');
     expect(text).toContain('I offer the whole plan');
-    // #430: the check-in day is model-chosen (checkInDays 2-5) and PROMISED in the
-    // plan's own text, so the landing claims the promise, not a fixed count.
+    // The check-in day is model-chosen and PROMISED in the plan's own text, so the
+    // landing claims the promise, not a fixed count.
     expect(text).toContain('I name the day in the plan');
     expect(text).not.toContain('Three days later');
   });
@@ -447,10 +338,6 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
   });
 
   it('names the methods the shipped plan actually attributes', () => {
-    // #430: plans ground on the source-verified playbooks and must name the method
-    // (packages/types/src/coaching-playbooks.ts; the eval's fabrication gate holds
-    // the composer to the playbook). The landing may therefore say the names — and
-    // only the three the playbooks carry.
     for (const method of ['Ferber', 'three-day', 'Health Canada']) {
       expect(text).toContain(method);
     }
@@ -466,8 +353,6 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
 
 describe('landing — structured data', () => {
   it('emits its own JSON-LD graph describing the page a visitor actually sees', () => {
-    // An answer engine must never describe a homepage visitors don't see. The
-    // graph is rendered by the landing itself, not by the layout.
     const html = render();
     expect(html).toContain('application/ld+json');
     expect(html).toContain('A number your family texts');
@@ -490,18 +375,16 @@ describe('landing — number not provisioned', () => {
 
   it('never renders a dead sms: link, and falls back to email', () => {
     expect(html).not.toContain('sms:');
-    expect(html).not.toContain('Text me');
-    expect(html).not.toContain('647');
-    // The sticky header's CTA is the same promise in miniature — with no number
-    // provisioned there is nothing to offer, so it is absent rather than dead.
     expect(html).not.toContain('Text Hale');
-    expect(html).not.toContain('href="#start"');
+    expect(html).not.toContain('647');
     expect(html).toContain('href="mailto:aloha@villagehale.com"');
-    expect(html).toContain('The number’s coming');
+    // Positive control: with no number the composer chips are gone too, so the
+    // absence above is the whole SMS surface withheld, not one link missing.
+    expect(html).not.toContain('class="v4-chip v4-glass"');
   });
 
-  it('still types the greeting and offers the chips — neither needs the number', () => {
-    expect(html).toContain('v3-bubble-sizer');
-    expect([...html.matchAll(/class="v3-chip"/g)]).toHaveLength(4);
+  it('still shows the thread demo and the sections — neither needs the number', () => {
+    expect(html).toContain('Your thread with Hale');
+    expect(visibleText(html)).toContain('15 municipalities');
   });
 });

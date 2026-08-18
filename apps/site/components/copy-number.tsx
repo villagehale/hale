@@ -13,17 +13,21 @@ export function CopyNumberButton({
   number,
   className,
   label = 'copy my number',
+  copiedLabel = 'copied — text me from your phone',
+  ariaLabel = "Copy Hale's phone number to your clipboard",
 }: {
   number: string;
   className?: string;
   label?: string;
+  copiedLabel?: string;
+  ariaLabel?: string;
 }) {
   const [copied, setCopied] = useState(false);
 
   return (
     <button
       type="button"
-      aria-label="Copy Hale's phone number to your clipboard"
+      aria-label={ariaLabel}
       className={className}
       onClick={() => {
         navigator.clipboard
@@ -40,7 +44,7 @@ export function CopyNumberButton({
           });
       }}
     >
-      {copied ? 'copied — text me from your phone' : label}
+      {copied ? copiedLabel : label}
     </button>
   );
 }

@@ -3,34 +3,30 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SiteFooter } from '~/components/site-footer.js';
 import { SiteHeader } from '~/components/site-header.js';
-import AboutPage from '../app/about/page.js';
-import ActivityCityRoute from '../app/activities/[city]/page.js';
-import ActivitiesHub from '../app/activities/page.js';
-import AnswerRoute from '../app/answers/[slug]/page.js';
-import AnswersIndexPage from '../app/answers/page.js';
-import ContactPage from '../app/contact/page.js';
-import FaqPage from '../app/faq/page.js';
-import LandingPage from '../app/page.js';
-import PricingPage from '../app/pricing/page.js';
+import AboutPage from '../app/[locale]/about/page.js';
+import ActivityCityRoute from '../app/[locale]/activities/[city]/page.js';
+import ActivitiesHub from '../app/[locale]/activities/page.js';
+import AnswerRoute from '../app/[locale]/answers/[slug]/page.js';
+import AnswersIndexPage from '../app/[locale]/answers/page.js';
+import ContactPage from '../app/[locale]/contact/page.js';
+import FaqPage from '../app/[locale]/faq/page.js';
+import LandingPage from '../app/[locale]/page.js';
+import PricingPage from '../app/[locale]/pricing/page.js';
 import { allCities } from '../lib/activities/index.js';
 import { allAnswers } from '../lib/answers/index.js';
 
 /**
  * One header and one footer, on every page.
  *
- * The fork this suite exists to prevent: the v3 landing shipped its own inline
- * header and footer while eight subpages went on rendering the old components —
- * different nav, different footer, no dark mode, and a "Features" link pointing
- * at the homepage. Nothing failed, because no test compared one page's chrome to
- * another's. These do: every page's <header> must be byte-identical to the shared
- * component's own output, so a bespoke re-fork cannot pass.
+ * The fork this suite exists to prevent: a landing that ships its own chrome
+ * while the subpages render different components — different nav, different
+ * footer, a link pointing nowhere. These pin the v4 unification: every subpage's
+ * <header> is byte-identical to the shared SiteHeader, every page ends in the one
+ * shared <footer>, and the landing wears the SAME v4 glass nav pill (inline over
+ * its shore hero) so a reader crossing from / to a subpage never changes products.
  */
 
 const NUMBER = '+16475551234';
-
-/** The landing's one variation: `sms:` is dead on a laptop, so its desktop pill
- * scrolls to the hero CTA block instead. */
-const LANDING_SCROLL_TARGET = 'start';
 
 const firstCity = allCities[0];
 const firstAnswer = allAnswers[0];
@@ -43,17 +39,20 @@ async function renderPage(page: () => unknown): Promise<string> {
 }
 
 /** Every page the shared chrome wraps, landing first. */
+const EN = { locale: 'en' as const };
+
 const PAGES: Record<string, () => unknown> = {
-  '/': () => createElement(LandingPage),
-  '/about': () => createElement(AboutPage),
-  '/pricing': () => createElement(PricingPage),
-  '/faq': () => createElement(FaqPage),
-  '/contact': () => createElement(ContactPage),
-  '/answers': () => createElement(AnswersIndexPage),
-  '/answers/[slug]': () => AnswerRoute({ params: Promise.resolve({ slug: firstAnswer.slug }) }),
-  '/activities': () => createElement(ActivitiesHub),
+  '/': () => LandingPage({ params: Promise.resolve(EN) }),
+  '/about': () => AboutPage({ params: Promise.resolve(EN) }),
+  '/pricing': () => PricingPage({ params: Promise.resolve(EN) }),
+  '/faq': () => FaqPage({ params: Promise.resolve(EN) }),
+  '/contact': () => ContactPage({ params: Promise.resolve(EN) }),
+  '/answers': () => AnswersIndexPage({ params: Promise.resolve(EN) }),
+  '/answers/[slug]': () =>
+    AnswerRoute({ params: Promise.resolve({ slug: firstAnswer.slug, ...EN }) }),
+  '/activities': () => ActivitiesHub({ params: Promise.resolve(EN) }),
   '/activities/[city]': () =>
-    ActivityCityRoute({ params: Promise.resolve({ city: firstCity.slug }) }),
+    ActivityCityRoute({ params: Promise.resolve({ city: firstCity.slug, ...EN }) }),
 };
 
 const SUBPAGES = Object.keys(PAGES).filter((route) => route !== '/');
@@ -69,23 +68,30 @@ afterEach(() => {
 });
 
 describe('one header, one footer, every page', () => {
-  it('renders the shared header on every page — the landing included', async () => {
+  it('renders the shared header on every subpage, byte-identical to SiteHeader', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
     const shared = chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
-    const landingHeader = chrome(
-      renderToStaticMarkup(createElement(SiteHeader, { scrollTargetId: LANDING_SCROLL_TARGET })),
-      'header',
-    );
-    // Positive control: the two shapes ARE different, so matching a page against
-    // the wrong one below would fail rather than pass by coincidence.
-    expect(landingHeader).not.toBe(shared);
+    // The shared bar is a v4 glass nav pill — the design the whole site wears.
+    expect(shared).toContain('class="v4-nav v4-glass"');
 
     for (const route of SUBPAGES) {
       const page = PAGES[route];
       if (!page) throw new Error(route);
       expect(chrome(await renderPage(page), 'header'), `${route} forked the header`).toBe(shared);
     }
-    expect(chrome(await renderPage(PAGES['/'] as () => unknown), 'header')).toBe(landingHeader);
+  });
+
+  it('wears the same v4 nav pill on the landing — inline over the hero, not the sticky bar', async () => {
+    // The landing keeps its nav inline because it sits over the shore hero art, so
+    // it is NOT byte-identical to the sticky shared bar. It is the same DEVICE,
+    // though: a v4-nav glass pill whose logo goes home and which carries Text Hale.
+    const shared = chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
+    const landingHeader = chrome(await renderPage(PAGES['/'] as () => unknown), 'header');
+    expect(landingHeader).not.toBe(shared);
+    expect(landingHeader).toContain('class="v4-nav v4-glass"');
+    expect(landingHeader).toContain('aria-label="Hale, home"');
+    expect(landingHeader).toContain('href="/"');
+    expect(landingHeader).toContain('Text Hale');
   });
 
   it('renders the shared footer on every page — the landing included', async () => {
@@ -115,32 +121,31 @@ describe('one header, one footer, every page', () => {
   });
 });
 
-describe('the chrome carries the theme controls', () => {
-  it('puts the cycle button in the header on the landing and on a subpage', async () => {
+describe('the chrome carries the theme control', () => {
+  it('keeps the theme control out of the header — v4 moves it to the footer', async () => {
     for (const route of ['/', '/pricing']) {
       const page = PAGES[route];
       if (!page) throw new Error(route);
       const header = chrome(await renderPage(page), 'header');
-      expect(header, `${route} has no theme control`).toContain('aria-label="Theme:');
-      // Both glyphs ship; CSS picks. That is what makes the button correct in the
-      // first painted frame rather than after hydration.
-      expect(header).toContain('theme-icon-light');
-      expect(header).toContain('theme-icon-dark');
+      expect(header, `${route} still carries a theme control in the bar`).not.toContain(
+        'aria-label="Theme:',
+      );
     }
   });
 
-  it('offers the named three-way in the footer, beside the brand line', async () => {
-    const page = PAGES['/about'];
-    if (!page) throw new Error('/about');
-    const footer = chrome(await renderPage(page), 'footer');
-    const choice = /<fieldset class="theme-choice"[\s\S]*?<\/fieldset>/.exec(footer)?.[0] ?? '';
-    for (const option of ['Light', 'Dark', 'System']) {
-      expect(choice, `the three-way is missing ${option}`).toContain(`>${option}</button>`);
+  it('puts the v4 two-state switch in the footer on the landing and on a subpage', async () => {
+    for (const route of ['/', '/pricing']) {
+      const page = PAGES[route];
+      if (!page) throw new Error(route);
+      const footer = chrome(await renderPage(page), 'footer');
+      const sw = /<button type="button" role="switch"[\s\S]*?<\/button>/.exec(footer)?.[0] ?? '';
+      expect(sw, `${route} has no theme switch`).toContain('class="v4-switch"');
+      // Server-rendered, before the store is read, the switch reflects the default
+      // (system, which resolves to the light frame) rather than a stored choice.
+      expect(sw).toContain('aria-checked="false"');
+      // It names where it is — the label is the honest current state, not a guess.
+      expect(sw).toContain('>Light</span>');
     }
-    // Exactly one is current, and it is announced as pressed rather than by
-    // colour alone. Server-rendered that is the default, `system`.
-    expect([...footer.matchAll(/aria-pressed="true"/g)]).toHaveLength(1);
-    expect([...footer.matchAll(/aria-pressed="false"/g)]).toHaveLength(2);
   });
 });
 
