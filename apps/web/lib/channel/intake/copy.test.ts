@@ -70,6 +70,8 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(venueForCode('earlyon-georgetown')?.name).toBe('EarlyON centre');
     expect(sourceCodeFromBody('Hi (via earlyon-acton)')).toBe('earlyon-acton');
     expect(venueForCode('earlyon-acton')?.name).toBe('EarlyON centre');
+    expect(sourceCodeFromBody('Hi (via investor-deck)')).toBe('investor-deck');
+    expect(LIFETIME_FAMILY_SOURCE_CODES.has('investor-deck')).toBe(false);
     // both Halton Hills poster codes carry the lifetime Family comp
     expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-georgetown')).toBe(true);
     expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-acton')).toBe(true);
