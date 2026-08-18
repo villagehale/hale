@@ -46,6 +46,8 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'earlyon-georgetown': { name: 'EarlyON centre', areaCoarse: 'L7G' },
   // Per-location Halton Hills posters, so the source code says WHICH centre.
   'earlyon-acton': { name: 'EarlyON centre', areaCoarse: 'L7J' },
+  // The pitch deck's QR — so we see which investors actually texted the product.
+  'investor-deck': { name: 'the pitch deck', areaCoarse: 'M5V' },
 };
 
 /**
