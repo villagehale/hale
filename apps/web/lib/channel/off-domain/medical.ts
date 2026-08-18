@@ -24,7 +24,9 @@ import { SAFETY_REPLY } from './copy';
  *   0. SANITIZE. The one and only stage that sees the parent's raw words. It strips the
  *      child's name and any exact age/DOB and returns a de-identified clinical query plus
  *      a COARSE age band (pediatric triage is age-critical; a band is not identifying,
- *      rule #1). Only that de-identified query travels onward.
+ *      rule #1). A deterministic {@link scrubResidualPii} backstop then strips any residual
+ *      email/phone/postal/long-digit the model missed before the query crosses the border.
+ *      Only that de-identified, scrubbed query travels onward.
  *
  *   1. GROUND. A `web_search` server-tool turn on the clinical query. `tool_choice`
  *      cannot FORCE a server tool, so "always grounded" is made a code invariant rather
@@ -228,6 +230,33 @@ function researchText(content: Anthropic.ContentBlock[]): string {
 }
 
 /**
+ * The deterministic PII backstop — defense-in-depth UNDER the blind LLM sanitizer, never a
+ * replacement for it. Phase 0 is a single model call, and the fields it returns ride to
+ * Anthropic's US `web_search`: a cross-border disclosure of child health data (rule #1 /
+ * PIPEDA / Law 25). So before anything crosses the border we mechanically strip the residual
+ * identifier classes a regex CAN catch with near-zero false positives. Names, addresses and
+ * school names are free-form and stay the sanitizer's job — this is the machine-checkable
+ * floor beneath it, not the whole de-id.
+ *
+ * Deliberately tuned NOT to touch the clinical values that make a search useful: a
+ * temperature (39.5), a small count (vomited 4 times), a duration (3 days) have too few
+ * consecutive digits to hit any pattern here. The unit test's positive controls hold that
+ * line. Long runs are stripped BEFORE the phone pattern so a >10-digit run is redacted whole
+ * rather than leaving a trailing fragment.
+ */
+const RESIDUAL_PII_PATTERNS: RegExp[] = [
+  /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, // email
+  /\d{7,}/g, // long digit runs (health-card / account numbers)
+  /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, // NANP phone
+  /\b[a-z]\d[a-z]\s?\d[a-z]\d\b/gi, // Canadian postal code
+];
+const REDACTED = '[redacted]';
+
+export function scrubResidualPii(text: string): string {
+  return RESIDUAL_PII_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, REDACTED), text);
+}
+
+/**
  * One full attempt: sanitize, ground, compose, assemble. Returns the sendable body, or
  * throws a {@link MedicalUnresolvable} naming the phase that failed. Never returns an
  * ungrounded, untriaged, or unsendable body — those are throws.
@@ -272,10 +301,13 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
   const clinicalQuery = sanitized.clinical_query.trim();
   if (clinicalQuery === '') throw new MedicalUnresolvable('sanitize_failed', 'empty query');
   const duration = sanitized.duration?.trim();
+  // Deterministic backstop UNDER the blind sanitizer: strip any residual identifier the model
+  // missed from the two fields that cross the border (the query AND the duration) before they
+  // reach web_search. See scrubResidualPii.
   const query: ClinicalQuery = {
-    clinicalQuery,
+    clinicalQuery: scrubResidualPii(clinicalQuery),
     ageBand: normalizeAgeBand(sanitized.age_band),
-    ...(duration ? { duration } : {}),
+    ...(duration ? { duration: scrubResidualPii(duration) } : {}),
   };
 
   // Phase 1 — GROUND (web_search on the de-identified query only).

@@ -1,7 +1,12 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { SAFETY_REPLY } from './copy';
-import { createMedicalComposer, groundUserMessage, sanitizeUserMessage } from './medical';
+import {
+  createMedicalComposer,
+  groundUserMessage,
+  sanitizeUserMessage,
+  scrubResidualPii,
+} from './medical';
 
 /**
  * The medical-symptom composer's MECHANICS and its SAFETY INVARIANTS — not its judgement.
@@ -130,6 +135,33 @@ describe('sanitizeUserMessage / groundUserMessage', () => {
   });
 });
 
+/**
+ * The deterministic PII backstop, tested as a pure decision (repo discipline: extract the
+ * decision and test it directly). It redacts the identifier classes a regex can catch, and
+ * — the positive controls that keep it from eating the medicine — leaves clinical values
+ * that only look number-ish alone. Expected values are derived from the de-id spec, not from
+ * what the code happens to emit.
+ */
+describe('scrubResidualPii', () => {
+  it('redacts the residual identifiers that must never cross the border', () => {
+    expect(scrubResidualPii('call me at 416-555-1234')).toBe('call me at [redacted]');
+    expect(scrubResidualPii('reach mom at parent@example.com')).toBe('reach mom at [redacted]');
+    expect(scrubResidualPii('we live at M5V 2T6')).toBe('we live at [redacted]');
+    expect(scrubResidualPii('health card 1234567890')).toBe('health card [redacted]');
+    // formatting variants of a phone still fall
+    expect(scrubResidualPii('(416) 555-1234')).toBe('[redacted]');
+    expect(scrubResidualPii('4165551234')).toBe('[redacted]');
+  });
+
+  it('leaves clinical values untouched (positive controls)', () => {
+    expect(scrubResidualPii('fever 39.5 for 3 days')).toBe('fever 39.5 for 3 days');
+    expect(scrubResidualPii('vomited 4 times overnight')).toBe('vomited 4 times overnight');
+    expect(scrubResidualPii('temp 38.2C, cough, 3 days, toddler')).toBe(
+      'temp 38.2C, cough, 3 days, toddler',
+    );
+  });
+});
+
 describe('the happy path', () => {
   it('answers with a web-grounded reply that carries its own triage', async () => {
     const out = await createMedicalComposer(
@@ -189,6 +221,33 @@ describe('de-identification before search', () => {
     expect(compose?.userMessage).not.toContain('Emma');
     expect(compose?.userMessage).not.toContain('2 years');
     expect(compose?.userMessage).toContain('fever');
+  });
+
+  it('grounds the SCRUBBED query, not the raw sanitizer output, when residual PII survives', async () => {
+    const seen: Seen[] = [];
+    // The blind sanitizer missed a phone number the parent typed into their message.
+    await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult({
+            clinical_query: 'rash on trunk, call 416-555-1234',
+            age_band: 'toddler',
+          }),
+          ground: groundResult(2),
+          compose: composeResult(OK_COMPOSE),
+        },
+        seen,
+      ),
+    ).answer('raw message');
+
+    const ground = seen.find(
+      (s) => Array.isArray(s.tools) && s.tools[0]?.type === 'web_search_20250305',
+    );
+    // The backstop stripped the phone before the border...
+    expect(ground?.userMessage).not.toContain('416-555-1234');
+    expect(ground?.userMessage).toContain('[redacted]');
+    // ...while the symptom that makes the search useful survived (positive control).
+    expect(ground?.userMessage).toContain('rash');
   });
 });
 

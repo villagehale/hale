@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "This sounds like it could be hand-foot-mouth disease - common in preschoolers, causing mouth sores, low fever, and spots on hands/feet. It's usually mild and clears in about a week. Offer cool fluids and soft foods since mouth sores can make eating/drinking hurt; watch for signs of not drinking enough.",
+    "triage": "Call 811 if fever lasts more than a couple days, sores worsen, or your child is drinking poorly (fewer wet diapers, no tears). Go to the ER or call 911 if there's trouble breathing, stiff neck, unusual drowsiness, a rash that doesn't fade under pressure, signs of dehydration (no urine 8+ hrs, very dry mouth), or your child seems seriously unwell.",
+    "sources": [
+      "CDC - Hand, Foot, and Mouth Disease",
+      "HealthyChildren.org (AAP)",
+      "Health811 Ontario"
+    ]
+  },
+  "latencyMs": 4875
+}
