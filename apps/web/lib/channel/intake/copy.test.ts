@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_TAIL_ASK_CHARS } from '~/lib/channel/identity/ask-voice';
+import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { replyLanguage } from '~/lib/channel/language';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { PRIVACY_URL } from '~/lib/legal-links';
@@ -19,6 +20,8 @@ import {
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   START_ACK,
   START_ACK_BY_LANGUAGE,
+  STOP_ACK,
+  STOP_ACK_BY_LANGUAGE,
   WATCH_OFFER,
   WATCH_OFFER_BY_LANGUAGE,
   detailsBlocked,
@@ -289,15 +292,61 @@ describe('the French script', () => {
     );
   });
 
-  it('answers HELP in French with the same capability line and the same STOP instruction', () => {
+  it('answers HELP in French with the same capability line and the French keywords', () => {
     expect(HELP_REPLY_BY_LANGUAGE.fr).toBe(
-      "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez STOP pour vous désabonner.",
+      "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
     );
-    expect(HELP_REPLY_BY_LANGUAGE.fr).toContain('STOP');
-    // AIDE is deliberately NOT offered as a keyword here: `matchKeyword` does not read
-    // it, so naming it would be Hale promising a word that does nothing. See the note
-    // on HELP_REPLY_BY_LANGUAGE.
-    expect(HELP_REPLY_BY_LANGUAGE.fr).not.toContain('AIDE');
+    // Both, because both are now real. #491 named STOP alone and said why: `matchKeyword`
+    // read the English list only, so naming AIDE would have promised a word that did
+    // nothing. This is the follow-up that note asked for.
+    expect(HELP_REPLY_BY_LANGUAGE.fr).toContain('ARRET');
+    expect(HELP_REPLY_BY_LANGUAGE.fr).toContain('AIDE');
+  });
+
+  /**
+   * The rule #491's note was keeping by hand, kept structurally from here on: a fixed
+   * line may not name a keyword the machine does not honour.
+   *
+   * ALL-CAPS is the convention every one of these lines uses to name a keyword, so the
+   * tokens are read OFF the copy rather than listed beside it — a new line naming a new
+   * word is covered the day it is written, which a hand-kept list never is.
+   */
+  it('names no keyword the machine does not honour', () => {
+    const LINES: Record<string, string> = {
+      'HELP_REPLY.en': HELP_REPLY_BY_LANGUAGE.en,
+      'HELP_REPLY.fr': HELP_REPLY_BY_LANGUAGE.fr,
+      'STOP_ACK.en': STOP_ACK_BY_LANGUAGE.en,
+      'STOP_ACK.fr': STOP_ACK_BY_LANGUAGE.fr,
+      'ASSENT_ACK.en': ASSENT_ACK_BY_LANGUAGE.en,
+      'ASSENT_ACK.fr': ASSENT_ACK_BY_LANGUAGE.fr,
+    };
+    const named = Object.entries(LINES).flatMap(([name, body]) =>
+      (body.match(/\b[A-Z]{3,}\b/g) ?? []).map((token) => ({ name, token })),
+    );
+    const dead = named
+      .filter((entry) => matchKeyword(entry.token) === null)
+      .map((entry) => `${entry.name}: ${entry.token}`);
+
+    expect(dead).toEqual([]);
+    // The positive control: the scan really does find words, so an empty `dead` is a
+    // pass and not a regex that quietly stopped matching anything.
+    expect(named.map((entry) => `${entry.name}: ${entry.token}`)).toEqual(
+      expect.arrayContaining([
+        'HELP_REPLY.fr: ARRET',
+        'HELP_REPLY.fr: AIDE',
+        'STOP_ACK.en: START',
+        'STOP_ACK.fr: DEBUT',
+      ]),
+    );
+  });
+
+  it('confirms the unsubscribe in French and offers the French way back', () => {
+    expect(STOP_ACK_BY_LANGUAGE.fr).toBe(
+      'Terminé - je ne vous texte plus. Répondez DEBUT si vous voulez que je revienne.',
+    );
+    // The way back has to BE a way back: the English twin offers START, so the French one
+    // offers the word a French parent can actually send.
+    expect(matchKeyword('DEBUT')).toEqual({ keyword: 'start', language: 'fr' });
   });
 
   it('welcomes a re-subscribing parent back in French', () => {
@@ -328,6 +377,7 @@ describe('the French script', () => {
     expect(AMBIGUOUS_CLARIFY_BY_LANGUAGE.en).toBe(AMBIGUOUS_CLARIFY);
     expect(HELP_REPLY_BY_LANGUAGE.en).toBe(HELP_REPLY);
     expect(START_ACK_BY_LANGUAGE.en).toBe(START_ACK);
+    expect(STOP_ACK_BY_LANGUAGE.en).toBe(STOP_ACK);
     expect(REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.en).toBe(REGION_UNAVAILABLE_REPLY);
   });
 

@@ -323,7 +323,8 @@ export const HELP_REPLY =
 export const START_ACK = "You're back - I'll text you when something needs doing.";
 
 /**
- * The French keyword replies, and the honest note on when they can actually fire.
+ * The French keyword replies — now the answer to a keyword rather than a line waiting
+ * for one.
  *
  * WHAT CANADIAN CARRIERS REQUIRE, verified against the Canadian Telecommunications
  * Association's "Canadian Common Short Code Compliance Policies" v2.1 (January 2026,
@@ -336,22 +337,47 @@ export const START_ACK = "You're back - I'll text you when something needs doing
  * Advanced Opt-Out configured. CASL itself is silent on the language of the unsubscribe
  * mechanism; the carrier policy is the binding requirement here, not the statute.
  *
- * HALE DOES NOT MEET THAT YET, and the copy below refuses to pretend otherwise.
- * `matchKeyword` (keywords.ts) reads the English list alone, so ARRET and AIDE are
- * ordinary conversation today. That is why the French HELP line says "Répondez STOP"
- * rather than offering AIDE: naming a keyword that does nothing is worse than not naming
- * it, and STOP is the word that is verified to work in both languages.
+ * HALE MEETS IT NOW. `matchKeyword` (keywords.ts) claims ARRET, AIDE and DEBUT with the
+ * same CASL semantics as their English twins, and hands the language along WITH the
+ * match — so an AIDE cannot be answered in English by a detector that reads the body and
+ * finds one ambiguous word. That is what unblocked the line below: #491 said "Répondez
+ * STOP" and said why (naming a keyword that does nothing is worse than not naming it),
+ * and the tail now names the two words a French parent can actually send.
  *
- * IT ALSO MEANS THESE TWO TWINS ARE MOSTLY UNREACHABLE, which is stated rather than
- * hidden. A body that IS the token "HELP" or "START" carries no French evidence for
- * `replyLanguage` to read, so the English line goes out. The French HELP line does fire
- * on the OTHER path into it — an unparseable first reply during intake (machine.ts) —
- * and both become properly reachable the day keywords.ts learns AIDE, ARRET and DEBUT,
- * which is the follow-up this note exists to name.
+ * WHY THE HELP LINE OFFERS AIDE AT ALL, given that a parent reading it may well have
+ * just typed it: this line has a second door. An unparseable first reply during intake
+ * lands on it too (machine.ts), and that parent never typed a keyword — for them
+ * "AIDE pour de l'aide" is the instruction, not an echo.
+ *
+ * `désabonner` keeps its é (GSM-7 has it). The keyword tokens are written WITHOUT their
+ * accents — ARRET, DEBUT — because that is how a keyword is typed under pressure and
+ * because `matchKeyword` folds the accent anyway, so both spellings arrive at the same
+ * place; printing the bare form promises the easier one.
  */
 export const HELP_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: HELP_REPLY,
-  fr: "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez STOP pour vous désabonner.",
+  fr: "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+};
+
+/**
+ * The French unsubscribe confirmation — the one twin #491 could not write, because a
+ * French STOP acknowledgment can only be reached by a French STOP keyword.
+ *
+ * FOUNDER REVIEW: these words are new, not a translation of a reviewed line.
+ *
+ * `Terminé` rather than a translation of "You're unsubscribed": every French rendering
+ * of that phrase agrees with the parent's gender (`désabonné`/`désabonnée`), and Hale
+ * guesses at neither the parent's gender nor its own anywhere in this file. It also
+ * deliberately does NOT reuse `C'est fait`, which opens the consent acknowledgment — the
+ * two events are opposites and should not share an opening.
+ *
+ * It offers DEBUT rather than START because the parent reading it just wrote French, and
+ * an escape hatch in the other language is the same broken promise the whole French half
+ * of this file exists to end. Both words work; this one is the one they will reach for.
+ */
+export const STOP_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: STOP_ACK,
+  fr: 'Terminé - je ne vous texte plus. Répondez DEBUT si vous voulez que je revienne.',
 };
 
 export const START_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {

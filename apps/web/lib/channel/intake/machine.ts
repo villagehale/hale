@@ -41,7 +41,7 @@ import {
   type IntakeGap,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   START_ACK_BY_LANGUAGE,
-  STOP_ACK,
+  STOP_ACK_BY_LANGUAGE,
   WATCH_OFFER,
   WATCH_OFFER_ASK,
   detailsBlocked,
@@ -53,7 +53,7 @@ import { parseCanadianPostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
-import { matchKeyword } from './keywords';
+import { type IntakeKeywordMatch, matchKeyword } from './keywords';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import type { RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
@@ -203,9 +203,9 @@ export async function handleInboundSms(
     return { status: 'duplicate' };
   }
 
-  const keyword = matchKeyword(inbound.body);
-  if (keyword) {
-    return handleKeyword(database, { keyword, phoneE164, inbound, session, now }, deps);
+  const match = matchKeyword(inbound.body);
+  if (match) {
+    return handleKeyword(database, { match, phoneE164, inbound, session, now }, deps);
   }
 
   if (!session || session.state === 'stopped') {
@@ -877,7 +877,7 @@ async function assentAck(
 async function handleKeyword(
   database: Database,
   args: {
-    keyword: 'stop' | 'help' | 'start';
+    match: IntakeKeywordMatch;
     phoneE164: string;
     inbound: Inbound;
     session: IntakeSession | null;
@@ -885,16 +885,16 @@ async function handleKeyword(
   },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
-  const { keyword, phoneE164, inbound, session, now } = args;
-  // Read for the same reason every other branch reads it, and honest about what it can
-  // find: the body that got here IS the token ("HELP", "START"), so it carries no French
-  // evidence and this resolves to English every time. It becomes real the day
-  // keywords.ts learns AIDE and DEBUT, which Canadian carriers require of a bilingual
-  // program (see the note on HELP_REPLY_BY_LANGUAGE).
-  const language = replyLanguage(inbound.body);
+  const { match, phoneE164, inbound, session, now } = args;
+  // The language comes WITH the keyword rather than from `replyLanguage`, and this is the
+  // one turn where that matters: the body that got here IS the token, so there is no
+  // sentence to read French out of. AIDE would have resolved to English (the detector
+  // deliberately refuses to decide on it — it is also an English noun) and DEBUT is a word
+  // it has never heard of, which is exactly what CTA v2.1 §3.1 forbids.
+  const { keyword, language } = match;
 
   if (keyword === 'stop') {
-    return handleStop(database, { phoneE164, inbound, session, now }, deps);
+    return handleStop(database, { phoneE164, inbound, session, now, language }, deps);
   }
 
   if (keyword === 'help') {
@@ -942,10 +942,12 @@ async function handleStop(
     inbound: Inbound;
     session: IntakeSession | null;
     now: Date;
+    /** The language of the keyword that got here — ARRET is answered in French. */
+    language: ReplyLanguage;
   },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
-  const { phoneE164, inbound, session, now } = args;
+  const { phoneE164, inbound, session, now, language } = args;
 
   // VIL-241 · "Reply STOP anytime" is printed on the invite, so it has to reach the
   // invite: a STOP from someone we asked but who never accepted closes the invitation
@@ -976,7 +978,7 @@ async function handleStop(
   }
 
   // The one final confirmation carriers expect, and then silence.
-  await deps.transport.send({ to: phoneE164, body: STOP_ACK });
+  await deps.transport.send({ to: phoneE164, body: STOP_ACK_BY_LANGUAGE[language] });
 
   if (session) {
     await saveSession(

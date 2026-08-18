@@ -198,10 +198,26 @@ describe('matchFastPath — what it must NOT claim', () => {
    * carrier-recognised STOP synonym, so a NO-set that contained it would turn an
    * unsubscribe into an approval decline.
    */
-  it('never claims a CASL keyword', () => {
-    for (const word of ['stop', 'STOP', 'unsubscribe', 'end', 'quit', 'cancel', 'help', 'start']) {
-      expect(matchKeyword(word)).not.toBeNull();
-      expect(matchFastPath(word)).toBeNull();
+  it('never claims a CASL keyword, in either official language', () => {
+    for (const word of [
+      'stop',
+      'STOP',
+      'unsubscribe',
+      'end',
+      'quit',
+      'cancel',
+      'help',
+      'info',
+      'start',
+      // The French half the carriers mandate. Same rule, same reason: the keyword is
+      // claimed upstream, so a second reading here could only disagree with the first.
+      'ARRET',
+      'arrêt',
+      'AIDE',
+      'DEBUT',
+    ]) {
+      expect(matchKeyword(word), word).not.toBeNull();
+      expect(matchFastPath(word), word).toBeNull();
     }
   });
 });
@@ -329,8 +345,8 @@ describe('matchFastPath — French and Chinese', () => {
    * AND an unsubscribe, and reading it as an approval decline would answer a parent asking
    * to be left alone with a calendar message. "annuler", "arrête" and 取消 are that same
    * word, and the reasoning does not weaken for being written in French or Chinese — it
-   * gets stronger, because `matchKeyword` knows only the English STOP list, so nothing
-   * upstream would catch the mistake either.
+   * gets stronger, because `matchKeyword` claims only the keyword the carriers mandate
+   * (ARRET), so nothing upstream would catch the mistake on these either.
    *
    * They stay unread, which is not silence: an unmatched body goes to the coach, which
    * answers in the parent's language and can ask what they meant.
