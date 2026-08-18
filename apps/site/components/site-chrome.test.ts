@@ -3,15 +3,15 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SiteFooter } from '~/components/site-footer.js';
 import { SiteHeader } from '~/components/site-header.js';
-import AboutPage from '../app/about/page.js';
-import ActivityCityRoute from '../app/activities/[city]/page.js';
-import ActivitiesHub from '../app/activities/page.js';
-import AnswerRoute from '../app/answers/[slug]/page.js';
-import AnswersIndexPage from '../app/answers/page.js';
-import ContactPage from '../app/contact/page.js';
-import FaqPage from '../app/faq/page.js';
-import LandingPage from '../app/page.js';
-import PricingPage from '../app/pricing/page.js';
+import AboutPage from '../app/[locale]/about/page.js';
+import ActivityCityRoute from '../app/[locale]/activities/[city]/page.js';
+import ActivitiesHub from '../app/[locale]/activities/page.js';
+import AnswerRoute from '../app/[locale]/answers/[slug]/page.js';
+import AnswersIndexPage from '../app/[locale]/answers/page.js';
+import ContactPage from '../app/[locale]/contact/page.js';
+import FaqPage from '../app/[locale]/faq/page.js';
+import LandingPage from '../app/[locale]/page.js';
+import PricingPage from '../app/[locale]/pricing/page.js';
 import { allCities } from '../lib/activities/index.js';
 import { allAnswers } from '../lib/answers/index.js';
 
@@ -39,17 +39,20 @@ async function renderPage(page: () => unknown): Promise<string> {
 }
 
 /** Every page the shared chrome wraps, landing first. */
+const EN = { locale: 'en' as const };
+
 const PAGES: Record<string, () => unknown> = {
-  '/': () => createElement(LandingPage),
-  '/about': () => createElement(AboutPage),
-  '/pricing': () => createElement(PricingPage),
-  '/faq': () => createElement(FaqPage),
-  '/contact': () => createElement(ContactPage),
-  '/answers': () => createElement(AnswersIndexPage),
-  '/answers/[slug]': () => AnswerRoute({ params: Promise.resolve({ slug: firstAnswer.slug }) }),
-  '/activities': () => createElement(ActivitiesHub),
+  '/': () => LandingPage({ params: Promise.resolve(EN) }),
+  '/about': () => AboutPage({ params: Promise.resolve(EN) }),
+  '/pricing': () => PricingPage({ params: Promise.resolve(EN) }),
+  '/faq': () => FaqPage({ params: Promise.resolve(EN) }),
+  '/contact': () => ContactPage({ params: Promise.resolve(EN) }),
+  '/answers': () => AnswersIndexPage({ params: Promise.resolve(EN) }),
+  '/answers/[slug]': () =>
+    AnswerRoute({ params: Promise.resolve({ slug: firstAnswer.slug, ...EN }) }),
+  '/activities': () => ActivitiesHub({ params: Promise.resolve(EN) }),
   '/activities/[city]': () =>
-    ActivityCityRoute({ params: Promise.resolve({ city: firstCity.slug }) }),
+    ActivityCityRoute({ params: Promise.resolve({ city: firstCity.slug, ...EN }) }),
 };
 
 const SUBPAGES = Object.keys(PAGES).filter((route) => route !== '/');

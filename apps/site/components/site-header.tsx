@@ -1,5 +1,8 @@
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
+import { localeHref } from '~/i18n/navigation';
+import { type Locale, routing } from '~/i18n/routing';
+import { getTranslator } from '~/i18n/server';
 import { CONTACT_EMAIL, buildSmsHref, readSmsNumber } from '~/lib/text-entry';
 
 /**
@@ -18,44 +21,54 @@ import { CONTACT_EMAIL, buildSmsHref, readSmsNumber } from '~/lib/text-entry';
  * `scrollTargetId` is the one variation a page may ask for: `sms:` opens nothing
  * on a laptop, so where a page has an on-page CTA block to fall back to, the pill
  * scrolls there instead of firing a dead link. No number provisioned → email,
- * which works everywhere.
+ * which works everywhere. Every internal link carries the locale prefix.
  */
 
-const NAV = [
-  { label: 'Pricing', href: '/pricing' },
-  { label: 'FAQ', href: '/faq' },
-  { label: 'About', href: '/about' },
-] as const;
-
-export function SiteHeader({ scrollTargetId }: { scrollTargetId?: string }) {
+export function SiteHeader({
+  locale = routing.defaultLocale,
+  scrollTargetId,
+}: {
+  locale?: Locale;
+  scrollTargetId?: string;
+}) {
+  const t = getTranslator(locale, 'Header');
+  const common = getTranslator(locale, 'Common');
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
+
+  const nav = [
+    { label: t('navPricing'), href: localeHref(locale, '/pricing') },
+    { label: t('navFaq'), href: localeHref(locale, '/faq') },
+    { label: t('navAbout'), href: localeHref(locale, '/about') },
+  ];
 
   const cta =
     smsHref === null ? (
       <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid">
-        Email Hale
+        {common('emailHale')}
       </a>
     ) : scrollTargetId !== undefined ? (
       <a href={`#${scrollTargetId}`} className="v4-btn-solid">
-        Text Hale
+        {common('textHale')}
       </a>
     ) : (
       <LandingCta event="landing_cta_text" href={smsHref} className="v4-btn-solid">
-        Text Hale
+        {common('textHale')}
       </LandingCta>
     );
 
   return (
     <header className="sticky top-0 z-50 px-4 sm:px-6">
       <nav className="v4-nav v4-glass" aria-label="Primary">
-        <a href="/" className="flex items-center gap-2.5" aria-label="Hale, home">
+        <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
           <LogoMark size={28} />
-          <span className="font-serif text-[1.2rem] font-semibold leading-none text-navy">Hale</span>
+          <span className="font-serif text-[1.2rem] font-semibold leading-none text-navy" translate="no">
+            Hale
+          </span>
         </a>
         <div className="flex items-center gap-6">
           <div className="v4-navlinks">
-            {NAV.map((item) => (
+            {nav.map((item) => (
               <a key={item.label} href={item.href} className="v4-navlink">
                 {item.label}
               </a>

@@ -47,7 +47,25 @@ function applyPreference(preference: Exclude<ThemePreference, 'system'>) {
   }
 }
 
-export function FooterThemeSwitch() {
+/**
+ * Labels default to English so the switch renders untranslated when used on its
+ * own (unit tests); the footer passes the reader's language.
+ */
+export interface ThemeSwitchLabels {
+  light: string;
+  dark: string;
+  toLight: string;
+  toDark: string;
+}
+
+const DEFAULT_LABELS: ThemeSwitchLabels = {
+  light: 'Light',
+  dark: 'Dark',
+  toLight: 'Switch to light mode',
+  toDark: 'Switch to dark mode',
+};
+
+export function FooterThemeSwitch({ labels = DEFAULT_LABELS }: { labels?: ThemeSwitchLabels }) {
   const [isDark, setIsDark] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -75,7 +93,7 @@ export function FooterThemeSwitch() {
       type="button"
       role="switch"
       aria-checked={checked}
-      aria-label={checked ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label={checked ? labels.toLight : labels.toDark}
       className="v4-switch"
       onClick={toggle}
     >
@@ -88,7 +106,7 @@ export function FooterThemeSwitch() {
           )}
         </span>
       </span>
-      <span className="v4-switch-label">{checked ? 'Dark' : 'Light'}</span>
+      <span className="v4-switch-label">{checked ? labels.dark : labels.light}</span>
     </button>
   );
 }

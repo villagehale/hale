@@ -5,6 +5,9 @@ import { CopyNumberButton } from '~/components/copy-number';
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
 import { SiteFooter } from '~/components/site-footer';
+import { localeHref } from '~/i18n/navigation';
+import type { Locale } from '~/i18n/routing';
+import { getTranslator } from '~/i18n/server';
 import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref, buildSmsHrefForBody } from '~/lib/text-entry';
 
@@ -20,48 +23,10 @@ import { CONTACT_EMAIL, buildSmsHref, buildSmsHrefForBody } from '~/lib/text-ent
  * navy + warm cream + amber, and the whole page — hero included — flips on the
  * footer switch. No third-party video (the reference's CloudFront clips are not
  * ours to ship); the shore still and the glass do the work.
+ *
+ * All copy is keyed by locale (`Landing` namespace); the 15 municipalities are
+ * proper nouns and stay as data.
  */
-
-const NAV = [
-  { label: 'Pricing', href: '/pricing' },
-  { label: 'FAQ', href: '/faq' },
-  { label: 'About', href: '/about' },
-] as const;
-
-/** Real questions parents send — each opens the composer already holding it, so
- * the first text costs a tap. sms: only; on a laptop the copy chip is the path. */
-const CHIPS = [
-  'When does swim registration open near me?',
-  'My 2-year-old won’t nap — what do I try?',
-  'What’s on this weekend for a toddler?',
-  'Help me start solids.',
-] as const;
-
-const STEPS = [
-  {
-    step: 'You say hi',
-    body: 'One text to my number. No app, no account, no form to fill in.',
-  },
-  {
-    step: 'I send your radar',
-    body: 'Names and ages, a postal code — then the week that actually matters near you.',
-  },
-  {
-    step: 'I keep watch',
-    body: 'A brief on Monday. A heads-up the week a window opens, the plan the night before. Quiet in between.',
-  },
-] as const;
-
-/** The autonomy ladder — suggest → prepare → handle-with-consent. Nothing
- * reaches the outside world without a yes. */
-const LADDER = [
-  { rung: 'I suggest', body: 'the thing worth knowing this week, and why it matters now.' },
-  { rung: 'I prepare', body: 'the shortlist, the links, the times — ready before the window opens.' },
-  {
-    rung: 'with your ok, I handle it',
-    body: '— nothing reaches the outside world until you say so.',
-  },
-] as const;
 
 /** The 15 municipalities the radar tracks by name — every one backed by verified
  * registration_windows rows in prod. Kept in sync with the v3 landing. */
@@ -83,61 +48,41 @@ const MUNICIPALITIES = [
   'Aurora',
 ] as const;
 
-const WATCHED = [
-  {
-    title: 'Swim lessons',
-    body: 'The sessions that fill in minutes — and the towns that register them on a date of their own, weeks after everything else.',
-  },
-  {
-    title: 'Camps',
-    body: 'Fall programs, and the winter-break camps that quietly open for registration back in August.',
-  },
-  {
-    title: 'After-school care',
-    body: 'Where a city books it apart from the rest, on its own morning.',
-  },
-  {
-    title: 'Waitlist clocks',
-    body: 'Some towns give you a day to accept a spot, some two. I watch the clock either way.',
-  },
-] as const;
+interface Card {
+  title: string;
+  body: string;
+}
+interface Step {
+  step: string;
+  body: string;
+}
 
-/** The coaching arc — a real sequence separated by days. */
-const COACHING = [
-  {
-    step: 'You ask',
-    body: 'An answer in two sentences, pitched at how old your child actually is — what’s common right now, and the thing to try tonight.',
-  },
-  {
-    step: 'I offer the whole plan',
-    body: 'Say yes and it arrives as two or three texts — the real method by name, whether that’s Ferber’s check-in tables, the three-day potty protocol, or Health Canada’s allergen introduction. Minutes and counts, not principles.',
-  },
-  {
-    step: 'A few days later, I ask how it went',
-    body: 'I name the day in the plan and set that reminder myself, so remembering to report back was never your job.',
-  },
-] as const;
-
-const CAREGIVERS = [
-  {
-    title: 'Grandparents and the nanny',
-    body: 'They get just the schedule — who’s where, and when to be there. Nothing else about your family travels with it, and everyone opts in for themselves.',
-  },
-  {
-    title: 'Your co-parent',
-    body: 'Always free. The same radar and the same reminders, on their own number — never a second household to pay for.',
-  },
-] as const;
-
-export function LandingV4({ smsNumber }: { smsNumber: string }) {
+export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: string }) {
+  const t = getTranslator(locale, 'Landing');
+  const common = getTranslator(locale, 'Common');
+  const header = getTranslator(locale, 'Header');
+  const copy = getTranslator(locale, 'CopyNumber');
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
+
+  const nav = [
+    { label: header('navPricing'), href: localeHref(locale, '/pricing') },
+    { label: header('navFaq'), href: localeHref(locale, '/faq') },
+    { label: header('navAbout'), href: localeHref(locale, '/about') },
+  ];
+  const chips = t.raw('chips') as string[];
+  const bubbles = t.raw('threadBubbles') as { dir: 'in' | 'out'; text: string }[];
+  const steps = t.raw('steps') as Step[];
+  const ladder = t.raw('ladder') as { rung: string; body: string }[];
+  const watched = t.raw('watched') as Card[];
+  const coaching = t.raw('coaching') as Step[];
+  const caregivers = t.raw('caregivers') as Card[];
 
   return (
     <main id="main" tabIndex={-1}>
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd(locale)) }}
       />
       {/* ── Hero — the shore behind glass ─────────────────────────────────── */}
       <section className="v4-hero">
@@ -154,15 +99,22 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
 
         <header>
           <nav className="v4-nav v4-glass" aria-label="Primary">
-            <a href="/" className="flex items-center gap-2.5" aria-label="Hale, home">
+            <a
+              href={localeHref(locale, '/')}
+              className="flex items-center gap-2.5"
+              aria-label="Hale, home"
+            >
               <LogoMark size={28} />
-              <span className="font-serif text-[1.2rem] font-semibold leading-none text-navy">
+              <span
+                className="font-serif text-[1.2rem] font-semibold leading-none text-navy"
+                translate="no"
+              >
                 Hale
               </span>
             </a>
             <div className="flex items-center gap-6">
               <div className="v4-navlinks">
-                {NAV.map((item) => (
+                {nav.map((item) => (
                   <a key={item.label} href={item.href} className="v4-navlink">
                     {item.label}
                   </a>
@@ -170,11 +122,11 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
               </div>
               {smsHref ? (
                 <LandingCta event="landing_cta_text" href={smsHref} className="v4-btn-solid">
-                  Text Hale
+                  {common('textHale')}
                 </LandingCta>
               ) : (
                 <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid">
-                  Email Hale
+                  {common('emailHale')}
                 </a>
               )}
             </div>
@@ -182,35 +134,38 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
         </header>
 
         <div className="v4-hero-body">
-          <p className="v4-eyebrow">
-            Hale · /HAH-leh/ · Hawaiian for home
-          </p>
+          <p className="v4-eyebrow">{t('eyebrow')}</p>
           <h1 className="v4-display v4-hero-h1 text-balance">
-            Your family’s quiet
+            {t('heroH1a')}
             <br />
-            chief of <span className="v4-italic">staff.</span>
+            {t('heroH1b')} <span className="v4-italic">{t('heroH1Accent')}</span>
           </h1>
-          <p className="v4-hero-sub">
-            A number you text. Registration dates watched, weekends planned — and nothing sent
-            without your say-so. Your data stays in Canada.
-          </p>
+          <p className="v4-hero-sub">{t('heroSub')}</p>
 
           <div className="flex flex-wrap items-center justify-center gap-3">
             {smsHref ? (
               <LandingCta event="landing_cta_text" href={smsHref} className="v4-btn-solid v4-glass">
-                Text Hale
+                {common('textHale')}
               </LandingCta>
             ) : (
               <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
-                Email Hale
+                {common('emailHale')}
               </a>
             )}
-            {smsNumber && <CopyNumberButton number={smsNumber} className="v4-btn v4-glass" />}
+            {smsNumber && (
+              <CopyNumberButton
+                number={smsNumber}
+                className="v4-btn v4-glass"
+                label={copy('label')}
+                copiedLabel={copy('copied')}
+                ariaLabel={copy('aria')}
+              />
+            )}
           </div>
 
           {smsNumber && (
             <ul className="v4-chips">
-              {CHIPS.map((q) => (
+              {chips.map((q) => (
                 <li key={q}>
                   <a href={buildSmsHrefForBody(smsNumber, q)} className="v4-chip v4-glass">
                     {q}
@@ -224,39 +179,33 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
 
       {/* ── What texting Hale is like — the thread, made concrete ─────────── */}
       <section className="shell pt-20 lg:pt-28">
-        <p className="v4-eyebrow text-center">Texting Hale looks like this</p>
+        <p className="v4-eyebrow text-center">{t('threadEyebrow')}</p>
         <h2 className="v4-display mx-auto mt-4 max-w-[18ch] text-center text-[clamp(1.9rem,4.4vw,3rem)] text-ink">
-          Text me like you’d text <span className="v4-italic text-amber">a friend.</span>
+          {t('threadH2a')} <span className="v4-italic text-amber">{t('threadH2Accent')}</span>
         </h2>
-        <p className="v4-lede mx-auto text-center">
-          No app, no commands, no menus. Say what’s on your mind in plain words — I answer in the
-          same thread, and I only act when you say so.
-        </p>
+        <p className="v4-lede mx-auto text-center">{t('threadLede')}</p>
 
         <div className="v4-thread v4-glass mt-10">
-          <p className="v4-thread-cap">Your thread with Hale</p>
-          <p className="v4-bubble v4-bubble-out">When does swim registration open in Oakville?</p>
-          <p className="v4-bubble v4-bubble-in">
-            I’m watching Oakville’s swim registration for you. I’ll text you the morning the date is
-            set, remind you the night before, and nudge you the minute it opens.
-          </p>
-          <p className="v4-bubble v4-bubble-out">my 2-year-old keeps waking at 5am 😩</p>
-          <p className="v4-bubble v4-bubble-in">
-            Common at this age — usually an early bedtime or too much day sleep. Want the full plan?
-            It’s three texts, and I’ll check in with you in a few days.
-          </p>
-          <p className="v4-bubble v4-bubble-out">yes please</p>
+          <p className="v4-thread-cap">{t('threadCap')}</p>
+          {bubbles.map((bubble, i) => (
+            <p
+              key={`${i}-${bubble.dir}`}
+              className={`v4-bubble v4-bubble-${bubble.dir}`}
+            >
+              {bubble.text}
+            </p>
+          ))}
         </div>
       </section>
 
       {/* ── How it works — three glass cards ──────────────────────────────── */}
       <section className="shell py-20 lg:py-28">
-        <p className="v4-eyebrow text-center">How Hale works</p>
+        <p className="v4-eyebrow text-center">{t('howEyebrow')}</p>
         <h2 className="v4-display mx-auto mt-4 max-w-[16ch] text-center text-[clamp(2rem,5vw,3.4rem)] text-ink">
-          Three texts, then <span className="v4-italic text-amber">quiet.</span>
+          {t('howH2a')} <span className="v4-italic text-amber">{t('howH2Accent')}</span>
         </h2>
         <div className="v4-cardgrid mt-12">
-          {STEPS.map((s, i) => (
+          {steps.map((s, i) => (
             <article key={s.step} className="v4-card v4-glass">
               <p className="v4-card-n">0{i + 1}</p>
               <h3 className="text-spruce">{s.step}</h3>
@@ -266,35 +215,27 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
         </div>
 
         <div className="v4-panel v4-glass mt-14">
-          <p className="v4-eyebrow">And when something needs doing</p>
+          <p className="v4-eyebrow">{t('ladderEyebrow')}</p>
           <ul className="mt-6 flex flex-col gap-4">
-            {LADDER.map((item) => (
+            {ladder.map((item) => (
               <li key={item.rung} className="text-[1.05rem] leading-snug text-spruce">
                 <strong className="font-semibold">{item.rung}</strong>{' '}
                 <span className="text-slate-green">{item.body}</span>
               </li>
             ))}
           </ul>
-          <p className="mt-6 text-[15px] leading-[1.6] text-slate-green">
-            Receipts for everything: every message names exactly what I did. Say yes to a date and it
-            arrives as a calendar invite — a real event, at whatever address you give me. The full
-            record — who, what, when — is yours any time: ask me in the thread, or sign in with your
-            phone number.
-          </p>
+          <p className="mt-6 text-[15px] leading-[1.6] text-slate-green">{t('receipts')}</p>
         </div>
       </section>
 
       {/* ── What I watch — the radar, by name ─────────────────────────────── */}
       <section className="shell py-20 lg:py-28">
-        <p className="v4-eyebrow">What I watch</p>
+        <p className="v4-eyebrow">{t('watchEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          {MUNICIPALITIES.length} municipalities,{' '}
-          <span className="v4-italic text-amber">by name.</span>
+          {t('watchH2Count', { count: MUNICIPALITIES.length })}{' '}
+          <span className="v4-italic text-amber">{t('watchH2Accent')}</span>
         </h2>
-        <p className="v4-lede">
-          Registration opens at 7 a.m. on a Tuesday and fills before breakfast. I follow the
-          calendars where you live, so nobody has to keep a tab open.
-        </p>
+        <p className="v4-lede">{t('watchLede')}</p>
         <ul className="v4-pills mt-8">
           {MUNICIPALITIES.map((city) => (
             <li key={city} className="v4-pill v4-glass">
@@ -303,7 +244,7 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
           ))}
         </ul>
         <div className="v4-cardgrid-4 mt-12">
-          {WATCHED.map((item) => (
+          {watched.map((item) => (
             <article key={item.title} className="v4-card v4-glass">
               <h3 className="text-spruce">{item.title}</h3>
               <p>{item.body}</p>
@@ -314,18 +255,13 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
 
       {/* ── Coaching — the questions that aren't scheduling ───────────────── */}
       <section className="shell py-20 lg:py-28">
-        <p className="v4-eyebrow">When you ask me something</p>
+        <p className="v4-eyebrow">{t('coachingEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          Sleep, solids, potty —{' '}
-          <span className="v4-italic text-amber">answered, then planned.</span>
+          {t('coachingH2a')} <span className="v4-italic text-amber">{t('coachingH2Accent')}</span>
         </h2>
-        <p className="v4-lede">
-          A chief of staff who only moved appointments would be a calendar. Ask me the 3 a.m.
-          question and you get a real answer in the same thread — never a link telling you to go read
-          someone else’s.
-        </p>
+        <p className="v4-lede">{t('coachingLede')}</p>
         <ol className="v4-cardgrid mt-12">
-          {COACHING.map((item, i) => (
+          {coaching.map((item, i) => (
             <li key={item.step} className="v4-card v4-glass">
               <p className="v4-card-n">0{i + 1}</p>
               <h3 className="text-spruce">{item.step}</h3>
@@ -335,30 +271,24 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
         </ol>
         <div className="v4-cardgrid-2 mt-6">
           <article className="v4-card v4-glass">
-            <h3 className="text-spruce">What I’ll plan with you</h3>
-            <p>
-              Sleep, starting solids, potty training, picky eating, tantrums, screen time, and the
-              routines that hold a week together.
-            </p>
+            <h3 className="text-spruce">{t('coachingPlanTitle')}</h3>
+            <p>{t('coachingPlanBody')}</p>
           </article>
           <article className="v4-card v4-glass">
-            <h3 className="text-spruce">Where I stop</h3>
-            <p>
-              I don’t diagnose and I never name a dose. A plan says what’s common and what families
-              try, and it names the one situation worth raising with your doctor.
-            </p>
+            <h3 className="text-spruce">{t('coachingStopTitle')}</h3>
+            <p>{t('coachingStopBody')}</p>
           </article>
         </div>
       </section>
 
       {/* ── The caregivers, scoped ────────────────────────────────────────── */}
       <section className="shell py-20 lg:py-28">
-        <p className="v4-eyebrow">Your helpers</p>
+        <p className="v4-eyebrow">{t('helpersEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          Your helpers, <span className="v4-italic text-amber">only what they need.</span>
+          {t('helpersH2a')} <span className="v4-italic text-amber">{t('helpersH2Accent')}</span>
         </h2>
         <div className="v4-cardgrid-2 mt-10">
-          {CAREGIVERS.map((item) => (
+          {caregivers.map((item) => (
             <article key={item.title} className="v4-card v4-glass">
               <h3 className="text-spruce">{item.title}</h3>
               <p>{item.body}</p>
@@ -369,22 +299,16 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
 
       {/* ── Privacy, the Canadian way ─────────────────────────────────────── */}
       <section className="shell py-20 lg:py-28">
-        <p className="v4-eyebrow">Privacy</p>
+        <p className="v4-eyebrow">{t('privacyEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          Privacy, the <span className="v4-italic text-amber">Canadian way.</span>
+          {t('privacyH2a')} <span className="v4-italic text-amber">{t('privacyH2Accent')}</span>
         </h2>
         <div className="v4-lede">
-          <p>
-            Your family’s data stays in Canada. Every permission is granular, auditable, and
-            revocable — you grant it in a text and withdraw it in a text. A child’s information is
-            sensitive by default, and a teenager’s more so.
-          </p>
+          <p>{t('privacyBody1')}</p>
           <p className="mt-5">
-            Texting is not private the way a sealed app is: a message crosses your carrier and my
-            messaging provider before it reaches you. So I write to that reality — I name the task,
-            never the diagnosis.{' '}
-            <a href="/privacy" className="link">
-              How I handle your data
+            {t('privacyBody2Pre')}{' '}
+            <a href={localeHref(locale, '/privacy')} className="link">
+              {t('privacyLink')}
             </a>
             .
           </p>
@@ -411,24 +335,24 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
           <div className="v4-hero-body" style={{ padding: '4.5rem 1.5rem' }}>
             <span className="inline-flex items-center gap-3">
               <LogoMark size={40} />
-              <span className="font-serif text-[1.5rem] font-semibold leading-none text-navy">
+              <span
+                className="font-serif text-[1.5rem] font-semibold leading-none text-navy"
+                translate="no"
+              >
                 Hale
               </span>
             </span>
             <h2 className="v4-display mt-4 text-[clamp(1.9rem,4vw,2.8rem)] text-ink">
-              Founding families join <span className="v4-italic text-amber">free.</span>
+              {t('closingH2a')} <span className="v4-italic text-amber">{t('closingH2Accent')}</span>
             </h2>
-            <p className="v4-hero-sub">
-              I’m free while I’m new, and the families who start now keep their founding rate for
-              good. No countdown, no waiting list — just the number.
-            </p>
+            <p className="v4-hero-sub">{t('closingSub')}</p>
             {smsHref ? (
               <LandingCta event="landing_cta_text" href={smsHref} className="v4-btn-solid v4-glass">
-                Text Hale
+                {common('textHale')}
               </LandingCta>
             ) : (
               <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
-                Email Hale
+                {common('emailHale')}
               </a>
             )}
           </div>
@@ -436,7 +360,7 @@ export function LandingV4({ smsNumber }: { smsNumber: string }) {
       </section>
 
       {/* ── Footer — shared with every subpage; the theme switch lives here ── */}
-      <SiteFooter />
+      <SiteFooter locale={locale} />
     </main>
   );
 }

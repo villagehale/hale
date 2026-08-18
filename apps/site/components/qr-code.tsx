@@ -16,7 +16,15 @@ import { encode } from 'uqr';
 /** Fixed, theme-independent: a code must be dark-on-light to be scannable. */
 const PLATE = '#ffffff';
 const MODULE = '#17294a';
-export function QrCode({ value, size = 168 }: { value: string; size?: number }) {
+export function QrCode({
+  value,
+  size = 168,
+  label = 'QR code — scan to text Hale',
+}: {
+  value: string;
+  size?: number;
+  label?: string;
+}) {
   const { size: modules, data } = encode(value, { ecc: 'M', border: 2 });
 
   let path = '';
@@ -29,7 +37,7 @@ export function QrCode({ value, size = 168 }: { value: string; size?: number }) 
   return (
     <svg
       role="img"
-      aria-label="QR code — scan to text Hale"
+      aria-label={label}
       viewBox={`0 0 ${modules} ${modules}`}
       width={size}
       height={size}

@@ -2,19 +2,18 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PLAN_DISPLAY, PLAN_TIERS_ORDERED } from '@hale/types';
 import postcss from 'postcss';
-import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import AboutPage from './about/page.js';
-import ActivityCityRoute from './activities/[city]/page.js';
-import ActivitiesHub from './activities/page.js';
-import AnswerRoute from './answers/[slug]/page.js';
-import AnswersIndexPage from './answers/page.js';
-import ContactPage from './contact/page.js';
-import FaqPage from './faq/page.js';
-import PricingPage from './pricing/page.js';
-import PrivacyPage from './privacy/page.js';
-import TermsPage from './terms/page.js';
+import AboutPage from './[locale]/about/page.js';
+import ActivityCityRoute from './[locale]/activities/[city]/page.js';
+import ActivitiesHub from './[locale]/activities/page.js';
+import AnswerRoute from './[locale]/answers/[slug]/page.js';
+import AnswersIndexPage from './[locale]/answers/page.js';
+import ContactPage from './[locale]/contact/page.js';
+import FaqPage from './[locale]/faq/page.js';
+import PricingPage from './[locale]/pricing/page.js';
+import PrivacyPage from './[locale]/privacy/page.js';
+import TermsPage from './[locale]/terms/page.js';
 
 /**
  * The subpage design language (2026-08) — the five devices that carried the
@@ -48,21 +47,27 @@ async function renderAsync(element: Promise<React.ReactElement>): Promise<string
   return renderToStaticMarkup(await element);
 }
 
+// Every page is now an async Server Component keyed by `[locale]`; these render
+// the English (default-locale) markup the design pins assert against.
+const EN = { locale: 'en' as const };
+
 const pages = {
-  '/about': renderToStaticMarkup(createElement(AboutPage)),
-  '/pricing': renderToStaticMarkup(createElement(PricingPage)),
-  '/faq': renderToStaticMarkup(createElement(FaqPage)),
-  '/contact': renderToStaticMarkup(createElement(ContactPage)),
-  '/answers': renderToStaticMarkup(createElement(AnswersIndexPage)),
-  '/activities': renderToStaticMarkup(createElement(ActivitiesHub)),
+  '/about': await renderAsync(AboutPage({ params: Promise.resolve(EN) })),
+  '/pricing': await renderAsync(PricingPage({ params: Promise.resolve(EN) })),
+  '/faq': await renderAsync(FaqPage({ params: Promise.resolve(EN) })),
+  '/contact': await renderAsync(ContactPage({ params: Promise.resolve(EN) })),
+  '/answers': await renderAsync(AnswersIndexPage({ params: Promise.resolve(EN) })),
+  '/activities': await renderAsync(ActivitiesHub({ params: Promise.resolve(EN) })),
 } as const;
 
 const slugHtml = await renderAsync(
-  AnswerRoute({ params: Promise.resolve({ slug: 'introducing-peanuts-to-baby' }) }),
+  AnswerRoute({ params: Promise.resolve({ slug: 'introducing-peanuts-to-baby', ...EN }) }),
 );
 const cityHtml = await renderAsync(
-  ActivityCityRoute({ params: Promise.resolve({ city: 'toronto' }) }),
+  ActivityCityRoute({ params: Promise.resolve({ city: 'toronto', ...EN }) }),
 );
+const privacyHtml = await renderAsync(PrivacyPage({ params: Promise.resolve(EN) }));
+const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
 
 /** The eight pages that wear the pulled-up headline, and the sentence each must
  * still read as once the words are split apart. */
@@ -293,8 +298,8 @@ describe('the pages keep the doors they had', () => {
 
 describe('the policies stay quiet', () => {
   const legal = {
-    '/privacy': renderToStaticMarkup(createElement(PrivacyPage)),
-    '/terms': renderToStaticMarkup(createElement(TermsPage)),
+    '/privacy': privacyHtml,
+    '/terms': termsHtml,
   };
 
   it('wears no headline reveal — one fade on the masthead is the whole motion', () => {

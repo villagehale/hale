@@ -1,3 +1,6 @@
+import { languageTag } from '~/i18n/metadata';
+import { type Locale, routing } from '~/i18n/routing';
+import { getTranslator } from '~/i18n/server';
 import { APP_URL, SITE_URL } from '~/lib/app-url';
 
 /**
@@ -7,9 +10,13 @@ import { APP_URL, SITE_URL } from '~/lib/app-url';
  * the SoftwareApplication (the product itself, with its free tier and Canada scope).
  * Emitted as one `@graph` so a single script tag carries all three, cross-linked by
  * `@id`. Pure + exported so the shape is unit-tested against these constants rather
- * than eyeballed in the browser. No user input ever reaches it (hard rule #1).
+ * than eyeballed in the browser. No user input ever reaches it (hard rule #1). The
+ * descriptions and `inLanguage` track the language the page is rendered in.
  */
-export function siteJsonLd(): Record<string, unknown> {
+export function siteJsonLd(locale: Locale = routing.defaultLocale): Record<string, unknown> {
+  const t = getTranslator(locale, 'Jsonld');
+  const inLanguage = languageTag(locale);
+
   // These descriptions are what an answer engine repeats back, so they have to say
   // what the homepage says — a graph that drifts from the page describes a product
   // no visitor sees.
@@ -20,8 +27,7 @@ export function siteJsonLd(): Record<string, unknown> {
     legalName: 'Village Hale Technologies Inc.',
     url: SITE_URL,
     logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.png` },
-    description:
-      'Hale is a family chief of staff you text — it watches city registration windows, plans the week, and handles the admin with your say-so. Every family’s data stays in Canada.',
+    description: t('orgDescription'),
     areaServed: { '@type': 'Country', name: 'Canada' },
   };
 
@@ -30,7 +36,7 @@ export function siteJsonLd(): Record<string, unknown> {
     '@id': `${SITE_URL}/#website`,
     url: SITE_URL,
     name: 'Hale',
-    inLanguage: 'en-CA',
+    inLanguage,
     publisher: { '@id': `${SITE_URL}/#organization` },
   };
 
@@ -41,10 +47,9 @@ export function siteJsonLd(): Record<string, unknown> {
     applicationCategory: 'LifestyleApplication',
     operatingSystem: 'Web, iOS',
     url: APP_URL,
-    inLanguage: 'en-CA',
+    inLanguage,
     publisher: { '@id': `${SITE_URL}/#organization` },
-    description:
-      'A number your family texts: Hale watches registration dates across the GTA, plans the week, and executes with your approval — receipts for everything, and your family’s data never leaves Canada.',
+    description: t('appDescription'),
     // Free to start — the launch tier. A concrete Offer node is the signal an answer
     // engine reads when a parent asks whether Hale costs anything.
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'CAD' },

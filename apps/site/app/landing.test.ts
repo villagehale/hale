@@ -1,9 +1,8 @@
-import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { APP_URL } from '~/lib/app-url.js';
 import { impactNumbers } from '~/lib/landing/impact.js';
-import LandingPage from './page.js';
+import LandingPage from './[locale]/page.js';
 
 /**
  * villagehale.com — the v4 liquid-glass shore, the one landing.
@@ -18,10 +17,24 @@ import LandingPage from './page.js';
 
 const LIVE_NUMBER = '+16475551234';
 
-/** The homepage with the number provisioned — the live state. */
-function render({ number = LIVE_NUMBER }: { number?: string } = {}): string {
+// The landing is now an async Server Component (it awaits the `[locale]` param),
+// so both states are rendered once at module load — English, the default locale —
+// and `render()` stays synchronous for the describe/it bodies that call it.
+async function renderLanding(number: string): Promise<string> {
   vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', number);
-  return renderToStaticMarkup(createElement(LandingPage));
+  const html = renderToStaticMarkup(
+    await LandingPage({ params: Promise.resolve({ locale: 'en' as const }) }),
+  );
+  vi.unstubAllEnvs();
+  return html;
+}
+
+const LIVE_HTML = await renderLanding(LIVE_NUMBER);
+const EMPTY_HTML = await renderLanding('');
+
+/** The homepage with the number provisioned — the live state (default). */
+function render({ number = LIVE_NUMBER }: { number?: string } = {}): string {
+  return number === '' ? EMPTY_HTML : LIVE_HTML;
 }
 
 function visibleText(html: string): string {

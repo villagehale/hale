@@ -1,7 +1,10 @@
+import { CopyNumberButton } from '~/components/copy-number';
+import { EmailCta } from '~/components/email-cta';
 import { QrCode } from '~/components/qr-code';
 import { TextEntryAnalytics } from '~/components/text-entry-analytics';
-import { EmailCta } from '~/components/email-cta';
-import { CopyNumberButton } from '~/components/copy-number';
+import { localeHref } from '~/i18n/navigation';
+import { type Locale, routing } from '~/i18n/routing';
+import { getTranslator } from '~/i18n/server';
 import { CONTACT_EMAIL, buildSmsBody, buildSmsHref } from '~/lib/text-entry';
 
 /**
@@ -20,7 +23,18 @@ import { CONTACT_EMAIL, buildSmsBody, buildSmsHref } from '~/lib/text-entry';
  *   unset → email is the only path, and the page says the number is coming.
  *           Never a dead sms: link. (Today's state.)
  */
-export function TextEntry({ source, smsNumber }: { source: string | null; smsNumber: string }) {
+export function TextEntry({
+  source,
+  smsNumber,
+  locale = routing.defaultLocale,
+}: {
+  source: string | null;
+  smsNumber: string;
+  locale?: Locale;
+}) {
+  const t = getTranslator(locale, 'Text');
+  const copy = getTranslator(locale, 'CopyNumber');
+  const ec = getTranslator(locale, 'EmailCta');
   const smsHref = smsNumber ? buildSmsHref(smsNumber, source) : null;
 
   return (
@@ -32,58 +46,60 @@ export function TextEntry({ source, smsNumber }: { source: string | null; smsNum
       <TextEntryAnalytics source={source} />
 
       <div className="rise rise-1">
-        <span className="font-serif text-[1.35rem] font-semibold leading-none text-spruce">
+        <span className="font-serif text-[1.35rem] font-semibold leading-none text-spruce" translate="no">
           Hale
         </span>
-        <h1 className="mt-6 text-[clamp(2rem,6.5vw,3.25rem)]">
-          Hi, I’m Hale — your family’s quiet chief of staff.
-        </h1>
+        <h1 className="mt-6 text-[clamp(2rem,6.5vw,3.25rem)]">{t('headline')}</h1>
         <p className="mt-6 text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
-          I keep watch over your week — registrations, programs, checkups, weather — and text you
-          before things matter.
+          {t('lede')}
         </p>
       </div>
 
       {smsHref ? (
         <div className="mt-10 rise rise-2">
           <a href={smsHref} className="btn-primary">
-            Text me
+            {t('textMe')}
           </a>
           <p className="meta mt-4">
             {source
-              ? `Your message is already written — “${buildSmsBody(source)}”. The tag just tells me where you came from.`
-              : 'Your message is already written. You send it; I never text first.'}
+              ? t('prefilledWithSource', { body: buildSmsBody(source) })
+              : t('prefilledNoSource')}
           </p>
 
           <div className="card mt-8 flex flex-col gap-6 sm:flex-row sm:items-center">
-            <QrCode value={smsHref} />
+            <QrCode value={smsHref} label={t('qrAria')} />
             <div>
-              <span className="eyebrow">On a laptop?</span>
+              <span className="eyebrow">{t('onLaptop')}</span>
               <p className="mt-2">
                 <CopyNumberButton
                   number={smsNumber}
                   className="link font-medium"
-                  label="Copy my number"
+                  label={copy('labelTitleCase')}
+                  copiedLabel={copy('copied')}
+                  ariaLabel={copy('aria')}
                 />
               </p>
-              <p className="meta mt-2">
-                Scan the code with your phone’s camera, or copy the number and text it from your
-                phone. Standard message rates apply; reply STOP any time.
-              </p>
+              <p className="meta mt-2">{t('scanHint')}</p>
             </div>
           </div>
         </div>
       ) : (
         <div className="mt-10 rise rise-2">
-          <EmailCta email={CONTACT_EMAIL} buttonClassName="btn-primary" />
-          <p className="meta mt-4">The number’s coming — this page isn’t announced yet.</p>
+          <EmailCta
+            email={CONTACT_EMAIL}
+            buttonClassName="btn-primary"
+            emailMeLabel={ec('emailMe')}
+            copyLabel={ec('copy', { email: CONTACT_EMAIL })}
+            copiedLabel={ec('copied')}
+          />
+          <p className="meta mt-4">{t('numberComing')}</p>
         </div>
       )}
 
       <p className="meta mt-14 rise rise-3">
-        Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada —{' '}
-        <a href="/privacy" className="link">
-          privacy policy
+        {t('footerPre')}{' '}
+        <a href={localeHref(locale, '/privacy')} className="link">
+          {t('privacyLink')}
         </a>
         .
       </p>

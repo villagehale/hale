@@ -1,3 +1,5 @@
+import { languageTag } from '~/i18n/metadata';
+import { type Locale, routing } from '~/i18n/routing';
 import { SITE_URL } from '~/lib/app-url';
 
 /**
@@ -71,17 +73,22 @@ export const FAQ: readonly FaqItem[] = [
 /**
  * The FAQPage JSON-LD for /faq. Each item becomes a Question with an acceptedAnswer,
  * tied to the site’s Organization/WebSite graph by isPartOf. Pure + exported so the
- * shape is unit-tested against the served list rather than eyeballed.
+ * shape is unit-tested against the served list rather than eyeballed. Defaults to the
+ * English list; the localized route passes its translated items and locale so the
+ * schema matches the page a reader (or answer engine) actually sees.
  */
-export function faqJsonLd(): Record<string, unknown> {
+export function faqJsonLd(
+  items: readonly FaqItem[] = FAQ,
+  locale: Locale = routing.defaultLocale,
+): Record<string, unknown> {
   return {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
     '@id': `${SITE_URL}/faq#faq`,
-    inLanguage: 'en-CA',
+    inLanguage: languageTag(locale),
     isPartOf: { '@id': `${SITE_URL}/#website` },
     publisher: { '@id': `${SITE_URL}/#organization` },
-    mainEntity: FAQ.map((item) => ({
+    mainEntity: items.map((item) => ({
       '@type': 'Question',
       name: item.question,
       acceptedAnswer: { '@type': 'Answer', text: item.answer },
