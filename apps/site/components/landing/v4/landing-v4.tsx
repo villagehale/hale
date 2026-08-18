@@ -1,6 +1,5 @@
 import Image from 'next/image';
 import heroShore from '~/assets/hale-shore-hero.webp';
-import nightShore from '~/assets/hale-shore-night.webp';
 import { CopyNumberButton } from '~/components/copy-number';
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
@@ -317,9 +316,9 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
 
       {/* ── Closing — the shore, and the founding invitation ──────────────── */}
       <section className="shell pb-24">
-        <div className="v4-hero v4-close-band" style={{ minHeight: 'auto', borderRadius: 'var(--r-xl)' }}>
+        <div className="v4-hero" style={{ minHeight: 'auto', borderRadius: 'var(--r-xl)' }}>
           <Image
-            src={nightShore}
+            src={heroShore}
             alt=""
             aria-hidden="true"
             fill
@@ -336,13 +335,13 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             <span className="inline-flex items-center gap-3">
               <LogoMark size={40} />
               <span
-                className="font-serif text-[1.5rem] font-semibold leading-none text-[#f7f4ec]"
+                className="font-serif text-[1.5rem] font-semibold leading-none text-navy"
                 translate="no"
               >
                 Hale
               </span>
             </span>
-            <h2 className="v4-display mt-4 text-[clamp(1.9rem,4vw,2.8rem)] text-[#f7f4ec]">
+            <h2 className="v4-display mt-4 text-[clamp(1.9rem,4vw,2.8rem)] text-ink">
               {t('closingH2a')} <span className="v4-italic text-amber">{t('closingH2Accent')}</span>
             </h2>
             <p className="v4-hero-sub">{t('closingSub')}</p>
