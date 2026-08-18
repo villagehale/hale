@@ -128,7 +128,7 @@ describe('landing — the brand tile, the shore, and nothing else', () => {
   const html = render();
 
   /**
-   * The honesty pin: the page carries the brand tile and two shore panels, and
+   * The honesty pin: the page carries the brand tile and the day shore, and
    * the rule underneath is that no image carries an argument — every one is
    * decorative, from the known asset set, and none stands in for a real customer.
    */
@@ -146,12 +146,12 @@ describe('landing — the brand tile, the shore, and nothing else', () => {
     }
   });
 
-  it('uses each shore panel once — the day hero and the night close — and no mascot art', () => {
-    // Counted as <img> elements, not filename occurrences: next/image emits the
-    // same asset name once per srcset candidate.
+  it('uses the day shore for both the hero and the close, no night panel, and no mascot art', () => {
+    // Counted as <img> elements, not filename occurrences. The day shore now backs
+    // BOTH the hero and the closing band; the night panel was retired (readability).
     const imgs = html.match(/<img[^>]*>/g) ?? [];
-    expect(imgs.filter((img) => img.includes('hale-shore-hero'))).toHaveLength(1);
-    expect(imgs.filter((img) => img.includes('hale-shore-night'))).toHaveLength(1);
+    expect(imgs.filter((img) => img.includes('hale-shore-hero'))).toHaveLength(2);
+    expect(imgs.filter((img) => img.includes('hale-shore-night'))).toHaveLength(0);
     for (const mascot of ['hale-turtle', 'village-illustration', 'diamondhead', 'shore-ultrawide']) {
       expect(html, `${mascot} must not appear`).not.toContain(mascot);
     }
