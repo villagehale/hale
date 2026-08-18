@@ -7,6 +7,7 @@ import {
   type RunAgentArgs,
   type RunAgentResult,
   type Skill,
+  agentRunCostUsd,
   pickModel,
   runAgent,
 } from '@hale/agent';
@@ -67,10 +68,6 @@ const MAX_STEPS = 6;
 /** Deliberately below Ask's 1024: a two-segment reply is ~40 tokens, and the ceiling is
  * a real backstop against an answer the post-processor would have to amputate. */
 const MAX_TOKENS = 400;
-
-/** Sonnet rates, USD per 1M — mirrors coach/agent.ts and the worker cost table. */
-const SONNET_RATE = { inputPerMTok: 3, outputPerMTok: 15 } as const;
-const PER_MTOK = 1_000_000;
 
 /** The agent_runs name for a texted turn (migration 0075). Separate from 'ask-hale'
  * because the two surfaces have different latency and cost shapes over one brain. */
@@ -232,8 +229,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               );
             });
 
+          const modelUsed = pickModel(skill.meta.task);
           trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
-            model: pickModel(skill.meta.task),
+            model: modelUsed,
             usage: result.usage,
           });
 
@@ -244,9 +242,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             latencyMs: Date.now() - startedAt,
             promptTokens: result.usage.promptTokens,
             completionTokens: result.usage.completionTokens,
-            costUsd:
-              (result.usage.promptTokens * SONNET_RATE.inputPerMTok) / PER_MTOK +
-              (result.usage.completionTokens * SONNET_RATE.outputPerMTok) / PER_MTOK,
+            costUsd: agentRunCostUsd(modelUsed, result.usage),
             promptCacheHit: result.usage.cacheReadTokens > 0,
             langfuseTraceId: trace.traceId,
           });

@@ -127,7 +127,12 @@ describe('runAgent loop mechanics', () => {
     expect(result.steps).toBe(2);
     expect(result.hitMaxSteps).toBe(false);
     // Usage is summed across both round-trips.
-    expect(result.usage).toEqual({ promptTokens: 220, completionTokens: 50, cacheReadTokens: 0 });
+    expect(result.usage).toEqual({
+      promptTokens: 220,
+      completionTokens: 50,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
     // The tool went through the guarded invoker → an audit row was written (rule #6).
     expect(audits).toEqual([
       {
@@ -320,7 +325,12 @@ describe('runAgentStreaming', () => {
     expect(result.answer).toBe('around six months.');
     expect(result.steps).toBe(1);
     expect(result.hitMaxSteps).toBe(false);
-    expect(result.usage).toEqual({ promptTokens: 80, completionTokens: 12, cacheReadTokens: 0 });
+    expect(result.usage).toEqual({
+      promptTokens: 80,
+      completionTokens: 12,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
     // The single answer turn never reset.
     expect(resets).toBe(0);
   });
@@ -361,7 +371,12 @@ describe('runAgentStreaming', () => {
     expect(result.answer).toBe('right on track.');
     expect(result.steps).toBe(2);
     // Usage summed across both round-trips.
-    expect(result.usage).toEqual({ promptTokens: 220, completionTokens: 50, cacheReadTokens: 0 });
+    expect(result.usage).toEqual({
+      promptTokens: 220,
+      completionTokens: 50,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
     // The tool went through the guarded invoker → an audit row (rule #6).
     expect(audits).toEqual([
       {

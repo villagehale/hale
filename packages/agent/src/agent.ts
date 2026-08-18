@@ -61,12 +61,17 @@ export interface RunAgentArgs {
 }
 
 export interface AgentUsage {
+  /** Every token billed at (or above) the full input rate: fresh prompt tokens
+   * plus the cache writes below, which are the slice of it that bills at 1.25x. */
   promptTokens: number;
   completionTokens: number;
   /** Tokens served from the prompt cache across the loop — zero means every turn
    * paid full price, which is the signal the cache_control breakpoint is not
    * landing (MEM-9). */
   cacheReadTokens: number;
+  /** Tokens written to the prompt cache across the loop. Carried separately from
+   * `promptTokens` because they bill at a 1.25x premium (see cost.ts). */
+  cacheCreationTokens: number;
 }
 
 export interface RunAgentResult {
@@ -438,6 +443,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
   let completionTokens = 0;
   let steps = 0;
 
@@ -453,6 +459,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
     completionTokens += response.usage.output_tokens;
     cacheReadTokens += response.usage.cache_read_input_tokens ?? 0;
+    cacheCreationTokens += response.usage.cache_creation_input_tokens ?? 0;
 
     const toolUses = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
@@ -463,7 +470,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         answer: textFrom(response.content),
         steps,
         hitMaxSteps: false,
-        usage: { promptTokens, completionTokens, cacheReadTokens },
+        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
 
@@ -474,7 +481,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     answer: null,
     steps,
     hitMaxSteps: true,
-    usage: { promptTokens, completionTokens, cacheReadTokens },
+    usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
   };
 }
 
@@ -498,6 +505,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
   let completionTokens = 0;
   let steps = 0;
 
@@ -522,6 +530,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
     completionTokens += response.usage.output_tokens;
     cacheReadTokens += response.usage.cache_read_input_tokens ?? 0;
+    cacheCreationTokens += response.usage.cache_creation_input_tokens ?? 0;
 
     const toolUses = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
@@ -532,7 +541,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
         answer: textFrom(response.content),
         steps,
         hitMaxSteps: false,
-        usage: { promptTokens, completionTokens, cacheReadTokens },
+        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
 
@@ -549,6 +558,6 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     answer: null,
     steps,
     hitMaxSteps: true,
-    usage: { promptTokens, completionTokens, cacheReadTokens },
+    usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
   };
 }

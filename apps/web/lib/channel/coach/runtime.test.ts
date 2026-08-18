@@ -40,7 +40,7 @@ function answering(answer: string | null, hitMaxSteps = false): ChannelCoachPort
     answer,
     steps: 1,
     hitMaxSteps,
-    usage: { promptTokens: 100, cacheReadTokens: 0, completionTokens: 20 },
+    usage: { promptTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, completionTokens: 20 },
   });
 }
 
@@ -48,6 +48,7 @@ interface Recorded {
   agentName: string;
   status: string;
   latencyMs: number;
+  costUsd: number;
 }
 
 function ports(overrides: Partial<ChannelCoachPorts> = {}) {
@@ -67,7 +68,12 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     client: () => ({ messages: {} }) as never,
     runAgent: answering('Move swim to Tue 4:30? YES to confirm.'),
     recordRun: async (run) => {
-      recorded.push({ agentName: run.agentName, status: run.status, latencyMs: run.latencyMs });
+      recorded.push({
+        agentName: run.agentName,
+        status: run.status,
+        latencyMs: run.latencyMs,
+        costUsd: run.costUsd,
+      });
     },
     now: () => NOW,
     ...overrides,
@@ -231,6 +237,35 @@ describe('channelCoachRuntime', () => {
       expect.objectContaining({ agentName: 'coach-channel-sms', status: 'completed' }),
     ]);
     expect(p.recorded[0]?.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  /**
+   * The cached tiers are billed, so they are recorded. A cached turn pays 0.1x the
+   * input rate on every cache-read token and 1.25x on every cache-write token;
+   * pricing promptTokens + completionTokens alone books thousands of billed tokens
+   * at $0 and understates the loop-health $/family the founder reads.
+   *
+   * Derived from the Sonnet rates ($3/MTok in, $15/MTok out), not from output:
+   * 200*3 + 1024*3*1.25 + 5303*3*0.1 + 90*15 = 7380.9 → $0.0073809.
+   */
+  it('prices the cache-read and cache-write tiers into the recorded cost', async () => {
+    const p = ports({
+      runAgent: async () => ({
+        answer: 'ok.',
+        steps: 1,
+        hitMaxSteps: false,
+        usage: {
+          promptTokens: 1224,
+          cacheCreationTokens: 1024,
+          cacheReadTokens: 5303,
+          completionTokens: 90,
+        },
+      }),
+    });
+
+    await channelCoachRuntime(p).respond(turn());
+
+    expect(p.recorded[0]?.costUsd).toBeCloseTo(0.0073809, 9);
   });
 
   /** The per-turn draft cap lives in a closure inside the tool set, so a tool set
