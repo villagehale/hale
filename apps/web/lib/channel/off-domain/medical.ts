@@ -2,10 +2,11 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
+import { replyLanguage } from '~/lib/channel/language';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { SAFETY_REPLY } from './copy';
+import { SAFETY_REPLY_BY_LANGUAGE } from './copy';
 
 /**
  * The medical-symptom answer lane (founder-locked 2026-08-17).
@@ -573,13 +574,19 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
 /**
  * THE SINGLE SWAP POINT (founder-locked 2026-08-17: "safe line as last resort"). Reached
  * only after a live attempt AND one retry both failed to produce a real, grounded answer.
- * For now it is the fixed {@link SAFETY_REPLY}; if the founder moves to defer/
+ * For now it is the fixed safety line; if the founder moves to defer/
  * retry-until-generatable, this is the one function to change — the pipeline above stays.
  * Do NOT fold in the outage smoke-alarm path (route.ts / copy.ts EMERGENCY_TOKENS): that
  * is the model-UNREACHABLE case, and it is a separate, still-pending decision.
+ *
+ * IT TAKES THE PARENT'S WORDS, and this is the seam where the French twin earns its
+ * place rather than being a nicety. The `not_gsm7` gate above rejects any composed body
+ * outside the 1985 alphabet, and a real French answer about a sick child carries accents
+ * it does not always have — so a francophone parent is MORE likely to land here than an
+ * anglophone one, on the one message where being understood is the whole point.
  */
-function onMedicalTurnUnresolvable(): MedicalReply {
-  return { reply: SAFETY_REPLY, replySource: 'fixed' };
+function onMedicalTurnUnresolvable(text: string): MedicalReply {
+  return { reply: SAFETY_REPLY_BY_LANGUAGE[replyLanguage(text)], replySource: 'fixed' };
 }
 
 function logMedicalFailure(err: unknown, attempt: number): void {
@@ -606,7 +613,7 @@ export function createMedicalComposer(client: () => AgentClient): MedicalCompose
           logMedicalFailure(err, attempt);
         }
       }
-      return onMedicalTurnUnresolvable();
+      return onMedicalTurnUnresolvable(text);
     },
   };
 }

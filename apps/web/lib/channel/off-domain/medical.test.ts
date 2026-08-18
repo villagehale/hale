@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { SAFETY_REPLY } from './copy';
+import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from './copy';
 import {
   createMedicalComposer,
   detectRedFlag,
@@ -840,6 +840,69 @@ describe('the body must be sendable', () => {
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('unsendable');
     log.mockRestore();
+  });
+
+  /**
+   * THE OTHER HALF OF THE SAME GUARD, and the reason the fixed line now has a French
+   * twin at all.
+   *
+   * French is not excluded from this lane the way Chinese is — GSM-7 carries é è à ù, so
+   * an accented French answer CAN ship, and one that happens to avoid the rest of the
+   * accents does. What it cannot carry is â ê î ô û ç, and the single likeliest word in a
+   * French triage sentence is "hôpital". So the gate closes on French often but not
+   * always, unpredictably, on the wording of one clause — which is exactly why the
+   * fallback had to stop being English-only. Same fail-closed, same reason, same `fixed`
+   * source; what changed is that the words are in the parent's language and both numbers
+   * survive.
+   *
+   * CHINESE IS DIFFERENT AND STAYS EXCLUDED: it is UCS-2 by nature, so a Chinese safety
+   * line could never pass the GSM-7 authoring gate every string in copy.ts is held to.
+   * That is a decision about the segment budget, not a translation.
+   */
+  it('falls closed to the FRENCH safety line when the parent asked in French', async () => {
+    const log = quiet();
+    const french = {
+      answer: "Une fièvre chez un bébé de moins de trois mois demande un avis tout de suite.",
+      triage: "Composez le 911 ou allez à l'hôpital; le 811 répond aux questions.",
+    };
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult(OK_SANITIZE),
+        ground: groundResult(2),
+        compose: composeResult(french),
+      }),
+    ).answer('Ma fille de deux mois fait de la fievre, je dois faire quoi');
+
+    expect(out).toEqual({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
+    expect(out.reply).toContain('811');
+    expect(out.reply).toContain('911');
+    // Closed by the ENCODING gate on the circumflex, not for missing triage.
+    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
+    expect(reasons).toContain('unsendable');
+    log.mockRestore();
+  });
+
+  /**
+   * The positive control the test above needs to mean anything: the SAME French question,
+   * answered with a body that stays inside the alphabet, still ships as a real answer.
+   * Without this, "French falls closed" would also pass if French had been banned from
+   * this lane outright.
+   */
+  it('positive control: a French answer that stays inside GSM-7 still ships', async () => {
+    const sendable = {
+      answer: "Une fièvre chez un bébé de moins de trois mois demande un avis tout de suite.",
+      triage: "Composez le 911 ou allez à l'urgence; le 811 répond aux questions.",
+    };
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult(OK_SANITIZE),
+        ground: groundResult(2),
+        compose: composeResult(sendable),
+      }),
+    ).answer('Ma fille de deux mois fait de la fievre, je dois faire quoi');
+
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).not.toBe(SAFETY_REPLY_BY_LANGUAGE.fr);
   });
 
   it('falls closed when the composed body runs past the segment ceiling', async () => {

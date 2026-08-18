@@ -1,3 +1,4 @@
+import { SONNET_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { describe, expect, it, vi } from 'vitest';
@@ -149,7 +150,7 @@ function deps(
   return {
     client,
     loadPrompt: async () => 'DISCOVERY SYSTEM PROMPT',
-    loadModel: async () => 'claude-test-model',
+    loadModel: async () => SONNET_MODEL,
     geocode,
     geocodeArea,
   };
@@ -288,9 +289,11 @@ describe('discoverForFamily', () => {
     const run = capture.agentRuns[0] as Record<string, unknown>;
     expect(run.familyId).toBe(FAMILY_ID);
     expect(run.agentName).toBe('discovery');
-    expect(run.modelUsed).toBe('claude-test-model');
+    expect(run.modelUsed).toBe(SONNET_MODEL);
     expect(run.promptTokens).toBe(10);
     expect(run.completionTokens).toBe(20);
+    // Sonnet 4.6 $3 in / $15 out per MTok: 10 * 3e-6 + 20 * 15e-6 = $0.00033.
+    expect(run.costUsd).toBe('0.000330');
     expect(typeof run.latencyMs).toBe('number');
     expect(run.status).toBe('completed');
   });

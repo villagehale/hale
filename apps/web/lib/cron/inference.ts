@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickModel, runAgent } from '@hale/agent';
+import { type AgentClient, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
+import { recordAgentRun } from '~/lib/agent-run';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
@@ -107,7 +107,7 @@ export async function runInferenceForFamily(
         modelUsed,
         promptTokens: result.usage.promptTokens,
         completionTokens: result.usage.completionTokens,
-        costUsd: sonnetCostUsd(result.usage),
+        costUsd: agentRunCostUsd(modelUsed, result.usage),
         latencyMs: Date.now() - startedAt,
         status: 'completed',
         langfuseTraceId: trace.traceId,

@@ -245,6 +245,7 @@ export async function draftInlineAction(
     actionType,
     verdict: verdict.verdict,
     usage: verdict.usage,
+    costUsd: verdict.costUsd,
     model: SONNET_MODEL,
   });
 

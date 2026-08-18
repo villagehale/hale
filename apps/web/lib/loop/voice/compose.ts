@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, type Skill, pickModel, runAgent } from '@hale/agent';
+import { type AgentClient, type Skill, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { type RecordAgentRunInput, recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
+import { type RecordAgentRunInput, recordAgentRun } from '~/lib/agent-run';
 import { buildCronGuardDeps } from '~/lib/cron/guards';
 import { type AgentTraceName, traceAgentRun } from '~/lib/telemetry/langfuse';
 import { findInventedFacts } from './facts-lint';
@@ -156,7 +156,7 @@ export async function composeVoice<TVoice>(
           modelUsed,
           promptTokens: result.usage.promptTokens,
           completionTokens: result.usage.completionTokens,
-          costUsd: sonnetCostUsd(result.usage),
+          costUsd: agentRunCostUsd(modelUsed, result.usage),
           latencyMs: Date.now() - startedAt,
           status: voice ? 'completed' : 'failed',
           langfuseTraceId: trace.traceId,

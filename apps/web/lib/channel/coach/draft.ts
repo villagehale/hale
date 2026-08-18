@@ -170,6 +170,7 @@ export async function mintChannelCalendarDraft(
     actionType: input.actionType,
     verdict: verdict.verdict,
     usage: verdict.usage,
+    costUsd: verdict.costUsd,
     model: SONNET_MODEL,
   });
 

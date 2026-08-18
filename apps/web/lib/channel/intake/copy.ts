@@ -1,3 +1,4 @@
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { isReferralCode } from '~/lib/channel/referral/code';
 import { PRIVACY_URL } from '~/lib/legal-links';
 
@@ -21,6 +22,22 @@ import { PRIVACY_URL } from '~/lib/legal-links';
  *
  * Rule #1: no message ever carries a child's health detail, a precise location, or
  * anything the parent did not just tell us in this conversation.
+ *
+ * IT NOW HAS A FRENCH HALF. Hale already replied in French wherever a MODEL wrote the
+ * words; everything in this file was English, so a francophone parent got the composed
+ * turns in their language and every promise — the introduction, the consent ask, the
+ * acknowledgment, the region boundary — in someone else's. The French twin of each fixed
+ * line sits beside it in a `Record<ReplyLanguage, string>` whose `en` half IS the
+ * exported constant, so an English copy edit cannot be half-applied, and `replyLanguage`
+ * (lib/channel/language.ts) picks between them from the message that just arrived.
+ *
+ * THE FRENCH IS GSM-7, which is a constraint on the WORDS and not a fold applied after
+ * them. The alphabet carries é è à ù and not â ê î ô û ç, so the copy below is written
+ * around the characters it cannot have — and where the language leaves no way around one
+ * (`age`, which has no accent-free synonym in this register), the circumflex is dropped
+ * to its base letter exactly as `gsmSafe` folds a family's own name. Each such word is
+ * named at its constant. The alternative is a UCS-2 message at 70 characters a segment:
+ * triple the carrier bill on Hale's first sentence to a stranger, forever.
  */
 
 export interface SourceVenue {
@@ -112,10 +129,22 @@ export function venueForCode(code: string | null): SourceVenue | null {
  * sentence and cannot be skimmed past the way a closing parenthetical can. The privacy
  * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where a
  * parent is actually asked to agree to something.
+ *
+ * THE VENUE VARIANT HAS NO FRENCH TWIN, and that is a decision rather than a gap. The
+ * body that triggers it is the PREFILLED one a QR code wrote — "HALE LIBRARY", or
+ * "Hi (via earlyon-georgetown)" — which is machine-authored English carrying no evidence
+ * at all about the person holding the phone, so per-message detection can never route
+ * this branch to French. The venue names in {@link SOURCE_VENUES} are English nouns on
+ * top of that, and a French sentence cannot carry one without an article chosen per
+ * venue. A francophone who types their own first message gets the no-venue greeting,
+ * which is the one that asks for a postal code anyway.
  */
-export function greeting(venue: string | null): string {
+export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {
     return `Hi, I'm Hale - an AI that quietly runs the family week for parents around here. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll get to work.`;
+  }
+  if (language === 'fr') {
+    return `Bonjour, je suis Hale - une IA qui gère discrètement la semaine familiale. Les dates d'inscription, les sorties de fin de semaine, ce qui risque de vous échapper. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
   }
   return `Hi, I'm Hale - an AI that quietly runs the family week. Registration dates, weekend plans, the stuff that slips. ${COLD_START_ASK}`;
 }
@@ -133,6 +162,21 @@ export function greeting(venue: string | null): string {
  */
 export const COLD_START_ASK =
   "Tell me your kids' names and ages, plus your postal code - and I'll get to work.";
+
+/**
+ * The same ask, in the language the parent just wrote in.
+ *
+ * FOLDED WORD: `l'age`. GSM-7 has no â, and French has no accent-free synonym for "âge"
+ * in this register — every alternative asks for something else (a birth date is more
+ * data than Hale needs, a birth year is a different question, and the extractor is tuned
+ * for ages). So the circumflex drops to its base letter, which is what `gsmSafe` already
+ * does to a family's own name and what every French phone keyboard does under pressure.
+ * FOUNDER REVIEW: this is the one deliberate misspelling in the French script.
+ */
+export const COLD_START_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: COLD_START_ASK,
+  fr: "Dites-moi le nom et l'age de vos enfants, plus votre code postal - et je me mets au travail.",
+};
 
 /**
  * What intake still needs before a family can be set up. Both are hard requirements
@@ -191,6 +235,25 @@ export const WATCH_OFFER_ASK = 'Want me to keep an eye on all of this for you?';
 export const WATCH_OFFER = `${WATCH_OFFER_ASK} (how I handle your family's info: ${PRIVACY_URL})`;
 
 /**
+ * The French consent moment, built the same way: the ask, then the SAME privacy
+ * constant. A second literal copy of the URL is how one language ends up pointing at a
+ * policy that moved.
+ *
+ * `un oeil` rather than `un œil`: the ligature is not in GSM-7 and the digraph is its
+ * standard ASCII spelling, so nothing is lost. `tout cela` rather than `tout ça`: the
+ * alphabet has no lowercase ç, and folding it would leave "ca", which is not a word.
+ */
+export const WATCH_OFFER_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: WATCH_OFFER_ASK,
+  fr: 'Voulez-vous que je garde un oeil sur tout cela pour vous?',
+};
+
+export const WATCH_OFFER_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: WATCH_OFFER,
+  fr: `${WATCH_OFFER_ASK_BY_LANGUAGE.fr} (comment je traite les infos de votre famille : ${PRIVACY_URL})`,
+};
+
+/**
  * The yes. Names the restraint (only when it matters) and keeps the CASL escape hatch
  * visible. Fixed, because both of those are promises and a promise a model paraphrased
  * is a promise nobody made.
@@ -220,6 +283,35 @@ export const AMBIGUOUS_CLARIFY =
   "Happy either way - should I watch the registration dates at least? That one's easy to miss.";
 
 /**
+ * The three consent-turn answers in French.
+ *
+ * ASSENT_ACK_FR IS LENGTH-CONSTRAINED, and it is the only line here that is. The identity
+ * ask appended to it is budgeted from the ENGLISH constant
+ * (`MAX_TAIL_ASK_CHARS = MAX_ASK_CHARS - ASSENT_ACK.length - 1`, identity/ask-voice.ts),
+ * so a longer French twin would push the consent turn into two segments with nothing
+ * failing anywhere. The test in copy.test.ts holds it to one segment WITH a full-budget
+ * tail; the words below were cut to fit that, not the other way round.
+ *
+ * `tout est couvert` rather than `vous etes couvert`: GSM-7 has no ê, and the fold would
+ * be visible in the most prominent word of the most important message. It also sidesteps
+ * a gender agreement Hale has no business guessing about the parent.
+ */
+export const ASSENT_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: ASSENT_ACK,
+  fr: "C'est fait - tout est couvert. Je texte juste quand il le faut, et STOP marche toujours.",
+};
+
+export const DECLINE_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: DECLINE_ACK,
+  fr: 'Pas de problème - textez-moi quand vous voulez. Les dates et les trouvailles sont là quand vous en aurez besoin.',
+};
+
+export const AMBIGUOUS_CLARIFY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: AMBIGUOUS_CLARIFY,
+  fr: "Comme vous voulez - je surveille au moins les dates d'inscription? Celles-là sont faciles à manquer.",
+};
+
+/**
  * The CASL keyword replies. STOP gets one final confirmation and then silence; HELP
  * (and anything unparseable) gets the same honest capability line, because a parent
  * who typed something we couldn't read needs to know what we CAN do, not an error.
@@ -229,6 +321,43 @@ export const STOP_ACK =
 export const HELP_REPLY =
   "I'm Hale - I keep track of your family's week and text you when something needs doing. Tell me your kids' names and ages and I'll take it from there. Reply STOP to unsubscribe.";
 export const START_ACK = "You're back - I'll text you when something needs doing.";
+
+/**
+ * The French keyword replies, and the honest note on when they can actually fire.
+ *
+ * WHAT CANADIAN CARRIERS REQUIRE, verified against the Canadian Telecommunications
+ * Association's "Canadian Common Short Code Compliance Policies" v2.1 (January 2026,
+ * §3.1): five keywords are mandatory for every program — STOP, ARRET, HELP, AIDE, INFO —
+ * "regardless of the intended audience", and texting AIDE or ARRET "must return a French
+ * response" while a French-only program must still answer English STOP and HELP. Twilio
+ * recognises NONE of the French ones by default: its built-in set is English only
+ * (STOP/STOPALL/UNSUBSCRIBE/CANCEL/END/REVOKE/OPTOUT/QUIT, START/YES/UNSTOP, HELP/INFO),
+ * and localised keywords exist only as explicit entries on a Messaging Service with
+ * Advanced Opt-Out configured. CASL itself is silent on the language of the unsubscribe
+ * mechanism; the carrier policy is the binding requirement here, not the statute.
+ *
+ * HALE DOES NOT MEET THAT YET, and the copy below refuses to pretend otherwise.
+ * `matchKeyword` (keywords.ts) reads the English list alone, so ARRET and AIDE are
+ * ordinary conversation today. That is why the French HELP line says "Répondez STOP"
+ * rather than offering AIDE: naming a keyword that does nothing is worse than not naming
+ * it, and STOP is the word that is verified to work in both languages.
+ *
+ * IT ALSO MEANS THESE TWO TWINS ARE MOSTLY UNREACHABLE, which is stated rather than
+ * hidden. A body that IS the token "HELP" or "START" carries no French evidence for
+ * `replyLanguage` to read, so the English line goes out. The French HELP line does fire
+ * on the OTHER path into it — an unparseable first reply during intake (machine.ts) —
+ * and both become properly reachable the day keywords.ts learns AIDE, ARRET and DEBUT,
+ * which is the follow-up this note exists to name.
+ */
+export const HELP_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: HELP_REPLY,
+  fr: "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez STOP pour vous désabonner.",
+};
+
+export const START_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: START_ACK,
+  fr: 'Vous voilà de retour - je vous texte quand quelque chose demande votre attention.',
+};
 
 /**
  * Said ONCE when the one follow-up went unanswered and something Hale cannot invent is
@@ -250,3 +379,17 @@ export function detailsBlocked(missing: readonly IntakeGap[]): string {
  * believing they are signed up. */
 export const REGION_UNAVAILABLE_REPLY =
   "I'm only set up for families in Canada right now, so I can't help yet - I haven't set anything up.";
+
+/**
+ * The same honest close in French, and the one Hale is most likely to owe a francophone:
+ * a Quebec postal code is inside the region and an out-of-country one is not, so this
+ * line is what a French-writing parent outside Canada reads.
+ *
+ * `Je fonctionne` rather than `Je suis configurée`: Hale takes no gender in French, here
+ * or anywhere else in this file, and a participle that agreed with "une IA" would be the
+ * product quietly choosing one.
+ */
+export const REGION_UNAVAILABLE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: REGION_UNAVAILABLE_REPLY,
+  fr: "Je fonctionne seulement pour les familles au Canada pour l'instant, donc je ne peux pas encore vous aider - je n'ai rien mis en place.",
+};
