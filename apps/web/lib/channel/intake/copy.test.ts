@@ -61,6 +61,14 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(venueForCode('earlyon-richmondhill')?.name).toBe('EarlyON centre');
   });
 
+  it('reads the Georgetown EarlyON venue from both prefilled-body forms (the free-Family comp poster)', () => {
+    // The comp poster's QR prefills one of these two bodies; both must resolve to the code
+    // the lifetime-Family grant is keyed on (LIFETIME_FAMILY_SOURCE_CODES).
+    expect(sourceCodeFromBody('HALE earlyon-georgetown')).toBe('earlyon-georgetown');
+    expect(sourceCodeFromBody('Hi (via earlyon-georgetown)')).toBe('earlyon-georgetown');
+    expect(venueForCode('earlyon-georgetown')?.name).toBe('EarlyON centre');
+  });
+
   it('refuses an unknown suffix code and ignores a mid-message "(via …)"', () => {
     expect(sourceCodeFromBody('Hi (via atlantis-nowhere)')).toBeNull();
     expect(sourceCodeFromBody('we went (via the highway) to the park')).toBeNull();

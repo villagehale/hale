@@ -7,6 +7,7 @@ import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
 import type { TranscriptEntry } from './session';
+import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 
 /**
  * VIL-237 · M2 — provisioning a family from a text conversation. Mirrors
@@ -113,6 +114,11 @@ export async function provisionFromIntake(
   // tag that matches no family — all ordinary (see resolveReferrerFamilyId).
   const referredByFamilyId = await resolveReferrerFamilyId(database, input.sourceCode);
 
+  // A comp poster (LIFETIME_FAMILY_SOURCE_CODES) grants the arriving family the Family
+  // tier for life — set on the insert below and recorded in its own audit row.
+  const lifetimeFamilyComp =
+    input.sourceCode !== null && LIFETIME_FAMILY_SOURCE_CODES.has(input.sourceCode);
+
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     const userId = await ensureIntakeUser(tx, externalAuthId);
@@ -127,6 +133,7 @@ export async function provisionFromIntake(
         country: INTAKE_COUNTRY,
         postalCode: location.postalCode,
         areaCoarse: location.areaCoarse,
+        ...(lifetimeFamilyComp ? { planTier: 'family' as const } : {}),
       })
       .returning({ id: schema.families.id });
     const familyId = family?.id;
@@ -265,6 +272,19 @@ export async function provisionFromIntake(
           verification: 'inbound_origination',
         },
       },
+      ...(lifetimeFamilyComp
+        ? [
+            {
+              familyId,
+              actor: userId,
+              actionTaken: 'family_plan_comped',
+              targetTable: 'families',
+              targetId: familyId,
+              before: { planTier: 'free' as const },
+              after: { planTier: 'family' as const, source: input.sourceCode, lifetime: true },
+            },
+          ]
+        : []),
     ]);
 
     return { familyId, userId, channelId };
