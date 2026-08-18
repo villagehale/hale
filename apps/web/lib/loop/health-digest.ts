@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, count, eq, gte, inArray, isNotNull, lt } from 'drizzle-orm';
+import { and, count, countDistinct, eq, gt, gte, inArray, isNotNull, lt } from 'drizzle-orm';
 import type { Resend } from 'resend';
 import { founderAddress } from '~/lib/auth/founder-signal';
 import { createResendTransport } from '~/lib/channel/resend-transport';
@@ -9,11 +9,25 @@ import {
   PROVIDER_INCIDENT_ROUTE,
   providerIncidentKind,
 } from '~/lib/monitoring/provider-health';
+import { MAX_WINDOWS_PER_RUN, REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
 import {
   aggregateFunnelScoreboard,
+  DELIVERED_STATUSES,
   type FunnelScoreboard,
   formatFunnelScoreboard,
 } from './funnel-scoreboard';
+import {
+  type FamilyEngagement,
+  type RadarVerification,
+  type ScorecardRow,
+  gradeActivation,
+  gradeDeliverability,
+  gradeDemand,
+  gradeEngagement,
+  gradeRadarAccuracy,
+  gradeSafety,
+  gradeUnitCost,
+} from './scorecard-rubric';
 
 /**
  * X1 (VIL-227) · the weekly loop-health digest to the founder. Reuses the
@@ -29,6 +43,13 @@ import {
 
 export interface MessageCountRow {
   channel: string;
+  /**
+   * Which way the leg went. Inbound rows are written `status: 'delivered'` — one per
+   * text a parent sends — so a breakdown without this column cannot tell a delivery
+   * from a reply, and the scorecard's deliverability row would count a chatty week as
+   * a flawless send record.
+   */
+  direction: string;
   category: string;
   status: string;
   count: number;
@@ -70,14 +91,47 @@ export interface LoopHealthSummary {
    * unkept is exactly what a trailing-7-day count would hide.
    */
   commitmentDebt: CommitmentDebt;
+  /** The scorecard's engagement row: families that had a full week in which to hear
+   * from Hale, and how many did. */
+  engagement: FamilyEngagement;
+  /** The scorecard's radar row: whether the weekly re-verify sweep ran, and how much
+   * of the actionable dataset it re-confirmed at source. */
+  radar: RadarVerification;
   /** VIL-273 · what parents asked for that Hale does not do, bucketed. Any order —
    * the formatter ranks it. */
   unmetIntents: UnmetIntentRow[];
 }
 
-/** Sums channel_messages (outbound legs) by channel/category/status, the loop_stop
- * count (email_opt_outs rows landed on a loop stream), and week_plans composed —
- * all within [windowStart, windowEnd). */
+type MessageCategory = (typeof schema.channelMessageCategoryEnum.enumValues)[number];
+
+/**
+ * The categories whose messages exist because somebody ELSE started something — a
+ * parent's reply, an intake conversation they opened, a caregiver invite they sent, a
+ * guest RSVPing to their party, a phone call Hale texted back. Everything else in the
+ * enum is Hale making contact first, which is what the engagement row counts.
+ *
+ * Written as the EXCLUSIONS rather than the inclusions on purpose. A category added to
+ * this enum is far likelier to be another proactive class — `nudge`, `village_intro`,
+ * `followup` and `plan_check_in` all were — so the default must be to count it. An
+ * inclusion list would drop the next one silently, and a silently shrinking numerator
+ * reads as a loop going quiet.
+ */
+const PARENT_STARTED_CATEGORIES: readonly MessageCategory[] = [
+  'reply',
+  'intake',
+  'caregiver',
+  'rsvp',
+  'voice',
+];
+
+const HALE_INITIATED_CATEGORIES: MessageCategory[] =
+  schema.channelMessageCategoryEnum.enumValues.filter(
+    (category) => !PARENT_STARTED_CATEGORIES.includes(category),
+  );
+
+/** Sums channel_messages by channel/direction/category/status, the loop_stop count
+ * (email_opt_outs rows landed on a loop stream), and week_plans composed — all
+ * within [windowStart, windowEnd). */
 export async function aggregateLoopHealth(
   database: Database,
   windowStart: Date,
@@ -86,6 +140,7 @@ export async function aggregateLoopHealth(
   const messageCounts = await database
     .select({
       channel: schema.channelMessages.channel,
+      direction: schema.channelMessages.direction,
       category: schema.channelMessages.category,
       status: schema.channelMessages.status,
       count: count(),
@@ -97,7 +152,12 @@ export async function aggregateLoopHealth(
         lt(schema.channelMessages.createdAt, windowEnd),
       ),
     )
-    .groupBy(schema.channelMessages.channel, schema.channelMessages.category, schema.channelMessages.status);
+    .groupBy(
+      schema.channelMessages.channel,
+      schema.channelMessages.direction,
+      schema.channelMessages.category,
+      schema.channelMessages.status,
+    );
 
   const [stopRow] = await database
     .select({ count: count() })
@@ -153,6 +213,8 @@ export async function aggregateLoopHealth(
     .groupBy(schema.channelMessages.unmetLane, schema.channelMessages.unmetCategory);
 
   const scoreboard = await aggregateFunnelScoreboard(database, windowStart, windowEnd);
+  const engagement = await aggregateFamilyEngagement(database, windowStart, windowEnd);
+  const radar = await aggregateRadarVerification(database, windowStart, windowEnd);
 
   // MEM-10 · read as of the window's END rather than over the window, because debt is a
   // balance. NEVER a send: this sweep's whole job is that the debt is VISIBLE to the
@@ -172,6 +234,8 @@ export async function aggregateLoopHealth(
     })),
     scoreboard,
     commitmentDebt,
+    engagement,
+    radar,
     // The check constraint makes a half-stamped row unwritable, so a lane implies a
     // category; the coalesce is a type narrowing, not a guess about missing data.
     unmetIntents: unmetRows.map((row) => ({
@@ -179,6 +243,108 @@ export async function aggregateLoopHealth(
       category: row.category ?? 'unknown',
       count: row.count,
     })),
+  };
+}
+
+/**
+ * The engagement row's two numbers.
+ *
+ * THE DENOMINATOR IS FAMILIES THAT EXISTED FOR THE WHOLE WINDOW. A family that signed
+ * up on Saturday had a day, not a week, and counting it would make every good growth
+ * week read as a quiet loop — the metric would punish exactly the thing it wants. The
+ * same predicate is applied to the numerator's join, so the ratio can never exceed 1.
+ *
+ * The numerator counts legs that LEFT (see DELIVERED_STATUSES): a nudge suppressed by
+ * quiet hours is not contact, however good the intention behind it was.
+ */
+export async function aggregateFamilyEngagement(
+  database: Database,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<FamilyEngagement> {
+  const establishedBeforeWindow = lt(schema.families.createdAt, windowStart);
+
+  const [familiesRow] = await database
+    .select({ count: count() })
+    .from(schema.families)
+    .where(establishedBeforeWindow);
+
+  const [contactedRow] = await database
+    .select({ count: countDistinct(schema.channelMessages.familyId) })
+    .from(schema.channelMessages)
+    .innerJoin(schema.families, eq(schema.families.id, schema.channelMessages.familyId))
+    .where(
+      and(
+        establishedBeforeWindow,
+        eq(schema.channelMessages.direction, 'out'),
+        inArray(schema.channelMessages.category, HALE_INITIATED_CATEGORIES),
+        inArray(schema.channelMessages.status, [...DELIVERED_STATUSES]),
+        gte(schema.channelMessages.createdAt, windowStart),
+        lt(schema.channelMessages.createdAt, windowEnd),
+      ),
+    );
+
+  return { families: familiesRow?.count ?? 0, contacted: contactedRow?.count ?? 0 };
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The radar row's three numbers, read from the two things the re-verify sweep actually
+ * leaves behind: its weekly claim row, and the `verified_at` it bumps on a confirmation.
+ *
+ * WHY THE CLAIM IS TESTED FOR OVERLAP, NOT CONTAINMENT. The sweep claims a MONDAY-
+ * ALIGNED week, and this digest runs Monday 14:00 UTC — two hours BEFORE that same
+ * Monday's sweep (16:00). So the sweep this digest reports on is LAST Monday's, whose
+ * claim row is stamped with a week start that falls just before the digest window
+ * opens. A containment test would therefore report every single week as "the sweep did
+ * not run". A claimed week [monday, monday+7d) overlaps this window when its start is
+ * after windowStart − 7d and before windowEnd, which is what the predicate below says.
+ *
+ * `windowsDue` is capped at the sweep's own per-run ceiling because that is genuinely
+ * all it attempts: rows beyond the cap were never checked, and counting them as
+ * unconfirmed would grade the radar down for the size of its own dataset.
+ */
+export async function aggregateRadarVerification(
+  database: Database,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<RadarVerification> {
+  const [claimRow] = await database
+    .select({ count: count() })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, REGISTRATION_VERIFY_ROUTE),
+        gt(schema.rateLimits.windowStart, new Date(windowStart.getTime() - WEEK_MS)),
+        lt(schema.rateLimits.windowStart, windowEnd),
+      ),
+    );
+
+  // The sweep's own eligibility rule — windows a family could still act on — read as
+  // of the moment the window opened, which is within hours of when the sweep read it.
+  const stillActionable = gte(schema.registrationWindows.openAt, windowStart);
+
+  const [dueRow] = await database
+    .select({ count: count() })
+    .from(schema.registrationWindows)
+    .where(stillActionable);
+
+  const [confirmedRow] = await database
+    .select({ count: count() })
+    .from(schema.registrationWindows)
+    .where(
+      and(
+        stillActionable,
+        gte(schema.registrationWindows.verifiedAt, windowStart),
+        lt(schema.registrationWindows.verifiedAt, windowEnd),
+      ),
+    );
+
+  return {
+    sweptThisWeek: (claimRow?.count ?? 0) > 0,
+    windowsDue: Math.min(dueRow?.count ?? 0, MAX_WINDOWS_PER_RUN),
+    confirmed: confirmedRow?.count ?? 0,
   };
 }
 
@@ -235,12 +401,57 @@ function openLoopsLine(debt: CommitmentDebt): string {
   return `Open loops: Hale owes ${plural(debt.overdueFamilies, 'family', 'families')} something overdue (${plural(debt.overdueCommitments, 'promise', 'promises')} past due, ${debt.openCommitments} open)`;
 }
 
+/**
+ * The seven graded rows, each fed the slice of the week it grades and nothing else.
+ *
+ * The order is the loop's own: a family is found (demand), answered (activation),
+ * looked after (engagement), told the truth (radar accuracy), actually reached
+ * (deliverability), kept safe (safety), and paid for (unit cost). Read top to bottom
+ * it is the product's whole causal chain, so the first row that drops is usually the
+ * one the others are downstream of.
+ */
+export function buildScorecard(summary: LoopHealthSummary): ScorecardRow[] {
+  const { intake, ttfa, cogs } = summary.scoreboard;
+  return [
+    gradeDemand(intake),
+    gradeActivation({
+      p50Seconds: ttfa.p50Seconds,
+      provisioned: intake.provisioned,
+      sessionsStarted: intake.sessionsStarted,
+    }),
+    gradeEngagement(summary.engagement),
+    gradeRadarAccuracy(summary.radar),
+    gradeDeliverability(summary.messageCounts),
+    gradeSafety(summary.unmetIntents),
+    gradeUnitCost(cogs),
+  ];
+}
+
+/** Widest label ('Deliverability', 'Radar accuracy') plus two spaces, so every score
+ * lands in one column and a two-digit 10 never runs into the label it grades. */
+const SCORECARD_LABEL_WIDTH = 16;
+
+/** An ungradeable row. A dash, never a 0 — the two are opposite claims. */
+const NO_GRADE = '–';
+
+function scorecardLines(rows: ScorecardRow[]): string[] {
+  return rows.map((row) => {
+    const score = (row.score === null ? NO_GRADE : String(row.score)).padStart(2);
+    return `  ${row.label.padEnd(SCORECARD_LABEL_WIDTH)}${score}/10 · ${row.reason}`;
+  });
+}
+
 /** Plain-text founder digest body. Pure — no DB, no network — so the format is
  * unit-tested against worked summaries. Counts only (rule #1): no family/child/
  * parent identifying detail ever enters this text. */
 export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
   const lines: string[] = [
     `Hale · loop health · ${isoDate(summary.windowStart)} – ${isoDate(summary.windowEnd)}`,
+    '',
+    // The scorecard leads. Everything below it is the evidence for these seven
+    // judgements, not a second set of things to interpret.
+    'SCORECARD · every threshold is a named constant in lib/loop/scorecard-rubric.ts',
+    ...scorecardLines(buildScorecard(summary)),
     '',
     `Weekly plans composed: ${summary.weekPlansComposed}`,
     `STOPs (loop unsubscribes): ${summary.stopCount}`,
@@ -270,7 +481,9 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
     lines.push('  (none)');
   } else {
     for (const row of summary.messageCounts) {
-      lines.push(`  ${row.channel} · ${row.category} · ${row.status}: ${row.count}`);
+      lines.push(
+        `  ${row.channel} · ${row.direction} · ${row.category} · ${row.status}: ${row.count}`,
+      );
     }
   }
   return lines.join('\n');

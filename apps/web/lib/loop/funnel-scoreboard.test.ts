@@ -215,7 +215,7 @@ describe('computeNudgeEngagement — replies within 48h', () => {
 });
 
 const EMPTY: FunnelScoreboard = {
-  intake: { sessionsStarted: 0, provisioned: 0, watchConsented: 0 },
+  intake: { sessionsStarted: 0, provisioned: 0, watchConsented: 0, sourceCoded: 0 },
   ttfa: { p50Seconds: null, derivedFamilies: 0, notDerivableFamilies: 0 },
   nudges: { sent: 0, matured: 0, replied: 0 },
   cogs: { totalUsd: 0, families: 0 },
@@ -232,7 +232,7 @@ function lineStartingWith(scoreboard: FunnelScoreboard, prefix: string): string 
 describe('formatFunnelScoreboard', () => {
   it('walks the intake funnel with each step converted from the one before it', () => {
     const line = lineStartingWith(
-      { ...EMPTY, intake: { sessionsStarted: 12, provisioned: 9, watchConsented: 5 } },
+      { ...EMPTY, intake: { sessionsStarted: 12, provisioned: 9, watchConsented: 5, sourceCoded: 4 } },
       'Intake funnel',
     );
 
@@ -243,7 +243,7 @@ describe('formatFunnelScoreboard', () => {
 
   it('never divides by a zero step — an unreachable rate reads n/a', () => {
     const line = lineStartingWith(
-      { ...EMPTY, intake: { sessionsStarted: 3, provisioned: 0, watchConsented: 0 } },
+      { ...EMPTY, intake: { sessionsStarted: 3, provisioned: 0, watchConsented: 0, sourceCoded: 0 } },
       'Intake funnel',
     );
 

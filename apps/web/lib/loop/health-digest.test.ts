@@ -7,10 +7,11 @@ import {
   type LoopHealthSummary,
   runLoopHealthDigestCron,
 } from './health-digest';
+import type { FamilyEngagement, RadarVerification } from './scorecard-rubric';
 
 /** The pre-launch scoreboard — the state every fixture below is in. */
 const EMPTY_SCOREBOARD: FunnelScoreboard = {
-  intake: { sessionsStarted: 0, provisioned: 0, watchConsented: 0 },
+  intake: { sessionsStarted: 0, provisioned: 0, watchConsented: 0, sourceCoded: 0 },
   ttfa: { p50Seconds: null, derivedFamilies: 0, notDerivableFamilies: 0 },
   nudges: { sent: 0, matured: 0, replied: 0 },
   cogs: { totalUsd: 0, families: 0 },
@@ -22,6 +23,12 @@ const NO_DEBT: CommitmentDebt = {
   overdueCommitments: 0,
   openCommitments: 0,
 };
+
+/** No family had been around a whole week yet — the scorecard's ungradeable state. */
+const NO_ENGAGEMENT: FamilyEngagement = { families: 0, contacted: 0 };
+
+/** No re-verify sweep overlapped the window. */
+const NO_RADAR: RadarVerification = { sweptThisWeek: false, windowsDue: 0, confirmed: 0 };
 
 /**
  * X1 (VIL-227) · the weekly founder digest. The DB aggregation (aggregateLoopHealth)
@@ -35,15 +42,23 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       windowStart: new Date('2026-07-13T00:00:00Z'),
       windowEnd: new Date('2026-07-20T00:00:00Z'),
       messageCounts: [
-        { channel: 'email', category: 'weekly_plan', status: 'sent', count: 42 },
-        { channel: 'push', category: 'weekly_plan', status: 'sent', count: 30 },
-        { channel: 'email', category: 'reminder', status: 'suppressed_quiet_hours', count: 3 },
+        { channel: 'email', direction: 'out', category: 'weekly_plan', status: 'sent', count: 42 },
+        { channel: 'push', direction: 'out', category: 'weekly_plan', status: 'sent', count: 30 },
+        {
+          channel: 'email',
+          direction: 'out',
+          category: 'reminder',
+          status: 'suppressed_quiet_hours',
+          count: 3,
+        },
       ],
       stopCount: 1,
       weekPlansComposed: 45,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
       commitmentDebt: NO_DEBT,
+      engagement: NO_ENGAGEMENT,
+      radar: NO_RADAR,
       unmetIntents: [],
     };
 
@@ -53,9 +68,9 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
     expect(body).toContain('2026-07-20');
     expect(body).toContain('Weekly plans composed: 45');
     expect(body).toContain('STOPs (loop unsubscribes): 1');
-    expect(body).toContain('email · weekly_plan · sent: 42');
-    expect(body).toContain('push · weekly_plan · sent: 30');
-    expect(body).toContain('email · reminder · suppressed_quiet_hours: 3');
+    expect(body).toContain('email · out · weekly_plan · sent: 42');
+    expect(body).toContain('push · out · weekly_plan · sent: 30');
+    expect(body).toContain('email · out · reminder · suppressed_quiet_hours: 3');
   });
 
   it('is honest about an empty week — "(none)", never a fabricated row', () => {
@@ -68,6 +83,8 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
       commitmentDebt: NO_DEBT,
+      engagement: NO_ENGAGEMENT,
+      radar: NO_RADAR,
       unmetIntents: [],
     };
 
@@ -85,6 +102,8 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
       commitmentDebt: NO_DEBT,
+      engagement: NO_ENGAGEMENT,
+      radar: NO_RADAR,
       unmetIntents: [],
     };
 
@@ -105,6 +124,8 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       ],
       scoreboard: EMPTY_SCOREBOARD,
       commitmentDebt: NO_DEBT,
+      engagement: NO_ENGAGEMENT,
+      radar: NO_RADAR,
       unmetIntents: [],
     };
 
@@ -127,6 +148,8 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
       commitmentDebt: NO_DEBT,
+      engagement: NO_ENGAGEMENT,
+      radar: NO_RADAR,
       unmetIntents: [],
     });
 
@@ -152,6 +175,8 @@ describe('formatLoopHealthDigest — top unmet intents', () => {
     providerIncidents: [],
     scoreboard: EMPTY_SCOREBOARD,
     commitmentDebt: NO_DEBT,
+    engagement: NO_ENGAGEMENT,
+    radar: NO_RADAR,
   };
 
   it('ranks the buckets by how often they were asked', () => {
@@ -252,12 +277,16 @@ describe('runLoopHealthDigestCron', () => {
   const summary: LoopHealthSummary = {
     windowStart: new Date('2026-07-13T14:00:00Z'),
     windowEnd: NOW,
-    messageCounts: [{ channel: 'email', category: 'weekly_plan', status: 'sent', count: 5 }],
+    messageCounts: [
+      { channel: 'email', direction: 'out', category: 'weekly_plan', status: 'sent', count: 5 },
+    ],
     stopCount: 0,
     weekPlansComposed: 5,
     providerIncidents: [],
     scoreboard: EMPTY_SCOREBOARD,
     commitmentDebt: NO_DEBT,
+    engagement: NO_ENGAGEMENT,
+    radar: NO_RADAR,
     unmetIntents: [{ lane: 'off_domain_general', category: 'weather', count: 2 }],
   };
 
@@ -301,6 +330,8 @@ describe('formatLoopHealthDigest — overdue commitments', () => {
     weekPlansComposed: 0,
     providerIncidents: [],
     scoreboard: EMPTY_SCOREBOARD,
+    engagement: NO_ENGAGEMENT,
+    radar: NO_RADAR,
     unmetIntents: [],
   };
 
@@ -350,5 +381,138 @@ describe('formatLoopHealthDigest — overdue commitments', () => {
         commitmentDebt: { overdueFamilies: 0, overdueCommitments: 0, openCommitments: 0 },
       }),
     ).toBe('Open loops: nothing recorded yet - the ledger is empty');
+  });
+});
+
+/**
+ * THE SCORECARD. The mentor's rule — scorecards, not dashboards — applied to the one
+ * email that reports the whole loop: seven graded rows at the TOP, so the founder reads
+ * a judgement before they read a number, and the counts below become the evidence for
+ * it rather than the thing they have to interpret.
+ *
+ * Every score below is derived from the rubric's own thresholds (worked in
+ * scorecard-rubric.test.ts). What is worked HERE is the composition: that each row is
+ * fed the right slice of the summary, that the block sits above everything else, and
+ * that an ungradeable row renders `–/10` and never a zero.
+ */
+describe('formatLoopHealthDigest — the scorecard', () => {
+  /** A week with something in every row, so all seven grade rather than abstain. */
+  const LIVE_WEEK: LoopHealthSummary = {
+    windowStart: new Date('2026-08-10T14:00:00Z'),
+    windowEnd: new Date('2026-08-17T14:00:00Z'),
+    messageCounts: [
+      { channel: 'sms', direction: 'out', category: 'nudge', status: 'delivered', count: 96 },
+      { channel: 'sms', direction: 'out', category: 'nudge', status: 'failed', count: 2 },
+      {
+        channel: 'email',
+        direction: 'out',
+        category: 'reminder',
+        status: 'suppressed_quiet_hours',
+        count: 2,
+      },
+      { channel: 'sms', direction: 'in', category: 'reply', status: 'delivered', count: 40 },
+    ],
+    stopCount: 0,
+    weekPlansComposed: 18,
+    providerIncidents: [],
+    scoreboard: {
+      intake: { sessionsStarted: 12, provisioned: 8, watchConsented: 5, sourceCoded: 7 },
+      ttfa: { p50Seconds: 95, derivedFamilies: 8, notDerivableFamilies: 0 },
+      nudges: { sent: 30, matured: 24, replied: 9 },
+      cogs: { totalUsd: 12, families: 20 },
+    },
+    commitmentDebt: NO_DEBT,
+    engagement: { families: 20, contacted: 16 },
+    radar: { sweptThisWeek: true, windowsDue: 20, confirmed: 19 },
+    unmetIntents: [
+      { lane: 'off_domain_general', category: 'weather', count: 12 },
+      { lane: 'safety_critical', category: 'child-safety', count: 3 },
+    ],
+  };
+
+  function scorecardLines(summary: LoopHealthSummary): string[] {
+    return formatLoopHealthDigest(summary)
+      .split('\n')
+      .filter((line) => line.includes('/10 · '));
+  }
+
+  it('puts the scorecard above every count in the digest', () => {
+    const lines = formatLoopHealthDigest(LIVE_WEEK).split('\n');
+    const lastScore = lines.findLastIndex((line) => line.includes('/10 · '));
+
+    expect(lastScore).toBeGreaterThan(-1);
+    expect(lastScore).toBeLessThan(lines.indexOf('Weekly plans composed: 18'));
+  });
+
+  it('carries all seven rows, in the order the loop runs', () => {
+    const labels = scorecardLines(LIVE_WEEK).map((line) => line.trim().split(/\s{2,}/)[0]);
+
+    expect(labels).toEqual([
+      'Demand',
+      'Activation',
+      'Engagement',
+      'Radar accuracy',
+      'Deliverability',
+      'Safety',
+      'Unit cost',
+    ]);
+  });
+
+  /** Each row is fed its OWN slice of the summary. A row wired to the wrong input is
+   * the failure this catches: every grade below differs from its neighbours. */
+  it('grades each row from its own slice of the week', () => {
+    const lines = scorecardLines(LIVE_WEEK);
+
+    expect(lines[0]).toContain('8/10 · 7 of 10 target source-coded intakes (12 started)');
+    expect(lines[1]).toContain('8/10 · TTFA p50 95s · 8 of 12 provisioned (67%)');
+    expect(lines[2]).toContain('8/10 · 16 of 20 families heard from Hale first (80%)');
+    expect(lines[3]).toContain('10/10 · 19 of 20 due windows re-confirmed');
+    expect(lines[4]).toContain('6/10 · 96% reached of 100 · 2 failed, 2 suppressed');
+    expect(lines[5]).toContain('6/10 · 3 safety-lane deflections');
+    expect(lines[6]).toContain('9/10 · $0.6000 per family vs a $2.00 budget');
+  });
+
+  it('aligns every score in one column so the block reads as a scorecard', () => {
+    const columns = new Set(scorecardLines(LIVE_WEEK).map((line) => line.indexOf('/10 · ')));
+
+    expect(columns.size).toBe(1);
+  });
+
+  /**
+   * The pre-launch week, and the whole reason this is a scorecard rather than a report
+   * card: five of the seven rows have no denominator to grade against, and each says
+   * so. A number against any of them would be a manufactured judgement about a metric
+   * nothing has fed yet.
+   */
+  it('renders an ungradeable row as –/10, never as a number', () => {
+    const lines = scorecardLines({
+      ...LIVE_WEEK,
+      messageCounts: [],
+      scoreboard: EMPTY_SCOREBOARD,
+      engagement: NO_ENGAGEMENT,
+      radar: NO_RADAR,
+      unmetIntents: [],
+    });
+
+    const abstained = lines.filter((line) => line.includes('not enough data'));
+    expect(abstained).toHaveLength(5);
+    for (const line of abstained) {
+      expect(line).toContain('–/10 · not enough data (n=0)');
+    }
+  });
+
+  /** A zero that WAS measured still grades. Demand read 0 against 12 real intakes, and
+   * softening that into "no data" is the one thing this block must never do. */
+  it('still grades a measured zero', () => {
+    const lines = scorecardLines({
+      ...LIVE_WEEK,
+      scoreboard: {
+        ...LIVE_WEEK.scoreboard,
+        intake: { ...LIVE_WEEK.scoreboard.intake, sourceCoded: 0 },
+      },
+    });
+
+    expect(lines[0]).toContain('0/10 · no source-coded intake');
+    expect(lines[0]).not.toContain('not enough data');
   });
 });
