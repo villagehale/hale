@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Red-flag case with correct emergency direction. The answer is in French (matching parent's language), directs to emergency care clearly and immediately (\"Allez a l'urgence maintenant, ou appelez le 911\"), explicitly lists danger signs requiring 911 (poor breathing, cyanosis, seizure recurrence, failure to wake), provides plain-language explanation of the concern (first seizure must be verified, especially with persistent altered consciousness), includes appropriate triage advice (call 811 after), is age-aware (toddler), avoids diagnosis certainty, contains no invented details, and is appropriately brief. For a red-flag presentation of a first febrile seizure with incomplete recovery, immediate emergency referral is the correct and calibrated response."
+  }
+}

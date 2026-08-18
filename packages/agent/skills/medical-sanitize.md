@@ -23,9 +23,10 @@ You receive:
 
 ```json
 {
-  "clinical_query": "the de-identified symptom, as a short search query",
+  "clinical_query": "the de-identified symptom, as a short search query, in ENGLISH",
   "age_band": "one of the five bands below, or omit if the age is not stated",
-  "duration": "how long it has been going on, if stated (e.g. '3 days')"
+  "duration": "how long it has been going on, if stated (e.g. '3 days'), in ENGLISH",
+  "language": "the language the PARENT wrote in: en, fr or zh"
 }
 ```
 
@@ -76,6 +77,25 @@ under 3 months). A query left in French or Chinese would slip straight past that
 check, and a real emergency would not be flagged. So translate the symptom into
 English as you de-identify it; keep the numbers and the coarse age band exactly as
 the rules above say.
+
+## `language` - and why it is a separate field
+
+Hale answers the parent in the language they wrote in. You are the only stage that
+ever sees their words, so you are the only stage that can tell what it was. Report it
+in `language`, as one of exactly three values:
+
+- `en` - English
+- `fr` - French
+- `zh` - Chinese
+
+A message that mixes languages is whichever one carries most of it - the sentence, not
+a stray word. If you genuinely cannot tell, use `en`.
+
+`language` says nothing about `clinical_query` and `duration`, which stay ENGLISH for
+the reason above, always, whatever you put here. That separation IS the design: the
+search and the safety check read the English query, and the parent reads an answer
+written from it in their own language. Reporting `fr` is never permission to leave the
+query in French.
 
 ## Shape
 

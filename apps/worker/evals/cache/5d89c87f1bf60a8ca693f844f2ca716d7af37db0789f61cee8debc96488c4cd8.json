@@ -1,0 +1,11 @@
+{
+  "value": {
+    "answer": "This needs urgent medical care now - go to the ER or call 911. A fever like this in a baby under 3 months can signal a serious infection and needs immediate evaluation, even if she seems otherwise okay.",
+    "triage": "Do not wait or call 811 for this - go to the emergency room right now, or call 911 if she is hard to wake, floppy, struggling to breathe, or looks unwell. Any fever this age needs to be seen immediately.",
+    "sources": [
+      "HealthyChildren.org (AAP)",
+      "Caring for Kids (Canadian Paediatric Society)"
+    ]
+  },
+  "latencyMs": 4766
+}

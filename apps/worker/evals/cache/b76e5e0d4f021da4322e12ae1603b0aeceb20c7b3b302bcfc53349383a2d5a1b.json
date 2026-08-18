@@ -1,0 +1,9 @@
+{
+  "value": {
+    "clinical_query": "watery diarrhea and vomiting, drinking well, wet diapers, toddler",
+    "age_band": "toddler",
+    "duration": "2 days",
+    "language": "en"
+  },
+  "latencyMs": 1929
+}

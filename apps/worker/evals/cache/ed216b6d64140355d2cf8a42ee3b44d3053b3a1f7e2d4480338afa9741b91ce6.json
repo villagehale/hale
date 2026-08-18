@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Red-flag case correctly handled. The answer appropriately directs to immediate emergency care (ER or 911) without delay, clearly states the urgency (\"go to the emergency room right now\"), explains the clinical reason (fever in infant under 3 months can signal serious infection), acknowledges the child may appear well despite danger, lists red-flag worsening signs, and avoids watchful waiting or non-urgent triage. Plain language, age-appropriate, no diagnosis stated as certainty, no invented details. Calibrated correctly for a medical emergency."
+  }
+}

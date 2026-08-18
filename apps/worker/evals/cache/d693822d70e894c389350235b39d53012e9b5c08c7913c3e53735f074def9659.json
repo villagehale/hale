@@ -1,0 +1,8 @@
+{
+  "value": {
+    "clinical_query": "high fever, headache, neck stiffness, photophobia, school-age",
+    "age_band": "school_age",
+    "language": "en"
+  },
+  "latencyMs": 1738
+}

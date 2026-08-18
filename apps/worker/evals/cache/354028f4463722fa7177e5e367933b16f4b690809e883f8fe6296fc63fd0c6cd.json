@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This response is correctly calibrated for a benign strep-exposure case. It: (1) reassures rather than over-escalates to ER, appropriately directing to 811 and doctor for testing instead—correct triage for a non-emergency; (2) names clear watch-fors (difficulty breathing, drooling, trouble swallowing, severe stiffness, high fever with lethargy, non-blanching rash) to prompt emergency care only if red flags emerge; (3) avoids stating \"strep throat\" as certain diagnosis, instead saying \"often strep\" and \"likely\"; (4) includes no invented doses, statistics, or fabricated specifics; (5) is plain-language and age-aware for a preschooler parent; (6) clearly distinguishes routine care (call 811, see doctor) from true emergency (ER/911 triggers); (7) is written in English, matching the parent's language; (8) stays concise. The logic is sound: household strep contact + fever + sore throat warrants testing via primary care, not emergency, with appropriate escalation criteria named upfront."
+  }
+}
