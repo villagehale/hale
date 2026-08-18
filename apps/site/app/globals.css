@@ -1867,6 +1867,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     max-width: 40rem;
   }
   .v4-chip {
+    display: inline-block;
+    text-align: center;
     padding: 0.5rem 0.95rem;
     border-radius: var(--r-full);
     font-size: 0.86rem;
