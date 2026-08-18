@@ -1,4 +1,4 @@
-import type { AgentClient } from '@hale/agent';
+import type { AgentClient, AgentUsage } from '@hale/agent';
 import { pickModel } from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
@@ -41,7 +41,7 @@ export interface DraftInput {
 
 export interface DraftResult {
   draft: DraftedAction;
-  usage: { promptTokens: number; completionTokens: number };
+  usage: AgentUsage;
 }
 
 export async function draftAction(input: DraftInput, client: AgentClient): Promise<DraftResult> {
@@ -79,6 +79,8 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
     usage: {
       promptTokens: usage.input_tokens + (usage.cache_creation_input_tokens ?? 0),
       completionTokens: usage.output_tokens,
+      cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+      cacheReadTokens: usage.cache_read_input_tokens ?? 0,
     },
   };
 }

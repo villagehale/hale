@@ -1,4 +1,4 @@
-import type { AgentClient } from '@hale/agent';
+import type { AgentClient, AgentUsage } from '@hale/agent';
 import { pickModel } from '@hale/agent';
 import type { ClassifierSuggestion, EventType } from '@hale/types';
 import { z } from 'zod';
@@ -101,7 +101,7 @@ export interface ClassifyResult {
   suggestion: ClassifierSuggestion;
   teenContent: boolean;
   concernsChildId: string | null;
-  usage: { promptTokens: number; completionTokens: number };
+  usage: AgentUsage;
 }
 
 export async function classifyEvent(
@@ -137,6 +137,8 @@ export async function classifyEvent(
     usage: {
       promptTokens: usage.input_tokens + (usage.cache_creation_input_tokens ?? 0),
       completionTokens: usage.output_tokens,
+      cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+      cacheReadTokens: usage.cache_read_input_tokens ?? 0,
     },
   };
 }

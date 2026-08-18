@@ -1,4 +1,4 @@
-import { SONNET_MODEL } from '@hale/agent';
+import { type ModelId, SONNET_MODEL } from '@hale/agent';
 
 /**
  * The coach model id comes from the single source of truth: `SONNET_MODEL` in
@@ -8,6 +8,6 @@ import { SONNET_MODEL } from '@hale/agent';
  * that could silently drift).
  */
 
-export async function loadCoachModel(): Promise<string> {
+export async function loadCoachModel(): Promise<ModelId> {
   return SONNET_MODEL;
 }

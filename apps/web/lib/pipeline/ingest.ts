@@ -287,6 +287,7 @@ export async function ingestEvent(
     actionType,
     verdict: reviewed.verdict,
     usage: reviewed.usage,
+    costUsd: reviewed.costUsd,
     model: SONNET_MODEL,
     langfuseTraceId: reviewTraceId,
   });

@@ -1,9 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { type ModelId, estimateCostUsd } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { FAMILY_STAGES, type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
-import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
+import { recordAgentRun } from '~/lib/agent-run';
 import { loadCoachModel } from '~/lib/coach/model';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { resolveActiveAreaCoarse } from './areas';
@@ -148,7 +149,7 @@ export type DiscoveryAnthropicClient = Pick<Anthropic, 'messages'>;
 export interface DiscoverDeps {
   client: DiscoveryAnthropicClient;
   loadPrompt: () => Promise<string>;
-  loadModel: () => Promise<string>;
+  loadModel: () => Promise<ModelId>;
   /** Best-effort venue geocode for the map pin. Resolves a candidate's title to
    * PUBLIC coordinates using the family's COARSE area only (rule #1), or null for
    * an online / no-venue activity or an unresolved lookup. `bias` is the coarse
@@ -192,7 +193,7 @@ export function selectDiscoveryInputs(
   return { stages, interests, ageMonths };
 }
 
-function defaultLoadModel(): Promise<string> {
+function defaultLoadModel(): Promise<ModelId> {
   return loadCoachModel();
 }
 
@@ -302,7 +303,12 @@ export async function discoverForFamily(
           modelUsed: model,
           promptTokens: usage.promptTokens,
           completionTokens: usage.completionTokens,
-          costUsd: sonnetCostUsd(usage),
+          costUsd: estimateCostUsd(model, {
+            inputTokens: response.usage.input_tokens,
+            cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
+            cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+            outputTokens: response.usage.output_tokens,
+          }),
           latencyMs: Date.now() - startedAt,
           status,
           langfuseTraceId: trace.traceId,
