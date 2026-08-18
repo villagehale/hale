@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {
   type AgentClient,
+  agentRunCostUsd,
   pickModel,
   runAgent,
   runAgentStreaming,
@@ -48,10 +49,6 @@ import { tagTopic } from './topic';
 
 const MAX_STEPS = 6;
 const MAX_TOKENS = 1024;
-
-/** Sonnet token rates, USD per 1M — mirrors coach.ts / the worker cost table. */
-const SONNET_RATE = { inputPerMTok: 3, outputPerMTok: 15 } as const;
-const PER_MTOK = 1_000_000;
 
 export interface AskHaleInput {
   familyId: string;
@@ -228,9 +225,7 @@ export async function askHale(
 
       trace.recordGeneration('ask-hale-loop', { model: modelUsed, usage: result.usage });
 
-      const costUsd =
-        (result.usage.promptTokens * SONNET_RATE.inputPerMTok) / PER_MTOK +
-        (result.usage.completionTokens * SONNET_RATE.outputPerMTok) / PER_MTOK;
+      const costUsd = agentRunCostUsd(modelUsed, result.usage);
       const metrics: CoachRunMetrics = {
         modelUsed,
         promptTokens: result.usage.promptTokens,
