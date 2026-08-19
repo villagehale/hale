@@ -139,6 +139,18 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
    * id to hang an audit row on. That is LOGGED by name rather than passed over: rule #6
    * is about calls Hale actually took, and a refused connect is not one.
    */
+  /** The ids an operator can act on, never the words a parent said (rule #1). */
+  const logFailure = (authorized: RelayTicket | null, err: unknown, message: string): void => {
+    deps.log.error(
+      {
+        callSid: authorized?.callSid ?? null,
+        familyId: authorized?.familyId ?? null,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      message,
+    );
+  };
+
   const finish = async (outcome: VoiceCallOutcome): Promise<void> => {
     if (ended) return;
     ended = true;
@@ -151,13 +163,21 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
       );
       return;
     }
-    await deps.recorder.callEnded({
-      ticket: authorized,
-      outcome,
-      turns,
-      durationMs: deps.now().getTime() - startedAt.getTime(),
-      at: deps.now(),
-    });
+    try {
+      await deps.recorder.callEnded({
+        ticket: authorized,
+        outcome,
+        turns,
+        durationMs: deps.now().getTime() - startedAt.getTime(),
+        at: deps.now(),
+      });
+    } catch (err) {
+      // The call is already over and there is nobody left to tell, so the only thing a
+      // throw here could do is crash the instance out from under a socket that may still
+      // be serving other calls. It is LOUD instead: a missing rule #6 row is a real gap
+      // and an operator has to be able to see it.
+      logFailure(authorized, err, 'twilio relay: the call happened but its audit row did not');
+    }
   };
 
   const wrapUp = (): void => {
@@ -168,22 +188,22 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
     void finish('time_capped');
   };
 
+  /**
+   * One turn, in two phases, and NEITHER of them may throw.
+   *
+   * A rejection here does not just lose one answer. It rejects `pending`, and every later
+   * prompt is chained onto that — so one database blip mid-call would silence the rest of
+   * the conversation while the caller kept talking into a line that had stopped
+   * answering. It also escapes as an unhandled rejection in the socket's message
+   * listener, which on this runtime takes the whole instance down.
+   *
+   * SPEAKING comes first and is fail-closed to the fixed line: whatever broke — the
+   * thread, the ledger, the model — the caller hears something rather than dead air.
+   * RECORDING comes second and is best-effort by construction: the words are already out
+   * of a speaker, and there is nothing a failure here can do about that except be loud.
+   */
   const runTurn = async (prompt: string, authorized: RelayTicket): Promise<void> => {
     if (ended) return;
-    if (conversationId === null) {
-      conversationId = await deps.recorder.openThread(authorized);
-    }
-    const thread = conversationId;
-    turns += 1;
-    const turnIndex = turns;
-    const at = deps.now();
-    await deps.recorder.callerSaid({
-      ticket: authorized,
-      conversationId: thread,
-      text: prompt,
-      turnIndex,
-      at,
-    });
 
     heardBeforeInterrupt = null;
     let composed = '';
@@ -191,17 +211,28 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
       composed += token;
       deps.socket.send(textToken(token, false));
     };
+    let thread: string | null = null;
+    let turnIndex = 0;
 
     try {
+      if (conversationId === null) {
+        conversationId = await deps.recorder.openThread(authorized);
+      }
+      thread = conversationId;
+      turns += 1;
+      turnIndex = turns;
+      await deps.recorder.callerSaid({
+        ticket: authorized,
+        conversationId: thread,
+        text: prompt,
+        turnIndex,
+        at: deps.now(),
+      });
       await deps.turn.respond({ prompt, ticket: authorized, conversationId: thread }, emit);
     } catch (err) {
-      // The ids an operator can act on, never the words a parent said (rule #1).
-      deps.log.error(
-        {
-          callSid: authorized.callSid,
-          familyId: authorized.familyId,
-          err: err instanceof Error ? err.message : String(err),
-        },
+      logFailure(
+        authorized,
+        err,
         'twilio relay: turn failed — the caller hears the fixed line instead',
       );
       emit(VOICE_TURN_FAILED);
@@ -210,14 +241,21 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
     // turn broke sits listening to a line that never speaks again.
     deps.socket.send(textToken('', true));
 
-    await deps.recorder.haleSaid({
-      ticket: authorized,
-      conversationId: thread,
-      // What the caller HEARD, which is not always what Hale composed.
-      text: spokenBeforeInterrupt(composed, heardBeforeInterrupt ?? ''),
-      turnIndex,
-      at: deps.now(),
-    });
+    // No thread means the failure was before there was anywhere to write. Nothing was
+    // recorded, and the log above already says so.
+    if (thread === null) return;
+    try {
+      await deps.recorder.haleSaid({
+        ticket: authorized,
+        conversationId: thread,
+        // What the caller HEARD, which is not always what Hale composed.
+        text: spokenBeforeInterrupt(composed, heardBeforeInterrupt ?? ''),
+        turnIndex,
+        at: deps.now(),
+      });
+    } catch (err) {
+      logFailure(authorized, err, 'twilio relay: Hale said this out loud and it was not recorded');
+    }
   };
 
   return {

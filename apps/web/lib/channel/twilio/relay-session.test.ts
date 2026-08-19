@@ -291,6 +291,30 @@ describe('the record a call leaves behind', () => {
     );
   });
 
+  it('a database blip is a spoken apology, not silence — and the next turn still works', async () => {
+    const respond = vi.fn(async (_i, emit: (t: string) => void) => {
+      emit('Thursday at four thirty.');
+    });
+    const t = build(respond);
+    t.recorder.callerSaid.mockRejectedValueOnce(new Error('connection terminated'));
+
+    await t.session.handleMessage(setupFrame());
+    await t.session.handleMessage(promptFrame('when is swim'));
+
+    expect(t.spoken()).toBe(VOICE_TURN_FAILED);
+    expect(t.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ callSid: CALL_SID, err: 'connection terminated' }),
+      expect.stringContaining('turn failed'),
+    );
+
+    // The call is still up. A rejected turn that poisoned the queue would make every
+    // later prompt resolve to nothing, and the parent would be talking to a dead line.
+    await t.session.handleMessage(promptFrame('and gym'));
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(t.frames().at(-1)).toEqual({ type: 'text', token: '', last: true });
+    expect(t.spoken()).toBe(`${VOICE_TURN_FAILED}Thursday at four thirty.`);
+  });
+
   it('resolves the thread ONCE for the whole call', async () => {
     const t = build();
     await t.session.handleMessage(setupFrame());
