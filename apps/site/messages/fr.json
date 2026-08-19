@@ -5,7 +5,7 @@
     "skipToContent": "Aller au contenu"
   },
   "HomeMeta": {
-    "title": "Hale · le chef de cabinet discret de votre famille",
+    "title": "Hale · ne ratez plus jamais une inscription à 7 h",
     "description": "Hale est un numéro que votre famille texte. Il surveille les dates d’inscription, planifie la fin de semaine et s’occupe de ce qui passe entre les mailles — toujours avec votre accord. Vos données restent au Canada.",
     "ogDescription": "Un numéro que votre famille texte. Hale surveille les dates d’inscription, planifie la fin de semaine et s’occupe de ce qui passe entre les mailles — toujours avec votre accord. Vos données restent au Canada.",
     "twitterDescription": "Un numéro que votre famille texte. Les dates d’inscription surveillées, les fins de semaine planifiées, rien d’envoyé sans votre accord. Vos données restent au Canada."
@@ -207,7 +207,7 @@
     "lede": "Nous sommes une petite équipe, bâtie par des parents, encore à nos débuts — alors une vraie personne lit ce que vous envoyez. Le moyen le plus rapide de nous joindre, c’est le courriel.",
     "emailButton": "Écrire à aloha@villagehale.com",
     "channels": [
-      { "eyebrow": "Absolument tout", "line": "Questions, commentaires, un cours que votre village devrait connaître — nous lisons chaque message." },
+      { "eyebrow": "Absolument tout", "line": "Questions, commentaires, un cours que d’autres familles devraient connaître — nous lisons chaque message." },
       { "eyebrow": "Confidentialité et vos données", "line": "Demandes d’accès, de correction ou de suppression, et tout ce qui touche la façon dont nous traitons les données de votre famille." }
     ],
     "note": "Hale est conçu par Village Hale Technologies Inc., Georgetown, Ontario, Canada."

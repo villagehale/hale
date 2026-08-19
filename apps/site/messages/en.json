@@ -5,7 +5,7 @@
     "skipToContent": "Skip to content"
   },
   "HomeMeta": {
-    "title": "Hale · your family’s quiet chief of staff",
+    "title": "Hale · never miss a 7 a.m. registration again",
     "description": "Hale is a number your family texts. It watches registration dates, plans the weekend, and handles the stuff that slips — always with your say-so. Your data stays in Canada.",
     "ogDescription": "A number your family texts. Hale watches registration dates, plans the weekend, and handles the stuff that slips — always with your say-so. Your data stays in Canada.",
     "twitterDescription": "A number your family texts. Registration dates watched, weekends planned, nothing sent without your say-so. Your data stays in Canada."
@@ -207,7 +207,7 @@
     "lede": "We’re small, parent-built, and early — so a real person reads what you send. The fastest way to reach us is email.",
     "emailButton": "Email aloha@villagehale.com",
     "channels": [
-      { "eyebrow": "Anything at all", "line": "Questions, feedback, a class your village should know about — we read every note." },
+      { "eyebrow": "Anything at all", "line": "Questions, feedback, a class other families should know about — we read every note." },
       { "eyebrow": "Privacy & your data", "line": "Access, correction, or deletion requests, and anything about how we handle your family’s data." }
     ],
     "note": "Hale is built by Village Hale Technologies Inc., Georgetown, Ontario, Canada."
