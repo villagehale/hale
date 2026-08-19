@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
+import { type Mock, describe, expect, it, vi } from 'vitest';
 import { ingestEvent } from './ingest';
 
 /**
@@ -208,6 +208,12 @@ function scriptedClient(reviewerScript: Array<{ content: unknown[] }>): AgentCli
   return { messages: { create } } as unknown as AgentClient;
 }
 
+/** The model id on each SDK call the scripted client received, in call order. */
+function modelsCalled(client: AgentClient): string[] {
+  const create = client.messages.create as unknown as Mock;
+  return create.mock.calls.map((args) => (args[0] as { model: string }).model);
+}
+
 const SUBMIT = (verdict: string, rationale = 'ok') => ({
   content: [{ type: 'tool_use', id: 'v1', name: 'submit_verdict', input: { verdict, rationale } }],
 });
@@ -265,6 +271,38 @@ describe('ingestEvent — classify → draft → review → drafted_for_approval
       'reviewer',
     ]);
     for (const run of capture.agentRuns) expect(run.familyId).toBe(FAMILY_ID);
+  });
+
+  /**
+   * `agent_runs.model_used` is what every cost and per-model report in the product is
+   * derived from, so a label that merely SITS BESIDE the call is not telemetry — it is
+   * a claim nothing checks. The models here are read off the SDK calls the fake client
+   * actually received, never restated from the routing table: an assertion that named
+   * the expected ids would pass just as happily if both the router and the recorder
+   * drifted together.
+   */
+  it('records the model each stage ACTUALLY ran on, not a label written beside the call', async () => {
+    const capture: Capture = {
+      events: [],
+      actions: [],
+      agentRuns: [],
+      audit: [],
+      actionUpdates: [],
+      eventUpdates: [],
+    };
+    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
+
+    await ingestEvent(baseInput, db, client, NOW);
+
+    // The classify call, the draft call, then the reviewer's loop turns, in order.
+    const [classifyModel, draftModel, reviewModel] = modelsCalled(client);
+    const modelOf = (agentName: string) =>
+      capture.agentRuns.find((run) => run.agentName === agentName)?.modelUsed;
+
+    expect(modelOf('classifier')).toBe(classifyModel);
+    expect(modelOf('drafter')).toBe(draftModel);
+    expect(modelOf('reviewer')).toBe(reviewModel);
   });
 
   it('downgrades an approve with NO verification tool calls to flag_for_human (rule #3)', async () => {

@@ -2,6 +2,7 @@ import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { OffDomainLane } from '~/lib/channel/off-domain/lane';
+import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
@@ -401,9 +402,22 @@ export async function routeChannelMessage(
     openQuestions: readOpenQuestions,
   };
 
-  /** The turn's ANSWER: sent, then claimed, so a re-drive can never send a second one. */
-  const answer = (body: string) =>
-    sendReply(deps, { to: phoneE164, body, job, conversationId, claim: claimAnswer });
+  /**
+   * The turn's ANSWER: sent, then claimed, so a re-drive can never send a second one.
+   *
+   * `medicalSource` is the ONE fact about a reply that its ledger row carries beyond
+   * delivery — see sendReply. Null for every answer that is not the medical lane's, which
+   * is all of them but one.
+   */
+  const answer = (body: string, medicalSource: MedicalReplySource | null = null) =>
+    sendReply(deps, {
+      to: phoneE164,
+      body,
+      job,
+      conversationId,
+      claim: claimAnswer,
+      medicalSource,
+    });
 
   // GATE 2 — the deterministic handlers, in order. First claim ends the turn.
   for (const handler of deps.handlers) {
@@ -458,7 +472,7 @@ export async function routeChannelMessage(
     text: context.body,
   });
   if (verdict.status === 'deflected') {
-    await answer(verdict.reply);
+    await answer(verdict.reply, verdict.medicalSource);
     return done(deps, job, {
       status: 'deflected',
       handler: null,
@@ -778,6 +792,12 @@ async function sendReply(
     job: ChannelMessageReceivedJob;
     conversationId: string | null;
     claim?: () => Promise<void>;
+    /** The medical lane's outcome (migration 0090), or null for every other reply. The
+     * only thing this row carries about the CONTENT of what was said, and it is a
+     * two-value enum: which of the lane's two answers went out, so the founder
+     * scorecard's safety row can count the fixed-line fallbacks it could not see while
+     * the outcome lived only in memory. `body` stays null as ever (rule #1). */
+    medicalSource?: MedicalReplySource | null;
   },
 ): Promise<string> {
   const { providerMessageId } = await deps.transport.send({ to: args.to, body: args.body });
@@ -794,6 +814,7 @@ async function sendReply(
       providerMessageId,
       status: 'sent',
       body: null,
+      medicalReplySource: args.medicalSource ?? null,
       relatedConversationId: args.conversationId,
       sentAt: deps.now(),
     })

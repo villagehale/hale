@@ -603,6 +603,20 @@
       "when": 1781468520000,
       "tag": "0088_coach_plan_commitments",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1781468580000,
+      "tag": "0089_registration_verify_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1781468640000,
+      "tag": "0090_medical_reply_source",
+      "breakpoints": true
     }
   ]
 }

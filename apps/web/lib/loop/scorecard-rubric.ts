@@ -228,46 +228,67 @@ const RADAR_BANDS: readonly Band[] = [
   { bound: 0.5, score: 3 },
 ];
 
+/**
+ * The tally ONE re-verify run left behind — its own count of what it did, written by the
+ * sweep at the end of the run rather than inferred afterwards from the rows it touched.
+ *
+ * Inference was the previous reading and it could not tell the two failures apart: a
+ * confirmation bumps `verified_at` while BOTH a moved date and an unreadable page
+ * deliberately write nothing (the sweep's honesty design — a stale row is the signal).
+ * Every row is exactly one of the three, so `confirmed + discrepancies + unverified`
+ * is `checked`.
+ */
+export interface VerifyRunOutcomes {
+  /** Upcoming windows this run actually attempted — its own per-run ceiling, not the
+   * size of the dataset. */
+  checked: number;
+  /** Re-read and still saying what we store. */
+  confirmed: number;
+  /** The page no longer says what we store. A seed to fix by hand. */
+  discrepancies: number;
+  /** Could not be verified at all — fetch failed, cycle gone, reading uncorroborated. */
+  unverified: number;
+}
+
 export interface RadarVerification {
   /** Whether a re-verify sweep week overlapped this digest window at all. */
   sweptThisWeek: boolean;
-  /** Upcoming windows the sweep was responsible for, capped at its per-run ceiling. */
-  windowsDue: number;
-  /** Of those, the ones whose `verified_at` was bumped inside the window. */
-  confirmed: number;
+  /** What that sweep recorded, or null when a claimed week left no tally — it died
+   * mid-run, or it ran before the outcome ledger existed. Not the same news as a sweep
+   * that never started, and graded as neither. */
+  outcomes: VerifyRunOutcomes | null;
 }
 
 /**
  * Radar accuracy — how much of the dataset a family could still act on was re-read
- * against the municipality's own page this week.
+ * against the municipality's own page this week, graded on the SWEEP'S OWN TALLY.
  *
- * WHAT THIS ROW CANNOT SEE, and why it says so out loud: the sweep's per-row outcome
- * is not persisted anywhere. A confirmation bumps `verified_at`; a discrepancy and an
- * unreadable page both deliberately write NOTHING, which is the sweep's own honesty
- * design (a stale row is the signal). So the unconfirmed count is real and the split
- * between "the date moved" and "we could not read the page" is not available to any
- * query — the row states the count and names both possibilities rather than picking
- * one. Separating them needs the sweep to record its outcomes; until it does, an
- * invented split would be the scorecard's one lie.
+ * The two ways a row goes unconfirmed are separate numbers here because they are
+ * separate jobs: a moved date is a seed to correct today, an unreadable page is a
+ * scraper to fix, and the single "left stale" count this row used to print made the
+ * founder guess which week they were having.
  */
 export function gradeRadarAccuracy(radar: RadarVerification): ScorecardRow {
-  const { sweptThisWeek, windowsDue, confirmed } = radar;
+  const { sweptThisWeek, outcomes } = radar;
   const label = 'Radar accuracy';
   // A sweep that never ran got nothing wrong. Scoring that 0 would report a missing
   // cron as a wrong dataset — two problems that need two different Mondays.
   if (!sweptThisWeek) {
     return { label, score: null, reason: notEnoughData(0, 'the re-verify sweep did not run') };
   }
-  if (windowsDue === 0) {
+  if (!outcomes) {
+    return { label, score: null, reason: notEnoughData(0, 'the sweep recorded no outcomes') };
+  }
+  const { checked, confirmed, discrepancies, unverified } = outcomes;
+  if (checked === 0) {
     return { label, score: null, reason: notEnoughData(0) };
   }
 
-  const unconfirmed = windowsDue - confirmed;
-  const score = scoreAtLeast(confirmed / windowsDue, RADAR_BANDS);
+  const score = scoreAtLeast(confirmed / checked, RADAR_BANDS);
   const reason =
-    unconfirmed === 0
-      ? `all ${windowsDue} due windows re-confirmed at source`
-      : `${confirmed} of ${windowsDue} due windows re-confirmed · ${unconfirmed} left stale (moved date or unreadable page - not separable)`;
+    confirmed === checked
+      ? `all ${checked} due windows re-confirmed at source`
+      : `${confirmed} of ${checked} due windows re-confirmed · ${discrepancies} moved dates, ${unverified} could not be read`;
   return { label, score, reason };
 }
 
@@ -364,30 +385,51 @@ export interface LaneCount {
 }
 
 /**
- * Safety — how often a parent brought Hale something safety-critical and got the
- * fixed door instead of help.
- *
- * WHAT THIS ROW CANNOT SEE. Medical-symptom texts no longer come through here at all:
- * that lane ANSWERS (a web-grounded reply with its own triage) and deliberately
- * writes no unmet-intent row, because a question Hale answered is not an unmet intent.
- * Its own failure mode — falling back to the 811/911 line when the answer could not be
- * grounded — is returned in memory as `replySource` and never persisted, so no query
- * can count it. The reason line says so on every grade, including the 10s: a 10 here
- * means "safe as far as this is instrumented", and letting it read as "safe" is
- * precisely the flattery a safety row must not commit.
+ * The medical-symptom lane's week. It does not appear in the lane counts at all —
+ * that lane ANSWERS (a web-grounded reply with its own triage) and deliberately writes
+ * no unmet-intent row, because a question Hale answered is not an unmet intent — so its
+ * outcome is read from the outbound rows it stamped instead.
  */
-export function gradeSafety(lanes: readonly LaneCount[]): ScorecardRow {
+export interface MedicalAnswers {
+  /** Medical-symptom texts Hale answered this week, grounded or not. */
+  answered: number;
+  /** Of those, the ones that fell back to the fixed 811/911 line because no grounded
+   * answer could be composed. */
+  fallbacks: number;
+}
+
+/**
+ * Safety — how often a parent brought Hale something safety-critical and got a fixed
+ * door instead of help.
+ *
+ * A MEDICAL FALLBACK IS ONE OF THOSE DOORS, and now that the lane stamps its outcome on
+ * the reply it sent, it is banded as one. It was excluded for exactly as long as it was
+ * invisible: the outcome lived in memory as `replySource` and no query could count it,
+ * so the row carried a caveat on every grade instead — including its 10s, which is the
+ * one grade a safety row must never hand out on trust.
+ */
+export function gradeSafety(
+  lanes: readonly LaneCount[],
+  medical: MedicalAnswers,
+): ScorecardRow {
   const deflections = lanes
     .filter((row) => row.lane === SAFETY_LANE)
     .reduce((sum, row) => sum + row.count, 0);
-  const caveat = 'medical-answer fallbacks are not instrumented';
+  const doors = deflections + medical.fallbacks;
+  // "No medical text arrived" and "twelve arrived and all twelve were answered" are the
+  // same fallback count and completely different weeks.
+  const medicalText =
+    medical.answered === 0
+      ? 'no medical text arrived'
+      : `${medical.fallbacks} of ${medical.answered} medical answers fell back to the fixed line`;
+  const doorText =
+    doors === 0
+      ? 'no safety-lane deflection'
+      : `${doors} fixed doors (${deflections} safety-lane deflections, ${medical.fallbacks} medical fallbacks)`;
   return {
     label: 'Safety',
-    score: scoreAtMost(deflections, SAFETY_BANDS),
-    reason:
-      deflections === 0
-        ? `no safety-lane deflection (${caveat})`
-        : `${deflections} safety-lane deflections (${caveat})`,
+    score: scoreAtMost(doors, SAFETY_BANDS),
+    reason: `${doorText} · ${medicalText}`,
   };
 }
 

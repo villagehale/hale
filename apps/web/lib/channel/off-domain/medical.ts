@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickModel } from '@hale/agent';
+import type { MedicalReplySourceValue } from '@hale/db';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { replyLanguage } from '~/lib/channel/language';
@@ -122,8 +123,10 @@ export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
 
 /** Where the words that go out came from. `web_grounded` is the composed, searched
  * answer; `fixed` is the last-resort {@link SAFETY_REPLY} after a live attempt and a
- * retry both failed. */
-export type MedicalReplySource = 'web_grounded' | 'fixed';
+ * retry both failed. The two values are @hale/db's, because this outcome is STAMPED on
+ * the reply's channel_messages row and read back by the founder scorecard — one
+ * vocabulary, checked in SQL, not a second copy that can drift out of what is writable. */
+export type MedicalReplySource = MedicalReplySourceValue;
 
 export interface MedicalReply {
   reply: string;

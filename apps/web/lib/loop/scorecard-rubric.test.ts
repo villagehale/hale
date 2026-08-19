@@ -134,39 +134,70 @@ describe('gradeRadarAccuracy — the weekly re-verify sweep', () => {
   /** A sweep that never ran cannot be scored 0 for accuracy: nothing was checked, so
    * nothing was got wrong. The row says the sweep is missing instead. */
   it('reports a sweep that did not run as missing data, not as a bad grade', () => {
-    const row = gradeRadarAccuracy({ sweptThisWeek: false, windowsDue: 20, confirmed: 0 });
+    const row = gradeRadarAccuracy({ sweptThisWeek: false, outcomes: null });
 
     expect(row.score).toBeNull();
     expect(row.reason).toContain('not enough data (n=0)');
     expect(row.reason).toContain('did not run');
   });
 
-  it('has nothing to grade when no upcoming window was due', () => {
-    const row = gradeRadarAccuracy({ sweptThisWeek: true, windowsDue: 0, confirmed: 0 });
+  /** A week the sweep claimed and then left no tally for — it died mid-run, or it ran
+   * before the outcome ledger existed. Distinct from "did not run", and neither one is
+   * a grade: the row must not score a crash as a wrong dataset. */
+  it('reports a swept week with no recorded outcomes as missing data, and says which', () => {
+    const row = gradeRadarAccuracy({ sweptThisWeek: true, outcomes: null });
+
+    expect(row.score).toBeNull();
+    expect(row.reason).toContain('recorded no outcomes');
+    expect(row.reason).not.toContain('did not run');
+  });
+
+  it('has nothing to grade when the sweep checked nothing', () => {
+    const row = gradeRadarAccuracy({
+      sweptThisWeek: true,
+      outcomes: { checked: 0, confirmed: 0, discrepancies: 0, unverified: 0 },
+    });
 
     expect(row.score).toBeNull();
     expect(row.reason).toBe('not enough data (n=0)');
   });
 
   it('scores 10 at exactly 95% re-confirmed', () => {
-    expect(gradeRadarAccuracy({ sweptThisWeek: true, windowsDue: 20, confirmed: 19 }).score).toBe(
-      10,
-    );
+    const row = gradeRadarAccuracy({
+      sweptThisWeek: true,
+      outcomes: { checked: 20, confirmed: 19, discrepancies: 1, unverified: 0 },
+    });
+
+    expect(row.score).toBe(10);
   });
 
-  /** 17/20 is 0.85 — the second band. The reason must name the stale rows, because a
-   * row left unconfirmed is either a moved date or a page we could not read, and the
-   * sweep persists nothing that tells the two apart. */
-  it('scores 8 at 85% and names what the unconfirmed rows could be', () => {
-    const row = gradeRadarAccuracy({ sweptThisWeek: true, windowsDue: 20, confirmed: 17 });
+  /**
+   * 17/20 is 0.85 — the second band. The two ways a row goes unconfirmed are now
+   * SEPARATE numbers, which is the whole point of the sweep recording its outcomes: "the
+   * municipality moved a date" is a seed to fix today, and "we could not read the page"
+   * is a scraper to fix, and a single stale count made a founder guess which week they
+   * were having.
+   */
+  it('scores 8 at 85% and separates a moved date from a page it could not read', () => {
+    const row = gradeRadarAccuracy({
+      sweptThisWeek: true,
+      outcomes: { checked: 20, confirmed: 17, discrepancies: 1, unverified: 2 },
+    });
 
     expect(row.score).toBe(8);
     expect(row.reason).toContain('17 of 20');
-    expect(row.reason).toContain('3');
+    expect(row.reason).toContain('1 moved');
+    expect(row.reason).toContain('2 could not be read');
+    expect(row.reason).not.toContain('not separable');
   });
 
   it('scores 0 when a sweep that ran confirmed nothing', () => {
-    expect(gradeRadarAccuracy({ sweptThisWeek: true, windowsDue: 20, confirmed: 0 }).score).toBe(0);
+    const row = gradeRadarAccuracy({
+      sweptThisWeek: true,
+      outcomes: { checked: 20, confirmed: 0, discrepancies: 4, unverified: 16 },
+    });
+
+    expect(row.score).toBe(0);
   });
 });
 
@@ -243,43 +274,78 @@ describe('gradeDeliverability — of what Hale sent, how much reached a family',
 });
 
 describe('gradeSafety — safety-lane texts Hale could only answer with a fixed door', () => {
+  /** No medical text arrived at all — a measurement, and a different week from one where
+   * ten arrived and all ten were answered. */
+  const NO_MEDICAL = { answered: 0, fallbacks: 0 };
+
   it('scores 10 for a week with no safety deflection', () => {
-    const row = gradeSafety([]);
+    const row = gradeSafety([], NO_MEDICAL);
 
     expect(row.score).toBe(10);
   });
 
   it('counts only the safety lane', () => {
-    const row = gradeSafety([
-      { lane: 'off_domain_general', count: 30 },
-      { lane: 'provider_access', count: 9 },
-    ]);
+    const row = gradeSafety(
+      [
+        { lane: 'off_domain_general', count: 30 },
+        { lane: 'provider_access', count: 9 },
+      ],
+      NO_MEDICAL,
+    );
 
     expect(row.score).toBe(10);
   });
 
   it('scores 8 at two and 6 at three — the 2 and 5 bands', () => {
-    expect(gradeSafety([{ lane: 'safety_critical', count: 2 }]).score).toBe(8);
-    expect(gradeSafety([{ lane: 'safety_critical', count: 3 }]).score).toBe(6);
+    expect(gradeSafety([{ lane: 'safety_critical', count: 2 }], NO_MEDICAL).score).toBe(8);
+    expect(gradeSafety([{ lane: 'safety_critical', count: 3 }], NO_MEDICAL).score).toBe(6);
   });
 
   it('sums every safety-lane bucket before banding', () => {
-    const row = gradeSafety([
-      { lane: 'safety_critical', count: 6 },
-      { lane: 'safety_critical', count: 5 },
-      { lane: 'off_domain_general', count: 99 },
-    ]);
+    const row = gradeSafety(
+      [
+        { lane: 'safety_critical', count: 6 },
+        { lane: 'safety_critical', count: 5 },
+        { lane: 'off_domain_general', count: 99 },
+      ],
+      NO_MEDICAL,
+    );
 
     expect(row.score).toBe(0);
     expect(row.reason).toContain('11');
   });
 
-  /** The medical-symptom lane ANSWERS rather than deflecting, and its fallback to the
-   * fixed 811/911 line is returned in memory and never persisted — so this row cannot
-   * see it. Saying so is the difference between a 10 that means "safe" and a 10 that
-   * means "safe as far as we instrument". */
-  it('names the medical fallback blind spot rather than implying full coverage', () => {
-    expect(gradeSafety([]).reason).toContain('medical');
+  /**
+   * A medical answer that fell back IS the fixed door this row counts — a parent with a
+   * hurt child got 811/911 instead of help. It was invisible while the lane's outcome
+   * lived only in memory; now it bands exactly like a deflection, which is what the row's
+   * own definition has always said it was.
+   */
+  it('bands a medical fallback as a fixed door alongside the lane deflections', () => {
+    const row = gradeSafety([{ lane: 'safety_critical', count: 1 }], {
+      answered: 10,
+      fallbacks: 2,
+    });
+
+    // 1 deflection + 2 fallbacks = 3 doors, which is the 5 band.
+    expect(row.score).toBe(6);
+    expect(row.reason).toContain('2 of 10 medical answers');
+  });
+
+  it('a week whose medical answers all landed is a clean week, and says so', () => {
+    const row = gradeSafety([], { answered: 12, fallbacks: 0 });
+
+    expect(row.score).toBe(10);
+    expect(row.reason).toContain('0 of 12 medical answers');
+    // The caveat this row used to carry on every grade, including the 10s.
+    expect(row.reason).not.toContain('not instrumented');
+  });
+
+  it('distinguishes a week with no medical text from a week whose answers all landed', () => {
+    expect(gradeSafety([], NO_MEDICAL).reason).not.toBe(
+      gradeSafety([], { answered: 12, fallbacks: 0 }).reason,
+    );
+    expect(gradeSafety([], NO_MEDICAL).reason).toContain('no medical text');
   });
 });
 
