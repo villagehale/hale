@@ -1003,11 +1003,14 @@ async function handleStop(
   try {
     await deps.transport.send({ to: phoneE164, body: STOP_ACK_BY_LANGUAGE[language] });
   } catch (error) {
-    // 21610 is Twilio refusing to text a number that has opted out AT THE CARRIER — the
-    // exact number a STOP creates, and Twilio has already sent its own advisory to it.
-    // The ack is therefore delivered, by them, and failing the turn over it would 500
-    // the webhook on the one message we are legally required to get right. Every other
-    // failure is still a failure.
+    // A PERMANENT refusal means there is no ack to retry. 21610 above all: Twilio
+    // refusing to text a number that has opted out AT THE CARRIER — the exact number a
+    // STOP creates — and it has already sent its own advisory there, so the confirmation
+    // IS delivered, by them. The rest (21211, 21614, 21408) mean the handset cannot be
+    // reached at all. Either way, 500ing the webhook over an undeliverable courtesy
+    // would fail the one message we are legally required to get right. A TRANSIENT
+    // failure is still a failure: it throws, and the retry finds the session closed and
+    // sends the ack again.
     if (!(error instanceof TwilioSendError && error.permanent)) throw error;
   }
   return { status: 'stopped' };
