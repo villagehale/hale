@@ -289,6 +289,75 @@ describe('hasEmergencyDirective', () => {
     );
     expect(hasEmergencyDirective('在家观察即可，有疑问可拨打811咨询护士。')).toBe(false);
   });
+
+  /**
+   * NEGATION, the shape that shipped past every gate above: a body that NAMES the ER, les
+   * urgences or 急诊 only to tell the parent they do not need it. Each of these carries 811
+   * (so the triage gate passes) and no 911, and each was accepted as an escalation before
+   * the negation scope existed — the exact under-escalation the invariant exists to catch,
+   * wearing the vocabulary of the thing that catches it.
+   */
+  it('rejects a directive inside the scope of a negation', () => {
+    expect(
+      hasEmergencyDirective(
+        "No need for the ER - this looks viral. Keep her comfortable and call 811 if you're worried.",
+      ),
+    ).toBe(false);
+    expect(
+      hasEmergencyDirective('You do not need to call 911 for this. Call 811 if anything changes.'),
+    ).toBe(false);
+    expect(
+      hasEmergencyDirective(
+        "Pas besoin d'aller aux urgences pour l'instant. Surveillez-la et appelez le 811 au besoin.",
+      ),
+    ).toBe(false);
+    expect(hasEmergencyDirective('不需要去急诊。在家观察，有疑问拨打811咨询护士。')).toBe(false);
+  });
+
+  /**
+   * The same refusal with the negator on the OTHER side of the phrase it negates. English,
+   * French and Chinese all rule a thing out by naming it first — "a trip to the ER is not
+   * necessary" — so a guard that only looked BACKWARD from the match would read the ruling-out
+   * as the order. This is why the scope is the whole clause rather than the text before the
+   * negator.
+   */
+  it('rejects a directive its own clause goes on to rule out', () => {
+    expect(
+      hasEmergencyDirective('A trip to the ER is not necessary for this. Call 811 if worried.'),
+    ).toBe(false);
+    expect(
+      hasEmergencyDirective("Calling 911 isn't necessary here. Call 811 any time for a nurse."),
+    ).toBe(false);
+    expect(
+      hasEmergencyDirective(
+        "Aller aux urgences n'est pas nécessaire. Surveillez-la et appelez le 811 au besoin.",
+      ),
+    ).toBe(false);
+    expect(hasEmergencyDirective('去急诊不必要，在家观察，有疑问拨打811咨询护士。')).toBe(false);
+  });
+
+  /** 急救 means emergency aid; 急救箱 is the first-aid kit in the cupboard. */
+  it('does not read a first-aid kit as an emergency directive', () => {
+    expect(hasEmergencyDirective('在家观察即可，备好急救箱，有疑问拨打811咨询护士。')).toBe(false);
+  });
+
+  /**
+   * The positive control for the guard: a negation scopes to ITS clause, not to the whole
+   * body. Without this pair, "reject anything near a negation" would pass the tests above
+   * while silently falling real escalations closed — a body that says "no need to panic,
+   * but go now" is an escalation.
+   */
+  it('accepts a directive that follows a negated clause', () => {
+    expect(hasEmergencyDirective('No need to panic, but take her to the ER now.')).toBe(true);
+    expect(
+      hasEmergencyDirective("Pas besoin de paniquer, mais emmenez-la aux urgences maintenant."),
+    ).toBe(true);
+    expect(hasEmergencyDirective('不需要慌张，但要马上去急诊。')).toBe(true);
+    // "don't"/"do not" on their own are not negations of NEED — they are how a real
+    // directive is written ("don't wait"), so they must not fall one closed.
+    expect(hasEmergencyDirective("Don't wait for the morning - call 911 now.")).toBe(true);
+    expect(hasEmergencyDirective('Do not delay: go to the ER.')).toBe(true);
+  });
 });
 
 const RED_FLAG_SANITIZE = {
@@ -315,6 +384,27 @@ describe('a detected red flag must be escalated (runtime invariant)', () => {
         sanitize: sanitizeResult(RED_FLAG_SANITIZE),
         ground: groundResult(2),
         compose: composeResult(underEscalated),
+      }),
+    ).answer('raw message');
+
+    expect(out).toEqual({ reply: SAFETY_REPLY, replySource: 'fixed' });
+    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
+    expect(reasons).toContain('under_escalated');
+    log.mockRestore();
+  });
+
+  it('falls closed when a red-flag body NAMES the ER only to rule it out', async () => {
+    const log = quiet();
+    const negated = {
+      answer:
+        'No need for the ER for this one - breathing that sounds like this at this age is usually a viral thing that settles on its own.',
+      triage: 'Call 811 any time to talk it through with a nurse if you stay worried.',
+    };
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult(RED_FLAG_SANITIZE),
+        ground: groundResult(2),
+        compose: composeResult(negated),
       }),
     ).answer('raw message');
 
