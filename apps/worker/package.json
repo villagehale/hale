@@ -43,6 +43,7 @@
     "eval:nudge": "node evals/run-nudge-eval.mjs --cached-only",
     "eval:rsvp": "node evals/run-rsvp-eval.mjs --cached-only",
     "eval:coach-channel": "node evals/run-coach-channel-eval.mjs --cached-only",
+    "eval:voice-turn": "node evals/run-voice-turn-eval.mjs --cached-only",
     "eval:coach-plan": "node evals/run-coach-plan-eval.mjs --cached-only",
     "eval:civic-hours": "node evals/run-civic-hours-eval.mjs --cached-only",
     "eval:registration-verify": "node evals/run-registration-verify-eval.mjs --cached-only",

@@ -1,26 +1,45 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { reconcileUnhandedInbound } from './reconcile';
 import { voiceCallRecorder } from './voice-record';
 
-const CALL_SID = 'CA00000000000000000000000000000077';
 const AT = new Date('2026-08-19T15:00:00.000Z');
 
+/**
+ * ONE Postgres for the file, a fresh FAMILY and a fresh CALL per test.
+ *
+ * Booting PGlite and replaying every migration costs the better part of a second, and
+ * the count only ever grows — a per-test database made this one file seven of them and
+ * pushed two unrelated PGlite suites past vitest's 5s default under parallel load.
+ * Isolation comes from the ids instead, which is where it actually matters: every
+ * assertion is scoped to its own familyId, and the call sid is unique per test because
+ * `channel_messages_inbound_provider_msg_uniq` is global and a shared sid would make one
+ * test's rows collide with another's.
+ */
+let db: TestDb;
+let callCounter = 0;
+
+function nextCallSid(): string {
+  callCounter += 1;
+  return `CA${String(callCounter).padStart(32, '0')}`;
+}
+
+beforeAll(async () => {
+  db = await createTestDb();
+});
+afterAll(async () => {
+  await db.close();
+});
+
 describe('voiceCallRecorder', () => {
-  let db: TestDb;
   let ticket: { callSid: string; familyId: string; parentUserId: string };
 
   beforeEach(async () => {
-    db = await createTestDb();
     const family = await seedFamily(db.database);
-    ticket = { callSid: CALL_SID, ...family };
-  });
-
-  afterEach(async () => {
-    await db.close();
+    ticket = { callSid: nextCallSid(), ...family };
   });
 
   const rows = () =>
@@ -68,7 +87,7 @@ describe('voiceCallRecorder', () => {
       status: 'delivered',
       body: 'when is swim this week',
       relatedConversationId: conversationId,
-      providerMessageId: `${CALL_SID}:t1:in`,
+      providerMessageId: `${ticket.callSid}:t1:in`,
     });
     // Marked handed off AT BIRTH: a spoken turn has already been answered by the call,
     // and an unmarked inbound row is what the SMS reconciler exists to re-drive.
@@ -148,7 +167,7 @@ describe('voiceCallRecorder', () => {
       actor: ticket.parentUserId,
     });
     expect(entries[0]?.after).toEqual({
-      callSid: CALL_SID,
+      callSid: ticket.callSid,
       outcome: 'time_capped',
       turns: 7,
       durationMs: 540_000,
@@ -170,18 +189,9 @@ describe('voiceCallRecorder', () => {
 });
 
 describe('the SMS reconciler and voice rows', () => {
-  let db: TestDb;
-
-  beforeEach(async () => {
-    db = await createTestDb();
-  });
-  afterEach(async () => {
-    await db.close();
-  });
-
   it('never re-drives a spoken turn into the SMS coach — and still sweeps a real text', async () => {
     const family = await seedFamily(db.database);
-    const ticket = { callSid: CALL_SID, ...family };
+    const ticket = { callSid: nextCallSid(), ...family };
     const longAgo = new Date(Date.now() - 10 * 60 * 1000);
 
     const recorder = voiceCallRecorder(db.database);
@@ -198,7 +208,12 @@ describe('the SMS reconciler and voice rows', () => {
     await db.database
       .update(schema.channelMessages)
       .set({ createdAt: longAgo, handedOffAt: null })
-      .where(eq(schema.channelMessages.channel, 'voice'));
+      .where(
+        and(
+          eq(schema.channelMessages.familyId, family.familyId),
+          eq(schema.channelMessages.channel, 'voice'),
+        ),
+      );
 
     // The positive control: a real unanswered TEXT, same family, same age.
     await db.database.insert(schema.channelMessages).values({
