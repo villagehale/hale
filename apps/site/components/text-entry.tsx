@@ -5,6 +5,7 @@ import { TextEntryAnalytics } from '~/components/text-entry-analytics';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { CONTACT_CARD_PATH } from '~/lib/contact-card';
 import { CONTACT_EMAIL, buildSmsBody, buildSmsHref } from '~/lib/text-entry';
 
 /**
@@ -65,6 +66,15 @@ export function TextEntry({
               ? t('prefilledWithSource', { body: buildSmsBody(source) })
               : t('prefilledNoSource')}
           </p>
+
+          {/* Saved once, every later Hale text arrives with the turtle and a name
+              on it. Only offered while the number is live — the card is the
+              number, and /hale.vcf 404s without one. */}
+          <div className="mt-6">
+            <a href={CONTACT_CARD_PATH} className="btn-secondary">
+              {t('saveContact')}
+            </a>
+          </div>
 
           <div className="card mt-8 flex flex-col gap-6 sm:flex-row sm:items-center">
             <QrCode value={smsHref} label={t('qrAria')} />

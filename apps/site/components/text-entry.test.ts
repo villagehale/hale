@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { CONTACT_CARD_PATH } from '~/lib/contact-card.js';
 import { TextEntry } from './text-entry.js';
 
 /**
@@ -89,6 +90,17 @@ describe('TextEntry (number live)', () => {
     expect(liveHtml).not.toContain('(647) 555-1234');
   });
 
+  it('offers the contact card as the secondary action under the CTA', () => {
+    // Saved once, every later Hale text arrives with the turtle and a name on it
+    // rather than as an unknown number. Secondary on purpose: texting is the job.
+    expect(liveHtml).toContain(`href="${CONTACT_CARD_PATH}"`);
+    expect(liveHtml).toContain('Save Hale to your contacts');
+    const anchor = new RegExp(`<a[^>]*href="${CONTACT_CARD_PATH}"[^>]*>`).exec(liveHtml)?.[0] ?? '';
+    expect(anchor).toContain('btn-secondary');
+    // The primary CTA keeps its weight — one btn-primary, and it is the composer.
+    expect([...liveHtml.matchAll(/btn-primary/g)]).toHaveLength(1);
+  });
+
   it('renders a scannable QR of the same sms: URI — the desktop path, where sms: links are dead', () => {
     expect(liveHtml).toContain('aria-label="QR code — scan to text Hale"');
     // A real module grid, not a placeholder box: one path move per dark module.
@@ -118,6 +130,22 @@ describe('TextEntry (number live)', () => {
   });
 });
 
+describe('TextEntry (the other two locales)', () => {
+  it('offers the contact card in French and Chinese too', () => {
+    // A key missing from fr.json/zh.json renders as the key path rather than
+    // failing the build, so the translated labels are pinned here.
+    const fr = renderToStaticMarkup(
+      createElement(TextEntry, { source: null, smsNumber: LIVE_NUMBER, locale: 'fr' }),
+    );
+    const zh = renderToStaticMarkup(
+      createElement(TextEntry, { source: null, smsNumber: LIVE_NUMBER, locale: 'zh' }),
+    );
+    expect(fr).toContain('Enregistrer Hale dans vos contacts');
+    expect(zh).toContain('把 Hale 存入通讯录');
+    for (const html of [fr, zh]) expect(html).not.toContain('Text.saveContact');
+  });
+});
+
 describe('TextEntry (number not provisioned — today)', () => {
   it('offers email only, and never a broken sms: link', () => {
     expect(unsetHtml).not.toContain('sms:');
@@ -142,5 +170,10 @@ describe('TextEntry (number not provisioned — today)', () => {
 
   it('keeps the venue token out of the page entirely — there is nothing to attach it to', () => {
     expect(unsetHtml).not.toContain('earlyon-richmondhill');
+  });
+
+  it('hides the contact card — /hale.vcf 404s while the number is unset', () => {
+    expect(unsetHtml).not.toContain(CONTACT_CARD_PATH);
+    expect(unsetHtml).not.toContain('Save Hale to your contacts');
   });
 });
