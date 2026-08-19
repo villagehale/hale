@@ -1,5 +1,11 @@
 import { VOICE_CALL_WRAP_UP, VOICE_TURN_FAILED } from './copy';
-import { endSession, parseRelayMessage, spokenBeforeInterrupt, textToken } from './relay-protocol';
+import {
+  type RelayInbound,
+  endSession,
+  parseRelayMessage,
+  spokenBeforeInterrupt,
+  textToken,
+} from './relay-protocol';
 import { type RelayTicket, verifyRelayToken } from './relay-token';
 
 /**
@@ -11,6 +17,11 @@ import { type RelayTicket, verifyRelayToken } from './relay-token';
  * anything, reads anything, or knows which family it is talking to. The identity comes
  * out of the SIGNED ticket (relay-token.ts), never off the wire — the socket cannot be
  * told who is calling, it can only be shown a signature.
+ *
+ * A signature is not enough on its own, because the ticket is a bearer string in a url a
+ * third party logs. It must also be UNSPENT: the setup that opens a call claims it
+ * durably (relay-claim.ts), so the second socket to present the same ticket is refused
+ * before a thread is opened, on whichever instance it lands.
  *
  * Everything expensive is a PORT. The turn that costs a model call and the recorder that
  * writes rows are both injected, so the gate, the ordering, the interrupt truncation and
@@ -81,6 +92,17 @@ export interface RelaySessionDeps {
   token: string | null;
   turn: VoiceTurnStream;
   recorder: VoiceCallRecorder;
+  /**
+   * Spend this call's ticket, durably: true for the first socket to present it, false
+   * for every one after.
+   *
+   * A separate port from the recorder because it answers a different question at a
+   * different time — "may this connection be here at all", before anything of the
+   * family's has been touched — and because it must survive the instance. Required,
+   * never nullable (rule #11): a session that cannot claim a call is a session that
+   * cannot tell a replay from the real thing, and that is not a state this may be in.
+   */
+  claimCall(ticket: RelayTicket, at: Date): Promise<boolean>;
   /** Required, never nullable (rule #11): every refusal and every broken turn on this
    * socket is invisible otherwise — there is no HTTP status a caller could see. */
   log: Pick<Console, 'error' | 'warn' | 'info'>;
@@ -101,6 +123,17 @@ export interface RelaySession {
  */
 export const CALL_CAP_MS = 9 * 60 * 1000;
 
+/**
+ * How long a socket may stay open without proving whose call it is.
+ *
+ * Twilio's `setup` is the first thing down the wire and arrives in milliseconds, so ten
+ * seconds is generous for a real call and useless to anyone else. Without it an
+ * unauthenticated peer can simply say nothing and hold a function instance to the
+ * platform's 800-second ceiling, which costs money and a slot and never appears as a
+ * refusal anywhere.
+ */
+export const PRE_AUTH_IDLE_MS = 10_000;
+
 export function createRelaySession(deps: RelaySessionDeps): RelaySession {
   let ticket: RelayTicket | null = null;
   let conversationId: string | null = null;
@@ -109,6 +142,8 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
   let turns = 0;
   let startedAt: Date | null = null;
   let capTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Armed the moment the socket opens; disarmed by the setup that proves the call. */
+  let authTimer: ReturnType<typeof setTimeout> | null = null;
   /** What Twilio says the caller heard before talking over Hale, for the turn that is
    * running RIGHT NOW. Cleared at the top of every turn — an interrupt is a fact about
    * one utterance, and carrying it forward would truncate the next answer to words from
@@ -118,18 +153,42 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
   // interleaved token by token, which is not two answers — it is one unusable sentence.
   let pending: Promise<void> = Promise.resolve();
 
+  const clearAuthDeadline = (): void => {
+    if (authTimer) clearTimeout(authTimer);
+    authTimer = null;
+  };
+
   const stopClock = (): void => {
     if (capTimer) clearTimeout(capTimer);
     capTimer = null;
+    clearAuthDeadline();
   };
 
-  const refuse = (reason: string): void => {
+  /**
+   * Hang up on a socket that has not proved whose call it is.
+   *
+   * The log carries the REASON, the frame's TYPE and its SIZE, and nothing else. Every
+   * other field on a pre-auth frame was written by whoever opened the socket, and an
+   * operator's log is not a place to quote an unauthenticated stranger (rule #1). One
+   * line per socket, too: `refused` latches, so a peer cannot turn a stream of frames
+   * into a stream of log lines.
+   */
+  const refuse = (
+    reason: string,
+    frame: { type: RelayInbound['type']; bytes: number } | null,
+  ): void => {
     if (refused) return;
     refused = true;
-    deps.log.warn({ reason }, 'twilio relay: refused a socket that could not prove its call');
+    stopClock();
+    deps.log.warn(
+      { reason, frame: frame?.type ?? null, bytes: frame?.bytes ?? null },
+      'twilio relay: refused a socket that could not prove its call',
+    );
     deps.socket.send(endSession('unauthorized'));
     deps.socket.close();
   };
+
+  authTimer = setTimeout(() => refuse('idle_no_setup', null), PRE_AUTH_IDLE_MS);
 
   /**
    * The one call row (rule #6), written exactly once whichever way the line went down —
@@ -263,28 +322,68 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
       if (refused || ended) return;
       const message = parseRelayMessage(raw);
 
-      switch (message.type) {
-        case 'setup': {
-          const check = verifyRelayToken(deps.token, message.callSid, deps.now());
-          if (!check.ok) {
-            refuse(check.reason);
-            return;
-          }
-          ticket = check.ticket;
-          startedAt = deps.now();
-          capTimer = setTimeout(wrapUp, CALL_CAP_MS);
-          deps.log.info({ callSid: check.ticket.callSid }, 'twilio relay: call opened');
+      if (message.type === 'setup') {
+        // A call that is already open. Twilio sends setup once, so a second one is a
+        // frame this session has no use for — and acting on it would be worse than
+        // ignoring it twice over: re-claiming would lose to THIS call's own claim and
+        // hang up on a caller mid-sentence, and re-arming the cap would hand a caller
+        // a clock they can restart forever.
+        if (ticket) {
+          deps.log.info(
+            { callSid: ticket.callSid },
+            'twilio relay: a repeat setup on an open call changes nothing',
+          );
           return;
         }
+        const check = verifyRelayToken(deps.token, message.callSid, deps.now());
+        if (!check.ok) {
+          refuse(check.reason, { type: message.type, bytes: Buffer.byteLength(raw) });
+          return;
+        }
+        // The signature says the ticket is authentic; the claim says it has not been
+        // spent. Both, before a single row of this family's is read — a replayed ticket
+        // must not get as far as having a thread opened for it.
+        let claimed: boolean;
+        try {
+          claimed = await deps.claimCall(check.ticket, deps.now());
+        } catch (err) {
+          // Fail CLOSED. Everything past this point is a real family's conversation,
+          // and a call Hale cannot prove is being taken for the first time is not one
+          // it may take. (The turn would break on the same database anyway.)
+          logFailure(check.ticket, err, 'twilio relay: the claim on this call could not be made');
+          refuse('claim_unavailable', { type: message.type, bytes: Buffer.byteLength(raw) });
+          return;
+        }
+        if (!claimed) {
+          refuse('replayed', { type: message.type, bytes: Buffer.byteLength(raw) });
+          return;
+        }
+        ticket = check.ticket;
+        clearAuthDeadline();
+        startedAt = deps.now();
+        capTimer = setTimeout(wrapUp, CALL_CAP_MS);
+        deps.log.info({ callSid: check.ticket.callSid }, 'twilio relay: call opened');
+        return;
+      }
+
+      /**
+       * Everything else requires a call. Until the setup above has run, this socket is
+       * an anonymous peer that has proved nothing, so no other frame it sends is acted
+       * on, logged in its own words, or allowed to keep the line — the connection is
+       * refused and closed. Twilio's first frame is always `setup`; anything else first
+       * is not Twilio.
+       */
+      const authorized = ticket;
+      if (!authorized) {
+        refuse('no_setup', { type: message.type, bytes: Buffer.byteLength(raw) });
+        return;
+      }
+
+      switch (message.type) {
         case 'prompt': {
           // A partial transcript: the caller has not stopped talking, and answering the
           // first half of a sentence is worse than waiting for the second.
           if (!message.last) return;
-          if (!ticket) {
-            refuse('no_setup');
-            return;
-          }
-          const authorized = ticket;
           pending = pending.then(() => runTurn(message.voicePrompt, authorized));
           return pending;
         }
@@ -299,23 +398,25 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
         }
         case 'error': {
           // Twilio's own session errors are mostly non-fatal (64107 is a reconnect), and
-          // hanging up on one would end a call that is still working.
+          // hanging up on one would end a call that is still working. The description is
+          // quoted because this socket has proved which call it is — pre-auth it never
+          // gets here.
           deps.log.warn(
-            { callSid: ticket?.callSid ?? null, description: message.description },
+            { callSid: authorized.callSid, description: message.description },
             'twilio relay error: the session reported a problem and the call continues',
           );
           return;
         }
         case 'other': {
           deps.log.info(
-            { callSid: ticket?.callSid ?? null, messageType: message.messageType },
+            { callSid: authorized.callSid, messageType: message.messageType },
             'twilio relay: message type this session takes no action on',
           );
           return;
         }
         case 'unparseable': {
           deps.log.warn(
-            { callSid: ticket?.callSid ?? null },
+            { callSid: authorized.callSid },
             'twilio relay: unreadable frame — the socket is live and this session cannot read it',
           );
           return;

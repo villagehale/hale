@@ -50,6 +50,17 @@ export const maxDuration = 800;
  * and the deployed one is which ports are injected.
  */
 export async function GET(req: Request): Promise<Response> {
+  // A plain GET is not a bug to be reported as one. `experimental_upgradeWebSocket`
+  // throws when the runtime has no upgrade to hand it, which Next serves as a 500 — so a
+  // crawler, a health check or a browser address bar would read as this route failing.
+  // 426 is what HTTP has for "you asked correctly, on the wrong protocol".
+  if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+    return new Response('This endpoint speaks WebSocket only.', {
+      status: 426,
+      headers: { Upgrade: 'websocket', Connection: 'Upgrade' },
+    });
+  }
+
   const token = new URL(req.url).searchParams.get('t');
 
   return experimental_upgradeWebSocket((ws) => {

@@ -158,6 +158,7 @@ export const AUDIT_VERBS = [
   'voice_turn_received',
   'voice_turn_spoken',
   'voice_call_completed',
+  'voice_relay_ticket_replayed',
   'channel_sent',
   'push_sent',
   'email_reply_received',
@@ -441,6 +442,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   voice_turn_received: { sentence: 'you asked Hale something on the phone', family: 'note' },
   voice_turn_spoken: { sentence: 'Hale answered you on the phone', family: 'note' },
   voice_call_completed: { sentence: 'you and Hale finished a call', family: 'done' },
+  // A second connection tried to join one of your calls with a link that had already
+  // been used, and Hale hung up on it before it could read anything of yours.
+  voice_relay_ticket_replayed: {
+    sentence: 'Hale refused a second connection to one of your calls',
+    family: 'problem',
+  },
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
   push_sent: { sentence: 'Hale sent you a notification', family: 'done' },
   email_reply_received: { sentence: 'you replied to one of Hale’s emails', family: 'note' },

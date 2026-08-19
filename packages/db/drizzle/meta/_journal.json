@@ -624,6 +624,13 @@
       "when": 1781468700000,
       "tag": "0091_voice_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1781468760000,
+      "tag": "0092_voice_relay_claim",
+      "breakpoints": true
     }
   ]
 }

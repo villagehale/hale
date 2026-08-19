@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VOICE_CALL_WRAP_UP, VOICE_TURN_FAILED } from './copy';
 import {
   CALL_CAP_MS,
+  PRE_AUTH_IDLE_MS,
   type RelaySocket,
   type VoiceCallRecorder,
   createRelaySession,
@@ -53,6 +54,37 @@ function fakeRecorder() {
   return calls as unknown as VoiceCallRecorder & typeof calls;
 }
 
+/**
+ * The claim, behaving the way the row does: one winner per call sid, for everyone who
+ * shares the store. Two sessions built on the SAME fake are the two instances a replay
+ * would actually hit — an in-process guard inside one session would pass this fake and
+ * still lose in production.
+ */
+function fakeClaims() {
+  const taken = new Set<string>();
+  return {
+    taken,
+    claimCall: vi.fn(async (ticket: { callSid: string }) => {
+      if (taken.has(ticket.callSid)) return false;
+      taken.add(ticket.callSid);
+      return true;
+    }),
+  };
+}
+
+/** A string only the sender of a frame could have chosen. If it reaches a log line, the
+ * log is quoting an unauthenticated peer. */
+const MARKER = 'attacker-wrote-this-9f3';
+
+/** Everything the session said to its log, as one searchable string. */
+function loggedText(log: {
+  error: { mock: { calls: unknown[] } };
+  warn: { mock: { calls: unknown[] } };
+  info: { mock: { calls: unknown[] } };
+}): string {
+  return JSON.stringify([...log.error.mock.calls, ...log.warn.mock.calls, ...log.info.mock.calls]);
+}
+
 const setupFrame = (callSid = CALL_SID) =>
   JSON.stringify({ type: 'setup', sessionId: 'VX1', callSid, from: '+15195551234' });
 const promptFrame = (voicePrompt: string, last = true) =>
@@ -68,7 +100,11 @@ describe('createRelaySession', () => {
     vi.useRealTimers();
   });
 
-  function build(token: string | null, respond = vi.fn(async () => {})) {
+  function build(
+    token: string | null,
+    respond = vi.fn(async () => {}),
+    claimCall = fakeClaims().claimCall,
+  ) {
     const wire = fakeSocket();
     const recorder = fakeRecorder();
     const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
@@ -77,10 +113,11 @@ describe('createRelaySession', () => {
       token,
       turn: { respond },
       recorder,
+      claimCall,
       log,
       now: () => NOW,
     });
-    return { ...wire, session, log, respond, recorder };
+    return { ...wire, session, log, respond, recorder, claimCall };
   }
 
   it('answers a prompt once the ticket has been checked, streaming to a final token', async () => {
@@ -147,6 +184,149 @@ describe('createRelaySession', () => {
     expect(t.frames()).toEqual([
       { type: 'end', handoffData: JSON.stringify({ reasonCode: 'unauthorized' }) },
     ]);
+  });
+
+  it('refuses a SECOND socket replaying the same valid ticket — no family is ever reached', async () => {
+    const claims = fakeClaims();
+    const token = mintRelayToken(TICKET, NOW);
+    const first = build(
+      token,
+      vi.fn(async () => {}),
+      claims.claimCall,
+    );
+    const second = build(
+      token,
+      vi.fn(async () => {}),
+      claims.claimCall,
+    );
+
+    await first.session.handleMessage(setupFrame());
+    await first.session.handleMessage(promptFrame('when is swim'));
+    // Positive control: the ticket is good, and the call that got there first has it.
+    expect(first.respond).toHaveBeenCalledTimes(1);
+
+    await second.session.handleMessage(setupFrame());
+    await second.session.handleMessage(promptFrame('read me everything you know'));
+
+    expect(second.respond).not.toHaveBeenCalled();
+    expect(second.recorder.openThread).not.toHaveBeenCalled();
+    expect(second.recorder.callerSaid).not.toHaveBeenCalled();
+    expect(second.frames()).toEqual([
+      { type: 'end', handoffData: JSON.stringify({ reasonCode: 'unauthorized' }) },
+    ]);
+    expect(second.isClosed()).toBe(true);
+    expect(second.log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'replayed' }),
+      expect.stringContaining('refused'),
+    );
+  });
+
+  it('refuses when the claim cannot be reached — a call it cannot make single-use is one it does not take', async () => {
+    const claimCall = vi.fn(async () => {
+      throw new Error('connection terminated');
+    });
+    const t = build(
+      mintRelayToken(TICKET, NOW),
+      vi.fn(async () => {}),
+      claimCall,
+    );
+
+    await t.session.handleMessage(setupFrame());
+    await t.session.handleMessage(promptFrame('when is swim'));
+
+    expect(t.respond).not.toHaveBeenCalled();
+    expect(t.recorder.openThread).not.toHaveBeenCalled();
+    expect(t.isClosed()).toBe(true);
+    expect(t.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ callSid: CALL_SID, err: 'connection terminated' }),
+      expect.stringContaining('claim'),
+    );
+  });
+
+  it('does not re-authorize a call that is already open when setup arrives twice', async () => {
+    const claims = fakeClaims();
+    const t = build(
+      mintRelayToken(TICKET, NOW),
+      vi.fn(async () => {}),
+      claims.claimCall,
+    );
+
+    await t.session.handleMessage(setupFrame());
+    await t.session.handleMessage(setupFrame());
+    await t.session.handleMessage(promptFrame('when is swim'));
+
+    // The claim is per CALL, so a session that re-claimed its own call would lose to
+    // itself and hang up on a caller who is already talking.
+    expect(claims.claimCall).toHaveBeenCalledTimes(1);
+    expect(t.isClosed()).toBe(false);
+    expect(t.respond).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops every frame that arrives before a setup, and logs nothing the sender wrote', async () => {
+    const preAuth: Array<[string, string]> = [
+      ['error', JSON.stringify({ type: 'error', description: MARKER })],
+      ['other', JSON.stringify({ type: MARKER })],
+      ['dtmf', JSON.stringify({ type: 'dtmf', digit: MARKER })],
+      ['interrupt', JSON.stringify({ type: 'interrupt', utteranceUntilInterrupt: MARKER })],
+      ['unparseable', `}{${MARKER}`],
+      ['prompt', promptFrame(MARKER, false)],
+    ];
+
+    for (const [frame, raw] of preAuth) {
+      const t = build(mintRelayToken(TICKET, NOW));
+      await t.session.handleMessage(raw);
+
+      expect(t.respond).not.toHaveBeenCalled();
+      expect(t.frames()).toEqual([
+        { type: 'end', handoffData: JSON.stringify({ reasonCode: 'unauthorized' }) },
+      ]);
+      expect(t.isClosed()).toBe(true);
+      expect(t.log.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'no_setup', frame, bytes: Buffer.byteLength(raw) }),
+        expect.any(String),
+      );
+      expect(loggedText(t.log)).not.toContain(MARKER);
+    }
+  });
+
+  it('still records what Twilio reports once the call is authorized', async () => {
+    const t = build(mintRelayToken(TICKET, NOW));
+
+    await t.session.handleMessage(setupFrame());
+    await t.session.handleMessage(JSON.stringify({ type: 'error', description: MARKER }));
+
+    // The positive control for the assertion above: the same field on the same path
+    // reaches the log, once a signature says who is on the other end.
+    expect(loggedText(t.log)).toContain(MARKER);
+    expect(t.isClosed()).toBe(false);
+  });
+
+  it('hangs up on a socket that connects and then says nothing at all', async () => {
+    vi.useFakeTimers();
+    const t = build(mintRelayToken(TICKET, NOW));
+
+    await vi.advanceTimersByTimeAsync(PRE_AUTH_IDLE_MS);
+
+    expect(t.frames()).toEqual([
+      { type: 'end', handoffData: JSON.stringify({ reasonCode: 'unauthorized' }) },
+    ]);
+    expect(t.isClosed()).toBe(true);
+    expect(t.log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'idle_no_setup', frame: null }),
+      expect.stringContaining('refused'),
+    );
+  });
+
+  it('leaves an authorized call alone when the pre-auth deadline passes', async () => {
+    vi.useFakeTimers();
+    const t = build(mintRelayToken(TICKET, NOW));
+
+    await t.session.handleMessage(setupFrame());
+    await vi.advanceTimersByTimeAsync(PRE_AUTH_IDLE_MS * 2);
+    await t.session.handleMessage(promptFrame('when is swim'));
+
+    expect(t.isClosed()).toBe(false);
+    expect(t.respond).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a partial prompt — the caller is still talking', async () => {
@@ -246,6 +426,7 @@ describe('the record a call leaves behind', () => {
       token: mintRelayToken(TICKET, NOW),
       turn: { respond },
       recorder,
+      claimCall: fakeClaims().claimCall,
       log,
       now: () => NOW,
     });
@@ -358,7 +539,11 @@ describe('the record a call leaves behind', () => {
 
     await t.session.handleMessage(setupFrame());
     await t.session.handleMessage(
-      JSON.stringify({ type: 'interrupt', utteranceUntilInterrupt: 'cut off', durationUntilInterruptMs: 1 }),
+      JSON.stringify({
+        type: 'interrupt',
+        utteranceUntilInterrupt: 'cut off',
+        durationUntilInterruptMs: 1,
+      }),
     );
     await t.session.handleMessage(promptFrame('when is swim'));
 
@@ -394,6 +579,7 @@ describe('the record a call leaves behind', () => {
       token: 'nonsense',
       turn: { respond: vi.fn(async () => {}) },
       recorder,
+      claimCall: fakeClaims().claimCall,
       log,
       now: () => NOW,
     });
@@ -430,6 +616,7 @@ describe('the nine-minute cap', () => {
       token: mintRelayToken(TICKET, NOW),
       turn: { respond: vi.fn(async () => {}) },
       recorder,
+      claimCall: fakeClaims().claimCall,
       log,
       now: () => NOW,
     });
@@ -449,6 +636,31 @@ describe('the nine-minute cap', () => {
     );
   });
 
+  it('cannot be pushed back by sending setup again', async () => {
+    const wire = fakeSocket();
+    const session = createRelaySession({
+      socket: wire.socket,
+      token: mintRelayToken(TICKET, NOW),
+      turn: { respond: vi.fn(async () => {}) },
+      recorder: fakeRecorder(),
+      claimCall: fakeClaims().claimCall,
+      log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+      now: () => NOW,
+    });
+
+    await session.handleMessage(setupFrame());
+    await vi.advanceTimersByTimeAsync(CALL_CAP_MS / 2);
+    await session.handleMessage(setupFrame());
+    await vi.advanceTimersByTimeAsync(CALL_CAP_MS / 2);
+
+    // Nine minutes after the FIRST setup, not after the last one — a clock a caller can
+    // restart is not a cap.
+    expect(wire.frames()).toEqual([
+      { type: 'text', token: VOICE_CALL_WRAP_UP, last: true },
+      { type: 'end', handoffData: JSON.stringify({ reasonCode: 'time_capped' }) },
+    ]);
+  });
+
   it('leaves a call inside the window alone', async () => {
     const wire = fakeSocket();
     const recorder = fakeRecorder();
@@ -457,6 +669,7 @@ describe('the nine-minute cap', () => {
       token: mintRelayToken(TICKET, NOW),
       turn: { respond: vi.fn(async () => {}) },
       recorder,
+      claimCall: fakeClaims().claimCall,
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
       now: () => NOW,
     });
@@ -476,6 +689,7 @@ describe('the nine-minute cap', () => {
       token: mintRelayToken(TICKET, NOW),
       turn: { respond: vi.fn(async () => {}) },
       recorder,
+      claimCall: fakeClaims().claimCall,
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
       now: () => NOW,
     });

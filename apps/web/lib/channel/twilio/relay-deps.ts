@@ -7,6 +7,7 @@ import { buildGuardDeps } from '~/lib/coach/guards';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { db } from '~/lib/db';
 import { HOT_SMS_CLIENT_OPTIONS } from '~/lib/pipeline/client';
+import { claimRelayCall } from './relay-claim';
 import type { RelaySessionDeps, RelaySocket } from './relay-session';
 import { voiceCallRecorder } from './voice-record';
 import { voiceTurnStream } from './voice-turn';
@@ -41,6 +42,7 @@ export function voiceRelayDeps(socket: RelaySocket, token: string | null): Relay
     socket,
     token,
     recorder: voiceCallRecorder(database),
+    claimCall: (ticket, at) => claimRelayCall(database, ticket, at),
     turn: voiceTurnStream({
       loadSkill: () => loadCronSkill('voice-turn'),
       loadTranscript: (conversationId) => loadTranscript(conversationId, database),
