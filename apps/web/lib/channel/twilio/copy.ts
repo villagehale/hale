@@ -69,13 +69,40 @@ export const VOICE_GREETING_NO_TEXT = 'Hi, this is Hale. I work by text.';
 export const VOICE_TEXT_OPENER = `Hi, this is Hale - you just called. I'm an AI that quietly runs the family week, and I work by text. ${COLD_START_ASK} Reply STOP to unsubscribe.`;
 
 /**
- * The text an ENROLLED caller gets. It asks for nothing: Hale already knows their
- * children, their area and their week, and asking a family it has served for months to
- * re-introduce themselves is the single most damaging thing this feature could do. Their
- * reply goes to the coach through the hand-off that already exists (twilio/inbound.ts).
+ * Voice v1 — the first thing an ENROLLED caller hears, spoken by Twilio before the socket
+ * has said anything. It is the compliance disclosure and it is not optional.
  *
- * No STOP line: they are subscribed, they were told STOP always works when they signed
- * up, and repeating it on every message is the tone of a mailing list.
+ * Three facts, in the order a person needs them. That this is an AI and not a person —
+ * first, before they say anything they would only say to a human. That the conversation
+ * is WRITTEN DOWN into the thread they already have, which is the disclosure that makes
+ * the channel_messages rows honest rather than surveillance. And that the AUDIO is not
+ * kept, which is true by construction: there is no `record` attribute and no
+ * `intelligenceService` on the TwiML, so Twilio retains neither recording nor transcript
+ * (rule #1).
+ *
+ * It ends by naming the exit. A parent who did not want to talk to an AI can hang up and
+ * text, and saying so out loud costs three seconds and removes the only trap in the
+ * feature.
  */
-export const VOICE_TEXT_OPENER_KNOWN =
-  "Hi, it's Hale - you just called. I work by text, so tell me here what you need and I'll pick it up.";
+export const VOICE_RELAY_GREETING =
+  "Hi, it's Hale - I'm an AI assistant, not a person. I'll write down what we talk about so it stays with your family's thread; I don't keep a recording of your voice. You can always text me instead.";
+
+/**
+ * Spoken when a turn breaks — the model refused, timed out, or the loop threw.
+ *
+ * FIXED, not composed, and that is the whole point: the thing that speaks when the model
+ * failed cannot itself need the model. It is also the one line here that must never
+ * promise a fix, because nothing is retrying behind it.
+ */
+export const VOICE_TURN_FAILED =
+  "Sorry - I lost that one. Say it again, or text me and I'll pick it up there.";
+
+/**
+ * Spoken at the nine-minute cap, then the line goes down.
+ *
+ * A call has to end somewhere: the platform's own ceiling is a hang-up with no warning,
+ * and a parent who is mid-sentence when that happens has been dropped by Hale. This ends
+ * it while Hale is still the one talking, and points at the channel that has no cap.
+ */
+export const VOICE_CALL_WRAP_UP =
+  "I need to let you go - we've been on a while. Text me anything else and I'll pick it up there. Bye for now.";

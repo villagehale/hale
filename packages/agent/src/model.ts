@@ -37,7 +37,11 @@ export type ModelId =
  *    `answer` writes the one brief reply to a question about the WORLD — two sentences,
  *    no family context, no tools — behind that same screen and on that same hot path,
  *    so it is held to the same cost and latency shape. Its error case falls back to a
- *    fixed line, so the tier can cost a dull answer and never a fact about a child)
+ *    fixed line, so the tier can cost a dull answer and never a fact about a child.
+ *    `speak` is one turn of a live PHONE CALL: the parent is holding the line, so time
+ *    to first token is the whole experience and a tier that thinks for two seconds is
+ *    worse at this job than one that starts talking. It calls no tools and writes about
+ *    forty words, which is the shape Haiku is best at)
  *  - classify / review / extract → Sonnet 5  (eval-proven; classify and extract both
  *    carry teen_content — a rule-#1 safety call, gated on teenAccuracy ≥ Sonnet-4.6 in
  *    the model matrix)
@@ -57,7 +61,8 @@ export type AgentTask =
   | 'extract'
   | 'acknowledge'
   | 'screen'
-  | 'answer';
+  | 'answer'
+  | 'speak';
 
 const TASK_MODEL: Record<AgentTask, ModelId> = {
   classify: SONNET5_MODEL,
@@ -73,6 +78,7 @@ const TASK_MODEL: Record<AgentTask, ModelId> = {
   acknowledge: HAIKU_MODEL,
   screen: HAIKU_MODEL,
   answer: HAIKU_MODEL,
+  speak: HAIKU_MODEL,
 };
 
 /** The set of valid task names — used by the skill loader to validate frontmatter. */

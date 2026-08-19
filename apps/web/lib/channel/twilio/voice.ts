@@ -1,5 +1,4 @@
 import { type Database, schema } from '@hale/db';
-import { eq, sql } from 'drizzle-orm';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { claimIntakeSession, saveSession } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -8,44 +7,46 @@ import {
   type ResolvedChannel,
   resolveVerifiedChannelByPhone,
 } from '~/lib/channels/sms-consent-core';
+import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { twilioConfig } from './config';
 import {
   VOICE_GREETING,
   VOICE_GREETING_NO_TEXT,
+  VOICE_RELAY_GREETING,
   VOICE_TEXT_OPENER,
-  VOICE_TEXT_OPENER_KNOWN,
 } from './copy';
+import { mintRelayToken } from './relay-token';
 import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './signature';
 
 /**
- * THE VOICE FRONT DOOR, v0 — what happens when somebody CALLS the number.
+ * THE VOICE FRONT DOOR — what happens when somebody CALLS the number.
  *
- * Hale's number has been voice-capable and unanswered since it was bought: a caller
- * today hears Twilio's default error recording. That is the worst first impression a
- * "quiet operator you can always reach" can make, and it is free to fix.
+ * Hale's number was voice-capable and unanswered from the day it was bought: a caller
+ * heard Twilio's default error recording, which is the worst first impression a "quiet
+ * operator you can always reach" can make. v0 fixed that by treating the call as a LEAD —
+ * answer it, say Hale works by text, put a message in their thread, hang up.
  *
- * v0 does NOT make the call a conversation. Hale is messaging-first by decision (F14 ·
- * D1), and a voice agent is a different product with different consent, recording and
- * retention questions. So the call is treated as a LEAD: answer it, say in one breath
- * that Hale works by text, put a message in their thread, hang up. Everything after that
- * is the SMS relationship that already exists — this module starts no second one.
+ * v1 changes ONE of the three branches, and only one. An enrolled parent is now
+ * CONNECTED rather than texted: `<Connect><ConversationRelay>` hands the call to a
+ * WebSocket where Hale actually talks (relay-session.ts). A family Hale has served for
+ * months, who phones the number they already use, should not be told to go and type.
  *
- * WHO IS CALLING decides which text they get, and it is the only branch here:
+ * WHO IS CALLING is still the only branch here, and the other two are byte-for-byte v0:
  *
- *   ENROLLED   — a family Hale already works for. They get one line that asks for
- *                nothing; their reply reaches the coach through the hand-off in
- *                inbound.ts. Sending this caller the intake questions would be Hale
- *                asking a family it has served for months to re-introduce their
- *                children, which is the one outcome that would make this feature a
- *                regression rather than an addition.
+ *   ENROLLED   — a family Hale already works for. They get a spoken conversation, in the
+ *                same thread their texts run in. Nothing is sent, because nothing needs
+ *                to be: they are already talking to Hale.
  *   UNSUBSCRIBED — they pressed STOP. The phone is answered, and NOTHING is sent. A call
  *                is not consent, and a re-text here is a CASL violation with a recording
- *                of us doing it (rule #1).
+ *                of us doing it (rule #1). A stopped number is not connected either —
+ *                it does not resolve to a live channel, so it cannot reach the relay.
  *   A STRANGER — the cold start. They get intake's own question, verbatim, and their
- *                reply lands in the intake machine.
+ *                reply lands in the intake machine. Voice intake is deliberately NOT a
+ *                thing: a stranger has consented to nothing, and the first exchange is
+ *                where consent is captured.
  *
  * The order of those three is deliberate and is NOT "check the opt-out first". The live
- * channel is the answer to "may we text this number"; a revoked row is history, and a
+ * channel is the answer to "may we talk to this number"; a revoked row is history, and a
  * number can hold both — a parent who stopped and started again, or a recycled number
  * with a new owner. Asking the revoked row first would silence Hale forever for whoever
  * holds the number now.
@@ -65,9 +66,25 @@ import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './s
  */
 const SAY_VOICE = 'Polly.Joanna-Neural';
 
-/** The template behind the enrolled caller's text, recorded on the ledger row so the
- * body itself never has to be (rule #1). */
-const VOICE_CALLBACK_TEMPLATE = 'voice_callback';
+/**
+ * The relay's voice — the same Joanna, on Amazon's generative tier.
+ *
+ * Deliberately the same identity as the `<Say>` above: a stranger who calls and a parent
+ * who calls should be talking to the same Hale, and a second voice would make the two
+ * halves of one product sound like two companies. Generative rather than neural because
+ * this one has to hold a CONVERSATION — the neural tier reads a line well and sounds like
+ * a recording across several turns.
+ *
+ * No `language` attribute, for the same reason `<Say>` has none: the voice already
+ * carries en-US, ConversationRelay defaults its transcription to en-US, and v1 is English
+ * only. An attribute whose only possible effect is a mismatch is an attribute worth not
+ * having.
+ */
+const RELAY_TTS_PROVIDER = 'Amazon';
+const RELAY_VOICE = 'Joanna-Generative';
+
+/** Where Twilio opens the socket. `wss`, always — Twilio refuses anything else. */
+const RELAY_PATH = '/api/channels/twilio/relay';
 
 export interface TwilioVoiceDeps {
   database: Database;
@@ -92,6 +109,8 @@ export interface IncomingCall {
   receivedAt: Date;
 }
 
+/** Every outcome that ends in a spoken line and a hang-up. The relay is not one of
+ * them — it ends in a document that keeps the call up (see {@link VoiceAnswer}). */
 export type TwilioVoiceOutcome =
   /** A `From` we cannot canonicalize — there is nobody to text. */
   | 'invalid_number'
@@ -99,8 +118,6 @@ export type TwilioVoiceOutcome =
   | 'unsubscribed'
   /** A stranger: the intake conversation is open and the opener is in their thread. */
   | 'texted_cold'
-  /** An enrolled parent: the callback is in their thread and on their ledger. */
-  | 'texted_known'
   /** The claim was already held — they called again, and one text is one text. */
   | 'already_texted'
   /** The transport refused. Never folded into any of the above: those all mean a
@@ -108,31 +125,32 @@ export type TwilioVoiceOutcome =
   | 'send_failed';
 
 /**
- * Which greeting each outcome earns. A Record rather than a condition, so a new outcome
- * cannot be added without deciding what the caller hears — and the only distinction that
- * matters is whether a message is actually in their thread. Every "no" says so plainly
- * instead of promising a text that is not coming.
+ * What answering a call decided.
+ *
+ * A union rather than one enum plus an optional field, because the relay answer is the
+ * only one that carries something — the socket URL, which nothing else has and which the
+ * caller cannot forget to read. An optional `relayUrl?: string` would compile perfectly
+ * with the enrolled branch silently answered by a spoken line.
+ */
+export type VoiceAnswer =
+  | { outcome: TwilioVoiceOutcome }
+  | { outcome: 'relayed'; relayUrl: string };
+
+/**
+ * Which greeting each spoken outcome earns. A Record rather than a condition, so a new
+ * outcome cannot be added without deciding what the caller hears — and the only
+ * distinction that matters is whether a message is actually in their thread. Every "no"
+ * says so plainly instead of promising a text that is not coming.
  */
 const GREETING_FOR: Record<TwilioVoiceOutcome, string> = {
   invalid_number: VOICE_GREETING_NO_TEXT,
   unsubscribed: VOICE_GREETING_NO_TEXT,
   send_failed: VOICE_GREETING_NO_TEXT,
   texted_cold: VOICE_GREETING,
-  texted_known: VOICE_GREETING,
   // A second call the same day: the text really is in their thread, just not from this
   // call. Telling them to look at their messages is the true and useful answer.
   already_texted: VOICE_GREETING,
 };
-
-/**
- * At most one callback per parent per day. The DAY, not a rolling 24 hours, because the
- * claim has to BE the insert — a rolling window needs a read, and read-then-insert is a
- * guard two simultaneous calls both walk through. A deterministic key hands the decision
- * to `channel_messages_dedupe_key_uniq`, where exactly one caller can win it.
- */
-export function voiceCallbackDedupeKey(parentUserId: string, at: Date): string {
-  return `voice_callback:${parentUserId}:${at.toISOString().slice(0, 10)}`;
-}
 
 /**
  * Answer one authenticated call. Exported so the routing decisions are testable without
@@ -141,12 +159,12 @@ export function voiceCallbackDedupeKey(parentUserId: string, at: Date): string {
 export async function answerVoiceCall(
   deps: TwilioVoiceDeps,
   call: IncomingCall,
-): Promise<TwilioVoiceOutcome> {
+): Promise<VoiceAnswer> {
   const phoneE164 = normalizePhoneE164(call.from);
-  if (!phoneE164) return 'invalid_number';
+  if (!phoneE164) return { outcome: 'invalid_number' };
 
   const owner = await resolveVerifiedChannelByPhone(deps.database, phoneE164);
-  if (owner) return textEnrolledCaller(deps, owner, phoneE164, call);
+  if (owner) return connectEnrolledCaller(deps, owner, phoneE164, call);
 
   const revoked = await findRevokedChannelOwner(deps.database, phoneE164);
   if (revoked) {
@@ -156,90 +174,51 @@ export async function answerVoiceCall(
       textSent: false,
       reason: 'unsubscribed',
     });
-    return 'unsubscribed';
+    return { outcome: 'unsubscribed' };
   }
 
   return textStranger(deps, phoneE164, call);
 }
 
 /**
- * The enrolled parent's callback: claim, send, settle.
+ * The enrolled parent's call: mint a ticket, hand Twilio a socket.
  *
- * The ledger row is written BEFORE the send with `status: 'queued'`, and that insert is
- * the whole idempotency mechanism — the row is the claim, not a record of a claim made
- * somewhere else. A row that loses the unique index means another call already owns
- * today's callback.
+ * NO transport is built and nothing is sent. That is the whole change from v0 — a parent
+ * who phoned is about to be talking to Hale, and a text telling them to text would be
+ * Hale interrupting itself.
  *
- * CASL: the parent is enrolled, so this needs no special basis — but it would be a
- * direct response to their own call even if they were not (inquiry / implied consent).
+ * The TICKET is minted HERE, inside the branch that has already resolved WHO is calling,
+ * off a request Twilio signed. That ordering is the security property: the socket never
+ * has to ask the wire whose call it is holding, because the answer is in the signature it
+ * was handed (relay-token.ts).
  *
- * QUIET HOURS do not apply and are deliberately not consulted. The outbound gate exists
- * for messages HALE decides to send; this one is a reply to a phone call the parent is
- * still on. Holding it until 08:00 would answer a 22:00 call with silence.
+ * The audit row is v0's, unchanged in shape and honest in content: a call arrived, and no
+ * text went out. What happened DURING the call gets its own rows as it happens
+ * (voice-record.ts) — this one is the fact that the phone rang.
  */
-async function textEnrolledCaller(
+async function connectEnrolledCaller(
   deps: TwilioVoiceDeps,
   owner: ResolvedChannel,
   phoneE164: string,
   call: IncomingCall,
-): Promise<TwilioVoiceOutcome> {
+): Promise<VoiceAnswer> {
   const now = deps.now?.() ?? call.receivedAt;
-  const [claimed] = await deps.database
-    .insert(schema.channelMessages)
-    .values({
-      familyId: owner.familyId,
-      parentUserId: owner.userId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'voice',
-      templateKey: VOICE_CALLBACK_TEMPLATE,
-      dedupeKey: voiceCallbackDedupeKey(owner.userId, now),
-      status: 'queued',
-    })
-    .onConflictDoNothing({
-      target: schema.channelMessages.dedupeKey,
-      where: sql`${schema.channelMessages.dedupeKey} IS NOT NULL`,
-    })
-    .returning({ id: schema.channelMessages.id });
-  const messageId = claimed?.id;
-  if (!messageId) return 'already_texted';
+  const token = mintRelayToken(
+    { callSid: call.callSid, familyId: owner.familyId, parentUserId: owner.userId },
+    now,
+  );
 
   await recordCallReceived(deps.database, owner, {
     phoneE164,
     callSid: call.callSid,
-    textSent: true,
-    targetId: messageId,
+    textSent: false,
+    reason: 'relayed',
   });
 
-  try {
-    const { providerMessageId } = await deps
-      .transport()
-      .send({ to: phoneE164, body: VOICE_TEXT_OPENER_KNOWN });
-    await deps.database
-      .update(schema.channelMessages)
-      .set({ status: 'sent', providerMessageId, sentAt: now })
-      .where(eq(schema.channelMessages.id, messageId));
-    await deps.database.insert(schema.auditLog).values({
-      familyId: owner.familyId,
-      actor: owner.userId,
-      actionTaken: 'voice_callback_sent',
-      targetTable: 'channel_messages',
-      targetId: messageId,
-    });
-    return 'texted_known';
-  } catch (err) {
-    // The claim is NOT released. A consumed key costs this parent one courtesy text they
-    // can replace by texting Hale themselves, which works; releasing it would let a
-    // caller who redials five times provoke five provider attempts. The stranger's claim
-    // below is released because holding it costs them something they cannot route
-    // around.
-    await deps.database
-      .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: 'transport_error' })
-      .where(eq(schema.channelMessages.id, messageId));
-    logSendFailure(deps, { callSid: call.callSid, channelMessageId: messageId, err });
-    return 'send_failed';
-  }
+  return {
+    outcome: 'relayed',
+    relayUrl: `${appBaseUrl().replace(/^http/, 'ws')}${RELAY_PATH}?t=${token}`,
+  };
 }
 
 /**
@@ -264,14 +243,14 @@ async function textStranger(
   deps: TwilioVoiceDeps,
   phoneE164: string,
   call: IncomingCall,
-): Promise<TwilioVoiceOutcome> {
+): Promise<VoiceAnswer> {
   const now = deps.now?.() ?? call.receivedAt;
   const session = await claimIntakeSession(deps.database, {
     phoneE164,
     state: 'awaiting_details',
     sourceCode: null,
   });
-  if (!session) return 'already_texted';
+  if (!session) return { outcome: 'already_texted' };
 
   try {
     const { providerMessageId } = await deps
@@ -292,14 +271,14 @@ async function textStranger(
       },
       now,
     );
-    return 'texted_cold';
+    return { outcome: 'texted_cold' };
   } catch (err) {
     // Release it. A session left open with nothing in it costs twice: no later call
     // could ever text this number, and their own first text would skip the greeting and
     // be read as intake details they were never asked for.
     await saveSession(deps.database, session, { closedAt: now }, now);
     logSendFailure(deps, { callSid: call.callSid, sessionId: session.id, err });
-    return 'send_failed';
+    return { outcome: 'send_failed' };
   }
 }
 
@@ -361,14 +340,52 @@ function escapeXml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** One spoken line, then the line goes down. No `<Gather>`, no recording, no voicemail:
- * v0 collects nothing by voice, so there is nothing to consent to or retain. */
-export function voiceTwiml(spoken: string): Response {
-  const body = `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="${SAY_VOICE}">${escapeXml(spoken)}</Say><Hangup/></Response>`;
-  return new Response(body, {
+/** An attribute VALUE, which additionally cannot contain the quote that delimits it. */
+function escapeXmlAttribute(text: string): string {
+  return escapeXml(text).replace(/"/g, '&quot;');
+}
+
+function twimlResponse(body: string): Response {
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?>${body}`, {
     status: 200,
     headers: { 'content-type': 'text/xml; charset=utf-8' },
   });
+}
+
+/** One spoken line, then the line goes down. No `<Gather>`, no recording, no voicemail:
+ * the lead path collects nothing by voice, so there is nothing to consent to or retain. */
+export function voiceTwiml(spoken: string): Response {
+  return twimlResponse(
+    `<Response><Say voice="${SAY_VOICE}">${escapeXml(spoken)}</Say><Hangup/></Response>`,
+  );
+}
+
+/**
+ * Hand the call to the relay socket.
+ *
+ * `welcomeGreeting` is Twilio's, spoken before our socket has said a word, and it is the
+ * compliance disclosure (copy.ts). Putting it in the TwiML rather than as the socket's
+ * first tokens is deliberate: the disclosure then does not depend on the socket
+ * connecting, so a caller cannot reach a live microphone through a path where nobody told
+ * them it was an AI.
+ *
+ * FOUR attributes and no more. There is no `record`, so no audio exists. There is no
+ * `intelligenceService`, so Twilio retains no transcript of its own — the
+ * `channel_messages` rows Hale writes are the only record of the conversation, which is
+ * what the greeting promises and what rule #1 requires. And there is no `<Hangup/>`: the
+ * call ends when the socket says `end` or the caller hangs up, not when this document is
+ * read.
+ */
+export function conversationRelayTwiml(relayUrl: string): Response {
+  const attributes = [
+    `url="${escapeXmlAttribute(relayUrl)}"`,
+    `welcomeGreeting="${escapeXmlAttribute(VOICE_RELAY_GREETING)}"`,
+    `ttsProvider="${RELAY_TTS_PROVIDER}"`,
+    `voice="${RELAY_VOICE}"`,
+  ].join(' ');
+  return twimlResponse(
+    `<Response><Connect><ConversationRelay ${attributes} /></Connect></Response>`,
+  );
 }
 
 /**
@@ -413,12 +430,14 @@ export async function handleTwilioVoiceRequest(
   }
 
   try {
-    const outcome = await answerVoiceCall(deps, {
+    const answer = await answerVoiceCall(deps, {
       from,
       callSid,
       receivedAt: deps.now?.() ?? new Date(),
     });
-    return voiceTwiml(GREETING_FOR[outcome]);
+    return answer.outcome === 'relayed'
+      ? conversationRelayTwiml(answer.relayUrl)
+      : voiceTwiml(GREETING_FOR[answer.outcome]);
   } catch (err) {
     // The one broad catch in this module, and it is at the boundary rather than in the
     // logic: a database blip must not turn a parent's call into an error tone. It is

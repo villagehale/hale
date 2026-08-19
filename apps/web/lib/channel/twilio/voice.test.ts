@@ -7,19 +7,9 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
-import {
-  VOICE_GREETING,
-  VOICE_GREETING_NO_TEXT,
-  VOICE_TEXT_OPENER,
-  VOICE_TEXT_OPENER_KNOWN,
-} from './copy';
-import {
-  type TwilioVoiceDeps,
-  answerVoiceCall,
-  handleTwilioVoiceRequest,
-  voiceCallbackDedupeKey,
-  voiceTwiml,
-} from './voice';
+import { VOICE_GREETING, VOICE_GREETING_NO_TEXT, VOICE_RELAY_GREETING, VOICE_TEXT_OPENER } from './copy';
+import { verifyRelayToken } from './relay-token';
+import { type TwilioVoiceDeps, answerVoiceCall, handleTwilioVoiceRequest, voiceTwiml } from './voice';
 
 /**
  * The voice front door, end to end minus the network and the phone line.
@@ -261,7 +251,7 @@ describe('a stranger calls', () => {
       receivedAt: NOW,
     });
 
-    expect(outcome).toBe('texted_cold');
+    expect(outcome).toEqual({ outcome: 'texted_cold' });
     expect(h.transport.sent).toEqual([{ to: PHONE, body: VOICE_TEXT_OPENER }]);
     // Shared with the texted greeting, not re-worded: one extractor reads both replies.
     expect(VOICE_TEXT_OPENER).toContain(COLD_START_ASK);
@@ -335,7 +325,7 @@ describe('a stranger calls', () => {
       receivedAt: NOW,
     });
 
-    expect(outcome).toBe('already_texted');
+    expect(outcome).toEqual({ outcome: 'already_texted' });
     expect(h.transport.sent).toEqual([]);
     expect(sessionRows(h.fake)).toHaveLength(1);
   });
@@ -344,7 +334,7 @@ describe('a stranger calls', () => {
 // ── the parent Hale already works for ────────────────────────────────────────
 
 describe('an enrolled parent calls', () => {
-  it('texts the line that asks for nothing, never the intake questions', async () => {
+  it('is connected to a conversation, not texted a lead', async () => {
     const h = harness();
     enrol(h.fake);
 
@@ -354,52 +344,76 @@ describe('an enrolled parent calls', () => {
       receivedAt: NOW,
     });
 
-    expect(outcome).toBe('texted_known');
-    expect(h.transport.sent).toEqual([{ to: PHONE, body: VOICE_TEXT_OPENER_KNOWN }]);
-    // The whole point of the branch: a family Hale has served for months is never asked
-    // to re-introduce their children.
-    expect(VOICE_TEXT_OPENER_KNOWN).not.toContain(COLD_START_ASK);
+    expect(outcome).toMatchObject({ outcome: 'relayed' });
+    // Nothing is sent and no intake conversation is started: they are already talking.
+    expect(h.transport.sent).toEqual([]);
     expect(sessionRows(h.fake)).toEqual([]);
+    expect(messageRows(h.fake)).toEqual([]);
   });
 
-  it('ledgers the send against their family, under the voice category', async () => {
+  it('hands Twilio a socket URL carrying a ticket bound to THIS call and THIS family', async () => {
     const h = harness();
     enrol(h.fake);
 
-    await answerVoiceCall(h.deps, { from: PHONE, callSid: CALL_SID, receivedAt: NOW });
-
-    const [row] = messageRows(h.fake);
-    expect(row).toMatchObject({
-      familyId: FAMILY_ID,
-      parentUserId: USER_ID,
-      channel: 'sms',
-      direction: 'out',
-      category: 'voice',
-      dedupeKey: voiceCallbackDedupeKey(USER_ID, NOW),
-      status: 'sent',
-      sentAt: NOW,
+    const answer = await answerVoiceCall(h.deps, {
+      from: PHONE,
+      callSid: CALL_SID,
+      receivedAt: NOW,
     });
-    expect(row?.providerMessageId).toBe('fake-out-1');
-    // Rule #1: an outbound row never stores the rendered body.
-    expect(row?.body ?? null).toBeNull();
+    if (answer.outcome !== 'relayed') throw new Error('expected a relayed call');
+
+    const url = new URL(answer.relayUrl);
+    expect(url.protocol).toBe('wss:');
+    expect(url.host).toBe('app.villagehale.com');
+    expect(url.pathname).toBe('/api/channels/twilio/relay');
+    expect(verifyRelayToken(url.searchParams.get('t'), CALL_SID, NOW)).toEqual({
+      ok: true,
+      ticket: { callSid: CALL_SID, familyId: FAMILY_ID, parentUserId: USER_ID },
+    });
+    // Rule #1: the URL travels to Twilio and is logged there. Two opaque uuids, no number.
+    expect(answer.relayUrl).not.toContain(PHONE);
   });
 
-  it('writes the call and the send as two audit rows, with the number masked', async () => {
+  it('speaks the AI + no-recording disclosure before the socket says anything', async () => {
+    const h = harness();
+    enrol(h.fake);
+
+    const twiml = await (
+      await handleTwilioVoiceRequest(voiceRequest(voiceParams()), h.deps)
+    ).text();
+
+    expect(twiml).toContain('<Connect><ConversationRelay ');
+    expect(twiml).toContain(VOICE_RELAY_GREETING);
+    expect(VOICE_RELAY_GREETING).toContain('AI');
+    expect(VOICE_RELAY_GREETING).toContain("don't keep a recording");
+    // The three the call must never carry: no audio, no Twilio-side transcript, and no
+    // hang-up (the socket owns when the call ends). Matched as ATTRIBUTES, because the
+    // greeting itself contains the word "recording" — that is the promise, not a setting.
+    expect(twiml).not.toMatch(/\srecord=/);
+    expect(twiml).not.toMatch(/\sintelligenceService=/);
+    expect(twiml).not.toContain('<Hangup/>');
+  });
+
+  it('records the call itself, with the number masked and no text claimed', async () => {
     const h = harness();
     enrol(h.fake);
 
     await answerVoiceCall(h.deps, { from: PHONE, callSid: CALL_SID, receivedAt: NOW });
 
-    const actions = auditRows(h.fake).map((row) => row.actionTaken);
-    expect(actions).toEqual(['voice_call_received', 'voice_callback_sent']);
     const [received] = auditRows(h.fake);
+    expect(auditRows(h.fake).map((row) => row.actionTaken)).toEqual(['voice_call_received']);
     expect(received).toMatchObject({ familyId: FAMILY_ID, actor: USER_ID });
-    expect(received?.after).toMatchObject({ maskedPhone: '••• ••• 1234', callSid: CALL_SID });
+    expect(received?.after).toMatchObject({
+      maskedPhone: '••• ••• 1234',
+      callSid: CALL_SID,
+      textSent: false,
+      reason: 'relayed',
+    });
     // Rule #1: the raw number is never stored anywhere, audit included.
     expect(JSON.stringify(received?.after)).not.toContain(PHONE);
   });
 
-  it('texts once a day however many times they call, and still answers the phone', async () => {
+  it('connects every call, with no once-a-day claim to lose', async () => {
     const h = harness();
     enrol(h.fake);
 
@@ -409,17 +423,20 @@ describe('an enrolled parent calls', () => {
       h.deps,
     );
 
-    expect(await first.text()).toContain(VOICE_GREETING);
-    expect(await second.text()).toContain(VOICE_GREETING);
-    expect(h.transport.sent).toHaveLength(1);
-    expect(messageRows(h.fake)).toHaveLength(1);
+    expect(await first.text()).toContain('ConversationRelay');
+    expect(await second.text()).toContain('ConversationRelay');
+    expect(h.transport.sent).toEqual([]);
   });
 
-  it('keys the claim per parent per day, so tomorrow is a fresh call', () => {
-    expect(voiceCallbackDedupeKey(USER_ID, NOW)).toBe(`voice_callback:${USER_ID}:2026-08-12`);
-    expect(voiceCallbackDedupeKey(USER_ID, new Date('2026-08-13T04:00:00.000Z'))).toBe(
-      `voice_callback:${USER_ID}:2026-08-13`,
-    );
+  it('never asks a family it has served for months to re-introduce their children', async () => {
+    const h = harness();
+    enrol(h.fake);
+
+    const twiml = await (
+      await handleTwilioVoiceRequest(voiceRequest(voiceParams()), h.deps)
+    ).text();
+
+    expect(twiml).not.toContain(COLD_START_ASK);
   });
 });
 
@@ -450,15 +467,15 @@ describe('an unsubscribed number calls', () => {
       receivedAt: NOW,
     });
 
-    expect(outcome).toBe('unsubscribed');
+    expect(outcome).toEqual({ outcome: 'unsubscribed' });
     const [received] = auditRows(h.fake);
     expect(received).toMatchObject({ familyId: FAMILY_ID, actionTaken: 'voice_call_received' });
     expect(received?.after).toMatchObject({ textSent: false, reason: 'unsubscribed' });
   });
 
-  it('texts a number that unsubscribed once and enrolled again since', async () => {
+  it('still connects a number that unsubscribed once and enrolled again since', async () => {
     // A recycled or re-started number holds BOTH rows. The live channel is the answer to
-    // "may we text this"; the revoked row is history about a previous owner.
+    // "may we talk to this"; the revoked row is history about a previous owner.
     const h = harness();
     unsubscribe(h.fake);
     enrol(h.fake);
@@ -469,8 +486,7 @@ describe('an unsubscribed number calls', () => {
       receivedAt: NOW,
     });
 
-    expect(outcome).toBe('texted_known');
-    expect(h.transport.sent).toHaveLength(1);
+    expect(outcome).toMatchObject({ outcome: 'relayed' });
   });
 });
 
@@ -497,7 +513,7 @@ describe('when the text cannot be sent', () => {
       receivedAt: NOW,
     });
 
-    expect(outcome).toBe('send_failed');
+    expect(outcome).toEqual({ outcome: 'send_failed' });
     expect(h.errors).toHaveLength(1);
     // Rule #1: the operator line carries the shape of the failure, never the number.
     expect(JSON.stringify(h.errors)).not.toContain(PHONE);
@@ -514,7 +530,7 @@ describe('when the text cannot be sent', () => {
     expect(session?.closedAt).toEqual(NOW);
   });
 
-  it('marks the enrolled parent’s ledger row failed rather than deleting it', async () => {
+  it('cannot fail this way for an enrolled parent — their call touches no transport', async () => {
     const h = harness(refusingTransport('twilio send failed: HTTP 500, twilio code 20500'));
     enrol(h.fake);
 
@@ -524,10 +540,8 @@ describe('when the text cannot be sent', () => {
       receivedAt: NOW,
     });
 
-    expect(outcome).toBe('send_failed');
-    const [row] = messageRows(h.fake);
-    expect(row).toMatchObject({ status: 'failed', dedupeKey: voiceCallbackDedupeKey(USER_ID, NOW) });
-    expect(row?.providerMessageId ?? null).toBeNull();
+    expect(outcome).toMatchObject({ outcome: 'relayed' });
+    expect(h.transportBuilds).toBe(0);
   });
 });
 
@@ -543,7 +557,7 @@ describe('an authentic call carrying nothing to act on', () => {
       receivedAt: NOW,
     });
 
-    expect(outcome).toBe('invalid_number');
+    expect(outcome).toEqual({ outcome: 'invalid_number' });
     expect(h.transport.sent).toEqual([]);
     expect(h.fake.writes).toEqual([]);
   });
@@ -605,13 +619,10 @@ describe('the TwiML', () => {
   });
 });
 
-describe('the texted lines stay inside the carrier budget', () => {
-  it.each([
-    ['VOICE_TEXT_OPENER', VOICE_TEXT_OPENER],
-    ['VOICE_TEXT_OPENER_KNOWN', VOICE_TEXT_OPENER_KNOWN],
-  ])('%s', (_name, body) => {
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(smsSegments(body)).toBeLessThanOrEqual(2);
+describe('the texted line stays inside the carrier budget', () => {
+  it('VOICE_TEXT_OPENER', () => {
+    expect(smsEncoding(VOICE_TEXT_OPENER)).toBe('gsm7');
+    expect(smsSegments(VOICE_TEXT_OPENER)).toBeLessThanOrEqual(2);
   });
 
   it('gives the stranger the unsubscribe mechanism their inquiry did not include', () => {

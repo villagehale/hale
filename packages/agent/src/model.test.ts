@@ -23,6 +23,8 @@ describe('pickModel', () => {
     ['extract', SONNET5_MODEL],
     ['acknowledge', HAIKU_MODEL],
     ['screen', HAIKU_MODEL],
+    ['answer', HAIKU_MODEL],
+    ['speak', HAIKU_MODEL],
   ])('maps %s → %s', (task, expected) => {
     expect(pickModel(task)).toBe(expected);
   });

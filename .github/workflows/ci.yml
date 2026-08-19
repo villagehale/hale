@@ -127,6 +127,9 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Voice turn eval (cached-only)
+        run: pnpm --filter @hale/worker eval:voice-turn
+
       - name: Coaching plan composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-plan
 

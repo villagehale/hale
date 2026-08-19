@@ -131,6 +131,10 @@
     "file": "verify-registration-window.md",
     "sha256": "08b916a61b81d255b60910d50f2f3277fbdbc7d00a939f6356b7d864e673d1a7"
   },
+  "voice-turn.md": {
+    "file": "voice-turn.md",
+    "sha256": "66771aac707072383c7986d158e623ab6e580d03b86b6021b2ededb91631d0cb"
+  },
   "week-summary.md": {
     "file": "week-summary.md",
     "sha256": "45146aa76de2af1f3dbdb32494e99159276a4acffc8c8f62fd03632ce3fc83cb"
