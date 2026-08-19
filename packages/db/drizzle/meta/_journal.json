@@ -617,6 +617,13 @@
       "when": 1781468640000,
       "tag": "0090_medical_reply_source",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1781468700000,
+      "tag": "0091_voice_channel",
+      "breakpoints": true
     }
   ]
 }

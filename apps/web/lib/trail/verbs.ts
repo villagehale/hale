@@ -150,7 +150,14 @@ export const AUDIT_VERBS = [
   'sms_intake_outbound',
   'sms_intake_provisioned',
   'voice_call_received',
+  // v0's callback text. No new row carries it — an enrolled caller now has a spoken
+  // conversation instead — but months of rows in production do, and a verb the trail
+  // cannot read makes them all say "recorded an update".
   'voice_callback_sent',
+  // Voice v1 · the spoken conversation itself.
+  'voice_turn_received',
+  'voice_turn_spoken',
+  'voice_call_completed',
   'channel_sent',
   'push_sent',
   'email_reply_received',
@@ -431,6 +438,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   voice_callback_sent: { sentence: 'Hale texted you back after your call', family: 'note' },
+  voice_turn_received: { sentence: 'you asked Hale something on the phone', family: 'note' },
+  voice_turn_spoken: { sentence: 'Hale answered you on the phone', family: 'note' },
+  voice_call_completed: { sentence: 'you and Hale finished a call', family: 'done' },
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
   push_sent: { sentence: 'Hale sent you a notification', family: 'done' },
   email_reply_received: { sentence: 'you replied to one of Hale’s emails', family: 'note' },

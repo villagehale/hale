@@ -115,6 +115,11 @@ export const agentNameEnum = pgEnum('agent_name', [
   'radar-voice',
   'nudge-voice',
   'coach-channel-sms',
+  // Voice v1 · one spoken turn of a live call. Its own name for the same reason the SMS
+  // turn has one: a call runs on a different tier with a different latency budget and a
+  // per-minute carrier cost on top, so averaging it into any other name produces a
+  // number that describes neither surface.
+  'voice-turn',
 ]);
 
 export const agentRunStatusEnum = pgEnum('agent_run_status', [
@@ -267,6 +272,13 @@ export const channelMessageChannelEnum = pgEnum('channel_message_channel', [
   'email',
   'sms',
   'push',
+  // Voice v1 · a spoken turn on a call, in either direction. Its own leg because
+  // nothing was texted: folding a call into 'sms' would make the ledger claim a message
+  // that does not exist, in the one table a PIPEDA right-to-access read is built from.
+  // It is also what keeps the inbound reconciler off these rows — that sweep selects
+  // sms 'reply' rows and re-drives them to the SMS coach, so a spoken turn recorded as
+  // 'sms' would be answered a second time, by text, five minutes later.
+  'voice',
 ]);
 
 // Direction of a loop message. 'in' rows (replies) are the ONLY rows that carry a
