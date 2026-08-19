@@ -1,6 +1,6 @@
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { twilioConfig } from '~/lib/channel/twilio/config';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
 import type { Channel } from '../types';
 
 /**
@@ -17,10 +17,14 @@ import type { Channel } from '../types';
  * credentials skips cleanly rather than half-sending, and the dispatch records the
  * skip as a not_configured leg.
  *
- * A provider failure THROWS out of the transport rather than being mapped to an
- * outcome. That is the drain's documented contract for a channel error: the job fails,
- * pg-boss redelivers with backoff, and the per-channel dedupe key keeps the retry from
- * double-sending. Swallowing it here would turn a Twilio outage into a silent week.
+ * A provider failure is CLASSIFIED here, not swallowed and not blindly rethrown. A
+ * transient refusal becomes the transient error variant, which the dispatch turns back
+ * into a throw so pg-boss redelivers with backoff (the per-channel dedupe key keeps the
+ * retry from double-sending) — a Twilio outage must never become a silent week. A
+ * PERMANENT refusal — 21610 above all, the parent has opted out at the carrier — becomes
+ * the non-transient variant instead: retrying can only re-earn the same refusal, so the
+ * dispatch writes the failed row with the Twilio code and the loop stops texting a
+ * number that has told the carrier no.
  *
  * Privacy (rule #1): the phone number and the rendered body are never logged.
  */
@@ -53,8 +57,18 @@ export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
         return { status: 'skipped', reason: 'no_address' };
       }
 
-      const { providerMessageId } = await transport.send({ to, body: rendered.text });
-      return { status: 'sent', providerMessageId };
+      try {
+        const { providerMessageId } = await transport.send({ to, body: rendered.text });
+        return { status: 'sent', providerMessageId };
+      } catch (error) {
+        if (!(error instanceof TwilioSendError)) throw error;
+        return {
+          status: 'error',
+          transient: !error.permanent,
+          code: error.code,
+          message: error.message,
+        };
+      }
     },
   };
 }

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createTwilioSmsChannel } from '~/lib/channel/adapters/twilio-sms';
+import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
 import {
   ChannelRetryableError,
@@ -243,6 +245,36 @@ describe('provider outcomes', () => {
     });
     await expect(dispatchLoopMessage(message(), ports)).rejects.toBeInstanceOf(ChannelRetryableError);
     expect(ledger).toHaveLength(0);
+  });
+
+  it('records the failed row for a permanent SMS refusal, through the REAL Twilio adapter', async () => {
+    // The branch above proves the policy with a fake; this proves the SMS leg can
+    // actually reach it. It could not before: the transport threw a bare string error,
+    // the adapter had no error variant, and every permanent refusal came out of the
+    // dispatch as a throw — a retry loop against a parent who had opted out.
+    const { ports, ledger, captures } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      channels: {
+        sms: createTwilioSmsChannel({
+          transport: {
+            async send(): Promise<{ providerMessageId: string }> {
+              throw new TwilioSendError('21610', 400);
+            },
+          },
+          resolveTarget: async () => '+14165550100',
+          configured: true,
+        }),
+      },
+    });
+
+    const result = await dispatchLoopMessage(message(), ports);
+
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: '21610' }]);
+    expect(ledger[0]).toMatchObject({ status: 'failed', channel: 'sms', errorCode: '21610' });
+    expect(captures[0]).toMatchObject({
+      event: 'loop_message_failed',
+      properties: { channel: 'sms', reason: 'failed' },
+    });
   });
 
   it('records a failed row (channel_unavailable) when no adapter is wired for a leg', async () => {

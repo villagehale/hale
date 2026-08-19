@@ -7,7 +7,7 @@ import {
   type LoopHealthSummary,
   runLoopHealthDigestCron,
 } from './health-digest';
-import type { FamilyEngagement, RadarVerification } from './scorecard-rubric';
+import type { FamilyEngagement, MedicalAnswers, RadarVerification } from './scorecard-rubric';
 
 /** The pre-launch scoreboard — the state every fixture below is in. */
 const EMPTY_SCOREBOARD: FunnelScoreboard = {
@@ -28,7 +28,10 @@ const NO_DEBT: CommitmentDebt = {
 const NO_ENGAGEMENT: FamilyEngagement = { families: 0, contacted: 0 };
 
 /** No re-verify sweep overlapped the window. */
-const NO_RADAR: RadarVerification = { sweptThisWeek: false, windowsDue: 0, confirmed: 0 };
+const NO_RADAR: RadarVerification = { sweptThisWeek: false, outcomes: null };
+
+/** No parent brought Hale a symptom this week. */
+const NO_MEDICAL: MedicalAnswers = { answered: 0, fallbacks: 0 };
 
 /**
  * X1 (VIL-227) · the weekly founder digest. The DB aggregation (aggregateLoopHealth)
@@ -59,6 +62,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       commitmentDebt: NO_DEBT,
       engagement: NO_ENGAGEMENT,
       radar: NO_RADAR,
+      medicalAnswers: NO_MEDICAL,
       unmetIntents: [],
     };
 
@@ -85,6 +89,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       commitmentDebt: NO_DEBT,
       engagement: NO_ENGAGEMENT,
       radar: NO_RADAR,
+      medicalAnswers: NO_MEDICAL,
       unmetIntents: [],
     };
 
@@ -104,6 +109,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       commitmentDebt: NO_DEBT,
       engagement: NO_ENGAGEMENT,
       radar: NO_RADAR,
+      medicalAnswers: NO_MEDICAL,
       unmetIntents: [],
     };
 
@@ -126,6 +132,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       commitmentDebt: NO_DEBT,
       engagement: NO_ENGAGEMENT,
       radar: NO_RADAR,
+      medicalAnswers: NO_MEDICAL,
       unmetIntents: [],
     };
 
@@ -150,6 +157,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       commitmentDebt: NO_DEBT,
       engagement: NO_ENGAGEMENT,
       radar: NO_RADAR,
+      medicalAnswers: NO_MEDICAL,
       unmetIntents: [],
     });
 
@@ -177,6 +185,7 @@ describe('formatLoopHealthDigest — top unmet intents', () => {
     commitmentDebt: NO_DEBT,
     engagement: NO_ENGAGEMENT,
     radar: NO_RADAR,
+    medicalAnswers: NO_MEDICAL,
   };
 
   it('ranks the buckets by how often they were asked', () => {
@@ -287,6 +296,7 @@ describe('runLoopHealthDigestCron', () => {
     commitmentDebt: NO_DEBT,
     engagement: NO_ENGAGEMENT,
     radar: NO_RADAR,
+    medicalAnswers: NO_MEDICAL,
     unmetIntents: [{ lane: 'off_domain_general', category: 'weather', count: 2 }],
   };
 
@@ -332,6 +342,7 @@ describe('formatLoopHealthDigest — overdue commitments', () => {
     scoreboard: EMPTY_SCOREBOARD,
     engagement: NO_ENGAGEMENT,
     radar: NO_RADAR,
+    medicalAnswers: NO_MEDICAL,
     unmetIntents: [],
   };
 
@@ -423,7 +434,11 @@ describe('formatLoopHealthDigest — the scorecard', () => {
     },
     commitmentDebt: NO_DEBT,
     engagement: { families: 20, contacted: 16 },
-    radar: { sweptThisWeek: true, windowsDue: 20, confirmed: 19 },
+    radar: {
+      sweptThisWeek: true,
+      outcomes: { checked: 20, confirmed: 19, discrepancies: 1, unverified: 0 },
+    },
+    medicalAnswers: { answered: 4, fallbacks: 0 },
     unmetIntents: [
       { lane: 'off_domain_general', category: 'weather', count: 12 },
       { lane: 'safety_critical', category: 'child-safety', count: 3 },
@@ -468,7 +483,9 @@ describe('formatLoopHealthDigest — the scorecard', () => {
     expect(lines[2]).toContain('8/10 · 16 of 20 families heard from Hale first (80%)');
     expect(lines[3]).toContain('10/10 · 19 of 20 due windows re-confirmed');
     expect(lines[4]).toContain('6/10 · 96% reached of 100 · 2 failed, 2 suppressed');
-    expect(lines[5]).toContain('6/10 · 3 safety-lane deflections');
+    expect(lines[5]).toContain(
+      '6/10 · 3 fixed doors (3 safety-lane deflections, 0 medical fallbacks) · 0 of 4 medical answers',
+    );
     expect(lines[6]).toContain('9/10 · $0.6000 per family vs a $2.00 budget');
   });
 
@@ -491,6 +508,7 @@ describe('formatLoopHealthDigest — the scorecard', () => {
       scoreboard: EMPTY_SCOREBOARD,
       engagement: NO_ENGAGEMENT,
       radar: NO_RADAR,
+      medicalAnswers: NO_MEDICAL,
       unmetIntents: [],
     });
 

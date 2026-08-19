@@ -1,4 +1,4 @@
-import type { AgentClient, AgentUsage } from '@hale/agent';
+import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
 import { pickModel } from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
@@ -42,6 +42,9 @@ export interface DraftInput {
 export interface DraftResult {
   draft: DraftedAction;
   usage: AgentUsage;
+  /** The model this call RAN on, so the agent_runs row and its cost name the model that
+   * was actually billed rather than a second copy the caller keeps beside it. */
+  model: ModelId;
 }
 
 export async function draftAction(input: DraftInput, client: AgentClient): Promise<DraftResult> {
@@ -52,9 +55,10 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
     memory_slice: input.memorySlice ?? null,
   });
 
+  const model = pickModel(skill.meta.task);
   const { value, usage } = await forceToolJson({
     client,
-    model: pickModel(skill.meta.task),
+    model,
     system: skill.instructions,
     userMessage,
     toolName: 'draft_action',
@@ -76,6 +80,7 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
       recipientVisibility: value.recipient_visibility,
       draftedAt: new Date().toISOString(),
     },
+    model,
     usage: {
       promptTokens: usage.input_tokens + (usage.cache_creation_input_tokens ?? 0),
       completionTokens: usage.output_tokens,

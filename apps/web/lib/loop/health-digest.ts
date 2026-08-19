@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
-import { and, count, countDistinct, eq, gt, gte, inArray, isNotNull, lt } from 'drizzle-orm';
+import { and, count, countDistinct, desc, eq, gt, gte, inArray, isNotNull, lt } from 'drizzle-orm';
+import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { Resend } from 'resend';
 import { founderAddress } from '~/lib/auth/founder-signal';
 import { createResendTransport } from '~/lib/channel/resend-transport';
@@ -9,7 +10,7 @@ import {
   PROVIDER_INCIDENT_ROUTE,
   providerIncidentKind,
 } from '~/lib/monitoring/provider-health';
-import { MAX_WINDOWS_PER_RUN, REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
+import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
 import {
   aggregateFunnelScoreboard,
   DELIVERED_STATUSES,
@@ -18,6 +19,7 @@ import {
 } from './funnel-scoreboard';
 import {
   type FamilyEngagement,
+  type MedicalAnswers,
   type RadarVerification,
   type ScorecardRow,
   gradeActivation,
@@ -97,6 +99,9 @@ export interface LoopHealthSummary {
   /** The scorecard's radar row: whether the weekly re-verify sweep ran, and how much
    * of the actionable dataset it re-confirmed at source. */
   radar: RadarVerification;
+  /** The scorecard's other safety input: medical-symptom texts Hale answered, and how
+   * many of those answers fell back to the fixed 811/911 line. */
+  medicalAnswers: MedicalAnswers;
   /** VIL-273 · what parents asked for that Hale does not do, bucketed. Any order —
    * the formatter ranks it. */
   unmetIntents: UnmetIntentRow[];
@@ -215,6 +220,7 @@ export async function aggregateLoopHealth(
   const scoreboard = await aggregateFunnelScoreboard(database, windowStart, windowEnd);
   const engagement = await aggregateFamilyEngagement(database, windowStart, windowEnd);
   const radar = await aggregateRadarVerification(database, windowStart, windowEnd);
+  const medicalAnswers = await aggregateMedicalAnswers(database, windowStart, windowEnd);
 
   // MEM-10 · read as of the window's END rather than over the window, because debt is a
   // balance. NEVER a send: this sweep's whole job is that the debt is VISIBLE to the
@@ -236,6 +242,7 @@ export async function aggregateLoopHealth(
     commitmentDebt,
     engagement,
     radar,
+    medicalAnswers,
     // The check constraint makes a half-stamped row unwritable, so a lane implies a
     // category; the coalesce is a type narrowing, not a guess about missing data.
     unmetIntents: unmetRows.map((row) => ({
@@ -290,61 +297,95 @@ export async function aggregateFamilyEngagement(
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * The radar row's three numbers, read from the two things the re-verify sweep actually
- * leaves behind: its weekly claim row, and the `verified_at` it bumps on a confirmation.
+ * The radar row, read from the two rows the re-verify sweep leaves behind: the claim it
+ * takes BEFORE the work ("a sweep owned this week") and the tally it writes AFTER ("this
+ * is what it found"). Two questions, two rows, and the pair is what lets a sweep that
+ * died mid-run read as neither a clean week nor a missing cron.
  *
- * WHY THE CLAIM IS TESTED FOR OVERLAP, NOT CONTAINMENT. The sweep claims a MONDAY-
- * ALIGNED week, and this digest runs Monday 14:00 UTC — two hours BEFORE that same
- * Monday's sweep (16:00). So the sweep this digest reports on is LAST Monday's, whose
- * claim row is stamped with a week start that falls just before the digest window
- * opens. A containment test would therefore report every single week as "the sweep did
- * not run". A claimed week [monday, monday+7d) overlaps this window when its start is
- * after windowStart − 7d and before windowEnd, which is what the predicate below says.
+ * The counts are the SWEEP'S OWN. They were inferred here once — due windows counted off
+ * `registration_windows`, confirmations off the `verified_at` it bumps — and that reading
+ * could never split the failures, because a moved date and an unreadable page both
+ * deliberately write nothing (the sweep's honesty design). Inferring it a second way
+ * beside the recorded one would just be two answers to one question.
  *
- * `windowsDue` is capped at the sweep's own per-run ceiling because that is genuinely
- * all it attempts: rows beyond the cap were never checked, and counting them as
- * unconfirmed would grade the radar down for the size of its own dataset.
+ * WHY THE WEEK IS TESTED FOR OVERLAP, NOT CONTAINMENT. The sweep claims a MONDAY-ALIGNED
+ * week, and this digest runs Monday 14:00 UTC — two hours BEFORE that same Monday's sweep
+ * (16:00). So the sweep this digest reports on is LAST Monday's, whose rows are stamped
+ * with a week start that falls just before the digest window opens. A containment test
+ * would report every single week as "the sweep did not run". A claimed week
+ * [monday, monday+7d) overlaps this window when its start is after windowStart − 7d and
+ * before windowEnd, which is what the predicate below says — and because that spans two
+ * Mondays, the tally is taken newest-first.
  */
 export async function aggregateRadarVerification(
   database: Database,
   windowStart: Date,
   windowEnd: Date,
 ): Promise<RadarVerification> {
+  const sweptWeek = (column: PgColumn) =>
+    and(gt(column, new Date(windowStart.getTime() - WEEK_MS)), lt(column, windowEnd));
+
   const [claimRow] = await database
     .select({ count: count() })
     .from(schema.rateLimits)
     .where(
       and(
         eq(schema.rateLimits.route, REGISTRATION_VERIFY_ROUTE),
-        gt(schema.rateLimits.windowStart, new Date(windowStart.getTime() - WEEK_MS)),
-        lt(schema.rateLimits.windowStart, windowEnd),
+        sweptWeek(schema.rateLimits.windowStart),
       ),
     );
 
-  // The sweep's own eligibility rule — windows a family could still act on — read as
-  // of the moment the window opened, which is within hours of when the sweep read it.
-  const stillActionable = gte(schema.registrationWindows.openAt, windowStart);
-
-  const [dueRow] = await database
-    .select({ count: count() })
-    .from(schema.registrationWindows)
-    .where(stillActionable);
-
-  const [confirmedRow] = await database
-    .select({ count: count() })
-    .from(schema.registrationWindows)
-    .where(
-      and(
-        stillActionable,
-        gte(schema.registrationWindows.verifiedAt, windowStart),
-        lt(schema.registrationWindows.verifiedAt, windowEnd),
-      ),
-    );
+  const [run] = await database
+    .select({
+      checked: schema.registrationVerifyRuns.checked,
+      confirmed: schema.registrationVerifyRuns.confirmed,
+      discrepancies: schema.registrationVerifyRuns.discrepancies,
+      unverified: schema.registrationVerifyRuns.unverified,
+    })
+    .from(schema.registrationVerifyRuns)
+    .where(sweptWeek(schema.registrationVerifyRuns.weekStart))
+    .orderBy(desc(schema.registrationVerifyRuns.weekStart))
+    .limit(1);
 
   return {
     sweptThisWeek: (claimRow?.count ?? 0) > 0,
-    windowsDue: Math.min(dueRow?.count ?? 0, MAX_WINDOWS_PER_RUN),
-    confirmed: confirmedRow?.count ?? 0,
+    outcomes: run ?? null,
+  };
+}
+
+/**
+ * The safety row's other half: medical-symptom texts Hale ANSWERED this week, and how
+ * many of those answers were the fixed 811/911 line rather than a grounded reply.
+ *
+ * Read off the outbound rows the lane stamps, because that is where the outcome is a
+ * fact — the inbound row is deliberately left unstamped (a question Hale answered is not
+ * an unmet intent, and stamping it would corrupt the demand count). The direction filter
+ * is not decoration: this number feeds the one row that must never be flattered, and a
+ * parent's own text is not one of Hale's answers.
+ */
+export async function aggregateMedicalAnswers(
+  database: Database,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<MedicalAnswers> {
+  const rows = await database
+    .select({ source: schema.channelMessages.medicalReplySource, count: count() })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.direction, 'out'),
+        isNotNull(schema.channelMessages.medicalReplySource),
+        gte(schema.channelMessages.createdAt, windowStart),
+        lt(schema.channelMessages.createdAt, windowEnd),
+      ),
+    )
+    .groupBy(schema.channelMessages.medicalReplySource);
+
+  return {
+    answered: rows.reduce((sum, row) => sum + row.count, 0),
+    fallbacks: rows
+      .filter((row) => row.source === 'fixed')
+      .reduce((sum, row) => sum + row.count, 0),
   };
 }
 
@@ -422,7 +463,7 @@ export function buildScorecard(summary: LoopHealthSummary): ScorecardRow[] {
     gradeEngagement(summary.engagement),
     gradeRadarAccuracy(summary.radar),
     gradeDeliverability(summary.messageCounts),
-    gradeSafety(summary.unmetIntents),
+    gradeSafety(summary.unmetIntents, summary.medicalAnswers),
     gradeUnitCost(cogs),
   ];
 }
