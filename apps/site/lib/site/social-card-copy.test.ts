@@ -12,12 +12,15 @@ describe('homepage share card copy', () => {
   it('sells the number you text', () => {
     const copy = socialCardCopy();
     expect(copy.headline).toBe('A number your family texts');
-    expect(copy.alt).toContain('chief of staff');
+    // "Family assistant" is the category a parent can place without translation;
+    // "chief of staff" is About-page vision language, never an acquisition surface.
+    expect(copy.alt).toContain('family assistant');
+    expect(copy.alt).not.toContain('chief of staff');
     expect(copy.subline).toContain('Your data stays in Canada.');
   });
 
-  it('never describes the village on the chief-of-staff card', () => {
-    const chief = socialCardCopy();
-    expect(`${chief.headline} ${chief.subline} ${chief.alt}`).not.toContain('village');
+  it('never describes the village on the share card', () => {
+    const card = socialCardCopy();
+    expect(`${card.headline} ${card.subline} ${card.alt}`).not.toContain('village');
   });
 });

@@ -14,13 +14,13 @@ export interface SocialCardCopy {
   subline: string;
 }
 
-const CHIEF_OF_STAFF: SocialCardCopy = {
-  alt: 'Hale — your family’s quiet chief of staff',
+const FAMILY_ASSISTANT: SocialCardCopy = {
+  alt: 'Hale — the family assistant you text',
   headline: 'A number your family texts',
   subline:
     'Registration dates watched, the week planned, nothing sent without your say-so. Your data stays in Canada.',
 };
 
 export function socialCardCopy(): SocialCardCopy {
-  return CHIEF_OF_STAFF;
+  return FAMILY_ASSISTANT;
 }

@@ -61,10 +61,14 @@ describe('landing — the v4 hero', () => {
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
     const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1).toContain('v4-display');
-    // The wedge, not the metaphor: the h1 names the job a GTA parent recognizes.
-    // "Chief of staff" is demoted to the sub, where it explains rather than introduces.
-    expect(visibleText(h1)).toBe('The good spots are gone by 7:02.');
-    expect(h1).not.toContain('chief of');
+    // The founder-approved poster stack. The brand line may lead ONLY because the
+    // sub resolves it in one breath — the v1 hero died when this same line stood
+    // over a paragraph that never got to the point, and the 7:02-first hero died
+    // as a hook with no introduction. H1 names the brand; the next line says what
+    // it is in a parent's words.
+    expect(visibleText(h1)).toBe('The family assistant you text.');
+    expect(h1).not.toContain('7:02');
+    expect(html).toContain('It takes the family admin off your plate');
     // The accent word is the v4 amber serif-italic — one segment, not the old glow.
     expect(h1).toContain('class="v4-italic"');
   });
@@ -263,8 +267,10 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('proves the pain with the sourced facts instead of asserting usefulness', () => {
     // The four "wait, really?" facts, each sourced in the positioning doc §9:
-    // the 7:02 fill, the ~12× private-vs-city swing, the resident head start, and
-    // the waitlist clock. Anything not on that list is an invented number.
+    // the 7:02 fill (self-explained in the hero sub: opens at 7:00, gone by 7:02),
+    // the ~12× private-vs-city swing, the resident head start, and the waitlist
+    // clock. Anything not on that list is an invented number.
+    expect(text).toContain('open at 7:00 a.m.');
     expect(text).toContain('gone by 7:02');
     expect(text).toContain('$54');
     expect(text).toContain('twelve times');
@@ -298,12 +304,6 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text).not.toContain('Silence is the normal state');
   });
 
-  it('offers the record by both doors a texting family actually has', () => {
-    expect(text).not.toContain('waits in your account');
-    expect(text).toContain('ask me in the thread');
-    expect(text).toContain('sign in with your phone number');
-  });
-
   it('names the calendar invite as the receipt an approval actually produces', () => {
     expect(text.toLowerCase()).toContain('calendar');
     expect(text.toLowerCase()).toContain('invite');
@@ -328,7 +328,7 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      'The good spots are',
+      'The family assistant',
       'Texting Hale looks like this',
       'How Hale works',
       'What I watch',
@@ -354,16 +354,10 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
     expect(text).not.toContain('Three days later');
   });
 
-  it('names the seven plannable topics and no others', () => {
-    for (const topic of [
-      'Sleep',
-      'starting solids',
-      'potty training',
-      'picky eating',
-      'tantrums',
-      'screen time',
-      'routines',
-    ]) {
+  it('keeps the topic claim to the header trio — the full list lives in the FAQ', () => {
+    // The seven-topic card went in the sparseness pass; the FAQ's coaching answer
+    // still names all seven, and the landing claims only what its header shows.
+    for (const topic of ['Sleep', 'solids', 'potty']) {
       expect(text).toContain(topic);
     }
   });
@@ -384,13 +378,14 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
 
 describe('landing — the phone snap rails', () => {
   it('ships them with no focus attributes baked into the server markup', () => {
-    // The five card sets that become horizontal snap rails under 640px. Matching
+    // The four card sets that become horizontal snap rails under 640px (the
+    // coaching boundary card stands alone since the sparseness pass). Matching
     // the opening tags is the positive control: the absences below are attributes
-    // withheld from rails that are demonstrably here, not five missing sections.
+    // withheld from rails that are demonstrably here, not four missing sections.
     const rails = [...render().matchAll(/<(?:div|ol)[^>]*class="v4-cardgrid[^"]*"[^>]*>/g)].map(
       (match) => match[0],
     );
-    expect(rails).toHaveLength(5);
+    expect(rails).toHaveLength(4);
     // tabindex/role/aria-label are attached on mount and only while a rail really
     // overflows. Static ones would be five dead tab stops on the desktop
     // composition, where the grid wraps and there is nothing to scroll.
@@ -426,7 +421,9 @@ describe('landing — number not provisioned', () => {
 
   it('never renders a dead sms: link, and falls back to email', () => {
     expect(html).not.toContain('sms:');
-    expect(html).not.toContain('Text Hale');
+    // No CTA labelled for a dead channel. The h1's "Text Hale." stays — it names
+    // what the product is — but every button degrades to the email door.
+    expect(html).not.toContain('>Text Hale<');
     expect(html).not.toContain('647');
     expect(html).toContain('href="mailto:aloha@villagehale.com"');
     // Positive control: with no number the composer chips are gone too, so the
