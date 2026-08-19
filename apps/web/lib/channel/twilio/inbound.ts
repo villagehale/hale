@@ -17,7 +17,8 @@ import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './s
  * VIL-214 · A3 — the inbound webhook: the ONE door a text from a parent comes through.
  *
  * M2 already built the hard part. `handleInboundSms` owns the order everything rests on
- * (normalize → rate limit → duplicate → CASL keywords → stored state → model), and it
+ * (normalize → read the keyword → rate limit → duplicate → act on the keyword → stored
+ * state → model), and it
  * has had no caller in production until now — this module is the caller. So A3
  * deliberately does NOT re-implement STOP/HELP/START, rate limiting, or dedupe: a
  * second copy of a CASL guard is a second copy that can drift, and the drifted one is
