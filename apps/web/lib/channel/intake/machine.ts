@@ -30,6 +30,7 @@ import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName } from '~/lib/channel/identity/name-reply';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
+import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import type { IntakeAnswerComposer } from './answer';
 import { findRevokedChannelOwner, reenrolOnStart } from './channel-state';
 import {
@@ -75,15 +76,18 @@ import { recordWatchConsent } from './watch-consent';
  * design rests on:
  *
  *   1. normalize the number   — a number we can't parse can't be replied to at all
- *   2. rate limit             — before any spend, any write, any model call
- *   3. duplicate check        — a carrier retry must be a no-op, not a second reply
- *   4. CASL keywords          — STOP is a legal instruction, never an interpretation
- *   5. the stored state       — read from the row, never inferred from the transcript
- *   6. only then, the model
+ *   2. read the CASL keyword  — a pure string test, so it costs nothing to do first
+ *   3. rate limit             — before any spend, any write, any model call
+ *   4. duplicate check        — a carrier retry must be a no-op, not a second reply
+ *   5. act on the keyword     — STOP is a legal instruction, never an interpretation
+ *   6. the stored state       — read from the row, never inferred from the transcript
+ *   7. only then, the model
  *
- * Steps 1–4 are deterministic and cannot be reordered: every one of them exists
+ * Steps 1–5 are deterministic and cannot be reordered: every one of them exists
  * because doing it AFTER the model call would mean a model deciding something that
  * isn't a model's to decide, or spending money on traffic we should have dropped.
+ * The keyword is READ (2) before the limit and ACTED ON (5) after the duplicate check,
+ * which is what lets step 3 drop a flood without ever dropping an unsubscribe.
  */
 
 const INTAKE_ROUTE = 'sms-inbound';
@@ -186,24 +190,31 @@ export async function handleInboundSms(
   }
   const phoneHash = phoneBlindIndex(phoneE164);
 
-  // 2. Rate limit, keyed by the BLIND INDEX (the raw number never reaches the limiter
+  // 2. Is this a CASL keyword? A pure string test — no I/O, no spend — read BEFORE the
+  // limit so step 3 cannot drop one. STOP is a legal instruction, not traffic: a parent
+  // who has just texted too fast is exactly the parent about to send it, and throttling
+  // it away would leave them subscribed with no record of having asked to leave.
+  const match = matchKeyword(inbound.body);
+
+  // 3. Rate limit, keyed by the BLIND INDEX (the raw number never reaches the limiter
   // table). Over the limit we go SILENT rather than replying "slow down": a reply is
   // itself an outbound SMS, so answering a flood would hand an SMS-pumping attacker
-  // exactly the amplification they came for.
+  // exactly the amplification they came for. Keywords are the one exemption, and they
+  // are still COUNTED — the flood budget is spent either way, only the drop is skipped.
   const decision = await deps.limiter.check(phoneHash, INTAKE_ROUTE, RATE_LIMITS[INTAKE_ROUTE]);
-  if (!decision.allowed) {
+  if (!decision.allowed && !match) {
     return { status: 'rate_limited' };
   }
 
   const session = await loadOpenSession(database, phoneE164);
 
-  // 3. The carrier retried. The provider id is the same, so this is not a parent
+  // 4. The carrier retried. The provider id is the same, so this is not a parent
   // texting twice — replying again would double every message in the conversation.
   if (session && session.lastProviderId === inbound.providerId) {
     return { status: 'duplicate' };
   }
 
-  const match = matchKeyword(inbound.body);
+  // 5. The keyword read in step 2, acted on.
   if (match) {
     return handleKeyword(database, { match, phoneE164, inbound, session, now }, deps);
   }
@@ -977,9 +988,8 @@ async function handleStop(
     );
   }
 
-  // The one final confirmation carriers expect, and then silence.
-  await deps.transport.send({ to: phoneE164, body: STOP_ACK_BY_LANGUAGE[language] });
-
+  // Closed BEFORE the ack, never after: the unsubscribe is the instruction, the ack is
+  // a courtesy, and a courtesy that fails must not roll the instruction back.
   if (session) {
     await saveSession(
       database,
@@ -987,6 +997,21 @@ async function handleStop(
       { state: 'stopped', closedAt: now, lastProviderId: inbound.providerId },
       now,
     );
+  }
+
+  // The one final confirmation carriers expect, and then silence.
+  try {
+    await deps.transport.send({ to: phoneE164, body: STOP_ACK_BY_LANGUAGE[language] });
+  } catch (error) {
+    // A PERMANENT refusal means there is no ack to retry. 21610 above all: Twilio
+    // refusing to text a number that has opted out AT THE CARRIER — the exact number a
+    // STOP creates — and it has already sent its own advisory there, so the confirmation
+    // IS delivered, by them. The rest (21211, 21614, 21408) mean the handset cannot be
+    // reached at all. Either way, 500ing the webhook over an undeliverable courtesy
+    // would fail the one message we are legally required to get right. A TRANSIENT
+    // failure is still a failure: it throws, and the retry finds the session closed and
+    // sends the ack again.
+    if (!(error instanceof TwilioSendError && error.permanent)) throw error;
   }
   return { status: 'stopped' };
 }
