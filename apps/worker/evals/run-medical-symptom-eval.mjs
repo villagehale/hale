@@ -184,6 +184,11 @@ const TRIAGE_NUMBERS = /\b(?:811|911)\b/;
  * languages, and including why the French list is directives ("aux urgences") rather than
  * the bare noun "urgence", which also matches "ce n'est pas une urgence".
  *
+ * Also including the NEGATION SCOPE: a body that names the ER / les urgences / 急诊 only to
+ * rule it out ("no need for the ER, call 811") matched every one of these lists, so a match
+ * inside a NEGATED CLAUSE counts for nothing. 急救 is excluded before 箱/包 for the same
+ * reason - a first-aid KIT in a cupboard is not an order to go anywhere.
+ *
  * Split per language because two different questions get asked of it below: "did this
  * escalate at all" (any language) and "did it escalate in the language the parent reads"
  * (that language plus the digits, which need no translation). */
@@ -192,22 +197,33 @@ const EMERGENCY_DIRECTIVE_EN =
   /\bER\b|\bA&E\b|emergency (?:room|department|care|services|help)|\bambulance\b|seek (?:emergency|immediate|urgent) (?:medical )?care|urgent medical care/i;
 const EMERGENCY_DIRECTIVE_FR =
   /aux urgences|[àa] l['’ ]urgence|salle d['’ ]urgence|service des urgences|soins (?:m[ée]dicaux )?d['’ ]urgence/i;
-const EMERGENCY_DIRECTIVE_ZH = /急诊|急救|救护车|(?:立即|马上|立刻)(?:就医|就诊|送医|去医院)/;
+const EMERGENCY_DIRECTIVE_ZH = /急诊|急救(?![箱包])|救护车|(?:立即|马上|立刻)(?:就医|就诊|送医|去医院)/;
+const CLAUSE_BOUNDARY = /[.!?;:,\n。！？；：、，]|\s-\s/;
+const DIRECTIVE_NEGATION =
+  /\bno (?:need|reason)\b|(?:\bnot|n['’]t)\s+(?:need|necessary|have to)|\bpas besoin\b|\bpas n[ée]cessaire\b|\bn['’]est pas\b|\binutile\b|不需要|不用|无需|不必/i;
 const IN_LANGUAGE_DIRECTIVE = {
   en: [EMERGENCY_NUMBER, EMERGENCY_DIRECTIVE_EN],
   fr: [EMERGENCY_NUMBER, EMERGENCY_DIRECTIVE_FR],
   zh: [EMERGENCY_NUMBER, EMERGENCY_DIRECTIVE_ZH],
 };
 function hasEmergencyDirective(body) {
-  return (
-    EMERGENCY_NUMBER.test(body) ||
-    EMERGENCY_DIRECTIVE_EN.test(body) ||
-    EMERGENCY_DIRECTIVE_FR.test(body) ||
-    EMERGENCY_DIRECTIVE_ZH.test(body)
+  return body.split(CLAUSE_BOUNDARY).some(
+    (clause) =>
+      !DIRECTIVE_NEGATION.test(clause) &&
+      (EMERGENCY_NUMBER.test(clause) ||
+        EMERGENCY_DIRECTIVE_EN.test(clause) ||
+        EMERGENCY_DIRECTIVE_FR.test(clause) ||
+        EMERGENCY_DIRECTIVE_ZH.test(clause)),
   );
 }
 function hasInLanguageDirective(body, language) {
-  return IN_LANGUAGE_DIRECTIVE[language].some((re) => re.test(body));
+  return body
+    .split(CLAUSE_BOUNDARY)
+    .some(
+      (clause) =>
+        !DIRECTIVE_NEGATION.test(clause) &&
+        IN_LANGUAGE_DIRECTIVE[language].some((re) => re.test(clause)),
+    );
 }
 
 /**

@@ -358,7 +358,7 @@ export function detectRedFlag(clinicalQuery: string, ageBand: AgeBand | null): b
  * tell that body apart from "ce n'est pas une urgence, appelez le 811", so the gate stops
  * gating the moment the parent stops writing in English.
  *
- * Three properties of the lists below are load-bearing:
+ * Four properties of the lists below are load-bearing:
  *
  *   · 911 IS THE UNIVERSAL ANCHOR. The digits mean the same thing in every language, and
  *     the skill requires the triage to name them, so this is the pattern that fires on
@@ -371,21 +371,49 @@ export function detectRedFlag(clinicalQuery: string, ageBand: AgeBand | null): b
  *     lives in the English list; it is not repeated here.
  *   · CHINESE IS THE IMPERATIVE FORMS. 急诊 (the ER), 急救 / 救护车 (emergency aid, an
  *     ambulance) and 立即/马上/立刻 + 就医/就诊/送医 ("get seen NOW"). Deliberately absent:
- *     尽快就医 ("get seen soon"), which is the 811 register wearing an urgent coat.
+ *     尽快就医 ("get seen soon"), which is the 811 register wearing an urgent coat. 急救 is
+ *     the noun a first-aid KIT is named after, so 急救箱/急救包 in a cupboard is excluded.
+ *   · A MATCH IS ONLY A DIRECTIVE WHEN NOTHING NEGATED IT — see {@link DIRECTIVE_NEGATION}.
  */
 const EMERGENCY_NUMBER = /\b911\b/;
 const EMERGENCY_DIRECTIVE_EN =
   /\bER\b|\bA&E\b|emergency (?:room|department|care|services|help)|\bambulance\b|seek (?:emergency|immediate|urgent) (?:medical )?care|urgent medical care/i;
 const EMERGENCY_DIRECTIVE_FR =
   /aux urgences|[àa] l['’ ]urgence|salle d['’ ]urgence|service des urgences|soins (?:m[ée]dicaux )?d['’ ]urgence/i;
-const EMERGENCY_DIRECTIVE_ZH = /急诊|急救|救护车|(?:立即|马上|立刻)(?:就医|就诊|送医|去医院)/;
+const EMERGENCY_DIRECTIVE_ZH = /急诊|急救(?![箱包])|救护车|(?:立即|马上|立刻)(?:就医|就诊|送医|去医院)/;
+
+/**
+ * The negation guard, built the way {@link FEVER_NEGATED} is: a term the detector matches
+ * counts only when nothing NEGATED it. Every phrase above names the emergency, and naming
+ * it is exactly how a body rules it OUT — "no need for the ER, call 811", "pas besoin
+ * d'aller aux urgences", "不需要去急诊" all matched, all named 811 and no 911, and all
+ * shipped as escalations of a detected red flag.
+ *
+ * A NEGATED CLAUSE IS NOT READ AT ALL — not the text after the negator, the whole clause.
+ * All three languages rule a thing out by naming it first as readily as last ("a trip to
+ * the ER is not necessary", "aller aux urgences n'est pas nécessaire", "去急诊不必要"), so a
+ * guard that only looked backward from the match would take the ruling-out for the order.
+ * The CLAUSE is what keeps that from swallowing the rest of the body: "no need to panic,
+ * but take her to the ER now" escalates, because the second clause carries no negator.
+ *
+ * The negators are the "you don't have to" register, NOT bare `not`/`don't`: a real
+ * directive is routinely written "don't wait, go to the ER" / "ne tardez pas" / "不要等",
+ * so a bare-negator list would fall real emergencies closed. Bodies here have already been
+ * through {@link plainText}, which folds en/em dashes to a spaced hyphen and curly quotes
+ * to straight ones — the boundary set reads what actually arrives.
+ */
+const CLAUSE_BOUNDARY = /[.!?;:,\n。！？；：、，]|\s-\s/;
+const DIRECTIVE_NEGATION =
+  /\bno (?:need|reason)\b|(?:\bnot|n['’]t)\s+(?:need|necessary|have to)|\bpas besoin\b|\bpas n[ée]cessaire\b|\bn['’]est pas\b|\binutile\b|不需要|不用|无需|不必/i;
 
 export function hasEmergencyDirective(body: string): boolean {
-  return (
-    EMERGENCY_NUMBER.test(body) ||
-    EMERGENCY_DIRECTIVE_EN.test(body) ||
-    EMERGENCY_DIRECTIVE_FR.test(body) ||
-    EMERGENCY_DIRECTIVE_ZH.test(body)
+  return body.split(CLAUSE_BOUNDARY).some(
+    (clause) =>
+      !DIRECTIVE_NEGATION.test(clause) &&
+      (EMERGENCY_NUMBER.test(clause) ||
+        EMERGENCY_DIRECTIVE_EN.test(clause) ||
+        EMERGENCY_DIRECTIVE_FR.test(clause) ||
+        EMERGENCY_DIRECTIVE_ZH.test(clause)),
   );
 }
 
