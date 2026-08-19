@@ -3,6 +3,9 @@ import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
 import { matchHealthCheckpoints } from '~/lib/health/match';
+import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   AMBIGUOUS_CLARIFY,
@@ -118,6 +121,15 @@ function harness(options: {
       },
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: NOW,
+    },
+  };
+}
+
+/** A transport whose every send is refused — the provider leg failing, not the machine. */
+function refusingTransport(error: unknown): IntakeDeps['transport'] {
+  return {
+    async send(): Promise<{ providerMessageId: string }> {
+      throw error;
     },
   };
 }
@@ -870,6 +882,52 @@ describe('intake · CASL keywords', () => {
     expect(withdrawal).toBeDefined();
   });
 
+  it('records the STOP even when Twilio permanently refuses the ack (21610 — the carrier already told them)', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const result = await text(fake, transport, deps, 'STOP', {
+      ...deps,
+      transport: refusingTransport(new TwilioSendError('21610', 400)),
+    });
+
+    // The unsubscribe is the thing that must survive: an undeliverable courtesy line is
+    // not a reason to leave a parent subscribed and the conversation open.
+    expect(result).toEqual({ status: 'stopped' });
+    const closed = fake.writes.find(
+      (w) =>
+        w.op === 'update' && w.table === schema.smsIntakeSessions && w.payload.state === 'stopped',
+    );
+    expect(closed).toBeDefined();
+    const revoke = fake.writes.find(
+      (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
+    );
+    expect(revoke).toBeDefined();
+  });
+
+  it('positive control: a provider OUTAGE on the same ack still fails the turn — only a permanent refusal counts as delivered', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    await expect(
+      text(fake, transport, deps, 'STOP', {
+        ...deps,
+        transport: refusingTransport(new TwilioSendError('20500', 503)),
+      }),
+    ).rejects.toBeInstanceOf(TwilioSendError);
+    // Still recorded first — the STOP does not wait on the ack to become durable.
+    expect(
+      fake.writes.some(
+        (w) =>
+          w.op === 'update' &&
+          w.table === schema.smsIntakeSessions &&
+          w.payload.state === 'stopped',
+      ),
+    ).toBe(true);
+  });
+
   it('never routes a keyword through the model', async () => {
     const extractor = new FakeExtractor([MAYA_AND_LEO]);
     const intentReader = new FakeIntentReader([assent('yes')]);
@@ -944,6 +1002,34 @@ describe('intake · guards', () => {
     expect(result).toEqual({ status: 'rate_limited' });
     expect(transport.sent).toHaveLength(0);
     expect(fake.writes).toHaveLength(0);
+  });
+
+  it('still unsubscribes a rate-limited ARRET — a CASL keyword is never throttled away', async () => {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    const { fake, transport, deps } = harness({ limiter });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const hash = phoneBlindIndex(PHONE);
+    for (let i = 0; i < RATE_LIMITS['sms-inbound'].limit; i += 1) {
+      await limiter.check(hash, 'sms-inbound', RATE_LIMITS['sms-inbound']);
+    }
+
+    // The control: ordinary traffic through the SAME exhausted limiter is still silenced,
+    // so the assertion below is about the keyword and not about a limiter that stopped
+    // limiting.
+    expect(await text(fake, transport, deps, 'what about swimming lessons?')).toEqual({
+      status: 'rate_limited',
+    });
+
+    const result = await text(fake, transport, deps, 'ARRET');
+
+    expect(result).toEqual({ status: 'stopped' });
+    expect(transport.bodies().at(-1)).toBe(STOP_ACK_BY_LANGUAGE.fr);
+    const revoke = fake.writes.find(
+      (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
+    );
+    expect(revoke).toBeDefined();
   });
 
   it('treats a carrier retry of the same provider id as a no-op', async () => {

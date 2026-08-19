@@ -30,6 +30,34 @@ export interface TwilioTransportDeps {
   fetch?: typeof fetch;
 }
 
+/**
+ * The refusals no retry can fix: 21610 the recipient has opted out, 21408 the region is
+ * not permitted, 21211 the number is not a valid E.164, 21614 the number cannot receive
+ * SMS. Everything else — an outage, a throttle, a timeout — is transient by default, so
+ * a code Twilio adds tomorrow keeps being retried rather than silently dropped.
+ */
+const PERMANENT_TWILIO_CODES = new Set(['21610', '21408', '21211', '21614']);
+
+/**
+ * A Twilio refusal, typed so a caller can act on it without parsing a string. Carries
+ * the numeric code and the HTTP status ONLY: Twilio echoes the number and the body back
+ * inside its own `message`, and this is the object that ends up in a stack trace (rule #1).
+ */
+export class TwilioSendError extends Error {
+  readonly code: string;
+  readonly httpStatus: number;
+  /** True when retrying would only earn the same refusal — the caller stops instead. */
+  readonly permanent: boolean;
+
+  constructor(code: string, httpStatus: number) {
+    super(`twilio send failed: HTTP ${httpStatus}, twilio code ${code}`);
+    this.name = 'TwilioSendError';
+    this.code = code;
+    this.httpStatus = httpStatus;
+    this.permanent = PERMANENT_TWILIO_CODES.has(code);
+  }
+}
+
 function readErrorCode(payload: unknown): string {
   if (typeof payload === 'object' && payload !== null && 'code' in payload) {
     const code = (payload as { code: unknown }).code;
@@ -71,9 +99,7 @@ export function createTwilioTransport(deps: TwilioTransportDeps = {}): ChannelTr
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        throw new Error(
-          `twilio send failed: HTTP ${response.status}, twilio code ${readErrorCode(payload)}`,
-        );
+        throw new TwilioSendError(readErrorCode(payload), response.status);
       }
 
       const payload = (await response.json()) as { sid?: unknown };

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTwilioTransport } from './transport';
+import { TwilioSendError, createTwilioTransport } from './transport';
 
 /**
  * The provider leg, against a fake fetch. No network, no credentials, no SDK — the
@@ -27,6 +27,25 @@ function okResponse(sid = 'SM99999999999999999999999999999999'): Response {
     status: 201,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+/** A Twilio refusal, shaped as the provider sends it — the numbers echoed back inside
+ * `message` are what must never reach the thrown error (rule #1). */
+function refusal(code: number, status: number): Response {
+  return new Response(
+    JSON.stringify({
+      code,
+      message: `The message From/To pair (${FROM}/${TO}) was refused.`,
+    }),
+    { status, headers: { 'content-type': 'application/json' } },
+  );
+}
+
+async function refusedWith(response: Response): Promise<unknown> {
+  const transport = createTwilioTransport({
+    fetch: (async () => response) as unknown as typeof fetch,
+  });
+  return transport.send({ to: TO, body: BODY }).catch((error: unknown) => error);
 }
 
 describe('createTwilioTransport', () => {
@@ -110,6 +129,24 @@ describe('createTwilioTransport', () => {
     // put a parent's phone number into a stack trace and the platform log (rule #1).
     expect(message).not.toContain(TO);
     expect(message).not.toContain(FROM);
+  });
+
+  it('marks the refusals a retry can only re-earn as PERMANENT, carrying the code and status', async () => {
+    for (const code of [21610, 21408, 21211, 21614]) {
+      const error = await refusedWith(refusal(code, 400));
+
+      expect(error).toBeInstanceOf(TwilioSendError);
+      const twilio = error as TwilioSendError;
+      expect([twilio.code, twilio.httpStatus, twilio.permanent]).toEqual([String(code), 400, true]);
+    }
+  });
+
+  it('leaves a provider outage TRANSIENT, so the queue still retries what a retry can fix', async () => {
+    const error = await refusedWith(refusal(20500, 500));
+
+    expect(error).toBeInstanceOf(TwilioSendError);
+    const twilio = error as TwilioSendError;
+    expect([twilio.code, twilio.httpStatus, twilio.permanent]).toEqual(['20500', 500, false]);
   });
 
   it('throws rather than inventing an id when the provider returns no sid', async () => {
