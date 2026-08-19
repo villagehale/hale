@@ -31,8 +31,10 @@ describe('the FAQ this build serves', () => {
     expect(answers).toContain('no account to create');
     // The homepage offers no signup and nothing to browse, so the FAQ must not
     // re-open that door or sell the village of local activities it replaced.
+    // The bot-or-not answer names aloha@villagehale.com — the accountability
+    // address, not the metaphor — so the domain is stripped before asserting.
     expect(answers).not.toContain('sign up');
-    expect(answers).not.toContain('village');
+    expect(answers.replaceAll('villagehale.com', '')).not.toContain('village');
   });
 
   it('keeps every claim inside what ships — no named method, no outcome promise', () => {

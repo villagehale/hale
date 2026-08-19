@@ -21,12 +21,17 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'What is Hale?',
     answer:
-      'A phone number your family texts. Hale is a chief of staff for the household — it watches the registration dates and programs where you live, plans the week, answers the parenting questions, and does the admin once you say yes. There is no app to install and no account to create.',
+      'A phone number your family texts. Hale watches the registration dates and programs where you live, plans the week, answers the parenting questions, and does the admin once you say yes — all in one text thread. There is no app to install and no account to create.',
   },
   {
     question: 'How do I start?',
     answer:
       'You text the number and say hi. Hale asks for your kids’ names and ages and your postal code, and that is the whole setup — everything else it asks for later, only when it needs it. Hale never texts you first; the conversation is always one you started.',
+  },
+  {
+    question: 'Is this a bot? Who actually reads my texts?',
+    answer:
+      'Hale is an AI assistant, and it never pretends otherwise. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts you first, never asks you to text back a password, a card number or a code, and STOP ends the conversation at any time.',
   },
   {
     question: 'What does Hale actually watch?',

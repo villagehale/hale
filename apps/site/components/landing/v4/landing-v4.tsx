@@ -72,7 +72,6 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
   const chips = t.raw('chips') as string[];
   const bubbles = t.raw('threadBubbles') as { dir: 'in' | 'out'; text: string }[];
   const steps = t.raw('steps') as Step[];
-  const ladder = t.raw('ladder') as { rung: string; body: string }[];
   const watched = t.raw('watched') as Card[];
   const coaching = t.raw('coaching') as Step[];
   const caregivers = t.raw('caregivers') as Card[];
@@ -214,17 +213,9 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           ))}
         </ScrollRail>
 
+        {/* The consent ladder, in one breath — the full three rungs live on /about. */}
         <div className="v4-panel v4-glass mt-8 sm:mt-14">
-          <p className="v4-eyebrow">{t('ladderEyebrow')}</p>
-          <ul className="mt-5 flex flex-col gap-3 sm:mt-6 sm:gap-4">
-            {ladder.map((item) => (
-              <li key={item.rung} className="text-[1.05rem] leading-snug text-spruce">
-                <strong className="font-semibold">{item.rung}</strong>{' '}
-                <span className="text-slate-green">{item.body}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-5 text-[15px] leading-[1.6] text-slate-green sm:mt-6">{t('receipts')}</p>
+          <p className="text-[1.05rem] leading-[1.6] text-spruce">{t('consentLine')}</p>
         </div>
       </section>
 
@@ -269,16 +260,11 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             </li>
           ))}
         </ScrollRail>
-        <ScrollRail className="v4-cardgrid-2 mt-4 sm:mt-6" label={t('coachingCardsRail')}>
-          <article className="v4-card v4-glass">
-            <h3 className="text-spruce">{t('coachingPlanTitle')}</h3>
-            <p>{t('coachingPlanBody')}</p>
-          </article>
-          <article className="v4-card v4-glass">
-            <h3 className="text-spruce">{t('coachingStopTitle')}</h3>
-            <p>{t('coachingStopBody')}</p>
-          </article>
-        </ScrollRail>
+        {/* The medical boundary keeps its own card — the topic list moved to the FAQ. */}
+        <article className="v4-card v4-glass mt-4 sm:mt-6">
+          <h3 className="text-spruce">{t('coachingStopTitle')}</h3>
+          <p>{t('coachingStopBody')}</p>
+        </article>
       </section>
 
       {/* ── The caregivers, scoped ────────────────────────────────────────── */}
@@ -306,11 +292,9 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         <div className="v4-lede">
           <p>{t('privacyBody1')}</p>
           <p className="mt-5">
-            {t('privacyBody2Pre')}{' '}
             <a href={localeHref(locale, '/privacy')} className="link">
               {t('privacyLink')}
             </a>
-            .
           </p>
         </div>
       </section>
