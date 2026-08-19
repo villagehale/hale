@@ -66,9 +66,9 @@ describe('landing — the v4 hero', () => {
     // over a paragraph that never got to the point, and the 7:02-first hero died
     // as a hook with no introduction. H1 names the brand; the next line says what
     // it is in a parent's words.
-    expect(visibleText(h1)).toBe('Your family’s quiet chief of staff.');
+    expect(visibleText(h1)).toBe('The family assistant you text.');
     expect(h1).not.toContain('7:02');
-    expect(html).toContain('A number you text that takes the family admin off your plate.');
+    expect(html).toContain('It takes the family admin off your plate');
     // The accent word is the v4 amber serif-italic — one segment, not the old glow.
     expect(h1).toContain('class="v4-italic"');
   });
@@ -328,7 +328,7 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      'Your family’s quiet',
+      'The family assistant',
       'Texting Hale looks like this',
       'How Hale works',
       'What I watch',
