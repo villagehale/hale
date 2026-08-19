@@ -307,6 +307,11 @@ describe('the medical-symptom answer lane', () => {
       category: 'medical-symptom',
       reply: MEDICAL_ANSWER,
       replySource: 'web_grounded' satisfies ReplySource,
+      // The value the router stamps on the reply it sends. Carried EXPLICITLY rather than
+      // re-derived from replySource downstream: 'fixed' is also what the two fixed doors
+      // and the general answer's safety fallback return, so a reader narrowing on it
+      // would count a provider-access door as a medical fallback.
+      medicalSource: 'web_grounded',
     });
     expect(p.medicalCalls).toBe(1);
     // The general-answer composer is a different lane and is never woken here.
@@ -350,9 +355,40 @@ describe('the medical-symptom answer lane', () => {
       status: 'deflected',
       reply: SAFETY_REPLY,
       replySource: 'fixed',
+      medicalSource: 'fixed',
       signal: 'not_applicable',
     });
     expect(p.recorded).toEqual([]);
+  });
+});
+
+/**
+ * The stamp the router writes on the reply. It exists so the founder scorecard's SAFETY
+ * row can count how often a parent with a hurt child got the fixed 811/911 line instead
+ * of an answer — a number that used to live only in memory. Every other branch must leave
+ * it null, or a door Hale chose deliberately would be counted as a medical failure.
+ */
+describe('the medical stamp is set on the medical branch and nowhere else', () => {
+  it.each([
+    ['a safety-critical text that is not a symptom', 'safety_critical', 'child-safety'],
+    ['the provider-access door', 'provider_access', 'doctor-access'],
+    ['a composed general answer', 'off_domain_general', 'weather'],
+  ] as const)('leaves it null for %s', async (_label, lane, category) => {
+    const p = ports({ read: reading({ lane, category }) });
+
+    const verdict = await consider(p, 'is it going to rain tomorrow');
+
+    expect(verdict).toMatchObject({ status: 'deflected', medicalSource: null });
+  });
+
+  /** The positive control for the three above: the same field, through the same call,
+   * is non-null exactly once. */
+  it('sets it for the medical-symptom branch', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+
+    const verdict = await consider(p);
+
+    expect(verdict).toMatchObject({ medicalSource: 'web_grounded' });
   });
 });
 

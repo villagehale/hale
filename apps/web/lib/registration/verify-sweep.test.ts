@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ExtractedWindow, StoredWindow } from './verify-window';
+import type { CycleIdentity, ExtractedWindow, StoredWindow } from './verify-window';
 import {
   DISCOVERY_TARGETS,
   MAX_PAGE_BYTES,
@@ -9,6 +9,7 @@ import {
   createFetchPage,
   formatRegistrationVerifyDigest,
   runRegistrationVerifySweep,
+  verifyWeekStart,
 } from './verify-sweep';
 
 /**
@@ -68,6 +69,7 @@ interface Harness {
   fetchPage: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
   extract: ReturnType<typeof vi.fn>;
+  recordRun: ReturnType<typeof vi.fn>;
 }
 
 function harness(overrides: Partial<RegistrationVerifyDeps> = {}): Harness {
@@ -75,8 +77,10 @@ function harness(overrides: Partial<RegistrationVerifyDeps> = {}): Harness {
   const fetchPage = vi.fn(async () => MARKHAM_PAGE);
   const send = vi.fn(async () => true);
   const extract = vi.fn(async () => reading());
+  const recordRun = vi.fn(async () => {});
   const deps: RegistrationVerifyDeps = {
     client: {} as never,
+    recordRun,
     fetchPage,
     extract,
     loadWindows: async () => [storedWindow()],
@@ -89,7 +93,7 @@ function harness(overrides: Partial<RegistrationVerifyDeps> = {}): Harness {
     discoveryTargets: [],
     ...overrides,
   };
-  return { deps, markVerified, fetchPage, send, extract };
+  return { deps, markVerified, fetchPage, send, extract, recordRun };
 }
 
 describe('runRegistrationVerifySweep — confirmed', () => {
@@ -292,6 +296,83 @@ describe('runRegistrationVerifySweep — bounded and idempotent', () => {
     });
     await runRegistrationVerifySweep({} as never, h.deps, NOW);
     expect(claimWeek).not.toHaveBeenCalled();
+  });
+});
+
+describe('runRegistrationVerifySweep — the run leaves its outcomes behind', () => {
+  /**
+   * The counts are what the founder scorecard grades the radar on. Before this ledger,
+   * a confirmation bumped `verified_at` and BOTH failures deliberately wrote nothing, so
+   * "the date moved" and "we could not read the page" were the same absence to every
+   * query — and the scorecard had to say so instead of saying which.
+   */
+  it('records the week\'s split — confirmed, moved, unreadable — for the scorecard to read', async () => {
+    const moved = storedWindow({
+      id: 'win-moved',
+      cycleLabel: 'Winter 2027 Programs',
+      sourceUrl: 'https://example.test/moved',
+    });
+    const unreadable = storedWindow({ id: 'win-dead', sourceUrl: 'https://example.test/dead' });
+    const h = harness({
+      loadWindows: async () => [storedWindow(), moved, unreadable],
+      fetchPage: vi.fn(async (url: string) => {
+        if (url === 'https://example.test/dead') throw new Error('HTTP 503');
+        return MARKHAM_PAGE;
+      }),
+      extract: vi.fn(async (cycle: CycleIdentity) =>
+        cycle.cycleLabel === moved.cycleLabel
+          ? reading({
+              cycleOnPage: moved.cycleLabel,
+              generalOpen: { date: '2026-08-18', time: '06:30' },
+              evidence: 'Register starting Aug. 11 at 6:30 AM',
+            })
+          : reading(),
+      ),
+    });
+
+    await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+    expect(h.recordRun).toHaveBeenCalledTimes(1);
+    const [database, weekStart, counts] = h.recordRun.mock.calls[0] ?? [];
+    expect(database).toEqual({});
+    // The Monday-aligned week the claim was taken for — NOW is Monday 2026-08-03.
+    expect(weekStart).toEqual(verifyWeekStart(NOW));
+    expect(counts).toEqual({ checked: 3, confirmed: 1, discrepancies: 1, unverified: 1 });
+  });
+
+  it('does not record a run for a week it never swept', async () => {
+    const h = harness({ claimWeek: async () => false });
+
+    await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+    expect(h.recordRun).not.toHaveBeenCalled();
+  });
+
+  /** Telemetry must not cost a completed sweep its digest — the same contract the
+   * founder email has. Named out loud, never swallowed into a clean run. */
+  it('logs and carries on when the outcome write fails, still sending the digest', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = harness({
+      recordRun: vi.fn(async () => {
+        throw new Error('relation "registration_verify_runs" does not exist');
+      }),
+      extract: vi.fn(async () =>
+        reading({
+          generalOpen: { date: '2026-08-18', time: '06:30' },
+          evidence: 'Register starting Aug. 11 at 6:30 AM',
+        }),
+      ),
+    });
+
+    const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+    expect(summary.discrepancies).toBe(1);
+    expect(h.send).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('outcomes not recorded'),
+    );
+    error.mockRestore();
   });
 });
 

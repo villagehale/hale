@@ -39,6 +39,7 @@ export * from './curated-resources.js';
 export * from './civic.js';
 export * from './registration-windows.js';
 export * from './registration-sequences.js';
+export * from './registration-verify-runs.js';
 export * from './agent-commitments.js';
 export * from './waitlist.js';
 export * from './conversations.js';

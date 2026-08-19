@@ -14,7 +14,7 @@ import {
   SAFETY_REPLY_BY_LANGUAGE,
   asksAboutEyeCare,
 } from './copy';
-import { type MedicalComposer, createMedicalComposer } from './medical';
+import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
 import {
   type InboundLaneScreen,
   type LaneScreenFallback,
@@ -92,6 +92,18 @@ export type OffDomainVerdict =
       category: UnmetIntentCategory;
       reply: string;
       replySource: ReplySource;
+      /**
+       * The medical lane's own outcome, for the router to stamp on the reply it sends —
+       * and null on every other branch, which is what MARKS a sent row as a medical
+       * answer at all (migration 0090).
+       *
+       * Carried explicitly rather than narrowed out of `replySource` downstream. Both
+       * fixed doors and the general answer's safety fallback also say `fixed`, so a
+       * reader deriving this from the source alone would count a provider-access door as
+       * a medical failure — in the one row of the founder scorecard that must never be
+       * wrong in that direction.
+       */
+      medicalSource: MedicalReplySource | null;
       signal: UnmetSignalOutcome;
     };
 
@@ -147,6 +159,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
           category: reading.category,
           reply,
           replySource,
+          medicalSource: replySource,
           signal: 'not_applicable',
         };
       }
@@ -195,6 +208,10 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         category: reading.category,
         reply,
         replySource,
+        // Every branch below the medical one is a door Hale chose or an answer about the
+        // world; none of them is a medical answer, and stamping one would put a
+        // deliberate door in the safety row's fallback count.
+        medicalSource: null,
         signal,
       };
     },

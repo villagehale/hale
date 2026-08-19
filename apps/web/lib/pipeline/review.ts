@@ -21,6 +21,10 @@ export interface ReviewResult {
    * @hale/agent rate table, and its `promptTokens` above is the collapsed total
    * (full-rate + cache reads) — so this is carried, never re-derived downstream. */
   costUsd: number;
+  /** The model the loop's turns RAN on, carried out of runReviewer for the same reason
+   * its cost is: the reviewer picks its own tier, so anything the caller records from
+   * memory is a second copy free to drift from the one that was billed. */
+  model: string;
 }
 
 export async function reviewAction(
@@ -49,5 +53,6 @@ export async function reviewAction(
       completionTokens: runMetrics.completionTokens,
     },
     costUsd: runMetrics.costUsd,
+    model: runMetrics.modelUsed,
   };
 }

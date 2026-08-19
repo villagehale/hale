@@ -1,4 +1,4 @@
-import { type AgentClient, SONNET_MODEL } from '@hale/agent';
+import type { AgentClient } from '@hale/agent';
 import { type Database, type WeekPlanItem, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
@@ -163,7 +163,7 @@ export async function mintCalendarDraftsForWeekPlan(
       verdict: verdict.verdict,
       usage: verdict.usage,
       costUsd: verdict.costUsd,
-      model: SONNET_MODEL,
+      model: verdict.model,
     });
 
     minted.push(actionId);

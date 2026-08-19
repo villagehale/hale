@@ -78,3 +78,29 @@ describe('unmet-intent vocabulary · SQL CHECK ↔ TypeScript source', () => {
     expect(sql).toMatch(/CHECK \("unmet_category" IS NULL OR "unmet_category" IN \(/);
   });
 });
+
+/**
+ * The same seam for migration 0090's `medical_reply_source`, and for the same reason: the
+ * value is what the founder scorecard's SAFETY row counts fallbacks with, so a TS value
+ * the CHECK rejects would fail the stamp and read as a week with no medical answers at
+ * all — a safety row flattered by a silent write failure.
+ */
+describe('medical reply-source vocabulary · SQL CHECK ↔ TypeScript source', () => {
+  const sql = fs.readFileSync(
+    path.resolve(scriptDir, '..', 'drizzle', '0090_medical_reply_source.sql'),
+    'utf8',
+  );
+  const ts = fs.readFileSync(SCHEMA, 'utf8');
+
+  it('the CHECK allows exactly the sources the lane can write', () => {
+    expect(checkedValues(sql, 'channel_messages_medical_reply_source_check')).toEqual(
+      sourceValues(ts, 'MEDICAL_REPLY_SOURCES'),
+    );
+  });
+
+  it('the constraint admits NULL and nothing outside the list', () => {
+    expect(sql).toMatch(
+      /CHECK \("medical_reply_source" IS NULL OR "medical_reply_source" IN \(/,
+    );
+  });
+});

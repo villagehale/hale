@@ -462,8 +462,56 @@ describe('the off-domain lane', () => {
     category: 'weather',
     reply: "I can't see live conditions, but I do check your area's forecast for weekends.",
     replySource: 'composed',
+    medicalSource: null,
     signal: 'recorded',
   };
+
+  /** The lane's other answer: a symptom, answered rather than deflected. */
+  const medicalVerdict = (medicalSource: 'web_grounded' | 'fixed'): OffDomainVerdict => ({
+    status: 'deflected',
+    lane: 'safety_critical',
+    category: 'medical-symptom',
+    reply: medicalSource === 'fixed' ? SAFETY_REPLY : 'Fevers at this age are usually viral.',
+    replySource: medicalSource,
+    medicalSource,
+    signal: 'not_applicable',
+  });
+
+  /**
+   * The medical lane's outcome only ever existed on the way to the transport, so the
+   * founder scorecard's SAFETY row could not count how often a parent with a hurt child
+   * got the fixed 811/911 line instead of an answer. The reply's own ledger row is where
+   * that fact belongs — and the row stays bodyless, carrying a two-value enum and not one
+   * word of what was said (rule #1).
+   */
+  it.each(['web_grounded', 'fixed'] as const)(
+    'stamps a medical answer (%s) on the reply row it sends, body still null',
+    async (source) => {
+      const h = harness({
+        context: { body: 'she has had a fever for three days' },
+        offDomain: fakeLane(medicalVerdict(source)),
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.medicalReplySource).toBe(source);
+      expect(sent[0]?.body).toBeNull();
+    },
+  );
+
+  /** A door Hale chose, or an answer about the world, is not a medical answer. Stamping
+   * one would put a deliberate deflection into the safety row's fallback count. */
+  it('leaves the stamp null on every reply that is not a medical answer', async () => {
+    const h = harness({ context: { body: "how's the weather" }, offDomain: fakeLane(ANSWERED) });
+
+    await routeChannelMessage(h.deps, job());
+
+    const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.medicalReplySource ?? null).toBeNull();
+  });
 
   it('answers an off-domain text without ever waking the coach', async () => {
     const lane = fakeLane(ANSWERED);
@@ -576,6 +624,7 @@ describe('the off-domain lane', () => {
         category: 'doctor-access',
         reply: 'Finding you a doctor is not something I can do.',
         replySource: 'fixed',
+        medicalSource: null,
         signal: 'recorded',
       }),
     });
@@ -1380,6 +1429,7 @@ describe('the outage smoke alarm', () => {
         category: 'other',
         reply: SAFETY_REPLY,
         replySource: 'fixed',
+        medicalSource: null,
         signal: 'recorded',
       }),
       coach: outageCoach(),
