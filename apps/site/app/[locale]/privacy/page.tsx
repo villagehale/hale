@@ -1,29 +1,51 @@
 import type { Metadata } from 'next';
 import { LegalLayout, type LegalSection, LegalSectionBlock } from '~/components/legal-layout';
 import { buildAlternates } from '~/i18n/metadata';
+import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 
 /**
  * villagehale.com/privacy — the canonical home for the Privacy Policy
- * (VIL-250 · M14 · B-legal). The copy is migrated verbatim from the app's
- * /privacy page with exactly one planned addition, per the Surfaces Plan: the
- * SMS-transit disclosure from Technical Design §7 (the "Text messages" section
- * plus the Twilio sub-processor it names), which has to exist before the Twilio
- * soft-launch. Everything else is untouched — a legal-copy change is its own
- * change, never bundled with a design move.
+ * (VIL-250 · M14 · B-legal). A legal-copy change is its own change, never bundled
+ * with a design move.
  *
- * 2026-08-19: two FACTUAL corrections, both flagged by review. The PostHog row
- * printed an env var name (`NEXT_PUBLIC_POSTHOG_HOST`) where a reader needs a
- * jurisdiction, and the opening paragraph described an account-first product a
- * year after the messaging-first pivot. Nothing about rights, retention, or
- * residency changed. Counsel should read the diff.
+ * 2026-08-19: two FACTUAL corrections, both flagged by review — the PostHog
+ * jurisdiction and the account-first opening paragraph.
+ *
+ * 2026-08-20: STRUCTURAL. The section architecture is adapted from the CC0
+ * General-Legal "GDPR-Enhanced Privacy Policy" template
+ * (github.com/General-Legal/legal-templates, CC0 1.0 — no attribution owed,
+ * recorded because provenance matters on a legal surface). Three of its patterns
+ * were worth having and we did not: collection organised by SOURCE, use organised
+ * by PURPOSE, and sharing organised by RECIPIENT rather than only by named
+ * vendor.
+ *
+ * That third one is why this revision is not cosmetic. `consent_records` has
+ * carried caregiver_access_grant, mcp_third_party_model and village_intro rows —
+ * three ways a family's data leaves the family — while this page described only
+ * sub-processors. Every fact in the new sharing section was read out of the code
+ * that performs the disclosure, not drafted: the caregiver's scoped slice on a
+ * named number, the MCP read re-rendered to the strictest outbound standard
+ * (lib/mcp/read-tools.ts), and the introduction's four disclosed fields exactly as
+ * the audit row names them (lib/village/intros/run.ts).
+ *
+ * Everything the template ships that is not ours was dropped, not translated: the
+ * California notice at collection, the state privacy rights notice, and the whole
+ * "Notice to European users" — legal bases, data subjects, legitimate interests, a
+ * DPO and EU/UK representatives. PIPEDA vocabulary replaces it, and the Law 25
+ * automated-decision statement (s.12.1) is stated plainly in the AI section.
+ *
+ * Not here, and left for counsel rather than invented: a Tracking Technologies /
+ * cookie section (the marketing site's posthog.init sets no `persistence` option,
+ * so what it writes to a visitor's browser needs measuring before it can be
+ * described), a stated retention period, and a postal address for the Privacy
+ * Officer. Counsel should read the diff.
  *
  * app.villagehale.com/privacy is now a permanent 308 here (VIL-256), so this is
- * the only copy. Still noindexed, now by choice rather than by the dark-launch
- * rationale that outlived itself: the flip has happened, and whether a privacy
- * policy should be findable in search on a product whose moat is privacy is a
- * founder call, not a leftover. Reachable by direct link either way — the footer,
- * the app, the mobile listing and every consent surface point straight at it.
+ * the only copy. Still noindexed by choice — whether a privacy policy should be
+ * findable in search on a product whose moat is privacy is a founder call.
+ * Reachable by direct link either way — the footer, the app, the mobile listing
+ * and every consent surface point straight at it.
  */
 
 const TITLE = 'Privacy Policy · Hale';
@@ -46,15 +68,18 @@ export async function generateMetadata({
 
 const SECTIONS: LegalSection[] = [
   { id: 'who-we-are', title: 'Who we are' },
-  { id: 'what-we-collect', title: 'What we collect' },
-  { id: 'why-we-use-it', title: 'Why we use it (and our legal basis)' },
+  { id: 'what-we-collect', title: 'What we collect, and where it comes from' },
+  { id: 'why-we-use-it', title: 'Why we use it, and the consent we rely on' },
   { id: 'childrens-data', title: "Children's data" },
   { id: 'teen-privacy', title: 'Teen privacy (children 13 and older)' },
   { id: 'ai-processing', title: 'AI and automated processing' },
+  { id: 'how-we-share', title: 'Who your family’s data is shared with' },
   { id: 'sub-processors', title: 'Sub-processors and cross-border processing' },
   { id: 'sms', title: 'Text messages (SMS)' },
   { id: 'residency-retention', title: 'Data residency, retention, and security' },
   { id: 'your-rights', title: 'Your rights' },
+  { id: 'your-choices', title: 'Your choices' },
+  { id: 'other-services', title: 'Other sites and services' },
   { id: 'casl', title: 'Email and electronic messages (CASL)' },
   { id: 'changes', title: 'Changes to this policy' },
   { id: 'contact', title: 'How to reach us' },
@@ -66,15 +91,15 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     <LegalLayout
       locale={locale}
       title="Privacy Policy"
-      lastUpdatedIso="2026-08-19"
+      lastUpdatedIso="2026-08-20"
       intro={
         <p>
           Hale helps families across every stage of childhood, and that means we handle some of the
           most sensitive data there is — including information about newborns and children. We treat
           that responsibility as the centre of the product, not an afterthought. This policy
-          explains, in plain language, what we collect, why, where it lives, and the control you
-          keep over it. It is written for Canada&rsquo;s federal privacy law (PIPEDA),
-          Quebec&rsquo;s Law 25, and Canada&rsquo;s anti-spam law (CASL).
+          explains, in plain language, what we collect, why, where it lives, who it is ever shared
+          with, and the control you keep over it. It is written for Canada&rsquo;s federal privacy
+          law (PIPEDA), Quebec&rsquo;s Law 25, and Canada&rsquo;s anti-spam law (CASL).
         </p>
       }
       sections={SECTIONS}
@@ -89,16 +114,26 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           already use. Hale watches for things that matter, drafts helpful suggestions, and — only
           with your approval — helps carry them out. Hale is operated by Village Hale Technologies Inc., a
           company incorporated in Ontario, Canada, which is the organization responsible for your
-          family&rsquo;s data; see{' '}
+          family&rsquo;s data under PIPEDA; see{' '}
           <a href="#contact" className="link">
             How to reach us
           </a>
-          .
+          . Our{' '}
+          <a href={localeHref(locale, '/terms')} className="link">
+            Terms of Service
+          </a>{' '}
+          govern your use of Hale; this policy governs your family&rsquo;s data.
         </p>
       </LegalSectionBlock>
 
-      <LegalSectionBlock id="what-we-collect" title="What we collect">
-        <p>We collect only what we need to run Hale for your family:</p>
+      <LegalSectionBlock id="what-we-collect" title="What we collect, and where it comes from">
+        <p>
+          We collect only what we need to run Hale for your family. It reaches us four ways, and
+          the difference matters — most of it you typed, and none of it was bought.
+        </p>
+        <p>
+          <strong>What you give us.</strong> The things you tell Hale, in a text or in the web app:
+        </p>
         <ul>
           <li>
             <strong>Your contact details.</strong> The phone number you text from; and, if you sign
@@ -113,14 +148,11 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             child&rsquo;s stage (newborn, toddler, child, or teenager).
           </li>
           <li>
-            <strong>Care and activity logs.</strong> The day-to-day entries you or connected tools
-            record — feeds, naps, milestones, and similar notes about your child&rsquo;s routine.
+            <strong>Care and activity logs.</strong> The day-to-day entries you record — feeds,
+            naps, milestones, and similar notes about your child&rsquo;s routine.
           </li>
           <li>
-            <strong>Hale conversations and derived memory.</strong> The questions you ask
-            Hale and its answers, plus a structured memory of facts and patterns Hale infers
-            from your family&rsquo;s activity (for example, a usual nap window or a stated preference)
-            so it can be more helpful over time.
+            <strong>Hale conversations.</strong> The questions you ask Hale and its answers.
           </li>
           <li>
             <strong>Coarse location only.</strong> If you opt in to local discovery, we store a
@@ -134,39 +166,89 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             your family endorsed it so we can show an aggregate count (&ldquo;loved by several
             families near you&rdquo;). We never reveal which family endorsed what.
           </li>
-          <li>
-            <strong>Connected integrations.</strong> If you connect a tool (such as email, calendar,
-            or a daycare app), we store an encrypted authorization token and the minimum metadata
-            needed to sync. You control which integrations are connected and can disconnect them.
-          </li>
-          <li>
-            <strong>Audit logs and technical data.</strong> Every action Hale takes produces an
-            immutable audit record (see{' '}
-            <a href="#your-rights" className="link">
-              Your rights
-            </a>
-            ), and we keep limited technical information such as your IP address and browser type
-            for security and to honour your access requests.
-          </li>
         </ul>
-      </LegalSectionBlock>
-
-      <LegalSectionBlock id="why-we-use-it" title="Why we use it (and our legal basis)">
         <p>
-          We use your family&rsquo;s data to provide and improve Hale: to understand what&rsquo;s
-          happening in your family&rsquo;s day, to draft suggestions, to find genuinely useful local
-          things to do, to keep an accurate record of what Hale did, and to keep your account
-          secure. We do not sell your data, and we do not use your children&rsquo;s data for
-          advertising.
+          <strong>What comes from services you connect.</strong> If you connect a tool (such as
+          email, calendar, or a daycare app), we store an encrypted authorization token and the
+          minimum metadata needed to sync, plus the entries that tool records into your
+          family&rsquo;s timeline. You control which integrations are connected and can disconnect
+          them.
         </p>
         <p>
-          Our processing rests on your consent. We ask for that consent clearly when you sign up and
-          again for specific, sensitive purposes — connecting an integration, sending your context
-          to our AI provider, processing data across borders, and unlocking any automated action. We
-          record each consent (including the policy version and time) so the choice is verifiable,
-          and you can withdraw it at any time (see{' '}
+          <strong>What Hale works out for itself.</strong> A structured memory of facts and patterns
+          Hale infers from your family&rsquo;s activity — for example, a usual nap window or a
+          stated preference — so it can be more helpful over time. Inferred information about your
+          family is your family&rsquo;s personal information too, and everything in this policy
+          applies to it.
+        </p>
+        <p>
+          <strong>What is collected automatically.</strong> Every action Hale takes produces an
+          immutable audit record (see{' '}
           <a href="#your-rights" className="link">
             Your rights
+          </a>
+          ), and we keep limited technical information such as your IP address and browser type for
+          security and to honour your access requests, plus the coarse product-usage events
+          described under{' '}
+          <a href="#sub-processors" className="link">
+            Sub-processors
+          </a>
+          . We do not buy personal information about your family from data brokers, and we do not
+          collect it from social media or other public sources.
+        </p>
+      </LegalSectionBlock>
+
+      <LegalSectionBlock id="why-we-use-it" title="Why we use it, and the consent we rely on">
+        <p>
+          PIPEDA asks an organization to identify its purposes before it collects anything, so here
+          they are — the whole list:
+        </p>
+        <ul>
+          <li>
+            <strong>Running Hale for your family.</strong> Understanding what is happening in your
+            family&rsquo;s day, answering your questions, drafting suggestions, finding genuinely
+            useful local things to do, preparing an action and — once you approve it — carrying it
+            out, and keeping an accurate record of what Hale did.
+          </li>
+          <li>
+            <strong>Keeping your family&rsquo;s data safe.</strong> Recognising you, protecting
+            accounts and the service against abuse, and maintaining the audit record that lets us
+            show you exactly what happened.
+          </li>
+          <li>
+            <strong>Making Hale better.</strong> Understanding which parts of the product work and
+            which fail, and finding and fixing errors.
+          </li>
+          <li>
+            <strong>Meeting our obligations.</strong> Complying with the law, responding to lawful
+            requests, enforcing our{' '}
+            <a href={localeHref(locale, '/terms')} className="link">
+              Terms of Service
+            </a>
+            , and protecting a child or another person from harm.
+          </li>
+        </ul>
+        <p>
+          That is all of them. We do not sell your data, we do not use your children&rsquo;s data
+          for advertising, and Hale shows no advertising.
+        </p>
+        <p>
+          <strong>The consent we rely on.</strong> Everything above rests on your consent, and
+          PIPEDA asks that it be <strong>meaningful consent</strong> — that you understand what you
+          are agreeing to, in language you can actually read, before you agree. So we ask plainly at
+          the start, and separately again for each purpose that deserves its own answer: connecting
+          an integration, sending your context to our AI provider, processing data across borders,
+          letting Hale watch and text you unprompted, sharing a slice of your week with a caregiver
+          you name, letting another assistant read from Hale, being introduced to another household,
+          and unlocking any automated action. We record each consent — what was asked, the words you
+          answered in, the version of this policy, and the time — so the choice is verifiable
+          afterwards, and you can withdraw it at any time (see{' '}
+          <a href="#your-rights" className="link">
+            Your rights
+          </a>{' '}
+          and{' '}
+          <a href="#your-choices" className="link">
+            Your choices
           </a>
           ).
         </p>
@@ -179,6 +261,11 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           your authority and for your family&rsquo;s benefit. Optional and sensitive fields — such
           as gender — are exactly that: optional, and stored only if you provide them. A
           child&rsquo;s information belongs to one family and is never visible to another family.
+        </p>
+        <p>
+          Hale is for parents and guardians. A child does not have a Hale account and does not text
+          Hale, and we do not knowingly collect information directly from a child — everything Hale
+          knows about your child came from you, or from a tool you chose to connect.
         </p>
       </LegalSectionBlock>
 
@@ -236,6 +323,64 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           mode, and any move toward more automation requires your explicit, per-action-type
           approval. You are always the decision-maker.
         </p>
+        <p>
+          Stated the way Quebec&rsquo;s Law 25 asks us to state it:{' '}
+          <strong>
+            No decision about your family is made by automated processing alone.
+          </strong>{' '}
+          Hale produces drafts, suggestions and reminders; a person — you — decides. We do not
+          profile your family for advertising, and we do not use your family&rsquo;s data to train
+          anyone&rsquo;s models.
+        </p>
+      </LegalSectionBlock>
+
+      <LegalSectionBlock id="how-we-share" title="Who your family’s data is shared with">
+        <p>
+          Nothing about your family is shared by default. There are five kinds of recipient, and
+          three of them exist only because you asked for them.
+        </p>
+        <ul>
+          <li>
+            <strong>Service providers who run Hale for us.</strong> A small, named set — the
+            database, the AI models, hosting, email and text delivery, analytics and observability.
+            Each receives only what that service needs, under contractual safeguards. They are
+            listed one by one in{' '}
+            <a href="#sub-processors" className="link">
+              Sub-processors
+            </a>
+            .
+          </li>
+          <li>
+            <strong>A caregiver you name.</strong> If you invite a grandparent, a nanny or a
+            babysitter, Hale texts them only the slice of your week that the role you chose covers,
+            on the number you gave, and only after they have agreed to be texted. Your authorization
+            is recorded as its own consent, and you can end it.
+          </li>
+          <li>
+            <strong>An assistant you connect.</strong> If you authorize another AI assistant or tool
+            to read from Hale, it receives only the scopes you selected — and what it reads is
+            re-rendered at the moment of the read to the strictest standard we apply anywhere: a
+            teen&rsquo;s content removed on their age as of that moment, health and sensitive items
+            generalized, locations dropped. You can revoke the authorization at any time.
+          </li>
+          <li>
+            <strong>Another household, in an introduction.</strong> Hale can offer to introduce your
+            family to another local family around an activity. Nothing crosses until{' '}
+            <strong>both households have said yes</strong> to that specific introduction, and what
+            crosses is exactly four things: a parent&rsquo;s first name, an email address, the stage
+            of a child (never a name or a date of birth), and the activity that anchored the match.
+            The introduction is written to your family&rsquo;s record with those fields named, so
+            you can always see what was disclosed.
+          </li>
+          <li>
+            <strong>Where the law requires it.</strong> To authorities and in legal process where we
+            are required or permitted to, to protect a child or another person from serious harm,
+            and to our professional advisers — lawyers, accountants, insurers — in the course of
+            their work for us. If Hale is ever acquired, merged, or reorganized, your family&rsquo;s
+            data may transfer with the business; this policy keeps applying to it, and we will tell
+            you.
+          </li>
+        </ul>
       </LegalSectionBlock>
 
       <LegalSectionBlock id="sub-processors" title="Sub-processors and cross-border processing">
@@ -369,13 +514,19 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           is active and as needed to provide Hale. When you delete your account or ask us to erase
           your data, we delete it, except where we must retain certain records (such as audit logs)
           to meet legal obligations. Removing a child removes that child&rsquo;s identifying data;
-          some family history is retained in de-identified form.
+          some family history is retained in de-identified form. In deciding how long to keep
+          anything, we weigh how sensitive it is, what we still genuinely need it for, the harm that
+          holding it could cause, and any legal requirement to keep it.
         </p>
         <p>
           <strong>Security.</strong> Access to your data is isolated per family at the database
           level (row-level security), data is encrypted in transit, and integration tokens are
           encrypted before they are stored. We log every action Hale takes so it can always be
-          reviewed.
+          reviewed. No system is completely secure and we will not pretend otherwise; if a breach
+          ever creates a real risk of significant harm to your family, we will report it to the
+          Office of the Privacy Commissioner of Canada — and, where Law 25 applies, to the
+          Commission d&rsquo;accès à l&rsquo;information du Québec — and tell you, as those laws
+          require.
         </p>
       </LegalSectionBlock>
 
@@ -412,6 +563,52 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             How to reach us
           </a>
           .
+        </p>
+      </LegalSectionBlock>
+
+      <LegalSectionBlock id="your-choices" title="Your choices">
+        <p>
+          Those are the rights the law gives you. These are the switches in the product, and none of
+          them requires writing to us:
+        </p>
+        <ul>
+          <li>
+            <strong>Stop the texts.</strong> Reply STOP to any message and the messages stop,
+            immediately, until you ask us to start again.
+          </li>
+          <li>
+            <strong>Stop the email.</strong> Every non-essential email carries a working unsubscribe
+            link; see{' '}
+            <a href="#casl" className="link">
+              Email and electronic messages
+            </a>
+            .
+          </li>
+          <li>
+            <strong>Stop the introductions.</strong> Text NO INTROS and Hale will not look for a
+            match for your family or raise it again.
+          </li>
+          <li>
+            <strong>Disconnect a tool.</strong> Any integration you connected can be disconnected,
+            and any assistant you authorized to read from Hale can have that authorization revoked.
+          </li>
+          <li>
+            <strong>Skip the address.</strong> Coarse location is opt-in — local discovery is the
+            only thing that needs it, and Hale works without it.
+          </li>
+          <li>
+            <strong>Decline to tell us something.</strong> Optional fields are optional. Some of
+            Hale gets less useful without them, and none of Hale stops working.
+          </li>
+        </ul>
+      </LegalSectionBlock>
+
+      <LegalSectionBlock id="other-services" title="Other sites and services">
+        <p>
+          Hale points you at things other people run — a city&rsquo;s registration page, a program,
+          a venue. Those sites are not ours and this policy does not cover them; what they collect
+          when you arrive is governed by their own privacy practices, which are worth reading before
+          you register. The same is true of any tool you connect to Hale.
         </p>
       </LegalSectionBlock>
 
