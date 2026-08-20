@@ -148,7 +148,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           <h1 className="v4-display v4-hero-h1 text-balance">
             {t('heroH1a')}
             <br />
-            {t('heroH1b')} <span className="v4-italic">{t('heroH1Accent')}</span>
+            {t('heroH1b')} <span className="v4-accent">{t('heroH1Accent')}</span>
           </h1>
           <p className="v4-hero-sub">{t('heroSub', { count: MUNICIPALITIES.length })}</p>
 
@@ -208,7 +208,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell pt-12 sm:pt-20 lg:pt-28">
         <p className="v4-eyebrow text-center">{t('threadEyebrow')}</p>
         <h2 className="v4-display mx-auto mt-4 max-w-[18ch] text-center text-[clamp(1.9rem,4.4vw,3rem)] text-ink">
-          {t('threadH2a')} <span className="v4-italic text-amber">{t('threadH2Accent')}</span>
+          {t('threadH2a')} <span className="v4-accent">{t('threadH2Accent')}</span>
         </h2>
         <p className="v4-lede mx-auto text-center">{t('threadLede')}</p>
 
@@ -229,7 +229,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow text-center">{t('howEyebrow')}</p>
         <h2 className="v4-display mx-auto mt-4 max-w-[16ch] text-center text-[clamp(2rem,5vw,3.4rem)] text-ink">
-          {t('howH2a')} <span className="v4-italic text-amber">{t('howH2Accent')}</span>
+          {t('howH2a')} <span className="v4-accent">{t('howH2Accent')}</span>
         </h2>
         <ScrollRail className="v4-cardgrid mt-7 sm:mt-12" label={t('howRail')}>
           {steps.map((s, i) => (
@@ -261,7 +261,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         <p className="v4-eyebrow">{t('watchEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
           {t('watchH2Count', { count: MUNICIPALITIES.length })}{' '}
-          <span className="v4-italic text-amber">{t('watchH2Accent')}</span>
+          <span className="v4-accent">{t('watchH2Accent')}</span>
         </h2>
         <p className="v4-lede">{t('watchLede')}</p>
         {/* The four sourced facts used to run together in that lede as one
@@ -299,7 +299,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('coachingEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          {t('coachingH2a')} <span className="v4-italic text-amber">{t('coachingH2Accent')}</span>
+          {t('coachingH2a')} <span className="v4-accent">{t('coachingH2Accent')}</span>
         </h2>
         <p className="v4-lede">{t('coachingLede')}</p>
         <ScrollRail as="ol" className="v4-cardgrid mt-7 sm:mt-12" label={t('coachingRail')}>
@@ -322,7 +322,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('helpersEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          {t('helpersH2a')} <span className="v4-italic text-amber">{t('helpersH2Accent')}</span>
+          {t('helpersH2a')} <span className="v4-accent">{t('helpersH2Accent')}</span>
         </h2>
         <ScrollRail className="v4-cardgrid-2 mt-6 sm:mt-10" label={t('helpersRail')}>
           {caregivers.map((item) => (
@@ -338,7 +338,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('privacyEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          {t('privacyH2a')} <span className="v4-italic text-amber">{t('privacyH2Accent')}</span>
+          {t('privacyH2a')} <span className="v4-accent">{t('privacyH2Accent')}</span>
         </h2>
         <div className="v4-lede">
           <p>{t('privacyBody1')}</p>
@@ -378,7 +378,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               </span>
             </span>
             <h2 className="v4-display mt-4 text-[clamp(1.9rem,4vw,2.8rem)] text-ink">
-              {t('closingH2a')} <span className="v4-italic text-amber">{t('closingH2Accent')}</span>
+              {t('closingH2a')} <span className="v4-accent">{t('closingH2Accent')}</span>
             </h2>
             <p className="v4-hero-sub">{t('closingSub')}</p>
             {smsHref ? (

@@ -22,22 +22,24 @@ const instrumentSans = localFont({
   display: 'swap',
 });
 
+// The display face for the whole site (--font-serif): variable 400–700, so a
+// heading can be set at the weight its size needs. No italic master is loaded —
+// display type here is upright, and the one accent per headline is colour.
 const sourceSerif = localFont({
   src: [
     { path: '../fonts/source-serif-4-latin-wght-normal.woff2', weight: '400 700', style: 'normal' },
-    { path: '../fonts/source-serif-4-latin-wght-italic.woff2', weight: '400 700', style: 'italic' },
   ],
   variable: '--font-serif',
   display: 'swap',
 });
 
-// v4 display face — Instrument Serif, the serif sibling of our body Instrument Sans.
-// Same self-hosted OFL discipline as the others (fetched from Fontsource, not a runtime
-// Google request). Only the v4 landing binds it, via --font-serif-display.
+// Instrument Serif, the serif sibling of our body Instrument Sans. Same self-hosted
+// OFL discipline as the others (fetched from Fontsource, not a runtime Google
+// request). One master exists (400), so exactly one thing binds it via
+// --font-serif-display: the landing hero at ≥1024px, where it renders near 100px.
 const instrumentSerif = localFont({
   src: [
     { path: '../fonts/instrument-serif-latin-400-normal.woff2', weight: '400', style: 'normal' },
-    { path: '../fonts/instrument-serif-latin-400-italic.woff2', weight: '400', style: 'italic' },
   ],
   variable: '--font-serif-display',
   display: 'swap',

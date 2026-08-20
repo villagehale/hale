@@ -126,6 +126,11 @@
   /* ── Spacing & rhythm ────────────────────────────────────────────────── */
   --shell-pad-x: clamp(1.5rem, 5vw, 6rem);
   --shell-max: 1280px;
+  /* The sticky nav pill's own block height (its top margin included). Read by
+   * html's scroll-padding, so a deep link clears the bar, and by the landing
+   * hero, which runs UNDER the bar by exactly this much. One number, two
+   * readers — they cannot drift apart. */
+  --nav-h: 5.4rem;
 
   /* ── Radius — a calm card ladder, not blobs (panels read as cards) ───── */
   --r-sm: 8px;
@@ -186,14 +191,6 @@
   --v3-chip-hover: light-dark(rgb(23 41 74 / 0.09), rgb(247 244 236 / 0.13));
 
   --v3-caret: light-dark(#b26b1f, #e2a75a);
-
-  /* The amber edge and halo on the serif accent word. A halo that is a warmth
-   * on cream is a neon tube on navy: same device, roughly half the alpha.
-   * Un-prefixed because the device is the brand's, not the landing's: `.accent`
-   * (subpages) and `.v3-accent` (landing) are now one rule reading these. */
-  --accent-stroke: light-dark(rgb(178 107 31 / 0.38), rgb(226 167 90 / 0.28));
-  --accent-glow-near: light-dark(rgb(178 107 31 / 0.26), rgb(226 167 90 / 0.15));
-  --accent-glow-far: light-dark(rgb(178 107 31 / 0.12), rgb(226 167 90 / 0.07));
 
   /* The hairline that fades toward a card's edges. */
   --v3-edge: light-dark(rgb(23 41 74 / 0.20), rgb(247 244 236 / 0.22));
@@ -284,8 +281,8 @@ html {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   scroll-behavior: smooth;
-  /* Deep-link targets clear the sticky ~4.5rem header instead of hiding under it. */
-  scroll-padding-top: 4.75rem;
+  /* Deep-link targets clear the sticky header instead of hiding under it. */
+  scroll-padding-top: var(--nav-h);
 }
 
 body {
@@ -360,25 +357,6 @@ strong { font-weight: 700; }
   font-weight: 500;
   color: var(--color-faded-sage);
   overflow-wrap: anywhere;
-}
-
-/* The single title accent segment — Source Serif 4 italic, inheriting the
- * heading's ink colour rather than tinting it, with an amber hairline stroke on
- * the glyph edges and a warm halo behind them. Two layers on ONE element rather
- * than an absolutely-positioned duplicate, which cannot follow the real text
- * when a phrase wraps — and these phrases wrap at 390px.
- *
- * `.v3-accent` is the landing's name for the same device. They are one rule
- * because they are one device: the landing had the glow and eight subpages had
- * a plain italic, which is a fork of the brand's most-repeated gesture. Amber
- * stays at low alpha, so the fill is still ink and AA holds. */
-.accent,
-.v3-accent {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
-  -webkit-text-stroke: 0.4px var(--accent-stroke);
-  text-shadow: 0 0 18px var(--accent-glow-near), 0 0 44px var(--accent-glow-far);
 }
 
 /* ── Shell ─────────────────────────────────────────────────────────────── */
@@ -802,9 +780,11 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 .legal-measure { max-width: 38rem; }
 
 .legal-title {
-  font-family: var(--font-serif-display), Georgia, serif;
-  font-weight: 400;
-  letter-spacing: -0.015em;
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 600;
+  font-synthesis-weight: none;
+  letter-spacing: -0.01em;
+  line-height: 1.04;
   font-size: clamp(2.2rem, 5vw, 3rem);
 }
 
@@ -1687,15 +1667,32 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * footer switch drives the whole page, hero included.
  * ═══════════════════════════════════════════════════════════════════════════ */
 @layer components {
-  /* The display face. Instrument Serif is high-contrast and tight; it carries the
-   * hero alone, so it is only ever set large. */
+  /* The display face. Instrument Serif ships ONE master (400) — so at the 30–54px
+   * every section heading actually renders at, its hairlines under-assert and
+   * there is no heavier cut to reach for (`font-weight: 600` on it would be a
+   * browser-smeared synthetic bold). Display type is therefore Source Serif 4,
+   * variable 400–700 and already self-hosted, with the weight rising as the size
+   * falls: perceived weight drops with size, so <2.5rem takes 620, 2.5–4rem
+   * 580–600, ≥4rem 400–500. Instrument Serif is kept for exactly one thing, the
+   * landing hero at ≥1024px (see .v4-hero-h1), the one place on the site a
+   * high-contrast 400 serif renders near 100px. */
   .v4-display {
-    font-family: var(--font-serif-display), Georgia, serif;
-    font-weight: 400;
-    letter-spacing: -0.015em;
-    line-height: 0.96;
+    font-family: var(--font-serif), Georgia, serif;
+    font-weight: 620;
+    font-synthesis-weight: none;
+    letter-spacing: -0.01em;
+    line-height: 1.04;
   }
-  .v4-italic { font-style: italic; }
+  @media (min-width: 640px) {
+    .v4-display { font-weight: 600; }
+  }
+  @media (min-width: 1024px) {
+    .v4-display { font-weight: 580; }
+  }
+  /* The one accent segment per headline: amber, at the heading's own weight and
+   * upright. It was a slant until 2026-08-19; display type on this site does not
+   * lean. */
+  .v4-accent { color: var(--color-amber); }
 
   /* Liquid glass — the #466 recipe as a reusable class. The gradient ring is
    * bright at top and bottom, gone in the middle, masked to the border only, so
@@ -1845,9 +1842,26 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     font-size: clamp(2.9rem, 8.5vw, 6.5rem);
     color: var(--color-ink);
     max-width: 15ch;
-    text-shadow: light-dark(0 1px 30px rgb(253 252 250 / 0.65), 0 2px 40px rgb(12 26 54 / 0.7));
+    font-weight: 550;
+    line-height: 1.02;
+    /* Half the blur the ≥1024px hero wears: at the 46px mobile floor a 30px wash
+     * softens the very edges the heading needs to hold. */
+    text-shadow: light-dark(0 1px 15px rgb(253 252 250 / 0.65), 0 2px 20px rgb(12 26 54 / 0.7));
   }
-  .v4-hero-h1 .v4-italic { color: var(--color-amber); }
+  @media (min-width: 640px) {
+    .v4-hero-h1 { font-weight: 500; }
+  }
+  /* ≥1024px the hero renders at 87–104px — the one scale on the site where a
+   * high-contrast 400 serif reads as display type rather than as thin. */
+  @media (min-width: 1024px) {
+    .v4-hero-h1 {
+      font-family: var(--font-serif-display), Georgia, serif;
+      font-weight: 400;
+      letter-spacing: -0.015em;
+      line-height: 0.96;
+      text-shadow: light-dark(0 1px 30px rgb(253 252 250 / 0.65), 0 2px 40px rgb(12 26 54 / 0.7));
+    }
+  }
   .v4-hero-sub {
     max-width: 42ch;
     font-size: clamp(1rem, 1.6vw, 1.15rem);

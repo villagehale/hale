@@ -11,10 +11,10 @@ import type { CSSProperties, ElementType } from 'react';
  * carrying a different class.
  *
  * A segment is a run of the headline in one style. The whole headline is set in
- * the v4 display face (Instrument Serif, `.v4-display`); marking one segment
- * `accent: true` tips it into the amber serif-italic (`.v4-italic text-amber`) —
- * the exact gesture the v4 landing hero wears, so the subpages and the homepage
- * share one title device. Every subpage headline gets exactly one accent segment.
+ * the v4 display face (`.v4-display`); marking one segment `accent: true` tips it
+ * into amber at the same weight and upright (`.v4-accent`) — the exact gesture the
+ * v4 landing hero wears, so the subpages and the homepage share one title device.
+ * Every subpage headline gets exactly one accent segment.
  * Segments are joined with a single space, so punctuation that must hug the accent
  * goes INSIDE the accent segment ("a number," not "a number" + ", …").
  *
@@ -26,7 +26,7 @@ import type { CSSProperties, ElementType } from 'react';
 
 export interface HeadlineSegment {
   text: string;
-  /** Sets this run in the serif-italic accent — one per headline. */
+  /** Sets this run in the amber accent — one per headline. */
   accent?: boolean;
 }
 
@@ -53,7 +53,7 @@ export function WordsPullUp({
       {words.map((word, index) => (
         <Fragment key={`${index}-${word.text}`}>
           <span
-            className={`pull-word${word.accent ? ' v4-italic text-amber' : ''}`}
+            className={`pull-word${word.accent ? ' v4-accent' : ''}`}
             style={{ '--w': index } as CSSProperties}
           >
             {word.text}
