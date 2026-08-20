@@ -3,7 +3,7 @@ import { type CoachingPlaybook, type FamilyStage, ageInMonths, deriveStage, play
 import { and, eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { appendMessage, loadTranscript } from '~/lib/coach/conversation';
 import {
@@ -502,7 +502,7 @@ export async function recordPlanSend(
       templateKey: write.templateKey,
       dedupeKey: write.dedupeKey,
       providerMessageId: write.providerMessageId,
-      status: 'sent',
+      status: acceptedStatus('sms'),
       relatedConversationId: write.relatedConversationId,
       sentAt: write.sentAt,
     })

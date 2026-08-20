@@ -359,7 +359,7 @@ describe('the legs', () => {
       channel: 'sms',
       category: 'registration_sequence',
       templateKey: 'registration_sequence:heads_up',
-      status: 'sent',
+      status: 'queued',
     });
     // Never the rendered body (rule #1).
     expect(ledger[0]?.payload.body).toBeUndefined();
@@ -606,7 +606,7 @@ describe('the legs', () => {
     expect(ledger[0]?.payload).toMatchObject({
       channel: 'sms',
       category: 'registration_sequence',
-      status: 'sent',
+      status: 'queued',
       templateKey: 'registration_sequence:heads_up',
       dedupeKey: 'registration_sequence:fam-1:w-1:heads_up',
     });

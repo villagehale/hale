@@ -362,6 +362,21 @@ describe('threading', () => {
   });
 
   /**
+   * The reply is QUEUED, not sent. Twilio accepts a message and transmits it later — a
+   * segment per second from one long code — so 'sent' at accept time asserted a carrier
+   * handoff nobody observed, and made a backlog of texts waiting for airtime
+   * indistinguishable from texts already delivered. The status callback is what moves
+   * this row on (channel/twilio/status.ts).
+   */
+  it('records the outbound reply as queued, not as sent', async () => {
+    const h = harness();
+    await routeChannelMessage(h.deps, job());
+
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out[0]?.status).toBe('queued');
+  });
+
+  /**
    * The reply text lives in `messages` (the thread the app renders) and nowhere else.
    * Copying it into the ledger body would put a second copy of household detail in a
    * table that exists to track DELIVERY, which is the M6/loop discipline (rule #1).

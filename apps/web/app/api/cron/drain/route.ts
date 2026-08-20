@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireCronSecret } from '~/lib/cron/auth';
-import { DRAINABLE_QUEUES, runDrainCron } from '~/lib/cron/drain';
+import { DRAINABLE_QUEUES, isConnectionExhaustion, runDrainCron } from '~/lib/cron/drain';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the drain instantiates pg-boss (prepared statements, raw pg) and
@@ -49,6 +49,14 @@ export async function GET(req: Request) {
     // platform, then re-throw so the run is still a real error, not a masked
     // success (rule #8).
     console.error({ err }, 'cron/drain failed');
+    // The one exception, and it is a CONTRACT with the kicker rather than a softened
+    // error: a drain that could not get a database connection answers 503, because the
+    // kicker retries a 500 and a retry here is a second invocation asking for a
+    // connection that is not there (lib/cron/kick-drain.ts). Still logged above, and
+    // every other failure still throws.
+    if (isConnectionExhaustion(err)) {
+      return NextResponse.json({ error: 'db_unavailable' }, { status: 503 });
+    }
     throw err;
   } finally {
     // Serverless flush: send buffered agent spans before the function returns.

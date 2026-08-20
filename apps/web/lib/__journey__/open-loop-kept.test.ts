@@ -277,7 +277,7 @@ describe('the radar makes a promise', () => {
     const carrier = journey.intake.fake
       .rows(schema.channelMessages)
       .find((row) => row.id === journey.promised.createdFrom);
-    expect(carrier).toMatchObject({ direction: 'out', status: 'sent' });
+    expect(carrier).toMatchObject({ direction: 'out', status: 'queued' });
   });
 });
 
@@ -321,6 +321,6 @@ describe('the sweep pays it off', () => {
     const closer = journey.intake.fake
       .rows(schema.channelMessages)
       .find((message) => message.id === row?.fulfilledBy);
-    expect(closer).toMatchObject({ category: 'nudge', direction: 'out', status: 'sent' });
+    expect(closer).toMatchObject({ category: 'nudge', direction: 'out', status: 'queued' });
   });
 });

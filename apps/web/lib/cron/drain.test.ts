@@ -11,6 +11,7 @@ import {
   HOT_QUEUE_EXPIRE_SECONDS,
   INBOUND_TURN_QUEUES,
   drainHotQueues,
+  isConnectionExhaustion,
 } from './drain';
 
 /**
@@ -729,5 +730,36 @@ describe('drainHotQueues — queue slice', () => {
   it('names the inbound queue in the drainable set', () => {
     expect(DRAINABLE_QUEUES).toContain(INBOUND);
     expect(INBOUND_TURN_QUEUES).toEqual([INBOUND]);
+  });
+});
+
+/**
+ * The one failure the kicker must be able to tell apart from every other 5xx: the
+ * database refused the connection. A retry then is a second invocation asking for a
+ * connection that is not there, so this predicate is what turns the drain's answer into
+ * a 503 and the kicker's retry into a back-off (app/api/cron/drain/route.ts).
+ */
+describe('isConnectionExhaustion', () => {
+  it('recognises the exhaustion Postgres and the pooler actually report', () => {
+    expect(
+      isConnectionExhaustion(
+        Object.assign(new Error('sorry, too many clients already'), { code: '53300' }),
+      ),
+    ).toBe(true);
+    // The direct port answers with the message and no code on some driver paths.
+    expect(isConnectionExhaustion(new Error('sorry, too many clients already'))).toBe(true);
+    // Supabase's pooler says it differently.
+    expect(isConnectionExhaustion(new Error('max clients reached'))).toBe(true);
+  });
+
+  it('does not swallow the failures that are NOT exhaustion', () => {
+    // A drain that threw for any other reason must keep 500ing — a 503 would tell every
+    // kicker to stop kicking over a bug in one handler.
+    expect(isConnectionExhaustion(new Error('relation "pgboss.job" does not exist'))).toBe(false);
+    expect(isConnectionExhaustion(Object.assign(new Error('deadlock'), { code: '40P01' }))).toBe(
+      false,
+    );
+    expect(isConnectionExhaustion(null)).toBe(false);
+    expect(isConnectionExhaustion('too many clients already')).toBe(false);
   });
 });

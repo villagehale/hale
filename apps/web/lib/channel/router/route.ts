@@ -1,6 +1,7 @@
 import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import type { OffDomainLane } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
@@ -812,7 +813,9 @@ async function sendReply(
       direction: 'out',
       category: 'reply',
       providerMessageId,
-      status: 'sent',
+      // Accepted by Twilio, not yet on a phone — the receipt advances it
+      // (channel/ledger.ts acceptedStatus, channel/twilio/status.ts).
+      status: acceptedStatus('sms'),
       body: null,
       medicalReplySource: args.medicalSource ?? null,
       relatedConversationId: args.conversationId,

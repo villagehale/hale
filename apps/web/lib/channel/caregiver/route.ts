@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
 import {
@@ -98,7 +99,7 @@ async function record(
       direction: input.direction,
       category: 'caregiver',
       providerMessageId: input.providerId,
-      status: input.direction === 'in' ? 'delivered' : 'sent',
+      status: input.direction === 'in' ? 'delivered' : acceptedStatus('sms'),
       // Verbatim for INBOUND only — the same rule the loop ledger keeps: an outbound
       // is reconstructable from copy.ts, and storing rendered household detail is a
       // liability (rule #1).

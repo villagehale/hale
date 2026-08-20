@@ -35,8 +35,48 @@
  */
 export const KICK_TIMEOUT_MS = 60_000;
 
+/**
+ * How many kicks this instance will have in flight at once.
+ *
+ * A kick asks for a drain of a SHARED queue, so N kicks in flight are N invocations
+ * doing the same work over the same rows — and each one holds its own pg-boss connection
+ * on the direct 5432 port plus the drain's pools, against a database with tens of usable
+ * connections. One kick per inbound text with nothing bounding them is how a signup
+ * burst becomes connection exhaustion, and exhaustion is how texts go unanswered.
+ *
+ * Shedding costs almost nothing: a drain already running loops until its queue comes
+ * back empty, so a job committed before this kick was shed is picked up by one of them,
+ * and the every-minute cron is the floor under whatever they miss.
+ *
+ * PER INSTANCE, and that is all module state can be. This bounds the fan-out of ONE
+ * instance serving concurrent invocations; it cannot bound a hundred instances serving
+ * one text each. The bound that does cross instances is {@link KICK_BACKOFF_MS} — every
+ * instance told the database is out of connections stops kicking on its own.
+ */
+export const MAX_IN_FLIGHT_KICKS = 3;
+
+/**
+ * How long a drain that could not reach the database silences this instance's kicks.
+ *
+ * Long enough for the connections held by the invocations already in flight to be given
+ * back, short enough that a recovered database is kicked again within one cron tick —
+ * so the worst case a parent experiences is the ordinary "wait for the cron" path this
+ * kick exists to skip, not a mute Hale.
+ */
+export const KICK_BACKOFF_MS = 10_000;
+
+/** Kicks are shed until this moment. Module state: per instance, reset by a cold start. */
+let backoffUntilMs = 0;
+/** Kicks this instance currently has in flight (see {@link MAX_IN_FLIGHT_KICKS}). */
+let inFlight = 0;
+
 /** Why a kick did not happen. Rule #11: an absent effect is a named, logged outcome. */
-type KickFailure = 'no_cron_secret' | 'request_failed' | `http_${number}`;
+type KickFailure =
+  | 'no_cron_secret'
+  | 'request_failed'
+  | 'at_capacity'
+  | 'backing_off'
+  | `http_${number}`;
 
 function reportSkipped(reason: KickFailure, detail?: unknown): void {
   console.error(
@@ -58,6 +98,17 @@ async function attemptKick(
       signal: AbortSignal.timeout(KICK_TIMEOUT_MS),
     });
     if (response.ok) return null;
+    // THE ONE 5xx THAT MUST NOT BE RETRIED: the drain could not get a database
+    // connection (route.ts answers 503 for exactly that, and the platform uses the same
+    // status when it sheds an invocation). A retry is a second invocation asking for a
+    // connection that is not there, so during a burst every kick becomes two and the
+    // retry path amplifies the exhaustion it is reacting to. Back off instead, for this
+    // whole instance — a kick is worthless while the drain behind it cannot start.
+    if (response.status === 503) {
+      backoffUntilMs = Date.now() + KICK_BACKOFF_MS;
+      reportSkipped('http_503', { backoffMs: KICK_BACKOFF_MS });
+      return null;
+    }
     if (response.status >= 500) return { reason: `http_${response.status}` };
     reportSkipped(`http_${response.status}`);
     return null;
@@ -84,22 +135,36 @@ export async function kickDrain(origin: string, queues?: readonly string[]): Pro
     return;
   }
 
+  if (Date.now() < backoffUntilMs) {
+    reportSkipped('backing_off', { until: new Date(backoffUntilMs).toISOString() });
+    return;
+  }
+  if (inFlight >= MAX_IN_FLIGHT_KICKS) {
+    reportSkipped('at_capacity', { inFlight });
+    return;
+  }
+
   const url = new URL('/api/cron/drain', origin);
   if (queues) url.searchParams.set('queues', queues.join(','));
 
-  const first = await attemptKick(url, secret);
-  if (first === null) return;
+  inFlight += 1;
+  try {
+    const first = await attemptKick(url, secret);
+    if (first === null) return;
 
-  console.error(
-    {
-      reason: first.reason,
-      retrying: true,
-      detail: first.detail instanceof Error ? first.detail.message : first.detail,
-    },
-    'kick-drain: first attempt failed — retrying once',
-  );
-  const second = await attemptKick(url, secret);
-  if (second !== null) {
-    reportSkipped(second.reason, second.detail);
+    console.error(
+      {
+        reason: first.reason,
+        retrying: true,
+        detail: first.detail instanceof Error ? first.detail.message : first.detail,
+      },
+      'kick-drain: first attempt failed — retrying once',
+    );
+    const second = await attemptKick(url, secret);
+    if (second !== null) {
+      reportSkipped(second.reason, second.detail);
+    }
+  } finally {
+    inFlight -= 1;
   }
 }
