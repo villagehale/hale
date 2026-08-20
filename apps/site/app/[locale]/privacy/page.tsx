@@ -66,7 +66,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     <LegalLayout
       locale={locale}
       title="Privacy Policy"
-      lastUpdatedIso="2026-07-31"
+      lastUpdatedIso="2026-08-19"
       intro={
         <p>
           Hale helps families across every stage of childhood, and that means we handle some of the
