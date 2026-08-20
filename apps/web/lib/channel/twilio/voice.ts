@@ -54,11 +54,9 @@ import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './s
 
 /**
  * Amazon Polly's neural en-US female — warm, natural, and the safest widely-supported
- * choice for `<Say>`, which accepts Amazon and Google voices only. It is deliberately
- * NOT the relay's voice any more (see below): the two are different products, and the
- * one a parent has a conversation with is the one worth the better engine. There is no
- * configuration surface for either, because one caller-facing voice per path is the
- * product decision and a knob would only let it drift.
+ * choice on Twilio. A founder voice-pick lands as its own change; there is deliberately
+ * no configuration surface for it, because one caller-facing voice is the product
+ * decision and a knob would only let it drift.
  *
  * NO `language` attribute, deliberately. A Polly voice already carries its language, and
  * Twilio's `<Say>` reference warns that "combinations of voice and language not listed as
@@ -69,38 +67,21 @@ import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './s
 const SAY_VOICE = 'Polly.Joanna-Neural';
 
 /**
- * The relay's voice — ElevenLabs "Matilda", a warm American female (founder verdict from
- * the first real call: Amazon's Joanna-Generative sounds robotic across several turns).
+ * The relay's voice — the same Joanna, on Amazon's generative tier.
  *
- * WHY THIS ID AND NOT A NICER-SOUNDING ONE FROM THE LIBRARY. ElevenLabs has thousands of
- * voices and Twilio accepts any of their ids, which makes "pick the best one" an
- * unbounded and unverifiable choice. The two ids Twilio's own ConversationRelay voice
- * reference prints are the platform default for en-US (UgBBYS2sOqTuMpoF3BR0 — "Mark", a
- * man) and this one, which the same page uses to demonstrate the voice attribute. So this
- * is the documented female voice on the documented page, and the runner-up (Mark) is the
- * wrong gender for the founder's ask.
- *
- * THE MODEL IS NAMED RATHER THAN INHERITED. `flash_v2_5` is the platform's current
- * default, and the suffix syntax is Twilio's own (`voiceId-model`, optionally followed by
- * `-speed_stability_similarity`). A default is a thing another company can change under a
- * live phone line; naming it means our calls sound the same tomorrow. No tuning triple:
- * speed and stability are a founder taste decision, and the place to make one is here in
- * a diff, not in a knob.
- *
- * THE `<Say>` FALLBACK STAYS POLLY, and the mismatch is accepted. `<Say>` supports only
- * Amazon and Google, so a stranger's nine-second lead line cannot be spoken in this
- * voice at all. The two paths are also different products — one is a hang-up, the other
- * is a conversation — and the alternative to accepting the mismatch would be keeping
- * every enrolled parent on the robotic voice for the sake of a caller who hears one
- * sentence and never comes back.
+ * Deliberately the same identity as the `<Say>` above: a stranger who calls and a parent
+ * who calls should be talking to the same Hale, and a second voice would make the two
+ * halves of one product sound like two companies. Generative rather than neural because
+ * this one has to hold a CONVERSATION — the neural tier reads a line well and sounds like
+ * a recording across several turns.
  *
  * No `language` attribute, for the same reason `<Say>` has none: the voice already
  * carries en-US, ConversationRelay defaults its transcription to en-US, and v1 is English
  * only. An attribute whose only possible effect is a mismatch is an attribute worth not
  * having.
  */
-const RELAY_TTS_PROVIDER = 'ElevenLabs';
-const RELAY_VOICE = 'XrExE9yKIg1WjnnlVkGX-flash_v2_5';
+const RELAY_TTS_PROVIDER = 'Amazon';
+const RELAY_VOICE = 'Joanna-Generative';
 
 /** Where Twilio opens the socket. `wss`, always — Twilio refuses anything else. */
 const RELAY_PATH = '/api/channels/twilio/relay';

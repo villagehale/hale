@@ -89,7 +89,7 @@ anything about a week; any uuid is enough to prove the transport.
      -u "$TWILIO_API_KEY_SID:$TWILIO_API_KEY_SECRET" \
      --data-urlencode "To=+1<your mobile>" \
      --data-urlencode "From=$TWILIO_FROM_NUMBER" \
-     --data-urlencode 'Twiml=<Response><Connect><ConversationRelay url="wss://<preview-host>/api/channels/twilio/relay?t=<ticket>" welcomeGreeting="Testing the relay." ttsProvider="ElevenLabs" voice="XrExE9yKIg1WjnnlVkGX-flash_v2_5" /></Connect></Response>'
+     --data-urlencode 'Twiml=<Response><Connect><ConversationRelay url="wss://<preview-host>/api/channels/twilio/relay?t=<ticket>" welcomeGreeting="Testing the relay." ttsProvider="Amazon" voice="Joanna-Generative" /></Connect></Response>'
    ```
 
 4. Answer. You should hear the greeting, then hear your own words come back (M0) or hear
