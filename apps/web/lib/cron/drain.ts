@@ -433,6 +433,26 @@ export async function drainHotQueues(
 }
 
 /**
+ * The database refused a new connection — Postgres `53300 too_many_connections`
+ * ("sorry, too many clients already"), or the Supabase pooler's "max clients reached".
+ *
+ * It is the one drain failure that must not be retried, so the route answers it with a
+ * 503 and the kicker turns that into a back-off (lib/cron/kick-drain.ts). Matched on the
+ * SQLSTATE where the driver gives us one and on the message where it does not — a
+ * connection refused before a client exists surfaces as a plain Error on some paths, and
+ * a miss here would put the retry amplifier straight back.
+ */
+export function isConnectionExhaustion(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  if ((err as { code?: unknown }).code === '53300') return true;
+  const message = (err as { message?: unknown }).message;
+  return (
+    typeof message === 'string' &&
+    /too many clients|too many connections|max clients reached/i.test(message)
+  );
+}
+
+/**
  * Connection (recipe #4): pg-boss requires prepared statements, which Supabase's
  * TRANSACTION pooler (port 6543) breaks. We connect via DATABASE_DIRECT_URL —
  * the direct/session 5432 URL already used for DDL/migrations — falling back to
