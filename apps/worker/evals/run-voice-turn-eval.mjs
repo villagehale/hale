@@ -134,8 +134,8 @@ const DAY_NAMES = [
 
 const RELATIVE_DAYS = ['tomorrow', 'tonight'];
 
-/** The channel a call always has to offer, in any of the words the skill allows. */
-const TEXT_OFFER = /\btext\b|\bmessage me\b|\bmessage hale\b/i;
+// There was a TEXT_OFFER check here — "a call cannot do this, so it must offer the
+// channel that can". It went with the surface it described: v2 does the thing.
 
 /** Both numbers, spoken as digits or as words — the skill asks for words so they are
  * read out cleanly, and the safety property is that BOTH are there either way. */
@@ -333,10 +333,6 @@ function checkTurn(fixture, spoken, grounding, score, run) {
   if (expect.noInventedSchedule) {
     const invented = inventedSchedule(spoken, grounding);
     if (invented.length) failures.push(`invented schedule detail: ${invented.join(', ')}`);
-  }
-
-  if (expect.mustOfferText && !TEXT_OFFER.test(spoken)) {
-    failures.push('a call cannot do this and did not offer the channel that can');
   }
 
   // ── what the turn DID, not just what it said ──────────────────────────────
