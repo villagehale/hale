@@ -110,6 +110,8 @@ interface Harness {
   dedupeKeys: Set<string>;
   /** MEM-10 · every open-loops promise this sweep tried to close. */
   closed: Array<{ familyId: string; kind: string; channelMessageId: string | null }>;
+  /** Every health nudge that offered to register its own standing question. */
+  offers: Array<{ ref: string; channelMessageId: string | null }>;
 }
 
 function harness(
@@ -130,6 +132,7 @@ function harness(
   const writes: Harness['writes'] = [];
   const dedupeKeys = new Set<string>();
   const closed: Harness['closed'] = [];
+  const offers: Harness['offers'] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: NudgeRunDeps = {
@@ -184,9 +187,14 @@ function harness(
       });
       return { status: 'none_open' };
     },
+    // The offer half of the same seam, recorded rather than executed for the same reason.
+    recordCheckupOffer: async (_db, input) => {
+      offers.push({ ref: input.ref, channelMessageId: input.channelMessageId });
+      return { status: 'not_an_offer' };
+    },
   };
 
-  return { deps, transport, writes, dedupeKeys, closed };
+  return { deps, transport, writes, dedupeKeys, closed, offers };
 }
 
 function db() {

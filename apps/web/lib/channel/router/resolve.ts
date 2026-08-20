@@ -81,7 +81,8 @@ export type UnresolvedReason =
   | 'ambiguous'
   /** A target, but not enough certainty for what that answer would do. */
   | 'below_grade'
-  /** The class has nowhere to record this polarity (a "no" to a plan offer). */
+  /** This question has nowhere to put this polarity — a "no" to an offer that simply
+   * lapses, or a "yes" to a draft Hale's own reviewer has not cleared. */
   | 'not_answerable';
 
 export type ReplyReading =
@@ -248,7 +249,10 @@ export function toReading(
     raw.confidence === 'high' || raw.confidence === 'medium' ? raw.confidence : 'low';
   if (!meetsGrade(question.kind, confidence)) return unresolved('below_grade');
 
-  if (!answerable(question.kind, polarity)) return unresolved('not_answerable');
+  // Per-question, not per-class: a drafted action whose reviewer verdict is not
+  // `approved` can be declined and cannot be accepted, and binding an acceptance to one
+  // answers the parent with a refusal (2026-08-20).
+  if (!answerable(question, polarity)) return unresolved('not_answerable');
 
   return {
     status: 'resolved',

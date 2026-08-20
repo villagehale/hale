@@ -12,7 +12,7 @@ import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyOutcome, TurnApology } from './apology';
-import { type ChannelTurnResult, ChannelTurnFailed } from './coach-runtime';
+import { type ChannelTurn, type ChannelTurnResult, ChannelTurnFailed } from './coach-runtime';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { OpenQuestion, OpenQuestionReader } from './open-questions';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
@@ -103,15 +103,29 @@ function passingHandler(name: string): DeterministicHandler & { calls: number; b
   return handler as DeterministicHandler & { calls: number; bodies: string[] };
 }
 
-function fakeCoach(reply = 'coach says hi'): ChannelCoachRuntime & { calls: number } {
+function fakeCoach(
+  reply = 'coach says hi',
+): ChannelCoachRuntime & { calls: number; standingQuestions: string[][] } {
   const coach = {
     calls: 0,
-    async respond() {
+    /** What each turn told the coach Hale was waiting on. */
+    standingQuestions: [] as string[][],
+    async respond(turn: ChannelTurn) {
       coach.calls += 1;
+      coach.standingQuestions.push([...turn.standingQuestions]);
       return { reply, planOffer: null };
     },
   };
   return coach;
+}
+
+/** A coach that cannot run at all — the outage the canned choice sentence exists for. */
+function brokenCoach(): ChannelCoachRuntime {
+  return {
+    async respond() {
+      throw new Error('coach unavailable');
+    },
+  };
 }
 
 /**
@@ -1776,6 +1790,7 @@ describe('natural reply resolution', () => {
       kind: 'approval',
       description: 'Reschedule on your calendar',
       subject: 'reschedule on your calendar',
+      answerable: { yes: true, no: true },
     };
   }
 
@@ -1785,6 +1800,7 @@ describe('natural reply resolution', () => {
       kind: 'intro_proposal',
       description: 'Whether to meet one nearby Hale family',
       subject: 'meeting the family nearby',
+      answerable: { yes: true, no: true },
     };
   }
 
@@ -1906,21 +1922,81 @@ describe('natural reply resolution', () => {
     expect(otherCalls).toBe(1);
   });
 
-  it('asks which one - in a sentence, never a menu - when the answer names nothing', async () => {
+  /**
+   * An answer Hale cannot place goes to the COACH, with the candidates.
+   *
+   * It used to be a fixed sentence sent from the router, and on 2026-08-20 a parent got
+   * "Which one - add to your calendar, or meeting the family nearby?" in reply to an
+   * offer Hale had made them and never written down. Both halves were wrong: the list,
+   * and a machine reading its own option labels back at someone. The coach has the
+   * thread; what it was missing was what Hale was holding, and now it is handed it.
+   */
+  it('hands an unplaceable answer to the coach, with the candidates', async () => {
+    const coach = fakeCoach('which of those did you mean?');
     const h = harness({
       context: { body: 'sounds good' },
+      coach,
       questions: fakeQuestions([approvalQuestion(), introQuestion()]),
       replyResolver: fakeResolver({ status: 'unresolved', reason: 'ambiguous' }),
     });
 
     const result = await routeChannelMessage(h.deps, job());
 
-    expect(result.status).toBe('clarified');
+    expect(result.status).toBe('agent_replied');
+    expect(coach.standingQuestions).toEqual([
+      ['reschedule on your calendar', 'meeting the family nearby'],
+    ]);
+    expect(h.transport.bodies()).toEqual(['which of those did you mean?']);
+  });
+
+  /** Every coach turn is told what Hale is waiting on, not only the unplaceable ones —
+   * the coach used to say "I don't have a draft waiting for your YES right now" while
+   * one was pending (the prod failure the resolver eval's first fixture records). */
+  it('tells the coach what is standing even on an ordinary turn', async () => {
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'what time is storytime on saturday' },
+      coach,
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.standingQuestions).toEqual([['reschedule on your calendar']]);
+  });
+
+  it('falls back to the choice sentence only when the coach cannot run', async () => {
+    const h = harness({
+      context: { body: 'sounds good' },
+      coach: brokenCoach(),
+      questions: fakeQuestions([approvalQuestion(), introQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'ambiguous' }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
     expect(h.transport.bodies()).toEqual([
       'Which one - reschedule on your calendar or meeting the family nearby?',
     ]);
     // No ordinal, no numbered list, and nothing the parent has to type back verbatim.
     expect(h.transport.bodies()[0]).not.toMatch(/\bYES\b|\b1\./);
+  });
+
+  it('does not send the choice sentence for an ordinary broken turn', async () => {
+    // The apology composer owns that turn. Answering "which one did you mean?" to a
+    // parent who asked a question would be Hale inventing a decision they never made.
+    const h = harness({
+      context: { body: 'what time is storytime on saturday' },
+      coach: brokenCoach(),
+      questions: fakeQuestions([approvalQuestion(), introQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()[0]).not.toMatch(/Which one/i);
   });
 
   it('does not ask when only one thing is open - it just hands the turn to the coach', async () => {
@@ -2041,6 +2117,7 @@ describe('the 09:47 sequence', () => {
     kind: 'intro_optin',
     description: 'Whether to be introduced to other Hale families nearby',
     subject: 'introductions to other Hale families nearby',
+    answerable: { yes: true, no: true },
   };
 
   /** The real lane, over spies. `standing` is what the ledger already holds. */

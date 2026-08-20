@@ -422,4 +422,9 @@ export const agentCommitmentKindEnum = pgEnum('agent_commitment_kind', [
   // The promise the plan itself makes: Hale said it would come back, so it owes a
   // check-in. Minted at plan-send time and due three days later.
   'plan_check_in',
+  // "Done, or want me to add booking it to your week?" — the health checkpoint's own
+  // offer, minted by the nudge that sends it. The SAME shape as plan_offer and here for
+  // the same reason: an offer with no row behind it is a question the reply resolver
+  // cannot see, so a parent's acceptance lands on whatever else happens to be standing.
+  'checkup_offer',
 ]);

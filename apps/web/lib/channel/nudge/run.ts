@@ -20,6 +20,11 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import type { HealthChild } from '~/lib/health/match';
+import {
+  type CheckupOfferRecordOutcome,
+  defaultCheckupOfferPorts,
+  recordCheckupOffer,
+} from '~/lib/health/offer';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { checkpointToldKey } from '~/lib/health/told';
 import { localParts } from '~/lib/loop/prefs';
@@ -167,6 +172,19 @@ export interface NudgeRunDeps {
    * that is wrong in the direction that wastes a founder's attention every week.
    */
   fulfillCommitment: typeof fulfillCommitment;
+  /**
+   * Register the standing question a health nudge's own close makes ("want me to add
+   * booking it to your week?"). REQUIRED for the same reason the two around it are
+   * (rule #11): a sweep that could be assembled without it would text a parent an offer
+   * and leave nothing for their acceptance to resolve against — which is the defect this
+   * dependency exists to make unexpressible. Every health nudge calls it, and the module
+   * answers `not_an_offer` for the paperwork checkpoints, so the send site holds no
+   * second copy of the rule that decides which close went out.
+   */
+  recordCheckupOffer(
+    database: Database,
+    input: { familyId: string; ref: string; channelMessageId: string | null; now: Date },
+  ): Promise<CheckupOfferRecordOutcome>;
   /**
    * The outbound SMS leg — REQUIRED, and that is the point (VIL-262). It was nullable
    * so a caller could decide + compose without sending, and the three P0s this sweep
@@ -414,6 +432,23 @@ async function runForFamily(
     },
   });
 
+  // THE OFFER IS A PROPOSAL. A health checkpoint whose task is booking closes by ASKING
+  // ("want me to add booking it to your week?"), and an ask with no row behind it is a
+  // question the reply resolver cannot see — so the parent's acceptance lands on whatever
+  // else happens to be standing (the 2026-08-20 incident; see lib/health/offer.ts).
+  // Registered AFTER the send, against the row that carried it, exactly like the
+  // told-marker and the promise below: a compose that never reached a transport offered
+  // nobody anything. Not branched on — the parent already has the text — and never
+  // silent: a lost row is logged as "a YES will not resolve to it" (rule #11).
+  if (nudge.kind === 'health_checkpoint') {
+    await deps.recordCheckupOffer(database, {
+      familyId: family.familyId,
+      ref: nudge.ref,
+      channelMessageId: messageId,
+      now,
+    });
+  }
+
   // MEM-10 · this sweep is what makes the intake radar's forward beat true, so a send —
   // ANY send — is what pays that promise off. Not narrowed to the weekend class on
   // purpose: what the beat promised a geo-empty family is that Hale would come back with
@@ -552,5 +587,7 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     transport: createTwilioTransport(),
     client: voiceClient(),
     fulfillCommitment,
+    recordCheckupOffer: (database, input) =>
+      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
   };
 }

@@ -24,6 +24,7 @@ const APPROVAL: OpenQuestion = {
   kind: 'approval',
   description: 'Reschedule on your calendar',
   subject: 'reschedule on your calendar',
+  answerable: { yes: true, no: true },
 };
 
 const PROPOSAL: OpenQuestion = {
@@ -31,6 +32,7 @@ const PROPOSAL: OpenQuestion = {
   kind: 'intro_proposal',
   description: 'Whether to meet one nearby Hale family',
   subject: 'meeting the family nearby',
+  answerable: { yes: true, no: true },
 };
 
 const OPT_IN: OpenQuestion = {
@@ -38,6 +40,7 @@ const OPT_IN: OpenQuestion = {
   kind: 'intro_optin',
   description: 'Whether to be introduced to other Hale families nearby',
   subject: 'introductions to other Hale families nearby',
+  answerable: { yes: true, no: true },
 };
 
 const OFFER: OpenQuestion = {
@@ -45,6 +48,7 @@ const OFFER: OpenQuestion = {
   kind: 'plan_offer',
   description: "A plan for the 4am wake-ups, in three texts",
   subject: 'the plan I offered',
+  answerable: { yes: true, no: false },
 };
 
 const ALL = [APPROVAL, PROPOSAL, OPT_IN, OFFER];

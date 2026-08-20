@@ -184,6 +184,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...familyContext,
         channel: 'sms' as const,
         nowIso: now.toISOString(),
+        // What Hale is holding an answer for, in Hale's own words (see ChannelTurn). A
+        // FACT about state, handed to the model the same way the family's schedule is —
+        // so a turn that is plainly an answer to one of them can be treated as one, and a
+        // turn that is not can stop claiming nothing is pending when something is.
+        standingQuestions: turn.standingQuestions,
       };
 
       return traceAgentRun(

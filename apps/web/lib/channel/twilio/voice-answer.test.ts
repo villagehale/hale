@@ -24,7 +24,7 @@ const PARENT_ID = '00000000-0000-4000-8000-0000000000a1';
 const CONVERSATION_ID = '00000000-0000-4000-8000-0000000000c1';
 const PHONE = '+14165551234';
 const NOW = new Date('2026-08-19T15:00:00.000Z');
-const DRAFT: PendingAction = { actionId: 'act-1', actionType: 'calendar_move' };
+const DRAFT: PendingAction = { actionId: 'act-1', actionType: 'calendar_move', reviewerApproved: true };
 
 const OK: SpineOutcome = { ok: true };
 
@@ -85,6 +85,7 @@ const approvalQuestion: OpenQuestion = {
   kind: 'approval',
   description: 'Move a calendar item',
   subject: 'the calendar move',
+  answerable: { yes: true, no: true },
 };
 
 const introQuestion: OpenQuestion = {
@@ -92,6 +93,7 @@ const introQuestion: OpenQuestion = {
   kind: 'intro_proposal',
   description: 'Whether to meet one nearby Hale family',
   subject: 'meeting the family nearby',
+  answerable: { yes: true, no: true },
 };
 
 describe('a spoken yes', () => {

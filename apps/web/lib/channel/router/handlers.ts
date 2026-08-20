@@ -270,29 +270,53 @@ export function nameCaptureHandler(deps: NameCaptureDeps): DeterministicHandler 
 export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler {
   return {
     name: 'health',
+    // The OFFER half only. "Done" is the other half of the same sentence and is not a
+    // polarity — filing a checkpoint as handled writes a permanent suppression — so it
+    // stays a word this handler reads for itself and is not a question the resolver may
+    // answer (see the OpenQuestionKind note in open-questions.ts).
+    resolves: new Set<OpenQuestionKind>(['checkup_offer']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const resolved = ctx.resolved?.kind === 'checkup_offer' ? ctx.resolved : null;
       // A tick or the word "done" is unambiguous and claims immediately. A bare "yes" is
       // not, and M8's own reading of one drafts an appointment — so it waits for
-      // `soleOpenKind` like every other bare affirmative.
-      // Health is not a tracked kind (its nudge asks a two-option question, not a yes/no
-      // one — see open-questions.ts), so `null`: any open question makes a bare word
-      // ambiguous for it.
+      // `soleOpenKind` like every other bare affirmative. A RESOLVED answer skips the
+      // wait: it named its question, which is what the wait exists to establish.
       if (
+        !resolved &&
         readAffirmative(ctx.body) === 'yes' &&
-        !soleOpenKind(await ctx.openQuestions(), null)
+        !soleOpenKind(await ctx.openQuestions(), 'checkup_offer')
       ) {
         return { claimed: false };
       }
       const outcome = await handleHealthCheckpointReply(
         database,
-        { familyId: ctx.familyId, parentUserId: ctx.parentUserId, body: ctx.body },
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          now: ctx.now,
+          resolved: resolved ? 'booking' : null,
+        },
         deps,
       );
       switch (outcome.status) {
         case 'recorded_done':
           return { claimed: true, outcome: outcome.status, reply: healthDoneReply() };
         case 'drafted_for_approval':
-          return { claimed: true, outcome: outcome.status, reply: checkupDraftedReply() };
+          return {
+            claimed: true,
+            outcome: outcome.status,
+            reply: checkupDraftedReply(),
+            // The offer is closed by the message that told the parent it was taken, never
+            // before it — a turn that drafted and then failed to reply must be re-drivable
+            // against an offer that is still standing (the MEM-10 send-time discipline).
+            afterSend: (channelMessageId) =>
+              deps.fulfillOffer(database, {
+                familyId: ctx.familyId,
+                channelMessageId,
+                now: ctx.now,
+              }),
+          };
         default:
           return { claimed: false };
       }

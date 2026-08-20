@@ -631,6 +631,13 @@
       "when": 1781468760000,
       "tag": "0092_voice_relay_claim",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1781468820000,
+      "tag": "0093_checkup_offer",
+      "breakpoints": true
     }
   ]
 }

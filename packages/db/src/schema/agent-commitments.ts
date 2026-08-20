@@ -62,6 +62,10 @@ export const agentCommitments = pgTable(
      * Deliberately NOT recovered from `created_from`: that column is provenance only
      * (see its note), and making a sweep join back through a ledger row to learn a
      * category word would give the topic two homes that can disagree.
+     *
+     * `checkup_offer` puts a `HealthCheckpoint` id in the same slot, and rule #1 holds
+     * for the same reason it holds for a `PlanTopic`: the id names a row in a reviewed
+     * table of constants, so the column carries a category rather than content.
      */
     topic: text('topic'),
     /**

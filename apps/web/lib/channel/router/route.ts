@@ -93,7 +93,7 @@ export interface InboundContext {
  * a DIFFERENT answer than the gate the router already passed one function up. Non-null
  * by construction — the router does not reach the handlers without one.
  */
-export interface HandlerContext extends ChannelTurn {
+export interface HandlerContext extends Omit<ChannelTurn, 'standingQuestions'> {
   phoneE164: string;
   /**
    * A decision the natural-reply stage already made about this message (resolve.ts), or
@@ -136,7 +136,23 @@ export type HandlerVerdict =
   /** Not mine — the router tries the next handler. */
   | { claimed: false }
   /** Mine, and finished. `reply` is null when the handler already answered for itself. */
-  | { claimed: true; outcome: string; reply: string | null };
+  | {
+      claimed: true;
+      outcome: string;
+      reply: string | null;
+      /**
+       * Work that may only happen once the receipt has actually reached the parent,
+       * handed the `channel_messages` id of the message that carried it.
+       *
+       * The MEM-10 send-time discipline, which the router already keeps for the coach's
+       * plan offer (see `runAgentTurn`), made available to the deterministic chain: a
+       * ledger row is minted or closed against the message that made it true, so a turn
+       * that acted and then failed to reply leaves the question standing and the re-drive
+       * finds it. Only called when a reply was sent — a handler that answers for itself
+       * owns its own ledger writes.
+       */
+      afterSend?: (channelMessageId: string) => Promise<unknown>;
+    };
 
 /**
  * A pre-agent answer that does not involve a model.
@@ -424,7 +440,7 @@ export async function routeChannelMessage(
   for (const handler of deps.handlers) {
     const verdict = await handler.handle(deps.database, turn);
     if (!verdict.claimed) continue;
-    if (verdict.reply !== null) await answer(verdict.reply);
+    await deliver(verdict, answer);
     return done(deps, job, {
       status: 'handled',
       handler: handler.name,
@@ -444,7 +460,9 @@ export async function routeChannelMessage(
   // able to approve, decline and opt out. It sits BELOW them because a free, exact read
   // must always win — no keyword was removed, only stopped being printed.
   const natural = await resolveNaturalReply(deps, turn, answer);
-  if (natural) return done(deps, job, { ...natural, conversationId, lane: null });
+  if (natural.status === 'handled') {
+    return done(deps, job, { ...natural.result, conversationId, lane: null });
+  }
 
   // GATE 3 — can we afford to think. Counted only here, so a deterministic answer never
   // spends a parent's hourly budget — and counted once per TEXT, because `check` COUNTS
@@ -488,14 +506,30 @@ export async function routeChannelMessage(
     answer,
     hasAnswered: () => answered,
     conversationId,
+    // Every coach turn is told what Hale is waiting on; an UNPLACED answer additionally
+    // gets the canned choice sentence as its fallback, because that turn is the one where
+    // silence-plus-an-apology would read as Hale ignoring a decision the parent made.
+    questions: natural.questions,
+    unplacedAnswer: natural.status === 'unplaced',
   });
 }
 
 /**
- * GATE 2b — the parent's own words, read against what Hale is actually waiting on.
+ * What GATE 2b decided, and what the rest of the turn is owed because of it.
  *
- * Returns null when the turn should carry on to the coach, which is the majority outcome
- * and every degraded outcome. Three things can happen instead:
+ * `questions` rides on EVERY outcome, including the ordinary one: whatever happens next,
+ * the coach is entitled to know what Hale is holding an answer for, and this stage is
+ * where that list was read.
+ */
+type NaturalReplyOutcome =
+  | { status: 'handled'; result: Pick<RouterResult, 'status' | 'handler'> }
+  /** They plainly ANSWERED something and Hale could not place which. */
+  | { status: 'unplaced'; questions: readonly OpenQuestion[] }
+  /** An ordinary message, or a degraded read. Carry on to the coach. */
+  | { status: 'carry_on'; questions: readonly OpenQuestion[] };
+
+/**
+ * GATE 2b — the parent's own words, read against what Hale is actually waiting on.
  *
  *   RESOLVED. The owning handler acts, exactly as it would have for the keyword, and the
  *   parent gets that handler's own receipt. The handler is found by asking which one
@@ -503,32 +537,33 @@ export async function routeChannelMessage(
  *   — and only that one handler runs on this pass, which is what keeps M7's `reasked_at`
  *   stamp (a side effect on the way past) from being spent a second time.
  *
- *   CLARIFIED. They plainly answered something and Hale cannot tell what, with more than
- *   one thing open. One sentence naming them, and no menu — the parent answers it in
- *   words and the next turn resolves easily. This is the ONLY case where Hale asks; an
- *   ordinary message that happens to arrive while something is pending goes to the coach
- *   untouched.
+ *   UNPLACED. They plainly answered something and Hale cannot tell what, with more than
+ *   one thing open. This USED TO BE a fixed sentence sent from right here ("Which one -
+ *   add to your calendar, or meeting the family nearby?"), and on 2026-08-20 a parent got
+ *   exactly that in answer to an offer Hale had made them four hours earlier and had
+ *   never written down. The list was wrong, and the shape was wrong too: it is a machine
+ *   reading its own option labels back at someone. So the turn goes to the COACH, which
+ *   has the thread, the family, and now the candidates, and can ask like a person. The
+ *   canned sentence survives only as the fallback for a coach that cannot run at all.
  *
- *   NOTHING. Everything else, including a handler that declined the resolution because
+ *   CARRY ON. Everything else, including a handler that declined the resolution because
  *   the row moved underneath it. Logged, named, never silent (rule #11).
  */
 async function resolveNaturalReply(
   deps: ChannelRouterDeps,
   turn: HandlerContext,
   answer: (body: string) => Promise<string>,
-): Promise<Pick<RouterResult, 'status' | 'handler'> | null> {
+): Promise<NaturalReplyOutcome> {
   const questions = await turn.openQuestions();
   // NO OPEN QUESTION, NO MODEL CALL. The precondition that makes this stage affordable on
   // every inbound text.
-  if (questions.length === 0) return null;
+  if (questions.length === 0) return { status: 'carry_on', questions };
 
   const reading = await deps.replyResolver.read({ text: turn.body, questions });
   if (reading.status === 'unresolved') {
-    if (questions.length > 1 && warrantsClarifying(reading.reason)) {
-      await answer(clarifyWhichQuestion(questions));
-      return { status: 'clarified', handler: null };
-    }
-    return null;
+    return questions.length > 1 && warrantsClarifying(reading.reason)
+      ? { status: 'unplaced', questions }
+      : { status: 'carry_on', questions };
   }
 
   const owner = deps.handlers.find((handler) => handler.resolves?.has(reading.kind));
@@ -539,7 +574,7 @@ async function resolveNaturalReply(
       { kind: reading.kind },
       'channel router: no handler owns this resolved question kind',
     );
-    return null;
+    return { status: 'carry_on', questions };
   }
 
   const verdict = await owner.handle(deps.database, {
@@ -558,10 +593,26 @@ async function resolveNaturalReply(
       { handler: owner.name, kind: reading.kind },
       'channel router: the owning handler declined a resolved answer',
     );
-    return null;
+    return { status: 'carry_on', questions };
   }
-  if (verdict.reply !== null) await answer(verdict.reply);
-  return { status: 'resolved', handler: owner.name };
+  await deliver(verdict, answer);
+  return { status: 'handled', result: { status: 'resolved', handler: owner.name } };
+}
+
+/**
+ * Send a handler's receipt, then let it finish what only a delivered message can finish.
+ *
+ * The two halves are ordered and not optional: {@link HandlerVerdict.afterSend} closes
+ * ledger rows against the message that closed them, so it may only run once the transport
+ * has accepted one. A handler that answered for itself (`reply: null`) owns both halves.
+ */
+async function deliver(
+  verdict: Extract<HandlerVerdict, { claimed: true }>,
+  answer: (body: string) => Promise<string>,
+): Promise<void> {
+  if (verdict.reply === null) return;
+  const channelMessageId = await answer(verdict.reply);
+  await verdict.afterSend?.(channelMessageId);
 }
 
 /**
@@ -601,10 +652,25 @@ async function runAgentTurn(
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
     conversationId: string;
+    /** What Hale is holding an answer for — the coach gets their subjects (see
+     * ChannelTurn), and a coach that cannot run gets the choice sentence built from them. */
+    questions: readonly OpenQuestion[];
+    /**
+     * The parent plainly answered something and the resolver could not place which.
+     *
+     * The coach owns this turn (see resolveNaturalReply), so this flag changes only what
+     * happens if the coach cannot run: a turn that broke here is the one turn where an
+     * apology alone reads as Hale ignoring a decision, so the choice sentence is sent
+     * instead. It is the fallback and never the first answer.
+     */
+    unplacedAnswer: boolean;
   },
 ): Promise<RouterResult> {
   try {
-    const { reply, planOffer } = await deps.coach.respond(args.turn);
+    const { reply, planOffer } = await deps.coach.respond({
+      ...args.turn,
+      standingQuestions: args.questions.map((question) => question.subject),
+    });
     const channelMessageId = await args.answer(reply);
     // AFTER the send, against the row that carried it — the MEM-10 send-time discipline
     // (lib/commitments/ledger.ts). A turn that composed an offer and then failed to
@@ -695,6 +761,8 @@ async function disposeOfFailedTurn(
     turn: HandlerContext;
     answer: (body: string) => Promise<string>;
     hasAnswered: () => boolean;
+    questions: readonly OpenQuestion[];
+    unplacedAnswer: boolean;
   },
   err: unknown,
   drafted: readonly string[],
@@ -743,6 +811,19 @@ async function disposeOfFailedTurn(
 
   if (drafted.length > 0) {
     return { outcome: 'agent_failed', reply: partialFailureReply(drafted.length), log: {} };
+  }
+
+  // THE CANNED CHOICE, and this is the only place left that can send it. The parent made
+  // a decision Hale could not place, and the coach — whose job that turn now is — could
+  // not run. Deferring would leave a decision unacknowledged for as long as the outage
+  // lasts, and an apology would answer a question they did not ask, so Hale asks which
+  // one, in the subjects it was already holding.
+  if (args.unplacedAnswer && args.questions.length > 1) {
+    return {
+      outcome: 'agent_failed',
+      reply: clarifyWhichQuestion(args.questions),
+      log: { unplacedAnswer: true },
+    };
   }
 
   const apology = await deps.apology.compose();

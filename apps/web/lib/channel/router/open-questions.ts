@@ -1,5 +1,9 @@
 import type { Database } from '@hale/db';
 import { actionTypeLabel } from '~/lib/format/labels';
+// Type-only, so the cycle with approval.ts (which imports `approvalSubjects` from here)
+// is erased at build time. One shape for a drafted action, owned by the spine that reads
+// them, rather than a structural copy the two files could drift apart on.
+import type { PendingAction } from './approval';
 import { MAX_LISTED_APPROVALS } from './fast-path';
 
 /**
@@ -39,16 +43,27 @@ import { MAX_LISTED_APPROVALS } from './fast-path';
  *     and never needed a model.
  *   · The REGISTRATION check-in wants one of three outcomes ("we got in", "waitlisted
  *     #3", "missed it"), and M7 already hands anything it cannot read to the coach.
- *   · The HEALTH checkpoint asks a TWO-OPTION question, not a yes/no one: what Hale
- *     actually texts ends "Done, or want a reminder next week?" (lib/health/copy.ts). A
- *     "yes" to that is genuinely unreadable — and the wrong reading is the expensive one,
- *     because filing a checkpoint as done writes a permanent suppression and the parent
- *     never hears about that errand again. It was in this list until an adversarial read
- *     of the outbound copy caught the mismatch; "have you done X" was assumed and never
- *     checked. The exact-word handler still reads "done", "did it", a tick — all free, all
+ *   · The HEALTH checkpoint's DONE half is still missing, and for the original reason: the
+ *     nudge asks two things at once ("Done, or want me to add booking it to your week?"),
+ *     and "yes" to the first half is genuinely unreadable — filing a checkpoint as done
+ *     writes a permanent suppression and the parent never hears about that errand again.
+ *     The exact-word handler still reads "done", "did it", a tick — all free, all
  *     unchanged.
+ *
+ * Its OFFER half, though, is now here as `checkup_offer`, and removing it was the bug
+ * (2026-08-20). "Want me to add booking it to your week?" is an offer with one polarity
+ * and a real writer behind it, and a parent who accepted it had their acceptance read
+ * against two unrelated standing questions instead. What made it listable is that the
+ * nudge now WRITES THE OFFER DOWN at send time (lib/health/offer.ts) — the question is a
+ * ledger row like every other one on this list, not a fact inferred from the last message
+ * Hale happened to send.
  */
-export type OpenQuestionKind = 'approval' | 'intro_optin' | 'intro_proposal' | 'plan_offer';
+export type OpenQuestionKind =
+  | 'approval'
+  | 'intro_optin'
+  | 'intro_proposal'
+  | 'plan_offer'
+  | 'checkup_offer';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -69,24 +84,47 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   intro_optin: 'ordinary',
   // Three texts of parenting advice.
   plan_offer: 'ordinary',
+  // Drafts an appointment reminder and holds it for approval. Nothing is executed and
+  // nothing is disclosed, so a wrong reading costs one draft the parent can decline.
+  checkup_offer: 'ordinary',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
   return GRADE[kind];
 }
 
-/** Which polarities this class has somewhere to put. A `no` to a plan offer has no writer
- * — the offer simply lapses — so a resolver-no there is not an answer this system can
- * record, and the turn goes to the coach, which can say something true about it. */
-const ANSWERABLE: Record<OpenQuestionKind, { yes: boolean; no: boolean }> = {
+/** Polarities a question of this CLASS could have somewhere to put. A `no` to an offer
+ * has no writer — the offer simply lapses — so a resolver-no there is not an answer this
+ * system can record, and the turn goes to the coach, which can say something true. */
+const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   approval: { yes: true, no: true },
   intro_optin: { yes: true, no: true },
   intro_proposal: { yes: true, no: true },
   plan_offer: { yes: true, no: false },
+  checkup_offer: { yes: true, no: false },
 };
 
-export function answerable(kind: OpenQuestionKind, polarity: 'yes' | 'no'): boolean {
-  return ANSWERABLE[kind][polarity];
+export interface Answerable {
+  yes: boolean;
+  no: boolean;
+}
+
+/**
+ * WHICH POLARITIES THIS PARTICULAR QUESTION CAN TAKE, RIGHT NOW.
+ *
+ * Per-question rather than per-class, and that is the second half of the 2026-08-20 fix.
+ * A drafted action that has not cleared the reviewer (rule #3) is a real open question —
+ * the parent can still say "drop it" — but its YES is refused by `approveDraftedAction`
+ * whatever the parent says. Listing it as yes-answerable meant the resolver could bind an
+ * acceptance to a row the mutator was always going to refuse, and the parent got a
+ * sentence about Hale's internal review in place of an answer.
+ *
+ * So answerability is READ OFF THE ROW, at the one place the rows are read. A question
+ * whose polarity has nowhere to go never resolves (resolve.ts returns `not_answerable`),
+ * and the turn goes to the coach, which can say something true about it.
+ */
+export function answerable(question: OpenQuestion, polarity: 'yes' | 'no'): boolean {
+  return question.answerable[polarity];
 }
 
 export interface OpenQuestion {
@@ -110,6 +148,8 @@ export interface OpenQuestion {
    * produces a sentence no person would send. Both are Hale's own words either way.
    */
   subject: string;
+  /** What answering it could actually DO, read off the row — see {@link answerable}. */
+  answerable: Answerable;
 }
 
 /**
@@ -121,6 +161,7 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval'>, string> = {
   intro_optin: 'introductions to other Hale families nearby',
   intro_proposal: 'meeting the family nearby',
   plan_offer: 'the plan I offered',
+  checkup_offer: 'booking that visit',
 };
 
 /**
@@ -149,9 +190,11 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval'>, string> = {
  * An ORDINAL is exempt and is not routed here: "yes 2" cannot be conversation and cannot
  * be an answer to anything but a numbered list.
  *
- * `kind: null` is for a handler that owns no TRACKED question — the health checkpoint,
- * whose nudge asks a two-option question this module deliberately does not model. Any open
- * question at all makes a bare word ambiguous for it.
+ * `kind: null` is for a handler that owns no TRACKED question. Nothing in the shipped
+ * chain passes it any more — the health checkpoint was the last one, and its offer half is
+ * now a listed kind — but it stays because it is the correct reading for a handler that
+ * claims a bare word off state this module does not model: any open question at all makes
+ * that word ambiguous for it.
  *
  * An EMPTY list is vacuously true, and that is the correct reading rather than a
  * convenience: with nothing outstanding there is nothing for a bare "yes" to be ambiguous
@@ -177,9 +220,7 @@ export interface OpenQuestionReader {
  */
 export interface OpenQuestionSources {
   /** The approvals spine's own pending list, oldest first. */
-  pendingApprovals(database: Database, familyId: string): Promise<
-    Array<{ actionId: string; actionType: string }>
-  >;
+  pendingApprovals(database: Database, familyId: string): Promise<PendingAction[]>;
   /** True when the discoverability ask was delivered and carries no answer yet. */
   introOptInOpen(
     database: Database,
@@ -193,6 +234,12 @@ export interface OpenQuestionSources {
   ): Promise<{ id: string } | null>;
   /** The live, unexpired plan offer, or null. */
   planOffer(
+    database: Database,
+    familyId: string,
+    now: Date,
+  ): Promise<{ id: string; summary: string } | null>;
+  /** The live, unexpired health-checkpoint booking offer, or null. */
+  checkupOffer(
     database: Database,
     familyId: string,
     now: Date,
@@ -215,7 +262,7 @@ export interface OpenQuestionSources {
 export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQuestionReader {
   return {
     async open(database, input) {
-      const [approvals, optIn, proposal, offer] = await Promise.all([
+      const [approvals, optIn, proposal, offer, checkup] = await Promise.all([
         sources.pendingApprovals(database, input.familyId),
         sources.introOptInOpen(database, {
           familyId: input.familyId,
@@ -223,6 +270,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         }),
         sources.introProposal(database, input.familyId, input.now),
         sources.planOffer(database, input.familyId, input.now),
+        sources.checkupOffer(database, input.familyId, input.now),
       ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(
@@ -236,6 +284,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           kind: 'intro_optin',
           description: 'Whether to be introduced to other Hale families nearby',
           subject: SUBJECT.intro_optin,
+          answerable: KIND_ANSWERABLE.intro_optin,
         });
       }
       if (proposal) {
@@ -245,6 +294,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           // Not one fact about the other household — the same rule the card itself keeps.
           description: 'Whether to meet one nearby Hale family',
           subject: SUBJECT.intro_proposal,
+          answerable: KIND_ANSWERABLE.intro_proposal,
         });
       }
       if (offer) {
@@ -255,6 +305,18 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           kind: 'plan_offer',
           description: offer.summary,
           subject: SUBJECT.plan_offer,
+          answerable: KIND_ANSWERABLE.plan_offer,
+        });
+      }
+      if (checkup) {
+        // The same contract, from the same ledger: one short parent-safe sentence built
+        // from the reviewed checkpoint's own task (lib/health/offer.ts).
+        questions.push({
+          id: checkup.id,
+          kind: 'checkup_offer',
+          description: checkup.summary,
+          subject: SUBJECT.checkup_offer,
+          answerable: KIND_ANSWERABLE.checkup_offer,
         });
       }
       return questions;
@@ -278,10 +340,15 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
  * because no read was removed.
  *
  * A label that does not repeat is left completely alone, which is the common case.
+ *
+ * A DRAFT THAT HAS NOT CLEARED THE REVIEWER IS STILL A QUESTION, and it is still listed —
+ * the parent can say "drop that one" and `declineDraftedAction` will do it. What it is
+ * not is ACCEPTABLE: `approveDraftedAction` refuses any draft whose verdict is not
+ * `approved` (rule #3), so its yes is marked closed here and the resolver will not bind an
+ * acceptance to it (2026-08-20: it did, and the parent was answered with a sentence about
+ * Hale's own review instead).
  */
-function namedApprovals(
-  approvals: ReadonlyArray<{ actionId: string; actionType: string }>,
-): OpenQuestion[] {
+function namedApprovals(approvals: ReadonlyArray<PendingAction>): OpenQuestion[] {
   // Names EVERY pending action and lets each caller take what it can show. The two
   // callers cut the list at the same ceiling but they cut it at different moments (one
   // before sending it to a model, one while writing a sentence with an overflow count),
@@ -296,6 +363,7 @@ function namedApprovals(
       kind: 'approval' as const,
       description: `${label}${position}`,
       subject: `${label.toLowerCase()}${position}`,
+      answerable: { yes: action.reviewerApproved, no: true },
     };
   });
 }
@@ -311,9 +379,7 @@ const ORDINAL_WORD = ['first', 'second', 'third'];
  * resolver is shown have to be the same question, or a parent answers "the second one"
  * about a list that was numbered differently behind the scenes.
  */
-export function approvalSubjects(
-  pending: ReadonlyArray<{ actionId: string; actionType: string }>,
-): string[] {
+export function approvalSubjects(pending: ReadonlyArray<PendingAction>): string[] {
   return namedApprovals(pending).map((question) => question.subject);
 }
 

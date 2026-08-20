@@ -1,5 +1,7 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it } from 'vitest';
+import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
+import type { OpenCheckupOffer } from '~/lib/health/offer';
 import type { HealthReplyDeps } from '~/lib/health/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
@@ -51,6 +53,7 @@ const APPROVAL_QUESTION: OpenQuestion = {
   kind: 'approval',
   description: 'Add to your calendar',
   subject: 'add to your calendar',
+  answerable: { yes: true, no: true },
 };
 
 const INTRO_QUESTION: OpenQuestion = {
@@ -58,6 +61,7 @@ const INTRO_QUESTION: OpenQuestion = {
   kind: 'intro_proposal',
   description: 'Whether to meet one nearby Hale family',
   subject: 'meeting the family nearby',
+  answerable: { yes: true, no: true },
 };
 
 function spine(pending: PendingAction[]): ApprovalSpine & { approved: string[] } {
@@ -75,20 +79,50 @@ function spine(pending: PendingAction[]): ApprovalSpine & { approved: string[] }
   };
 }
 
-/** M8's deps, scripted: `ref` is the checkpoint the family was last nudged about. */
-function healthDeps(ref: string | null): HealthReplyDeps & { done: string[]; drafted: string[] } {
+/**
+ * The offer the nudge WOULD have registered for this ref — production's own rule, which
+ * is `checkpoint.booking` and nothing else (lib/health/offer.ts). A paperwork checkpoint
+ * offers nothing, so a "yes" after one has nothing to accept.
+ */
+function offerFrom(ref: string | null): OpenCheckupOffer | null {
+  const parsed = ref === null ? null : parseCheckpointRef(ref);
+  const checkpoint = parsed ? checkpointById(parsed.checkpointId) : null;
+  if (!checkpoint?.booking) return null;
+  return {
+    id: 'commitment-1',
+    checkpoint,
+    childId: parsed?.childId ?? null,
+    summary: 'Whether to put booking this on your week',
+  };
+}
+
+/**
+ * M8's deps, scripted: `ref` is the checkpoint the family was last nudged about, and
+ * `offer` is the standing booking offer the nudge registered when it sent.
+ */
+function healthDeps(
+  ref: string | null,
+  offer: OpenCheckupOffer | null = offerFrom(ref),
+): HealthReplyDeps & { done: string[]; drafted: string[]; closed: string[] } {
   const done: string[] = [];
   const drafted: string[] = [];
+  const closed: string[] = [];
   return {
     done,
     drafted,
+    closed,
     loadLastCheckpointRef: async () => ref,
+    loadOpenOffer: async () => offer,
     recordDone: async (_db, input) => {
       done.push(input.checkpointId);
     },
     draftCheckup: async (_db, input) => {
       drafted.push(input.intentKind);
       return { actionId: 'drafted-1' };
+    },
+    fulfillOffer: async (_db, input) => {
+      closed.push(input.channelMessageId ?? 'none');
+      return { status: 'closed', commitmentIds: ['commitment-1'] };
     },
   };
 }
@@ -102,7 +136,7 @@ const BOOKING_CHECKPOINT = `well_baby_18_months:${CHILD}:1`;
 
 describe('approvalHandler', () => {
   it('claims an approval and executes it through the spine', async () => {
-    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const verdict = await approvalHandler(s).handle(DB, turn('yes'));
 
     expect(verdict.claimed).toBe(true);
@@ -110,7 +144,7 @@ describe('approvalHandler', () => {
   });
 
   it('does not claim ordinary conversation', async () => {
-    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const verdict = await approvalHandler(s).handle(DB, turn('move swim to Tuesday'));
 
     expect(verdict.claimed).toBe(false);
@@ -169,7 +203,7 @@ describe('who owns "yes"', () => {
    * that can be answered wrongly in a way the parent cannot see.
    */
   it('goes to the approval handler when an action is waiting', async () => {
-    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const health = healthDeps(BOOKING_CHECKPOINT);
 
     const first = await approvalHandler(s).handle(DB, turn('yes'));
@@ -325,7 +359,7 @@ describe('handler order — registration last', () => {
 
   /** A drafted action still wins a bare "yes" — the approval handler is unchanged. */
   it('gives a bare "yes" to the approval handler when an action is drafted', async () => {
-    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const sequence = sequenceDeps();
 
     expect((await approvalHandler(s).handle(DB, turn('yes'))).claimed).toBe(true);
@@ -349,7 +383,7 @@ describe('handler order — registration last', () => {
   /** And the registration report itself is unreadable to the two ahead of it, so it
    * reaches M7 untouched. */
   it('lets a waitlist report fall through the two handlers ahead of it', async () => {
-    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const health = healthDeps(PAPERWORK_CHECKPOINT);
     const sequence = sequenceDeps();
 
@@ -375,13 +409,13 @@ describe('the village intro lane and the lanes behind it', () => {
 
   it('does not swallow a bare yes - it stays the approval lane s to answer', async () => {
     expect((await villageIntroHandler(introDeps).handle(DB, turn('yes'))).claimed).toBe(false);
-    const pending = spine([{ actionId: 'act-1', actionType: 'book_checkup' }]);
+    const pending = spine([{ actionId: 'act-1', actionType: 'book_checkup', reviewerApproved: true }]);
     expect((await approvalHandler(pending).handle(DB, turn('yes'))).claimed).toBe(true);
     expect(pending.approved).toEqual(['act-1']);
   });
 
   it('and the approval lane would not have answered YES INTRO even if it ran first', async () => {
-    const pending = spine([{ actionId: 'act-1', actionType: 'book_checkup' }]);
+    const pending = spine([{ actionId: 'act-1', actionType: 'book_checkup', reviewerApproved: true }]);
     expect((await approvalHandler(pending).handle(DB, turn('YES INTRO'))).claimed).toBe(false);
     expect(pending.approved).toEqual([]);
     expect((await villageIntroHandler(introDeps).handle(DB, turn('YES INTRO'))).claimed).toBe(true);
@@ -447,7 +481,7 @@ describe('the shipped order', () => {
  * removed the disambiguator; these pin what replaced it.
  */
 describe('a bare affirmative with more than one kind of question open', () => {
-  const pending = [{ actionId: 'a-1', actionType: 'calendar_add' }];
+  const pending = [{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }];
 
   it('does NOT approve a calendar change when an intro card is also waiting', async () => {
     // The defect this closes: the parent answered "Want me to introduce you?" and Hale
@@ -476,8 +510,8 @@ describe('a bare affirmative with more than one kind of question open', () => {
   it('still answers an ORDINAL, which cannot be an answer to anything else', async () => {
     // "yes 2" is not conversation and is not an intro answer. It never waits.
     const s = spine([
-      { actionId: 'a-1', actionType: 'calendar_add' },
-      { actionId: 'a-2', actionType: 'reschedule_event' },
+      { actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true },
+      { actionId: 'a-2', actionType: 'reschedule_event', reviewerApproved: true },
     ]);
     const verdict = await approvalHandler(s).handle(
       DB,
