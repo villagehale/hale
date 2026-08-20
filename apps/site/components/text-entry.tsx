@@ -47,7 +47,7 @@ export function TextEntry({
       <TextEntryAnalytics source={source} />
 
       <div className="rise rise-1">
-        <span className="font-serif text-[1.35rem] font-semibold leading-none text-spruce" translate="no">
+        <span className="wordmark leading-none text-spruce" translate="no">
           Hale
         </span>
         {/* The QR card's landing is the highest-intent surface the site has, so it

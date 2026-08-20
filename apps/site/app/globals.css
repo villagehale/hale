@@ -117,6 +117,12 @@
   --font-sans: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  /* The display face (OFL, self-hosted, Latin-only, ONE master at 400).
+   * next/font overwrites this on <html> with the hashed family name; the literal
+   * here is what a page falls back to if that stylesheet never arrives. Bound by
+   * locale allowlist, never globally — see "the display face" block in the v4
+   * layer for why by-name and not `:not([lang='zh'])`. */
+  --font-bellefair: "Bellefair", Georgia, "Times New Roman", serif;
   --font-display: var(--font-sans);
   --font-body: var(--font-sans);
 
@@ -337,6 +343,30 @@ strong { font-weight: 700; }
 .font-body { font-family: var(--font-body); }
 .font-mono { font-family: var(--font-mono); }
 .tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* The wordmark — "Hale" beside the honu tile, in the header, the footer, the
+ * landing's closing card and the QR-entry page.
+ *
+ * It takes the display face UNCONDITIONALLY, outside the locale allowlist every
+ * other display rule goes through, and that is the point rather than an
+ * oversight: the name is `translate="no"` and is spelled in Latin letters on the
+ * Chinese page too, so there is no locale here for the allowlist to protect.
+ *
+ * 1.65rem, not the 1.2rem the mark wore in Source Serif 600. At 1.2rem a 400
+ * master measures a 1.23px stem against the 1.36px of the nav links beside it —
+ * the name read lighter than its own navigation. 1.65rem puts it at 1.69px and
+ * lands the cap at 18.2px against the 28px LogoMark.
+ *
+ * The tracking is OPEN, and open tracking buys separation rather than ink: it
+ * does not make the mark heavier, it stops four high-contrast letters at display
+ * size from reading as one dark clot. */
+.wordmark {
+  font-family: var(--font-bellefair), Georgia, serif;
+  font-weight: 400;
+  font-synthesis-weight: none;
+  font-size: 1.65rem;
+  letter-spacing: 0.03em;
+}
 
 /* Eyebrow label — Instrument Sans 600, tracked + uppercase, in amber to match the
  * v4 hero's eyebrow (.v4-eyebrow). Amber is the site's one accent, carried here
@@ -1689,10 +1719,16 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   @media (min-width: 1024px) {
     .v4-display { font-weight: 580; }
   }
-  /* The one accent segment per headline: amber, at the heading's own weight and
-   * upright. It was a slant until 2026-08-19; display type on this site does not
-   * lean. */
-  .v4-accent { color: var(--color-amber); }
+  /* The one accent segment per headline. It was a slant until 2026-08-19 and an
+   * amber word until 2026-08-20; display copy on this site now neither leans nor
+   * changes colour mid-sentence. Amber is left to the things a reader can act on
+   * — the CTAs, the links, the buttons, the eyebrow that labels a section.
+   *
+   * The rule survives its own colour on purpose. The span is still what segments
+   * a headline (WordsPullUp splits on it, and the landing h1 marks its last
+   * clause with it), so `inherit` both records that the divergence was removed
+   * deliberately and stops a stray utility tinting the segment back. */
+  .v4-accent { color: inherit; }
 
   /* Liquid glass — the #466 recipe as a reusable class. The gradient ring is
    * bright at top and bottom, gone in the middle, masked to the border only, so
@@ -1992,6 +2028,18 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     color: var(--color-ink);
     max-width: 20ch;
   }
+  /* The how-it-works headline — the one section headline that runs a scale wider
+   * than .v4-h2. It was a `text-[clamp(2rem,5vw,3.4rem)]` utility inline in the
+   * markup; it is a class now because it is the only inline display size on the
+   * site that measured UNDER the card h3 beneath it, and a utility outranks
+   * every layer a locale rule can sit in (probed in Chromium: an injected
+   * `@layer components` rule lost to the utility). A size the display face needs
+   * to step has to be reachable from the locale allowlist, so it has to be here.
+   * The value is the utility's, unchanged, and stays the zh path. */
+  .v4-h2-wide {
+    font-size: clamp(2rem, 5vw, 3.4rem);
+    color: var(--color-ink);
+  }
   .v4-lede {
     margin-top: 1.4rem;
     max-width: 46ch;
@@ -1999,6 +2047,136 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     line-height: 1.6;
     color: var(--color-slate-green);
   }
+
+  /* ── The display face: Bellefair ─────────────────────────────────────────
+   * Everything above this comment is now the FALLBACK. This block is the whole
+   * of the change: one contiguous allowlist that re-sets every display surface
+   * — the hero H1, .v4-display (every section H2 and every subpage headline via
+   * WordsPullUp), both legal titles, and the deck under a headline — in the
+   * display face, for the Latin locales BY NAME.
+   *
+   * IT IS BY NAME BECAUSE THE FACE IS LATIN-ONLY. Chinese set in it renders
+   * every glyph from whatever CJK serif the reader's OS supplies, at tracking
+   * and leading tuned for a high-contrast Latin serif. So a locale added to
+   * i18n/routing.ts inherits the Source Serif rules above — the safe default —
+   * until someone adds it here on purpose. `html:not([lang='zh'])` would fail
+   * the other way round, which is exactly the failure this shape prevents.
+   *
+   * ── ONE MASTER, SO THE LADDER IS GONE ───────────────────────────────────
+   * Source Serif is a variable 400–700, so #506 could step it 620 → 600 → 580
+   * as the size grew. Bellefair ships 400 and nothing else, so there is no rung
+   * to step to and `font-weight: 700` would be the browser-smeared bold #506
+   * removed. Every rule here asks for 400 and refuses synthesis.
+   *
+   * Which leaves SIZE as the only honest compensation, and it is measured, not
+   * preferred. Chromium raster of the shipped .woff2: the stem of an 'n' is
+   * 0.064em — against Source Serif 620's 0.133em, and against the 0.068em of
+   * the Instrument Serif 400 that #506 THREW OUT. This face is a lighter stroke
+   * than the one this whole gate exists to keep off the site, so every rung was
+   * re-measured against #506's own rule — a heading's stem, in rendered px, may
+   * not be thinner than the stem of the card heading beneath it — at 390px and
+   * 1440px, against the live page.
+   *
+   *   hero H1        2.97px vs 1.85px, 6.66px vs 1.85px   → 161% / 360%, kept
+   *   thread H2      1.95 vs 1.15, 3.07 vs 1.22           → 169% / 253%, kept
+   *   closing H2     1.95 vs 1.85, 3.07 vs 1.85           → 105% / 166%, kept
+   *   subpage H1     2.66 vs 3.02, 4.86 vs 3.83           →  88% / 127%, STEPPED
+   *   section H2     1.95 vs 2.18, 3.07 vs 2.32           →  89% / 132%, STEPPED
+   *   how H2         2.05 vs 2.18, 3.48 vs 2.61           →  94% / 133%, STEPPED
+   *   legal title    2.25 vs 2.92, 3.07 vs 3.73           →  77% /  82%, STEPPED
+   *   deck           1.02 vs 1.34, 1.18 vs 1.34           →  76% /  88%, STEPPED
+   *
+   * What a size step CANNOT buy back is the 185% margin the variable serif held
+   * at the same rungs, and nothing here pretends otherwise: the steps restore
+   * PARITY. The rest of the hierarchy is carried by cap height (0.691em here
+   * against Source Serif's 0.663em), by colour, and by the card the h3 sits in.
+   * A second family or a faked bold would buy the margin back and both are
+   * refused.
+   *
+   * The ch-measures above are deliberately UNTOUCHED. They are max-widths, and
+   * on a phone the container binds first; at desktop the face sets ~27% narrower
+   * per lowercase character while its `0` is only ~7% narrower, so a `ch` box
+   * holds a longer line and `text-wrap: balance` absorbs it. */
+  html[lang='en'] .v4-display,
+  html[lang='fr'] .v4-display,
+  html[lang='en'] .legal-title,
+  html[lang='fr'] .legal-title {
+    font-family: var(--font-bellefair), Georgia, serif;
+    font-weight: 400;
+    font-synthesis-weight: none;
+    /* Source Serif tightened to -0.01em. This face runs a 1.88:1 contrast on a
+     * 0.034em hairline, where the same tightening closes the joins rather than
+     * the gaps. Opening tracking adds no ink — it buys legibility, which is the
+     * other half of authority at a small size. */
+    letter-spacing: normal;
+    /* 1.04 was tuned to Source Serif's 0.965em of ink. This face carries 0.979em
+     * (ascender 0.740 + descender 0.239, measured), so the same multiple leaves
+     * a thinner channel than the one that was approved. */
+    line-height: 1.06;
+  }
+  html[lang='en'] .v4-hero-h1,
+  html[lang='fr'] .v4-hero-h1 {
+    font-family: var(--font-bellefair), Georgia, serif;
+    font-weight: 400;
+    font-synthesis-weight: none;
+    letter-spacing: normal;
+    /* The ≥1024px hero ran at 0.96 on Instrument Serif — it could, at 0.955em of
+     * ink in a shallow box. 0.979em of ink cannot: two lines of a poster
+     * headline would touch. */
+    line-height: 1.02;
+  }
+  /* The deck — the line under a headline that finishes its sentence. It is
+   * subordinate BY DESIGN, so it is never stepped to out-rank the headline; it
+   * is stepped because at 16px a 400 master measured a 1.02px stem against the
+   * 1.34px of the body copy it introduces, which is the hierarchy upside down.
+   * Never tracked: this is the one display surface that is running text. */
+  html[lang='en'] .v4-hero-sub,
+  html[lang='fr'] .v4-hero-sub,
+  html[lang='en'] .v4-lede,
+  html[lang='fr'] .v4-lede {
+    font-family: var(--font-bellefair), Georgia, serif;
+    font-weight: 400;
+    font-synthesis-weight: none;
+    letter-spacing: normal;
+    /* 1.6 was set for a 0.510em x-height. This face's is 0.365em, so the lines
+     * already read open; holding 1.6 at the stepped size would scatter them. */
+    line-height: 1.5;
+  }
+
+  /* ── The size steps ──────────────────────────────────────────────────────
+   * The two generic rules are wrapped WHOLE in :where(), so each carries zero
+   * specificity, and that is load-bearing in both directions. Each has to LOSE
+   * to a named scale below it — .v4-hero-h1, .v4-h2 and .v4-h2-wide were each
+   * measured against a different sub-element and take different floors — while
+   * still beating the base h1/h2 rules, which it does by LAYER order rather
+   * than by specificity.
+   *
+   * Wrapping only the locale prefix is not enough and the difference is not
+   * cosmetic: `:where(html[lang='en'], html[lang='fr']) h1.v4-display` still
+   * scores a class for `.v4-display`, which outranks `.v4-hero-h1` — probed on
+   * the running site, the landing hero silently dropped from 104px to 76px. The
+   * unit gate could not see that; only the live page could. */
+  :where(html[lang='en'] h1.v4-display, html[lang='fr'] h1.v4-display) {
+    /* 2.6rem → 3rem: 41.6px put a 2.66px stem under the pricing plan card's
+     * 3.02px. 48px reads 3.07px. */
+    font-size: clamp(3rem, 6vw, 4.75rem);
+  }
+  :where(html[lang='en'] h2.v4-display, html[lang='fr'] h2.v4-display) {
+    /* 2rem → 2.3rem, against the /about card h3's 2.32px. */
+    font-size: clamp(2.3rem, 4vw, 3.1rem);
+  }
+  html[lang='en'] .v4-h2,
+  html[lang='fr'] .v4-h2 { font-size: clamp(2.3rem, 4.4vw, 3rem); }
+  html[lang='en'] .v4-h2-wide,
+  html[lang='fr'] .v4-h2-wide { font-size: clamp(2.3rem, 5vw, 3.4rem); }
+  /* The only rung that measured under at BOTH widths — a legal title sits above
+   * Instrument Sans 600 section headings, the heaviest sub-element on the site. */
+  html[lang='en'] .legal-title,
+  html[lang='fr'] .legal-title { font-size: clamp(2.9rem, 6.3vw, 3.7rem); }
+  html[lang='en'] .v4-hero-sub,
+  html[lang='fr'] .v4-hero-sub { font-size: clamp(1.32rem, 1.7vw, 1.42rem); }
+  html[lang='en'] .v4-lede,
+  html[lang='fr'] .v4-lede { font-size: clamp(1.32rem, 1.6vw, 1.42rem); }
 
   /* The named towns the radar watches — glass pills, non-interactive. */
   .v4-pills { display: flex; flex-wrap: wrap; gap: 0.55rem; }

@@ -175,7 +175,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       {/* ── How it works — three glass cards ──────────────────────────────── */}
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow text-center">{t('howEyebrow')}</p>
-        <h2 className="v4-display mx-auto mt-4 max-w-[16ch] text-center text-[clamp(2rem,5vw,3.4rem)] text-ink">
+        <h2 className="v4-display v4-h2-wide mx-auto mt-4 max-w-[16ch] text-center">
           {t('howH2a')} <span className="v4-accent">{t('howH2Accent')}</span>
         </h2>
         <ScrollRail className="v4-cardgrid mt-7 sm:mt-12" label={t('howRail')}>
@@ -317,10 +317,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           <div className="v4-hero-body v4-closing-body">
             <span className="inline-flex items-center gap-3">
               <LogoMark size={40} />
-              <span
-                className="font-serif text-[1.5rem] font-semibold leading-none text-navy"
-                translate="no"
-              >
+              <span className="wordmark text-[2rem] leading-none text-navy" translate="no">
                 Hale
               </span>
             </span>

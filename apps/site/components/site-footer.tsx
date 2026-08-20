@@ -61,7 +61,7 @@ export function SiteFooter({ locale = routing.defaultLocale }: { locale?: Locale
           <div className="lg:max-w-[22rem]">
             <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
               <LogoMark size={28} />
-              <span className="font-serif text-[1.2rem] font-semibold leading-none text-spruce" translate="no">
+              <span className="wordmark leading-none text-spruce" translate="no">
                 Hale
               </span>
             </a>

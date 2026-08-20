@@ -52,7 +52,7 @@ export function LegalLayout({
       <header className="shell legal-print-hide flex items-center justify-between py-6">
         <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
           <LogoMark size={28} />
-          <span className="font-serif text-[1.2rem] font-semibold leading-none text-spruce" translate="no">
+          <span className="wordmark leading-none text-spruce" translate="no">
             Hale
           </span>
         </a>

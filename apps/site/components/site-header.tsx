@@ -62,7 +62,7 @@ export function SiteHeader({
       <nav className="v4-nav v4-glass" aria-label="Primary">
         <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
           <LogoMark size={28} />
-          <span className="font-serif text-[1.2rem] font-semibold leading-none text-navy" translate="no">
+          <span className="wordmark leading-none text-navy" translate="no">
             Hale
           </span>
         </a>

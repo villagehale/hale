@@ -34,7 +34,13 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
     <section id="pricing" className="shell pb-20 lg:pb-28">
       <div className="max-w-2xl mb-10 lg:mb-12">
         <span className="eyebrow">{t('eyebrow')}</span>
-        <h2 className="mt-3">{t('headline')}</h2>
+        {/* The one section headline on the site that was never in the display
+            system — it rendered in the base sans while every other section H2
+            was serif. That was survivable while display type was Source Serif
+            600+; against a single-weight 400 it inverts, because a 49.6px
+            Instrument Sans 600 stem (6.25px) out-weighs the Bellefair page H1
+            above it (4.86px), which is the #506 failure exactly. */}
+        <h2 className="v4-display mt-3">{t('headline')}</h2>
         <p className="mt-5 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
           {t('lede')}
         </p>

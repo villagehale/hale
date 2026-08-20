@@ -45,6 +45,25 @@ const instrumentSerif = localFont({
   display: 'swap',
 });
 
+// Bellefair (SIL OFL, self-hosted like the four above — the licence text ships
+// beside the binary in app/fonts/). The display face for every headline, deck,
+// legal title and the wordmark from 2026-08-20.
+//
+// ONE MASTER, and that is the whole design constraint. There is no 500 and no
+// 700 to reach for, so nothing may ask for one: a `font-weight: 700` here would
+// be synthesized into exactly the smeared bold #506 removed, which is why every
+// surface that names this face also sets `font-synthesis-weight: none` and why
+// the compensation for a rung that measures too light is SIZE, never weight.
+//
+// Latin-only subset (latin + latin-ext, so French keeps its diacritics), so
+// --font-bellefair is bound BY LOCALE ALLOWLIST in globals.css — zh keeps the
+// Source Serif stack. No italic master exists.
+const bellefair = localFont({
+  src: [{ path: '../fonts/bellefair-latin-400-normal.woff2', weight: '400', style: 'normal' }],
+  variable: '--font-bellefair',
+  display: 'swap',
+});
+
 const jetbrainsMono = localFont({
   // Only the 400 weight renders (the footer pronunciation); the site's other
   // mono spots resolve to the serif accent.
@@ -113,7 +132,7 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${instrumentSans.variable} ${sourceSerif.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable}`}
+      className={`${instrumentSans.variable} ${sourceSerif.variable} ${instrumentSerif.variable} ${bellefair.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <head>
