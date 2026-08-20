@@ -16,7 +16,7 @@
     "navAbout": "About"
   },
   "Footer": {
-    "blurb": "Hale is the quiet helper for busy families — always prepared, never acting without you.",
+    "blurb": "Hale is the family assistant you text — always prepared, never acting without you.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— Hawaiian for home.",
@@ -59,7 +59,7 @@
     "heroH1a": "The family assistant",
     "heroH1b": "you",
     "heroH1Accent": "text.",
-    "heroSub": "It takes the family admin off your plate — swim, camps and registration day caught before they fill. No app; Hale is a contact in your phone.",
+    "heroSub": "Take the family admin off your plate — swim, camps and registration day, caught before they fill. No app; Hale is a contact in your phone.",
     "chips": [
       "When does swim registration open near me?",
       "When do winter-break camps open?",
@@ -339,16 +339,16 @@
     ],
     "lede": "We’re small, parent-built, and early — so a real person reads what you send. The fastest way to reach us is email.",
     "emailButton": "Email aloha@villagehale.com",
-    "channels": [
-      {
+    "channels": {
+      "general": {
         "eyebrow": "Anything at all",
         "line": "Questions, feedback, a class your village should know about — we read every note."
       },
-      {
+      "privacy": {
         "eyebrow": "Privacy & your data",
         "line": "Access, correction, or deletion requests, and anything about how we handle your family’s data."
       }
-    ],
+    },
     "note": "Hale is built by Village Hale Technologies Inc., Georgetown, Ontario, Canada."
   },
   "Faq": {
@@ -428,8 +428,8 @@
       }
     ],
     "lede": "The free and low-cost outings families actually use — story-times, drop-in play, parent-and-tot swim, parks, and local programs. Pick your city to start.",
-    "ctaHeading": "Let Hale find these for you, near you",
-    "ctaSub": "Tell Hale your neighbourhood and what your kids love, and it gathers the classes, groups, and drop-ins near you worth a look. Free to start — your data stays in Canada."
+    "ctaHeading": "Ask Hale what’s worth doing this weekend",
+    "ctaSub": "Text Hale a question about your week and get an answer pitched at your kids’ ages. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
   },
   "ActivityCity": {
     "metaTitle": "Things to do with kids in {city} · Hale",
@@ -438,8 +438,8 @@
     "headlineLead": "Things to do with your kids in",
     "commonQuestions": "Common questions about {city}",
     "disclaimer": "Programs and locations change — treat this as a starting point and confirm details with your city or the program directly. Last reviewed {date, date, long}.",
-    "ctaHeading": "Let Hale find these for you in {city}",
-    "ctaSub": "Tell Hale your neighbourhood and what your kids love, and it gathers the classes, groups, and drop-ins near you worth a look. Free to start — your data stays in Canada."
+    "ctaHeading": "Ask Hale what’s worth doing this weekend in {city}",
+    "ctaSub": "Text Hale a question about your week and get an answer pitched at your kids’ ages. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
   },
   "Answers": {
     "metaTitle": "Parenting guides · Hale",
@@ -455,7 +455,7 @@
       }
     ],
     "lede": "Practical guides for the questions parents actually search — each one grounded in trusted parenting-health frameworks and honest about its limits. General guidance, never a replacement for your provider.",
-    "empty": "Our first parenting guides are in review. In the meantime, the fastest way to get guidance for your own child — with their age and your family in mind — is to ask Ask Hale.",
+    "empty": "Our first parenting guides are in review. In the meantime, the fastest way to get guidance for your own child — with their age and your family in mind — is to ask Hale.",
     "ctaHeading": "Have a question about your own child?",
     "ctaSub": "Ask Hale — with your child’s age and your family in mind. Free to start, and your data stays in Canada.",
     "stageLabels": {
@@ -471,7 +471,7 @@
     "keyTakeaways": "Key takeaways",
     "parentsAlsoAsk": "Parents also ask",
     "sources": "Sources",
-    "sourcesLede": "Every claim on this page is attributed to one of the parenting-health frameworks Hale draws from. Follow a source to read it directly.",
+    "sourcesLede": "Every claim on this page is attributed to one of the parenting-health frameworks Hale draws from. Follow a source to its publisher; the books are named rather than linked.",
     "inSummary": "In summary: ",
     "disclaimerEyebrow": "Please read",
     "disclaimerHeading": "This is general guidance, not medical advice.",

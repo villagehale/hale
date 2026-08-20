@@ -10,13 +10,18 @@
  */
 
 export type AnalyticsEvent =
+  // Retired with the sign-up funnel F14 deleted. Kept in the union because the
+  // names are DATA — historical rows in PostHog carry them — but nothing fires
+  // them any more; a new CTA must not reuse one.
   | 'landing_cta_preview'
   | 'landing_cta_signin'
-  // Conversion CTAs on the SEO/AEO content pages — so the funnel can attribute a
-  // sign-in intent to the page that earned it (which content actually converts).
   | 'faq_cta_signin'
-  | 'activities_cta_signin'
-  | 'answers_cta_signin'
+  // Conversion CTAs on the SEO/AEO content pages — so the funnel can attribute a
+  // texting intent to the page that earned it (which content actually converts).
+  // They sit on an sms:/mailto: href: there is no sign-in at the end of them, and
+  // the *_cta_signin names they replace made every dashboard read the funnel wrong.
+  | 'activities_cta_text'
+  | 'answers_cta_text'
   // Plus/Family waitlist form submitted (coarse event only — never the email).
   | 'waitlist_signup'
   // The /text entry page (VIL-240), carrying the QR card's venue code as `source`

@@ -16,7 +16,7 @@
     "navAbout": "À propos"
   },
   "Footer": {
-    "blurb": "Hale est l’aide discrète des familles occupées — toujours préparé, jamais en action sans vous.",
+    "blurb": "Hale est l’assistant familial que vous textez — toujours préparé, jamais en action sans vous.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— hawaïen pour « maison ».",
@@ -59,7 +59,7 @@
     "heroH1a": "L’assistant familial",
     "heroH1b": "que vous",
     "heroH1Accent": "textez.",
-    "heroSub": "Il prend l’admin de la famille en charge — natation, camps et jour d’inscription, attrapés avant que tout soit complet. Pas d’appli : Hale est un contact dans votre téléphone.",
+    "heroSub": "Déchargez-vous de l’admin de la famille — natation, camps et jour d’inscription, attrapés avant que tout soit complet. Pas d’appli : Hale est un contact dans votre téléphone.",
     "chips": [
       "Quand ouvrent les inscriptions à la natation près de chez moi?",
       "Quand ouvrent les inscriptions aux camps du congé des Fêtes?",
@@ -339,16 +339,16 @@
     ],
     "lede": "Nous sommes une petite équipe, bâtie par des parents, encore à nos débuts — alors une vraie personne lit ce que vous envoyez. Le moyen le plus rapide de nous joindre, c’est le courriel.",
     "emailButton": "Écrire à aloha@villagehale.com",
-    "channels": [
-      {
+    "channels": {
+      "general": {
         "eyebrow": "Absolument tout",
         "line": "Questions, commentaires, un cours que votre village devrait connaître — nous lisons chaque message."
       },
-      {
+      "privacy": {
         "eyebrow": "Confidentialité et vos données",
         "line": "Demandes d’accès, de correction ou de suppression, et tout ce qui touche la façon dont nous traitons les données de votre famille."
       }
-    ],
+    },
     "note": "Hale est conçu par Village Hale Technologies Inc., Georgetown, Ontario, Canada."
   },
   "Faq": {
@@ -428,8 +428,8 @@
       }
     ],
     "lede": "Les sorties gratuites et abordables que les familles utilisent vraiment — heures du conte, jeu libre sans inscription, bain parent-enfant, parcs et programmes locaux. Choisissez votre ville pour commencer.",
-    "ctaHeading": "Laissez Hale les trouver pour vous, près de chez vous",
-    "ctaSub": "Dites à Hale votre quartier et ce que vos enfants aiment, et il rassemble les cours, les groupes et les activités sans inscription près de chez vous qui valent le coup d’œil. Gratuit pour commencer — vos données restent au Canada."
+    "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end",
+    "ctaSub": "Textez à Hale une question sur votre semaine et obtenez une réponse ajustée à l’âge de vos enfants. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
   },
   "ActivityCity": {
     "metaTitle": "Activités à faire avec les enfants à {city} · Hale",
@@ -438,8 +438,8 @@
     "headlineLead": "Activités à faire avec vos enfants à",
     "commonQuestions": "Questions fréquentes sur {city}",
     "disclaimer": "Les programmes et les lieux changent — voyez ceci comme un point de départ et confirmez les détails directement auprès de votre ville ou du programme. Dernière révision le {date, date, long}.",
-    "ctaHeading": "Laissez Hale les trouver pour vous à {city}",
-    "ctaSub": "Dites à Hale votre quartier et ce que vos enfants aiment, et il rassemble les cours, les groupes et les activités sans inscription près de chez vous qui valent le coup d’œil. Gratuit pour commencer — vos données restent au Canada."
+    "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end à {city}",
+    "ctaSub": "Textez à Hale une question sur votre semaine et obtenez une réponse ajustée à l’âge de vos enfants. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
   },
   "Answers": {
     "metaTitle": "Guides parentaux · Hale",
@@ -471,7 +471,7 @@
     "keyTakeaways": "Points clés",
     "parentsAlsoAsk": "Les parents demandent aussi",
     "sources": "Sources",
-    "sourcesLede": "Chaque affirmation sur cette page est attribuée à l’un des cadres de référence en santé parentale dont Hale s’inspire. Suivez une source pour la lire directement.",
+    "sourcesLede": "Chaque affirmation sur cette page est attribuée à l’un des cadres de référence en santé parentale dont Hale s’inspire. Suivez une source vers son éditeur; les livres sont nommés plutôt que liés.",
     "inSummary": "En résumé : ",
     "disclaimerEyebrow": "À lire",
     "disclaimerHeading": "Ceci est un conseil général, pas un avis médical.",

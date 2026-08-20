@@ -15,10 +15,16 @@ export type AnswerSourceKey = CoachingFramework | 'siegel_brainstorm';
  * Answer-page copy may attribute a claim only to a source in this map; the
  * label + home URL here are what render in each page's citation list, so every
  * cited source is consistent and auditable in one place.
+ *
+ * `home` is the source's own publisher or organization page, and it is OPTIONAL:
+ * a book whose publisher page we cannot cite is NAMED rather than linked. It used
+ * to be required, which is how a YMYL page ended up citing Ferber to Wikipedia —
+ * on a page whose whole pitch is cited, auditable guidance, that is the first
+ * thing a careful reader pokes.
  */
 export const FRAMEWORK_SOURCES: Record<
   AnswerSourceKey,
-  { label: string; home: string }
+  { label: string; home?: string }
 > = {
   karp: {
     label: 'Harvey Karp — The Happiest Baby on the Block',
@@ -26,7 +32,6 @@ export const FRAMEWORK_SOURCES: Record<
   },
   ferber: {
     label: "Richard Ferber — Solve Your Child's Sleep Problems",
-    home: 'https://en.wikipedia.org/wiki/Ferber_method',
   },
   markham: {
     label: 'Laura Markham — Aha! Parenting',

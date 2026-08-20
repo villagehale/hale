@@ -68,7 +68,9 @@ describe('landing — the v4 hero', () => {
     // it is in a parent's words.
     expect(visibleText(h1)).toBe('The family assistant you text.');
     expect(h1).not.toContain('7:02');
-    expect(html).toContain('It takes the family admin off your plate');
+    // Outcome-first, verb-led: the sub leads with what the reader gets rid of,
+    // not with a pronoun that makes them wait for the subject.
+    expect(html).toContain('Take the family admin off your plate');
     // The accent word is amber at the heading's own weight — colour, not slant.
     expect(h1).toContain('class="v4-accent"');
   });

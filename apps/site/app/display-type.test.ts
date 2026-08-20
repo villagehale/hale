@@ -36,7 +36,7 @@ function declarations(selector: string, prop: string): { minWidth: number; value
     const selectors = rule.selector.split(',').map((s) => s.trim());
     if (!selectors.includes(selector)) return;
     let minWidth = 0;
-    let parent = rule.parent;
+    let parent: postcss.Container | postcss.Document | undefined = rule.parent;
     while (parent) {
       if (parent.type === 'atrule' && (parent as postcss.AtRule).name === 'media') {
         const match = /min-width:\s*(\d+)px/.exec((parent as postcss.AtRule).params);
@@ -44,7 +44,9 @@ function declarations(selector: string, prop: string): { minWidth: number; value
       }
       parent = parent.parent;
     }
-    rule.walkDecls(prop, (decl) => found.push({ minWidth, value: decl.value.trim() }));
+    rule.walkDecls(prop, (decl) => {
+      found.push({ minWidth, value: decl.value.trim() });
+    });
   });
   return found;
 }
