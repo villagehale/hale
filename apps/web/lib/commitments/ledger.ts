@@ -56,7 +56,10 @@ export type CommitmentCancelReason =
    * age gate. The promise was a PLAN, and a refusal does not keep it — so the debt is
    * voided rather than marked kept, which also stops a second yes re-refusing forever.
    */
-  | 'plan_age_gated';
+  | 'plan_age_gated'
+  /** The same supersede, for the health checkpoint's booking offer: the nudge that just
+   * went out is the offer now, and the one before it is no longer what a yes answers. */
+  | 'checkup_offer_superseded';
 
 /**
  * What became of a promise. `already_open` is deliberately NOT folded into either of the

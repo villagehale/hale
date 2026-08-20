@@ -48,6 +48,7 @@ import { draftInlineAction } from '~/lib/coach/inline-action';
 import { findBannedPhrases } from '~/lib/health/framing';
 import { checkpointToldKeyPrefix } from '~/lib/health/told';
 import { matchHealthCheckpoints } from '~/lib/health/match';
+import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
@@ -617,6 +618,10 @@ async function runToddlerJourney(): Promise<Journey> {
     // MEM-10 · the REAL writer over the same store: a nudge that lands pays off the
     // intake radar's forward promise, and the journey is where that has to be true.
     fulfillCommitment,
+    // The REAL offer writer over the same store: a health nudge whose task is booking
+    // registers the standing question its own close makes (lib/health/offer.ts).
+    recordCheckupOffer: (database, input) =>
+      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
   };
 
   vi.stubEnv('F14_ENABLED', 'true');
@@ -755,7 +760,11 @@ async function runToddlerJourney(): Promise<Journey> {
       fake
         .rows(schema.actions)
         .filter((row) => row.userVisibleState === 'drafted_for_approval')
-        .map((row) => ({ actionId: row.id as string, actionType: row.actionType as string })),
+        .map((row) => ({
+          actionId: row.id as string,
+          actionType: row.actionType as string,
+          reviewerApproved: row.reviewerVerdict === 'approved',
+        })),
     latestUndoable: async () => null,
     approve: async (database, args) => {
       const result = await approveDraftedAction(database, queue, args);

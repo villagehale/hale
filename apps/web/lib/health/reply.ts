@@ -6,6 +6,11 @@ import { draftInlineAction } from '~/lib/coach/inline-action';
 import { writeFact } from '~/lib/memory/facts';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { checkpointById, parseCheckpointRef } from './checkpoints';
+import {
+  type OpenCheckupOffer,
+  fulfillCheckupOffer,
+  loadOpenCheckupOffer,
+} from './offer';
 import { checkpointToldKeyPrefix, loadToldCheckpointRefs } from './told';
 
 /**
@@ -18,9 +23,12 @@ import { checkpointToldKeyPrefix, loadToldCheckpointRefs } from './told';
  *             verification step and there will never be one: Hale does not hold the
  *             record it would check against, and a product that asked a parent to prove
  *             they filed a form would be worse than the form.
- *   "yes"     on a checkpoint whose task IS booking a visit, the parent asks for help.
- *             That DRAFTS a book_checkup action held for approval on the existing
- *             engine (rule #4). Hale never books.
+ *   "yes"     the parent accepts the OFFER the nudge made ("want me to add booking it to
+ *             your week?"). That DRAFTS a book_checkup action held for approval on the
+ *             existing engine (rule #4). Hale never books. What makes the acceptance
+ *             resolvable is that the offer is a ROW, minted by the message that made it
+ *             (lib/health/offer.ts) — not an inference from the last checkpoint this
+ *             family happened to be told about.
  *
  * Matching is EXACT on the normalized body, the same discipline as the CASL keywords
  * (lib/channel/intake/keywords.ts) and for a sharper reason: "not done yet" contains
@@ -73,15 +81,39 @@ export function matchHealthReply(body: string): HealthReplyIntent | null {
 
 export type HealthReplyOutcome =
   | { status: 'recorded_done'; ref: string }
-  | { status: 'drafted_for_approval'; actionId: string }
+  /** The draft is real and held for approval; `commitmentId` is the offer it answered,
+   * which the caller closes once the receipt has actually reached the parent. */
+  | { status: 'drafted_for_approval'; actionId: string; commitmentId: string }
   | {
       status: 'ignored';
-      reason: 'not_a_health_reply' | 'no_open_checkpoint' | 'not_a_booking_checkpoint';
+      reason: 'not_a_health_reply' | 'no_open_checkpoint' | 'no_open_offer';
     };
 
 export interface HealthReplyDeps {
   /** The checkpoint ref this family was last nudged about, or null. */
   loadLastCheckpointRef(database: Database, familyId: string): Promise<string | null>;
+  /**
+   * The booking offer this family may still accept, or null — the ONE thing a "yes"
+   * here resolves against (lib/health/offer.ts).
+   *
+   * It replaced a read of the last told-marker, and the difference is the whole 2026-08-20
+   * fix. The told-marker answers "what were they last told about", which is not the same
+   * question as "what were they OFFERED": most checkpoints are paperwork and offer
+   * nothing, the intake radar can tell a family about one without offering anything at
+   * all, and a marker has no expiry. The offer row is minted only by the message that
+   * actually asked, and it lapses on its own week.
+   */
+  loadOpenOffer(
+    database: Database,
+    familyId: string,
+    now: Date,
+  ): Promise<OpenCheckupOffer | null>;
+  /**
+   * Close the offer once the parent has been told their draft exists. REQUIRED (rule
+   * #11): an accepted offer that stays open is a question the resolver keeps asking and
+   * a second yes would draft the same visit twice.
+   */
+  fulfillOffer: typeof fulfillCheckupOffer;
   recordDone(
     database: Database,
     input: {
@@ -107,47 +139,65 @@ export interface HealthReplyDeps {
 
 export async function handleHealthCheckpointReply(
   database: Database,
-  input: { familyId: string; parentUserId: string; body: string },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    now: Date;
+    /**
+     * The router's natural-reply stage already read this message as an acceptance of the
+     * open booking offer (lib/channel/router/resolve.ts) — "add it to my week", in words
+     * no closed vocabulary contains. It NAMES the question, so it is trusted over the
+     * word match; the exact words still win when they are there, because the handler
+     * that reads them runs first and this field is only set once they have declined.
+     */
+    resolved?: 'booking' | null,
+  },
   deps: HealthReplyDeps,
 ): Promise<HealthReplyOutcome> {
-  const intent = matchHealthReply(input.body);
-  // Checked before the lookup: an ordinary message must not cost a query, because most
+  const intent = input.resolved ?? matchHealthReply(input.body);
+  // Checked before any lookup: an ordinary message must not cost a query, because most
   // inbound traffic on this channel is ordinary.
   if (!intent) return { status: 'ignored', reason: 'not_a_health_reply' };
 
-  const ref = await deps.loadLastCheckpointRef(database, input.familyId);
-  const parsed = ref === null ? null : parseCheckpointRef(ref);
-  if (ref === null || parsed === null) {
-    return { status: 'ignored', reason: 'no_open_checkpoint' };
-  }
-  const checkpoint = checkpointById(parsed.checkpointId);
-  if (!checkpoint) return { status: 'ignored', reason: 'no_open_checkpoint' };
+  if (intent === 'done') return recordDoneReply(database, input, deps);
 
-  if (intent === 'done') {
-    await deps.recordDone(database, {
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      childId: parsed.childId,
-      checkpointId: parsed.checkpointId,
-      ref,
-    });
-    return { status: 'recorded_done', ref };
-  }
-
-  // A "yes" only means something where an offer was made. Drafting an appointment off a
-  // paperwork reminder would be Hale inventing a visit nobody mentioned.
-  if (!checkpoint.booking) {
-    return { status: 'ignored', reason: 'not_a_booking_checkpoint' };
-  }
+  // A "yes" only means something where an OFFER was made, and the offer is a row rather
+  // than an inference from the last thing Hale said. No live offer, no draft: the turn
+  // falls through to the coach, which will read the message properly.
+  const offer = await deps.loadOpenOffer(database, input.familyId, input.now);
+  if (!offer) return { status: 'ignored', reason: 'no_open_offer' };
 
   const { actionId } = await deps.draftCheckup(database, {
     familyId: input.familyId,
     actorUserId: input.parentUserId,
-    childId: parsed.childId,
+    childId: offer.childId,
     intentKind: 'book_checkup',
-    sourceAnswer: checkpoint.task,
+    sourceAnswer: offer.checkpoint.task,
   });
-  return { status: 'drafted_for_approval', actionId };
+  return { status: 'drafted_for_approval', actionId, commitmentId: offer.id };
+}
+
+/** The paperwork half, unchanged: the told-marker is the identity of the errand a parent
+ * is calling handled, and it is the right reader for that question. */
+async function recordDoneReply(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+  deps: HealthReplyDeps,
+): Promise<HealthReplyOutcome> {
+  const ref = await deps.loadLastCheckpointRef(database, input.familyId);
+  const parsed = ref === null ? null : parseCheckpointRef(ref);
+  if (ref === null || parsed === null || !checkpointById(parsed.checkpointId)) {
+    return { status: 'ignored', reason: 'no_open_checkpoint' };
+  }
+  await deps.recordDone(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    childId: parsed.childId,
+    checkpointId: parsed.checkpointId,
+    ref,
+  });
+  return { status: 'recorded_done', ref };
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
@@ -304,6 +354,8 @@ export async function loadLastCheckpointRef(
 export function defaultHealthReplyDeps(): HealthReplyDeps {
   return {
     loadLastCheckpointRef,
+    loadOpenOffer: loadOpenCheckupOffer,
+    fulfillOffer: fulfillCheckupOffer,
     recordDone: recordCheckpointDone,
     // Routed through the SAME approval spine an Ask Hale chip uses: drafted, reviewed,
     // and held at drafted_for_approval. Nothing here executes (rule #4).

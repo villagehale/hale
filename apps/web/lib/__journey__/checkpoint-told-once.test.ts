@@ -17,6 +17,7 @@ import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
 import { checkpointById, checkpointRef } from '~/lib/health/checkpoints';
 import { checkpointToldKey, checkpointToldKeyPrefix } from '~/lib/health/told';
+import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { fakeWeather } from '~/lib/weather/open-meteo';
@@ -213,6 +214,10 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     // MEM-10 · the REAL writer over the same store (this family was promised nothing,
     // so the honest outcome here is the ledger's `none_open`).
     fulfillCommitment,
+    // The REAL offer writer over the same store: a health nudge whose task is booking
+    // registers the standing question its own close makes (lib/health/offer.ts).
+    recordCheckupOffer: (database, input) =>
+      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
   };
 }
 
