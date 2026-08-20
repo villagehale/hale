@@ -394,6 +394,20 @@ describe('an enrolled parent calls', () => {
     expect(twiml).not.toContain('<Hangup/>');
   });
 
+  it('speaks through the ElevenLabs voice, naming the model rather than inheriting a default', async () => {
+    const h = harness();
+    enrol(h.fake);
+
+    const twiml = await (
+      await handleTwilioVoiceRequest(voiceRequest(voiceParams()), h.deps)
+    ).text();
+
+    expect(twiml).toContain('ttsProvider="ElevenLabs"');
+    expect(twiml).toContain('voice="XrExE9yKIg1WjnnlVkGX-flash_v2_5"');
+    // Still no `language`: the voice carries en-US and the transcriber defaults to it.
+    expect(twiml).not.toContain('language=');
+  });
+
   it('records the call itself, with the number masked and no text claimed', async () => {
     const h = harness();
     enrol(h.fake);
