@@ -1,5 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickModel, runAgentStreaming } from '@hale/agent';
+import { pickModel, runAgentStreaming } from '@hale/agent';
 import { recordAgentRun } from '~/lib/agent-run';
 import { productionChannelDraftPort } from '~/lib/channel/coach/draft';
 import { buildChannelCoachTools, channelScheduleReader } from '~/lib/channel/coach/tools';
@@ -12,7 +11,7 @@ import { buildGuardDeps } from '~/lib/coach/guards';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { db } from '~/lib/db';
-import { HOT_SMS_CLIENT_OPTIONS } from '~/lib/pipeline/client';
+import { pipelineClient, voiceClient } from '~/lib/pipeline/client';
 import { claimRelayCall } from './relay-claim';
 import type { RelaySessionDeps, RelaySocket } from './relay-session';
 import { answerSpokenReply } from './voice-answer';
@@ -34,21 +33,23 @@ import { voiceTurnStream } from './voice-turn';
  * not a second implementation with the same behaviour, but the same implementation.
  *
  * Built per SOCKET, not per process: a session holds the identity of one call, and the
- * recorder memoizes nothing across calls. The Anthropic client is the exception and is
+ * recorder memoizes nothing across calls. The Anthropic clients are the exception and are
  * process-cached, the same as every other hot path — a new HTTPS pool per phone call
  * would spend the latency budget on a handshake.
+ *
+ * TWO CLIENTS, because a call asks the model two questions with different costs of being
+ * slow, and one timeout cannot answer both honestly.
+ *
+ *   `voiceClient` — the turn's own stream and the reply resolver ahead of it. Nothing is
+ *   coming out of the speaker while either runs, so their ceiling is how long a parent
+ *   holds a silent line: eight seconds, no retry (VOICE_CLIENT_OPTIONS).
+ *
+ *   `pipelineClient` — the reviewer inside a propose_* draft. It runs AFTER the ack line
+ *   has been spoken, and it is a safety gate (rule #3): timing it out saves the caller
+ *   nothing and loses a draft they asked for out loud. Measured 2026-08-20 at 6.5-6.9s
+ *   per request on claude-sonnet-5, which an eight-second budget would sit right on top
+ *   of, so it keeps the queue-backed 30s the texting lane gives the same reviewer.
  */
-
-let cachedClient: Anthropic | undefined;
-
-function anthropicClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  cachedClient ??= new Anthropic({ apiKey, ...HOT_SMS_CLIENT_OPTIONS });
-  return cachedClient;
-}
 
 export function voiceRelayDeps(socket: RelaySocket, token: string | null): RelaySessionDeps {
   const database = db();
@@ -69,7 +70,7 @@ export function voiceRelayDeps(socket: RelaySocket, token: string | null): Relay
             database,
             handlers: defaultHandlers(),
             questions: defaultOpenQuestionReader(),
-            replyResolver: createReplyResolver(anthropicClient),
+            replyResolver: createReplyResolver(voiceClient),
             sendablePhone: (parentUserId) => resolveSendablePhone(database, parentUserId),
             log: console,
           },
@@ -83,12 +84,12 @@ export function voiceRelayDeps(socket: RelaySocket, token: string | null): Relay
         buildChannelCoachTools({
           familyId: turn.familyId,
           reader: channelScheduleReader(database),
-          draftPort: productionChannelDraftPort(database, anthropicClient(), turn.now),
+          draftPort: productionChannelDraftPort(database, pipelineClient(), turn.now),
           villageTool: searchVillageTool(database),
           onDraft,
           now: turn.now,
         }),
-      client: anthropicClient,
+      client: voiceClient,
       runStreaming: runAgentStreaming,
       guardDeps: buildGuardDeps(database),
       log: console,

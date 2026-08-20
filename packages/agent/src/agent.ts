@@ -58,6 +58,25 @@ export interface RunAgentArgs {
    * bytes are never re-sent. Omitted/empty → the first turn is the context string alone.
    */
   attachments?: Anthropic.ContentBlockParam[];
+  /**
+   * Ship `strict: true` with every tool whose schema compiles to a grammar. Default TRUE
+   * — the saving it buys (#415) is real and every caller but one wants it.
+   *
+   * The one that does not is a phone call, and the reason is that `strict` is not free at
+   * REQUEST time. The API compiles a sampling grammar before it emits a token; the
+   * compile is keyed on schema STRUCTURE, cached per credential, and it expires. A cold
+   * compile of the six coach schemas measured 16-83 seconds, all of it BEFORE response
+   * headers — which is exactly the window the SDK's `timeout` guards, streaming or not.
+   * SMS survives that because a timed-out turn defers into the queue's backoff and the
+   * retry lands warm; a call has no queue, so the caller hears dead air and hangs up
+   * (voice v2 incident, #505).
+   *
+   * Declining the grammar costs correctness nothing: the schema still ships in full, and
+   * `invokeTool` still `.parse()`s every argument against the same Zod schema before any
+   * guard or handler sees it. What is lost is only the guess-and-retry round trip on a
+   * malformed call — about a second, against thirty of silence.
+   */
+  strictTools?: boolean;
 }
 
 export interface AgentUsage {
@@ -287,8 +306,15 @@ type WireTool = Anthropic.Tool & {
  * parent is waiting on. Now each tool ships the schema it already declares, plus
  * `strict: true` wherever a grammar can be compiled from it, so a malformed call
  * is unsamplable rather than merely rejected afterwards.
+ *
+ * `strictTools` is the run's answer to whether it can afford the grammar COMPILE
+ * that buys — see {@link RunAgentArgs.strictTools}.
  */
-function toAnthropicTools(skill: Skill, tools: RegisteredTool[]): Anthropic.Tool[] {
+function toAnthropicTools(
+  skill: Skill,
+  tools: RegisteredTool[],
+  strictTools: boolean,
+): Anthropic.Tool[] {
   const byName = new Map(tools.map((t) => [t.name, t]));
   return skill.meta.tools.map((name) => {
     const tool = byName.get(name);
@@ -302,10 +328,11 @@ function toAnthropicTools(skill: Skill, tools: RegisteredTool[]): Anthropic.Tool
       name: tool.name,
       description: tool.description,
       input_schema: schema as Anthropic.Tool.InputSchema,
-      // Withheld — never defaulted on — when the schema has a node the grammar
-      // compiler cannot express, because `strict` over such a schema is a 400
-      // rather than a weaker constraint (see compileToolSchema).
-      ...(strictSafe ? { strict: true } : {}),
+      // Withheld — never defaulted on — when the run declined the compile, or when
+      // the schema has a node the grammar compiler cannot express, because `strict`
+      // over such a schema is a 400 rather than a weaker constraint (see
+      // compileToolSchema).
+      ...(strictTools && strictSafe ? { strict: true } : {}),
       ...(tool.inputExamples && tool.inputExamples.length > 0
         ? { input_examples: tool.inputExamples }
         : {}),
@@ -434,7 +461,7 @@ async function handleToolUses(
 export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const model = pickModel(args.skill.meta.task);
   const system = buildSystem(args.skill);
-  const tools = toAnthropicTools(args.skill, args.tools);
+  const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
   const messages: Anthropic.MessageParam[] = [
@@ -496,7 +523,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
 export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<RunAgentResult> {
   const model = pickModel(args.skill.meta.task);
   const system = buildSystem(args.skill);
-  const tools = toAnthropicTools(args.skill, args.tools);
+  const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
   const messages: Anthropic.MessageParam[] = [

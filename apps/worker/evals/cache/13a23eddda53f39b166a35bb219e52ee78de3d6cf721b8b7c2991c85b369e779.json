@@ -1,37 +1,26 @@
 {
   "response": {
-    "id": "msg_011CeDDfUk1h6sZDD9VZwu9t",
+    "id": "msg_011CeDPfndhudzWx3TeJLuMu",
     "type": "message",
     "role": "assistant",
     "model": "claude-haiku-4-5-20251001",
-    "stop_reason": "tool_use",
+    "stop_reason": "end_turn",
     "stop_sequence": null,
     "content": [
       {
         "type": "text",
-        "text": "Let me check what's nearby for Saturday morning."
-      },
-      {
-        "type": "tool_use",
-        "id": "toolu_01T3yofVcTWAcPQmttnqUJgQ",
-        "name": "search_village",
-        "input": {
-          "query": "three year old toddler Saturday morning"
-        },
-        "caller": {
-          "type": "direct"
-        }
+        "text": "Yeah, there's a Saturday Family Drop-In at Wychwood Barns at ten in the morning, free, no registration needed, for under-fives."
       }
     ],
     "usage": {
-      "input_tokens": 4233,
+      "input_tokens": 4378,
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
       "cache_creation": {
         "ephemeral_5m_input_tokens": 0,
         "ephemeral_1h_input_tokens": 0
       },
-      "output_tokens": 71,
+      "output_tokens": 39,
       "service_tier": "standard",
       "inference_geo": "not_available"
     }

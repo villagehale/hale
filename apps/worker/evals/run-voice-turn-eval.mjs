@@ -93,6 +93,16 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'voice-turn.md
 const MAX_STEPS = 4;
 const MAX_TOKENS = 240;
 
+/**
+ * Mirrors `strictTools: false` in the same file, and it is not a detail: production
+ * declines the tool GRAMMAR on a call (a cold compile of these schemas measured tens of
+ * seconds, before the first token, on a line the parent is holding). Declining it is
+ * exactly the thing that could make the model guess an argument name — the failure #415
+ * added `strict` to kill — so the corpus has to be recorded against the shape prod
+ * actually sends, or this gate would clear a request nobody makes.
+ */
+const STRICT_TOOLS = false;
+
 /** Every verb that DRAFTS. A turn that was not asked to change anything must call none
  * of them — a spoken "what's on Thursday" that mints a row is a change nobody asked for. */
 const DRAFTING_TOOLS = ['propose_calendar_move', 'propose_calendar_cancel', 'propose_calendar_add'];
@@ -457,6 +467,7 @@ async function main() {
         client: makeCachedStreamClient(`voice:${fixture.id}`, model, cachedOnly, getClient, cost),
         maxSteps: MAX_STEPS,
         maxTokens: MAX_TOKENS,
+        strictTools: STRICT_TOOLS,
         toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
         guardDeps: {
           writeAudit: async () => {},

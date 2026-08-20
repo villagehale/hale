@@ -1,7 +1,16 @@
-import type { RegisteredTool, RunAgentResult, RunAgentStreamingArgs, Skill } from '@hale/agent';
+import {
+  type RegisteredTool,
+  type RunAgentResult,
+  type RunAgentStreamingArgs,
+  type Skill,
+  runAgentStreaming,
+} from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import type { AgentContext, LoadAgentContextInput } from '~/lib/coach/context';
 import type { TranscriptMessage } from '~/lib/coach/conversation';
+import { searchVillageTool } from '~/lib/coach/tools';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { VOICE_TOOL_ACK } from './copy';
 import { VOICE_AGENT_NAME, type VoiceTurnPorts, voiceTurnStream } from './voice-turn';
 
@@ -340,5 +349,141 @@ describe('a turn that broke after it had already changed something', () => {
     await t.turn.respond(input, (token) => emitted.push(token));
 
     expect(emitted.join('')).toContain('one change');
+  });
+});
+
+/**
+ * THE REQUEST A SPOKEN TURN ACTUALLY PUTS ON THE WIRE.
+ *
+ * Everything above drives `voiceTurnStream` against a fake `runStreaming` port, which is
+ * the right shape for testing what the turn DECIDES — and structurally incapable of
+ * catching what broke voice v2 in production, because the defect was in the request the
+ * real loop builds. So this block wires the REAL `runAgentStreaming`, the REAL coach tool
+ * builder and the REAL voice-turn skill, and inspects the outbound `messages.stream`
+ * arguments. Only the transport is a fake; nothing here simulates the model's reasoning
+ * (rule #8).
+ *
+ * What it pins: a spoken turn must not ask the API to compile a sampling grammar.
+ * `strict: true` is a per-credential, structure-keyed COLD cost — 16-83s measured across
+ * the six coach schemas — paid before the first token and inside the window the SDK's
+ * `timeout` guards. SMS absorbs it as a deferred retry that lands warm; a call has no
+ * queue, so the caller hears 30s of nothing and then a fixed apology (#505 incident).
+ */
+describe('the wire a spoken turn builds', () => {
+  /** A capturing transport: records the request, streams one text turn, no tool_use. */
+  function capturingClient() {
+    const stream = vi.fn((_params: { tools?: unknown }) => ({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: 'Swim is Thursday.' },
+        };
+      },
+      finalMessage: async () => ({
+        id: 'msg-1',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-haiku-4-5',
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        content: [{ type: 'text', text: 'Swim is Thursday.', citations: null }],
+        usage: {
+          input_tokens: 900,
+          output_tokens: 12,
+          cache_creation_input_tokens: null,
+          cache_read_input_tokens: null,
+          server_tool_use: null,
+        },
+      }),
+    }));
+    return { client: { messages: { stream } } as never, stream };
+  }
+
+  /** Byte-for-byte the verbs relay-deps.ts registers for a call. */
+  const coachTools = () =>
+    buildChannelCoachTools({
+      familyId: TICKET.familyId,
+      reader: {} as never,
+      draftPort: {} as never,
+      villageTool: searchVillageTool({} as never),
+      onDraft: () => {},
+      now: NOW,
+    });
+
+  /** The tool definitions the production voice path hands the API. */
+  async function wireTools(): Promise<Array<Record<string, unknown>>> {
+    const { client, stream } = capturingClient();
+    const t = build({
+      loadSkill: () => loadCronSkill('voice-turn'),
+      buildTools: () => coachTools(),
+      client: () => client,
+      runStreaming: runAgentStreaming,
+      guardDeps: {} as never,
+    });
+
+    await t.turn.respond(input, vi.fn());
+
+    return (stream.mock.calls[0]?.[0].tools ?? []) as Array<Record<string, unknown>>;
+  }
+
+  it('sends every coach verb WITHOUT strict, so no turn waits on a grammar compile', async () => {
+    const tools = await wireTools();
+
+    expect(tools.map((t) => t.name).sort()).toEqual([
+      'get_framework_guidance',
+      'lookup_week',
+      'propose_calendar_add',
+      'propose_calendar_cancel',
+      'propose_calendar_move',
+      'search_village',
+    ]);
+    expect(tools.filter((t) => 'strict' in t).map((t) => t.name)).toEqual([]);
+  });
+
+  it('POSITIVE CONTROL: those same schemas do compile a grammar when a run does not decline it', async () => {
+    // Without this, the assertion above would pass just as happily against a build that
+    // had dropped `strict` everywhere, or one that sent no tools at all.
+    const { client, stream } = capturingClient();
+    const skill = await loadCronSkill('voice-turn');
+
+    await runAgentStreaming({
+      skill,
+      context: {},
+      tools: coachTools(),
+      client,
+      maxSteps: 1,
+      maxTokens: 240,
+      toolContext: { familyId: TICKET.familyId, actor: TICKET.parentUserId },
+      guardDeps: {} as never,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+    });
+
+    const tools = (stream.mock.calls[0]?.[0].tools ?? []) as Array<Record<string, unknown>>;
+    expect(tools.filter((t) => t.strict === true).map((t) => t.name).sort()).toEqual([
+      'get_framework_guidance',
+      'lookup_week',
+      'propose_calendar_add',
+      'propose_calendar_cancel',
+      'propose_calendar_move',
+      'search_village',
+    ]);
+  });
+
+  it('still streams the answer it composed', async () => {
+    const { client } = capturingClient();
+    const emitted: string[] = [];
+    const t = build({
+      loadSkill: () => loadCronSkill('voice-turn'),
+      buildTools: () => coachTools(),
+      client: () => client,
+      runStreaming: runAgentStreaming,
+      guardDeps: {} as never,
+    });
+
+    await t.turn.respond(input, (token) => emitted.push(token));
+
+    expect(emitted.join('')).toBe('Swim is Thursday.');
   });
 });

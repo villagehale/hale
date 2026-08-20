@@ -197,6 +197,15 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
           client: ports.client(),
           maxSteps: MAX_STEPS,
           maxTokens: MAX_TOKENS,
+          // NO GRAMMAR. `strict: true` makes the API compile a sampling grammar from each
+          // tool's schema before it emits a token — a per-credential, structure-keyed,
+          // EXPIRING cache whose cold cost measured 16-83 seconds across these six
+          // schemas, landing entirely before response headers. That is the one place a
+          // call cannot spend time: the parent is holding a silent line and there is no
+          // queue to defer into, which is the only reason the identical six schemas are
+          // survivable over SMS. The turn keeps every schema and every `.parse()`; it
+          // gives up only the guess-and-retry saving (#415) — one second, for thirty.
+          strictTools: false,
           toolContext: { familyId: input.ticket.familyId, actor: input.ticket.parentUserId },
           guardDeps: ports.guardDeps,
           onTextDelta: (delta) => {

@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { describe, expect, it, vi } from 'vitest';
+import { type Mock, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
   type AgentClient,
@@ -790,6 +790,50 @@ describe('tool definitions on the wire', () => {
     });
 
     expect(wireTool(requests, 'propose_calendar_move').strict).toBe(true);
+  });
+
+  it('WITHHOLDS strict from a run that asks for no grammar, and ships it to the same tool otherwise', async () => {
+    // `strict` is not free at REQUEST time: the API compiles a sampling grammar keyed on
+    // the schema's structure, per credential, before it emits a token — cold, that
+    // measured 16-83s and it lands inside the window the SDK's `timeout` guards. A
+    // caller that cannot absorb it (a live phone call) must be able to decline it. Both
+    // directions on the same tool, so neither assertion can pass by accident.
+    const streamed = async (strictTools?: boolean) => {
+      const client = fakeStreamingClient([
+        { chunks: ['ok.'], final: textMessage('ok.', usage(1, 1)) },
+      ]);
+      await runAgentStreaming({
+        skill: scheduleSkill,
+        context: {},
+        tools: [scheduleTool],
+        client,
+        maxSteps: 2,
+        toolContext: { familyId: 'fam-1', actor: 'run-1' },
+        guardDeps: guardDeps().deps,
+        onTextDelta: () => {},
+        onTurnReset: () => {},
+        ...(strictTools === undefined ? {} : { strictTools }),
+      });
+      const call = (client.messages.stream as unknown as Mock).mock.calls[0]?.[0] as
+        | Anthropic.MessageCreateParamsStreaming
+        | undefined;
+      const tools = (call?.tools ?? []) as unknown as Array<Record<string, unknown>>;
+      const move = tools.find((t) => t.name === 'propose_calendar_move');
+      if (!move) throw new Error('no propose_calendar_move on the wire');
+      return move;
+    };
+
+    expect(await streamed(undefined)).toHaveProperty('strict', true);
+
+    const declined = await streamed(false);
+    expect(declined).not.toHaveProperty('strict');
+    // The schema still ships in full — declining the grammar must not turn the tool back
+    // into the argument-guessing placeholder #415 replaced.
+    expect((declined.input_schema as Record<string, unknown>).required).toEqual([
+      'eventId',
+      'date',
+      'time',
+    ]);
   });
 
   it('WITHHOLDS strict for a tool whose schema has no grammar, and still sends the schema', async () => {
