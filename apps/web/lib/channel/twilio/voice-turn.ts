@@ -178,6 +178,10 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
       // guarantee under it — one fixed line, spoken only if the model reached for a tool
       // having said nothing at all, so a caller never hears both.
       let hasSpoken = false;
+      // Words the MODEL said, as opposed to the fixed line above. The two are counted
+      // separately because they answer different questions: whether to cover a pause,
+      // and whether this turn actually told the caller anything (see below).
+      let modelSpoke = false;
       const say = (token: string): void => {
         hasSpoken = true;
         emit(token);
@@ -195,7 +199,10 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
           maxTokens: MAX_TOKENS,
           toolContext: { familyId: input.ticket.familyId, actor: input.ticket.parentUserId },
           guardDeps: ports.guardDeps,
-          onTextDelta: say,
+          onTextDelta: (delta) => {
+            modelSpoke = true;
+            say(delta);
+          },
           onToolCall: () => {
             if (!hasSpoken) say(`${VOICE_TOOL_ACK} `);
           },
@@ -222,13 +229,22 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
         return;
       } finally {
         await ports.recordRun(
-          record(input.ticket.familyId, skill, result, Date.now() - startedAt),
+          record(input.ticket.familyId, skill, result, modelSpoke, Date.now() - startedAt),
         );
       }
 
       if (result.answer === null) {
-        // Out of steps. Same trade as the throw above: a turn that drafted owes the
-        // parent the count, and one that did not owes the session its fixed line.
+        // A NULL ANSWER IS NOT ALWAYS A FAILED TURN HERE, and the difference is what the
+        // caller heard. The commonest real shape (found by the eval, not by reading the
+        // loop) is a model that says the whole answer in the SAME turn as its tool call
+        // and then, holding the result, has nothing left to add — the loop's last turn is
+        // empty, `answer` is null, and the parent has already been told everything. On a
+        // text that turn produces no reply and must fail; out loud the words are already
+        // spoken, and apologising for them would be Hale contradicting itself.
+        if (modelSpoke) return;
+        // Nothing of the model's was heard — at most the line covering the pause. A turn
+        // that drafted owes the parent the count; one that did not owes the session its
+        // fixed line.
         if (draftedActionIds.length > 0) {
           emit(voiceDraftedButFailed(draftedActionIds.length));
           return;
@@ -250,11 +266,16 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
  * A turn SETTLED by the answer stage records nothing, and that is correct rather than a
  * gap: no agent ran, so there is no agent run. It leaves its own rows where it acted —
  * the approvals spine's audit trail (rule #6).
+ *
+ * `modelSpoke` is what makes the status honest on a call: a loop can end with a null
+ * `answer` having already said everything out loud (see respond), and counting that as a
+ * failure would put the surface's healthiest common shape in the failure column.
  */
 function record(
   familyId: string,
   skill: Skill,
   result: RunAgentResult | null,
+  modelSpoke: boolean,
   latencyMs: number,
 ): VoiceRunRecord {
   const usage = result?.usage ?? {
@@ -266,7 +287,7 @@ function record(
   return {
     familyId,
     agentName: VOICE_AGENT_NAME,
-    status: result?.answer ? 'completed' : 'failed',
+    status: result?.answer || modelSpoke ? 'completed' : 'failed',
     latencyMs,
     promptTokens: usage.promptTokens,
     completionTokens: usage.completionTokens,

@@ -176,6 +176,44 @@ describe('voiceTurnStream', () => {
     await expect(t.turn.respond(input, vi.fn())).rejects.toThrow(/no answer/);
     expect(t.recordRun).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
   });
+
+  it('does not apologise for a turn the caller already heard the answer to', async () => {
+    // The real shape, found by the eval: the model says the whole answer in the same
+    // turn as its tool call, then has nothing left to add — so the loop's `answer` is
+    // null while the caller has already been told everything.
+    const emitted: string[] = [];
+    const t = build({
+      runStreaming: vi.fn(async (args: RunAgentStreamingArgs) => {
+        args.onTextDelta("That's swim moved to Friday, pending your yes.");
+        args.onToolCall?.({ name: 'propose_calendar_move' } as never);
+        args.onTurnReset();
+        return { ...RESULT, answer: null, steps: 2 };
+      }),
+    });
+
+    await expect(
+      t.turn.respond(input, (token) => emitted.push(token)),
+    ).resolves.toBeUndefined();
+    expect(emitted.join('')).toBe("That's swim moved to Friday, pending your yes.");
+    expect(t.recordRun).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+  });
+
+  it('still fails when all the caller heard was the line covering the pause', async () => {
+    const emitted: string[] = [];
+    const t = build({
+      runStreaming: vi.fn(async (args: RunAgentStreamingArgs) => {
+        args.onToolCall?.({ name: 'lookup_week' } as never);
+        args.onTurnReset();
+        return { ...RESULT, answer: null, hitMaxSteps: true };
+      }),
+    });
+
+    await expect(t.turn.respond(input, (token) => emitted.push(token))).rejects.toThrow(
+      /no answer/,
+    );
+    expect(emitted.join('')).toBe(`${VOICE_TOOL_ACK} `);
+    expect(t.recordRun).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+  });
 });
 
 describe('a spoken answer to something Hale asked', () => {
