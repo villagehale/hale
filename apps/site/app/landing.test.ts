@@ -436,3 +436,152 @@ describe('landing — number not provisioned', () => {
     expect(visibleText(html)).toContain('15 municipalities');
   });
 });
+
+describe('landing — the thread is one continuous registration loop', () => {
+  const html = render();
+  const text = visibleText(html);
+  const thread = html.match(/<div class="v4-thread[\s\S]*?<\/section>/)?.[0] ?? '';
+
+  /**
+   * The demo runs the four legs `apps/web/lib/registration/sequence/schedule.ts`
+   * actually schedules — HEADS_UP_LEAD_DAYS = 7, the battle plan at
+   * BATTLE_PLAN_MINUTE_LOCAL the evening before, GO_LEAD_MINUTES = 15, and the
+   * check-in CHECK_IN_LEAD_HOURS = 4 after the open. apps/site cannot import
+   * apps/web, so the intervals are a hand-kept copy and these markers are what
+   * catch a drift.
+   */
+  it('runs the four scheduled legs, in the order the sequence fires them', () => {
+    const order = [
+      'A week before',
+      'The evening before',
+      'Fifteen minutes before',
+      'Four hours later',
+    ].map((marker) => text.indexOf(marker));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('renders each leg as a timestamp between bubbles, never as another bubble', () => {
+    expect([...html.matchAll(/class="v4-thread-time"/g)]).toHaveLength(4);
+    // Positive control: the bubbles are still bubbles, so "four timestamps" is a
+    // separate row type rather than four mislabelled messages.
+    expect([...html.matchAll(/class="v4-bubble v4-bubble-in"/g)].length).toBeGreaterThanOrEqual(5);
+    expect([...html.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(2);
+  });
+
+  it('tells the whole story: the warning, the parent’s yes, the link, the receipt', () => {
+    expect(text).toContain('registration opens Tuesday at 7:00 a.m.');
+    expect(text).toContain('Reply YES and I’ll run the morning with you');
+    expect(text).toContain('Sign in tonight');
+    expect(text).toContain('Your link:');
+    expect(text).toContain('That’s a spot.');
+  });
+
+  it('quotes the sequence renderer’s own sentences instead of marketing copy', () => {
+    // Every one of these is a literal from apps/web/lib/registration/sequence/copy.ts
+    // (headsUp / battlePlan / go / checkIn / renderCheckInReply), so the landing
+    // cannot promise a message the product does not send.
+    expect(text).toContain('Your postal code gets the residents-first date.');
+    expect(text).toContain('Tomorrow:');
+    expect(text).toContain('“got in”');
+    expect(text).toContain('“missed it”');
+    // The real registration page for the row this is drawn from — Hale never
+    // stands between a parent and the municipal form.
+    expect(text).toContain('haltonhills.ca/Play/Recreation/Programs');
+  });
+
+  it('carries no calendar date or cycle year, so the demo cannot go stale', () => {
+    // The live heads-up prints "Sep 1, 7:00 a.m." and the cycle label "Fall 2026";
+    // the demo prints the published WEEKDAY and a bare season from the same
+    // verified row instead, both of which stay true after that window closes.
+    expect(thread, 'the thread must render for these absences to mean anything').toContain(
+      'v4-thread-time',
+    );
+    expect(thread).not.toMatch(/\b20\d\d\b/);
+    expect(thread).not.toMatch(
+      /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/,
+    );
+  });
+
+  it('never claims Hale registers the child itself — the parent taps the link', () => {
+    for (const overclaim of [
+      'I register',
+      'I’ll register',
+      'I sign you up',
+      'books your spot',
+      'guaranteed',
+    ]) {
+      expect(text, `${overclaim} must not appear`).not.toContain(overclaim);
+    }
+    // Positive control: the page DOES describe the registration morning, so the
+    // absences above are claims withheld rather than a missing section.
+    expect(text).toContain('I run the morning with you');
+  });
+});
+
+describe('landing — without me / with me, in the section that already holds the facts', () => {
+  const html = render();
+  const text = visibleText(html);
+
+  it('renders the contrast as two stacked cells, not a phone snap rail', () => {
+    // A before/after that rails on a phone shows only the "before" until you swipe,
+    // which is the one layout that destroys a contrast. .v4-contrast stacks.
+    expect([...html.matchAll(/class="v4-contrast[^"]*"/g)]).toHaveLength(1);
+    expect(html).not.toMatch(/class="v4-contrast[^"]*v4-cardgrid/);
+    expect(text).toContain('Without me');
+    expect(text).toContain('With me');
+  });
+
+  it('keeps all four sourced facts on the without-me side, and adds no fifth', () => {
+    expect(text).toContain('open at 7:00 a.m.');
+    expect(text).toContain('gone by 7:02');
+    expect(text).toContain('$54');
+    expect(text).toContain('twelve times');
+    expect(text).toContain('head start of four days to two weeks');
+    const withoutMe = text.split('Without me')[1]?.split('With me')[0] ?? '';
+    expect(withoutMe, 'the without-me cell must render').toContain('gone by 7:02');
+    for (const invented of ['%', 'out of 10', 'on average']) {
+      expect(withoutMe, `${invented} must not appear`).not.toContain(invented);
+    }
+  });
+
+  it('does not restate the ladder a third time on the with-me side', () => {
+    // The thread SHOWS the ladder and step three SUMMARISES it. A third telling
+    // here is the bloat the sparse landing exists to prevent.
+    const withMe = text.split('With me')[1]?.slice(0, 240) ?? '';
+    expect(withMe, 'the with-me cell must render').toContain('reply YES once');
+    expect(withMe).not.toContain('evening before');
+    expect(withMe).not.toContain('week out');
+  });
+});
+
+describe('landing — the first-week contract, folded into How Hale works', () => {
+  const html = render();
+  const text = visibleText(html);
+
+  it('marks when each of the three steps actually happens', () => {
+    expect([...html.matchAll(/class="v4-when"/g)]).toHaveLength(3);
+    expect(text).toContain('Right now');
+    expect(text).toContain('In the same thread');
+    expect(text).toContain('Then every week');
+  });
+
+  it('never promises a Sunday plan — the weekly brief defaults to Monday morning', () => {
+    // packages/db: users.weekStartDay defaults to 1 and loop_prefs
+    // .weekly_plan_send_time to 08:00, and apps/web/lib/loop/send.ts sends on
+    // weeklyPlanWeekday(weekStartDay) — Monday 08:00 local, not Sunday.
+    expect(text).not.toContain('Sunday');
+    expect(text).not.toContain('Sunday plan');
+    // Positive control: the page DOES name the brief's day, so the absence above
+    // is the wrong day withheld rather than the cadence going unmentioned.
+    expect(text).toContain('A brief on Monday');
+  });
+
+  it('claims no signup duration nobody measured', () => {
+    for (const invented of ['2 minutes', 'two minutes', '90 seconds', 'in under a minute']) {
+      expect(text, `${invented} must not appear`).not.toContain(invented);
+    }
+    // What IS countable: hi, the details, the yes.
+    expect(text).toContain('Three texts');
+  });
+});

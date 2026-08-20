@@ -1892,9 +1892,25 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     padding: 1.75rem;
   }
   .v4-card-n {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
     font-family: var(--font-serif-display), Georgia, serif;
     font-size: 2.4rem;
     line-height: 1;
+    color: var(--color-amber);
+  }
+  /* The step's WHEN, riding the empty half of the numeral's line so the
+   * first-week contract costs the card no extra height. */
+  .v4-when {
+    margin-left: auto;
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    line-height: 1;
+    text-align: right;
+    text-transform: uppercase;
     color: var(--color-amber);
   }
   .v4-card h3 { margin-top: 0.9rem; font-size: 1.15rem; line-height: 1.25; }
@@ -1978,6 +1994,26 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-cardgrid-2 { display: grid; gap: 1.25rem; grid-template-columns: 1fr; }
   @media (min-width: 1024px) { .v4-cardgrid-2 { grid-template-columns: repeat(2, 1fr); } }
 
+  /* Without me / with me. Two halves of ONE glass panel rather than two cards,
+   * and deliberately not a .v4-cardgrid-* variant — those all become horizontal
+   * snap rails under 640px, and a contrast whose second half is off screen until
+   * you swipe has stopped being a contrast. One panel also costs a phone a third
+   * of the height two stacked cards do (measured: 392px -> ~200px), which is what
+   * lets the band sit under a thread that already grew. */
+  .v4-contrast { display: grid; gap: 1.1rem; grid-template-columns: 1fr; }
+  .v4-contrast h3 { font-size: 1.1rem; line-height: 1.25; }
+  .v4-contrast p { margin-top: 0.5rem; color: var(--color-slate-green); line-height: 1.6; }
+  .v4-contrast > * + * { padding-top: 1.1rem; border-top: 1px solid var(--color-hair); }
+  @media (min-width: 640px) {
+    .v4-contrast { gap: 2rem; grid-template-columns: 1fr 1fr; }
+    .v4-contrast > * + * {
+      padding-top: 0;
+      padding-left: 2rem;
+      border-top: none;
+      border-left: 1px solid var(--color-hair);
+    }
+  }
+
   /* A rail only takes focus while it actually scrolls (ScrollRail attaches the
    * tabindex from a measurement, never a breakpoint), so this ring needs no media
    * query — nothing else here is focusable. Inset, unlike the site's other 2px
@@ -2019,6 +2055,21 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     border-radius: 1.25rem;
     font-size: 0.95rem;
     line-height: 1.5;
+    /* The go leg's message is mostly a municipal URL. Without this, one
+     * unbreakable token pushes the bubble past the thread and the page scrolls
+     * sideways on a phone. */
+    overflow-wrap: anywhere;
+  }
+  /* The gap between two legs of the registration sequence — a thread's own date
+   * separator, not a message, so it takes neither bubble's side. */
+  .v4-thread-time {
+    align-self: center;
+    margin-top: 0.45rem;
+    text-align: center;
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-slate-green);
   }
   .v4-bubble-out {
     align-self: flex-end;
@@ -2078,7 +2129,19 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-card h3 { margin-top: 0.55rem; font-size: 1.08rem; }
     .v4-card p { margin-top: 0.45rem; font-size: 0.95rem; line-height: 1.55; }
 
+    /* The thread grew from five bubbles to a whole registration, so it pays for
+     * the height it added the same way #486 paid for the rest of the page:
+     * tighter interior rhythm under the phone breakpoint only. */
+    .v4-thread { padding: 1.05rem 0.9rem; gap: 0.55rem; }
+    .v4-bubble { padding: 0.6rem 0.85rem; font-size: 0.9rem; line-height: 1.45; }
+    .v4-thread-time { margin-top: 0.3rem; font-size: 0.66rem; }
+    .v4-when { font-size: 0.66rem; letter-spacing: 0.1em; }
+
     .v4-panel { padding: 1.4rem 1.25rem; }
+    .v4-contrast { gap: 0.9rem; }
+    .v4-contrast h3 { font-size: 1.05rem; }
+    .v4-contrast p { margin-top: 0.4rem; font-size: 0.95rem; line-height: 1.55; }
+    .v4-contrast > * + * { padding-top: 0.9rem; }
     .v4-lede { margin-top: 0.9rem; }
     .v4-pills { gap: 0.4rem; }
     .v4-pill { padding: 0.34rem 0.72rem; font-size: 0.8rem; }

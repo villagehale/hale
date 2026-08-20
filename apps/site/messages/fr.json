@@ -73,24 +73,48 @@
     "threadCap": "Votre fil avec Hale",
     "threadBubbles": [
       {
-        "dir": "out",
-        "text": "Quand ouvrent les inscriptions à la natation à Oakville?"
+        "dir": "time",
+        "text": "Une semaine avant · mar. 10 h 04"
       },
       {
         "dir": "in",
-        "text": "Je surveille les inscriptions à la natation d’Oakville pour vous. Je vous texte le matin où la date est fixée, je vous rappelle la veille au soir, et je vous relance à la minute où ça ouvre."
+        "text": "Les inscriptions aux programmes de loisirs d’automne de Halton Hills ouvrent mardi à 7 h pour Mia. Votre code postal vous donne la date réservée aux résidents. Répondez OUI et je fais la matinée avec vous."
       },
       {
         "dir": "out",
-        "text": "mon p’tit de 2 ans se réveille à 5 h chaque matin 😩"
+        "text": "OUI"
+      },
+      {
+        "dir": "time",
+        "text": "La veille au soir · lun. 19 h 04"
       },
       {
         "dir": "in",
-        "text": "Fréquent à cet âge — souvent un coucher trop tôt ou trop de sommeil pendant la journée. Vous voulez le plan complet? C’est trois textos, et je prends de vos nouvelles dans quelques jours."
+        "text": "Demain : les programmes de loisirs d’automne de Halton Hills ouvrent à 7 h pour Mia. Connectez-vous ce soir et gardez ceci ouvert : haltonhills.ca/Play/Recreation/Programs"
+      },
+      {
+        "dir": "time",
+        "text": "Quinze minutes avant · mar. 6 h 45"
+      },
+      {
+        "dir": "in",
+        "text": "Les programmes de loisirs d’automne de Halton Hills ouvrent à 7 h. Votre lien : haltonhills.ca/Play/Recreation/Programs"
+      },
+      {
+        "dir": "time",
+        "text": "Quatre heures plus tard · mar. 11 h 02"
+      },
+      {
+        "dir": "in",
+        "text": "Comment ça s’est passé pour les programmes de loisirs d’automne de Halton Hills? Répondez « inscrit », « liste d’attente #12 » ou « manqué »."
       },
       {
         "dir": "out",
-        "text": "oui, s’il te plaît"
+        "text": "inscrit 🙌"
+      },
+      {
+        "dir": "in",
+        "text": "C’est une place. Noté : programmes de loisirs d’automne de Halton Hills, inscrit."
       }
     ],
     "howEyebrow": "Comment Hale fonctionne",
@@ -98,14 +122,17 @@
     "howH2Accent": "le silence.",
     "steps": [
       {
+        "when": "Tout de suite",
         "step": "Vous dites bonjour",
         "body": "Un texto. Pas d’appli, pas de compte, pas de formulaire."
       },
       {
+        "when": "Dans le même fil",
         "step": "Je vous texte votre semaine",
         "body": "Des noms, des âges, un code postal — et je vous réponds avec toutes les dates d’inscription que je surveille désormais pour vous."
       },
       {
+        "when": "Chaque semaine",
         "step": "Je monte la garde",
         "body": "Un topo le lundi, le plan la veille au soir, une relance dès l’ouverture."
       }
@@ -115,7 +142,17 @@
     "watchEyebrow": "Ce que je surveille",
     "watchH2Count": "{count} municipalités,",
     "watchH2Accent": "nommément.",
-    "watchLede": "Les places ouvrent à 7 h, et les bonnes sont parties à 7 h 02. Ratez la session municipale à 54 $ et le privé coûte environ douze fois plus — et certaines villes donnent aux résidents une longueur d’avance de quatre jours à deux semaines. Je surveille les quinze calendriers pour que personne n’ait à le faire.",
+    "watchLede": "Je surveille les quinze calendriers pour que personne n’ait à le faire.",
+    "contrast": [
+      {
+        "title": "Sans moi",
+        "body": "Vous réglez une alarme à 6 h 55 et vous ouvrez les onglets. Les places ouvrent à 7 h, et les bonnes sont parties à 7 h 02. Ratez la session municipale à 54 $ et le privé coûte environ douze fois plus — et certaines villes donnent aux résidents une longueur d’avance de quatre jours à deux semaines."
+      },
+      {
+        "title": "Avec moi",
+        "body": "Vous répondez OUI une fois. Je fais la matinée avec vous, et votre lien est dans votre main avant l’ouverture."
+      }
+    ],
     "watched": [
       {
         "title": "Cours de natation",

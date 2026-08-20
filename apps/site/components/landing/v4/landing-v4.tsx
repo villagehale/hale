@@ -56,6 +56,16 @@ interface Step {
   step: string;
   body: string;
 }
+/** A step that also says WHEN it happens — the how-it-works trio only. */
+interface TimedStep extends Step {
+  when: string;
+}
+/** A thread row: a message from either side, or the timestamp that separates two
+ * legs of the registration sequence. */
+interface ThreadRow {
+  dir: 'in' | 'out' | 'time';
+  text: string;
+}
 
 export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: string }) {
   const t = getTranslator(locale, 'Landing');
@@ -70,8 +80,9 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
     { label: header('navAbout'), href: localeHref(locale, '/about') },
   ];
   const chips = t.raw('chips') as string[];
-  const bubbles = t.raw('threadBubbles') as { dir: 'in' | 'out'; text: string }[];
-  const steps = t.raw('steps') as Step[];
+  const bubbles = t.raw('threadBubbles') as ThreadRow[];
+  const steps = t.raw('steps') as TimedStep[];
+  const contrast = t.raw('contrast') as Card[];
   const watched = t.raw('watched') as Card[];
   const coaching = t.raw('coaching') as Step[];
   const caregivers = t.raw('caregivers') as Card[];
@@ -176,7 +187,24 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         </div>
       </section>
 
-      {/* ── What texting Hale is like — the thread, made concrete ─────────── */}
+      {/*
+        ── The thread — ONE registration, start to finish ───────────────────
+        Not a montage of what Hale can do: the single conversation the flagship
+        job produces, from the warning a week out to the receipt. The bubbles are
+        the sentences apps/web/lib/registration/sequence/copy.ts actually renders
+        for the verified Halton Hills row, and the timestamps between them are
+        that sequence's own intervals (schedule.ts: HEADS_UP_LEAD_DAYS,
+        BATTLE_PLAN_MINUTE_LOCAL, GO_LEAD_MINUTES, CHECK_IN_LEAD_HOURS).
+
+        Two deliberate departures from the live renderer, both so a page that
+        outlives one registration cycle stays true: the demo prints the row's
+        published WEEKDAY where the real heads-up prints "Sep 1, 7:00 a.m.", and
+        a bare season where it prints the "Fall 2026" cycle label.
+
+        The coaching exchange that used to share this slot moved out rather than
+        being kept alongside — breadth is already claimed twice above it (the
+        hero sub and the four chips), so the product shot can afford depth.
+      */}
       <section className="shell pt-12 sm:pt-20 lg:pt-28">
         <p className="v4-eyebrow text-center">{t('threadEyebrow')}</p>
         <h2 className="v4-display mx-auto mt-4 max-w-[18ch] text-center text-[clamp(1.9rem,4.4vw,3rem)] text-ink">
@@ -186,12 +214,12 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
 
         <div className="v4-thread v4-glass mt-6 sm:mt-10">
           <p className="v4-thread-cap">{t('threadCap')}</p>
-          {bubbles.map((bubble, i) => (
+          {bubbles.map((row, i) => (
             <p
-              key={`${i}-${bubble.dir}`}
-              className={`v4-bubble v4-bubble-${bubble.dir}`}
+              key={`${i}-${row.dir}`}
+              className={row.dir === 'time' ? 'v4-thread-time' : `v4-bubble v4-bubble-${row.dir}`}
             >
-              {bubble.text}
+              {row.text}
             </p>
           ))}
         </div>
@@ -206,7 +234,16 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         <ScrollRail className="v4-cardgrid mt-7 sm:mt-12" label={t('howRail')}>
           {steps.map((s, i) => (
             <article key={s.step} className="v4-card v4-glass">
-              <p className="v4-card-n">0{i + 1}</p>
+              {/* The numeral already carries the order, so the empty half of its
+               * line carries the first-week contract instead: when each step
+               * actually happens. Step three is "then every week" rather than a
+               * named day — the body names Monday, and the brief's default really
+               * is Monday 08:00 local (users.weekStartDay 1 + loop_prefs
+               * weekly_plan_send_time 08:00, read by apps/web/lib/loop/send.ts). */}
+              <p className="v4-card-n">
+                0{i + 1}
+                <span className="v4-when">{s.when}</span>
+              </p>
               <h3 className="text-spruce">{s.step}</h3>
               <p>{s.body}</p>
             </article>
@@ -227,6 +264,20 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           <span className="v4-italic text-amber">{t('watchH2Accent')}</span>
         </h2>
         <p className="v4-lede">{t('watchLede')}</p>
+        {/* The four sourced facts used to run together in that lede as one
+         * 55-word sentence. They are the same four, word for word — only now
+         * they sit on the side of a contrast, which is the shape an argument
+         * about a 7:02 sell-out wants. The with-me cell deliberately does NOT
+         * restate the ladder: the thread above shows it and step three sums it
+         * up, and a third telling is what makes a landing page long. */}
+        <div className="v4-contrast v4-panel v4-glass mt-5 sm:mt-8">
+          {contrast.map((cell) => (
+            <div key={cell.title}>
+              <h3 className="text-spruce">{cell.title}</h3>
+              <p>{cell.body}</p>
+            </div>
+          ))}
+        </div>
         <ul className="v4-pills mt-5 sm:mt-8">
           {MUNICIPALITIES.map((city) => (
             <li key={city} className="v4-pill v4-glass">
