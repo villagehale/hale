@@ -106,3 +106,56 @@ export const VOICE_TURN_FAILED =
  */
 export const VOICE_CALL_WRAP_UP =
   "I need to let you go - we've been on a while. Text me anything else and I'll pick it up there. Bye for now.";
+
+/**
+ * Voice v2 — the line that fills the pause while a tool runs.
+ *
+ * A tool turn costs a couple of seconds, and on a phone a couple of seconds of nothing is
+ * not "thinking", it is a dropped call. The skill asks the model to say something itself
+ * before it reaches for a tool, which is the version that sounds like a person; this is
+ * the GUARANTEE underneath that request — spoken only when the model reached for a tool
+ * having said nothing at all, so the caller never hears the line twice and never hears
+ * silence (voice-turn.ts).
+ *
+ * Deliberately not "one moment please": a receptionist's phrase, and the one register the
+ * skill spends a section telling the model to avoid.
+ */
+export const VOICE_TOOL_ACK = 'Let me check.';
+
+/**
+ * The two approval receipts a CALL cannot borrow from the texting router.
+ *
+ * `nothingPendingReply` and `nothingToUndoReply` both end in an app URL, which is the
+ * right answer in a message a parent can tap and an unusable one read out loud — a
+ * spoken URL is thirty syllables of punctuation nobody can write down while driving.
+ * Everything else the approvals grammar says (approved, dropped, which one, already
+ * handled) is one plain sentence and is spoken exactly as texted, so these are the only
+ * two lines here rather than a second voice-shaped copy of the whole receipt set.
+ *
+ * They say the same FACT as their texted twins and stop where the link would start.
+ */
+export const VOICE_NOTHING_PENDING = "Nothing's waiting on your approval right now.";
+export const VOICE_NOTHING_TO_UNDO = "There's nothing from the last day I can take back.";
+
+/**
+ * A handler settled the caller's answer and answered on ANOTHER channel (the plan lane
+ * sends its texts and hands the router no body). Unreachable while a call can only settle
+ * approvals, and named rather than left as silence (rule #11): the parent said yes to
+ * something, something happened, and the line they hear has to be true of a turn whose
+ * words went somewhere else.
+ */
+export const VOICE_ANSWERED_BY_TEXT = "I've got that one - it's coming to you by text.";
+
+/**
+ * The turn broke AFTER it had already drafted changes (the VIL-260 shape, out loud).
+ *
+ * {@link VOICE_TURN_FAILED} says "I lost that one", and on a turn that minted rows that
+ * is false twice over: something did happen, and the parent who is never told about it
+ * cannot answer it — so the next unrelated yes is what finds it. This says the count and
+ * never what the drafts are (the type alone can name a teenager's action, rule #1), and
+ * it names the answer a caller can give with their voice.
+ */
+export function voiceDraftedButFailed(draftCount: number): string {
+  const noun = draftCount === 1 ? 'one change' : `${draftCount} changes`;
+  return `I couldn't finish that, but I've got ${noun} waiting on your OK. Say yes and I'll put that through.`;
+}
