@@ -8,6 +8,7 @@ import { SiteHeader } from '~/components/site-header';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { MUNICIPALITIES } from '~/lib/site/municipalities';
 import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref, buildSmsHrefForBody } from '~/lib/text-entry';
 import { ScrollRail } from './scroll-rail';
@@ -28,26 +29,6 @@ import { ScrollRail } from './scroll-rail';
  * All copy is keyed by locale (`Landing` namespace); the 15 municipalities are
  * proper nouns and stay as data.
  */
-
-/** The 15 municipalities the radar tracks by name — every one backed by verified
- * registration_windows rows in prod. Kept in sync with the v3 landing. */
-const MUNICIPALITIES = [
-  'Toronto',
-  'Mississauga',
-  'Brampton',
-  'Markham',
-  'Vaughan',
-  'Richmond Hill',
-  'Oakville',
-  'Burlington',
-  'Halton Hills',
-  'Caledon',
-  'Ajax',
-  'Pickering',
-  'Whitby',
-  'Oshawa',
-  'Aurora',
-] as const;
 
 interface Card {
   title: string;
@@ -229,7 +210,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           {t('watchH2Count', { count: MUNICIPALITIES.length })}{' '}
           <span className="v4-accent">{t('watchH2Accent')}</span>
         </h2>
-        <p className="v4-lede">{t('watchLede')}</p>
+        <p className="v4-lede">{t('watchLede', { count: MUNICIPALITIES.length })}</p>
         {/* The four sourced facts used to run together in that lede as one
          * 55-word sentence. They are the same four, word for word — only now
          * they sit on the side of a contrast, which is the shape an argument
