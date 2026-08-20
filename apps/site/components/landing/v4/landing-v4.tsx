@@ -4,9 +4,11 @@ import { CopyNumberButton } from '~/components/copy-number';
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
 import { SiteFooter } from '~/components/site-footer';
+import { SiteHeader } from '~/components/site-header';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { MUNICIPALITIES } from '~/lib/site/municipalities';
 import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref, buildSmsHrefForBody } from '~/lib/text-entry';
 import { ScrollRail } from './scroll-rail';
@@ -27,26 +29,6 @@ import { ScrollRail } from './scroll-rail';
  * All copy is keyed by locale (`Landing` namespace); the 15 municipalities are
  * proper nouns and stay as data.
  */
-
-/** The 15 municipalities the radar tracks by name — every one backed by verified
- * registration_windows rows in prod. Kept in sync with the v3 landing. */
-const MUNICIPALITIES = [
-  'Toronto',
-  'Mississauga',
-  'Brampton',
-  'Markham',
-  'Vaughan',
-  'Richmond Hill',
-  'Oakville',
-  'Burlington',
-  'Halton Hills',
-  'Caledon',
-  'Ajax',
-  'Pickering',
-  'Whitby',
-  'Oshawa',
-  'Aurora',
-] as const;
 
 interface Card {
   title: string;
@@ -70,15 +52,9 @@ interface ThreadRow {
 export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: string }) {
   const t = getTranslator(locale, 'Landing');
   const common = getTranslator(locale, 'Common');
-  const header = getTranslator(locale, 'Header');
   const copy = getTranslator(locale, 'CopyNumber');
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
 
-  const nav = [
-    { label: header('navPricing'), href: localeHref(locale, '/pricing') },
-    { label: header('navFaq'), href: localeHref(locale, '/faq') },
-    { label: header('navAbout'), href: localeHref(locale, '/about') },
-  ];
   const chips = t.raw('chips') as string[];
   const bubbles = t.raw('threadBubbles') as ThreadRow[];
   const steps = t.raw('steps') as TimedStep[];
@@ -94,8 +70,15 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd(locale)) }}
       />
+      {/* The landing wears the SHARED sticky bar, byte-identical to every subpage
+          (site-chrome.test.ts pins it) rather than a second copy of the same pill
+          inline in the hero. It keeps the over-hero look because the hero below
+          runs UNDER it: .v4-hero-top pulls the section up by the bar's height and
+          pads it back, so the shore still fills the viewport from y=0. */}
+      <SiteHeader locale={locale} />
+
       {/* ── Hero — the shore behind glass ─────────────────────────────────── */}
-      <section className="v4-hero">
+      <section className="v4-hero v4-hero-top">
         <Image
           src={heroShore}
           alt=""
@@ -107,48 +90,12 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         />
         <span className="v4-hero-scrim" aria-hidden="true" />
 
-        <header>
-          <nav className="v4-nav v4-glass" aria-label="Primary">
-            <a
-              href={localeHref(locale, '/')}
-              className="flex items-center gap-2.5"
-              aria-label="Hale, home"
-            >
-              <LogoMark size={28} />
-              <span
-                className="font-serif text-[1.2rem] font-semibold leading-none text-navy"
-                translate="no"
-              >
-                Hale
-              </span>
-            </a>
-            <div className="flex items-center gap-6">
-              <div className="v4-navlinks">
-                {nav.map((item) => (
-                  <a key={item.label} href={item.href} className="v4-navlink">
-                    {item.label}
-                  </a>
-                ))}
-              </div>
-              {smsHref ? (
-                <LandingCta event="landing_cta_text" href={smsHref} className="v4-btn-solid">
-                  {common('textHale')}
-                </LandingCta>
-              ) : (
-                <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid">
-                  {common('emailHale')}
-                </a>
-              )}
-            </div>
-          </nav>
-        </header>
-
         <div className="v4-hero-body">
           <p className="v4-eyebrow">{t('eyebrow')}</p>
           <h1 className="v4-display v4-hero-h1 text-balance">
             {t('heroH1a')}
             <br />
-            {t('heroH1b')} <span className="v4-italic">{t('heroH1Accent')}</span>
+            {t('heroH1b')} <span className="v4-accent">{t('heroH1Accent')}</span>
           </h1>
           <p className="v4-hero-sub">{t('heroSub', { count: MUNICIPALITIES.length })}</p>
 
@@ -208,7 +155,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell pt-12 sm:pt-20 lg:pt-28">
         <p className="v4-eyebrow text-center">{t('threadEyebrow')}</p>
         <h2 className="v4-display mx-auto mt-4 max-w-[18ch] text-center text-[clamp(1.9rem,4.4vw,3rem)] text-ink">
-          {t('threadH2a')} <span className="v4-italic text-amber">{t('threadH2Accent')}</span>
+          {t('threadH2a')} <span className="v4-accent">{t('threadH2Accent')}</span>
         </h2>
         <p className="v4-lede mx-auto text-center">{t('threadLede')}</p>
 
@@ -229,7 +176,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow text-center">{t('howEyebrow')}</p>
         <h2 className="v4-display mx-auto mt-4 max-w-[16ch] text-center text-[clamp(2rem,5vw,3.4rem)] text-ink">
-          {t('howH2a')} <span className="v4-italic text-amber">{t('howH2Accent')}</span>
+          {t('howH2a')} <span className="v4-accent">{t('howH2Accent')}</span>
         </h2>
         <ScrollRail className="v4-cardgrid mt-7 sm:mt-12" label={t('howRail')}>
           {steps.map((s, i) => (
@@ -261,9 +208,9 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         <p className="v4-eyebrow">{t('watchEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
           {t('watchH2Count', { count: MUNICIPALITIES.length })}{' '}
-          <span className="v4-italic text-amber">{t('watchH2Accent')}</span>
+          <span className="v4-accent">{t('watchH2Accent')}</span>
         </h2>
-        <p className="v4-lede">{t('watchLede')}</p>
+        <p className="v4-lede">{t('watchLede', { count: MUNICIPALITIES.length })}</p>
         {/* The four sourced facts used to run together in that lede as one
          * 55-word sentence. They are the same four, word for word — only now
          * they sit on the side of a contrast, which is the shape an argument
@@ -299,7 +246,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('coachingEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          {t('coachingH2a')} <span className="v4-italic text-amber">{t('coachingH2Accent')}</span>
+          {t('coachingH2a')} <span className="v4-accent">{t('coachingH2Accent')}</span>
         </h2>
         <p className="v4-lede">{t('coachingLede')}</p>
         <ScrollRail as="ol" className="v4-cardgrid mt-7 sm:mt-12" label={t('coachingRail')}>
@@ -322,7 +269,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('helpersEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          {t('helpersH2a')} <span className="v4-italic text-amber">{t('helpersH2Accent')}</span>
+          {t('helpersH2a')} <span className="v4-accent">{t('helpersH2Accent')}</span>
         </h2>
         <ScrollRail className="v4-cardgrid-2 mt-6 sm:mt-10" label={t('helpersRail')}>
           {caregivers.map((item) => (
@@ -338,7 +285,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('privacyEyebrow')}</p>
         <h2 className="v4-display v4-h2 mt-4">
-          {t('privacyH2a')} <span className="v4-italic text-amber">{t('privacyH2Accent')}</span>
+          {t('privacyH2a')} <span className="v4-accent">{t('privacyH2Accent')}</span>
         </h2>
         <div className="v4-lede">
           <p>{t('privacyBody1')}</p>
@@ -378,7 +325,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               </span>
             </span>
             <h2 className="v4-display mt-4 text-[clamp(1.9rem,4vw,2.8rem)] text-ink">
-              {t('closingH2a')} <span className="v4-italic text-amber">{t('closingH2Accent')}</span>
+              {t('closingH2a')} <span className="v4-accent">{t('closingH2Accent')}</span>
             </h2>
             <p className="v4-hero-sub">{t('closingSub')}</p>
             {smsHref ? (

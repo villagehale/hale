@@ -1,13 +1,22 @@
 import type { Metadata } from 'next';
 import { LegalLayout, type LegalSection, LegalSectionBlock } from '~/components/legal-layout';
 import { buildAlternates } from '~/i18n/metadata';
+import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 
 /**
  * villagehale.com/terms — the canonical home for the Terms of Service
- * (VIL-250 · M14 · B-legal). The copy below is migrated verbatim from the app's
- * /terms page: a legal-copy change is its own change, never bundled with a
- * design move.
+ * (VIL-250 · M14 · B-legal). A legal-copy change is its own change, never bundled
+ * with a design move.
+ *
+ * 2026-08-19: the terms were written before the messaging-first pivot and before
+ * dual auth, and had drifted from the product — they said sign-in was Google-only,
+ * described a "passive, event-driven assistant", and never mentioned the text
+ * channel that is now the whole product. This revision is FACTUAL ONLY: it states
+ * how a family actually reaches Hale, how sign-in actually works, and adds the
+ * text-message terms (consent, STOP/HELP, carrier rates) that until now existed
+ * only in the privacy policy. No rights, warranties, liability, or governing-law
+ * terms were changed. Counsel should read the diff.
  *
  * app.villagehale.com/terms is now a permanent 308 here (VIL-256) — kept forever,
  * because the mobile app, sent emails and stored consent records all name the old
@@ -36,6 +45,7 @@ export async function generateMetadata({
 const SECTIONS: LegalSection[] = [
   { id: 'what-hale-is', title: 'What Hale is' },
   { id: 'eligibility', title: 'Who can use Hale' },
+  { id: 'text-messages', title: 'Text messages, STOP, and carrier rates' },
   { id: 'accounts', title: 'Your account and security' },
   { id: 'acceptable-use', title: 'Acceptable use' },
   { id: 'approval-model', title: 'How Hale works: you decide' },
@@ -54,14 +64,14 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
     <LegalLayout
       locale={locale}
       title="Terms of Service"
-      lastUpdatedIso="2026-06-25"
+      lastUpdatedIso="2026-08-19"
       intro={
         <p>
           These terms are an agreement between you and Village Hale Technologies Inc.
           (&ldquo;Hale,&rdquo; &ldquo;we,&rdquo; or &ldquo;us&rdquo;), a company incorporated in
-          Ontario, Canada. By creating an account or using Hale, you agree to them. Please read them
-          alongside our{' '}
-          <a href="/privacy" className="link">
+          Ontario, Canada. By texting Hale, creating an account, or otherwise using Hale, you agree
+          to them. Please read them alongside our{' '}
+          <a href={localeHref(locale, '/privacy')} className="link">
             Privacy Policy
           </a>
           , which explains how we handle your family&rsquo;s data.
@@ -73,10 +83,15 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
     >
       <LegalSectionBlock id="what-hale-is" title="What Hale is">
         <p>
-          Hale is a passive, event-driven assistant for families across every stage of childhood. It
-          watches for things that matter in your family&rsquo;s day, drafts helpful suggestions,
-          finds genuinely useful local things to do, and — with your approval — helps carry them out.
-          Hale is a tool to support you as a parent; it does not replace your judgment.
+          Hale is an AI assistant for families across every stage of childhood, and you reach it by
+          text message: it is a phone number your family texts, not an app you install. Email and
+          the web app are available too, and carry the same record.
+        </p>
+        <p>
+          Hale watches for things that matter in your family&rsquo;s day — including municipal
+          registration dates and programs where you live — answers parenting questions, drafts
+          helpful suggestions, and, with your approval, helps carry them out. Hale is a tool to
+          support you as a parent; it does not replace your judgment.
         </p>
       </LegalSectionBlock>
 
@@ -89,12 +104,33 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
         </p>
       </LegalSectionBlock>
 
+      <LegalSectionBlock id="text-messages" title="Text messages, STOP, and carrier rates">
+        <p>
+          Hale texts the number the conversation started from. We never text a number that has not
+          texted us first, and your consent is recorded in the words you used to give it. How often
+          Hale texts depends on what your family has asked it to watch — typically a brief at the
+          start of the week and a message when something needs you.
+        </p>
+        <p>
+          <strong>Reply STOP to any message and the messages stop</strong>, immediately, until you
+          ask us to start again; reply HELP for help. Standard message and data rates from your
+          mobile carrier apply, and message delivery depends on your carrier, which we do not
+          control. Text messages are not end-to-end encrypted — see{' '}
+          <a href={localeHref(locale, '/privacy')} className="link">
+            our Privacy Policy
+          </a>{' '}
+          for what that means and for the limits we apply to what we put in a text.
+        </p>
+      </LegalSectionBlock>
+
       <LegalSectionBlock id="accounts" title="Your account and security">
         <p>
-          You sign in through Google. You are responsible for keeping access to your account secure
-          and for the activity that happens under it. Tell us promptly if you believe your account
-          has been accessed without your permission. Keep your information accurate so Hale can serve
-          your family well.
+          Most families use Hale entirely by text and never create an account. If you do sign in to
+          the web app, you can use a Google account or an email address and password. You are
+          responsible for keeping access to your account and to the phone number you text from
+          secure, and for the activity that happens under them. Tell us promptly if you believe
+          either has been used without your permission. Keep your information accurate so Hale can
+          serve your family well.
         </p>
       </LegalSectionBlock>
 
@@ -160,10 +196,11 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
 
       <LegalSectionBlock id="termination" title="Suspension and termination">
         <p>
-          You may stop using Hale and delete your account at any time. We may suspend or terminate
-          access if you breach these terms, to protect the safety of a child or another user, or as
-          required by law. When your account ends, we handle your data as described in our{' '}
-          <a href="/privacy" className="link">
+          You may stop using Hale at any time — reply STOP to end the text conversation, and delete
+          your account if you have one. We may suspend or terminate access if you breach these
+          terms, to protect the safety of a child or another user, or as required by law. When your
+          use of Hale ends, we handle your data as described in our{' '}
+          <a href={localeHref(locale, '/privacy')} className="link">
             Privacy Policy
           </a>
           .

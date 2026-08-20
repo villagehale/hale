@@ -78,7 +78,7 @@ export function FamilyPlanView({
                     {formatPlanPrice(tier, period)}
                   </span>
                   {!isFree && period === 'annual' ? (
-                    <span className="meta block">about two months free</span>
+                    <span className="meta block">about three months free</span>
                   ) : null}
                 </div>
               </div>

@@ -21,13 +21,21 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-// The two inbox addresses are structural, not copy — one general, one for privacy.
-const CHANNEL_EMAILS = ['aloha@villagehale.com', 'privacy@villagehale.com'] as const;
+/**
+ * The two inbox addresses are structural, not copy — one general, one for privacy
+ * — and each is keyed to the copy it belongs with. They used to zip positionally
+ * against `t.raw('channels')`, so a locale that reordered or added a channel
+ * silently labelled a privacy-request card with the general inbox.
+ */
+const CHANNELS = [
+  { id: 'general', email: 'aloha@villagehale.com' },
+  { id: 'privacy', email: 'privacy@villagehale.com' },
+] as const;
 
 export default async function ContactPage({ params }: PageProps) {
   const { locale } = await params;
   const t = getTranslator(locale, 'Contact');
-  const channels = t.raw('channels') as { eyebrow: string; line: string }[];
+  const channelCopy = t.raw('channels') as Record<string, { eyebrow: string; line: string }>;
 
   return (
     <main id="main" tabIndex={-1} className="relative">
@@ -52,12 +60,13 @@ export default async function ContactPage({ params }: PageProps) {
       <div className="band-cream grain">
         <section className="shell py-16 lg:py-24">
           <div className="mx-auto grid max-w-3xl grid-cols-1 gap-6 md:grid-cols-2 lg:gap-8">
-            {channels.map((channel, i) => {
-              const email = CHANNEL_EMAILS[i] ?? CHANNEL_EMAILS[0];
+            {CHANNELS.map(({ id, email }) => {
+              const copy = channelCopy[id];
+              if (!copy) throw new Error(`Contact.channels is missing "${id}" in ${locale}`);
               return (
                 <div key={email} className="glass-panel flex flex-col gap-4 p-6 sm:p-7">
-                  <span className="eyebrow">{channel.eyebrow}</span>
-                  <p style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>{channel.line}</p>
+                  <span className="eyebrow">{copy.eyebrow}</span>
+                  <p style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>{copy.line}</p>
                   <a href={`mailto:${email}`} className="link mt-auto self-start">
                     {email}
                   </a>

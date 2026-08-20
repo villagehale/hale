@@ -1,6 +1,7 @@
 import { languageTag } from '~/i18n/metadata';
 import { type Locale, routing } from '~/i18n/routing';
 import { SITE_URL } from '~/lib/app-url';
+import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 
 /**
  * The product FAQ — the questions a parent actually asks an answer engine before
@@ -11,6 +12,11 @@ import { SITE_URL } from '~/lib/app-url';
  * sequence's legs, the coach-plan skill, and provision.ts's account shape — no
  * marketing that outruns what the product does. Pure data so the FAQPage schema is
  * derived, not hand-maintained twice.
+ *
+ * Order is risk → time → money: what Hale is, how to start, then the two questions
+ * a parent handing over children's data is actually weighing (does it act on its
+ * own, where does the data live) before mechanics and cost. The accordion opens
+ * item one, so what sits in the top four is what a skimming reader sees at all.
  */
 export interface FaqItem {
   question: string;
@@ -26,27 +32,31 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'How do I start?',
     answer:
-      'You text the number and say hi. Hale asks for your kids’ names and ages and your postal code, and that is the whole setup — everything else it asks for later, only when it needs it. Hale never texts you first; the conversation is always one you started.',
-  },
-  {
-    question: 'Is this a bot? Who actually reads my texts?',
-    answer:
-      'Hale is an AI assistant, and it never pretends otherwise. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts you first, never asks you to text back a password, a card number or a code, and STOP ends the conversation at any time.',
-  },
-  {
-    question: 'What does Hale actually watch?',
-    answer:
-      'Municipal registration across fifteen GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others.',
-  },
-  {
-    question: 'How often will Hale text me?',
-    answer:
-      'A brief on Monday morning, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. It is quiet in between, and STOP works at any time.',
+      'You text the number and say hi. Hale asks for your kids’ names and ages and your postal code, and that is the whole setup — everything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first.',
   },
   {
     question: 'Does Hale do anything without asking?',
     answer:
       'No. Hale drafts and you confirm — nothing reaches the outside world until you reply yes to that specific thing. Every message names exactly what was done, and Hale keeps the full record of who, what and when.',
+  },
+  {
+    question: 'Is my family’s data private?',
+    answer:
+      'Your data is stored in Canada and never leaves it, in line with PIPEDA and Quebec’s Law 25, and Hale never sells it. Every permission is granular and revocable in a text. Text messaging itself is not sealed the way an app is — a message crosses your carrier and Hale’s messaging provider — so Hale writes to that reality and names the task, never the diagnosis. A teenager’s content is redacted from parents by default.',
+  },
+  {
+    question: 'Is this a bot? Who actually reads my texts?',
+    answer:
+      'Hale is an AI assistant, and it never pretends otherwise. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts a number that hasn’t texted it first, never asks you to text back a password, a card number or a code, and STOP ends the conversation at any time.',
+  },
+  {
+    question: 'What does Hale actually watch?',
+    answer: `Municipal registration across ${MUNICIPALITY_COUNT} GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others.`,
+  },
+  {
+    question: 'How often will Hale text me?',
+    answer:
+      'A brief on Monday morning, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. It is quiet in between, and STOP works at any time.',
   },
   {
     question: 'Can Hale answer parenting questions, or only scheduling ones?',
@@ -57,11 +67,6 @@ export const FAQ: readonly FaqItem[] = [
     question: 'Is Hale free?',
     answer:
       'Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same radar and reminders on their own number, never a second household to pay for.',
-  },
-  {
-    question: 'Is my family’s data private?',
-    answer:
-      'Your data is stored in Canada and never leaves it, in line with PIPEDA and Quebec’s Law 25, and Hale never sells it. Every permission is granular and revocable in a text. Text messaging itself is not sealed the way an app is — a message crosses your carrier and Hale’s messaging provider — so Hale writes to that reality and names the task, never the diagnosis. A teenager’s content is redacted from parents by default.',
   },
   {
     question: 'Do I need to use the website?',

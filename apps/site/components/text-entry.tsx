@@ -50,7 +50,10 @@ export function TextEntry({
         <span className="font-serif text-[1.35rem] font-semibold leading-none text-spruce" translate="no">
           Hale
         </span>
-        <h1 className="mt-6 text-[clamp(2rem,6.5vw,3.25rem)]">{t('headline')}</h1>
+        {/* The QR card's landing is the highest-intent surface the site has, so it
+            wears the same display face as every other headline rather than the
+            base sans — the one page that looked like a different product. */}
+        <h1 className="v4-display mt-6 text-[clamp(2rem,6.5vw,3.25rem)]">{t('headline')}</h1>
         <p className="mt-6 text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
           {t('lede')}
         </p>

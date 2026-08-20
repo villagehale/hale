@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
 import { FAQ, faqJsonLd } from './index';
 
 describe('product FAQ', () => {
@@ -54,6 +55,41 @@ describe('the FAQ this build serves', () => {
       .map((item) => item.answer)
       .join(' ');
     expect(answers).toContain('sign in with your phone number');
+  });
+
+  it('scopes the never-texts-first promise to what CASL actually buys the reader', () => {
+    // "Hale never texts you first" was flatly false three questions later, where
+    // the same page describes the Monday brief and the registration heads-up —
+    // both real, both default-on (loop_prefs.catWeeklyPlan). The promise a parent
+    // is owed is that Hale never COLD-texts: an unknown number is never messaged.
+    const answers = FAQ.map((item) => item.answer).join(' ');
+    expect(answers).not.toContain('never texts you first');
+    expect([...answers.matchAll(/never texts a number that hasn’t texted it first/g)]).toHaveLength(
+      2,
+    );
+    // Positive control: the proactive brief the old claim contradicted is still
+    // described, so this passes because the claim was scoped, not because the
+    // page went quiet about what Hale sends.
+    expect(answers).toContain('A brief on Monday morning');
+  });
+
+  it('reaches consent and privacy inside the top four questions', () => {
+    // Risk → time → money. They were Q6 and Q9 of 11, below the fold and behind
+    // closed disclosures, on a product whose stated moat is privacy.
+    const top = FAQ.slice(0, 4).map((item) => item.question);
+    expect(top).toContain('Does Hale do anything without asking?');
+    expect(top).toContain('Is my family’s data private?');
+    // And cost still comes after them, not before.
+    const index = (q: string) => FAQ.findIndex((item) => item.question === q);
+    expect(index('Is Hale free?')).toBeGreaterThan(index('Is my family’s data private?'));
+  });
+
+  it('names the municipality count the radar actually watches, not a spelled guess', () => {
+    // The landing derives its count from the list; the FAQ used to spell
+    // "fifteen" by hand, so a sixteenth town made the two pages disagree.
+    const answers = FAQ.map((item) => item.answer).join(' ');
+    expect(answers).toContain(`${MUNICIPALITY_COUNT} GTA municipalities`);
+    expect(answers).not.toContain('fifteen');
   });
 
   it('carries the Canadian residency and teen-redaction posture (hard rule #1)', () => {

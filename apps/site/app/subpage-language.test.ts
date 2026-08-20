@@ -99,22 +99,22 @@ describe('the pulled-up headline', () => {
 
   it.each(PULLED_UP)('gives %s exactly one accent segment', (_name, html) => {
     const h1 = heading(html);
-    // The accent word is the v4 device — amber serif-italic — the same one the
-    // v4 landing hero wears (`v4-italic text-amber`), not the old glow class.
-    const accented = [...h1.matchAll(/class="pull-word v4-italic text-amber"/g)];
+    // The accent word is the v4 device — amber at the heading's own weight,
+    // upright — the same one the v4 landing hero wears (`v4-accent`).
+    const accented = [...h1.matchAll(/class="pull-word v4-accent"/g)];
     expect(accented.length).toBeGreaterThan(0);
     // One RUN of accented words, not two — the device is a single segment per
     // headline, and two would read as a mistake rather than an emphasis.
     const runs = h1
       .split(/class="pull-word"/)
-      .filter((part) => part.includes('pull-word v4-italic text-amber'));
+      .filter((part) => part.includes('pull-word v4-accent'));
     expect(runs).toHaveLength(1);
   });
 
   it.each(PULLED_UP)('sets %s in the v4 display serif', (_name, html) => {
-    // The re-skin in one pin: every subpage headline is now Instrument Serif
-    // (.v4-display), the same display face the v4 landing hero wears, rather than
-    // the old sans display. The class rides on the heading tag WordsPullUp emits.
+    // The re-skin in one pin: every subpage headline wears the site's display
+    // rule (.v4-display), the same one the v4 landing hero wears, rather than the
+    // old sans display. The class rides on the heading tag WordsPullUp emits.
     expect(html).toMatch(/<h1[^>]*class="v4-display[^"]*"/);
   });
 
@@ -138,9 +138,9 @@ describe('the pulled-up headline', () => {
   });
 
   it('leaves the homepage on its own v4 hero display, not the subpage reveal', () => {
-    // Home is the v4 liquid-glass shore: its hero display is Instrument Serif set
-    // large (.v4-display / .v4-italic), not the subpage pulled-up reveal. The two
-    // never share the pull-word device — only the amber serif-italic accent.
+    // Home is the v4 liquid-glass shore: its hero display is set large
+    // (.v4-display / .v4-hero-h1), not the subpage pulled-up reveal. The two
+    // never share the pull-word device — only the amber accent.
     const landing = readFileSync(
       fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
       'utf8',
@@ -148,20 +148,17 @@ describe('the pulled-up headline', () => {
     expect(landing).not.toContain('pull-word');
     expect(landing).not.toContain('WordsPullUp');
     expect(landing).toContain('v4-display');
-    expect(landing).toContain('v4-italic');
+    expect(landing).toContain('v4-accent');
   });
 });
 
 describe('the accent is one device, whole site', () => {
-  it('declares .accent and .v3-accent in a single rule', () => {
-    // They were two: the landing's glowed and eight subpages had a plain italic —
-    // a fork in the brand's most-repeated gesture. A shared rule cannot drift.
-    expect(CSS).toMatch(/\.accent,\s*\n\.v3-accent \{/);
-    expect(CSS).toContain('text-shadow: 0 0 18px var(--accent-glow-near)');
-    // And exactly one rule paints it, so there is nowhere for a second to hide.
-    expect([...CSS.matchAll(/-webkit-text-stroke: 0\.4px var\(--accent-stroke\)/g)]).toHaveLength(
-      1,
-    );
+  it('paints it from a single rule, so the subpages and the landing cannot drift', () => {
+    // It was two rules — the landing's glowed, eight subpages had a plain italic —
+    // and now it is one: `.v4-accent`, colour only. See display-type.test.ts for
+    // the no-slant and no-italic-master gates.
+    expect([...CSS.matchAll(/\.v4-accent \{/g)]).toHaveLength(1);
+    expect(CSS).toContain('.v4-accent { color: var(--color-amber); }');
   });
 });
 

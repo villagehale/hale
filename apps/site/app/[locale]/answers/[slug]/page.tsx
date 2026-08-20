@@ -175,15 +175,22 @@ export default async function AnswerRoute({ params }: PageProps) {
             <ul className="mt-6 flex flex-col gap-5">
               {page.citations.map((citation) => (
                 <li key={citation.reference}>
-                  <a
-                    href={FRAMEWORK_SOURCES[citation.framework].home}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="link inline-flex items-center gap-1.5"
-                  >
-                    {FRAMEWORK_SOURCES[citation.framework].label}
-                    <ArrowUpRight size={14} strokeWidth={2.25} aria-hidden="true" />
-                  </a>
+                  {/* A source with no publisher page is NAMED, never linked to a
+                      stand-in: a YMYL citation list that sends a reader to
+                      Wikipedia for the book it cites is worse than plain text. */}
+                  {FRAMEWORK_SOURCES[citation.framework].home ? (
+                    <a
+                      href={FRAMEWORK_SOURCES[citation.framework].home}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="link inline-flex items-center gap-1.5"
+                    >
+                      {FRAMEWORK_SOURCES[citation.framework].label}
+                      <ArrowUpRight size={14} strokeWidth={2.25} aria-hidden="true" />
+                    </a>
+                  ) : (
+                    <span>{FRAMEWORK_SOURCES[citation.framework].label}</span>
+                  )}
                   <p className="meta mt-1.5">{citation.reference}</p>
                   {citation.excerpt && (
                     <p

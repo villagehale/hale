@@ -16,7 +16,7 @@ const TIER_PANEL = {
 /**
  * The landing pricing section. Free leads — the whole core is free; Plus and Family
  * are framed as "for the doing, never the watching." Monthly and annual are both
- * shown, with annual as the better value (about two months free). Every tier's CTA
+ * shown, with annual as the better value (about three months free). Every tier's CTA
  * is the one front door the site chrome offers — texting Hale — because there is no
  * other way in: these buttons pointed at the app's /onboarding wizard, which F14
  * deleted, so a pricing page's only action 308'd back to the homepage.

@@ -57,7 +57,7 @@ describe('landing — the v4 hero', () => {
     expect(html).toContain('class="v4-hero-scrim"');
   });
 
-  it('keeps one h1, in the display serif, with the single amber italic accent', () => {
+  it('keeps one h1, in the display serif, with the single amber accent', () => {
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
     const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1).toContain('v4-display');
@@ -68,9 +68,11 @@ describe('landing — the v4 hero', () => {
     // it is in a parent's words.
     expect(visibleText(h1)).toBe('The family assistant you text.');
     expect(h1).not.toContain('7:02');
-    expect(html).toContain('It takes the family admin off your plate');
-    // The accent word is the v4 amber serif-italic — one segment, not the old glow.
-    expect(h1).toContain('class="v4-italic"');
+    // Outcome-first, verb-led: the sub leads with what the reader gets rid of,
+    // not with a pronoun that makes them wait for the subject.
+    expect(html).toContain('Take the family admin off your plate');
+    // The accent word is amber at the heading's own weight — colour, not slant.
+    expect(h1).toContain('class="v4-accent"');
   });
 
   it('leads with the name, said out loud, as the eyebrow', () => {

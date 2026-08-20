@@ -16,7 +16,7 @@
     "navAbout": "À propos"
   },
   "Footer": {
-    "blurb": "Hale est l’aide discrète des familles occupées — toujours préparé, jamais en action sans vous.",
+    "blurb": "Hale est l’assistant familial que vous textez — toujours préparé, jamais en action sans vous.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— hawaïen pour « maison ».",
@@ -59,7 +59,7 @@
     "heroH1a": "L’assistant familial",
     "heroH1b": "que vous",
     "heroH1Accent": "textez.",
-    "heroSub": "Il prend l’admin de la famille en charge — natation, camps et jour d’inscription, attrapés avant que tout soit complet. Pas d’appli : Hale est un contact dans votre téléphone.",
+    "heroSub": "Déchargez-vous de l’admin de la famille — natation, camps et jour d’inscription, attrapés avant que tout soit complet. Pas d’appli : Hale est un contact dans votre téléphone.",
     "chips": [
       "Quand ouvrent les inscriptions à la natation près de chez moi?",
       "Quand ouvrent les inscriptions aux camps du congé des Fêtes?",
@@ -142,7 +142,7 @@
     "watchEyebrow": "Ce que je surveille",
     "watchH2Count": "{count} municipalités,",
     "watchH2Accent": "nommément.",
-    "watchLede": "Je surveille les quinze calendriers pour que personne n’ait à le faire.",
+    "watchLede": "Je surveille les {count} calendriers pour que personne n’ait à le faire.",
     "contrast": [
       {
         "title": "Sans moi",
@@ -316,7 +316,7 @@
     "lede": "Tout ce que Hale fait aujourd’hui — la surveillance, les plans, les réponses — est gratuit, à chaque étape et pour chaque enfant. Les forfaits payants n’ouvriront que lorsque Hale pourra faire une plus grande part du travail lui-même. Les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Un coparent est toujours gratuit.",
     "foundingTitle": "Les familles fondatrices adhèrent gratuitement.",
     "foundingNote": "Les 100 premières familles reçoivent un insigne de fondateur permanent — et un accès prioritaire à l’ouverture de Plus et Famille.",
-    "annualNote": "facturé à l’année — environ deux mois gratuits",
+    "annualNote": "facturé à l’année — environ trois mois gratuits",
     "footnote": "Hale est gratuit pour commencer. Plus et Famille s’ouvrent à mesure que leurs intégrations arrivent.",
     "tierLines": {
       "free": "Textez Hale, voyez ce que les familles près de chez vous recommandent, et partagez ce que vous aimez. Tout l’essentiel — chaque étape, chaque enfant — gratuit, toujours.",
@@ -339,16 +339,16 @@
     ],
     "lede": "Nous sommes une petite équipe, bâtie par des parents, encore à nos débuts — alors une vraie personne lit ce que vous envoyez. Le moyen le plus rapide de nous joindre, c’est le courriel.",
     "emailButton": "Écrire à aloha@villagehale.com",
-    "channels": [
-      {
+    "channels": {
+      "general": {
         "eyebrow": "Absolument tout",
         "line": "Questions, commentaires, un cours que votre village devrait connaître — nous lisons chaque message."
       },
-      {
+      "privacy": {
         "eyebrow": "Confidentialité et vos données",
         "line": "Demandes d’accès, de correction ou de suppression, et tout ce qui touche la façon dont nous traitons les données de votre famille."
       }
-    ],
+    },
     "note": "Hale est conçu par Village Hale Technologies Inc., Georgetown, Ontario, Canada."
   },
   "Faq": {
@@ -374,23 +374,27 @@
       },
       {
         "question": "Comment est-ce que je commence?",
-        "answer": "Vous textez le numéro et vous dites bonjour. Hale demande les noms et les âges de vos enfants ainsi que votre code postal, et c’est toute la configuration — le reste, il le demande plus tard, seulement quand il en a besoin. Hale ne vous texte jamais en premier; la conversation est toujours celle que vous avez amorcée."
-      },
-      {
-        "question": "Est-ce un robot? Qui lit vraiment mes textos?",
-        "answer": "Hale est un assistant d’IA, et il ne prétend jamais le contraire. Il est conçu et exploité par Village Hale Technologies Inc., une petite entreprise fondée par un parent à Georgetown, en Ontario — et une vraie personne lit tout ce que vous envoyez à aloha@villagehale.com. Hale ne vous texte jamais en premier, ne vous demande jamais de retexter un mot de passe, un numéro de carte ou un code, et STOP met fin à la conversation en tout temps."
-      },
-      {
-        "question": "Que surveille Hale, au juste?",
-        "answer": "Les inscriptions municipales dans quinze municipalités de la région du Grand Toronto — programmes de loisirs, cours de natation, camps et service de garde parascolaire — y compris la longueur d’avance réservée aux résidents, les villes qui ouvrent la natation à leur propre date, et les camps du congé des Fêtes dont les inscriptions ouvrent dès le mois d’août. Il surveille aussi le chrono des listes d’attente, qui est d’une journée dans certaines villes et de deux dans d’autres."
-      },
-      {
-        "question": "À quelle fréquence Hale va-t-il me texter?",
-        "answer": "Un topo le lundi matin, puis seulement quand quelque chose a besoin de vous : un avis la semaine où une inscription ouvre, le plan la veille au soir, et une relance dès l’ouverture. Il est silencieux entre les deux, et STOP fonctionne en tout temps."
+        "answer": "Vous textez le numéro et vous dites bonjour. Hale demande les noms et les âges de vos enfants ainsi que votre code postal, et c’est toute la configuration — le reste, il le demande plus tard, seulement quand il en a besoin. Hale ne texte jamais un numéro qui ne lui a pas écrit en premier."
       },
       {
         "question": "Est-ce que Hale fait quoi que ce soit sans demander?",
         "answer": "Non. Hale prépare un brouillon et vous confirmez — rien n’atteint le monde extérieur avant que vous répondiez oui à cette chose précise. Chaque message nomme exactement ce qui a été fait, et Hale garde le dossier complet du qui, du quoi et du quand."
+      },
+      {
+        "question": "Est-ce que les données de ma famille sont privées?",
+        "answer": "Vos données sont stockées au Canada et n’en sortent jamais, conformément à la PIPEDA et à la Loi 25 du Québec, et Hale ne les vend jamais. Chaque permission est précise et révocable par texto. Le texto lui-même n’est pas scellé comme l’est une appli — un message traverse votre fournisseur de téléphonie et le fournisseur de messagerie de Hale — alors Hale écrit en tenant compte de cette réalité et nomme la tâche, jamais le diagnostic. Le contenu d’un adolescent est caviardé pour les parents par défaut."
+      },
+      {
+        "question": "Est-ce un robot? Qui lit vraiment mes textos?",
+        "answer": "Hale est un assistant d’IA, et il ne prétend jamais le contraire. Il est conçu et exploité par Village Hale Technologies Inc., une petite entreprise fondée par un parent à Georgetown, en Ontario — et une vraie personne lit tout ce que vous envoyez à aloha@villagehale.com. Hale ne texte jamais un numéro qui ne lui a pas écrit en premier, ne vous demande jamais de retexter un mot de passe, un numéro de carte ou un code, et STOP met fin à la conversation en tout temps."
+      },
+      {
+        "question": "Que surveille Hale, au juste?",
+        "answer": "Les inscriptions municipales dans 15 municipalités de la région du Grand Toronto — programmes de loisirs, cours de natation, camps et service de garde parascolaire — y compris la longueur d’avance réservée aux résidents, les villes qui ouvrent la natation à leur propre date, et les camps du congé des Fêtes dont les inscriptions ouvrent dès le mois d’août. Il surveille aussi le chrono des listes d’attente, qui est d’une journée dans certaines villes et de deux dans d’autres."
+      },
+      {
+        "question": "À quelle fréquence Hale va-t-il me texter?",
+        "answer": "Un topo le lundi matin, puis seulement quand quelque chose a besoin de vous : un avis la semaine où une inscription ouvre, le plan la veille au soir, et une relance dès l’ouverture. Il est silencieux entre les deux, et STOP fonctionne en tout temps."
       },
       {
         "question": "Est-ce que Hale peut répondre aux questions de parentalité, ou seulement à celles d’horaire?",
@@ -399,10 +403,6 @@
       {
         "question": "Est-ce que Hale est gratuit?",
         "answer": "Hale est gratuit tant qu’il est nouveau, et les familles qui commencent maintenant gardent leur tarif fondateur. Un coparent est toujours gratuit — le même radar et les mêmes rappels sur son propre numéro, jamais un deuxième foyer à payer."
-      },
-      {
-        "question": "Est-ce que les données de ma famille sont privées?",
-        "answer": "Vos données sont stockées au Canada et n’en sortent jamais, conformément à la PIPEDA et à la Loi 25 du Québec, et Hale ne les vend jamais. Chaque permission est précise et révocable par texto. Le texto lui-même n’est pas scellé comme l’est une appli — un message traverse votre fournisseur de téléphonie et le fournisseur de messagerie de Hale — alors Hale écrit en tenant compte de cette réalité et nomme la tâche, jamais le diagnostic. Le contenu d’un adolescent est caviardé pour les parents par défaut."
       },
       {
         "question": "Est-ce que je dois utiliser le site Web?",
@@ -428,8 +428,8 @@
       }
     ],
     "lede": "Les sorties gratuites et abordables que les familles utilisent vraiment — heures du conte, jeu libre sans inscription, bain parent-enfant, parcs et programmes locaux. Choisissez votre ville pour commencer.",
-    "ctaHeading": "Laissez Hale les trouver pour vous, près de chez vous",
-    "ctaSub": "Dites à Hale votre quartier et ce que vos enfants aiment, et il rassemble les cours, les groupes et les activités sans inscription près de chez vous qui valent le coup d’œil. Gratuit pour commencer — vos données restent au Canada."
+    "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end",
+    "ctaSub": "Textez à Hale une question sur votre semaine et obtenez une réponse ajustée à l’âge de vos enfants. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
   },
   "ActivityCity": {
     "metaTitle": "Activités à faire avec les enfants à {city} · Hale",
@@ -438,8 +438,8 @@
     "headlineLead": "Activités à faire avec vos enfants à",
     "commonQuestions": "Questions fréquentes sur {city}",
     "disclaimer": "Les programmes et les lieux changent — voyez ceci comme un point de départ et confirmez les détails directement auprès de votre ville ou du programme. Dernière révision le {date, date, long}.",
-    "ctaHeading": "Laissez Hale les trouver pour vous à {city}",
-    "ctaSub": "Dites à Hale votre quartier et ce que vos enfants aiment, et il rassemble les cours, les groupes et les activités sans inscription près de chez vous qui valent le coup d’œil. Gratuit pour commencer — vos données restent au Canada."
+    "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end à {city}",
+    "ctaSub": "Textez à Hale une question sur votre semaine et obtenez une réponse ajustée à l’âge de vos enfants. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
   },
   "Answers": {
     "metaTitle": "Guides parentaux · Hale",
@@ -471,7 +471,7 @@
     "keyTakeaways": "Points clés",
     "parentsAlsoAsk": "Les parents demandent aussi",
     "sources": "Sources",
-    "sourcesLede": "Chaque affirmation sur cette page est attribuée à l’un des cadres de référence en santé parentale dont Hale s’inspire. Suivez une source pour la lire directement.",
+    "sourcesLede": "Chaque affirmation sur cette page est attribuée à l’un des cadres de référence en santé parentale dont Hale s’inspire. Suivez une source vers son éditeur; les livres sont nommés plutôt que liés.",
     "inSummary": "En résumé : ",
     "disclaimerEyebrow": "À lire",
     "disclaimerHeading": "Ceci est un conseil général, pas un avis médical.",

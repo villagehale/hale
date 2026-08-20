@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -20,10 +22,15 @@ import { allAnswers } from '../lib/answers/index.js';
  *
  * The fork this suite exists to prevent: a landing that ships its own chrome
  * while the subpages render different components — different nav, different
- * footer, a link pointing nowhere. These pin the v4 unification: every subpage's
- * <header> is byte-identical to the shared SiteHeader, every page ends in the one
- * shared <footer>, and the landing wears the SAME v4 glass nav pill (inline over
- * its shore hero) so a reader crossing from / to a subpage never changes products.
+ * footer, a link pointing nowhere. These pin the v4 unification: EVERY page's
+ * <header> is byte-identical to the shared SiteHeader, the landing included, and
+ * every page ends in the one shared <footer>.
+ *
+ * The landing used to render its own inline copy of the pill inside the hero, so
+ * the bar scrolled away on the one page a reader spends longest on and the two
+ * headers could drift apart line by line. It now renders the shared sticky bar
+ * and keeps the over-hero look in CSS instead (.v4-hero-top pulls the hero up
+ * under it) — one header, one behaviour, whole site (founder, 2026-08-19).
  */
 
 const NUMBER = '+16475551234';
@@ -55,7 +62,7 @@ const PAGES: Record<string, () => unknown> = {
     ActivityCityRoute({ params: Promise.resolve({ city: firstCity.slug, ...EN }) }),
 };
 
-const SUBPAGES = Object.keys(PAGES).filter((route) => route !== '/');
+const ROUTES = Object.keys(PAGES);
 
 function chrome(html: string, tag: 'header' | 'footer'): string {
   const found = new RegExp(`<${tag}[\\s\\S]*</${tag}>`).exec(html)?.[0];
@@ -68,30 +75,30 @@ afterEach(() => {
 });
 
 describe('one header, one footer, every page', () => {
-  it('renders the shared header on every subpage, byte-identical to SiteHeader', async () => {
+  it('renders the shared header on every page, landing included, byte-identical to SiteHeader', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
     const shared = chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
-    // The shared bar is a v4 glass nav pill — the design the whole site wears.
+    // The shared bar is a v4 glass nav pill — the design the whole site wears —
+    // and it is sticky, so it is still there when a reader is deep in the page.
     expect(shared).toContain('class="v4-nav v4-glass"');
+    expect(shared).toContain('sticky top-0');
 
-    for (const route of SUBPAGES) {
+    for (const route of ROUTES) {
       const page = PAGES[route];
       if (!page) throw new Error(route);
       expect(chrome(await renderPage(page), 'header'), `${route} forked the header`).toBe(shared);
     }
   });
 
-  it('wears the same v4 nav pill on the landing — inline over the hero, not the sticky bar', async () => {
-    // The landing keeps its nav inline because it sits over the shore hero art, so
-    // it is NOT byte-identical to the sticky shared bar. It is the same DEVICE,
-    // though: a v4-nav glass pill whose logo goes home and which carries Text Hale.
-    const shared = chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
-    const landingHeader = chrome(await renderPage(PAGES['/'] as () => unknown), 'header');
-    expect(landingHeader).not.toBe(shared);
-    expect(landingHeader).toContain('class="v4-nav v4-glass"');
-    expect(landingHeader).toContain('aria-label="Hale, home"');
-    expect(landingHeader).toContain('href="/"');
-    expect(landingHeader).toContain('Text Hale');
+  it('keeps the landing hero under that bar rather than below it', async () => {
+    // The over-hero look survives the unification in CSS, not in a second header:
+    // the hero is pulled up by the bar's own height and padded back by the same
+    // amount, so the shore still starts at the top of the viewport.
+    const landing = await renderPage(PAGES['/'] as () => unknown);
+    expect(landing).toContain('v4-hero v4-hero-top');
+    const css = readFileSync(fileURLToPath(new URL('../app/globals.css', import.meta.url)), 'utf8');
+    expect(css).toContain('margin-top: calc(-1 * var(--nav-h));');
+    expect(css).toContain('padding-top: var(--nav-h);');
   });
 
   it('renders the shared footer on every page — the landing included', async () => {

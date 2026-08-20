@@ -2,13 +2,18 @@ import { type Database, schema } from '@hale/db';
 
 /**
  * The last-updated dates of the two policies, which the marketing site
- * (apps/site/app/{terms,privacy}/page.tsx) dates INDEPENDENTLY — privacy moved to
- * July 31 for the SMS-transit disclosure while terms stayed on June 25. Each
- * constant is bound to its live page by the drift test in consent.test.ts, so a
- * re-dated policy cannot silently leave its constant behind (VIL-257).
+ * (apps/site/app/{terms,privacy}/page.tsx) dates INDEPENDENTLY. Each constant is
+ * bound to its live page by the drift test in consent.test.ts, so a re-dated
+ * policy cannot silently leave its constant behind (VIL-257).
+ *
+ * Both moved to August 19, 2026: the terms were corrected to the messaging-first
+ * product (text channel, STOP/HELP, carrier rates, dual auth) and the privacy
+ * policy named the PostHog processing region and the phone number it collects.
+ * Nothing here forces a re-consent — POLICY_VERSION is only ever WRITTEN into a
+ * consent row, never compared against a stored one.
  */
-export const TERMS_VERSION = 'June 25, 2026';
-export const PRIVACY_VERSION = 'July 31, 2026';
+export const TERMS_VERSION = 'August 19, 2026';
+export const PRIVACY_VERSION = 'August 19, 2026';
 
 /**
  * The policy version a consent is recorded against, so a consent row names the
