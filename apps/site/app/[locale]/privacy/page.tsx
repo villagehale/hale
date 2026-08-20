@@ -12,10 +12,18 @@ import type { Locale } from '~/i18n/routing';
  * soft-launch. Everything else is untouched — a legal-copy change is its own
  * change, never bundled with a design move.
  *
+ * 2026-08-19: two FACTUAL corrections, both flagged by review. The PostHog row
+ * printed an env var name (`NEXT_PUBLIC_POSTHOG_HOST`) where a reader needs a
+ * jurisdiction, and the opening paragraph described an account-first product a
+ * year after the messaging-first pivot. Nothing about rights, retention, or
+ * residency changed. Counsel should read the diff.
+ *
  * app.villagehale.com/privacy is now a permanent 308 here (VIL-256), so this is
- * the only copy. Still noindexed: the marketing pivot stays dark until the flip,
- * and the policy is reachable by direct link either way — the footer, the app,
- * the mobile listing and every consent surface point straight at it.
+ * the only copy. Still noindexed, now by choice rather than by the dark-launch
+ * rationale that outlived itself: the flip has happened, and whether a privacy
+ * policy should be findable in search on a product whose moat is privacy is a
+ * founder call, not a leftover. Reachable by direct link either way — the footer,
+ * the app, the mobile listing and every consent surface point straight at it.
  */
 
 const TITLE = 'Privacy Policy · Hale';
@@ -75,10 +83,11 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     >
       <LegalSectionBlock id="who-we-are" title="Who we are">
         <p>
-          Hale is a passive, event-driven household assistant for families. You (a parent or legal
-          guardian) create an account, add your children, and optionally connect tools you already
-          use. Hale watches for things that matter, drafts helpful suggestions, and — only with your
-          approval — helps carry them out. Hale is operated by Village Hale Technologies Inc., a
+          Hale is an AI assistant for families that you reach by text message. You (a parent or
+          legal guardian) text the number and tell Hale about your children; there is no account to
+          create, though you may sign in to the web app, and you may optionally connect tools you
+          already use. Hale watches for things that matter, drafts helpful suggestions, and — only
+          with your approval — helps carry them out. Hale is operated by Village Hale Technologies Inc., a
           company incorporated in Ontario, Canada, which is the organization responsible for your
           family&rsquo;s data; see{' '}
           <a href="#contact" className="link">
@@ -92,8 +101,10 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
         <p>We collect only what we need to run Hale for your family:</p>
         <ul>
           <li>
-            <strong>Your account.</strong> Your name and email address, provided through Google
-            sign-in, plus basic preferences such as language and time zone.
+            <strong>Your contact details.</strong> The phone number you text from; and, if you sign
+            in to the web app, your name and email address — provided through Google sign-in or the
+            email address and password you register. Plus basic preferences such as language and
+            time zone.
           </li>
           <li>
             <strong>Your children&rsquo;s profiles.</strong> Each child&rsquo;s first name (and last
@@ -261,7 +272,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             conversations — is <strong>masked</strong> before the recording leaves your browser.
             Error tracking captures unhandled errors (a stack trace, not your data) so we can fix
             them. Autocapture stays off, and we identify you by an opaque account id, never your name
-            or email. Region per <code>NEXT_PUBLIC_POSTHOG_HOST</code>.
+            or email. Processed in the United States.
           </li>
           <li>
             <strong>Resend</strong> — delivery of transactional and weekly-brief emails (United

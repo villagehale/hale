@@ -86,6 +86,46 @@ describe('terms (migrated verbatim)', () => {
     expect(termsHtml).toContain('governed by the laws of the Province of Ontario');
     expect(termsHtml).toContain('Village Hale Technologies Inc.');
   });
+
+  /**
+   * The terms were written before the messaging-first pivot and before dual auth,
+   * so the governing document for a texting product described a Google-only
+   * sign-in and never mentioned texting at all — a contradiction a reader hits
+   * two clicks after the homepage. These pin the corrections; each one maps to a
+   * shipped fact (SMS is the product surface, sign-in is Google + password, STOP
+   * ends the conversation, carrier rates are the reader's).
+   */
+  it('governs the product that actually exists — a number you text, not a Google-only app', () => {
+    expect(termsHtml).not.toContain('You sign in through Google.');
+    expect(termsHtml).not.toContain('passive, event-driven assistant');
+    expect(termsHtml).toContain('a phone number your family texts');
+    expect(termsHtml).toContain('a Google account or an email address and password');
+    // Agreement is reachable without an account, because most families never make one.
+    expect(termsHtml).toContain('By texting Hale, creating an account, or otherwise using Hale');
+  });
+
+  it('carries the text-channel terms that lived only in the privacy policy', () => {
+    expect(termsHtml).toContain('Reply STOP to any message and the messages stop');
+    expect(termsHtml).toContain('reply HELP for help');
+    expect(termsHtml).toContain('Standard message and data rates from your mobile carrier apply');
+    expect(termsHtml).toContain('never text a number that has not texted us first');
+    expect(termsHtml).toContain('id="text-messages"');
+  });
+
+  it('keeps every internal link inside the reader’s locale', async () => {
+    // /fr/terms used to drop a reader into the English policy mid-document,
+    // because two hrefs were hardcoded while every other link went through
+    // localeHref. Rendered here in EN, where localeHref('/privacy') is '/privacy'
+    // — so the pin is that NO raw href escapes the helper.
+    const frTerms = renderToStaticMarkup(
+      await TermsPage({ params: Promise.resolve({ locale: 'fr' as const }) }),
+    );
+    for (const href of [...frTerms.matchAll(/href="(\/[a-z/-]*)"/g)]) {
+      expect(href[1], `${href[1]} is not locale-prefixed`).toMatch(/^\/fr(\/|$)/);
+    }
+    // Positive control: the document really does link out internally.
+    expect(frTerms).toContain('href="/fr/privacy"');
+  });
 });
 
 describe('privacy (migrated verbatim, plus the SMS-transit disclosure)', () => {
