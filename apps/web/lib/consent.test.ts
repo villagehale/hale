@@ -110,7 +110,7 @@ describe('policy versions bind to the live policy pages', () => {
     expect(POLICY_VERSION).not.toBe(TERMS_VERSION);
     // `PRIVACY_VERSION !== TERMS_VERSION` used to stand in for this, and it was
     // never the invariant: two policies revised on the same day legitimately
-    // share a date (both moved 2026-08-19). What must hold is that a consent row
+    // share a date (both moved 2026-08-20). What must hold is that a consent row
     // names BOTH policies — asserted above, and unchanged by a shared date.
     expect(POLICY_VERSION).toBe(`Terms ${TERMS_VERSION} · Privacy ${PRIVACY_VERSION}`);
   });

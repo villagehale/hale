@@ -31,6 +31,19 @@ function danglingAnchors(html: string): string[] {
   return [...new Set(targets)].filter((id) => !html.includes(`id="${id}"`));
 }
 
+/** The prefixed locales — English is the unprefixed default, so it has nothing to
+ * escape from. A policy body link that skips localeHref drops a /fr or /zh reader
+ * into the English document mid-sentence. */
+const PREFIXED = ['fr', 'zh'] as const;
+
+function assertEveryInternalHrefIsPrefixed(html: string, locale: (typeof PREFIXED)[number]) {
+  for (const href of [...html.matchAll(/href="(\/[a-z/-]*)"/g)]) {
+    expect(href[1], `${href[1]} is not prefixed for /${locale}`).toMatch(
+      new RegExp(`^/${locale}(/|$)`),
+    );
+  }
+}
+
 describe('legal routes (unlinked until the flip)', () => {
   it('are noindex, nofollow while the app still serves the canonical copy', () => {
     expect(termsMetadata.robots).toEqual({ index: false, follow: false });
@@ -115,16 +128,15 @@ describe('terms (migrated verbatim)', () => {
   it('keeps every internal link inside the reader’s locale', async () => {
     // /fr/terms used to drop a reader into the English policy mid-document,
     // because two hrefs were hardcoded while every other link went through
-    // localeHref. Rendered here in EN, where localeHref('/privacy') is '/privacy'
-    // — so the pin is that NO raw href escapes the helper.
-    const frTerms = renderToStaticMarkup(
-      await TermsPage({ params: Promise.resolve({ locale: 'fr' as const }) }),
-    );
-    for (const href of [...frTerms.matchAll(/href="(\/[a-z/-]*)"/g)]) {
-      expect(href[1], `${href[1]} is not locale-prefixed`).toMatch(/^\/fr(\/|$)/);
+    // localeHref. The pin is that NO raw href escapes the helper — widened to
+    // every prefixed locale in the 2026-08-20 rebuild, which added four more
+    // body links to a document that had two.
+    for (const locale of PREFIXED) {
+      const html = renderToStaticMarkup(await TermsPage({ params: Promise.resolve({ locale }) }));
+      assertEveryInternalHrefIsPrefixed(html, locale);
+      // Positive control: the document really does link out internally.
+      expect(html).toContain(`href="/${locale}/privacy"`);
     }
-    // Positive control: the document really does link out internally.
-    expect(frTerms).toContain('href="/fr/privacy"');
   });
 });
 
@@ -175,5 +187,168 @@ describe('privacy (migrated verbatim, plus the SMS-transit disclosure)', () => {
   it('lists the SMS section in the table of contents', () => {
     expect(privacyHtml).toContain('href="#sms"');
     expect(privacyHtml).toContain('id="sms"');
+  });
+});
+
+/**
+ * 2026-08-20 · both policies were rebuilt on the CC0 General-Legal templates
+ * (templates/terms-of-use and templates/privacy-policy-gdpr) used as STRUCTURAL
+ * scaffolds only — section architecture and drafting patterns, never facts.
+ *
+ * Both templates are drafted for a US company, and that is the hazard this block
+ * exists for. The terms ship a JAMS/DecisionLayer arbitration agreement, a jury
+ * and class-action waiver, a California Civil Code §1542 release and five
+ * state-specific notices; the privacy policy ships a CCPA notice-at-collection, a
+ * state privacy rights notice, and a GDPR "Notice to European users" built on
+ * legal bases and data subjects. Every one of those would read as binding on an
+ * Ontario parent who has none of those rights and is owed different ones, so an
+ * artifact imported by accident is a shipping legal defect rather than a typo.
+ *
+ * Absence tests fail open, so each list below is paired with the positive that
+ * must stand in its place — the pin cannot pass on an empty or half-rendered page.
+ */
+describe('the policies are Canadian — no US or EU artifact survived the templates', () => {
+  const both = Object.entries({ terms: termsHtml, privacy: privacyHtml });
+
+  function refuse(html: string, page: string, artifacts: readonly string[]) {
+    for (const artifact of artifacts) {
+      expect(html.toLowerCase(), `${page} imported "${artifact}" from the template`).not.toContain(
+        artifact.toLowerCase(),
+      );
+    }
+  }
+
+  it('imports no US dispute-resolution machinery', () => {
+    for (const [page, html] of both) {
+      refuse(html, page, [
+        'arbitration',
+        'arbitrator',
+        'class action',
+        'jury',
+        'JAMS',
+        'DecisionLayer',
+        'Federal Arbitration Act',
+        'small claims',
+      ]);
+    }
+    // Positive control: disputes ARE addressed — they go to the Ontario courts.
+    expect(termsHtml).toContain('courts of the Province of Ontario');
+  });
+
+  it('imports no US state-privacy notice', () => {
+    for (const [page, html] of both) {
+      refuse(html, page, [
+        'CCPA',
+        'CPRA',
+        'California',
+        'Nevada',
+        'Virginia',
+        'Colorado',
+        'Connecticut',
+        'Shine the Light',
+        'Do Not Track',
+        'export control',
+      ]);
+    }
+    // Positive control: a rights framework IS named, and it is the Canadian one.
+    expect(privacyHtml).toContain('PIPEDA');
+    expect(privacyHtml).toContain('Law 25');
+    expect(privacyHtml).toContain('CASL');
+  });
+
+  it('speaks PIPEDA, not GDPR', () => {
+    for (const [page, html] of both) {
+      refuse(html, page, [
+        'data subject',
+        'legal basis',
+        'legal bases',
+        'legitimate interest',
+        'GDPR',
+        'supervisory authority',
+        'data protection officer',
+      ]);
+    }
+    // Positive control: the PIPEDA vocabulary that replaces it, and the regulators
+    // a Canadian reader can actually complain to.
+    expect(privacyHtml).toContain('meaningful consent');
+    expect(privacyHtml).toContain('Office of the Privacy Commissioner of Canada');
+    expect(privacyHtml).toContain('Commission d');
+  });
+});
+
+/**
+ * The structure the template supplied and the old terms did not have: a licence
+ * grant, an ownership clause, the privacy policy incorporated by reference with a
+ * conflict rule, a survival list, and a forum to go with the governing law. Each
+ * one was a genuine hole — the previous terms named Ontario law but no Ontario
+ * court, and never said who owned what.
+ */
+describe('terms — the scaffold the template supplies, filled with Hale facts', () => {
+  it('grants a licence and states who owns what', () => {
+    expect(termsHtml).toContain('id="licence"');
+    expect(termsHtml).toContain('id="ownership"');
+    // Your family's content stays yours — the inverse of the template's default.
+    expect(termsHtml).toContain('belongs to your family');
+  });
+
+  it('incorporates the Privacy Policy and says which document wins', () => {
+    expect(termsHtml).toContain('id="privacy"');
+    expect(termsHtml).toContain('the Privacy Policy governs');
+  });
+
+  it('names an Ontario forum, not only Ontario law', () => {
+    expect(termsHtml).toContain('governed by the laws of the Province of Ontario');
+    expect(termsHtml).toContain('courts of the Province of Ontario');
+  });
+
+  it('says what survives the end of the agreement', () => {
+    expect(termsHtml).toContain('id="general"');
+    expect(termsHtml).toContain('survive');
+  });
+});
+
+/**
+ * The privacy template's three best patterns, in PIPEDA vocabulary: collection
+ * organised by SOURCE, use organised by PURPOSE (PIPEDA Principle 2 asks for
+ * exactly that), and sharing organised by RECIPIENT rather than only by named
+ * vendor. The recipient view is what exposed the gap: consent_records has carried
+ * caregiver_access_grant, mcp_third_party_model and village_intro rows — three
+ * disclosures of a family's data to someone outside it — while the policy
+ * described only sub-processors.
+ */
+describe('privacy — the scaffold the template supplies, in PIPEDA vocabulary', () => {
+  it('states purposes and the consent Hale relies on', () => {
+    expect(privacyHtml).toContain('id="why-we-use-it"');
+    expect(privacyHtml).toContain('meaningful consent');
+  });
+
+  it('describes sharing by recipient, not only the sub-processor list', () => {
+    expect(privacyHtml).toContain('id="how-we-share"');
+    expect(privacyHtml).toContain('id="sub-processors"');
+    // The three cross-household disclosures the ledger records and the policy
+    // used to be silent about.
+    expect(privacyHtml).toContain('caregiver');
+    expect(privacyHtml).toContain('both households have said yes');
+    expect(privacyHtml).toContain('assistant you connect');
+  });
+
+  it('separates the rights the law gives you from the switches in the product', () => {
+    expect(privacyHtml).toContain('id="your-rights"');
+    expect(privacyHtml).toContain('id="your-choices"');
+  });
+
+  it('states plainly that no decision is made by machine alone (Law 25)', () => {
+    expect(privacyHtml).toContain('No decision about your family is made by automated processing');
+  });
+
+  it('keeps every internal link inside the reader’s locale', async () => {
+    // The same pin the terms carry, which the privacy policy did not need until
+    // this rebuild: it had no body links at all, and now links to the terms twice.
+    for (const locale of PREFIXED) {
+      const html = renderToStaticMarkup(await PrivacyPage({ params: Promise.resolve({ locale }) }));
+      assertEveryInternalHrefIsPrefixed(html, locale);
+      // Positive control: the document really does link out internally.
+      expect(html).toContain(`href="/${locale}/terms"`);
+    }
   });
 });
