@@ -43,7 +43,7 @@ export function BillingToggle({
           );
         })}
       </fieldset>
-      <span className="meta">annual saves about two months</span>
+      <span className="meta">annual saves about three months</span>
     </div>
   );
 }

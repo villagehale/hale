@@ -9,8 +9,11 @@ import type { PlanTier } from './entitlements.js';
  * Pre-PMF the free tier (Free) is fully functional and the active default;
  * paid tiers are surfaced with soft CTAs (billing isn't wired). Prices are CAD
  * (Canada-first) — `formatPlanPrice` renders them with an explicit CAD label.
- * Annual is the better value — `annualPriceCad / 12` works out to roughly two
- * months free versus paying monthly.
+ * Annual is the better value: at these prices it saves about THREE months versus
+ * paying monthly (Plus $108 → $79, 3.2 months; Family $228 → $159, 3.6). Every
+ * surface that states the discount says "about three months free" — and
+ * apps/site's pricing-section.test.ts derives the claim from these numbers, so a
+ * reprice that makes the sentence untrue fails there before it ships.
  */
 export interface PlanDisplay {
   /** Public display name, e.g. "Free". Distinct from the PlanTier enum value. */

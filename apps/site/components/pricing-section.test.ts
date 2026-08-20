@@ -83,6 +83,27 @@ describe('PricingSection (landing pricing)', () => {
     expect(live).not.toContain('/onboarding');
   });
 
+  it('claims an annual discount the prices actually deliver', () => {
+    // It said "about two months free" while $79 vs $9x12 saves 3.2 months and
+    // $159 vs $19x12 saves 3.6 — wrong for both tiers, on the one page a reader
+    // checks the arithmetic on. Derived from PLAN_DISPLAY, so a reprice that
+    // makes the sentence untrue fails here rather than shipping.
+    const CLAIMED_MONTHS = 3;
+    const paid = PLAN_TIERS_ORDERED.filter((tier) => PLAN_DISPLAY[tier].monthlyPriceCad > 0);
+    expect(paid.length).toBeGreaterThan(0);
+    for (const tier of paid) {
+      const plan = PLAN_DISPLAY[tier];
+      const saved = (plan.monthlyPriceCad * 12 - plan.annualPriceCad) / plan.monthlyPriceCad;
+      expect(saved, `${tier} saves less than the page claims`).toBeGreaterThanOrEqual(
+        CLAIMED_MONTHS,
+      );
+      expect(saved, `${tier} saves a whole month more than the page claims`).toBeLessThan(
+        CLAIMED_MONTHS + 1,
+      );
+    }
+    expect(html).toContain('about three months free');
+  });
+
   it('carries the founding-families banner with the first-100 badge promise', () => {
     expect(html).toContain('Founding families join free.');
     expect(html).toContain('first 100 families get a permanent founding badge');
