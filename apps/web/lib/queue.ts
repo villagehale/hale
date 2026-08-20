@@ -30,6 +30,16 @@ export async function getQueue(): Promise<PgBoss> {
         connectionString: url,
         // Keep the web app's queue role lean — it only sends.
         schema: 'pgboss',
+        // A PRODUCER, not a worker. Both of pg-boss's background loops default ON, so
+        // every warm web instance was also a maintenance supervisor (a poll every 5s
+        // plus `maintain()` every 120s, all contending one advisory lock with a 30s
+        // lock_timeout that pins a pooler client while it waits) and a cron scheduler.
+        // At one instance that is invisible; at a hundred warm instances it is pure
+        // overhead on the same connection layer the drain needs during a burst. The
+        // drain sets `supervise: false` for this reason already (lib/cron/drain.ts) and
+        // the queue-maintenance cron owns `maintain()`; the producer never got the memo.
+        supervise: false,
+        schedule: false,
       });
       await boss.start();
       cachedBoss = boss;
