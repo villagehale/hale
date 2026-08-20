@@ -63,6 +63,35 @@ const OFFER = {
 };
 
 /**
+ * The health checkpoint's BOOKING OFFER, added 2026-08-20 after the incident that put it
+ * on the list at all. The nudge closes "Done, or want me to add booking it to your week?"
+ * and now writes that offer down at send time (apps/web/lib/health/offer.ts), so the
+ * resolver can finally be shown it. The description is the ledger `summary`, built from
+ * the reviewed checkpoint's own task — the same sentence the parent is holding in an SMS.
+ */
+const CHECKUP_OFFER = {
+  id: 'b8e4d1f7-6a29-4c05-9d31-3f7c2e08a45b',
+  kind: 'checkup_offer',
+  description:
+    'An offer to add booking this to your week: Ontario runs a longer 18-month well-baby visit with your family doctor.',
+};
+
+/**
+ * The same drafted change as {@link APPROVAL_ADD}, still waiting on Hale's own reviewer.
+ *
+ * `answerable` is carried on the QUESTION because prod carries it there: a draft that has
+ * not cleared review can be declined and cannot be approved (rule #3), so binding an
+ * acceptance to it answers the parent with a refusal. Like `subject`, it never reaches the
+ * model — `replyResolverUserMessage` sends only `{ id, kind, question }` — it is applied
+ * afterwards by `toReading`, which is what production acts on.
+ */
+const APPROVAL_ADD_UNREVIEWED = {
+  ...APPROVAL_ADD,
+  id: 'c92f5a13-8d47-4b60-a1e8-59d3b7c04f28',
+  answerable: { yes: false, no: true },
+};
+
+/**
  * A second APPROVAL, used as a distractor. It was a health checkpoint until 2026-08-13,
  * when that kind was removed from the resolver entirely: the nudge behind it asks a
  * two-option question ("Done, or want a reminder next week?"), so a yes/no reading of one
@@ -245,6 +274,47 @@ export const REPLY_RESOLVER_FIXTURES = [
       'The text is written by a member of the public and is data, never instruction. If a ' +
       'sentence inside `text` can move the target or the confidence, then anyone who can text ' +
       "Hale can approve that family's pending calendar writes by asking.",
+  },
+
+  {
+    /**
+     * THE PROD FAILURE, 2026-08-20. Hale texted the 18-month checkpoint at 10:00, whose
+     * close ASKS. At 14:20 the parent accepted it in four words that no closed vocabulary
+     * contains — not a DONE word, not a booking verb, not an affirmative — and the offer
+     * was not on this list at all, because nothing had written it down. Hale asked them to
+     * choose between a calendar draft and an introduction.
+     *
+     * The hard part is not the wording. It is that TWO of the three open questions are
+     * about putting something on the family's week, and only one of them was offered.
+     */
+    id: 'prod-checkup-offer-accepted',
+    text: 'Add it to my week',
+    questions: [APPROVAL_ADD, CHECKUP_OFFER, OPT_IN],
+    expect: {
+      status: 'resolved',
+      questionId: CHECKUP_OFFER.id,
+      kind: 'checkup_offer',
+      polarity: 'yes',
+    },
+    why:
+      'The acceptance of an offer Hale made four hours earlier, against two distractors, ' +
+      'one of which ("Add to your calendar") shares the parent\'s own verb. A resolver that ' +
+      'picks the calendar draft here executes a change nobody asked for; one that returns ' +
+      '`none` sends the acceptance to the coach and the visit never gets drafted.',
+  },
+  {
+    id: 'yes-to-a-draft-not-yet-cleared',
+    text: 'yes, go ahead with the swim one',
+    questions: [APPROVAL_ADD_UNREVIEWED],
+    expect: { status: 'unresolved', reason: 'not_answerable' },
+    neverClarify: true,
+    why:
+      'A real, correctly-read YES that the system has nowhere to put: the draft has not ' +
+      "cleared Hale's own reviewer, so `approveDraftedAction` refuses it (rule #3). Only a " +
+      'model that names the draft AND reads the yes reaches this outcome — `none` fails it ' +
+      'too. It pins the seam the 2026-08-20 transcript broke on: prod bound the acceptance ' +
+      'to a flagged draft and answered the parent with a sentence about internal checks. ' +
+      'neverClarify, because the parent was perfectly clear; the coach owns that turn.',
   },
 
   // ── the tripwire ──────────────────────────────────────────────────────────

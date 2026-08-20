@@ -35,6 +35,25 @@ export interface ChannelTurn {
   conversationId: string;
   body: string;
   now: Date;
+  /**
+   * What Hale is still waiting to hear back about, as the short noun phrases HALE ITSELF
+   * would say them in ("booking that visit", "meeting the family nearby") — never a
+   * payload, never another household, never an internal label a parent has not seen.
+   *
+   * IT IS CONTEXT, NOT INSTRUCTION, and that is why it is here rather than in the skill.
+   * The coach is reached on two turns that need it and used to be blind on both:
+   *
+   *   · a parent plainly ANSWERED something and the resolver could not place which
+   *     (2026-08-20). Hale used to reply with a machine-built multiple choice; the coach
+   *     can ask the same question as a person, and can only do that if it knows what the
+   *     candidates were.
+   *   · a parent said something ordinary while a question was pending, and the coach,
+   *     knowing nothing about it, said "I don't have a draft waiting for your YES right
+   *     now" while one was (the prod failure the resolver eval's first fixture records).
+   *
+   * Empty is the ordinary case and means exactly what it says: Hale is waiting on nothing.
+   */
+  standingQuestions: readonly string[];
 }
 
 /**

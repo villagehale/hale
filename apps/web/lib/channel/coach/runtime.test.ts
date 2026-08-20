@@ -27,7 +27,14 @@ const LINK = 'https://app.villagehale.com';
 const TEEN = { name: 'Nora', gender: 'girl', dateOfBirth: '2010-03-04' };
 
 function turn(body = 'move swim to tuesday'): ChannelTurn {
-  return { familyId: FAMILY, parentUserId: PARENT, conversationId: CONVERSATION, body, now: NOW };
+  return {
+    familyId: FAMILY,
+    parentUserId: PARENT,
+    conversationId: CONVERSATION,
+    body,
+    now: NOW,
+    standingQuestions: [],
+  };
 }
 
 const SKILL: Skill = {

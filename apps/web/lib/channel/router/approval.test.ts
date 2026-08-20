@@ -60,9 +60,14 @@ function spine(
   };
 }
 
-const action = (id: string, actionType = 'calendar_add'): PendingAction => ({
+const action = (
+  id: string,
+  actionType = 'calendar_add',
+  reviewerApproved = true,
+): PendingAction => ({
   actionId: id,
   actionType,
+  reviewerApproved,
 });
 
 function run(
@@ -124,14 +129,27 @@ describe('resolveApproval — one pending action', () => {
     expect(outcome.reply).not.toMatch(/went wrong|try me again/i);
   });
 
-  it('says a draft has not cleared review, and never invites a retry', async () => {
+  /**
+   * The pre-review state, in PARENT language. The line used to say the draft "hasn't
+   * cleared my own checks", which is Hale narrating its own reviewer to someone who
+   * asked for a thing to happen — and it promises nothing about what happens next.
+   *
+   * What it must say: Hale is still on it, they have nothing to do. What it must not
+   * say: a verdict, a check, a review, or a clock Hale does not own.
+   */
+  it('says the pre-review state in the parent\'s terms, with no reviewer jargon', async () => {
     const { outcome } = await run('yes', {
       pending: [action('a-1')],
       refuse: 'not_reviewer_approved',
     });
 
-    expect(outcome.reply).toMatch(/checks/i);
+    expect(outcome.reply).toMatch(/double-checking/i);
+    expect(outcome.reply).toMatch(/nothing for you to do/i);
+    expect(outcome.reply).not.toMatch(/review|verdict|checks|flagged|approved by/i);
     expect(outcome.reply).not.toMatch(/went wrong|try me again/i);
+    // No timeframe: a flagged draft waits on a person, and "in a minute" would be a
+    // promise made out of a clock Hale does not hold.
+    expect(outcome.reply).not.toMatch(/minute|shortly|soon/i);
   });
 
   it('declining a resolved row gets the same state receipt, not an apology', async () => {
@@ -238,7 +256,7 @@ describe('resolveApproval — more than one pending action', () => {
 
   it('leaves distinct labels completely alone - no position where none is needed', async () => {
     const { outcome } = await run('yes', {
-      pending: [action('a-1'), { actionId: 'a-2', actionType: 'reschedule_event' }],
+      pending: [action('a-1'), { actionId: 'a-2', actionType: 'reschedule_event', reviewerApproved: true }],
     });
     expect(outcome.reply).not.toContain('(the first)');
   });

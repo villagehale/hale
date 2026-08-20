@@ -44,6 +44,17 @@ import { approvalSubjects } from './open-questions';
 export interface PendingAction {
   actionId: string;
   actionType: string;
+  /**
+   * Whether Hale's own reviewer has cleared it (rule #3). A draft that has not is still
+   * PENDING — it is in the app's queue and the parent may still decline it — but its YES
+   * is refused by `approveDraftedAction` whatever the parent says, so the open-question
+   * reader marks that polarity closed and the resolver stops binding acceptances to it.
+   *
+   * On the list rather than re-queried: the two readers of "is this pending" would
+   * otherwise disagree about which rows a bare ordinal points at, and a renumbered list
+   * is the one failure the oldest-first ordering exists to prevent.
+   */
+  reviewerApproved: boolean;
 }
 
 /**

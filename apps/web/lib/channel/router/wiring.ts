@@ -11,6 +11,7 @@ import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/
 import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
 import type { FamilyRole } from '~/lib/channel/role-scope';
+import { loadOpenCheckupOffer } from '~/lib/health/offer';
 import { defaultHealthReplyDeps } from '~/lib/health/reply';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { loadOpenCommitment } from '~/lib/commitments/ledger';
@@ -142,7 +143,11 @@ export function defaultApprovalSpine(): ApprovalSpine {
      */
     listPending: async (database, familyId): Promise<PendingAction[]> => {
       const rows = await database
-        .select({ id: schema.actions.id, actionType: schema.actions.actionType })
+        .select({
+          id: schema.actions.id,
+          actionType: schema.actions.actionType,
+          reviewerVerdict: schema.actions.reviewerVerdict,
+        })
         .from(schema.actions)
         .where(
           and(
@@ -152,7 +157,16 @@ export function defaultApprovalSpine(): ApprovalSpine {
         )
         .orderBy(asc(schema.actions.draftedAt))
         .limit(50);
-      return rows.map((row) => ({ actionId: row.id, actionType: row.actionType }));
+      // The reviewer verdict rides along rather than filtering the list, and the
+      // difference is the whole point: a flagged draft is still something the parent can
+      // decline, so removing it would take away an answer they have. What it cannot be is
+      // approved — `approveDraftedAction` refuses it (rule #3) — so it is listed as
+      // no-only, and the resolver stops binding a yes to a row it knows will refuse one.
+      return rows.map((row) => ({
+        actionId: row.id,
+        actionType: row.actionType,
+        reviewerApproved: row.reviewerVerdict === 'approved',
+      }));
     },
 
     /**
@@ -175,7 +189,11 @@ export function defaultApprovalSpine(): ApprovalSpine {
         )
         .orderBy(desc(schema.actions.executedAt))
         .limit(1);
-      return row ? { actionId: row.id, actionType: row.actionType } : null;
+      // Already executed, so the reviewer gate is behind it — `reviewerApproved` is what
+      // an UNDO would be blocked by, and nothing blocks one on this state.
+      return row
+        ? { actionId: row.id, actionType: row.actionType, reviewerApproved: true }
+        : null;
     },
 
     approve: async (database, args) => {
@@ -465,6 +483,13 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
       // handler behind it is about to decline.
       if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
       return { id: offer.id, summary: offer.summary };
+    },
+    // The health nudge's booking offer. Its TTL is applied inside the reader, so an
+    // offer past its week can never be listed, named in a clarifying sentence, or
+    // resolved — the same discipline the plan offer keeps one line above.
+    checkupOffer: async (database, familyId, now) => {
+      const offer = await loadOpenCheckupOffer(database, familyId, now);
+      return offer && { id: offer.id, summary: offer.summary };
     },
   });
 }

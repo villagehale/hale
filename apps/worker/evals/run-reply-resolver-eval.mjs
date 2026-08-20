@@ -132,14 +132,24 @@ const GRADE = {
   intro_proposal: 'consequential',
   intro_optin: 'ordinary',
   plan_offer: 'ordinary',
+  checkup_offer: 'ordinary',
 };
 
-/** Mirrors `ANSWERABLE`. A `no` to a plan offer has no writer — the offer just lapses. */
-const ANSWERABLE = {
+/**
+ * Mirrors `KIND_ANSWERABLE` — what a question of this class COULD take. A `no` to an
+ * offer has no writer; the offer just lapses.
+ *
+ * Prod reads answerability off the QUESTION, not the class (open-questions.ts), because a
+ * drafted action whose reviewer has not cleared it can be declined and cannot be approved.
+ * A fixture that wants to pin that case carries its own `answerable`; everything else
+ * falls back to the class, exactly as the reader builds it.
+ */
+const KIND_ANSWERABLE = {
   approval: { yes: true, no: true },
   intro_optin: { yes: true, no: true },
   intro_proposal: { yes: true, no: true },
   plan_offer: { yes: true, no: false },
+  checkup_offer: { yes: true, no: false },
 };
 
 /**
@@ -191,7 +201,8 @@ function toReading(raw, questions) {
   if (!meetsGrade(question.kind, confidence))
     return { status: 'unresolved', reason: 'below_grade' };
 
-  if (!ANSWERABLE[question.kind][polarity]) {
+  const answerable = question.answerable ?? KIND_ANSWERABLE[question.kind];
+  if (!answerable[polarity]) {
     return { status: 'unresolved', reason: 'not_answerable' };
   }
 

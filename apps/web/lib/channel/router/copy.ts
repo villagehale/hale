@@ -52,7 +52,19 @@ export function failureReply(): string {
  */
 const CONFLICT_REPLIES: Record<SpineRefusal, string> = {
   already_resolved: 'Already handled - nothing waiting on you.',
-  not_reviewer_approved: "That one hasn't cleared my own checks, so I can't put it through yet.",
+  /**
+   * REVIEWER STATE, IN PARENT LANGUAGE. It used to read "That one hasn't cleared my own
+   * checks, so I can't put it through yet", which is Hale describing its own internals to
+   * someone who asked for a thing to happen — the reviewer, the verdict and the gate are
+   * all Hale's business and none of them are the parent's. It also, in the one production
+   * sighting (2026-08-20), answered a parent who had just accepted a completely different
+   * offer, which made a sentence about internal checks the second wrong thing in one text.
+   *
+   * What is TRUE and sayable: Hale is still looking at it, the parent has nothing to do,
+   * and it will come back to them. No timeframe is promised, because a flagged draft waits
+   * on a person and "in a minute" would be a clock Hale does not own.
+   */
+  not_reviewer_approved: "I'm still double-checking that one myself - nothing for you to do yet, I'll come back to you on it.",
   undo_window_expired: "That one's past its undo window.",
   not_reversible: "That one isn't something I can take back.",
   // The genuine breakage: the row vanished mid-turn or came back belonging to another
