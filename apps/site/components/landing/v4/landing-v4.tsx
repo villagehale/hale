@@ -4,6 +4,7 @@ import { CopyNumberButton } from '~/components/copy-number';
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
 import { SiteFooter } from '~/components/site-footer';
+import { SiteHeader } from '~/components/site-header';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
@@ -70,15 +71,9 @@ interface ThreadRow {
 export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: string }) {
   const t = getTranslator(locale, 'Landing');
   const common = getTranslator(locale, 'Common');
-  const header = getTranslator(locale, 'Header');
   const copy = getTranslator(locale, 'CopyNumber');
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
 
-  const nav = [
-    { label: header('navPricing'), href: localeHref(locale, '/pricing') },
-    { label: header('navFaq'), href: localeHref(locale, '/faq') },
-    { label: header('navAbout'), href: localeHref(locale, '/about') },
-  ];
   const chips = t.raw('chips') as string[];
   const bubbles = t.raw('threadBubbles') as ThreadRow[];
   const steps = t.raw('steps') as TimedStep[];
@@ -94,8 +89,15 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd(locale)) }}
       />
+      {/* The landing wears the SHARED sticky bar, byte-identical to every subpage
+          (site-chrome.test.ts pins it) rather than a second copy of the same pill
+          inline in the hero. It keeps the over-hero look because the hero below
+          runs UNDER it: .v4-hero-top pulls the section up by the bar's height and
+          pads it back, so the shore still fills the viewport from y=0. */}
+      <SiteHeader locale={locale} />
+
       {/* ── Hero — the shore behind glass ─────────────────────────────────── */}
-      <section className="v4-hero">
+      <section className="v4-hero v4-hero-top">
         <Image
           src={heroShore}
           alt=""
@@ -106,42 +108,6 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           className="v4-hero-art"
         />
         <span className="v4-hero-scrim" aria-hidden="true" />
-
-        <header>
-          <nav className="v4-nav v4-glass" aria-label="Primary">
-            <a
-              href={localeHref(locale, '/')}
-              className="flex items-center gap-2.5"
-              aria-label="Hale, home"
-            >
-              <LogoMark size={28} />
-              <span
-                className="font-serif text-[1.2rem] font-semibold leading-none text-navy"
-                translate="no"
-              >
-                Hale
-              </span>
-            </a>
-            <div className="flex items-center gap-6">
-              <div className="v4-navlinks">
-                {nav.map((item) => (
-                  <a key={item.label} href={item.href} className="v4-navlink">
-                    {item.label}
-                  </a>
-                ))}
-              </div>
-              {smsHref ? (
-                <LandingCta event="landing_cta_text" href={smsHref} className="v4-btn-solid">
-                  {common('textHale')}
-                </LandingCta>
-              ) : (
-                <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid">
-                  {common('emailHale')}
-                </a>
-              )}
-            </div>
-          </nav>
-        </header>
 
         <div className="v4-hero-body">
           <p className="v4-eyebrow">{t('eyebrow')}</p>

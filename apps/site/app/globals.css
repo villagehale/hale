@@ -1739,6 +1739,14 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * the toggle changes is only how much night is poured over it — a warm daylit
    * wash in light, deep Prussian in dark — so the same shore reads as morning or
    * evening and the switch visibly transforms the hero. */
+  /* The landing's first hero runs UNDER the shared sticky nav pill rather than
+   * below it: pulled up by the bar's own block height and padded back by the
+   * same amount, so the shore fills the viewport from y=0 and the hero body
+   * still centres in the space beneath the glass. */
+  .v4-hero-top {
+    margin-top: calc(-1 * var(--nav-h));
+    padding-top: var(--nav-h);
+  }
   .v4-hero-art {
     position: absolute;
     inset: 0;
