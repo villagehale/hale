@@ -73,24 +73,48 @@
     "threadCap": "Your thread with Hale",
     "threadBubbles": [
       {
-        "dir": "out",
-        "text": "When does swim registration open in Oakville?"
+        "dir": "time",
+        "text": "A week before · Tue 10:04 a.m."
       },
       {
         "dir": "in",
-        "text": "I’m watching Oakville’s swim registration for you. I’ll text you the morning the date is set, remind you the night before, and nudge you the minute it opens."
+        "text": "Halton Hills fall recreation programs registration opens Tuesday at 7:00 a.m. for Mia. Your postal code gets the residents-first date. Reply YES and I’ll run the morning with you."
       },
       {
         "dir": "out",
-        "text": "my 2-year-old keeps waking at 5am 😩"
+        "text": "YES"
+      },
+      {
+        "dir": "time",
+        "text": "The evening before · Mon 7:04 p.m."
       },
       {
         "dir": "in",
-        "text": "Common at this age — usually an early bedtime or too much day sleep. Want the full plan? It’s three texts, and I’ll check in with you in a few days."
+        "text": "Tomorrow: Halton Hills fall recreation programs opens 7:00 a.m. for Mia. Sign in tonight and have this open: haltonhills.ca/Play/Recreation/Programs"
+      },
+      {
+        "dir": "time",
+        "text": "Fifteen minutes before · Tue 6:45 a.m."
+      },
+      {
+        "dir": "in",
+        "text": "Halton Hills fall recreation programs opens 7:00 a.m. Your link: haltonhills.ca/Play/Recreation/Programs"
+      },
+      {
+        "dir": "time",
+        "text": "Four hours later · Tue 11:02 a.m."
+      },
+      {
+        "dir": "in",
+        "text": "How did Halton Hills fall recreation programs go? Reply “got in”, “waitlisted #12” or “missed it”."
       },
       {
         "dir": "out",
-        "text": "yes please"
+        "text": "got in 🙌"
+      },
+      {
+        "dir": "in",
+        "text": "That’s a spot. Noted: Halton Hills fall recreation programs registered."
       }
     ],
     "howEyebrow": "How Hale works",
@@ -98,14 +122,17 @@
     "howH2Accent": "quiet.",
     "steps": [
       {
+        "when": "Right now",
         "step": "You say hi",
         "body": "One text. No app, no account, no forms."
       },
       {
+        "when": "In the same thread",
         "step": "I text back your week",
         "body": "Names, ages, a postal code — and I reply with every registration date I’m now watching for you."
       },
       {
+        "when": "Then every week",
         "step": "I keep watch",
         "body": "A brief on Monday, the plan the night before, a nudge as it opens."
       }
@@ -115,7 +142,17 @@
     "watchEyebrow": "What I watch",
     "watchH2Count": "{count} municipalities,",
     "watchH2Accent": "by name.",
-    "watchLede": "Spots open at 7:00 a.m., and the good ones are gone by 7:02. Lose the $54 city session and private runs about twelve times that — and some towns give residents a head start of four days to two weeks. I watch all fifteen calendars so nobody has to.",
+    "watchLede": "I watch all fifteen calendars so nobody has to.",
+    "contrast": [
+      {
+        "title": "Without me",
+        "body": "You set an alarm for 6:55 and open the tabs. Spots open at 7:00 a.m., and the good ones are gone by 7:02. Lose the $54 city session and private runs about twelve times that — and some towns give residents a head start of four days to two weeks."
+      },
+      {
+        "title": "With me",
+        "body": "You reply YES once. I run the morning with you, and your link is in your hand before it opens."
+      }
+    ],
     "watched": [
       {
         "title": "Swim lessons",
