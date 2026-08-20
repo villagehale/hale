@@ -101,13 +101,17 @@ describe('display type is set in a face that ships the weight (SITE-02)', () => 
     ]);
   });
 
-  it('halves the hero text-shadow blur below the Instrument Serif breakpoint', () => {
-    const shadows = declarations('.v4-hero-h1', 'text-shadow').sort(
-      (a, b) => a.minWidth - b.minWidth,
-    );
-    expect(shadows.map((s) => s.minWidth)).toEqual([0, 1024]);
-    expect(shadows[0]?.value).toContain('15px');
-    expect(shadows[1]?.value).toContain('30px');
+  it('carries no shadow behind the display type — and cannot re-add a dead one', () => {
+    // The hero declared `text-shadow: light-dark(<shadow>, <shadow>)`. light-dark()
+    // is a <color> function, so wrapping a whole shadow LIST in it is invalid and
+    // every one of those declarations computed to `none` — probed in Chromium:
+    // whole-list wrapped → "none", colour-only → applies. The review asked for
+    // LESS blur behind the display type and there was none, so they are gone. This
+    // fails if the invalid shape comes back anywhere in the stylesheet.
+    expect(declarations('.v4-hero-h1', 'text-shadow')).toEqual([]);
+    expect(CSS).not.toMatch(/text-shadow:\s*light-dark\(\s*\d/);
+    // Positive control: light-dark() is still used, in the places it is valid.
+    expect(CSS).toContain('light-dark(');
   });
 });
 

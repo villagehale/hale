@@ -1852,9 +1852,14 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     max-width: 15ch;
     font-weight: 550;
     line-height: 1.02;
-    /* Half the blur the ≥1024px hero wears: at the 46px mobile floor a 30px wash
-     * softens the very edges the heading needs to hold. */
-    text-shadow: light-dark(0 1px 15px rgb(253 252 250 / 0.65), 0 2px 20px rgb(12 26 54 / 0.7));
+    /* The hero carried `text-shadow: light-dark(<shadow>, <shadow>)` here and on
+     * .v4-hero-sub. light-dark() is a <color> function — wrapping a whole shadow
+     * LIST in it is invalid, so all three declarations computed to `none` and the
+     * softening wash has never rendered on any browser (probed in Chromium:
+     * whole-list → "none", colour-only → applies). Removed rather than repaired:
+     * the reason they surfaced was a review asking for LESS blur behind the
+     * display type, and there is none. If a wash is ever wanted back, the only
+     * valid form is `0 1px 30px light-dark(colourA, colourB)`. */
   }
   @media (min-width: 640px) {
     .v4-hero-h1 { font-weight: 500; }
@@ -1867,7 +1872,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
       font-weight: 400;
       letter-spacing: -0.015em;
       line-height: 0.96;
-      text-shadow: light-dark(0 1px 30px rgb(253 252 250 / 0.65), 0 2px 40px rgb(12 26 54 / 0.7));
     }
   }
   .v4-hero-sub {
@@ -1876,7 +1880,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     line-height: 1.6;
     color: var(--color-navy);
     opacity: 0.9;
-    text-shadow: light-dark(0 1px 18px rgb(253 252 250 / 0.8), none);
+    /* Same invalid light-dark(<shadow>) shape as the h1's — never rendered. */
   }
 
   /* The reply-chip row — the questions parents actually send, echoing v3, as
