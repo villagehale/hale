@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import {
@@ -736,7 +736,7 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
           templateKey: write.templateKey,
           dedupeKey: write.dedupeKey,
           providerMessageId: write.providerMessageId,
-          status: 'sent',
+          status: acceptedStatus('sms'),
           sentAt: write.sentAt,
         })
         .returning({ id: schema.channelMessages.id });

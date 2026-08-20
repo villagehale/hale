@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, isNotNull, isNull, lt } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import { f14EnabledFor } from '~/lib/channel/nudge/run';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { decryptString } from '~/lib/crypto/string-cipher';
@@ -402,7 +403,7 @@ async function recordGuestSend(database: Database, write: GuestSendLedger): Prom
       templateKey: 'party_guest_message',
       dedupeKey: write.dedupeKey,
       providerMessageId: write.providerMessageId,
-      status: 'sent',
+      status: acceptedStatus('sms'),
       sentAt: write.sentAt,
     });
     await tx.insert(schema.auditLog).values({

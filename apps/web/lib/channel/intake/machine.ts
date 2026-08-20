@@ -3,6 +3,7 @@ import {
   resolveVerifiedChannelByPhone,
   revokeSmsChannel,
 } from '~/lib/channels/sms-consent-core';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
@@ -343,7 +344,7 @@ async function writeChannelMessage(
       category: 'intake',
       templateKey: templateKey ?? null,
       providerMessageId: entry.providerId,
-      status: entry.direction === 'in' ? 'delivered' : 'sent',
+      status: entry.direction === 'in' ? 'delivered' : acceptedStatus('sms'),
       // Verbatim bodies for INBOUND only — an outbound is reconstructable from the
       // copy module, and storing rendered child data is a liability (rule #1).
       body: entry.direction === 'in' ? entry.body : null,

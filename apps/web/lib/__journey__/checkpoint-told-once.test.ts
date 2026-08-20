@@ -310,8 +310,9 @@ describe('the radar tells a checkpoint', () => {
 
     // SEAM: the fake applies no WHERE clause, so WHICH row the mark lands on is
     // SQL-side (told.ts scopes it to the id sendAndRecord handed back). What this store
-    // can see is the ORDER, and the order is the contract: the outbound row exists,
-    // status 'sent', before anything claims this family has been told.
+    // can see is the ORDER, and the order is the contract: the outbound row exists — an
+    // SMS is born 'queued', the receipt advances it (channel/ledger.ts) — before
+    // anything claims this family has been told.
     const markIndex = writes.indexOf(marks[0] as (typeof writes)[number]);
     const carrier = writes
       .slice(0, markIndex)
@@ -320,7 +321,7 @@ describe('the radar tells a checkpoint', () => {
     expect(carrier?.payload).toMatchObject({
       direction: 'out',
       category: 'intake',
-      status: 'sent',
+      status: 'queued',
     });
   });
 });

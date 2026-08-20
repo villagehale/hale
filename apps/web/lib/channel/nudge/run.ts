@@ -9,7 +9,7 @@ import {
 } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import {
@@ -124,7 +124,7 @@ export interface NudgeLedgerWrite {
   category: 'nudge';
   templateKey: string;
   dedupeKey: string;
-  status: 'sent';
+  status: AcceptedStatus;
   providerMessageId: string;
   sentAt: Date;
 }
@@ -394,7 +394,7 @@ async function runForFamily(
     category: 'nudge',
     templateKey: `proactive_nudge:${nudge.kind}`,
     dedupeKey,
-    status: 'sent',
+    status: acceptedStatus('sms'),
     providerMessageId,
     sentAt: now,
   });

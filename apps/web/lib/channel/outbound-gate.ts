@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { type OptOutForm, optOutPeriodStart } from './opt-out';
@@ -326,9 +327,10 @@ async function readWatchConsent(database: Database, parentUserId: string): Promi
   return latest?.granted === true && latest.revokedAt === null;
 }
 
-/** Proactive sends of this class that actually LANDED for the family in the window.
- * Suppressions and failures do not consume a family's budget — only a message a
- * parent could have read. */
+/** Proactive sends of this class that actually WENT OUT for the family in the window.
+ * Suppressions and failures do not consume a family's budget — only a message the
+ * parent is going to read (a row still waiting for its receipt counts: it is already
+ * on its way, and not counting it spends the budget twice). */
 async function countFamilyProactiveSends(
   database: Database,
   familyId: string,
@@ -344,7 +346,7 @@ async function countFamilyProactiveSends(
         eq(schema.channelMessages.category, PROACTIVE_CATEGORY[kind]),
         eq(schema.channelMessages.direction, 'out'),
         gte(schema.channelMessages.createdAt, since),
-        inArray(schema.channelMessages.status, ['sent', 'delivered']),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     );
   return rows.length;
@@ -369,7 +371,7 @@ async function parentProactiveSentSince(
         inArray(schema.channelMessages.category, Object.values(PROACTIVE_CATEGORY)),
         eq(schema.channelMessages.direction, 'out'),
         gte(schema.channelMessages.createdAt, since),
-        inArray(schema.channelMessages.status, ['sent', 'delivered']),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     )
     .limit(1);

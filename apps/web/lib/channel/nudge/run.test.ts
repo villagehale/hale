@@ -286,7 +286,7 @@ describe('runNudgeCron — sending', () => {
       parentUserId: 'user-1',
       channel: 'sms',
       category: 'nudge',
-      status: 'sent',
+      status: 'queued',
     });
     expect(auditActions(h.writes)).toContain('proactive_nudge_sent');
   });
@@ -496,7 +496,7 @@ describe('runNudgeCron — the prod send path (VIL-260)', () => {
     expect(ledger[0]?.payload).toMatchObject({
       channel: 'sms',
       category: 'nudge',
-      status: 'sent',
+      status: 'queued',
       templateKey: 'proactive_nudge:registration',
       dedupeKey: 'nudge:fam-1:registration:w-1',
     });

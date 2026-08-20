@@ -1,6 +1,7 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { CATEGORY_CAPS } from './config';
+import { SENT_STATUSES, acceptedStatus } from './ledger';
 import type { Channel, ChannelKind, LoopCategory, LoopMessage } from './types';
 
 /**
@@ -38,7 +39,7 @@ export interface LedgerWrite {
   category: LoopCategory;
   templateKey: string;
   dedupeKey: string | null;
-  status: 'sent' | 'failed' | SuppressionStatus;
+  status: 'queued' | 'sent' | 'failed' | SuppressionStatus;
   providerMessageId?: string | null;
   errorCode?: string | null;
   relatedActionId?: string | null;
@@ -219,7 +220,12 @@ async function dispatchLeg(
   }
 
   if (result.status === 'sent') {
-    const id = await writeLedgerRow(ports, msg, channel, 'sent', {
+    // What the row CLAIMS is the channel's question, not this one's: an SMS the
+    // provider merely accepted is 'queued' until a receipt says otherwise, while a
+    // channel with no receipt wired is terminal here (channel/ledger.ts). The LEG's
+    // outcome stays 'sent' either way — the leg did hand the message over, and that is
+    // the question a caller composing legs is asking.
+    const id = await writeLedgerRow(ports, msg, channel, acceptedStatus(channel), {
       dedupeKey: legKey,
       providerMessageId: result.providerMessageId,
       sentAt: now,
@@ -264,7 +270,11 @@ async function writeLedgerRow(
   extra: Partial<LedgerWrite> = {},
 ): Promise<string> {
   const id = await ports.record(rowFor(msg, channel, status, extra));
-  const event: AnalyticsEvent = status === 'sent' ? 'loop_message_sent' : 'loop_message_failed';
+  // A SEND, not a status match: an SMS row is born 'queued', and keying the event off
+  // 'sent' alone would report every text Hale sends as a failure.
+  const event: AnalyticsEvent = (SENT_STATUSES as readonly string[]).includes(status)
+    ? 'loop_message_sent'
+    : 'loop_message_failed';
   await ports.capture(event, msg.parentUserId, {
     channel,
     category: msg.category,

@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -317,7 +317,7 @@ export function defaultPlanCheckInDeps(): PlanCheckInDeps {
           templateKey: write.templateKey,
           dedupeKey: write.dedupeKey,
           providerMessageId: write.providerMessageId,
-          status: 'sent',
+          status: acceptedStatus('sms'),
           relatedConversationId: write.relatedConversationId,
           sentAt: write.sentAt,
         })

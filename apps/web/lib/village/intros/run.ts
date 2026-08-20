@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import {
@@ -1230,7 +1230,7 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
           templateKey: write.templateKey,
           dedupeKey: write.dedupeKey,
           providerMessageId: write.providerMessageId,
-          status: 'sent',
+          status: acceptedStatus('sms'),
           sentAt: write.sentAt,
         })
         .returning({ id: schema.channelMessages.id });

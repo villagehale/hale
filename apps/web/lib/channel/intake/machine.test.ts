@@ -302,7 +302,7 @@ describe('intake · happy path', () => {
         (row) => row.templateKey === 'parent_name_ask',
       );
       expect(asks).toHaveLength(1);
-      expect(asks[0]).toMatchObject({ direction: 'out', status: 'sent' });
+      expect(asks[0]).toMatchObject({ direction: 'out', status: 'queued' });
     });
 
     /**

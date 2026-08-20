@@ -4,7 +4,7 @@ import { and, eq, isNull, or } from 'drizzle-orm';
 import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -134,7 +134,7 @@ export interface SequenceLedgerWrite {
   category: 'registration_sequence';
   templateKey: string;
   dedupeKey: string;
-  status: 'sent';
+  status: AcceptedStatus;
   providerMessageId: string;
   sentAt: Date;
 }
@@ -433,7 +433,7 @@ async function runLegForSequence(
     category: 'registration_sequence',
     templateKey: `registration_sequence:${leg}`,
     dedupeKey,
-    status: 'sent',
+    status: acceptedStatus('sms'),
     providerMessageId,
     sentAt: now,
   });

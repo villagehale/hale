@@ -461,9 +461,11 @@ describe('the one-time ask for an address', () => {
     });
 
     expect(second).toMatchObject({ ask: 'sent' });
+    // The ask goes out over SMS, so its row is born 'queued' — Twilio took it, the
+    // receipt has not landed (channel/ledger.ts acceptedStatus).
     const rows = await ledger(seeded.familyId, 'calendar_email_ask');
-    expect(rows.filter((row) => row.status === 'sent')).toHaveLength(1);
-    expect(rows.find((row) => row.status === 'sent')?.dedupeKey).toBe(
+    expect(rows.filter((row) => row.status === 'queued')).toHaveLength(1);
+    expect(rows.find((row) => row.status === 'queued')?.dedupeKey).toBe(
       emailAskDedupeKey(seeded.familyId),
     );
   });

@@ -314,6 +314,28 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
     ]);
   });
 
+  /**
+   * The SMS leg's row is born 'queued' — Twilio accepted it, the carrier has not
+   * confirmed it (channel/ledger.ts acceptedStatus). The capture must NOT follow the
+   * status blindly: a queued SMS is a SEND, and pairing it with loop_message_failed
+   * would report every text Hale sends as a failure.
+   */
+  it('an sms leg is ledgered queued, and still captured as a send', async () => {
+    const { ports, ledger, captures } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      channels: { sms: fakeChannel('sms') },
+    });
+
+    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+    expect(ledger[0]).toMatchObject({ channel: 'sms', status: 'queued' });
+    expect(captures[0]).toMatchObject({
+      event: 'loop_message_sent',
+      properties: { channel: 'sms', reason: 'queued' },
+    });
+  });
+
   it('a permanent provider error writes one ledger row and one loop_message_failed capture', async () => {
     const { ports, ledger, captures } = makePorts({
       channels: { email: fakeChannel('email', { status: 'error', transient: false, code: 'invalid_recipient', message: 'bad' }) },
