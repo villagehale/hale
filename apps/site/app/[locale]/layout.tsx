@@ -46,8 +46,10 @@ const instrumentSerif = localFont({
 });
 
 // Bellefair (SIL OFL, self-hosted like the four above — the licence text ships
-// beside the binary in app/fonts/). The display face for every headline, deck,
-// legal title and the wordmark from 2026-08-20.
+// beside the binary in app/fonts/). The display face for every headline, deck and
+// legal title from 2026-08-20. NOT the wordmark: the name is drawn art now
+// (components/wordmark.tsx), which is what took the last Bellefair rule out of
+// the locale allowlist's exception list.
 //
 // ONE MASTER, and that is the whole design constraint. There is no 500 and no
 // 700 to reach for, so nothing may ask for one: a `font-weight: 700` here would

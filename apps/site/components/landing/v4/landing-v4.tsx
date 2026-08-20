@@ -5,6 +5,7 @@ import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
@@ -317,9 +318,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           <div className="v4-hero-body v4-closing-body">
             <span className="inline-flex items-center gap-3">
               <LogoMark size={40} />
-              <span className="wordmark text-[2rem] leading-none text-navy" translate="no">
-                Hale
-              </span>
+              <Wordmark className="h-[1.6rem] text-navy" />
             </span>
             <h2 className="v4-display mt-4 text-[clamp(1.9rem,4vw,2.8rem)] text-ink">
               {t('closingH2a')} <span className="v4-accent">{t('closingH2Accent')}</span>

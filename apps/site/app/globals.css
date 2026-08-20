@@ -345,27 +345,25 @@ strong { font-weight: 700; }
 .tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* The wordmark — "Hale" beside the honu tile, in the header, the footer, the
- * landing's closing card and the QR-entry page.
+ * legal masthead, the landing's closing card and the QR-entry page.
  *
- * It takes the display face UNCONDITIONALLY, outside the locale allowlist every
- * other display rule goes through, and that is the point rather than an
- * oversight: the name is `translate="no"` and is spelled in Latin letters on the
- * Chinese page too, so there is no locale here for the allowlist to protect.
+ * It is DRAWN ART now, not set type (components/wordmark.tsx), so every type
+ * declaration this rule used to carry is gone with the string it styled: no
+ * family, no weight, no synthesis guard, no tracking. What is left is the box the
+ * art fills, and the art's own aspect ratio supplies the width.
  *
- * 1.65rem, not the 1.2rem the mark wore in Source Serif 600. At 1.2rem a 400
- * master measures a 1.23px stem against the 1.36px of the nav links beside it —
- * the name read lighter than its own navigation. 1.65rem puts it at 1.69px and
- * lands the cap at 18.2px against the 28px LogoMark.
+ * The size is stated as a height rather than a font-size because that is what the
+ * mark now has. 1.32rem/21.1px lands the drawn cap at 20.1px against the 28px
+ * LogoMark — a shade over the 18.2px cap the Bellefair mark wore, which the
+ * heavier hand can carry and the lighter face could not.
  *
- * The tracking is OPEN, and open tracking buys separation rather than ink: it
- * does not make the mark heavier, it stops four high-contrast letters at display
- * size from reading as one dark clot. */
+ * `block` is not cosmetic: left inline the mark sits on the text baseline and
+ * hangs 5px of descender leading under itself, which the QR-entry page shows as a
+ * gap between the mark and the headline it leads. */
 .wordmark {
-  font-family: var(--font-bellefair), Georgia, serif;
-  font-weight: 400;
-  font-synthesis-weight: none;
-  font-size: 1.65rem;
-  letter-spacing: 0.03em;
+  display: block;
+  height: 1.32rem;
+  width: auto;
 }
 
 /* Eyebrow label — Instrument Sans 600, tracked + uppercase, in amber to match the

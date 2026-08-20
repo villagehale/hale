@@ -2,6 +2,7 @@ import { CopyNumberButton } from '~/components/copy-number';
 import { EmailCta } from '~/components/email-cta';
 import { QrCode } from '~/components/qr-code';
 import { TextEntryAnalytics } from '~/components/text-entry-analytics';
+import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
@@ -47,9 +48,7 @@ export function TextEntry({
       <TextEntryAnalytics source={source} />
 
       <div className="rise rise-1">
-        <span className="wordmark leading-none text-spruce" translate="no">
-          Hale
-        </span>
+        <Wordmark className="text-spruce" />
         {/* The QR card's landing is the highest-intent surface the site has, so it
             wears the same display face as every other headline rather than the
             base sans — the one page that looked like a different product. */}

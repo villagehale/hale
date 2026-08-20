@@ -5,7 +5,9 @@ import logo from '~/assets/hale-logo.jpeg';
  * The Hale brand mark: the white sea-turtle on its navy tile, as a rounded
  * square (~30% radius per the design handoff). The tile carries its own dark
  * ground, so it reads on the warm page without adapting. Decorative beside the
- * "Hale" wordmark — the wordmark carries the accessible name.
+ * "Hale" wordmark, which is decorative too now that it is drawn art — the name
+ * travels in the Wordmark's own `sr-only` text, or in the lockup anchor's
+ * aria-label where there is one.
  */
 export function LogoMark({ size = 32, className }: { size?: number; className?: string }) {
   return (

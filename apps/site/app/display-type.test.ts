@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import postcss from 'postcss';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { Wordmark } from '~/components/wordmark.js';
 
 /**
  * SITE-02 gate — the display type may never be set in a weight the loaded face
@@ -215,14 +218,15 @@ const BELLEFAIR_DECK_SELECTORS = [
   "html[lang='en'] .v4-lede",
   "html[lang='fr'] .v4-lede",
 ];
-/** The wordmark is the one display string that is Latin in every language, so it
- * is deliberately OUTSIDE the locale allowlist — there is no Chinese spelling of
- * "Hale" for the allowlist to protect. */
+/** Every rule that reaches Bellefair — and since the wordmark became drawn art
+ * that is every rule INSIDE the locale allowlist. The mark used to be the one
+ * exception, a Latin string on the Chinese page too with no locale for the
+ * allowlist to protect; drawing it removed the exception rather than documenting
+ * it a second time. See the drawn-mark block at the foot of this file. */
 const BELLEFAIR_ALL_SELECTORS = [
   ...BELLEFAIR_HEADING_SELECTORS,
   ...BELLEFAIR_HERO_SELECTORS,
   ...BELLEFAIR_DECK_SELECTORS,
-  '.wordmark',
 ];
 
 /** The `min` of a `clamp(min, preferred, max)`, in px. That is the rung's
@@ -380,29 +384,16 @@ describe('the display face is Bellefair (Latin locales only, one master)', () =>
     expect(only('.v4-h2-wide', 'font-size')).toBe('clamp(2rem, 5vw, 3.4rem)');
   });
 
-  it('gives the wordmark the size a 400 mark needs beside a 28px tile', () => {
-    // At 1.2rem the mark measured a 1.23px stem against a 1.28px nav link — the
-    // name was lighter than the links next to it. Stepped to 1.65rem it reads
-    // 1.69px, and its cap lands at 18.2px against the 28px LogoMark.
-    const size = only('.wordmark', 'font-size');
-    expect(stemPx(Number(/([\d.]+)rem/.exec(size)?.[1]) * REM)).toBeGreaterThanOrEqual(
-      FLOOR_PX.navLink[1440],
-    );
-  });
-
   it('opens the tracking rather than closing it — a hairline needs its counters', () => {
     // Source Serif tightened to -0.01em and the Instrument Serif hero to -0.015em.
     // Bellefair runs a 1.88:1 contrast with a 0.034em hairline; the same tightening
-    // closes the joins. No display rule may track negative, and the wordmark opens
-    // — which buys separation, not ink, and the comment says so rather than
-    // implying tracking made the mark heavier.
+    // closes the joins. No display rule may track negative.
     for (const selector of [...BELLEFAIR_HEADING_SELECTORS, ...BELLEFAIR_HERO_SELECTORS]) {
       for (const { value } of declarations(selector, 'letter-spacing')) {
         const em = value === 'normal' ? 0 : Number(value.replace('em', ''));
         expect(em, `${selector} tracks ${value}`).toBeGreaterThanOrEqual(0);
       }
     }
-    expect(Number(only('.wordmark', 'letter-spacing').replace('em', ''))).toBeGreaterThan(0);
     // The deck is running text: never tracked at all.
     for (const selector of BELLEFAIR_DECK_SELECTORS) {
       expect(only(selector, 'letter-spacing')).toBe('normal');
@@ -461,13 +452,105 @@ describe('the display face is Bellefair (Latin locales only, one master)', () =>
     expect(pricing).toContain('<h2 className="v4-display mt-3">');
   });
 
-  it('leaves no wordmark behind on the old face — every "Hale" is the same mark', () => {
-    // There are five of them: the site header, the site footer, the legal pages'
-    // own header, the landing's closing card and the QR-entry page. The legal one
-    // was missed on the first pass and only the running site showed it — /terms
-    // wore a Source Serif 600 mark while every other page wore the new one. The
-    // The mark is a <span> whose whole body is the name — not merely anything
-    // `translate="no"`, which the footer's mono pronunciation guide also is.
+  it('carries the OFL text beside the binary it licenses', () => {
+    const ofl = readFileSync(fileURLToPath(new URL('./fonts/bellefair-OFL.txt', import.meta.url)), 'utf8');
+    expect(ofl).toContain('SIL OPEN FONT LICENSE Version 1.1');
+    expect(ofl).toContain('Bellefair');
+  });
+});
+
+/**
+ * The wordmark left the type system (2026-08-20).
+ *
+ * It was the last display surface still set in a font — Bellefair 400 at 1.65rem
+ * — and it carried every problem this file exists to police. It was the one rule
+ * that had to sit OUTSIDE the locale allowlist. It was the rung the stem gate had
+ * to keep stepping UP (1.2rem → 1.65rem) so the name did not read lighter than
+ * the nav links beside it. And a stray `font-weight` above it would have been
+ * synthesized into the same smear #506 removed. None of those are problems a logo
+ * should have, because none of them are problems a logo should be able to have.
+ *
+ * So the name is drawn once and frozen: components/wordmark.tsx, one traced path
+ * from Just Another Hand (Apache-2.0, logo use unrestricted) under the square
+ * dilation the founder approved in the comps — reproduced by RATIO (radius/em
+ * 0.009375, read back off the comp's own box growth and median stroke) so it is
+ * the approved weight rather than merely a heavier one.
+ *
+ * What that RETIRES, deliberately:
+ *
+ *   font-family / font-weight / font-synthesis-weight   There is no font. A drawn
+ *       path cannot be synthesized into a smear, which is the whole of what those
+ *       three pinned. Retired, not relaxed.
+ *   letter-spacing   There are no letters to space.
+ *   font-size + its stem rung   Kept in SUBSTANCE, dropped in form. The check
+ *       below is the same invariant — the name may not read lighter than its own
+ *       navigation — measured off the shipped ARTWORK instead of off a face.
+ *
+ * The constants are measured the way the rest of this file's are: the shipped
+ * path rasterised in Chromium at a 1139px box, then read off the raster.
+ *
+ * And the honest note for whoever edits this next: at 1.32rem the drawn stem is
+ * 2.73px against the nav link's 1.36px, so it clears the floor by 2x and would go
+ * on clearing it well below any size anyone would ship. Stroke weight is no
+ * longer what decides this mark's size. What decides it is the cap beside the
+ * 28px LogoMark, which is why that is pinned too.
+ */
+const WORDMARK_ART = {
+  /** Vertical stroke of the 'H', as a fraction of the mark's rendered box height. */
+  stemPerBox: 0.129,
+  /** Cap height as a fraction of the box — the 'l' descender is the remainder. */
+  capPerBox: 0.9517,
+  /** The cap the Bellefair mark landed at, which this one may not undercut. */
+  typeCapPx: 18.2,
+} as const;
+
+describe('the wordmark is drawn art, not set type', () => {
+  // Asserted against what SHIPS, not against the component source: the source
+  // also talks about the baked fill it removed, and a scan of the prose reads
+  // that mention as the thing itself.
+  const MARK = renderToStaticMarkup(createElement(Wordmark));
+  const pathData = /<path d="([^"]+)"/.exec(MARK)?.[1] ?? '';
+
+  it('ships one path that takes its colour from the cascade', () => {
+    // potrace emits `fill="#000000"` and a width/height in points. Shipped as
+    // traced, that is a black mark on the navy dark ground, in a box no CSS can
+    // resize. Both are removed rather than overridden, so there is nothing left
+    // to lose a specificity fight to.
+    expect([...MARK.matchAll(/<path\b/g)]).toHaveLength(1);
+    expect(MARK).toContain('fill="currentColor"');
+    expect(MARK, 'a baked fill cannot follow the theme').not.toMatch(/fill="#/);
+    expect(MARK, 'a baked size cannot be re-sized').not.toMatch(/<svg[^>]*\s(width|height)=/);
+    expect(MARK).toContain('viewBox="0 0 1498.41 1138.88"');
+  });
+
+  it('keeps the art small enough to inline on every page', () => {
+    // It is inlined into five lockups on every route, so the path is in the HTML
+    // payload of every page. Budget is 8KB; it ships at well under half.
+    expect(pathData.length).toBeGreaterThan(500);
+    expect(pathData.length).toBeLessThan(8 * 1024);
+  });
+
+  it('leaves .wordmark a BOX — every type declaration went with the type', () => {
+    for (const prop of ['font-family', 'font-weight', 'font-synthesis-weight', 'font-size', 'letter-spacing']) {
+      expect(declarations('.wordmark', prop), `.wordmark still sets ${prop}`).toEqual([]);
+    }
+    expect(only('.wordmark', 'height')).toBe('1.32rem');
+    // Width comes from the art's own aspect ratio; a fixed width would squash it.
+    expect(only('.wordmark', 'width')).toBe('auto');
+  });
+
+  it('still out-strokes the navigation beside it — the old invariant, new measure', () => {
+    const boxPx = Number(/([\d.]+)rem/.exec(only('.wordmark', 'height'))?.[1]) * REM;
+    expect(boxPx * WORDMARK_ART.stemPerBox).toBeGreaterThanOrEqual(FLOOR_PX.navLink[1440]);
+    // And it may not shrink under the cap the type mark held against the 28px tile.
+    expect(boxPx * WORDMARK_ART.capPerBox).toBeGreaterThanOrEqual(WORDMARK_ART.typeCapPx);
+  });
+
+  it('draws every "Hale" with the one component — no typed mark left anywhere', () => {
+    // Five lockups: the site header, the site footer, the legal masthead, the
+    // landing's closing card and the QR-entry page. The legal one was missed when
+    // the face last changed and only the running site caught it, so the scan is
+    // over the sources rather than over one rendered page.
     const components = [
       'site-header',
       'site-footer',
@@ -475,24 +558,29 @@ describe('the display face is Bellefair (Latin locales only, one master)', () =>
       'text-entry',
       'landing/v4/landing-v4',
     ].map((name) => readFileSync(fileURLToPath(new URL(`../components/${name}.tsx`, import.meta.url)), 'utf8'));
-    const marks: string[] = [];
+    const drawn = components.flatMap((source) => [...source.matchAll(/<Wordmark\b/g)]);
+    // Positive control: the scan finds all five, so a clean typed-mark result
+    // below is not an empty match set — and this fails if a sixth appears.
+    expect(drawn).toHaveLength(5);
     for (const source of components) {
-      for (const match of source.matchAll(/<span([^>]*)>\s*Hale\s*<\/span>/g)) {
-        const attrs = match[1] ?? '';
-        marks.push(attrs);
-        expect(attrs, `a wordmark not on .wordmark: ${attrs.trim()}`).toContain('wordmark');
-        expect(attrs, `a wordmark asking for a weight: ${attrs.trim()}`).not.toMatch(/font-semibold|font-bold/);
-      }
+      expect([...source.matchAll(/<span[^>]*>\s*Hale\s*<\/span>/g)], 'a typed mark survives').toEqual([]);
     }
-    // Positive control: the scan does find all five marks, so a clean result is
-    // not an empty match set — and the count fails if a sixth appears untested.
-    expect(marks).toHaveLength(5);
   });
 
-  it('carries the OFL text beside the binary it licenses', () => {
-    const ofl = readFileSync(fileURLToPath(new URL('./fonts/bellefair-OFL.txt', import.meta.url)), 'utf8');
-    expect(ofl).toContain('SIL OPEN FONT LICENSE Version 1.1');
-    expect(ofl).toContain('Bellefair');
+  it('never lets decorative art delete the name it replaced', () => {
+    // The regression this change could have shipped in silence. Three of the five
+    // lockups are an `<a aria-label="Hale, home">`, whose label wins over any
+    // descendant text — but the landing's closing card and the QR-entry page are
+    // NOT links, and there the visible word was the only "Hale" in the
+    // accessibility tree. aria-hidden art alone would have removed it from both
+    // while the three anchors carried on naming themselves.
+    expect(MARK).toContain('aria-hidden="true"');
+    expect(MARK).toContain('<span class="sr-only" translate="no">Hale</span>');
+    // Mutation control: the drawing itself says nothing, so the span is the whole
+    // of the name rather than a duplicate of one the <svg> also carries.
+    const svg = /<svg[\s\S]*?<\/svg>/.exec(MARK)?.[0] ?? '';
+    expect(svg).not.toContain('aria-label');
+    expect(svg).not.toContain('role="img"');
   });
 });
 

@@ -168,6 +168,25 @@ describe('landing — the brand tile, the shore, and nothing else', () => {
     }
   });
 
+  it('holds the same line over the art that is DRAWN rather than fetched', () => {
+    // The scan above reads <img>, and since 2026-08-20 the brand's loudest mark on
+    // this page is not one: the wordmark is an inline <svg>. Three of them ship in
+    // the header, the closing card and the footer, and an <img>-only honesty pin
+    // would have said nothing about any of them. Every drawing on this page is
+    // decorative — the two lucide icons in the theme switch and the language
+    // selector, and the three wordmarks, all of which are named by the control or
+    // the sr-only text beside them rather than by the art.
+    const svgs = html.match(/<svg[^>]*>/g) ?? [];
+    expect(svgs.length).toBeGreaterThanOrEqual(5);
+    for (const svg of svgs) {
+      expect(svg, `a drawing that is not decorative: ${svg.slice(0, 90)}`).toContain(
+        'aria-hidden="true"',
+      );
+    }
+    // Positive control: the wordmark's name still reaches the tree beside the art.
+    expect([...html.matchAll(/<span class="sr-only" translate="no">Hale<\/span>/g)]).toHaveLength(3);
+  });
+
   it('uses the day shore for both the hero and the close, no night panel, and no mascot art', () => {
     // Counted as <img> elements, not filename occurrences. The day shore now backs
     // BOTH the hero and the closing band; the night panel was retired (readability).

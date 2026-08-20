@@ -1,6 +1,7 @@
 import { LanguageSelect } from '~/components/language-select';
 import { FooterThemeSwitch } from '~/components/landing/v4/theme-switch';
 import { LogoMark } from '~/components/logo-mark';
+import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
@@ -61,9 +62,7 @@ export function SiteFooter({ locale = routing.defaultLocale }: { locale?: Locale
           <div className="lg:max-w-[22rem]">
             <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
               <LogoMark size={28} />
-              <span className="wordmark leading-none text-spruce" translate="no">
-                Hale
-              </span>
+              <Wordmark className="text-spruce" />
             </a>
             <p className="mt-5 text-[13px] leading-[1.6] text-slate-green">{t('blurb')}</p>
             {/* The name, said out loud. It carries the whole brand — Hawaiian for
