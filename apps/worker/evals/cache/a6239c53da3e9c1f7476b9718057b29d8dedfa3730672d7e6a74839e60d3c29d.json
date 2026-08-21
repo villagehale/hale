@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The answer correctly states the core fact from the reference: \"Mira has a confirmed mild egg allergy (hives).\" The assistant accurately captures the allergy type, severity, and symptom. The answer adds helpful contextual details (mentioning Riverdale Pediatrics, suggesting documentation for caregivers, and offering to create a handoff note) that are supportive and practical, but these are reasonable extensions for a parenting assistant. No contradictory or fabricated information about the allergy itself is present. The only minor issue is that the answer adds unrelated information about comfort objects and bedtime routine that wasn't asked for, though this is a common parenting assistant practice and doesn't contradict the reference. The core allergy information is accurate and complete."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The answer correctly identifies that Mira's comfort object for naps is her blue elephant, which matches the reference answer. The assistant appropriately paraphrased the reference (\"settles for naps with\" becomes \"comfort object for naps\") and added minimal additional context (\"and travel\") which is not contradictory to the reference. The core fact is accurately captured."
+  }
+}

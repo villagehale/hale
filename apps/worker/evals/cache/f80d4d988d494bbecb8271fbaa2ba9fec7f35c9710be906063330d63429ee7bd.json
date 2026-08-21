@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGdxaAyFzk38oTuBN4np",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EssECpABCBEYAipAuPpcX7L+4k6tuDXxNqKRpFs+JbhrLfv0PTZC+wPAWb1tVi/zWJGLp4y1W5MoGFEyn6QBZgeG3uohOKAcRjM2CjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAZuSo9QGEgyweAETGurLbg3vN7gaDMOwq/ZJ+AByGiYmMiIwduCXzU9h6Klxmynk2bBFaLU6tX+uTeGLQhqQrmH2oDp541kRdA1YtE3XCw1yo0VUKucCGkEZF4Eq7fc2GnQDg3WrGoUctokbKr+nRvMiOfIfXvLOECL4ivHW8jy/Dc3HqFyb6uqbZ6rTIL8fz88A7MCz1ojaL1BbGsHRSrOW1nEmlcerd1582n5xmB1CVu3vGZFbDTHMYoP1KNQ4QzbEfxUDZfxJViNo87upqxySInvAJy7SLZYtw2xnPMHeQYghPNorKoZyw3iJ6JSIUSdwwRHtVKANOq7J6QEVoN0rgY4M2bOVM9Lr6ESUsU20FObchkhFdagAe7nCx8DpsvUdVaxgiKNdos2e+vVdAliD3CfSV8v+mvA8bkwTxzcG90bJFSvL7ma8Jq8xATUoNsYwSldjNhS/lBYRyC96OsYglOH5b/HY7UgHl0YKZu2U+q1+HZzN132z9QQXrqQKTIZHamoo78AGvwQlnuDnQg1GJXdb6oDyHvftEWUryQ/l7lf2P7LnGGElgCX+FNdMHSlOKyj941seYOfqWwkYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Yes — Mira has a mild egg allergy (hives), confirmed by Riverdale Pediatrics. Worth telling any new caregiver clearly, along with what to watch for and what you'd want them to do if hives show up.\n\nA few things to pass along:\n\n- Avoid egg and egg-containing foods (baked goods, some pastas, mayo, etc.)\n- What's happened before: mild hives, not a severe reaction\n- Your pediatric office's contact info, in case they have questions\n\nIf you want, I can help you put this into a short caregiver note you can hand off or text."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1213,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 297,
+      "output_tokens_details": {
+        "thinking_tokens": 111
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 5084,
+  "firstInputTokens": 1213
+}

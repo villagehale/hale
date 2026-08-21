@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The assistant correctly identifies that Mira has a mild egg allergy confirmed by Riverdale Pediatrics that manifests as hives. This matches the reference answer's core fact. The assistant also adds helpful practical guidance for communicating this to a new caregiver (watching for reaction signs, having a plan from the pediatric office, confirming current severity), which aligns with known family history showing Riverdale Pediatrics is her provider. No contradictory or fabricated information is present—all details either match the reference or are reasonable practical extensions grounded in the family history provided.",
+    "score": 5
+  }
+}
