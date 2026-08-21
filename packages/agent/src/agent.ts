@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { compileToolSchema } from './json-schema.js';
-import { pickModel } from './model.js';
+import { type AgentTask, laneRequestFields, pickLane } from './model.js';
 import type { Skill } from './skill.js';
 import {
   type GuardDeps,
@@ -341,6 +341,25 @@ function toAnthropicTools(
   });
 }
 
+/**
+ * The lane's model + reasoning knobs, spread into a `messages.create` call.
+ *
+ * The pinned SDK (0.41.0) types `thinking` only in its pre-adaptive
+ * `{type:'enabled', budget_tokens}` shape and has no member for `output_config`
+ * at all. Both are plain top-level body fields that need no beta header, and the
+ * SDK serialises the body as given — so the return type is narrowed to the one
+ * field the SDK does know while `thinking` and `output_config` ride along at
+ * runtime. Same blocker, same tactic as {@link WireTool}.
+ *
+ * Narrowing here rather than casting the whole request object keeps every OTHER
+ * field (max_tokens, system, tools, messages) type-checked.
+ */
+type WireLaneFields = Pick<Anthropic.MessageCreateParams, 'model'>;
+
+function wireLane(task: AgentTask): WireLaneFields {
+  return laneRequestFields(pickLane(task)) as WireLaneFields;
+}
+
 function textFrom(content: Anthropic.ContentBlock[]): string | null {
   const parts = content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -466,7 +485,7 @@ async function handleToolUses(
 }
 
 export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
-  const model = pickModel(args.skill.meta.task);
+  const lane = wireLane(args.skill.meta.task);
   const system = buildSystem(args.skill);
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
@@ -484,7 +503,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   while (steps < args.maxSteps) {
     steps += 1;
     const response = await args.client.messages.create({
-      model,
+      ...lane,
       max_tokens: args.maxTokens ?? DEFAULT_MAX_TOKENS,
       system,
       ...(tools.length > 0 && { tools }),
@@ -552,7 +571,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
  * logic is the same shape as the non-streaming `messages.create` response.
  */
 export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<RunAgentResult> {
-  const model = pickModel(args.skill.meta.task);
+  const lane = wireLane(args.skill.meta.task);
   const system = buildSystem(args.skill);
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
@@ -571,7 +590,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     steps += 1;
     args.onStep?.(steps);
     const stream = args.client.messages.stream({
-      model,
+      ...lane,
       max_tokens: args.maxTokens ?? DEFAULT_MAX_TOKENS,
       system,
       ...(tools.length > 0 && { tools }),

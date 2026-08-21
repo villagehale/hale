@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches two swim lessons in the week (Mon 4:30pm and Thu 5:15pm), so this is a genuine ambiguity — Hale correctly identifies both and asks which one to cancel. The reply is clean, concise, names both events with their times and locations, and asks exactly one question. No invented details, no app referral, no sign-off. This is the correct handling of a two-match ambiguity.",
+    "score": 5
+  }
+}

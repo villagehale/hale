@@ -1,4 +1,4 @@
-import { type AgentClient, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
@@ -284,7 +284,7 @@ export function createFollowUpComposer(client: () => AgentClient): FollowUpCompo
         try {
           const result = await forceToolJson({
             client: resolved,
-            model: pickModel(skill.meta.task),
+            lane: pickLane(skill.meta.task),
             system: skill.instructions,
             userMessage: retryFollowUpMessage(followUpUserMessage(grounding), violations),
             toolName: 'followup_text',

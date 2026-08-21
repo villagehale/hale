@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { pickModel } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadIntakeVoiceSkill } from '~/lib/cron/skill';
@@ -169,7 +169,7 @@ export function createIntakeAckComposer(client: AgentClient | null): IntakeAckCo
       try {
         const { value } = await forceToolJson({
           client,
-          model: pickModel(skill.meta.task),
+          lane: pickLane(skill.meta.task),
           system: skill.instructions,
           userMessage: JSON.stringify(intakeAckContext(input)),
           toolName: 'ack',

@@ -1,0 +1,5 @@
+{
+  "parsed": {
+    "payload": "{\"payload\":{\"to\":\"frontdesk@littlesprout-pediatrics.ca\",\"subject\":\"Re: Confirm well-baby visit\",\"body\":\"hi, tuesday june 23 at 10:15am with dr. okafor works for us. see you then!\"},\"confidence\":0.85,\"rationale\":\"Confirms the offered appointment slot using only details provided in the event.\",\"recipient_visibility\":\"public\"},\"confidence\":0.85,\"rationale\":\"Confirms the offered appointment slot using only details provided in the event, keeping child's name out of the outgoing email.\",\"recipient_visibility\":\"public\"}"
+  }
+}

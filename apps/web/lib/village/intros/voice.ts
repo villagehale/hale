@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
@@ -283,7 +283,7 @@ export function createIntroVoice(client: () => AgentClient): IntroVoice {
         try {
           const { value } = await forceToolJson({
             client: resolved,
-            model: pickModel(skill.meta.task),
+            lane: pickLane(skill.meta.task),
             system: skill.instructions,
             userMessage: introAskUserMessage(request, rejected),
             toolName: 'ask',

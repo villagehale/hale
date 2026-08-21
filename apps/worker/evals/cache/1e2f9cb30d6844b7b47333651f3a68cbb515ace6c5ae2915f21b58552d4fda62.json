@@ -1,0 +1,22 @@
+{
+  "value": {
+    "event_type": "pediatric_appointment_reminder",
+    "confidence": 0.95,
+    "rationale": "One-way reminder from the known clinic about an existing 4-year checkup, explicitly stating no action needed.",
+    "payload": {
+      "clinic": "Bright Kids Peds",
+      "provider": "Dr. Nguyen",
+      "childName": "Leo",
+      "appointmentType": "4-year checkup",
+      "date": "July 9",
+      "time": "9:00 AM",
+      "dayOfWeek": "Thursday",
+      "actionRequired": false
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 8219
+}

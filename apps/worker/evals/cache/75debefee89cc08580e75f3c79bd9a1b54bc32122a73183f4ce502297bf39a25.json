@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the offerable activity (Central Library story time at Bloor/Gladstone, Sat Aug 8) from search_village — name, place, and day all present. It also implicitly covers Saturday's soccer practice from the week, though it doesn't mention it. Failing to mention soccer practice is a meaningful gap: Sam asked \"anything on for the kids Saturday?\" and soccer practice at Cedarvale Park at 10am Saturday is right there on the schedule. The reply answers only half the question by naming the external activity but omitting the existing calendar event. That said, the reply is short, accurate, and not misleading — it just misses the schedule item. This is a real omission but not a fabrication or a handback, so it sits at a 3.",
+    "score": 3
+  }
+}

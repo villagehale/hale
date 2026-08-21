@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does the job: it hands over the referral link (which is correctly appended), tells Sam to forward it themselves, and gives a brief description of what Hale does — useful context for a friend receiving the link. The link is the one from `referralLinkAppended`, not invented. The reply is clean, no greeting, no sign-off, no markdown, no app referral. It is slightly longer than necessary — the description of Hale's features (\"schedules, activities, parenting questions, all in one thread\") is a small redundant addition since the parent asked how to refer, not what Hale does — but it is not wrong and adds reasonable context for forwarding. A minor blemish, not a structural failure.",
+    "score": 4
+  }
+}

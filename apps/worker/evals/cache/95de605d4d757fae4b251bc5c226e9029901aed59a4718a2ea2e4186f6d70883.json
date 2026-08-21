@@ -1,0 +1,8 @@
+{
+  "value": {
+    "rationale": "This is a medical communication (confirming a pediatric appointment for a child) sent to a clinic. Per policy, medical communications require explicit per-action user approval regardless of allowlist state — no such approval is recorded in the draft. Additionally, several verifications the Drafter's claim depends on were never run: check_calendar_conflict (does Tue June 23 5:30 PM actually work?), check_action_time_window, and check_user_override. An outbound email is also effectively irreversible once sent. The four tools that did run are green, so this is ambiguity/missing-approval rather than a clear policy violation — flagging rather than rejecting.",
+    "remediation": "Obtain explicit per-action parent approval for this medical reply, and run check_calendar_conflict for Tue June 23 5:30 PM, check_action_time_window, and check_user_override before sending. If the calendar shows a conflict, do not send the confirmation as drafted.",
+    "verdict": "flag_for_human"
+  },
+  "latencyMs": 5550
+}

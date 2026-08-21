@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, SONNET5_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { askHale } from './agent';
@@ -183,10 +183,10 @@ describe('askHale — multi-turn persistence + conversationId', () => {
       },
     ]);
 
-    // Metrics reflect the single round-trip (Sonnet, converse task).
+    // Metrics reflect the single round-trip (the converse lane).
     expect(result.metrics.promptTokens).toBe(100);
     expect(result.metrics.completionTokens).toBe(30);
-    expect(result.metrics.modelUsed).toBe('claude-sonnet-4-6');
+    expect(result.metrics.modelUsed).toBe(SONNET5_MODEL);
 
     // Exactly one agent_runs row, family-scoped, with real model + token counts +
     // latency, marked completed (observability gap closed).
@@ -194,7 +194,7 @@ describe('askHale — multi-turn persistence + conversationId', () => {
     const run = capture.agentRuns[0] as Record<string, unknown>;
     expect(run.familyId).toBe(FAMILY_ID);
     expect(run.agentName).toBe('ask-hale');
-    expect(run.modelUsed).toBe('claude-sonnet-4-6');
+    expect(run.modelUsed).toBe(SONNET5_MODEL);
     expect(run.promptTokens).toBe(100);
     expect(run.completionTokens).toBe(30);
     expect(typeof run.latencyMs).toBe('number');

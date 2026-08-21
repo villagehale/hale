@@ -1,0 +1,29 @@
+{
+  "value": {
+    "event_type": "delivery_update",
+    "confidence": 0.94,
+    "rationale": "Shipping notice for an already-placed diaper/wipes order with an expected arrival time — a one-way logistics update.",
+    "payload": {
+      "vendor": "BabyCove",
+      "items": [
+        {
+          "description": "size 3 diapers",
+          "quantity": 2,
+          "unit": "pack"
+        },
+        {
+          "description": "wipes",
+          "quantity": 1,
+          "unit": "box"
+        }
+      ],
+      "status": "shipped",
+      "expectedArrival": "tomorrow by 8 PM"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 3937
+}

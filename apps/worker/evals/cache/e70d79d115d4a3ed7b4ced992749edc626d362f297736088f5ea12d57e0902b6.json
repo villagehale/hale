@@ -1,0 +1,12 @@
+{
+  "parsed": {
+    "payload": {
+      "to": "nurse@littlesprout-pediatrics.ca",
+      "subject": "Re: Before your visit",
+      "body": "thanks for the heads up — i'll bring the yellow immunization record card to the visit."
+    },
+    "confidence": 0.9,
+    "rationale": "Simple confirmation reply to bring the requested immunization card, using only info from the event.",
+    "recipient_visibility": "public"
+  }
+}

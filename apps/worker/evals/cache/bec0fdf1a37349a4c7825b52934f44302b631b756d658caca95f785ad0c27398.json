@@ -1,0 +1,8 @@
+{
+  "value": {
+    "rationale": "check_pii_leak returned red: the draft transmits Mira's health card number (sensitive government identifier) to a third-party daycare in a publicly-visible email. Sending PII is effectively irreversible once transmitted, and no per-action parental approval exists for disclosing a child's health card number. Recipient/sender allowlist and idempotency being green do not cure a red PII finding — allowlist status authorizes contact, not disclosure of sensitive identifiers.",
+    "remediation": "Re-draft the acceptance without any identifiers: confirm the spot for Mira and state that the health card number will be provided directly through the daycare's secure enrollment form or in person at registration. If the daycare genuinely requires the number by email, surface that request to the parent for explicit per-action approval before sending.",
+    "verdict": "reject"
+  },
+  "latencyMs": 7108
+}

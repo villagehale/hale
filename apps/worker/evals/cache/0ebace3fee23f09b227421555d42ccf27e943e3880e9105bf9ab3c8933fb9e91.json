@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "feeding_pattern_signal",
+    "confidence": 0.88,
+    "rationale": "App log records a single overnight bottle feed for a 3-month-old, an infant feeding data point to surface.",
+    "payload": {
+      "childName": "Noa",
+      "method": "bottle",
+      "amountMl": 90,
+      "startedAt": "2026-06-24T03:10:00-04:00",
+      "durationMin": 18,
+      "timezone": "America/Toronto"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 4225
+}

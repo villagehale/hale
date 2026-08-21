@@ -11,7 +11,11 @@ import { HAIKU_MODEL, type ModelId, OPUS_MODEL, SONNET5_MODEL, SONNET_MODEL } fr
  * Per-model token rates, USD per million tokens.
  * Source: Anthropic pricing (platform.claude.com/docs models overview):
  * Sonnet 4.6 $3 in / $15 out; Sonnet 5 $3 in / $15 out list ($2/$10 intro
- * through 2026-08-31); Haiku 4.5 $1 in / $5 out; Opus 4.8 $5 in / $25 out.
+ * through 2026-08-31); Haiku 4.5 $1 in / $5 out; Opus 5 $5 in / $25 out —
+ * unchanged from the Opus 4.8 it replaced, so the re-tier moved the id under
+ * this key without moving the rate. Sonnet 5 is booked at LIST, not the intro
+ * price: an estimate that silently halves when a promotion lapses is worse than
+ * one that is consistently conservative.
  * Hardcoded by design — billing accuracy is a point-in-time estimate, not a
  * live lookup; rotate these constants when public pricing changes. Keyed by
  * ModelId so a new tier in model.ts cannot ship without its rate.

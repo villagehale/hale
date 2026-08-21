@@ -64,3 +64,6 @@ drizzle/meta/
 
 # Playwright MCP browser profile
 .playwright-mcp/
+
+# Debug dump written by run-memory-writeback-eval.mjs on a cache miss — not a cache entry.
+apps/worker/evals/cache/MISS.json

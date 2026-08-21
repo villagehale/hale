@@ -1,5 +1,5 @@
 import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
-import { pickModel } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType } from '@hale/types';
 import { z } from 'zod';
 import { loadClassifyEventSkill } from './skill';
@@ -7,7 +7,7 @@ import { forceToolJson } from './structured';
 
 /**
  * Classify stage — the inbound signal → structured classification, on the
- * @hale/agent harness model routing (classify → Haiku via pickModel). The prompt
+ * @hale/agent harness model routing (classify → Haiku via pickLane). The prompt
  * is the classify-event SKILL body (rule #2: never inline). Single LLM turn via
  * forced-tool JSON; the result is Zod-validated, so a hallucinated event_type /
  * routing is rejected at the boundary rather than trusted downstream.
@@ -118,10 +118,10 @@ export async function classifyEvent(
     family_context_slice: input.familyContextSlice ?? null,
   });
 
-  const model = pickModel(skill.meta.task);
+  const lane = pickLane(skill.meta.task);
   const { value, usage } = await forceToolJson({
     client,
-    model,
+    lane,
     system: skill.instructions,
     userMessage,
     toolName: 'classification',
@@ -139,7 +139,7 @@ export async function classifyEvent(
     suggestion: value.suggested_action,
     teenContent: value.teen_content,
     concernsChildId: value.concerns_child_id,
-    model,
+    model: lane.model,
     usage: {
       promptTokens: usage.input_tokens + (usage.cache_creation_input_tokens ?? 0),
       completionTokens: usage.output_tokens,

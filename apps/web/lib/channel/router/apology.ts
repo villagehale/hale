@@ -1,4 +1,4 @@
-import { type AgentClient, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { smsEncoding } from '~/lib/channel/sms-segments';
@@ -208,7 +208,7 @@ export function createTurnApology(client: () => AgentClient): TurnApology {
         try {
           const { value } = await forceToolJson({
             client: resolved,
-            model: pickModel(skill.meta.task),
+            lane: pickLane(skill.meta.task),
             system: skill.instructions,
             userMessage: apologyUserMessage(rejected),
             toolName: 'apology',

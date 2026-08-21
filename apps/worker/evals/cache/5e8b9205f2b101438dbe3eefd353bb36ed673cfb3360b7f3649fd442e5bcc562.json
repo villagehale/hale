@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancel (one clear match) and asks for YES to confirm — right shape. It then offers the Central Library story time, which is a verified offerable candidate with name, place, and day — correct handling. The Saturday soccer practice is a separate event and not being cancelled (parent only asked about the swim), so no conflict there. The reply stays within the 2-draft cap (only one draft here). No app referral, no invented URL, no invented details. It is concise and complete. The only minor issue: the reply could have flagged that Sat already has soccer practice, since the parent is asking for something indoors on Saturday — they may not know the two things could conflict, but this is a small omission rather than an error. Overall this is clean, correct, and well-shaped.",
+    "score": 5
+  }
+}

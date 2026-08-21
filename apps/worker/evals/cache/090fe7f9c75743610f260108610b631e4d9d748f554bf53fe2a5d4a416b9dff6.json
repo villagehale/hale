@@ -1,0 +1,8 @@
+{
+  "value": {
+    "rationale": "check_spending_cap returned red: $189.00 exceeds the family's $75 monthly autonomous spending cap, and check_user_override confirms no override is in place. This is a clear policy violation, so rejection (not flag-for-human) is the correct disposition, even though idempotency is clean and the order is internal-only.",
+    "remediation": "Either reduce the order to fall under the $75 cap (e.g. 3 packs of size 4 diapers) or surface the full $189.00 order to a parent for explicit per-action approval / a one-time spending override before re-submitting.",
+    "verdict": "reject"
+  },
+  "latencyMs": 4152
+}

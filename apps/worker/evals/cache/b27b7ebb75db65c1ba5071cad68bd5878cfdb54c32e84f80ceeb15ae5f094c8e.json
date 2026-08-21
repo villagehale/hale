@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale correctly identifies the event type as a milestone photo detection by pointing to the explicit \"first_steps\" milestone flag in the metadata. It accurately describes the signal content (child name \"Ezra\", detected milestone type, timestamp) and explains why this warrants surfacing as a one-way detection event. The reasoning is clear, specific, and directly matches the signal structure."
+  }
+}

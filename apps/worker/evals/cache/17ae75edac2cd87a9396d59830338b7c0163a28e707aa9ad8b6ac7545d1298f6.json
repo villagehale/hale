@@ -1,0 +1,14 @@
+{
+  "parsed": {
+    "payload": {
+      "title": "well-baby visit — Dr. Okafor",
+      "location": "Little Sprout Pediatrics",
+      "startsAt": "2026-06-23T10:15:00-04:00",
+      "endsAt": "2026-06-23T11:00:00-04:00",
+      "description": "pediatric checkup at little sprout pediatrics with dr. okafor"
+    },
+    "confidence": 0.75,
+    "rationale": "Creating a calendar event from the pediatric appointment reminder details, using a default 45-minute duration since no end time was given.",
+    "recipient_visibility": "internal_only"
+  }
+}
