@@ -37,8 +37,28 @@ export const HOT_SMS_CLIENT_OPTIONS = { timeout: 30_000, maxRetries: 1 } as cons
  */
 export const VOICE_CLIENT_OPTIONS = { timeout: 8_000, maxRetries: 0 } as const;
 
+/**
+ * Options for the activity lane's WEB-GROUNDED call — the one model request on the SMS
+ * path that goes out to the open web before it answers.
+ *
+ * It is not a coach turn and the SMS budget above was never sized for it. A grounding
+ * call runs several live searches server-side and measured 16s, 21s and 23s on the runs
+ * that worked; a 30s ceiling sits inside that spread, so the calls that needed 35s were
+ * killed rather than slow. Then `maxRetries: 1` bought a second 30s of the same, and the
+ * lane's OWN retry (activity/lane.ts) bought two more: four attempts, none of which was
+ * ever given enough time, and 132s of a parent holding a phone for a reply that said the
+ * search hit a snag.
+ *
+ * So: one attempt, long enough to actually finish. The SDK retry is REMOVED rather than
+ * shortened because the lane already retries and already logs the attempt — two invisible
+ * tries underneath one visible one is how the wall clock quadrupled without anyone
+ * choosing it.
+ */
+export const ACTIVITY_CLIENT_OPTIONS = { timeout: 50_000, maxRetries: 0 } as const;
+
 let cached: Anthropic | undefined;
 let cachedVoice: Anthropic | undefined;
+let cachedActivity: Anthropic | undefined;
 
 export function pipelineClient(): AgentClient {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -47,6 +67,17 @@ export function pipelineClient(): AgentClient {
   }
   cached ??= new Anthropic({ apiKey, ...HOT_SMS_CLIENT_OPTIONS });
   return cached;
+}
+
+/** The client for {@link ACTIVITY_CLIENT_OPTIONS}, process-cached for the same reason
+ * the others are. */
+export function activityClient(): AgentClient {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set');
+  }
+  cachedActivity ??= new Anthropic({ apiKey, ...ACTIVITY_CLIENT_OPTIONS });
+  return cachedActivity;
 }
 
 /** The client for the calls in {@link VOICE_CLIENT_OPTIONS} — process-cached like every
