@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names one event (Thursday swim) and one destination (Friday 5:15). There is only one Thursday swim in the week, so the reference is fully resolved. Hale correctly drafts the move and asks for YES confirmation, preserving the venue (East pool) from the original event. The reply is concise, names the change clearly, and ends with the required \"YES to confirm.\" format. No invented details, no app referral, no greeting or sign-off. This is exactly the correct shape.",
+    "score": 5
+  }
+}

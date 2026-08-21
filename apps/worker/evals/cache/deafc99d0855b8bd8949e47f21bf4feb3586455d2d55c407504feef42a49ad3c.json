@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam asked for four cancellations. The draft cap is 2, so Hale correctly drafted the two swim lessons (Mon and Thu) and told Sam it will handle soccer and Wednesday next. That's the correct handling of overflow — draft the cap, name what's queued. The Wednesday appointment is a private item, so Hale can't confirm what it is, but it can draft a cancel for it once the first two are approved; saying \"let you know about Wednesday\" is a reasonable forward-looking line rather than a false promise. Soccer is clearly one event (Saturday). The reply ends with \"YES to confirm\" as required. No app referral, no invented details, no invented URL. The only small issue is \"let you know about Wednesday\" is slightly vague — the private item is there and Hale could cancel it without knowing its content, so this phrasing mildly undersells clarity — but it's not wrong or misleading. The reply is concise, correctly shaped, and does the job within the cap constraint. A minor blemish on the Wednesday phrasing keeps it from a 5.",
+    "score": 4
+  }
+}

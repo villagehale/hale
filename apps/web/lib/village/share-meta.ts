@@ -56,7 +56,7 @@ export function weekShareMeta(plan: PublicWeekPlan | null): Metadata {
   const count = plan.activities.length;
   const noun = count === 1 ? 'idea' : 'ideas';
   const title = `${count} ${noun} for families${nearArea(plan.areaCoarse)} this week · Hale`;
-  const description = `${count} genuinely good local ${noun} for families${nearArea(plan.areaCoarse)} this week — gathered by Hale, the village your family lost, rebuilt.`;
+  const description = `${count} genuinely good local ${noun} for families${nearArea(plan.areaCoarse)} this week — gathered by Hale, the family assistant you text.`;
   return shareMetadata(title, description);
 }
 
@@ -87,6 +87,6 @@ export function activityShareMeta(card: PublicActivityCard | null): Metadata {
   }
 
   const title = `${card.activity.title} · Hale`;
-  const description = `A genuinely good local thing for families${nearArea(card.areaCoarse)} — shared from Hale, the village your family lost, rebuilt.`;
+  const description = `A genuinely good local thing for families${nearArea(card.areaCoarse)} — shared from Hale, the family assistant you text.`;
   return shareMetadata(title, description);
 }

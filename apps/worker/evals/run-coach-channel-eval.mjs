@@ -100,6 +100,7 @@ import {
   FIXTURE_WEEK_START,
   FIXTURE_WEEK_SUMMARY,
 } from './coach-channel-fixtures.mjs';
+import { inventedName } from './coach-channel-name-gate.mjs';
 import {
   JUDGE_MIN,
   cacheGet,
@@ -854,50 +855,6 @@ const DAY_NAMES = [
   ['sunday', 'sun'],
 ];
 
-/**
- * Public-health authorities the coach may name.
- *
- * Less an exemption than a statement of what this gate is FOR. An invented capitalised
- * word matters because it is a claim about THIS FAMILY — a pool they do not swim at, a
- * teacher they have never met — and over SMS there is nothing around it to correct it.
- * "Health Canada recommends around six months" is a claim about the world, and it is the
- * shape the sibling skill explicitly asks for ("name the source when the claim is a
- * checkable fact", general-answer.md); the companion returns CONFIRM_WITH_PROVIDER on
- * every health item for the same reason — so guidance can be attributed rather than
- * asserted in Hale's own voice.
- *
- * Scoped to Hale's jurisdiction, in both the forms English uses for it — the compliance
- * baseline is Canada (hard rule #1), so this is the only country whose guidance the coach
- * has any business citing, and "Health Canada" and "most Canadian paediatricians" are the
- * same citation with different grammar. Naming the boundary that way is what keeps this
- * from becoming a list of whatever the model said last: a second country appearing here
- * would be a product decision, not a grading one.
- *
- * CLOSED on purpose. An open "looks like an institution" rule would wave through the
- * invented study or the made-up clinic, which is a fabrication this gate must still catch.
- */
-const CITEABLE_AUTHORITIES = new Set(['Canada', 'Canadian']);
-
-/** Capitalised words that are not claims about this family's week. */
-const ALLOWED_CAPS = new Set([
-  'Hale',
-  'I',
-  'A',
-  'An',
-  'The',
-  'And',
-  'But',
-  'So',
-  'If',
-  'It',
-  'Want',
-  'Which',
-  'More',
-  'Reply',
-  'Your',
-  'Nothing',
-]);
-
 /** `Sep` -> `September`, and anything else through unchanged. The registration context
  * renders the short month (format/datetime.ts) and a reply may say either. */
 const LONG_MONTHS = new Map(
@@ -965,7 +922,7 @@ function groundedHay(fixture, toolResults) {
 
 /**
  * The two numbers that are not claims about this family — the digit equivalent of
- * ALLOWED_CAPS above.
+ * ALLOWED_CAPS in coach-channel-name-gate.mjs.
  *
  * Every other multi-digit run in a reply is a time, a date or a count the model was
  * handed, and inventing one is the failure this gate exists for. These two are the one
@@ -1006,13 +963,8 @@ function fabrications(reply, hay) {
     const words = sentence.trim().split(/[\s/]+/);
     for (const [index, word] of words.entries()) {
       if (index === 0) continue;
-      const bare = word
-        .replace(/^[^A-Za-z]+/, '')
-        .replace(/['’]s$/i, '')
-        .replace(/[^A-Za-z]+$/, '');
-      if (!/^[A-Z][a-z]/.test(bare)) continue;
-      if (ALLOWED_CAPS.has(bare) || CITEABLE_AUTHORITIES.has(bare)) continue;
-      if (!hay.includes(bare.toLowerCase())) offenders.push(`name "${bare}" is in no fact`);
+      const invented = inventedName(word, hay);
+      if (invented !== null) offenders.push(`name "${invented}" is in no fact`);
     }
   }
   return [...new Set(offenders)];

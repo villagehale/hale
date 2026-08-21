@@ -93,7 +93,7 @@ export default async function SharedWeekPage({ params }: PageProps) {
           </section>
         )}
 
-        <JoinCta heading="the village your family lost — rebuilt." />
+        <JoinCta heading="the family assistant you text." />
 
         <PublicColophon />
       </div>

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2. Hale correctly drafted the two swim lessons and told Sam it will line up the rest — that is the correct handling of overflow. The Wednesday appointment is a private calendar item, and Hale references it as \"the Wednesday item\" without revealing its content, which is correct. Soccer is named plainly. The reply names both drafted changes, ends with \"YES to confirm these two\", and says it will line up the rest — exactly the right shape. No app referral, no invented detail, no greeting, no sign-off. One small blemish: \"line up\" is slightly vague (it could mean draft immediately after, or something else), but it is functionally clear. This is essentially a 5.",
+    "score": 5
+  }
+}

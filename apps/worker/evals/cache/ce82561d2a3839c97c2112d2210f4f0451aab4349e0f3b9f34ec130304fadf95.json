@@ -1,0 +1,49 @@
+{
+  "response": {
+    "id": "msg_011CeGEN5RTcTW3xWQgewouf",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll check both what's nearby and what's coming up online at the same time."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01WoqGSNNm4tSzy3kfLUZW8X",
+        "name": "search_village",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01GceHRaGZ3b6kcHB71svon2",
+        "name": "find_activities",
+        "input": {
+          "subject": "fall programs kids",
+          "childId": "kid-remy"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 643,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 10472,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 116,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

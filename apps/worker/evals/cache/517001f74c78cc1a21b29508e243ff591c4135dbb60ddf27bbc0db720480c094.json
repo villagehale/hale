@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the referral link (which is appended and real), tells Sam to forward it themselves, and gives a brief description of what Hale does so the friend knows what they're getting. No app referral, no invented URL, no markdown, no sign-off. The link is exactly the one in referralLinkAppended. The only small blemish is the extra sentence describing Hale (\"Hale is a text-based family assistant - schedules, kid activities, parenting questions, all over SMS\") — it's a redundant detail since Sam already uses Hale and didn't ask for a pitch, adding slight bloat. Otherwise the reply is tight and correct.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent said \"cancel swim\" and there are TWO swim lessons on the calendar this week (Mon 4:30pm West pool and Thu 5:15pm East pool). This is a genuine ambiguity — the text matches more than one event — so Hale must ask which one before drafting. The reply correctly identifies both swims and asks which one. It does not draft anything (correct, since ambiguous), does not send the parent to the app, does not invent details, and asks exactly one question. This is the right shape for an ambiguous instruction. The reply is clean and concise.",
+    "score": 5
+  }
+}

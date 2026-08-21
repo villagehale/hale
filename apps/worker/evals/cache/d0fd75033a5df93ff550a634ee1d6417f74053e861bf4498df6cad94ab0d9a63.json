@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the one Thursday swim (East pool, 5:15pm) and drafts the cancel — no ambiguity, correct handling. It then offers the only Saturday-eligible offerable find (Central Library story time, Bloor/Gladstone, Sat Aug 8) whole and correctly, skipping the Sunday option appropriately. The draft cap is 2 but only one draft was made; the second ask (find something indoors) is answered with an offerable, which doesn't require a draft at this stage — that's fine. The reply ends with \"YES to confirm\" as required. No app referral, no invented URLs, no sign-off, no markdown, concise. One small blemish: the reply addresses the cancel confirmation and the activity find in two separate sentences, which is clean, but it doesn't ask Sam to confirm the story time addition separately — though since no draft was made for adding it, that's acceptable (it's just a suggestion). Overall this is a tight, correct reply doing exactly what the product requires.",
+    "score": 5
+  }
+}
