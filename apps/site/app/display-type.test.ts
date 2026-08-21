@@ -217,10 +217,11 @@ const FRAUNCES_STEM_PER_EM: Record<string, number> = {
   '54.4/450': 0.10976,
   '76/450': 0.1042,
   '84/450': 0.0997,
-  // The lightest cut the face ships, at the two ends of the site's scale. Nothing
-  // renders here; it is the mutation control for the floor comparison below.
+  // The lightest cut the face ships, at the narrow end of the two rungs with the
+  // heaviest sub-elements. Nothing renders here; it is the mutation control for
+  // the floor comparison below.
   '30.4/100': 0.0341,
-  '84/100': 0.02834,
+  '76/100': 0.03032,
 };
 
 /** Ascender-to-descender ink, as a fraction of the em, at wght 450. Flat across
@@ -315,8 +316,16 @@ describe('the display face is Fraunces (Latin locales only, opsz + wght)', () =>
     // Not just unreferenced: gone. An unregistered woff2 left in app/fonts/ is a
     // 13KB invitation for the next person to re-bind the face this change
     // replaced, and its licence text implies a face the site still ships.
-    expect(CSS).not.toMatch(/bellefair/i);
-    expect(LAYOUT).not.toMatch(/bellefair/i);
+    //
+    // Scoped to the BINDINGS rather than the word: both files still explain what
+    // the face was and why it constrained the gate the way it did, and a scan
+    // that cannot tell a live rule from its own history forces that explanation
+    // out to keep itself green.
+    for (const source of [CSS, LAYOUT]) {
+      expect(source).not.toContain('--font-bellefair');
+      expect(source).not.toContain('"Bellefair"');
+      expect(source).not.toMatch(/bellefair-[\w-]*\.woff2/);
+    }
     const shipped = readdirSync(fileURLToPath(new URL('./fonts', import.meta.url)));
     expect(shipped.filter((f) => /bellefair/i.test(f))).toEqual([]);
     // Positive control: the directory listing is real, and the two new binaries
@@ -459,11 +468,15 @@ describe('the display face is Fraunces (Latin locales only, opsz + wght)', () =>
         );
       }
     }
-    // Mutation control: the comparison can fail. At the lightest cut the face
-    // ships, the two ends of the scale both sink under the cards beneath them —
-    // so a green run above means "measured and clear", not "nothing compared".
+    // Mutation control: the comparison can fail, at both ends of the scale. At
+    // the lightest cut the face ships, the landing H2 sinks under its card
+    // heading at 390 and the subpage H1 sinks under the plan card's price at
+    // 1440 — so a green run above means "measured and clear", not "nothing
+    // compared". Chosen at the narrow end of each rung on purpose: at 84px even
+    // wght 100 out-strokes a card h3, which is exactly why the check has to be
+    // per-rung rather than one global assertion about the face.
     expect(30.4 * stemPerEm(30.4, 100)).toBeLessThan(floorPx('landingCardH3', 390));
-    expect(84 * stemPerEm(84, 100)).toBeLessThan(floorPx('landingCardH3', 1440));
+    expect(76 * stemPerEm(76, 100)).toBeLessThan(floorPx('pricingCardH3', 1440));
   });
 
   it('records that the pricing section H2 no longer ships under parity', () => {

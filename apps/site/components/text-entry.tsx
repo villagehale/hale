@@ -86,7 +86,7 @@ export function TextEntry({
                 <CopyNumberButton
                   number={smsNumber}
                   className="link font-medium"
-                  label={copy('labelTitleCase')}
+                  label={copy('label')}
                   copiedLabel={copy('copied')}
                   ariaLabel={copy('aria')}
                 />

@@ -121,7 +121,7 @@ describe('one header, one footer, every page', () => {
     const phone = pill(rem('0.35rem'), rem('0.55rem'));
     expect(css).toContain('padding: 0.6rem 0.7rem 0.6rem 1.15rem;');
     expect(css).toMatch(/\.v4-nav \{ padding-block: 0\.35rem; \}/);
-    expect(css).toMatch(/\.v4-btn-solid \{ padding-block: 0\.55rem; \}/);
+    expect(css).toMatch(/\.v4-btn,\s*\.v4-btn-solid \{ padding-block: 0\.55rem; \}/);
     expect(css).toMatch(/font-size: 0\.92rem;/);
 
     const shaved = desktop - phone;

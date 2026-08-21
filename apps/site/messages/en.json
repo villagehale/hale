@@ -44,8 +44,7 @@
     "toDark": "Switch to dark mode"
   },
   "CopyNumber": {
-    "label": "copy my number",
-    "labelTitleCase": "Copy my number",
+    "label": "Copy number",
     "copied": "copied — text me from your phone",
     "aria": "Copy Hale's phone number to your clipboard"
   },

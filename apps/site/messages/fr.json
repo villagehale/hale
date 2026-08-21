@@ -44,8 +44,7 @@
     "toDark": "Passer en mode sombre"
   },
   "CopyNumber": {
-    "label": "copier mon numéro",
-    "labelTitleCase": "Copier mon numéro",
+    "label": "Copier le numéro",
     "copied": "copié — textez-moi depuis votre téléphone",
     "aria": "Copier le numéro de téléphone de Hale dans votre presse-papiers"
   },

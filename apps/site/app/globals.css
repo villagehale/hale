@@ -2,8 +2,9 @@
 
 /*
  * Hale — marketing site design system. One warm-white world, shared by the
- * homepage and every long-form subpage: Instrument Sans (display + body) with
- * Source Serif 4 for title accents and JetBrains Mono for data, a warm page
+ * homepage and every long-form subpage: Figtree (body + UI) with Fraunces for
+ * display, Source Serif 4 as the fallback display stack for locales Fraunces
+ * cannot set, and JetBrains Mono for data, a warm page
  * (#fdfcfa) carrying navy ink (#17294a) and a single amber accent family
  * (#b26b1f / #fef0c7), gently rounded clean cards, Lucide icons, and a
  * hand-built flat color-block SVG illustration kit.
@@ -111,18 +112,18 @@
   --color-cobalt: #3b5bdb;      /* blue accent text */
   --color-cobalt-bg: #edf0fa;
 
-  /* ── Type — Instrument Sans (body/UI) + Source Serif 4 (display accents),
-   * JetBrains Mono for data. Vars injected by next/font in layout.tsx;
-   * pairing mirrors the product app. */
-  --font-sans: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+  /* ── Type — Figtree (body/UI) + Fraunces (display), with Source Serif 4 as
+   * the fallback display stack and JetBrains Mono for data. Vars injected by
+   * next/font in layout.tsx. */
+  --font-sans: "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
-  /* The display face (OFL, self-hosted, Latin-only, ONE master at 400).
+  /* The display face (OFL, self-hosted, Latin-only, variable in opsz + wght).
    * next/font overwrites this on <html> with the hashed family name; the literal
    * here is what a page falls back to if that stylesheet never arrives. Bound by
    * locale allowlist, never globally — see "the display face" block in the v4
    * layer for why by-name and not `:not([lang='zh'])`. */
-  --font-bellefair: "Bellefair", Georgia, "Times New Roman", serif;
+  --font-fraunces: "Fraunces", Georgia, "Times New Roman", serif;
   --font-display: var(--font-sans);
   --font-body: var(--font-sans);
 
@@ -231,6 +232,17 @@
    * on the warm band, cream on the navy one — instead of laying grey over both.
    * The mask averages about half coverage, so the effective texture is ~3%. */
   --grain-ink: light-dark(rgb(23 41 74 / 0.055), rgb(247 244 236 / 0.07));
+}
+
+/* The pill gives 12.8px of block height back on a phone (see the .v4-nav
+ * overrides in the phone-density block), and the reservation the landing hero
+ * runs under has to give back EXACTLY the same or the shore stops meeting the
+ * top of the viewport. Two readers of one number, so they move together.
+ *
+ * Unlayered on purpose: --nav-h is declared in @theme, and an override inside
+ * @layer components would lose to it. */
+@media (max-width: 639.98px) {
+  :root { --nav-h: 4.6rem; }
 }
 
 /* Component + presentational classes live in @layer components so Tailwind v4
@@ -366,7 +378,7 @@ strong { font-weight: 700; }
   width: auto;
 }
 
-/* Eyebrow label — Instrument Sans 600, tracked + uppercase, in amber to match the
+/* Eyebrow label — the body face at 600, tracked + uppercase, in amber to match the
  * v4 hero's eyebrow (.v4-eyebrow). Amber is the site's one accent, carried here
  * and by the single serif-italic accent word; body text stays navy for AA. Never
  * sits on a navy ground (audited), so the fill reads on every surface it lands on. */
@@ -1690,9 +1702,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * v4 landing — the liquid-glass shore.  A CANDIDATE (rendered at /v4), never the
  * live page. It extends the glass recipe the chrome already ships (#466) into a
  * full hero: the Hawaiian shoreline the name comes from, navy-scrimmed behind
- * frosted glass, with the display set in Instrument Serif — the serif sibling of
- * the body Instrument Sans. Every colour is a themed light-dark() token, so the
- * footer switch drives the whole page, hero included.
+ * frosted glass. Every colour is a themed light-dark() token, so the footer
+ * switch drives the whole page, hero included.
  * ═══════════════════════════════════════════════════════════════════════════ */
 @layer components {
   /* The display face. Instrument Serif ships ONE master (400) — so at the 30–54px
@@ -1880,6 +1891,13 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     text-transform: uppercase;
     color: var(--color-amber);
   }
+  /* The pronunciation, the one eyebrow that labels nothing — it says the name out
+   * loud above the hero rather than naming a section, so the founder asked for it
+   * 15–20% quieter than the seven that do. The whole reduction is SIZE: amber
+   * measures 4.6:1 on the page, 0.1 over the AA floor for normal text, so buying
+   * the quiet with a tint or an opacity would have bought it by making the line
+   * inaccessible. -15.3%, colour untouched. */
+  .v4-pronounce { font-size: 0.61rem; }
   .v4-hero-h1 {
     font-size: clamp(2.9rem, 8.5vw, 6.5rem);
     color: var(--color-ink);
@@ -1932,6 +1950,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     padding: 0.5rem 0.95rem;
     border-radius: var(--r-full);
     font-size: 0.86rem;
+    font-weight: 500;
     color: var(--color-navy);
     cursor: pointer;
     transition: transform 140ms var(--ease-breathe);
@@ -2028,12 +2047,10 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   }
   /* The how-it-works headline — the one section headline that runs a scale wider
    * than .v4-h2. It was a `text-[clamp(2rem,5vw,3.4rem)]` utility inline in the
-   * markup; it is a class now because it is the only inline display size on the
-   * site that measured UNDER the card h3 beneath it, and a utility outranks
-   * every layer a locale rule can sit in (probed in Chromium: an injected
-   * `@layer components` rule lost to the utility). A size the display face needs
-   * to step has to be reachable from the locale allowlist, so it has to be here.
-   * The value is the utility's, unchanged, and stays the zh path. */
+   * markup until #512 had to reach it from a locale rule and found that a utility
+   * outranks every layer one can sit in (probed in Chromium). The step that
+   * needed it is gone, but the class stays: an inline display size is a rung this
+   * file's gate cannot see, and the value is the utility's, unchanged. */
   .v4-h2-wide {
     font-size: clamp(2rem, 5vw, 3.4rem);
     color: var(--color-ink);
@@ -2046,12 +2063,11 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     color: var(--color-slate-green);
   }
 
-  /* ── The display face: Bellefair ─────────────────────────────────────────
-   * Everything above this comment is now the FALLBACK. This block is the whole
-   * of the change: one contiguous allowlist that re-sets every display surface
-   * — the hero H1, .v4-display (every section H2 and every subpage headline via
-   * WordsPullUp), both legal titles, and the deck under a headline — in the
-   * display face, for the Latin locales BY NAME.
+  /* ── The display face: Fraunces ──────────────────────────────────────────
+   * Everything above this comment is the FALLBACK. This block re-sets every
+   * display surface — the hero H1, .v4-display (every section H2 and every
+   * subpage headline via WordsPullUp) and both legal titles — in the display
+   * face, for the Latin locales BY NAME.
    *
    * IT IS BY NAME BECAUSE THE FACE IS LATIN-ONLY. Chinese set in it renders
    * every glyph from whatever CJK serif the reader's OS supplies, at tracking
@@ -2060,121 +2076,80 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * until someone adds it here on purpose. `html:not([lang='zh'])` would fail
    * the other way round, which is exactly the failure this shape prevents.
    *
-   * ── ONE MASTER, SO THE LADDER IS GONE ───────────────────────────────────
-   * Source Serif is a variable 400–700, so #506 could step it 620 → 600 → 580
-   * as the size grew. Bellefair ships 400 and nothing else, so there is no rung
-   * to step to and `font-weight: 700` would be the browser-smeared bold #506
-   * removed. Every rule here asks for 400 and refuses synthesis.
+   * ── THE WEIGHT AXIS IS BACK, SO THE SIZE STEPS COME OUT ─────────────────
+   * #512's face shipped ONE master. With no heavier cut to reach for, the only
+   * honest compensation for a heading that measured lighter than the card h3
+   * beneath it was SIZE, and five rungs were stepped up: the subpage H1 to 3rem,
+   * the section H2s to 2.3rem, the legal title to 2.9rem, the deck to 1.32rem.
+   * All five are deleted here. Fraunces is variable 100–900, so a rung that
+   * measures light gets weight, and this block sets no font-size at all except
+   * the hero's — a size step is now a way of shipping a weight nobody measured.
+   * It also puts en/fr and zh back on ONE scale, which is a page fewer to hold
+   * in your head.
    *
-   * Which leaves SIZE as the only honest compensation, and it is measured, not
-   * preferred. Chromium raster of the shipped .woff2: the stem of an 'n' is
-   * 0.064em — against Source Serif 620's 0.133em, and against the 0.068em of
-   * the Instrument Serif 400 that #506 THREW OUT. This face is a lighter stroke
-   * than the one this whole gate exists to keep off the site, so every rung was
-   * re-measured against #506's own rule — a heading's stem, in rendered px, may
-   * not be thinner than the stem of the card heading beneath it — at 390px and
-   * 1440px, against the live page.
+   * The second axis, opsz, is applied automatically: `font-optical-sizing: auto`
+   * feeds the browser's rendered size in px straight into it, so a 30px section
+   * heading gets the text cut and the 84px hero gets the display cut. That is
+   * not the same outline scaled — it is a higher-contrast drawing — which is why
+   * the stem below is stated per (size, weight) and not once.
    *
-   *   hero H1        2.97px vs 1.85px, 6.66px vs 1.85px   → 161% / 360%, kept
-   *   thread H2      1.95 vs 1.15, 3.07 vs 1.22           → 169% / 253%, kept
-   *   closing H2     1.95 vs 1.85, 3.07 vs 1.85           → 105% / 166%, kept
-   *   subpage H1     2.66 vs 3.02, 4.86 vs 3.83           →  88% / 127%, STEPPED
-   *   section H2     1.95 vs 2.18, 3.07 vs 2.32           →  89% / 132%, STEPPED
-   *   how H2         2.05 vs 2.18, 3.48 vs 2.61           →  94% / 133%, STEPPED
-   *   legal title    2.25 vs 2.92, 3.07 vs 3.73           →  77% /  82%, STEPPED
-   *   deck           1.02 vs 1.34, 1.18 vs 1.34           →  76% /  88%, STEPPED
+   * ── What the measurement said ───────────────────────────────────────────
+   * Same rule as #506 and #512: a heading's stem, in rendered px, may not be
+   * thinner than the stem of the card heading beneath it. Both sides re-measured
+   * off the shipped woff2s at the exact instance each renders — Figtree is a
+   * lighter drawing than the Instrument Sans it replaces (0.1116em vs 0.1267em
+   * at 600), so carrying the old floors over would have flattered every rung.
+   * At the 450 the founder pinned the hero to:
    *
-   * What a size step CANNOT buy back is the 185% margin the variable serif held
-   * at the same rungs, and nothing here pretends otherwise: the steps restore
-   * PARITY. The rest of the hierarchy is carried by cap height (0.691em here
-   * against Source Serif's 0.663em), by colour, and by the card the h3 sits in.
-   * A second family or a faked bold would buy the margin back and both are
-   * refused.
+   *   landing hero    5.93px vs 1.93px, 8.37 vs 2.05   → 308% / 408%
+   *   subpage H1      4.65 vs 2.68,     7.92 vs 3.39   → 174% / 233%
+   *   section H2      3.60 vs 2.05,     5.49 vs 2.05   → 176% / 267%
+   *   landing H2      3.43 vs 1.93,     5.33 vs 2.05   → 178% / 260%
+   *   how-it-works    3.60 vs 1.93,     5.97 vs 2.05   → 187% / 291%
+   *   legal title     3.95 vs 2.59,     5.33 vs 3.30   → 153% / 161%
+   *
+   * Nothing demanded a step, so nothing gets one: every rung is 450. Two of
+   * those numbers are the argument for the whole change — the subpage H1 was 88%
+   * of parity at 390px on the old face and needed a size step to reach 105%, and
+   * the pricing section H2, the one rung #512 shipped UNDER parity at 83%, is at
+   * 162% here.
    *
    * The ch-measures above are deliberately UNTOUCHED. They are max-widths, and
-   * on a phone the container binds first; at desktop the face sets ~27% narrower
-   * per lowercase character while its `0` is only ~7% narrower, so a `ch` box
-   * holds a longer line and `text-wrap: balance` absorbs it. */
+   * `text-wrap: balance` absorbs the difference in set width. */
   html[lang='en'] .v4-display,
   html[lang='fr'] .v4-display,
   html[lang='en'] .legal-title,
   html[lang='fr'] .legal-title {
-    font-family: var(--font-bellefair), Georgia, serif;
-    font-weight: 400;
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-weight: 450;
+    font-optical-sizing: auto;
     font-synthesis-weight: none;
-    /* Source Serif tightened to -0.01em. This face runs a 1.88:1 contrast on a
-     * 0.034em hairline, where the same tightening closes the joins rather than
-     * the gaps. Opening tracking adds no ink — it buys legibility, which is the
-     * other half of authority at a small size. */
-    letter-spacing: normal;
-    /* 1.04 was tuned to Source Serif's 0.965em of ink. This face carries 0.979em
-     * (ascender 0.740 + descender 0.239, measured), so the same multiple leaves
-     * a thinner channel than the one that was approved. */
-    line-height: 1.06;
+    /* Bellefair ran a 0.034em hairline and had to be OPENED or its joins closed.
+     * This face carries three times that ink at 450, so display tracking is
+     * negative again — but only half of what the hero takes, because these rungs
+     * render at 30–50px where the counters are doing more work. */
+    letter-spacing: -0.02em;
+    /* Over the face's own ink extent, 0.9719em ascender-to-descender at 450, so
+     * two lines of a wrapped headline cannot touch. */
+    line-height: 1.04;
   }
   html[lang='en'] .v4-hero-h1,
   html[lang='fr'] .v4-hero-h1 {
-    font-family: var(--font-bellefair), Georgia, serif;
-    font-weight: 400;
+    font-family: var(--font-fraunces), Georgia, serif;
+    /* The founder's poster values. Stated in px rather than rem because they are
+     * a drawing decision at one specific pair of sizes, not a step on the type
+     * scale — and because the ceiling is what the display cut was chosen for. */
+    font-size: clamp(54px, 8vw, 84px);
+    font-weight: 450;
+    font-optical-sizing: auto;
     font-synthesis-weight: none;
-    letter-spacing: normal;
-    /* The ≥1024px hero ran at 0.96 on Instrument Serif — it could, at 0.955em of
-     * ink in a shallow box. 0.979em of ink cannot: two lines of a poster
-     * headline would touch. */
-    line-height: 1.02;
+    letter-spacing: -0.035em;
+    /* Under the 0.9719em of ink the face carries, by 0.022em — 1.8px at the 84px
+     * ceiling, and only ever reachable where a descender sits directly over an
+     * ascender. Deliberate, and the one rung allowed it: a poster headline leads
+     * tighter than a page of them. */
+    line-height: 0.95;
   }
-  /* The deck — the line under a headline that finishes its sentence. It is
-   * subordinate BY DESIGN, so it is never stepped to out-rank the headline; it
-   * is stepped because at 16px a 400 master measured a 1.02px stem against the
-   * 1.34px of the body copy it introduces, which is the hierarchy upside down.
-   * Never tracked: this is the one display surface that is running text. */
-  html[lang='en'] .v4-hero-sub,
-  html[lang='fr'] .v4-hero-sub,
-  html[lang='en'] .v4-lede,
-  html[lang='fr'] .v4-lede {
-    font-family: var(--font-bellefair), Georgia, serif;
-    font-weight: 400;
-    font-synthesis-weight: none;
-    letter-spacing: normal;
-    /* 1.6 was set for a 0.510em x-height. This face's is 0.365em, so the lines
-     * already read open; holding 1.6 at the stepped size would scatter them. */
-    line-height: 1.5;
-  }
-
-  /* ── The size steps ──────────────────────────────────────────────────────
-   * The two generic rules are wrapped WHOLE in :where(), so each carries zero
-   * specificity, and that is load-bearing in both directions. Each has to LOSE
-   * to a named scale below it — .v4-hero-h1, .v4-h2 and .v4-h2-wide were each
-   * measured against a different sub-element and take different floors — while
-   * still beating the base h1/h2 rules, which it does by LAYER order rather
-   * than by specificity.
-   *
-   * Wrapping only the locale prefix is not enough and the difference is not
-   * cosmetic: `:where(html[lang='en'], html[lang='fr']) h1.v4-display` still
-   * scores a class for `.v4-display`, which outranks `.v4-hero-h1` — probed on
-   * the running site, the landing hero silently dropped from 104px to 76px. The
-   * unit gate could not see that; only the live page could. */
-  :where(html[lang='en'] h1.v4-display, html[lang='fr'] h1.v4-display) {
-    /* 2.6rem → 3rem: 41.6px put a 2.66px stem under the pricing plan card's
-     * 3.02px. 48px reads 3.07px. */
-    font-size: clamp(3rem, 6vw, 4.75rem);
-  }
-  :where(html[lang='en'] h2.v4-display, html[lang='fr'] h2.v4-display) {
-    /* 2rem → 2.3rem, against the /about card h3's 2.32px. */
-    font-size: clamp(2.3rem, 4vw, 3.1rem);
-  }
-  html[lang='en'] .v4-h2,
-  html[lang='fr'] .v4-h2 { font-size: clamp(2.3rem, 4.4vw, 3rem); }
-  html[lang='en'] .v4-h2-wide,
-  html[lang='fr'] .v4-h2-wide { font-size: clamp(2.3rem, 5vw, 3.4rem); }
-  /* The only rung that measured under at BOTH widths — a legal title sits above
-   * Instrument Sans 600 section headings, the heaviest sub-element on the site. */
-  html[lang='en'] .legal-title,
-  html[lang='fr'] .legal-title { font-size: clamp(2.9rem, 6.3vw, 3.7rem); }
-  html[lang='en'] .v4-hero-sub,
-  html[lang='fr'] .v4-hero-sub { font-size: clamp(1.32rem, 1.7vw, 1.42rem); }
-  html[lang='en'] .v4-lede,
-  html[lang='fr'] .v4-lede { font-size: clamp(1.32rem, 1.6vw, 1.42rem); }
 
   /* The named towns the radar watches — glass pills, non-interactive. */
   .v4-pills { display: flex; flex-wrap: wrap; gap: 0.55rem; }
@@ -2256,6 +2231,9 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     padding: 0.7rem 1rem;
     border-radius: 1.25rem;
     font-size: 0.95rem;
+    /* 500, not the 400 of body copy: a message is a quoted UI surface rather
+     * than prose, and the out bubble is cream on navy where 400 goes thin. */
+    font-weight: 500;
     line-height: 1.5;
     /* The go leg's message is mostly a municipal URL. Without this, one
      * unbreakable token pushes the bubble past the thread and the page scrolls
@@ -2299,6 +2277,17 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * peeking past the edge (the affordance), and the interior rhythm tightens.
    * Bounded by max-width, so the desktop composition is untouched. */
   @media (max-width: 639.98px) {
+    /* The bar is fixed over the thing a phone reader has least of, so it gives
+     * 12.8px of block height back: 4.8px from the pill's own padding and 8px
+     * from the CTA inside it, which is what actually sets the pill's height.
+     * Block only — the horizontal padding is what keeps the mark off the glass
+     * edge, and the CTA's own width is already the tap target.
+     *
+     * --nav-h drops by the same 12.8px, unlayered, at the top of this file. */
+    .v4-nav { padding-block: 0.35rem; }
+    .v4-btn,
+    .v4-btn-solid { padding-block: 0.55rem; }
+
     .v4-cardgrid,
     .v4-cardgrid-4,
     .v4-cardgrid-2 {
