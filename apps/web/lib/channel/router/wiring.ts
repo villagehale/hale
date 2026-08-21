@@ -32,9 +32,11 @@ import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from '.
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
+import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import {
   approvalHandler,
   emailCaptureHandler,
+  founderWelcomeHandler,
   healthReplyHandler,
   nameCaptureHandler,
   planReplyHandler,
@@ -248,6 +250,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     villageIntroHandler(defaultVillageIntroReplyDeps()),
     approvalHandler(defaultApprovalSpine()),
     emailCaptureHandler(defaultEmailCaptureDeps()),
+    founderWelcomeHandler(defaultFounderReplyDeps()),
     healthReplyHandler(defaultHealthReplyDeps()),
     planReplyHandler(defaultPlanReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps()),
@@ -497,6 +500,15 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     checkupOffer: async (database, familyId, now) => {
       const offer = await loadOpenCheckupOffer(database, familyId, now);
       return offer && { id: offer.id, summary: offer.summary };
+    },
+    // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
+    // offers above keep: an expired offer is still an open ledger row, it has simply
+    // stopped being answerable — and listing one would let a YES two days later text a
+    // family "thank you for being one of our first" about a week they have already had.
+    founderWelcomeOffer: async (database, familyId, now) => {
+      const offer = await loadOpenCommitment(database, familyId, 'founder_welcome_offer');
+      if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
+      return { id: offer.id, summary: offer.summary };
     },
     // The coach's "I'll come back to you". NO TTL, unlike the two offers above: a promise
     // does not stop being owed by getting late (commitment.ts), so it is listed until the

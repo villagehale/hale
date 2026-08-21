@@ -47,6 +47,18 @@ export interface SourceVenue {
    * not a claim about where the family lives — it seeds discovery when the parent was
    * never asked for a postal code (rule #1: coarse only, never an address). */
   areaCoarse: string;
+  /**
+   * The PLACE the poster hangs in, named the way a person would say it — "Georgetown",
+   * not an FSA and not the venue's type. Present only on the codes that are a physical
+   * poster the founder put up himself, which is exactly the set the founder-welcome ping
+   * fires for: the location is the whole content of that ping (rule #1 — no parent, no
+   * child, no number), so a code with no place name has nothing to say and is not one.
+   *
+   * The registry IS the trigger, deliberately, rather than a prefix test on the code. A
+   * prefix would match a future `earlyon-` poster nobody has named a place for and put an
+   * empty blank in a sentence sent to a person.
+   */
+  poster?: string;
 }
 
 /**
@@ -59,10 +71,14 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   REC: { name: 'rec centre', areaCoarse: 'M6K' },
   CLINIC: { name: 'clinic', areaCoarse: 'M4K' },
   SCHOOL: { name: 'school', areaCoarse: 'L7G' },
-  'earlyon-richmondhill': { name: 'EarlyON centre', areaCoarse: 'L4C' },
-  'earlyon-georgetown': { name: 'EarlyON centre', areaCoarse: 'L7G' },
+  'earlyon-richmondhill': {
+    name: 'EarlyON centre',
+    areaCoarse: 'L4C',
+    poster: 'Richmond Hill',
+  },
+  'earlyon-georgetown': { name: 'EarlyON centre', areaCoarse: 'L7G', poster: 'Georgetown' },
   // Per-location Halton Hills posters, so the source code says WHICH centre.
-  'earlyon-acton': { name: 'EarlyON centre', areaCoarse: 'L7J' },
+  'earlyon-acton': { name: 'EarlyON centre', areaCoarse: 'L7J', poster: 'Acton' },
   // The pitch deck's QR — so we see which investors actually texted the product.
   'investor-deck': { name: 'the pitch deck', areaCoarse: 'M5V' },
 };
@@ -119,6 +135,13 @@ export function sourceCodeFromBody(body: string): string | null {
 export function venueForCode(code: string | null): SourceVenue | null {
   if (!code) return null;
   return SOURCE_VENUES[code] ?? null;
+}
+
+/** The PLACE a stored source code's poster hangs in, or null when the code is not one of
+ * the founder's own posters. The whole trigger for the founder-welcome ping — see
+ * {@link SourceVenue.poster}. */
+export function posterLocation(code: string | null): string | null {
+  return venueForCode(code)?.poster ?? null;
 }
 
 /**

@@ -428,12 +428,15 @@ describe('the village intro lane and the lanes behind it', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, health, coach_plan, registration, name_capture', async () => {
+  it('is village_intro, approval, email_capture, founder_welcome, health, coach_plan, registration, name_capture', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
       'approval',
       'email_capture',
+      // Ahead of the three handlers that read a bare affirmative for a household's OWN
+      // business: this is the only one whose wrong answer texts a different household.
+      'founder_welcome',
       'health',
       'coach_plan',
       'registration',

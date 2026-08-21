@@ -11,6 +11,10 @@ import {
   type SequenceReplyDeps,
   handleSequenceReply,
 } from '~/lib/registration/sequence/reply';
+import {
+  type FounderReplyDeps,
+  handleFounderWelcomeReply,
+} from '~/lib/channel/founder/reply';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import {
@@ -255,6 +259,76 @@ export function nameCaptureHandler(deps: NameCaptureDeps): DeterministicHandler 
       );
       if (outcome.status === 'declined_to_claim') return { claimed: false };
       return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+    },
+  };
+}
+
+/**
+ * The founder's welcome note — his YES, and the note it puts in a new family's thread.
+ *
+ * PLACED HERE, ahead of the three handlers that read a bare affirmative for a household's
+ * own business, and the rule is the one stated at the top of this file: among handlers
+ * that recognise the SAME word, the one whose wrong answer costs most goes first.
+ * Everything below this line acts on the family that spoke; this one acts on a DIFFERENT
+ * household, and an unsolicited text to a stranger in a person's name is the most
+ * expensive wrong reading on the chain after an approval that executes something.
+ *
+ * IT CANNOT STARVE THEM. The offer row is only ever written against the founder's own
+ * family (lib/channel/founder/ping.ts), so for every other family in the product this
+ * handler declines after one indexed read — and for HIS family a bare affirmative still
+ * waits on `soleOpenKind` like every other one.
+ *
+ * BOTH POLARITIES CLAIM. Unlike the two offers behind it, a "no" here has somewhere to go:
+ * it voids the offer with its own reason and says so. An offer whose no went nowhere would
+ * be one he could only get rid of by ignoring it for two days.
+ */
+export function founderWelcomeHandler(deps: FounderReplyDeps): DeterministicHandler {
+  return {
+    name: 'founder_welcome',
+    resolves: new Set<OpenQuestionKind>(['founder_welcome_offer']),
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const resolved =
+        ctx.resolved?.kind === 'founder_welcome_offer' ? ctx.resolved.polarity : null;
+      if (
+        resolved === null &&
+        readAffirmative(ctx.body) !== 'unclear' &&
+        !soleOpenKind(await ctx.openQuestions(), 'founder_welcome_offer')
+      ) {
+        return { claimed: false };
+      }
+      const outcome = await handleFounderWelcomeReply(
+        database,
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          now: ctx.now,
+          resolved,
+        },
+        deps,
+      );
+      if (outcome.status === 'declined_to_claim') return { claimed: false };
+      if (outcome.status !== 'note_sent') {
+        return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      }
+      return {
+        claimed: true,
+        outcome: outcome.status,
+        reply: outcome.reply,
+        // Closed by the NOTE, not by the ack — `fulfilled_by` has to point at the message
+        // that made good on the promise, and that message is in the other family's thread.
+        // Closed AFTER the ack has actually gone, for the reason every MEM-10 writer closes
+        // late: a turn that sent the note and then failed to answer must be re-drivable
+        // against an offer that is still standing (the note's dedupe key makes the redrive
+        // free).
+        afterSend: () =>
+          deps.fulfillCommitment(database, {
+            familyId: ctx.familyId,
+            kind: 'founder_welcome_offer',
+            channelMessageId: outcome.noteChannelMessageId,
+            now: ctx.now,
+          }),
+      };
     },
   };
 }
