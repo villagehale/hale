@@ -66,7 +66,7 @@ describe('landing — the v4 hero', () => {
     // over a paragraph that never got to the point, and the 7:02-first hero died
     // as a hook with no introduction. H1 names the brand; the next line says what
     // it is in a parent's words.
-    expect(visibleText(h1)).toBe('The Family Assistant You Text');
+    expect(visibleText(h1)).toBe('The Family Assistant You Text.');
     expect(h1).not.toContain('7:02');
     // Outcome-first, verb-led: the sub leads with what the reader gets rid of,
     // not with a pronoun that makes them wait for the subject.
