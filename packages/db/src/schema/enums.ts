@@ -355,6 +355,14 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // while this one discharges a debt the family is OWED, and a promise must not be lost
   // to a rail built for a nicety.
   'activity_followup',
+  // The founder's own voice, in both directions: the ping that tells him a family just
+  // arrived from one of his posters, and the welcome note he sends back into that
+  // family's thread. ONE category for two audiences because the reason the row exists is
+  // the same on both sides, and that reason is what a PIPEDA right-to-access read has to
+  // be able to state — "this text exists because a person, not the product, wrote to
+  // you". No cap counts it and no gate governs it: the ping answers a join that just
+  // happened, and the note is a human being replying to it.
+  'founder',
 ]);
 
 /**
@@ -441,4 +449,11 @@ export const agentCommitmentKindEnum = pgEnum('agent_commitment_kind', [
   // you on it" was on 2026-08-20. Closed by the activity follow-up sweep, which owes the
   // family either the finds or an honest "I looked and could not find it".
   'activity_followup',
+  // "A new family just joined from the Georgetown poster. Reply YES and I'll send them
+  // your welcome note." — the one commitment on this ledger whose SUBJECT is a household
+  // other than the one the promise was made to, which is why `subject_family_id` exists.
+  // It is an offer with the same shape as plan_offer and checkup_offer and it is here for
+  // the same reason: a question that lives only as prose inside a sent SMS is a question
+  // the reply resolver cannot see, so the answer lands on whatever else is standing.
+  'founder_welcome_offer',
 ]);
