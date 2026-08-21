@@ -61,7 +61,9 @@ function declarations(selector: string, prop: string): string[] {
   const found: string[] = [];
   root.walkRules((rule) => {
     if (!selectorList(rule.selector).includes(selector)) return;
-    rule.walkDecls(prop, (decl) => found.push(decl.value.trim()));
+    rule.walkDecls(prop, (decl) => {
+      found.push(decl.value.trim());
+    });
   });
   return found;
 }
@@ -77,7 +79,9 @@ function only(selector: string, prop: string): string {
 function themeToken(prop: string): string {
   const found: string[] = [];
   root.walkAtRules('theme', (at) => {
-    at.walkDecls(prop, (decl) => found.push(decl.value.trim()));
+    at.walkDecls(prop, (decl) => {
+      found.push(decl.value.trim());
+    });
   });
   expect(found, `@theme { ${prop} } declared ${found.length} times`).toHaveLength(1);
   return found[0] as string;
