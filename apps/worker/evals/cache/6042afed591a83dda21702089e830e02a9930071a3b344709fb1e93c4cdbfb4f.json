@@ -1,0 +1,21 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Kids & Me Drop-In, Halton Hills Public Library – Acton Branch",
+        "age_fit": "families with babies or children up to 6 years of age",
+        "when": "Thursdays 10:30 a.m. to 12 p.m., following the school calendar starting the second week of September",
+        "price": "free",
+        "source_name": "Halton Region (Parenting Programs and Supports)"
+      },
+      {
+        "name": "Kids & Me Drop-In, St. Andrew's United Church, Georgetown",
+        "age_fit": "families with babies or children up to 6 years of age",
+        "when": "Tuesdays 9:30 to 11 a.m., following the school calendar starting the second week of September",
+        "price": "free",
+        "source_name": "Halton Region (Parenting Programs and Supports)"
+      }
+    ]
+  },
+  "latencyMs": 11266
+}

@@ -206,10 +206,34 @@ function claimsVerification(body) {
     .some((clause) => VERIFICATION_CLAIM.test(clause) && !FUTURE_OR_NEGATED.test(clause));
 }
 
+/**
+ * Does the first SMS segment NAME the top pick?
+ *
+ * The RC-I1 gate: the trim cuts from the end, so a find mentioned only in the second
+ * segment is one the parent may never read. What it must NOT demand is the pick's `name`
+ * VERBATIM. That field is a composite - "Kinderfun (Toddler Program), Halton Hills
+ * Gymnastics Centre" - assembled for a structured payload, and no SMS repeats it whole:
+ * the message that led with "Halton Hills Gymnastics Centre has a Kinderfun toddler
+ * program running Sept 10" was failed by the verbatim check for naming the pick BETTER
+ * than the field did. So the test is over the name's PARTS, and only the parts that
+ * identify something - a head that says "a toddler program" has named nothing.
+ */
+function distinctiveNameParts(name) {
+  return [name, ...name.split(/[,;(]|\s[-|]\s/)]
+    .map((part) => part.replace(/[)]/g, '').trim().toLowerCase())
+    .filter((part) => part.length >= 5)
+    .filter((part) =>
+      part
+        .split(/[^a-z0-9]+/)
+        .some((word) => word.length >= 4 && !GENERIC_WORDS.has(word)),
+    );
+}
+
 function topPickLeads(body, picks) {
   const top = picks[0];
   if (!top) return true;
-  return body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase().includes(top.name.toLowerCase());
+  const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  return distinctiveNameParts(top.name).some((part) => head.includes(part));
 }
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
@@ -408,7 +432,12 @@ async function main() {
           getClient,
           cost,
         });
+    // Mirrors the lane's grounding invariant, BOTH halves of it (lane.ts): zero results is
+    // ungrounded, and so is a turn that searched and wrote nothing down. The second half
+    // exists because the corpus produced it - 24 real results and an empty notes string,
+    // which the composer can only answer by inventing or shrugging.
     if (ground.searchCount === 0) failures.push('not_grounded');
+    else if (ground.notes.trim() === '') failures.push('not_grounded:empty_research');
     if (
       fixture.mustMentionInNotes &&
       !`${ground.notes}\n${ground.evidence}`.toLowerCase().includes(fixture.mustMentionInNotes)
@@ -508,7 +537,9 @@ async function main() {
   const count = (name) => results.filter((r) => r.failures.some((f) => f.startsWith(name))).length;
   console.log('\n--- corpus metrics (0 required each) ---');
   console.log(`identity leaks:          ${count('identity_leak')}  (a name or an exact age never crosses the border)`);
-  console.log(`ungrounded:              ${count('not_grounded')}`);
+  console.log(
+    `ungrounded:              ${count('not_grounded')}  (no results, or results the turn never wrote up)`,
+  );
   console.log(`fabricated picks:        ${count('fabricated_pick')}  (a venue the search never returned)`);
   console.log(`invented picks:          ${count('invented_picks')}`);
   console.log(`found nothing:           ${count('no_picks')}  (a real question answered with a shrug)`);

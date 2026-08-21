@@ -31,7 +31,9 @@ import type { ActivityQuery } from './deidentify';
  *
  *   1. GROUND — a `web_search` server-tool turn on the de-identified query. `tool_choice`
  *      cannot FORCE a server tool, so "always grounded" is a code invariant and not a
- *      prompt hope: zero `web_search_tool_result` items is a failure. THIS IS THE
+ *      prompt hope: zero `web_search_tool_result` items is a failure, and so is a turn
+ *      that searched and wrote NOTHING DOWN — the composer standing on an empty research
+ *      body is ungrounded whatever the result count says. THIS IS THE
  *      INVARIANT THE LANE EXISTS FOR. A medical answer that did not search is unsafe; an
  *      activity answer that did not search is a VENUE THAT DOES NOT EXIST — a parent
  *      putting a toddler in the car and driving to an address a model wrote down. There
@@ -318,6 +320,15 @@ async function runActivityOnce(
     throw new ActivityUnresolvable('ground_failed', message(err));
   }
   if (countSearchResults(research.content) === 0) throw new ActivityUnresolvable('not_grounded');
+  // SEARCH RESULTS ARE NOT RESEARCH. A grounding turn can spend its whole token budget on
+  // the results themselves and never write the summary — 24 real results and an empty
+  // notes string is a shape the corpus actually produced. The result count is satisfied by
+  // that and the composer is handed "", which leaves it a choice between inventing a venue
+  // and shrugging. Both are the failure this lane exists to end, so an empty research body
+  // is the SAME outcome as no results at all: not grounded, retried once, then said
+  // honestly. The detail is what separates the two causes in the log (rule #11).
+  const researchNotes = researchText(research.content).trim();
+  if (researchNotes === '') throw new ActivityUnresolvable('not_grounded', 'empty_research');
 
   // Phase 2 — COMPOSE (blind: the de-identified query and the research, never the message).
   let composed: z.infer<typeof composeSchema>;
@@ -326,7 +337,7 @@ async function runActivityOnce(
       client: resolved,
       model: pickModel(skill.meta.task),
       system: skill.instructions,
-      userMessage: composeUserMessage(query, researchText(research.content)),
+      userMessage: composeUserMessage(query, researchNotes),
       toolName: 'activity_picks',
       toolDescription: 'Return the concrete programs the search actually found.',
       inputJsonSchema: composeJsonSchema,

@@ -46,6 +46,12 @@ const groundResult = (nResults: number) => ({
   stop_reason: 'end_turn',
 });
 
+/** The same turn with the text block missing — real results, no research written. */
+const groundResultWithoutNotes = (nResults: number) => ({
+  ...groundResult(nResults),
+  content: groundResult(nResults).content.filter((block) => block.type !== 'text'),
+});
+
 const composeResult = (input: unknown) => ({
   content: [{ type: 'tool_use', name: 'activity_picks', input }],
   usage: { input_tokens: 5, output_tokens: 5 },
@@ -131,6 +137,28 @@ describe('an ungrounded find never ships', () => {
     expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'not_grounded' });
     // The compose stage was never reached — the model was never given a chance to write
     // a venue down from memory.
+    expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
+    restore.mockRestore();
+  });
+
+  /**
+   * THE SHAPE THE EVAL CAUGHT. `preschool-swim-oakville` came back with 24 real search
+   * results and an EMPTY notes string: the grounding turn spent its whole token budget on
+   * the results and never wrote the summary. `countSearchResults` is satisfied by that, so
+   * the lane composed from "" — and a composer handed no research either invents a venue
+   * or shrugs, and shrugging is what a parent got. Search RESULTS are not RESEARCH.
+   */
+  it('fails NAMED when the search ran but wrote no research to stand on', async () => {
+    const restore = quiet();
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient(
+        { ground: groundResultWithoutNotes(8), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    );
+
+    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'not_grounded' });
     expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
     restore.mockRestore();
   });
