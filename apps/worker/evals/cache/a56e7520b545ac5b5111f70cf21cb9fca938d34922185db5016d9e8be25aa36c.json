@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies this as a parenting/sleep question about Ada (age 101 months = ~8.5 years, matches \"at 8\"). It gives a concrete, actionable answer grounded in the child's age — naming stress, screens, and schedule shifts as common causes at this age. It ends with the correct fixed line \"Want the full plan? Reply YES and I'll send it.\" (paraphrased correctly). No invented details, no referral to a doctor (just good coaching), no app mention, no sign-off, no greeting. The advice beat is tight and real. This is the product working correctly.",
+    "score": 5
+  }
+}

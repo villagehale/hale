@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to order groceries — something outside Hale's capability set. The reply correctly declines (\"Grocery ordering is past me\") without inventing a capability, sending the parent to the app, or handing the job back in a harmful way. However, the rules say \"that one is past me\" counts as handing it back for a parenting question — but grocery ordering is NOT a parenting question or a medical/acute situation; it is simply outside Hale's function set. The reply is honest and short. That said, the phrasing \"past me\" is the exact phrase called out in the rubric as a handback for parenting questions — but this isn't a parenting question, it's a capability request. For capability requests outside Hale's scope, a plain \"I can't do that\" is correct. The reply is appropriately brief and accurate. It doesn't send the parent to the app, doesn't invent a capability, and doesn't hand back a task Hale could do. A short, honest decline is the right shape here. Minor issue: the phrasing is perhaps a little abrupt but that's fine given the character budget. This is a clean, correct reply for an out-of-scope request.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to order groceries — something entirely outside what Hale can do. The reply correctly and concisely says so. However, it phrases the decline as \"past me,\" which mirrors the \"parenting question handback\" penalty language in the rubric. Here the rubric's handback penalty does NOT apply because this is not a parenting question and not an acute symptom — it is simply a capability the product does not have. Saying \"past me\" is honest and brief. The reply does not invent a capability, does not send the parent to the app, does not add unnecessary detail, and stops cleanly. It is the correct shape for an out-of-scope request. A slight blemish is that a warmer or slightly clearer phrasing (\"That's not something I can do — I handle schedules, activities, and parenting questions\") might be more informative, but a short, honest decline is still the right answer. No invented details, no handback to the app, no markdown. This is essentially a 4-or-5 situation: the job is done, the shape is correct, it stops. The only possible knock is that \"past me\" is slightly informal/ambiguous, but it is not wrong or misleading.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the verified registration window (Sep 1, 7:00 a.m. for residents), correctly states that watching is already active (`watching: true`), and correctly tells Sam it will text before it opens — all of which are the right and complete answer per the rules. It doesn't invent anything, doesn't send the parent to the app, doesn't hedge, and doesn't promise a watch it can't deliver. It's short, direct, and stops. A perfectly clean response.",
+    "score": 5
+  }
+}

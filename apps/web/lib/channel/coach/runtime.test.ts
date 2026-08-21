@@ -69,6 +69,7 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
       return { question: input.question, transcript: input.transcript } as never;
     },
     loadChildren: async () => [TEEN],
+    loadRegistrationWindows: async () => [],
     buildTools: () => [] as RegisteredTool[],
     guardDeps: { async writeAudit() {} },
     // Never reached: `runAgent` is injected below, and it is the only consumer.

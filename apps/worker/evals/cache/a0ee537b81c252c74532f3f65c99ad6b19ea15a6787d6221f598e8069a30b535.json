@@ -1,0 +1,50 @@
+{
+  "response": {
+    "id": "msg_011CeG7UXk6WmGfyd5fYDfmV",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I can see Monday swim, Thursday swim, and soccer - but there's no appointment on Wednesday that's mine to describe. There's a private item Wed 9:00am; its content isn't mine to share, but I can cancel it if that's the one you mean. Want me to draft all four cancellations?"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_017vvfbSN6Eadm9HVt4Adxxb",
+        "name": "propose_calendar_cancel",
+        "input": {
+          "eventId": "evt-swim-mon"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01LDyXCuSPGUVpaiyshJwYGp",
+        "name": "propose_calendar_cancel",
+        "input": {
+          "eventId": "evt-swim-thu"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 783,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 10227,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 172,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

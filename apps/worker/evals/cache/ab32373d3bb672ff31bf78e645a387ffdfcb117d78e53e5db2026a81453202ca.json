@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies Theo (the 5-month-old newborn) as the child in question, gives the Health Canada 6-month guideline as a verified fact grounded in the child's age, offers a practical watch-for signal (sitting with support, showing interest), and ends with the required fixed line for a parenting question. It does not invent, does not send the parent to the app, and does not hand the question back. The advice is actionable and appropriately scoped. One small note: attributing the guideline to \"Health Canada\" by name is a slight hedge/source-citation that the rubric says is wrong (\"hedging one with 'their site says' is wrong — no site said it\"), but this is only a marginal case — it names an institution rather than a website, and the guidance itself is directly recalled, not deferred. It is a minor blemish but not a serious one. Overall this is a clean, correct reply in the right shape.",
+    "score": 4
+  }
+}

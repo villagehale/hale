@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply identifies the single matching event (Soccer practice, Sat 10:00am), drafts a move to 11:00am, keeps the venue (Cedarvale Park), and ends with the required \"YES to confirm.\" prompt. It is short, exact, and correct — exactly the shape the product requires.",
+    "score": 5
+  }
+}

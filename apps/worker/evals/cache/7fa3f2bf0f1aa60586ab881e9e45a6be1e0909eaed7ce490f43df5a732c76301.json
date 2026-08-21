@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the one scheduled Saturday event (soccer practice at Cedarvale Park, 10am) from the week, and correctly offers the one verified offerable activity (Central Library story time at Bloor/Gladstone branch, Saturday). Both details are traceable — one from the week, one from offerable. The reply adds \"free, all ages, no registration needed\" which are details not present in the offerable data — those are invented. That's a small but real fabrication. Otherwise the shape is right: no app referral, no greeting/sign-off, no unnecessary questions, no markdown. The invented details drop it from a 5 to a 3-4 range. Since it's a minor embellishment rather than a structurally wrong reply, a 4 is appropriate — it does the job with one small blemish (the invented \"free, all ages, no registration needed\" details).",
+    "score": 4
+  }
+}

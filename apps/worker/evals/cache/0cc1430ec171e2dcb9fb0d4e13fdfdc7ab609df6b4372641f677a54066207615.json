@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CeG42tPVeT4nsqs5auQJw",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Two wake-ups at 19 months usually means Remy hasn't learned to resettle independently, so when a sleep cycle ends he calls for you instead of drifting back. Try a consistent bedtime wind-down and, when he wakes, wait 2-3 minutes before going in so he gets a chance to settle himself first.\n\nWant the full night-by-night plan for Remy? Reply YES and I'll send it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1135,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 9755,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 100,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

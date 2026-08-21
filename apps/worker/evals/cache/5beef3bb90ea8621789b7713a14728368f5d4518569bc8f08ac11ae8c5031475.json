@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The registration window detail is correct and the \"already on it, will text you before\" line is exactly right for a watching:true window. However, the reply then offers Tiny Tumblers — this comes from `webFind`, which is explicitly marked \"NOT verified by Hale.\" `offerable` is empty and `stillBeingChecked` is 0, meaning there are no verified candidates and no pending checks. The rules say a reply that \"hands over a find with the doubt attached\" scores 2 at most — and this reply does exactly that, noting \"their program page has it but no price yet,\" which is handing over an unverified web find with the uncertainty attached. The registration portion is solid, but the Tiny Tumblers mention is a rules violation that caps the score at 2.",
+    "score": 2
+  }
+}

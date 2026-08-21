@@ -69,6 +69,26 @@ export const FIXTURE_BABY = {
   dateOfBirth: '2026-03-03',
 };
 
+/**
+ * The radar row a Georgetown family is handed, rendered exactly as
+ * channel/coach/registration-context.ts renders it (town label, program phrase, the
+ * family's own date, the general date). Frozen from the 2026-08-21 live probe, where the
+ * real seed produced this object and the coach answered off it.
+ *
+ * `watching` is the field the two fixtures below disagree about, and it is the only one:
+ * the same date, the same town, and two different true sentences about whether Hale has
+ * the morning.
+ */
+export const FIXTURE_REGISTRATION_WINDOW = {
+  town: 'Halton Hills',
+  programs: 'Fall 2026 recreation programs',
+  opensFor: 'Sep 1, 7:00 a.m.',
+  residentsFirst: true,
+  generalOpens: 'Sep 8, 7:00 a.m.',
+  ageApproximate: false,
+  watching: true,
+};
+
 /** The composed week_plan summary — the B1 artifact `lookup_week` grounds on. */
 export const FIXTURE_WEEK_SUMMARY =
   'Two swims, soccer on Saturday, and one appointment midweek.';
@@ -539,6 +559,74 @@ export const COACH_CHANNEL_FIXTURES = [
       // else to sign up for on their end" is the correct thing to tell a parent, and
       // the gate was failing the truth for resembling the lie.
       forbidden: ['account settings', 'the app', 'your settings'],
+    },
+  },
+  {
+    id: 'registration-watch-asked',
+    text: 'can you watch swim registration for Milo this fall?',
+    // The one fixture whose family is not in Toronto: the window below is a real Halton
+    // Hills row, and a Toronto household handed it would be reconciling two facts
+    // instead of using one.
+    city: 'Halton Hills',
+    registrationWindows: [FIXTURE_REGISTRATION_WINDOW],
+    note: "The 2026-08-21 probe's worst answer, frozen as a gate. Asked to watch a fall registration, the coach said \"watching for registration openings isn't something I can do yet - I can't monitor a site and ping you when it changes.\" Every clause was false: the window is hand-verified in registration_windows and the M7 ladder texts a week out, hands over the plan the evening before and taps the parent fifteen minutes before the doors open. It was the honest answer to give, because nothing in the turn's tools or context said otherwise - which is why the fix was wiring and not a sentence. What this holds is that a turn HANDED the window uses it: the date, and the fact that it has already started.",
+    expect: {
+      mustNotDraft: true,
+      // The date is the fact a parent sets an alarm by; it must survive into the reply.
+      mustMention: ['sep'],
+      // The three denials the probe produced, and the hedge that is the same answer with
+      // the work taken out of it. None has an honest use in a reply to this question.
+      forbidden: ["can't monitor", 'not something i can do', 'keep an eye out', 'the app'],
+    },
+  },
+  {
+    id: 'registration-watch-not-armed',
+    text: 'can you watch swim registration for Milo this fall?',
+    // THE OTHER DIRECTION. Same question, same verified date, ladder dark for this
+    // family: the date is still theirs to know and the promise is not Hale's to make.
+    // Without this fixture the one above would pass on a model that simply always says
+    // it is on it — which is the fabrication, not the fix.
+    city: 'Halton Hills',
+    registrationWindows: [{ ...FIXTURE_REGISTRATION_WINDOW, watching: false }],
+    note: 'The calibration half of registration-watch-asked. `watching: false` means no sweep is armed for this family, so a reply claiming Hale is on it promises a morning nobody is holding — the exact shape of the referral fabrication, one domain over. The date itself is still true and still worth sending.',
+    expect: {
+      mustNotDraft: true,
+      mustMention: ['sep'],
+      // The last two are the INVENTED REASON, caught deterministically rather than left
+      // to the judge: both live runs of this fixture blamed the plan tier for a dark
+      // sweep, which is the referral-link fabrication wearing candour's clothes. There
+      // is no reason to give, so any sentence that gives one is made up.
+      forbidden: [
+        "i'm on it",
+        'already on it',
+        "i'll text you the week before",
+        'the app',
+        'plan',
+        'tier',
+      ],
+    },
+  },
+  {
+    id: 'registration-window-plus-a-find',
+    text: 'whats there for the fall near us?',
+    city: 'Halton Hills',
+    registrationWindows: [FIXTURE_REGISTRATION_WINDOW],
+    // Remy is 20 months, which is inside the web pick's "walking to 3 years" band — so
+    // the find is one this family can actually use and "name it" has a right answer.
+    children: [FIXTURE_TODDLER, ...FIXTURE_CHILDREN],
+    // The radar is EMPTY on purpose, so the live web is the only source of a find and
+    // the turn holds exactly two facts: the verified date and one web pick. Anything
+    // else here would grade which source the model prefers, which is a different
+    // question from the one this fixture exists to ask.
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    note: "THE COLLISION, and the one the corpus could not see. Both registration fixtures above are date-only and every village fixture is find-only, so nothing here ever asked what happens when ONE message has to carry both — which is exactly the flagship question, 'what is there this fall'. On 2026-08-21 the live answer composed a verified Sep 1 opening plus two web finds at 548 characters against a 306-character budget, opened with 'Two things worth flagging here', and the trim deleted the whole second paragraph: the family paid ~50s of live web grounding and received none of it. Worse, every gate in this harness read the TRIMMED reply, so the corpus scored that answer 5/5. The date may not eat the find and the find may not push out the date. Both, inside two segments, or this fails.",
+    expect: {
+      mustNotDraft: true,
+      mustCall: ['find_activities'],
+      // The date a parent sets an alarm by AND the thing they can do before it arrives.
+      // Either one alone is the defect this fixture exists for.
+      mustMention: ['sep', 'tiny tumblers'],
+      forbidden: [...HEDGES, 'the app'],
     },
   },
   {

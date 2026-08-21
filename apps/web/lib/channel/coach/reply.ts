@@ -1,5 +1,5 @@
 import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 
 /**
@@ -155,9 +155,26 @@ export function plainText(text: string): string {
   return out.replace(/\s+/g, ' ').trim();
 }
 
-/** Sentence-ish chunks, kept WITH their terminator so re-joining them reads normally. */
+/**
+ * Sentence-ish chunks, kept WITH their terminator so re-joining them reads normally.
+ *
+ * The lookahead is what keeps "whole sentences" true. A period inside an abbreviation is
+ * not a full stop, and a naked `[.!?]` cannot tell the difference: a live probe on
+ * 2026-08-21 split "Kids & Me drop-ins Thursdays 1-2:30 p.m. at Acton Library - their
+ * site says so" at the p.m. and sent the parent the time with the venue and the source
+ * attribution cut off it. A find with no address is not a shorter answer, it is one
+ * nobody can use — and an unattributed one is a web claim wearing Hale's own voice.
+ *
+ * WHAT FOLLOWS decides it, not what precedes. A list of abbreviations was the first
+ * attempt and it was wrong in both directions: it needs a new entry for every a.m., i.e.
+ * and U.S., the failure of a missing entry is silent, and it also refused the boundary in
+ * "...1-2:30 p.m. Want me to confirm?" — which really is one — so the whole find went
+ * over the side instead of the trailing question. A lowercase word after a full stop is a
+ * continuation of the fact before it; anything else starts something new. That one
+ * property covers every abbreviation without naming any of them.
+ */
 function sentences(text: string): string[] {
-  return text.split(/(?<=[.!?])\s+/).filter((part) => part.trim().length > 0);
+  return text.split(/(?<=[.!?])\s+(?=[^\p{Ll}])/u).filter((part) => part.trim().length > 0);
 }
 
 /**
@@ -178,7 +195,20 @@ function fitToBudget(body: string, max: number, suffix = ''): string {
   // The suffix is measured with the body, never after it: a reviewed line appended to a
   // reply that was already at the ceiling is how the budget gets quietly exceeded.
   const withSuffix = (text: string) => (suffix === '' ? text : `${text} ${suffix}`);
-  if (smsSegments(withSuffix(body)) <= max) return body;
+  const whole = withSuffix(body);
+  if (smsSegments(whole) <= max) return body;
+
+  // Named rather than dropped in silence, like the siren below and for the same reason:
+  // what goes over the side here is work this turn already paid for. On 2026-08-21 the
+  // flagship question — "what's on Sept-Dec near me" — composed a verified Sep 1 opening
+  // plus two finds from a ~50s live web search, and the entire second paragraph was cut
+  // from a message that opened "Two things worth flagging here". Nothing downstream could
+  // tell that reply from one that fit, so it took a human reading a graded bench run to
+  // see it. A count makes the next one countable. The BODY never reaches the log — it can
+  // carry back what the parent typed (rule #1).
+  console.warn(
+    `channel coach: model answer ran ${smsUnits(whole) - smsUnitsBudget(whole, max)} units past the ${max}-segment budget; sending the prefix that fits`,
+  );
 
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {

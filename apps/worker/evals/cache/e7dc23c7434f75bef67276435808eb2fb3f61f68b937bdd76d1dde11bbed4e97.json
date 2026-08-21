@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to order groceries. Grocery ordering is genuinely outside Hale's capabilities (it is not in `knows.can`). The reply says exactly that in four words and stops. It does not hand the parent back to the app, does not invent a capability, does not send them anywhere useless. It is the correct, complete answer — short, honest, and nothing more than needed.",
+    "score": 5
+  }
+}

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { MAX_REPLY_SEGMENTS } from './reply';
 import { buildChannelCoachTools } from './tools';
 
 /**
@@ -51,5 +53,27 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     const skill = await loadCronSkill('coach-channel-sms');
 
     expect(skill.meta.task).toBe('converse');
+  });
+
+  /**
+   * ONE reader of "how long may a reply be".
+   *
+   * There were two, and they disagreed by a factor of nearly two: the skill stated the
+   * ceiling in SENTENCES ("four is the ceiling") while `toSmsReply` enforces it in
+   * SEGMENTS. On 2026-08-21 a model obeying the skill exactly wrote 548 units of a
+   * registration date plus two web-grounded finds against a 306-unit budget, and the
+   * whole second paragraph — the part the web search was paid for — was dropped from a
+   * message that opened "Two things worth flagging here."
+   *
+   * So the skill now states the number this function enforces, and this asserts they are
+   * the same number. Raising MAX_REPLY_SEGMENTS turns this red until the writer is told.
+   */
+  it('tells the model the same character ceiling toSmsReply enforces', async () => {
+    const skill = await loadCronSkill('coach-channel-sms');
+    // GSM-7, because the skill forbids everything else — and smsUnitsBudget answers in
+    // the encoding of the body it is handed, so it has to be handed a plain one.
+    const budget = smsUnitsBudget('plain ascii', MAX_REPLY_SEGMENTS);
+
+    expect(skill.instructions).toContain(`${budget} characters`);
   });
 });

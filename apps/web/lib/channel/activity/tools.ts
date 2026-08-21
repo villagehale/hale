@@ -147,6 +147,10 @@ export function promiseActivityFollowUpTool(args: {
       { subject: 'weekend swim lessons', childId: EXAMPLE_CHILD_ID },
     ],
     monetary: false,
+    // `{promised:true}` and nothing else, so the message the model writes beside this
+    // call is the finished one — the loop ends on it rather than asking for it again
+    // (tool.ts registersOnly; this tool is why the flag exists).
+    registersOnly: true,
     // A child-scoped promise names a child, so the teen gate runs before the handler —
     // the same refusal `offer_full_plan` takes (rule #1/#5).
     touchesChildContent: true,

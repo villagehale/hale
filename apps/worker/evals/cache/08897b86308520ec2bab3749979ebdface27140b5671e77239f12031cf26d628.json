@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2 per message, so Hale correctly drafted the two swims and told the parent it will handle soccer and the Wednesday appointment next. The Wednesday appointment matches exactly one visible event (the private item Wed 9:00am), so there is no ambiguity requiring a clarifying question — drafting it would have been right, but it falls outside the cap, so deferring it is correct. The reply names both drafted changes with their times, ends with \"YES to confirm these two\", and says it will sort the rest — exactly the correct handling of overflow. No app mention, no invented details, no sign-off, no greeting. The shape is right. One minor note: \"sort\" is slightly vague compared to \"cancel,\" but it is not a real blemish. This is the product working correctly.",
+    "score": 5
+  }
+}

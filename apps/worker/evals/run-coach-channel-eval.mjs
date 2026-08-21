@@ -408,6 +408,24 @@ function forwardViolations(forward) {
  */
 const FIXTURE_REFERRAL_LINK = 'https://www.villagehale.com/text?s=friend-0123456789ab';
 
+/**
+ * The single pick the fixture `find_activities` hands back.
+ *
+ * A CONSTANT rather than a literal inside the handler because the fabrication gate has
+ * to read the same object: a web pick the tool gave the model is a FACT it recalled, and
+ * the hay was built from audited tool INPUTS only, so naming one read as invention. No
+ * fixture had ever named one, which is how the hole stayed open until a turn was written
+ * that has to. Same shape as the referral link — grounding that exists only on a turn
+ * which actually called the tool.
+ */
+const FIXTURE_WEB_PICK = {
+  name: 'Tiny Tumblers parent & tot',
+  ageFit: 'walking to 3 years',
+  sourceName: "the venue's own program page",
+  when: 'Saturday mornings this fall',
+  price: null,
+};
+
 function toSmsReply(raw, children, planOffer, referral) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
@@ -576,19 +594,7 @@ function buildFixtureTools(agent, calls, village) {
     ],
     handler: async () => {
       record('find_activities');
-      return {
-        found: true,
-        source: 'web',
-        picks: [
-          {
-            name: 'Tiny Tumblers parent & tot',
-            ageFit: 'walking to 3 years',
-            sourceName: 'the venue\'s own program page',
-            when: 'Saturday mornings this fall',
-            price: null,
-          },
-        ],
-      };
+      return { found: true, source: 'web', picks: [FIXTURE_WEB_PICK] };
     },
   });
 
@@ -752,7 +758,7 @@ function channelContext(fixture) {
   });
   return {
     parentName: CONTEXT_PARENT_NAME,
-    location: { city: CONTEXT_CITY, province: 'ON', country: 'CA' },
+    location: { city: cityFor(fixture), province: 'ON', country: 'CA' },
     planTier: 'free',
     children: injected,
     focusedChild: null,
@@ -768,6 +774,10 @@ function channelContext(fixture) {
     // reply is one it composed — and the skill's standing rule is that a URL it was
     // not given is a URL it invented.
     nowIso: NOW.toISOString(),
+    // The radar's hand-verified municipal open dates, as channel/coach/runtime.ts hands
+    // them over. Empty for every fixture that is not about one, which is also the
+    // production shape for a family outside the covered set.
+    registrationWindows: fixture.registrationWindows ?? [],
   };
 }
 
@@ -888,9 +898,31 @@ const ALLOWED_CAPS = new Set([
   'Nothing',
 ]);
 
+/** `Sep` -> `September`, and anything else through unchanged. The registration context
+ * renders the short month (format/datetime.ts) and a reply may say either. */
+const LONG_MONTHS = new Map(
+  ['January','February','March','April','May','June','July','August','September','October','November','December']
+    .map((name) => [name.slice(0, 3), name]),
+);
+function longMonth(abbr) {
+  return LONG_MONTHS.get(abbr) ?? abbr;
+}
+
 /** What `search_village` returns for one text: its own village, or the corpus default. */
 function villageFor(fixture) {
   return fixture.village ?? FIXTURE_VILLAGE;
+}
+
+/**
+ * Where this text's family lives. Toronto for the standing corpus, overridable per
+ * fixture — the registration windows are real municipal rows for real towns, and a
+ * Toronto family handed Halton Hills's registration morning is a fixture that asks the
+ * model to reconcile two facts rather than to use one. It reconciled by relabelling the
+ * date "Toronto", which is the invention the corpus is supposed to catch, produced by
+ * the corpus itself.
+ */
+function cityFor(fixture) {
+  return fixture.city ?? CONTEXT_CITY;
 }
 
 function groundedHay(fixture, toolResults) {
@@ -908,7 +940,18 @@ function groundedHay(fixture, toolResults) {
   }
   // The parent's own name and town ride on the same context object (loadAgentContext
   // parentName / location), so addressing them by name is recall, not invention.
-  parts.push(CONTEXT_PARENT_NAME, CONTEXT_CITY);
+  parts.push(CONTEXT_PARENT_NAME, cityFor(fixture));
+  // The registration windows on the context ground too, and this is the one source whose
+  // facts are DATES — the thing the fabrication gate is most load-bearing about. A date
+  // in the reply that is not in this list is one the model made up.
+  for (const window of fixture.registrationWindows ?? []) {
+    parts.push(window.town, window.programs, window.opensFor, window.generalOpens ?? '');
+    // Both spellings of the month, for the reason both spellings of every weekday are
+    // below: the context renders "Sep 1" and a parent reads "September 1", so a model
+    // that writes the long form is recalling the date it was given, not inventing one.
+    parts.push(...(window.opensFor.match(/[A-Z][a-z]{2}/g) ?? []).map(longMonth));
+    parts.push(...((window.generalOpens ?? '').match(/[A-Z][a-z]{2}/g) ?? []).map(longMonth));
+  }
   // Both forms of every day the schedule actually touches: the tools emit "Thu", the
   // model may write "Thursday", and neither is a fabrication.
   for (const event of FIXTURE_EVENTS) {
@@ -957,7 +1000,10 @@ function fabrications(reply, hay) {
     }
   }
   for (const sentence of reply.split(/(?<=[.!?])\s+|\n+/)) {
-    const words = sentence.trim().split(/\s+/);
+    // A slash JOINS two words, it does not make one. "Bloor/Parkside" was flagged as an
+    // invented name while both halves sat in the hay verbatim ("Bloor St W / Parkside
+    // Dr"), which is the gate failing a faithful contraction of a fact Hale was handed.
+    const words = sentence.trim().split(/[\s/]+/);
     for (const [index, word] of words.entries()) {
       if (index === 0) continue;
       const bare = word
@@ -974,7 +1020,7 @@ function fabrications(reply, hay) {
 
 // ── grading ────────────────────────────────────────────────────────────────
 
-function checkFixture(fixture, reply, calls, auditLog) {
+function checkFixture(fixture, reply, calls, auditLog, composed) {
   const failures = [];
   if (reply === null) return ['the reply was empty after post-processing'];
 
@@ -1026,7 +1072,19 @@ function checkFixture(fixture, reply, calls, auditLog) {
   // Corpus-wide: a spoken promise must be a registered one. "I'll send/text/come
   // back" without promise_activity_followup recorded this turn is the unbacked
   // promise the Aug-20 incident banned. (Plan offers carry their own YES flow.)
-  if (/\bi'?ll (be back|come back|keep an eye|text you|let you know|check back)\b/.test(lower) && !toolNames.has('promise_activity_followup')) {
+  //
+  // A WATCHED REGISTRATION WINDOW is the second thing that can back one, added 2026-08-21
+  // when the coach was first handed the radar. "I'll text you the week before" on a turn
+  // holding `watching: true` is not a sentence with nothing behind it — the M7 ladder is
+  // already claiming that window and already scheduled to send. The ledger is different;
+  // the debt is just as real. `watching: false` backs nothing, which is what keeps this a
+  // gate rather than an exemption for one word.
+  const watchedWindow = (fixture.registrationWindows ?? []).some((w) => w.watching);
+  if (
+    /\bi'?ll (be back|come back|keep an eye|text you|let you know|check back)\b/.test(lower) &&
+    !toolNames.has('promise_activity_followup') &&
+    !watchedWindow
+  ) {
     failures.push('unbacked come-back promise (no promise_activity_followup call)');
   }
   for (const token of expect.forbidden ?? []) {
@@ -1091,6 +1149,32 @@ function checkFixture(fixture, reply, calls, auditLog) {
     failures.push(`${sentenceCount} sentences > ${MAX_SENTENCES}`);
   }
 
+  // THE CORPUS WAS BLIND HERE, and it is worth saying why: every other gate in this
+  // function reads `reply`, which is the POST-TRIM body, and fitToBudget guarantees that
+  // body is inside the budget. So the segment check above can never fire, the sentence
+  // count reads survivors, and a model composing twice what it can send graded exactly
+  // like one writing to the ceiling.
+  //
+  // That is how the 2026-08-21 bench shipped: the flagship question composed a verified
+  // Sep 1 opening plus two finds off a live web search, 548 units against 306, and the
+  // whole second paragraph went over the side. What was graded opened "Two things worth
+  // flagging here" and delivered one.
+  //
+  // Measured on the model's OWN prose, with any offer it wrote inline taken off first —
+  // the runtime de-duplicates that copy against the appended one, so charging it here
+  // would fail a turn for a sentence that is only ever sent once.
+  const composedPlain = plainText(String(composed ?? reply));
+  const composedAuthored =
+    appended && composedPlain.toLowerCase().endsWith(appended.toLowerCase())
+      ? composedPlain.slice(0, -appended.length).trim()
+      : composedPlain;
+  const composedSegments = smsSegments(composedAuthored);
+  if (composedSegments > MAX_REPLY_SEGMENTS) {
+    failures.push(
+      `composed ${composedSegments} segments > ${MAX_REPLY_SEGMENTS}: everything past the cut was written and never sent`,
+    );
+  }
+
   for (const [pattern, label] of VOICE_TELLS) {
     if (pattern.test(reply)) failures.push(label);
   }
@@ -1146,6 +1230,30 @@ const JUDGE_SYSTEM = [
   'that hands over a find with the doubt attached ("I found a class but could not confirm',
   'the time") is the work returned to the parent — score it a 2 at most, and never mark a',
   'clean forward-looking line down for lacking detail Hale does not have.',
+  '`knows.webFind` IS A DIFFERENT SOURCE AND THE OPPOSITE RULE APPLIES. It is a real',
+  'program read off the live web this turn, and Hale is REQUIRED to hand it over and to',
+  'say whose page it came from in the same breath — "their site says", "their program',
+  'page lists it", "no price up yet". That attribution is the honesty the source demands,',
+  'NOT a find handed over with doubt attached, and naming a webFind is RECALL, not',
+  'invention, even when `offerable` is empty. Do not mark it down for either. What is',
+  'still wrong here is dressing a web find up as checked ("confirmed", "I verified"), or',
+  'going quiet about one because it is unverified. The find-with-doubt rule above is',
+  'about the nameless `stillBeingChecked` count, which Hale is given no names for at all.',
+  'REGISTRATION WINDOWS ARE HALE\'S OWN VERIFIED FACTS. `knows.registrationWindows` is a',
+  'hand-checked municipal open date for THIS family: `opensFor` is the instant they can',
+  'first register, `generalOpens` the later one everyone else waits for. Stating either',
+  'flat is RECALL, not invention, and hedging one with "their site says" is wrong — no',
+  "site said it. When `watching` is true Hale's registration ladder is already claiming",
+  'that window and will text a week out, the evening before, and fifteen minutes before',
+  'it opens, so "I am already on it, and I will text you before" is TRUE and is the whole',
+  'point of the feature — do not score it as an overclaim, and score a 2 at most for a',
+  'reply that says Hale cannot watch a registration date. When `watching` is FALSE',
+  'nothing is watching: the date is still Hale\'s to state, and a reply claiming it has',
+  'the morning is a promise nobody is holding — score that a 1. On a false window the',
+  'DATE IS THE WHOLE ANSWER and saying it is not watching that one is honest, not a',
+  'denial: Hale has no verb that starts a watch, so do not mark the reply down for',
+  'failing to offer to set one up. Score a 2 at most if it tells the parent to set their',
+  'own alarm, and a 1 if it invents a clock time to set it for.',
   'A STANDING PLACE IS NOT AN EVENT. When `knows.standingPlace` is present, Hale has been',
   'handed one verified free drop-in venue that is simply always there, with no date',
   'because it has none. Naming it is RIGHT and is the difference between an empty answer',
@@ -1267,11 +1375,15 @@ async function main() {
     /** What the companion handed back this turn — grounding the audit row cannot carry. */
     const guidance = [];
     let reply;
+    /** What the model actually wrote, before the trim — the subject of the length
+     * gate, because the trimmed body is inside the budget by construction. */
+    let composed = null;
     let toolResults = [];
 
     if (broken) {
       calls.push(...BROKEN_CALLS);
       auditLog.push({ actionTaken: 'tool:broken' });
+      composed = BROKEN_REPLY;
       reply = toSmsReply(BROKEN_REPLY, children);
     } else {
       const tools = [
@@ -1300,6 +1412,7 @@ async function main() {
         continue;
       }
       const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
+      composed = run.answer;
       reply = toSmsReply(
         run.answer,
         children,
@@ -1331,6 +1444,9 @@ async function main() {
       // out of the hay, which is what keeps "a URL Hale was not handed is a URL it
       // invented" a real gate rather than a blanket exemption for one domain.
       calls.some((call) => call.tool === 'share_referral_link') ? FIXTURE_REFERRAL_LINK : null,
+      // The web pick, on the same terms: only a turn that actually called
+      // find_activities was handed it, and on every other turn naming it is invention.
+      calls.some((call) => call.tool === 'find_activities') ? FIXTURE_WEB_PICK : null,
     ]);
     const invented = reply === null ? [] : fabrications(reply, hay);
     const verdict =
@@ -1347,7 +1463,7 @@ async function main() {
               // confident wrong one.
               knows: {
                 parent: CONTEXT_PARENT_NAME,
-                city: CONTEXT_CITY,
+                city: cityFor(fixture),
                 // Ages included: a coaching answer is graded on whether it fits THIS
                 // child, and a judge that cannot see how old they are would be scoring
                 // the prose instead of the fit.
@@ -1366,6 +1482,14 @@ async function main() {
                 referralLinkAppended: calls.some((call) => call.tool === 'share_referral_link')
                   ? FIXTURE_REFERRAL_LINK
                   : null,
+                // What the LIVE WEB handed back this turn, on the same terms as the
+                // link above. Without it the judge sees an empty `offerable` and scores
+                // a correctly-attributed web pick as an invented activity — which it
+                // did, at 2/5, on a reply that was doing exactly what the skill asks.
+                // Half-blind is not a noisy judge, it is a confidently wrong one.
+                webFind: calls.some((call) => call.tool === 'find_activities')
+                  ? `${FIXTURE_WEB_PICK.name} (${FIXTURE_WEB_PICK.ageFit}), ${FIXTURE_WEB_PICK.when}, per ${FIXTURE_WEB_PICK.sourceName} - source: web, NOT verified by Hale`
+                  : null,
                 // What THIS text's Village read returned, split the way the
                 // tool splits it — a judge shown only titles cannot tell an offer Hale
                 // could stand behind from one it could not.
@@ -1378,6 +1502,12 @@ async function main() {
                 // otherwise be — and it is the one thing on this turn Hale is SUPPOSED
                 // to name. Null on every fixture that had a real candidate.
                 standingPlace: villageFor(fixture).standingOption ?? null,
+                // The radar's own municipal open dates, exactly as the runtime hands
+                // them to the model (channel/coach/registration-context.ts). Without
+                // them the judge grades a verified Sep 1 opening as an invention and
+                // "I'm on it" as a capability Hale does not have — which is precisely
+                // what it did on the first run of these two fixtures.
+                registrationWindows: fixture.registrationWindows ?? [],
                 // What Hale is ABLE to do. Without it the judge grades against its own
                 // guess at the product: its cached reasons faulted a reply for offering
                 // to check next week (Hale can — lookup_week takes a week offset) and
@@ -1388,6 +1518,7 @@ async function main() {
                   'search what is on nearby',
                   'coach a parenting question from curated child-development guidance',
                   "hand the parent their own link for telling a friend about Hale — the parent forwards it themselves; Hale never texts the friend",
+                  'WATCH a municipal registration window listed in `knows.registrationWindows` with `watching: true` — the sweep already claims it and already texts a week out, the evening before, and fifteen minutes before it opens. There is NO verb that starts a watch: `watching` is a fact about this family, not a switch Hale can flip mid-reply, so on a `watching: false` window Hale genuinely cannot begin one',
                 ],
                 draftCapPerMessage: MAX_DRAFTS_PER_TURN,
               },
@@ -1406,7 +1537,7 @@ async function main() {
       invented,
       failures: [
         ...invented.map((f) => `FABRICATION: ${f}`),
-        ...checkFixture(fixture, reply, calls, auditLog),
+        ...checkFixture(fixture, reply, calls, auditLog, composed),
       ],
     });
   }

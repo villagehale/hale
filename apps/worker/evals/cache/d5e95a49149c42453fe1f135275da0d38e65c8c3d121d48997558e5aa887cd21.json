@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2, so Hale correctly drafts the first two (Monday swim, Thursday swim) and says it will handle the rest after confirmation. The reply names both drafted items clearly with their times, ends with the required YES prompt, and correctly does not itemise or draft the overflow. It does not send the parent to the app, does not invent details, and does not ask a clarifying question where none is needed — each of the four events maps to exactly one visible calendar item. The soccer matches Saturday's Soccer practice and the Wednesday appointment matches the private item on Wed 9:00am (the summary even confirms \"one appointment midweek\"). The word \"sort\" for the overflow is slightly loose but acceptable. The reply is clean, correctly shaped, and does the job.",
+    "score": 5
+  }
+}

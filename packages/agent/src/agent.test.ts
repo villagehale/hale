@@ -61,6 +61,28 @@ function toolUseMessage(
   };
 }
 
+function textAndToolUseMessage(
+  text: string,
+  id: string,
+  name: string,
+  input: unknown,
+  u: Anthropic.Usage,
+): Anthropic.Message {
+  return {
+    id: 'msg-text-tool',
+    type: 'message',
+    role: 'assistant',
+    model: 'claude-sonnet-4-6',
+    stop_reason: 'tool_use',
+    stop_sequence: null,
+    content: [
+      { type: 'text', text, citations: null } as Anthropic.TextBlock,
+      { type: 'tool_use', id, name, input } as Anthropic.ToolUseBlock,
+    ],
+    usage: u,
+  };
+}
+
 function textMessage(text: string, u: Anthropic.Usage): Anthropic.Message {
   return {
     id: 'msg-text',
@@ -251,6 +273,138 @@ describe('runAgent loop mechanics', () => {
         guardDeps: deps,
       }),
     ).rejects.toThrow(/not in skill 'ask-hale' allowlist/);
+  });
+});
+
+/**
+ * THE FINISHED ANSWER RIDING A REGISTERING TOOL CALL (2026-08-21 answer-quality probe).
+ *
+ * The model writes text in the same assistant turn as a tool call in two very different
+ * situations, and the loop has to tell them apart because only one of them is a reply:
+ * before a tool it will READ, the text is scratch ("let me check the schedule"); before
+ * a `registersOnly` tool it is the whole message, because the acknowledgement coming
+ * back changes nothing. Discarding the second cost a real parent every fact in the
+ * answer — twice in one probe run.
+ */
+describe('runAgent keeps the answer written beside a registering tool call', () => {
+  const promiseSkill: Skill = {
+    ...skill,
+    meta: { ...skill.meta, tools: ['get_child_profile', 'promise_followup'] },
+  };
+
+  function promiseTool(calls: string[]) {
+    return defineTool({
+      name: 'promise_followup',
+      description: 'Register that Hale is coming back about this.',
+      monetary: false,
+      touchesChildContent: false,
+      registersOnly: true,
+      inputSchema: z.object({ subject: z.string() }),
+      handler: async (input: { subject: string }) => {
+        calls.push(input.subject);
+        return { promised: true };
+      },
+    });
+  }
+
+  it('ends the run on that turn, with the text as the answer and the effect registered', async () => {
+    const client = fakeClient([
+      textAndToolUseMessage(
+        "Cartwheels lists a Tiny Gym class that fits - their site says. No fall dates up yet, so I'll text you when they are.",
+        'tu-1',
+        'promise_followup',
+        { subject: 'cartwheels tiny gym fall' },
+        usage(100, 40),
+      ),
+      textMessage("I'll text you when the dates are up.", usage(120, 10)),
+    ]);
+    const { deps } = guardDeps();
+    const promised: string[] = [];
+
+    const result = await runAgent({
+      skill: promiseSkill,
+      context: {},
+      tools: [profileTool, promiseTool(promised)],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+    });
+
+    expect(result.answer).toBe(
+      "Cartwheels lists a Tiny Gym class that fits - their site says. No fall dates up yet, so I'll text you when they are.",
+    );
+    // The promise is a row the sweep owes an answer for — ending early must not skip it.
+    expect(promised).toEqual(['cartwheels tiny gym fall']);
+    // One round trip, not two: the second scripted message was never asked for.
+    expect(result.steps).toBe(1);
+    expect(client.messages.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes another turn when the registering tool REFUSED, so the fix reaches the parent', async () => {
+    const client = fakeClient([
+      textAndToolUseMessage(
+        "I'll come back to you on this.",
+        'tu-1',
+        'promise_followup',
+        { subject: 'x' },
+        usage(100, 40),
+      ),
+      textMessage('Nothing is up for the fall yet.', usage(120, 10)),
+    ]);
+    const { deps } = guardDeps();
+    const refusing = defineTool({
+      name: 'promise_followup',
+      description: 'Register that Hale is coming back about this.',
+      monetary: false,
+      touchesChildContent: false,
+      registersOnly: true,
+      inputSchema: z.object({ subject: z.string() }),
+      handler: async () => {
+        throw new Error('That subject names a child. Call again without it.');
+      },
+    });
+
+    const result = await runAgent({
+      skill: promiseSkill,
+      context: {},
+      tools: [profileTool, refusing],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+    });
+
+    // A promise that was never registered must not be the sentence Hale sends.
+    expect(result.answer).toBe('Nothing is up for the fall yet.');
+    expect(result.steps).toBe(2);
+  });
+
+  it('still discards the preamble written before a tool it is about to READ', async () => {
+    const client = fakeClient([
+      textAndToolUseMessage(
+        "Let me pull up the profile and check.",
+        'tu-1',
+        'get_child_profile',
+        { childId: 'kid-1' },
+        usage(100, 40),
+      ),
+      textMessage('Your 5-month-old is right on track.', usage(120, 10)),
+    ]);
+    const { deps } = guardDeps();
+
+    const result = await runAgent({
+      skill: promiseSkill,
+      context: {},
+      tools: [profileTool, promiseTool([])],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+    });
+
+    expect(result.answer).toBe('Your 5-month-old is right on track.');
+    expect(result.answer).not.toContain('Let me pull up');
   });
 });
 

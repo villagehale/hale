@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a parenting/sleep question about a 19-month-old toddler. The reply gives a concrete, age-appropriate explanation (hasn't learned to resettle independently, calls for parent at end of sleep cycles) — that's the \"concrete thing this parent could do\" beat in the sense of understanding the mechanism, though it stops just short of a specific action for tonight. However, the rules say the advice beat is \"deliberately one short beat\" and the depth is in the plan being offered via YES. The reply carries exactly the correct fixed line: \"Want the full night-by-night plan for Remy? Reply YES and I'll send it.\" It names the child, is grounded in the age (19 months), gives a useful one-clause explanation, and ends with the required YES offer. No referral to a doctor, no handing back, no app mention, no invented details, no URL (referralLinkAppended is null). The shape is correct. The one small issue: it could be argued the reply doesn't give a single concrete action for tonight (e.g., \"when he wakes, wait 2-3 minutes before going in\"), but the rules explicitly say \"deliberately one short beat, because the depth is in the plan\" and not to mark down for lacking detail the plan would cover. The reply is tight, correct, and follows the product contract exactly. A 5.",
+    "score": 5
+  }
+}

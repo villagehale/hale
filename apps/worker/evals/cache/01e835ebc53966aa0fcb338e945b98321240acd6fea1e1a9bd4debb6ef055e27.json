@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does exactly what's needed: drafts the Thursday swim cancel (one event, unambiguous), names it with its time, and asks for YES to confirm — correct shape. For Saturday indoors, it surfaces the one verified offerable candidate (Central Library story time, Bloor/Gladstone, Sat Aug 8) — name, place, day, all checked. stillBeingChecked is 0 so no pending finds to mention. draftCap is 2 but only one draft was needed. No app referral, no invented URL, no sign-off, no greeting, no markdown. Tight and complete.",
+    "score": 5
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CeG8mC2mv9FiowCi9sugg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Central Library story time at the Bloor/Gladstone branch is on Sat, Aug 8 - free drop-in, all ages. Want me to look for anything else specific?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 642,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 10313,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 44,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}
