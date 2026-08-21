@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked what's on for the kids Saturday. The week shows Soccer practice at Cedarvale Park at 10am Saturday — Hale should have named that. There's also an offerable activity (Central Library story time, Sat Aug 8) that's been verified and should be offered. The reply \"I'll text you once the other one checks out\" only references the stillBeingChecked candidate, completely ignoring both the confirmed calendar event (soccer) and the offerable verified activity. It answers nothing the parent asked and leaves them with no useful information.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly uses the standingPlace (High Park) as a useful answer when no offerable activity has checked out yet — that is exactly right. It also correctly notes the one find from search isn't suitable for the kids' ages, which is fine context. However, it then tells Sam to \"check their current schedule for water play hours\" — which is sending the parent somewhere else to do work, exactly the kind of handback the rules flag. The cadence note in standingPlace says water play and train are seasonal; the correct handling is to name that caveat loosely (e.g. \"water play is seasonal so worth a quick check\") without directing them to a schedule or website. Turning the loose cadence into a direction to go look it up is the standing-place rule violation: the reply \"writes out a website\" in spirit by directing the parent to an external schedule. That caps the score at 2 per the standing-place rules (\"score a 2 at most if the reply… promises it is open on a named day, or writes out a website\"). Directing them to \"check their current schedule\" is functionally the same as pointing to the app or a website — it hands the job back.",
+    "score": 2
+  }
+}

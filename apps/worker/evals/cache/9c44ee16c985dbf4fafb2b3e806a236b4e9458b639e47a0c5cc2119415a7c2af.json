@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names one event (\"soccer\") and one day (\"sat\"), and there is exactly one soccer event in the week (Saturday 10:00am at Cedarvale Park). The reference is fully resolved. Hale correctly drafted a move and asked for YES confirmation — the exact required shape. The reply is minimal, accurate, and ends with \"YES to confirm.\" No invented details, no app referral, no greeting or sign-off. This is the product working perfectly.",
+    "score": 5
+  }
+}

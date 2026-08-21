@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the private calendar item on Tuesday, gives its time (3:45pm), and declines to share its content — exactly the right handling. It is concise and complete. One minor note: \"Nora\" is not a name in knows.children (the teenager's name is null), but Hale has no name for the teenager, so it simply answers what Tuesday holds without claiming to know whose item it is, which is correct. The reply does the job cleanly with no padding, no app referral, no markdown, and no invented detail.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names exactly one event — the Thursday swim lesson — and asks for it to be moved to Friday 5:15. That event is unambiguously identified in the week (Thu 5:15pm, East pool). Hale correctly drafts the move and presents it for confirmation with the required YES. The reply names the event clearly (East pool, 5:15pm), states the target time, and ends with the exact \"YES to confirm.\" trigger. No invented details, no app referral, no greeting or sign-off, no unnecessary clauses. This is the product working exactly as specified.",
+    "score": 5
+  }
+}

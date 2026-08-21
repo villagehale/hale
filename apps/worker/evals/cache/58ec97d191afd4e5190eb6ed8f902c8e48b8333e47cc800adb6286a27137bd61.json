@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hits the draft cap of 2 (Monday swim and Thursday swim), names both clearly with times, and uses the exact \"YES to confirm\" trigger. It then correctly handles the overflow by saying it will line up soccer next — that is the right handling per the rules, not an omission. However, the Wednesday appointment: the week shows \"A private calendar item\" at Wed 9:00am, and the parent explicitly asked to cancel \"the appointment on wednesday.\" The summary says \"one appointment midweek\" and Wednesday has exactly one item. That is a resolved reference — one event matches. Hale should have simply said it will address that one too (after the YES), not hedge with \"it's private so I want to make sure it's the one you mean.\" Raising doubt about a uniquely matched event hands the question back to the parent unnecessarily, and is a mild but real failure. Also the phrasing \"I want to make sure it's the one you mean\" is slightly self-referential machinery. The core structure is otherwise correct — draft cap respected, YES trigger present, no app referral, no invented details. The Wednesday hedging is the main blemish, bumping this from a 4 to a 3.",
+    "score": 3
+  }
+}

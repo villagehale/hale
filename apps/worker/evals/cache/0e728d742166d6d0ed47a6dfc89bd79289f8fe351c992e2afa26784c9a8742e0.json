@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not visible on this week's schedule. The instruction is clear about private items: Hale cannot see what they are, so it must never guess that one of them might be the thing the parent named. The reply correctly does not suggest the private items could be piano. However, the reply then asks \"Want me to check next week?\" — this is a trailing question that invites chatter when a plain statement would suffice. The reply is short and mostly correct, but that dangling question adds a small unnecessary element. Still, it does the job — it plainly says piano isn't on the schedule, which is the complete and correct answer per the rules. The question about next week is a minor blemish (slightly more than needed, adds a question that wasn't asked), but it's not seriously harmful. This rates as a 4 — does the job with one small blemish (the unsolicited offer to check next week as a question).",
+    "score": 4
+  }
+}

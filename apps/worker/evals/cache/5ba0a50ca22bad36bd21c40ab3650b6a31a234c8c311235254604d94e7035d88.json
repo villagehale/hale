@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week (Monday swim at West Pool and Thursday swim at East Pool). This is genuine ambiguity — more than one event fits the description. Hale correctly identifies both and asks which one, without drafting anything. This is exactly the right handling. The reply is concise, names both events with their times and locations, and ends with a clear question. No app referral, no invented details, no sign-off. A clean, correct response.",
+    "score": 5
+  }
+}

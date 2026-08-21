@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply identifies the single matching event (Thursday swim lesson at East pool, 5:15pm), drafts the cancel, and ends with the required YES-to-confirm prompt. Exactly one event matches \"thursday swim,\" so no clarifying question is needed and none was asked. All details are traceable to the week. No greeting, no sign-off, no app referral, no invented detail. Perfectly shaped.",
+    "score": 5
+  }
+}
