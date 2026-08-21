@@ -2129,8 +2129,9 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
      * negative again — but only half of what the hero takes, because these rungs
      * render at 30–50px where the counters are doing more work. */
     letter-spacing: -0.02em;
-    /* Over the face's own ink extent, 0.9719em ascender-to-descender at 450, so
-     * two lines of a wrapped headline cannot touch. */
+    /* Over the face's worst lowercase ink extent — 'b' 0.7388em over 'g' 0.2451em
+     * = 0.9839em at 450, measured across every rung's own opsz — by 0.056em, so
+     * no wrapped headline touches itself. */
     line-height: 1.04;
   }
   html[lang='en'] .v4-hero-h1,
@@ -2144,10 +2145,12 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     font-optical-sizing: auto;
     font-synthesis-weight: none;
     letter-spacing: -0.035em;
-    /* Under the 0.9719em of ink the face carries, by 0.022em — 1.8px at the 84px
-     * ceiling, and only ever reachable where a descender sits directly over an
-     * ascender. Deliberate, and the one rung allowed it: a poster headline leads
-     * tighter than a page of them. */
+    /* UNDER the face's worst lowercase extent, by 0.0339em — 2.84px at the 84px
+     * ceiling — and the one rung allowed to be. Only reachable where a descender
+     * sits over a TALL ascender, which the real stacks are nowhere near: 'y' over
+     * 't' in "The family assistant / you text." clears by 13.5px, because 't' is
+     * 0.55em where 'b' is 0.74em. A poster headline leads tighter than a page of
+     * them. */
     line-height: 0.95;
   }
 

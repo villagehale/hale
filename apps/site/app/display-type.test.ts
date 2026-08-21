@@ -224,9 +224,17 @@ const FRAUNCES_STEM_PER_EM: Record<string, number> = {
   '76/100': 0.03032,
 };
 
-/** Ascender-to-descender ink, as a fraction of the em, at wght 450. Flat across
- * the opsz range (0.9716–0.9719) because Fraunces moves contrast, not extent. */
-const FRAUNCES_INK_PER_EM = 0.9719;
+/** The worst LOWERCASE ink extent, as a fraction of the em, at wght 450 — the
+ * tallest ascender over the deepest descender, taken over every rung's own opsz
+ * ('b' 0.7388 over 'g' -0.2451 at opsz 30.4; flat to 0.9832 at opsz 84, because
+ * Fraunces moves contrast rather than extent).
+ *
+ * Lowercase, and stated as lowercase, because that is the bound a leading can
+ * actually be held to. An accented capital reaches 0.8896em, so É-under-g is
+ * 1.1347em and no display leading on any site clears it — that overlap is
+ * universal and accepted, and a constant that folded it in would say "these
+ * lines can never touch" while meaning something much weaker. */
+const FRAUNCES_LOWERCASE_INK_PER_EM = 0.9839;
 
 /** Figtree stem/em, measured the same way — this is the OTHER side of every
  * comparison below, so it has to come off the same instrument. */
@@ -513,22 +521,25 @@ describe('the display face is Fraunces (Latin locales only, opsz + wght)', () =>
     }
   });
 
-  it('opens the leading past the face’s own ink extent — except where the founder pinned it', () => {
-    // Measured off the shipped woff2 at wght 450: 0.9719em of ink, ascender to
-    // descender. The heading rungs lead over that, so two lines of a wrapped
-    // headline cannot touch.
+  it('opens the leading past the face’s own lowercase ink — except where the founder pinned it', () => {
+    // The heading rungs lead over the worst lowercase pair by 0.056em, so no
+    // wrapped headline in en or fr can touch itself on lowercase alone.
     for (const selector of FRAUNCES_HEADING_SELECTORS) {
-      expect(Number(only(selector, 'line-height')), selector).toBeGreaterThan(FRAUNCES_INK_PER_EM);
+      expect(Number(only(selector, 'line-height')), selector).toBeGreaterThan(
+        FRAUNCES_LOWERCASE_INK_PER_EM,
+      );
     }
     // The hero does NOT, and that is a deliberate founder value rather than an
-    // oversight: 0.95 against 0.9719em of ink is a 0.022em overlap, 1.8px at the
-    // 84px ceiling, and it is only ever reachable where a descender sits directly
-    // over an ascender. The landing hero — "The family assistant / you text." —
-    // has 'y' over 't', whose true extents are shallower than the 'p'/'h' pair
-    // the 0.9719 is measured from. Pinned rather than tolerated: this fails if
-    // the hero drifts tighter still.
+    // oversight — so it is recorded with the number rather than left unstated.
+    // 0.95 against 0.9839em is a 0.0339em overlap, 2.84px at the 84px ceiling,
+    // and only reachable where a descender sits directly over a TALL ascender.
+    // The real stacks are nowhere near it: measured on the shipped outlines at
+    // opsz 84, the English hero's 'y' over 't' clears by 13.5px and its 'y' over
+    // 'a' by 21.3px, because 't' is 0.55em where 'b' is 0.74em. A poster headline
+    // leads tighter than a page of them; this pin holds the line at 0.95 so it
+    // cannot drift tighter, and bounds the overlap it costs.
     expect(Number(only(FRAUNCES_HERO_SELECTORS[0] as string, 'line-height'))).toBe(0.95);
-    expect(0.95).toBeGreaterThan(FRAUNCES_INK_PER_EM - 0.025);
+    expect(FRAUNCES_LOWERCASE_INK_PER_EM - 0.95).toBeLessThan(0.035);
   });
 
   it('keeps the balanced wrap the display type was built on', () => {
