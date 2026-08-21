@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGb7kj87FmUqoK9yRVkx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EosECpABCBEYAipAAJuha1ADGt23QCQwTI2usbLiDQeFNfOHd6ajHyv9MU0nAcmbUoQNGXav510txQJ8+Mwlf7BwDl+1vK/x1Q1H4zIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAd6Ao9QGEgwZrw879yxUIcKCKIEaDNAInaICgl+QQ/ZsYiIwhOdEys7vslLz50PCMJDxWeyuLIuSeCir+Jf4/Y3+Tv2fIBzGTKoUUg51kBzC9HD7KqcCoVxR+PcNoUUSnQ3y0Nz+h631ByW2mSXMIxq6xpOvFmI5eR+JNpi/vfZ5reIdYClPgvUzHk2y+I64ln+ZfuKUwTjUyluRTeQZw+YC5/uBLOTVUiuZqPVoqcypk8wu8vzC15SfXIEMIQqClOfvsezXDf1JMjSP6jiRtgbM80/frKWY7drxGQ0ab1/Ayu9g0RBpAx9xlnqaJ++F/N4n4B2sPeYSs7KO6AWnTF9N4YhfX9wzolQknXrfCMy4UKLNMxY+wobcl7rNvHiuLZTgXG8UlWTONAcJNlJ/hrnrzJHbAu+b8rvWTDBLpKDvSPd8SQRHwLsEQ5U4uOVazEhPDrXzPJnpr0M+Che5BP8I5qmBdGOQy15CeVMYMqfkupFmpTXeHRT0PZ+jZhgB"
+      },
+      {
+        "type": "text",
+        "text": "Mira made the switch from purées to finger foods around 9 months.\n\nThat lines up with the milestones you logged around then too — she was starting to self-feed with a spoon and mouthing more textured foods, so the timing tracked with her readiness rather than a strict calendar date."
+      }
+    ],
+    "usage": {
+      "input_tokens": 5656,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 176,
+      "output_tokens_details": {
+        "thinking_tokens": 88
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3640,
+  "firstInputTokens": 5656
+}

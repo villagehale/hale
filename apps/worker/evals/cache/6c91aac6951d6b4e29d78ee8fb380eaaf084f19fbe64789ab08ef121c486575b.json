@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGb6e8UBpzXmMevbY7jJ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EswGCpABCBEYAipAeOdRqQKdS2WcrgrgzWLoEfa2oKaoYMNBJGdq4AX145dM5qGQOeAVek8FfEeIgFFImycjYjywzqiTnx5Qo/fz6TIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAdCAo9QGEgyPnDR7XqIxUgIKZvcaDMlrB+bNEolZXFwtnSIwOPN6osKnu8p5eJ2kVHGneYXdChJG6Lyd100aoCWfvfbEghBvT6nW7j5pCk8Kx7SDKugEE0cc0srtNI9pbvYra04kQ4x0PScPI3JVBnoCVjAd/m/19hB/Fct55pkCtGJuYpbCtplbbUkKKcZhefckCAXbj6Csno6kNH+yKtofJ9Vy+9kGg+agOM1RYswyMCUaE48+PiQeo+Hd7E/fAdFKdft9ZMNpquDC7yqDTnh77iiMlmCyFE13zfacmKSUgx2xx7hUxfQ5AIraFMV3tTWNulrKqA1ZE0Ttn6kKhbFhjGsmst6vfcIMVJ0nD8ZV8j8/7X5FBmy0CCLG09XTsmKtPwtHsjbIK/+A3wYp9yyYAilKcV+vO6SnVN9OG8ORZacc1/yAEVTUy2FcFYSqw7pWDStPEFOLn580fu3P0CWoMf08wpQPZxOIXpeblJTG1jnijozy16kZUoFP7dH7qfRa2XVtRpsUxa+J7WDtpTG3Orwj8lNQ0GXRXvtAyPrxZoQkUF03IaGIfCvwI12K2VnCUdfp1UgajMVIwcNOX7KF/bTecnw78MyeALvJKim8VozD0NLj6u5rwFJags/Z31pC+vyb3AiarNCO+W5BYIF41YB629uHTnT6X+tEAg96Fx7k2HpcH9RqQp9Pn5wCl1iZdUzcIS98+jDCEeEGsjg9LwSlKmw7PQPVkPuo8PeKPbZB8dMdHDoPrq8Kk4ViKpUybIw1n8OfiCs3MNek3CoB9VPz4ETTzFhUEPeXPoHBhMGjGO5b5Iw10uVVrBqKs2J/zLQFDZmnhm+e9S0S480yeAy2GVlmUztIBanqM3j+4yVw20Na73Hww4MVcY7euCXnUCnVQRiYJ5bhQjKe3qF1JbNZrMBGOpB2VwSFthgB"
+      },
+      {
+        "type": "text",
+        "text": "Yes — flag Mira's egg allergy. It's confirmed by Riverdale Pediatrics and shows up as mild hives, so any caregiver should know to avoid egg and watch for hives if there's an accidental exposure.\n\nWorth mentioning to a new caregiver too:\n\n- Her comfort object (the blue elephant) helps at naps and during unfamiliar settings.\n- Bedtime routine is bath, story, lights out around 7:30pm — sticking to it usually helps her settle.\n\nIf anything more than mild hives shows up, that's a call to the pediatric office or emergency care, not a wait-and-see."
+      }
+    ],
+    "usage": {
+      "input_tokens": 5663,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 383,
+      "output_tokens_details": {
+        "thinking_tokens": 178
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 6195,
+  "firstInputTokens": 5663
+}

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGbDohsy8U29x3qA7dpb",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErkICpABCBEYAipAfLjLFhVhDKN40K2hraz8m3/JQss0V2hscc9NszSTSbYzA3vDFXopSEvi9qJ09dVF09Yu7m2Mmu9Ej5/mifZggTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAbOBo9QGEgzFY9wlLvv6m08I8lcaDIhMohwGKdfkfGSGxyIw31DhobhmpyAzd7QlTnaP+9a3Xq7a5atI3LF5Ud6/Yy3Msi2nhgFCh9ZWPHDIMBE7KtUGOG5pgcOcPMY4PiQ/UC5EheFDpUs9A88XV3mrfS3Gvxm5+aHdf/G83l08cgQJt1GQN7o6jSRtumy3o+mfx9sJB7IcGsc81kFKkLtHgPt5/HAcKhfe0eXNvcglGkPrtGeMJlwVpygGmhNavw/bkofTByvglS4W2e3ohoVkPBq9C1MdEUXcOXAfqTukMa6qmis8J7UI5L5sOJxKxUmn4KGceS3d2+PZDUfX/y/drjAGZ7ECgMDoiCGDBzn4WeZF9zveoMvUyrepELv1WicW/6QoCsU4enp2laQ8OlHK6LhwDYLUvE/w7n1xTm8QGE841OnhFLCwWYss8x/045/0wt6iEXbi1AwfXpDXjod8+ZgA2tBpu9W/1d4CzPN6TadJXiOHB8rw59PIPe0EUkOrQessDuWOP/zefo5FbkgGiNNyPPyEMuRUzWFGq7+PtA25wxD+Inele1Gukv10MmdLTpsgC6R7DqLfi+ojLQP9uDYjt1cAkxg91vxvwfauRgr1GQlrgPvjhOg4fi0E63ix/xoTc3Jv2jowpGiJk9yvBxlkHxXOHyVeCwyuA5LAsN9oZ9yHwxI8WYpep8M7fREcE3lhji4RcacDuwO1DobYjmGpnLF5C3cyZsfazaZ+l1Fv0Q/7UPdCJ8oOepu5c/HwO5IWNSMQduyZzzaOOZapsgMSV4GiUq7I//rkTDkQ8xYf+nzw/jIEiXwKQFY1rZ7SKzBr64cHxqWOheSRH/IshrYC/Q+04lqth0qOjH/dIo6JAsns1Tq8dQ9tCYf2pkGo7luldgHtyXF8ET9q0w8+nVul28A8XMteZHqN09bIhVkTNGrfLIb8naZzN9tn7kuX4Bb7lvZSwdRXTtB95VwoZOW0Rz28Fz8ES4OzgDOHaJ0aeJSU3xzU8sSmxjoLRlaNYsmVKIS/MTdiBoxz2Y66HRQPk1DYP/Z53rY9g/TrJfKyFQ4FCSkXblUHIIjkcPYaaalfqjhV89cwFBOj+197yn6T5TbhzL5piBejD6S+wpVYL/q2N5jl7dxEBlcOfz5O9D7FG5Dudv2jGrhGJvxXk5oN4xfj1BAb57ahpMiBmIxEBI/sK7ZdPDpnK7V35SUZQYB1MyxgZL7z+ZGT+yLdLJIz3Vo0Qfo3IxgB"
+      },
+      {
+        "type": "text",
+        "text": "Yes — Mira has a mild egg allergy, confirmed by Riverdale Pediatrics, showing up as hives.\n\nWorth telling any new caregiver:\n\n- No egg or egg-containing foods (baked goods, mayo, some pastas).\n- What to watch for: hives is her typical reaction.\n- If they see anything beyond mild hives — swelling, trouble breathing — that's a call to 911, not a wait-and-see.\n\nIf you want, I can help you put together a quick one-page note for sitters or daycare with this plus her comfort object and bedtime routine."
+      }
+    ],
+    "usage": {
+      "input_tokens": 16368,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 434,
+      "output_tokens_details": {
+        "thinking_tokens": 247
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 7862,
+  "firstInputTokens": 16368
+}

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGb1AjojoULV8yLHANi9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "Yes — Mira has a mild egg allergy, confirmed by Riverdale Pediatrics, with hives as the reaction so far.\n\nFor a new caregiver, it's worth writing down:\n\n- Egg is the trigger (check labels on baked goods, pasta, mayo-based spreads).\n- What happened before: mild hives, not a severe reaction.\n- What to do if hives show up, and Riverdale Pediatrics' number in case they have questions.\n\nIf this caregiver will be feeding her, it's worth a quick check-in with Riverdale Pediatrics on what an at-home response plan should look like, just so everyone's clear before anything comes up."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1213,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 650,
+      "output_tokens_details": {
+        "thinking_tokens": 436
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 10031,
+  "firstInputTokens": 1213
+}

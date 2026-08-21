@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The answer correctly states that Mira took her first independent steps about 7 months ago, which matches the reference fact exactly. However, the answer adds extra information (specific month \"November 2025\" and developmental milestones like pulling to stand, stacking blocks, and new words at 18 months) that goes beyond what was in the reference. While this additional information isn't contradictory or invented in a problematic way, it adds details not present in the reference material, which slightly exceeds the strict requirement of matching the reference without adding contradictory or invented specifics."
+  }
+}

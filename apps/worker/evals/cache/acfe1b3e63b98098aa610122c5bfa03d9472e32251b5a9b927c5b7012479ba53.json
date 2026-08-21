@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGb87u6WTU1i4tEG1iN4",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErcECpABCBEYAipAUtBkEksKnytF/wlhzaewyDmLWJcz2ZBKfB9rcPZGvbRXq6regtQg2t9lFp1khr5FRv4lhceMaDq0mTM5HdcrqTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAeOAo9QGEgxhS8ZoxFoB0hh1fBkaDH8fPByvluZpwuvfYyIwWZ0Go2AnGy5Ye/Scm5nqwUsSZqxB9MQ+rQ2DzGj7NV+D84wNSyQ5x9/5A+iJi33WKtMC1zU9M+9y90g1JFqSMcxPLAFZ0GgESmJG1zhF+vJLOeIMOo8z3V/ej+1DjNYH3lGIFYse0Fj9z976UJAVTkhUBS7Uxc3n2PX29zVJ9eyCipnk70fy7naiGZ6CczwoKp98H0MbcjiPJx09H7Lqp33CmAy2oGH8CTpB3ZRpOAERP0AqF9fOsoNRlAv1JG3eP1gmNPuyZweAw7kDLLd/mH8vyjnmP+3HuGsSBj5eF4BYZXLyrKMvLZYYERV1HDBDytLvmrhM+2cp9CxlilJQ3KkFnSah9c/tvXlxrHJ7WZbcqPyPmMS5EmI85WGT6rz+BrUBq0XF+kgZC849UFUu3Cg+RmzwY5bg4Yh2FcSXzy2Ax6/MwPb+any+J8IJFtK7eyzj8pZ3Xb/oB0S+/LuXeMnhUxzcyaAIsMwgJ4NyzlXKw4lELIvnYyzm2Y9bG24ZSw8GmMAjGAE="
+      },
+      {
+        "type": "text",
+        "text": "Mira settled best swaddled on back as a young baby — that was her go-to for sleep in those early months. You dropped the swaddle at 5 months, which lines up with the usual timing since babies typically transition out once they show signs of rolling, for safety.\n\nIf you're asking because you're troubleshooting something with her sleep now at 18 months, let me know what's going on and I can help think it through."
+      }
+    ],
+    "usage": {
+      "input_tokens": 5668,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 230,
+      "output_tokens_details": {
+        "thinking_tokens": 105
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 4502,
+  "firstInputTokens": 5668
+}

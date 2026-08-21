@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The reference answer clearly states \"mira goes to the Tumbleweeds toddler gym class on saturdays.\" The assistant's answer states \"I don't have any Saturday class listed as an enrollment for Mira\" and claims to not have this information, when the reference shows this specific fact should have been known. The assistant provided an invented explanation about Google Calendar and missing information rather than providing the correct answer that was available. This is a clear miss of the factual answer."
+  }
+}

@@ -288,10 +288,18 @@ export const JUDGE_MIN = 4;
 // in the candidate answer. The reference tokens are derived from the synthetic
 // facts, never from model output (rule #7), so this is a real fact-recall metric,
 // not a fit-to-output one.
+//
+// An entry may be an ARRAY of surface forms for one and the same required token —
+// satisfied when ANY of them appears. That is for facts whose stored notation is
+// not the notation a person uses out loud (a bedtime stored as '19:30' that a coach
+// says as '7:30pm'): both are a correct recall of one fact, so demanding a literal
+// the answer has no natural reason to contain measures phrasing, not memory.
 
 export function recall(answer, mustRecall) {
   if (!mustRecall || mustRecall.length === 0) return 1;
   const hay = answer.toLowerCase();
-  const hit = mustRecall.filter((t) => hay.includes(String(t).toLowerCase())).length;
+  const hit = mustRecall.filter((t) =>
+    (Array.isArray(t) ? t : [t]).some((form) => hay.includes(String(form).toLowerCase())),
+  ).length;
   return hit / mustRecall.length;
 }
