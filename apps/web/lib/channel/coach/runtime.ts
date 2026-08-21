@@ -21,6 +21,9 @@ import {
   type ChannelTurnResult,
   ChannelTurnFailed,
 } from '~/lib/channel/router/coach-runtime';
+import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import { createActivityFinder } from '~/lib/channel/activity/lane';
+import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { type ReferralShare, referralBlock } from '~/lib/channel/referral/share';
 import { type AgentContext, type LoadAgentContextInput, loadAgentContext } from '~/lib/coach/context';
@@ -109,6 +112,7 @@ export interface ChannelCoachPorts {
     onDraft: (actionId: string) => void,
     onOffer: (offer: PlanOffer) => void,
     onShare: (share: ReferralShare) => void,
+    onPromise: (promise: ActivityPromise) => void,
   ): RegisteredTool[];
   guardDeps: GuardDeps;
   /**
@@ -143,6 +147,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // ledger row to mint, because the parent forwarding a message is not a promise
       // Hale owes them.
       let referral: ReferralShare | null = null;
+      // The "I'll come back to you" this turn said, if it said one. LAST CALL WINS, for
+      // the reason the offer's does: the ledger permits one open activity promise per
+      // family, so a turn that registered two changed its mind mid-compose and the one
+      // the parent can read is the one in the sentence it ended up writing.
+      let activityPromise: ActivityPromise | null = null;
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -212,6 +221,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             (share) => {
               referral = share;
             },
+            (promise) => {
+              activityPromise = promise;
+            },
           );
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
@@ -269,7 +281,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             referral: share ? referralBlock(share) : undefined,
           });
           await ports.recordRun(record('completed'));
-          return { reply, planOffer };
+          return { reply, planOffer, activityPromise };
         },
       );
     },
@@ -300,15 +312,23 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
-    buildTools: (turn, onDraft, onOffer, onShare) =>
+    buildTools: (turn, onDraft, onOffer, onShare, onPromise) =>
       buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database),
         draftPort: productionChannelDraftPort(database, anthropicClient(), turn.now),
         villageTool: searchVillageTool(database),
+        // The second activity source. It shares the coach's own client resolver: a turn
+        // that could reach Anthropic for the loop and not for the search is not a state
+        // worth being able to represent.
+        activity: {
+          reader: bindActivityReader(database, productionActivityFamilyReader()),
+          finder: createActivityFinder(anthropicClient),
+        },
         onDraft,
         onOffer,
         onShare,
+        onPromise,
         now: turn.now,
       }),
     guardDeps: buildGuardDeps(database),

@@ -406,6 +406,7 @@ describe('the wire a spoken turn builds', () => {
       familyId: TICKET.familyId,
       reader: {} as never,
       draftPort: {} as never,
+      activity: null,
       villageTool: searchVillageTool({} as never),
       onDraft: () => {},
       now: NOW,

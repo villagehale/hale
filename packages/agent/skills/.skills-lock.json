@@ -1,4 +1,8 @@
 {
+  "activity-finder.md": {
+    "file": "activity-finder.md",
+    "sha256": "283ec3721047eaa499532c922305018b0d4040c6e2ff80faac9033648b719412"
+  },
   "ask-hale.md": {
     "file": "ask-hale.md",
     "sha256": "480cc92c95fb3fc59480ae21d05692caa83e65067262dead008711cdd0026143"
@@ -17,7 +21,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "5333fa09f8f62767466b117fa5a87712ac5322b9ac192a855b7c5363f3326464"
+    "sha256": "0ebde50277e593214a57f1ba0c7ac2a301339ca66a6659a8fd25d911c3e4fc7d"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",

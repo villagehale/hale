@@ -63,7 +63,8 @@ export type OpenQuestionKind =
   | 'intro_optin'
   | 'intro_proposal'
   | 'plan_offer'
-  | 'checkup_offer';
+  | 'checkup_offer'
+  | 'activity_followup';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -87,6 +88,10 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // Drafts an appointment reminder and holds it for approval. Nothing is executed and
   // nothing is disclosed, so a wrong reading costs one draft the parent can decline.
   checkup_offer: 'ordinary',
+  // Never reached — nothing resolves an activity promise (see KIND_ANSWERABLE). The
+  // Record forces a choice anyway, and `ordinary` is the honest one: if a polarity ever
+  // did get somewhere to go, the worst it could cost is one text nobody wanted.
+  activity_followup: 'ordinary',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
@@ -102,6 +107,19 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   intro_proposal: { yes: true, no: true },
   plan_offer: { yes: true, no: false },
   checkup_offer: { yes: true, no: false },
+  // NEITHER POLARITY, and this is the one entry on the list that is not a question.
+  //
+  // An activity promise is Hale saying "I'll come back to you", which asks for nothing:
+  // there is no yes that makes it more true and no no that has a writer, and the sweep
+  // discharges it whatever the parent does. It is LISTED anyway, because the list is
+  // what `soleOpenKind` reads to decide whether a bare "yes" is ambiguous — and on
+  // 2026-08-20 a parent's "Yes, please", said while Hale was holding exactly this kind of
+  // promise, was claimed by an unrelated flagged calendar draft and answered with a line
+  // about Hale's own review. A promise Hale is holding makes a bare affirmative
+  // ambiguous, whether or not it is the thing being answered, so the honest reading is to
+  // list it and let the turn fall through to the coach — which is handed the subject and
+  // can say something true about it.
+  activity_followup: { yes: false, no: false },
 };
 
 export interface Answerable {
@@ -162,6 +180,7 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval'>, string> = {
   intro_proposal: 'meeting the family nearby',
   plan_offer: 'the plan I offered',
   checkup_offer: 'booking that visit',
+  activity_followup: 'what I said I would come back to you about',
 };
 
 /**
@@ -244,6 +263,17 @@ export interface OpenQuestionSources {
     familyId: string,
     now: Date,
   ): Promise<{ id: string; summary: string } | null>;
+  /**
+   * The activity follow-up Hale still owes this family, or null.
+   *
+   * NO `now`, unlike the two offers, and the omission is deliberate: they stop being
+   * ANSWERABLE when their moment passes, while a promise does not stop being OWED by
+   * getting late. It stays here until the sweep keeps it or a cancellation voids it.
+   */
+  activityPromise(
+    database: Database,
+    familyId: string,
+  ): Promise<{ id: string; summary: string } | null>;
 }
 
 /**
@@ -262,7 +292,7 @@ export interface OpenQuestionSources {
 export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQuestionReader {
   return {
     async open(database, input) {
-      const [approvals, optIn, proposal, offer, checkup] = await Promise.all([
+      const [approvals, optIn, proposal, offer, checkup, promise] = await Promise.all([
         sources.pendingApprovals(database, input.familyId),
         sources.introOptInOpen(database, {
           familyId: input.familyId,
@@ -271,6 +301,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         sources.introProposal(database, input.familyId, input.now),
         sources.planOffer(database, input.familyId, input.now),
         sources.checkupOffer(database, input.familyId, input.now),
+        sources.activityPromise(database, input.familyId),
       ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(
@@ -317,6 +348,17 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           description: checkup.summary,
           subject: SUBJECT.checkup_offer,
           answerable: KIND_ANSWERABLE.checkup_offer,
+        });
+      }
+      if (promise) {
+        // The commitment's own `summary` again — one short parent-safe sentence, the
+        // ledger's contract for every row on it.
+        questions.push({
+          id: promise.id,
+          kind: 'activity_followup',
+          description: promise.summary,
+          subject: SUBJECT.activity_followup,
+          answerable: KIND_ANSWERABLE.activity_followup,
         });
       }
       return questions;

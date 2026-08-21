@@ -112,6 +112,7 @@ function harness(
     reader: fakeReader(events),
     draftPort: port,
     villageTool: null,
+    activity: null,
     onDraft: (actionId) => minted.push(actionId),
     now: NOW,
   });
