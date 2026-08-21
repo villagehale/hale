@@ -50,7 +50,7 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
 
   const headline = data
     ? `${data.count} ${data.count === 1 ? 'idea' : 'ideas'} for families this week`
-    : 'the village your family lost, rebuilt';
+    : 'the family assistant you text';
   const subline = data?.area ? `around ${data.area} · villagehale.com` : 'villagehale.com';
 
   return new ImageResponse(

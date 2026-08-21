@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancel (one event in the week, no ambiguity) and ends with YES to confirm. It then offers the one Saturday offerable (Central Library story time, Bloor/Gladstone, Sat Aug 8) — name, place, and day all present, verified candidate, correctly surfaced. The Riverdale Farm find is Sunday, not Saturday, so correctly excluded. stillBeingChecked is 0, so no pending finds to mention. No app referral, no invented URL, no greeting/sign-off. Two things asked (cancel + find), draft cap is 2 but only one draft was needed (the cancel); the activity suggestion is not a draft. The reply is tight, complete, and shaped correctly. Minor note: \"free, all ages\" is a small bonus detail not required, but it adds value without bloating. Overall this is a clean, correct, well-shaped reply.",
+    "score": 5
+  }
+}

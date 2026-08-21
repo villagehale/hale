@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the one swim lesson on Thursday (East pool, 5:15pm), drafts a move to 17h45, names the venue, and ends with the YES-to-confirm pattern. The language matches the parent's French. The only small blemish is the phrasing \"Je déplace\" — since the change is only drafted, not confirmed, a slightly more accurate phrasing would be \"Je propose de déplacer\" or similar, but the YES prompt immediately signals it is pending confirmation, so this is a very minor issue. Overall the reply is short, exact, correct, and follows the contract perfectly.",
+    "score": 5
+  }
+}

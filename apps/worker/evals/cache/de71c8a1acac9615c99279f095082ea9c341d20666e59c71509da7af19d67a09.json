@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2. Hale correctly drafted the two swims and tells Sam it will line up soccer and Wednesday next — that is the correct handling of overflow per the rules. The reply names the two drafted items clearly and ends with \"YES to confirm,\" which is exactly right. It does not send the parent to the app, does not invent anything, and does not ask a clarifying question where none is needed (each of the four events maps to exactly one visible calendar item). The only tiny blemish is the phrasing \"Cancel Mon swim and Thu swim?\" restates the question back slightly, but it is brief and functional. Overall this is the product working correctly at the cap limit.",
+    "score": 5
+  }
+}

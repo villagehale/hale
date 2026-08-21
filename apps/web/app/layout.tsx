@@ -43,9 +43,9 @@ const fraunces = localFont({
 // needed (apps/mobile/DESIGN.md § Type).
 
 export const metadata: Metadata = {
-  title: 'Hale · the village your family lost',
+  title: 'Hale · the family assistant you text',
   description:
-    "Hale is the village your family lost, rebuilt through AI — across every stage of childhood. It finds the genuinely good local things to do, matched to your child, and makes them happen: registering, calendar, reminders, gear. Your family's data stays in Canada.",
+    "Hale is the family assistant you text — it takes the family admin off your plate, catches registration day before spots fill, and never acts without your say-so. This is the receipts room: approvals, history, settings. Your family's data stays in Canada.",
 };
 
 export const viewport: Viewport = {

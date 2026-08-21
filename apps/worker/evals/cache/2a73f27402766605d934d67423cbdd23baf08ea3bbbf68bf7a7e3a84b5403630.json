@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to cancel four items. The draft cap is 2, so Hale correctly drafted the two swim lessons and told Sam it will line up the remaining two (soccer and Wednesday appointment) next. It names the specific events with their times, uses the required YES trigger, and correctly handles the overflow without itemising the rest or sending the parent to the app. This is the exact correct handling of a cap situation. The reply is clean, no greeting or sign-off, no markdown, one clear instruction. A 5.",
+    "score": 5
+  }
+}

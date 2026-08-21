@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does two correct things: it states the registration window dates as Hale's own verified facts (correct, not hedged), confirms it is already watching (correct, `watching` is true), and promises to text before it opens (correct). It also hands over the webFind — Tiny Tumblers — with proper attribution (\"the venue's own program page lists\"), names Remy as the fit (correct, toddler, parent-and-tot class for walking to 3), and honestly notes no price is posted yet. That is exactly the right handling of a webFind: name it, source it, note what is missing. `stillBeingChecked` is 0 so there is nothing to mention there. `offerable` is empty, so no offerable candidates to add. `standingPlace` is null. No app referral, no invented URL, no markdown, no sign-off, no greeting. The one small issue is the reply is a touch long — two substantive sentences plus an embedded clause — but every word is doing work and nothing is superfluous. This is the product working cleanly.",
+    "score": 5
+  }
+}

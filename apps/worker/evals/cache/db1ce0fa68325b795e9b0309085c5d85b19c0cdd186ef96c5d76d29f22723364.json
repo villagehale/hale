@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands Sam their referral link (the one appended by the runtime), explains what Hale is briefly, and tells Sam to forward it themselves — all correct. It does not invent a URL, does not send Sam to the app, and does not add unnecessary fluff. The only small issue is the brief description of Hale (\"schedules, activities, parenting questions, all over SMS\") adds a touch more than strictly needed, but it is genuinely useful context for forwarding the link and is not padding or a sign-off. No greeting, no sign-off, no markdown, no question. Essentially does the job cleanly.",
+    "score": 5
+  }
+}

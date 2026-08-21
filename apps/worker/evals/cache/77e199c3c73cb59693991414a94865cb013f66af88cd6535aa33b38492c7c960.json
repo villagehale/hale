@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to order groceries — something outside Hale's capabilities. The reply correctly declines. However, the phrasing \"is past me\" is the language the rules flag as a handback penalty ONLY for parenting questions. This is not a parenting question; it is a request for a capability Hale simply does not have (grocery ordering is not in `knows.can`). A plain \"I can't do that\" or similar is the correct and complete answer. \"Ordering groceries is past me\" is concise, accurate, and does not send the parent anywhere, invent anything, or claim a capability. It doesn't tell the parent to use the app or any other service. It is a short, honest, complete reply. The only minor issue is the phrasing \"past me\" which is colloquially fine here (not a parenting-question handback situation). No markdown, no sign-off, no greeting. This is the product doing exactly what it should: being honest about its limits without padding. A 5 is warranted for a short, exact, correct text.",
+    "score": 5
+  }
+}
