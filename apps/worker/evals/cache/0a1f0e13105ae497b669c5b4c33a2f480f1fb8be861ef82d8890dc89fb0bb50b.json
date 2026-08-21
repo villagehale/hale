@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The answer correctly identifies the core fact: Mira has a mild egg allergy that causes hives, confirmed by the pediatric office. This matches the reference answer. However, the assistant adds the specific detail \"Riverdale Pediatrics\" as the name of the pediatric office, which is NOT in the reference. While the additional guidance about communicating the allergy to caregivers is helpful and not contradictory, the introduction of a specific pediatrician name not found in the reference is a minor fabrication. The core fact is accurate, but the specific detail added detracts slightly from a perfect score."
+  }
+}

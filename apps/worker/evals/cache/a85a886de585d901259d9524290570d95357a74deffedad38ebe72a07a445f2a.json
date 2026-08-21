@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGe1Ho4VQPCk8xWv1eCK",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErgGCpABCBEYAipAv4R6fgQBikPa595udPGEkD81Ud6ejW2jC8DOFbB66Il919JBqOdSYhyg76bvIdBudTFs+XrnwK5ulGtxfaXpNzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAcCSo9QGEgyxd01MwESbe7DReQMaDIBXDemhvb4qOo8hYyIwI9UAX8AH0lA6S98QYWVFoOuwlF/0uVc60RLMDtTkxXoV+SNmAFTy30BnLoFBAydoKtQEWzU3WMfUirwFogvUf2iosfvFRc7wC2lKz2iS7FkMIm5XNiP3ZnlIxfeUCcKSu46scAet+IpRwVSBoPV/GLVx/qR5gd8X2hCYxrtscCx4vuKhtJUHlKVEFhoaN7hIQ4rKw3Pnnan8Hk6DO0YLWM59M1B2LNkmPo/yIyH9GvazwWzLaGdtffU8wK1AZt2zBjQT0esZ7kVGC9+8xHBxYJfonS8V9wFg4xUAxi2P9oRRna+oqUxYu+hD6TaXUL10YId9yT7tuPVeqU/UdB4/qqCnJUxUbIUFjroqjj7XI7ybtgpDNDdDV1SMdZ720YIhlNuqmz7ms3Jjvk3udF6HGhIzkpPuJe4LpFibVUmsKVECd/zs8qwErNHs3HX4lUNSe9jdGeJ8ZKCt5U4Lr0jVAUsVacmEKhZH2DIuanqGB+STjMLZQrDEpLrng5WdY8TWRUpRJtDrNuPhe/RhSX7AEZeAnu2pVHEGWQ9FGqCdndDFCNuhAc5GTs2KPR2agqW+t5B6TSnDhAjotXzv7AnBhRvJjBrjTY2MvP0874jZcsoXgMdulFVzUMPfTUr+TsVjL8xhqAye2X30mNcajEm/EXVUsvSU4uKBpZMyn8vetTXFCzN4CeVVf+ikwCahilsYcNUSBgpMfOq3pjmr22XQrw9D8Rb3oZeo2+iUlT6ATbwxkAei7lOLUvjoGrUdmp30PeYmfTrC4PJpmv9VQOOflJMdUpZQMATnO5miFfTr3XjdPO4vRgWJkTuTHaQnNahnHCSPna5VZLsvQLUkLyE5Dxc4Sc+p6iQYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Mira settled best swaddled on back as a young infant, and you dropped the swaddle around 5 months.\n\nThat timing lines up well with typical guidance to transition out of swaddling once a baby shows signs of rolling, which usually starts in that window. Sounds like it worked out smoothly for her."
+      }
+    ],
+    "usage": {
+      "input_tokens": 5668,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 270,
+      "output_tokens_details": {
+        "thinking_tokens": 173
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 5449,
+  "firstInputTokens": 5668
+}

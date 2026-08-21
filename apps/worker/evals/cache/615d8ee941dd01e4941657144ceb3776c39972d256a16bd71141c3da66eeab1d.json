@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The assistant stated \"I don't have any Saturday class listed as an enrollment for Mira\" when the reference clearly states \"mira goes to the Tumbleweeds toddler gym class on saturdays.\" This is a direct factual error. The correct answer is \"Tumbleweeds toddler gym class,\" which is even documented in the known family history episodes (\"started the Tumbleweeds toddler gym class on saturdays\"). The assistant failed to recall information that should have been available and gave an incorrect response."
+  }
+}

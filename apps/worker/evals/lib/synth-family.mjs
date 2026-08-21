@@ -53,8 +53,13 @@ const NOW = new Date('2026-06-01T09:00:00.000Z');
 const CHILD = { id: 'synth-child-1', name: 'Mira', city: 'Toronto', province: 'ON', country: 'CA' };
 
 function monthsAgo(n) {
+  // UTC arithmetic only: setMonth()/getMonth() work in machine-local time, so
+  // crossing a DST boundary shifts the UTC hour and the serialized payload —
+  // and with it the content-addressed cache key — differs between a Toronto
+  // laptop and a UTC CI runner (the eval-sweep's first run caught exactly that).
+  // Keys must be a function of repo content only, never of the machine.
   const d = new Date(NOW);
-  d.setMonth(d.getMonth() - n);
+  d.setUTCMonth(d.getUTCMonth() - n);
   return d;
 }
 

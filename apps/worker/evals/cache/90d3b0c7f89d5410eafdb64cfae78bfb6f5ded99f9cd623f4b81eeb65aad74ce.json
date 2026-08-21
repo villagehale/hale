@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The answer correctly identifies the core fact from the reference: Mira has a confirmed mild egg allergy with hives as the reaction. The assistant adds helpful practical guidance about flagging this to caregivers, mentioning specific foods to check for hidden eggs and describing what to watch for. However, the answer invents a specific pediatrician name (\"Riverdale Pediatrics\") not mentioned in the reference, and introduces an unrelated detail about a comfort object (blue elephant) that is not part of the food allergy question or reference material. The core factual content about the allergy is correct, but the addition of non-reference information (the pediatrician name and comfort object) constitutes fabrication beyond the scope of this specific recall question.",
+    "score": 3
+  }
+}
