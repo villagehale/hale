@@ -26,6 +26,11 @@ export interface TwilioConfig {
   readonly apiKeySecret: string;
   /** The Hale number parents text, E.164. Reuses A2's existing env name. */
   readonly fromNumber: string;
+  /** When set, sends go out via the Messaging Service (queueing, smart encoding,
+   * sender-pool scaling) instead of the bare number. Optional at this boundary:
+   * absent means the pre-service behavior — a direct From send — which still
+   * sends; it is a valid mode, not a silent no-op. */
+  readonly messagingServiceSid: string | null;
 }
 
 /** The config, or null when the Twilio leg is not provisioned. Values are returned,
@@ -36,10 +41,11 @@ export function twilioConfig(): TwilioConfig | null {
   const apiKeySid = process.env.TWILIO_API_KEY_SID;
   const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
   const fromNumber = process.env.TWILIO_FROM_NUMBER;
+  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID ?? null;
   if (!accountSid || !authToken || !apiKeySid || !apiKeySecret || !fromNumber) {
     return null;
   }
-  return { accountSid, authToken, apiKeySid, apiKeySecret, fromNumber };
+  return { accountSid, authToken, apiKeySid, apiKeySecret, fromNumber, messagingServiceSid };
 }
 
 /** The config for a path that cannot proceed without it (an outbound send). Throws
