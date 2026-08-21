@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CeFWzVk4NSzyX7JGhpWAZ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Middle-of-night waking at 8 is pretty common when stress, school things, or a shift in her routine has disrupted her sleep cycle - the brain stirs at the end of a natural sleep stage and she's not quite resettling herself. A consistent, calm wind-down starting 30-45 minutes before bed (dim lights, no screens, same order every night) is the first thing to try; it usually tightens the cycle back up within a week or two.\n\nWant the full sleep plan for Ada? Reply YES and I'll send it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1001,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 8648,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 125,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

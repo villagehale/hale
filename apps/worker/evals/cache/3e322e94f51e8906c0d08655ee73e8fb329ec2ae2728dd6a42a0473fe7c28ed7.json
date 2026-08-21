@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the one offerable activity (Central Library story time) with full details — name, venue, day. It also ignores the private calendar items correctly. However, it misses the soccer practice on Saturday at Cedarvale Park at 10:00am, which is a visible scheduled event directly relevant to the parent's question about \"anything on for the kids Saturday.\" That's a meaningful omission — the parent asked what's on, and there's a confirmed calendar event that wasn't mentioned. The reply also doesn't mention the 1 activity still being checked, but that's acceptable since it has nothing concrete to offer there yet. The core failure is not reporting the soccer practice that's right on the schedule.",
+    "score": 3
+  }
+}
