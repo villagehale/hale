@@ -53,7 +53,7 @@ export function SiteHeader({
         {common('textHale')}
       </a>
     ) : (
-      <LandingCta event="landing_cta_text" href={smsHref} className="v4-btn-solid">
+      <LandingCta event="cta_text_click" placement="header" href={smsHref} className="v4-btn-solid">
         {common('textHale')}
       </LandingCta>
     );

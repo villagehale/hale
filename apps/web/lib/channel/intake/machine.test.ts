@@ -2,9 +2,9 @@ import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
-import { matchHealthCheckpoints } from '~/lib/health/match';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { matchHealthCheckpoints } from '~/lib/health/match';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
@@ -27,18 +27,18 @@ import {
   detailsBlocked,
   greeting,
 } from './copy';
+import type { IntakeCollected } from './extract';
 import {
   FakeAnswerComposer,
+  type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  type FakeDb,
   fakeAckComposer,
   fakeRadar,
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from './fakes';
-import type { IntakeCollected } from './extract';
 import type { IntentReading } from './intent';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { FakeTransport } from './transport';
@@ -80,6 +80,7 @@ function harness(options: {
   /** Defaults to the composer that finds nothing to answer — every test written before
    * the escape existed is asserting the script, and that is the script. */
   answerComposer?: IntakeDeps['answerComposer'];
+  capture?: IntakeDeps['capture'];
 }): {
   fake: FakeDb;
   transport: FakeTransport;
@@ -120,6 +121,7 @@ function harness(options: {
         steps.push(`discovery:${familyId ? 'family' : 'none'}`);
       },
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
+      ...(options.capture ? { capture: options.capture } : {}),
       now: NOW,
     },
   };
@@ -192,8 +194,18 @@ describe('intake · happy path', () => {
     expect(kids).toEqual([
       // Both ages were stated in bare YEARS ("Maya is 4, Leo is 1"), so each covers a
       // 12-month band and the stored date is its midpoint: 48 + 6 and 12 + 6 back.
-      { familyId: expect.any(String), name: 'Maya', dateOfBirth: '2022-01-30', dobPrecision: 'derived' },
-      { familyId: expect.any(String), name: 'Leo', dateOfBirth: '2025-01-30', dobPrecision: 'derived' },
+      {
+        familyId: expect.any(String),
+        name: 'Maya',
+        dateOfBirth: '2022-01-30',
+        dobPrecision: 'derived',
+      },
+      {
+        familyId: expect.any(String),
+        name: 'Leo',
+        dateOfBirth: '2025-01-30',
+        dobPrecision: 'derived',
+      },
     ]);
 
     // ── the channel: verified by origination, hashed + encrypted ──
@@ -276,7 +288,7 @@ describe('intake · happy path', () => {
       return text(h.fake, h.transport, h.deps, 'yes please');
     }
 
-    it('asks for a name once, appended to the acknowledgment as the turn\'s one question', async () => {
+    it("asks for a name once, appended to the acknowledgment as the turn's one question", async () => {
       const h = harness({ intents: [assent('yes please')] });
 
       await consent(h);
@@ -331,7 +343,9 @@ describe('intake · happy path', () => {
     });
 
     it('never asks a parent who declined the watch - there is no turn to ask on', async () => {
-      const h = harness({ intents: [{ intent: 'decline', verbatim: 'no thanks', interpretation: 'declined' }] });
+      const h = harness({
+        intents: [{ intent: 'decline', verbatim: 'no thanks', interpretation: 'declined' }],
+      });
 
       await consent(h);
 
@@ -528,8 +542,18 @@ describe('intake · a child with no age', () => {
 
     expect(provisioned.status).toBe('provisioned');
     expect(inserts(fake, schema.children)).toEqual([
-      { familyId: expect.any(String), name: 'Nora', dateOfBirth: '2022-01-30', dobPrecision: 'derived' },
-      { familyId: expect.any(String), name: 'Ben', dateOfBirth: '2025-01-30', dobPrecision: 'derived' },
+      {
+        familyId: expect.any(String),
+        name: 'Nora',
+        dateOfBirth: '2022-01-30',
+        dobPrecision: 'derived',
+      },
+      {
+        familyId: expect.any(String),
+        name: 'Ben',
+        dateOfBirth: '2025-01-30',
+        dobPrecision: 'derived',
+      },
     ]);
   });
 
@@ -800,8 +824,9 @@ describe('intake · a question mid-signup gets an answer', () => {
     // consent row written out of a question.
     const [session] = fake.rows(schema.smsIntakeSessions);
     expect(session).toMatchObject({ state: 'awaiting_watch_reply', clarifyCount: 0 });
-    expect(inserts(fake, schema.consentRecords).filter((c) => c.consentType === 'proactive_watch'))
-      .toHaveLength(0);
+    expect(
+      inserts(fake, schema.consentRecords).filter((c) => c.consentType === 'proactive_watch'),
+    ).toHaveLength(0);
   });
 
   it('still clarifies once when the reply is a wobble rather than a question', async () => {
@@ -1216,5 +1241,96 @@ describe('intake · the French CASL keywords', () => {
       (c) => c.consentType === 'sms_service_messages' && c.granted === true,
     );
     expect(consents.at(-1)?.evidence).toMatchObject({ verbatimReply: 'DEBUT' });
+  });
+});
+
+/**
+ * THE F14 FUNNEL. Texting the number is the only way into this product, so the pair
+ * below is the conversion the whole business turns on — and it is measured on a surface
+ * where the identifier closest to hand is a phone number (hard rule #1).
+ */
+describe('intake · the funnel milestones', () => {
+  function recorder() {
+    const calls: Array<{
+      event: string;
+      distinctId: string;
+      properties: Record<string, unknown>;
+    }> = [];
+    const capture: IntakeDeps['capture'] = async (event, distinctId, properties = {}) => {
+      calls.push({ event, distinctId, properties });
+      return 'sent';
+    };
+    return { calls, capture };
+  }
+
+  it('records the greeting as intake_started and the family as intake_completed', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'hi');
+    expect(calls.map((c) => c.event)).toEqual(['intake_started']);
+
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    expect(calls.map((c) => c.event)).toEqual(['intake_started', 'intake_completed']);
+  });
+
+  it('keys both ends on the same intake session, so they join into one funnel', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const [started, completed] = calls;
+    expect(started?.distinctId).toBe(completed?.distinctId);
+    expect(started?.distinctId).toBeTruthy();
+  });
+
+  it('never keys the funnel on the phone number, or names a child in it', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const serialized = JSON.stringify(calls);
+    expect(serialized).not.toContain(PHONE);
+    expect(serialized).not.toContain('6475551234');
+    expect(serialized).not.toContain('Maya');
+    expect(serialized).not.toContain('M5V');
+  });
+
+  it('attributes the completed intake to the card that produced it', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    // The `(via …)` token the QR card pre-writes into the parent's first message.
+    await text(fake, transport, deps, 'Hi (via earlyon-richmondhill)');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    expect(calls.at(-1)?.properties).toEqual({ source_code: 'earlyon-richmondhill' });
+  });
+
+  it('leaves source_code ABSENT when nobody handed out a card', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    // Null, not the string 'direct': a bucket meaning "no card" must not be able to
+    // look like a card that exists. buildEvent drops it on the way out.
+    expect(calls.at(-1)?.properties).toEqual({ source_code: null });
+  });
+
+  it('does not lose the parent their reply when analytics is down', async () => {
+    const { fake, transport, deps } = harness({
+      capture: async () => {
+        throw new Error('posthog unreachable');
+      },
+    });
+
+    await expect(text(fake, transport, deps, 'hi')).resolves.toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toHaveLength(1);
   });
 });

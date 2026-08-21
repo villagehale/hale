@@ -1,4 +1,5 @@
 import { type Database, type UnmetIntentLane, schema } from '@hale/db';
+import { captureAgentError } from '~/lib/analytics/server-capture';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -744,6 +745,16 @@ async function runAgentTurn(
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         channelMessageId: args.job.channel_message_id,
+      });
+      // A deferral is the quietest failure Hale has: the parent is told nothing and the
+      // job goes back on the queue, so past the retry ceiling a question is simply never
+      // answered. The log line above says it happened; this makes it a RATE, per reason
+      // and per household. Only the enum and a hashed family id travel — the reporter
+      // cannot express anything else (lib/analytics/server-capture.ts).
+      await captureAgentError({
+        lane: 'coach',
+        reason: disposition.reason,
+        familyId: args.job.family_id,
       });
       throw new TurnDeferred(disposition.reason, err);
     }

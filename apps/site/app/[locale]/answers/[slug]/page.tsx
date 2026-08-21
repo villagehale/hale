@@ -1,6 +1,7 @@
 import { ArrowUpRight } from 'lucide-react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { WordsPullUp } from '~/components/words-pull-up';
@@ -245,9 +246,14 @@ export default async function AnswerRoute({ params }: PageProps) {
           >
             {t('askCta')}
           </p>
-          <a href={cta.href} className="btn-primary shrink-0">
+          <LandingCta
+            event="cta_text_click"
+            placement="answer_detail"
+            href={cta.href}
+            className="btn-primary shrink-0"
+          >
             {cta.label}
-          </a>
+          </LandingCta>
         </div>
       </section>
 

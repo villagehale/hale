@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { captureServerEvent } from './server-capture';
+import { captureServerEvent, resetAnalyticsAbsenceLogForTests } from './server-capture';
 
 // Server-side analytics capture: a dependency-free POST to PostHog's capture
 // endpoint, used where no client hook exists (server actions). Every payload goes
@@ -60,15 +60,33 @@ describe('captureServerEvent', () => {
     expect(body.properties).toEqual({ method: 'email' });
   });
 
-  it('no-ops (no fetch) when no PostHog key is configured', async () => {
+  it('names the missing key, logs it once, and never throws (rule #11)', async () => {
+    // A dead key must not become a silent success and must not block a send. It is a
+    // NAMED outcome, and the warning is once per process — a cron sweep with a dead key
+    // would otherwise write a line per family.
+    resetAnalyticsAbsenceLogForTests();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', '');
     const fetchMock = vi.fn(
       async (_url: string, _init: RequestInit) => new Response(null, { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    await captureServerEvent('signup_completed', DISTINCT_ID, { method: 'email' });
+    const first = await captureServerEvent('signup_completed', DISTINCT_ID, { method: 'email' });
+    const second = await captureServerEvent('loop_plan_sent', DISTINCT_ID);
 
+    expect(first).toBe('not_configured');
+    expect(second).toBe('not_configured');
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a real send as sent, so a caller can tell the two apart', async () => {
+    resetAnalyticsAbsenceLogForTests();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+    await expect(captureServerEvent('signup_completed', DISTINCT_ID)).resolves.toBe('sent');
   });
 });

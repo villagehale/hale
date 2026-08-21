@@ -1,3 +1,4 @@
+import { captureAgentError } from '~/lib/analytics/server-capture';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { twilioConfig } from '~/lib/channel/twilio/config';
 import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
@@ -62,6 +63,21 @@ export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
         return { status: 'sent', providerMessageId };
       } catch (error) {
         if (!(error instanceof TwilioSendError)) throw error;
+        // Reported at the point the refusal is CLASSIFIED, which is the only place both
+        // halves are known: Twilio's numeric code, and whether a retry could ever help.
+        // The error's `message` is deliberately not passed — it echoes the recipient's
+        // number and the body back, and the reporter has no field it would fit in.
+        //
+        // No family: this seam is addressed by `userId`, and a user id reported in a
+        // field named for a family is a wrong grain that would silently mis-group every
+        // co-parent. The dispatch already carries the per-family view of the same
+        // failure on its ledger row (channel/dispatch.ts, loop_message_failed).
+        await captureAgentError({
+          lane: 'transport',
+          code: error.code,
+          retry: error.permanent ? 'permanent' : 'transient',
+          familyId: null,
+        });
         return {
           status: 'error',
           transient: !error.permanent,

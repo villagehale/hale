@@ -140,7 +140,12 @@ export default async function ActivityCityRoute({ params }: PageProps) {
           {t('ctaSub')}
         </p>
         <div className="mt-8 flex justify-center">
-          <LandingCta event="activities_cta_text" href={cta.href} className="btn-on-navy">
+          <LandingCta
+            event="cta_text_click"
+            placement="activities_city"
+            href={cta.href}
+            className="btn-on-navy"
+          >
             {cta.label}
           </LandingCta>
         </div>

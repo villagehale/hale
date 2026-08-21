@@ -35,11 +35,13 @@ import type { Locale } from '~/i18n/routing';
  * DPO and EU/UK representatives. PIPEDA vocabulary replaces it, and the Law 25
  * automated-decision statement (s.12.1) is stated plainly in the AI section.
  *
- * Not here, and left for counsel rather than invented: a Tracking Technologies /
- * cookie section (the marketing site's posthog.init sets no `persistence` option,
- * so what it writes to a visitor's browser needs measuring before it can be
- * described), a stated retention period, and a postal address for the Privacy
- * Officer. Counsel should read the diff.
+ * No cookie section, and as of 2026-08-21 that is a FACT about the code rather than a
+ * gap: the marketing site's posthog.init runs on `persistence: 'memory'`, so it writes
+ * nothing to a visitor's device and there is nothing to describe. The pairing is gated
+ * — apps/site/lib/analytics/posthog-config.test.ts fails if either half moves alone.
+ *
+ * Still left for counsel rather than invented: a stated retention period, and a postal
+ * address for the Privacy Officer. Counsel should read the diff.
  *
  * app.villagehale.com/privacy is now a permanent 308 here (VIL-256), so this is
  * the only copy. Still noindexed by choice — whether a privacy policy should be

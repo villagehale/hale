@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { CtaBand } from '~/components/cta-band';
+import { LandingCta } from '~/components/landing-cta';
 import { PricingSection } from '~/components/pricing-section';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -69,9 +70,14 @@ export default async function PricingPage({ params }: PageProps) {
           {t('cta')}
         </p>
         <div className="mt-8 flex justify-center">
-          <a href={cta.href} className="btn-on-navy">
+          <LandingCta
+            event="cta_text_click"
+            placement="pricing_band"
+            href={cta.href}
+            className="btn-on-navy"
+          >
             {cta.label}
-          </a>
+          </LandingCta>
         </div>
       </CtaBand>
 

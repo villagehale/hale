@@ -1,5 +1,6 @@
 import { CopyNumberButton } from '~/components/copy-number';
 import { EmailCta } from '~/components/email-cta';
+import { LandingCta } from '~/components/landing-cta';
 import { QrCode } from '~/components/qr-code';
 import { TextEntryAnalytics } from '~/components/text-entry-analytics';
 import { Wordmark } from '~/components/wordmark';
@@ -45,7 +46,7 @@ export function TextEntry({
       tabIndex={-1}
       className="shell flex min-h-dvh max-w-[44rem] flex-col justify-center py-16 sm:py-20"
     >
-      <TextEntryAnalytics source={source} />
+      <TextEntryAnalytics />
 
       <div className="rise rise-1">
         <Wordmark className="text-spruce" />
@@ -60,9 +61,14 @@ export function TextEntry({
 
       {smsHref ? (
         <div className="mt-10 rise rise-2">
-          <a href={smsHref} className="btn-primary">
+          <LandingCta
+            event="cta_text_click"
+            placement="text_entry"
+            href={smsHref}
+            className="btn-primary"
+          >
             {t('textMe')}
-          </a>
+          </LandingCta>
           <p className="meta mt-4">
             {source
               ? t('prefilledWithSource', { body: buildSmsBody(source) })
@@ -73,9 +79,13 @@ export function TextEntry({
               on it. Only offered while the number is live — the card is the
               number, and /hale.vcf 404s without one. */}
           <div className="mt-6">
-            <a href={CONTACT_CARD_PATH} className="btn-secondary">
+            <LandingCta
+              event="save_contact_click"
+              href={CONTACT_CARD_PATH}
+              className="btn-secondary"
+            >
               {t('saveContact')}
-            </a>
+            </LandingCta>
           </div>
 
           <div className="card mt-8 flex flex-col gap-6 sm:flex-row sm:items-center">
