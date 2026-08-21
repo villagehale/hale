@@ -12,9 +12,10 @@
  * A warm, calm world: the Shore warm-white canvas (#FDFCFA) behind pure-white
  * cards, a warm sidebar (#F7F5F0) as the desktop frame, brand navy (#1B2160) for
  * anything active or primary, and Shore ink (#17294A) for text. Display type is
- * Source Serif 4 (hero H1s, page titles, the "Hale" wordmark ONLY); everything
- * else is Instrument Sans — including numbers and dates, since Shore retires the
- * old JetBrains Mono role (the `mono` slot now maps to Instrument Sans).
+ * Fraunces (hero H1s, page titles, the "Hale" wordmark ONLY); everything else is
+ * Figtree — including numbers and dates, since Shore retires the old JetBrains
+ * Mono role (the `mono` slot maps to the body face). Both faces are the site's:
+ * see display-type.test.ts for why the two surfaces are pinned to one identity.
  *
  * ── Shore ↔ legacy token names (VIL-209 W1) ──────────────────────────────────
  * apps/web predates the shared vocabulary, so every Shore role that already
@@ -209,15 +210,17 @@
   /* Hale tip gradient (design handoff) */
   --tip-gradient: linear-gradient(180deg, #FFF9F1, #FBEDDC);
 
-  /* ── Type — Instrument Sans (body/UI) + Source Serif 4 (display) ──────── *
-   * Shore is a TWO-family system: Source Serif 4 for display/title only, and
-   * Instrument Sans for everything else — numbers, dates and payloads included.
+  /* ── Type — Figtree (body/UI) + Fraunces (display) ────────────────────── *
+   * Shore is a TWO-family system: Fraunces for display/title only, and Figtree
+   * for everything else — numbers, dates and payloads included. These are the
+   * site's faces; the app used to run Instrument Sans + Source Serif 4 and
+   * changed identity under a reader crossing from a marketing CTA to /sign-in.
    * The old JetBrains Mono "mono" role is retired, so `--font-mono` (and the
-   * `.tabular` / `font-mono` handles that read it) now resolve to Instrument
-   * Sans; `font-variant-numeric: tabular-nums` still does the column-aligning
-   * that role actually needed. The next/font load was dropped with it. */
-  --font-sans: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
-  --font-serif: "Source Serif 4", ui-serif, Georgia, "Times New Roman", serif;
+   * `.tabular` / `font-mono` handles that read it) resolve to the body face;
+   * `font-variant-numeric: tabular-nums` still does the column-aligning that
+   * role actually needed. The next/font load was dropped with it. */
+  --font-sans: "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
   --font-mono: var(--font-sans);
   --font-display: var(--font-serif);
   --font-body: var(--font-sans);
@@ -511,8 +514,17 @@ body {
   html { scroll-behavior: auto; }
 }
 
-/* Headlines: Inter, tight tracking, semibold display weight.
- * Sentence-case, never all-caps.
+/* Headlines: Fraunces, tight tracking, sentence-case, never all-caps.
+ *
+ * The weight is a LADDER, not a constant, and it runs the opposite way to the size.
+ * Fraunces is a display cut with an optical-size axis: at the 76px hero ceiling the
+ * 450 the founder pinned carries plenty of stem, but the authed stage tops out at
+ * 34px and its H2 at 22px, where the same 450 goes thin against the Figtree-600
+ * labels sitting under it. So the rungs below 32px step up to 500. `font-optical-
+ * sizing: auto` is what makes that ladder mean anything — it tracks `opsz` to the
+ * rendered size, so a 22px heading gets the text drawing and the hero gets the
+ * display one. `font-synthesis-weight: none` forbids the browser inventing a cut the
+ * axis could have given it. See display-type.test.ts for the ordering invariant.
  *
  * This type ladder lives in `@layer base` so a Tailwind utility (which lives in
  * the `utilities` layer) wins whenever a heading carries one — an unlayered
@@ -525,8 +537,9 @@ body {
   h1, h2, h3, h4 {
     font-family: var(--font-display);
     font-optical-sizing: auto;
+    font-synthesis-weight: none;
     letter-spacing: var(--tracking-display);
-    font-weight: 600;
+    font-weight: 450;
     line-height: 1.04;
     color: var(--color-ink);
     font-style: normal;
@@ -535,14 +548,14 @@ body {
 
   h1 { font-size: clamp(2.6rem, 6vw, 4.75rem); }
   h2 { font-size: clamp(2rem, 4vw, 3.1rem); }
-  h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
+  h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; font-weight: 500; }
 
   /* Inside the authed main-stage the headings are the design system's, not the
    * marketing hero's: Shore sizes `display` at 34/40 (600, -0.02em) and `title`
    * at 22/28 (500), so the stage H1 tops out at 34px and the H2 at 22px. They
    * still scale down on a narrow column — a fixed 34px is fine on a phone (it is
    * what the mobile app ships) but the clamp keeps long titles from crowding. */
-  .main-stage h1 { font-size: clamp(1.75rem, 2.4vw, 2.125rem); line-height: 1.18; }
+  .main-stage h1 { font-size: clamp(1.75rem, 2.4vw, 2.125rem); line-height: 1.18; font-weight: 500; }
   .main-stage h2 { font-size: clamp(1.25rem, 1.8vw, 1.375rem); line-height: 1.28; font-weight: 500; }
 
   em { font-style: italic; }
@@ -1353,7 +1366,11 @@ body {
 .panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
 .panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
 
-/* ── Buttons — depress 1px + warm fill on press, no scale-bounce ───────── */
+/* ── Buttons — depress 1px + warm fill on press, no scale-bounce ───────── *
+ * The label weight is 600, the top of Figtree's interactive band, not the 700 these
+ * carried in Instrument Sans. Same band as the site's buttons, which is the point:
+ * the CTA a reader presses on the site and the one they press here are one control
+ * in two places, and they used to be set in different faces at different weights. */
 
 .btn-primary {
   display: inline-flex;
@@ -1367,7 +1384,7 @@ body {
   border-radius: var(--r-md);
   font-family: var(--font-body);
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
@@ -1393,7 +1410,7 @@ body {
   border-radius: var(--r-md);
   font-family: var(--font-body);
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
@@ -1419,7 +1436,7 @@ body {
   border: 0;
   font-family: var(--font-body);
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
