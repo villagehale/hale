@@ -66,7 +66,7 @@ describe('landing — the v4 hero', () => {
     // over a paragraph that never got to the point, and the 7:02-first hero died
     // as a hook with no introduction. H1 names the brand; the next line says what
     // it is in a parent's words.
-    expect(visibleText(h1)).toBe('The family assistant you text.');
+    expect(visibleText(h1)).toBe('The Family Assistant You Text.');
     expect(h1).not.toContain('7:02');
     // Outcome-first, verb-led: the sub leads with what the reader gets rid of,
     // not with a pronoun that makes them wait for the subject.
@@ -349,7 +349,7 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      'The family assistant',
+      'The Family Assistant',
       'Texting Hale looks like this',
       'How Hale works',
       'What I watch',
