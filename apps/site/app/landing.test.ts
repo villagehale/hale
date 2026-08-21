@@ -141,7 +141,7 @@ describe('landing — the number is reachable and never readable', () => {
   it('offers the clipboard as the laptop path instead of the digits', () => {
     // The copy chip puts the number on the clipboard without printing it — the
     // Windows/laptop path where `sms:` is a silent no-op.
-    expect(text).toContain('copy my number');
+    expect(text).toContain('Copy number');
     expect(html).not.toContain('displaySmsNumber');
   });
 });

@@ -101,6 +101,38 @@ describe('one header, one footer, every page', () => {
     expect(css).toContain('padding-top: var(--nav-h);');
   });
 
+  it('takes 10–15px of block height out of the pill on a phone, and off --nav-h with it', () => {
+    // Founder, 2026-08-20. The bar is fixed over the one thing a phone reader has
+    // least of, so it gives some height back below 640px — and the reservation the
+    // landing hero runs under (--nav-h) has to give back EXACTLY the same amount
+    // or the shore stops meeting the top of the viewport. One number moving
+    // without the other is the failure this pin exists for, which is why it
+    // asserts the two deltas are equal rather than asserting either value.
+    const css = readFileSync(fileURLToPath(new URL('../app/globals.css', import.meta.url)), 'utf8');
+    const REM = 16;
+    const rem = (value: string) => Number(value.replace('rem', '')) * REM;
+    /** Rendered block height of the pill: its own padding, plus the tallest thing
+     * in it — the CTA button, whose own box is its padding plus one line of
+     * inherited body leading. */
+    const pill = (navPadBlock: number, btnPadBlock: number) =>
+      2 * navPadBlock + 2 * btnPadBlock + rem('0.92rem') * 1.65;
+
+    const desktop = pill(rem('0.6rem'), rem('0.7rem'));
+    const phone = pill(rem('0.35rem'), rem('0.55rem'));
+    expect(css).toContain('padding: 0.6rem 0.7rem 0.6rem 1.15rem;');
+    expect(css).toMatch(/\.v4-nav \{ padding-block: 0\.35rem; \}/);
+    expect(css).toMatch(/\.v4-btn-solid \{ padding-block: 0\.55rem; \}/);
+    expect(css).toMatch(/font-size: 0\.92rem;/);
+
+    const shaved = desktop - phone;
+    expect(shaved).toBeGreaterThanOrEqual(10);
+    expect(shaved).toBeLessThanOrEqual(15);
+    expect(rem('5.4rem') - rem('4.6rem')).toBeCloseTo(shaved, 1);
+    // …and the reduction is a phone-only override, not the new value everywhere.
+    expect(css).toMatch(/@media \(max-width: 639\.98px\) \{\s*:root \{ --nav-h: 4\.6rem; \}/);
+    expect(css).toMatch(/--nav-h: 5\.4rem;/);
+  });
+
   it('renders the shared footer on every page — the landing included', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
     const shared = chrome(renderToStaticMarkup(createElement(SiteFooter)), 'footer');

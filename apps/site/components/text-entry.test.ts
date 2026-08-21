@@ -87,7 +87,10 @@ describe('TextEntry (number live)', () => {
     // Positive controls so the absences cannot pass vacuously: the composer link
     // and the copy chip are both present…
     expect(liveHtml).toContain('sms:+16475551234');
-    expect(liveHtml).toContain('Copy my number');
+    // "Copy my number" until 2026-08-20. The chip is the reader's action, not
+    // Hale's offer, and one label now serves both call sites — the sentence-case
+    // variant this page used is gone with the lowercase one the landing used.
+    expect(liveHtml).toContain('Copy number');
     // …and the number never renders as text (the founder rule: reachable, never
     // displayed).
     expect(liveHtml).not.toContain('+1 (647) 555-1234');
