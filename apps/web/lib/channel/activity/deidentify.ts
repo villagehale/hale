@@ -36,15 +36,27 @@ import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
  * a named school, a phone number, an email. The first is REFUSED (see below) and the rest
  * are stripped by {@link scrubResidualPii}, the same deterministic backstop the medical
  * lane runs — imported rather than copied, so the two lanes cannot drift about what an
- * identifier is, and so a class added for one lane lands in both.
+ * identifier is, and so a class added for one lane lands in both. Read that list as the
+ * INTENT and the paragraph below as the guarantee: a regex holds each class up to a stated
+ * precision line, and the two that do not close are named there rather than implied away.
  *
  * WHERE THAT LINE IS ACTUALLY DRAWN, because a doc block that overclaims is worse than
- * none: the scrub holds a street address ("42 Wallace St", "16 Bayview Drive") and a
- * school named as an institution ("St. Brigid Catholic School", "École élémentaire
- * Sainte-Marie"). It deliberately does NOT hold a bare venue name — "Cartwheel Gym" is
- * what a parent asked about and the whole reason this lane exists — and it cannot hold a
- * street written with no number. The town crosses anyway, from the record; what the scrub
- * stops is the STREET, which is the difference between a municipality and a door.
+ * none. The scrub holds a street address ("42 Wallace St", "16 Bayview Drive"). It holds a
+ * school wherever a proper NAME sits in front of the institution word — the formal register
+ * ("St. Brigid Catholic School"), a lowercase head-noun ("St. Catherine of Alexandria
+ * school"), the suffix-less forms ("Holy Cross Elementary", "Pineview Montessori",
+ * "Georgetown Christian Academy") and a bare "École Sainte-Marie".
+ *
+ * What it does NOT hold, and these are the gaps rather than the design: a school named in
+ * one word, and a street written with no number. It also deliberately spares a bare venue
+ * name — "Cartwheel Gym" is what a parent asked about and the whole reason this lane
+ * exists — which is the same rule read from the other side, since a venue is a name with
+ * no institution word after it. The cost of that symmetry is a venue whose name ENDS in
+ * one ("Cartwheel Academy" reads as a school and is stripped), and that is the direction
+ * to err in: a lost search term against the building a child is in five days a week.
+ *
+ * The town crosses anyway, from the record; what the scrub stops is the STREET, which is
+ * the difference between a municipality and a door.
  *
  * WHY A NAME IS A REFUSAL AND NOT A REDACTION. Everything else on that list is noise a
  * search is better off without, so removing it costs nothing. A name is different: if the

@@ -85,6 +85,13 @@ describe('a street-level location never crosses the border', () => {
     ['an avenue', 'swim lessons at 121 Maple Ave', ['121', 'Maple']],
     ['a street and the postal code beside it', 'drop-in at 12 Guelph Street L7G 4A1', ['12 Guelph', 'L7G']],
     ['a named school', 'after school care at St. Brigid Catholic School', ['Brigid', 'Catholic']],
+    // The forms below crossed intact while the four formal suffixes were the whole rule,
+    // and each names the building a child is in five days a week just as precisely.
+    ['a lowercase head-noun', 'gym near St. Catherine of Alexandria school', ['Catherine', 'Alexandria']],
+    ['a suffix-less elementary', 'swim lessons by Holy Cross Elementary', ['Holy', 'Cross']],
+    ['a Montessori', 'toddler music at Pineview Montessori', ['Pineview', 'Montessori']],
+    ['an academy', 'after-care at Georgetown Christian Academy', ['Christian', 'Academy']],
+    ['a bare École', 'programmes pres de École Sainte-Marie', ['Sainte-Marie']],
   ])('strips %s out of the subject', (_label, subject, mustNotCross) => {
     const result = deidentifyActivityQuery({ ...base, subject });
     expect(result.ok).toBe(true);

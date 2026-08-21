@@ -204,13 +204,38 @@ describe('scrubResidualPii', () => {
     expect(scrubResidualPii("l'École élémentaire Sainte-Marie")).toBe("l'[redacted]");
   });
 
+  /**
+   * The five forms that CROSSED THE BORDER while the four formal suffixes were the whole
+   * rule. Each one names the building a child is in five days a week as precisely as
+   * "Harrison Public School" does, and a parent writes them far more often than the formal
+   * register — nobody types "Separate School" into a text message.
+   */
+  it('redacts the school forms a parent actually types, not just the formal register', () => {
+    // A lowercase head-noun, and a name carrying a lowercase connector.
+    expect(scrubResidualPii('at St. Catherine of Alexandria school')).toBe('at [redacted]');
+    // Suffix-less: the institution word IS the tail.
+    expect(scrubResidualPii('Holy Cross Elementary')).toBe('[redacted]');
+    expect(scrubResidualPii('starts at Pineview Montessori')).toBe('starts at [redacted]');
+    expect(scrubResidualPii('Georgetown Christian Academy')).toBe('[redacted]');
+    // French, with no qualifier between "École" and the name.
+    expect(scrubResidualPii('inscrit à École Sainte-Marie')).toBe('inscrit à [redacted]');
+  });
+
   it('never eats an address-shaped duration or an activity word (positive controls)', () => {
     // The ambiguous-suffix tier exists for exactly these: they are not addresses.
     expect(scrubResidualPii('a 3 hour drive each way')).toBe('a 3 hour drive each way');
     expect(scrubResidualPii('on the court 3 days a week')).toBe('on the court 3 days a week');
-    // "school" is a word before it is a place: the tail has to name an institution.
+    // "school" is a word before it is a place: something has to NAME an institution in
+    // front of it. A lowercase word does not, and neither does nothing at all.
     expect(scrubResidualPii('after school program')).toBe('after school program');
     expect(scrubResidualPii('preschool swim lessons')).toBe('preschool swim lessons');
+    expect(scrubResidualPii('school year')).toBe('school year');
+    expect(scrubResidualPii('the old school gym')).toBe('the old school gym');
+    // A sentence boundary is not a school name: the capitalized word that ends one
+    // sentence must not be read as the first word of the next one's institution.
+    expect(scrubResidualPii('We tried Milton. School registration opens Monday.')).toBe(
+      'We tried Milton. School registration opens Monday.',
+    );
     // A venue is not a school, and the activity lane's whole job is naming venues.
     expect(scrubResidualPii('Cartwheel Gym parent and tot')).toBe('Cartwheel Gym parent and tot');
     expect(scrubResidualPii('école de danse')).toBe('école de danse');
