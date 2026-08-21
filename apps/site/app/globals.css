@@ -2151,7 +2151,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
      * 't' in "The family assistant / you text." clears by 13.5px, because 't' is
      * 0.55em where 'b' is 0.74em. A poster headline leads tighter than a page of
      * them. */
-    line-height: 0.95;
+    line-height: 1.05;
   }
 
   /* The named towns the radar watches — glass pills, non-interactive. */
