@@ -647,7 +647,7 @@ describe('the wordmark is drawn art, not set type', () => {
     expect(MARK).toContain('fill="currentColor"');
     expect(MARK, 'a baked fill cannot follow the theme').not.toMatch(/fill="#/);
     expect(MARK, 'a baked size cannot be re-sized').not.toMatch(/<svg[^>]*\s(width|height)=/);
-    expect(MARK).toContain('viewBox="0 0 1391.000000 1055.000000"');
+    expect(MARK).toContain('viewBox="0 0 1498.41 1138.88"');
   });
 
   it('keeps the art small enough to inline on every page', () => {
