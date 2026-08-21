@@ -103,6 +103,7 @@ describe('recordCommitment', () => {
         summary: 'Your first weekend find lands in a day or two.',
         topic: null,
         subjectChildId: null,
+        subjectFamilyId: null,
         dueAt: DUE,
         createdFrom: 'msg-1',
       },

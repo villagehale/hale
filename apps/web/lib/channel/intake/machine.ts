@@ -18,6 +18,7 @@ import {
   handleKnownNumberInbound,
 } from '~/lib/channel/caregiver/route';
 import { projectCivicCandidates } from '~/lib/civic/project';
+import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { recordCommitment } from '~/lib/commitments/ledger';
 import { recordCheckpointTold } from '~/lib/health/told';
 import { type LatLng, geocodeArea } from '~/lib/village/geocode';
@@ -664,6 +665,21 @@ async function provision(
       channelMessageId: sent.channelMessageId,
     });
   }
+
+  // A family that walked in from one of the founder's own posters, and the one message in
+  // this product a person writes rather than Hale. The ping goes to HIS thread and carries
+  // the poster and nothing else (rule #1); the offer it makes is registered on the
+  // open-loops ledger in the same flow, so his YES resolves through the same reply-standing
+  // primitives every other answer does (lib/channel/founder/ping.ts).
+  //
+  // Not branched on, for the reason the two writes above are not: this parent already has
+  // their radar, and nothing this turn can do about a ping is worth losing them over. Every
+  // way it can decline is a named outcome with the cost in the log (rule #11).
+  await offerFounderWelcome(
+    database,
+    { newFamilyId: familyId, sourceCode: session.sourceCode, now },
+    defaultFounderPingPorts(deps.transport),
+  );
 
   await saveSession(
     database,

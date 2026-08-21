@@ -81,6 +81,7 @@ const SMS_COPY_SOURCES = [
   'lib/channel/off-domain/copy.ts',
   'lib/channel/caregiver/copy.ts',
   'lib/channel/twilio/copy.ts',
+  'lib/channel/founder/copy.ts',
   'lib/health/copy.ts',
   'lib/registration/sequence/copy.ts',
   'lib/party/copy.ts',

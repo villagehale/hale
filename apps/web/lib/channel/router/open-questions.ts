@@ -64,7 +64,15 @@ export type OpenQuestionKind =
   | 'intro_proposal'
   | 'plan_offer'
   | 'checkup_offer'
-  | 'activity_followup';
+  | 'activity_followup'
+  /**
+   * "A new family just joined from the Georgetown poster. Reply YES and I'll send them
+   * your welcome note." — the founder's own offer, standing in his own thread
+   * (lib/channel/founder/ping.ts). The only question on this list whose YES writes into a
+   * DIFFERENT household than the one answering, which is why it is graded the way it is
+   * below.
+   */
+  | 'founder_welcome_offer';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -92,6 +100,10 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // Record forces a choice anyway, and `ordinary` is the honest one: if a polarity ever
   // did get somewhere to go, the worst it could cost is one text nobody wanted.
   activity_followup: 'ordinary',
+  // Texts a household that is NOT the one answering. Nothing is disclosed about them and
+  // nothing is executed, but a wrong reading is still an unsolicited message to a stranger
+  // sent in a person's name — the same class of cost as an introduction, so the same grade.
+  founder_welcome_offer: 'consequential',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
@@ -120,6 +132,11 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // list it and let the turn fall through to the coach — which is handed the subject and
   // can say something true about it.
   activity_followup: { yes: false, no: false },
+  // BOTH polarities, unlike the two offers above, because both have a writer: a yes sends
+  // the note, and a no VOIDS the offer with its own reason rather than leaving it to lapse
+  // (lib/channel/founder/reply.ts). An offer whose no went nowhere would be one the
+  // founder could only get rid of by ignoring it for two days.
+  founder_welcome_offer: { yes: true, no: true },
 };
 
 export interface Answerable {
@@ -181,6 +198,7 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval'>, string> = {
   plan_offer: 'the plan I offered',
   checkup_offer: 'booking that visit',
   activity_followup: 'what I said I would come back to you about',
+  founder_welcome_offer: 'sending your welcome note to the new family',
 };
 
 /**
@@ -264,6 +282,15 @@ export interface OpenQuestionSources {
     now: Date,
   ): Promise<{ id: string; summary: string } | null>;
   /**
+   * The founder's live, unexpired welcome offer, or null. Null for every other family in
+   * the product by construction — the row is only ever written against his.
+   */
+  founderWelcomeOffer(
+    database: Database,
+    familyId: string,
+    now: Date,
+  ): Promise<{ id: string; summary: string } | null>;
+  /**
    * The activity follow-up Hale still owes this family, or null.
    *
    * NO `now`, unlike the two offers, and the omission is deliberate: they stop being
@@ -292,7 +319,7 @@ export interface OpenQuestionSources {
 export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQuestionReader {
   return {
     async open(database, input) {
-      const [approvals, optIn, proposal, offer, checkup, promise] = await Promise.all([
+      const [approvals, optIn, proposal, offer, checkup, promise, welcome] = await Promise.all([
         sources.pendingApprovals(database, input.familyId),
         sources.introOptInOpen(database, {
           familyId: input.familyId,
@@ -302,6 +329,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         sources.planOffer(database, input.familyId, input.now),
         sources.checkupOffer(database, input.familyId, input.now),
         sources.activityPromise(database, input.familyId),
+        sources.founderWelcomeOffer(database, input.familyId, input.now),
       ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(
@@ -348,6 +376,17 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           description: checkup.summary,
           subject: SUBJECT.checkup_offer,
           answerable: KIND_ANSWERABLE.checkup_offer,
+        });
+      }
+      if (welcome) {
+        // The commitment's own `summary` once more. It names a poster and no household,
+        // which is exactly what the ping already said to this same reader (rule #1).
+        questions.push({
+          id: welcome.id,
+          kind: 'founder_welcome_offer',
+          description: welcome.summary,
+          subject: SUBJECT.founder_welcome_offer,
+          answerable: KIND_ANSWERABLE.founder_welcome_offer,
         });
       }
       if (promise) {

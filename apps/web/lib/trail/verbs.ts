@@ -268,6 +268,9 @@ export const AUDIT_VERBS = [
   'followup_intro_asked',
   'followup_activity_asked',
   'smoke_alarm_fired',
+  // ── the founder's welcome note ──────────────────────────────────────────
+  'founder_welcome_offered',
+  'founder_welcome_sent',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -695,6 +698,18 @@ const VERBS: Record<AuditVerb, Verb> = {
     // was texted, but they were not actually helped, and the trail should say so.
     sentence: 'Hale could not reach its model, so it sent you a fixed safety message',
     family: 'problem',
+  },
+  // Written on the FOUNDER's own trail when a family arrives from one of his posters.
+  // 'awaiting' because the note has not been sent — a word from him is what sends it.
+  founder_welcome_offered: {
+    sentence: 'Hale offered to send a new family your welcome note',
+    family: 'awaiting',
+  },
+  // And on the ARRIVING family's trail when the note lands. The sentence says a person
+  // wrote it, because that is the only thing about this message that matters.
+  founder_welcome_sent: {
+    sentence: 'the person who built Hale sent you a note',
+    family: 'done',
   },
 };
 

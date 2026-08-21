@@ -66,7 +66,18 @@ export type CommitmentCancelReason =
    * one Hale just made, and two open rows would be two sweeps texting the same family in
    * the same hour about two halves of one conversation.
    */
-  | 'activity_promise_superseded';
+  | 'activity_promise_superseded'
+  /**
+   * The same supersede once more, for the founder's welcome offer. Two families can
+   * arrive from a poster inside one TTL, and the partial unique index permits one open
+   * offer of a kind per family — so without this the second ping would be sent and its
+   * row silently refused, leaving a YES that texts the FIRST family. The newest ping is
+   * the offer now; the one before it is voided out loud rather than mis-answered.
+   */
+  | 'founder_welcome_superseded'
+  /** The founder said no. The note was never sent, so the promise was not kept — voided,
+   * with the reason that says a person decided it rather than a clock running out. */
+  | 'founder_welcome_declined';
 
 /**
  * What became of a promise. `already_open` is deliberately NOT folded into either of the
@@ -112,6 +123,9 @@ export async function recordCommitment(
     topic?: string | null;
     /** WHOSE plan, when one child was named. Null for a household question. */
     subjectChildId?: string | null;
+    /** WHICH OTHER HOUSEHOLD the promise is about, for the one kind whose subject is not
+     * the family it is owed to (see the column's own note). Null for every other kind. */
+    subjectFamilyId?: string | null;
     dueAt: Date;
     channelMessageId: string | null;
   },
@@ -132,6 +146,7 @@ export async function recordCommitment(
         summary: input.summary,
         topic: input.topic ?? null,
         subjectChildId: input.subjectChildId ?? null,
+        subjectFamilyId: input.subjectFamilyId ?? null,
         dueAt: input.dueAt,
         createdFrom: input.channelMessageId,
       })
@@ -268,6 +283,7 @@ export async function loadOpenCommitment(
   summary: string;
   topic: string | null;
   subjectChildId: string | null;
+  subjectFamilyId: string | null;
   dueAt: Date;
 } | null> {
   const rows = await database
@@ -276,6 +292,7 @@ export async function loadOpenCommitment(
       summary: schema.agentCommitments.summary,
       topic: schema.agentCommitments.topic,
       subjectChildId: schema.agentCommitments.subjectChildId,
+      subjectFamilyId: schema.agentCommitments.subjectFamilyId,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)

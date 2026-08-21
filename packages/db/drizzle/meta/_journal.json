@@ -645,6 +645,13 @@
       "when": 1781468880000,
       "tag": "0094_activity_followup",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1781468940000,
+      "tag": "0095_founder_welcome",
+      "breakpoints": true
     }
   ]
 }
