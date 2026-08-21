@@ -13,6 +13,12 @@ import { useAnalytics } from '~/lib/analytics/posthog-provider';
  *
  * Coarse by construction: `cta_placement` names a spot on a page and nothing else, and
  * `source_code`/`locale` are stamped by the provider, not passed here (hard rule #1).
+ *
+ * The `data-cta` pair is the wiring made VISIBLE in the markup. An `onClick` leaves no
+ * trace in rendered HTML, so a plain `<a href={cta.href}>` beside a wired one is
+ * indistinguishable — which is how seven `sms:` CTAs shipped uncounted. These
+ * attributes are what the site-wide guard reads (app/cta-wiring.test.ts), so a new
+ * unwired composer link is a red test rather than a hole in the funnel.
  */
 export function LandingCta({
   event,
@@ -34,6 +40,8 @@ export function LandingCta({
     <a
       href={href}
       className={className}
+      data-cta={event}
+      data-cta-placement={placement}
       onClick={() => capture(event, placement ? { cta_placement: placement } : {})}
     >
       {children}

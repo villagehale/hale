@@ -87,9 +87,14 @@ export default async function AnswersIndexPage({ params }: PageProps) {
               {t('empty')}
             </p>
             <div className="mt-8">
-              <a href={cta.href} className="btn-primary">
+              <LandingCta
+                event="cta_text_click"
+                placement="answers_empty"
+                href={cta.href}
+                className="btn-primary"
+              >
                 {cta.label}
-              </a>
+              </LandingCta>
             </div>
           </div>
         </section>

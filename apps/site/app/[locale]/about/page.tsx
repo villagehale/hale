@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { CharReveal } from '~/components/char-reveal';
 import { CtaBand } from '~/components/cta-band';
 import { Village } from '~/components/illos';
+import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
@@ -175,9 +176,14 @@ export default async function AboutPage({ params }: PageProps) {
           {t('cta')}
         </p>
         <div className="mt-8 flex justify-center">
-          <a href={cta.href} className="btn-on-navy">
+          <LandingCta
+            event="cta_text_click"
+            placement="about"
+            href={cta.href}
+            className="btn-on-navy"
+          >
             {cta.label}
-          </a>
+          </LandingCta>
         </div>
       </CtaBand>
 
