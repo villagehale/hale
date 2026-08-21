@@ -17,8 +17,13 @@ import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
  * server tool, so every field here is a cross-border disclosure):
  *
  *   · the ACTIVITY SUBJECT — "toddler gymnastics", "indoor swim lessons". Model-supplied
- *     free text, so it is scrubbed and then CHECKED against every name in the household.
- *   · the WINDOW — "this fall", "September to December". Same treatment, same reason.
+ *     free text, so it goes through {@link gateFreeText}.
+ *   · the WINDOW — "this fall", "September to December". The SAME gate, the same ceiling,
+ *     the same scrub, and that is the point: there are exactly two free-text fields on
+ *     this payload and ONE function that produces them, so a field cannot be gated by
+ *     being remembered. The window was once capped by nothing at all, and a 431-character
+ *     window — a parent's whole message pasted into the second argument — crossed the
+ *     border beside a subject held to 120.
  *   · the TOWN — code-supplied from `families.area_coarse` via the FSA table. A
  *     municipality, never a postal code and never a street. The model cannot supply it,
  *     which is what makes "coarse location only" a property rather than an instruction.
@@ -27,11 +32,19 @@ import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
  *     an activity that fits a two-year-old does not fit a nine-year-old, and the band is
  *     the least identifying thing that carries that.
  *
- * WHAT NEVER DOES: a name, an exact age, a date of birth, a postal code, an address, a
- * school, a phone number, an email. The first is REFUSED (see below) and the rest are
- * stripped by {@link scrubResidualPii}, the same deterministic backstop the medical lane
- * runs — imported rather than copied, so the two lanes cannot drift about what an
- * identifier is.
+ * WHAT NEVER DOES: a name, an exact age, a date of birth, a postal code, a street address,
+ * a named school, a phone number, an email. The first is REFUSED (see below) and the rest
+ * are stripped by {@link scrubResidualPii}, the same deterministic backstop the medical
+ * lane runs — imported rather than copied, so the two lanes cannot drift about what an
+ * identifier is, and so a class added for one lane lands in both.
+ *
+ * WHERE THAT LINE IS ACTUALLY DRAWN, because a doc block that overclaims is worse than
+ * none: the scrub holds a street address ("42 Wallace St", "16 Bayview Drive") and a
+ * school named as an institution ("St. Brigid Catholic School", "École élémentaire
+ * Sainte-Marie"). It deliberately does NOT hold a bare venue name — "Cartwheel Gym" is
+ * what a parent asked about and the whole reason this lane exists — and it cannot hold a
+ * street written with no number. The town crosses anyway, from the record; what the scrub
+ * stops is the STREET, which is the difference between a municipality and a door.
  *
  * WHY A NAME IS A REFUSAL AND NOT A REDACTION. Everything else on that list is noise a
  * search is better off without, so removing it costs nothing. A name is different: if the
@@ -42,14 +55,21 @@ import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
  * thing, which is the same recompose loop `offer_full_plan` runs on a bad offer sentence.
  */
 
-/** The subject's ceiling. A web query longer than this is not a search, it is a parent's
- * whole message pasted into one — which is both a worse search and a rule-#1 hazard, since
- * the raw message is precisely what must not cross the border. */
-export const MAX_SUBJECT_CHARS = 120;
+/** The ceiling on EVERY free-text field, not on the subject alone. Text longer than this
+ * is not a search, it is a parent's whole message pasted into an argument — which is both
+ * a worse search and a rule-#1 hazard, since the raw message is precisely what must not
+ * cross the border. One number, because two would be two places for a field to be
+ * forgotten. */
+export const MAX_QUERY_FIELD_CHARS = 120;
 
 /** Why a query may not be sent. Each one is a different fix, so none of them is folded
- * into the others (rule #11). */
-export type ActivityDeidRefusal = 'empty_subject' | 'subject_too_long' | 'names_a_person';
+ * into the others (rule #11) — including which field ran long, since "say the activity in
+ * a short phrase" and "say the season in a few words" are different instructions. */
+export type ActivityDeidRefusal =
+  | 'empty_subject'
+  | 'subject_too_long'
+  | 'window_too_long'
+  | 'names_a_person';
 
 /**
  * A query that has cleared phase 0 — the ONLY shape the search is allowed to see.
@@ -96,12 +116,35 @@ export function namesAPerson(text: string, householdNames: readonly string[]): b
 }
 
 /**
- * Turn what the coach asked for into what may be searched, or refuse.
+ * THE GATE EVERY FREE-TEXT FIELD CROSSES, and the only thing that produces one.
  *
  * The order is load-bearing: SCRUB first, then check for a name. A scrub that ran second
  * could turn "Noah is 3 years old" into "Noah is [redacted]" and then find the name in it
  * — correct, but by luck. Scrubbing first means the name check runs on exactly the string
  * that would have been sent.
+ *
+ * The refusals it hands back are FIELD-BLIND — the caller says which field ran long,
+ * because only the caller knows. That is what keeps the gate one function rather than two
+ * that can disagree about what a ceiling is.
+ */
+function gateFreeText(
+  raw: string,
+  householdNames: readonly string[],
+): { ok: true; value: string } | { ok: false; refusal: 'empty' | 'too_long' | 'names_a_person' } {
+  const value = scrubResidualPii(raw).replace(/\s+/g, ' ').trim();
+  if (value === '') return { ok: false, refusal: 'empty' };
+  if (value.length > MAX_QUERY_FIELD_CHARS) return { ok: false, refusal: 'too_long' };
+  if (namesAPerson(value, householdNames)) return { ok: false, refusal: 'names_a_person' };
+  return { ok: true, value };
+}
+
+/**
+ * Turn what the coach asked for into what may be searched, or refuse.
+ *
+ * Every field on the returned {@link ActivityQuery} comes from ONE of two places and there
+ * is no third: {@link gateFreeText}, or the family's own record. That is the structural
+ * half of the promise — not "the raw message is scrubbed before it is sent", which is a
+ * thing somebody has to remember, but "there is nowhere for unscrubbed text to enter".
  */
 export function deidentifyActivityQuery(input: {
   subject: string;
@@ -110,25 +153,31 @@ export function deidentifyActivityQuery(input: {
   stage: FamilyStage | null;
   householdNames: readonly string[];
 }): ActivityDeidResult {
-  const subject = scrubResidualPii(input.subject).replace(/\s+/g, ' ').trim();
-  if (subject === '') return { ok: false, refusal: 'empty_subject' };
-  if (subject.length > MAX_SUBJECT_CHARS) return { ok: false, refusal: 'subject_too_long' };
-
-  const rawWindow = input.window?.trim() ?? '';
-  const window =
-    rawWindow === '' ? null : scrubResidualPii(rawWindow).replace(/\s+/g, ' ').trim() || null;
-
-  if (namesAPerson(subject, input.householdNames)) {
+  const subject = gateFreeText(input.subject, input.householdNames);
+  if (!subject.ok) {
+    if (subject.refusal === 'empty') return { ok: false, refusal: 'empty_subject' };
+    if (subject.refusal === 'too_long') return { ok: false, refusal: 'subject_too_long' };
     return { ok: false, refusal: 'names_a_person' };
   }
-  if (window !== null && namesAPerson(window, input.householdNames)) {
-    return { ok: false, refusal: 'names_a_person' };
+
+  // An ABSENT window is legal and a REFUSED one is not — different outcomes, kept apart
+  // (rule #11). A window that scrubs away to nothing is ABSENT: a search with no season is
+  // a real query, unlike a subject that scrubs to nothing, which is no query at all.
+  const rawWindow = input.window?.trim() ?? '';
+  let window: string | null = null;
+  if (rawWindow !== '') {
+    const gated = gateFreeText(rawWindow, input.householdNames);
+    if (!gated.ok && gated.refusal === 'too_long') return { ok: false, refusal: 'window_too_long' };
+    if (!gated.ok && gated.refusal === 'names_a_person') {
+      return { ok: false, refusal: 'names_a_person' };
+    }
+    window = gated.ok ? gated.value : null;
   }
 
   return {
     ok: true,
     query: {
-      subject,
+      subject: subject.value,
       window,
       town: input.municipality === null ? null : townFor(input.municipality),
       stage: input.stage,
@@ -144,7 +193,9 @@ export function refusalSentence(refusal: ActivityDeidRefusal): string {
     case 'empty_subject':
       return 'That search had no subject. Call find_activities again and say what kind of activity to look for.';
     case 'subject_too_long':
-      return `That subject is longer than ${MAX_SUBJECT_CHARS} characters. Call find_activities again with a short phrase for the activity itself, not the parent's whole message.`;
+      return `That subject is longer than ${MAX_QUERY_FIELD_CHARS} characters. Call find_activities again with a short phrase for the activity itself, not the parent's whole message.`;
+    case 'window_too_long':
+      return `That window is longer than ${MAX_QUERY_FIELD_CHARS} characters. Call find_activities again with the season or the time of week in a few words, not the parent's whole message.`;
     case 'names_a_person':
       return 'That subject names somebody in the family, and a name never goes to a search. Call find_activities again with the activity alone - the age band travels with it already.';
   }

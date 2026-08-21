@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_SUBJECT_CHARS, deidentifyActivityQuery, townFor } from './deidentify';
+import { MAX_QUERY_FIELD_CHARS, deidentifyActivityQuery, refusalSentence, townFor } from './deidentify';
 
 /**
  * PHASE 0 — the rule-#1 gate in front of a cross-border search.
@@ -72,6 +72,99 @@ describe('what is stripped rather than refused', () => {
   });
 });
 
+/**
+ * WHERE THE FAMILY LIVES — the second thing that must never cross, and the one the first
+ * cut of this file did not test. A name is refused because Hale knows the names; a street
+ * has no row to check against, so it is STRIPPED, by the same shared scrub the medical
+ * lane runs. The property under test is the payload, not the mechanism: whatever the
+ * model wrote, no house number, no street and no school reaches the border.
+ */
+describe('a street-level location never crosses the border', () => {
+  it.each([
+    ['the audit probe', 'toddler gym near 42 Wallace St Georgetown', ['42', 'Wallace']],
+    ['an avenue', 'swim lessons at 121 Maple Ave', ['121', 'Maple']],
+    ['a street and the postal code beside it', 'drop-in at 12 Guelph Street L7G 4A1', ['12 Guelph', 'L7G']],
+    ['a named school', 'after school care at St. Brigid Catholic School', ['Brigid', 'Catholic']],
+  ])('strips %s out of the subject', (_label, subject, mustNotCross) => {
+    const result = deidentifyActivityQuery({ ...base, subject });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    for (const fragment of mustNotCross) {
+      expect(result.query.subject).not.toContain(fragment);
+    }
+  });
+
+  it('strips it out of the WINDOW too, which crosses the border on the same payload', () => {
+    const result = deidentifyActivityQuery({
+      ...base,
+      subject: 'toddler gymnastics',
+      window: 'fall, once we move to 42 Wallace St',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.query.window).not.toContain('Wallace');
+    // POSITIVE CONTROL on the same string: the season still travels, or the strip has
+    // just deleted the field the search needed.
+    expect(result.query.window).toContain('fall');
+  });
+
+  it('POSITIVE CONTROL - a venue the parent named is not a street, and survives whole', () => {
+    const result = deidentifyActivityQuery({
+      ...base,
+      subject: 'Cartwheel Gym parent and tot classes',
+      window: 'fall term',
+    });
+    expect(result).toEqual({
+      ok: true,
+      query: {
+        subject: 'Cartwheel Gym parent and tot classes',
+        window: 'fall term',
+        town: 'Halton Hills',
+        stage: 'toddler',
+      },
+    });
+  });
+
+  it('POSITIVE CONTROL - "after school" is an activity, not a school', () => {
+    const result = deidentifyActivityQuery({ ...base, subject: 'after school program for toddlers' });
+    expect(result).toMatchObject({ ok: true, query: { subject: 'after school program for toddlers' } });
+  });
+});
+
+/**
+ * THE WINDOW IS FREE TEXT AND CROSSES THE BORDER, so it is capped exactly as the subject
+ * is. It was not, and a 431-character window - a parent's whole message pasted into the
+ * second field - crossed intact while the first field was held to 120.
+ */
+describe('the window is held to the same ceiling as the subject', () => {
+  it('refuses a window past the ceiling', () => {
+    expect(
+      deidentifyActivityQuery({
+        ...base,
+        subject: 'toddler gymnastics',
+        window: 'this fall '.repeat(MAX_QUERY_FIELD_CHARS),
+      }),
+    ).toEqual({ ok: false, refusal: 'window_too_long' });
+  });
+
+  it('POSITIVE CONTROL - a real season phrase is well inside it', () => {
+    expect(
+      deidentifyActivityQuery({
+        ...base,
+        subject: 'toddler gymnastics',
+        window: 'September to December, weekday mornings',
+      }),
+    ).toMatchObject({ ok: true, query: { window: 'September to December, weekday mornings' } });
+  });
+
+  it('says which field was too long, because they are different fixes', () => {
+    expect(refusalSentence('window_too_long')).toContain('window');
+    expect(refusalSentence('subject_too_long')).toContain('subject');
+    // Neither sentence may echo what it refused (rule #1).
+    expect(refusalSentence('window_too_long')).not.toContain('subject is longer');
+  });
+});
+
 describe('the shape of what may be sent', () => {
   it('refuses an empty subject and one past the ceiling', () => {
     expect(deidentifyActivityQuery({ ...base, subject: '   ' })).toEqual({
@@ -79,7 +172,7 @@ describe('the shape of what may be sent', () => {
       refusal: 'empty_subject',
     });
     expect(
-      deidentifyActivityQuery({ ...base, subject: 'gymnastics '.repeat(MAX_SUBJECT_CHARS) }),
+      deidentifyActivityQuery({ ...base, subject: 'gymnastics '.repeat(MAX_QUERY_FIELD_CHARS) }),
     ).toEqual({ ok: false, refusal: 'subject_too_long' });
   });
 

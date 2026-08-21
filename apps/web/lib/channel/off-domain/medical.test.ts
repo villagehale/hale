@@ -179,6 +179,43 @@ describe('scrubResidualPii', () => {
     expect(scrubResidualPii('she just turned 2 years old')).toBe('she just turned [redacted]');
   });
 
+  /**
+   * A STREET ADDRESS AND A SCHOOL NAME — the two location classes the doc block promised
+   * and the patterns did not hold. A postal code was already caught, which made the gap
+   * easy to miss: "L7G 4S6" fell and "42 Wallace St" did not, and the second one is the
+   * more precise of the two.
+   */
+  it('redacts a street address in the forms a parent actually types', () => {
+    expect(scrubResidualPii('we are at 42 Wallace St')).toBe('we are at [redacted]');
+    expect(scrubResidualPii('121 Maple Ave, Oakville')).toBe('[redacted], Oakville');
+    expect(scrubResidualPii('12 Guelph Street L7G 4A1')).toBe('[redacted] [redacted]');
+    expect(scrubResidualPii('87 Bayview Crescent')).toBe('[redacted]');
+    expect(scrubResidualPii('9 Sunset Boulevard')).toBe('[redacted]');
+    // The ambiguous suffixes ("Drive", "Court", "Way") need a capitalized street name in
+    // front of them — see RESIDUAL_PII_PATTERNS for why that tier is narrower.
+    expect(scrubResidualPii('16 Bayview Drive')).toBe('[redacted]');
+    expect(scrubResidualPii('3 Kingsway Court')).toBe('[redacted]');
+  });
+
+  it('redacts a named school, which says where a child is five days a week', () => {
+    expect(scrubResidualPii('at St. Brigid Catholic School')).toBe('at [redacted]');
+    expect(scrubResidualPii('goes to Harrison Public School')).toBe('goes to [redacted]');
+    expect(scrubResidualPii('Georgetown District High School')).toBe('[redacted]');
+    expect(scrubResidualPii("l'École élémentaire Sainte-Marie")).toBe("l'[redacted]");
+  });
+
+  it('never eats an address-shaped duration or an activity word (positive controls)', () => {
+    // The ambiguous-suffix tier exists for exactly these: they are not addresses.
+    expect(scrubResidualPii('a 3 hour drive each way')).toBe('a 3 hour drive each way');
+    expect(scrubResidualPii('on the court 3 days a week')).toBe('on the court 3 days a week');
+    // "school" is a word before it is a place: the tail has to name an institution.
+    expect(scrubResidualPii('after school program')).toBe('after school program');
+    expect(scrubResidualPii('preschool swim lessons')).toBe('preschool swim lessons');
+    // A venue is not a school, and the activity lane's whole job is naming venues.
+    expect(scrubResidualPii('Cartwheel Gym parent and tot')).toBe('Cartwheel Gym parent and tot');
+    expect(scrubResidualPii('école de danse')).toBe('école de danse');
+  });
+
   it('never eats a clinical duration, temperature, or count (positive controls)', () => {
     // "weeks" is redacted ONLY as an age ("6 weeks old"); a duration keeps it.
     expect(scrubResidualPii('symptoms for 2 weeks')).toBe('symptoms for 2 weeks');
