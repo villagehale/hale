@@ -1,0 +1,24 @@
+{
+  "value": {
+    "pages_read": [
+      "https://www.cartwheelsgymcentre.com/"
+    ],
+    "slots": [
+      {
+        "name": "Tiny Gym, Cartwheels Gym Centre",
+        "age_fit": "For children not yet three years and six months old as of the term start date (parent-participation program); per club's eligibility rule for the next-level Mini Gym program",
+        "registration": "programs.php could not be opened (url_not_allowed) — this age rule is from the search snippet only, not confirmed on the live page. The home page (opened directly) states registration opens Saturday October 15 for Terms 2, 3 and 4, with a full-year discount deadline of October 14, implying Term 1 (the fall term) is already underway and its registration already open. Exact fall class day/time and fee are not published on any page I could open; the home page states pricing/availability is only visible by logging into the club's separate registration website.",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php"
+      },
+      {
+        "name": "Mini Gym, Cartwheels Gym Centre",
+        "age_fit": "Children who have completed a term of Tiny Gym and show readiness to participate without a parent, or are already 3.5 years old at registration; must be fully toilet trained (no pull-ups)",
+        "registration": "programs.php could not be opened (url_not_allowed) — from search snippet only. Same registration-website login requirement for pricing/availability as Tiny Gym; same home-page registration timing applies (Term 1 fall session likely already open, Terms 2-4 open Oct 15, full-year discount deadline Oct 14).",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php"
+      }
+    ]
+  },
+  "latencyMs": 6327
+}

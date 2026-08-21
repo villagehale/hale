@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Every slot is real and directly from the page: both Preschool A and B are listed with exact age ranges (3-5 years, no parent in water), exact times (9:00-9:30 and 9:40-10:10), and exact dates (Saturdays, September 12 to November 28), all cited to the Oakville.ca source. Prices are correctly marked as not listed on the page (per Council/Recreation Guide). Registration window is accurately captured: \"Fall registration opens Tuesday, August 11 at 7 a.m. for Oakville residents\" with browsing starting August 4. The message properly attributes facts to \"their site says,\" includes the registration date/time (Tuesday Aug 11 at 7am), avoids claiming confirmation (\"Want me to grab a spot reminder\"), and is two plain-ASCII sentences with one question and no link. The message correctly conveys that registration has NOT yet opened (crucial distinction noted in watchFor), prices aren't listed, and identifies the two class time options without inventing a third slot."
+  }
+}

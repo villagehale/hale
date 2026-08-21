@@ -1,0 +1,25 @@
+{
+  "value": {
+    "slots": [
+      {
+        "name": "Preschool A, Town of Oakville Learn to Swim",
+        "age_fit": "3 - 5 years, no parent in the water",
+        "when": "Saturdays 9:00 - 9:30 a.m., September 12 to November 28",
+        "price": "Fees set by Council annually, published in the current Recreation Guide (not listed on this page)",
+        "registration": "Fall registration opens Tuesday, August 11 at 7 a.m. for Oakville residents; program options browsable online starting August 4",
+        "source_name": "Town of Oakville",
+        "source_url": "https://www.oakville.ca/recreation/swimming/learn-to-swim.html"
+      },
+      {
+        "name": "Preschool B, Town of Oakville Learn to Swim",
+        "age_fit": "3 - 5 years, no parent in the water",
+        "when": "Saturdays 9:40 - 10:10 a.m., September 12 to November 28",
+        "price": "Fees set by Council annually, published in the current Recreation Guide (not listed on this page)",
+        "registration": "Fall registration opens Tuesday, August 11 at 7 a.m. for Oakville residents; program options browsable online starting August 4",
+        "source_name": "Town of Oakville",
+        "source_url": "https://www.oakville.ca/recreation/swimming/learn-to-swim.html"
+      }
+    ]
+  },
+  "latencyMs": 4599
+}

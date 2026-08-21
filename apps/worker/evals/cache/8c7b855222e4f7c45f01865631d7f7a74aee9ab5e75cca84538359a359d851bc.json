@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Hale executed a careful, transparent research pass under real constraints. The message correctly attributes facts to \"their site says\" and offers to confirm rather than claiming verification. It plainly states that day/time and pricing \"aren't posted\" and explains they're behind a login. The two slots are accurately extracted from available sources (home page opened; programs.php snippet recovered but page itself blocked) with correct age eligibility rules and proper citation of what could vs. could not be confirmed on the live page. The registration window (Term 1 already open, Terms 2-4 Oct 15) is captured in the slots. The message is one plain-ASCII sentence with a single question and no link. One small deduction: the message does not explicitly name the registration dates (Oct 14/15) that the slots carry—it says only \"fall day/time and pricing aren't posted,\" which is accurate but misses the opportunity to tell the parent \"registration for fall is already open now.\" A 5 would require every detail from the page to flow through to the message. This is high-quality, honest work within real limits; score 4."
+  }
+}

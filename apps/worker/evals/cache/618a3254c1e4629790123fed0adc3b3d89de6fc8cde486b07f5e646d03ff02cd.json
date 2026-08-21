@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message leads with the strongest pick by name, clearly attributes information to the source (\"their site doesn't list the price\"), and handles the missing price correctly by naming the gap rather than inventing one. Both picks are real, specific, local programs from Halton Hills Gymnastics Centre with genuine session dates (Fall Sept 10-Dec 16, and Thursdays Oct 9 onward) that fit the toddler stage. The message is plain text, one sentence with a question, and offers to verify the missing detail rather than claiming to have confirmed it. Age ranges and scheduling details are specific and plausibly tied to the source. The only minor observation is that one pick (Preschool Drop-In) technically says \"Oct 9 to June 26\" which extends past fall, but this is still a genuine ongoing program with a clear October start fitting the \"fall programs\" context. The message properly handles the null price by stating the site does not list it and offering to follow up."
+  }
+}
