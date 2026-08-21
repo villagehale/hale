@@ -638,6 +638,13 @@
       "when": 1781468820000,
       "tag": "0093_checkup_offer",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1781468880000,
+      "tag": "0094_activity_followup",
+      "breakpoints": true
     }
   ]
 }

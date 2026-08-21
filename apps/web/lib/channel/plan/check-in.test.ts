@@ -24,6 +24,7 @@ const DUE = {
   topic: 'sleep',
   summary: 'Check in on the Graduated check-ins (Ferber method) plan.',
   createdFrom: 'msg-9',
+  subjectChildId: null,
   dueAt: new Date('2026-08-15T13:00:00.000Z'),
 };
 const COMPOSED = 'How have the first few nights gone?';
