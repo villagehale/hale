@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message asks for both missing facts (name and email) in a single plain sentence tied directly to the introduction the parent agreed to (\"For the introduction you agreed to\"). It uses one question mark as instructed and names both pieces of information needed. The phrasing is direct and efficient without padding, greeting, sign-off, or company-speak re-explaining what Hale does. It respects that this parent has been a Hale family for months and simply asks the small thing needed to make the introduction happen.",
+    "score": 5
+  }
+}

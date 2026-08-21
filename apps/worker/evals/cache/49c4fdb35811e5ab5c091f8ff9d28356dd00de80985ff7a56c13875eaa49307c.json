@@ -1,0 +1,18 @@
+{
+  "parsed": {
+    "payload": {
+      "payload": {
+        "digest_item": {
+          "category": "supplies",
+          "summary": "size 2 diapers running low — about 4 days left based on usage estimate",
+          "item": "size 2 diapers",
+          "estimatedDaysLeft": 4,
+          "source": "subscription usage estimate"
+        }
+      },
+      "confidence": 0.85,
+      "rationale": "low-stakes supply notice best surfaced in digest rather than an immediate action.",
+      "recipient_visibility": "internal_only"
+    }
+  }
+}

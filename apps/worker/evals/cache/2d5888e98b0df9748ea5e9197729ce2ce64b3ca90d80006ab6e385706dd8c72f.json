@@ -1,0 +1,15 @@
+{
+  "parsed": {
+    "payload": {
+      "digest_entry": {
+        "title": "EI parental benefit report due July 7",
+        "summary": "Service Canada says your next EI parental benefit report is due July 7 — late reports may delay payment.",
+        "source": "Service Canada",
+        "event_type": "ei_correspondence"
+      }
+    },
+    "confidence": 0.85,
+    "rationale": "This is an informational deadline notice best surfaced in the digest rather than acted on directly.",
+    "recipient_visibility": "internal_only"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "reply_to_email",
+      "payload": {
+        "to": "scheduling@maplegrove-peds.ca",
+        "subject": "Re: Reschedule needed",
+        "body": "thanks for the heads up. i don't have my calendar details on hand right now, but could we look at options the following week? let me know what's available and i'll confirm a time that works."
+      },
+      "confidence": 0.35,
+      "rationale": "No calendar or availability info was in memory, so I avoided inventing specific times and kept the reply open-ended.",
+      "recipient_visibility": "public"
+    },
+    "confidence": 0.35,
+    "rationale": "Drafted a reply asking the office for options since no availability data was provided, avoiding invented commitments.",
+    "recipient_visibility": "public"
+  }
+}

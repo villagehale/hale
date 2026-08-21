@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a calendar event payload (not a message to send), so the evaluation criteria are different from typical communications. The structured format is clear, concise, and appropriate for the technical purpose. The title is natural and parent-facing (\"well-baby visit — Dr. Okafor\"), the timestamps are precise and properly formatted, and the description captures all relevant details (provider, clinic, appointment type). There's nothing robotic or inappropriate about how a calendar event should be structured."
+  }
+}

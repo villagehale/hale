@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message includes the required word \"name\" but splits its two essential jobs across separate sentences. The first sentence \"I watch this family's dates and you can text me anytime\" covers both halves of what Hale does going forward—it watches on its own AND the parent can reach out anytime—but it's presented as general background rather than tightly integrated. The second sentence \"What's your name?\" is just the ask. A 5 would do both jobs in one lean sentence: something like \"I watch your dates and you can text me anytime—what's your name?\" This version uses the word \"name\" as required after the previous failure, and it does keep the service clause intact rather than sacrificing it, but it doesn't achieve the tight integration that fits the seventy-character tail in one sentence. The reading is clear and direct without becoming stiff, but the structure misses the mark for the moment.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam asked to cancel four things. The cap is 2 drafts per message. Hale correctly drafted the two swim cancellations (Monday 4:30pm and Thursday 5:15pm), named them clearly, and told Sam it will line up the rest — exactly the right handling of an overflow. The YES prompt is present and correctly worded. The Wednesday appointment is a private calendar item, but Hale is treating it as a known cancellable item without hesitation, which is fine — the parent named \"the appointment on Wednesday\" and there is a private item at Wed 9:00am, so that reference is resolved. Soccer on Saturday is also clearly matched. No app referral, no invented details, no unnecessary content. The reply is clean and correct. A very minor blemish: \"YES to confirm these two\" is slightly wordier than needed, and the dash before \"then I'll line up\" adds a small flourish — but nothing that harms the parent or the product. This is essentially the product working correctly.",
+    "score": 5
+  }
+}

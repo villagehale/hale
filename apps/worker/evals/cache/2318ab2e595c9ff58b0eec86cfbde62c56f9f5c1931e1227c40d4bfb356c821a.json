@@ -1,0 +1,39 @@
+{
+  "parsed": {
+    "fact_updates": [
+      {
+        "fact_type": "logistic",
+        "fact_key": "diaper_reorder_cycle_size2",
+        "fact_value": {
+          "item": "size 2 diapers",
+          "reorder_qty": 128,
+          "cycle_days": "14-15"
+        },
+        "confidence": 0.65,
+        "rationale": "Only two consecutive supply_low events observed (14 and 15 days apart) with matching reorder quantity of 128, both approved. This is below the 3-observation threshold for higher confidence, so recorded at moderate confidence pending a third confirming cycle."
+      }
+    ],
+    "episode_summaries": [
+      {
+        "episode_type": "supply_order",
+        "summary": "Size 2 diapers ran low; system flagged reorder of 128 units after 14 days since last order. Order was placed and approved.",
+        "occurred_at": "2025-01-01T00:00:00Z",
+        "sentiment_score": 0
+      },
+      {
+        "episode_type": "supply_order",
+        "summary": "Size 2 diapers ran low again; system flagged reorder of 128 units after 15 days since last order. Order was placed and approved.",
+        "occurred_at": "2025-01-15T00:00:00Z",
+        "sentiment_score": 0
+      }
+    ],
+    "pattern_detections": [
+      {
+        "pattern": "Size 2 diaper supply depletes roughly every 14-15 days at a reorder quantity of 128 units",
+        "support": "Two consecutive supply_low events with consistent reorder_qty (128) and interval (14-15 days), both resulting in approved orders",
+        "confidence": 0.65
+      }
+    ],
+    "retire_facts": []
+  }
+}

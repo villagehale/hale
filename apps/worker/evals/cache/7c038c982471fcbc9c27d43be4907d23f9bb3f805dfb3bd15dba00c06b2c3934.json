@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the verified registration window (Sep 1, 7:00 a.m. for residents), accurately states that the watch is already active (watching: true), and correctly promises to text before it opens — all of which match the rules exactly. It does not invent anything, does not send the parent to the app, and does not hedge. It is concise and complete. A perfect handling of a watching:true window.",
+    "score": 5
+  }
+}

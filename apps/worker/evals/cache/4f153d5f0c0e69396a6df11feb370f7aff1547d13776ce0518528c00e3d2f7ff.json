@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message follows the weekend suggestion format correctly by leading with the forecast (\"weekend forecast is wet\") and then naming the activity it points to. It is plain-spoken and specific, mentioning the location, day, kids' names, and the relevant fact (indoors). However, it includes mild interpretive language (\"might be a good day for\") that goes slightly beyond stating the given facts—the facts provide the weather and the reasons (free, indoor) but don't explicitly say this \"is\" a good day, only that these factors support the suggestion. This is a minor addition of reasoning/advice rather than pure fact statement. The message is otherwise concise, appropriate for an unsolicited text, and avoids hype, corporate voice, or apology."
+  }
+}
