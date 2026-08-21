@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGazsico44MTVCtaQ5Sr",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Er0CCpABCBEYAipA9wnGEHLFRDk5cDn/rJ9qybNYN/2URAqZ7ovbqN0tcTzys/XYgZLZdJIM7D5IExXm9jqKOz+07lj7/w/gvUt5MDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAYCAo9QGEgwsAXZ2dzuXnEX8l+UaDP5rScvDdA9EjXivYyIw/dw3iFTaI4op/B2Gq+kJNtsVrbJYzFIHrJlMZVWqCXGEI66w2ctOjhqQttOfE0m5Klqz2r/TwRixD1DZfrx35ELuviIUSaRNoFoDPCT9WVN5aSzlOOpW36EA055pMnnx3TOpmXOxiYokSzZLVuvV/Dgd8HQoo/o53rjwCAzjmBFhwOmanOQXc0LYVMgYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Mira's comfort object for naps (and travel) is her blue elephant — that's what you've been using with her.\n\nIf you're heading out for a nap somewhere other than home, it's worth double-checking it's packed since it's part of her wind-down cue."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1205,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 108,
+      "output_tokens_details": {
+        "thinking_tokens": 29
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2552,
+  "firstInputTokens": 1205
+}

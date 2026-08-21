@@ -1,0 +1,72 @@
+name: Eval sweep
+
+# CI names each eval gate by hand, so a suite that ships without being added to
+# ci.yml is a gate nobody runs — run-memory-cost-eval / run-vil143-eval sat red for
+# nine days that way (VIL-290). This job discovers the runners instead of listing
+# them: every apps/worker/evals/run-*.mjs, replayed from the committed cache.
+#
+# Cached-only means zero API calls (a cache miss FAILS LOUDLY instead of spending),
+# so this job needs no secrets. Do not add any — an eval that can reach the API is
+# an eval that can quietly bill on a schedule.
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Mondays 09:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    name: All eval suites (cached-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build leaf packages
+        run: pnpm --filter @hale/db --filter @hale/types --filter @hale/tools-contracts --filter @hale/agent --filter @hale/worker build
+
+      - name: Run every eval suite (cached-only)
+        run: |
+          cd apps/worker
+          table=""
+          fails=0
+          for f in evals/run-*.mjs; do
+            name=$(basename "$f" .mjs)
+            echo "::group::$name"
+            if node "$f" --cached-only; then
+              table="${table}PASS  ${name}"$'\n'
+            else
+              table="${table}FAIL  ${name}"$'\n'
+              fails=$((fails + 1))
+            fi
+            echo "::endgroup::"
+          done
+          printf '%s\n' "==== eval sweep ===="
+          printf '%s' "$table"
+          printf 'failing suites: %s\n' "$fails"
+          {
+            printf '### Eval sweep\n\n```\n'
+            printf '%s' "$table"
+            printf '```\n\nfailing suites: %s\n' "$fails"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$fails" -eq 0
