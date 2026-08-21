@@ -96,6 +96,7 @@ describe('runSundaySendCron', () => {
       },
       capture: async (event, distinctId) => {
         captured.push({ event, distinctId });
+        return 'sent';
       },
       ...over,
     };

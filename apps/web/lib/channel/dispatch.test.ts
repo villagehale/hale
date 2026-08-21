@@ -57,6 +57,7 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     },
     capture: async (event, distinctId, properties = {}) => {
       captures.push({ event, distinctId, properties });
+      return 'sent';
     },
     channels: { email: fakeChannel('email'), sms: fakeChannel('sms'), push: fakeChannel('push') },
     renderer: fakeRenderer,

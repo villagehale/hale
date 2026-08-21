@@ -45,7 +45,7 @@ function fakeDeps(overrides: {
       sendReset: vi.fn(),
       sendMagicLink: vi.fn(),
     },
-    captureServerEvent: overrides.capture ?? vi.fn(async () => {}),
+    captureServerEvent: overrides.capture ?? vi.fn(async () => 'sent' as const),
   };
 }
 
@@ -76,7 +76,7 @@ describe('dispatchSignupSideEffects', () => {
     const notifySignup = vi.fn(async () => {
       throw new Error('resend down');
     });
-    const capServer = vi.fn(async () => {});
+    const capServer = vi.fn(async () => 'sent' as const);
     const deps = fakeDeps({ notifySignup, capture: capServer });
 
     await expect(
@@ -129,7 +129,7 @@ describe('dispatchSignupSideEffects', () => {
 
   it('fires signup_completed server-side keyed to the new user id (outcome, not intent)', async () => {
     const capture: Capture = { emailSends: [] };
-    const capServer = vi.fn(async () => {});
+    const capServer = vi.fn(async () => 'sent' as const);
     const deps = fakeDeps({ capture: capServer });
 
     await dispatchSignupSideEffects(

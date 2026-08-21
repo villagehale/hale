@@ -105,7 +105,12 @@ export default async function AnswersIndexPage({ params }: PageProps) {
             {t('ctaSub')}
           </p>
           <div className="mt-8 flex justify-center">
-            <LandingCta event="answers_cta_text" href={cta.href} className="btn-on-navy">
+            <LandingCta
+              event="cta_text_click"
+              placement="answers"
+              href={cta.href}
+              className="btn-on-navy"
+            >
               {cta.label}
             </LandingCta>
           </div>

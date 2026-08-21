@@ -187,7 +187,7 @@ describe('reverseExecutedCalendarAction — the UNDO primitive', () => {
 describe('reverseExecutedCalendarAction — X1 (VIL-227) loop_undo instrumentation', () => {
   it('fires loop_undo with only the actionType (no family/child detail) on a successful reversal', async () => {
     const { db } = fakeDb(executedAdd());
-    const capture = vi.fn(async () => {});
+    const capture = vi.fn(async () => 'sent' as const);
 
     const result = await reverseExecutedCalendarAction(db, {
       actionId: ACTION_ID,
@@ -207,7 +207,7 @@ describe('reverseExecutedCalendarAction — X1 (VIL-227) loop_undo instrumentati
       executedAt: new Date(NOW.getTime() - (UNDO_WINDOW_HOURS + 1) * 60 * 60 * 1000),
     });
     const { db } = fakeDb(stale);
-    const capture = vi.fn(async () => {});
+    const capture = vi.fn(async () => 'sent' as const);
 
     await reverseExecutedCalendarAction(db, {
       actionId: ACTION_ID,
@@ -258,7 +258,7 @@ describe('reverseExecutedCalendarAction — withdrawing the invite', () => {
       familyId: FAMILY_ID,
       revertedBy: REVERTER,
       now: NOW,
-      capture: vi.fn(async () => {}),
+      capture: vi.fn(async () => 'sent' as const),
       withdrawInvites: async (request) => {
         withdrawn.push(request);
         return { status: 'reported', parents: [], ask: 'not_needed' };
@@ -298,7 +298,7 @@ describe('reverseExecutedCalendarAction — withdrawing the invite', () => {
       familyId: FAMILY_ID,
       revertedBy: REVERTER,
       now: NOW,
-      capture: vi.fn(async () => {}),
+      capture: vi.fn(async () => 'sent' as const),
       withdrawInvites: async () => {
         throw new Error('resend down');
       },

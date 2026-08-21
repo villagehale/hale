@@ -1,36 +1,65 @@
 /**
- * The landing event catalog and its privacy gate (hard rule #1).
+ * The acquisition-funnel event catalog and its privacy gate (hard rule #1).
  *
- * Nothing identifying may reach product analytics. Events are restricted to the
- * funnel CTAs below and their properties to coarse, non-identifying primitives.
- * `buildEvent` is the single chokepoint every capture goes through: it drops any
- * property whose key looks identifying or whose value is a non-primitive, so an
- * accidental `{ email }` can never leave the client. Pure + exported so the
- * redaction is unit-tested.
+ * Nothing identifying may reach product analytics. The site is ANONYMOUS: no
+ * identify, no autocapture, no session replay, no cookies (see posthog-provider.tsx).
+ * Every event below is fired by hand from a named call site, and its properties are
+ * coarse, non-identifying primitives. `buildEvent` is the single chokepoint every
+ * capture goes through: it drops any property whose key looks identifying or whose
+ * value is a non-primitive, so an accidental `{ email }` can never leave the client.
+ * Pure + exported so the redaction is unit-tested.
+ *
+ * The funnel is one question — WHICH SOURCE PRODUCED A TEXT — so `source_code` and
+ * `locale` are stamped on every event by the provider rather than by each call site;
+ * a call site cannot override them (posthog-provider.tsx).
  */
 
 export type AnalyticsEvent =
-  // Retired with the sign-up funnel F14 deleted. Kept in the union because the
-  // names are DATA — historical rows in PostHog carry them — but nothing fires
-  // them any more; a new CTA must not reuse one.
+  // Retired. Kept in the union because the names are DATA — historical rows in
+  // PostHog carry them — but nothing fires them any more; a new CTA must not reuse
+  // one.
+  //   *_cta_signin / _preview — the sign-up funnel F14 deleted.
+  //   *_cta_text              — three names for one act (tapping through to the SMS
+  //                             composer), which made "how many people texted us"
+  //                             a three-query question. Replaced by cta_text_click
+  //                             with a `cta_placement` property.
   | 'landing_cta_preview'
   | 'landing_cta_signin'
   | 'faq_cta_signin'
-  // Conversion CTAs on the SEO/AEO content pages — so the funnel can attribute a
-  // texting intent to the page that earned it (which content actually converts).
-  // They sit on an sms:/mailto: href: there is no sign-in at the end of them, and
-  // the *_cta_signin names they replace made every dashboard read the funnel wrong.
   | 'activities_cta_text'
   | 'answers_cta_text'
+  | 'landing_cta_text'
   // Plus/Family waitlist form submitted (coarse event only — never the email).
   | 'waitlist_signup'
-  // The /text entry page (VIL-240), carrying the QR card's venue code as `source`
-  // — which physical spot actually starts conversations.
+  // ── The messaging-first funnel ────────────────────────────────────────────
+  // THE conversion: a tap on an `sms:` deep link, anywhere on the site.
+  // `cta_placement` names which one (hero, header, faq, a reply chip…), so the
+  // whole site is one funnel with a breakdown rather than one event per page.
+  | 'cta_text_click'
+  // The desktop path to the same act — the number onto the clipboard, because
+  // `sms:` is a silent no-op on a laptop. Counted separately: it is an intention
+  // to text later, not a composer that opened.
+  | 'copy_number_click'
+  // Hale's contact card saved (/hale.vcf). The one thing a parent does on the
+  // site that changes what every LATER Hale text looks like on their phone.
+  | 'save_contact_click'
+  // The /text entry page (VIL-240) — which physical spot actually starts
+  // conversations. Attribution rides on the provider's `source_code`.
   | 'text_entry_viewed'
-  // The chief-of-staff landing's only conversion: tapping through to the SMS
-  // composer. Property-free like the other landing CTAs — the href it sits on is
-  // an sms: deep link, so the safest thing to send alongside it is nothing.
-  | 'landing_cta_text';
+  // How far down the landing a reader got: 25/50/75/100, at most once per depth
+  // per view. The only signal the page has about whether the scroll earns the
+  // CTA at the bottom of it.
+  | 'landing_scroll';
+
+/**
+ * PostHog's own pageview. Not ours to name, but it goes through the same gate as
+ * everything else so the funnel's base properties land on it too — a pageview with
+ * no `source_code` is a visit nothing can be attributed to.
+ */
+export const PAGEVIEW = '$pageview';
+
+/** Everything the site sends: the catalog plus the pageview. */
+export type CapturedEvent = AnalyticsEvent | typeof PAGEVIEW;
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;
@@ -67,12 +96,12 @@ function isCoarseValue(value: unknown): value is EventProperty {
 }
 
 export interface BuiltEvent {
-  event: AnalyticsEvent;
+  event: CapturedEvent;
   properties: EventProperties;
 }
 
 export function buildEvent(
-  event: AnalyticsEvent,
+  event: CapturedEvent,
   properties: Record<string, unknown> = {},
 ): BuiltEvent {
   const safe: EventProperties = {};

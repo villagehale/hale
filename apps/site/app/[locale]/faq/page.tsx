@@ -79,7 +79,12 @@ export default async function FaqPage({ params }: PageProps) {
           {t('ctaSub')}
         </p>
         <div className="mt-8 flex justify-center">
-          <LandingCta event="landing_cta_text" href={cta.href} className="btn-on-navy">
+          <LandingCta
+            event="cta_text_click"
+            placement="faq"
+            href={cta.href}
+            className="btn-on-navy"
+          >
             {cta.label}
           </LandingCta>
         </div>

@@ -1,4 +1,6 @@
 import { type Database, schema } from '@hale/db';
+import type { AnalyticsEvent } from '~/lib/analytics/events';
+import { captureServerEvent } from '~/lib/analytics/server-capture';
 import {
   resolveVerifiedChannelByPhone,
   revokeSmsChannel,
@@ -134,6 +136,10 @@ export interface IntakeDeps {
    * for an inbound webhook). Its payoff is the 48h nudge, which otherwise sweeps a
    * family whose candidate table is empty. Same trigger the web onboarding path uses. */
   discoveryTrigger?: DiscoveryTrigger;
+  /** The funnel's two milestones. Optional because the DEFAULT IS THE REAL EFFECT —
+   * `captureServerEvent`, which already names its own absence on a dead PostHog key
+   * (rule #11) — so this is a test seam, never a way to withhold the send. */
+  capture?: typeof captureServerEvent;
   now?: Date;
 }
 
@@ -403,6 +409,35 @@ async function offScriptReply(
   return { body: outcome.body, source: 'composed' };
 }
 
+/**
+ * One end of the F14 funnel, recorded.
+ *
+ * DISTINCT ID IS THE INTAKE SESSION'S OWN ROW ID — a random uuid minted before this
+ * conversation has an account — so `intake_started` and `intake_completed` join into a
+ * funnel without a phone number, a name, or a hash of either ever reaching PostHog
+ * (hard rule #1). The session is also exactly the right grain: one row per attempt to
+ * get in, which is the thing being counted.
+ *
+ * Never in front of a parent's reply, and never able to break one: it runs after the
+ * message has gone out and the state has been saved, and a provider failure is logged
+ * rather than thrown into the turn (rule #11 — the absence is named, not silent).
+ */
+async function reportIntakeStep(
+  deps: IntakeDeps,
+  event: Extract<AnalyticsEvent, 'intake_started' | 'intake_completed'>,
+  sessionId: string,
+  properties: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await (deps.capture ?? captureServerEvent)(event, sessionId, properties);
+  } catch (err) {
+    console.warn('intake analytics: milestone not recorded', {
+      event,
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+  }
+}
+
 // ── branches ─────────────────────────────────────────────────────────────────
 
 async function greet(
@@ -432,6 +467,7 @@ async function greet(
     { state: 'awaiting_details', transcript, lastProviderId: args.inbound.providerId },
     args.now,
   );
+  await reportIntakeStep(deps, 'intake_started', session.id);
   return { status: 'greeted' };
 }
 
@@ -694,6 +730,12 @@ async function provision(
     },
     now,
   );
+  // `source_code` is null when nobody handed out a card, and it stays ABSENT rather than
+  // becoming a string like 'direct': buildEvent drops a null, and a bucket meaning "no
+  // card" must not be able to look like a card that exists.
+  await reportIntakeStep(deps, 'intake_completed', session.id, {
+    source_code: session.sourceCode,
+  });
   return { status: 'provisioned', familyId };
 }
 
