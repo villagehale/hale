@@ -1,4 +1,5 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
+import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { CATEGORY_CAPS } from './config';
 import { SENT_STATUSES, acceptedStatus } from './ledger';
@@ -74,7 +75,11 @@ export interface DispatchPorts {
   /** X1 (VIL-227) loop taxonomy: fires the analytics event paired 1:1 with the
    * ledger row `record` just wrote — see `writeLedgerRow` below, the single point
    * both are called from. */
-  capture(event: AnalyticsEvent, distinctId: string, properties?: Record<string, unknown>): Promise<void>;
+  capture(
+    event: AnalyticsEvent,
+    distinctId: string,
+    properties?: Record<string, unknown>,
+  ): Promise<CaptureOutcome>;
   recordEmailSend(input: {
     userId: string;
     familyId: string;

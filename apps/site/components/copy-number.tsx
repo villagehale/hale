@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 
 /**
  * The founder's rule: the number itself is never displayed. The `sms:` button is
@@ -8,6 +9,12 @@ import { useState } from 'react';
  * on the clipboard without printing it, so a Windows reader (where `sms:` is a
  * silent no-op) still has a way to text from their phone. The transient label
  * swap is the only feedback; no digits ever render.
+ *
+ * `copy_number_click` is captured on the INTENT, not on the clipboard write: a copy
+ * that the browser denies still falls through to the composer, so the parent did the
+ * same thing either way. The number is never a property — it is the one identifying
+ * value on this component, and it is the one thing the desktop funnel does not need
+ * to know (hard rule #1).
  */
 export function CopyNumberButton({
   number,
@@ -23,6 +30,7 @@ export function CopyNumberButton({
   ariaLabel?: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const capture = useAnalytics();
 
   return (
     <button
@@ -30,6 +38,7 @@ export function CopyNumberButton({
       aria-label={ariaLabel}
       className={className}
       onClick={() => {
+        capture('copy_number_click');
         navigator.clipboard
           .writeText(number)
           .then(() => {

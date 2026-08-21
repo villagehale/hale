@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the Halton Hills fall registration window dates (resident: Sep 1 7am, general: Sep 8), correctly says Hale is already watching it and will text before — all accurate recall from registrationWindows with watching:true. It correctly hands over the webFind (Tiny Tumblers, Saturday mornings, parent & tot) with attribution to \"their site\" and notes no price yet — exactly what the webFind rule requires. No app referral, no invented URL (referralLinkAppended is null), no markdown, no sign-off. stillBeingChecked is 0 so there's nothing more to mention. The reply is tight and complete. The only very minor blemish is \"their site has no price posted yet\" — the webFind says \"per the venue's own program page\" which Hale correctly paraphrases as \"their site,\" and noting no price is honest. This is essentially perfect handling of both the registration window and the webFind.",
+    "score": 5
+  }
+}

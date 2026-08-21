@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { captureAgentError } from '~/lib/analytics/server-capture';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
@@ -222,6 +223,15 @@ export async function runActivityFollowUpSweep(
         { err, commitmentId: commitment.id },
         'activity follow-up: send failed - promise left open for the next tick',
       );
+      // A promise Hale made and did not keep is the failure this whole sweep exists to
+      // prevent, and it retries silently — so the same row can fail every tick for a day
+      // with nothing but log lines to show for it. Counted per household and per kind of
+      // promise; the topic (which is the parent's own words) never travels.
+      await captureAgentError({
+        lane: 'commitments',
+        kind: 'activity_followup',
+        familyId: commitment.familyId,
+      });
     }
   }
   return result;

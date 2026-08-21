@@ -69,6 +69,15 @@ export interface SmsReplyArgs {
    * thing the message exists to deliver.
    */
   referral?: string;
+  /**
+   * Called with how many SMS units went over the side when an answer had to be trimmed.
+   *
+   * A CALLBACK rather than a report from in here, so this module stays pure and
+   * synchronous: the reporting is a network call, and it belongs at the async seam that
+   * called this (coach/runtime.ts), not inside a string function. Only the COUNT is
+   * offered — the body it came from is what the parent typed back at us (rule #1).
+   */
+  onTrimmed?: (overBy: number) => void;
 }
 
 /**
@@ -191,7 +200,12 @@ function sentences(text: string): string[] {
  * audit P0 #4). Nothing replaces it. A parent who texted is owed a text back, and the
  * sentence they get is the one carrying the answer.
  */
-function fitToBudget(body: string, max: number, suffix = ''): string {
+function fitToBudget(
+  body: string,
+  max: number,
+  suffix = '',
+  onTrimmed?: (overBy: number) => void,
+): string {
   // The suffix is measured with the body, never after it: a reviewed line appended to a
   // reply that was already at the ceiling is how the budget gets quietly exceeded.
   const withSuffix = (text: string) => (suffix === '' ? text : `${text} ${suffix}`);
@@ -206,9 +220,11 @@ function fitToBudget(body: string, max: number, suffix = ''): string {
   // tell that reply from one that fit, so it took a human reading a graded bench run to
   // see it. A count makes the next one countable. The BODY never reaches the log — it can
   // carry back what the parent typed (rule #1).
+  const overBy = smsUnits(whole) - smsUnitsBudget(whole, max);
   console.warn(
-    `channel coach: model answer ran ${smsUnits(whole) - smsUnitsBudget(whole, max)} units past the ${max}-segment budget; sending the prefix that fits`,
+    `channel coach: model answer ran ${overBy} units past the ${max}-segment budget; sending the prefix that fits`,
   );
+  onTrimmed?.(overBy);
 
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
@@ -269,7 +285,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     args.children,
     args.now,
   );
-  if (suffix === '') return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  if (suffix === '') return fitToBudget(redacted, MAX_REPLY_SEGMENTS, '', args.onTrimmed);
 
   // The tools told the model to hand these in rather than write them into the answer;
   // this is the backstop for when it does both, because the visible cost is the same
@@ -278,7 +294,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // Nothing but the suffix left: the model answered with it and nothing else, so it IS
   // the reply. Joining an empty answer to it would send a leading space.
   if (answer === '') return suffix;
-  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, suffix);
+  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, suffix, args.onTrimmed);
   return `${fitted} ${suffix}`;
 }
 

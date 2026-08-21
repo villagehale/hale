@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply contains only the fixed plan-offer line (\"Want the full night-by-night plan for Milo? Reply YES and I'll send it.\") with no actual advice in front of it. The rules are clear: the fixed YES line is appended AFTER a concrete beat of advice — \"a concrete thing this parent could do tonight is the beat that has to be there.\" Here, the advice beat is entirely missing; the reply is just the tail. A parent who reads this gets nothing actionable. The shape is the product working only when the advice precedes the offer; without it, the reply fails the core requirement of the parenting-question scoring rule.",
+    "score": 2
+  }
+}

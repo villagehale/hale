@@ -2,6 +2,7 @@ import Image from 'next/image';
 import heroShore from '~/assets/hale-shore-hero.webp';
 import { CopyNumberButton } from '~/components/copy-number';
 import { LandingCta } from '~/components/landing-cta';
+import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
 import { LogoMark } from '~/components/logo-mark';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -66,6 +67,9 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
 
   return (
     <main id="main" tabIndex={-1}>
+      {/* Renders nothing — how far down this long page a reader actually got, which is
+          the only signal it has about whether the scroll earns the closing CTA. */}
+      <LandingScrollAnalytics />
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
@@ -102,7 +106,12 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
 
           <div className="flex flex-wrap items-center justify-center gap-3">
             {smsHref ? (
-              <LandingCta event="landing_cta_text" href={smsHref} className="v4-btn-solid v4-glass">
+              <LandingCta
+                event="cta_text_click"
+                placement="hero"
+                href={smsHref}
+                className="v4-btn-solid v4-glass"
+              >
                 {common('textHale')}
               </LandingCta>
             ) : (
@@ -125,9 +134,17 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             <ul className="v4-chips">
               {chips.map((q) => (
                 <li key={q}>
-                  <a href={buildSmsHrefForBody(smsNumber, q)} className="v4-chip v4-glass">
+                  {/* A chip is an sms: deep link like the hero button, so it is the
+                      same conversion counted at the same seam — the placement is what
+                      tells you a pre-written question opened the composer. */}
+                  <LandingCta
+                    event="cta_text_click"
+                    placement="hero_chip"
+                    href={buildSmsHrefForBody(smsNumber, q)}
+                    className="v4-chip v4-glass"
+                  >
                     {q}
-                  </a>
+                  </LandingCta>
                 </li>
               ))}
             </ul>
@@ -325,7 +342,12 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             </h2>
             <p className="v4-hero-sub">{t('closingSub')}</p>
             {smsHref ? (
-              <LandingCta event="landing_cta_text" href={smsHref} className="v4-btn-solid v4-glass">
+              <LandingCta
+                event="cta_text_click"
+                placement="closing"
+                href={smsHref}
+                className="v4-btn-solid v4-glass"
+              >
                 {common('textHale')}
               </LandingCta>
             ) : (

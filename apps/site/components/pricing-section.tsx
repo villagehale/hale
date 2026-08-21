@@ -1,5 +1,6 @@
 import { PLAN_DISPLAY, PLAN_TIERS_ORDERED, type PlanTier, formatPlanPrice } from '@hale/types';
 import { Check } from 'lucide-react';
+import { LandingCta } from '~/components/landing-cta';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { chromeCta } from '~/lib/site/chrome-cta';
@@ -94,9 +95,17 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
                * free and paid cards differ only in emphasis, not destination.
                * `mt-auto` drops the three actions onto one line across the grid. */}
               <div className="mt-auto pt-8">
-                <a href={cta.href} className={isFree ? 'btn-primary' : 'btn-secondary'}>
+                {/* One placement for all three cards: which tier a reader tapped is not
+                    a different conversion — every card opens the same composer — and
+                    three placement names would split one number into three. */}
+                <LandingCta
+                  event="cta_text_click"
+                  placement="pricing_tier"
+                  href={cta.href}
+                  className={isFree ? 'btn-primary' : 'btn-secondary'}
+                >
                   {cta.label}
-                </a>
+                </LandingCta>
               </div>
             </li>
           );

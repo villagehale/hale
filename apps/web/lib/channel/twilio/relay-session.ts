@@ -1,3 +1,4 @@
+import { captureAgentError } from '~/lib/analytics/server-capture';
 import { VOICE_CALL_WRAP_UP, VOICE_TURN_FAILED } from './copy';
 import {
   type RelayInbound,
@@ -184,6 +185,12 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
       { reason, frame: frame?.type ?? null, bytes: frame?.bytes ?? null },
       'twilio relay: refused a socket that could not prove its call',
     );
+    // A refusal has no HTTP status anybody sees and no family to hang an audit row on
+    // (this runs BEFORE the ticket is proved), so the log line was the only trace it
+    // ever left. The reason is an enum; nothing the peer wrote travels with it. The rate
+    // is the point: `bad_signature` climbing is somebody probing, `claim_unavailable`
+    // climbing is our database.
+    void captureAgentError({ lane: 'relay', reason, familyId: null });
     deps.socket.send(endSession('unauthorized'));
     deps.socket.close();
   };

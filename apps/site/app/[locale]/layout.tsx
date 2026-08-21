@@ -162,7 +162,7 @@ export default async function RootLayout({
         <a href="#main" className="skip-link">
           {t('skipToContent')}
         </a>
-        <PostHogProvider>{children}</PostHogProvider>
+        <PostHogProvider locale={locale}>{children}</PostHogProvider>
         <SpeedInsights />
       </body>
     </html>

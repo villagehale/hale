@@ -66,7 +66,7 @@ describe('createLoopStopNotifier', () => {
 describe('dispatchLoopStopSideEffects', () => {
   it('fires the founder alert and loop_stop analytics in parallel', async () => {
     const notifyStop = vi.fn(async () => true);
-    const capture = vi.fn(async () => {});
+    const capture = vi.fn(async () => 'sent' as const);
 
     await dispatchLoopStopSideEffects(
       { userId: USER_ID, category: 'weekly_plan' },
@@ -86,7 +86,7 @@ describe('dispatchLoopStopSideEffects', () => {
 
     await dispatchLoopStopSideEffects(
       { userId: USER_ID, category: 'weekly_plan' },
-      { founder: { notifyStop }, captureServerEvent: vi.fn(async () => {}) },
+      { founder: { notifyStop }, captureServerEvent: vi.fn(async () => 'sent' as const) },
     );
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('not delivered'), {
@@ -98,7 +98,7 @@ describe('dispatchLoopStopSideEffects', () => {
     const notifyStop = vi.fn(async () => {
       throw new Error('resend down');
     });
-    const capture = vi.fn(async () => {});
+    const capture = vi.fn(async () => 'sent' as const);
 
     await expect(
       dispatchLoopStopSideEffects(

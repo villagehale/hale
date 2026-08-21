@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the resident opening date and time (Sep 1, 7:00 a.m.) and the general opening (Sep 8) as verified facts — that's right. It also correctly acknowledges it is not watching that window, since `watching` is false and Hale has no verb to start a watch. The rules say \"saying it is not watching that one is honest, not a denial\" and that \"the DATE IS THE WHOLE ANSWER.\" However, the rules also say to score a 2 at most if it \"tells the parent to set their own alarm\" — this reply doesn't do that explicitly. It just states the date and says it's not watching. That is the correct and complete answer per the rules. The reply is concise, names both dates correctly, and honestly flags it cannot watch. No invented details, no app referral, no markdown. A very slight blemish: the dash-separated clause \"but I'm not watching that one\" could be read as slightly abrupt or could leave the parent wondering if there's anything else to do, but the rules say the date is the whole answer and not watching is honest. This is essentially correct. Minor style quibble — it's clean and complete.",
+    "score": 5
+  }
+}

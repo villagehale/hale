@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the referral link (which is appended and present), and correctly tells the parent to forward it themselves. It also adds a brief description of what Hale does, which is helpful context for a referral message. The link is the runtime-appended one, not invented. The reply is a bit long and includes an unsolicited pitch sentence (\"Hale is a text-line family assistant - schedule, activities, parenting questions, all over SMS\") that Sam didn't ask for and that adds bulk without serving the question, but it doesn't cross into a serious error. No greeting, no sign-off, no markdown. One small blemish for the extra promotional sentence that pads the reply beyond what was needed.",
+    "score": 4
+  }
+}

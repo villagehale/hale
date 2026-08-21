@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands Sam their referral link (which is appended and real), explains what happens when a friend uses it, and gives a brief pitch for what Hale does so the friend knows what they're getting. The link is present and correct. The reply does not send Sam to the app, does not draft anything unnecessarily, and does not invent any details. However, the reply is missing the explicit instruction that Sam forwards the link themselves — the rules say \"a sentence telling the parent to forward it themselves is correct.\" The reply says \"Just send that line to a friend\" which is close but the framing is a bit ambiguous (it says \"send that line\" not clearly \"forward this link to a friend yourself\"). That said, it's a minor point — the meaning is clear enough. There's also a slight structural blemish: the reply leads with an explanation of what happens on the friend's end before giving the link, and includes a pitch for Hale which adds length beyond what's needed. The core job is done correctly though: link present, forwarding implied, no app referral, no invented URL. A small blemish in shape/length but functional.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply hands over the referral link correctly, tells Sam to forward it themselves, and carries the appended URL exactly as given. It adds a brief description of Hale that is accurate and useful context for whoever Sam shares it with. The only small blemish is the extra sentence explaining what Hale is — that's a bonus the parent didn't ask for and adds length, but it's not wrong or misleading. Otherwise the reply is clean: no greeting, no sign-off, no app referral, no invented URL, no markdown. A very minor redundancy keeps it from a 5.",
+    "score": 4
+  }
+}

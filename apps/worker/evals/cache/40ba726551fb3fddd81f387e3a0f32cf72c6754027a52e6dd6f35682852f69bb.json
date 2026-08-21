@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands Sam their own referral link (which is appended by the runtime and present in referralLinkAppended), tells them to forward it themselves, and gives a brief description of what Hale does so the friend knows what they're receiving. The link is real (from knows.referralLinkAppended), not invented. No app referral, no greeting, no sign-off, no markdown. The note that nothing from their family is shared is a nice honest touch. This is clean and correct. The only minor thing is it's slightly longer than strictly necessary — the description of Hale could be trimmed — but it's genuinely useful context for a referral message. A small blemish at most, warranting a 4.",
+    "score": 4
+  }
+}

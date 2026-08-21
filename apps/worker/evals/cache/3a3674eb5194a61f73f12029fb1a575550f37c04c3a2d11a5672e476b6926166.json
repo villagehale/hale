@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is supposed to answer a parenting question about an 8-year-old waking at 2am. The rules say: a concrete thing the parent could do tonight is the beat that has to be there, and the \"Want the full plan? Reply YES\" line is a fixed product ending that is correct. However, the reply contains ONLY the fixed ending line — there is zero actual advice in front of it. The parent gets no coaching, no normalcy context, no actionable step for tonight. The fixed ending line is only correct when real advice precedes it; here it floats alone, making the entire reply an empty prompt to reply YES with nothing behind it. This is effectively handing the question back — the parent learns nothing and has nothing to act on tonight. That is a 2 at most under the parenting rules (\"score a 2 at most for handing it back\"). Since the reply is not a referral or a phone number but simply a hollow non-answer dressed as a teaser, a 2 is appropriate.",
+    "score": 2
+  }
+}

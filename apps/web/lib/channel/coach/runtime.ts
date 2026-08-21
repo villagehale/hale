@@ -15,6 +15,7 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
+import { captureAgentError } from '~/lib/analytics/server-capture';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import {
   type ChannelCoachRuntime,
@@ -289,12 +290,27 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           }
 
           const share = referral as ReferralShare | null;
+          // What the trim threw away, reported HERE rather than from inside the string
+          // function: an answer past the two-segment ceiling is work this turn already
+          // paid a model (and sometimes a 50s web search) for, and nothing downstream can
+          // tell a trimmed reply from one that fit. A count makes it a rate.
+          let trimmedOverBy: number | null = null;
           const reply = toSmsReply(result.answer, {
             children,
             now,
             planOffer: (planOffer as PlanOffer | null)?.sentence,
             referral: share ? referralBlock(share) : undefined,
+            onTrimmed: (overBy) => {
+              trimmedOverBy = overBy;
+            },
           });
+          if (trimmedOverBy !== null) {
+            await captureAgentError({
+              lane: 'reply_budget',
+              overBy: trimmedOverBy,
+              familyId: turn.familyId,
+            });
+          }
           await ports.recordRun(record('completed'));
           return { reply, planOffer, activityPromise };
         },

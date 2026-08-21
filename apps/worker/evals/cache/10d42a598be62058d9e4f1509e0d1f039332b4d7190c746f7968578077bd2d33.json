@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the one offerable activity (Central Library story time, Bloor/Gladstone, Sat Aug 8) — name, place, day all present, which is the right handling of a verified offerable. It also correctly names Milo and Ada (the non-teenager children visible in knows). However, it misses that Soccer practice is already on the schedule for Saturday at 10am at Cedarvale Park — the parent asked \"anything on for the kids Saturday?\" and the week clearly shows a Saturday event. A complete answer should have mentioned the existing soccer practice AND the offerable activity. Omitting the scheduled event is a meaningful gap. That said, the shape is otherwise good: no app referral, no invented detail, no markdown, no sign-off, draft offer phrased correctly with an implicit YES prompt (though \"Want me to add it\" is slightly softer than the canonical \"YES to confirm\" contract — but since drafted is empty and this is an offer to draft, not a completed draft, that phrasing is acceptable). The main deduction is for ignoring the visible Saturday calendar item.",
+    "score": 3
+  }
+}

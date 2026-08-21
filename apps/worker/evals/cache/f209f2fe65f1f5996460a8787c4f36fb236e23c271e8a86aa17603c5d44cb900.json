@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is missing the actual advice entirely. The scoring rules say a parenting question must have \"a concrete thing this parent could do tonight\" as the beat that has to be there, and \"the question is whether a parent could act on this text.\" The reply contains only the offer line (\"Want the full plan? Reply YES and I'll send it.\") — which is the fixed closing line — but has zero coaching content in front of it. The fixed offer line is correct product behavior, but it must come after at least one short concrete beat of advice. A parent reading this gets nothing actionable. This is not a short-but-complete answer; it is an answer with the body entirely missing. Additionally, the question asked whether waking at 2am is normal for an 8-year-old — Hale should have addressed that (it is not typical at this age, possible causes like stress or sleep disruption, something to try tonight) before the plan offer. Scoring this as a 2: it doesn't hand the parent back to a doctor or refuse the question, but it fails to deliver any actual content, leaving the parent with nothing to act on.",
+    "score": 2
+  }
+}

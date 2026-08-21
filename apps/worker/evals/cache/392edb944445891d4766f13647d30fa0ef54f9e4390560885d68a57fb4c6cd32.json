@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles both pieces of information available. The registration window: `watching` is true, so stating the Sep 1 7:00 a.m. resident date and saying \"I'm on it and I'll text you before it opens\" is exactly right — it's recall plus a true claim about the watching feature. The webFind (Tiny Tumblers): per the rules, a webFind must be handed over and attributed to its source in the same breath. The reply names the program and says \"their program page\" — that's correct attribution. It also correctly notes no price is posted, which is exactly what the webFind says (\"no price up yet\"). The `offerable` list is empty and `stillBeingChecked` is 0, so there's nothing else to surface. No app referral, no invented URL, no greeting/sign-off. The only minor blemish is \"In the meantime\" as a filler phrase that adds a slight looseness, but it's minimal. Overall this is a clean, correct reply that does exactly what the rules require.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancel (one clear match in the week) and asks for YES confirmation — exactly right. For the Saturday indoor activity, it offers Central Library story time at Bloor/Gladstone, Sat Aug 8, which is a verified offerable candidate (name, place, day all present) — correct to offer whole. The stillBeingChecked count is 0 so no hedging needed and none is given. The Riverdale Farm find is Sunday, not Saturday, so correctly omitted. The draft cap is 2 and only 1 is drafted (the cancel); the indoor activity is an offer of an existing event, not a second draft item, so no cap issue. No app referral, no invented URL, no sign-off, no markdown. One small blemish: \"free\" — the offerable entry does not include a price, so calling it \"free\" is a slight invention beyond what Hale was given. Otherwise the reply is compact, accurate, and correctly shaped.",
+    "score": 4
+  }
+}

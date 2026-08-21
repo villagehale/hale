@@ -94,6 +94,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     },
     capture: async (event, distinctId, props = {}) => {
       captured.push({ event, distinctId, props });
+      return 'sent';
     },
     // VIL-229: no client by default → the voice stage never runs (existing tests'
     // behavior is unchanged). Tests below override both to exercise the wiring.
