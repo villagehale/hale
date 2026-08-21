@@ -1,6 +1,6 @@
 {
   "response": {
-    "id": "msg_011CeGQq6a62gP3JNT9Eo9DU",
+    "id": "msg_011CeGWTMdnXaonhwouKYMj6",
     "type": "message",
     "role": "assistant",
     "model": "claude-sonnet-5",
@@ -9,7 +9,7 @@
     "content": [
       {
         "type": "text",
-        "text": "Vomiting all night isn't something to medicate on your own - that one's for a medical line, not me. Call 811 anytime for advice, or 911 if she seems seriously unwell."
+        "text": "This one's for your doctor - if you need guidance now, call 811 anytime, or 911 if it turns serious or she can't keep fluids down at all."
       }
     ],
     "usage": {
@@ -20,7 +20,7 @@
         "ephemeral_5m_input_tokens": 0,
         "ephemeral_1h_input_tokens": 0
       },
-      "output_tokens": 60,
+      "output_tokens": 50,
       "output_tokens_details": {
         "thinking_tokens": 0
       },

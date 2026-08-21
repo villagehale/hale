@@ -9,15 +9,15 @@
 
 export const HAIKU_MODEL = 'claude-haiku-4-5';
 /**
- * The frozen JUDGE / comparison tier — no lane routes to it.
+ * The 4.6 tier: the eval judge, the middle rung of run-model-matrix-eval's ladder,
+ * and — until they migrate — the `draft` and `infer` lanes (see TASK_LANE).
  *
- * Kept at 4.6 deliberately through the Sonnet-5 re-tier. The eval harness reads
- * this constant for the LLM-judge in three suites and as the middle rung of
- * run-model-matrix-eval's tier ladder. Moving the judge in the same change that
- * moves the subject would re-grade every fixture against a different marker, so
- * a regression and a re-calibration would be indistinguishable — and it would
- * needlessly invalidate every cached judge verdict. Change this only to
- * deliberately re-baseline grading.
+ * Kept at 4.6 deliberately through the Sonnet-5 re-tier. Moving the judge in the
+ * same change that moves the subject would re-grade every fixture against a
+ * different marker, so a regression and a re-calibration would be
+ * indistinguishable — and it would needlessly invalidate every cached judge
+ * verdict. No suite both judges with this tier and runs its subject on it.
+ * Change this only to deliberately re-baseline grading.
  */
 export const SONNET_MODEL = 'claude-sonnet-4-6';
 export const SONNET5_MODEL = 'claude-sonnet-5';
@@ -131,18 +131,38 @@ const TASK_LANE: Record<AgentTask, LaneConfig> = {
   review: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'high' },
   extract: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'high' },
 
-  // The inline chat lane. `low` is the documented setting for high-volume,
-  // latency-sensitive chat, and it is the lane a parent waits on in real time.
-  converse: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'low' },
+  // The inline chat lane, and the one place the doctrine's `low` turned out to be
+  // wrong. Effort governs how readily Sonnet 5 reaches for a tool, and on the
+  // flagship both-halves fixture (a verified registration date AND a live web find
+  // in one reply) it silently stopped calling find_activities: measured live n=3
+  // per level, `low` called it 0/3, `medium` 2/3, `high` 3/3. A parent then gets
+  // the date and never the thing they can do before it — the exact regression #522
+  // exists to prevent — with no error anywhere. `high` is therefore the floor here,
+  // not a tuning preference.
+  converse: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'high' },
 
-  // `medium` on Sonnet 5 is documented as comparable to Sonnet 4.6 at `high`,
-  // which is what these lanes ran before the re-tier — so this holds quality flat
-  // while dropping off the default-`high` tax. `draft` is shared by the short SMS
-  // lines and by week-summary, the weekly plan; `medium` is the setting that suits
-  // both (see the lane-collision note in the PR).
-  draft: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'medium' },
-  infer: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'medium' },
   discover: { model: SONNET5_MODEL, thinking: 'adaptive', effort: 'medium' },
+
+  // PENDING MIGRATION — held on 4.6 with the knobs set to reproduce exactly what
+  // that model did before the re-tier (an omitted `thinking` is no thinking on 4.6,
+  // and `high` is the API default; verified live, 0 thinking blocks either way).
+  //
+  // Sonnet 5 is a quality REGRESSION on these two lanes, and it is not a knob
+  // problem: drafter, identity-ask, intro-voice, radar, reminder-voice and memory
+  // were re-recorded live at effort medium AND high AND with thinking disabled, and
+  // failed under all three. Two distinct causes, both needing work this change
+  // deliberately does not do:
+  //   - drafter ships `payload: {type:'object', additionalProperties:true}`, an
+  //     unconstrained node with no grammar. 4.6 filled it with an object; Sonnet 5
+  //     fills it with a stringified JSON blob that duplicates the envelope, so
+  //     to/subject/body all read empty — on emails to real recipients.
+  //   - the short-copy lanes collapse to one template: two different reminders
+  //     produced a byte-identical line (similarity 1.00 against a 0.75 ceiling) and
+  //     all four intro asks opened the same way (1 distinct opener, 2 required).
+  // Move these once the payload schema is constrained and the skills get a variety
+  // pass — not by loosening either grader.
+  draft: { model: SONNET_MODEL, thinking: 'disabled', effort: 'high' },
+  infer: { model: SONNET_MODEL, thinking: 'disabled', effort: 'high' },
 
   // Run-rarely and judgment-dense: the one lane worth `xhigh`.
   'high-stakes-judgment': { model: OPUS_MODEL, thinking: 'adaptive', effort: 'xhigh' },

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "to": "frontdesk@riverdale-peds.ca",
+      "subject": "Re: Confirm visit",
+      "body": "hi — thanks for the offer. can i check on the tuesday june 23 5:30 pm slot and get back to you? i want to confirm it works before locking it in.\n\nif that time gets claimed in the meantime, no problem — just let me know what else is open.\n\nthanks"
+    },
+    "confidence": 0.42,
+    "rationale": "No calendar or scheduling memory was available, so I held back from confirming the appointment and instead acknowledged the offer while keeping the slot in play.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 5446
+}

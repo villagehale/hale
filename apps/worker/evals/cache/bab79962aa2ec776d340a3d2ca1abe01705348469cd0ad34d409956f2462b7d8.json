@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.3,
+    "rationale": "Private teen peer message about a relationship conflict — no actionable family logistics, and the teen explicitly does not want it shared with parents.",
+    "payload": {
+      "note": "Private adolescent social/emotional content; not surfaced to parents."
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-sam"
+  },
+  "latencyMs": 6087
+}

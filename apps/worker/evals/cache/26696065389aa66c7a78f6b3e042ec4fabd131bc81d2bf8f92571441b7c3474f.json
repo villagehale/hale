@@ -1,6 +1,6 @@
 {
   "parsed": {
-    "reason": "The text says \"cancel swim\" and the week contains TWO swim lessons (Mon 4:30pm West pool, Thu 5:15pm East pool). This is genuine ambiguity — more than one event matches — so Hale must ask which one rather than draft anything. The reply correctly identifies both events and asks which to cancel. It drafts nothing, which is correct. The reply is clean, concise, no sign-off, no markdown, no app referral. One question, exactly what ambiguity requires. This is the product working correctly.",
+    "reason": "The text \"cancel swim\" matches two swim lessons in the week (Mon 4:30pm and Thu 5:15pm), so this is a genuine ambiguity — Hale correctly identifies both and asks which one to cancel. The reply is clean, concise, names both events with their times and locations, and asks exactly one question. No invented details, no app referral, no sign-off. This is the correct handling of a two-match ambiguity.",
     "score": 5
   }
 }

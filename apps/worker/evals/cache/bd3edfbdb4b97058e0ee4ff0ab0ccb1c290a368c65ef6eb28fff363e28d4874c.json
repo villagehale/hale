@@ -1,6 +1,6 @@
 {
   "parsed": {
-    "reason": "The reply correctly identifies the one matching event (Thursday swim lesson), drafts the move, names the change clearly, and ends with the required YES confirmation prompt. The reply is in French matching the parent's language. The only minor blemish is the missing \"oui\" / \"YES\" consistency — but \"YES\" is required as the literal confirmation word, so using it is correct. The reply is clean, short, and does exactly the job. A 5.",
-    "score": 5
+    "reason": "The reply correctly identifies the single matching event (Thursday swim lesson), drafts a move, and asks for YES confirmation — exactly the right shape. It's clean, in the parent's language, and stops. The one small issue: it asks a question (\"Je déplace... à 17h45?\") rather than stating the change clearly before asking for YES. The phrasing is slightly ambiguous — it reads more like a clarifying question than a confirmation prompt. A cleaner form would be \"Je déplace la natation de jeudi de 17h15 à 17h45 — YES pour confirmer.\" Also, it doesn't mention the current time (5:15pm) which would help Sam know what is actually being moved from. Minor blemish, but the core job is done correctly.",
+    "score": 4
   }
 }

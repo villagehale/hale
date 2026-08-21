@@ -1,0 +1,8 @@
+{
+  "value": {
+    "rationale": "check_action_time_window returned ok:false — the 03:00 start falls inside the family's configured quiet-hours window, a clear time-window policy violation. Idempotency was clean, but a red tool result mandates rejection. Note the action is internal-only, reversible, and low-risk, so a simple reschedule should resolve it.",
+    "remediation": "Re-draft the reminder with a start time outside quiet hours (e.g. 2026-06-23T09:00:00-04:00) and re-run check_action_time_window plus check_action_idempotency before resubmitting.",
+    "verdict": "reject"
+  },
+  "latencyMs": 5335
+}

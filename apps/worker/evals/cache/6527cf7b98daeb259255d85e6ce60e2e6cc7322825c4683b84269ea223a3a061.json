@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and correctly identifies the event as a delivery/shipping notification. It accurately describes the signal content: a notification from a shipping address about an order containing specific items (diapers and wipes) with a concrete expected delivery time. The characterization of it as a \"one-way logistics update\" appropriately distinguishes this from transactional or confirmation emails. The rationale matches the signal content precisely and justifies the \"delivery_update\" event type correctly."
+  }
+}

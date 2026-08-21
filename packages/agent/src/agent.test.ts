@@ -1266,7 +1266,7 @@ describe('lane fields on the wire', () => {
     const req = await runWithTask('converse');
     expect(req.model).toBe('claude-sonnet-5');
     expect(req.thinking).toEqual({ type: 'adaptive' });
-    expect(req.output_config).toEqual({ effort: 'low' });
+    expect(req.output_config).toEqual({ effort: 'high' });
   });
 
   it('sends the phone-call lane no reasoning knobs', async () => {

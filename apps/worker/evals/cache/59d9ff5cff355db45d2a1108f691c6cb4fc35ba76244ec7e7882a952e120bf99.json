@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.4,
+    "rationale": "This is a 14-year-old's private journal entry describing distress, not a family logistics signal — it should not be surfaced or acted on by an automated agent.",
+    "payload": {
+      "source": "notes_sync",
+      "private_journal": true,
+      "note": "Private teen journal entry containing sensitive personal disclosure; no logistics content. Withheld from digest — route to a human with care."
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-maya"
+  },
+  "latencyMs": 5908
+}

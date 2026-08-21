@@ -17,9 +17,9 @@ describe('pickModel', () => {
     ['classify', SONNET5_MODEL],
     ['simple-lookup', HAIKU_MODEL],
     ['converse', SONNET5_MODEL],
-    ['draft', SONNET5_MODEL],
+    ['draft', SONNET_MODEL],
     ['review', SONNET5_MODEL],
-    ['infer', SONNET5_MODEL],
+    ['infer', SONNET_MODEL],
     ['discover', SONNET5_MODEL],
     ['high-stakes-judgment', OPUS_MODEL],
     ['triage', HAIKU_MODEL],
@@ -38,13 +38,29 @@ describe('pickModel', () => {
     expect(OPUS_MODEL).toBe('claude-opus-5');
   });
 
-  it('keeps the judge tier off the lane matrix', () => {
-    // SONNET_MODEL is the frozen judge / comparison rung. It is deliberately NOT
-    // the model of any lane — if a re-tier ever routes traffic back to it, the
-    // eval judge and its subject become the same model and grading stops meaning
-    // anything.
+  it('pins the 4.6 tier and the lanes still held on it', () => {
+    // draft and infer are held here pending the prompt/schema work Sonnet 5 needs
+    // (see TASK_LANE). When they migrate, this list shrinks to empty — it exists so
+    // that happens deliberately rather than by drift.
     expect(SONNET_MODEL).toBe('claude-sonnet-4-6');
-    expect(AGENT_TASKS.map(pickModel)).not.toContain(SONNET_MODEL);
+    expect(AGENT_TASKS.filter((t) => pickModel(t) === SONNET_MODEL).sort()).toEqual([
+      'draft',
+      'infer',
+    ]);
+  });
+
+  it('reproduces pre-re-tier behaviour on the lanes held at 4.6', () => {
+    // An omitted `thinking` means NO thinking on 4.6, which is what main sent. If a
+    // future edit flips these to adaptive, the eval cache cannot see it (the key
+    // covers neither knob), so this is the only thing standing between a silent
+    // behaviour change and prod.
+    for (const task of ['draft', 'infer'] as AgentTask[]) {
+      expect(laneRequestFields(pickLane(task))).toEqual({
+        model: SONNET_MODEL,
+        thinking: { type: 'disabled' },
+        output_config: { effort: 'high' },
+      });
+    }
   });
 
   it('throws on an unknown task', () => {
@@ -78,7 +94,7 @@ describe('laneRequestFields', () => {
     expect(laneRequestFields(pickLane('converse'))).toEqual({
       model: SONNET5_MODEL,
       thinking: { type: 'adaptive' },
-      output_config: { effort: 'low' },
+      output_config: { effort: 'high' },
     });
     expect(laneRequestFields(pickLane('high-stakes-judgment'))).toEqual({
       model: OPUS_MODEL,
@@ -90,9 +106,12 @@ describe('laneRequestFields', () => {
   it('pins the per-lane effort the re-tier chose', () => {
     const effortOf = (task: AgentTask) => laneRequestFields(pickLane(task)).output_config?.effort;
     // The inline chat lane a parent waits on, versus the run-rarely one.
-    expect(effortOf('converse')).toBe('low');
-    expect(effortOf('draft')).toBe('medium');
-    expect(effortOf('infer')).toBe('medium');
+    // `high`, not the doctrine's `low`: below it Sonnet 5 stops calling
+    // find_activities on the flagship both-halves fixture (live n=3: low 0/3,
+    // medium 2/3, high 3/3).
+    expect(effortOf('converse')).toBe('high');
+    expect(effortOf('draft')).toBe('high');
+    expect(effortOf('infer')).toBe('high');
     expect(effortOf('discover')).toBe('medium');
     expect(effortOf('high-stakes-judgment')).toBe('xhigh');
     // The rule-#1 teen_content lanes keep the API defaults, written out.

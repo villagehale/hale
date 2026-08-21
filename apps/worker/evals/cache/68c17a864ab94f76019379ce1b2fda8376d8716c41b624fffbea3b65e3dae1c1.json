@@ -1,0 +1,20 @@
+{
+  "value": {
+    "concerns_child_id": null,
+    "confidence": 0.92,
+    "event_type": "supply_low_signal",
+    "payload": {
+      "item": "size 4 diapers",
+      "on_hand": 6,
+      "daily_use": 7,
+      "days_remaining": 1
+    },
+    "rationale": "Inventory signal shows size 4 diapers with roughly one day of supply remaining, indicating a reorder is needed.",
+    "suggested_action": {
+      "actionType": "place_supply_order",
+      "kind": "autonomous_action"
+    },
+    "teen_content": false
+  },
+  "latencyMs": 3642
+}

@@ -1,6 +1,6 @@
 {
   "response": {
-    "id": "msg_011CeGQcnsP8brQrdsXphQHq",
+    "id": "msg_011CeGWCdHhoCQEvegpHfkM3",
     "type": "message",
     "role": "assistant",
     "model": "claude-sonnet-5",
@@ -8,8 +8,13 @@
     "stop_sequence": null,
     "content": [
       {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EpwCCpABCBEYAipAUCRKSc4tRvptY4gjdTJcdowFLq5mLl6RP+d7cg8rT0EoNnqVP06XmZpnqrumal1/o479/mW1AyYMFEvr/P2UsjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAcHiotQGEgzPewkFR8zlYvdOncIaDBtSZQ9PsTXsErDa/iIwyG7twCs1msk4XTV0SLF9xaUTtY5gYyC/UASOo1+vjbL4Cze4hh/0pAZtaIgWRcmYKjnVjZvD9YXSPvYXtXBgpEjfltHnvRAsZfZUieHWMLT2rG8qwvYojX8Jo8eCow/p4FLSv5bLD8cfHeYYAQ=="
+      },
+      {
         "type": "tool_use",
-        "id": "toolu_01AeNALy4EE3mkJztY1CSvkV",
+        "id": "toolu_01K8pNhhCeiRBvSpcSHntRHd",
         "name": "lookup_week",
         "input": {},
         "caller": {
@@ -25,9 +30,9 @@
         "ephemeral_5m_input_tokens": 0,
         "ephemeral_1h_input_tokens": 0
       },
-      "output_tokens": 28,
+      "output_tokens": 44,
       "output_tokens_details": {
-        "thinking_tokens": 0
+        "thinking_tokens": 14
       },
       "service_tier": "standard",
       "inference_geo": "global"

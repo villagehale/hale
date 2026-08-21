@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "to": "admissions@sunnydaycare.ca",
+      "subject": "Re: Your application",
+      "body": "thanks for letting us know — that's great news.\n\ncan i ask a couple of quick things before we confirm? what are the hours for the toddler room, and what's the monthly fee and deposit? also happy to know what paperwork you need from us.\n\ni'll get back to you before friday either way.\n\nthanks"
+    },
+    "confidence": 0.55,
+    "rationale": "No memory slice confirms the family wants to accept, so this acknowledges the offer, asks practical questions, and holds the Friday deadline without committing.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 4529
+}

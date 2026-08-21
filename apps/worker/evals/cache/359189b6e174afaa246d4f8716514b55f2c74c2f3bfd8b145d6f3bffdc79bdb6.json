@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "msg_011CeGWMsyFJkbUJhddpPxXY",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Most babies are ready around 6 months, watching for cues like sitting with support and reaching for food, so at 5 months Theo's close but not quite there yet.\n\nWant the full first-foods plan? Reply YES and I'll send it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1464,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 13524,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 76,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

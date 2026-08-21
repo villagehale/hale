@@ -1,6 +1,6 @@
 {
   "parsed": {
-    "reason": "The text asks to move soccer to 11 on Saturday. There is exactly one soccer event visible in the week (Soccer practice, Sat 10:00am, Cedarvale Park), so the reference is fully resolved. Hale correctly drafted the move and presents the standard YES-to-confirm prompt. The reply names the change clearly, keeps the venue (which wasn't changed), and ends with the required confirmation trigger. It is short, exact, and complete — the product working perfectly.",
+    "reason": "One soccer event on Saturday, unambiguous. Hale drafted the move (within the cap), named the event and new time clearly, and ended with the required YES confirmation prompt. Short, exact, correct — the product working.",
     "score": 5
   }
 }
