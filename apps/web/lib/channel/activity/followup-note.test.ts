@@ -71,6 +71,57 @@ describe('the top pick lands in the first segment', () => {
     expect(topPickLeads(led, [PICK])).toBe(true);
   });
 
+  it('POSITIVE CONTROL - a message that names the pick BETTER than the field does passes', () => {
+    // A verbatim match on `name` is the wrong test, and this is the message that proved
+    // it: the real corpus answer for the fall-gymnastics fixture. No SMS repeats that
+    // composite field whole, so the gate refused it, recomposed three times and then
+    // DEFERRED - Hale going quiet on a good find, which is the failure, not the guard.
+    const composite: ActivityPick = {
+      ...PICK,
+      name: 'Kinderfun (Toddler Program), Halton Hills Gymnastics Centre',
+    };
+    const real =
+      'Halton Hills Gymnastics Centre has a Kinderfun toddler program (18 months - 3 years) running Sept 10 - Dec 16 - their site says. Want me to confirm the spot?';
+
+    expect(topPickLeads(real, [composite])).toBe(true);
+    expect(followUpViolations(real, { subject: 'toddler gymnastics', picks: [composite] })).toEqual(
+      [],
+    );
+  });
+
+  it('POSITIVE CONTROL - the Oakville answer, which names the find in its first six words', () => {
+    // The corpus answer for the swim fixture. A phrase-contiguous check refused it: the
+    // field says "Learn to Swim: Parent and Tot / Preschool, Town of Oakville" and the
+    // message says "Oakville's Learn to Swim Preschool program", which is how a person
+    // would say it.
+    const oakville: ActivityPick = {
+      ...PICK,
+      name: 'Learn to Swim: Parent and Tot / Preschool, Town of Oakville',
+      when: 'Fall registration opens Tuesday, August 11 at 7 a.m.',
+      price: null,
+      sourceName: 'Town of Oakville Parks and Recreation',
+    };
+    const real =
+      "Oakville's Learn to Swim Preschool program looks like a good fit - their site says fall registration opens Aug 11 at 7am (no pricing posted yet). Want me to check closer to Aug 11?";
+
+    expect(topPickLeads(real, [oakville])).toBe(true);
+    expect(followUpViolations(real, { subject: 'preschool swim lessons', picks: [oakville] })).toEqual(
+      [],
+    );
+  });
+
+  it('still refuses a body whose lead names nothing in particular', () => {
+    // The other direction: matching on the name's PARTS must not be satisfied by a
+    // programme noun. "a toddler program" has named no venue a parent could look up.
+    const composite = {
+      ...PICK,
+      name: 'Kinderfun (Toddler Program), Halton Hills Gymnastics Centre',
+    };
+    const vague = `A toddler program is the pick of them this fall. ${filler}${filler}${composite.name}.`;
+    expect(vague.indexOf(composite.name)).toBeGreaterThan(153);
+    expect(topPickLeads(vague, [composite])).toBe(false);
+  });
+
   it('is vacuously satisfied when there is nothing to lead with', () => {
     // The empty-handed message has no pick to name, and demanding one would make the
     // honest "I looked and found nothing" unsendable.

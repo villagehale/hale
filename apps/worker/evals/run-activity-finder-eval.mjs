@@ -35,8 +35,9 @@
 //   · no picks (on an expectPicks fixture) - Hale looked at a real question and shrugged.
 //   · invented picks (on an expectPicks:false fixture) - a pick for something that does not
 //     exist, not traceable to the notes.
-//   · half find - a pick missing a name, an age fit, a when or a source. The lane drops
-//     these; seeing them here means the skill is producing them.
+//   · half find - a pick missing a name, an age fit or a source. The lane drops these;
+//     seeing them here means the skill is producing them. A missing `when` or `price` is
+//     NOT one: an unposted detail is a gap the answer names, not a find to withhold.
 //   · directory - more than three picks.
 //   · off subject - a named-place fixture whose research never mentions the place.
 //   · claims verification - the follow-up text says "confirmed"/"verified" about something
@@ -75,6 +76,7 @@ const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-s
 const MAX_PICKS = 3;
 const MAX_SEARCHES = 3;
 const MAX_FOLLOWUP_SEGMENTS = 2;
+const MAX_FOLLOWUP_ATTEMPTS = 3;
 const FIRST_SEGMENT_CHARS = 153;
 
 // ── the lane's request shapes, replicated from lane.ts ───────────────────────
@@ -94,7 +96,7 @@ const PICKS_TOOL_SCHEMA = {
           price: { type: 'string' },
           source_name: { type: 'string' },
         },
-        required: ['name', 'age_fit', 'when', 'source_name'],
+        required: ['name', 'age_fit', 'source_name'],
       },
     },
   },
@@ -145,11 +147,17 @@ function countSearchResults(content) {
   return total;
 }
 
+/** What the grounding turn wrote down, wherever it put it — mirrors lane.ts. A turn given
+ * only `web_search` will sometimes write its findings into a call to `activity_picks`, a
+ * tool it was never handed; reading only text blocks scores that real answer as
+ * `empty_research`. */
 function researchText(content) {
-  return content
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text)
-    .join('\n');
+  const parts = [];
+  for (const block of content) {
+    if (block.type === 'text') parts.push(block.text);
+    else if (block.type === 'tool_use') parts.push(JSON.stringify(block.input));
+  }
+  return parts.join('\n');
 }
 
 /** Every title and URL the search itself returned - the ground truth a pick must trace to.
@@ -211,47 +219,128 @@ function claimsVerification(body) {
  *
  * The RC-I1 gate: the trim cuts from the end, so a find mentioned only in the second
  * segment is one the parent may never read. What it must NOT demand is the pick's `name`
- * VERBATIM. That field is a composite - "Kinderfun (Toddler Program), Halton Hills
- * Gymnastics Centre" - assembled for a structured payload, and no SMS repeats it whole:
- * the message that led with "Halton Hills Gymnastics Centre has a Kinderfun toddler
- * program running Sept 10" was failed by the verbatim check for naming the pick BETTER
- * than the field did. So the test is over the name's PARTS, and only the parts that
- * identify something - a head that says "a toddler program" has named nothing.
+ * VERBATIM, or even in contiguous chunks. That field is a composite - "Kinderfun (Toddler
+ * Program), Halton Hills Gymnastics Centre", "Learn to Swim: Parent and Tot / Preschool,
+ * Town of Oakville" - assembled for a structured payload, and no SMS repeats one whole.
+ * Two real corpus answers named their find in the first six words and were refused anyway:
+ * "Halton Hills Gymnastics Centre has a Kinderfun toddler program running Sept 10" and
+ * "Oakville's Learn to Swim Preschool program looks like a good fit".
+ *
+ * So the test is the question a parent would ask - can I tell WHICH find this is? Two or
+ * more identifying words in the first segment is a yes; a programme noun identifies
+ * nothing, so a head that says "a toddler program" has named nothing. Mirrors
+ * `topPickLeads` in apps/web/lib/channel/activity/followup-note.ts word for word.
  */
-function distinctiveNameParts(name) {
-  return [name, ...name.split(/[,;(]|\s[-|]\s/)]
-    .map((part) => part.replace(/[)]/g, '').trim().toLowerCase())
-    .filter((part) => part.length >= 5)
-    .filter((part) =>
-      part
-        .split(/[^a-z0-9]+/)
-        .some((word) => word.length >= 4 && !GENERIC_WORDS.has(word)),
-    );
+function identifyingWords(name) {
+  return name
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length >= 5 && !GENERIC_WORDS.has(word));
 }
 
 function topPickLeads(body, picks) {
   const top = picks[0];
   if (!top) return true;
   const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
-  return distinctiveNameParts(top.name).some((part) => head.includes(part));
+  const words = identifyingWords(top.name);
+  if (words.length === 0) return head.includes(top.name.toLowerCase());
+  return words.filter((word) => head.includes(word)).length >= Math.min(2, words.length);
 }
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
-/** The lane's whole-find rule (lane.ts `toPicks`), so a half-find is SEEN here rather than
- * silently dropped the way production drops it. */
+/**
+ * Everything wrong with this follow-up, in the runtime's own words - mirrors
+ * `followUpViolations` in apps/web/lib/channel/activity/followup-note.ts. The `reason` is
+ * what gets handed BACK to the model on a recompose, so it has to be the sentence
+ * production would hand back; the `tag` is what this eval counts.
+ */
+function followUpViolations(body, picks, smsSegments) {
+  if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
+  const violations = [];
+  if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
+    violations.push({
+      tag: 'over_segment_cap',
+      reason: `The message is ${smsSegments(body)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. Cut it to about 300 characters.`,
+    });
+  }
+  if (LINK_SHAPE.test(body)) {
+    violations.push({
+      tag: 'links_a_url',
+      reason: 'The message contains a link or a web address. Never send one.',
+    });
+  }
+  if (claimsVerification(body)) {
+    violations.push({
+      tag: 'claims_verification',
+      reason:
+        'The message says these details are confirmed or verified. They are not - they came off the venue\'s own page. Say whose page it was ("their site says...") and offer to confirm before they book.',
+    });
+  }
+  if (!topPickLeads(body, picks)) {
+    violations.push({
+      tag: 'buried_top_pick',
+      reason: `The best find (${picks[0]?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
+    });
+  }
+  return violations;
+}
+
+/** Mirrors `retryFollowUpMessage` in followup-note.ts. */
+function retryFollowUpMessage(base, violations) {
+  if (violations.length === 0) return base;
+  return JSON.stringify({
+    ...JSON.parse(base),
+    rejectedLastAttempt: violations.map((v) => v.reason),
+  });
+}
+
+/**
+ * The lane's whole-find rule (lane.ts `toPicks`), so a half-find is SEEN here rather than
+ * silently dropped the way production drops it.
+ *
+ * What makes a pick a pick is `name`, `age_fit` and `source_name` - the three that let a
+ * parent look the thing up. `when` and `price` are facts a SOURCE may not have published,
+ * and requiring them cost this corpus two real finds: a Town of Oakville Learn to Swim
+ * whose fall times were not up, and a Cartwheels Tiny Gym whose term schedule sits behind
+ * a registration login. Both came back `picks: []`. That is the shrug the lane exists to
+ * end, so an unposted detail is now a null the answer NAMES.
+ */
+/**
+ * The lane's parse-boundary collapse (lane.ts `decodePicks`), replicated.
+ *
+ * A forced tool call can return `picks` as the array or as the whole `{"picks":[...]}`
+ * envelope JSON-encoded a SECOND time into the field. The corpus produced the latter on
+ * the incident's own fixture, carrying two whole grounded finds, and an array reader kept
+ * nothing from it - `no_picks` from a wire shape rather than a judgement. Without this
+ * mirror the eval would score the runtime's recovery as a shrug.
+ */
+function decodePicks(value) {
+  if (typeof value !== 'string') return value;
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return value;
+  }
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === 'object' && Array.isArray(parsed.picks)) return parsed.picks;
+  return value;
+}
+
 function normalizePicks(raw) {
   const kept = [];
   const dropped = [];
-  for (const item of Array.isArray(raw) ? raw : []) {
+  const decoded = decodePicks(raw);
+  for (const item of Array.isArray(decoded) ? decoded : []) {
     const pick = {
       name: flatten(item?.name),
       ageFit: flatten(item?.age_fit),
-      when: flatten(item?.when),
+      when: flatten(item?.when) || null,
       price: flatten(item?.price) || null,
       sourceName: flatten(item?.source_name),
     };
-    if (pick.name && pick.ageFit && pick.when && pick.sourceName) kept.push(pick);
+    if (pick.name && pick.ageFit && pick.sourceName) kept.push(pick);
     else dropped.push(pick);
   }
   return { kept, dropped };
@@ -310,12 +399,18 @@ const JUDGE_SYSTEM = [
   'coarse stage. You are given the subject, the town, the stage, the picks Hale extracted,',
   'the message it wrote, and watchFor (fixture-specific notes). Score 1-5.',
   'A 5: every pick is a real, specific, local thing a parent could turn up to - a named',
-  'place with a day or a session start - plausibly fitting the stage, and at most three of',
-  'them. The message leads with the best one by name, says whose information it is ("their',
-  'site says", "listed as"), and offers to confirm rather than claiming to have confirmed.',
+  'place, plausibly fitting the stage - and at most three of them. The message leads with',
+  'the best one by name, says whose information it is ("their site says", "listed as"), and',
+  'offers to confirm rather than claiming to have confirmed.',
   'It is one or two short sentences of plain text with no link and exactly one question.',
+  'A pick whose `when` or `price` is null is CORRECT when the source had not published it -',
+  'a real program whose fall times are not up yet, or whose schedule sits behind a',
+  'registration login, is a genuine find. Score it a 5 when the message NAMES the gap',
+  '("their site lists it, the fall times are not posted yet") and offers to go and get it.',
+  'Score it low only if the message invents a day, a time or a price the picks do not carry,',
+  'or quietly writes around the gap as though the detail were known.',
   'A LOW score is any of: a venue that looks invented or generic ("your local community',
-  'centre"); a pick with no day, time or session start; a directory-style list; a pick for a',
+  'centre"); a directory-style list; a pick for a',
   'different town; a message that presents web-read facts as verified; a message that',
   'WITHHOLDS a find because it is unverified, or hedges instead of naming something (a',
   'parent who got "I will come back to you" was handed nothing - that is the failure this',
@@ -334,8 +429,13 @@ const JUDGE_SYSTEM = [
  * do both. On a fixture that must find something it returns NOTHING, which is the incident
  * failure (Hale looked at a real question and shrugged). On every other fixture it returns
  * a directory of venues that appear in no search result, one of them a half-find with no
- * `when` - the fabrication failure. Without the split, `no_picks` and `half_find` would sit
- * at zero in broken mode: gates nobody has ever seen fire.
+ * `age_fit` - the fabrication failure. Without the split, `no_picks` and `half_find` would
+ * sit at zero in broken mode: gates nobody has ever seen fire.
+ *
+ * The half-find is missing its AGE FIT rather than its `when`, because a missing `when` is
+ * no longer a half-find: a source that has not posted its fall times is a real find with a
+ * gap, and the gap is named (see normalizePicks). A pick with nobody it is for is still
+ * nothing a parent can use.
  */
 function brokenPicks(fixture) {
   if (fixture.expectPicks === true) return { picks: [] };
@@ -345,7 +445,7 @@ function brokenPicks(fixture) {
       { name: 'Riverbend Play Barn', age_fit: '1-4', when: 'daily', price: '$99', source_name: 'Riverbend' },
       { name: 'Maple Grove Movement', age_fit: '2-5', when: 'weekly', source_name: 'Maple Grove' },
       { name: 'Hilltop Kinder Gym', age_fit: '1-3', when: 'mornings', source_name: 'Hilltop' },
-      { name: 'Brookvale Tots', age_fit: '1-3', source_name: 'Brookvale' },
+      { name: 'Brookvale Tots', when: 'Mondays 10am', source_name: 'Brookvale' },
     ],
   };
 }
@@ -483,30 +583,44 @@ async function main() {
     }
 
     // ── phase 3: THE FOLLOW-UP TEXT ──────────────────────────────────────────
-    const followup = broken
-      ? BROKEN_FOLLOWUP
-      : (
-          await cachedToolCall({
-            tag: `activity-followup:${fixture.id}`,
-            model,
-            system: skill.instructions,
-            userMessage: followUpUserMessage(fixture.subject, kept),
-            toolName: 'followup_text',
-            toolSchema: FOLLOWUP_TOOL_SCHEMA,
-            toolDescription: 'Return the one message to send this parent.',
-            maxTokens: 400,
-            cachedOnly,
-            getClient,
-            cost,
-          })
-        ).value;
+    // COMPOSED, GATED, RECOMPOSED - the runtime's loop (followup-note.ts), not one shot.
+    // What reaches a parent is never the first draft: a body that breaks a gate is refused
+    // with the reason and rewritten, up to MAX_FOLLOWUP_ATTEMPTS, and only then deferred.
+    // Scoring the first draft failed this corpus on a 340-character Oakville answer that
+    // production would have shortened and sent, which is measuring something the product
+    // does not do. First-draft quality still has to be VISIBLE or it could rot behind the
+    // repair loop, so it is counted and printed - just not fatal.
+    let body = '';
+    let violations = [];
+    let firstDraftViolations = [];
+    for (let attempt = 1; attempt <= MAX_FOLLOWUP_ATTEMPTS; attempt += 1) {
+      const composed = broken
+        ? BROKEN_FOLLOWUP
+        : (
+            await cachedToolCall({
+              tag: `activity-followup:${fixture.id}:${attempt}`,
+              model,
+              system: skill.instructions,
+              userMessage: retryFollowUpMessage(
+                followUpUserMessage(fixture.subject, kept),
+                violations,
+              ),
+              toolName: 'followup_text',
+              toolSchema: FOLLOWUP_TOOL_SCHEMA,
+              toolDescription: 'Return the one message to send this parent.',
+              maxTokens: 400,
+              cachedOnly,
+              getClient,
+              cost,
+            })
+          ).value;
 
-    const body = flatten(followup.message);
-    if (body === '') failures.push('empty');
-    if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) failures.push('over_segment_cap');
-    if (LINK_SHAPE.test(body)) failures.push('links_a_url');
-    if (claimsVerification(body)) failures.push('claims_verification');
-    if (!topPickLeads(body, kept)) failures.push('buried_top_pick');
+      body = flatten(composed.message);
+      violations = followUpViolations(body, kept, smsSegments);
+      if (attempt === 1) firstDraftViolations = violations;
+      if (violations.length === 0 || broken) break;
+    }
+    failures.push(...violations.map((v) => v.tag));
 
     // ── the judge (skipped in broken mode; the deterministic layer proves calibration) ──
     if (!broken) {
@@ -521,7 +635,14 @@ async function main() {
       if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
     }
 
-    results.push({ fixture, picks: kept, body, searchCount: ground.searchCount, failures });
+    results.push({
+      fixture,
+      picks: kept,
+      body,
+      searchCount: ground.searchCount,
+      failures,
+      firstDraftViolations,
+    });
   }
 
   // ── report ─────────────────────────────────────────────────────────────────
@@ -530,7 +651,9 @@ async function main() {
     const tag = r.failures.length === 0 ? 'PASS' : 'FAIL';
     console.log(`${tag}  ${r.fixture.id.padEnd(38)} picks=${r.picks.length} searches=${r.searchCount}`);
     console.log(`      "${r.body.slice(0, 100)}"`);
-    for (const pick of r.picks) console.log(`      · ${pick.name} | ${pick.when} | ${pick.sourceName}`);
+    for (const pick of r.picks) {
+      console.log(`      · ${pick.name} | ${pick.when ?? 'when not posted'} | ${pick.sourceName}`);
+    }
     for (const f of r.failures) console.log(`      ! ${f}`);
   }
 
@@ -553,6 +676,13 @@ async function main() {
     `unsendable:              ${results.filter((r) => r.failures.some((f) => ['empty', 'over_segment_cap'].includes(f))).length}`,
   );
   console.log(`judge below ${JUDGE_MIN}:           ${count('judge')}`);
+  const repaired = results.filter((r) => r.firstDraftViolations.length > 0);
+  console.log(
+    `\nfirst draft needed repair: ${repaired.length}/${results.length}  (NOT a gate - production recomposes. Watch it: a corpus that only passes on the third attempt has rotted)`,
+  );
+  for (const r of repaired) {
+    console.log(`      ~ ${r.fixture.id}: ${r.firstDraftViolations.map((v) => v.tag).join(', ')}`);
+  }
 
   console.log('\n--- cost telemetry ---');
   console.log(

@@ -19,9 +19,11 @@
 //     `dropsFromQuery` are the identifiers that must never appear in it (rule #1) - the
 //     runtime refuses such a query outright (deidentify.ts), and this calibrates the same
 //     line against real model output.
-//   · picks must be WHOLE - a name, an age fit, a when, and whose page it came off. A
-//     half-find is dropped by the lane, and a fixture whose picks all drop reads as
-//     `no_picks` here, which is why `expectPicks: true` is a real assertion.
+//   · picks must be WHOLE - a name, an age fit, and whose page it came off. A half-find is
+//     dropped by the lane, and a fixture whose picks all drop reads as `no_picks` here,
+//     which is why `expectPicks: true` is a real assertion. A `when` or a `price` the
+//     SOURCE never published is NOT a half-find: it is a null the answer names, and
+//     requiring it is what lost this corpus the Oakville swim find outright.
 //   · at most three. Never a directory.
 //   · the FOLLOW-UP TEXT must lead with the top pick inside the first segment, must say
 //     whose facts these are, and must never claim Hale verified what it only read.

@@ -1,0 +1,18 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Learn to Swim: Parent and Tot / Preschool, Town of Oakville",
+        "age_fit": "Preschool levels through Preschool E; children who turn five can move on to Swimmer programs",
+        "when": "Fall registration opens Tuesday, August 11 at 7 a.m.; program options browsable online starting August 4",
+        "source_name": "Town of Oakville Parks and Recreation"
+      },
+      {
+        "name": "Preschool Swim Lessons, Goldfish Swim School Oakville",
+        "age_fit": "Part of the structured stages for swimmers within the school's 4-months-to-12-years learn-to-swim program",
+        "source_name": "Goldfish Swim School Oakville"
+      }
+    ]
+  },
+  "latencyMs": 3099
+}

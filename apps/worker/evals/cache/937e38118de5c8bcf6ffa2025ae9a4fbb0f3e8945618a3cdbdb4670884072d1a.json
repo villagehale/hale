@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message names two specific, real local picks: the Town of Oakville Parks and Recreation's \"Learn to Swim: Preschool\" program (the municipal staple) and Goldfish Swim School Oakville. It leads with the stronger find by name, uses source attribution (\"their site says\"), and explicitly names the information gaps rather than inventing them (\"no pricing posted yet\", \"site doesn't list fall times or cost\"). It offers to follow up (\"Want me to check both closer to Aug 11?\") rather than claiming verification. The picks fit the preschool stage, the message is plain text with no link, one question, and presents actionable next steps—the registration date and online browsing window for the primary program. Both null fields in the picks are correct; the message handles them appropriately by naming them."
+  }
+}

@@ -173,6 +173,35 @@ describe('an ungrounded find never ships', () => {
     expect(result.found && result.picks).toHaveLength(1);
   });
 
+  /**
+   * POSITIVE CONTROL for the other half — and the shape a live probe caught.
+   *
+   * The grounding turn is handed ONE tool, `web_search`. Asked for Halton Hills drop-ins it
+   * searched three times and then called `activity_picks` — a tool it was never given, but
+   * which Step 2 of its own instructions describes — putting two real EarlyON finds in the
+   * call and writing no prose at all. Reading only `text` blocks threw the whole answer
+   * away as `empty_research` and told the parent Hale could not look. Research is what the
+   * turn WROTE DOWN, wherever it put it.
+   */
+  it('reads the research the turn wrote into a tool call it was never given', async () => {
+    const seen: Seen[] = [];
+    const withToolNotes = {
+      ...groundResultWithoutNotes(8),
+      content: [
+        ...groundResultWithoutNotes(8).content,
+        { type: 'tool_use', name: 'activity_picks', input: { picks: [WHOLE_PICK] } },
+      ],
+    };
+    const finder = createActivityFinder(
+      makeClient({ ground: withToolNotes, compose: composeResult({ picks: [WHOLE_PICK] }) }, seen),
+    );
+
+    const result = await finder.find(QUERY);
+    expect(result.found && result.picks.map((p) => p.name)).toEqual([WHOLE_PICK.name]);
+    const composeCall = seen.find((call) => call.toolChoice === 'activity_picks');
+    expect(composeCall?.userMessage).toContain(WHOLE_PICK.name);
+  });
+
   it('bounds the search spend on every attempt', async () => {
     const seen: Seen[] = [];
     const finder = createActivityFinder(
@@ -189,7 +218,6 @@ describe('an ungrounded find never ships', () => {
 
 describe('a pick is whole or it is not a pick', () => {
   it.each([
-    ['no when', { ...WHOLE_PICK, when: '' }],
     ['no age fit', { ...WHOLE_PICK, age_fit: null }],
     ['no source', { ...WHOLE_PICK, source_name: '   ' }],
     ['no name', { ...WHOLE_PICK, name: undefined }],
@@ -205,19 +233,30 @@ describe('a pick is whole or it is not a pick', () => {
     restore.mockRestore();
   });
 
-  it('POSITIVE CONTROL - a missing PRICE is not a reason to drop a find', async () => {
+  it.each([
+    ['PRICE', { ...WHOLE_PICK, price: null }],
+    // The Oakville shape: a real program on a real municipal page whose fall class times
+    // had not gone up yet. Dropping this is the shrug the lane exists to end.
+    ['WHEN', { ...WHOLE_PICK, when: null }],
+  ])('POSITIVE CONTROL - an unpublished %s is not a reason to drop a find', async (_l, partial) => {
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(1), compose: composeResult({ picks: [partial] }) }),
+    );
+
+    const result = await finder.find(QUERY);
+    expect(result.found && result.picks[0]).toMatchObject({ name: WHOLE_PICK.name });
+  });
+
+  it('carries the unpublished detail as null rather than as a guess', async () => {
     const finder = createActivityFinder(
       makeClient({
         ground: groundResult(1),
-        compose: composeResult({ picks: [{ ...WHOLE_PICK, price: null }] }),
+        compose: composeResult({ picks: [{ ...WHOLE_PICK, when: '  ', price: undefined }] }),
       }),
     );
 
     const result = await finder.find(QUERY);
-    expect(result.found && result.picks[0]).toMatchObject({
-      name: WHOLE_PICK.name,
-      price: null,
-    });
+    expect(result.found && result.picks[0]).toMatchObject({ when: null, price: null });
   });
 
   it('keeps the whole ones and drops the broken one from the same list', async () => {
@@ -225,13 +264,42 @@ describe('a pick is whole or it is not a pick', () => {
       makeClient({
         ground: groundResult(1),
         compose: composeResult({
-          picks: [WHOLE_PICK, { ...WHOLE_PICK, name: 'Halfling', when: '' }],
+          picks: [WHOLE_PICK, { ...WHOLE_PICK, name: 'Halfling', age_fit: '' }],
         }),
       }),
     );
 
     const result = await finder.find(QUERY);
     expect(result.found && result.picks.map((p) => p.name)).toEqual([WHOLE_PICK.name]);
+  });
+});
+
+describe('the model may hand the same picks back in either encoding', () => {
+  // The corpus produced this on the incident's own fixture: two whole, grounded, real
+  // finds off the gym's own pages, returned as `picks: "{\"picks\":[...]}"` - the envelope
+  // JSON-encoded a second time into the field. An array reader sees a string, keeps
+  // nothing, and the turn is `no_picks`: the shrug again, from a wire shape rather than a
+  // judgement. Collapsed at the PARSE boundary, where both encodings mean one thing.
+  it.each([
+    ['the envelope, re-encoded', JSON.stringify({ picks: [WHOLE_PICK] })],
+    ['the bare array, re-encoded', JSON.stringify([WHOLE_PICK])],
+  ])('reads %s', async (_label, encoded) => {
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(1), compose: composeResult({ picks: encoded }) }),
+    );
+
+    const result = await finder.find(QUERY);
+    expect(result.found && result.picks.map((p) => p.name)).toEqual([WHOLE_PICK.name]);
+  });
+
+  it('POSITIVE CONTROL - a string that is not picks at all still fails NAMED', async () => {
+    const restore = quiet();
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(1), compose: composeResult({ picks: 'no idea' }) }),
+    );
+
+    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'compose_failed' });
+    restore.mockRestore();
   });
 });
 

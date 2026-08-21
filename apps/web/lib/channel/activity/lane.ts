@@ -45,10 +45,12 @@ import type { ActivityQuery } from './deidentify';
  *      a parent reads, and this stage's job is to turn a page of search results into
  *      facts that can be checked.
  *
- * NEVER A DIRECTORY. At most {@link MAX_PICKS} come back, and each one is WHOLE — a name,
- * an age fit, a when, and where the fact came from. A pick missing any of those is dropped
- * rather than shipped with the doubt attached, which is `search_village`'s own offerability
- * rule applied to the web: a parent who wanted to chase a maybe would not have texted.
+ * NEVER A DIRECTORY. At most {@link MAX_PICKS} come back, and each one names a real thing
+ * — what it is, who it is for, and whose page said so. A pick missing any of THOSE is
+ * dropped rather than shipped with the doubt attached, which is `search_village`'s own
+ * offerability rule applied to the web: a parent who wanted to chase a maybe would not
+ * have texted. A pick whose SOURCE never published a time or a price is a different thing
+ * entirely and is kept, with the gap named — see {@link ActivityPick}.
  *
  * HONEST SOURCING, HELD IN CODE. Every pick this lane returns carries `source: 'web'`,
  * stamped HERE and not by the model, next to the `sourceName` the fact was read off. That
@@ -107,19 +109,31 @@ const COMPOSE_MAX_TOKENS = 1024;
 export type ActivitySource = 'web';
 
 /**
- * One thing a parent could actually turn up to. Every field but `price` is non-null by
- * construction, because an offer a parent cannot act on is not an offer: a find with no
- * `when` is the "I found a class but couldn't confirm the time" the skill already
- * forbids. `price` is nullable and NOT a reason to drop a pick — plenty of real programs
- * do not publish one, and withholding a good find over a missing dollar figure is the
- * same silence this lane exists to end.
+ * One thing a parent could actually turn up to.
+ *
+ * WHAT IDENTIFIES A FIND IS NON-NULL; WHAT A SOURCE MAY NOT HAVE PUBLISHED IS NULLABLE.
+ * `name`, `ageFit` and `sourceName` answer "what is it, who is it for, whose page says
+ * so" — without all three there is nothing a parent could look up, so a pick missing one
+ * is not a half-find, it is not a find. `when` and `price` are different in kind: they
+ * are DETAILS THE PAGE EITHER CARRIED OR DID NOT, and a great many real programs publish
+ * neither until registration opens.
+ *
+ * `when` was non-null until the corpus showed what that cost. A municipal Learn to Swim
+ * page whose fall class times had not gone up, and a gym whose term schedule sits behind
+ * its registration login, were both dropped whole — the model's own research notes said
+ * "it's a genuine program, just one whose schedule isn't public yet" and then returned
+ * nothing. With no field in which the gap could be NAMED, withholding the pick was the
+ * only honest move left to it (rule #11). So the gap is a null and the text says it:
+ * "their site lists it, the fall times aren't posted yet". A parent who knows the program
+ * exists and can ring for the time has been helped; a parent told nothing has not.
  */
 export interface ActivityPick {
   name: string;
   /** Who it is for, in the source's own words: "18 months - 3 years", "ages 2-4". */
   ageFit: string;
-  /** When it runs, in the source's own words: "Saturdays 9:15am, fall session from Sept 13". */
-  when: string;
+  /** When it runs, in the source's own words ("Saturdays 9:15am, fall session from
+   * Sept 13"), or null where the source had not published it. Never a guess. */
+  when: string | null;
   /** What it costs, in the source's own words, or null when the source did not say. */
   price: string | null;
   /** WHOSE page this came off — the organisation, not a URL. Hale never texts a link
@@ -162,19 +176,52 @@ class ActivityUnresolvable extends Error {
 }
 
 /**
+ * TWO WIRE ENCODINGS OF ONE VALUE, COLLAPSED WHERE THEY ARRIVE.
+ *
+ * A forced tool call can come back with `picks` as the array, or with the whole
+ * `{"picks": [...]}` envelope JSON-encoded a SECOND time into the field — the corpus
+ * produced the latter on the incident's own fixture, carrying two whole, grounded finds off
+ * the gym's own pages. An array reader sees a string, keeps nothing, and the turn is
+ * `no_picks`. That is the shrug this lane exists to end, arriving as a wire shape rather
+ * than a judgement, and it is the same lesson the medical lane's dual-null encoding taught:
+ * collapse the variance at the PARSE boundary, once, rather than teaching every reader
+ * downstream about both shapes.
+ *
+ * It is not a mask. A string that does not decode to picks is returned UNTOUCHED, so zod
+ * still rejects it and the turn still fails NAMED as `compose_failed`.
+ */
+function decodePicks(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return value;
+  }
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { picks?: unknown }).picks)) {
+    return (parsed as { picks: unknown }).picks;
+  }
+  return value;
+}
+
+/**
  * Parsed LOOSELY and not `.strict()`, for the reason the screen and the medical lane state:
  * zod puts unrecognised KEY NAMES into `ZodError.message`, which the catch below logs, so a
  * strict schema turns a stray field into a log line that can carry text back.
  */
 const composeSchema = z.object({
-  picks: z.array(
-    z.object({
-      name: z.string().nullish(),
-      age_fit: z.string().nullish(),
-      when: z.string().nullish(),
-      price: z.string().nullish(),
-      source_name: z.string().nullish(),
-    }),
+  picks: z.preprocess(
+    decodePicks,
+    z.array(
+      z.object({
+        name: z.string().nullish(),
+        age_fit: z.string().nullish(),
+        when: z.string().nullish(),
+        price: z.string().nullish(),
+        source_name: z.string().nullish(),
+      }),
+    ),
   ),
 });
 
@@ -193,7 +240,10 @@ const composeJsonSchema: Anthropic.Tool.InputSchema = {
           price: { type: 'string' },
           source_name: { type: 'string' },
         },
-        required: ['name', 'age_fit', 'when', 'source_name'],
+        // `when` and `price` are OMITTED from required for the reason ActivityPick states:
+        // a required field a page never published is a field the model can only satisfy by
+        // inventing or by dropping the whole find, and it chose dropping.
+        required: ['name', 'age_fit', 'source_name'],
       },
     },
   },
@@ -241,11 +291,28 @@ function countSearchResults(content: Anthropic.ContentBlock[]): number {
   return total;
 }
 
+/**
+ * What the grounding turn WROTE DOWN — wherever it put it.
+ *
+ * Prose is the usual place. But the turn is handed one tool, `web_search`, while its own
+ * instructions describe a second one, and a live probe caught it doing what that invites:
+ * asked for Halton Hills drop-ins it searched three times, wrote no prose at all, and
+ * called `activity_picks` — a tool it was never given — with two real EarlyON finds in the
+ * arguments. Reading only text blocks threw that whole answer away as `empty_research` and
+ * told the parent Hale could not look, which is the shrug in its purest form: the answer
+ * existed, in hand, in a block nobody read.
+ *
+ * So a `tool_use` block counts as research. It is the same collapse {@link decodePicks}
+ * makes one stage later — the model has two ways to hand back the same thing, and the
+ * boundary that reads it knows about both.
+ */
 function researchText(content: Anthropic.ContentBlock[]): string {
-  return content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('\n');
+  const parts: string[] = [];
+  for (const block of content) {
+    if (block.type === 'text') parts.push(block.text);
+    else if (block.type === 'tool_use') parts.push(JSON.stringify(block.input));
+  }
+  return parts.join('\n');
 }
 
 function field(value: unknown): string {
@@ -255,25 +322,28 @@ function field(value: unknown): string {
 /**
  * The whole-find rule, as a filter rather than a failure.
  *
- * A pick missing its name, its age fit, its when or its source is not a half-find to be
- * passed on with a caveat — it is a row that cannot be offered, and `search_village` has
- * held exactly this line since it shipped. Dropping it costs the parent one option;
- * shipping it costs them a drive. If the drop empties the list, the turn comes back
- * `no_picks`, which is a true thing Hale can say.
+ * A pick missing its name, its age fit or its source is not a half-find to be passed on
+ * with a caveat — it is a row that cannot be offered, and `search_village` has held
+ * exactly this line since it shipped. Dropping it costs the parent one option; shipping it
+ * costs them a drive. If the drop empties the list, the turn comes back `no_picks`, which
+ * is a true thing Hale can say.
+ *
+ * A MISSING `when` OR `price` IS NOT A DROP — see {@link ActivityPick}. Those are facts a
+ * source may simply not have published, they arrive here as null, and the answer says so.
  */
 export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPick[] {
   const picks: ActivityPick[] = [];
   for (const item of raw) {
     const name = field(item.name);
     const ageFit = field(item.age_fit);
-    const when = field(item.when);
     const sourceName = field(item.source_name);
-    if (name === '' || ageFit === '' || when === '' || sourceName === '') continue;
+    if (name === '' || ageFit === '' || sourceName === '') continue;
+    const when = field(item.when);
     const price = field(item.price);
     picks.push({
       name,
       ageFit,
-      when,
+      when: when === '' ? null : when,
       price: price === '' ? null : price,
       sourceName,
       // STAMPED HERE. There is no argument through which the model could claim this find

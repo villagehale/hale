@@ -118,11 +118,63 @@ function message(err: unknown): string {
  * Matched on the pick's NAME rather than on sentence order, because "the top pick leads"
  * is about what a parent SEES, and a body that opens with a clause of preamble and then
  * names the place is fine. What is not fine is the name arriving in segment two.
+ *
+ * Matched on the name's distinctive WORDS, not the field verbatim and not its phrases.
+ * `name` is a composite assembled for a structured payload — "Kinderfun (Toddler Program),
+ * Halton Hills Gymnastics Centre", "Learn to Swim: Parent and Tot / Preschool, Town of
+ * Oakville" — and no SMS repeats one whole or even in contiguous chunks. Two real corpus
+ * answers named their find in the first six words and were refused anyway: "Halton Hills
+ * Gymnastics Centre has a Kinderfun toddler program running Sept 10", and "Oakville's
+ * Learn to Swim Preschool program looks like a good fit". Each costs three recompositions
+ * and then a deferral — Hale going quiet on a good find, which is the failure and not the
+ * guard.
+ *
+ * So the question is the one a parent would ask: can I tell WHICH find this is? Two or
+ * more of the name's identifying words landing in the first segment is a yes. Programme
+ * nouns are not identifying — a body leading with "a toddler program" has named nothing.
+ * (The eval mirrors this rule and mirrors it word for word; it replicates rather than
+ * imports, like every other gate here.)
  */
+const GENERIC_NAME_WORDS = new Set([
+  'gymnastics',
+  'program',
+  'programs',
+  'programme',
+  'lessons',
+  'class',
+  'classes',
+  'centre',
+  'center',
+  'community',
+  'parent',
+  'toddler',
+  'preschool',
+  'swimming',
+  'library',
+  'recreation',
+  'session',
+  'fall',
+  'winter',
+  'spring',
+  'summer',
+]);
+
+function identifyingWords(name: string): string[] {
+  return name
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length >= 5 && !GENERIC_NAME_WORDS.has(word));
+}
+
 export function topPickLeads(body: string, picks: readonly ActivityPick[]): boolean {
   const top = picks[0];
   if (!top) return true;
-  return body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase().includes(top.name.toLowerCase());
+  const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  const words = identifyingWords(top.name);
+  // A name with nothing distinctive in it at all ("Toddler Class") can only be matched
+  // whole — there is no word in it that would tell one find from another.
+  if (words.length === 0) return head.includes(top.name.toLowerCase());
+  return words.filter((word) => head.includes(word)).length >= Math.min(2, words.length);
 }
 
 /**
