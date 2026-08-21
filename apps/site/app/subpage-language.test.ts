@@ -154,11 +154,15 @@ describe('the pulled-up headline', () => {
 
 describe('the accent is one device, whole site', () => {
   it('paints it from a single rule, so the subpages and the landing cannot drift', () => {
-    // It was two rules — the landing's glowed, eight subpages had a plain italic —
-    // and now it is one: `.v4-accent`, colour only. See display-type.test.ts for
-    // the no-slant and no-italic-master gates.
+    // It was two rules — the landing's glowed, eight subpages had a plain italic
+    // — then one amber rule, and since 2026-08-20 not a colour at all: display
+    // copy is one colour and amber belongs to what a reader can act on. The
+    // single rule survives because the SEGMENT survives (WordsPullUp still marks
+    // one run per headline, and the tests above still pin that markup) — it just
+    // no longer diverges. See display-type.test.ts for the no-slant, no-amber and
+    // no-italic-master gates.
     expect([...CSS.matchAll(/\.v4-accent \{/g)]).toHaveLength(1);
-    expect(CSS).toContain('.v4-accent { color: var(--color-amber); }');
+    expect(CSS).toContain('.v4-accent { color: inherit; }');
   });
 });
 

@@ -1,5 +1,6 @@
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
+import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
@@ -62,9 +63,7 @@ export function SiteHeader({
       <nav className="v4-nav v4-glass" aria-label="Primary">
         <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
           <LogoMark size={28} />
-          <span className="font-serif text-[1.2rem] font-semibold leading-none text-navy" translate="no">
-            Hale
-          </span>
+          <Wordmark className="text-navy" />
         </a>
         <div className="flex items-center gap-6">
           <div className="v4-navlinks">

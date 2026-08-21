@@ -28,9 +28,13 @@ const unsetHtml = renderToStaticMarkup(
   createElement(TextEntry, { source: 'earlyon-richmondhill', smsNumber: '' }),
 );
 
-/** The QR's single path — the module grid, drawn inline. */
+/** The QR's single path — the module grid, drawn inline. Read through the QR's
+ * OWN <svg> rather than off the first <path> on the page: since the wordmark
+ * became drawn art (components/wordmark.tsx) the first path is the brand mark, so
+ * the loose read compared two identical wordmarks and called them a QR. */
 function qrPath(html: string): string {
-  return html.match(/<path d="([^"]+)"/)?.[1] ?? '';
+  const svg = /<svg[^>]*QR code[\s\S]*?<\/svg>/.exec(html)?.[0] ?? '';
+  return /<path d="([^"]+)"/.exec(svg)?.[1] ?? '';
 }
 
 describe('TextEntry (persona copy)', () => {
@@ -164,8 +168,14 @@ describe('TextEntry (number not provisioned — today)', () => {
   });
 
   it('renders no QR and no phone number to scan or dial', () => {
-    expect(unsetHtml).not.toContain('<svg');
+    // Asserted against the QR's own label, not against `<svg>` at all: the page
+    // has drawn a wordmark since 2026-08-20, so "no svg" would fail on the brand
+    // mark while saying nothing about the code.
+    expect(unsetHtml).not.toContain('QR code');
     expect(unsetHtml).not.toContain('647');
+    // Positive control: the live page DOES draw one, so the absence above is the
+    // number being unset rather than the label having been renamed.
+    expect(liveHtml).toContain('QR code — scan to text Hale');
   });
 
   it('keeps the venue token out of the page entirely — there is nothing to attach it to', () => {

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { LogoMark } from '~/components/logo-mark';
+import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator, isoToDate } from '~/i18n/server';
@@ -52,9 +53,7 @@ export function LegalLayout({
       <header className="shell legal-print-hide flex items-center justify-between py-6">
         <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
           <LogoMark size={28} />
-          <span className="font-serif text-[1.2rem] font-semibold leading-none text-spruce" translate="no">
-            Hale
-          </span>
+          <Wordmark className="text-spruce" />
         </a>
         <a href={`${APP_URL}/sign-in`} className="py-1 text-sm font-medium text-slate-green">
           {t('signIn')}
