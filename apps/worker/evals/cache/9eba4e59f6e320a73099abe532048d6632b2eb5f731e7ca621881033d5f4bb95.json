@@ -1,0 +1,29 @@
+{
+  "parsed": {
+    "routine": [
+      {
+        "day": "tuesday",
+        "title": "Library after-school reading club",
+        "category": "reading",
+        "stage_fit_rationale": "School-age children can follow a weekly structured club and this taps directly into a stated interest in books, building on their growing independent-reading stamina.",
+        "candidate_confidence": 0.65
+      },
+      {
+        "day": "thursday",
+        "title": "Community soccer or sports league",
+        "category": "sports",
+        "stage_fit_rationale": "A low-pressure recreational league suits a school-age child's developing coordination and teamwork skills, and matches their soccer interest without over-committing.",
+        "candidate_confidence": 0.6
+      },
+      {
+        "day": "saturday",
+        "title": "Neighbourhood park and playground",
+        "category": "outdoor play",
+        "stage_fit_rationale": "Unstructured weekend playground time gives a school-age child free gross-motor play and downtime to balance the two structured weekday commitments.",
+        "candidate_confidence": 0.8
+      }
+    ],
+    "rationale": "The week pairs the child's two interests (books, soccer) with one structured weekday activity each, spaced apart, plus a flexible weekend outdoor slot to keep the pace light.",
+    "notes": "Left out the Teen volunteer or maker program since its stage_fit is teenager, not child — not age-appropriate yet for this stage."
+  }
+}

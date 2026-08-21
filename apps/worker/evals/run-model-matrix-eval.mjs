@@ -50,8 +50,12 @@ const FIXTURES = join(WORKER_ROOT, 'evals', 'fixtures', 'model-matrix');
 const ROLES = ['classify', 'draft', 'review', 'coach'];
 
 // The tier each role is CURRENTLY routed to (packages/agent/src/model.ts). The
-// recommendation table compares the empirical best against this baseline.
-const CURRENT_TIER = { classify: 'sonnet5', draft: 'sonnet', review: 'sonnet5', coach: 'sonnet' };
+// recommendation table compares the empirical best against this baseline, and the
+// competence floor is asserted against THIS row — so a stale entry here silently
+// floors the wrong model. `draft` and `coach` moved to sonnet5 with the lane-matrix
+// re-tier; `sonnet` (4.6) is now only the frozen judge/comparison rung, which is why
+// it stays in MODEL_KEYS but is no longer any role's current tier.
+const CURRENT_TIER = { classify: 'sonnet5', draft: 'sonnet5', review: 'sonnet5', coach: 'sonnet5' };
 
 // --- role request shapes (replicated) ---------------------------------------
 
