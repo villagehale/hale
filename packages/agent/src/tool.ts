@@ -52,6 +52,35 @@ export interface ToolDefinition<TInput, TOutput> {
    * a 400, so the sweep test parses every example against its own schema.
    */
   inputExamples?: ReadonlyArray<Record<string, unknown>>;
+  /**
+   * This tool hands back NOTHING the answer depends on — it registers an intent
+   * (`{promised:true}`, `{offered:true}`) and the model has already finished
+   * composing when it calls one.
+   *
+   * That distinction is what tells a finished answer apart from a preamble, and the
+   * agent loop needs it because the model writes both in the same position. Before a
+   * tool it is about to READ — `lookup_week`, `find_activities` — the text is "let me
+   * check the schedule", scratch the parent must never see. Before a registering tool
+   * there is nothing left to wait for, so the text is the whole reply, and on
+   * 2026-08-21 the loop threw two of them away: a parent who asked about a named gym
+   * got "I'll check back and text you when the dates are up" with the finds deleted,
+   * and a second turn emitted whitespace and fell through to the apology template.
+   *
+   * Declaring it lets `runAgent` end on that turn — the answer is kept and a model
+   * round trip a parent was waiting on is not spent re-saying it (see runAgent).
+   *
+   * OPTIONAL, unlike `monetary` and `touchesChildContent`, and the asymmetry is
+   * deliberate: those two decide whether a safety rail runs, so an unstated flag would
+   * route around it. Here an unstated flag means "keep looping", which is the old
+   * behaviour and the conservative one — the cost of forgetting it is a wasted turn,
+   * not a skipped guard.
+   *
+   * READ BY `runAgent` ONLY. The streaming loop drops a tool-calling turn's text through
+   * `onTurnReset` by contract with its consumer, and no streaming skill lists a
+   * registering tool today — adding one there means teaching that contract this flag
+   * first, or the same answer goes missing from the app's Ask.
+   */
+  registersOnly?: boolean;
   handler: (input: TInput, ctx: ToolHandlerContext) => Promise<TOutput>;
 }
 

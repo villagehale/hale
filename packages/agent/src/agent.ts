@@ -390,6 +390,10 @@ function toolErrorMessage(err: unknown): string {
  * the assistant turn + its tool_results to `messages`. Shared by the non-streaming
  * and streaming loops so the safety rails, allowlist checks, and self-correction
  * feedback behave identically no matter the transport.
+ *
+ * Reports whether every call SUCCEEDED. A refusal fed back as a tool_result is a turn
+ * the model still owes an answer to, so `runAgent`'s registering-tool exit reads this
+ * and never ends a run on a tool that refused.
  */
 async function handleToolUses(
   args: RunAgentArgs,
@@ -398,9 +402,10 @@ async function handleToolUses(
   content: Anthropic.ContentBlock[],
   toolUses: Anthropic.ToolUseBlock[],
   hooks?: StreamingToolHooks,
-): Promise<void> {
+): Promise<{ allOk: boolean }> {
   messages.push({ role: 'assistant', content });
 
+  let allOk = true;
   const toolResults: Anthropic.ToolResultBlockParam[] = [];
   for (const block of toolUses) {
     // Unknown / not-allowlisted tool = a skill-config bug that can't happen in
@@ -442,6 +447,7 @@ async function handleToolUses(
         content: boundedToolResult(block.name, result),
       });
     } catch (err) {
+      allOk = false;
       hooks?.onToolResult?.({
         name: block.name,
         ok: false,
@@ -456,6 +462,7 @@ async function handleToolUses(
     }
   }
   messages.push({ role: 'user', content: toolResults });
+  return { allOk };
 }
 
 export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
@@ -501,7 +508,31 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
       };
     }
 
-    await handleToolUses(args, toolByName, messages, response.content, toolUses);
+    const said = textFrom(response.content);
+    const { allOk } = await handleToolUses(args, toolByName, messages, response.content, toolUses);
+
+    // THE FINISHED ANSWER, KEPT. A turn whose every call was a `registersOnly` tool has
+    // nothing left to read: the results are `{promised:true}`-shaped acknowledgements,
+    // so the text beside them is not a preamble, it is the reply. Ending here keeps it.
+    //
+    // The alternative — feed the acknowledgements back and take another turn — is what
+    // ran until 2026-08-21, and it lost the answer twice in one probe. The model treats
+    // its own text as already said and writes a CONTINUATION: once a bare "I'll text you
+    // when the dates are up" with the finds it had just described deleted, once two
+    // tokens of whitespace that `toSmsReply` rejected into the apology template. Neither
+    // is a shape prose can fix, because from the model's side nothing went wrong.
+    //
+    // Not on a refused call. A tool that threw handed back a sentence to correct, so the
+    // model owes another turn — a run that stopped there would send an answer composed
+    // around a promise that was never registered.
+    if (said !== null && allOk && toolUses.every((b) => toolByName.get(b.name)?.registersOnly)) {
+      return {
+        answer: said,
+        steps,
+        hitMaxSteps: false,
+        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+      };
+    }
   }
 
   return {

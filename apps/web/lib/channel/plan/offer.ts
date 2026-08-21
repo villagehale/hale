@@ -116,6 +116,11 @@ export function offerFullPlanTool(onOffer: (offer: PlanOffer) => void): Register
       },
     ],
     monetary: false,
+    // `{offered:true}` and the topic back — nothing the answer waits on, so the loop
+    // ends on the turn that calls this and the short advice beside it survives
+    // (tool.ts registersOnly). A refused offer still costs a turn, which is right:
+    // the model has a sentence to fix.
+    registersOnly: true,
     // A child-scoped offer names a child, so the guarded invoker's teen check runs
     // BEFORE this handler — the same refusal propose_calendar_add gets. A 13+ child's
     // routine is not a thing Hale writes a parent a plan about (rule #1/#5).

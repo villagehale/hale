@@ -124,6 +124,10 @@ export function shareReferralLinkTool(
       { forward: "It's a text line that keeps track of the family week - registrations, plans, the stuff that slips." },
     ],
     monetary: false,
+    // `{shared:true}` and nothing else — the link is assembled by the runtime after the
+    // fit, so the model has nothing to wait for and the loop ends on the message it
+    // wrote beside this call (tool.ts registersOnly).
+    registersOnly: true,
     // Names no child and reads no child row: the forwarded line is about Hale, and the
     // gate above is what keeps it that way.
     touchesChildContent: false,
