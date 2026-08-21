@@ -32,7 +32,7 @@ export function founderPing(location: string): string {
 
 /** What the family gets, in his words. */
 export function founderNote(location: string): string {
-  return `A note from Barton, the dad who built Hale: thank you for being one of our first ${location} families. If anything ever feels off, text me the word FOUNDER and it reaches me directly. - B`;
+  return `A note from Barton, the dad who built Hale: thank you for being one of our first ${location} families. If anything ever feels off, just say so right here - I read what matters. - B`;
 }
 
 /** What the founder gets back once the note has gone. */
