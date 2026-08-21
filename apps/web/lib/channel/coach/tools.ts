@@ -11,6 +11,10 @@ import { type ReferralShare, shareReferralLinkTool } from '~/lib/channel/referra
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
+import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import { findActivitiesTool, promiseActivityFollowUpTool } from '~/lib/channel/activity/tools';
+import type { ActivityFinder } from '~/lib/channel/activity/lane';
+import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 
 /**
@@ -90,6 +94,13 @@ export interface ChannelCoachToolArgs {
   /** The shared Village read (coach/tools.ts `searchVillageTool`), or null in a test
    * that is not exercising it. */
   villageTool: RegisteredTool | null;
+  /**
+   * The live web-search lane and the family facts phase 0 needs, or null in a test that
+   * is not exercising them. The two travel together on purpose: a finder with no reader
+   * could not de-identify a query, and a reader with no finder has nothing to answer —
+   * so "the web verb is wired" is one condition rather than two that can disagree.
+   */
+  activity: { reader: BoundActivityReader; finder: ActivityFinder } | null;
   /** Told about every action this turn actually minted. A draft is committed the moment
    * the tool returns, so a turn that fails LATER has still changed the family's queue —
    * and the router can only be honest about that if something counted (VIL-260). */
@@ -113,6 +124,17 @@ export interface ChannelCoachToolArgs {
    * there is no path that promises a parent a link nobody collected (rule #11).
    */
   onShare?: (share: ReferralShare) => void;
+  /**
+   * Told when the turn PROMISES to come back about an activity search. Same shape and
+   * same reason as `onOffer`: the ledger row is minted against the outbound message,
+   * which is still being composed, so the promise travels out of the turn and the router
+   * writes it once the transport has taken the reply.
+   *
+   * Absent in a test that is not exercising it; the verb is then not registered at all,
+   * so there is no path on which Hale can say "I'll come back to you" with nobody
+   * collecting the promise (rule #11) — which is precisely the 2026-08-20 defect.
+   */
+  onPromise?: (promise: ActivityPromise) => void;
   now: Date;
 }
 
@@ -364,6 +386,23 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     frameworkGuidanceTool(),
   ];
   if (args.villageTool) tools.push(args.villageTool);
+  // The live web verb. Registered only where the lane and the reader are both wired,
+  // for the same reason the offer verb waits on its collector: a search tool with no
+  // way to de-identify its query is one that must not exist at all (rule #1).
+  if (args.activity) {
+    tools.push(findActivitiesTool({ reader: args.activity.reader, finder: args.activity.finder }));
+  }
+  // The promise verb, registered only where something is COLLECTING the promise. An
+  // "I'll come back to you" whose registration goes nowhere is the exact sentence that
+  // produced this feature: a debt no sweep can see and no digest can count. The absent
+  // collector removes the VERB rather than discarding what it produces (rule #11) — and
+  // the skill may only say the sentence when it can call the verb.
+  if (args.onPromise && args.activity) {
+    const onPromise = args.onPromise;
+    tools.push(
+      promiseActivityFollowUpTool({ reader: args.activity.reader, onPromise }),
+    );
+  }
   // Registered only where something is listening. An offer whose report goes nowhere is
   // an offer the parent is told about and the ledger never hears about — a YES with
   // nothing to resolve against — so the absent collector removes the VERB rather than

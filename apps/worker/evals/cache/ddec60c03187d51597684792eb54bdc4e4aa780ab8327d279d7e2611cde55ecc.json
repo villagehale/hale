@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply carries the correct referral link (from `referralLinkAppended`), tells Sam to forward it themselves, and gives a brief description of what Hale does — all appropriate. However, the instruction says a sentence telling the parent to forward it is correct, and the link should be present. The reply does this well. One small issue: the reply is slightly longer than needed (three sentences plus the link), and the description of Hale (\"text-based family chief of staff - schedules, kids' activities, parenting questions, all over SMS\") is a bit of extra fluff that wasn't asked for, but it's not harmful. No greeting, no sign-off, no markdown, no app mention. The shape is close to correct. The slight redundancy and extra explanatory clause keep it from a 5 — it's a 4.",
+    "score": 4
+  }
+}

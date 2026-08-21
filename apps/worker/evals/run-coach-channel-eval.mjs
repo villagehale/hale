@@ -555,6 +555,64 @@ function buildFixtureTools(agent, calls, village) {
     },
   });
 
+
+  // Replicated from apps/web/lib/channel/activity/tools.ts `findActivitiesTool` — behind
+  // the `~/` alias (it imports the lane + ledger), so it cannot be imported here. The
+  // description is copied verbatim, because it IS what the model reads. The fixture
+  // returns one honest web-sourced pick with a null price, so a corpus text that
+  // reaches for the live web gets a stable, gradeable find.
+  const findActivities = agent.defineTool({
+    name: 'find_activities',
+    description:
+      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no age, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly; any other reason means the search itself could not run.",
+    inputSchema: z.object({
+      subject: z.string().min(1),
+      window: z.string().optional(),
+      childId: z.string().min(1).optional(),
+    }),
+    inputExamples: [
+      { subject: 'toddler gymnastics', window: 'this fall' },
+      { subject: 'indoor swim lessons' },
+    ],
+    handler: async () => {
+      record('find_activities');
+      return {
+        found: true,
+        source: 'web',
+        picks: [
+          {
+            name: 'Tiny Tumblers parent & tot',
+            ageFit: 'walking to 3 years',
+            sourceName: 'the venue\'s own program page',
+            when: 'Saturday mornings this fall',
+            price: null,
+          },
+        ],
+      };
+    },
+  });
+
+
+  // Replicated from apps/web/lib/channel/activity/tools.ts `promiseActivityFollowupTool`
+  // — same alias barrier. The fixture just acknowledges: the ledger row it writes in
+  // production is exactly what this eval must NOT depend on.
+  const promiseActivityFollowup = agent.defineTool({
+    name: 'promise_activity_followup',
+    description:
+      "Register that you are telling this parent you will COME BACK to them about an activity search - because the web search could not run, because what you found needs checking, or because what they want is not out yet. Call it in the same turn you say so, and only when you actually say so. `subject` is the short, de-identified phrase you will search again on ('toddler gymnastics this fall'): no name, no age, no address. A sweep owes this family an answer within a day - the finds, or an honest account of not finding them - so a promise registered here is one Hale is on the hook for. Do NOT call it when you have already answered: a find you just handed over needs no follow-up. Say the coming-back sentence yourself, in your own words, in this message.",
+    inputSchema: z.object({
+      subject: z.string().min(1),
+      childId: z.string().min(1).optional(),
+    }),
+    inputExamples: [
+      { subject: 'toddler gymnastics this fall' },
+    ],
+    handler: async (input) => {
+      record('promise_activity_followup');
+      return { registered: true, subject: input.subject, dueWithinHours: 24 };
+    },
+  });
+
   // Replicated from apps/web/lib/channel/plan/offer.ts `offerFullPlanTool` — behind the
   // `~/` alias (it imports the commitments ledger), so it cannot be imported here. The
   // description and the topic enum are copied verbatim, because those two ARE what the
@@ -635,6 +693,8 @@ function buildFixtureTools(agent, calls, village) {
     proposeCancel,
     proposeAdd,
     searchVillage,
+    findActivities,
+    promiseActivityFollowup,
     offerFullPlan,
     shareReferralLink,
   ];
@@ -962,6 +1022,12 @@ function checkFixture(fixture, reply, calls, auditLog) {
     if (!lower.includes(token.toLowerCase())) {
       failures.push(`never says ${JSON.stringify(token)}`);
     }
+  }
+  // Corpus-wide: a spoken promise must be a registered one. "I'll send/text/come
+  // back" without promise_activity_followup recorded this turn is the unbacked
+  // promise the Aug-20 incident banned. (Plan offers carry their own YES flow.)
+  if (/\bi'?ll (be back|come back|keep an eye|text you|let you know|check back)\b/.test(lower) && !toolNames.has('promise_activity_followup')) {
+    failures.push('unbacked come-back promise (no promise_activity_followup call)');
   }
   for (const token of expect.forbidden ?? []) {
     if (lower.includes(token.toLowerCase())) {

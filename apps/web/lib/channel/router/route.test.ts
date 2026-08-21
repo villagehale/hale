@@ -113,7 +113,7 @@ function fakeCoach(
     async respond(turn: ChannelTurn) {
       coach.calls += 1;
       coach.standingQuestions.push([...turn.standingQuestions]);
-      return { reply, planOffer: null };
+      return { reply, planOffer: null, activityPromise: null };
     },
   };
   return coach;
@@ -281,6 +281,7 @@ function harness(
     questions?: OpenQuestionReader;
     replyResolver?: ReplyResolver;
     recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
+    recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -311,6 +312,8 @@ function harness(
       handlers: options.handlers ?? [],
       coach: options.coach ?? fakeCoach(),
       recordPlanOffer: options.recordPlanOffer ?? (async () => ({ status: 'recorded' })),
+      recordActivityPromise:
+        options.recordActivityPromise ?? (async () => ({ status: 'recorded' as const })),
       questions: options.questions ?? fakeQuestions([]),
       replyResolver: options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
@@ -818,6 +821,7 @@ describe('an offered full plan', () => {
       async respond() {
         return {
           reply: "Most 2-year-olds wake once or twice. Want the full plan? Reply YES and I'll send it.",
+          activityPromise: null,
           planOffer: {
             topic: 'sleep',
             childId: null,
@@ -909,7 +913,7 @@ describe('slow turns', () => {
     });
     return {
       respond: () => pending,
-      release: (reply: string) => resolve({ reply, planOffer: null }),
+      release: (reply: string) => resolve({ reply, planOffer: null, activityPromise: null }),
     };
   }
 

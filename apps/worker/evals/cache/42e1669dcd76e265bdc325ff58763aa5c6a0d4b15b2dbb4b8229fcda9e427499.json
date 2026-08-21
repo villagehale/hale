@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly declines grocery ordering, which is genuinely outside Hale's capabilities (not a parenting question, not a scheduling task). However, the rules say \"HALE NEVER SENDS A PARENT TO THE APP\" and \"do not mark it down as evasion\" — declining is fine here. The issue is the second sentence, which explains Hale's own machinery (\"I handle the family schedule, activity finds, and parenting questions - anything in that space, I'm here.\"). This is a self-description of limits/capabilities rather than a useful answer, which falls under \"explains its own limits or machinery\" — a shape problem. The first sentence is the correct and complete answer; the second is unnecessary padding that describes the product to the parent. This is a minor blemish but not a severe failure — the core answer is correct and the parent is not misled or sent anywhere. It's closer to a 3-4 range: does the job but the shape is slightly off with the extra explanatory clause.",
+    "score": 3
+  }
+}

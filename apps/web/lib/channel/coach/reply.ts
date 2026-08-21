@@ -102,8 +102,14 @@ export function redactTeenNames(
  * redacted, in a product whose compliance baseline is Quebec. The property-based
  * boundary holds in both directions for every alphabet: a sibling named Léana keeps her
  * name when Léa is the teen. (party/card.ts redacts host copy with the same shape.)
+ *
+ * Exported for the activity lane, which asks the OPPOSITE question of the same matcher:
+ * this file replaces a name it finds in an outbound body, and that one REFUSES a search
+ * query it finds one in (rule #1 — a name must not cross the border at all). One boundary
+ * rule rather than two, so a household whose names this file redacts is exactly the
+ * household whose names that one will not send.
  */
-function nameAnywhere(name: string): RegExp {
+export function nameAnywhere(name: string): RegExp {
   return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(name)}(?![\\p{L}\\p{N}])`, 'giu');
 }
 

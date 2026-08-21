@@ -256,6 +256,7 @@ export const AUDIT_VERBS = [
   'village_intro_proposed',
   'coach_plan_message_sent',
   'coach_plan_check_in_sent',
+  'activity_followup_sent',
   'village_intro_card_sent',
   'village_intro_accepted',
   'village_intro_declined',
@@ -652,6 +653,15 @@ const VERBS: Record<AuditVerb, Verb> = {
   coach_plan_check_in_sent: {
     sentence: 'Hale checked in on your plan',
     family: 'note',
+  },
+  // Hale coming back on an activity search it promised to finish. 'done' rather than
+  // 'note' because the row IS the promise being discharged, and it is written whether the
+  // second look found something or nothing — coming back empty-handed and saying so is
+  // keeping the promise (channel/activity/sweep.ts), so a sentence that claimed a find
+  // would be wrong half the time.
+  activity_followup_sent: {
+    sentence: 'Hale came back to you about an activity search',
+    family: 'done',
   },
   village_intro_card_sent: { sentence: 'Hale asked you about an introduction', family: 'awaiting' },
   village_intro_accepted: { sentence: 'you said yes to an introduction', family: 'done' },

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that grocery ordering is outside Hale's capabilities. However, it then adds \"If there's something on the family schedule I can help with, I'm here.\" — this is an invitation to come back and a mild explanation of its own limits/machinery, which the scoring rules flag as shape issues. More critically, it subtly narrows what Hale can do to \"the family schedule,\" omitting that Hale can also search nearby activities, coach parenting questions, and hand over a referral link. But the core answer is correct and not harmful. The redirect clause is slightly off — it's an unnecessary invitation to chat and mildly self-absorbed in describing its own limits. A cleaner reply would have been a single plain sentence like \"Grocery ordering isn't something I can do.\" The added clause doesn't mislead but does add unnecessary shape. This lands at a 4 — does the job with a small blemish (the invitation/explanation clause).",
+    "score": 4
+  }
+}

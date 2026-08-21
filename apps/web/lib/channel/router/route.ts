@@ -9,6 +9,7 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ApologyFallback, TurnApology } from './apology';
 import { type ChannelCoachRuntime, type ChannelTurn, draftsFromFailure } from './coach-runtime';
@@ -224,6 +225,22 @@ export interface ChannelRouterDeps {
     input: {
       familyId: string;
       offer: PlanOffer;
+      channelMessageId: string | null;
+      now: Date;
+    },
+  ): Promise<unknown>;
+  /**
+   * Write down the "I'll come back to you" the coach just said, against the message that
+   * carried it. Non-nullable for the sharper version of the reason above: a promise a
+   * parent reads with no ledger row behind it is a debt no sweep can keep and no digest
+   * can count — the 2026-08-20 defect exactly — so "no writer wired" is not a state this
+   * router has (rule #11).
+   */
+  recordActivityPromise(
+    database: Database,
+    input: {
+      familyId: string;
+      promise: ActivityPromise;
       channelMessageId: string | null;
       now: Date;
     },
@@ -667,7 +684,7 @@ async function runAgentTurn(
   },
 ): Promise<RouterResult> {
   try {
-    const { reply, planOffer } = await deps.coach.respond({
+    const { reply, planOffer, activityPromise } = await deps.coach.respond({
       ...args.turn,
       standingQuestions: args.questions.map((question) => question.subject),
     });
@@ -681,6 +698,18 @@ async function runAgentTurn(
       await deps.recordPlanOffer(deps.database, {
         familyId: args.turn.familyId,
         offer: planOffer,
+        channelMessageId,
+        now: args.turn.now,
+      });
+    }
+    // The same send-time discipline for the same reason, and the writer never throws for
+    // the same reason too: the parent already has the message, so an exception here would
+    // buy a carrier retry and a duplicate reply. A turn that composed "I'll come back to
+    // you" and then failed to deliver it promised nobody anything.
+    if (activityPromise) {
+      await deps.recordActivityPromise(deps.database, {
+        familyId: args.turn.familyId,
+        promise: activityPromise,
         channelMessageId,
         now: args.turn.now,
       });

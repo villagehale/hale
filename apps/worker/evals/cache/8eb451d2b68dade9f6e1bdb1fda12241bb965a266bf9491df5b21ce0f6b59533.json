@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for something for the kids to do Saturday. Hale has a standingPlace (High Park) it should name, and stillBeingChecked is 2 (two activity finds still being verified). The reply says \"I'll be back with those two once they're confirmed\" — referencing the two still-being-checked finds — which is the correct forward-looking line when nothing has checked out yet. However, the reply completely ignores the standingPlace (High Park), which is a verified free drop-in venue Hale should have named as a useful immediate answer. It also fails to mention that Saturday already has Soccer practice at 10:00am at Cedarvale Park, which is relevant context for planning the day. The reply does correctly avoid handing over unconfirmed finds, and does not send the parent to the app. But missing High Park (the standing place) is a meaningful gap — it's the difference between an empty answer and a useful one per the rules. The reply is also extremely short and vague without that anchor. So it does the right thing with the unconfirmed items but drops the ball on the standing place.",
+    "score": 2
+  }
+}

@@ -451,7 +451,10 @@ export const COACH_CHANNEL_FIXTURES = [
       // dead end. The skill asks for contractions, so this is the form it comes in.
       // Plus the standing venue, named exactly as the dataset has it — a parent who goes
       // looking for a paraphrase will not find it.
-      mustMention: ["i'll", 'high park'],
+      // The carry-forward moved from a literal token to a LEDGER-BACKED tool call
+      // (promise_activity_followup) in the activity-lane branch; the corpus-wide
+      // unbacked-promise guard in the harness now owns the "i'll" semantics.
+      mustMention: ['high park'],
       // The hedges, plus the two names from the DEFAULT village — recalling a candidate
       // this turn was not handed is the same invention as making one up. An INVENTED
       // opening time is caught separately and for free: the standing option carries no

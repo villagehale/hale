@@ -22,6 +22,11 @@ import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
+import {
+  defaultActivityPromisePorts,
+  loadOpenActivityPromise,
+  recordActivityPromise,
+} from '~/lib/channel/activity/commitment';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
@@ -423,6 +428,8 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // runtime because the row is minted against the SENT message, and the router is the
     // only thing that knows which row that was.
     recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
+    recordActivityPromise: (db, input) =>
+      recordActivityPromise(db, input, defaultActivityPromisePorts()),
     limiter: new PostgresRateLimiter(database),
     now: () => new Date(),
     log: console,
@@ -490,6 +497,13 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     checkupOffer: async (database, familyId, now) => {
       const offer = await loadOpenCheckupOffer(database, familyId, now);
       return offer && { id: offer.id, summary: offer.summary };
+    },
+    // The coach's "I'll come back to you". NO TTL, unlike the two offers above: a promise
+    // does not stop being owed by getting late (commitment.ts), so it is listed until the
+    // sweep keeps it or a cancellation voids it.
+    activityPromise: async (database, familyId) => {
+      const promise = await loadOpenActivityPromise(database, familyId);
+      return promise && { id: promise.id, summary: promise.summary };
     },
   });
 }

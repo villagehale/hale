@@ -26,6 +26,7 @@ describe('voice-turn tools ↔ skill allowlist (live path)', () => {
       draftPort: {} as never,
       villageTool: searchVillageTool({} as never),
       onDraft: () => {},
+      activity: null,
       now: new Date(),
     }).map((tool) => tool.name);
 
@@ -72,10 +73,36 @@ describe('voice-turn tools ↔ skill allowlist (live path)', () => {
       villageTool: null,
       onOffer: () => {},
       onShare: () => {},
+      activity: null,
       now: new Date(),
     }).map((tool) => tool.name);
     expect(withCollectors).toContain('offer_full_plan');
     expect(withCollectors).toContain('share_referral_link');
+  });
+
+  it('carries neither web verb: a live call cannot wait on a search', async () => {
+    const skill = await loadCronSkill('voice-turn');
+
+    // A `web_search` turn is seconds of silence with a parent holding the line, and the
+    // promise verb has nothing to hand back on a call. relay-deps.ts passes
+    // `activity: null`, so neither verb is built at all.
+    expect(registered()).not.toContain('find_activities');
+    expect(registered()).not.toContain('promise_activity_followup');
+    expect(skill.meta.tools).not.toContain('find_activities');
+    expect(skill.meta.tools).not.toContain('promise_activity_followup');
+    // The positive control: the same builder DOES register both the moment the lane is
+    // wired, so the absence above is a wiring decision rather than a missing tool.
+    const withActivity = buildChannelCoachTools({
+      familyId: 'f',
+      reader: {} as never,
+      draftPort: {} as never,
+      villageTool: null,
+      activity: { reader: {} as never, finder: {} as never },
+      onPromise: () => {},
+      now: new Date(),
+    }).map((tool) => tool.name);
+    expect(withActivity).toContain('find_activities');
+    expect(withActivity).toContain('promise_activity_followup');
   });
 
   it('still routes a spoken turn through the speak tier', async () => {

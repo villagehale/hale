@@ -179,6 +179,68 @@ describe('scrubResidualPii', () => {
     expect(scrubResidualPii('she just turned 2 years old')).toBe('she just turned [redacted]');
   });
 
+  /**
+   * A STREET ADDRESS AND A SCHOOL NAME — the two location classes the doc block promised
+   * and the patterns did not hold. A postal code was already caught, which made the gap
+   * easy to miss: "L7G 4S6" fell and "42 Wallace St" did not, and the second one is the
+   * more precise of the two.
+   */
+  it('redacts a street address in the forms a parent actually types', () => {
+    expect(scrubResidualPii('we are at 42 Wallace St')).toBe('we are at [redacted]');
+    expect(scrubResidualPii('121 Maple Ave, Oakville')).toBe('[redacted], Oakville');
+    expect(scrubResidualPii('12 Guelph Street L7G 4A1')).toBe('[redacted] [redacted]');
+    expect(scrubResidualPii('87 Bayview Crescent')).toBe('[redacted]');
+    expect(scrubResidualPii('9 Sunset Boulevard')).toBe('[redacted]');
+    // The ambiguous suffixes ("Drive", "Court", "Way") need a capitalized street name in
+    // front of them — see RESIDUAL_PII_PATTERNS for why that tier is narrower.
+    expect(scrubResidualPii('16 Bayview Drive')).toBe('[redacted]');
+    expect(scrubResidualPii('3 Kingsway Court')).toBe('[redacted]');
+  });
+
+  it('redacts a named school, which says where a child is five days a week', () => {
+    expect(scrubResidualPii('at St. Brigid Catholic School')).toBe('at [redacted]');
+    expect(scrubResidualPii('goes to Harrison Public School')).toBe('goes to [redacted]');
+    expect(scrubResidualPii('Georgetown District High School')).toBe('[redacted]');
+    expect(scrubResidualPii("l'École élémentaire Sainte-Marie")).toBe("l'[redacted]");
+  });
+
+  /**
+   * The five forms that CROSSED THE BORDER while the four formal suffixes were the whole
+   * rule. Each one names the building a child is in five days a week as precisely as
+   * "Harrison Public School" does, and a parent writes them far more often than the formal
+   * register — nobody types "Separate School" into a text message.
+   */
+  it('redacts the school forms a parent actually types, not just the formal register', () => {
+    // A lowercase head-noun, and a name carrying a lowercase connector.
+    expect(scrubResidualPii('at St. Catherine of Alexandria school')).toBe('at [redacted]');
+    // Suffix-less: the institution word IS the tail.
+    expect(scrubResidualPii('Holy Cross Elementary')).toBe('[redacted]');
+    expect(scrubResidualPii('starts at Pineview Montessori')).toBe('starts at [redacted]');
+    expect(scrubResidualPii('Georgetown Christian Academy')).toBe('[redacted]');
+    // French, with no qualifier between "École" and the name.
+    expect(scrubResidualPii('inscrit à École Sainte-Marie')).toBe('inscrit à [redacted]');
+  });
+
+  it('never eats an address-shaped duration or an activity word (positive controls)', () => {
+    // The ambiguous-suffix tier exists for exactly these: they are not addresses.
+    expect(scrubResidualPii('a 3 hour drive each way')).toBe('a 3 hour drive each way');
+    expect(scrubResidualPii('on the court 3 days a week')).toBe('on the court 3 days a week');
+    // "school" is a word before it is a place: something has to NAME an institution in
+    // front of it. A lowercase word does not, and neither does nothing at all.
+    expect(scrubResidualPii('after school program')).toBe('after school program');
+    expect(scrubResidualPii('preschool swim lessons')).toBe('preschool swim lessons');
+    expect(scrubResidualPii('school year')).toBe('school year');
+    expect(scrubResidualPii('the old school gym')).toBe('the old school gym');
+    // A sentence boundary is not a school name: the capitalized word that ends one
+    // sentence must not be read as the first word of the next one's institution.
+    expect(scrubResidualPii('We tried Milton. School registration opens Monday.')).toBe(
+      'We tried Milton. School registration opens Monday.',
+    );
+    // A venue is not a school, and the activity lane's whole job is naming venues.
+    expect(scrubResidualPii('Cartwheel Gym parent and tot')).toBe('Cartwheel Gym parent and tot');
+    expect(scrubResidualPii('école de danse')).toBe('école de danse');
+  });
+
   it('never eats a clinical duration, temperature, or count (positive controls)', () => {
     // "weeks" is redacted ONLY as an age ("6 weeks old"); a duration keeps it.
     expect(scrubResidualPii('symptoms for 2 weeks')).toBe('symptoms for 2 weeks');

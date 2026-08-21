@@ -55,7 +55,8 @@ export type ProactiveSendKind =
   | 'registration_sequence'
   | 'village_intro'
   | 'followup'
-  | 'plan_check_in';
+  | 'plan_check_in'
+  | 'activity_followup';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -133,6 +134,14 @@ export const PROACTIVE_CAP: Record<
   // not get four unprompted follow-ups. Two is the rail: enough that two live plans can
   // both be followed up, few enough that a bug in the sweep stops after a nuisance.
   plan_check_in: { max: 2, windowHours: 24 * 7 },
+  // Hale keeping a promise it made in a coach turn. The BOUND IS THE LEDGER, not a
+  // counter: the partial unique index on agent_commitments permits one open
+  // activity_followup per family, so a household can owe at most one of these at a
+  // time and the sweep cannot produce a second until the first is discharged. `null`
+  // says that out loud, the way the registration ladder's does — and a counter here
+  // would be strictly worse than the index, because the one thing it could do is drop
+  // a promise the family is owed on the floor.
+  activity_followup: null,
 };
 
 /**
@@ -161,6 +170,9 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // also the message most likely to be composed at a bad hour, since a plan sent at 9pm
   // comes due at 9pm — so the quiet-hours floor is doing real work here.
   plan_check_in: false,
+  // A find is not worth less at 08:00 than at 22:00, and the parent asked about
+  // September. Nothing on this path is time-critical, so the quiet-hours floor stands.
+  activity_followup: false,
 };
 
 /**
@@ -175,13 +187,19 @@ export const PROACTIVE_QUIET_HOURS = { start: '21:00', end: '08:00' } as const;
  * its own per kind, so one class's volume can never consume another's budget. */
 const PROACTIVE_CATEGORY: Record<
   ProactiveSendKind,
-  'nudge' | 'registration_sequence' | 'village_intro' | 'followup' | 'plan_check_in'
+  | 'nudge'
+  | 'registration_sequence'
+  | 'village_intro'
+  | 'followup'
+  | 'plan_check_in'
+  | 'activity_followup'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
   village_intro: 'village_intro',
   followup: 'followup',
   plan_check_in: 'plan_check_in',
+  activity_followup: 'activity_followup',
 };
 
 export interface OutboundGatePorts {

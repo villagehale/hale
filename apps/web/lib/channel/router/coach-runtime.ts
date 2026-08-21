@@ -1,3 +1,4 @@
+import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { capabilityReply } from './copy';
 
@@ -57,17 +58,23 @@ export interface ChannelTurn {
 }
 
 /**
- * What one turn produced: the reply, and — when the coach offered a full coaching plan
- * — the offer the router must write down once the reply has actually been sent.
+ * What one turn produced: the reply, plus anything the turn PROMISED that the router
+ * must write down once the reply has actually been sent.
  *
- * The offer rides OUT rather than being written by the tool because the ledger row is
+ * Both promises ride OUT rather than being written by their tools because a ledger row is
  * minted against the outbound message that carried it, and that message does not exist
- * until the router sends it. Null is the ordinary case and means exactly one thing:
- * this turn promised nothing.
+ * until the router sends it. Null is the ordinary case for each and means exactly one
+ * thing: this turn promised that.
  */
 export interface ChannelTurnResult {
   reply: string;
   planOffer: PlanOffer | null;
+  /**
+   * The "I'll come back to you" this turn said out loud, if it said one. The sweep owes
+   * this family an answer within the day — see channel/activity/commitment.ts for what a
+   * promise with no row behind it cost on 2026-08-20.
+   */
+  activityPromise: ActivityPromise | null;
 }
 
 export interface ChannelCoachRuntime {
@@ -112,7 +119,7 @@ export function draftsFromFailure(err: unknown): readonly string[] {
 export function capabilityStubRuntime(): ChannelCoachRuntime {
   return {
     async respond() {
-      return { reply: capabilityReply(), planOffer: null };
+      return { reply: capabilityReply(), planOffer: null, activityPromise: null };
     },
   };
 }

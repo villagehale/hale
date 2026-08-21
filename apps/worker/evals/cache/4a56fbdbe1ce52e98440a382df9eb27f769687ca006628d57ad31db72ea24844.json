@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the one swim lesson on Thursday (5:15pm, East pool), drafts the move to 17h45, names the event and location, and ends with the required YES confirmation prompt. The text matches exactly one event so no clarifying question was needed, and none was asked. The reply is in the parent's language (French), concise, and follows the contract shape perfectly.",
+    "score": 5
+  }
+}

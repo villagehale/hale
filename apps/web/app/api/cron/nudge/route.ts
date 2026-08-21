@@ -4,6 +4,7 @@ import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { requireCronSecret } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
+import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
 import { runVillageIntroSweep } from '~/lib/village/intros/run';
 
@@ -34,6 +35,14 @@ export const maxDuration = 300;
  * already committed its own work before this starts, so an intro failure cannot undo a
  * nudge, and each family-level error inside either sweep is caught by that sweep.
  *
+ * THE ACTIVITY FOLLOW-UP SWEEP rides here too, and runs after all of them for one
+ * reason the others do not have: it is the only stage that DISCHARGES A DEBT rather than
+ * choosing to interrupt. Running it last means a household that has just been handed a
+ * nudge, an intro card or a check-in is over its budget by the time this asks — and being
+ * held costs nothing here, because the promise stays open and comes back on the next tick
+ * rather than being dropped. It shares F14's dark-launch flag: this message only exists
+ * for a family already texting Hale.
+ *
  * THE FOLLOW-UP SWEEP rides here for the same reason and runs LAST, which is also its
  * priority. It is the only stage that asks about something already over, so it is the
  * one whose deferral costs a family nothing — and running after the others means a
@@ -49,8 +58,9 @@ export async function GET(req: Request) {
     const villageIntros = await runVillageIntroSweep(db());
     const followups = await runFollowupSweep(db());
     const planCheckIns = await runPlanCheckInSweep(db());
+    const activityFollowUps = await runActivityFollowUpSweep(db());
     return NextResponse.json(
-      { ok: true, ...summary, villageIntros, followups, planCheckIns },
+      { ok: true, ...summary, villageIntros, followups, planCheckIns, activityFollowUps },
       { status: 200 },
     );
   } finally {

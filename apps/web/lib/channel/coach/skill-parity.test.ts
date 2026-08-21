@@ -21,12 +21,15 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
       reader: {} as never,
       draftPort: {} as never,
       villageTool: searchVillageTool({} as never),
-      // Production always passes both collectors (see productionChannelCoach), and the
-      // offer and referral verbs are only registered when something is listening for
-      // them — so parity has to be checked against the set the live path actually
-      // builds.
+      // Production always wires the web lane and all three collectors (see
+      // productionChannelCoach), and every conditional verb — the offer, the referral,
+      // the web search, the promise — is only registered when its dependency is present.
+      // So parity has to be checked against the set the LIVE path actually builds, not
+      // against the smallest one this function can produce.
+      activity: { reader: {} as never, finder: {} as never },
       onOffer: () => {},
       onShare: () => {},
+      onPromise: () => {},
       now: new Date(),
     }).map((t) => t.name);
 

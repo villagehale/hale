@@ -59,7 +59,14 @@ export type CommitmentCancelReason =
   | 'plan_age_gated'
   /** The same supersede, for the health checkpoint's booking offer: the nudge that just
    * went out is the offer now, and the one before it is no longer what a yes answers. */
-  | 'checkup_offer_superseded';
+  | 'checkup_offer_superseded'
+  /**
+   * The same supersede again, for the coach's activity promise. A parent who asks about
+   * swimming and then about gymnastics is owed ONE follow-up: the newest promise is the
+   * one Hale just made, and two open rows would be two sweeps texting the same family in
+   * the same hour about two halves of one conversation.
+   */
+  | 'activity_promise_superseded';
 
 /**
  * What became of a promise. `already_open` is deliberately NOT folded into either of the
@@ -295,6 +302,10 @@ export interface DueCommitment {
    * it: the parent who was texted is the one owed the follow-up, and a household read
    * would text a co-parent about a plan they never asked for. */
   createdFrom: string;
+  /** WHOSE promise, when one child was named. The activity sweep grounds its re-run
+   * search on this child's stage, so a household promise and a promise about the
+   * three-year-old are two different searches. Null for a household one. */
+  subjectChildId: string | null;
   dueAt: Date;
 }
 
@@ -318,6 +329,7 @@ export async function loadDueCommitments(
       topic: schema.agentCommitments.topic,
       summary: schema.agentCommitments.summary,
       createdFrom: schema.agentCommitments.createdFrom,
+      subjectChildId: schema.agentCommitments.subjectChildId,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)

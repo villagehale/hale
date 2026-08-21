@@ -349,6 +349,12 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // COACHING a family does, so counting it as 'nudge' would let a curious parent's
   // questions silently spend the weekly budget for the thing Hale noticed on its own.
   'plan_check_in',
+  // The kept activity promise — Hale coming back with the finds it said it would find,
+  // or with an honest account of not finding them. Its own category and not 'followup':
+  // that budget governs a check-in Hale CHOSE to send about something already over,
+  // while this one discharges a debt the family is OWED, and a promise must not be lost
+  // to a rail built for a nicety.
+  'activity_followup',
 ]);
 
 /**
@@ -427,4 +433,12 @@ export const agentCommitmentKindEnum = pgEnum('agent_commitment_kind', [
   // the same reason: an offer with no row behind it is a question the reply resolver
   // cannot see, so a parent's acceptance lands on whatever else happens to be standing.
   'checkup_offer',
+  // "I'll keep looking and come back to you." — the coach's promise to finish an
+  // activity search it could not finish inside the turn. Unlike the two offers above it
+  // asks for NOTHING: there is no yes to give it, and the debt exists whether or not the
+  // parent says another word. It is here because a promise nobody records is a promise
+  // no sweep can keep and no digest can count, which is exactly what "I'll come back to
+  // you on it" was on 2026-08-20. Closed by the activity follow-up sweep, which owes the
+  // family either the finds or an honest "I looked and could not find it".
+  'activity_followup',
 ]);

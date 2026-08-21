@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly provides the referral link (which is appended by the runtime and present in knows.referralLinkAppended), tells the parent to forward it themselves, and gives a brief description of what Hale does. The link matches exactly. The reply does the job: it answers the question, includes the link, and tells Sam to forward it. It's a touch long with the explanatory sentence about what Hale is, but that's a minor extra detail rather than a real problem. No greeting, no sign-off, no markdown. Overall this is close to a 5 with a small blemish for the slightly redundant description clause.",
+    "score": 4
+  }
+}

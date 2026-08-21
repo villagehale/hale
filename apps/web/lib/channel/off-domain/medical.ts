@@ -445,9 +445,11 @@ function researchText(content: Anthropic.ContentBlock[]): string {
  * replacement for it. Phase 0 is a single model call, and the fields it returns ride to
  * Anthropic's US `web_search`: a cross-border disclosure of child health data (rule #1 /
  * PIPEDA / Law 25). So before anything crosses the border we mechanically strip the residual
- * identifier classes a regex CAN catch with near-zero false positives. Names, addresses and
- * school names are free-form and stay the sanitizer's job — this is the machine-checkable
- * floor beneath it, not the whole de-id.
+ * identifier classes a regex CAN catch with near-zero false positives. A NAME is free-form
+ * and stays the sanitizer's job; a street address and a named school are not free-form
+ * enough to leave there, so both have a floor here (see the patterns for where each one's
+ * precision line is drawn). This is the machine-checkable floor beneath the sanitizer, not
+ * the whole de-id.
  *
  * Deliberately tuned NOT to touch the clinical values that make a search useful: a
  * temperature (39.5), a small count (vomited 4 times), a duration (3 days) have too few
@@ -464,6 +466,35 @@ const RESIDUAL_PII_PATTERNS: RegExp[] = [
   /\d{7,}/g, // long digit runs (health-card / account numbers)
   /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, // NANP phone
   /\b[a-z]\d[a-z]\s?\d[a-z]\d\b/gi, // Canadian postal code
+  // WHERE THEY LIVE, in the two forms a regex can hold with near-zero false positives.
+  // A postal code was already here and a street was not, which is backwards: "L7G 4S6"
+  // names a block and "42 Wallace St" names a door.
+  /(?<![\p{L}\p{N}])\d{1,5}[a-z]?\s+(?:[\p{L}\p{N}'’.-]+\s+){0,3}(?:st|street|ave|avenue|rd|road|blvd|boulevard|cres|crescent|hwy|highway|pkwy|parkway|sideroad|concession)\b\.?/giu, // street address, unambiguous suffix
+  // The same shape with suffixes that are also ORDINARY WORDS ("a 3 hour drive", "on the
+  // court 3 days a week"), so here the street name must be capitalized. Narrower on
+  // purpose: over-redaction costs the search a useful word, and this tier is the one that
+  // would do it on a sentence that holds no address at all.
+  /(?<![\p{L}\p{N}])\d{1,5}[a-z]?\s+(?:\p{Lu}[\p{L}'’.-]*\s+){0,2}\p{Lu}[\p{L}'’.-]*\s+(?:Dr|Drive|Ct|Court|Ln|Lane|Way|Pl|Place|Terrace|Trail|Cir|Circle|Sq|Square)\b\.?/gu, // street address, ambiguous suffix
+  // A NAMED SCHOOL - where a child is five days a week. What has to be present is a
+  // proper NAME in front of the institution word, because "school" on its own is an
+  // activity word before it is a place ("after school program", "preschool swim",
+  // "school year", "old school"). The name is what those all lack, and it is a cheaper
+  // discriminator than the formal register: nobody texts "Separate School", and the four
+  // formal suffixes let "St. Catherine of Alexandria school", "Holy Cross Elementary",
+  // "Pineview Montessori" and "Georgetown Christian Academy" cross intact.
+  /(?<![\p{L}\p{N}])(?:\p{Lu}[\p{L}'’.-]*\s+(?:(?:of|de|du|des|la|le|the|and|et)\s+)?){1,4}(?:P\.S\.|(?:Public|Catholic|Separate|Elementary|Middle|Secondary|Junior High)\s+[Ss]chool|Junior High|High [Ss]chool)\b/gu, // named school, formal suffix (EN)
+  // The institution word standing alone, which is how a school is named far more often
+  // than with a suffix. Costs a venue that ends in one of these words ("Cartwheel
+  // Academy") - the deliberate direction to err in, since over-redaction loses a search
+  // term and under-redaction ships the building a child is in five days a week.
+  /(?<![\p{L}\p{N}])(?:\p{Lu}[\p{L}'’.-]*\s+(?:(?:of|de|du|des|la|le|the|and|et)\s+)?){1,4}(?:Elementary|Montessori|Academy|Prep|Preparatory|Collegiate)\b/gu, // named school, institution word as the tail (EN)
+  // A bare "<Name> school". TWO capitalized name-words are required, and that minimum is
+  // what holds the line: one word is a phrase ("Swim school"), and it is also what stops
+  // a sentence boundary reading as a name ("We tried Milton. School registration opens").
+  /(?<![\p{L}\p{N}])(?:\p{Lu}[\p{L}'’.-]*\s+(?:(?:of|de|du|des|la|le|the|and|et)\s+)?){1,4}\p{Lu}[\p{L}'’.-]*\s+[Ss]chool\b/gu, // named school, bare head-noun (EN)
+  // FR. A qualifier OR a capitalized name may follow "école"; "école de danse" is a venue
+  // and survives, because "de" is neither.
+  /(?<![\p{L}\p{N}])[ÉéEe]cole\s+(?:[ÉéEe]l[ée]mentaire|[Pp]rimaire|[Ss]econdaire|[Ii]nterm[ée]diaire|\p{Lu}[\p{L}'’.-]*)(?:\s+\p{Lu}[\p{L}'’.-]*){0,3}/gu, // named school (FR)
   /\b(?:19|20)\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/g, // DOB YYYY-MM-DD / YYYY/MM/DD
   /\b\d{1,2}\/\d{1,2}\/(?:19|20)\d{2}\b/g, // DOB M/D/YYYY or D/M/YYYY
   /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+(?:19|20)\d{2}\b/gi, // DOB "Month D, YYYY"
