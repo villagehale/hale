@@ -5,6 +5,7 @@ import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ActivityQuery } from './deidentify';
+import { namesAVenue, readEvidence } from './evidence';
 
 /**
  * THE WEB-GROUNDED ACTIVITY LANE — what a parent gets when they ask what their child can
@@ -99,6 +100,29 @@ export const MAX_SEARCHES = 3;
  * reader can find it.
  */
 export const MAX_ACTIVITY_CALLS_PER_TURN = 2;
+
+/**
+ * How many pages ONE inline call may OPEN — and it is zero unless the parent named a
+ * place.
+ *
+ * WHY IT EXISTS. 2026-08-21: a parent asked about a named gym and Hale answered "no dates
+ * or price up yet". Their fall block — the weekdays, the class times, the term dates and
+ * the fees — was on their own schedule page. A search snippet is two hundred characters a
+ * search engine chose; the answer was in a table three clicks in. `web_search` alone can
+ * never reach it, so a lane holding only `web_search` could only ever have said what it
+ * said.
+ *
+ * WHY IT IS CONDITIONAL. The budget is paid in seconds a parent is watching: a live probe
+ * of the same turn took 52 seconds with fetch against roughly 30 without, and the client
+ * this lane runs on times out at 50 (ACTIVITY_CLIENT_OPTIONS). So it is spent only where
+ * it can pay — {@link namesAVenue}, deterministically, because a question about "toddler
+ * gymnastics" has no one site to open and a question about Cartwheels has exactly one.
+ *
+ * WHY THREE. The landing page plus the two that actually carry the answer — the schedule
+ * and the registration or fees page. That is the path both benchmark defects needed, and
+ * a fourth does not fit the turn.
+ */
+export const MAX_INLINE_FETCHES = 3;
 
 const GROUND_MAX_TOKENS = 4096;
 /** Generous on purpose: `forceToolJson` throws on a max_tokens cutoff, and a pick cut in
@@ -199,7 +223,11 @@ function decodePicks(value: unknown): unknown {
     return value;
   }
   if (Array.isArray(parsed)) return parsed;
-  if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { picks?: unknown }).picks)) {
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    Array.isArray((parsed as { picks?: unknown }).picks)
+  ) {
     return (parsed as { picks: unknown }).picks;
   }
   return value;
@@ -276,47 +304,34 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown';
 }
 
-/**
- * How many real web-search results the model produced. An error result is not a result, so
- * a search that ran and failed counts as zero — which is the point: "did the work, found
- * nothing" is not "was grounded" (rule #11). Mirrors medical.ts and web-grounded.ts.
- */
-function countSearchResults(content: Anthropic.ContentBlock[]): number {
-  let total = 0;
-  for (const block of content) {
-    if (block.type !== 'web_search_tool_result') continue;
-    if (!Array.isArray(block.content)) continue;
-    total += block.content.length;
-  }
-  return total;
-}
-
-/**
- * What the grounding turn WROTE DOWN — wherever it put it.
- *
- * Prose is the usual place. But the turn is handed one tool, `web_search`, while its own
- * instructions describe a second one, and a live probe caught it doing what that invites:
- * asked for Halton Hills drop-ins it searched three times, wrote no prose at all, and
- * called `activity_picks` — a tool it was never given — with two real EarlyON finds in the
- * arguments. Reading only text blocks threw that whole answer away as `empty_research` and
- * told the parent Hale could not look, which is the shrug in its purest form: the answer
- * existed, in hand, in a block nobody read.
- *
- * So a `tool_use` block counts as research. It is the same collapse {@link decodePicks}
- * makes one stage later — the model has two ways to hand back the same thing, and the
- * boundary that reads it knows about both.
- */
-function researchText(content: Anthropic.ContentBlock[]): string {
-  const parts: string[] = [];
-  for (const block of content) {
-    if (block.type === 'text') parts.push(block.text);
-    else if (block.type === 'tool_use') parts.push(JSON.stringify(block.input));
-  }
-  return parts.join('\n');
-}
-
 function field(value: unknown): string {
   return typeof value === 'string' ? plainText(value) : '';
+}
+
+/**
+ * The tools the grounding turn is handed.
+ *
+ * `web_search` always; `web_fetch` only when the subject names a place — see
+ * {@link MAX_INLINE_FETCHES} for what that budget costs and why it is not spent on a
+ * general question. A turn with no venue to open gets the exact request shape it always
+ * had, which is also what keeps the lane's eval corpus replayable.
+ *
+ * The `web_fetch` entry is cast because the pinned SDK (0.41.0) predates the tool and has
+ * no member for it in `ToolUnion`; the wire shape is live-probed against `claude-sonnet-5`
+ * (no beta header required) and the SDK serialises the tool list as given.
+ */
+function groundTools(query: ActivityQuery): Anthropic.ToolUnion[] {
+  const tools: Anthropic.ToolUnion[] = [
+    { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES },
+  ];
+  if (namesAVenue(query.subject)) {
+    tools.push({
+      name: 'web_fetch',
+      type: 'web_fetch_20260209',
+      max_uses: MAX_INLINE_FETCHES,
+    } as unknown as Anthropic.ToolUnion);
+  }
+  return tools;
 }
 
 /**
@@ -383,13 +398,14 @@ async function runActivityOnce(
       model: pickModel(skill.meta.task),
       max_tokens: GROUND_MAX_TOKENS,
       system: skill.instructions,
-      tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
+      tools: groundTools(query),
       messages: [{ role: 'user', content: groundUserMessage(query) }],
     });
   } catch (err) {
     throw new ActivityUnresolvable('ground_failed', message(err));
   }
-  if (countSearchResults(research.content) === 0) throw new ActivityUnresolvable('not_grounded');
+  const evidence = readEvidence(research.content);
+  if (evidence.searchResults === 0) throw new ActivityUnresolvable('not_grounded');
   // SEARCH RESULTS ARE NOT RESEARCH. A grounding turn can spend its whole token budget on
   // the results themselves and never write the summary — 24 real results and an empty
   // notes string is a shape the corpus actually produced. The result count is satisfied by
@@ -397,8 +413,18 @@ async function runActivityOnce(
   // and shrugging. Both are the failure this lane exists to end, so an empty research body
   // is the SAME outcome as no results at all: not grounded, retried once, then said
   // honestly. The detail is what separates the two causes in the log (rule #11).
-  const researchNotes = researchText(research.content).trim();
+  const researchNotes = evidence.notes;
   if (researchNotes === '') throw new ActivityUnresolvable('not_grounded', 'empty_research');
+  if (evidence.pagesRefused > 0 && evidence.pagesRead === 0) {
+    // The turn tried to open the venue's pages and was turned away every time, so any gap
+    // in what follows is UNREAD rather than unposted. It is not a failure — the snippets
+    // still carry real finds and the parent still gets them — but it is the condition the
+    // sweep exists to fix, so it is logged rather than lost (rule #11).
+    console.error(
+      { pagesRefused: evidence.pagesRefused },
+      'activity lane: named a venue and opened none of its pages - gaps here are unread',
+    );
+  }
 
   // Phase 2 — COMPOSE (blind: the de-identified query and the research, never the message).
   let composed: z.infer<typeof composeSchema>;

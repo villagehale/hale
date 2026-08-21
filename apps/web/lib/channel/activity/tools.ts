@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
 import { deidentifyActivityQuery, refusalSentence } from './deidentify';
-import { MAX_ACTIVITY_CALLS_PER_TURN, type ActivityFinder } from './lane';
+import { type ActivityFinder, MAX_ACTIVITY_CALLS_PER_TURN } from './lane';
 import type { BoundActivityReader } from './reader';
 
 /**
@@ -55,7 +55,7 @@ export interface ActivityToolArgs {
 /** What a search came back with, in the shape the model reads. `found: false` carries the
  * REASON, because "there is nothing running" and "I could not look just now" are two
  * different true sentences and the skill says a different one for each (rule #11). */
-export function findActivitiesTool(args: Omit<ActivityToolArgs, 'onPromise'>): RegisteredTool {
+export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
   let callsThisTurn = 0;
 
   return defineTool({
@@ -113,6 +113,26 @@ export function findActivitiesTool(args: Omit<ActivityToolArgs, 'onPromise'>): R
 
       const result = await args.finder.find(deidentified.query);
       if (!result.found) return { found: false as const, reason: result.reason };
+      // A REAL FIND WITH A HOLE IN IT REGISTERS ITS OWN FOLLOW-UP.
+      //
+      // The inline turn has thirty seconds and a parent watching, so it reads what a
+      // search engine chose to show it — and a great many finds come back with the day or
+      // the money missing because the snippet never carried them. Before this, the only
+      // way that gap ever closed was the model deciding to say "I'll come back to you"
+      // and remembering to call the promise verb beside it. Now the gap is the trigger:
+      // the sweep's deep pass goes and opens the pages this turn could not afford to, and
+      // the parent gets the rest without having had to ask.
+      //
+      // It is not a new consent surface. This is a reply inside a conversation the parent
+      // started, the follow-up rides the same channel they are already enrolled on, and
+      // STOP answers above the whole router (rule #1 / CASL). What it removes is the
+      // requirement that a parent notice the gap and chase it.
+      //
+      // `recordActivityPromise` supersedes, so a turn that ALSO says the sentence and
+      // calls the verb writes one row rather than two — the newest promise is the promise.
+      if (result.picks.some((pick) => pick.when === null || pick.price === null)) {
+        args.onPromise({ subject: deidentified.query.subject, childId });
+      }
       return { found: true as const, picks: result.picks };
     },
   });

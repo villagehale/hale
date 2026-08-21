@@ -257,6 +257,7 @@ export const AUDIT_VERBS = [
   'coach_plan_message_sent',
   'coach_plan_check_in_sent',
   'activity_followup_sent',
+  'activity_followup_shared',
   'village_intro_card_sent',
   'village_intro_accepted',
   'village_intro_declined',
@@ -384,7 +385,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   child_removed: { sentence: 'you removed a child', family: 'done' },
   family_location_updated: { sentence: 'you updated your family’s location', family: 'done' },
   family_plan_updated: { sentence: 'you changed your plan', family: 'done' },
-  family_plan_comped: { sentence: 'your family got the Family plan, free for life', family: 'done' },
+  family_plan_comped: {
+    sentence: 'your family got the Family plan, free for life',
+    family: 'done',
+  },
   family_intents_updated: { sentence: 'you updated what you’d like help with', family: 'done' },
   parent_name_updated: { sentence: 'you updated your name', family: 'done' },
   invite_created: { sentence: 'you invited your co-parent', family: 'done' },
@@ -664,6 +668,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   // would be wrong half the time.
   activity_followup_sent: {
     sentence: 'Hale came back to you about an activity search',
+    family: 'done',
+  },
+  // The follow-up read more of a schedule than a text can hold, so the rest went on a
+  // page the parent can open (channel/activity/share-page.ts). 'done' for the reason
+  // above: the row records something Hale finished, not something it is waiting on.
+  activity_followup_shared: {
+    sentence: 'Hale put the rest of a schedule on a page for you',
     family: 'done',
   },
   village_intro_card_sent: { sentence: 'Hale asked you about an introduction', family: 'awaiting' },

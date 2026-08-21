@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -13,13 +13,25 @@ import {
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage } from '~/lib/coach/conversation';
-import { type DueCommitment, fulfillCommitment, loadDueCommitments } from '~/lib/commitments/ledger';
-import { pipelineClient } from '~/lib/pipeline/client';
+import {
+  type DueCommitment,
+  fulfillCommitment,
+  loadDueCommitments,
+} from '~/lib/commitments/ledger';
+import { activityClient, pipelineClient } from '~/lib/pipeline/client';
 import { cancelActivityPromise } from './commitment';
+import { type DeepResearcher, type DeepSlot, createDeepResearcher } from './deep';
 import { deidentifyActivityQuery } from './deidentify';
 import { type FollowUpComposer, createFollowUpComposer } from './followup-note';
-import { type ActivityFinder, createActivityFinder } from './lane';
+import { type ActivityFinder, type ActivityPick, createActivityFinder } from './lane';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
+import {
+  type ActivitySharePage,
+  SLOTS_IN_TEXT,
+  defaultActivitySharePorts,
+  mintActivitySharePage,
+  withSharePage,
+} from './share-page';
 
 /**
  * THE SWEEP THAT KEEPS THE PROMISE.
@@ -56,6 +68,23 @@ import { type ActivityFamilyReader, productionActivityFamilyReader } from './rea
  * forever. The ledger keeps this list short by construction (one open promise per family). */
 const MAX_FOLLOWUPS_PER_RUN = 100;
 
+/**
+ * How many promises get the DEEP pass in one tick.
+ *
+ * TWO, and the number is the cron slot rather than a preference. The deep researcher
+ * opens pages: a live probe of one research turn ran between 50 and 130 seconds, and this
+ * sweep shares a 300-second Vercel function (api/cron/nudge, `maxDuration = 300`) with the
+ * plan check-in and the village intros. Three deep turns would be a sweep that reliably
+ * dies halfway and leaves everything after it for the next hour.
+ *
+ * It is not a cap on FOLLOW-UPS — every due promise is still kept this tick. It is a cap
+ * on the expensive instrument: past the second, a promise falls back to the shallow
+ * search the sweep has always run, which is a worse answer and still an answer. And the
+ * ledger's one-open-promise-per-family index keeps the queue short enough that "past the
+ * second" is rare.
+ */
+const MAX_DEEP_PER_RUN = 2;
+
 export interface ActivityFollowUpResult {
   /** False when neither the flag nor the allowlist armed the sweep. */
   enabled: boolean;
@@ -75,6 +104,16 @@ export interface ActivityFollowUpResult {
    * open for the next tick — never a canned sentence in its place. */
   deferred: number;
   failed: number;
+  /** How many promises the deep pass actually researched — pages opened, not snippets
+   * read. Counted because the difference between this and `sent` is the difference
+   * between the sweep this product promises and the one it used to be. */
+  deepRead: number;
+  /** Deep passes that reached the web and could not open a single page (every fetch
+   * refused or unreachable). Named, not folded into a failure: the run happened, it just
+   * knows nothing about what those pages carry (rule #11). */
+  deepUnread: number;
+  /** Follow-ups that carried a link to the rest of the schedule. */
+  shared: number;
 }
 
 function emptyResult(enabled: boolean): ActivityFollowUpResult {
@@ -88,6 +127,9 @@ function emptyResult(enabled: boolean): ActivityFollowUpResult {
     cancelled: 0,
     deferred: 0,
     failed: 0,
+    deepRead: 0,
+    deepUnread: 0,
+    shared: 0,
   };
 }
 
@@ -107,7 +149,21 @@ export interface ActivityFollowUpDeps {
   reader: ActivityFamilyReader;
   /** REQUIRED (rule #11). The whole point of the sweep is that the search actually runs. */
   finder: ActivityFinder;
+  /**
+   * THE DIFFERENTIATOR, and required for the same reason the finder is. Without it this
+   * sweep is a re-run of the same snippet search a day later, which is what it was and
+   * what produced the benchmark defect. A sweep that could be wired with the deep pass
+   * absent is a sweep that can silently be the old one.
+   */
+  deep: DeepResearcher;
   composer: FollowUpComposer;
+  /** Puts the slots the text cannot carry on a page the parent can open. Required: a
+   * deep pass that reads eight class times and can only say two, with nowhere to put the
+   * other six, has thrown away most of what it just paid for. */
+  sharePage(
+    database: Database,
+    input: { familyId: string; slots: readonly DeepSlot[] },
+  ): Promise<ActivitySharePage>;
   buildGate(database: Database): OutboundGatePorts;
   dedupeActive: typeof dedupeActive;
   resolveSendablePhone: typeof resolveSendablePhone;
@@ -246,19 +302,53 @@ async function keepOne(
     return;
   }
 
-  const found = await deps.finder.find(deidentified.query);
-  if (!found.found && found.reason !== 'no_picks') {
-    // The search itself could not run. That is not news, it is an outage — so nothing is
-    // sent and the promise stays open for the next tick, which is exactly the difference
-    // between "there is nothing on" and "I could not look".
-    result.deferred += 1;
-    console.error(
-      { commitmentId: commitment.id, reason: found.reason },
-      'activity follow-up: the search could not run - promise left open for the next tick',
-    );
-    return;
+  // THE DEEP PASS FIRST. This is where the sweep stopped being a re-run of the inline
+  // search: the researcher runs site-scoped searches into the operator's own domain, opens
+  // the pages those surface, and comes back with dated slots that each cite the page they
+  // were read off. What it hands back is a richer ActivityPick, so the composer below is
+  // unchanged — it just has something worth writing about.
+  let picks: ActivityPick[] = [];
+  let rest: readonly DeepSlot[] = [];
+  let researched = false;
+  if (result.deepRead + result.deepUnread < MAX_DEEP_PER_RUN) {
+    const deep = await deps.deep.research(deidentified.query);
+    if (deep.status === 'read') {
+      result.deepRead += 1;
+      researched = true;
+      // The text carries the best one or two; everything else goes on a page. Slicing
+      // HERE rather than asking the model for a shortlist is what makes "and the rest is
+      // at this link" true — the remainder is a real list, not a claim.
+      picks = deep.slots.slice(0, SLOTS_IN_TEXT);
+      rest = deep.slots;
+    } else if (deep.status === 'unread') {
+      // It reached the web and could not open one page — every fetch refused or
+      // unreachable, which the live probe showed is a real and common shape. It knows
+      // nothing about what those pages carry, so it must not compose a message that says
+      // they carry nothing. The shallow search below still runs, and its snippets still
+      // hold real finds; what is lost is the dated detail, not the answer.
+      result.deepUnread += 1;
+      console.error(
+        { commitmentId: commitment.id, pagesRefused: deep.pagesRefused },
+        'activity follow-up: deep pass opened no page - falling back to the shallow search',
+      );
+    }
   }
-  const picks = found.found ? found.picks : [];
+
+  if (!researched) {
+    const found = await deps.finder.find(deidentified.query);
+    if (!found.found && found.reason !== 'no_picks') {
+      // The search itself could not run. That is not news, it is an outage — so nothing is
+      // sent and the promise stays open for the next tick, which is exactly the difference
+      // between "there is nothing on" and "I could not look".
+      result.deferred += 1;
+      console.error(
+        { commitmentId: commitment.id, reason: found.reason },
+        'activity follow-up: the search could not run - promise left open for the next tick',
+      );
+      return;
+    }
+    picks = found.found ? [...found.picks] : [];
+  }
 
   const composed = await deps.composer.compose({ subject, picks });
   if (composed.status === 'deferred') {
@@ -277,7 +367,28 @@ async function keepOne(
     throw new Error(`activity follow-up: no send target for parent ${recipient.parentUserId}`);
   }
 
-  const body = withOptOut(composed.message, verdict.optOut);
+  // THE REST OF THE SCHEDULE, on a page. Minted only when the deep pass read more slots
+  // than two segments of SMS can hold — a follow-up that already said everything it found
+  // needs no link, and a link to a page repeating the text is noise.
+  //
+  // The link is appended by CODE, after the composer's gates have passed on the sentence.
+  // That is deliberate: `followUpViolations` refuses any message containing a URL, and
+  // that gate is right — a model that may write links will eventually write a wrong one.
+  // So the model never sees a URL, and the one link Hale sends is built from a token this
+  // process just minted (share-page.ts `withSharePage`, the same shape as `withOptOut`).
+  let message = composed.message;
+  if (rest.length > SLOTS_IN_TEXT) {
+    const page = await deps.sharePage(database, {
+      familyId: commitment.familyId,
+      slots: rest,
+    });
+    if (page.status === 'minted') {
+      message = withSharePage(message, page.url);
+      result.shared += 1;
+    }
+  }
+
+  const body = withOptOut(message, verdict.optOut);
   const { providerMessageId } = await deps.transport.send({ to, body });
   const channelMessageId = await deps.recordSend(database, {
     familyId: commitment.familyId,
@@ -302,7 +413,7 @@ async function keepOne(
   // front of it. The COMPOSED sentence, not the wire body: the CASL line belongs on the
   // wire and nowhere else (plan check-in keeps the same rule, for the same reason).
   if (recipient.conversationId) {
-    await deps.appendMessage(recipient.conversationId, 'assistant', composed.message, database);
+    await deps.appendMessage(recipient.conversationId, 'assistant', message, database);
   }
   // KEPT, against the message that kept it — including when the message was bad news. The
   // promise was to come back.
@@ -341,7 +452,13 @@ export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
     resolveRecipient: resolveFollowUpRecipient,
     reader: productionActivityFamilyReader(),
     finder: createActivityFinder(pipelineClient),
+    // The deep researcher rides the ACTIVITY client, not the pipeline one: it opens pages
+    // and a live probe put one research turn between 50 and 130 seconds, which is well
+    // past the pipeline client's patience (see ACTIVITY_CLIENT_OPTIONS).
+    deep: createDeepResearcher(activityClient),
     composer: createFollowUpComposer(pipelineClient),
+    sharePage: (database, input) =>
+      mintActivitySharePage(database, input, defaultActivitySharePorts()),
     buildGate: buildOutboundGatePorts,
     dedupeActive,
     resolveSendablePhone,

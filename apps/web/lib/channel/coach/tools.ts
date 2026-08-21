@@ -1,20 +1,20 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { type Database, schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { deriveStage } from '@hale/types';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import { z } from 'zod';
-import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
+import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import type { ActivityFinder } from '~/lib/channel/activity/lane';
+import type { BoundActivityReader } from '~/lib/channel/activity/reader';
+import { findActivitiesTool, promiseActivityFollowUpTool } from '~/lib/channel/activity/tools';
 import { type PlanOffer, offerFullPlanTool } from '~/lib/channel/plan/offer';
 import { type ReferralShare, shareReferralLinkTool } from '~/lib/channel/referral/share';
+import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
+import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
-import type { ActivityPromise } from '~/lib/channel/activity/commitment';
-import { findActivitiesTool, promiseActivityFollowUpTool } from '~/lib/channel/activity/tools';
-import type { ActivityFinder } from '~/lib/channel/activity/lane';
-import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 
 /**
@@ -288,7 +288,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const proposeCancel = defineTool({
     name: 'propose_calendar_cancel',
     description:
-      "DRAFT the removal of one existing event for the parent to approve — it does NOT cancel anything. `eventId` must come from lookup_week. Never call this on a reference that matched more than one event; ask which first.",
+      'DRAFT the removal of one existing event for the parent to approve — it does NOT cancel anything. `eventId` must come from lookup_week. Never call this on a reference that matched more than one event; ask which first.',
     inputSchema: z.object({ eventId: z.string().min(1) }),
     inputExamples: [{ eventId: EXAMPLE_EVENT_ID }],
     monetary: false,
@@ -389,8 +389,23 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   // The live web verb. Registered only where the lane and the reader are both wired,
   // for the same reason the offer verb waits on its collector: a search tool with no
   // way to de-identify its query is one that must not exist at all (rule #1).
-  if (args.activity) {
-    tools.push(findActivitiesTool({ reader: args.activity.reader, finder: args.activity.finder }));
+  // BOTH activity verbs need the collector now, for one reason: an inline answer that
+  // ships with a gap registers its own follow-up (activity/tools.ts), so a search verb
+  // wired without somewhere to put that promise would hand a parent half an answer and
+  // drop the debt on the floor — the exact 2026-08-20 defect, arriving through a
+  // different door. The absent collector removes the VERBS rather than discarding what
+  // they produce (rule #11). Nothing loses a verb by this: the only caller that wires
+  // `activity` is the SMS runtime, which wires the collector too; the voice relay passes
+  // `activity: null` and never had them.
+  if (args.activity && args.onPromise) {
+    const onPromise = args.onPromise;
+    tools.push(
+      findActivitiesTool({
+        reader: args.activity.reader,
+        finder: args.activity.finder,
+        onPromise,
+      }),
+    );
   }
   // The promise verb, registered only where something is COLLECTING the promise. An
   // "I'll come back to you" whose registration goes nowhere is the exact sentence that
@@ -399,9 +414,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   // the skill may only say the sentence when it can call the verb.
   if (args.onPromise && args.activity) {
     const onPromise = args.onPromise;
-    tools.push(
-      promiseActivityFollowUpTool({ reader: args.activity.reader, onPromise }),
-    );
+    tools.push(promiseActivityFollowUpTool({ reader: args.activity.reader, onPromise }));
   }
   // Registered only where something is listening. An offer whose report goes nowhere is
   // an offer the parent is told about and the ledger never hears about — a YES with
