@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { HOT_SMS_CLIENT_OPTIONS } from '~/lib/pipeline/client';
+import { HOT_SMS_CLIENT_OPTIONS, activityClient } from '~/lib/pipeline/client';
 import {
   type AgentClient,
   type GuardDeps,
@@ -15,6 +15,7 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import {
   type ChannelCoachRuntime,
   type ChannelTurn,
@@ -33,6 +34,11 @@ import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { productionChannelDraftPort } from './draft';
+import {
+  type RegistrationWindowContext,
+  loadRegistrationWindows,
+  productionRegistrationContextPorts,
+} from './registration-context';
 import { type ReplyChild, toSmsReply } from './reply';
 import { buildChannelCoachTools, channelScheduleReader } from './tools';
 
@@ -102,6 +108,10 @@ export interface ChannelCoachPorts {
   /** Every child of the family, un-redacted — the redactor needs the real names to
    * find them in the answer, and it is the only consumer. */
   loadChildren(familyId: string): Promise<ReplyChild[]>;
+  /** The municipal registration windows this family can still act on, and whether the
+   * ladder is armed for them — Hale's flagship job, made visible to a turn that is
+   * being asked about it (see registration-context.ts). */
+  loadRegistrationWindows(familyId: string, now: Date): Promise<RegistrationWindowContext[]>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
    * with the full plan the turn offered, which the router writes down after the send;
@@ -155,10 +165,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
-      const [skill, transcript, children] = await Promise.all([
+      const now = ports.now();
+      const [skill, transcript, children, registrationWindows] = await Promise.all([
         ports.loadSkill(),
         ports.loadTranscript(turn.conversationId),
         ports.loadChildren(turn.familyId),
+        ports.loadRegistrationWindows(turn.familyId, now),
       ]);
 
       const familyContext = await ports.loadContext({
@@ -172,7 +184,6 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         sourceNote: null,
       });
 
-      const now = ports.now();
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them
       // there hands the job back to the person who texted to be rid of it — which is
@@ -198,6 +209,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // so a turn that is plainly an answer to one of them can be treated as one, and a
         // turn that is not can stop claiming nothing is pending when something is.
         standingQuestions: turn.standingQuestions,
+        // The hand-verified municipal open dates this family must act on, soonest
+        // first, each saying whether Hale's ladder is already on it. Empty for a family
+        // outside the covered set — and then the skill has nothing to claim.
+        registrationWindows,
       };
 
       return traceAgentRun(
@@ -312,18 +327,29 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
+    loadRegistrationWindows: (familyId, now) =>
+      loadRegistrationWindows(
+        productionRegistrationContextPorts(database),
+        familyId,
+        DEFAULT_TIMEZONE,
+        now,
+      ),
     buildTools: (turn, onDraft, onOffer, onShare, onPromise) =>
       buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database),
         draftPort: productionChannelDraftPort(database, anthropicClient(), turn.now),
         villageTool: searchVillageTool(database),
-        // The second activity source. It shares the coach's own client resolver: a turn
-        // that could reach Anthropic for the loop and not for the search is not a state
-        // worth being able to represent.
+        // The second activity source. Same key, same fail-closed resolver shape as the
+        // loop's — a turn that could reach Anthropic for the loop and not for the search
+        // is not a state worth being able to represent.
         activity: {
           reader: bindActivityReader(database, productionActivityFamilyReader()),
-          finder: createActivityFinder(anthropicClient),
+          // NOT the coach's client. A web-grounded search is a different job with a
+          // different duration, and running it on the coach's 30s-plus-a-retry budget
+          // meant the calls that needed forty seconds were killed twice before the lane
+          // had its own go (see ACTIVITY_CLIENT_OPTIONS).
+          finder: createActivityFinder(activityClient),
         },
         onDraft,
         onOffer,

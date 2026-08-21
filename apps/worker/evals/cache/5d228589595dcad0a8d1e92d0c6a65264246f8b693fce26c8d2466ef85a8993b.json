@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the verified resident opening date (Sep 1, 7:00 a.m.), correctly states that watching is already active (watching: true), and accurately describes the notification cadence (week before, evening before, fifteen minutes before — paraphrased as \"the week before and again right before\"). It names Milo, which is appropriate. It does not invent anything, does not send Sam to the app, and does not hedge the date. The only very minor issue is \"again right before it opens\" collapses two alerts (evening before + 15 min before) into one vague phrase, but this is a trivial compression, not an inaccuracy. No greeting, no sign-off, no markdown. This is the product working correctly.",
+    "score": 5
+  }
+}

@@ -292,6 +292,7 @@ describe('the activity question is answered', () => {
           tools: [],
         },
       }),
+      loadRegistrationWindows: async () => [],
       loadTranscript: async () => [],
       // The context assembly is the app coach's own, tested where it lives; what this
       // journey is about is the verbs, so it is the minimum shape the runtime reads.
