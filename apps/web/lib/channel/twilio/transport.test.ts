@@ -181,3 +181,17 @@ describe('createTwilioTransport', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('messaging service sender', () => {
+  it('sends via MessagingServiceSid when configured, and the bare From otherwise', async () => {
+    configure();
+    vi.stubEnv('TWILIO_MESSAGING_SERVICE_SID', 'MG39e4469dd337f9952f026cbff0e4e964');
+    const fetchMock = vi.fn().mockResolvedValue(okResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const transport = createTwilioTransport();
+    await transport.send({ to: TO, body: BODY });
+    const sent = new URLSearchParams(fetchMock.mock.calls[0][1].body);
+    expect(sent.get('MessagingServiceSid')).toBe('MG39e4469dd337f9952f026cbff0e4e964');
+    expect(sent.get('From')).toBeNull();
+  });
+});

@@ -85,7 +85,12 @@ export function createTwilioTransport(deps: TwilioTransportDeps = {}): ChannelTr
           },
           body: new URLSearchParams({
             To: to,
-            From: config.fromNumber,
+            // Via the Messaging Service when configured (Twilio-side queueing and
+            // encoding; the pool holds the same brand number, so the parent still
+            // sees the contact they saved) — direct From otherwise.
+            ...(config.messagingServiceSid
+              ? { MessagingServiceSid: config.messagingServiceSid }
+              : { From: config.fromNumber }),
             Body: body,
             // Live-gate finding (2026-08-11): Twilio only sends delivery receipts to a
             // StatusCallback named IN the send request — the number-level field does
