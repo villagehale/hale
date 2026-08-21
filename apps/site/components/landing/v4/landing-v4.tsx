@@ -92,7 +92,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         <span className="v4-hero-scrim" aria-hidden="true" />
 
         <div className="v4-hero-body">
-          <p className="v4-eyebrow">{t('eyebrow')}</p>
+          <p className="v4-eyebrow v4-pronounce">{t('eyebrow')}</p>
           <h1 className="v4-display v4-hero-h1 text-balance">
             {t('heroH1a')}
             <br />

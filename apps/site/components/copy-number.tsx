@@ -12,7 +12,7 @@ import { useState } from 'react';
 export function CopyNumberButton({
   number,
   className,
-  label = 'copy my number',
+  label = 'Copy number',
   copiedLabel = 'copied — text me from your phone',
   ariaLabel = "Copy Hale's phone number to your clipboard",
 }: {

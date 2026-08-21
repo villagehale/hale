@@ -15,16 +15,26 @@ import '../globals.css';
 // Self-hosted variable fonts (app/fonts/, Fontsource-packaged, OFL). next/font/google
 // fetched these from fonts.gstatic.com AT BUILD TIME, and a Google CDN outage failed
 // three deploys on 2026-08-12 — including branches that touched no site file. A build
-// must not depend on a third party serving a font.
-const instrumentSans = localFont({
-  src: [{ path: '../fonts/instrument-sans-latin-wght-normal.woff2', weight: '400 700', style: 'normal' }],
+// must not depend on a third party serving a font. The two faces the site is set
+// in are subset from the upstream google/fonts variable TTFs rather than taken
+// from Fontsource, because both needed instancing this project's own way: latin +
+// latin-ext, uprights, and Fraunces' SOFT/WONK axes pinned out.
+
+// Figtree (SIL OFL), the body and UI face from 2026-08-20, at the seam Instrument
+// Sans held. Variable 300–900 and registered across the whole range, so body 400
+// and the 500–600 the buttons, the nav and the chat bubbles ask for all come off
+// one master rather than off a synthesizer. Latin + latin-ext, so French keeps
+// its diacritics and a European place name keeps its.
+const figtree = localFont({
+  src: [{ path: '../fonts/figtree-latin-wght-normal.woff2', weight: '300 900', style: 'normal' }],
   variable: '--font-sans',
   display: 'swap',
 });
 
-// The display face for the whole site (--font-serif): variable 400–700, so a
-// heading can be set at the weight its size needs. No italic master is loaded —
-// display type here is upright, and the one accent per headline is colour.
+// The FALLBACK display face (--font-serif): variable 400–700, so a heading can be
+// set at the weight its size needs. This is what a locale the Latin-only display
+// face cannot set lands on — today, zh. No italic master is loaded here or
+// anywhere: display type on this site is upright.
 const sourceSerif = localFont({
   src: [
     { path: '../fonts/source-serif-4-latin-wght-normal.woff2', weight: '400 700', style: 'normal' },
@@ -33,10 +43,10 @@ const sourceSerif = localFont({
   display: 'swap',
 });
 
-// Instrument Serif, the serif sibling of our body Instrument Sans. Same self-hosted
-// OFL discipline as the others (fetched from Fontsource, not a runtime Google
-// request). One master exists (400), so exactly one thing binds it via
-// --font-serif-display: the landing hero at ≥1024px, where it renders near 100px.
+// Instrument Serif. Same self-hosted OFL discipline as the others (fetched from
+// Fontsource, not a runtime Google request). One master exists (400), so exactly
+// one thing binds it via --font-serif-display: the ≥1024px hero on the FALLBACK
+// path, where it renders near 100px — today that means zh.
 const instrumentSerif = localFont({
   src: [
     { path: '../fonts/instrument-serif-latin-400-normal.woff2', weight: '400', style: 'normal' },
@@ -45,24 +55,30 @@ const instrumentSerif = localFont({
   display: 'swap',
 });
 
-// Bellefair (SIL OFL, self-hosted like the four above — the licence text ships
-// beside the binary in app/fonts/). The display face for every headline, deck and
-// legal title from 2026-08-20. NOT the wordmark: the name is drawn art now
-// (components/wordmark.tsx), which is what took the last Bellefair rule out of
-// the locale allowlist's exception list.
+// Fraunces (SIL OFL, self-hosted like the rest — the licence text ships beside
+// the binary in app/fonts/). The display face for every headline and legal title
+// from 2026-08-20, replacing the single-master Bellefair. NOT the wordmark: the
+// name is drawn art (components/wordmark.tsx), and not the hero deck either,
+// which is body copy in the body face on purpose.
 //
-// ONE MASTER, and that is the whole design constraint. There is no 500 and no
-// 700 to reach for, so nothing may ask for one: a `font-weight: 700` here would
-// be synthesized into exactly the smeared bold #506 removed, which is why every
-// surface that names this face also sets `font-synthesis-weight: none` and why
-// the compensation for a rung that measures too light is SIZE, never weight.
+// TWO AXES SURVIVE THE SUBSET, and both are load-bearing. `wght` is the honest
+// answer to a rung that measures lighter than the card heading beneath it — the
+// thing a single master could only answer with size. `opsz` is applied for free
+// under `font-optical-sizing: auto`: the browser feeds it the rendered size in
+// px, so a 30px section heading gets the text cut and an 84px hero gets the
+// display cut, which is a materially different drawing rather than the same
+// outline scaled. That is also why it costs what it costs — the opsz deltas are
+// ~60KB of the 129KB — and why nothing here pins it.
 //
-// Latin-only subset (latin + latin-ext, so French keeps its diacritics), so
-// --font-bellefair is bound BY LOCALE ALLOWLIST in globals.css — zh keeps the
-// Source Serif stack. No italic master exists.
-const bellefair = localFont({
-  src: [{ path: '../fonts/bellefair-latin-400-normal.woff2', weight: '400', style: 'normal' }],
-  variable: '--font-bellefair',
+// SOFT and WONK are pinned OUT at build time (SOFT=0, WONK=0): the calm forms,
+// no swapped-in wonky alternates, and two axes fewer to reason about. Uprights
+// only; no italic master is loaded for any face on this site.
+//
+// Latin + latin-ext subset, so --font-fraunces is bound BY LOCALE ALLOWLIST in
+// globals.css — zh keeps the Source Serif stack.
+const fraunces = localFont({
+  src: [{ path: '../fonts/fraunces-latin-opsz-wght-normal.woff2', weight: '100 900', style: 'normal' }],
+  variable: '--font-fraunces',
   display: 'swap',
 });
 
@@ -134,7 +150,7 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${instrumentSans.variable} ${sourceSerif.variable} ${instrumentSerif.variable} ${bellefair.variable} ${jetbrainsMono.variable}`}
+      className={`${figtree.variable} ${sourceSerif.variable} ${instrumentSerif.variable} ${fraunces.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <head>

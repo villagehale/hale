@@ -44,8 +44,7 @@
     "toDark": "切换到深色模式"
   },
   "CopyNumber": {
-    "label": "复制我的号码",
-    "labelTitleCase": "复制我的号码",
+    "label": "复制号码",
     "copied": "已复制——用手机给我发短信吧",
     "aria": "将 Hale 的电话号码复制到剪贴板"
   },
