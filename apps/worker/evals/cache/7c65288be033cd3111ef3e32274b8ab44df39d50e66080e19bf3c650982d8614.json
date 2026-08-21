@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly provides the referral link (which is appended and real, not invented), tells Sam to forward it themselves, and gives a brief description of what Hale is. The link is accurate. The reply does describe Hale's features (\"schedules, activities, parenting questions, all over SMS\") which is a touch more than strictly needed, but it's not misleading or harmful. No greeting, no sign-off, no markdown. The only minor issue is that the reply is slightly longer than it needs to be — the description of Hale's capabilities is a redundant addition when the parent just asked how to refer, not what Hale does. Still, it does the job correctly and the link is the right one. A small blemish for the extra clause, not a significant failure.",
+    "score": 4
+  }
+}

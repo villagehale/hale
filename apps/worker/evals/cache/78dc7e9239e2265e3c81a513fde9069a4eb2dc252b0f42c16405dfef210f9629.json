@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the one verified offerable activity (Central Library story time, Bloor/Gladstone, Sat Aug 8) and also implicitly covers the calendar (Soccer practice Sat 10am at Cedarvale Park is visible in the week but not mentioned — a small miss, but the parent asked \"anything on\" so the calendar event is relevant). However, the bigger issue is the closing question: \"Want me to look for anything else specific?\" This is an invitation to chatter / a dangling question that the scoring rules penalise (two questions in one message or an invitation to come back = shape is off, score 3). It also fails to mention the soccer practice that IS on Saturday per the week view. Still, the core answer (the offerable) is correctly handled — name, place, day, no unverified detail. The soccer omission and the trailing question together push this to a 3.",
+    "score": 3
+  }
+}

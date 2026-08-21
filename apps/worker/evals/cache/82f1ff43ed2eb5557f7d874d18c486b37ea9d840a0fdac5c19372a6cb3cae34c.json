@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancellation (one event matches, so drafting is right) and ends with \"YES to confirm.\" It then offers Central Library story time at Bloor/Gladstone branch on Sat Aug 8 — a verified offerable candidate with name, place, and day, all correct. The stillBeingChecked count is 0, so no pending finds to mention. No app referral, no invented URL, no sign-off. The reply is tight and actionable. One tiny blemish: \"free\" — the offerable entry does not include pricing information, so stating it is free is a detail Hale does not have verified. That is a small invention. Otherwise the reply is close to perfect.",
+    "score": 4
+  }
+}

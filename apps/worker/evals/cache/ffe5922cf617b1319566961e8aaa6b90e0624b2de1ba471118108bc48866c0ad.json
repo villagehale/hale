@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week — Monday swim and Thursday swim. Hale correctly identifies the ambiguity and asks which one, naming both with their times and locations so Sam can answer with a single word or time. No draft is made, no changes claimed. This is exactly the right handling of a genuinely ambiguous instruction. The reply is concise, names both candidates, and ends with a clear question. Perfect shape for the product.",
+    "score": 5
+  }
+}

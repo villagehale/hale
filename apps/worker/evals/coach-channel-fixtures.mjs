@@ -607,6 +607,29 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
   {
+    id: 'registration-window-plus-a-find',
+    text: 'whats there for the fall near us?',
+    city: 'Halton Hills',
+    registrationWindows: [FIXTURE_REGISTRATION_WINDOW],
+    // Remy is 20 months, which is inside the web pick's "walking to 3 years" band — so
+    // the find is one this family can actually use and "name it" has a right answer.
+    children: [FIXTURE_TODDLER, ...FIXTURE_CHILDREN],
+    // The radar is EMPTY on purpose, so the live web is the only source of a find and
+    // the turn holds exactly two facts: the verified date and one web pick. Anything
+    // else here would grade which source the model prefers, which is a different
+    // question from the one this fixture exists to ask.
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    note: "THE COLLISION, and the one the corpus could not see. Both registration fixtures above are date-only and every village fixture is find-only, so nothing here ever asked what happens when ONE message has to carry both — which is exactly the flagship question, 'what is there this fall'. On 2026-08-21 the live answer composed a verified Sep 1 opening plus two web finds at 548 characters against a 306-character budget, opened with 'Two things worth flagging here', and the trim deleted the whole second paragraph: the family paid ~50s of live web grounding and received none of it. Worse, every gate in this harness read the TRIMMED reply, so the corpus scored that answer 5/5. The date may not eat the find and the find may not push out the date. Both, inside two segments, or this fails.",
+    expect: {
+      mustNotDraft: true,
+      mustCall: ['find_activities'],
+      // The date a parent sets an alarm by AND the thing they can do before it arrives.
+      // Either one alone is the defect this fixture exists for.
+      mustMention: ['sep', 'tiny tumblers'],
+      forbidden: [...HEDGES, 'the app'],
+    },
+  },
+  {
     id: 'capability-hale-does-not-have',
     text: 'can you order the groceries for me',
     note: 'The general class the fabrication belongs to: a question about Hale itself with no tool behind it. The failure to prevent is not silence - it is a confident yes, or a place where the feature supposedly lives. The honest answer is one clause saying no, and nothing about an app, a page or a plan to add it.',

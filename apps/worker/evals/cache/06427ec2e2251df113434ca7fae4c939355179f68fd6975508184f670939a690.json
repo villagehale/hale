@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does three things correctly: (1) states the resident registration window flat as Hale's own verified fact (Sep 1, 7:00 a.m.) and the general date (Sep 8), (2) correctly says it is already watching and will text before it opens — which is exactly right because watching:true, and (3) hands over the webFind (Tiny Tumblers) with attribution to the venue's program page and notes no price yet, which is exactly what the webFind rule requires. offerable is empty and stillBeingChecked is 0, so there is nothing else to offer. The reply is clean, no app referral, no invented URL (referralLinkAppended is null so no link expected), no greeting or sign-off. The only very minor issue is the dash-connected structure reads slightly run-on, but there is nothing wrong factually or structurally. This is the product working correctly.",
+    "score": 5
+  }
+}

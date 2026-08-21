@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The registration window part is solid — dates are stated as verified fact, watching is correctly claimed, and the alert promise is accurate. The problem is the activity offer. `knows.offerable` is empty and `stillBeingChecked` is 0, meaning search_village returned nothing verified and nothing pending. Hale invented \"Tiny Tumblers parent & tot\" — there is no offerable candidate to name. That is fabrication of an activity recommendation. Worse, it sends the parent to a \"program page\" (effectively the app or an external site), which is also a rules violation. The registration window content is correct but the invented activity is a clear fabrication, scoring a 1-2 range. Because one part is genuinely correct and useful (the registration window), a 2 is appropriate rather than a 1.",
+    "score": 2
+  }
+}

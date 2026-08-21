@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CeG9QneQcJ6PWLjzJaSap",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents (Sep 8 for everyone else) - I'm on it and I'll text you before it opens. The only web find for the fall right now is Tiny Tumblers parent & tot on Saturday mornings, but that's too young for Milo and Ada - their site says no fall schedule is up for older kids yet."
+      }
+    ],
+    "usage": {
+      "input_tokens": 888,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 10360,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 97,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

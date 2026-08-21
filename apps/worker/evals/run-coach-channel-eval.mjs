@@ -408,6 +408,24 @@ function forwardViolations(forward) {
  */
 const FIXTURE_REFERRAL_LINK = 'https://www.villagehale.com/text?s=friend-0123456789ab';
 
+/**
+ * The single pick the fixture `find_activities` hands back.
+ *
+ * A CONSTANT rather than a literal inside the handler because the fabrication gate has
+ * to read the same object: a web pick the tool gave the model is a FACT it recalled, and
+ * the hay was built from audited tool INPUTS only, so naming one read as invention. No
+ * fixture had ever named one, which is how the hole stayed open until a turn was written
+ * that has to. Same shape as the referral link — grounding that exists only on a turn
+ * which actually called the tool.
+ */
+const FIXTURE_WEB_PICK = {
+  name: 'Tiny Tumblers parent & tot',
+  ageFit: 'walking to 3 years',
+  sourceName: "the venue's own program page",
+  when: 'Saturday mornings this fall',
+  price: null,
+};
+
 function toSmsReply(raw, children, planOffer, referral) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
@@ -576,19 +594,7 @@ function buildFixtureTools(agent, calls, village) {
     ],
     handler: async () => {
       record('find_activities');
-      return {
-        found: true,
-        source: 'web',
-        picks: [
-          {
-            name: 'Tiny Tumblers parent & tot',
-            ageFit: 'walking to 3 years',
-            sourceName: 'the venue\'s own program page',
-            when: 'Saturday mornings this fall',
-            price: null,
-          },
-        ],
-      };
+      return { found: true, source: 'web', picks: [FIXTURE_WEB_PICK] };
     },
   });
 
@@ -1014,7 +1020,7 @@ function fabrications(reply, hay) {
 
 // ── grading ────────────────────────────────────────────────────────────────
 
-function checkFixture(fixture, reply, calls, auditLog) {
+function checkFixture(fixture, reply, calls, auditLog, composed) {
   const failures = [];
   if (reply === null) return ['the reply was empty after post-processing'];
 
@@ -1143,6 +1149,32 @@ function checkFixture(fixture, reply, calls, auditLog) {
     failures.push(`${sentenceCount} sentences > ${MAX_SENTENCES}`);
   }
 
+  // THE CORPUS WAS BLIND HERE, and it is worth saying why: every other gate in this
+  // function reads `reply`, which is the POST-TRIM body, and fitToBudget guarantees that
+  // body is inside the budget. So the segment check above can never fire, the sentence
+  // count reads survivors, and a model composing twice what it can send graded exactly
+  // like one writing to the ceiling.
+  //
+  // That is how the 2026-08-21 bench shipped: the flagship question composed a verified
+  // Sep 1 opening plus two finds off a live web search, 548 units against 306, and the
+  // whole second paragraph went over the side. What was graded opened "Two things worth
+  // flagging here" and delivered one.
+  //
+  // Measured on the model's OWN prose, with any offer it wrote inline taken off first —
+  // the runtime de-duplicates that copy against the appended one, so charging it here
+  // would fail a turn for a sentence that is only ever sent once.
+  const composedPlain = plainText(String(composed ?? reply));
+  const composedAuthored =
+    appended && composedPlain.toLowerCase().endsWith(appended.toLowerCase())
+      ? composedPlain.slice(0, -appended.length).trim()
+      : composedPlain;
+  const composedSegments = smsSegments(composedAuthored);
+  if (composedSegments > MAX_REPLY_SEGMENTS) {
+    failures.push(
+      `composed ${composedSegments} segments > ${MAX_REPLY_SEGMENTS}: everything past the cut was written and never sent`,
+    );
+  }
+
   for (const [pattern, label] of VOICE_TELLS) {
     if (pattern.test(reply)) failures.push(label);
   }
@@ -1198,6 +1230,15 @@ const JUDGE_SYSTEM = [
   'that hands over a find with the doubt attached ("I found a class but could not confirm',
   'the time") is the work returned to the parent — score it a 2 at most, and never mark a',
   'clean forward-looking line down for lacking detail Hale does not have.',
+  '`knows.webFind` IS A DIFFERENT SOURCE AND THE OPPOSITE RULE APPLIES. It is a real',
+  'program read off the live web this turn, and Hale is REQUIRED to hand it over and to',
+  'say whose page it came from in the same breath — "their site says", "their program',
+  'page lists it", "no price up yet". That attribution is the honesty the source demands,',
+  'NOT a find handed over with doubt attached, and naming a webFind is RECALL, not',
+  'invention, even when `offerable` is empty. Do not mark it down for either. What is',
+  'still wrong here is dressing a web find up as checked ("confirmed", "I verified"), or',
+  'going quiet about one because it is unverified. The find-with-doubt rule above is',
+  'about the nameless `stillBeingChecked` count, which Hale is given no names for at all.',
   'REGISTRATION WINDOWS ARE HALE\'S OWN VERIFIED FACTS. `knows.registrationWindows` is a',
   'hand-checked municipal open date for THIS family: `opensFor` is the instant they can',
   'first register, `generalOpens` the later one everyone else waits for. Stating either',
@@ -1334,11 +1375,15 @@ async function main() {
     /** What the companion handed back this turn — grounding the audit row cannot carry. */
     const guidance = [];
     let reply;
+    /** What the model actually wrote, before the trim — the subject of the length
+     * gate, because the trimmed body is inside the budget by construction. */
+    let composed = null;
     let toolResults = [];
 
     if (broken) {
       calls.push(...BROKEN_CALLS);
       auditLog.push({ actionTaken: 'tool:broken' });
+      composed = BROKEN_REPLY;
       reply = toSmsReply(BROKEN_REPLY, children);
     } else {
       const tools = [
@@ -1367,6 +1412,7 @@ async function main() {
         continue;
       }
       const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
+      composed = run.answer;
       reply = toSmsReply(
         run.answer,
         children,
@@ -1398,6 +1444,9 @@ async function main() {
       // out of the hay, which is what keeps "a URL Hale was not handed is a URL it
       // invented" a real gate rather than a blanket exemption for one domain.
       calls.some((call) => call.tool === 'share_referral_link') ? FIXTURE_REFERRAL_LINK : null,
+      // The web pick, on the same terms: only a turn that actually called
+      // find_activities was handed it, and on every other turn naming it is invention.
+      calls.some((call) => call.tool === 'find_activities') ? FIXTURE_WEB_PICK : null,
     ]);
     const invented = reply === null ? [] : fabrications(reply, hay);
     const verdict =
@@ -1432,6 +1481,14 @@ async function main() {
                 // which is named below when this turn shared one.
                 referralLinkAppended: calls.some((call) => call.tool === 'share_referral_link')
                   ? FIXTURE_REFERRAL_LINK
+                  : null,
+                // What the LIVE WEB handed back this turn, on the same terms as the
+                // link above. Without it the judge sees an empty `offerable` and scores
+                // a correctly-attributed web pick as an invented activity — which it
+                // did, at 2/5, on a reply that was doing exactly what the skill asks.
+                // Half-blind is not a noisy judge, it is a confidently wrong one.
+                webFind: calls.some((call) => call.tool === 'find_activities')
+                  ? `${FIXTURE_WEB_PICK.name} (${FIXTURE_WEB_PICK.ageFit}), ${FIXTURE_WEB_PICK.when}, per ${FIXTURE_WEB_PICK.sourceName} - source: web, NOT verified by Hale`
                   : null,
                 // What THIS text's Village read returned, split the way the
                 // tool splits it — a judge shown only titles cannot tell an offer Hale
@@ -1480,7 +1537,7 @@ async function main() {
       invented,
       failures: [
         ...invented.map((f) => `FABRICATION: ${f}`),
-        ...checkFixture(fixture, reply, calls, auditLog),
+        ...checkFixture(fixture, reply, calls, auditLog, composed),
       ],
     });
   }

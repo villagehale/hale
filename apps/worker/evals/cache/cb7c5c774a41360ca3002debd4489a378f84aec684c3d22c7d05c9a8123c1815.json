@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CeG9HgFzYXx99YaNQobTu",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "At 5 months Theo's a little early -- Health Canada puts the window at around 6 months, when most babies can sit with minimal support and show interest in food. One thing to watch for now: when he stops pushing food out with his tongue reflexively, that's the clearest readiness sign.\n\nWant the full first-foods plan for Theo? Reply YES and I'll send it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1278,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 10360,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 89,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancel and asks for YES to confirm. It correctly identifies the one Thursday swim (resolved, no ambiguity). For Saturday indoors, it offers Central Library story time at Bloor/Gladstone, which is a verified offerable candidate with name, place, and day — correct handling. The reply is concise, hits both parts of the request, ends with YES to confirm, and doesn't send the parent to the app, invent details, or hedge. One small note: the draft cap is 2, and only 1 was drafted (the cancel); the Saturday activity is an offer, not a draft, which is appropriate since the parent asked to \"find something\" rather than \"book something.\" The reply is clean, correctly shaped, and does the job without excess.",
+    "score": 5
+  }
+}

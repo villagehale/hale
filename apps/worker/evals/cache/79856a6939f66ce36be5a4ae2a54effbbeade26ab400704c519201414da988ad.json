@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO swim lessons in the week (Mon 4:30pm West pool, Thu 5:15pm East pool). Hale correctly identifies the ambiguity, names both events with their times and locations, and asks which one — drafting nothing until the parent clarifies. This is exactly the right handling: one question, no drafts, no sign-off, no markdown, and all detail is traceable to the week. The reply is clean and complete.",
+    "score": 5
+  }
+}
