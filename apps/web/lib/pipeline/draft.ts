@@ -1,5 +1,5 @@
 import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
-import { pickModel } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
 import { loadDraftActionSkill } from './skill';
@@ -7,7 +7,7 @@ import { forceToolJson } from './structured';
 
 /**
  * Draft stage — a classified event + routed action type → a parent-facing draft,
- * on the @hale/agent harness model routing (draft → Sonnet via pickModel). The
+ * on the @hale/agent harness model routing (draft → Sonnet via pickLane). The
  * prompt is the draft-action SKILL body (rule #2). Single LLM turn via forced-tool
  * JSON; the result is Zod-validated at the boundary.
  */
@@ -55,10 +55,10 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
     memory_slice: input.memorySlice ?? null,
   });
 
-  const model = pickModel(skill.meta.task);
+  const lane = pickLane(skill.meta.task);
   const { value, usage } = await forceToolJson({
     client,
-    model,
+    lane,
     system: skill.instructions,
     userMessage,
     toolName: 'draft_action',
@@ -80,7 +80,7 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
       recipientVisibility: value.recipient_visibility,
       draftedAt: new Date().toISOString(),
     },
-    model,
+    model: lane.model,
     usage: {
       promptTokens: usage.input_tokens + (usage.cache_creation_input_tokens ?? 0),
       completionTokens: usage.output_tokens,

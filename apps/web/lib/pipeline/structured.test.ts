@@ -1,4 +1,4 @@
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, pickLane } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { forceToolJson } from './structured';
@@ -32,7 +32,7 @@ const JSON_SCHEMA = {
 function call(client: AgentClient) {
   return forceToolJson({
     client,
-    model: 'claude-sonnet-5',
+    lane: pickLane('classify'),
     system: 'sys',
     userMessage: 'msg',
     toolName: 'answer',

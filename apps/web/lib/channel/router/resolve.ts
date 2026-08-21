@@ -1,4 +1,4 @@
-import { type AgentClient, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -298,7 +298,7 @@ export function createReplyResolver(client: () => AgentClient): ReplyResolver {
       try {
         const { value } = await forceToolJson({
           client: resolved,
-          model: pickModel(skill.meta.task),
+          lane: pickLane(skill.meta.task),
           system: skill.instructions,
           userMessage: replyResolverUserMessage(bounded, questions),
           toolName: 'resolution',

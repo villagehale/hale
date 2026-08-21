@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { ASSENT_ACK } from '~/lib/channel/intake/copy';
@@ -243,7 +243,7 @@ export function createIdentityAskVoice(client: () => AgentClient): IdentityAskVo
         try {
           const { value } = await forceToolJson({
             client: resolved,
-            model: pickModel(skill.meta.task),
+            lane: pickLane(skill.meta.task),
             system: skill.instructions,
             userMessage: identityAskUserMessage(request, rejected),
             toolName: 'ask',

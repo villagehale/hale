@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { pickModel } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType, FamilyStage } from '@hale/types';
 import { anthropicClient } from '../anthropic/client.js';
 import { forceToolJson } from './structured.js';
@@ -153,11 +153,11 @@ export async function runClassifier(input: ClassifierRunInput): Promise<Classifi
     family_context_slice: input.familyContextSlice ?? null,
   });
 
-  const model = pickModel('classify');
+  const lane = pickLane('classify');
   const startedAt = Date.now();
   const { value: parsed, usage } = await forceToolJson({
     client: anthropicClient(),
-    model,
+    lane,
     system: instructions,
     userMessage,
     toolName: 'classification',
@@ -174,6 +174,6 @@ export async function runClassifier(input: ClassifierRunInput): Promise<Classifi
     teenContent: parsed.teen_content,
     concernsChildId: parsed.concerns_child_id,
     dedupHash,
-    runMetrics: metricsFromUsage('classifier', model, usage, Date.now() - startedAt),
+    runMetrics: metricsFromUsage('classifier', lane.model, usage, Date.now() - startedAt),
   };
 }

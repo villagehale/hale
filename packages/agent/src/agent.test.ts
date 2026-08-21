@@ -1236,3 +1236,45 @@ describe('prompt cache prefix', () => {
     expect(JSON.stringify(systemsFrom(client)[0])).not.toContain(FAMILY_SECRET);
   });
 });
+
+describe('lane fields on the wire', () => {
+  /** The request body the loop actually handed the SDK on its first turn. */
+  function firstRequest(client: AgentClient): Record<string, unknown> {
+    const create = client.messages.create as unknown as Mock;
+    const first = create.mock.calls[0];
+    if (!first) throw new Error('the loop made no request');
+    return first[0] as Record<string, unknown>;
+  }
+
+  async function runWithTask(task: Skill['meta']['task']): Promise<Record<string, unknown>> {
+    const client = fakeClient([textMessage('ok.', usage(10, 5))]);
+    await runAgent({
+      skill: { ...skill, meta: { ...skill.meta, task, tools: [] } },
+      context: {},
+      tools: [],
+      client,
+      maxSteps: 1,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: guardDeps().deps,
+    });
+    return firstRequest(client);
+  }
+
+  it('sends the reasoning lane its thinking mode and effort', async () => {
+    // Without this the `...lane` spread could silently collapse to {model} and
+    // every other test here would still pass — the effort would just never ship.
+    const req = await runWithTask('converse');
+    expect(req.model).toBe('claude-sonnet-5');
+    expect(req.thinking).toEqual({ type: 'adaptive' });
+    expect(req.output_config).toEqual({ effort: 'low' });
+  });
+
+  it('sends the phone-call lane no reasoning knobs', async () => {
+    // Haiku 4.5 rejects both knobs with a 400 (verified live). On `speak` that
+    // 400 is dead air on an open call, so their absence is load-bearing.
+    const req = await runWithTask('speak');
+    expect(req.model).toBe('claude-haiku-4-5');
+    expect(req).not.toHaveProperty('thinking');
+    expect(req).not.toHaveProperty('output_config');
+  });
+});

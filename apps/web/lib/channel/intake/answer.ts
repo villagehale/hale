@@ -1,4 +1,4 @@
-import { type AgentClient, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { namesAnEmergency, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
@@ -302,7 +302,7 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       try {
         const { value } = await forceToolJson({
           client,
-          model: pickModel(skill.meta.task),
+          lane: pickLane(skill.meta.task),
           system: skill.instructions,
           userMessage: JSON.stringify(intakeAnswerContext(input)),
           toolName: 'reply',

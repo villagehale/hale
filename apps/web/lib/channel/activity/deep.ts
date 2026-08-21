@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -290,7 +290,7 @@ export function createDeepResearcher(client: () => AgentClient): DeepResearcher 
       try {
         ({ value: extracted } = await forceToolJson({
           client: resolved,
-          model: pickModel(skill.meta.task),
+          lane: pickLane(skill.meta.task),
           system: skill.instructions,
           userMessage: deepExtractMessage(query, evidence.notes),
           toolName: 'activity_deep',

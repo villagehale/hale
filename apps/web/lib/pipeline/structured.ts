@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, type LaneConfig, laneRequestFields } from '@hale/agent';
 import type { z } from 'zod';
 
 /**
@@ -17,7 +17,14 @@ import type { z } from 'zod';
  */
 interface ForceToolJsonArgs<TSchema extends z.ZodTypeAny> {
   client: AgentClient;
-  model: string;
+  /**
+   * The LANE, not a bare model id. Effort and thinking mode belong to the lane
+   * and are rendered into the prompt by the API, so a caller that could pass a
+   * model without them would silently run at the API default (`high`, thinking
+   * on) — the tax this re-tier exists to remove. Taking the whole lane makes the
+   * knobs impossible to leave behind.
+   */
+  lane: LaneConfig;
   system: string;
   userMessage: string;
   toolName: string;
@@ -36,7 +43,10 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   args: ForceToolJsonArgs<TSchema>,
 ): Promise<ForceToolJsonResult<z.infer<TSchema>>> {
   const response = await args.client.messages.create({
-    model: args.model,
+    // The pinned SDK (0.41.0) types neither `thinking`'s adaptive shape nor
+    // `output_config`; both are plain body fields the SDK serialises as given.
+    // Narrowing to the one field it does know keeps the rest type-checked.
+    ...(laneRequestFields(args.lane) as Pick<Anthropic.MessageCreateParams, 'model'>),
     max_tokens: args.maxTokens,
     system: args.system,
     tools: [

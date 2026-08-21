@@ -1,4 +1,4 @@
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, SONNET5_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { runInferenceForFamily } from './inference';
@@ -146,7 +146,7 @@ describe('runInferenceForFamily', () => {
     const run = capture.agentRuns[0] as Record<string, unknown>;
     expect(run.familyId).toBe(FAMILY_ID);
     expect(run.agentName).toBe('infer-memory');
-    expect(run.modelUsed).toBe('claude-sonnet-4-6');
+    expect(run.modelUsed).toBe(SONNET5_MODEL);
     expect(run.promptTokens).toBe(16);
     expect(run.completionTokens).toBe(9);
     expect(typeof run.latencyMs).toBe('number');

@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import type { MedicalReplySourceValue } from '@hale/db';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
@@ -536,7 +536,7 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
   try {
     ({ value: sanitized } = await forceToolJson({
       client: resolved,
-      model: pickModel(sanitizeSkill.meta.task),
+      lane: pickLane(sanitizeSkill.meta.task),
       system: sanitizeSkill.instructions,
       userMessage: sanitizeUserMessage(text),
       toolName: 'sanitize',
@@ -591,7 +591,7 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
   try {
     ({ value: composed } = await forceToolJson({
       client: resolved,
-      model: pickModel(medicalSkill.meta.task),
+      lane: pickLane(medicalSkill.meta.task),
       system: medicalSkill.instructions,
       userMessage: composeUserMessage({
         ...query,

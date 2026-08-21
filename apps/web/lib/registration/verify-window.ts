@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { pickModel } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import type { Municipality, ProgramDomain } from '@hale/db';
 import { z } from 'zod';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -371,7 +371,7 @@ export async function extractPublishedWindow(
   const skill = await loadVerifyRegistrationWindowSkill();
   const { value } = await forceToolJson({
     client: deps.client,
-    model: pickModel(skill.meta.task),
+    lane: pickLane(skill.meta.task),
     system: skill.instructions,
     userMessage: extractionInput(cycle, pageText),
     toolName: 'published_registration_window',
