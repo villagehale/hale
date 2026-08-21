@@ -1,0 +1,28 @@
+{
+  "value": {
+    "pages_read": [
+      "https://www.cartwheelsgymcentre.com/programs.php"
+    ],
+    "slots": [
+      {
+        "name": "Tiny Gym, Cartwheels Gym Centre",
+        "age_fit": "walking to 3.5 years, with a parent",
+        "when": "Sundays 9:30-10:15 a.m., September 14 to October 26, 2026 (7 weeks)",
+        "price": "$124 per child (plus $25 annual membership)",
+        "registration": "Fall registration opened July 22, 2026 and runs until classes fill",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php"
+      },
+      {
+        "name": "Kinderfun, Cartwheels Gym Centre",
+        "age_fit": "3 to 5 years, drop off",
+        "when": "Saturdays 10:30-11:15 a.m., September 13 to October 25, 2026 (7 weeks)",
+        "price": "$145 per child (plus $25 annual membership)",
+        "registration": "Fall registration opened July 22, 2026 and runs until classes fill",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php"
+      }
+    ]
+  },
+  "latencyMs": 5262
+}

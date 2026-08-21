@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Toddler Gym, Halton Hills Gymnastics Centre",
+        "age_fit": "18 months - 3.11 yrs",
+        "when": "Fall Session: Sept 10 - Dec 16 (no classes Oct 10)",
+        "source_name": "Halton Hills Gymnastics Centre"
+      },
+      {
+        "name": "Preschool Drop-In, Halton Hills Gymnastics Centre",
+        "age_fit": "Preschool aged child (under 4), with parent",
+        "when": "Thursdays 9:30am-12:00pm, Oct 9 to June 26",
+        "price": "$15, one parent/up to 4 children",
+        "source_name": "Halton Hills Gymnastics Centre"
+      }
+    ]
+  },
+  "latencyMs": 3259
+}

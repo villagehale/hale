@@ -71,12 +71,25 @@ export type FollowUpComposeOutcome =
   | { status: 'composed'; message: string }
   | { status: 'deferred'; reason: FollowUpFallback; violations: readonly string[] };
 
+/**
+ * One find, as the composer is given it.
+ *
+ * An {@link ActivityPick} plus the fact the DEEP PASS opens a page to get: when
+ * registration opens, when it closes, or that it is open now — the one that decides
+ * whether a parent acts today. Optional here rather than a field on `ActivityPick`
+ * because the shallow lane reads search snippets and has never had one; a
+ * {@link import('./deep').DeepSlot} always carries the field and nulls it when no page
+ * said. Both arrive at the projection below as the same sentence to a composer — "I have
+ * no registration fact for this" — which is all the model can act on.
+ */
+export type FollowUpPick = ActivityPick & { registration?: string | null };
+
 export interface FollowUpGrounding {
   /** The de-identified subject the promise was about, off the ledger row. */
   subject: string;
   /** What the re-run search found. EMPTY is a valid, sendable grounding — see the module
    * note on why the bad-news half is the half that makes the promise honest. */
-  picks: readonly ActivityPick[];
+  picks: readonly FollowUpPick[];
 }
 
 export interface FollowUpComposer {
@@ -91,8 +104,22 @@ const noteJsonSchema = {
   required: ['message'],
 } as const;
 
-/** Shared with the eval, which REPLICATES this request shape. It carries the picks and the
- * subject and nothing else — no family, no child, no thread (rule #1). */
+/**
+ * Shared with the eval, which REPLICATES this request shape. It carries the picks and the
+ * subject and nothing else — no family, no child, no thread (rule #1).
+ *
+ * EVERY FACT THE PASS PAID FOR IS LISTED HERE, and the list is the hazard. This is a
+ * hand-written projection: a field added to a slot upstream and not added here does not
+ * fail, does not warn, and does not reach the model — it simply never gets said. That is
+ * what happened to `registration`. The deep pass opened the venue's own page, read that
+ * registration had been open since July 22, put it on the slot, and handed the slot to a
+ * composer that was told six fields, none of them that one. The message came back gated,
+ * honest and sendable, and the parent was told everything except the thing that decides
+ * whether they act today.
+ *
+ * A null is sent rather than the key omitted: an absent key reads to a model as a field it
+ * might fill in, and a `null` is Hale saying it does not have one.
+ */
 export function followUpUserMessage(grounding: FollowUpGrounding): string {
   return JSON.stringify({
     mode: 'followup_text',
@@ -102,6 +129,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
       age_fit: pick.ageFit,
       when: pick.when,
       price: pick.price,
+      registration: pick.registration ?? null,
       source_name: pick.sourceName,
       source: pick.source,
     })),

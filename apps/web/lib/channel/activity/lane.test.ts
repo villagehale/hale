@@ -126,6 +126,47 @@ describe('the payloads', () => {
   });
 });
 
+/**
+ * THE WIRE SHAPE ITSELF, pinned as a literal — because a second copy of it lives in
+ * apps/worker/evals/run-activity-finder-eval.mjs.
+ *
+ * That eval REPLICATES this request rather than importing it (the `~/` alias does not
+ * resolve under its tsx loader), and a replica that has drifted is worse than no eval: it
+ * scores a request production does not send, from a cache keyed on the wrong thing, and
+ * reports PASS. The drift is silent by construction — nothing compiles across that seam.
+ *
+ * So the literals here are deliberate and are not to be replaced with the constants they
+ * came from. Changing a budget SHOULD break this test, because changing a budget re-keys
+ * the eval corpus and somebody has to go and re-record it.
+ */
+describe('the grounding request the eval corpus replays', () => {
+  const LEGACY_TOOLS = '[{"name":"web_search","type":"web_search_20250305","max_uses":3}]';
+  const VENUE_TOOLS = `[{"name":"web_search","type":"web_search_20250305","max_uses":3},{"name":"web_fetch","type":"web_fetch_20260209","max_uses":3}]`;
+
+  async function toolsFor(subject: string): Promise<string> {
+    const seen: Seen[] = [];
+    await createActivityFinder(
+      makeClient(
+        { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    ).find({ ...QUERY, subject });
+    return JSON.stringify(seen[0]?.tools);
+  }
+
+  it('a subject naming a PLACE buys the fetch budget - MAX_INLINE_FETCHES pages', async () => {
+    expect(await toolsFor('Cartwheels Gym Centre')).toBe(VENUE_TOOLS);
+  });
+
+  it('CORPUS REPLAY - a generic subject gets the byte-identical pre-fetch request', async () => {
+    // The other direction, and the one the eval depends on: a question with no one site to
+    // open must still send exactly what it sent before `web_fetch` existed, or every
+    // cached ground turn in the corpus is a replay of a request that is no longer made.
+    expect(await toolsFor('toddler gymnastics')).toBe(LEGACY_TOOLS);
+    expect(await toolsFor('indoor swim lessons this fall')).toBe(LEGACY_TOOLS);
+  });
+});
+
 describe('an ungrounded find never ships', () => {
   it('fails NAMED when the search returned no results, and never composes', async () => {
     const restore = quiet();

@@ -1,8 +1,11 @@
+import { join } from 'node:path';
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type DeepResearcher, createDeepResearcher } from '~/lib/channel/activity/deep';
+import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import {
@@ -27,8 +30,10 @@ import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { approvalHandler } from '~/lib/channel/router/handlers';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { pipelineClient } from '~/lib/pipeline/client';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
 
 /**
  * "I'LL COME BACK TO YOU ON IT" — the 2026-08-20 18:13-18:19 UTC transcript, replayed.
@@ -78,6 +83,14 @@ const TZ = 'America/Toronto';
 const AREA = 'L7G';
 const PHONE = '+14165550100';
 const APP_KEY = Buffer.alloc(32, 7).toString('base64');
+
+/** Real Claude follow-up turns, recorded once. See lib/testing/recorded-model.ts for how
+ * to re-record when the projection or the skill changes — which is the point of them. */
+const FOLLOWUP_RECORDINGS = join(
+  import.meta.dirname,
+  '__recordings__',
+  'activity-followup.json',
+);
 
 const TURN_1_AT = new Date('2026-08-20T18:14:44.000Z');
 const TURN_2_AT = new Date('2026-08-20T18:17:52.000Z');
@@ -237,6 +250,119 @@ describe('the activity question is answered', () => {
         },
       }) as unknown as AgentClient;
     return { client, searched };
+  }
+
+  /**
+   * The client the DEEP PASS drives — a research turn that really opened a page, then the
+   * extraction off it.
+   *
+   * The page TEXT is the fixture and everything the deep pass does with it is production
+   * code: `readEvidence` counts the opened page, `toDeepSlots` requires the citation, and
+   * the slot that comes out carries the registration fact this journey is about. Whether a
+   * real model would read that fact off that page is not this test's question — it is the
+   * deep eval's (rule #8), and the answer is gated there.
+   *
+   * TWO slots, deliberately: `SLOTS_IN_TEXT` is 2, so no share page is minted and the text
+   * is the only place the registration fact could land. That is the shape the defect hid
+   * in — with three or more slots the fact still reaches the parent on the linked page.
+   */
+  function deepPort(): { client: () => AgentClient; requests: string[] } {
+    const requests: string[] = [];
+    let call = 0;
+    const client = () =>
+      ({
+        messages: {
+          // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
+          async create(req: any) {
+            requests.push(req.messages?.[0]?.content as string);
+            call += 1;
+            if (call === 1) {
+              return {
+                content: [
+                  {
+                    type: 'web_search_tool_result',
+                    tool_use_id: 'srvtu_deep',
+                    content: [
+                      {
+                        type: 'web_search_result',
+                        url: 'https://cartwheelsgymcentre.example/programs',
+                        title: 'Programs - Cartwheels Gym Centre',
+                        encrypted_content: 'x',
+                        page_age: null,
+                      },
+                    ],
+                  },
+                  {
+                    type: 'web_fetch_tool_result',
+                    tool_use_id: 'srvtu_fetch',
+                    content: {
+                      type: 'web_fetch_result',
+                      url: 'https://cartwheelsgymcentre.example/programs',
+                      content: {
+                        type: 'document',
+                        source: {
+                          type: 'text',
+                          data: 'Fall block Sept 14 - Oct 26. Tiny Gym Sundays 9:30-10:15, $124 per term. Registration has been open since July 22.',
+                        },
+                      },
+                    },
+                  },
+                  { type: 'text', text: 'Opened the fall programs grid.' },
+                ],
+                usage: { input_tokens: 10, output_tokens: 10 },
+                stop_reason: 'end_turn',
+              };
+            }
+            return {
+              content: [
+                {
+                  type: 'tool_use',
+                  name: 'activity_deep',
+                  input: {
+                    pages_read: ['https://cartwheelsgymcentre.example/programs'],
+                    slots: [
+                      {
+                        name: 'Tiny Gym, Cartwheels Gym Centre',
+                        age_fit: 'walking to 3.5 years, with a parent',
+                        when: 'Sundays 9:30-10:15, Sept 14 to Oct 26',
+                        price: '$124 per term',
+                        registration: 'Registration has been open since July 22',
+                        source_name: 'Cartwheels Gym Centre',
+                        source_url: 'https://cartwheelsgymcentre.example/programs',
+                      },
+                      {
+                        name: 'Kinderfun, Cartwheels Gym Centre',
+                        age_fit: '3 to 5 years',
+                        when: 'Saturdays 10:30-11:15, Sept 13 to Oct 25',
+                        price: '$124 per term',
+                        registration: 'Registration has been open since July 22',
+                        source_name: 'Cartwheels Gym Centre',
+                        source_url: 'https://cartwheelsgymcentre.example/programs',
+                      },
+                    ],
+                  },
+                },
+              ],
+              usage: { input_tokens: 10, output_tokens: 10 },
+              stop_reason: 'tool_use',
+            };
+          },
+        },
+      }) as unknown as AgentClient;
+    return { client, requests };
+  }
+
+  /** The deep pass as a NAMED absence — the production outcome when the provider cannot be
+   * reached, which is what every sweep below that is not about the deep pass should take. */
+  function noDeepPass(): DeepResearcher {
+    return { async research() {
+      return { status: 'unavailable', reason: 'client_unavailable' };
+    } };
+  }
+
+  /** Real Claude for the follow-up text, recorded once and replayed by content address. */
+  function composerModel(): RecordedModel {
+    return recordedModel(FOLLOWUP_RECORDINGS, pipelineClient);
   }
 
   // ── the coach, with real tools and a scripted set of calls ─────────────────
@@ -720,8 +846,70 @@ describe('the activity question is answered', () => {
     // texted on success would leave this family waiting forever for the answer to a
     // question Hale had quietly given up on.
     expect(result).toMatchObject({ sent: 1, sentEmptyHanded: 1 });
-    expect(sweepTransport.bodies()[0]).toMatch(/nothing has opened yet/);
+    // Real words from a real model, so what is asserted is the PROPERTY, not the phrasing.
+    // It came back, and it is about the fall search it promised. And with ZERO picks there
+    // is no day and no price in existence to state, so a body carrying either would be an
+    // invention — the failure the whole grounding invariant exists for. (The positive
+    // control for that second assertion is the deep-pass test below, whose body carries
+    // both a day and a price through this same composer.)
+    const empty = sweepTransport.bodies()[0] ?? '';
+    expect(empty).toMatch(/fall/i);
+    expect(empty).not.toMatch(/\$\d|\b(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day\b/i);
     expect((await promiseRows())[0]?.fulfilledAt).not.toBeNull();
+  });
+
+  /**
+   * THE FACT THE DEEP PASS PAID FOR, ALL THE WAY TO THE PHONE.
+   *
+   * The sweep's whole justification is that it opens the operator's own pages, so the one
+   * thing it can learn that the inline lane cannot is the REGISTRATION fact — whether a
+   * parent can act today. This is the journey that proves the fact survives the whole
+   * chain, and it is written at the two places the old version could not see:
+   *
+   *   THE PROJECTION. `followUpUserMessage` is a hand-written field list, and the fact was
+   *   simply not on it. The payload assertion below is the real function's real output.
+   *
+   *   THE COMPOSED TEXT. Through the real composer, the real gates, and a real (recorded)
+   *   Claude turn. The previous version stubbed the composer with a canned sentence, so
+   *   the projection could have been empty and this journey would still have been green.
+   */
+  it('THE DEEP PASS - the registration fact survives the projection and reaches the parent', async () => {
+    await turnTwoPromises();
+
+    const deep = deepPort();
+    const composer = composerModel();
+    const sweepTransport = new FakeTransport();
+    const result = await runActivityFollowUpSweep(
+      database,
+      sweepDeps(sweepTransport, webPort([[GYM_RESULT]]).client, {
+        deep: createDeepResearcher(deep.client),
+        composer: createFollowUpComposer(composer.client),
+      }),
+      SWEEP_AT,
+    );
+
+    // It read a page rather than re-running the snippet search — `deepRead`, not `sent`
+    // alone, is the difference between this sweep and the one it replaced.
+    expect(result).toMatchObject({ due: 1, sent: 1, deepRead: 1, deepUnread: 0, shared: 0 });
+
+    // ── the projection boundary ──────────────────────────────────────────────
+    const payload = JSON.parse(composer.requests[0] ?? '{}');
+    expect(payload.picks).toHaveLength(2);
+    expect(payload.picks[0]).toMatchObject({
+      name: 'Tiny Gym, Cartwheels Gym Centre',
+      when: 'Sundays 9:30-10:15, Sept 14 to Oct 26',
+      registration: 'Registration has been open since July 22',
+    });
+
+    // ── and the parent's phone ───────────────────────────────────────────────
+    // Derived from the PAGE the fixture served, never from what the model wrote: the page
+    // said July 22, so the text has to.
+    const body = sweepTransport.bodies()[0] ?? '';
+    expect(body).toMatch(/July 22/);
+    expect(body).toMatch(/Cartwheels/);
+    // Two slots is under SLOTS_IN_TEXT, so there is no share page to have carried the fact
+    // instead — the text was its only route to the parent.
+    expect(body).not.toMatch(/https?:\/\//);
   });
 
   // ── THE MUTATION ───────────────────────────────────────────────────────────
@@ -768,27 +956,37 @@ describe('the activity question is answered', () => {
     expect(result).toMatchObject({ due: 0, sent: 0 });
   });
 
-  /** The sweep, wired to the real ledger and the real composer gates, with the web and the
-   * wire as ports and the composer's WORDS scripted (rule #8 — its judgement is the
-   * eval's). */
-  function sweepDeps(transport: FakeTransport, client: () => AgentClient): ActivityFollowUpDeps {
+  /**
+   * The sweep, wired to the real ledger and the real composer, with the web and the wire
+   * as ports.
+   *
+   * THE COMPOSER IS THE REAL ONE, over a RECORDED real model turn (rule #8). It used to be
+   * a stub returning a canned sentence, and that stub is why the registration defect
+   * survived this journey: a composer whose words are scripted cannot fail on what the
+   * payload handed to it was missing. Now the projection, the gates and the recompose loop
+   * all run, and the answer comes from Claude — once, live, then replayed by content
+   * address (lib/testing/recorded-model.ts).
+   *
+   * THE DEEP PASS IS ALWAYS INJECTED, and `noDeepPass` is a real production outcome rather
+   * than an absent dependency. Before this it was inherited from `defaultActivityFollowUpDeps`
+   * and quietly resolved to `client_unavailable` because no API key is set under vitest —
+   * so every sweep in this file took the shallow fallback by accident, and would have
+   * started making live web requests the moment a developer had a key exported (rule #11).
+   */
+  function sweepDeps(
+    transport: FakeTransport,
+    client: () => AgentClient,
+    overrides: Partial<ActivityFollowUpDeps> = {},
+  ): ActivityFollowUpDeps {
     return {
       ...defaultActivityFollowUpDeps(),
       finder: createActivityFinder(client),
-      composer: {
-        async compose({ picks }) {
-          const top = picks[0];
-          return {
-            status: 'composed',
-            message: top
-              ? `${top.name} runs ${top.when} - their site says. Want me to confirm?`
-              : 'I went back through the fall listings and nothing has opened yet. Want me to keep watching?',
-          };
-        },
-      },
+      deep: noDeepPass(),
+      composer: createFollowUpComposer(composerModel().client),
       buildGate: () => openGate,
       resolveSendablePhone: async () => PHONE,
       transport,
+      ...overrides,
     };
   }
 });

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { claimsVerification, followUpViolations, topPickLeads } from './followup-note';
+import {
+  type FollowUpPick,
+  claimsVerification,
+  followUpUserMessage,
+  followUpViolations,
+  topPickLeads,
+} from './followup-note';
 import type { ActivityPick } from './lane';
 
 /**
@@ -154,5 +160,68 @@ describe('the mechanical gates', () => {
     expect(followUpViolations('   ', { subject: 's', picks: [PICK] })).toEqual([
       'The message was empty.',
     ]);
+  });
+});
+
+/**
+ * WHAT THE COMPOSER IS ACTUALLY TOLD — the boundary the gates above never look at.
+ *
+ * Every test in this file so far scores a body the model already wrote. None of them
+ * could see the failure underneath: the deep pass spends a page-open to learn that
+ * registration opened on July 22, hands the slot to the composer, and the composer is
+ * handed a payload with no such field in it. The model cannot write a fact nobody gave
+ * it, so the message comes back correct, gated, sendable — and silent about the one
+ * thing that decides whether the parent acts today (rule #11: the fact went missing with
+ * nothing named).
+ *
+ * A hand-listed projection is where that happens, so this is the assertion that has to be
+ * whole-object rather than a spot check: a field added to a slot and forgotten here is
+ * invisible at every other boundary in the lane.
+ */
+describe('the payload the composer is handed', () => {
+  const DEEP_SLOT: FollowUpPick = {
+    name: 'Tiny Gym, Cartwheels Gym Centre',
+    ageFit: 'walking to 3.5 years, with a parent',
+    when: 'Sundays 9:30-10:15, Sept 14 to Oct 26',
+    price: '$124 per term',
+    registration: 'Registration has been open since July 22',
+    sourceName: 'Cartwheels Gym Centre',
+    source: 'web',
+  };
+
+  it('carries the REGISTRATION fact the deep pass opened a page to get', () => {
+    const payload = JSON.parse(
+      followUpUserMessage({ subject: 'Cartwheels Gym Centre', picks: [DEEP_SLOT] }),
+    );
+
+    expect(payload.picks[0]).toEqual({
+      name: 'Tiny Gym, Cartwheels Gym Centre',
+      age_fit: 'walking to 3.5 years, with a parent',
+      when: 'Sundays 9:30-10:15, Sept 14 to Oct 26',
+      price: '$124 per term',
+      registration: 'Registration has been open since July 22',
+      source_name: 'Cartwheels Gym Centre',
+      source: 'web',
+    });
+  });
+
+  it('POSITIVE CONTROL - a snippet pick with no registration fact says so, and keeps the key', () => {
+    // The other direction, and the reason the key is present rather than omitted: an
+    // absent key reads to the model as a field it may fill in, and the shallow lane has
+    // never opened a page to fill it from.
+    const payload = JSON.parse(
+      followUpUserMessage({ subject: 'toddler gymnastics', picks: [PICK] }),
+    );
+
+    expect(payload.picks[0]).toHaveProperty('registration', null);
+  });
+
+  it('carries the subject and the mode, and nothing about the family (rule #1)', () => {
+    const payload = JSON.parse(
+      followUpUserMessage({ subject: 'toddler gymnastics', picks: [DEEP_SLOT] }),
+    );
+
+    expect(Object.keys(payload).sort()).toEqual(['mode', 'picks', 'subject']);
+    expect(payload.mode).toBe('followup_text');
   });
 });

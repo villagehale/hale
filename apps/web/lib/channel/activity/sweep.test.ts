@@ -4,9 +4,10 @@ import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type { DueCommitment } from '~/lib/commitments/ledger';
+import type { DeepSlot } from './deep';
+import type { ActivityPick } from './lane';
 import type { ActivityFollowUpDeps } from './sweep';
 import { runActivityFollowUpSweep } from './sweep';
-import type { ActivityPick } from './lane';
 
 /**
  * THE SWEEP THAT MAKES "I'LL COME BACK TO YOU" TRUE.
@@ -44,6 +45,8 @@ const PICK: ActivityPick = {
   source: 'web',
 };
 
+const SHARE_URL = 'https://app.villagehale.com/a/tok3n';
+
 const database = {} as Database;
 
 afterEach(() => {
@@ -60,6 +63,7 @@ interface Harness {
   threaded: string[];
   audited: unknown[];
   composed: unknown[];
+  shared: unknown[];
 }
 
 function harness(
@@ -69,6 +73,8 @@ function harness(
     find?: Awaited<ReturnType<ActivityFollowUpDeps['finder']['find']>>;
     compose?: Awaited<ReturnType<ActivityFollowUpDeps['composer']['compose']>>;
     householdNames?: string[];
+    deep?: Awaited<ReturnType<ActivityFollowUpDeps['deep']['research']>>;
+    sharePage?: Awaited<ReturnType<ActivityFollowUpDeps['sharePage']>>;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -77,6 +83,7 @@ function harness(
   const threaded: string[] = [];
   const audited: unknown[] = [];
   const composed: unknown[] = [];
+  const shared: unknown[] = [];
 
   const deps: ActivityFollowUpDeps = {
     loadDue: async () => overrides.due ?? [DUE],
@@ -90,6 +97,17 @@ function harness(
       async find() {
         return overrides.find ?? { found: true, picks: [PICK] };
       },
+    },
+    // Unavailable by default so every pre-existing case still exercises the SHALLOW path
+    // it was written against; the deep cases opt in.
+    deep: {
+      async research() {
+        return overrides.deep ?? { status: 'unavailable', reason: 'client_unavailable' };
+      },
+    },
+    sharePage: async (_db, input) => {
+      shared.push(input);
+      return overrides.sharePage ?? { status: 'minted', url: SHARE_URL, slots: input.slots.length };
     },
     composer: {
       async compose(grounding) {
@@ -123,7 +141,7 @@ function harness(
       return { status: 'closed' as const, commitmentIds: ['commitment-1'] };
     }) as unknown as ActivityFollowUpDeps['cancelPromise'],
   };
-  return { deps, transport, fulfilled, cancelled, threaded, audited, composed };
+  return { deps, transport, fulfilled, cancelled, threaded, audited, composed, shared };
 }
 
 function armed() {
@@ -157,7 +175,10 @@ describe('a promise with finds', () => {
     // front of it — and the CASL line stays on the wire, out of the history.
     expect(h.threaded).toEqual([`${PICK.name} runs Saturdays.`]);
     // The audit row counts the finds and never names them (rule #1).
-    expect(h.audited[0]).toMatchObject({ actionTaken: 'activity_followup_sent', after: { picks: 1 } });
+    expect(h.audited[0]).toMatchObject({
+      actionTaken: 'activity_followup_sent',
+      after: { picks: 1 },
+    });
     expect(JSON.stringify(h.audited)).not.toContain(PICK.name);
   });
 
@@ -175,7 +196,10 @@ describe('the promise is kept when the news is bad', () => {
     armed();
     const h = harness({
       find: { found: false, reason: 'no_picks' },
-      compose: { status: 'composed', message: 'I went back through the fall listings - nothing yet.' },
+      compose: {
+        status: 'composed',
+        message: 'I went back through the fall listings - nothing yet.',
+      },
     });
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);
@@ -286,8 +310,199 @@ describe('what leaves the promise open, and what closes it without a word', () =
 
   it('POSITIVE CONTROL - the same subject searches fine before that child exists', async () => {
     armed();
-    const h = harness({ due: [{ ...DUE, topic: 'gymnastics for Rowan' }], householdNames: ['Noah'] });
+    const h = harness({
+      due: [{ ...DUE, topic: 'gymnastics for Rowan' }],
+      householdNames: ['Noah'],
+    });
 
     expect(await runActivityFollowUpSweep(database, h.deps, NOW)).toMatchObject({ sent: 1 });
+  });
+});
+
+describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
+  /**
+   * THE ROW THIS ARC OWES.
+   *
+   * 2026-08-21 16:14 UTC, family a0fa6932: an `activity_followup` promise with topic
+   * "Cartwheels" is open on the ledger. On the turn that made it Hale said "no dates or
+   * price up yet". The published fall block — Sept 14/15 to Oct 26/27, $124-145,
+   * registration open since July 22 — was sitting on cartwheelsgymcentre.com's own
+   * schedule page the whole time, in a "schedule at a glance" grid the search snippet
+   * never carried (verified by hand against the live page while building this).
+   *
+   * This is that row, in the shapes the code will actually see, run end to end through the
+   * real sweep. The venue fixture is deliberately built the way the page is: several dated
+   * slots, a price on each, one registration fact, every row citing the page it came off.
+   */
+  const CARTWHEELS_DUE: DueCommitment = {
+    id: 'commitment-cartwheels',
+    familyId: 'a0fa6932',
+    topic: 'Cartwheels',
+    summary: 'A promise to come back with what I find on Cartwheels',
+    createdFrom: 'msg-cartwheels',
+    subjectChildId: null,
+    dueAt: new Date('2026-08-21T16:14:00.000Z'),
+  };
+
+  const PAGE = 'https://www.cartwheelsgymcentre.com/programs.php';
+
+  function slot(name: string, when: string, price: string): DeepSlot {
+    return {
+      name: `${name}, Cartwheels Gym Centre`,
+      ageFit: 'walking to 3.5 years, with a parent',
+      when,
+      price,
+      registration: 'Registration has been open since July 22',
+      sourceName: 'Cartwheels Gym Centre',
+      sourceUrl: PAGE,
+      source: 'web',
+    };
+  }
+
+  const SLOTS: DeepSlot[] = [
+    slot('Tiny Gym', 'Sundays 9:30-10:15, Sept 14 to Oct 26', '$124 per term'),
+    slot('Tiny Gym', 'Mondays 9:15-10:00, Sept 15 to Oct 27', '$145 per term'),
+    slot('Mini Gym', 'Mondays 10:15-11:00, Sept 15 to Oct 27', '$145 per term'),
+    slot('Tumble n Learn', 'Tuesdays 9:30-11:30, Sept 16 to Oct 28', '$145 per term'),
+  ];
+
+  function payable(overrides: Parameters<typeof harness>[0] = {}) {
+    return harness({
+      due: [CARTWHEELS_DUE],
+      deep: { status: 'read', slots: SLOTS, pagesRead: 2, pagesRefused: 1 },
+      ...overrides,
+    });
+  }
+
+  it('sends a text carrying a dated slot, a price and the registration fact', async () => {
+    armed();
+    // The composer is the eval's job (rule #8), so it is asked here for the sentence it
+    // would write from these slots — what this asserts is that the sweep put the facts in
+    // front of it and put its sentence on the wire.
+    const h = payable({
+      compose: {
+        status: 'composed',
+        message:
+          'Cartwheels has Tiny Gym Sundays 9:30-10:15 from Sept 14, $124 a term - their site says, and registration has been open since July 22. Want me to hold you a spot?',
+      },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result.sent).toBe(1);
+    expect(result.deepRead).toBe(1);
+    expect(result.sentEmptyHanded).toBe(0);
+
+    const sent = h.transport.sent[0]?.body ?? '';
+    expect(sent).toContain('Sept 14');
+    expect(sent).toContain('$124');
+    expect(sent).toContain('July 22');
+    // And the promise is closed against the message that closed it.
+    expect(h.fulfilled).toEqual([
+      { familyId: 'a0fa6932', kind: 'activity_followup', channelMessageId: 'msg-out-1', now: NOW },
+    ]);
+  });
+
+  it('grounds the composer on the best TWO slots and puts the other two on a page', async () => {
+    armed();
+    const h = payable();
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    // The text is written about two; the share page is offered all four.
+    expect((h.composed[0] as { picks: unknown[] }).picks).toHaveLength(2);
+    expect((h.shared[0] as { slots: unknown[] }).slots).toHaveLength(4);
+    expect(result.shared).toBe(1);
+    expect(h.transport.sent[0]?.body).toContain(SHARE_URL);
+  });
+
+  it('threads the message the parent actually got - link and all', async () => {
+    armed();
+    const h = payable();
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    // The CASL tail belongs on the wire and nowhere else; the link is part of the answer.
+    expect(h.threaded[0]).toContain(SHARE_URL);
+    expect(h.threaded[0]).not.toContain('STOP');
+  });
+
+  it('mints no page when everything found already fits in the text', async () => {
+    armed();
+    const h = harness({
+      due: [CARTWHEELS_DUE],
+      deep: { status: 'read', slots: SLOTS.slice(0, 2), pagesRead: 1, pagesRefused: 0 },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.shared).toEqual([]);
+    expect(result.shared).toBe(0);
+    expect(h.transport.sent[0]?.body).not.toContain('/a/');
+  });
+
+  it('still sends when the share page could not be written', async () => {
+    armed();
+    const h = payable({ sharePage: { status: 'skipped', reason: 'write_failed' } });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result.sent).toBe(1);
+    expect(result.shared).toBe(0);
+    expect(h.transport.sent[0]?.body).not.toContain('/a/');
+  });
+
+  it('THE DEFECT: a deep pass that opened NO page falls back rather than claiming nothing is posted', async () => {
+    armed();
+    const h = harness({
+      due: [CARTWHEELS_DUE],
+      deep: { status: 'unread', pagesRefused: 3 },
+      find: { found: true, picks: [PICK] },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result.deepUnread).toBe(1);
+    expect(result.deepRead).toBe(0);
+    // The shallow search still ran and the parent still hears back — what did NOT happen
+    // is a message written from an empty slot list, which would have said the pages carry
+    // nothing about pages nobody opened.
+    expect(result.sent).toBe(1);
+    expect((h.composed[0] as { picks: unknown[] }).picks).toEqual([PICK]);
+  });
+
+  it('an opened page that genuinely has nothing still comes back, empty-handed and honest', async () => {
+    armed();
+    const h = harness({
+      due: [CARTWHEELS_DUE],
+      deep: { status: 'read', slots: [], pagesRead: 2, pagesRefused: 0 },
+      compose: { status: 'composed', message: 'I read their fall page and there is nothing up.' },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result.sent).toBe(1);
+    expect(result.sentEmptyHanded).toBe(1);
+    expect(result.deepRead).toBe(1);
+    // Kept, not cancelled — the promise was to come back, not to succeed.
+    expect(h.fulfilled).toHaveLength(1);
+  });
+
+  it('bounds the expensive instrument at two per tick and keeps every other promise anyway', async () => {
+    armed();
+    const due = [1, 2, 3, 4].map((n) => ({
+      ...CARTWHEELS_DUE,
+      id: `c-${n}`,
+      familyId: `fam-${n}`,
+    }));
+    const h = harness({
+      due,
+      deep: { status: 'read', slots: SLOTS, pagesRead: 2, pagesRefused: 0 },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result.deepRead).toBe(2);
+    expect(result.sent).toBe(4);
   });
 });

@@ -139,6 +139,14 @@ jobs:
       - name: Registration re-verify eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-verify
 
+      # The activity lane's two legs. Neither was wired here when they shipped, so the
+      # scripts existed and nothing ran them - which is a gate in name only.
+      - name: Activity finder eval (cached-only)
+        run: pnpm --filter @hale/worker eval:activity-finder
+
+      - name: Activity deep-pass eval (cached-only)
+        run: pnpm --filter @hale/worker eval:activity-deep
+
       - name: Build
         run: pnpm build
         env:

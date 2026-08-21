@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly identifies that \"underwater basket weaving lessons\" is not a real program and returns an empty pick list as appropriate. The message is honest and specific about what was searched for and found nothing. It then offers a constructive next step by asking if the parent wants suggestions for actual swim or craft classes instead. This avoids the critical failure mode of inventing a venue, and instead handles the non-existent program with transparency while keeping the conversation helpful. The message is plain text, contains exactly one question, and does not present false information as fact."
+  }
+}

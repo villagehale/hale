@@ -1,0 +1,18 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Learn to Swim - Preschool (Levels A-E)",
+        "age_fit": "3 - 5 years",
+        "when": "Fall registration opens Tuesday, August 11 at 7 a.m.; program options browsable online starting August 4",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "YMCA Preschool Swim Lessons",
+        "age_fit": "3 to 5 years old",
+        "source_name": "YMCA of Oakville"
+      }
+    ]
+  },
+  "latencyMs": 2058
+}

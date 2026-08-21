@@ -21,6 +21,15 @@
 // and the model routing ARE imported live from packages/agent, so a skill edit or a
 // re-tiering re-keys the cache and shows up as a miss. `smsSegments` is imported real.
 //
+// THE REPLICA INCLUDES THE TOOL LIST, and that is not decoration. The lane now hands
+// `web_fetch` to any subject that NAMES A PLACE (groundTools/namesAVenue), and this harness
+// went on sending the search-only request - so the venue fixture was scored against a turn
+// production does not make, and said PASS. The tool list is in the cache key now: change a
+// budget or add a tool and the corpus misses, which is a re-record, which is somebody
+// looking at it. Same reason `readEvidence` is mirrored whole rather than as a text-block
+// reader - production feeds the composer the TEXT OF THE PAGES IT OPENED, and an eval that
+// only reads the model's prose is scoring a different composer.
+//
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-activity-finder-eval.mjs           # live, then caches
 //   node --env-file=../../.env evals/run-activity-finder-eval.mjs --broken  # calibration: must FAIL
@@ -75,6 +84,7 @@ const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-s
 // Mirrors the lane's own constants (activity/lane.ts, activity/followup-note.ts).
 const MAX_PICKS = 3;
 const MAX_SEARCHES = 3;
+const MAX_INLINE_FETCHES = 3;
 const MAX_FOLLOWUP_SEGMENTS = 2;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
 const FIRST_SEGMENT_CHARS = 153;
@@ -122,6 +132,10 @@ function composeUserMessage(q, researchNotes) {
   return JSON.stringify({ ...JSON.parse(groundUserMessage(q)), research_notes: researchNotes });
 }
 
+/** Mirrors `followUpUserMessage` in activity/followup-note.ts, INCLUDING `registration` —
+ * a field the shallow lane never fills (so it is null here) but which the deep pass reads
+ * off a page and the composer is told about. The projection dropping it is what this
+ * mirror exists to keep honest. */
 function followUpUserMessage(subject, picks) {
   return JSON.stringify({
     mode: 'followup_text',
@@ -131,33 +145,93 @@ function followUpUserMessage(subject, picks) {
       age_fit: pick.ageFit,
       when: pick.when,
       price: pick.price,
+      registration: pick.registration ?? null,
       source_name: pick.sourceName,
       source: 'web',
     })),
   });
 }
 
-function countSearchResults(content) {
-  let total = 0;
-  for (const block of content) {
-    if (block.type !== 'web_search_tool_result') continue;
-    if (!Array.isArray(block.content)) continue;
-    total += block.content.length;
-  }
-  return total;
+/**
+ * WHICH TOOLS THE GROUNDING TURN IS ACTUALLY HANDED — mirrors `groundTools` and
+ * `namesAVenue` (activity/lane.ts, activity/evidence.ts).
+ *
+ * This replica exists because it drifted. The lane started handing `web_fetch` to any
+ * subject that names a place, and the eval went on sending the search-only request, so the
+ * one fixture that names a venue was scored on a turn production does not make — from a
+ * cache keyed on a tool list that no longer matched. A replica that has silently fallen
+ * behind is worse than no eval: it reports PASS about something nobody runs.
+ *
+ * So the tool list is in the CACHE KEY below, not just in the request. A budget change or
+ * a new tool now shows up as a miss, which is a re-record, which is a human looking at it.
+ */
+const PROGRAMME_WORDS = new Set([
+  'gym', 'gymnastics', 'swim', 'swimming', 'lessons', 'lesson', 'class', 'classes',
+  'program', 'programs', 'programme', 'toddler', 'preschool', 'baby', 'kids', 'parent',
+  'tot', 'drop', 'schedule', 'registration', 'indoor', 'outdoor', 'fall', 'winter',
+  'spring', 'summer', 'session', 'camp', 'music', 'dance', 'soccer', 'skating', 'library',
+  'recreation', 'community', 'centre', 'center', 'club',
+]);
+
+function namesAVenue(subject) {
+  return subject
+    .split(/[^A-Za-z0-9'-]+/)
+    .filter((word) => word.length >= 3)
+    .some((word) => {
+      const first = word.charAt(0);
+      if (first !== first.toUpperCase() || first === first.toLowerCase()) return false;
+      return !PROGRAMME_WORDS.has(word.toLowerCase());
+    });
 }
 
-/** What the grounding turn wrote down, wherever it put it — mirrors lane.ts. A turn given
- * only `web_search` will sometimes write its findings into a call to `activity_picks`, a
- * tool it was never handed; reading only text blocks scores that real answer as
- * `empty_research`. */
-function researchText(content) {
-  const parts = [];
-  for (const block of content) {
-    if (block.type === 'text') parts.push(block.text);
-    else if (block.type === 'tool_use') parts.push(JSON.stringify(block.input));
+function groundTools(subject) {
+  const tools = [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }];
+  if (namesAVenue(subject)) {
+    tools.push({ name: 'web_fetch', type: 'web_fetch_20260209', max_uses: MAX_INLINE_FETCHES });
   }
-  return parts.join('\n');
+  return tools;
+}
+
+/**
+ * What the grounding turn searched, opened and wrote down — mirrors `readEvidence`
+ * (activity/evidence.ts).
+ *
+ * The three counts are kept apart for the reason that module states: a page REFUSED is not
+ * a page that said nothing, and folding them together rebuilds the benchmark defect one
+ * layer down. The page TEXT rides into the notes because that is what production hands the
+ * composer — an eval reading only the model's prose scores a composer standing on a
+ * summary while production's stands on the page.
+ *
+ * A turn given only `web_search` will sometimes write its findings into a call to
+ * `activity_picks`, a tool it was never handed; reading only text blocks scores that real
+ * answer as `empty_research`, so tool arguments count as notes too.
+ */
+function readEvidence(content) {
+  let searchResults = 0;
+  let pagesRead = 0;
+  let pagesRefused = 0;
+  const notes = [];
+
+  for (const block of content) {
+    if (block.type === 'text') {
+      notes.push(block.text);
+    } else if (block.type === 'tool_use') {
+      notes.push(JSON.stringify(block.input));
+    } else if (block.type === 'web_search_tool_result') {
+      if (Array.isArray(block.content)) searchResults += block.content.length;
+    } else if (block.type === 'web_fetch_tool_result') {
+      const result = block.content;
+      if (result?.type !== 'web_fetch_result') {
+        pagesRefused += 1;
+        continue;
+      }
+      pagesRead += 1;
+      const text = result.content?.source?.data ?? '';
+      if (text !== '') notes.push(`--- page: ${result.url ?? ''} ---\n${text}`);
+    }
+  }
+
+  return { searchResults, pagesRead, pagesRefused, notes: notes.join('\n').trim() };
 }
 
 /** Every title and URL the search itself returned - the ground truth a pick must trace to.
@@ -455,8 +529,8 @@ const BROKEN_FOLLOWUP = {
 };
 
 async function cachedGround(opts) {
-  const { tag, model, system, userMessage, cachedOnly, getClient, cost } = opts;
-  const canonical = JSON.stringify({ model, system, userMessage, tool: 'web_search_20250305' });
+  const { tag, model, system, userMessage, tools, cachedOnly, getClient, cost } = opts;
+  const canonical = JSON.stringify({ model, system, userMessage, tools });
   const key = cacheKey(tag, canonical);
   const cached = await cacheGet(key);
   if (cached) return cached;
@@ -470,13 +544,16 @@ async function cachedGround(opts) {
     model,
     max_tokens: 4096,
     system,
-    tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
+    tools,
     messages: [{ role: 'user', content: userMessage }],
   });
   noteUsage(cost, model, response.usage);
+  const evidence = readEvidence(response.content);
   const value = {
-    searchCount: countSearchResults(response.content),
-    notes: researchText(response.content),
+    searchCount: evidence.searchResults,
+    pagesRead: evidence.pagesRead,
+    pagesRefused: evidence.pagesRefused,
+    notes: evidence.notes,
     evidence: searchEvidence(response.content),
   };
   await cachePut(key, value);
@@ -522,12 +599,15 @@ async function main() {
 
     // ── phase 1: GROUND (web_search) ─────────────────────────────────────────
     const ground = broken
-      ? { searchCount: 0, notes: '', evidence: '' }
+      ? { searchCount: 0, pagesRead: 0, pagesRefused: 0, notes: '', evidence: '' }
       : await cachedGround({
           tag: `activity-ground:${fixture.id}`,
           model,
           system: skill.instructions,
           userMessage: groundUserMessage(query),
+          // The wire shape production sends for THIS subject — search-only for a general
+          // question, search plus fetch when it names a place (see groundTools).
+          tools: groundTools(fixture.subject),
           cachedOnly,
           getClient,
           cost,
@@ -640,6 +720,8 @@ async function main() {
       picks: kept,
       body,
       searchCount: ground.searchCount,
+      pagesRead: ground.pagesRead,
+      pagesRefused: ground.pagesRefused,
       failures,
       firstDraftViolations,
     });
@@ -649,7 +731,9 @@ async function main() {
   console.log('--- answers ---');
   for (const r of results) {
     const tag = r.failures.length === 0 ? 'PASS' : 'FAIL';
-    console.log(`${tag}  ${r.fixture.id.padEnd(38)} picks=${r.picks.length} searches=${r.searchCount}`);
+    console.log(
+      `${tag}  ${r.fixture.id.padEnd(38)} picks=${r.picks.length} searches=${r.searchCount} pages=${r.pagesRead}read/${r.pagesRefused}refused`,
+    );
     console.log(`      "${r.body.slice(0, 100)}"`);
     for (const pick of r.picks) {
       console.log(`      · ${pick.name} | ${pick.when ?? 'when not posted'} | ${pick.sourceName}`);
@@ -672,6 +756,14 @@ async function main() {
   console.log(`claims verification:     ${count('claims_verification')}  (web-read is not confirmed)`);
   console.log(`buried top pick:         ${count('buried_top_pick')}  (the trim cuts from the end)`);
   console.log(`links a URL:             ${count('links_a_url')}`);
+  // NOT a gate, and deliberately: a fetch refused (`url_not_allowed`) is a real and common
+  // shape on these very venues, production logs it and answers from the snippets anyway.
+  // What it must never become is invisible - a corpus where the venue fixtures stop
+  // opening pages is a corpus scoring the lane this arc replaced.
+  const venueFixtures = results.filter((r) => namesAVenue(r.fixture.subject));
+  console.log(
+    `\npages opened (venue fixtures): ${venueFixtures.filter((r) => r.pagesRead > 0).length}/${venueFixtures.length}  (NOT a gate - a refused fetch is a real shape. Watch it: zero means the fetch budget is buying nothing)`,
+  );
   console.log(
     `unsendable:              ${results.filter((r) => r.failures.some((f) => ['empty', 'over_segment_cap'].includes(f))).length}`,
   );

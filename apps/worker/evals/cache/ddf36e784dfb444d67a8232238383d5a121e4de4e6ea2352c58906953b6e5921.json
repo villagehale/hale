@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The slots are accurate and well-sourced to the page. Both programs (Tiny Gym and Kinderfun) have correct ages, times, dates, fees, and the registration window is properly captured in each slot. However, the message has a critical flaw: it drops the registration deadline information from the Kinderfun class. The message says \"fall registration has been open since July 22, filling up\" for Tiny Gym but does not explicitly state that this same registration window applies to Kinderfun, which the watchFor flags as essential. The message also uses \"Want me to check spots before you book?\" which is appropriately framed as an offer to confirm rather than claiming verification. The message correctly attributes facts to \"their site says\" and is plain ASCII with one question. The first sentence leads with the best slot by name (Tiny Gym). The omission of the explicit registration window for the second program in the message, despite it being present in the slots, is the primary weakness preventing a perfect score."
+  }
+}

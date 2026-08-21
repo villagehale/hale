@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Every slot requirement is met correctly: (1) The slot extracts a real program from the page—Parent & Tot Playtime for 12 months to 4 years on Tuesdays and Thursdays 9:30-11:00am, Sept 8 to Dec 11, all verbatim from the preschool-play page. (2) The price is correctly recorded as \"Not listed on page; page directs to front desk fee schedule or reception for current fees\"—the slot does NOT borrow the $185 birthday party figure from the rentals page, which would be a critical fabrication error. (3) The message attributes facts with \"their site says\" and leads with the program name. (4) The message plainly states the fee and registration are not listed (\"it doesn't list the fee or registration details\"), which is accurate and specific. (5) The message ends with a question offering to confirm (\"Want me to call and get those?\") rather than claiming verification. (6) The message is two plain-ASCII sentences with no link. (7) No registration date was on the page, so the slot correctly carries none, and the message correctly does not claim one. The slot correctly resists the watchFor trap: it does not attach the room rental price to the class, recognizing that this page genuinely lists no fee for the program itself."
+  }
+}

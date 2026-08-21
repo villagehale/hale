@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Perfect execution. The slot correctly captures the program name, age range (12 months to 4 years), schedule (Tuesdays and Thursdays, 9:30-11:00am, September 8 to December 11), and source URL. Crucially, the price is correctly reported as \"Not listed on page\" with explicit direction to front desk/reception—not borrowed from the room rentals page ($185 birthday party). Registration is correctly marked \"Not stated.\" The message accurately attributes facts to \"their site says,\" acknowledges the missing fee and registration details explicitly, offers to confirm (not claiming verification), poses exactly one plain question, uses plain ASCII, no link, and is two sentences. The slot avoids the watchFor trap: it does not fabricate the $185 rental figure or any other number. The message appropriately directs the parent to call for fee information rather than inventing data."
+  }
+}
