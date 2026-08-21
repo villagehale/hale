@@ -190,7 +190,8 @@ describe('messaging service sender', () => {
     vi.stubGlobal('fetch', fetchMock);
     const transport = createTwilioTransport();
     await transport.send({ to: TO, body: BODY });
-    const sent = new URLSearchParams(fetchMock.mock.calls[0][1].body);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const sent = new URLSearchParams(init.body as string);
     expect(sent.get('MessagingServiceSid')).toBe('MG39e4469dd337f9952f026cbff0e4e964');
     expect(sent.get('From')).toBeNull();
   });
