@@ -22,8 +22,12 @@ import { activityClient, pipelineClient } from '~/lib/pipeline/client';
 import { cancelActivityPromise } from './commitment';
 import { type DeepResearcher, type DeepSlot, createDeepResearcher } from './deep';
 import { deidentifyActivityQuery } from './deidentify';
-import { type FollowUpComposer, createFollowUpComposer } from './followup-note';
-import { type ActivityFinder, type ActivityPick, createActivityFinder } from './lane';
+import {
+  type FollowUpComposer,
+  type FollowUpPick,
+  createFollowUpComposer,
+} from './followup-note';
+import { type ActivityFinder, createActivityFinder } from './lane';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
 import {
   type ActivitySharePage,
@@ -307,7 +311,11 @@ async function keepOne(
   // the pages those surface, and comes back with dated slots that each cite the page they
   // were read off. What it hands back is a richer ActivityPick, so the composer below is
   // unchanged — it just has something worth writing about.
-  let picks: ActivityPick[] = [];
+  // A FOLLOW-UP PICK, not an `ActivityPick`. The deep pass returns slots carrying the
+  // registration fact, and the wider type is what lets the composer be handed it: widening
+  // them to `ActivityPick` here compiled fine, kept the field at runtime, and made it
+  // invisible to every reader downstream — which is exactly how it got dropped.
+  let picks: FollowUpPick[] = [];
   let rest: readonly DeepSlot[] = [];
   let researched = false;
   if (result.deepRead + result.deepUnread < MAX_DEEP_PER_RUN) {
