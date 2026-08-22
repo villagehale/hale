@@ -46,6 +46,19 @@ import {
 export const ACTIVITY_FOLLOWUP_DUE_HOURS = 24;
 
 /**
+ * How long the SWEEP's own continuation waits before it is late.
+ *
+ * A WEEK, and the difference from the 24 hours above is the difference between the two
+ * sentences. The coach's promise answers a live conversation — the parent is holding the
+ * phone. The sweep's is "I'll keep watching and text you when they post", which is a
+ * WATCH on somebody else's publishing schedule: a municipality that has not put its fall
+ * grid up today will not have put it up tomorrow either, and a daily text saying so is
+ * Hale being noisy about being unable to help. A week is the shortest cadence at which
+ * the answer can actually have changed.
+ */
+export const ACTIVITY_WATCH_DUE_HOURS = 7 * 24;
+
+/**
  * The promise the coach registered: WHAT it will come back about, and for WHOM.
  *
  * `subject` is the DE-IDENTIFIED search subject — the phrase that already cleared phase 0
@@ -100,6 +113,10 @@ export async function recordActivityPromise(
     /** The outbound row that carried the sentence. Null means it never reached a
      * transport, and a promise nobody received is not a promise. */
     channelMessageId: string | null;
+    /** How long Hale has, in hours. Defaults to the coach's live-conversation clock; the
+     * sweep's continuation passes {@link ACTIVITY_WATCH_DUE_HOURS}, because a watch on
+     * somebody else's publishing schedule is not a parent waiting on a reply. */
+    dueInHours?: number;
     now: Date;
   },
   ports: ActivityPromisePorts,
@@ -125,7 +142,9 @@ export async function recordActivityPromise(
     summary: activityFollowUpSummary(input.promise.subject),
     topic: input.promise.subject,
     subjectChildId: input.promise.childId,
-    dueAt: new Date(input.now.getTime() + ACTIVITY_FOLLOWUP_DUE_HOURS * 3_600_000),
+    dueAt: new Date(
+      input.now.getTime() + (input.dueInHours ?? ACTIVITY_FOLLOWUP_DUE_HOURS) * 3_600_000,
+    ),
     channelMessageId: input.channelMessageId,
   });
   if (outcome.status === 'recorded') {

@@ -7,10 +7,8 @@ import {
   nothingPendingReply,
   nothingToUndoReply,
   outOfRangeReply,
-  whichOneReply,
 } from './copy';
 import { MAX_LISTED_APPROVALS, type FastPathCommand } from './fast-path';
-import { approvalSubjects } from './open-questions';
 
 /**
  * VIL-220 · C1 — resolving a fast-path command against the approvals spine.
@@ -120,7 +118,6 @@ export type ApprovalStatus =
   | 'approved'
   | 'declined'
   | 'undone'
-  | 'ambiguous'
   | 'out_of_range'
   | 'nothing_pending'
   | 'nothing_to_undo'
@@ -187,11 +184,26 @@ export async function resolveApproval(
       : { status: 'out_of_range', reply: outOfRangeReply(pending.length), actionId: null };
   }
   if (target === 'ambiguous') {
-    return {
-      status: 'ambiguous',
-      reply: whichOneReply(approvalSubjects(pending)),
-      actionId: null,
-    };
+    // NOT CLAIMED — the 2026-08-22 subtraction, and the same move `resolveNaturalReply`
+    // already made for the identical failure one door over (route.ts, `unplaced`).
+    //
+    // This branch used to answer "Which one - add to your calendar or note in your
+    // digest?", assembled out of action-type labels by the fastest reader in the chain.
+    // At 17:40 UTC a parent said "Yes, please" to an offer the activity sweep had made
+    // twenty minutes earlier and never written down; nothing else was open, so this
+    // function claimed the turn in 0.8 seconds — no coach turn in the trace at all — and
+    // handed them a menu of two unrelated drafted actions. Neither was the thing they
+    // were answering, and a machine reading its own option labels back at somebody
+    // cannot notice that.
+    //
+    // So the turn falls through: the resolver reads their words against every open
+    // question, and failing that the COACH takes it with the thread in front of it and
+    // can ask what they meant. The disambiguating sentence still exists, in the one
+    // place it is honest — `clarifyWhichQuestion`, for a coach that cannot run at all.
+    //
+    // Nothing is executed either way (rule #4), which is the property this branch always
+    // had and keeps.
+    return notClaimed;
   }
   if (target === null) {
     return notClaimed;

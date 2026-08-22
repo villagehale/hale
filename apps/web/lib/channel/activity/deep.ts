@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickLane, pickModel } from '@hale/agent';
+import { type AgentClient, laneRequestFields, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -62,7 +62,11 @@ export const MAX_DEEP_SEARCHES = 4;
  * from. The landing page plus the three that carry the day, the money and the deadline. */
 export const MAX_DEEP_FETCHES = 4;
 
-const RESEARCH_MAX_TOKENS = 8192;
+/**
+ * Exported so the test can assert the research leg's budget against the constant rather
+ * than a copy of the number.
+ */
+export const RESEARCH_MAX_TOKENS = 8192;
 /** Generous: a venue with eight class times is eight rows, and `forceToolJson` throws on
  * a max_tokens cut rather than handing back half a schedule. */
 const EXTRACT_MAX_TOKENS = 4096;
@@ -100,8 +104,18 @@ export type DeepFailure =
  * not claim they carry nothing.
  */
 export type DeepResult =
-  | { status: 'read'; slots: DeepSlot[]; pagesRead: number; pagesRefused: number }
-  | { status: 'unread'; pagesRefused: number }
+  | {
+      status: 'read';
+      slots: DeepSlot[];
+      searchResults: number;
+      pagesRead: number;
+      /** How many of `pagesRead` came out of the provider's cache from before today
+       * (evidence.ts `FETCH_FRESHNESS_MS`). A stale read licenses no claim about what a
+       * page carries NOW, which is the only claim the follow-up ever wants to make. */
+      pagesStale: number;
+      pagesRefused: number;
+    }
+  | { status: 'unread'; searchResults: number; pagesRefused: number }
   | { status: 'unavailable'; reason: DeepFailure };
 
 export interface DeepResearcher {
@@ -213,6 +227,18 @@ export function toDeepSlots(raw: z.infer<typeof extractSchema>['slots']): DeepSl
   return slots;
 }
 
+/**
+ * The lane's model and reasoning knobs, narrowed to the one field the pinned SDK (0.41.0)
+ * types. `thinking: {type:'adaptive'}` and `output_config` are plain top-level body
+ * fields needing no beta header, and the SDK serialises the body as given — the same
+ * blocker and the same tactic as `wireLane` in packages/agent/src/agent.ts, and narrowing
+ * rather than casting the whole request keeps max_tokens, system, tools and messages
+ * type-checked.
+ */
+function wireLane(task: Parameters<typeof pickLane>[0]): Pick<Anthropic.MessageCreateParams, 'model'> {
+  return laneRequestFields(pickLane(task)) as Pick<Anthropic.MessageCreateParams, 'model'>;
+}
+
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown';
 }
@@ -235,7 +261,12 @@ function unavailable(failure: DeepFailure, detail: string): DeepResult {
  * the same thing twice. A failure leaves the promise open and the next tick tries again,
  * which is the retry — an hour later, for free.
  */
-export function createDeepResearcher(client: () => AgentClient): DeepResearcher {
+export function createDeepResearcher(
+  client: () => AgentClient,
+  /** Read once per turn, and only to age the provider's `retrieved_at` stamps — the same
+   * default-clock shape `runActivityFollowUpSweep` takes. */
+  now: () => Date = () => new Date(),
+): DeepResearcher {
   return {
     async research(query) {
       let resolved: AgentClient;
@@ -252,32 +283,51 @@ export function createDeepResearcher(client: () => AgentClient): DeepResearcher 
         return unavailable('skill_unavailable', reason(err));
       }
 
-      // Leg 1 — RESEARCH. `tool_choice` cannot force a server tool, so "it actually
-      // looked" is a code invariant checked below and not a hope in a prompt.
+      // Leg 1 — RESEARCH, STREAMED. `tool_choice` cannot force a server tool, so "it
+      // actually looked" is a code invariant checked below and not a hope in a prompt.
+      //
+      // THE STREAM IS NOT AN OPTIMISATION — it is the only transport this turn survives.
+      // Live probe against the real API, 2026-08-22, production wiring: `messages.create`
+      // on this exact request came back `Request timed out.` at 50,005 ms and 50,021 ms,
+      // and given a 600-second ceiling it died at 120,014 ms with a connection error. A
+      // non-streamed turn holding four searches and four page opens does not finish,
+      // whatever the client timeout says. Streamed, the same request returned in
+      // 88,795 ms with 9 search results and 3 pages read. Until this line every
+      // production deep pass was `research_failed`, the sweep fell back to the shallow
+      // snippet finder, and the "I opened their page" leg never once ran.
+      //
+      // The 50s client timeout stays as it is: it bounds TIME-TO-HEADERS, which a stream
+      // reaches in a second (see ACTIVITY_CLIENT_OPTIONS' own note on the SDK clearing
+      // its abort timer once the response arrives).
       let research: Anthropic.Message;
       try {
-        research = await resolved.messages.create({
-          model: pickModel(skill.meta.task),
-          max_tokens: RESEARCH_MAX_TOKENS,
-          system: skill.instructions,
-          // Cast because the pinned SDK (0.41.0) predates `web_fetch` and has no member
-          // for it in `ToolUnion`. The wire shape is live-probed (see the module note);
-          // the SDK serialises the tool list as given.
-          tools: [
-            { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_DEEP_SEARCHES },
-            {
-              name: 'web_fetch',
-              type: 'web_fetch_20260209',
-              max_uses: MAX_DEEP_FETCHES,
-            } as unknown as Anthropic.ToolUnion,
-          ],
-          messages: [{ role: 'user', content: deepUserMessage(query) }],
-        });
+        research = await resolved.messages
+          .stream({
+            // The lane's knobs, stated rather than inherited: an omitted `thinking` means
+            // ADAPTIVE on Sonnet 5, so this turn was running an unbudgeted reasoning
+            // setting that no lane review had ever seen (packages/agent model.ts).
+            ...wireLane(skill.meta.task),
+            max_tokens: RESEARCH_MAX_TOKENS,
+            system: skill.instructions,
+            // Cast because the pinned SDK (0.41.0) predates `web_fetch` and has no member
+            // for it in `ToolUnion`. The wire shape is live-probed (see the module note);
+            // the SDK serialises the tool list as given.
+            tools: [
+              { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_DEEP_SEARCHES },
+              {
+                name: 'web_fetch',
+                type: 'web_fetch_20260209',
+                max_uses: MAX_DEEP_FETCHES,
+              } as unknown as Anthropic.ToolUnion,
+            ],
+            messages: [{ role: 'user', content: deepUserMessage(query) }],
+          })
+          .finalMessage();
       } catch (err) {
         return unavailable('research_failed', reason(err));
       }
 
-      const evidence = readEvidence(research.content);
+      const evidence = readEvidence(now(), research.content);
       if (evidence.searchResults === 0 || evidence.notes === '') {
         // It did not look, or it looked and wrote nothing down. Either way the extract
         // leg would be standing on air, which is the fabrication this lane exists to
@@ -313,12 +363,18 @@ export function createDeepResearcher(client: () => AgentClient): DeepResearcher 
           { pagesRefused: evidence.pagesRefused, slots: slots.length },
           'activity deep pass: no page opened - the gaps are unread, not unposted',
         );
-        return { status: 'unread', pagesRefused: evidence.pagesRefused };
+        return {
+          status: 'unread',
+          searchResults: evidence.searchResults,
+          pagesRefused: evidence.pagesRefused,
+        };
       }
       return {
         status: 'read',
         slots,
+        searchResults: evidence.searchResults,
         pagesRead: evidence.pagesRead,
+        pagesStale: evidence.pagesStale,
         pagesRefused: evidence.pagesRefused,
       };
     },

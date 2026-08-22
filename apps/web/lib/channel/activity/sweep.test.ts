@@ -4,6 +4,7 @@ import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type { DueCommitment } from '~/lib/commitments/ledger';
+import { ACTIVITY_WATCH_DUE_HOURS } from './commitment';
 import type { DeepSlot } from './deep';
 import type { ActivityPick } from './lane';
 import type { ActivityFollowUpDeps } from './sweep';
@@ -64,6 +65,7 @@ interface Harness {
   audited: unknown[];
   composed: unknown[];
   shared: unknown[];
+  watched: unknown[];
 }
 
 function harness(
@@ -75,6 +77,7 @@ function harness(
     householdNames?: string[];
     deep?: Awaited<ReturnType<ActivityFollowUpDeps['deep']['research']>>;
     sharePage?: Awaited<ReturnType<ActivityFollowUpDeps['sharePage']>>;
+    recordWatch?: Awaited<ReturnType<ActivityFollowUpDeps['recordWatch']>>;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -84,6 +87,7 @@ function harness(
   const audited: unknown[] = [];
   const composed: unknown[] = [];
   const shared: unknown[] = [];
+  const watched: unknown[] = [];
 
   const deps: ActivityFollowUpDeps = {
     loadDue: async () => overrides.due ?? [DUE],
@@ -140,8 +144,12 @@ function harness(
       cancelled.push(input);
       return { status: 'closed' as const, commitmentIds: ['commitment-1'] };
     }) as unknown as ActivityFollowUpDeps['cancelPromise'],
+    recordWatch: async (_db, input) => {
+      watched.push(input);
+      return overrides.recordWatch ?? { status: 'recorded', commitmentId: 'commitment-2' };
+    },
   };
-  return { deps, transport, fulfilled, cancelled, threaded, audited, composed, shared };
+  return { deps, transport, fulfilled, cancelled, threaded, audited, composed, shared, watched };
 }
 
 function armed() {
@@ -179,6 +187,7 @@ describe('a promise with finds', () => {
       actionTaken: 'activity_followup_sent',
       after: { picks: 1 },
     });
+    expect(h.watched).toEqual([]);
     expect(JSON.stringify(h.audited)).not.toContain(PICK.name);
   });
 
@@ -369,7 +378,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
   function payable(overrides: Parameters<typeof harness>[0] = {}) {
     return harness({
       due: [CARTWHEELS_DUE],
-      deep: { status: 'read', slots: SLOTS, pagesRead: 2, pagesRefused: 1 },
+      deep: { status: 'read', slots: SLOTS, searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 1 },
       ...overrides,
     });
   }
@@ -431,7 +440,14 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     armed();
     const h = harness({
       due: [CARTWHEELS_DUE],
-      deep: { status: 'read', slots: SLOTS.slice(0, 2), pagesRead: 1, pagesRefused: 0 },
+      deep: {
+        status: 'read',
+        slots: SLOTS.slice(0, 2),
+        searchResults: 8,
+        pagesRead: 1,
+        pagesStale: 0,
+        pagesRefused: 0,
+      },
     });
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);
@@ -456,7 +472,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     armed();
     const h = harness({
       due: [CARTWHEELS_DUE],
-      deep: { status: 'unread', pagesRefused: 3 },
+      deep: { status: 'unread', searchResults: 5, pagesRefused: 3 },
       find: { found: true, picks: [PICK] },
     });
 
@@ -475,7 +491,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     armed();
     const h = harness({
       due: [CARTWHEELS_DUE],
-      deep: { status: 'read', slots: [], pagesRead: 2, pagesRefused: 0 },
+      deep: { status: 'read', slots: [], searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 0 },
       compose: { status: 'composed', message: 'I read their fall page and there is nothing up.' },
     });
 
@@ -488,7 +504,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     expect(h.fulfilled).toHaveLength(1);
   });
 
-  it('bounds the expensive instrument at two per tick and keeps every other promise anyway', async () => {
+  it('bounds the expensive instrument at ONE per tick and keeps every other promise anyway', async () => {
     armed();
     const due = [1, 2, 3, 4].map((n) => ({
       ...CARTWHEELS_DUE,
@@ -497,12 +513,296 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     }));
     const h = harness({
       due,
-      deep: { status: 'read', slots: SLOTS, pagesRead: 2, pagesRefused: 0 },
+      deep: { status: 'read', slots: SLOTS, searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 0 },
     });
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    expect(result.deepRead).toBe(2);
+    // One streamed research turn is ~100s of a 300-second function this sweep enters
+    // last (see MAX_DEEP_PER_RUN). Every other promise still gets the shallow answer.
+    expect(result.deepRead).toBe(1);
     expect(result.sent).toBe(4);
+  });
+});
+
+/**
+ * D1 — THE OFFER IS A PROPOSAL, THROUGH THE SECOND DOOR.
+ *
+ * 2026-08-22, 17:19 UTC, production. The sweep kept its promise, marked the commitment
+ * `fulfilled`, and sent: "...but fall days, times and prices aren't posted yet. Want me
+ * to check back once they're up?" No row was written for that question. Twenty minutes
+ * later the parent said "Yes, please", the approvals grammar claimed it because nothing
+ * else was open, and they were handed a menu of two unrelated drafted actions.
+ *
+ * The fix is a subtraction of the QUESTION, not an addition of a handler: when the answer
+ * leaves something open, the sweep registers the continuation itself and the message says
+ * what Hale is already doing. There is nothing left for a parent to say yes to.
+ */
+describe('a partial answer registers the watch it talks about', () => {
+  const PARTIAL: DeepSlot = {
+    name: 'Tiny Gym, Cartwheels Gym Centre',
+    ageFit: 'walking to 3.5 years, with a parent',
+    when: null,
+    price: null,
+    registration: null,
+    sourceName: 'Cartwheels Gym Centre',
+    sourceUrl: 'https://cartwheelsgymcentre.com/programs.php',
+    source: 'web',
+  };
+
+  function partialHarness(overrides: Parameters<typeof harness>[0] = {}) {
+    return harness({
+      deep: {
+        status: 'read',
+        slots: [PARTIAL],
+        searchResults: 6,
+        pagesRead: 2,
+        pagesStale: 0,
+        pagesRefused: 1,
+      },
+      compose: {
+        status: 'composed',
+        message: "Cartwheels runs Tiny Gym for under-3s - their site says. I'll keep watching.",
+      },
+      ...overrides,
+    });
+  }
+
+  it('THE DEFECT: a find with no day and no price mints a continuation promise', async () => {
+    armed();
+    const h = partialHarness();
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ sent: 1, watching: 1, watchUnrecorded: 0 });
+    // Against the message that carried the sentence, on the same de-identified subject,
+    // due a week out — so the next tick re-runs the same search.
+    expect(h.watched).toEqual([
+      {
+        familyId: FAMILY,
+        promise: { subject: 'toddler gymnastics this fall', childId: null },
+        channelMessageId: 'msg-out-1',
+        dueInHours: ACTIVITY_WATCH_DUE_HOURS,
+        now: NOW,
+      },
+    ]);
+  });
+
+  it('closes the OLD promise before opening the new one - the index permits one', async () => {
+    armed();
+    const h = partialHarness();
+    const order: string[] = [];
+    const deps = {
+      ...h.deps,
+      fulfillCommitment: (async () => {
+        order.push('fulfill');
+        return { status: 'closed' as const, commitmentIds: ['commitment-1'] };
+      }) as unknown as ActivityFollowUpDeps['fulfillCommitment'],
+      recordWatch: async () => {
+        order.push('watch');
+        return { status: 'recorded' as const, commitmentId: 'commitment-2' };
+      },
+    };
+
+    await runActivityFollowUpSweep(database, deps, NOW);
+
+    expect(order).toEqual(['fulfill', 'watch']);
+  });
+
+  it('tells the composer it is watching, so the copy STATES it instead of asking', async () => {
+    armed();
+    const h = partialHarness();
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.composed[0]).toMatchObject({ watch: true, pagesOpened: true });
+  });
+
+  it('POSITIVE CONTROL - a complete find registers nothing and claims nothing', async () => {
+    armed();
+    const h = harness({
+      deep: {
+        status: 'read',
+        slots: [{ ...PARTIAL, when: 'Sundays 9:30', price: '$124 per term' }],
+        searchResults: 6,
+        pagesRead: 2,
+        pagesStale: 0,
+        pagesRefused: 0,
+      },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ sent: 1, watching: 0, watchUnrecorded: 0 });
+    expect(h.watched).toEqual([]);
+    expect(h.composed[0]).toMatchObject({ watch: false });
+  });
+
+  it('an EMPTY-handed follow-up is a watch too - there is still nothing to hand over', async () => {
+    armed();
+    const h = harness({
+      find: { found: false, reason: 'no_picks' },
+      compose: {
+        status: 'composed',
+        message: "Nothing up for the fall session yet - I'll keep looking and text you.",
+      },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ sentEmptyHanded: 1, watching: 1 });
+    expect(h.composed[0]).toMatchObject({ watch: true });
+  });
+
+  it('a watch the ledger refused is COUNTED, never swallowed', async () => {
+    armed();
+    const h = partialHarness({ recordWatch: { status: 'not_recorded', reason: 'write_failed' } });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+    spy.mockRestore();
+
+    // The parent still got their text — the send is upstream of this and must not be
+    // retried — but the run says out loud that a promise is now unbacked.
+    expect(result).toMatchObject({ sent: 1, watching: 0, watchUnrecorded: 1 });
+  });
+});
+
+/**
+ * D5 — WHAT LICENSES "THEIR PAGE DOESN'T SAY".
+ *
+ * `pagesOpened` is the composer's only route to a negative claim about a page, and it is
+ * false for every answer that did not open one TODAY: a shallow snippet search, a deep
+ * pass that was refused everywhere, and a deep pass whose reads all came back out of the
+ * provider's cache from before today.
+ */
+describe('the licence to say a page carries nothing', () => {
+  it('is withheld from a shallow answer - no page was opened at all', async () => {
+    armed();
+    const h = harness();
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.composed[0]).toMatchObject({ pagesOpened: false });
+  });
+
+  it('is withheld when every page read came out of the cache', async () => {
+    armed();
+    const h = harness({
+      deep: {
+        status: 'read',
+        slots: [],
+        searchResults: 8,
+        pagesRead: 3,
+        pagesStale: 3,
+        pagesRefused: 0,
+      },
+    });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.composed[0]).toMatchObject({ pagesOpened: false });
+  });
+
+  it('POSITIVE CONTROL - one page read today is enough', async () => {
+    armed();
+    const h = harness({
+      deep: {
+        status: 'read',
+        slots: [],
+        searchResults: 8,
+        pagesRead: 3,
+        pagesStale: 2,
+        pagesRefused: 0,
+      },
+    });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.composed[0]).toMatchObject({ pagesOpened: true });
+  });
+
+  it('counts a deep leg that never ran, instead of leaving it invisible', async () => {
+    armed();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const h = harness({ deep: { status: 'unavailable', reason: 'research_failed' } });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+    spy.mockRestore();
+
+    // The shape production spent all of 2026-08-22 in, and the only run counter that
+    // could have said so.
+    expect(result).toMatchObject({ deepRead: 0, deepUnread: 0, deepUnavailable: 1, sent: 1 });
+  });
+});
+
+/**
+ * D4 — THE AUDIT ROW AN OPS READER CAN ACT ON.
+ *
+ * The 2026-08-22 diagnosis took an hour of live probing because this row said
+ * `{"picks":2}`. Counts only, and every count the run actually held.
+ */
+describe('the audit row carries the evidence', () => {
+  it('records what the follow-up searched, opened and was refused', async () => {
+    armed();
+    const h = harness({
+      deep: {
+        status: 'read',
+        slots: [{ ...PICK, registration: null, sourceUrl: 'https://x.ca/p' } as DeepSlot],
+        searchResults: 12,
+        pagesRead: 3,
+        pagesStale: 0,
+        pagesRefused: 2,
+      },
+    });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.audited[0]).toMatchObject({
+      actionTaken: 'activity_followup_sent',
+      after: {
+        picks: 1,
+        deepRead: 1,
+        deepUnread: 0,
+        pagesRead: 3,
+        pagesRefused: 2,
+        searchResults: 12,
+        watch: false,
+      },
+    });
+  });
+
+  it('records the UNREAD shape as its own thing - refused is not read-and-empty', async () => {
+    armed();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const h = harness({ deep: { status: 'unread', searchResults: 7, pagesRefused: 4 } });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+    spy.mockRestore();
+
+    expect(h.audited[0]).toMatchObject({
+      after: { deepRead: 0, deepUnread: 1, pagesRead: 0, pagesRefused: 4, searchResults: 7 },
+    });
+  });
+
+  it('still carries no venue name, no url and no subject (rule #1)', async () => {
+    armed();
+    const h = harness({
+      deep: {
+        status: 'read',
+        slots: [{ ...PICK, registration: null, sourceUrl: 'https://x.ca/p' } as DeepSlot],
+        searchResults: 12,
+        pagesRead: 3,
+        pagesStale: 0,
+        pagesRefused: 0,
+      },
+    });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    const row = JSON.stringify(h.audited);
+    expect(row).not.toContain(PICK.name);
+    expect(row).not.toContain('https://');
+    expect(row).not.toContain('toddler gymnastics');
   });
 });

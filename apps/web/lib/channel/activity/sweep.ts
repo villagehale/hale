@@ -20,7 +20,14 @@ import {
   loadDueCommitments,
 } from '~/lib/commitments/ledger';
 import { activityClient, pipelineClient } from '~/lib/pipeline/client';
-import { cancelActivityPromise } from './commitment';
+import {
+  ACTIVITY_WATCH_DUE_HOURS,
+  type ActivityPromise,
+  type ActivityPromiseRecordOutcome,
+  cancelActivityPromise,
+  defaultActivityPromisePorts,
+  recordActivityPromise,
+} from './commitment';
 import { type DeepResearcher, type DeepSlot, createDeepResearcher } from './deep';
 import { deidentifyActivityQuery } from './deidentify';
 import {
@@ -76,19 +83,23 @@ const MAX_FOLLOWUPS_PER_RUN = 100;
 /**
  * How many promises get the DEEP pass in one tick.
  *
- * TWO, and the number is the cron slot rather than a preference. The deep researcher
- * opens pages: a live probe of one research turn ran between 50 and 130 seconds, and this
- * sweep shares a 300-second Vercel function (api/cron/nudge, `maxDuration = 300`) with the
- * plan check-in and the village intros. Three deep turns would be a sweep that reliably
- * dies halfway and leaves everything after it for the next hour.
+ * ONE, and the number is the cron slot rather than a preference. It was TWO while the
+ * research turn was assumed to run "between 50 and 130 seconds" — an estimate taken from
+ * a leg that, as it turned out, never completed at all: every production deep pass was
+ * timing out at 50s and falling back to the shallow search (see deep.ts on why it is
+ * streamed now). Measured properly, streamed, on the real API 2026-08-22: 88.8s of
+ * research plus ~13s of extract, so one pass is ~100 seconds of a 300-second Vercel
+ * function (api/cron/nudge, `maxDuration = 300`) that this sweep enters LAST, behind the
+ * nudge, the intros, the follow-up asks and the plan check-in. Two would be a sweep that
+ * reliably dies halfway.
  *
  * It is not a cap on FOLLOW-UPS — every due promise is still kept this tick. It is a cap
- * on the expensive instrument: past the second, a promise falls back to the shallow
- * search the sweep has always run, which is a worse answer and still an answer. And the
- * ledger's one-open-promise-per-family index keeps the queue short enough that "past the
- * second" is rare.
+ * on the expensive instrument: past the first, a promise falls back to the shallow
+ * search, which is a worse answer and still an answer. And the ledger's
+ * one-open-promise-per-family index keeps the queue short enough that "past the first"
+ * is rare.
  */
-const MAX_DEEP_PER_RUN = 2;
+const MAX_DEEP_PER_RUN = 1;
 
 export interface ActivityFollowUpResult {
   /** False when neither the flag nor the allowlist armed the sweep. */
@@ -117,6 +128,28 @@ export interface ActivityFollowUpResult {
    * refused or unreachable). Named, not folded into a failure: the run happened, it just
    * knows nothing about what those pages carry (rule #11). */
   deepUnread: number;
+  /**
+   * Deep passes that never ran — no client, no skill, an ungrounded turn, a research or
+   * extract leg that threw.
+   *
+   * COUNTED, and it was not. `unavailable` incremented neither `deepRead` nor
+   * `deepUnread`, so a leg that was failing on EVERY tick — which is exactly what the
+   * un-streamed research turn was doing (deep.ts) — showed up in this result as a run
+   * where the deep pass simply had not been reached. The differentiator was dead for a
+   * day and the only number that would have said so did not exist (rule #11).
+   */
+  deepUnavailable: number;
+  /**
+   * Follow-ups that left something open and REGISTERED the continuation promise for it —
+   * the row behind "I'll keep watching and text you when they post".
+   */
+  watching: number;
+  /**
+   * Follow-ups whose message says Hale is still watching and whose row did not get
+   * written. The worst outcome this sweep has, so it is a count and not a log line: the
+   * parent has been told Hale is on it and nothing in the system knows.
+   */
+  watchUnrecorded: number;
   /** Follow-ups that carried a link to the rest of the schedule. */
   shared: number;
 }
@@ -134,8 +167,51 @@ function emptyResult(enabled: boolean): ActivityFollowUpResult {
     failed: 0,
     deepRead: 0,
     deepUnread: 0,
+    deepUnavailable: 0,
+    watching: 0,
+    watchUnrecorded: 0,
     shared: 0,
   };
+}
+
+/**
+ * WHAT THIS FOLLOW-UP ACTUALLY DID TO GET ITS ANSWER — the row an ops reader needs and
+ * did not have.
+ *
+ * Diagnosing the 2026-08-22 message took an hour of live probing because its audit row
+ * said `{"picks":2}` and nothing else. Every question that mattered — did the deep pass
+ * run, did it open a page, was the page refused, did the search return anything — had no
+ * answer anywhere. COUNTS ONLY: never a venue, never a URL, never a subject (rule #1).
+ */
+interface FollowUpEvidence {
+  picks: number;
+  deepRead: number;
+  deepUnread: number;
+  pagesRead: number;
+  pagesRefused: number;
+  searchResults: number;
+}
+
+function noEvidence(): FollowUpEvidence {
+  return { picks: 0, deepRead: 0, deepUnread: 0, pagesRead: 0, pagesRefused: 0, searchResults: 0 };
+}
+
+/**
+ * IS THERE ANYTHING LEFT TO COME BACK FOR?
+ *
+ * Nothing found at all, or a best find whose day or price the answer could not carry.
+ * Those are the two shapes where a parent is left holding half a thing — and they are
+ * exactly the two shapes that used to end in "Want me to check back once they're up?",
+ * which is Hale asking permission for the work it is going to do anyway.
+ *
+ * Read off the TOP pick because the top pick is what the text leads with (followup-note.ts
+ * `topPickLeads`); a complete second find does not fill the gap in the one the parent
+ * actually sees.
+ */
+export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
+  const top = picks[0];
+  if (!top) return true;
+  return top.when === null || top.price === null;
 }
 
 /** Who the promise is owed to, and the thread it was made in. */
@@ -192,6 +268,22 @@ export interface ActivityFollowUpDeps {
   appendMessage: typeof appendMessage;
   fulfillCommitment: typeof fulfillCommitment;
   cancelPromise: typeof cancelActivityPromise;
+  /**
+   * The CONTINUATION promise, minted against the message that said Hale would keep
+   * watching. REQUIRED (rule #11), and it is the whole of D1: a sweep that can be wired
+   * without this writer is a sweep that can tell a parent it is still on something while
+   * nothing in the system is.
+   */
+  recordWatch(
+    database: Database,
+    input: {
+      familyId: string;
+      promise: ActivityPromise;
+      channelMessageId: string | null;
+      dueInHours: number;
+      now: Date;
+    },
+  ): Promise<ActivityPromiseRecordOutcome>;
 }
 
 export async function runActivityFollowUpSweep(
@@ -328,11 +420,21 @@ async function keepOne(
   let picks: FollowUpPick[] = [];
   let rest: readonly DeepSlot[] = [];
   let researched = false;
-  if (result.deepRead + result.deepUnread < MAX_DEEP_PER_RUN) {
+  const evidence = noEvidence();
+  // A PAGE, TODAY, and nothing else licenses a sentence about what a page does not carry.
+  // Not a snippet, and not a `web_fetch` the provider answered out of a cache from before
+  // today (deep.ts `pagesStale`).
+  let pagesOpened = false;
+  if (result.deepRead + result.deepUnread + result.deepUnavailable < MAX_DEEP_PER_RUN) {
     const deep = await deps.deep.research(deidentified.query);
     if (deep.status === 'read') {
       result.deepRead += 1;
       researched = true;
+      evidence.deepRead = 1;
+      evidence.searchResults = deep.searchResults;
+      evidence.pagesRead = deep.pagesRead;
+      evidence.pagesRefused = deep.pagesRefused;
+      pagesOpened = deep.pagesRead - deep.pagesStale > 0;
       // The text carries the best one or two; everything else goes on a page. Slicing
       // HERE rather than asking the model for a shortlist is what makes "and the rest is
       // at this link" true — the remainder is a real list, not a claim.
@@ -345,9 +447,21 @@ async function keepOne(
       // they carry nothing. The shallow search below still runs, and its snippets still
       // hold real finds; what is lost is the dated detail, not the answer.
       result.deepUnread += 1;
+      evidence.deepUnread = 1;
+      evidence.searchResults = deep.searchResults;
+      evidence.pagesRefused = deep.pagesRefused;
       console.error(
         { commitmentId: commitment.id, pagesRefused: deep.pagesRefused },
         'activity follow-up: deep pass opened no page - falling back to the shallow search',
+      );
+    } else {
+      // The leg never ran. Counted rather than passed over in silence: this is the
+      // branch a timing-out research turn spent every tick of 2026-08-22 in, and it was
+      // the only one of the three with no number attached (rule #11).
+      result.deepUnavailable += 1;
+      console.error(
+        { commitmentId: commitment.id, reason: deep.reason },
+        'activity follow-up: deep pass unavailable - falling back to the shallow search',
       );
     }
   }
@@ -367,8 +481,14 @@ async function keepOne(
     }
     picks = found.found ? [...found.picks] : [];
   }
+  evidence.picks = picks.length;
 
-  const composed = await deps.composer.compose({ subject, picks });
+  // THE OFFER IS A PROPOSAL, AND A PROPOSAL IS A ROW — decided HERE, before a word is
+  // composed, because the composer's gates read it. `watch` is what the message is
+  // allowed to say and what the ledger is about to be told, and they are one value so
+  // they cannot disagree (#521, and the 2026-08-22 repeat of it through this door).
+  const watch = watchWarranted(picks);
+  const composed = await deps.composer.compose({ subject, picks, pagesOpened, watch });
   if (composed.status === 'deferred') {
     result.deferred += 1;
     console.error(
@@ -423,9 +543,10 @@ async function keepOne(
     actionTaken: 'activity_followup_sent',
     targetTable: 'channel_messages',
     targetId: channelMessageId,
-    // A COUNT, never the finds themselves: an audit row is read by ops and by a
-    // right-to-access export, and neither needs the venue names (rule #1).
-    after: { picks: picks.length },
+    // COUNTS, never the finds themselves: an audit row is read by ops and by a
+    // right-to-access export, and neither needs the venue names (rule #1). What it DOES
+    // need is what this follow-up did to get its answer — see FollowUpEvidence.
+    after: { ...evidence, watch },
   });
   // Threaded so the parent's answer arrives as an ordinary coach turn with the finds in
   // front of it. The COMPOSED sentence, not the wire body: the CASL line belongs on the
@@ -443,6 +564,33 @@ async function keepOne(
   });
   result.sent += 1;
   if (picks.length === 0) result.sentEmptyHanded += 1;
+
+  if (!watch) return;
+  // THE CONTINUATION, minted against the message that carried the sentence — the same
+  // send-time discipline the coach's own promise keeps, and AFTER the fulfilment above
+  // because the ledger permits one open promise of a kind per family: recording first
+  // would be refused by the partial unique index and the watch would silently not exist.
+  //
+  // It never throws. The parent already has the text, so an exception here would buy a
+  // carrier retry and a duplicate send — the failure is a COUNT instead, because a
+  // message that says Hale is still watching with no row behind it is the exact defect
+  // this whole change is about.
+  const recorded = await deps.recordWatch(database, {
+    familyId: commitment.familyId,
+    promise: { subject, childId: commitment.subjectChildId },
+    channelMessageId,
+    dueInHours: ACTIVITY_WATCH_DUE_HOURS,
+    now,
+  });
+  if (recorded.status === 'recorded') {
+    result.watching += 1;
+    return;
+  }
+  result.watchUnrecorded += 1;
+  console.error(
+    { commitmentId: commitment.id, reason: recorded.reason },
+    'activity follow-up: the parent was told Hale is still watching and no row was written',
+  );
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
@@ -507,5 +655,7 @@ export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
     appendMessage,
     fulfillCommitment,
     cancelPromise: cancelActivityPromise,
+    recordWatch: (database, input) =>
+      recordActivityPromise(database, input, defaultActivityPromisePorts()),
   };
 }

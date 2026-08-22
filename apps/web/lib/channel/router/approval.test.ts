@@ -1,6 +1,7 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import { MAX_LISTED_APPROVALS, matchFastPath } from './fast-path';
+import { approvalSubjects } from './open-questions';
 import {
   type ApprovalSpine,
   type PendingAction,
@@ -196,23 +197,40 @@ describe('resolveApproval — more than one pending action', () => {
   const three = [action('a-1', 'calendar_add'), action('a-2', 'calendar_move'), action('a-3', 'book_checkup')];
 
   /** The safety property: an ambiguous affirmative NEVER executes. */
-  it('executes nothing on a bare yes and asks which one', async () => {
+  it('executes nothing on a bare yes', async () => {
     const { outcome, calls } = await run('yes', { pending: three });
 
-    expect(outcome.status).toBe('ambiguous');
+    expect(outcome.status).toBe('declined_to_claim');
     expect(calls).toEqual([]);
   });
 
-  it('names the choices in one sentence, and never as a numbered menu', async () => {
-    // The menu ("1. ... 2. ... - reply YES 1 or NO 1.") was the last one Hale sent, and
-    // it went with the keyword instructions (2026-08-13). What replaced it has to still
-    // let a parent pick, which is what the naming below is for.
+  /**
+   * D2 — AN UN-ANCHORED YES NEVER IMPROVISES.
+   *
+   * 2026-08-22, 17:40 UTC. The sweep had just texted "Want me to check back once they're
+   * up?" and written no row for it. The parent said "Yes, please". This function was the
+   * fastest reader in the chain, it saw two unrelated drafted actions and nothing else
+   * open, and 0.8 seconds later — with no coach turn in the trace at all — it answered
+   * "Which one - add to your calendar or note in your digest?".
+   *
+   * Neither option was the thing being answered. The menu was assembled from action-type
+   * labels by a machine that had not read the conversation, which is the same instinct
+   * `resolveNaturalReply` already gave up on for the identical failure one door over
+   * (route.ts, `unplaced`): the turn goes to the COACH, which has the thread and can ask
+   * like a person. The sentence survives, in the one place it is honest — the fallback
+   * for a coach that cannot run at all.
+   */
+  it('DOES NOT CLAIM a bare yes it cannot place - the coach has the thread', async () => {
+    const { outcome, calls } = await run('yes', { pending: three });
+
+    expect(outcome).toEqual({ status: 'declined_to_claim', reply: null, actionId: null });
+    expect(calls).toEqual([]);
+  });
+
+  it('never assembles an option menu out of action-type labels', async () => {
     const { outcome } = await run('yes', { pending: three });
 
-    expect(outcome.reply).toContain('add to your calendar');
-    expect(outcome.reply).toContain('reschedule on your calendar');
-    expect(outcome.reply).not.toMatch(/\b1\.|\bYES 1\b/);
-    expect(outcome.reply).toMatch(/^Which one - /);
+    expect(outcome.reply).toBeNull();
   });
 
   it('still resolves the ordinal a parent chooses to type - no read was removed', async () => {
@@ -239,26 +257,47 @@ describe('resolveApproval — more than one pending action', () => {
     expect(calls).toEqual([]);
   });
 
-  it('never lists more than the grammar can name, and discloses the rest', async () => {
+  it('does not claim a bare yes against eight pending actions either', async () => {
     const many = Array.from({ length: 8 }, (_, i) => action(`a-${i + 1}`));
-    const { outcome } = await run('yes', { pending: many });
+    const { outcome, calls } = await run('yes', { pending: many });
 
-    expect(outcome.status).toBe('ambiguous');
-    // Every one of the eight shares a label, so naming alone cannot tell them apart.
-    // Position does — as a description, never as an instruction.
-    expect(outcome.reply).toContain('(the first)');
-    expect(outcome.reply).toContain(`(the ${['first', 'second', 'third'][MAX_LISTED_APPROVALS - 1]})`);
-    expect(outcome.reply).not.toContain('(the fourth)');
-    // The overflow is disclosed, never hidden — and it points at the next turn of this
-    // thread rather than at the app (skill audit P0 #4).
-    expect(outcome.reply).toMatch(/5 more behind those/i);
+    expect(outcome.reply).toBeNull();
+    expect(calls).toEqual([]);
   });
 
-  it('leaves distinct labels completely alone - no position where none is needed', async () => {
-    const { outcome } = await run('yes', {
-      pending: [action('a-1'), { actionId: 'a-2', actionType: 'reschedule_event', reviewerApproved: true }],
-    });
-    expect(outcome.reply).not.toContain('(the first)');
+  it('POSITIVE CONTROL - a bare yes with exactly ONE pending action still executes', async () => {
+    // The other direction, and the whole reason this is not simply "never claim a bare
+    // yes": with one thing waiting there is nothing to confuse it with, and making the
+    // parent repeat themselves would be the failure this fix is not allowed to cause.
+    const { outcome, calls } = await run('yes', { pending: [action('a-1', 'calendar_add')] });
+
+    expect(outcome.status).toBe('approved');
+    expect(calls).toEqual([{ op: 'approve', actionId: 'a-1', actor: PARENT }]);
+  });
+
+});
+
+/**
+ * The subjects a parent could pick between. It no longer reaches them through THIS
+ * module — a bare yes is not claimed here any more — but it is still what the open-
+ * question reader hands the resolver and the coach's fallback sentence, so the rule it
+ * encodes is tested where the function lives.
+ */
+describe('approvalSubjects', () => {
+  it('disambiguates a repeated label by position, as a description', () => {
+    expect(approvalSubjects([action('a-1'), action('a-2')])).toEqual([
+      'add to your calendar (the first)',
+      'add to your calendar (the second)',
+    ]);
+  });
+
+  it('leaves distinct labels completely alone - no position where none is needed', () => {
+    const subjects = approvalSubjects([
+      action('a-1'),
+      { actionId: 'a-2', actionType: 'reschedule_event', reviewerApproved: true },
+    ]);
+
+    expect(subjects.join(' ')).not.toContain('(the first)');
   });
 });
 

@@ -57,6 +57,17 @@ question in August about September is a question about the FALL schedule.
 Registration for a fall session usually opened weeks ago, so "not running yet" is
 almost never the right answer.
 
+**A POSTED SCHEDULE AND AN OPEN REGISTRATION ARE TWO DIFFERENT FACTS.** Do not
+infer either from the other. Halton Hills publishes the whole fall swim grid in
+August — "Parent and Tot 1, 2, 3 | Mon | 10:00AM - 10:30AM | Oct 05 - Dec 07 |
+108969", $86.22 for nine lessons — and opens registration to residents on
+September 1 at 7 a.m. On 2026-08-21 Hale said that schedule "posts when
+registration opens", which was false about a page that was already up and cost a
+parent a 7 a.m. scramble. Read the schedule off the schedule page and the
+registration date off the registration page, and fill BOTH fields. A term whose
+registration has not opened is still a slot; a registration date with no term is
+still a registration fact.
+
 ## Step 2 — EXTRACT (the `activity_deep` tool)
 
 Return what you READ, as structured rows. Never a paragraph, never a guess.
