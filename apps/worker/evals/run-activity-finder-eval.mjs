@@ -200,9 +200,22 @@ function groundTools(subject) {
   return tools;
 }
 
+/** How recent a fetch has to be to count as a page read TODAY — mirrors
+ * `FETCH_FRESHNESS_MS` (activity/evidence.ts). */
+const FETCH_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+
 /**
  * What the grounding turn searched, opened and wrote down — mirrors `readEvidence`
  * (activity/evidence.ts).
+ *
+ * `pagesStale` is not decoration. The provider answers a `web_fetch` out of its own cache
+ * — live probe 2026-08-22, three of one turn's four reads carried a `retrieved_at` five
+ * hours old — and a cached read is a page somebody opened ONCE, not a fact about now. The
+ * runtime subtracts it before granting the licence to say what a page does not carry, and
+ * this eval computed `pagesRead > 0` instead: a corpus scoring a claim production would
+ * have refused. `now` is read at call time, the way the runtime reads its clock, and the
+ * count is frozen into the cached record at RECORD time — which is the only clock under
+ * which the reads in it were ever fresh.
  *
  * The three counts are kept apart for the reason that module states: a page REFUSED is not
  * a page that said nothing, and folding them together rebuilds the benchmark defect one
@@ -214,9 +227,10 @@ function groundTools(subject) {
  * `activity_picks`, a tool it was never handed; reading only text blocks scores that real
  * answer as `empty_research`, so tool arguments count as notes too.
  */
-function readEvidence(content) {
+function readEvidence(content, now = Date.now()) {
   let searchResults = 0;
   let pagesRead = 0;
+  let pagesStale = 0;
   let pagesRefused = 0;
   const notes = [];
 
@@ -234,12 +248,28 @@ function readEvidence(content) {
         continue;
       }
       pagesRead += 1;
+      const at = Date.parse(result.retrieved_at ?? '');
+      if (!Number.isFinite(at) || now - at > FETCH_FRESHNESS_MS) pagesStale += 1;
       const text = result.content?.source?.data ?? '';
       if (text !== '') notes.push(`--- page: ${result.url ?? ''} ---\n${text}`);
     }
   }
 
-  return { searchResults, pagesRead, pagesRefused, notes: notes.join('\n').trim() };
+  return { searchResults, pagesRead, pagesStale, pagesRefused, notes: notes.join('\n').trim() };
+}
+
+/**
+ * MAY THIS TURN SAY WHAT A PAGE DOES NOT CARRY? The sweep's rule, verbatim (sweep.ts):
+ * a page READ TODAY licenses it and nothing else does — not a snippet, and not a
+ * `web_fetch` the provider answered out of its own cache from before today.
+ *
+ * A cached ground record written before `pagesStale` existed carries no freshness stamp
+ * for its reads, and the runtime's rule for a read with no stamp is that it is STALE
+ * (evidence.ts `readToday`: unknown age is not evidence of freshness). So an un-stamped
+ * record licenses nothing, which is the same answer read one layer up.
+ */
+function pagesOpenedToday(ground) {
+  return ground.pagesRead - (ground.pagesStale ?? ground.pagesRead) > 0;
 }
 
 /** Every title and URL the search itself returned - the ground truth a pick must trace to.
@@ -597,18 +627,38 @@ function brokenPicks(fixture) {
   if (fixture.expectPicks === true) return { picks: [] };
   return {
     picks: [
+      // COMPLETE, and FIRST on purpose. `watchWarranted` reads the top pick alone, so
+      // while the half-priced Sunnyside row led this list every broken fixture came back
+      // `watch: true` and the `unbacked_promise` gate could not fire on any of them - a
+      // gate nobody had ever seen bite. A whole top pick puts the two watch gates on
+      // opposite sides of the corpus: `watch: false` here, `watch: true` on the three
+      // `expectPicks` fixtures above, which are handed nothing at all.
+      { name: 'Riverbend Play Barn', age_fit: '1-4', when: 'Saturdays 10am', price: '$99', source_name: 'Riverbend' },
       { name: 'Sunnyside Tumbling Academy', age_fit: 'toddlers', when: 'ongoing', source_name: 'Sunnyside' },
-      { name: 'Riverbend Play Barn', age_fit: '1-4', when: 'daily', price: '$99', source_name: 'Riverbend' },
       { name: 'Maple Grove Movement', age_fit: '2-5', when: 'weekly', source_name: 'Maple Grove' },
       { name: 'Hilltop Kinder Gym', age_fit: '1-3', when: 'mornings', source_name: 'Hilltop' },
       { name: 'Brookvale Tots', when: 'Mondays 10am', source_name: 'Brookvale' },
     ],
   };
 }
-const BROKEN_FOLLOWUP = {
-  message:
-    'I had a look around your area this afternoon and went through a whole pile of listings for you, and there is quite a lot going on for the little ones at the moment across all of the nearby towns, more than I could reasonably fit into one message here. I confirmed Sunnyside Tumbling Academy runs daily - see sunnysidetumbling.ca for the rest of them.',
-};
+
+/**
+ * The broken follow-up TEXT, split on `watch` — because the two ledger gates want
+ * opposite sentences and one payload cannot fail both.
+ *
+ * Every branch keeps the corpus-wide offences the single constant used to carry (a URL,
+ * an "I confirmed", three segments, and a top pick buried past the first one), and adds
+ * the ones that were sitting at zero: a QUESTION, a claim that a page nobody opened has
+ * nothing on it, and a coming-back sentence with no row behind it. Those three had never
+ * been seen to fire in either direction, which is the same as not having them.
+ */
+function brokenFollowUp(watch) {
+  return {
+    message: watch
+      ? 'I had a look around your area this afternoon and went through a whole pile of listings for you, and there is quite a lot going on for the little ones at the moment across the nearby towns. Their fall times are not posted yet. I confirmed Sunnyside Tumbling Academy runs daily - see sunnysidetumbling.ca for the rest. Want me to check back once they are up?'
+      : 'I had a look around your area this afternoon and went through a whole pile of listings for you, and there is quite a lot going on for the little ones at the moment across the nearby towns. I confirmed Sunnyside Tumbling Academy runs daily - see sunnysidetumbling.ca for the rest, and I will keep looking and text you when the rest of the fall schedule lands.',
+  };
+}
 
 async function cachedGround(opts) {
   const { tag, model, system, userMessage, tools, cachedOnly, getClient, cost } = opts;
@@ -634,6 +684,7 @@ async function cachedGround(opts) {
   const value = {
     searchCount: evidence.searchResults,
     pagesRead: evidence.pagesRead,
+    pagesStale: evidence.pagesStale,
     pagesRefused: evidence.pagesRefused,
     notes: evidence.notes,
     evidence: searchEvidence(response.content),
@@ -681,7 +732,7 @@ async function main() {
 
     // ── phase 1: GROUND (web_search) ─────────────────────────────────────────
     const ground = broken
-      ? { searchCount: 0, pagesRead: 0, pagesRefused: 0, notes: '', evidence: '' }
+      ? { searchCount: 0, pagesRead: 0, pagesStale: 0, pagesRefused: 0, notes: '', evidence: '' }
       : await cachedGround({
           tag: `activity-ground:${fixture.id}`,
           model,
@@ -755,14 +806,14 @@ async function main() {
     // The two facts about the SWEEP that the composer is now told, computed the way the
     // sweep computes them (sweep.ts). `pagesOpened` is what licenses a negative claim
     // about a page; `watch` is whether a continuation row exists to be spoken for.
-    const pagesOpened = ground.pagesRead > 0;
+    const pagesOpened = pagesOpenedToday(ground);
     const watch = watchWarranted(kept);
     let body = '';
     let violations = [];
     let firstDraftViolations = [];
     for (let attempt = 1; attempt <= MAX_FOLLOWUP_ATTEMPTS; attempt += 1) {
       const composed = broken
-        ? BROKEN_FOLLOWUP
+        ? brokenFollowUp(watch)
         : (
             await cachedToolCall({
               tag: `activity-followup:${fixture.id}:${attempt}`,

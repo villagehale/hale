@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to move Thursday swimming to 17h45 (5:45pm). There is exactly one swim lesson on Thursday (Thu 5:15pm at East pool), so the reference is unambiguous — no clarifying question needed, and drafting is the correct move. The draft is non-empty (calendar_move), so naming the change and ending with \"YES to confirm\" is exactly right. The reply does precisely that: it restates the move clearly and asks for YES to confirm. No greeting, no sign-off, no markdown, no app referral, no invented details. The only tiny blemish is the question mark after \"17h45\" which slightly muddles whether Hale is confirming or questioning the time — it could read as if Hale is unsure of the destination time rather than asking for consent. A cleaner form would be \"Je déplace la natation de jeudi (17h15) à 17h45 — YES pour confirmer.\" But it's a very minor shape issue; the reply is essentially correct and concise.",
+    "score": 4
+  }
+}

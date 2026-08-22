@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CeJfbdoeqztMQ1qEqFH1x",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvYECpABCBEYAipA573vzu65LkGT4pyfXqGI8SRTTGO3/fRe9u2HeF6jujIK0q/03dTpTfvnDFWfc+z6RCPSNreFUf9eoFN7MR4geTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAavlqNQGEgyyY8vlk/Nj0YBJX2oaDC7EKM5KYRUUBwURxyIwA47s7bmi6Lbf28/+4t/ajmJ2r3uvQ6DTpK2w7ebR194cyK3X6j4GzrtNUKVb6ldfKpIDZDZqiFi1EVVWYyRjR5QvKL2h9yeU9TOWBR8Lkiw+iY6H/84AOzPxYwFHornao6rVmKCiKhUGzbBsbILNQZqwfP67CtI6OUYY68RtWiqzvVCli0fQ/YPL9QXfceYZ/8VSutgTt0f0xdZ97DOQwLCf1i9Ytewc5Y9kKx/g5bX7dd2rZ0QIrAE0MjtAiBKvaIot93V7BFHdiOr7OTrG8glOKXes5K07P/CKmnirpgOuV4U78ur8+c1IMV2VxSq7SXgImzk6yk5mFWk9RipCaEcK5tvu4BySeE9aQBstk4S3KjyCXSfUIp67SFJo5l3F4kgXbA5L/LkZhY9P9lc97aSHK5vX74kXet1cyhPR4GutBvXq6aDYabFCjqQ2Fz4kSLDkr535zxwYz2qDTguyNLrh+J96lq6XQ4owpa8t3Sr/xzwq/qIIZuUUb3wqIg6mtiOyZJiHX9vxet3BtUNOi3Oa8NRCrgWvOW008RC90Mi/nUECRO/RPYInOTPvUvKyP+J5K2Cx630r9FVaTtA50a4S419zGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01MjH4esfxkL4ojsHWzmkS7A",
+        "name": "promise_activity_followup",
+        "input": {
+          "subject": "Cartwheels Tiny Gym fall dates",
+          "childId": "kid-remy"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 537,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 13724,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 213,
+      "output_tokens_details": {
+        "thinking_tokens": 116
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

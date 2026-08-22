@@ -298,6 +298,20 @@ export function statesTheReturn(body: string): boolean {
 }
 
 /**
+ * DOES THIS MESSAGE ASK THE PARENT ANYTHING?
+ *
+ * ONE READER, TWO STRINGS, and that is the whole point of it being a function. The gate
+ * below runs on the sentence the MODEL wrote; the sweep runs it again on the body it is
+ * about to hand the transport (sweep.ts), because between those two strings sit the
+ * append steps — `withSharePage`, `withOptOut` — and nothing used to read what came out
+ * of them. A question appended after the gate reached the parent with the gate green,
+ * which is the 2026-08-22 defect surviving its own fix one layer down.
+ */
+export function asksTheParent(body: string): boolean {
+  return plainText(body).includes('?');
+}
+
+/**
  * Everything wrong with this follow-up, phrased for the model that will rewrite it. An
  * empty array means it may be sent.
  */
@@ -336,7 +350,7 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
   // has or cannot act on. On 2026-08-22 the question was "Want me to check back once
   // they're up?", the row behind it did not exist, and the parent's "Yes, please" was
   // answered by an unrelated approvals menu twenty minutes later.
-  if (text.includes('?')) {
+  if (asksTheParent(text)) {
     violations.push(
       'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
     );

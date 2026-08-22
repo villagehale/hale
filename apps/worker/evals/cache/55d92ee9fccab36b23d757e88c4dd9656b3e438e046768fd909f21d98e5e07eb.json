@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011CeJfC5BiGNaMScASNhair",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvQCCpABCBEYAipAkcHvKq99ZtfJ2ZDYYgI28s8hMGrRBiqq+LyYdAsDaEYkaQ8K9NgqJmvHHawJYvv1ba1XuTlVGDfWB3dy+dxohzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAeriqNQGEgyOkc6jfzR3BTn7ZJ8aDPadKU3dzHxJVw13bSIwuBt7RG4SaeJ2O9P3gLIJ413RxZbalCe6zahK6wKn5NoRwc4a12BJ77rOCJnXm+5oKpABUIvassC1ZczIN6Uqrmrgo0oIvVxqpzls9BifVYbAwC2/WpuyCeyuz+/qVaCi7pNaRWLYReXHReiemyhzM2BnVm5K5Q6OaAD3NeKlUWkg8BOQMxcB1hmzrJV95cL9j9fzxJfcN0rdWov2Unl4/BtpbmK0bFS+DTgrI3XulOBYrPOPEGN6VA5TRxGtptnWVqAoGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Rbwh9fwyyGbz2QEHBBiB4g",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "toddler",
+          "ageMonths": 19
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01AoCm5wWaKpXzajM2jdNjPT",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-remy",
+          "offer": "Want the full sleep plan for Remy? Reply YES and I'll send it."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 432,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 13724,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 255,
+      "output_tokens_details": {
+        "thinking_tokens": 50
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

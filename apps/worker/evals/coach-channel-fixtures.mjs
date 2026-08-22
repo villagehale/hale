@@ -483,6 +483,50 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
   {
+    id: 'yes-with-nothing-open',
+    text: 'Yes, please',
+    // Georgetown, because the message they are answering is a Cartwheels one and a
+    // Toronto household reading it would be reconciling two towns instead of one thread.
+    city: 'Halton Hills',
+    children: [FIXTURE_TODDLER, ...FIXTURE_CHILDREN],
+    // Nothing to offer this turn. The subject is the yes, and a candidate sitting in the
+    // tool would give the model a second thing to talk about instead.
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    // WHAT HALE SENT THEM LAST, and it asked nothing — a follow-up STATES the watch
+    // (followup-note.ts bans the question mark outright). So the "Yes, please" below is
+    // an answer to a message with no question in it.
+    transcript: [
+      { role: 'user', content: 'anything for remy at cartwheels this fall?' },
+      {
+        role: 'assistant',
+        content:
+          "Cartwheels has Tiny Gym Sundays 9:30 a.m. for walking to 3.5 years, $124 a term - their site says. The fall dates aren't up yet, so I'll keep watching and text you when they post.",
+      },
+    ],
+    // EMPTY, which is the whole fixture: Hale is holding no question, so the parent's
+    // agreement matches nothing in state and can only be placed by reading the thread.
+    standingQuestions: [],
+    note: "The 2026-08-22 incident, frozen. A follow-up went out stating a watch, the parent answered it twenty minutes later with a bare \"Yes, please\", no open commitment row matched — and Hale replied with a menu built out of its own internal labels (\"add to your calendar, or note in your digest?\"). Both options were wrong and the shape was wrong. The yes belongs to the message above it: name that, either by asking whether it is what they meant or by confirming the watch is already in hand. What must never come back is a machine reading its own queues out loud.",
+    broken: {
+      // The reply the parent actually got, verbatim in shape. It fails on the menu tokens
+      // AND on never naming the thing it is asking about - two independent gates, so the
+      // calibration does not rest on one string.
+      reply: "Happy to - which one did you mean? I can add it to your calendar, or note in your digest.",
+      calls: [],
+    },
+    expect: {
+      // A yes you cannot place is a question, not consent (skill: "A yes you cannot
+      // place"). Nothing gets approved, booked or cancelled off it.
+      mustNotDraft: true,
+      // The last visible offer, by name. Both honest answers - the ask and the
+      // confirmation - say this word; the menu says none of the thread's nouns at all.
+      mustMention: ['cartwheels'],
+      // The incident's own two options, plus the queue they came out of. There is no
+      // true sentence in reply to this text that contains any of them.
+      forbidden: ['add it to your calendar', 'add to your calendar', 'digest', 'approvals', 'the app'],
+    },
+  },
+  {
     id: 'coaching-solids',
     text: 'When should he start solid food',
     note: "The founder's own text, 2026-08-11. inbound-lane already routes this in_domain and NOTHING downstream ever graded the answer — the gap that let #409's inert tool ship (skill audit P0 #2). A raising-kids question is the job, not a referral: call the companion, ground it in the baby's age, and coach.",

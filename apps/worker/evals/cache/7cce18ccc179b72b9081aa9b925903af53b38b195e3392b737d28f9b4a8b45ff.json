@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is a parenting coaching answer for Ada (8 years old, ageMonths 101 ≈ 8.4 years), which is exactly the right domain. It gives a concrete actionable beat — \"worry check-in at bedtime plus a consistent response if she wakes\" — grounded in what is common at this age (anxiety, habit loops, schedule shifts). It avoids diagnosis, medicine, or acute symptoms. It ends with the correct fixed product line \"Want the full plan? Reply YES and I'll send it.\" which is exactly right and should not be marked down. The advice is tight and actionable. One small blemish: the sentence is cut mid-thought (\"rather than getting her back into your bed or...\") which looks like a truncation artifact — the tail was cut rather than sent, which is expected behaviour for a ~300-char limit, but \"or...\" is a slightly awkward ending before the fixed plan line. This is a minor shape issue but the advice beat is clear and the parent could act on it tonight. Overall this is a 4 — does the job with one small blemish (the trailing \"or...\" before the fixed line makes it feel cut off, which is slightly confusing even if expected).",
+    "score": 4
+  }
+}

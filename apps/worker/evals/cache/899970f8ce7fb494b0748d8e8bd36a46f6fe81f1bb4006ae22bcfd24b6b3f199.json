@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles two things: the registration window (states the resident date, says Hale is already watching it — all accurate since watching:true) and the webFind (names the program, day, age range, and attributes it to the venue's own page, plus honestly notes no price is listed). No URL invented (referralLinkAppended is null). No app referral. No invented details. stillBeingChecked is 0 so no dangling count. The webFind rule is followed: hand it over, say whose page it came from. The one small blemish is that \"I'm on it\" after the registration date is a tiny bit ambiguous — it could mean Hale has registered them, not just that it's watching the window — but in context it reads as \"I'm watching/on top of it,\" which is the intended meaning and accurate. Overall the reply is tight, correct, and does exactly what the rules require.",
+    "score": 5
+  }
+}

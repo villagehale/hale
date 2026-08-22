@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The week has no piano event visible. The reply correctly states that piano is not on this week's calendar. However, it then asks \"Want me to check next week?\" — this is a dangling question that adds unnecessary friction. The correct and complete answer is simply \"I don't see piano on this week's schedule\" (and optionally next week's if Hale can see it). The question about checking next week is a minor addition that slightly inflates the reply beyond what's needed, but it's not wrong or misleading — it's a reasonable offer. There are no private items that could be piano (Hale cannot see them and must not raise them). The reply is short, accurate, and does not invent anything or hand the parent back to the app. The one trailing question is a small blemish but not a structural failure.",
+    "score": 4
+  }
+}

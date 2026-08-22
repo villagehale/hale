@@ -33,6 +33,7 @@ import { deidentifyActivityQuery } from './deidentify';
 import {
   type FollowUpComposer,
   type FollowUpPick,
+  asksTheParent,
   claimsNotPosted,
   createFollowUpComposer,
 } from './followup-note';
@@ -120,6 +121,17 @@ export interface ActivityFollowUpResult {
   /** Due and allowed, but nothing sendable came back from the composer. The promise stays
    * open for the next tick — never a canned sentence in its place. */
   deferred: number;
+  /**
+   * Composed, gated, appended to — and the body that came out the other end still asked
+   * the parent something, so it was refused at the send boundary.
+   *
+   * Its own count and not folded into `deferred`, because the two mean opposite things
+   * about where the fault is: `deferred` is the model failing to write a sendable
+   * sentence, and this is CODE having put a question into a sentence the gates had
+   * already passed. A run with a non-zero here has a bug in the append path, and that
+   * must not be readable as the composer having a bad day (rule #11).
+   */
+  refusedAtSend: number;
   failed: number;
   /** How many promises the deep pass actually researched — pages opened, not snippets
    * read. Counted because the difference between this and `sent` is the difference
@@ -165,6 +177,7 @@ function emptyResult(enabled: boolean): ActivityFollowUpResult {
     unsendable: 0,
     cancelled: 0,
     deferred: 0,
+    refusedAtSend: 0,
     failed: 0,
     deepRead: 0,
     deepUnread: 0,
@@ -546,6 +559,22 @@ async function keepOne(
   }
 
   const body = withOptOut(message, verdict.optOut);
+  // THE GATE, RE-READ ON THE STRING THAT ACTUALLY LEAVES — and it must stay the last
+  // thing before the send, because everything between it and `transport.send` is
+  // unchecked by construction. `followUpViolations` refuses a question in the sentence
+  // the MODEL wrote, and then two appends run after it; a mutation that added "Want me
+  // to check back once they're up?" here survived all 193 tests of this lane. A question
+  // on the wire has no row behind it, so the parent's yes lands on whatever the router
+  // guesses next (2026-08-22). Refused rather than trimmed: the promise stays open and
+  // the next tick composes a whole message, and the count says a body got this far.
+  if (asksTheParent(body)) {
+    result.refusedAtSend += 1;
+    console.error(
+      { commitmentId: commitment.id },
+      'activity follow-up: the wire body asks the parent a question - refused at the send boundary, promise left open',
+    );
+    return;
+  }
   const { providerMessageId } = await deps.transport.send({ to, body });
   const channelMessageId = await deps.recordSend(database, {
     familyId: commitment.familyId,

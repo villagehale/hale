@@ -511,10 +511,26 @@ function brokenExtract(fixture) {
   }
 }
 
-const BROKEN_FOLLOWUP = {
-  message:
-    'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across all of the nearby towns, rather more than I could reasonably fit into a single message to you here. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest of the fall schedule and all of the current fees.',
-};
+/**
+ * The broken follow-up TEXT, split on `watch` — for the reason `brokenExtract` is split
+ * per fixture: the two ledger gates want opposite sentences, and one payload cannot fail
+ * both. The single constant this replaces failed on a URL, an "I confirmed" and three
+ * segments, and left three gates at zero across the whole broken corpus — a QUESTION, a
+ * claim that a page nobody opened carries nothing, and a coming-back sentence with no row
+ * behind it. A gate nobody has seen fire is a gate nobody knows works.
+ *
+ * The unposted claim rides the `watch` branch because the one fixture whose research
+ * opened NO page (`cartwheels-live-research`, notes null) is also the one the shrug hands
+ * no slots — so `watch` is true there and the claim is unlicensed, which is the pair the
+ * gate exists to catch.
+ */
+function brokenFollowUp(watch) {
+  return {
+    message: watch
+      ? 'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across the nearby towns. Their fall times are not posted yet. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest. Want me to check back once they are up?'
+      : 'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across the nearby towns. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest, and I will keep looking and text you when the fall schedule lands.',
+  };
+}
 
 async function cachedResearch(opts) {
   const { tag, model, system, userMessage, cachedOnly, getClient, cost } = opts;
@@ -697,7 +713,7 @@ async function main() {
     let firstDraftViolations = [];
     for (let attempt = 1; composesText && attempt <= MAX_FOLLOWUP_ATTEMPTS; attempt += 1) {
       const composed = broken
-        ? BROKEN_FOLLOWUP
+        ? brokenFollowUp(watch)
         : (
             await cachedToolCall({
               tag: `activity-deep-followup:${fixture.id}:${attempt}`,

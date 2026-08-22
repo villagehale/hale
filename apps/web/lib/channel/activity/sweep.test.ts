@@ -387,12 +387,14 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     armed();
     // The composer is the eval's job (rule #8), so it is asked here for the sentence it
     // would write from these slots — what this asserts is that the sweep put the facts in
-    // front of it and put its sentence on the wire.
+    // front of it and put its sentence on the wire. It ENDS ON A STATEMENT because the
+    // real composer's gates refuse anything else, and a fake that asks a question is a
+    // fake of a message this lane cannot produce.
     const h = payable({
       compose: {
         status: 'composed',
         message:
-          'Cartwheels has Tiny Gym Sundays 9:30-10:15 from Sept 14, $124 a term - their site says, and registration has been open since July 22. Want me to hold you a spot?',
+          'Cartwheels has Tiny Gym Sundays 9:30-10:15 from Sept 14, $124 a term - their site says, and registration has been open since July 22.',
       },
     });
 
@@ -833,5 +835,55 @@ describe('the audit row carries the evidence', () => {
     expect(row).not.toContain(PICK.name);
     expect(row).not.toContain('https://');
     expect(row).not.toContain('toddler gymnastics');
+  });
+});
+
+describe('the last read of the string that actually leaves', () => {
+  it('THE HOLE: a question in the wire body is refused at the send boundary', async () => {
+    armed();
+    // The sentence the composer's own gates would never have passed - handed over here
+    // the way an append after those gates hands it over: by the time this string exists,
+    // `followUpViolations` has already run and said yes to a different one.
+    const h = harness({
+      compose: {
+        status: 'composed',
+        message: `${PICK.name} runs Saturdays. Want me to check back once they're up?`,
+      },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ due: 1, sent: 0, refusedAtSend: 1, deferred: 0, failed: 0 });
+    // Nothing on the wire, nothing in the thread, and the debt still owed - a refusal
+    // here is the next tick's problem, never a message the parent half-gets.
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.threaded).toEqual([]);
+    expect(h.fulfilled).toEqual([]);
+    expect(h.watched).toEqual([]);
+  });
+
+  it('POSITIVE CONTROL - the two things code DOES append still go out', async () => {
+    armed();
+    // Three slots, so the text carries two and the third mints a share page: both appends
+    // run on this send, which is what makes it the control for the refusal above.
+    const slots: DeepSlot[] = [1, 2, 3].map((n) => ({
+      ...PICK,
+      name: `${PICK.name} ${n}`,
+      registration: null,
+      sourceUrl: 'https://haltonhillsgymnastics.ca/programs',
+    }));
+    const h = harness({
+      deep: { status: 'read', slots, searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 0 },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    // The CASL line and the share link are the whole of what runs after the gate today.
+    // Neither carries a question mark, and this is the assertion that says so out loud -
+    // without it the refusal above would pass just as well on a sweep that sends nothing.
+    expect(result).toMatchObject({ sent: 1, refusedAtSend: 0, shared: 1 });
+    const sent = h.transport.sent[0]?.body ?? '';
+    expect(sent).toContain('STOP to opt out.');
+    expect(sent).toContain(SHARE_URL);
   });
 });

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked what \"Nora\" has on Tuesday. There is no child named Nora in knows.children — the children are Milo, Ada, and an unnamed teenager. The reply ignores this entirely and just surfaces the private Tuesday item, which is correct handling for a private item in isolation. But \"Nora\" doesn't match any known child, so Hale should have noted it doesn't recognise a Nora in the family rather than silently treating the question as if it were about whoever has the Tuesday slot. That said, the private item reply itself is correctly shaped — day, time, content withheld. The main failure is not flagging the unknown name at all, which means the reply could be misleading (implying the private item belongs to \"Nora\" when Hale has no idea). This is a meaningful error but not an invention of a fact — it's a failure to flag a mismatch. That puts it at a 3: does some of the job (handles the private item correctly) but the shape is off because it silently assumes Nora = whoever owns the Tuesday slot without noting the name isn't recognised.",
+    "score": 3
+  }
+}
