@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies Remy as a toddler (19 months), gives a concrete actionable tip (brief, boring check-in instead of full pick-up), explains the developmental reason (reassurance-seeking, not hunger), and appends the exact required fixed line for a parenting question. It uses the child's name correctly, stays within character budget, and ends with the plan offer. No app referral, no invented details, no sign-off. The one small note: it says \"he\" — Remy's gender is not specified in `knows`, so this is a minor assumption, but it doesn't meaningfully mislead. Otherwise shape and content are exactly right.",
+    "score": 4
+  }
+}

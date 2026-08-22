@@ -132,10 +132,12 @@ function deepExtractMessage(q, notes) {
 
 /** Mirrors `followUpUserMessage` (followup-note.ts) — INCLUDING `registration`, whose
  * absence from that projection is the defect this eval's last gate exists for. */
-function followUpUserMessage(subject, slots) {
+function followUpUserMessage(subject, slots, pagesOpened, watch) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
+    pages_opened: pagesOpened,
+    watch,
     picks: slots.map((slot) => ({
       name: slot.name,
       age_fit: slot.ageFit,
@@ -148,11 +150,22 @@ function followUpUserMessage(subject, slots) {
   });
 }
 
-/** Mirrors `readEvidence` (activity/evidence.ts): three counts kept apart, and the text of
- * the pages that opened riding into the notes. */
-function readEvidence(content) {
+/** How recent a fetch has to be to count as a page read TODAY - mirrors
+ * `FETCH_FRESHNESS_MS` (activity/evidence.ts). */
+const FETCH_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+
+/** Mirrors `readEvidence` (activity/evidence.ts): the counts kept apart, and the text of
+ * the pages that opened riding into the notes.
+ *
+ * `pagesStale` is not decoration here. The provider answers a `web_fetch` out of its own
+ * cache — live probe 2026-08-22, three of one turn's four reads carried a `retrieved_at`
+ * five hours old — and a cached read licenses no claim about what a page carries now. The
+ * eval mirrors the count so the corpus cannot quietly score a turn on pages nobody
+ * opened today. `now` is read at call time, the way the runtime reads its clock. */
+function readEvidence(content, now = Date.now()) {
   let searchResults = 0;
   let pagesRead = 0;
+  let pagesStale = 0;
   let pagesRefused = 0;
   const notes = [];
   for (const block of content) {
@@ -169,11 +182,13 @@ function readEvidence(content) {
         continue;
       }
       pagesRead += 1;
+      const at = Date.parse(result.retrieved_at ?? '');
+      if (!Number.isFinite(at) || now - at > FETCH_FRESHNESS_MS) pagesStale += 1;
       const text = result.content?.source?.data ?? '';
       if (text !== '') notes.push(`--- page: ${result.url ?? ''} ---\n${text}`);
     }
   }
-  return { searchResults, pagesRead, pagesRefused, notes: notes.join('\n').trim() };
+  return { searchResults, pagesRead, pagesStale, pagesRefused, notes: notes.join('\n').trim() };
 }
 
 /** Mirrors `plainText` (coach/reply.ts), which sits behind `~/`. */
@@ -261,7 +276,26 @@ function topPickLeads(body, slots) {
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
-function followUpViolations(body, slots, smsSegments) {
+/** Mirrors `claimsNotPosted`, `statesTheReturn` and `watchWarranted` — see the same three
+ * in run-activity-finder-eval.mjs and in the runtime (followup-note.ts, sweep.ts). */
+const UNPUBLISHED_WORD = /\b(?:posted|listed|published|announced|out|up)\b/i;
+const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n'?t\b/i;
+const STATES_RETURN =
+  /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
+
+function claimsNotPosted(body) {
+  return body
+    .split(CLAUSE_BOUNDARY)
+    .some((clause) => ABSENCE.test(clause) && UNPUBLISHED_WORD.test(clause));
+}
+
+function watchWarranted(slots) {
+  const top = slots[0];
+  if (!top) return true;
+  return !top.when || !top.price;
+}
+
+function followUpViolations(body, slots, smsSegments, pagesOpened, watch) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
@@ -287,6 +321,28 @@ function followUpViolations(body, slots, smsSegments) {
     violations.push({
       tag: 'buried_top_pick',
       reason: `The best find (${slots[0]?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
+    });
+  }
+  if (body.includes('?')) {
+    violations.push({
+      tag: 'asks_for_permission',
+      reason:
+        'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
+    });
+  }
+  if (!pagesOpened && claimsNotPosted(body)) {
+    violations.push({
+      tag: 'unread_not_unposted',
+      reason:
+        'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.',
+    });
+  }
+  if (watch !== STATES_RETURN.test(body)) {
+    violations.push({
+      tag: watch ? 'silent_watch' : 'unbacked_promise',
+      reason: watch
+        ? 'This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "I\'ll keep watching and text you when they post."'
+        : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }
   return violations;
@@ -448,13 +504,19 @@ async function cachedResearch(opts) {
     );
     process.exit(1);
   }
-  const response = await getClient().messages.create({
-    model,
-    max_tokens: RESEARCH_MAX_TOKENS,
-    system,
-    tools: RESEARCH_TOOLS,
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  // STREAMED, because the runtime streams and a non-streamed turn of this shape does not
+  // come back: live probe 2026-08-22, `messages.create` on this request timed out at
+  // 50s and died at 120s on a 600s ceiling, while the stream returned in 88.8s. An eval
+  // that posts the un-streamed request is scoring a call production cannot make (deep.ts).
+  const response = await getClient()
+    .messages.stream({
+      model,
+      max_tokens: RESEARCH_MAX_TOKENS,
+      system,
+      tools: RESEARCH_TOOLS,
+      messages: [{ role: 'user', content: userMessage }],
+    })
+    .finalMessage();
   noteUsage(cost, model, response.usage);
   const value = readEvidence(response.content);
   await cachePut(key, value);
@@ -508,11 +570,12 @@ async function main() {
         ? {
             searchResults: 1,
             pagesRead: fixture.expectPagesRead === false ? 0 : 1,
+            pagesStale: 0,
             pagesRefused: fixture.expectPagesRead === false ? 2 : 0,
             notes: fixture.notes,
           }
         : broken
-          ? { searchResults: 0, pagesRead: 0, pagesRefused: 0, notes: '' }
+          ? { searchResults: 0, pagesRead: 0, pagesStale: 0, pagesRefused: 0, notes: '' }
           : await cachedResearch({
               tag: `activity-deep-research:${fixture.id}`,
               model,
@@ -600,6 +663,11 @@ async function main() {
     // would be scoring a message the product does not send.
     const composesText = fixture.composesText !== false;
     const inText = composesText ? kept.slice(0, SLOTS_IN_TEXT) : [];
+    // The two sweep facts the composer is told (sweep.ts). A page read out of the
+    // provider's cache is not a page read today, so it buys no licence to say what a page
+    // does not carry.
+    const pagesOpened = evidence.pagesRead - evidence.pagesStale > 0;
+    const watch = watchWarranted(inText);
     let body = '';
     let violations = [];
     let firstDraftViolations = [];
@@ -612,7 +680,7 @@ async function main() {
               model: composerModel,
               system: finderSkill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, inText),
+                followUpUserMessage(fixture.subject, inText, pagesOpened, watch),
                 violations,
               ),
               toolName: 'followup_text',
@@ -625,7 +693,7 @@ async function main() {
             })
           ).value;
       body = flatten(composed.message);
-      violations = followUpViolations(body, inText, smsSegments);
+      violations = followUpViolations(body, inText, smsSegments, pagesOpened, watch);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
@@ -694,6 +762,16 @@ async function main() {
   console.log(`dropped registration:      ${count('dropped_registration')}  (the fact the page-open paid for)`);
   console.log(`registration not in text:  ${count('registration_not_in_text')}  (it reached the slot and died in the projection)`);
   console.log(`claims verification:       ${count('claims_verification')}`);
+  console.log(
+    `asks for permission:       ${count('asks_for_permission')}  (an offer is a proposal, and this lane can write no row)`,
+  );
+  console.log(
+    `unread claimed unposted:   ${count('unread_not_unposted')}  (a claim about a page nobody opened today)`,
+  );
+  console.log(
+    `unbacked promise:          ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
+  );
+  console.log(`silent watch:              ${count('silent_watch')}`);
   console.log(`buried top pick:           ${count('buried_top_pick')}`);
   console.log(`links a URL:               ${count('links_a_url')}`);
   console.log(

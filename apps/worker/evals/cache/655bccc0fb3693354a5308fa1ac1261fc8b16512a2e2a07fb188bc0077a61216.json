@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "All critical elements verified: (1) The slot correctly extracts the Tiny Gym program name and URL from the page. (2) Age fit \"walking to 3.5 years, with a parent\" matches the page exactly. (3) Schedule \"Sundays 9:30 - 10:15 a.m., September 14 to October 26, 2026 (7 weeks)\" is exact to the page. (4) Price \"$124 per child (plus $25 annual membership)\" accurately reflects both the class fee and the additional membership requirement stated on the page. (5) Registration window \"Fall registration opened July 22, 2026 and runs until classes fill\" is pulled directly from the page notes. (6) The message leads with the program name, uses \"their site says\" to attribute facts, includes both the price components ($124 plus $25 annual membership), and critically carries the registration window (\"Fall registration has been open since July 22 and runs until spots fill\"), which watchFor identifies as essential. (7) The message is two plain sentences in accessible ASCII, contains no unwarranted claims of verification (uses \"their site says\"), offers information without false confirmation, and ends with appropriate framing. The slot and message work together to deliver the full value of the page-open."
+  }
+}

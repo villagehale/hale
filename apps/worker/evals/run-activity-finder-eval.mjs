@@ -53,6 +53,12 @@
 //     read off a page. Clause-scoped, so an honest "I'll confirm before you book" passes.
 //   · buried top pick - the best find is not named inside the first SMS segment, so the
 //     first trim removes it (the RC-I1 shape).
+//   · asks for permission - the follow-up ends on a question. An offer is a PROPOSAL and
+//     every proposal is a row; nothing on this path can write one, so a parent's yes has
+//     nowhere to land (2026-08-22: it landed on an unrelated approvals queue).
+//   · unread claimed unposted - the turn opened no page and said something was not posted.
+//   · unbacked promise / silent watch - the text and the ledger disagree about whether
+//     Hale is coming back.
 //   · links a URL / unsendable - Hale never texts a link, and the follow-up is two segments.
 // Everything else is the judge's bar (JUDGE_MIN): are these real, local, age-fitting things
 // a parent could turn up to, and is the message honest about where the facts came from?
@@ -136,10 +142,12 @@ function composeUserMessage(q, researchNotes) {
  * a field the shallow lane never fills (so it is null here) but which the deep pass reads
  * off a page and the composer is told about. The projection dropping it is what this
  * mirror exists to keep honest. */
-function followUpUserMessage(subject, picks) {
+function followUpUserMessage(subject, picks, pagesOpened, watch) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
+    pages_opened: pagesOpened,
+    watch,
     picks: picks.map((pick) => ({
       name: pick.name,
       age_fit: pick.ageFit,
@@ -323,13 +331,38 @@ function topPickLeads(body, picks) {
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
+/** Mirrors `claimsNotPosted` in followup-note.ts, clause for clause. A negated
+ * publishing word said by a turn that opened no page is a report on a page nobody read -
+ * the 2026-08-21 and 2026-08-22 defect in both its sightings. */
+const UNPUBLISHED_WORD = /\b(?:posted|listed|published|announced|out|up)\b/i;
+const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n'?t\b/i;
+
+function claimsNotPosted(body) {
+  return body
+    .split(CLAUSE_BOUNDARY)
+    .some((clause) => ABSENCE.test(clause) && UNPUBLISHED_WORD.test(clause));
+}
+
+/** Mirrors `statesTheReturn`. */
+const STATES_RETURN =
+  /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
+
+/** Mirrors `watchWarranted` in activity/sweep.ts: nothing found, or a best find whose day
+ * or price the answer could not carry. It is what decides both the ledger row and what
+ * the copy is allowed to claim, so the eval computes it the same way. */
+function watchWarranted(picks) {
+  const top = picks[0];
+  if (!top) return true;
+  return !top.when || !top.price;
+}
+
 /**
  * Everything wrong with this follow-up, in the runtime's own words - mirrors
  * `followUpViolations` in apps/web/lib/channel/activity/followup-note.ts. The `reason` is
  * what gets handed BACK to the model on a recompose, so it has to be the sentence
  * production would hand back; the `tag` is what this eval counts.
  */
-function followUpViolations(body, picks, smsSegments) {
+function followUpViolations(body, picks, smsSegments, pagesOpened, watch) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
@@ -355,6 +388,28 @@ function followUpViolations(body, picks, smsSegments) {
     violations.push({
       tag: 'buried_top_pick',
       reason: `The best find (${picks[0]?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
+    });
+  }
+  if (body.includes('?')) {
+    violations.push({
+      tag: 'asks_for_permission',
+      reason:
+        'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
+    });
+  }
+  if (!pagesOpened && claimsNotPosted(body)) {
+    violations.push({
+      tag: 'unread_not_unposted',
+      reason:
+        'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.',
+    });
+  }
+  if (watch !== STATES_RETURN.test(body)) {
+    violations.push({
+      tag: watch ? 'silent_watch' : 'unbacked_promise',
+      reason: watch
+        ? 'This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "I\'ll keep watching and text you when they post."'
+        : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }
   return violations;
@@ -670,6 +725,11 @@ async function main() {
     // production would have shortened and sent, which is measuring something the product
     // does not do. First-draft quality still has to be VISIBLE or it could rot behind the
     // repair loop, so it is counted and printed - just not fatal.
+    // The two facts about the SWEEP that the composer is now told, computed the way the
+    // sweep computes them (sweep.ts). `pagesOpened` is what licenses a negative claim
+    // about a page; `watch` is whether a continuation row exists to be spoken for.
+    const pagesOpened = ground.pagesRead > 0;
+    const watch = watchWarranted(kept);
     let body = '';
     let violations = [];
     let firstDraftViolations = [];
@@ -682,7 +742,7 @@ async function main() {
               model,
               system: skill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, kept),
+                followUpUserMessage(fixture.subject, kept, pagesOpened, watch),
                 violations,
               ),
               toolName: 'followup_text',
@@ -696,7 +756,7 @@ async function main() {
           ).value;
 
       body = flatten(composed.message);
-      violations = followUpViolations(body, kept, smsSegments);
+      violations = followUpViolations(body, kept, smsSegments, pagesOpened, watch);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
@@ -756,6 +816,18 @@ async function main() {
   console.log(`claims verification:     ${count('claims_verification')}  (web-read is not confirmed)`);
   console.log(`buried top pick:         ${count('buried_top_pick')}  (the trim cuts from the end)`);
   console.log(`links a URL:             ${count('links_a_url')}`);
+  console.log(
+    `asks for permission:     ${count('asks_for_permission')}  (an offer is a proposal, and this lane can write no row)`,
+  );
+  console.log(
+    `unread claimed unposted: ${count('unread_not_unposted')}  (a claim about a page nobody opened)`,
+  );
+  console.log(
+    `unbacked promise:        ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
+  );
+  console.log(
+    `silent watch:            ${count('silent_watch')}  (a row was written and the text never said so)`,
+  );
   // NOT a gate, and deliberately: a fetch refused (`url_not_allowed`) is a real and common
   // shape on these very venues, production logs it and answers from the snippets anyway.
   // What it must never become is invisible - a corpus where the venue fixtures stop

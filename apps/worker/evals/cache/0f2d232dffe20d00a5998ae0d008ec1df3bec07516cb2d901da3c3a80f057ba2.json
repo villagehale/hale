@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The slot correctly identifies a real program on the page (Parent & Tot Playtime, 12 months to 4 years) with the exact schedule as printed (Tuesdays and Thursdays, 9:30-11:00 a.m., September 8 to December 11). The price is correctly recorded as \"Not listed on this page - see current fee schedule at front desk or call reception\" - exactly matching what the page states. Registration is correctly marked as \"Not stated on this page.\" The message properly attributes facts to the page (\"their site says\"), avoids fabricating the fee, explains where to find pricing, and poses one clear question implicitly. Critically, the slot avoids the trap noted in watchFor: it does not conflate the $185 room rental figure from the separate rentals page with this toddler program. The extraction demonstrates proper source discipline by refusing to borrow figures from unrelated offerings on the same domain."
+  }
+}
