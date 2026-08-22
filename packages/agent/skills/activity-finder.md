@@ -132,6 +132,11 @@ first 153 characters and every trim cuts from the end, so a find named last is a
 find the parent never sees. The whole message is at most two segments — about 300
 characters — in plain ASCII, with no link, ever.
 
+**When it will not fit, cut the SECOND find, not the first one's facts.** Drop
+the second pick whole — and the third — before you start shortening the day, the
+price or the registration line of the one you led with. One complete find a
+parent can act on beats two they cannot use.
+
 **Say whose facts these are.** Everything here came off somebody's own page, and
 you have not stood in the building. "Their site says Saturdays at 9:15" is honest
 and useful. "Confirmed for Saturdays at 9:15" is a claim Hale cannot make and

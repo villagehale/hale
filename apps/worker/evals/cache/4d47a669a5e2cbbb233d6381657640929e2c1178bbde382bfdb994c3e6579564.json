@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message names a specific real venue (Halton Hills Gymnastics Centre) with a named program (Parent & Tot Gymnastics) fitting the age (18 months - 3 years). It leads with this best pick by name and properly attributes the information (\"their site says\"). The session dates are specific and real (Sept 10 - Dec 16 with Oct 10 excluded), which is exactly what was requested for fall programs. The message honestly names the gap in what could not be accessed today (\"I couldn't get into their page today to check the time, price, or registration date\") rather than inventing these details. Since `watch` is TRUE, a continuation promise was already written, and the message correctly includes the first-person commitment (\"I'll keep watching and text you those details\"). The message is one short paragraph of plain text with no link and no question - this is correct form. The price is null in the pick data because the source had not published it, and the message does not claim to know it. This is a complete, honest, well-attributed response that gives a parent something real to follow up on."
+  }
+}

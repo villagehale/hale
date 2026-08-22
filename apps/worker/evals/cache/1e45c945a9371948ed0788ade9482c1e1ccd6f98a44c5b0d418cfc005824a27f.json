@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The page was genuinely opened (pagesOpened=true) and contains no programs for toddlers—the youngest class is ages 8-12. The slots are correctly empty. The message accurately reports this fact: \"programs start at older ages and nothing fits a toddler right now.\" It attributes the information to the site (\"their site says\" implicit in \"Northfield Fencing Club's own site\"), it does not stretch any program to fit the wrong age band, and it does not make a negative claim about content that was never checked. Since watch=true, the continuation promise \"I'll keep watching and text you if they add a younger class\" is a commitment that exists in a follow-up row—this is correct to include and correctly phrased in first person. The message is plain ASCII, two sentences, contains no link, no question, and no offer. All facts are accurate to what the page states.",
+    "score": 5
+  }
+}

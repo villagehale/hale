@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The slot correctly identifies the program (Parent & Tot Playtime at Riverbend Community Centre), accurately captures the age range (12 months to 4 years), the exact schedule (Tuesdays and Thursdays, 9:30-11:00 a.m., September 8 to December 11), and appropriately reflects that the price is not listed on the page—it says \"see current fee schedule at front desk or call reception.\" The slot does not conflate this with the room rental rates shown elsewhere on the site. The message properly attributes facts to the site (\"their site says\"), leads with the program name, includes the full schedule and age range, explicitly states that price and registration aren't posted yet, and since watch is TRUE, correctly commits to ongoing monitoring (\"I'll keep watching and text you once they're up\"). The message is plain, factual, in two sentences, contains no link, makes no unverified claims, and avoids the trap of citing the $185 rental fee or any other unrelated page content. The registration window is not stated on the page, so its omission from the message is correct."
+  }
+}

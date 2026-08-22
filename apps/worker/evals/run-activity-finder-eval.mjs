@@ -353,7 +353,14 @@ const STATES_RETURN =
 function watchWarranted(picks) {
   const top = picks[0];
   if (!top) return true;
-  return !top.when || !top.price;
+  return !carriesFact(top.when) || !carriesFact(top.price);
+}
+
+/** Mirrors `carriesFact` (sweep.ts): a field that explains its own absence is an
+ * absence, not a value. Live on 2026-08-22 the extract filled `price` with "Not listed
+ * on main site..." rather than leaving it out. */
+function carriesFact(field) {
+  return Boolean(field) && String(field).trim() !== '' && !claimsNotPosted(String(field));
 }
 
 /**
@@ -530,12 +537,32 @@ const JUDGE_SYSTEM = [
   'A 5: every pick is a real, specific, local thing a parent could turn up to - a named',
   'place, plausibly fitting the stage - and at most three of them. The message leads with',
   'the best one by name, says whose information it is ("their site says", "listed as"), and',
-  'offers to confirm rather than claiming to have confirmed.',
-  'It is one or two short sentences of plain text with no link and exactly one question.',
+  'attributes rather than claiming to have confirmed.',
+  'It is one or two short sentences of plain text with no link and NO QUESTION AT ALL.',
+  'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
+  'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
+  'down; nothing on this path can write one, so a "want me to..." here is a yes with',
+  'nowhere to land (2026-08-22: it landed on an unrelated approvals queue). Do not mark a',
+  'message down for ending on a statement.',
+  'You are given `watch`. When it is TRUE, Hale has ALREADY written a continuation promise',
+  'to go back and look again, and the message must say so in the first person ("I\'ll keep',
+  'watching and text you when they post"): that is a commitment that exists, not an',
+  'unverified claim. When it is FALSE no such row exists and any coming-back sentence is a',
+  'promise nothing is behind - THAT is the low score.',
+  'You are given `pagesOpened`. FALSE means Hale read SEARCH SNIPPETS rather than opening',
+  "a page. Attribution is still correct and still expected - a snippet off the venue's own",
+  'site IS "their site says", and marking that down is wrong. What FALSE forbids is a',
+  'NEGATIVE claim about what a page carries ("the fall times are not posted yet"), because',
+  'nobody looked; the honest form of that sentence is "I could not get into their page',
+  'today". Score the negative claim low, never the attribution.',
+  'Two segments is a hard ceiling. Dropping a second or third find WHOLE to fit the best',
+  'one complete is correct and is not withholding; withholding is going quiet about a find',
+  'when there was room, or hedging instead of naming anything at all.',
   'A pick whose `when` or `price` is null is CORRECT when the source had not published it -',
   'a real program whose fall times are not up yet, or whose schedule sits behind a',
   'registration login, is a genuine find. Score it a 5 when the message NAMES the gap',
-  '("their site lists it, the fall times are not posted yet") and offers to go and get it.',
+  '("their site lists it, the fall times are not posted yet" - only when pagesOpened) and',
+  'says what Hale is already doing about it.',
   'Score it low only if the message invents a day, a time or a price the picks do not carry,',
   'or quietly writes around the gap as though the detail were known.',
   'A LOW score is any of: a venue that looks invented or generic ("your local community',
@@ -765,6 +792,8 @@ async function main() {
     // ── the judge (skipped in broken mode; the deterministic layer proves calibration) ──
     if (!broken) {
       const verdict = await judge(fixture.id, {
+        watch,
+        pagesOpened,
         subject: fixture.subject,
         town: fixture.town,
         stage: fixture.stage,

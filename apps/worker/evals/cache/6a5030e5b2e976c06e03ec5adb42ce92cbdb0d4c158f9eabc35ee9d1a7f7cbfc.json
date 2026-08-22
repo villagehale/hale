@@ -1,0 +1,22 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Learn to Swim Parent and Tot / Preschool, Town of Oakville",
+        "age_fit": "Preschool levels (Lifesaving Society Swim for Life preschool program)",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "YMCA Preschool Swim Lessons, YMCA of Oakville",
+        "age_fit": "3 to 5 years old",
+        "source_name": "YMCA of Oakville"
+      },
+      {
+        "name": "Preschool Swim Lessons, Goldfish Swim School – Oakville",
+        "age_fit": "4 months through 12 years old",
+        "source_name": "Goldfish Swim School – Oakville"
+      }
+    ]
+  },
+  "latencyMs": 2705
+}

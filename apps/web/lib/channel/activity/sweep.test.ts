@@ -618,6 +618,35 @@ describe('a partial answer registers the watch it talks about', () => {
     expect(h.composed[0]).toMatchObject({ watch: true, pagesOpened: true });
   });
 
+  it('THE LIVE SHAPE: a when/price that explains its own absence is still a gap', async () => {
+    // Live, 2026-08-22, on the venue this whole arc is named after: the extract filled
+    // `price` with "Not listed on main site; pricing varies by term length and is only
+    // visible after logging into the Registration Website" instead of leaving it out. A
+    // null check alone read that as a fact and minted no watch.
+    armed();
+    const h = partialHarness({
+      deep: {
+        status: 'read',
+        slots: [
+          {
+            ...PARTIAL,
+            when: 'Fall Term 1 2026-27 - exact weekday and time not listed on the Programs page',
+            price: 'Not listed on main site; only visible after logging in to register',
+          },
+        ],
+        searchResults: 19,
+        pagesRead: 4,
+        pagesStale: 0,
+        pagesRefused: 0,
+      },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ watching: 1 });
+    expect(h.composed[0]).toMatchObject({ watch: true });
+  });
+
   it('POSITIVE CONTROL - a complete find registers nothing and claims nothing', async () => {
     armed();
     const h = harness({

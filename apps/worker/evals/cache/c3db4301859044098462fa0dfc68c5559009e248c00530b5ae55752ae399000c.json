@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message fails on multiple critical counts. First, pagesOpened is false, meaning nobody read a page today, yet the message presents information as if pages were accessed (\"the library's site says\"). This is a false attribution when access failed. Second, watch is false, so Hale has no continuation commitment written down, yet the message omits the second pick (EarlyON centres) entirely without explanation. The watchFor notes that EarlyON-style free drop-ins are \"always running somewhere\" in a covered town - this is precisely the type of program that should be named even when timing details are unpublished. By withholding a genuine find (EarlyON) without naming the gap or saying what Hale will do about it, the message hands the parent an incomplete answer when a real alternative exists. The message also presents one pick (Kids & Me) as confirmed fact despite pagesOpened being false, violating the instruction that uncertainty should be named when pages could not be accessed."
+  }
+}

@@ -67,9 +67,23 @@ export const MAX_DEEP_FETCHES = 4;
  * than a copy of the number.
  */
 export const RESEARCH_MAX_TOKENS = 8192;
-/** Generous: a venue with eight class times is eight rows, and `forceToolJson` throws on
- * a max_tokens cut rather than handing back half a schedule. */
-const EXTRACT_MAX_TOKENS = 4096;
+/**
+ * The extract leg's budget, and it is not "generous, probably".
+ *
+ * MEASURED. Live probe 2026-08-22, once the research leg could actually complete for the
+ * first time (see the stream note below): the Gellert swim fixture came back
+ * `activity_deep: tool call truncated at max_tokens (4096)`. That page publishes a full
+ * fall grid — thirty-odd dated rows with class codes — and `max_tokens` caps THINKING and
+ * output together on this lane (adaptive thinking, packages/agent model.ts), so a real
+ * municipal schedule does not fit twice over. 4096 was never wrong on purpose; it had
+ * simply never been reached, because every research turn died before the extract ran.
+ *
+ * Nobody is waiting on this turn and it runs at most once per tick (MAX_DEEP_PER_RUN), so
+ * the budget is bought with money rather than latency. `forceToolJson` still throws on a
+ * cut rather than handing back half a schedule — this raises the ceiling, it does not
+ * remove the guard.
+ */
+const EXTRACT_MAX_TOKENS = 16384;
 
 /**
  * One concrete thing a parent could book, read off a page somebody opened.
@@ -132,13 +146,70 @@ const slotSchema = z.object({
   source_url: z.string().nullish(),
 });
 
+/**
+ * AN ARRAY THE MODEL SENT AS A STRING IS STILL AN ARRAY — collapsed here, at the parse
+ * boundary, rather than anywhere downstream.
+ *
+ * Live probe 2026-08-22, the first time this leg was ever reached in production shape:
+ * the Cartwheels extract came back `slots: "[{...}]"` — the whole array as a JSON string
+ * — and zod refused it as `expected array, received string`. It is the same shape
+ * model.ts already records for the drafter's unconstrained `payload` node: Sonnet 5 fills
+ * a container it is not given a grammar for with a stringified blob. Two encodings of one
+ * value have to be collapsed where the value is read, or every reader downstream needs to
+ * know about both.
+ *
+ * A string that is not JSON, or is JSON that is not an array, is left exactly as it came
+ * so zod produces the honest type error instead of a silent empty list.
+ */
+function parseJson(value: unknown): unknown {
+  if (typeof value !== 'string') return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function arrayFromMaybeString(value: unknown): unknown {
+  const parsed = parseJson(value);
+  return Array.isArray(parsed) ? parsed : value;
+}
+
+/**
+ * ...AND THE BLOB IS SOMETIMES THE WHOLE ENVELOPE.
+ *
+ * Live, on the Cartwheels subject: `input` had exactly one key, `slots`, and its value
+ * was the string `"{\"pages_read\":[...],\"slots\":[...]}"` — the entire tool payload,
+ * stringified, stuffed into one of its own fields. `arrayFromMaybeString` cannot help:
+ * that string parses to an OBJECT, not to the array the field wants.
+ *
+ * So the unwrap happens at the envelope, before the fields are read. A string value that
+ * parses to an object carrying `slots` IS the payload, and it wins over the wrapper that
+ * carried it. Anything else is passed through untouched, so a genuinely malformed answer
+ * still reaches zod and still fails loudly rather than arriving as an empty schedule.
+ */
+function unwrapStringifiedEnvelope(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+  const record = value as Record<string, unknown>;
+  for (const field of Object.values(record)) {
+    const inner = parseJson(field);
+    if (inner !== null && !Array.isArray(inner) && typeof inner === 'object' && 'slots' in inner) {
+      return { ...record, ...(inner as Record<string, unknown>) };
+    }
+  }
+  return value;
+}
+
 /** Loose, not `.strict()` — zod puts unrecognised KEY NAMES into `ZodError.message`, which
  * the catch below logs, so a strict schema turns a stray field into a log line that can
  * carry text back (the medical lane's rule, and the inline lane's). */
-const extractSchema = z.object({
-  pages_read: z.array(z.string()).nullish(),
-  slots: z.array(slotSchema),
-});
+const extractSchema = z.preprocess(
+  unwrapStringifiedEnvelope,
+  z.object({
+    pages_read: z.preprocess(arrayFromMaybeString, z.array(z.string()).nullish()),
+    slots: z.preprocess(arrayFromMaybeString, z.array(slotSchema)),
+  }),
+);
 
 const extractJsonSchema: Anthropic.Tool.InputSchema = {
   type: 'object',

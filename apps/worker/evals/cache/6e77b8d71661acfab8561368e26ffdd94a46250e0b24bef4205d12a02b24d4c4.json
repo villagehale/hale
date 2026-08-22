@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "All slot data is accurately extracted from the page it is attributed to: the age band (12 months to 4 years), schedule (Tuesdays and Thursdays, 9:30-11:00 a.m., September 8 to December 11), and programme name are all explicitly stated on the preschool-play page. The price is correctly recorded as \"Not listed on this page - see current fee schedule at front desk or call reception\" rather than conflating it with the unrelated room rental fees from the second page—a critical integrity point. No registration date is stated, so the slot correctly shows \"Not stated on this page.\" The message is plain ASCII, one sentence, appropriately attributes facts to \"their site says,\" offers to watch and notify rather than claiming confirmation, carries no link, and ends with no question (appropriate here since no action is being requested). The message plainly acknowledges that price and registration are not yet posted, which is honest and specific. The review avoids the trap of borrowing the $185 room-rental figure, which would have been a fabrication that appeared traceable. This is exact work."
+  }
+}

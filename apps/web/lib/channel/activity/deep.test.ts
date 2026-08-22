@@ -155,6 +155,79 @@ describe('toDeepSlots', () => {
   });
 });
 
+/**
+ * THE EXTRACT LEG'S TWO WIRE SHAPES, both found live on 2026-08-22 the first time this
+ * leg was reachable at all — until the research turn was streamed, every production deep
+ * pass died before the extract ran, so neither had ever been seen.
+ */
+describe('the extract leg reads what the model actually sends', () => {
+  it('THE DEFECT: accepts a slots array the model stringified', async () => {
+    // Live: `slots: "[{...}]"`, refused by zod as `expected array, received string`. The
+    // same shape model.ts records for the drafter's unconstrained payload node.
+    const { client } = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({ pages_read: ['https://x.ca/p'], slots: JSON.stringify([SLOT]) }),
+    ]);
+
+    const result = await createDeepResearcher(client).research(QUERY);
+
+    expect(result.status).toBe('read');
+    if (result.status !== 'read') throw new Error('expected read');
+    expect(result.slots[0]?.name).toBe(SLOT.name);
+  });
+
+  it('THE OTHER LIVE SHAPE: the whole envelope, stringified into its own slots field', async () => {
+    // Live, Cartwheels: input was `{slots: "{\"pages_read\":[...],\"slots\":[...]}"}` -
+    // the entire payload as a string inside one of its own fields.
+    const { client } = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({
+        slots: JSON.stringify({ pages_read: ['https://x.ca/p'], slots: [SLOT] }),
+      }),
+    ]);
+
+    const result = await createDeepResearcher(client).research(QUERY);
+
+    expect(result.status).toBe('read');
+    if (result.status !== 'read') throw new Error('expected read');
+    expect(result.slots[0]?.sourceUrl).toBe(SLOT.source_url);
+  });
+
+  it('POSITIVE CONTROL - a plain array still parses, and a non-array string still fails', async () => {
+    const ok = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({ slots: [SLOT] }),
+    ]);
+    expect((await createDeepResearcher(ok.client).research(QUERY)).status).toBe('read');
+
+    // Garbage is not quietly turned into an empty list — the type error is the honest
+    // outcome, and it is named rather than swallowed.
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const bad = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({ slots: 'the schedule is on their site' }),
+    ]);
+    const result = await createDeepResearcher(bad.client).research(QUERY);
+    spy.mockRestore();
+
+    expect(result).toMatchObject({ status: 'unavailable', reason: 'extract_failed' });
+  });
+
+  it('gives the extract enough room for a municipal grid', async () => {
+    // Live: the Gellert fall schedule is thirty-odd dated rows and came back
+    // `truncated at max_tokens (4096)`. max_tokens caps thinking AND output together on
+    // this lane, so the real page did not fit twice over.
+    const { client, requests } = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({ slots: [SLOT] }),
+    ]);
+
+    await createDeepResearcher(client).research(QUERY);
+
+    expect(requests[1]?.max_tokens).toBeGreaterThanOrEqual(16384);
+  });
+});
+
 describe('createDeepResearcher', () => {
   /**
    * THE LEG THAT NEVER CAME BACK.

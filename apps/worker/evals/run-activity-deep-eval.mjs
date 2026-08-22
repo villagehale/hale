@@ -292,7 +292,12 @@ function claimsNotPosted(body) {
 function watchWarranted(slots) {
   const top = slots[0];
   if (!top) return true;
-  return !top.when || !top.price;
+  return !carriesFact(top.when) || !carriesFact(top.price);
+}
+
+/** Mirrors `carriesFact` (sweep.ts). */
+function carriesFact(field) {
+  return Boolean(field) && String(field).trim() !== '' && !claimsNotPosted(String(field));
 }
 
 function followUpViolations(body, slots, smsSegments, pagesOpened, watch) {
@@ -391,8 +396,27 @@ const JUDGE_SYSTEM = [
   'exactly as printed, each cited to the page it was read off, and where the page gave a',
   'REGISTRATION date the slot carries it and so does the message. The message leads with the',
   'best slot by name, attributes the facts ("their site says"), carries the registration',
-  'window, offers to confirm rather than claiming to have confirmed, and is one or two short',
-  'plain-ASCII sentences with no link and exactly one question.',
+  'window, attributes rather than claiming to have confirmed, and is one or two short',
+  'plain-ASCII sentences with no link and NO QUESTION AT ALL.',
+  'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
+  'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
+  'down; nothing on this path can write one, so a "want me to..." here is a yes with',
+  'nowhere to land (2026-08-22: it landed on an unrelated approvals queue). Do not mark a',
+  'message down for ending on a statement.',
+  'You are given `watch`. When it is TRUE, Hale has ALREADY written a continuation promise',
+  'to go back and look again, and the message must say so in the first person ("I\'ll keep',
+  'watching and text you when they post"): that is a commitment that exists, not an',
+  'unverified claim, and scoring it as one is wrong. When it is FALSE no such row exists',
+  'and any coming-back sentence is a promise nothing is behind - THAT is the low score.',
+  'You are given `pagesOpened`. FALSE means Hale read SEARCH SNIPPETS rather than opening',
+  "a page. Attribution is still correct and still expected - a snippet off the venue's own",
+  'site IS "their site says", and marking that down is wrong. What FALSE forbids is a',
+  'NEGATIVE claim about what a page carries ("the fall times are not posted yet"), because',
+  'nobody looked; the honest form of that sentence is "I could not get into their page',
+  'today". Score the negative claim low, never the attribution.',
+  'Two segments is a hard ceiling. Dropping a second or third find WHOLE to fit the best',
+  'one complete is correct and is not withholding; withholding is going quiet about a find',
+  'when there was room, or hedging instead of naming anything at all.',
   'A LOW score is any of: a price or a date that is not on the page it is attributed to;',
   'a figure borrowed from a different program or a room rental on the same site; a slot for',
   'an age band the page does not serve; reporting a schedule as "not posted" when the notes',
@@ -710,6 +734,8 @@ async function main() {
 
     if (!broken) {
       const verdict = await judge(fixture.id, {
+        watch,
+        pagesOpened,
         subject: fixture.subject,
         town: fixture.town,
         stage: fixture.stage,

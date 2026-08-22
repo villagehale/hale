@@ -1,6 +1,6 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it } from 'vitest';
-import { MAX_LISTED_APPROVALS, matchFastPath } from './fast-path';
+import { matchFastPath } from './fast-path';
 import { approvalSubjects } from './open-questions';
 import {
   type ApprovalSpine,

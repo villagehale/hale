@@ -33,6 +33,7 @@ import { deidentifyActivityQuery } from './deidentify';
 import {
   type FollowUpComposer,
   type FollowUpPick,
+  claimsNotPosted,
   createFollowUpComposer,
 } from './followup-note';
 import { type ActivityFinder, createActivityFinder } from './lane';
@@ -211,7 +212,25 @@ function noEvidence(): FollowUpEvidence {
 export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
   const top = picks[0];
   if (!top) return true;
-  return top.when === null || top.price === null;
+  return !carriesFact(top.when) || !carriesFact(top.price);
+}
+
+/**
+ * A FIELD THAT EXPLAINS ITS OWN ABSENCE IS AN ABSENCE.
+ *
+ * The extract skill says to leave `when` and `price` out when no page carried them, and
+ * live on 2026-08-22 the Cartwheels turn did not: it filled `price` with "Not listed on
+ * main site; pricing varies by term length and is only visible after logging into the
+ * Registration Website" and `when` with a paragraph about a PDF it could not decode.
+ * Read as prose those are values; read as facts they are gaps — and a null check alone
+ * let the one venue this whole arc is named after come back with nothing to watch for.
+ *
+ * Deterministic, and it reuses the composer's own reading of an absence claim rather
+ * than inventing a second one: the two questions ("is this a fact?" and "may the text say
+ * a page carries nothing?") turn on exactly the same words.
+ */
+function carriesFact(field: string | null): boolean {
+  return field !== null && field.trim() !== '' && !claimsNotPosted(field);
 }
 
 /** Who the promise is owed to, and the thread it was made in. */
