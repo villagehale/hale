@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot correctly extracted from the page with exact details: age range (3-5 years), schedules (Saturdays 9:00-9:30am and 9:40-10:10am for Sept 12 to Nov 28), registration window (Tuesday August 11 at 7am for Oakville residents, browsable from Aug 4), and sourceName/URL cited. Price fields correctly show \"Fees set by Council each year, published in the current Recreation Guide\" since the page provides no specific fee. Message properly leads with Preschool A by name, attributes facts to \"their site says,\" includes the crucial registration dates and window, distinguishes between \"registration opens Aug 11\" (future/not yet open) versus confirmed, uses plain ASCII, no link, one question (\"their site says...plus a Preschool B section...\"). Two slots is correct (two time slots for the same program at same venue, not an invented third). Message accurately conveys that registration has not yet opened, which is the critical distinction for a parent setting an alarm.",
+    "score": 5
+  }
+}

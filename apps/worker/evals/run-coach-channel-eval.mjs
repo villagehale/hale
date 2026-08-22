@@ -766,7 +766,10 @@ function channelContext(fixture) {
     stages: [...new Set(injected.map((c) => c.stage))],
     memoryFacts: [],
     recentEpisodes: [],
-    transcript: [],
+    // The thread so far, as loadTranscript hands it over. Empty for a text that stands
+    // on its own, and load-bearing for one that does not: a bare "Yes, please" is only
+    // placeable against the message it is answering.
+    transcript: fixture.transcript ?? [],
     question: fixture.text,
     intent: null,
     sourceNote: null,
@@ -775,6 +778,10 @@ function channelContext(fixture) {
     // reply is one it composed — and the skill's standing rule is that a URL it was
     // not given is a URL it invented.
     nowIso: NOW.toISOString(),
+    // What Hale is holding an answer for, in Hale's own words (channel/coach/runtime.ts).
+    // Empty is the ordinary case and means Hale is waiting on nothing — which is exactly
+    // the state a "yes" that matches nothing arrives in.
+    standingQuestions: fixture.standingQuestions ?? [],
     // The radar's hand-verified municipal open dates, as channel/coach/runtime.ts hands
     // them over. Empty for every fixture that is not about one, which is also the
     // production shape for a family outside the covered set.
@@ -898,6 +905,10 @@ function groundedHay(fixture, toolResults) {
   // The parent's own name and town ride on the same context object (loadAgentContext
   // parentName / location), so addressing them by name is recall, not invention.
   parts.push(CONTEXT_PARENT_NAME, cityFor(fixture));
+  // THE THREAD GROUNDS TOO. A venue Hale itself named two messages ago is recall — and
+  // on a fixture whose whole subject is a "yes" to that message, every noun in it would
+  // otherwise be read as an invention by the gate that exists to catch inventions.
+  for (const message of fixture.transcript ?? []) parts.push(message.content);
   // The registration windows on the context ground too, and this is the one source whose
   // facts are DATES — the thing the fabrication gate is most load-bearing about. A date
   // in the reply that is not in this list is one the model made up.
@@ -1148,6 +1159,15 @@ const JUDGE_SYSTEM = [
   'changes Hale drafted, and the reply. Anything in `knows` or `week` is Hale RECALLING,',
   'never inventing — addressing the parent by the name in `knows.parent` is correct, and',
   'so is naming a child listed there.',
+  '`thread` IS THE CONVERSATION SO FAR and it grounds on the same terms: a venue Hale',
+  'itself named in an earlier message is recall, not invention. When the text is a bare',
+  'agreement ("Yes, please") and `knows.standingQuestions` is EMPTY, nothing in state',
+  'matches it, and the yes belongs to the last message in `thread`. Placing it there is',
+  'the job — either asking whether that is what they meant, or confirming the thing that',
+  'message already said Hale is doing. Do not score that question as restating the text',
+  'or as a dangling question. Score a 1 for a reply that answers it with a menu of',
+  'internal machinery ("add it to your calendar, or note in your digest?"), and a 2 for',
+  'one that never names what the yes was about.',
   'AMBIGUITY IS ABOUT WHICH EVENT, and only that. If the text names exactly ONE event in',
   '`week`, the reference is RESOLVED: drafting it is the correct handling, and a',
   'clarifying question there is the failure, not the safeguard. Do not mark a reply down',
@@ -1333,10 +1353,15 @@ async function main() {
     let toolResults = [];
 
     if (broken) {
-      calls.push(...BROKEN_CALLS);
+      // PER FIXTURE where one declares its own stand-in, for the reason the finder
+      // eval's `brokenPicks` is per fixture: the corpus-wide reply below fails every
+      // fixture on drafts and invented venues, which proves nothing about a gate that is
+      // only about the WORDS — a fixture whose defect is a menu needs the menu.
+      const stand = fixture.broken ?? { reply: BROKEN_REPLY, calls: BROKEN_CALLS };
+      calls.push(...stand.calls);
       auditLog.push({ actionTaken: 'tool:broken' });
-      composed = BROKEN_REPLY;
-      reply = toSmsReply(BROKEN_REPLY, children);
+      composed = stand.reply;
+      reply = toSmsReply(stand.reply, children);
     } else {
       const tools = [
         ...buildFixtureTools(agent, calls, villageFor(fixture)),
@@ -1460,6 +1485,10 @@ async function main() {
                 // "I'm on it" as a capability Hale does not have — which is precisely
                 // what it did on the first run of these two fixtures.
                 registrationWindows: fixture.registrationWindows ?? [],
+                // What Hale is holding an answer for, as the model was told it. Empty
+                // means Hale is waiting on nothing, which is what makes a bare "yes"
+                // unplaceable from state alone.
+                standingQuestions: fixture.standingQuestions ?? [],
                 // What Hale is ABLE to do. Without it the judge grades against its own
                 // guess at the product: its cached reasons faulted a reply for offering
                 // to check next week (Hale can — lookup_week takes a week offset) and
@@ -1475,6 +1504,11 @@ async function main() {
                 draftCapPerMessage: MAX_DRAFTS_PER_TURN,
               },
               week: { summary: FIXTURE_WEEK_SUMMARY, events: redactedWeek() },
+              // The thread the model was handed, on the same terms as everything else in
+              // `knows`: a judge that cannot see the message a "Yes, please" is answering
+              // is scoring the reply half-blind, and this harness has already paid for
+              // that once (see the `knows` comment above).
+              thread: fixture.transcript ?? [],
               drafted: calls.filter((c) => c.actionType).map((c) => c.actionType),
               reply,
             })

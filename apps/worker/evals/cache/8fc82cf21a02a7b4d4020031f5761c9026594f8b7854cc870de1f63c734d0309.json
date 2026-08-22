@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CeJfB8enyvn73YxrnCzmm",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErsCCpABCBEYAipA/OGKKq8+zuS2rZ8ru5wQ0jdEtzbfgcxRdfZ3xRpvlhnatM5YJxvgDtSr1/UbKremTFM4S/xT2xnKiQXahe2U/DIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAd7iqNQGEgwT3h7FMeXfhV79jCoaDFnBNNWpT5Wu4d8xzSIwdsV4BNwXn0V6hpKsi2UUHqLpWoQLFD3EXkt8hlMP9F7xDpgbOl6ynfztoL3YhuZXKlhBZqh5XsFVTcJ0n9JmnuRngV8bq6qOQU5NLzBlhP0YA1YmfS5EvTJJE5L0fO3oJP9eBFTqmXSM80jzHC/D2zD100vC4qepJjZeFuA7RbbI47BecDtIbL0qGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01HpbsJEY82xFxYpvnJyhDwu",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 384,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 13724,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 107,
+      "output_tokens_details": {
+        "thinking_tokens": 28
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

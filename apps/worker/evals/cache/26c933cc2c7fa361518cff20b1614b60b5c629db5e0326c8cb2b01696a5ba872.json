@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Critical issues: (1) The message claims \"I'll keep watching and text you once fees are posted\" which presents an unverified future action as a promise, when the instructions require offering to confirm rather than claiming verification. (2) The message states fees are \"set by Council in the Recreation Guide\" as if confirmed, but the page only says fees \"will be published in the current Recreation Guide\" - this is reporting page-read facts as verified when they aren't yet published. (3) The watchFor explicitly states \"The page prints no fee, so the price must be null\" but the slots carry a non-null price field describing a future publication, which conflates \"not yet published\" with actual slot data. The slots themselves are accurately extracted from the page with correct dates and times (Sept 12 to Nov 28, two different time slots for the same program), and registration details are correct (Tuesday August 11 at 7am). However, the message handling of the fee and the overstatement of confirmation status represent significant accuracy failures."
+  }
+}

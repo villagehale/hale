@@ -90,6 +90,33 @@ export interface FollowUpGrounding {
   /** What the re-run search found. EMPTY is a valid, sendable grounding — see the module
    * note on why the bad-news half is the half that makes the promise honest. */
   picks: readonly FollowUpPick[];
+  /**
+   * WAS A PAGE OPENED, TODAY, for these picks — the licence to say what a page does not
+   * carry.
+   *
+   * False for every shallow-lane answer (snippets only) and for a deep pass whose reads
+   * all came out of the provider's cache from before today (deep.ts `pagesStale`). With
+   * it false, {@link claimsNotPosted} refuses "the fall dates aren't posted yet" and the
+   * honest sentence is the uncertain one: Hale could not read their page.
+   *
+   * It is a REQUIRED field rather than an optional one for the reason `registration` was
+   * the wrong shape as an optional: a caller that forgets it is a caller that gets the
+   * permissive reading by accident, and the permissive reading is the defect.
+   */
+  pagesOpened: boolean;
+  /**
+   * IS THERE A CONTINUATION ROW BEHIND THIS MESSAGE — the sweep has already registered a
+   * fresh `activity_followup` promise against the text about to go out, so the message
+   * must SAY so.
+   *
+   * The two halves are one fact on purpose. On 2026-08-22 the sweep fulfilled its
+   * promise, sent "Want me to check back once they're up?", and wrote nothing down: the
+   * parent said "Yes, please" twenty minutes later and it landed on an unrelated
+   * approvals queue. An offer is a proposal and a proposal is a row (#521) — so this
+   * lane does not offer at all. It states what Hale has already committed to, and the
+   * commitment is a row that existed before the sentence claimed it.
+   */
+  watch: boolean;
 }
 
 export interface FollowUpComposer {
@@ -124,6 +151,12 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
   return JSON.stringify({
     mode: 'followup_text',
     subject: grounding.subject,
+    // The two facts about the SWEEP rather than about a pick, and both are here for the
+    // reason `registration` is: a projection that does not carry them is a model that
+    // cannot act on them. `pages_opened: false` is Hale saying it did not get into
+    // anybody's page today; `watch: true` is Hale saying the row is already written.
+    pages_opened: grounding.pagesOpened,
+    watch: grounding.watch,
     picks: grounding.picks.map((pick) => ({
       name: pick.name,
       age_fit: pick.ageFit,
@@ -226,6 +259,59 @@ export function claimsVerification(body: string): boolean {
 }
 
 /**
+ * Whether the body claims A PAGE DOES NOT CARRY SOMETHING.
+ *
+ * "Fall days, times and prices aren't posted yet" (2026-08-22, production) is a statement
+ * about a page somebody opened. Said by a turn that opened nothing, it is a confident
+ * report of a schedule that was, in fact, sitting on the venue's own programs page and
+ * in a PDF linked off it. The parent stops looking, because they think Hale looked.
+ *
+ * Clause-scoped with the same machinery {@link claimsVerification} uses, and matched as
+ * NEGATION + A WORD ABOUT PUBLISHING inside one clause. Broad on purpose: with no page
+ * read there is no negative claim about a page this lane is entitled to make, so the
+ * gate is fail-closed and the honest sentence — "I could not get into their schedule
+ * page today" — contains no publishing word at all and passes.
+ */
+const UNPUBLISHED_WORD = /\b(?:posted|listed|published|announced|out|up)\b/i;
+/** `n'?t\b` deliberately has no LEADING boundary: the contraction that carries this claim
+ * in practice is "aren't", and its "n" is glued to the stem. */
+const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n'?t\b/i;
+
+export function claimsNotPosted(body: string): boolean {
+  return body
+    .split(CLAUSE_BOUNDARY)
+    .some((clause) => ABSENCE.test(clause) && UNPUBLISHED_WORD.test(clause));
+}
+
+/**
+ * Whether the body says HALE will come back — the sentence the continuation row pays for.
+ *
+ * First person and future: "I'll keep watching and text you when they post". A row
+ * written with no sentence claiming it is a sweep that texts a parent in a week about
+ * something they were never told Hale was still on.
+ */
+const STATES_RETURN =
+  /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
+
+export function statesTheReturn(body: string): boolean {
+  return STATES_RETURN.test(body);
+}
+
+/**
+ * DOES THIS MESSAGE ASK THE PARENT ANYTHING?
+ *
+ * ONE READER, TWO STRINGS, and that is the whole point of it being a function. The gate
+ * below runs on the sentence the MODEL wrote; the sweep runs it again on the body it is
+ * about to hand the transport (sweep.ts), because between those two strings sit the
+ * append steps — `withSharePage`, `withOptOut` — and nothing used to read what came out
+ * of them. A question appended after the gate reached the parent with the gate green,
+ * which is the 2026-08-22 defect surviving its own fix one layer down.
+ */
+export function asksTheParent(body: string): boolean {
+  return plainText(body).includes('?');
+}
+
+/**
  * Everything wrong with this follow-up, phrased for the model that will rewrite it. An
  * empty array means it may be sent.
  */
@@ -256,6 +342,35 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
     const top = grounding.picks[0];
     violations.push(
       `The best find (${top?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
+    );
+  }
+  // NO OFFER, BECAUSE AN OFFER IS A PROPOSAL AND A PROPOSAL IS A ROW. Nothing in this
+  // lane can write one: the sweep has already decided what it will do next and put THAT
+  // on the ledger, so a question here can only ask for permission Hale either already
+  // has or cannot act on. On 2026-08-22 the question was "Want me to check back once
+  // they're up?", the row behind it did not exist, and the parent's "Yes, please" was
+  // answered by an unrelated approvals menu twenty minutes later.
+  if (asksTheParent(text)) {
+    violations.push(
+      'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
+    );
+  }
+  if (!grounding.pagesOpened && claimsNotPosted(text)) {
+    violations.push(
+      'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.',
+    );
+  }
+  // BOTH DIRECTIONS, and the second one is not symmetry for its own sake. The first live
+  // re-recording of this composer, handed a complete find and `watch: false`, wrote
+  // "I'll keep looking and text you what it says" anyway — a promise to come back with
+  // no row behind it, which is the 2026-08-20 defect verbatim, produced by the very
+  // change that was fixing it. A sentence claiming a commitment is only true when the
+  // commitment exists, and `watch` is the one value that knows.
+  if (grounding.watch !== statesTheReturn(text)) {
+    violations.push(
+      grounding.watch
+        ? 'This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "I\'ll keep watching and text you when they post."'
+        : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     );
   }
   return violations;

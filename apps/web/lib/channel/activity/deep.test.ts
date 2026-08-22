@@ -1,7 +1,14 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, laneRequestFields, pickLane } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { MAX_DEEP_FETCHES, MAX_DEEP_SEARCHES, createDeepResearcher, toDeepSlots } from './deep';
+import {
+  MAX_DEEP_FETCHES,
+  MAX_DEEP_SEARCHES,
+  RESEARCH_MAX_TOKENS,
+  createDeepResearcher,
+  toDeepSlots,
+} from './deep';
+import { FETCH_FRESHNESS_MS } from './evidence';
 import type { ActivityQuery } from './deidentify';
 
 /**
@@ -37,7 +44,13 @@ function message(content: unknown[]): Anthropic.Message {
   return { content, stop_reason: 'end_turn', usage: {} } as unknown as Anthropic.Message;
 }
 
-function researchTurn(opts: { searches?: number; read?: string[]; refused?: number }) {
+function researchTurn(opts: {
+  searches?: number;
+  read?: string[];
+  refused?: number;
+  /** How long before `now` the provider actually pulled those pages. Fresh by default. */
+  retrievedAgoMs?: number;
+}) {
   const content: unknown[] = [];
   for (let i = 0; i < (opts.searches ?? 2); i += 1) {
     content.push({
@@ -51,6 +64,7 @@ function researchTurn(opts: { searches?: number; read?: string[]; refused?: numb
       content: {
         type: 'web_fetch_result',
         url,
+        retrieved_at: new Date(Date.now() - (opts.retrievedAgoMs ?? 60_000)).toISOString(),
         content: { type: 'document', source: { type: 'text', data: 'Sundays 9:30 - 10:15' } },
       },
     });
@@ -69,25 +83,44 @@ function extractTurn(input: unknown) {
   return message([{ type: 'tool_use', name: 'activity_deep', input }]);
 }
 
-/** A client that replays a script of turns and records every request it was given. */
+/**
+ * A client that replays a script of turns and records every request it was given, and
+ * WHICH TRANSPORT asked for it.
+ *
+ * The transport is recorded because it is the production defect: a non-streamed research
+ * turn cannot finish (see the module note in deep.ts), so a test that cannot tell
+ * `create` from `stream` is a test that passes against the request production never
+ * completes.
+ */
 function scripted(turns: Anthropic.Message[]): {
   client: () => AgentClient;
   requests: Anthropic.MessageCreateParams[];
+  transports: string[];
 } {
   const requests: Anthropic.MessageCreateParams[] = [];
+  const transports: string[] = [];
   let index = 0;
+  const next = (params: Anthropic.MessageCreateParams) => {
+    requests.push(params);
+    const turn = turns[index];
+    index += 1;
+    if (!turn) throw new Error('deep test: script exhausted');
+    return turn;
+  };
   const client = {
     messages: {
       create: async (params: Anthropic.MessageCreateParams) => {
-        requests.push(params);
-        const turn = turns[index];
-        index += 1;
-        if (!turn) throw new Error('deep test: script exhausted');
-        return turn;
+        transports.push('create');
+        return next(params);
+      },
+      stream: (params: Anthropic.MessageCreateParams) => {
+        transports.push('stream');
+        const turn = next(params);
+        return { finalMessage: async () => turn };
       },
     },
   } as unknown as AgentClient;
-  return { client: () => client, requests };
+  return { client: () => client, requests, transports };
 }
 
 describe('toDeepSlots', () => {
@@ -122,7 +155,117 @@ describe('toDeepSlots', () => {
   });
 });
 
+/**
+ * THE EXTRACT LEG'S TWO WIRE SHAPES, both found live on 2026-08-22 the first time this
+ * leg was reachable at all — until the research turn was streamed, every production deep
+ * pass died before the extract ran, so neither had ever been seen.
+ */
+describe('the extract leg reads what the model actually sends', () => {
+  it('THE DEFECT: accepts a slots array the model stringified', async () => {
+    // Live: `slots: "[{...}]"`, refused by zod as `expected array, received string`. The
+    // same shape model.ts records for the drafter's unconstrained payload node.
+    const { client } = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({ pages_read: ['https://x.ca/p'], slots: JSON.stringify([SLOT]) }),
+    ]);
+
+    const result = await createDeepResearcher(client).research(QUERY);
+
+    expect(result.status).toBe('read');
+    if (result.status !== 'read') throw new Error('expected read');
+    expect(result.slots[0]?.name).toBe(SLOT.name);
+  });
+
+  it('THE OTHER LIVE SHAPE: the whole envelope, stringified into its own slots field', async () => {
+    // Live, Cartwheels: input was `{slots: "{\"pages_read\":[...],\"slots\":[...]}"}` -
+    // the entire payload as a string inside one of its own fields.
+    const { client } = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({
+        slots: JSON.stringify({ pages_read: ['https://x.ca/p'], slots: [SLOT] }),
+      }),
+    ]);
+
+    const result = await createDeepResearcher(client).research(QUERY);
+
+    expect(result.status).toBe('read');
+    if (result.status !== 'read') throw new Error('expected read');
+    expect(result.slots[0]?.sourceUrl).toBe(SLOT.source_url);
+  });
+
+  it('POSITIVE CONTROL - a plain array still parses, and a non-array string still fails', async () => {
+    const ok = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({ slots: [SLOT] }),
+    ]);
+    expect((await createDeepResearcher(ok.client).research(QUERY)).status).toBe('read');
+
+    // Garbage is not quietly turned into an empty list — the type error is the honest
+    // outcome, and it is named rather than swallowed.
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const bad = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({ slots: 'the schedule is on their site' }),
+    ]);
+    const result = await createDeepResearcher(bad.client).research(QUERY);
+    spy.mockRestore();
+
+    expect(result).toMatchObject({ status: 'unavailable', reason: 'extract_failed' });
+  });
+
+  it('gives the extract enough room for a municipal grid', async () => {
+    // Live: the Gellert fall schedule is thirty-odd dated rows and came back
+    // `truncated at max_tokens (4096)`. max_tokens caps thinking AND output together on
+    // this lane, so the real page did not fit twice over.
+    const { client, requests } = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({ slots: [SLOT] }),
+    ]);
+
+    await createDeepResearcher(client).research(QUERY);
+
+    expect(requests[1]?.max_tokens).toBeGreaterThanOrEqual(16384);
+  });
+});
+
 describe('createDeepResearcher', () => {
+  /**
+   * THE LEG THAT NEVER CAME BACK.
+   *
+   * Live probe against the real API on main @ 12dbea74, 2026-08-22, production wiring
+   * (`activityClient`, 50s, no retries): `messages.create` on this exact request timed
+   * out at 50,005 ms and 50,021 ms, and raised to a 600s ceiling it died at 120,014 ms
+   * with a connection error — a non-streamed turn cannot survive this long whatever the
+   * client timeout is. The same request STREAMED returned in 88,795 ms with 9 search
+   * results and 3 pages read. So every production deep pass was `research_failed`, the
+   * sweep silently fell back to the shallow snippet finder, and Hale told a parent the
+   * fall dates "aren't posted yet" having opened nothing.
+   */
+  it('STREAMS the research turn - a non-streamed one cannot finish in production', async () => {
+    const { client, transports } = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({ pages_read: ['https://x.ca/p'], slots: [SLOT] }),
+    ]);
+
+    await createDeepResearcher(client).research(QUERY);
+
+    expect(transports).toEqual(['stream', 'create']);
+  });
+
+  it('states the lane knobs on the wire rather than inheriting the API default', async () => {
+    const { client, requests } = scripted([
+      researchTurn({ read: ['https://x.ca/p'] }),
+      extractTurn({ pages_read: ['https://x.ca/p'], slots: [SLOT] }),
+    ]);
+
+    await createDeepResearcher(client).research(QUERY);
+
+    expect(requests[0]).toMatchObject({
+      ...laneRequestFields(pickLane('extract')),
+      max_tokens: RESEARCH_MAX_TOKENS,
+    });
+  });
+
   it('spends exactly two model legs and the stated tool budgets', async () => {
     const { client, requests } = scripted([
       researchTurn({ read: ['https://x.ca/p'] }),
@@ -141,17 +284,47 @@ describe('createDeepResearcher', () => {
     expect(requests[1]?.tools).toHaveLength(1);
   });
 
-  it('returns the slots it read, with how many pages were opened', async () => {
+  it('returns the slots it read, with the evidence behind them', async () => {
     const { client } = scripted([
-      researchTurn({ read: ['https://x.ca/p', 'https://x.ca/q'], refused: 1 }),
+      researchTurn({ searches: 2, read: ['https://x.ca/p', 'https://x.ca/q'], refused: 1 }),
       extractTurn({ pages_read: ['https://x.ca/p', 'https://x.ca/q'], slots: [SLOT] }),
     ]);
 
     const result = await createDeepResearcher(client).research(QUERY);
 
-    expect(result).toMatchObject({ status: 'read', pagesRead: 2, pagesRefused: 1 });
+    // Every count the audit row and the composer's licence are built from, on the result
+    // itself — the run knew all four and handed back two (rule #11).
+    expect(result).toMatchObject({
+      status: 'read',
+      searchResults: 2,
+      pagesRead: 2,
+      pagesStale: 0,
+      pagesRefused: 1,
+    });
     if (result.status !== 'read') throw new Error('expected read');
     expect(result.slots).toHaveLength(1);
+  });
+
+  it('reports a CACHED page read as stale - the provider opened it, but not today', async () => {
+    const { client } = scripted([
+      researchTurn({ read: ['https://x.ca/p'], retrievedAgoMs: FETCH_FRESHNESS_MS + 60_000 }),
+      extractTurn({ pages_read: ['https://x.ca/p'], slots: [SLOT] }),
+    ]);
+
+    const result = await createDeepResearcher(client).research(QUERY);
+
+    expect(result).toMatchObject({ status: 'read', pagesRead: 1, pagesStale: 1 });
+  });
+
+  it('carries the search count on an UNREAD turn too - the counts never go missing', async () => {
+    const { client } = scripted([
+      researchTurn({ searches: 3, read: [], refused: 2 }),
+      extractTurn({ pages_read: [], slots: [] }),
+    ]);
+
+    const result = await createDeepResearcher(client).research(QUERY);
+
+    expect(result).toMatchObject({ status: 'unread', searchResults: 3, pagesRefused: 2 });
   });
 
   it('THE DEFECT: a turn that opened NO page is unread, never an empty result', async () => {
@@ -197,7 +370,7 @@ describe('createDeepResearcher', () => {
   it('names the leg that failed rather than throwing at the sweep', async () => {
     const client = {
       messages: {
-        create: async () => {
+        stream: () => {
           throw new Error('boom');
         },
       },

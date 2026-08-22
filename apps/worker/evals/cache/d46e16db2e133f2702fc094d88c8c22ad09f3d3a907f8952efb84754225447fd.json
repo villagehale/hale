@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly leads with the best slot (Tiny Gym) by name and accurately attributes facts to the source (\"their site says\"). The registration date (July 22 at 8am) is exact as printed and is properly carried in the message. The message correctly states that the exact day/time is not posted yet, which aligns with the notes showing the Fall schedule PDF does not contain extractable specific weekday/time details. The attribution is plain and honest (\"their site says,\" \"isn't posted yet\"). Crucially, because watch=true, the message properly includes the commitment sentence in first person (\"I'll keep watching and text you the day/time once it's up\"), which is correct—this represents an existing continuation promise already written, not an unverified claim. The message is two plain sentences with no link and no question. It makes no offer and ends on a statement, which is correct. All slots are real things on the page, with the registration date exactly as it appeared. The message fits the two-segment ceiling by dropping the other two programs (Rock n' Roll and Tumble & Learn) to present the best match complete rather than hedging multiple partial finds."
+  }
+}

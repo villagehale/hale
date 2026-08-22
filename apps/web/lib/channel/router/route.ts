@@ -19,7 +19,7 @@ import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
 import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
-import type { InboundTurnLedger } from './turn-ledger';
+import type { InboundTurnLedger, TurnFailureReason } from './turn-ledger';
 
 /**
  * VIL-220 · C1 — the inbound router: the consumer of A3's `channel.message.received`.
@@ -759,6 +759,27 @@ async function runAgentTurn(
       throw new TurnDeferred(disposition.reason, err);
     }
     if (disposition.reply !== null) await args.answer(disposition.reply);
+    // AN APOLOGY IS NOT AN ANSWER. The reply above claims the turn (turn-ledger.ts), so
+    // `sms_turn_answered` is written and the re-drive stays quiet — correctly: the parent
+    // has their text. What that row must never do is stand alone. On 2026-08-22 it did,
+    // and a turn whose entire output was "I couldn't get that done for you, and nothing
+    // changed on your end" left an audit trail of three success-shaped rows and no
+    // failure anywhere. This is the failure, typed, beside it (rule #11).
+    await deps.turns.recordFailed({
+      familyId: args.job.family_id,
+      parentUserId: args.job.parent_user_id,
+      channelMessageId: args.job.channel_message_id,
+      reason: disposition.reason,
+    });
+    // And a RATE, per household and per class, the same way a deferral is one. A log
+    // line on a serverless function is something you read after a parent complains; the
+    // whole point of the arc that added this reporter is that Hale's quiet failures get
+    // counted. Only the enum and a hashed family id travel (lib/analytics/server-capture.ts).
+    await captureAgentError({
+      lane: 'coach',
+      reason: disposition.reason,
+      familyId: args.job.family_id,
+    });
     return done(deps, args.job, {
       status: disposition.outcome,
       handler: null,
@@ -791,7 +812,19 @@ async function runAgentTurn(
  * template the model never touches.
  */
 type FailedTurnDisposition =
-  | { outcome: 'smoke_alarm_fired' | 'agent_failed'; reply: string | null; log: object }
+  | {
+      outcome: 'smoke_alarm_fired' | 'agent_failed';
+      reply: string | null;
+      /**
+       * WHY the turn failed, as a closed enum — required on every non-deferred branch
+       * (rule #11). It rides here rather than being inferred at the call site because
+       * the call site cannot tell an apology from a drafts receipt, and "this turn
+       * failed and here is the class" is exactly the fact that did not exist anywhere
+       * in the 2026-08-22 audit trail.
+       */
+      reason: TurnFailureReason;
+      log: object;
+    }
   | { outcome: 'deferred'; reason: TurnDeferralReason; log: object };
 
 async function disposeOfFailedTurn(
@@ -812,7 +845,12 @@ async function disposeOfFailedTurn(
   // defer either — the durable claim is already written, so a re-drive stops at the
   // door.
   if (args.hasAnswered()) {
-    return { outcome: 'agent_failed', reply: null, log: { brokeAfterAnswering: true } };
+    return {
+      outcome: 'agent_failed',
+      reply: null,
+      reason: 'broke_after_answering',
+      log: { brokeAfterAnswering: true },
+    };
   }
 
   if (classifyTurnFailure(err) === 'model_unreachable') {
@@ -840,7 +878,12 @@ async function disposeOfFailedTurn(
       // No draft notice appended, deliberately. The alarm answers a parent who should be
       // dialling, and the drafts are still in the approvals queue for the next turn to
       // surface — a count of pending changes is not what that message is for.
-      return { outcome: 'smoke_alarm_fired', reply: null, log: { smokeAlarm } };
+      return {
+        outcome: 'smoke_alarm_fired',
+        reply: null,
+        reason: 'smoke_alarm',
+        log: { smokeAlarm },
+      };
     }
     return {
       outcome: 'deferred',
@@ -850,7 +893,12 @@ async function disposeOfFailedTurn(
   }
 
   if (drafted.length > 0) {
-    return { outcome: 'agent_failed', reply: partialFailureReply(drafted.length), log: {} };
+    return {
+      outcome: 'agent_failed',
+      reply: partialFailureReply(drafted.length),
+      reason: 'drafts_receipt',
+      log: {},
+    };
   }
 
   // THE CANNED CHOICE, and this is the only place left that can send it. The parent made
@@ -862,13 +910,19 @@ async function disposeOfFailedTurn(
     return {
       outcome: 'agent_failed',
       reply: clarifyWhichQuestion(args.questions),
+      reason: 'unplaced_choice',
       log: { unplacedAnswer: true },
     };
   }
 
   const apology = await deps.apology.compose();
   if (apology.status === 'composed') {
-    return { outcome: 'agent_failed', reply: apology.reply, log: { apology: 'composed' } };
+    return {
+      outcome: 'agent_failed',
+      reply: apology.reply,
+      reason: 'apology_sent',
+      log: { apology: 'composed' },
+    };
   }
   // The model went down BETWEEN the coach breaking on a bug and the apology being
   // written. That is no longer a defect — it is an outage, and it takes the outage's

@@ -1,0 +1,31 @@
+{
+  "value": {
+    "slots": [
+      {
+        "name": "Tiny Gym (1 and walking to 3 years)",
+        "age_fit": "1 year old walking independently to 3 years, with a parent/caregiver",
+        "when": "45 minutes; Term 1 2026-27 schedule per gym's schedule-at-a-glance PDF (specific weekday/time not extractable from the PDF's raw content)",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php",
+        "registration": "Term 1/Fall registration opened Wednesday July 22, 2026 at 8:00am online for general programming"
+      },
+      {
+        "name": "Rock n' Roll with Miss Kelly (0+ years)",
+        "age_fit": "0+ years, with parent/caregiver",
+        "when": "45 minutes; part of Term 1 2026-27 schedule",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php",
+        "registration": "Term 1/Fall registration opened Wednesday July 22, 2026 at 8:00am online for general programming"
+      },
+      {
+        "name": "Tumble & Learn (2y 11m to 4 years)",
+        "age_fit": "2 years 11 months to 4 years",
+        "when": "2 hours; drop-off program; part of Term 1 2026-27 schedule",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php",
+        "registration": "Term 1/Fall registration opened Wednesday July 22, 2026 at 8:00am online for general programming"
+      }
+    ]
+  },
+  "latencyMs": 11723
+}

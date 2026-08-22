@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The slots are accurate and well-sourced: the age range, schedule, dates, and price match the page exactly, and the registration window is correctly captured. However, the message has two significant issues: (1) it presents the facts as verified statements (\"Cartwheels Gym Centre runs...\") rather than attributing them to the page upfront as instructed (\"their site says\" appears mid-sentence), and (2) it fails to pose a closing question to the parent as required for a complete SMS. The watchFor explicitly warns that \"the follow-up text must carry [the registration fact] to the parent\"—the message does carry the registration date, but the framing and question requirement are not met. The slots themselves are solid (5-level), but the message composition falls short of the standard for a complete turn."
+  }
+}

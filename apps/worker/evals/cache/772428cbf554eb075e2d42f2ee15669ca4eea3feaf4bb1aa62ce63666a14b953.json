@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message names a specific, real local resource (Kids & Me at Halton Hills Public Library, Acton Branch) with complete, verifiable details (Thursdays 10:30-12:00, free). It attributes the information correctly to the library's site. The stage fit (babies or kids up to 6) matches toddler. However, the score is not 5 because there is a second legitimate pick (EarlyON Child and Family Centres) that fits the subject perfectly - it's also free drop-in programming for the exact age range - yet it was dropped entirely from the message. Since there was room for a second find and EarlyON is the type of resource most parents in a covered town would expect to hear about for this query, withholding it constitutes a material omission. The message is otherwise well-formed: plain text, no link, no question, no unfulfilled offer, and all times and prices come directly from the picks. watch=false is correctly handled (no \"I'll keep watching\" commitment that isn't backed by a row). The omission of EarlyON prevents a 5."
+  }
+}

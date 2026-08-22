@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  type FollowUpGrounding,
   type FollowUpPick,
+  claimsNotPosted,
   claimsVerification,
   followUpUserMessage,
   followUpViolations,
+  statesTheReturn,
   topPickLeads,
 } from './followup-note';
 import type { ActivityPick } from './lane';
@@ -24,6 +27,21 @@ const PICK: ActivityPick = {
   sourceName: 'Halton Hills Gymnastics Centre',
   source: 'web',
 };
+
+/**
+ * The ordinary grounding: a deep pass that opened a page today, and a complete answer
+ * with nothing left to come back for. Every case that cares about one of the two states
+ * it, and no case gets the permissive reading by omission.
+ */
+function grounding(over: Partial<FollowUpGrounding> = {}): FollowUpGrounding {
+  return {
+    subject: 'toddler gymnastics',
+    picks: [PICK],
+    pagesOpened: true,
+    watch: false,
+    ...over,
+  };
+}
 
 describe('never claims to have verified what it only read', () => {
   it.each([
@@ -47,17 +65,18 @@ describe('never claims to have verified what it only read', () => {
   });
 
   it('surfaces the honest phrasing in the refusal the model reads', () => {
-    const violations = followUpViolations('I confirmed Halton Hills Gymnastics for Saturdays.', {
-      subject: 'toddler gymnastics',
-      picks: [PICK],
-    });
+    const violations = followUpViolations('I confirmed Halton Hills Gymnastics for Saturdays.', grounding(grounding()));
     expect(violations.join(' ')).toContain('their site says');
   });
 
   it('has NO violation for a find being unverified - going quiet is the other failure', () => {
+    // The offer this sentence used to close on ("Want me to confirm before you book?")
+    // is gone by doctrine, not by accident: an offer is a proposal and nothing on this
+    // path can write the row a proposal needs. What survives is the honest sourcing,
+    // which was always the point of this case.
     const honest =
-      "Halton Hills Gymnastics has parent & tot Saturdays 9:15 from Sept 13, $142 - their site says. Want me to confirm before you book?";
-    expect(followUpViolations(honest, { subject: 'toddler gymnastics', picks: [PICK] })).toEqual([]);
+      'Halton Hills Gymnastics has parent & tot Saturdays 9:15 from Sept 13, $142 - their site says.';
+    expect(followUpViolations(honest, grounding())).toEqual([]);
   });
 });
 
@@ -68,7 +87,7 @@ describe('the top pick lands in the first segment', () => {
     const buried = `${filler}${filler}${PICK.name} runs Saturdays.`;
     expect(topPickLeads(buried, [PICK])).toBe(false);
     expect(
-      followUpViolations(buried, { subject: 'toddler gymnastics', picks: [PICK] }).join(' '),
+      followUpViolations(buried, grounding()).join(' '),
     ).toContain(PICK.name);
   });
 
@@ -87,12 +106,10 @@ describe('the top pick lands in the first segment', () => {
       name: 'Kinderfun (Toddler Program), Halton Hills Gymnastics Centre',
     };
     const real =
-      'Halton Hills Gymnastics Centre has a Kinderfun toddler program (18 months - 3 years) running Sept 10 - Dec 16 - their site says. Want me to confirm the spot?';
+      'Halton Hills Gymnastics Centre has a Kinderfun toddler program (18 months - 3 years) running Sept 10 - Dec 16 - their site says.';
 
     expect(topPickLeads(real, [composite])).toBe(true);
-    expect(followUpViolations(real, { subject: 'toddler gymnastics', picks: [composite] })).toEqual(
-      [],
-    );
+    expect(followUpViolations(real, grounding({ picks: [composite] }))).toEqual([]);
   });
 
   it('POSITIVE CONTROL - the Oakville answer, which names the find in its first six words', () => {
@@ -108,12 +125,15 @@ describe('the top pick lands in the first segment', () => {
       sourceName: 'Town of Oakville Parks and Recreation',
     };
     const real =
-      "Oakville's Learn to Swim Preschool program looks like a good fit - their site says fall registration opens Aug 11 at 7am (no pricing posted yet). Want me to check closer to Aug 11?";
+      "Oakville's Learn to Swim Preschool program looks like a good fit - their site says fall registration opens Aug 11 at 7am, no pricing posted yet. I'll check back closer to Aug 11.";
 
     expect(topPickLeads(real, [oakville])).toBe(true);
-    expect(followUpViolations(real, { subject: 'preschool swim lessons', picks: [oakville] })).toEqual(
-      [],
-    );
+    expect(
+      followUpViolations(
+        real,
+        grounding({ subject: 'preschool swim lessons', picks: [oakville], watch: true }),
+      ),
+    ).toEqual([]);
   });
 
   it('still refuses a body whose lead names nothing in particular', () => {
@@ -135,10 +155,10 @@ describe('the top pick lands in the first segment', () => {
       true,
     );
     expect(
-      followUpViolations('I went through the fall listings and nothing is open yet.', {
-        subject: 'toddler gymnastics',
-        picks: [],
-      }),
+      followUpViolations(
+        'I went through the fall listings and nothing is open yet.',
+        grounding({ picks: [] }),
+      ),
     ).toEqual([]);
   });
 });
@@ -146,18 +166,18 @@ describe('the top pick lands in the first segment', () => {
 describe('the mechanical gates', () => {
   it('refuses a link, an over-long body and a non-GSM7 character', () => {
     const withLink = `${PICK.name} runs Saturdays - see haltonhillsgym.ca`;
-    expect(followUpViolations(withLink, { subject: 's', picks: [PICK] }).join(' ')).toContain(
+    expect(followUpViolations(withLink, grounding({ subject: 's' })).join(' ')).toContain(
       'link',
     );
 
     const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
-    expect(followUpViolations(long, { subject: 's', picks: [PICK] }).join(' ')).toContain(
+    expect(followUpViolations(long, grounding({ subject: 's' })).join(' ')).toContain(
       'segments',
     );
   });
 
   it('refuses an empty body outright', () => {
-    expect(followUpViolations('   ', { subject: 's', picks: [PICK] })).toEqual([
+    expect(followUpViolations('   ', grounding({ subject: 's' }))).toEqual([
       'The message was empty.',
     ]);
   });
@@ -191,7 +211,7 @@ describe('the payload the composer is handed', () => {
 
   it('carries the REGISTRATION fact the deep pass opened a page to get', () => {
     const payload = JSON.parse(
-      followUpUserMessage({ subject: 'Cartwheels Gym Centre', picks: [DEEP_SLOT] }),
+      followUpUserMessage(grounding({ subject: 'Cartwheels Gym Centre', picks: [DEEP_SLOT] })),
     );
 
     expect(payload.picks[0]).toEqual({
@@ -210,18 +230,153 @@ describe('the payload the composer is handed', () => {
     // absent key reads to the model as a field it may fill in, and the shallow lane has
     // never opened a page to fill it from.
     const payload = JSON.parse(
-      followUpUserMessage({ subject: 'toddler gymnastics', picks: [PICK] }),
+      followUpUserMessage(grounding()),
     );
 
     expect(payload.picks[0]).toHaveProperty('registration', null);
   });
 
-  it('carries the subject and the mode, and nothing about the family (rule #1)', () => {
+  it('carries whether a page was opened and whether a continuation row exists', () => {
+    // Both are facts about the SWEEP, and both reached the model through nothing until
+    // now — which is how a turn that opened no page went on writing "not posted yet",
+    // and how an offer with no row behind it went out.
     const payload = JSON.parse(
-      followUpUserMessage({ subject: 'toddler gymnastics', picks: [DEEP_SLOT] }),
+      followUpUserMessage(grounding({ pagesOpened: false, watch: true })),
     );
 
-    expect(Object.keys(payload).sort()).toEqual(['mode', 'picks', 'subject']);
+    expect(payload.pages_opened).toBe(false);
+    expect(payload.watch).toBe(true);
+  });
+
+  it('carries the subject and the mode, and nothing about the family (rule #1)', () => {
+    const payload = JSON.parse(
+      followUpUserMessage(grounding({ picks: [DEEP_SLOT] })),
+    );
+
+    expect(Object.keys(payload).sort()).toEqual([
+      'mode',
+      'pages_opened',
+      'picks',
+      'subject',
+      'watch',
+    ]);
     expect(payload.mode).toBe('followup_text');
+  });
+});
+
+/**
+ * THE THREE GATES THE 2026-08-22 TRANSCRIPT NEEDED AND DID NOT HAVE.
+ *
+ * 17:19 UTC, production: "Cartwheels Gym Centre runs Tiny Gym for kids under 3.5 with a
+ * parent... but fall days, times and prices aren't posted yet. Want me to check back once
+ * they're up?" Three things were wrong with one text. The deep pass had opened NO page
+ * (its research turn timed out), so "aren't posted yet" was a report on a schedule that
+ * was in fact published. The closing question was an offer with no row behind it, and
+ * twenty minutes later the parent's "Yes, please" landed on an unrelated approvals menu.
+ * And nothing said what Hale would actually do next.
+ */
+describe('an offer is a proposal, so this lane makes none', () => {
+  it('refuses any question - there is no row on this path for a yes to land on', () => {
+    const asked = `${PICK.name} runs Saturdays 9:15 from Sept 13, $142 - their site says. Want me to check back once they're up?`;
+
+    expect(followUpViolations(asked, grounding()).join(' ')).toContain('asks the parent a question');
+  });
+
+  it('POSITIVE CONTROL - the same find, ending on a statement, passes', () => {
+    const told = `${PICK.name} runs Saturdays 9:15 from Sept 13, $142 - their site says.`;
+
+    expect(followUpViolations(told, grounding())).toEqual([]);
+  });
+});
+
+describe('a claim about a page requires a page', () => {
+  it.each([
+    "Their fall days, times and prices aren't posted yet.",
+    'The fall guide is not up.',
+    'Nothing is listed for the fall session.',
+    'No dates published for the fall term.',
+  ])('reads %s as a claim about a page', (body) => {
+    expect(claimsNotPosted(body)).toBe(true);
+  });
+
+  it.each([
+    'I could not get into their schedule page today.',
+    "I could not read their page today, so I'll keep watching.",
+    'Their site says Tiny Gym runs Sundays 9:30.',
+    'Registration has been open since July 22.',
+  ])('lets %s through - none of these claims a page said nothing', (body) => {
+    expect(claimsNotPosted(body)).toBe(false);
+  });
+
+  it('THE DEFECT: with no page opened, the unposted claim is refused', () => {
+    const body = `${PICK.name} runs a toddler class - their site says, but fall days and prices aren't posted yet. I'll keep watching and text you when they go up.`;
+
+    expect(
+      followUpViolations(body, grounding({ pagesOpened: false, watch: true })).join(' '),
+    ).toContain('not posted');
+  });
+
+  it('POSITIVE CONTROL - the SAME words pass once a page was actually opened today', () => {
+    const body = `${PICK.name} runs a toddler class - their site says, but fall days and prices aren't posted yet. I'll keep watching and text you when they go up.`;
+
+    expect(followUpViolations(body, grounding({ pagesOpened: true, watch: true }))).toEqual([]);
+  });
+
+  it('POSITIVE CONTROL - the uncertain sentence passes with no page opened', () => {
+    const body = `${PICK.name} runs a toddler class for under-3s - their site says. I could not get into their fall schedule page today, so I'll keep looking and text you what it says.`;
+
+    expect(followUpViolations(body, grounding({ pagesOpened: false, watch: true }))).toEqual([]);
+  });
+});
+
+describe('a continuation row must be spoken for', () => {
+  it.each([
+    "I'll keep watching and text you when they post.",
+    'I will check back once the fall guide goes up.',
+    "I'll go back through it and let you know.",
+  ])('reads %s as Hale committing to come back', (body) => {
+    expect(statesTheReturn(body)).toBe(true);
+  });
+
+  it.each([
+    'Their site says Saturdays 9:15.',
+    'Registration opens Sept 1 at 7am.',
+    'The fall guide goes up soon.',
+  ])('does not read %s as a commitment', (body) => {
+    expect(statesTheReturn(body)).toBe(false);
+  });
+
+  it('THE DEFECT MIRRORED: a watch row with no sentence claiming it is refused', () => {
+    const silent = `${PICK.name} runs a toddler class for under-3s - their site says.`;
+
+    expect(followUpViolations(silent, grounding({ watch: true })).join(' ')).toContain(
+      "I'll keep watching",
+    );
+  });
+
+  it('POSITIVE CONTROL - with no watch row, the same silent message is fine', () => {
+    const silent = `${PICK.name} runs a toddler class for under-3s - their site says.`;
+
+    expect(followUpViolations(silent, grounding({ watch: false }))).toEqual([]);
+  });
+
+  /**
+   * THE MIRROR, and it is not hypothetical. The first live re-recording of this composer
+   * after the watch field was added — handed a complete find and `watch: false` — closed
+   * with "I'll keep looking and text you what it says": a promise to come back with no
+   * row behind it, written by the very change that exists to stop that.
+   */
+  it('refuses a coming-back sentence when NO row was written for it', () => {
+    const promised = `${PICK.name} runs Saturdays 9:15, $142 - their site says. I'll keep looking and text you what else opens.`;
+
+    expect(followUpViolations(promised, grounding({ watch: false })).join(' ')).toContain(
+      'no such promise has been written down',
+    );
+  });
+
+  it('POSITIVE CONTROL - the SAME sentence passes once the row exists', () => {
+    const promised = `${PICK.name} runs Saturdays 9:15, $142 - their site says. I'll keep looking and text you what else opens.`;
+
+    expect(followUpViolations(promised, grounding({ watch: true }))).toEqual([]);
   });
 });

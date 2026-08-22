@@ -269,84 +269,94 @@ describe('the activity question is answered', () => {
   function deepPort(): { client: () => AgentClient; requests: string[] } {
     const requests: string[] = [];
     let call = 0;
+    // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
+    async function turn(req: any) {
+      requests.push(req.messages?.[0]?.content as string);
+      call += 1;
+      if (call === 1) {
+        return {
+          content: [
+            {
+              type: 'web_search_tool_result',
+              tool_use_id: 'srvtu_deep',
+              content: [
+                {
+                  type: 'web_search_result',
+                  url: 'https://cartwheelsgymcentre.example/programs',
+                  title: 'Programs - Cartwheels Gym Centre',
+                  encrypted_content: 'x',
+                  page_age: null,
+                },
+              ],
+            },
+            {
+              type: 'web_fetch_tool_result',
+              tool_use_id: 'srvtu_fetch',
+              content: {
+                type: 'web_fetch_result',
+                url: 'https://cartwheelsgymcentre.example/programs',
+                // Opened NOW, not out of the provider's cache — what licenses the
+                // composer to say what the page does and does not carry
+                // (evidence.ts FETCH_FRESHNESS_MS).
+                retrieved_at: SWEEP_AT.toISOString(),
+                content: {
+                  type: 'document',
+                  source: {
+                    type: 'text',
+                    data: 'Fall block Sept 14 - Oct 26. Tiny Gym Sundays 9:30-10:15, $124 per term. Registration has been open since July 22.',
+                  },
+                },
+              },
+            },
+            { type: 'text', text: 'Opened the fall programs grid.' },
+          ],
+          usage: { input_tokens: 10, output_tokens: 10 },
+          stop_reason: 'end_turn',
+        };
+      }
+      return {
+        content: [
+          {
+            type: 'tool_use',
+            name: 'activity_deep',
+            input: {
+              pages_read: ['https://cartwheelsgymcentre.example/programs'],
+              slots: [
+                {
+                  name: 'Tiny Gym, Cartwheels Gym Centre',
+                  age_fit: 'walking to 3.5 years, with a parent',
+                  when: 'Sundays 9:30-10:15, Sept 14 to Oct 26',
+                  price: '$124 per term',
+                  registration: 'Registration has been open since July 22',
+                  source_name: 'Cartwheels Gym Centre',
+                  source_url: 'https://cartwheelsgymcentre.example/programs',
+                },
+                {
+                  name: 'Kinderfun, Cartwheels Gym Centre',
+                  age_fit: '3 to 5 years',
+                  when: 'Saturdays 10:30-11:15, Sept 13 to Oct 25',
+                  price: '$124 per term',
+                  registration: 'Registration has been open since July 22',
+                  source_name: 'Cartwheels Gym Centre',
+                  source_url: 'https://cartwheelsgymcentre.example/programs',
+                },
+              ],
+            },
+          },
+        ],
+        usage: { input_tokens: 10, output_tokens: 10 },
+        stop_reason: 'tool_use',
+      };
+    }
+    // The research leg STREAMS in production (deep.ts: a non-streamed turn cannot
+    // finish), so the fixture has to answer both transports or the journey scores a
+    // request production never makes.
     const client = () =>
       ({
         messages: {
+          create: turn,
           // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
-          async create(req: any) {
-            requests.push(req.messages?.[0]?.content as string);
-            call += 1;
-            if (call === 1) {
-              return {
-                content: [
-                  {
-                    type: 'web_search_tool_result',
-                    tool_use_id: 'srvtu_deep',
-                    content: [
-                      {
-                        type: 'web_search_result',
-                        url: 'https://cartwheelsgymcentre.example/programs',
-                        title: 'Programs - Cartwheels Gym Centre',
-                        encrypted_content: 'x',
-                        page_age: null,
-                      },
-                    ],
-                  },
-                  {
-                    type: 'web_fetch_tool_result',
-                    tool_use_id: 'srvtu_fetch',
-                    content: {
-                      type: 'web_fetch_result',
-                      url: 'https://cartwheelsgymcentre.example/programs',
-                      content: {
-                        type: 'document',
-                        source: {
-                          type: 'text',
-                          data: 'Fall block Sept 14 - Oct 26. Tiny Gym Sundays 9:30-10:15, $124 per term. Registration has been open since July 22.',
-                        },
-                      },
-                    },
-                  },
-                  { type: 'text', text: 'Opened the fall programs grid.' },
-                ],
-                usage: { input_tokens: 10, output_tokens: 10 },
-                stop_reason: 'end_turn',
-              };
-            }
-            return {
-              content: [
-                {
-                  type: 'tool_use',
-                  name: 'activity_deep',
-                  input: {
-                    pages_read: ['https://cartwheelsgymcentre.example/programs'],
-                    slots: [
-                      {
-                        name: 'Tiny Gym, Cartwheels Gym Centre',
-                        age_fit: 'walking to 3.5 years, with a parent',
-                        when: 'Sundays 9:30-10:15, Sept 14 to Oct 26',
-                        price: '$124 per term',
-                        registration: 'Registration has been open since July 22',
-                        source_name: 'Cartwheels Gym Centre',
-                        source_url: 'https://cartwheelsgymcentre.example/programs',
-                      },
-                      {
-                        name: 'Kinderfun, Cartwheels Gym Centre',
-                        age_fit: '3 to 5 years',
-                        when: 'Saturdays 10:30-11:15, Sept 13 to Oct 25',
-                        price: '$124 per term',
-                        registration: 'Registration has been open since July 22',
-                        source_name: 'Cartwheels Gym Centre',
-                        source_url: 'https://cartwheelsgymcentre.example/programs',
-                      },
-                    ],
-                  },
-                },
-              ],
-              usage: { input_tokens: 10, output_tokens: 10 },
-              stop_reason: 'tool_use',
-            };
-          },
+          stream: (req: any) => ({ finalMessage: () => turn(req) }),
         },
       }) as unknown as AgentClient;
     return { client, requests };
@@ -882,7 +892,7 @@ describe('the activity question is answered', () => {
     const result = await runActivityFollowUpSweep(
       database,
       sweepDeps(sweepTransport, webPort([[GYM_RESULT]]).client, {
-        deep: createDeepResearcher(deep.client),
+        deep: createDeepResearcher(deep.client, () => SWEEP_AT),
         composer: createFollowUpComposer(composer.client),
       }),
       SWEEP_AT,

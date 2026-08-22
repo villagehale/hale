@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message names a real, specific local venue (Halton Hills Gymnastics Centre) with a precise age fit (18 months - 3 years) and clear session dates (Sept 10 - Dec 16 with no class Oct 10). It correctly attributes the information (\"their site says\"), honestly names the gap (price and registration not accessible), and offers to follow up rather than inventing details. The single pick is appropriate for the stage and town. The message is plain text, one sentence with context, and ends with an actionable next step. The price being null is correct because the source hadn't published it. This meets all 5-point criteria."
+  }
+}

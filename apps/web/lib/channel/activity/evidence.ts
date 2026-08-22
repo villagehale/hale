@@ -35,12 +35,35 @@ import type Anthropic from '@anthropic-ai/sdk';
  * 'web_fetch_tool_result_error', ...}}`.
  */
 
+/**
+ * How recent a `web_fetch` has to be before it counts as a page read TODAY.
+ *
+ * TWENTY-FOUR HOURS, and it is the horizon the CLAIM needs rather than a cache policy:
+ * the only sentence `pagesRead` licenses is "their page doesn't say", and a schedule that
+ * went up this morning makes yesterday's read of it a false witness. Anything inside a
+ * day is today for a page that publishes a season.
+ */
+export const FETCH_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+
 /** What a grounding turn searched, opened, and wrote down. */
 export interface GroundingEvidence {
   /** Real web-search results. An errored search block is not a result. */
   searchResults: number;
   /** Pages actually opened and returned as documents. */
   pagesRead: number;
+  /**
+   * How many of `pagesRead` came out of the provider's own fetch cache from BEFORE
+   * {@link FETCH_FRESHNESS_MS} ago — or carried no `retrieved_at` at all, which is the
+   * same thing with less information.
+   *
+   * Live probe, 2026-08-22 21:17Z: one research turn's four page reads carried
+   * `retrieved_at` of 16:17Z, 16:17Z, 16:17Z and 21:17Z. Three of the four were a
+   * five-hour-old cache hit that the block is otherwise indistinguishable from a live
+   * read. Counted apart for the reason `pagesRefused` is (rule #11): a cached page is a
+   * page somebody opened ONCE, and the fact it did not carry a fall schedule then is not
+   * a fact about now.
+   */
+  pagesStale: number;
   /** Fetches that came back refused or unreachable. Never a page that said nothing. */
   pagesRefused: number;
   /** The URLs behind `pagesRead`, so a pick can cite the page it was read off. */
@@ -56,9 +79,20 @@ interface FetchResultBlock {
   content?: {
     type?: string;
     url?: string;
+    /** ISO-8601, live-probed 2026-08-22. When the provider actually pulled this page —
+     * which is not when this turn asked for it. */
+    retrieved_at?: string;
     error_code?: string;
     content?: { source?: { data?: string } };
   };
+}
+
+/** A read is TODAY only if it is stamped and the stamp is inside the horizon. An
+ * unparseable or absent stamp is stale: unknown age is not evidence of freshness. */
+function readToday(retrievedAt: string | undefined, now: Date): boolean {
+  if (retrievedAt === undefined) return false;
+  const at = Date.parse(retrievedAt);
+  return Number.isFinite(at) && now.getTime() - at <= FETCH_FRESHNESS_MS;
 }
 
 function fetchBlock(block: Anthropic.ContentBlock): FetchResultBlock | null {
@@ -66,10 +100,13 @@ function fetchBlock(block: Anthropic.ContentBlock): FetchResultBlock | null {
   return candidate.type === 'web_fetch_tool_result' ? candidate : null;
 }
 
-/** Read the whole turn once. Cheap, pure, and the single reader of these block shapes. */
-export function readEvidence(content: Anthropic.ContentBlock[]): GroundingEvidence {
+/** Read the whole turn once. Cheap, pure, and the single reader of these block shapes.
+ * `now` is passed rather than read, because freshness is the one thing here that is not
+ * a property of the content. */
+export function readEvidence(now: Date, content: Anthropic.ContentBlock[]): GroundingEvidence {
   let searchResults = 0;
   let pagesRead = 0;
+  let pagesStale = 0;
   let pagesRefused = 0;
   const urlsRead: string[] = [];
   const notes: string[] = [];
@@ -95,6 +132,7 @@ export function readEvidence(content: Anthropic.ContentBlock[]): GroundingEviden
       continue;
     }
     pagesRead += 1;
+    if (!readToday(result.retrieved_at, now)) pagesStale += 1;
     const url = result.url ?? '';
     if (url !== '') urlsRead.push(url);
     const text = result.content?.source?.data ?? '';
@@ -103,7 +141,14 @@ export function readEvidence(content: Anthropic.ContentBlock[]): GroundingEviden
     if (text !== '') notes.push(`--- page: ${url} ---\n${text}`);
   }
 
-  return { searchResults, pagesRead, pagesRefused, urlsRead, notes: notes.join('\n').trim() };
+  return {
+    searchResults,
+    pagesRead,
+    pagesStale,
+    pagesRefused,
+    urlsRead,
+    notes: notes.join('\n').trim(),
+  };
 }
 
 /**

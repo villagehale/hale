@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The slot extracts all facts directly from the opened page: class name, age fit, schedule (day, time, date range, duration), price ($124 + $25 annual membership), and registration window (opened July 22, runs until classes fill) with method (online or phone). The message leads with the class name, includes every cited fact with attribution (\"their site says\"), specifies the registration date and that it runs until classes fill, uses plain language with no questions or offers, and makes no unverified claims. The watchFor notes that the registration fact is the key value-add from opening the page, and the message carries it clearly (\"registration has been open since July 22, running until classes fill\"). Watch is FALSE, so no continuation promise is expected or present. Pages were opened and facts are attributed rather than claimed as verified."
+  }
+}

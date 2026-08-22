@@ -41,6 +41,28 @@ export type TurnStage =
   /** Answered. Whatever else happens, this text does not get a second reply. */
   | 'answered';
 
+/**
+ * WHY A TURN THAT ANSWERED WAS STILL A FAILURE.
+ *
+ * These are the four ways `disposeOfFailedTurn` can put words in front of a parent
+ * without the coach having worked. They are DATA — they land in an audit row a PIPEDA
+ * export renders — so they are snake_case enums that outlive the identifiers around
+ * them.
+ */
+export type TurnFailureReason =
+  /** The turn texted the parent and then broke on its own bookkeeping. They have their
+   * answer; the failure is real and invisible to them. */
+  | 'broke_after_answering'
+  /** It broke after drafting, so the receipt names a count of real rows (copy.ts). */
+  | 'drafts_receipt'
+  /** They plainly answered something, the coach could not run, and Hale asked which. */
+  | 'unplaced_choice'
+  /** The composed apology went out. The 2026-08-22 shape. */
+  | 'apology_sent'
+  /** The provider was gone AND the text named an emergency, so the fixed safety line
+   * went out with no model in the loop (smoke-alarm.ts). */
+  | 'smoke_alarm';
+
 export interface InboundTurnLedger {
   stageOf(input: { familyId: string; channelMessageId: string }): Promise<TurnStage>;
   /**
@@ -62,5 +84,26 @@ export interface InboundTurnLedger {
     familyId: string;
     parentUserId: string;
     channelMessageId: string;
+  }): Promise<void>;
+  /**
+   * THE TURN BROKE, AND SOMETHING WENT OUT ANYWAY.
+   *
+   * A THIRD row, not a replacement for `recordAnswered`, because the two answer
+   * different questions and conflating them is the defect. "Did this text already get a
+   * reply?" is the re-drive gate and must still say yes — the parent has the apology and
+   * must not get a second one. "Did this turn work?" is what ops and a PIPEDA export
+   * read, and on 2026-08-22 the whole trace of a failed turn was
+   * `sms_reply_received → sms_turn_answered → sms_reply_sent`: three rows that all read
+   * as success, for a turn whose only output was "I couldn't get that done for you".
+   * No failure action of any kind existed anywhere in the family's history.
+   *
+   * Never on the DEFERRED path — that one has `sms_turn_deferred` already, and a turn
+   * that said nothing is a different outcome from one that apologised.
+   */
+  recordFailed(input: {
+    familyId: string;
+    parentUserId: string;
+    channelMessageId: string;
+    reason: TurnFailureReason;
   }): Promise<void>;
 }

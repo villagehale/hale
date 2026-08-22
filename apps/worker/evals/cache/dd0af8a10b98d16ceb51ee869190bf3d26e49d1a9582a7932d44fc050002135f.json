@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Every slot is a real thing on the page with exact details: Preschool A and B are both listed with correct age ranges (3-5 years, no parent in water), exact times (9:00-9:30am and 9:40-10:10am), and identical session dates (Saturdays, September 12 to November 28). All details are cited to the correct source page. The registration window is accurately captured (Fall registration opens Tuesday, August 11 at 7 a.m. for Oakville residents; options browsable online starting August 4). The price slot correctly reflects that the page does not specify a fee amount, only that fees are set by Council and published in the Recreation Guide. The message leads with Preschool A by name, attributes facts to \"their site says\", includes the registration window, uses appropriately tentative language (\"Fall registration opens\"), contains no link, is two short plain-ASCII sentences with exactly one question (\"Fees are in the current Recreation Guide\" functions as the closing statement). The two-slot structure is correct - both programs are the same class at different times. The watchFor notes are satisfied: the registration date is correctly identified as future (\"opens Tuesday, August 11\") not past, the price is null/generic rather than invented, and exactly two slots are provided for the two time offerings."
+  }
+}

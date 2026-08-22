@@ -132,10 +132,12 @@ function deepExtractMessage(q, notes) {
 
 /** Mirrors `followUpUserMessage` (followup-note.ts) — INCLUDING `registration`, whose
  * absence from that projection is the defect this eval's last gate exists for. */
-function followUpUserMessage(subject, slots) {
+function followUpUserMessage(subject, slots, pagesOpened, watch) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
+    pages_opened: pagesOpened,
+    watch,
     picks: slots.map((slot) => ({
       name: slot.name,
       age_fit: slot.ageFit,
@@ -148,11 +150,22 @@ function followUpUserMessage(subject, slots) {
   });
 }
 
-/** Mirrors `readEvidence` (activity/evidence.ts): three counts kept apart, and the text of
- * the pages that opened riding into the notes. */
-function readEvidence(content) {
+/** How recent a fetch has to be to count as a page read TODAY - mirrors
+ * `FETCH_FRESHNESS_MS` (activity/evidence.ts). */
+const FETCH_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+
+/** Mirrors `readEvidence` (activity/evidence.ts): the counts kept apart, and the text of
+ * the pages that opened riding into the notes.
+ *
+ * `pagesStale` is not decoration here. The provider answers a `web_fetch` out of its own
+ * cache — live probe 2026-08-22, three of one turn's four reads carried a `retrieved_at`
+ * five hours old — and a cached read licenses no claim about what a page carries now. The
+ * eval mirrors the count so the corpus cannot quietly score a turn on pages nobody
+ * opened today. `now` is read at call time, the way the runtime reads its clock. */
+function readEvidence(content, now = Date.now()) {
   let searchResults = 0;
   let pagesRead = 0;
+  let pagesStale = 0;
   let pagesRefused = 0;
   const notes = [];
   for (const block of content) {
@@ -169,11 +182,13 @@ function readEvidence(content) {
         continue;
       }
       pagesRead += 1;
+      const at = Date.parse(result.retrieved_at ?? '');
+      if (!Number.isFinite(at) || now - at > FETCH_FRESHNESS_MS) pagesStale += 1;
       const text = result.content?.source?.data ?? '';
       if (text !== '') notes.push(`--- page: ${result.url ?? ''} ---\n${text}`);
     }
   }
-  return { searchResults, pagesRead, pagesRefused, notes: notes.join('\n').trim() };
+  return { searchResults, pagesRead, pagesStale, pagesRefused, notes: notes.join('\n').trim() };
 }
 
 /** Mirrors `plainText` (coach/reply.ts), which sits behind `~/`. */
@@ -261,7 +276,31 @@ function topPickLeads(body, slots) {
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
-function followUpViolations(body, slots, smsSegments) {
+/** Mirrors `claimsNotPosted`, `statesTheReturn` and `watchWarranted` — see the same three
+ * in run-activity-finder-eval.mjs and in the runtime (followup-note.ts, sweep.ts). */
+const UNPUBLISHED_WORD = /\b(?:posted|listed|published|announced|out|up)\b/i;
+const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n'?t\b/i;
+const STATES_RETURN =
+  /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
+
+function claimsNotPosted(body) {
+  return body
+    .split(CLAUSE_BOUNDARY)
+    .some((clause) => ABSENCE.test(clause) && UNPUBLISHED_WORD.test(clause));
+}
+
+function watchWarranted(slots) {
+  const top = slots[0];
+  if (!top) return true;
+  return !carriesFact(top.when) || !carriesFact(top.price);
+}
+
+/** Mirrors `carriesFact` (sweep.ts). */
+function carriesFact(field) {
+  return Boolean(field) && String(field).trim() !== '' && !claimsNotPosted(String(field));
+}
+
+function followUpViolations(body, slots, smsSegments, pagesOpened, watch) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
@@ -287,6 +326,28 @@ function followUpViolations(body, slots, smsSegments) {
     violations.push({
       tag: 'buried_top_pick',
       reason: `The best find (${slots[0]?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
+    });
+  }
+  if (body.includes('?')) {
+    violations.push({
+      tag: 'asks_for_permission',
+      reason:
+        'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
+    });
+  }
+  if (!pagesOpened && claimsNotPosted(body)) {
+    violations.push({
+      tag: 'unread_not_unposted',
+      reason:
+        'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.',
+    });
+  }
+  if (watch !== STATES_RETURN.test(body)) {
+    violations.push({
+      tag: watch ? 'silent_watch' : 'unbacked_promise',
+      reason: watch
+        ? 'This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "I\'ll keep watching and text you when they post."'
+        : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }
   return violations;
@@ -335,8 +396,27 @@ const JUDGE_SYSTEM = [
   'exactly as printed, each cited to the page it was read off, and where the page gave a',
   'REGISTRATION date the slot carries it and so does the message. The message leads with the',
   'best slot by name, attributes the facts ("their site says"), carries the registration',
-  'window, offers to confirm rather than claiming to have confirmed, and is one or two short',
-  'plain-ASCII sentences with no link and exactly one question.',
+  'window, attributes rather than claiming to have confirmed, and is one or two short',
+  'plain-ASCII sentences with no link and NO QUESTION AT ALL.',
+  'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
+  'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
+  'down; nothing on this path can write one, so a "want me to..." here is a yes with',
+  'nowhere to land (2026-08-22: it landed on an unrelated approvals queue). Do not mark a',
+  'message down for ending on a statement.',
+  'You are given `watch`. When it is TRUE, Hale has ALREADY written a continuation promise',
+  'to go back and look again, and the message must say so in the first person ("I\'ll keep',
+  'watching and text you when they post"): that is a commitment that exists, not an',
+  'unverified claim, and scoring it as one is wrong. When it is FALSE no such row exists',
+  'and any coming-back sentence is a promise nothing is behind - THAT is the low score.',
+  'You are given `pagesOpened`. FALSE means Hale read SEARCH SNIPPETS rather than opening',
+  "a page. Attribution is still correct and still expected - a snippet off the venue's own",
+  'site IS "their site says", and marking that down is wrong. What FALSE forbids is a',
+  'NEGATIVE claim about what a page carries ("the fall times are not posted yet"), because',
+  'nobody looked; the honest form of that sentence is "I could not get into their page',
+  'today". Score the negative claim low, never the attribution.',
+  'Two segments is a hard ceiling. Dropping a second or third find WHOLE to fit the best',
+  'one complete is correct and is not withholding; withholding is going quiet about a find',
+  'when there was room, or hedging instead of naming anything at all.',
   'A LOW score is any of: a price or a date that is not on the page it is attributed to;',
   'a figure borrowed from a different program or a room rental on the same site; a slot for',
   'an age band the page does not serve; reporting a schedule as "not posted" when the notes',
@@ -431,10 +511,26 @@ function brokenExtract(fixture) {
   }
 }
 
-const BROKEN_FOLLOWUP = {
-  message:
-    'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across all of the nearby towns, rather more than I could reasonably fit into a single message to you here. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest of the fall schedule and all of the current fees.',
-};
+/**
+ * The broken follow-up TEXT, split on `watch` — for the reason `brokenExtract` is split
+ * per fixture: the two ledger gates want opposite sentences, and one payload cannot fail
+ * both. The single constant this replaces failed on a URL, an "I confirmed" and three
+ * segments, and left three gates at zero across the whole broken corpus — a QUESTION, a
+ * claim that a page nobody opened carries nothing, and a coming-back sentence with no row
+ * behind it. A gate nobody has seen fire is a gate nobody knows works.
+ *
+ * The unposted claim rides the `watch` branch because the one fixture whose research
+ * opened NO page (`cartwheels-live-research`, notes null) is also the one the shrug hands
+ * no slots — so `watch` is true there and the claim is unlicensed, which is the pair the
+ * gate exists to catch.
+ */
+function brokenFollowUp(watch) {
+  return {
+    message: watch
+      ? 'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across the nearby towns. Their fall times are not posted yet. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest. Want me to check back once they are up?'
+      : 'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across the nearby towns. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest, and I will keep looking and text you when the fall schedule lands.',
+  };
+}
 
 async function cachedResearch(opts) {
   const { tag, model, system, userMessage, cachedOnly, getClient, cost } = opts;
@@ -448,13 +544,19 @@ async function cachedResearch(opts) {
     );
     process.exit(1);
   }
-  const response = await getClient().messages.create({
-    model,
-    max_tokens: RESEARCH_MAX_TOKENS,
-    system,
-    tools: RESEARCH_TOOLS,
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  // STREAMED, because the runtime streams and a non-streamed turn of this shape does not
+  // come back: live probe 2026-08-22, `messages.create` on this request timed out at
+  // 50s and died at 120s on a 600s ceiling, while the stream returned in 88.8s. An eval
+  // that posts the un-streamed request is scoring a call production cannot make (deep.ts).
+  const response = await getClient()
+    .messages.stream({
+      model,
+      max_tokens: RESEARCH_MAX_TOKENS,
+      system,
+      tools: RESEARCH_TOOLS,
+      messages: [{ role: 'user', content: userMessage }],
+    })
+    .finalMessage();
   noteUsage(cost, model, response.usage);
   const value = readEvidence(response.content);
   await cachePut(key, value);
@@ -508,11 +610,12 @@ async function main() {
         ? {
             searchResults: 1,
             pagesRead: fixture.expectPagesRead === false ? 0 : 1,
+            pagesStale: 0,
             pagesRefused: fixture.expectPagesRead === false ? 2 : 0,
             notes: fixture.notes,
           }
         : broken
-          ? { searchResults: 0, pagesRead: 0, pagesRefused: 0, notes: '' }
+          ? { searchResults: 0, pagesRead: 0, pagesStale: 0, pagesRefused: 0, notes: '' }
           : await cachedResearch({
               tag: `activity-deep-research:${fixture.id}`,
               model,
@@ -600,19 +703,24 @@ async function main() {
     // would be scoring a message the product does not send.
     const composesText = fixture.composesText !== false;
     const inText = composesText ? kept.slice(0, SLOTS_IN_TEXT) : [];
+    // The two sweep facts the composer is told (sweep.ts). A page read out of the
+    // provider's cache is not a page read today, so it buys no licence to say what a page
+    // does not carry.
+    const pagesOpened = evidence.pagesRead - evidence.pagesStale > 0;
+    const watch = watchWarranted(inText);
     let body = '';
     let violations = [];
     let firstDraftViolations = [];
     for (let attempt = 1; composesText && attempt <= MAX_FOLLOWUP_ATTEMPTS; attempt += 1) {
       const composed = broken
-        ? BROKEN_FOLLOWUP
+        ? brokenFollowUp(watch)
         : (
             await cachedToolCall({
               tag: `activity-deep-followup:${fixture.id}:${attempt}`,
               model: composerModel,
               system: finderSkill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, inText),
+                followUpUserMessage(fixture.subject, inText, pagesOpened, watch),
                 violations,
               ),
               toolName: 'followup_text',
@@ -625,7 +733,7 @@ async function main() {
             })
           ).value;
       body = flatten(composed.message);
-      violations = followUpViolations(body, inText, smsSegments);
+      violations = followUpViolations(body, inText, smsSegments, pagesOpened, watch);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
@@ -642,6 +750,8 @@ async function main() {
 
     if (!broken) {
       const verdict = await judge(fixture.id, {
+        watch,
+        pagesOpened,
         subject: fixture.subject,
         town: fixture.town,
         stage: fixture.stage,
@@ -694,6 +804,16 @@ async function main() {
   console.log(`dropped registration:      ${count('dropped_registration')}  (the fact the page-open paid for)`);
   console.log(`registration not in text:  ${count('registration_not_in_text')}  (it reached the slot and died in the projection)`);
   console.log(`claims verification:       ${count('claims_verification')}`);
+  console.log(
+    `asks for permission:       ${count('asks_for_permission')}  (an offer is a proposal, and this lane can write no row)`,
+  );
+  console.log(
+    `unread claimed unposted:   ${count('unread_not_unposted')}  (a claim about a page nobody opened today)`,
+  );
+  console.log(
+    `unbacked promise:          ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
+  );
+  console.log(`silent watch:              ${count('silent_watch')}`);
   console.log(`buried top pick:           ${count('buried_top_pick')}`);
   console.log(`links a URL:               ${count('links_a_url')}`);
   console.log(

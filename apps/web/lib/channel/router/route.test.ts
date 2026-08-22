@@ -183,11 +183,13 @@ function fakeSmokeAlarmClaim(): SmokeAlarmClaim & { fired: string[]; reads: stri
 function fakeTurnLedger(): InboundTurnLedger & {
   answered: string[];
   deferred: string[];
+  failed: { channelMessageId: string; reason: string }[];
   reads: string[];
 } {
   const ledger = {
     answered: [] as string[],
     deferred: [] as string[],
+    failed: [] as { channelMessageId: string; reason: string }[],
     reads: [] as string[],
     async stageOf({ channelMessageId }: { channelMessageId: string }): Promise<TurnStage> {
       ledger.reads.push(channelMessageId);
@@ -200,6 +202,9 @@ function fakeTurnLedger(): InboundTurnLedger & {
     },
     async recordDeferred(input: { channelMessageId: string }) {
       ledger.deferred.push(input.channelMessageId);
+    },
+    async recordFailed(input: { channelMessageId: string; reason: string }) {
+      ledger.failed.push({ channelMessageId: input.channelMessageId, reason: input.reason });
     },
   };
   return ledger;
@@ -2198,5 +2203,89 @@ describe('the 09:47 sequence', () => {
 
     expect(chain.written).toEqual([false]);
     expect(h.transport.bodies()).toEqual([DISCOVERABILITY_OFF]);
+  });
+});
+
+/**
+ * D3 — AN APOLOGY IS NOT AN ANSWERED TURN.
+ *
+ * 2026-08-22, 17:41 UTC. A coach turn ran for 49,889 ms, came back `status=failed`, and
+ * the parent got "I couldn't get that done for you, and nothing changed on your end."
+ * The family's whole audit trail for that text was `sms_reply_received` →
+ * `sms_turn_answered` → `sms_reply_sent`: three rows that read as a turn that worked.
+ * There was no failure action of any kind in the history, and no rate anywhere.
+ *
+ * The answered claim is CORRECT and stays — the parent has their text and a re-drive
+ * must not send a second one. What was missing is the other half.
+ */
+describe('a failed turn is recorded as a failure', () => {
+  const throwing: ChannelCoachRuntime = {
+    respond: async () => {
+      throw new Error('cannot read properties of undefined');
+    },
+  };
+
+  it('writes the typed failure BESIDE the answered claim, not instead of it', async () => {
+    const h = harness({ coach: throwing });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    // Both, and they answer different questions: one stops a second reply, one says the
+    // turn did not work.
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+    expect(h.turns.failed).toEqual([
+      { channelMessageId: job().channel_message_id, reason: 'apology_sent' },
+    ]);
+  });
+
+  it('names the drafts-receipt branch as its own failure class', async () => {
+    const h = harness({
+      coach: {
+        respond: async () => {
+          throw new ChannelTurnFailed('channel coach: agent hit maxSteps without an answer', {
+            cause: new Error('maxSteps'),
+            draftedActionIds: ['action-1', 'action-2'],
+          });
+        },
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.turns.failed).toEqual([
+      { channelMessageId: job().channel_message_id, reason: 'drafts_receipt' },
+    ]);
+  });
+
+  it('POSITIVE CONTROL - a turn that worked writes no failure row', async () => {
+    const h = harness();
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+    expect(h.turns.failed).toEqual([]);
+  });
+
+  it('POSITIVE CONTROL - a DEFERRED turn keeps its own row and writes no failure one', async () => {
+    // The deferral already has `sms_turn_deferred` and its own captured rate. A turn
+    // that said nothing is a different outcome from one that apologised, and folding
+    // them together is what this whole change is against.
+    const h = harness({
+      coach: {
+        respond: async () => {
+          throw new ChannelTurnFailed('channel coach: agent loop failed', {
+            cause: new Anthropic.APIConnectionError({ message: 'Connection error.' }),
+            draftedActionIds: [],
+          });
+        },
+      },
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+
+    expect(h.turns.deferred).toEqual([job().channel_message_id]);
+    expect(h.turns.failed).toEqual([]);
   });
 });

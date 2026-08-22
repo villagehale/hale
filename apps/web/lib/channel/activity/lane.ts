@@ -404,7 +404,9 @@ async function runActivityOnce(
   } catch (err) {
     throw new ActivityUnresolvable('ground_failed', message(err));
   }
-  const evidence = readEvidence(research.content);
+  // `new Date()` here rather than a threaded clock: the only thing freshness feeds in
+  // this lane is the count, and the inline leg makes no claim that rests on it.
+  const evidence = readEvidence(new Date(), research.content);
   if (evidence.searchResults === 0) throw new ActivityUnresolvable('not_grounded');
   // SEARCH RESULTS ARE NOT RESEARCH. A grounding turn can spend its whole token budget on
   // the results themselves and never write the summary — 24 real results and an empty

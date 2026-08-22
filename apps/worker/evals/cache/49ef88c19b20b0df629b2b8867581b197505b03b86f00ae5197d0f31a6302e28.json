@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply hands over the referral link correctly, notes the parent forwards it themselves, and includes a brief description of what Hale is. The link matches `knows.referralLinkAppended` exactly. There's no greeting, no sign-off, no markdown. The one small blemish is a slightly redundant descriptive clause (\"Hale is a texting assistant that keeps track of your family's schedule and activities - worth a look\") that adds length without adding anything the parent asked for — they asked how to refer others, not what Hale is. That said, it's a minor flourish, not a structural problem. Core job done cleanly.",
+    "score": 4
+  }
+}

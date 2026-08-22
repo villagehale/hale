@@ -338,6 +338,14 @@ export function auditSmokeAlarmClaim(database: Database): SmokeAlarmClaim {
 export const TURN_ANSWERED_ACTION = 'sms_turn_answered';
 export const TURN_DEFERRED_ACTION = 'sms_turn_deferred';
 
+/**
+ * The third one, and the one whose absence made the 2026-08-22 turn unreadable. A DATA
+ * value like the two above. The re-drive gate does NOT read it: a failed turn that
+ * apologised is still answered, and answering twice is the thing the ledger exists to
+ * prevent.
+ */
+export const TURN_FAILED_ACTION = 'sms_turn_failed';
+
 /** The table both rows point at, named ONCE. The reader's predicate and the writers'
  * values are the same three strings; a fourth copy of any of them is how a gate stops
  * matching the rows it is supposed to find. */
@@ -404,6 +412,19 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
     },
     recordAnswered: write(TURN_ANSWERED_ACTION),
     recordDeferred: write(TURN_DEFERRED_ACTION),
+    recordFailed: async (input) => {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: TURN_FAILED_ACTION,
+        targetTable: TURN_LEDGER_TARGET,
+        targetId: input.channelMessageId,
+        // The lane and the failure class, and nothing else: this row is rendered by a
+        // right-to-access export, so it names what broke and never what was asked
+        // (rule #1). Both are closed vocabularies (turn-ledger.ts).
+        after: { lane: 'coach', reason: input.reason },
+      });
+    },
   };
 }
 

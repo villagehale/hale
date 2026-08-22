@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO swim events in the week (Monday and Thursday). With more than one matching event, Hale must ask which one before drafting. The reply correctly identifies both swims with their times and venues, then asks which to cancel. That is exactly the right handling — no draft until the parent clarifies, one question, no app referral, no sign-off, no markdown. Clean and correct.",
+    "score": 5
+  }
+}

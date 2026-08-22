@@ -53,6 +53,12 @@
 //     read off a page. Clause-scoped, so an honest "I'll confirm before you book" passes.
 //   · buried top pick - the best find is not named inside the first SMS segment, so the
 //     first trim removes it (the RC-I1 shape).
+//   · asks for permission - the follow-up ends on a question. An offer is a PROPOSAL and
+//     every proposal is a row; nothing on this path can write one, so a parent's yes has
+//     nowhere to land (2026-08-22: it landed on an unrelated approvals queue).
+//   · unread claimed unposted - the turn opened no page and said something was not posted.
+//   · unbacked promise / silent watch - the text and the ledger disagree about whether
+//     Hale is coming back.
 //   · links a URL / unsendable - Hale never texts a link, and the follow-up is two segments.
 // Everything else is the judge's bar (JUDGE_MIN): are these real, local, age-fitting things
 // a parent could turn up to, and is the message honest about where the facts came from?
@@ -136,10 +142,12 @@ function composeUserMessage(q, researchNotes) {
  * a field the shallow lane never fills (so it is null here) but which the deep pass reads
  * off a page and the composer is told about. The projection dropping it is what this
  * mirror exists to keep honest. */
-function followUpUserMessage(subject, picks) {
+function followUpUserMessage(subject, picks, pagesOpened, watch) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
+    pages_opened: pagesOpened,
+    watch,
     picks: picks.map((pick) => ({
       name: pick.name,
       age_fit: pick.ageFit,
@@ -192,9 +200,22 @@ function groundTools(subject) {
   return tools;
 }
 
+/** How recent a fetch has to be to count as a page read TODAY — mirrors
+ * `FETCH_FRESHNESS_MS` (activity/evidence.ts). */
+const FETCH_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+
 /**
  * What the grounding turn searched, opened and wrote down — mirrors `readEvidence`
  * (activity/evidence.ts).
+ *
+ * `pagesStale` is not decoration. The provider answers a `web_fetch` out of its own cache
+ * — live probe 2026-08-22, three of one turn's four reads carried a `retrieved_at` five
+ * hours old — and a cached read is a page somebody opened ONCE, not a fact about now. The
+ * runtime subtracts it before granting the licence to say what a page does not carry, and
+ * this eval computed `pagesRead > 0` instead: a corpus scoring a claim production would
+ * have refused. `now` is read at call time, the way the runtime reads its clock, and the
+ * count is frozen into the cached record at RECORD time — which is the only clock under
+ * which the reads in it were ever fresh.
  *
  * The three counts are kept apart for the reason that module states: a page REFUSED is not
  * a page that said nothing, and folding them together rebuilds the benchmark defect one
@@ -206,9 +227,10 @@ function groundTools(subject) {
  * `activity_picks`, a tool it was never handed; reading only text blocks scores that real
  * answer as `empty_research`, so tool arguments count as notes too.
  */
-function readEvidence(content) {
+function readEvidence(content, now = Date.now()) {
   let searchResults = 0;
   let pagesRead = 0;
+  let pagesStale = 0;
   let pagesRefused = 0;
   const notes = [];
 
@@ -226,12 +248,28 @@ function readEvidence(content) {
         continue;
       }
       pagesRead += 1;
+      const at = Date.parse(result.retrieved_at ?? '');
+      if (!Number.isFinite(at) || now - at > FETCH_FRESHNESS_MS) pagesStale += 1;
       const text = result.content?.source?.data ?? '';
       if (text !== '') notes.push(`--- page: ${result.url ?? ''} ---\n${text}`);
     }
   }
 
-  return { searchResults, pagesRead, pagesRefused, notes: notes.join('\n').trim() };
+  return { searchResults, pagesRead, pagesStale, pagesRefused, notes: notes.join('\n').trim() };
+}
+
+/**
+ * MAY THIS TURN SAY WHAT A PAGE DOES NOT CARRY? The sweep's rule, verbatim (sweep.ts):
+ * a page READ TODAY licenses it and nothing else does — not a snippet, and not a
+ * `web_fetch` the provider answered out of its own cache from before today.
+ *
+ * A cached ground record written before `pagesStale` existed carries no freshness stamp
+ * for its reads, and the runtime's rule for a read with no stamp is that it is STALE
+ * (evidence.ts `readToday`: unknown age is not evidence of freshness). So an un-stamped
+ * record licenses nothing, which is the same answer read one layer up.
+ */
+function pagesOpenedToday(ground) {
+  return ground.pagesRead - (ground.pagesStale ?? ground.pagesRead) > 0;
 }
 
 /** Every title and URL the search itself returned - the ground truth a pick must trace to.
@@ -323,13 +361,45 @@ function topPickLeads(body, picks) {
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
+/** Mirrors `claimsNotPosted` in followup-note.ts, clause for clause. A negated
+ * publishing word said by a turn that opened no page is a report on a page nobody read -
+ * the 2026-08-21 and 2026-08-22 defect in both its sightings. */
+const UNPUBLISHED_WORD = /\b(?:posted|listed|published|announced|out|up)\b/i;
+const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n'?t\b/i;
+
+function claimsNotPosted(body) {
+  return body
+    .split(CLAUSE_BOUNDARY)
+    .some((clause) => ABSENCE.test(clause) && UNPUBLISHED_WORD.test(clause));
+}
+
+/** Mirrors `statesTheReturn`. */
+const STATES_RETURN =
+  /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
+
+/** Mirrors `watchWarranted` in activity/sweep.ts: nothing found, or a best find whose day
+ * or price the answer could not carry. It is what decides both the ledger row and what
+ * the copy is allowed to claim, so the eval computes it the same way. */
+function watchWarranted(picks) {
+  const top = picks[0];
+  if (!top) return true;
+  return !carriesFact(top.when) || !carriesFact(top.price);
+}
+
+/** Mirrors `carriesFact` (sweep.ts): a field that explains its own absence is an
+ * absence, not a value. Live on 2026-08-22 the extract filled `price` with "Not listed
+ * on main site..." rather than leaving it out. */
+function carriesFact(field) {
+  return Boolean(field) && String(field).trim() !== '' && !claimsNotPosted(String(field));
+}
+
 /**
  * Everything wrong with this follow-up, in the runtime's own words - mirrors
  * `followUpViolations` in apps/web/lib/channel/activity/followup-note.ts. The `reason` is
  * what gets handed BACK to the model on a recompose, so it has to be the sentence
  * production would hand back; the `tag` is what this eval counts.
  */
-function followUpViolations(body, picks, smsSegments) {
+function followUpViolations(body, picks, smsSegments, pagesOpened, watch) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
@@ -355,6 +425,28 @@ function followUpViolations(body, picks, smsSegments) {
     violations.push({
       tag: 'buried_top_pick',
       reason: `The best find (${picks[0]?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
+    });
+  }
+  if (body.includes('?')) {
+    violations.push({
+      tag: 'asks_for_permission',
+      reason:
+        'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
+    });
+  }
+  if (!pagesOpened && claimsNotPosted(body)) {
+    violations.push({
+      tag: 'unread_not_unposted',
+      reason:
+        'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.',
+    });
+  }
+  if (watch !== STATES_RETURN.test(body)) {
+    violations.push({
+      tag: watch ? 'silent_watch' : 'unbacked_promise',
+      reason: watch
+        ? 'This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "I\'ll keep watching and text you when they post."'
+        : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }
   return violations;
@@ -475,12 +567,32 @@ const JUDGE_SYSTEM = [
   'A 5: every pick is a real, specific, local thing a parent could turn up to - a named',
   'place, plausibly fitting the stage - and at most three of them. The message leads with',
   'the best one by name, says whose information it is ("their site says", "listed as"), and',
-  'offers to confirm rather than claiming to have confirmed.',
-  'It is one or two short sentences of plain text with no link and exactly one question.',
+  'attributes rather than claiming to have confirmed.',
+  'It is one or two short sentences of plain text with no link and NO QUESTION AT ALL.',
+  'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
+  'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
+  'down; nothing on this path can write one, so a "want me to..." here is a yes with',
+  'nowhere to land (2026-08-22: it landed on an unrelated approvals queue). Do not mark a',
+  'message down for ending on a statement.',
+  'You are given `watch`. When it is TRUE, Hale has ALREADY written a continuation promise',
+  'to go back and look again, and the message must say so in the first person ("I\'ll keep',
+  'watching and text you when they post"): that is a commitment that exists, not an',
+  'unverified claim. When it is FALSE no such row exists and any coming-back sentence is a',
+  'promise nothing is behind - THAT is the low score.',
+  'You are given `pagesOpened`. FALSE means Hale read SEARCH SNIPPETS rather than opening',
+  "a page. Attribution is still correct and still expected - a snippet off the venue's own",
+  'site IS "their site says", and marking that down is wrong. What FALSE forbids is a',
+  'NEGATIVE claim about what a page carries ("the fall times are not posted yet"), because',
+  'nobody looked; the honest form of that sentence is "I could not get into their page',
+  'today". Score the negative claim low, never the attribution.',
+  'Two segments is a hard ceiling. Dropping a second or third find WHOLE to fit the best',
+  'one complete is correct and is not withholding; withholding is going quiet about a find',
+  'when there was room, or hedging instead of naming anything at all.',
   'A pick whose `when` or `price` is null is CORRECT when the source had not published it -',
   'a real program whose fall times are not up yet, or whose schedule sits behind a',
   'registration login, is a genuine find. Score it a 5 when the message NAMES the gap',
-  '("their site lists it, the fall times are not posted yet") and offers to go and get it.',
+  '("their site lists it, the fall times are not posted yet" - only when pagesOpened) and',
+  'says what Hale is already doing about it.',
   'Score it low only if the message invents a day, a time or a price the picks do not carry,',
   'or quietly writes around the gap as though the detail were known.',
   'A LOW score is any of: a venue that looks invented or generic ("your local community',
@@ -515,18 +627,38 @@ function brokenPicks(fixture) {
   if (fixture.expectPicks === true) return { picks: [] };
   return {
     picks: [
+      // COMPLETE, and FIRST on purpose. `watchWarranted` reads the top pick alone, so
+      // while the half-priced Sunnyside row led this list every broken fixture came back
+      // `watch: true` and the `unbacked_promise` gate could not fire on any of them - a
+      // gate nobody had ever seen bite. A whole top pick puts the two watch gates on
+      // opposite sides of the corpus: `watch: false` here, `watch: true` on the three
+      // `expectPicks` fixtures above, which are handed nothing at all.
+      { name: 'Riverbend Play Barn', age_fit: '1-4', when: 'Saturdays 10am', price: '$99', source_name: 'Riverbend' },
       { name: 'Sunnyside Tumbling Academy', age_fit: 'toddlers', when: 'ongoing', source_name: 'Sunnyside' },
-      { name: 'Riverbend Play Barn', age_fit: '1-4', when: 'daily', price: '$99', source_name: 'Riverbend' },
       { name: 'Maple Grove Movement', age_fit: '2-5', when: 'weekly', source_name: 'Maple Grove' },
       { name: 'Hilltop Kinder Gym', age_fit: '1-3', when: 'mornings', source_name: 'Hilltop' },
       { name: 'Brookvale Tots', when: 'Mondays 10am', source_name: 'Brookvale' },
     ],
   };
 }
-const BROKEN_FOLLOWUP = {
-  message:
-    'I had a look around your area this afternoon and went through a whole pile of listings for you, and there is quite a lot going on for the little ones at the moment across all of the nearby towns, more than I could reasonably fit into one message here. I confirmed Sunnyside Tumbling Academy runs daily - see sunnysidetumbling.ca for the rest of them.',
-};
+
+/**
+ * The broken follow-up TEXT, split on `watch` — because the two ledger gates want
+ * opposite sentences and one payload cannot fail both.
+ *
+ * Every branch keeps the corpus-wide offences the single constant used to carry (a URL,
+ * an "I confirmed", three segments, and a top pick buried past the first one), and adds
+ * the ones that were sitting at zero: a QUESTION, a claim that a page nobody opened has
+ * nothing on it, and a coming-back sentence with no row behind it. Those three had never
+ * been seen to fire in either direction, which is the same as not having them.
+ */
+function brokenFollowUp(watch) {
+  return {
+    message: watch
+      ? 'I had a look around your area this afternoon and went through a whole pile of listings for you, and there is quite a lot going on for the little ones at the moment across the nearby towns. Their fall times are not posted yet. I confirmed Sunnyside Tumbling Academy runs daily - see sunnysidetumbling.ca for the rest. Want me to check back once they are up?'
+      : 'I had a look around your area this afternoon and went through a whole pile of listings for you, and there is quite a lot going on for the little ones at the moment across the nearby towns. I confirmed Sunnyside Tumbling Academy runs daily - see sunnysidetumbling.ca for the rest, and I will keep looking and text you when the rest of the fall schedule lands.',
+  };
+}
 
 async function cachedGround(opts) {
   const { tag, model, system, userMessage, tools, cachedOnly, getClient, cost } = opts;
@@ -552,6 +684,7 @@ async function cachedGround(opts) {
   const value = {
     searchCount: evidence.searchResults,
     pagesRead: evidence.pagesRead,
+    pagesStale: evidence.pagesStale,
     pagesRefused: evidence.pagesRefused,
     notes: evidence.notes,
     evidence: searchEvidence(response.content),
@@ -599,7 +732,7 @@ async function main() {
 
     // ── phase 1: GROUND (web_search) ─────────────────────────────────────────
     const ground = broken
-      ? { searchCount: 0, pagesRead: 0, pagesRefused: 0, notes: '', evidence: '' }
+      ? { searchCount: 0, pagesRead: 0, pagesStale: 0, pagesRefused: 0, notes: '', evidence: '' }
       : await cachedGround({
           tag: `activity-ground:${fixture.id}`,
           model,
@@ -670,19 +803,24 @@ async function main() {
     // production would have shortened and sent, which is measuring something the product
     // does not do. First-draft quality still has to be VISIBLE or it could rot behind the
     // repair loop, so it is counted and printed - just not fatal.
+    // The two facts about the SWEEP that the composer is now told, computed the way the
+    // sweep computes them (sweep.ts). `pagesOpened` is what licenses a negative claim
+    // about a page; `watch` is whether a continuation row exists to be spoken for.
+    const pagesOpened = pagesOpenedToday(ground);
+    const watch = watchWarranted(kept);
     let body = '';
     let violations = [];
     let firstDraftViolations = [];
     for (let attempt = 1; attempt <= MAX_FOLLOWUP_ATTEMPTS; attempt += 1) {
       const composed = broken
-        ? BROKEN_FOLLOWUP
+        ? brokenFollowUp(watch)
         : (
             await cachedToolCall({
               tag: `activity-followup:${fixture.id}:${attempt}`,
               model,
               system: skill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, kept),
+                followUpUserMessage(fixture.subject, kept, pagesOpened, watch),
                 violations,
               ),
               toolName: 'followup_text',
@@ -696,7 +834,7 @@ async function main() {
           ).value;
 
       body = flatten(composed.message);
-      violations = followUpViolations(body, kept, smsSegments);
+      violations = followUpViolations(body, kept, smsSegments, pagesOpened, watch);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
@@ -705,6 +843,8 @@ async function main() {
     // ── the judge (skipped in broken mode; the deterministic layer proves calibration) ──
     if (!broken) {
       const verdict = await judge(fixture.id, {
+        watch,
+        pagesOpened,
         subject: fixture.subject,
         town: fixture.town,
         stage: fixture.stage,
@@ -756,6 +896,18 @@ async function main() {
   console.log(`claims verification:     ${count('claims_verification')}  (web-read is not confirmed)`);
   console.log(`buried top pick:         ${count('buried_top_pick')}  (the trim cuts from the end)`);
   console.log(`links a URL:             ${count('links_a_url')}`);
+  console.log(
+    `asks for permission:     ${count('asks_for_permission')}  (an offer is a proposal, and this lane can write no row)`,
+  );
+  console.log(
+    `unread claimed unposted: ${count('unread_not_unposted')}  (a claim about a page nobody opened)`,
+  );
+  console.log(
+    `unbacked promise:        ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
+  );
+  console.log(
+    `silent watch:            ${count('silent_watch')}  (a row was written and the text never said so)`,
+  );
   // NOT a gate, and deliberately: a fetch refused (`url_not_allowed`) is a real and common
   // shape on these very venues, production logs it and answers from the snippets anyway.
   // What it must never become is invisible - a corpus where the venue fixtures stop

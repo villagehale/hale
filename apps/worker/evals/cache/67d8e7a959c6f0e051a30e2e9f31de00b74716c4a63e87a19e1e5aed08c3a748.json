@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly handles an empty pick list for a non-existent program. It is honest and specific: it names what was searched for, states plainly why nothing can be confirmed (\"couldn't get into any provider pages today\"), and commits to coming back (\"I'll keep watching and text you what I find\"). The watch flag is TRUE, so this continuation promise is backed by an actual row. The message makes no offer, asks no questions, and invents no venues. It avoids the worst failure cited in watchFor—a confident invented venue—and instead delivers transparency about the search outcome and the commitment to follow up."
+  }
+}
