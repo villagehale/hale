@@ -885,5 +885,6 @@ describe('the last read of the string that actually leaves', () => {
     const sent = h.transport.sent[0]?.body ?? '';
     expect(sent).toContain('STOP to opt out.');
     expect(sent).toContain(SHARE_URL);
+    expect(sent).not.toContain('?');
   });
 });
