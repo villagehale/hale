@@ -218,6 +218,45 @@ describe('compactTranscript (MEM-4)', () => {
     expect(summary).toMatch(/partial/i);
   });
 
+  it("carries Hale's own earlier replies into the digest, not only the parent's asks", () => {
+    // The 2026-08-20 amnesia shape, minimised: Hale states a time, the thread runs on
+    // past the verbatim window, and the parent asks it to repeat itself. The digest
+    // used to keep the parent's side ONLY, so the answer was unrecoverable by
+    // construction — 52 of the founder thread's 63 assistant turns left no trace.
+    const long = [
+      turn('assistant', 'Remy swims Thursday at 4:30 at the Rec Centre.'),
+      ...thread(28),
+    ];
+    const summary = _internal.compactTranscript(long).transcriptSummary;
+    if (!summary) throw new Error('expected a digest for an over-budget thread');
+
+    expect(summary).toContain('Remy swims Thursday at 4:30');
+  });
+
+  it('says who spoke each excerpt, so an answer is never read back as an ask', () => {
+    const long = [
+      turn('user', 'when is swimming'),
+      turn('assistant', 'Thursday at 4:30.'),
+      ...thread(28),
+    ];
+    const summary = _internal.compactTranscript(long).transcriptSummary;
+    if (!summary) throw new Error('expected a digest for an over-budget thread');
+
+    // Attribution, not just presence: an unlabelled excerpt list turns Hale's own
+    // answer into something the parent claimed, which is worse than dropping it.
+    expect(summary).toMatch(/parent:\s*"when is swimming"/i);
+    expect(summary).toMatch(/hale:\s*"Thursday at 4:30\."/i);
+    // And the old lie is gone — it was true only while the digest was one-sided.
+    expect(summary).not.toMatch(/Hale's own earlier replies are not included/i);
+  });
+
+  it('keeps twenty whole exchanges verbatim — a texting week, not an afternoon', () => {
+    // Prod, 2026-08-22: the founder's SMS thread is 117 messages. A 20-message window
+    // is under two days of it, so "what did you say about the gym" fell out of the
+    // verbatim slice while the parent still had the text on their phone.
+    expect(_internal.TRANSCRIPT_VERBATIM_TURNS).toBeGreaterThanOrEqual(40);
+  });
+
   it('bounds the digest itself — it does not grow with the thread', () => {
     const chatty = (pairs: number) =>
       _internal.compactTranscript(
@@ -245,8 +284,13 @@ describe('compactTranscript (MEM-4)', () => {
     // age — this is the whole point: loyalty must not buy a slower, dumber coach.
     expect(decade.transcript).toHaveLength(_internal.TRANSCRIPT_VERBATIM_TURNS);
     expect(oneYear.transcript).toHaveLength(_internal.TRANSCRIPT_VERBATIM_TURNS);
-    // 10x the history, same payload size to within the dropped-count's digits.
+    // 10x the history, same bounded payload. The slack is 100 rather than 10 because
+    // the digest now labels each excerpt with its speaker: how many labelled excerpts
+    // fit under a CHARACTER budget depends on how long they are, and this fixture's
+    // own turn numbers get a digit wider at 10x. The invariant is the ceiling, which
+    // is asserted absolutely below — never a payload that scales with the thread.
     const grew = JSON.stringify(decade).length - JSON.stringify(oneYear).length;
-    expect(grew).toBeLessThan(10);
+    expect(grew).toBeLessThan(100);
+    expect(decade.transcriptSummary?.length ?? 0).toBeLessThan(2_048);
   });
 });
