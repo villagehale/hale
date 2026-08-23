@@ -402,6 +402,7 @@ describe('the activity question is answered', () => {
         answer: write(results),
         steps: steps.length + 1,
         hitMaxSteps: false,
+        truncatedRetries: 0,
         usage: {
           promptTokens: 100,
           completionTokens: 40,

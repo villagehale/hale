@@ -47,6 +47,7 @@ function answering(answer: string | null, hitMaxSteps = false): ChannelCoachPort
     answer,
     steps: 1,
     hitMaxSteps,
+    truncatedRetries: 0,
     usage: { promptTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, completionTokens: 20 },
   });
 }
@@ -262,6 +263,7 @@ describe('channelCoachRuntime', () => {
         answer: 'ok.',
         steps: 1,
         hitMaxSteps: false,
+        truncatedRetries: 0,
         usage: {
           promptTokens: 1224,
           cacheCreationTokens: 1024,

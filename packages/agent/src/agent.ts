@@ -100,6 +100,13 @@ export interface RunAgentResult {
   steps: number;
   /** True iff the loop stopped because it hit maxSteps rather than finishing. */
   hitMaxSteps: boolean;
+  /**
+   * How many steps had to be re-asked because the completion was truncated before it
+   * emitted any text. Zero on an ordinary turn. Named rather than absorbed into `steps`
+   * (rule #11): a turn that bought its answer twice is a different, slower, dearer event
+   * than one that did not, and a recovery nobody can see is one nobody can budget for.
+   */
+  truncatedRetries: number;
   usage: AgentUsage;
 }
 
@@ -360,6 +367,29 @@ function wireLane(task: AgentTask): WireLaneFields {
   return laneRequestFields(pickLane(task)) as WireLaneFields;
 }
 
+/**
+ * How much bigger the one re-ask gets. Three times, because the step that triggers this
+ * spent 100% of its budget thinking: it needs room to finish the thought AND say
+ * something, and a factor that merely nudges buys a second empty completion.
+ */
+const TRUNCATED_RETRY_FACTOR = 3;
+
+/**
+ * Did this completion hit the token ceiling before producing anything usable?
+ *
+ * Text OR a tool call means the budget went where it was supposed to — a clipped
+ * sentence is still an answer the post-processor can trim, and re-asking there would pay
+ * twice for something already in hand. Only a `max_tokens` stop with neither is the case
+ * worth buying again.
+ */
+function isTruncatedBeforeSpeaking(response: Anthropic.Message): boolean {
+  return (
+    response.stop_reason === 'max_tokens' &&
+    textFrom(response.content) === null &&
+    !response.content.some((b) => b.type === 'tool_use')
+  );
+}
+
 function textFrom(content: Anthropic.ContentBlock[]): string | null {
   const parts = content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -499,20 +529,59 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   let cacheCreationTokens = 0;
   let completionTokens = 0;
   let steps = 0;
+  let truncatedRetries = 0;
+
+  const maxTokens = args.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const meter = (usage: Anthropic.Usage) => {
+    promptTokens += usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
+    completionTokens += usage.output_tokens;
+    cacheReadTokens += usage.cache_read_input_tokens ?? 0;
+    cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
+  };
 
   while (steps < args.maxSteps) {
     steps += 1;
-    const response = await args.client.messages.create({
+    let response = await args.client.messages.create({
       ...lane,
-      max_tokens: args.maxTokens ?? DEFAULT_MAX_TOKENS,
+      max_tokens: maxTokens,
       system,
       ...(tools.length > 0 && { tools }),
       messages,
     });
-    promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
-    completionTokens += response.usage.output_tokens;
-    cacheReadTokens += response.usage.cache_read_input_tokens ?? 0;
-    cacheCreationTokens += response.usage.cache_creation_input_tokens ?? 0;
+    meter(response.usage);
+
+    // THE STEP THAT SAID NOTHING, ASKED AGAIN WITH ROOM.
+    //
+    // `max_tokens` is the ceiling on thinking PLUS text, and on a thinking lane the model
+    // spends it in that order. So a hard turn can hit the ceiling having produced one
+    // empty thinking block and no text and no tool call — a completion that cost a full
+    // budget and carries nothing. Until now that fell through as `answer: null`, which is
+    // the same value the loop returns for "ran out of steps": two different failures in
+    // one bucket, and downstream the SMS router turned both into "nothing was changed"
+    // (rule #11). It is prod's only failed coach-channel-sms run, 2026-08-22 17:41,
+    // 399 thinking tokens of 400 on a follow-up whose answer was sitting in the thread.
+    //
+    // RE-ASKED, not continued: the messages are byte-identical, so this is the same step
+    // with a bigger allowance rather than a new turn — the model has nothing to continue
+    // FROM, since it never said anything. Bounded to ONE escalation per step, because a
+    // parent is waiting and a budget that keeps doubling is a turn that never ends.
+    //
+    // Raising the LANE budget instead was the obvious alternative and it is the wrong
+    // trade: measured on the coach corpus, more room for every turn makes the model
+    // reason its way past its second tool (see the note on MAX_TOKENS in
+    // apps/web/lib/channel/coach/runtime.ts). The room belongs to the turn that proved
+    // it needed it.
+    if (isTruncatedBeforeSpeaking(response)) {
+      truncatedRetries += 1;
+      response = await args.client.messages.create({
+        ...lane,
+        max_tokens: maxTokens * TRUNCATED_RETRY_FACTOR,
+        system,
+        ...(tools.length > 0 && { tools }),
+        messages,
+      });
+      meter(response.usage);
+    }
 
     const toolUses = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
@@ -523,6 +592,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         answer: textFrom(response.content),
         steps,
         hitMaxSteps: false,
+        truncatedRetries,
         usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
@@ -549,6 +619,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         answer: said,
         steps,
         hitMaxSteps: false,
+        truncatedRetries,
         usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
@@ -558,6 +629,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     answer: null,
     steps,
     hitMaxSteps: true,
+    truncatedRetries,
     usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
   };
 }
@@ -618,6 +690,9 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
         answer: textFrom(response.content),
         steps,
         hitMaxSteps: false,
+        // Streaming has no re-ask: a truncated stream has already put partial text on the
+        // wire, so asking again would show the parent two answers to one question.
+        truncatedRetries: 0,
         usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
@@ -635,6 +710,9 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     answer: null,
     steps,
     hitMaxSteps: true,
+    // Streaming has no re-ask: a truncated stream has already put partial text on the
+    // wire, so asking again would show the parent two answers to one question.
+    truncatedRetries: 0,
     usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
   };
 }
