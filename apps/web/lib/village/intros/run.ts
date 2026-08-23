@@ -4,6 +4,7 @@ import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import {
   type OutboundGatePorts,
@@ -237,6 +238,14 @@ export interface IntroSweepDeps {
     },
   ): Promise<string>;
   audit(database: Database, row: IntroSweepAudit): Promise<void>;
+  /**
+   * Put the sent intro in that parent's own text thread — REQUIRED (rule #11). Six of
+   * prod's eleven thread-invisible SMS outbounds on 2026-08-22 were intros, and the
+   * consequence is exactly the one this feature cannot afford: the parent answers "sure"
+   * and the coach, reading a thread in which Hale never spoke, re-asks or guesses. There
+   * is no absence to express — the anchor is derived from the ids (lib/channel/thread.ts).
+   */
+  threadMessage: typeof threadProactiveMessage;
   /** REQUIRED, both of them (rule #11). A sweep that can compose an introduction and
    * quietly fail to deliver it is the worst version of this feature: both families are
    * told yes, audited as disclosed-to, and never hear from each other. */
@@ -401,6 +410,15 @@ async function sendIntroSms(
     dedupeKey: input.dedupeKey,
     providerMessageId,
     sentAt: input.now,
+  });
+  // THE THREAD. This is the one send site behind all three intro templates, so an ask, a
+  // card and a soft close all become things the coach can see Hale having said. The
+  // COMPOSED sentence, never the wire body: the CASL line belongs on the wire and nowhere
+  // else (the rule sweep.ts and plan/check-in.ts already keep).
+  await deps.threadMessage(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    body: composed,
   });
   return { sent: true };
 }
@@ -1237,6 +1255,7 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
       if (!row) throw new Error('village intros: channel_messages insert returned no row');
       return row.id;
     },
+    threadMessage: threadProactiveMessage,
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row);
     },

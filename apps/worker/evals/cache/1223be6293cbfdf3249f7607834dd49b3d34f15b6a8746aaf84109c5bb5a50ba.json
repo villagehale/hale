@@ -1,0 +1,36 @@
+{
+  "response": {
+    "id": "msg_011CeJwZkWnGekFpUAVkLuLE",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EuwDCpABCBEYAipAphCLJwZO8w0aiXMmO+pnker9InaX9D3iKJvyFvTyiOHx8ZTCucFOMSAEfFvCD7nzfY9oPbTvviFsssdrn7yNxzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAb/HqdQGEgzaBnbEIoj1QD6jY8YaDFshvhRWurkDEI16JSIwsxG2caz/9TvobDM/iK6aKONADxL8fp3+Mfh8sv4t8JOU28MRtxYIOTnhVsx2ICCjKogCP3O/ferUWIk5wN8jmG5Cm9SnYMROC0VfbRMZTUtOx6yZE3moRZju5SncfhddiI39TlvHrzto/y9mHwJ68ylvRK2CFl3j3m/LhSLmuWq6O9QKkbzB8DSxBExczhWCetrBIs2mXqHqdw86AaxFzFkjDI/ipt633o/XAJxIWhXFGbdbWvupDwXxdTwHqtkmv5ujmlBiq2dM7YeeIxBGi9z9RsAx71gcFHL+TabVAtpzT3zg88kjFw3cg9ZOQcl8yfOBDpqlBb7PaJaGiuj8dIZuHtqIHEe08/EpXhdfL4LbkgrnqmmPFGGOGR1Tan9qUYPJ0+KpK7uWIm44/9OWtaz/FsTrmqmRZXAtGAE="
+      },
+      {
+        "type": "text",
+        "text": "I don't see a gymnastics class we've been tracking - can you tell me the name or where it's at so I can look it up?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 646,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 13724,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 123,
+      "output_tokens_details": {
+        "thinking_tokens": 83
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

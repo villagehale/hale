@@ -286,6 +286,123 @@ describe('runAgent loop mechanics', () => {
  * back changes nothing. Discarding the second cost a real parent every fact in the
  * answer — twice in one probe run.
  */
+/**
+ * A completion that hit `max_tokens` before emitting a single token of text.
+ *
+ * Not hypothetical and not rare: `converse` is `{thinking:'adaptive', effort:'high'}`, and
+ * `max_tokens` is the ceiling on thinking PLUS text with the model spending it in that
+ * order. The SMS coach's 400 was set as a reply ceiling before the lane had thinking at
+ * all, so a hard turn spends the whole budget reasoning and returns a message with one
+ * empty thinking block and no text — 399 thinking tokens of 400, `stop_reason:
+ * 'max_tokens'`. That is prod's single failed coach-channel-sms run (2026-08-22 17:41),
+ * and the parent got the router's "nothing was changed" apology on a turn where nothing
+ * had gone wrong.
+ */
+function truncatedThinkingMessage(u: Anthropic.Usage): Anthropic.Message {
+  return {
+    id: 'msg-truncated',
+    type: 'message',
+    role: 'assistant',
+    model: 'claude-sonnet-4-6',
+    stop_reason: 'max_tokens',
+    stop_sequence: null,
+    content: [{ type: 'thinking', thinking: '', signature: 'sig' } as Anthropic.ContentBlock],
+    usage: u,
+  };
+}
+
+describe('runAgent when a step is truncated before it says anything', () => {
+  function capturing(script: Anthropic.Message[]) {
+    const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
+    let calls = 0;
+    const client = {
+      messages: {
+        create: vi.fn(async (params: Anthropic.MessageCreateParamsNonStreaming) => {
+          requests.push(params);
+          const msg = script[calls];
+          calls += 1;
+          if (!msg) throw new Error('capturing: script exhausted');
+          return msg;
+        }),
+      },
+    } as unknown as AgentClient;
+    return { client, requests };
+  }
+
+  const args = (client: AgentClient) => ({
+    skill,
+    context: { q: 'when does he need shoes' },
+    tools: [profileTool],
+    client,
+    maxSteps: 6,
+    maxTokens: 400,
+    toolContext: { familyId: 'fam-1', actor: 'user-1' },
+    guardDeps: guardDeps().deps,
+  });
+
+  it('asks again with room instead of handing back an empty answer', async () => {
+    const { client, requests } = capturing([
+      truncatedThinkingMessage(usage(1_000, 400)),
+      textMessage('Around 18 months, once he is walking outside.', usage(1_000, 40)),
+    ]);
+
+    const result = await runAgent(args(client));
+
+    // The recovery, not the symptom: the parent gets the answer the model was in the
+    // middle of composing, not the apology template.
+    expect(result.answer).toBe('Around 18 months, once he is walking outside.');
+    // ONE retry, at a budget big enough that a turn which already spent 400 on thinking
+    // can both finish and speak. Same messages — this is a re-ask, not a next step.
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.max_tokens).toBeGreaterThan(400);
+    expect(requests[1]?.messages).toEqual(requests[0]?.messages);
+    // NAMED, not folded into the step count: a turn that had to buy its answer twice is
+    // a different event from one that did not, and telemetry must be able to see it
+    // (rule #11 — never a silent recovery).
+    expect(result.truncatedRetries).toBe(1);
+    // The retry's tokens are counted. A recovery that under-reports what it spent turns
+    // the cost dashboards into fiction.
+    expect(result.usage.completionTokens).toBe(440);
+  });
+
+  it('does not retry a step that was truncated AFTER it had started speaking', async () => {
+    // Text present means the budget was spent on the answer, not swallowed by thinking.
+    // Re-asking there would pay twice for a reply the post-processor can already trim.
+    const clipped: Anthropic.Message = {
+      id: 'msg-clipped',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'max_tokens',
+      stop_sequence: null,
+      content: [{ type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock],
+      usage: usage(1_000, 400),
+    };
+    const { client, requests } = capturing([clipped]);
+
+    const result = await runAgent(args(client));
+
+    expect(requests).toHaveLength(1);
+    expect(result.answer).toBe('Around 18 months, once he');
+    expect(result.truncatedRetries).toBe(0);
+  });
+
+  it('gives up after one retry rather than escalating forever', async () => {
+    const { client, requests } = capturing([
+      truncatedThinkingMessage(usage(1_000, 400)),
+      truncatedThinkingMessage(usage(1_000, 1_200)),
+    ]);
+
+    const result = await runAgent(args(client));
+
+    // Two calls total, then the honest empty answer — an unbounded escalation on a turn
+    // a parent is waiting on is worse than saying nothing.
+    expect(requests).toHaveLength(2);
+    expect(result.answer).toBeNull();
+    expect(result.truncatedRetries).toBe(1);
+  });
+});
+
 describe('runAgent keeps the answer written beside a registering tool call', () => {
   const promiseSkill: Skill = {
     ...skill,

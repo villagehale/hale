@@ -39,6 +39,7 @@ const RESULT: RunAgentResult = {
   answer: 'Swim is Thursday at four thirty.',
   steps: 1,
   hitMaxSteps: false,
+  truncatedRetries: 0,
   usage: {
     promptTokens: 900,
     completionTokens: 20,

@@ -33,12 +33,21 @@ import type { TranscriptMessage } from './conversation';
 const RECENT_EPISODE_LIMIT = 10;
 const RELEVANT_FACT_LIMIT = 30;
 
-/** Newest turns of the thread the agent sees verbatim; everything older compacts. */
-const TRANSCRIPT_VERBATIM_TURNS = 20;
+/**
+ * Newest turns of the thread the agent sees verbatim; everything older compacts.
+ *
+ * Forty, i.e. twenty exchanges, because the unit a parent thinks in is "this week's
+ * texting", not "this afternoon's". At twenty the founder's own 117-message thread
+ * kept under two days: a bare-noun follow-up about a gym Hale had named on Tuesday
+ * resolved against nothing on Thursday, while the text was still on their phone
+ * (2026-08-22 forensics). The cost is input tokens on a lane whose budget is steps
+ * and output, not input — see the token note on {@link compactTranscript}.
+ */
+const TRANSCRIPT_VERBATIM_TURNS = 40;
 /** How much of one compacted turn survives as an excerpt, in characters. */
 const COMPACTED_EXCERPT_CHARS = 120;
-/** Ceiling on the excerpt list inside the digest, in characters (~250 tokens). */
-const COMPACTED_EXCERPTS_MAX_CHARS = 1_000;
+/** Ceiling on the excerpt list inside the digest, in characters (~400 tokens). */
+const COMPACTED_EXCERPTS_MAX_CHARS = 1_600;
 
 const EXCERPT_SEPARATOR = ' | ';
 
@@ -151,11 +160,17 @@ function clip(text: string, max: number): string {
  * turns survive verbatim, everything older collapses into one digest.
  *
  * Deterministic on purpose — no model call on a turn a parent is waiting on, and a
- * digest that can't hallucinate a conversation that didn't happen. The digest keeps
- * the PARENT's earlier messages (what they asked and told Hale is the durable
- * signal) and drops Hale's own earlier replies; the parts of those replies that must
- * survive are already rows elsewhere — facts, episodes, and the open-loops ledger
- * that holds Hale's promises precisely because compaction is lossy by design.
+ * digest that can't hallucinate a conversation that didn't happen.
+ *
+ * BOTH SIDES SURVIVE, attributed. The digest used to keep the parent's messages only,
+ * on the theory that the durable parts of Hale's replies are already rows elsewhere
+ * (facts, episodes, the open-loops ledger). They are not: a fact Hale STATED — a
+ * time, a price, a venue's name — is a fact the parent can ask it to repeat, and in
+ * the founder's thread 52 of 63 assistant turns fell out of the window leaving no
+ * trace at all, so "what time did you say again?" was unanswerable by construction
+ * (2026-08-22 forensics). Excerpts are labelled `Parent:` / `Hale:` because an
+ * unattributed list is worse than none — it lets the model read its own answer back
+ * as something the parent asserted.
  *
  * The digest is itself capped, and every loss is NAMED: how many turns went, how
  * many excerpts didn't fit, and that what remains is partial. A silently shortened
@@ -171,33 +186,32 @@ function compactTranscript(transcript: readonly TranscriptMessage[]): {
   }
 
   const cut = transcript.length - TRANSCRIPT_VERBATIM_TURNS;
-  const olderAsks = transcript.slice(0, cut).filter((t) => t.role === 'user');
+  const older = transcript.slice(0, cut);
 
   // Newest-first, so the excerpts that survive the budget are the ones nearest now.
   const excerpts: string[] = [];
   let budget = COMPACTED_EXCERPTS_MAX_CHARS;
-  for (let i = olderAsks.length - 1; i >= 0; i -= 1) {
-    const ask = olderAsks[i];
-    if (!ask) continue;
-    const excerpt = clip(ask.content, COMPACTED_EXCERPT_CHARS);
+  for (let i = older.length - 1; i >= 0; i -= 1) {
+    const turn = older[i];
+    if (!turn) continue;
+    const speaker = turn.role === 'assistant' ? 'Hale' : 'Parent';
+    const excerpt = `${speaker}: "${clip(turn.content, COMPACTED_EXCERPT_CHARS)}"`;
     if (excerpt.length + EXCERPT_SEPARATOR.length > budget) break;
     budget -= excerpt.length + EXCERPT_SEPARATOR.length;
     excerpts.push(excerpt);
   }
   excerpts.reverse();
-  const omitted = olderAsks.length - excerpts.length;
+  const omitted = older.length - excerpts.length;
 
   const parts = [`${cut} earlier turns of this conversation are not shown.`];
   if (excerpts.length > 0) {
-    parts.push(
-      `What the parent said in that span, oldest first: ${excerpts.map((e) => `"${e}"`).join(EXCERPT_SEPARATOR)}.`,
-    );
+    parts.push(`What was said in that span, oldest first: ${excerpts.join(EXCERPT_SEPARATOR)}.`);
   }
   if (omitted > 0) {
-    parts.push(`${omitted} older messages from the parent are omitted from this digest.`);
+    parts.push(`${omitted} older messages are omitted from this digest.`);
   }
   parts.push(
-    "Hale's own earlier replies are not included. This is a partial record of the thread — do not treat it as complete, and ask rather than assume if an earlier detail matters.",
+    'This is a partial record of the thread — do not treat it as complete, and ask rather than assume if an earlier detail matters.',
   );
 
   return { transcript: transcript.slice(cut), transcriptSummary: parts.join(' ') };

@@ -305,6 +305,47 @@ const DIAGNOSIS_AND_DOSING = [
  * per-fixture escape hatch, for the question whose subject the standing family does not
  * contain.
  */
+
+/**
+ * A week of ordinary texting, as filler.
+ *
+ * The continuity fixtures below have to place a load-bearing exchange at a REAL distance
+ * — the founder's own SMS thread is 117 messages, and the amnesia that started this work
+ * happened in the gap between "Hale said it on Tuesday" and "the parent asked on
+ * Thursday". A two-turn transcript cannot exercise that gap at all: it fits inside every
+ * window anyone has ever set, so a fixture built on one grades the model's attention
+ * rather than the context builder's keep-rules.
+ *
+ * The turns are deliberately inert: no venue, no date, no price, no child name. Anything
+ * quotable in here would end up in the fabrication gate's haystack and quietly license a
+ * reply to name it, which is the opposite of what these fixtures are for.
+ */
+const SMALL_TALK = [
+  ['ok thanks', 'Anytime.'],
+  ['got it', 'Good.'],
+  ['sounds good', "You're set."],
+  ['no thanks not this week', 'Understood.'],
+  ['maybe later', "I'll leave it."],
+  ['all good here', 'Glad to hear it.'],
+  ['nothing for now', 'Nothing from me either.'],
+  ['thanks for checking', 'Of course.'],
+  ['we are away this weekend', 'Enjoy it.'],
+  ['back home now', 'Welcome back.'],
+  ['busy week', 'I hear you.'],
+  ['can we do this later', 'Whenever suits.'],
+];
+
+/** `pairs` filler exchanges, offset so two blocks in one thread are not identical. */
+function smallTalk(pairs, offset = 0) {
+  const out = [];
+  for (let i = 0; i < pairs; i += 1) {
+    const pair = SMALL_TALK[(i + offset) % SMALL_TALK.length];
+    out.push({ role: 'user', content: pair[0] });
+    out.push({ role: 'assistant', content: pair[1] });
+  }
+  return out;
+}
+
 export const COACH_CHANNEL_FIXTURES = [
   {
     id: 'move-named-day',
@@ -671,6 +712,103 @@ export const COACH_CHANNEL_FIXTURES = [
       // Either one alone is the defect this fixture exists for.
       mustMention: ['sep', 'tiny tumblers'],
       forbidden: [...HEDGES, 'the app'],
+    },
+  },
+  {
+    id: 'continuity-bare-noun',
+    text: 'so which of the two would remy be in',
+    note: "GATE 1 of the continuity trio (2026-08-22). A bare noun whose antecedent is 32 turns back - Hale named Tiny Gym and Mini Gym on Tuesday, the parent asks on Thursday, and their text names NEITHER class - 'the two' is the whole reference. That distance is the whole fixture: it sits INSIDE a forty-turn verbatim window and OUTSIDE the twenty-turn one this corpus shipped with, so before the fix the model was handed a digest that kept the parent's question and threw Hale's answer away. Remy is 20 months, so Tiny Gym is the only true answer and it is derivable from the thread alone - nothing on the fixture week, in the village tool or in the radar mentions a gym.",
+    children: [FIXTURE_TODDLER, ...FIXTURE_CHILDREN],
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    continuity: 'the two-line answer 32 turns back',
+    transcript: [
+      ...smallTalk(7),
+      { role: 'user', content: 'anything for remy at cartwheels this fall' },
+      {
+        role: 'assistant',
+        content:
+          'Cartwheels runs Tiny Gym for under 3.5s with a parent, and Mini Gym once they are 3.5 and going solo.',
+      },
+      ...smallTalk(15, 3),
+    ],
+    expect: {
+      // A question, not an instruction. Nothing here asks for a change.
+      mustNotDraft: true,
+      // The antecedent, resolved. Naming the wrong class is as bad as naming neither.
+      mustMention: ['tiny gym'],
+      // The amnesia vocabulary, in the shapes the 2026-08-20 incident produced: asking
+      // which one they meant, or reporting a blank where the thread has the answer.
+      forbidden: [
+        ...HEDGES,
+        'which one did you mean',
+        "i don't have",
+        'i do not have',
+        'not finding',
+        'remind me',
+      ],
+    },
+  },
+  {
+    id: 'continuity-restate-fact',
+    text: 'what was the price you said for the gym one again',
+    note: "GATE 2. Hale STATED a figure, 62 turns back - past the verbatim window in either setting, so this fixture grades the DIGEST rather than the window. The old digest kept the parent's asks and dropped Hale's replies outright ('Hale's own earlier replies are not included'), which made every fact Hale had ever stated unrecoverable the moment it aged out. $124 is deliberately unreachable any other way: no tool returns it, the fixture week does not contain it, and the radar is empty here, so a reply that produces it read the digest and a reply that guesses it trips the fabrication gate.",
+    children: [FIXTURE_TODDLER, ...FIXTURE_CHILDREN],
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    continuity: "Hale's own figure, 62 turns back, digest-only",
+    transcript: [
+      { role: 'user', content: 'how much is the gymnastics thing' },
+      {
+        role: 'assistant',
+        content: 'Tiny Gym at Cartwheels is $124 for the term, Sundays at 9:30.',
+      },
+      ...smallTalk(30),
+    ],
+    expect: {
+      mustNotDraft: true,
+      mustMention: ['124'],
+      forbidden: [
+        ...HEDGES,
+        "i don't have",
+        'i do not have',
+        'not finding',
+        'remind me',
+        "didn't say",
+        'did not say',
+      ],
+    },
+  },
+  {
+    id: 'continuity-after-proactive-send',
+    text: 'can you get that gymnastics class on our calendar',
+    note: "GATE 3. The antecedent is a message HALE started - an activity follow-up, sent unprompted 31 turns back, with no parent turn before it. Two things had to be true for this to work and neither was: the send had to reach the thread at all (11 of 71 post-account SMS outbounds in prod on 2026-08-22 did not, because `channel_messages` stores no body and the senders skipped `messages`), and it had to survive compaction (the old digest dropped assistant turns, so a proactive send left no trace whatsoever). 'That gymnastics class' names a category and nothing else - the class, the day, the time and the start date exist in that one message and nowhere else in the turn, so a draft with real details in it is a draft that read a proactive send.",
+    children: [FIXTURE_TODDLER, ...FIXTURE_CHILDREN],
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    continuity: 'a proactive send 31 turns back, no parent turn before it',
+    transcript: [
+      ...smallTalk(7),
+      {
+        role: 'assistant',
+        content:
+          'Update on the gymnastics: Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.',
+      },
+      ...smallTalk(15, 5),
+    ],
+    expect: {
+      // The parent asked for it on the calendar. A turn that cannot place the reference
+      // must not guess, so the draft IS the gate: severing the thread turns this into a
+      // clarifying question, which is what the severed run must produce.
+      mustDraft: ['calendar_add'],
+      // YES is the word C1's fast-path matches, and the NAME is what makes the draft
+      // confirmable: a parent cannot approve "it". Naming it is also the half of this
+      // gate a severed run cannot fake - "Tiny Gym" exists nowhere but that message.
+      mustMention: ['yes', 'tiny gym'],
+      forbidden: [
+        ...HEDGES,
+        'which one did you mean',
+        "i don't have",
+        'i do not have',
+        'not finding',
+      ],
     },
   },
   {

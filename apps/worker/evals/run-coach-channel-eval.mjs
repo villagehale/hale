@@ -70,8 +70,18 @@
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-coach-channel-eval.mjs          # live, then caches
 //   node --env-file=../../.env evals/run-coach-channel-eval.mjs --broken # calibration: must FAIL
+//   node --env-file=../../.env evals/run-coach-channel-eval.mjs --severed # continuity control: must FAIL
 //   node evals/run-coach-channel-eval.mjs --cached-only                  # CI: replay only
 //   ... --show                                                           # print each reply
+//   ... --only=<id,id>                                                   # one fixture, or a few
+//   ... --nonce=<tag>                                                    # draw a FRESH sample
+//
+// `--nonce` exists because "did my change break this fixture, or was the corpus green on a
+// lucky sample?" is otherwise unanswerable: the cache is content-addressed, so the only way
+// to re-roll the same request is to perturb its key. It bought the answer twice on
+// 2026-08-22 — `village-one-verified-one-not` turned out to fail 2 of 3 FRESH samples at the
+// budget it had been passing at for weeks, and the coach's token ceiling was calibrated
+// against samples at 400, 700 and 1,024 rather than against one run of each.
 //
 // Calibrated BOTH directions: the real cached model clears every gate; the --broken
 // stand-in — an agent that cancels the first swim it finds, invents a venue and a
@@ -121,6 +131,11 @@ const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
  * because the skill's frontmatter now requires it and a replica would drift from the
  * one definition both runtimes share (#409). */
 const FRAMEWORK_TOOL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'framework-tool.ts');
+/** The REAL context builder, for its REAL compaction. Imported rather than replicated —
+ * the continuity fixtures below grade the keep-rules themselves, so a hand-rolled copy
+ * of `compactTranscript` here would grade a copy of the thing under test. It resolves
+ * under the tsx loader because context.ts reaches for no `~/` alias. */
+const CONTEXT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-sms.md');
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
@@ -739,7 +754,11 @@ function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding) {
 // Teen children arrive REDACTED to stage, exactly as loadAgentContext emits them — so
 // the model is never handed the name the reply is checked for.
 
-function channelContext(fixture) {
+/**
+ * @param compact  the REAL `compactTranscript` (see CONTEXT_SRC)
+ * @param severed  drop the thread entirely — the continuity fixtures' positive control
+ */
+function channelContext(fixture, compact, severed = false) {
   const children = childrenFor(fixture);
   // Each child's REAL age and REAL stage, not a stand-in. The corpus used to hand every
   // non-teen `stage: 'child', ageMonths: 60`, which cost nothing while every fixture was
@@ -757,6 +776,19 @@ function channelContext(fixture) {
           teenRedacted: false,
         };
   });
+  const compacted = severed
+    ? { transcript: [], transcriptSummary: null }
+    : compact(fixture.transcript ?? []);
+  // A NULL DIGEST IS OMITTED, not sent as `null`, and that is a cache decision rather
+  // than a modelling one. Adding one more key to every context re-keys all 24 standing
+  // fixtures at once, and a re-record is a fresh roll of the model's dice on every gate
+  // in the corpus — noise bought for nothing, since a thread that never compacted has no
+  // digest to reason about either way. Only a fixture whose thread ACTUALLY compacts
+  // re-keys, which is the one re-key this change is entitled to.
+  const thread =
+    compacted.transcriptSummary === null
+      ? { transcript: compacted.transcript }
+      : compacted;
   return {
     parentName: CONTEXT_PARENT_NAME,
     location: { city: cityFor(fixture), province: 'ON', country: 'CA' },
@@ -766,10 +798,13 @@ function channelContext(fixture) {
     stages: [...new Set(injected.map((c) => c.stage))],
     memoryFacts: [],
     recentEpisodes: [],
-    // The thread so far, as loadTranscript hands it over. Empty for a text that stands
-    // on its own, and load-bearing for one that does not: a bare "Yes, please" is only
-    // placeable against the message it is answering.
-    transcript: fixture.transcript ?? [],
+    // The thread so far, THROUGH THE REAL COMPACTOR — verbatim tail plus the digest of
+    // what it dropped, exactly the two fields loadAgentContext puts on the context. This
+    // used to hand the raw fixture transcript over, which meant the corpus could not see
+    // a compaction bug at all: every fixture's thread was two turns long, and two turns
+    // fit inside any window. Load-bearing for a text that does not stand on its own, and
+    // a bare "Yes, please" is only placeable against the message it is answering.
+    ...thread,
     question: fixture.text,
     intent: null,
     sourceNote: null,
@@ -900,7 +935,14 @@ function groundedHay(fixture, toolResults) {
   // not invention. The teen's name is deliberately absent here — if it ever reaches a
   // reply, this gate must be the thing that says so.
   for (const child of childrenFor(fixture)) {
-    if (teenChildren([child], NOW).length === 0) parts.push(child.name);
+    if (teenChildren([child], NOW).length === 0) {
+      // The AGE grounds too, and for the same reason the name does: `ageMonths` is on
+      // the context object for every non-teen child (loadAgentContext toChildContext),
+      // so a reply that says "Remy's 19 months" is quoting what it was handed. Without
+      // it the fabrication gate flagged the one number a coaching answer is most likely
+      // to need. The teen's age stays out, exactly as their name does (rule #1).
+      parts.push(child.name, String(ageInMonths(child.dateOfBirth, NOW)));
+    }
   }
   // The parent's own name and town ride on the same context object (loadAgentContext
   // parentName / location), so addressing them by name is recall, not invention.
@@ -1318,9 +1360,20 @@ async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const show = process.argv.includes('--show');
+  // THE CONTINUITY POSITIVE CONTROL. `--broken` proves the gates fail on a bad REPLY;
+  // this proves the three continuity gates fail on a severed CONTEXT, which is the only
+  // way to know they are grading the thread and not the model's general good sense. A
+  // "resolve the antecedent" gate that still passes with the antecedent deleted is
+  // measuring nothing, and it would go on passing through a regression that put the
+  // window back to twenty turns.
+  const severed = process.argv.includes('--severed');
+  const nonce = (process.argv.find((a) => a.startsWith('--nonce=')) ?? '').split('=')[1] ?? '';
+  const only = (process.argv.find((a) => a.startsWith('--only=')) ?? '').split('=')[1] ?? '';
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
+  const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
+  const compact = contextInternal.compactTranscript;
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
@@ -1334,13 +1387,22 @@ async function main() {
   const judgeModel = (await readModelIds()).sonnet;
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'coach-channel', cachedOnly, getClient, cost);
 
+  const mode = broken ? 'broken' : severed ? 'severed' : 'real';
   console.log(
-    `coach-channel-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | agent=${model} judge=${judgeModel}`,
+    `coach-channel-eval | mode=${mode}${cachedOnly ? ' (cached-only)' : ''} | agent=${model} judge=${judgeModel} | verbatim window=${contextInternal.TRANSCRIPT_VERBATIM_TURNS} turns`,
   );
-  console.log(`corpus: ${COACH_CHANNEL_FIXTURES.length} texts over one fixture week\n`);
+  let corpus = severed
+    ? COACH_CHANNEL_FIXTURES.filter((f) => f.continuity)
+    : COACH_CHANNEL_FIXTURES;
+  if (only) corpus = corpus.filter((f) => only.split(',').includes(f.id));
+  console.log(
+    severed
+      ? `corpus: ${corpus.length} continuity texts, each run with its thread deleted\n`
+      : `corpus: ${corpus.length} texts over one fixture week\n`,
+  );
 
   const results = [];
-  for (const fixture of COACH_CHANNEL_FIXTURES) {
+  for (const fixture of corpus) {
     const calls = [];
     const auditLog = [];
     const children = childrenFor(fixture);
@@ -1351,6 +1413,10 @@ async function main() {
      * gate, because the trimmed body is inside the budget by construction. */
     let composed = null;
     let toolResults = [];
+    // Built ONCE per turn, and read by both the run and the judge — a judge handed a
+    // different thread from the model's is the half-blind grading this harness has
+    // already paid for once (see the `knows` comment below).
+    const turnContext = channelContext(fixture, compact, severed);
 
     if (broken) {
       // PER FIXTURE where one declares its own stand-in, for the reason the finder
@@ -1368,7 +1434,7 @@ async function main() {
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
       ];
       const client = makeCachedAgentClient(
-        `coach-channel:${fixture.id}`,
+        `coach-channel:${fixture.id}${nonce}`,
         model,
         cachedOnly,
         getClient,
@@ -1376,7 +1442,7 @@ async function main() {
       );
       const run = await agent.runAgent({
         skill,
-        context: channelContext(fixture),
+        context: turnContext,
         tools,
         client,
         maxSteps: MAX_STEPS,
@@ -1385,7 +1451,19 @@ async function main() {
         guardDeps: makeGuardDeps(auditLog, children),
       });
       if (run.answer === null) {
-        results.push({ fixture, reply: null, score: null, failures: ['agent returned no answer'] });
+        // WHAT IT SPENT THE BUDGET ON. A bare "no answer" is unactionable: the loop can
+        // end empty because it looped on a rejected tool call, or because it ran the
+        // steps out composing. The call list tells those apart without a second run.
+        results.push({
+          fixture,
+          reply: null,
+          score: null,
+          failures: [
+            `agent returned no answer after ${run.steps} steps (calls: ${
+              calls.map((c) => c.tool).join(', ') || 'none'
+            })`,
+          ],
+        });
         continue;
       }
       const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
@@ -1508,7 +1586,10 @@ async function main() {
               // `knows`: a judge that cannot see the message a "Yes, please" is answering
               // is scoring the reply half-blind, and this harness has already paid for
               // that once (see the `knows` comment above).
-              thread: fixture.transcript ?? [],
+              thread: turnContext.transcript,
+              // The digest of what compaction dropped, when there is one — a judge that
+              // cannot see it grades a recalled fact as an invention.
+              threadDigest: turnContext.transcriptSummary,
               drafted: calls.filter((c) => c.actionType).map((c) => c.actionType),
               reply,
             })
@@ -1556,7 +1637,7 @@ async function main() {
     (r) => typeof r.score === 'number' && r.score < MIN_PER_FIXTURE_VOICE,
   );
   const voiceOk =
-    !broken && scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0;
+    !broken && !severed && scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0;
   const segments = answered.map((r) => smsSegments(r.reply));
   const accuracy = passes.length / results.length;
 
@@ -1612,6 +1693,19 @@ async function main() {
     voiceOk;
 
   console.log('\n--- gate ---');
+  if (severed) {
+    // EVERY continuity fixture must break, not merely the corpus on aggregate: three
+    // gates that only fail together are one gate wearing three names.
+    const survivors = results.filter((r) => r.failures.length === 0).map((r) => r.fixture.id);
+    const ok = survivors.length === 0;
+    if (!ok) {
+      console.log(`still passing with the thread deleted: ${survivors.join(', ')}`);
+    }
+    console.log(
+      `severed-context calibration (every continuity fixture must fail): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+    );
+    process.exit(ok ? 0 : 1);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

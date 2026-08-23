@@ -9,6 +9,7 @@ import {
 } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
@@ -194,6 +195,15 @@ export interface NudgeRunDeps {
    * behind an explicit, result-visible flag, never behind an absent dependency.
    */
   transport: ChannelTransport;
+  /**
+   * Put the sent nudge in the parent's own text thread — REQUIRED, same reason as the
+   * three above (rule #11). `channel_messages` carries no body, so a sweep that could be
+   * assembled without this would text a parent something and leave their reply with no
+   * antecedent the coach can read; that is the state two prod health nudges were in on
+   * 2026-08-22. There is no "no thread" to express: the anchor is derived from the
+   * family and parent ids (lib/channel/thread.ts).
+   */
+  threadMessage: typeof threadProactiveMessage;
   client: AgentClient | null;
 }
 
@@ -461,6 +471,15 @@ async function runForFamily(
     channelMessageId: messageId,
     now,
   });
+  // THE THREAD, which is where the parent's answer will be read. Unconditional and
+  // AFTER the send, like every other post-send write here: a compose that never reached
+  // a transport is not something Hale said. The COMPOSED sentence, never the wire body —
+  // the CASL line belongs on the wire and nowhere else.
+  await deps.threadMessage(database, {
+    familyId: family.familyId,
+    parentUserId: family.parentUserId,
+    body: message,
+  });
   return { kind: 'sent' };
 }
 
@@ -589,5 +608,6 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     fulfillCommitment,
     recordCheckupOffer: (database, input) =>
       recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
+    threadMessage: threadProactiveMessage,
   };
 }
