@@ -74,6 +74,8 @@ interface Harness {
   /** Every ledger write, so a test can assert the TEMPLATE KEY an ask was stamped with —
    * the only thing that makes the reply findable by a capture handler. */
   sends: Array<{ templateKey: string; dedupeKey: string; parentUserId: string }>;
+  /** Every intro that landed in the parent's own text thread (lib/channel/thread.ts). */
+  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
 }
 
 function harness(overrides: {
@@ -99,6 +101,7 @@ function harness(overrides: {
   const statuses: Harness['statuses'] = [];
   const expiries: Harness['expiries'] = [];
   const sends: Harness['sends'] = [];
+  const threaded: Harness['threaded'] = [];
   const identityAsk = overrides.identityAsk ?? new FakeIdentityAsk();
   const introVoice = overrides.introVoice ?? new FakeIntroVoice();
 
@@ -160,6 +163,10 @@ function harness(overrides: {
     audit: async (_db, row) => {
       audits.push({ familyId: row.familyId, actionTaken: row.actionTaken, after: row.after });
     },
+    threadMessage: async (_db, input) => {
+      threaded.push(input);
+      return 'conv-1';
+    },
     transport,
     email,
   };
@@ -177,6 +184,7 @@ function harness(overrides: {
     identityAsk,
     introVoice,
     sends,
+    threaded,
   };
 }
 
@@ -305,6 +313,21 @@ describe('phase 1 - the discoverability ask', () => {
       withOptOut(echoIntroAsk({ kind: 'optin' }), 'short'),
     ]);
     expect(h.audits.filter((a) => a.actionTaken === 'village_intro_ask_sent')).toHaveLength(2);
+  });
+
+  it("puts every intro text in that parent's own thread, composed sentence only", async () => {
+    const h = harness({ families: [family({ familyId: A }), family({ familyId: B })] });
+    await runVillageIntroSweep(DB, h.deps, NOW);
+
+    // Six of prod's eleven thread-invisible SMS outbounds on 2026-08-22 were intros: the
+    // parent replies "sure" to a text Hale has no record of writing, and the coach reads
+    // a thread in which it never spoke. `sendIntroSms` is the ONE send site behind all
+    // three intro templates, so threading it here covers ask, card and soft close.
+    expect(h.threaded.map((t) => t.parentUserId)).toEqual([`user-${A}`, `user-${B}`]);
+    // The composed ask, without the CASL footer the wire carries.
+    expect(h.threaded[0]?.body).toBe(echoIntroAsk({ kind: 'optin' }));
+    expect(h.transport.bodies()[0]).toContain(h.threaded[0]?.body ?? '\u0000');
+    expect(h.threaded[0]?.body).not.toMatch(/STOP/i);
   });
 
   it('never asks a family that is alone in its FSA', async () => {

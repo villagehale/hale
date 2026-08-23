@@ -16,6 +16,7 @@ import {
   FIRST_FIND_DUE_HOURS,
 } from '~/lib/channel/intake/radar-voice';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
@@ -212,6 +213,9 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     // registers the standing question its own close makes (lib/health/offer.ts).
     recordCheckupOffer: (database, input) =>
       recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
+    // The REAL threader over the same store: a nudge the parent can answer has to be a
+    // row in `messages`, because that is the only place their reply's antecedent lives.
+    threadMessage: threadProactiveMessage,
   };
 }
 

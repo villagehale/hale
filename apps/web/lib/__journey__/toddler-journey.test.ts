@@ -30,6 +30,7 @@ import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine'
 import { readCandidates, readWindows, createRadarComposer } from '~/lib/channel/intake/radar';
 import { MAX_PAYLOAD_SEGMENTS } from '~/lib/channel/intake/radar-voice';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   type NudgeFamily,
   type NudgeRunDeps,
@@ -622,6 +623,9 @@ async function runToddlerJourney(): Promise<Journey> {
     // registers the standing question its own close makes (lib/health/offer.ts).
     recordCheckupOffer: (database, input) =>
       recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
+    // The REAL threader over the same store: a nudge the parent can answer has to be a
+    // row in `messages`, because that is the only place their reply's antecedent lives.
+    threadMessage: threadProactiveMessage,
   };
 
   vi.stubEnv('F14_ENABLED', 'true');
@@ -1004,6 +1008,20 @@ describe('4 · the 48h nudge reaches a transport', () => {
       .filter((row) => row.category === 'nudge');
     expect(ledger).toHaveLength(1);
     expect(String(ledger[0]?.providerMessageId)).toMatch(/^fake-out-\d+$/);
+  });
+
+  it('lands in the thread, so the parent can just reply to it', () => {
+    // The ledger row above stores `body: null` by design (rule #1), which means it is
+    // not something the coach can read back. `messages` is, and until 2026-08-22 no
+    // nudge ever reached it: 11 of 71 post-account SMS outbounds in prod were invisible
+    // to the very thread their reply would arrive in, so "yes" landed on whatever else
+    // happened to be standing. The wire body carries the CASL line and this row must
+    // not — the thread is history, not a compliance surface.
+    const threaded = journey.fake.rows(schema.messages).filter((row) => row.role === 'assistant');
+    expect(threaded).toHaveLength(1);
+    const body = String(threaded[0]?.content);
+    expect(journey.nudgeSends[0]?.body).toContain(body);
+    expect(body).not.toContain(NUDGE_OPT_OUT);
   });
 });
 
