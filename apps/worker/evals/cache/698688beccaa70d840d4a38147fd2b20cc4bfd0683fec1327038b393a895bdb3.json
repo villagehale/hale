@@ -1,0 +1,36 @@
+{
+  "response": {
+    "id": "msg_011CeJwXyxrbrn49uPbUioxR",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvUFCpABCBEYAipAAI+HwCVS+KfgSrsujhkfu0MT8FAs2V+EREhEih2cdNHZFEW4lKkPIIOG/RFZyBsyLuAbgSL2Efj25EurhuVX5zIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAafHqdQGEgwaAYS7LC4hDX/TA9YaDBQ8Gk7c4hZf1Co66SIwo1WRYzsqRuuxeoCrw+kuAbDx2a4u5uw2jY9fhpf09eDvHTGoQbZO4V4pLrVyPcxZKpEEHCe9NEsjIIG4SCwVm0iaPNhgwyfeQZb79M/UVBccCtdcOco0liycye2ms3BrXvIpgUya1IfYm5GWeaVbFHSEEqBS5+GYCq7eM1Mi5fFs5nQXLIDrZEj4geCANAPnYQVGeb6372BrsFeQPe64TLc9izP+Lp6z5+plEmntE78YF/E/YzI25cOo8wlULsB6sd0Dxfo5K7oXbfjDvNjp6rjeLF/UAaUVDzROxd5tGvIhZZxRVGsYA0HsTmgiHicdtplSqb+tODt8evTxG+uVTSO0s9h3YPiwjWu32tEQhJ+Dc3zTRReIOTW9yyfwG3aPOlK7IMPUI4EK01/eJwqWDmikj3mXpg0FHulg7twJaBwCAzBBG62iU15rVHnZ+53EnlkTSV9QzDxx9LZ53eCbSlokxjV+vlxpOEyV71HmjzoosTVw8tZ67cT9BZ9NYF4gEs/NlQFQPzsDLZSKadiI0p3D1AMVHXhchr84WVzYYmOux/OMzetNngOltHm0BFtacdDQ9iOEyjheeg9L7NhSNE3LvP8JPb7bSBmFpZ4v0sNw9d7Ec+J9RsXN9zfIHxVbj/MRzQI6sB+94DDd3idzWtmp8iCz96BEElJQFfqfK/f5GgbB7Ad/Ok9MEDRQoyviGKxFtUE/g4jH5TA5ufUeCrmiKGf55Zl1DjK7aQJMcUBB+hGSJpqHUocwaRk+N+fiIVCqUhgB"
+      },
+      {
+        "type": "text",
+        "text": "I'm not sure which two options you mean since I don't have that in view. What are the two you're comparing?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 425,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 13724,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 209,
+      "output_tokens_details": {
+        "thinking_tokens": 175
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}
