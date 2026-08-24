@@ -81,17 +81,27 @@ interface World {
   teenId: string;
 }
 
+/**
+ * ONE Postgres for the whole file, three households inside it. Booting PGlite applies
+ * every committed migration, which is seconds each time — and the isolation that matters
+ * is per-FAMILY, which every query here already scopes to.
+ */
+let postgres: TestDb;
+
 function refFor(checkpointId: string, childId: string): string {
   const checkpoint = checkpointById(checkpointId);
   if (!checkpoint) throw new Error(`fixture drift: no checkpoint '${checkpointId}'`);
   return checkpointRef(checkpoint, childId, 0);
 }
 
+let seededFamilies = 0;
+
 async function seed(): Promise<World> {
-  const db = await createTestDb();
+  const db = postgres;
+  seededFamilies += 1;
   const [user] = await db.database
     .insert(schema.users)
-    .values({ email: 'founder@example.com', name: 'Sam', timezone: TZ } as never)
+    .values({ email: `founder+${seededFamilies}@example.com`, name: 'Sam', timezone: TZ } as never)
     .returning({ id: schema.users.id });
   const [family] = await db.database
     .insert(schema.families)
@@ -177,6 +187,7 @@ let beforeTheWrite: string[];
 let afterTheWrite: string[];
 
 beforeAll(async () => {
+  postgres = await createTestDb();
   world = await seed();
   await tellCheckpoint(world, 'immunization_18_months', world.noahId, TOLD_AT);
   beforeTheWrite = await whatTheSweepWouldRaise(world, SWEEP_AT);
@@ -195,7 +206,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await world?.db.close();
+  await postgres?.close();
 });
 
 describe('the turn that hears it writes it', () => {
@@ -369,10 +380,6 @@ describe('a 13+ child’s appointment', () => {
     );
   }, 60_000);
 
-  afterAll(async () => {
-    await teenWorld?.db.close();
-  });
-
   it('stops the reminder, because the errand is answered whatever the age', async () => {
     // Asserted on the ROW rather than on the sweep's silence: the told-marker alone
     // already quiets this checkpoint, so "the sweep said nothing" would pass with no
@@ -459,10 +466,6 @@ describe('a parent correcting a fact Hale already holds', () => {
       validFrom: SWEEP_AT,
     });
   }, 60_000);
-
-  afterAll(async () => {
-    await corrected?.db.close();
-  });
 
   it('leaves exactly one live row, with the old one closed and back-pointed', async () => {
     const rows = await corrected.db.database

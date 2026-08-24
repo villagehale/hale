@@ -374,6 +374,33 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     },
   });
 
+  /**
+   * WHY THERE IS NO WRITE VERB HERE, measured rather than assumed (VIL-294, 2026-08-24).
+   *
+   * The obvious way to let a texted turn keep what a parent tells it is to register the
+   * app coach's `save_memory` on this surface too. It was built, wired, skill-documented,
+   * and then declined on evidence: an eleventh verb in this allowlist costs TOOL REACH on
+   * the two fixtures that most depend on it. Three fresh samples per cell, same nonces,
+   * apps/worker/evals/run-coach-channel-eval.mjs:
+   *
+   *                                       registration-window-plus-a-find   village-…-not
+   *   as shipped                                        3/3                     3/3
+   *   + save_memory, 16-line skill section               2/3                     1/3
+   *   + save_memory, no skill prose                      3/3                     2/3
+   *   + save_memory, 6-line section at the end           2/3                     1/3
+   *
+   * That is the budget this lane already runs at (MAX_TOKENS 400, thinking and text
+   * sharing it — see runtime.ts), and a turn that stops reaching for the live web is a
+   * parent handed nothing about the fall.
+   *
+   * The gap it would have closed is smaller than it looks: a durable fact stated over
+   * text is already written by the NIGHTLY distiller, which reads every conversation this
+   * family has (lib/cron/inference-tools.ts `save_child_fact`) — a day later rather than
+   * inline. What the distiller can never write is a SUPPRESSION, because the readers that
+   * act on state pin their writer, and that is exactly the half VIL-294 shipped
+   * deterministically instead (lib/channel/stated-state.ts). Inline recall over text wants
+   * a cheaper seam than an eleventh verb — a post-send pass, off the turn's budget.
+   */
   const tools: RegisteredTool[] = [
     lookupWeek,
     proposeMove,
