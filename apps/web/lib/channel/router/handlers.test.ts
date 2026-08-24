@@ -111,7 +111,8 @@ function healthDeps(
     done,
     drafted,
     closed,
-    loadLastCheckpointRef: async () => ref,
+    loadLastCheckpointRef: async () =>
+      ref === null ? null : { ref, toldAt: new Date('2026-07-30T12:00:00.000Z') },
     loadOpenOffer: async () => offer,
     recordDone: async (_db, input) => {
       done.push(input.checkpointId);
