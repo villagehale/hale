@@ -17,10 +17,13 @@ import type { SynthesisRow } from './synthesis';
  *   #529 citation defect: the deep pass exists to be able to say "their page says", and a
  *   row whose page nobody opened is a search snippet wearing a citation.
  *
- *   QUOTE ABSENT — the fact's span is not on the page the row cites. This is the defect a
+ *   QUOTE ABSENT — the fact's span is not on the page the fact names. This is the defect a
  *   three-angle merge makes newly easy and a single leg could barely produce: the $86.22
  *   really is printed, on the MUNICIPAL page, for a different programme — and attached to
  *   the gym's row it is a parent turning up with the wrong money.
+ *
+ *   SOURCE NOT READ — the fact names a page no leg opened. Same defect as an uncited row,
+ *   one level down, and it is the hole a per-fact citation would otherwise open.
  *
  *   NO QUOTE / QUOTE TOO SHORT — an assertion with nothing behind it, and an assertion
  *   with something too small to be behind it. "$" appears on every fee page ever written.
@@ -66,7 +69,11 @@ export type SlotRefusalReason =
   | 'no_backed_fact';
 
 /** Why one fact inside a surviving row was dropped. */
-export type FactRefusalReason = 'no_quote' | 'quote_too_short' | 'quote_absent';
+export type FactRefusalReason =
+  | 'no_quote'
+  | 'quote_too_short'
+  | 'quote_absent'
+  | 'source_not_read';
 
 export interface RefutationResult {
   /** The rows that survived, in the shape the composer and the share page already read. */
@@ -125,14 +132,26 @@ interface FactVerdict {
 }
 
 /**
- * ONE FACT, TRIED.
+ * ONE FACT, TRIED — against ITS OWN page.
  *
- * An absent fact is not a refusal — a page that never published a price is the ordinary
+ * An absent fact is not a refusal: a page that never published a price is the ordinary
  * case and the composer says so. What is refused is a fact ASSERTED without a span, with
- * a span too small to mean anything, or with a span that is not on the page the row
- * points at.
+ * a span too small to mean anything, with a span naming a page nobody opened, or with a
+ * span that is not on the page it names.
+ *
+ * THE FACT NAMES ITS OWN PAGE, defaulting to the row's. That default is what makes the
+ * ordinary single-page row simple, and the override is what makes the merge possible at
+ * all: the fee is on the venue's table and the registration date is on the town's portal,
+ * and a rule that forced both to be quoted off one URL would refuse whichever fact did not
+ * live there — which is a gate deleting the exact thing the fan-out was built to find.
  */
-function tryFact(value: unknown, quote: unknown, pageText: string): FactVerdict {
+function tryFact(
+  value: unknown,
+  quote: unknown,
+  source: unknown,
+  rowUrl: string,
+  byPage: ReadonlyMap<string, string>,
+): FactVerdict {
   const stated = field(value);
   if (stated === '') return { value: null, refusal: null };
 
@@ -141,6 +160,10 @@ function tryFact(value: unknown, quote: unknown, pageText: string): FactVerdict 
 
   const needle = normalise(span);
   if (needle.length < MIN_QUOTE_CHARS) return { value: null, refusal: 'quote_too_short' };
+
+  const cited = citation(source) ?? rowUrl;
+  const pageText = byPage.get(pageKey(cited));
+  if (pageText === undefined) return { value: null, refusal: 'source_not_read' };
   if (!pageText.includes(needle)) return { value: null, refusal: 'quote_absent' };
   return { value: stated, refusal: null };
 }
@@ -178,6 +201,7 @@ export function refuteSlots(
     no_quote: 0,
     quote_too_short: 0,
     quote_absent: 0,
+    source_not_read: 0,
   };
   let slotsRefused = 0;
   let factsRefused = 0;
@@ -193,8 +217,7 @@ export function refuteSlots(
       refuse('bad_citation');
       continue;
     }
-    const pageText = byPage.get(pageKey(sourceUrl));
-    if (pageText === undefined) {
+    if (!byPage.has(pageKey(sourceUrl))) {
       refuse('uncited_page');
       continue;
     }
@@ -206,9 +229,15 @@ export function refuteSlots(
       continue;
     }
 
-    const when = tryFact(row.when, row.when_quote, pageText);
-    const price = tryFact(row.price, row.price_quote, pageText);
-    const registration = tryFact(row.registration, row.registration_quote, pageText);
+    const when = tryFact(row.when, row.when_quote, row.when_source, sourceUrl, byPage);
+    const price = tryFact(row.price, row.price_quote, row.price_source, sourceUrl, byPage);
+    const registration = tryFact(
+      row.registration,
+      row.registration_quote,
+      row.registration_source,
+      sourceUrl,
+      byPage,
+    );
     for (const verdict of [when, price, registration]) {
       if (verdict.refusal === null) continue;
       factReasons[verdict.refusal] += 1;

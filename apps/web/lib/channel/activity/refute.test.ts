@@ -69,6 +69,34 @@ describe('refuteSlots', () => {
     expect(result.slotReasons.uncited_page).toBe(1);
   });
 
+  it('KEEPS a fact quoted off another page when the fact names that page - the merge', () => {
+    // The whole reason the fan-out exists: the schedule is on the venue's grid and the
+    // fee is in the town's table, and one slot carries both.
+    const merged = backedRow({
+      price: '$86.22 for nine lessons',
+      price_quote: '$86.22 for nine lessons',
+      price_source: TOWN,
+    });
+
+    const result = refuteSlots([merged], PAGES);
+
+    expect(result.slots[0]?.price).toBe('$86.22 for nine lessons');
+    expect(result.factsRefused).toBe(0);
+  });
+
+  it('drops a fact that names a page NO leg opened', () => {
+    const offPage = backedRow({
+      price: '$310 per term',
+      price_quote: 'Tiny Gym term fee $310',
+      price_source: 'https://invented.example/fees',
+    });
+
+    const result = refuteSlots([offPage], PAGES);
+
+    expect(result.slots[0]?.price).toBeNull();
+    expect(result.factReasons.source_not_read).toBe(1);
+  });
+
   it('drops a fact whose quote is on a DIFFERENT page than the one the row cites', () => {
     // The $86.22 is real and is on the municipal page. This row cites the gym.
     const crossed = backedRow({ price: '$86.22 for nine lessons', price_quote: '$86.22 for nine lessons' });

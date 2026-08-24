@@ -59,8 +59,12 @@ the other.
 
 ## Step 3 — QUOTE EVERY FACT (the `activity_synthesis` tool)
 
-Each of `when`, `price` and `registration` comes with a `_quote`: the span from
-the page, copied out **character for character**, that carries that fact.
+Each of `when`, `price` and `registration` comes with two companions:
+
+- a `_quote` — the span from the page, copied out **character for character**,
+  that carries that fact;
+- a `_source` — the URL of the page that span was copied from. Leave it out when
+  it is the same as the row's `source_url`.
 
 ```json
 {
@@ -74,6 +78,7 @@ the page, copied out **character for character**, that carries that fact.
       "price_quote": "Tiny Gym (10 wks) .......... $124.00",
       "registration": "Registration opened July 22",
       "registration_quote": "Fall registration opens Tuesday, July 22 at 7:00 a.m.",
+      "registration_source": "https://haltonhills.ca/recreation/register",
       "source_name": "Cartwheels Gym Centre",
       "source_url": "https://example.ca/programs.php"
     }
@@ -87,11 +92,17 @@ translate "Sep" into "September". A checker looks each quote up in the page text
 you were given, and a quote that has been improved is a quote that is not there —
 which drops the fact, silently, and the parent never hears it.
 
-**The quote must come off the page in `source_url`.** Not another page in the same
-leg, not the same fact seen on a different site. `source_url` is the page whose
-text your quotes were copied from. If the fee and the schedule are genuinely on
-two different pages, emit the slot against the page carrying the fact you most
-want the parent to have, and leave the other field out rather than mis-citing it.
+**The quote must come off the page you name.** A fact with no `_source` is being
+claimed against the row's `source_url`; a fact whose span lives somewhere else
+must carry its own `_source`. THIS IS HOW YOU MERGE ACROSS PAGES — the schedule
+off the venue's grid, the fee off the town's table, the registration date off the
+portal, one slot, three sources. What you may never do is quote page A and cite
+page B: a checker looks the span up in the page you named, and a mis-citation
+drops the fact.
+
+**Every page you name must be one the legs actually opened.** If a fact is only in
+a search snippet, or you remember it, or it is obviously true — leave the field
+out.
 
 **A fact with no quote must not be stated.** Leave the field out entirely. An
 omitted `price` is Hale saying "their page did not give me a price", which is
@@ -112,7 +123,11 @@ true, useful and safe. An invented one is a parent at a till.
   SCHEDULE AND AN OPEN REGISTRATION ARE TWO DIFFERENT FACTS: do not infer either
   from the other.
 - **`source_name`** — whose page. The organisation, never a URL.
-- **`source_url`** — the page these quotes were copied from.
+- **`source_url`** — the page that best identifies this programme, and the default
+  source for any fact that does not name its own. It is also the page a parent
+  would be sent to.
+- **`when_source` / `price_source` / `registration_source`** — the page that
+  particular span was copied from, when it is not `source_url`.
 
 **Return every distinct slot you read, not a shortlist.** Hale picks the one or
 two the parent gets in a text and puts the rest on a page they can open. Eight

@@ -17,11 +17,21 @@ import type { AngleLeg, FanOutResult } from './fanout';
  * a fourth page is a different age band and belongs to nobody, is the judgment this lane
  * is for. It runs at most once per promise, so it is the cheap kind of expensive.
  *
- * EVERY FACT CARRIES ITS QUOTE, and that is the whole contract with the refutation.
- * `when`, `price` and `registration` each come back beside a VERBATIM span from the page
- * the row cites. The synthesis is not trusted about them: refute.ts looks each quote up in
- * exactly the page text this leg was given, and a fact whose quote is not there is dropped
- * before anybody reads it (rule #1's fail-closed discipline, the medical lane's shape).
+ * EVERY FACT CARRIES ITS QUOTE AND ITS OWN PAGE, and that is the whole contract with the
+ * refutation. `when`, `price` and `registration` each come back beside a VERBATIM span and
+ * the URL that span was copied from. The synthesis is not trusted about any of it:
+ * refute.ts looks each quote up in exactly the page text this run was given, and a fact
+ * whose quote is not on the page it names is dropped before anybody reads it (rule #1's
+ * fail-closed discipline, the medical lane's shape).
+ *
+ * THE CITATION BELONGS TO THE FACT, NOT TO THE ROW, and the first version of this got it
+ * wrong. Pinning every quote to one `source_url` made the merge unable to do the one thing
+ * it exists for: the fee is on the venue's table and the registration date is on the town's
+ * portal, so a row cited to either page had the other fact refused as a fabrication. The
+ * journey test caught it — the second message went out with the registration date silently
+ * missing, which is the 2026-08-21 defect wearing a gate. A per-fact source keeps the
+ * invariant exact ("this fact is on THIS page, which somebody opened") while letting one
+ * slot span three pages.
  *
  * That is not paperwork. The 2026-08-21 defect was Hale reporting a schedule as unposted
  * while it sat on the venue's own page; the mirror-image defect — a price lifted off the
@@ -52,10 +62,13 @@ const rowSchema = z.object({
   age_fit: z.string().nullish(),
   when: z.string().nullish(),
   when_quote: z.string().nullish(),
+  when_source: z.string().nullish(),
   price: z.string().nullish(),
   price_quote: z.string().nullish(),
+  price_source: z.string().nullish(),
   registration: z.string().nullish(),
   registration_quote: z.string().nullish(),
+  registration_source: z.string().nullish(),
   source_name: z.string().nullish(),
   source_url: z.string().nullish(),
 });
@@ -93,10 +106,13 @@ const synthesisJsonSchema: Anthropic.Tool.InputSchema = {
           age_fit: { type: 'string' },
           when: { type: 'string' },
           when_quote: { type: 'string' },
+          when_source: { type: 'string' },
           price: { type: 'string' },
           price_quote: { type: 'string' },
+          price_source: { type: 'string' },
           registration: { type: 'string' },
           registration_quote: { type: 'string' },
+          registration_source: { type: 'string' },
           source_name: { type: 'string' },
           source_url: { type: 'string' },
         },
