@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "All slots are real and correctly extracted from the opened page with accurate day, session dates, and fees exactly as printed. The message leads with the best slot by name (Tiny Gym), attributes facts to their site, carries the registration window (opened July 22, runs until full), uses plain attribution (\"their site says\"), is one clear sentence with no link, no question, and no offer. The registration date—the critical fact that page-open recovered—is present in the message as required. The watchFor note confirms the page states the fall block, fee, and registration date outright, and the message correctly conveys all three. Watch is FALSE so no continuation promise is needed or present."
+  }
+}

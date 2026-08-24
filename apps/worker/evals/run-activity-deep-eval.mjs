@@ -73,7 +73,11 @@ const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-s
 const MAX_DEEP_SEARCHES = 4;
 const MAX_DEEP_FETCHES = 4;
 const RESEARCH_MAX_TOKENS = 8192;
-const EXTRACT_MAX_TOKENS = 4096;
+// 16384, matching the runtime (activity/deep.ts). It was 4096 here long after production
+// raised it, so this eval was scoring a request production does not make — and on a real
+// municipal page's worth of notes that budget TRUNCATES, which the harness then cached as
+// an empty extraction.
+const EXTRACT_MAX_TOKENS = 16384;
 const SLOTS_IN_TEXT = 2;
 const MAX_FOLLOWUP_SEGMENTS = 2;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
@@ -128,6 +132,52 @@ function deepUserMessage(q) {
 
 function deepExtractMessage(q, notes) {
   return JSON.stringify({ ...JSON.parse(deepUserMessage(q)), research_notes: notes });
+}
+
+/**
+ * Mirrors the runtime's PARSE BOUNDARY (activity/deep.ts `unwrapStringifiedEnvelope` +
+ * `arrayFromMaybeString`) — and it has to, because a request shape replica that stops at
+ * the request is only half a replica.
+ *
+ * Sonnet 5 fills a container it is not given a grammar for with a stringified blob: `slots`
+ * comes back as the whole tool payload as a JSON STRING, `{"pages_read":[...],"slots":[...]}`
+ * stuffed into one of its own fields. Production collapses both encodings where the value
+ * is read and carries on. This eval did not, so on 2026-08-24 it scored a live extraction
+ * that had found four real programmes as "a real page answered with a shrug" — a FAILURE
+ * PRODUCTION DOES NOT HAVE, cached and reported as a skill regression.
+ */
+function parseJson(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function arrayFromMaybeString(value) {
+  const parsed = parseJson(value);
+  return Array.isArray(parsed) ? parsed : value;
+}
+
+function unwrapStringifiedEnvelope(value) {
+  if (typeof value !== 'object' || value === null) return value;
+  for (const field of Object.values(value)) {
+    const inner = parseJson(field);
+    if (inner !== null && !Array.isArray(inner) && typeof inner === 'object' && 'slots' in inner) {
+      return { ...value, ...inner };
+    }
+  }
+  return value;
+}
+
+/** The extract payload, read the way the runtime reads it. */
+function readExtract(raw) {
+  const envelope = unwrapStringifiedEnvelope(raw) ?? {};
+  return {
+    pages_read: arrayFromMaybeString(envelope.pages_read),
+    slots: arrayFromMaybeString(envelope.slots),
+  };
 }
 
 /** Mirrors `followUpUserMessage` (followup-note.ts) — INCLUDING `registration`, whose
@@ -651,8 +701,9 @@ async function main() {
           })
         ).value;
 
-    const { kept, dropped } = normalizeSlots(extracted.slots);
-    const pagesRead = Array.isArray(extracted.pages_read) ? extracted.pages_read : [];
+    const payload = readExtract(extracted);
+    const { kept, dropped } = normalizeSlots(payload.slots);
+    const pagesRead = Array.isArray(payload.pages_read) ? payload.pages_read : [];
     if (dropped.length > 0) failures.push(`uncited_or_half_slot:${dropped.length}`);
 
     // A CLAIM ABOUT A PAGE REQUIRES A PAGE — both directions.

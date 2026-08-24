@@ -34,6 +34,11 @@ export const PRICE = {
   // the entry stays correct once list pricing resumes.
   'claude-sonnet-5': { input: 3.0, output: 15.0 },
   'claude-opus-4-8': { input: 15.0, output: 75.0 },
+  // Opus 5, matching packages/agent/src/cost.ts (the runtime's own LIST table). It was
+  // MISSING while the deep synthesis lane was already spending on it, and `totalUsd`
+  // skipped what it could not price — so a live eval run reported $0.0000 and looked
+  // free. An unpriced model is now loud (see below) rather than costless.
+  'claude-opus-5': { input: 5.0, output: 25.0 },
 };
 
 // --- single sources of truth ------------------------------------------------
@@ -114,7 +119,16 @@ export function totalUsd(cost) {
   let usd = 0;
   for (const [model, b] of Object.entries(cost.byModel)) {
     const p = PRICE[model];
-    if (!p) continue;
+    if (!p) {
+      // NEVER SILENTLY FREE. A model missing from the table used to contribute nothing,
+      // so a suite that had moved to a new tier reported a spend of zero while billing
+      // normally — the one number an operator reads to decide whether a corpus is
+      // affordable, saying the opposite of the truth (rule #11).
+      console.warn(
+        `eval harness: no price for ${model} (${b.input} in / ${b.output} out tokens) - add it to PRICE; this run's spend is UNDERSTATED`,
+      );
+      continue;
+    }
     usd += (b.input / 1e6) * p.input + (b.output / 1e6) * p.output;
   }
   return usd;
@@ -169,6 +183,17 @@ export async function cachedToolCall(opts) {
     messages: [{ role: 'user', content: userMessage }],
   });
   const latencyMs = Date.now() - startedAt;
+  // TRUNCATION IS NOT AN ANSWER, and it must never be CACHED as one. A response cut at
+  // max_tokens leaves the forced tool call incomplete — usually `input: {}` — which reads
+  // downstream as a model that looked and found nothing. The runtime has guarded this for
+  // months (pipeline/structured.ts); the harness did not, so on 2026-08-24 the deep eval
+  // recorded a `{"slots":[]}` for a fixture whose notes plainly listed four programmes,
+  // cached it forever, and reported it as "a real page answered with a shrug".
+  if (response.stop_reason === 'max_tokens') {
+    throw new Error(
+      `${tag}: tool call truncated at max_tokens (${opts.maxTokens ?? 1024}) - raise the budget; nothing cached`,
+    );
+  }
   const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === toolName);
   if (!toolUse) throw new Error(`${tag}: model returned no ${toolName} tool call`);
   noteUsage(cost, model, response.usage);

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This submission meets all criteria for a perfect score. The message accurately names the best slot (Tiny Gym) with correct age range (1 walking to 3 years) and correctly attributes facts to \"their site says.\" Registration status is accurate per the notes. The message appropriately acknowledges that exact days, times, and pricing are not posted on the main site - the notes confirm pricing is only available via the Registration Website portal, and the PDF link exists for detailed schedules. The watch parameter is TRUE, so the closing sentence \"I'll keep watching and text you the schedule once it's up\" is a legitimate first-person commitment backed by an existing continuation row, not a promise with no basis. The message contains no questions (correct for this path), no unverified claims, no negative assertions about unopened pages, and no question marks. All slots are properly sourced to the page that was actually opened (pagesOpened=true). The message is concise, plain ASCII, contains no links, and leads with the most relevant program for a toddler."
+  }
+}

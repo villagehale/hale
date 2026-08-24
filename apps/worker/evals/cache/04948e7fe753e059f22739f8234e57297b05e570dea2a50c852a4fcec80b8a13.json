@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The slot correctly identifies a real program on the page opened (Parent & Tot Playtime, 12 months to 4 years, Tuesdays and Thursdays, 9:30-11:00am, September 8 to December 11). The price is correctly recorded as \"Not posted on this page; page directs to fee schedule at front desk or by calling reception\" - this is an honest representation of what the page says, not a negative claim about what exists. The registration field correctly notes \"Not stated on this page.\" The message properly attributes facts to \"their site says,\" names the program by its official title, includes all schedule details exactly as printed, and correctly states that price and registration are not listed. Critically, the message includes the watching commitment in first person (\"I'll keep watching and text you those details\") which is correct because watch=true indicates Hale has already written a continuation promise. The message avoids the trap flagged in watchFor by not borrowing the $185 rental figure or making any other fabricated cross-program attribution. Two segments is respected. No questions are posed. This is attributive reporting with a legitimate standing commitment to follow up."
+  }
+}
