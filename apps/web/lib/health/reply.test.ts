@@ -47,15 +47,17 @@ interface Recorded {
 }
 
 function harness(
-  options: { ref?: string | null; offer?: OpenCheckupOffer | null } = {},
+  options: { ref?: string | null; offer?: OpenCheckupOffer | null; toldAt?: Date } = {},
 ): {
   deps: HealthReplyDeps;
   recorded: Recorded;
 } {
   const recorded: Recorded = { done: [], drafts: [], fulfilled: [] };
   const deps: HealthReplyDeps = {
-    loadLastCheckpointRef: async () =>
-      options.ref === undefined ? REF : options.ref,
+    loadLastCheckpointRef: async () => {
+      const ref = options.ref === undefined ? REF : options.ref;
+      return ref === null ? null : { ref, toldAt: options.toldAt ?? NOW };
+    },
     loadOpenOffer: async () => (options.offer === undefined ? offerFor() : options.offer),
     recordDone: async (_database, input) => {
       recorded.done.push(input as unknown as Record<string, unknown>);
@@ -272,7 +274,7 @@ describe('handleHealthCheckpointReply', () => {
 
   it('does not touch the checkpoint lookup for an ordinary message', async () => {
     const h = harness();
-    const loadLastCheckpointRef = vi.fn(async () => REF);
+    const loadLastCheckpointRef = vi.fn(async () => ({ ref: REF, toldAt: NOW }));
     const loadOpenOffer = vi.fn(async () => offerFor());
     const outcome = await handleHealthCheckpointReply(
       db(),

@@ -57,6 +57,21 @@ export interface ReconcileView {
    * which makes every booking claim false by inspection.
    */
   scheduledTitles: readonly string[];
+  /**
+   * The appointments the PARENT told Hale are booked — what they said, kept as a row
+   * (VIL-294; health/reply.ts loadStatedBookings).
+   *
+   * A SECOND FIELD RATHER THAN MORE TITLES, because they are different facts and a
+   * verdict that could not tell them apart would be lying about which. `scheduledTitles`
+   * is Hale's own calendar: rows Hale wrote, with times, that Hale can move. This is a
+   * parent's sentence: an appointment Hale has never seen, holds no time for, and cannot
+   * change. Hale may confirm it back and may not act on it, and the `matchedBy` is what
+   * lets a reader downstream know which of the two backed a sentence.
+   *
+   * Empty is the ordinary case. A 13+ child's appointment is never in here (rule #1),
+   * which fails closed: the claim simply goes unbacked and the gate drops the sentence.
+   */
+  statedBookings: readonly string[];
 }
 
 export interface MintableWindow {
@@ -92,7 +107,12 @@ export type ClaimResolution =
   | {
       claim: StateClaim;
       status: 'matched';
-      matchedBy: 'open_commitment' | 'pending_commitment' | 'live_sequence' | 'scheduled_row';
+      matchedBy:
+        | 'open_commitment'
+        | 'pending_commitment'
+        | 'live_sequence'
+        | 'scheduled_row'
+        | 'parent_stated';
     }
   | { claim: StateClaim; status: 'minted'; mint: RegistrationWatchMint }
   | { claim: StateClaim; status: 'refused'; reason: RefusalReason };
@@ -116,7 +136,7 @@ const VIOLATION: Record<RefusalReason, string> = {
   no_activity_promise:
     'The message promises to come back with activities or finds, and no such promise was registered. Call promise_activity_followup so a sweep actually comes back, or hand over what you already have and stop.',
   no_scheduled_row:
-    'The message says something is booked or on the calendar. Nothing on this family\'s calendar matches, so that is a claim about a row that does not exist. Say what would need to happen instead.',
+    'The message says something is booked or on the calendar. Nothing on this family\'s calendar matches and the parent has not told you it is booked, so that is a claim about a row that does not exist. Say what would need to happen instead.',
 };
 
 function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
@@ -161,13 +181,19 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
   // it points at is a placement and placements have no kind — one content word shared
   // with a live title is the whole test. A family with nothing on the calendar therefore
   // fails it by inspection, which is the 2026-08-22 sentence.
-  const matched = view.scheduledTitles.some((title) => {
-    const words = title.toLowerCase();
+  const shares = (candidate: string) => {
+    const words = candidate.toLowerCase();
     return claim.words.some((word) => words.includes(word));
-  });
-  return matched
-    ? { claim, status: 'matched', matchedBy: 'scheduled_row' }
-    : { claim, status: 'refused', reason: 'no_scheduled_row' };
+  };
+  // The calendar is asked FIRST, so a claim two things could back is attributed to the
+  // stronger one — a row Hale wrote and can act on, rather than a sentence it was told.
+  if (view.scheduledTitles.some(shares)) {
+    return { claim, status: 'matched', matchedBy: 'scheduled_row' };
+  }
+  if (view.statedBookings.some(shares)) {
+    return { claim, status: 'matched', matchedBy: 'parent_stated' };
+  }
+  return { claim, status: 'refused', reason: 'no_scheduled_row' };
 }
 
 export function reconcile(

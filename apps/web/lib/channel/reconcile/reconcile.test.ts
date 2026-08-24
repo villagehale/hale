@@ -17,6 +17,7 @@ function view(overrides: Partial<ReconcileView> = {}): ReconcileView {
     registrationLaddered: false,
     mintableWindow: null,
     scheduledTitles: [],
+    statedBookings: [],
     ...overrides,
   };
 }
@@ -117,6 +118,48 @@ describe('reconcile — the booking claim', () => {
       view({ scheduledTitles: ['Well-baby checkup'] }),
     );
     expect(verdict.refused.map((r) => r.reason)).toEqual(['no_scheduled_row']);
+  });
+
+  /**
+   * VIL-294 · the coexistence case. Hale holds no calendar row for a visit the PARENT
+   * booked and never gave a time for — so before the inbound half existed, the only
+   * sentence the gate could produce here was a deletion of a true acknowledgement.
+   * A fact the parent stated is a row, and it backs the ack of itself.
+   */
+  it('MATCHES a booking the PARENT told us about, with nothing on the calendar', () => {
+    const verdict = verdictFor(
+      'Your 18-month visit is booked.',
+      view({
+        scheduledTitles: [],
+        statedBookings: ['Ontario runs a longer 18-month well-baby visit with your family doctor.'],
+      }),
+    );
+    expect(verdict.refused).toEqual([]);
+    expect(verdict.resolutions[0]).toMatchObject({
+      status: 'matched',
+      matchedBy: 'parent_stated',
+    });
+  });
+
+  it('still REFUSES a booking the parent never stated and nothing holds', () => {
+    const verdict = verdictFor(
+      'Your swim lesson is booked.',
+      view({
+        statedBookings: ['Ontario runs a longer 18-month well-baby visit with your family doctor.'],
+      }),
+    );
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_scheduled_row']);
+  });
+
+  it('prefers the calendar row when both could back the claim', () => {
+    const verdict = verdictFor(
+      'Your well-baby visit is booked.',
+      view({
+        scheduledTitles: ['Well-baby checkup'],
+        statedBookings: ['Ontario runs a longer 18-month well-baby visit with your family doctor.'],
+      }),
+    );
+    expect(verdict.resolutions[0]).toMatchObject({ status: 'matched', matchedBy: 'scheduled_row' });
   });
 });
 

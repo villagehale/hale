@@ -5,13 +5,14 @@ import { f14EnabledFor } from '~/lib/channel/f14';
 import { readWindows } from '~/lib/channel/intake/radar';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { loadOpenCommitments } from '~/lib/commitments/ledger';
+import { loadStatedBookings } from '~/lib/health/reply';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import type { ReconcileView } from './reconcile';
 
 /**
  * VIL-293 · what a lane can read about a family before it decides to send — ONE BATCH.
  *
- * FOUR QUESTIONS, FOUR PARALLEL READS, and the count is the design. The inline coach
+ * FIVE QUESTIONS, FIVE PARALLEL READS, and the count is the design. The inline coach
  * lane runs this on every turn that reaches the model, so the primitive is only
  * affordable if it is a fixed handful of indexed selects rather than a walk of the
  * family's history. Everything here is keyed on `family_id` and bounded.
@@ -24,8 +25,9 @@ import type { ReconcileView } from './reconcile';
  *
  * NO SOURCE OF TRUTH IS ADDED. The window match is `matchRegistrationWindows`, the
  * window rows are the intake radar's `readWindows`, the arming predicate is the ladder's
- * own `f14EnabledFor`, and the promises are the MEM-10 ledger's own reader — the same
- * four the coach's context and the sweep use. What differs is the PROJECTION: the coach
+ * own `f14EnabledFor`, the promises are the MEM-10 ledger's own reader, and the stated
+ * bookings are the health sweep's own suppression rows — the same five the coach's
+ * context and the sweep use. What differs is the PROJECTION: the coach
  * needs a phrase a parent can read, this needs an instant a promise can come due at.
  */
 
@@ -39,12 +41,17 @@ export async function loadReconcileView(
   input: { familyId: string; now: Date },
 ): Promise<ReconcileView> {
   const { familyId, now } = input;
-  const [openCommitments, laddered, scheduled, mintableWindow] = await Promise.all([
-    loadOpenCommitments(database, familyId, now),
-    hasLiveSequence(database, familyId),
-    loadScheduledTitles(database, familyId, now),
-    loadMintableWindow(database, familyId, now),
-  ]);
+  const [openCommitments, laddered, scheduled, mintableWindow, statedBookings] =
+    await Promise.all([
+      loadOpenCommitments(database, familyId, now),
+      hasLiveSequence(database, familyId),
+      loadScheduledTitles(database, familyId, now),
+      loadMintableWindow(database, familyId, now),
+      // VIL-294. The parent's own statements, read from the SAME rows the health sweep
+      // reads to decide whether to raise a checkpoint again — one reader per question, so
+      // a turn cannot acknowledge a booking the sweep is about to ask about.
+      loadStatedBookings(database, familyId, now),
+    ]);
   return {
     openKinds: new Set(openCommitments.map((commitment) => commitment.kind)),
     // Nothing is pending from a background lane: a sweep composes one message and the
@@ -54,6 +61,7 @@ export async function loadReconcileView(
     registrationLaddered: laddered,
     mintableWindow,
     scheduledTitles: scheduled,
+    statedBookings,
   };
 }
 

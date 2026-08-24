@@ -73,6 +73,26 @@ export interface HealthCheckpoint {
   /** True when the task IS booking a visit — the only rows allowed to offer the
    * book_checkup draft escalation. */
   booking: boolean;
+  /**
+   * The real-world APPOINTMENT this row is about, or null when the task is paperwork
+   * rather than a visit.
+   *
+   * It exists because the table describes ONE appointment twice: Ontario's enhanced
+   * 18-month well-baby visit is the visit at which the 18-month vaccines are given, so
+   * `immunization_18_months` and `well_baby_18_months` are two sentences about the same
+   * hour in the same clinic. A parent who says "we booked already" has booked BOTH, and
+   * a suppression keyed only on the row that happened to be raised leaves the other one
+   * live — which is exactly the seven-day repeat of 2026-08-13 → 08-20.
+   *
+   * Null is the honest answer for the paperwork rows. A records check on ICON and a
+   * school consent form are not appointments; a parent cannot book them, so no statement
+   * about a booking can settle them.
+   *
+   * Every grouped row is per-CHILD and one-time (framing.test.ts is the gate): an annual
+   * row is scoped to the household and a school year, and folding one into a child's
+   * appointment would silence a whole household off one child's visit.
+   */
+  visit: string | null;
 }
 
 const ONTARIO_SCHOOL_VACCINES = 'https://www.ontario.ca/page/vaccines-children-school';
@@ -113,6 +133,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
+    visit: 'well_child_2_months',
     booking: false,
   },
   {
@@ -126,6 +147,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
+    visit: 'well_child_4_months',
     booking: false,
   },
   {
@@ -139,6 +161,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
+    visit: 'well_child_6_months',
     booking: false,
   },
   {
@@ -152,6 +175,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
+    visit: 'well_child_12_months',
     booking: false,
   },
   {
@@ -165,6 +189,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
+    visit: 'well_child_15_months',
     booking: false,
   },
   {
@@ -178,6 +203,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
+    visit: 'well_child_18_months',
     booking: false,
   },
   {
@@ -191,6 +217,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: null,
     linkUrl: ONTARIO_18_MONTH_VISIT,
     sourceUrl: ONTARIO_18_MONTH_VISIT,
+    visit: 'well_child_18_months',
     booking: true,
   },
   {
@@ -204,6 +231,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: null,
     linkUrl: ONTARIO_SCHOOL_VACCINES,
     sourceUrl: ONTARIO_SCHOOL_VACCINES,
+    visit: 'well_child_4_to_6_years',
     booking: false,
   },
   {
@@ -217,6 +245,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: null,
     linkUrl: ONTARIO_DENTAL,
     sourceUrl: ONTARIO_DENTAL,
+    visit: null,
     booking: false,
   },
   {
@@ -232,6 +261,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: 'A student vaccine record check is due on ICON.',
     linkUrl: ICON_PORTAL,
     sourceUrl: TPH_REPORT_STUDENT_VACCINATION,
+    visit: null,
     booking: false,
   },
   {
@@ -249,6 +279,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: 'A school immunization consent form is due.',
     linkUrl: ONTARIO_SCHOOL_VACCINES,
     sourceUrl: ONTARIO_SCHOOL_VACCINES,
+    visit: null,
     booking: false,
   },
   {
@@ -262,6 +293,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     teenSafeTask: 'A routine vaccine record check is due between ages 14 and 16.',
     linkUrl: ONTARIO_SCHOOL_VACCINES,
     sourceUrl: ONTARIO_SCHOOL_VACCINES,
+    visit: 'well_child_14_to_16_years',
     booking: false,
   },
 ];
@@ -343,4 +375,30 @@ export function parseCheckpointRef(
     childId: scope === HOUSEHOLD_CHILD_TOKEN ? null : scope,
     occurrence: Number(rawOccurrence),
   };
+}
+
+/**
+ * Every checkpoint ref that names the SAME real-world appointment as this one — itself
+ * always, plus any sibling row sharing its {@link HealthCheckpoint.visit}.
+ *
+ * THE WIDENING BELONGS TO THE READ, not to the write. A parent tells Hale one thing
+ * ("we booked already"); writing that fact under two keys would be Hale asserting twice
+ * what it was told once, and the second row would have no source event behind it. So the
+ * suppression stays one row keyed on what was actually raised, and the reader that asks
+ * "must I raise this again?" is the one that knows two rows can be one errand
+ * (health/reply.ts loadSuppressedCheckpointRefs).
+ *
+ * A ref this build cannot parse, or one whose row is paperwork, comes back untouched —
+ * widening nothing is always the safe answer here, because the cost of the narrow read
+ * is one repeated sentence and the cost of a wrong widening is a reminder nobody gets.
+ */
+export function refsSharingVisit(ref: string): string[] {
+  const parsed = parseCheckpointRef(ref);
+  if (!parsed) return [ref];
+  const visit = BY_ID.get(parsed.checkpointId)?.visit ?? null;
+  if (visit === null) return [ref];
+  const scope = parsed.childId ?? HOUSEHOLD_CHILD_TOKEN;
+  return HEALTH_CHECKPOINTS.filter((checkpoint) => checkpoint.visit === visit).map((checkpoint) =>
+    checkpointRef(checkpoint, scope, parsed.occurrence),
+  );
 }

@@ -21,6 +21,7 @@ import {
   reconcileViolations,
   withoutRefusedClaims,
 } from '~/lib/channel/reconcile/reconcile';
+import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
   type ChannelCoachRuntime,
@@ -260,6 +261,19 @@ export interface ChannelRouterDeps {
       now: Date;
     },
   ): Promise<unknown>;
+  /**
+   * What the parent's own message settled, written down before anything reads state
+   * (VIL-294 — lib/channel/stated-state.ts).
+   *
+   * Non-nullable (rule #11), and the absence case is IN the outcome rather than in the
+   * wiring: a router that could not write down "we booked already" would go on
+   * acknowledging a booking nobody recorded and then raise the same checkpoint a week
+   * later, which is precisely the 2026-08-13 → 08-20 chain this dep closes.
+   */
+  recordStatedState(
+    database: Database,
+    input: { familyId: string; parentUserId: string; body: string; now: Date },
+  ): Promise<StatedStateOutcome>;
   /**
    * What this family's ledger says, read beside the model call — the reconciliation
    * primitive's view (VIL-293). Non-nullable (rule #11): a router that could not read
@@ -519,6 +533,36 @@ export async function routeChannelMessage(
   const natural = await resolveNaturalReply(deps, turn, answer);
   if (natural.status === 'handled') {
     return done(deps, job, { ...natural.result, conversationId, lane: null });
+  }
+
+  // GATE 2c — WHAT DID THE PARENT JUST SETTLE? The inbound half of the reconciliation
+  // primitive (VIL-294). A message stating that something Hale raised is already handled
+  // becomes a ROW here — before the coach composes, before the reconcile view is read,
+  // and before flood control can decide this turn is too expensive to answer. The turn
+  // that hears it is the turn that writes it, and every reader downstream sees the write.
+  //
+  // IT DOES NOT CLAIM THE TURN, and that is the difference between this and the handlers
+  // above it. They own a closed vocabulary and answer it themselves; this reads ordinary
+  // English, which is looser, so it writes the fact and lets the coach reply in its own
+  // voice. A write with no reply attached is also what keeps a misread cheap: the cost is
+  // a suppression, never a canned sentence the parent did not ask for.
+  //
+  // ABOVE FLOOD CONTROL because a parent whose hour is spent still told us something true,
+  // and losing it would cost them a reminder they had already answered.
+  const stated = await deps.recordStatedState(deps.database, {
+    familyId: turn.familyId,
+    parentUserId: turn.parentUserId,
+    body: turn.body,
+    now,
+  });
+  if (stated.status === 'not_recorded') {
+    // Named, never silent (rule #11). This reader believed the parent settled something
+    // and found nothing open to settle — the signal that its vocabulary has drifted from
+    // what Hale actually raises, which is invisible any other way.
+    deps.log.error(
+      { familyId: turn.familyId, state: stated.state, reason: stated.reason },
+      'channel router: parent stated a settled state and nothing was open to settle',
+    );
   }
 
   // GATE 3 — can we afford to think. Counted only here, so a deterministic answer never

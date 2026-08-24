@@ -22,6 +22,7 @@ import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
+import { recordStatedState } from '~/lib/channel/stated-state';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import {
@@ -456,6 +457,10 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
     recordActivityPromise: (db, input) =>
       recordActivityPromise(db, input, defaultActivityPromisePorts()),
+    // VIL-294 · the inbound half. Bound to the ONE writer that files a checkpoint as
+    // handled (health/reply.ts), so a natural statement and the word "done" land on the
+    // same row through the same audited transaction.
+    recordStatedState: (db, input) => recordStatedState(db, input, defaultHealthReplyDeps()),
     // VIL-293. The view is read beside the model call, and the mint is bound here for
     // the same reason the two writers above it are: the row is minted against the SENT
     // message, and the router is the only thing that knows which row that was.

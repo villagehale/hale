@@ -1,12 +1,14 @@
 import { type Database, schema } from '@hale/db';
+import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull, like } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { normalizeKeyword } from '~/lib/channel/intake/keywords';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { writeFact } from '~/lib/memory/facts';
 import { pipelineClient } from '~/lib/pipeline/client';
-import { checkpointById, parseCheckpointRef } from './checkpoints';
+import { checkpointById, parseCheckpointRef, refsSharingVisit } from './checkpoints';
 import {
+  CHECKUP_OFFER_TTL_HOURS,
   type OpenCheckupOffer,
   fulfillCheckupOffer,
   loadOpenCheckupOffer,
@@ -90,8 +92,21 @@ export type HealthReplyOutcome =
     };
 
 export interface HealthReplyDeps {
-  /** The checkpoint ref this family was last nudged about, or null. */
-  loadLastCheckpointRef(database: Database, familyId: string): Promise<string | null>;
+  /**
+   * The checkpoint this family was last told about, and WHEN they were told, or null.
+   *
+   * The instant rides along because two readers of this answer need different things
+   * from it. An exact "done" is unambiguous and needs no clock: whenever a parent types
+   * the word, they mean the errand Hale raised. A NATURAL statement — "we booked
+   * already", read by lib/channel/stated-state.ts — is only about that errand while the
+   * errand is recent, so it is checked against the same relevance window the nudge gives
+   * its own offer ({@link CHECKUP_OFFER_TTL_HOURS}). One reader, one answer, and the
+   * looser caller is the one that pays for the looseness.
+   */
+  loadLastCheckpointRef(
+    database: Database,
+    familyId: string,
+  ): Promise<{ ref: string; toldAt: Date } | null>;
   /**
    * The booking offer this family may still accept, or null — the ONE thing a "yes"
    * here resolves against (lib/health/offer.ts).
@@ -151,7 +166,7 @@ export async function handleHealthCheckpointReply(
      * word match; the exact words still win when they are there, because the handler
      * that reads them runs first and this field is only set once they have declined.
      */
-    resolved?: 'booking' | null,
+    resolved?: 'booking' | 'done' | null,
   },
   deps: HealthReplyDeps,
 ): Promise<HealthReplyOutcome> {
@@ -160,7 +175,13 @@ export async function handleHealthCheckpointReply(
   // inbound traffic on this channel is ordinary.
   if (!intent) return { status: 'ignored', reason: 'not_a_health_reply' };
 
-  if (intent === 'done') return recordDoneReply(database, input, deps);
+  // A word from the closed vocabulary is unambiguous whenever it arrives; a RESOLVED
+  // done came from a reader of ordinary English, so it only speaks for a checkpoint the
+  // family was told about recently. The freshness bar is the caller's looseness made
+  // explicit, not a property of the fact.
+  if (intent === 'done') {
+    return recordDoneReply(database, input, deps, input.resolved === 'done' ? input.now : null);
+  }
 
   // A "yes" only means something where an OFFER was made, and the offer is a row rather
   // than an inference from the last thing Hale said. No live offer, no draft: the turn
@@ -184,10 +205,17 @@ async function recordDoneReply(
   database: Database,
   input: { familyId: string; parentUserId: string },
   deps: HealthReplyDeps,
+  /** Non-null when the reading was a loose one: the told-marker must be inside the
+   * nudge's own relevance window or this settles nothing. */
+  freshAt: Date | null,
 ): Promise<HealthReplyOutcome> {
-  const ref = await deps.loadLastCheckpointRef(database, input.familyId);
+  const told = await deps.loadLastCheckpointRef(database, input.familyId);
+  const ref = told?.ref ?? null;
   const parsed = ref === null ? null : parseCheckpointRef(ref);
-  if (ref === null || parsed === null || !checkpointById(parsed.checkpointId)) {
+  if (told === null || ref === null || parsed === null || !checkpointById(parsed.checkpointId)) {
+    return { status: 'ignored', reason: 'no_open_checkpoint' };
+  }
+  if (freshAt !== null && !toldRecently(told.toldAt, freshAt)) {
     return { status: 'ignored', reason: 'no_open_checkpoint' };
   }
   await deps.recordDone(database, {
@@ -293,22 +321,39 @@ export async function loadSuppressedCheckpointRefs(
     loadToldCheckpointRefs(database, familyId),
     loadDoneCheckpointRefs(database, familyId),
   ]);
-  for (const ref of done) told.add(ref);
+  // DONE widens to the whole appointment and TOLD does not, and the asymmetry is the
+  // point. "We booked already" settles the visit, so every row describing that visit is
+  // answered (checkpoints.ts refsSharingVisit) — the 2026-08-13 → 08-20 repeat is exactly
+  // the narrow read. "Hale said it" settles only the sentence Hale actually sent; a
+  // sibling row nobody has mentioned is still owed.
+  for (const ref of done) {
+    for (const sibling of refsSharingVisit(ref)) told.add(sibling);
+  }
   return told;
 }
 
-/** Every checkpoint this family has told us is handled. */
-async function loadDoneCheckpointRefs(
+/**
+ * The live suppression rows, unprojected — ONE predicate, because two callers ask two
+ * different questions of exactly the same set and a second copy of this WHERE clause is
+ * the drift that lets a fact suppress a reminder without being able to back a sentence.
+ *
+ * The trust boundary is the writer pin: `family_memory_facts` is not a private table (the
+ * coach's `save_memory` lets a model choose both type and key freely), so a read that did
+ * not name the writer could be silenced by a single injected memory.
+ */
+async function loadHandledFacts(
   database: Database,
   familyId: string,
-): Promise<Set<string>> {
+): Promise<Array<{ ref: string; childId: string | null }>> {
   const rows = await database
-    .select({ factKey: schema.familyMemoryFacts.factKey })
+    .select({
+      factKey: schema.familyMemoryFacts.factKey,
+      childId: schema.familyMemoryFacts.childId,
+    })
     .from(schema.familyMemoryFacts)
     .where(
       and(
         eq(schema.familyMemoryFacts.familyId, familyId),
-        // The trust boundary: only rows THIS module wrote may suppress a reminder.
         eq(schema.familyMemoryFacts.inferredBy, HEALTH_FACT_WRITER),
         eq(schema.familyMemoryFacts.factType, 'logistic'),
         // '_' is a single-character wildcard in LIKE, so the underscore in the prefix is
@@ -317,7 +362,64 @@ async function loadDoneCheckpointRefs(
         isNull(schema.familyMemoryFacts.validUntil),
       ),
     );
-  return new Set(rows.map((row) => row.factKey.slice(HEALTH_FACT_KEY_PREFIX.length)));
+  return rows.map((row) => ({
+    ref: row.factKey.slice(HEALTH_FACT_KEY_PREFIX.length),
+    childId: row.childId,
+  }));
+}
+
+/** Every checkpoint this family has told us is handled. */
+async function loadDoneCheckpointRefs(
+  database: Database,
+  familyId: string,
+): Promise<Set<string>> {
+  return new Set((await loadHandledFacts(database, familyId)).map((row) => row.ref));
+}
+
+/**
+ * The appointments this family has TOLD HALE are booked, as the words a booking claim is
+ * checked against (VIL-293 reconcile.ts `statedBookings`).
+ *
+ * WHY THE OUTBOUND GATE NEEDS THIS. "Your 18-month visit is booked" is a `scheduled_event`
+ * claim, and the only thing that could back one was a row on the family's calendar. Hale
+ * has no such row here and never will: the parent booked the visit themselves and never
+ * said when. So the true sentence — an acknowledgement of what the parent just told us —
+ * was the one the gate deleted. The fact IS the backing; this is its projection.
+ *
+ * A TEEN'S APPOINTMENT IS EXCLUDED OUTRIGHT, and the exclusion is fail-closed rather than
+ * redacted (rule #1): the suppression still works, because that reads the key, but Hale
+ * may not assert to a parent that a 13+ child's visit is booked. Nothing here is a
+ * redaction of the claim — the claim simply goes unbacked, and the gate drops it.
+ *
+ * The projection is the checkpoint's own `task` string. Nothing new is minted: the words
+ * the gate matches on are the words the message that raised it used.
+ */
+export async function loadStatedBookings(
+  database: Database,
+  familyId: string,
+  now: Date,
+): Promise<string[]> {
+  const handled = await loadHandledFacts(database, familyId);
+  if (handled.length === 0) return [];
+
+  const children = await database
+    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  const teens = new Set(
+    children.filter((c) => deriveStage(c.dateOfBirth, now) === 'teenager').map((c) => c.id),
+  );
+
+  const tasks: string[] = [];
+  for (const row of handled) {
+    if (row.childId !== null && teens.has(row.childId)) continue;
+    const parsed = parseCheckpointRef(row.ref);
+    const checkpoint = parsed === null ? null : checkpointById(parsed.checkpointId);
+    // Paperwork is not a booking. A filed records check must not back "that's booked".
+    if (!checkpoint || checkpoint.visit === null) continue;
+    tasks.push(checkpoint.task);
+  }
+  return tasks;
 }
 
 /**
@@ -330,10 +432,13 @@ async function loadDoneCheckpointRefs(
 export async function loadLastCheckpointRef(
   database: Database,
   familyId: string,
-): Promise<string | null> {
+): Promise<{ ref: string; toldAt: Date } | null> {
   const prefix = checkpointToldKeyPrefix(familyId);
   const [row] = await database
-    .select({ dedupeKey: schema.channelMessages.dedupeKey })
+    .select({
+      dedupeKey: schema.channelMessages.dedupeKey,
+      createdAt: schema.channelMessages.createdAt,
+    })
     .from(schema.channelMessages)
     .where(
       and(
@@ -346,9 +451,14 @@ export async function loadLastCheckpointRef(
     .limit(1);
 
   const key = row?.dedupeKey;
-  if (!key) return null;
+  if (!key || !row) return null;
   const ref = key.slice(prefix.length);
-  return parseCheckpointRef(ref) ? ref : null;
+  return parseCheckpointRef(ref) ? { ref, toldAt: row.createdAt } : null;
+}
+
+/** Inside the window the nudge already treats its own question as live. */
+function toldRecently(toldAt: Date, now: Date): boolean {
+  return now.getTime() - toldAt.getTime() <= CHECKUP_OFFER_TTL_HOURS * 3_600_000;
 }
 
 export function defaultHealthReplyDeps(): HealthReplyDeps {

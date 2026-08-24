@@ -280,6 +280,7 @@ function emptyReconcileView(overrides: Partial<ReconcileView> = {}): ReconcileVi
     registrationLaddered: false,
     mintableWindow: null,
     scheduledTitles: [],
+    statedBookings: [],
     ...overrides,
   };
 }
@@ -308,6 +309,7 @@ function harness(
     recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
     reconcileView?: ChannelRouterDeps['reconcileView'];
     recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
+    recordStatedState?: ChannelRouterDeps['recordStatedState'];
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -341,6 +343,10 @@ function harness(
       recordActivityPromise:
         options.recordActivityPromise ?? (async () => ({ status: 'recorded' as const })),
       reconcileView: options.reconcileView ?? (async () => emptyReconcileView()),
+      // VIL-294. Nothing is stated by default, so a test that says nothing about the
+      // inbound half cannot accidentally be relying on a write.
+      recordStatedState:
+        options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
       recordRegistrationWatch:
         options.recordRegistrationWatch ?? (async () => ({ status: 'recorded' as const })),
       questions: options.questions ?? fakeQuestions([]),
@@ -1636,7 +1642,10 @@ describe('the shipped chain, end to end', () => {
       undo: async () => true,
     };
     const health = {
-      loadLastCheckpointRef: async () => `dental_school_screening:${CHILD}:1`,
+      loadLastCheckpointRef: async () => ({
+        ref: `dental_school_screening:${CHILD}:1`,
+        toldAt: new Date(0),
+      }),
       recordDone: async () => {},
       draftCheckup: async () => ({ actionId: 'drafted-1' }),
     };
@@ -2512,5 +2521,85 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
 
     expect(coach.rejected).toEqual([[]]);
     expect(h.transport.sent.map((m) => m.body)).toEqual(['Swim runs Tuesdays at 4 at the Gellert.']);
+  });
+});
+
+/**
+ * VIL-294 · the inbound half's CALL SITE. What the parent settled becomes a row before
+ * anything reads state — the DB-level behaviour of that row is pinned over real Postgres
+ * in lib/__journey__/stated-fact-remembered.test.ts; what is pinned here is the ORDER,
+ * which is the whole reason the write lives in the router rather than after the reply.
+ */
+describe('what the parent stated is written before anything reads it', () => {
+  function statefulHarness(options: { handlers?: DeterministicHandler[]; body?: string } = {}) {
+    const order: string[] = [];
+    const bodies: string[] = [];
+    const coach: ChannelCoachRuntime = {
+      async respond() {
+        order.push('coach');
+        return { reply: 'noted', planOffer: null, activityPromise: null };
+      },
+    };
+    const h = harness({
+      handlers: options.handlers,
+      context: { body: options.body ?? 'Yes we booked already' },
+      coach,
+      recordStatedState: async (_db, input) => {
+        order.push('stated');
+        bodies.push(input.body);
+        return { status: 'recorded' as const, state: 'health_visit_handled' as const, ref: 'r' };
+      },
+      reconcileView: async () => {
+        order.push('view');
+        return emptyReconcileView();
+      },
+    });
+    return { h, order, bodies };
+  }
+
+  it('hands the reader the parent\u2019s own words, before the coach composes', async () => {
+    const { h, order, bodies } = statefulHarness();
+    await routeChannelMessage(h.deps, job());
+
+    expect(bodies).toEqual(['Yes we booked already']);
+    // Stated FIRST, and the position is asserted absolutely: `indexOf` returns -1 for a
+    // call that never happened, so "before the coach" alone passes when nothing ran.
+    expect(order[0]).toBe('stated');
+    expect(order).toContain('coach');
+  });
+
+  it('writes before the reconciliation view is read, so the ack can be backed', async () => {
+    const { h, order } = statefulHarness();
+    await routeChannelMessage(h.deps, job());
+
+    expect(order[0]).toBe('stated');
+    expect(order).toContain('view');
+  });
+
+  it('never runs on a turn a deterministic handler already claimed', async () => {
+    // The closed vocabulary answers itself and files its own row; a second reading of
+    // the same words would supersede a fact that was just written.
+    const claimer: DeterministicHandler = {
+      name: 'claimer',
+      handle: async () => ({ claimed: true, outcome: 'recorded_done', reply: 'Filed.' }),
+    };
+    const { h, order } = statefulHarness({ handlers: [claimer], body: 'done' });
+    await routeChannelMessage(h.deps, job());
+
+    expect(order).toEqual([]);
+  });
+
+  it('says out loud when it read a settled state and found nothing to settle', async () => {
+    const h = harness({
+      context: { body: 'Yes we booked already' },
+      recordStatedState: async () => ({
+        status: 'not_recorded' as const,
+        state: 'health_visit_handled' as const,
+        reason: 'no_open_checkpoint' as const,
+      }),
+    });
+    await routeChannelMessage(h.deps, job());
+
+    expect(JSON.stringify(h.logs)).toContain('nothing was open to settle');
   });
 });
