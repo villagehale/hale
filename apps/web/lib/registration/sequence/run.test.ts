@@ -3,6 +3,7 @@ import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { GO_LEAD_MINUTES } from './schedule.js';
 import {
@@ -104,6 +105,8 @@ interface Harness {
   /** MEM-10 · promises opened, and promises closed, in call order. */
   promised: Array<{ kind: string; summary: string; dueAt: Date; channelMessageId: string | null }>;
   kept: Array<{ kind: string; channelMessageId: string | null }>;
+  /** Every leg that landed in the parent's own text thread (lib/channel/thread.ts). */
+  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
 }
 
 function harness(
@@ -128,6 +131,7 @@ function harness(
   const released: string[] = [];
   const promised: Harness['promised'] = [];
   const kept: Harness['kept'] = [];
+  const threaded: Harness['threaded'] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: SequenceRunDeps = {
@@ -188,6 +192,10 @@ function harness(
       kept.push({ kind: input.kind, channelMessageId: input.channelMessageId });
       return { status: 'closed', commitmentIds: ['commitment-1'] };
     },
+    threadMessage: async (_db, input) => {
+      threaded.push(input);
+      return 'conv-1';
+    },
   };
 
   return {
@@ -200,6 +208,7 @@ function harness(
     released,
     promised,
     kept,
+    threaded,
   };
 }
 
@@ -344,6 +353,43 @@ describe('the legs', () => {
     expect(body).toContain('Maya');
     expect(body.endsWith(NUDGE_OPT_OUT)).toBe(true);
     expect(body.split(NUDGE_OPT_OUT)).toHaveLength(2);
+  });
+
+  it("puts the leg in the parent's own text thread, so their reply has an antecedent", async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // The whole ladder is a conversation: the heads-up asks for a YES, the battle plan
+    // is answered the morning of. `channel_messages` stores no body (rule #1), so a leg
+    // that skips this is a question the coach can never see the parent answering.
+    const h = harness({ sequences: [live({ optIn: 'pending' })] });
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(h.threaded).toHaveLength(1);
+    expect(h.threaded[0]).toMatchObject({ familyId: 'fam-1', parentUserId: 'user-1' });
+    expect(h.threaded[0]?.body).toContain('Richmond Hill');
+    expect(h.transport.bodies()[0]).toContain(h.threaded[0]?.body ?? ' ');
+  });
+
+  it('threads the composed leg, never the CASL footer on the wire', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // The opt-out line belongs on the wire and nowhere else, or the coach re-reads
+    // "Reply STOP to opt out" as a sentence Hale addressed to this parent.
+    const h = harness({ sequences: [live({ optIn: 'pending' })] });
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    const wire = h.transport.bodies()[0] ?? '';
+    expect(wire.endsWith(NUDGE_OPT_OUT)).toBe(true);
+    expect(h.threaded[0]?.body).not.toContain(NUDGE_OPT_OUT);
+    expect(wire).toContain(h.threaded[0]?.body ?? ' ');
+  });
+
+  it('threads nothing when the leg never reached a transport', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // The positive control for the two above: a held leg is not something Hale said.
+    const h = harness({ sequences: [live({ optIn: 'pending' })], enrolled: false });
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.threaded).toEqual([]);
   });
 
   it('writes the ledger row under its own category and its audit row (rule #6)', async () => {
@@ -587,7 +633,10 @@ describe('the legs', () => {
     // fact. What is still worth asserting is WHICH one: the REAL outbound leg, which
     // refuses by naming its missing credentials rather than silently reporting a leg
     // nobody sent.
-    const { transport } = defaultSequenceRunDeps();
+    const { transport, threadMessage } = defaultSequenceRunDeps();
+    // And WHICH threader: a port declared but wired to a stub is the same silent
+    // no-op the non-nullable type was meant to make unexpressible.
+    expect(threadMessage).toBe(threadProactiveMessage);
     vi.stubEnv('TWILIO_ACCOUNT_SID', '');
     await expect(
       transport.send({ to: '+14165550100', body: 'never leaves: no credentials' }),

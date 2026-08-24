@@ -14,6 +14,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { localParts } from '~/lib/loop/prefs';
@@ -204,6 +205,17 @@ export interface SequenceRunDeps {
    * behind an explicit, result-visible flag, never behind an absent dependency.
    */
   transport: ChannelTransport;
+  /**
+   * Put the sent leg in the parent's own text thread — REQUIRED, same reason as the
+   * three above (rule #11). This ladder is the one Hale runs as a CONVERSATION: the
+   * heads-up asks for a YES, the battle plan is answered the morning of, and the
+   * check-in asks how it went. `channel_messages` carries no body (rule #1), so a leg
+   * that skips this leaves the parent's answer with no antecedent the coach can read —
+   * and it answers a question Hale cannot see itself having asked. There is no "no
+   * thread" to express: the anchor is derived from the family and parent ids
+   * (lib/channel/thread.ts).
+   */
+  threadMessage: typeof threadProactiveMessage;
 }
 
 export interface SequenceRunResult {
@@ -454,6 +466,15 @@ async function runLegForSequence(
   });
 
   await recordLegPromise(database, { sequence, shortlist, leg, messageId, opensForFamilyAt }, deps, now);
+  // THE THREAD, which is where the parent's answer will be read. Unconditional and
+  // AFTER the send, like the promise write above: a leg that never reached a transport
+  // is not something Hale said. The COMPOSED leg, never the wire body — the CASL line
+  // belongs on the wire and nowhere else.
+  await deps.threadMessage(database, {
+    familyId: sequence.familyId,
+    parentUserId: sequence.parentUserId,
+    body,
+  });
   return { kind: 'sent' };
 }
 
@@ -763,5 +784,6 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     transport: createTwilioTransport(),
     recordCommitment,
     fulfillCommitment,
+    threadMessage: threadProactiveMessage,
   };
 }
