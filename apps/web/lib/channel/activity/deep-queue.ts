@@ -7,16 +7,30 @@ import { owesDepth } from './evidence';
  *
  * WHY IT IS NOT ONE OF THE HOT QUEUES. Every other queue in this system carries a job
  * measured in seconds: a text to route, an action to execute, a rank to materialise.
- * This one carries three concurrent research legs and an `xhigh` merge. MEASURED LIVE,
- * 2026-08-24, production wiring, against the real web: legs of 34.9s, 39.3s and 47.9s run
- * concurrently, plus a 15.4s Opus merge — 63.3 seconds of wall clock, against 122.1s if
- * the legs had run one after another. Eight pages opened, fifty search results, $1.3646.
+ * This one carries three concurrent research legs and an `xhigh` merge.
  *
- * Sixty-three seconds is inside the hot expiry, but not by the margin an outlier needs: a
- * municipal PDF that takes two minutes to fetch is an ordinary bad day, and a job that
- * runs past 180s is expired by pg-boss's own timeout sweep WHILE STILL RUNNING and
- * redelivered — so a parent gets the same expensive answer twice and the bill three
- * times. Its expiry is its own number.
+ * MEASURED LIVE, 2026-08-24, production wiring, against the real web, on a real municipal
+ * subject (the Gellert fall swim schedule — a page with a thirty-row grid on it):
+ *
+ *   legs        38.7s, 66.9s and 97.4s, concurrent — 97.4s of wall clock
+ *   synthesis   89.5s (Opus, 64,046 in / 11,314 out)
+ *   JOB TOTAL   189.4s, and $1.81 — $1.75 of tokens plus six web searches at $0.01
+ *
+ * The whole question-to-two-messages turn, including the inline lane that answers the
+ * parent immediately, measured $2.80 and 8 searches.
+ *
+ * THOSE NUMBERS REPLACED AN EARLIER 63.3s / $1.3646, AND THE GAP IS THE SUBJECT. The first
+ * measurement ran against a venue with a short programme page. A municipality publishing
+ * its whole fall grid is the case this lane was BUILT for, and it is three times the wall
+ * clock: the merge has thirty-odd dated rows to reconcile and now emits a verbatim quote
+ * beside every fact, which is most of the 11,314 output tokens. Both halves of that are
+ * load-bearing, so 190 seconds is the number to size against and 63 was the easy case.
+ *
+ * Three minutes is well inside the hot expiry, and nowhere near it by the margin an
+ * outlier needs: a municipal PDF that takes two minutes to fetch is an ordinary bad day,
+ * and a job that runs past 180s is expired by pg-boss's own timeout sweep WHILE STILL
+ * RUNNING and redelivered — so a parent gets the same expensive answer twice and the bill
+ * three times. Its expiry is its own number.
  */
 
 /** The queue name. A DATA value: it is a row in pg-boss's `queue` table and a string in
@@ -26,7 +40,7 @@ export const DEEP_RESEARCH_QUEUE = 'deep.research';
 /**
  * How long a deep job may run before pg-boss reclaims it.
  *
- * FIFTEEN MINUTES, against a measured run of 63 seconds. The margin is deliberate and it
+ * FIFTEEN MINUTES, against a measured run of 190 seconds. The margin is deliberate and it
  * is not slack: the failure mode of a too-small expiry is INVISIBLE and expensive — the
  * job keeps running to completion, sends its text, and is redelivered anyway because the
  * sweep already took it back. A generous expiry costs nothing, because the drain's own
@@ -51,16 +65,22 @@ export const DEEP_RESEARCH_BATCH_SIZE = 1;
  *
  * The step's slice is measured from the start of the run (drain.ts), and this queue is
  * drained LAST — so the number answers one question: if we begin a deep job now, does it
- * finish inside the run's own 700-second budget? Seven minutes plus the measured 63-second
- * run lands at 483s, comfortably under that budget and under the route's `maxDuration` of
- * 800 — with room for a job several times slower than the one that was measured. Past it
- * the tick hands the job back, and the next cron minute picks it up.
+ * finish inside the run's own 700-second budget?
  *
- * IT IS ALSO WHY THERE IS NO CHUNKED-STAGE MACHINERY HERE. A leg that risked the 300s
- * ceiling would have to checkpoint its state in Postgres between stages; at 63 seconds
- * against a 700-second budget that would be a durable state machine bought for nothing.
+ * FIVE MINUTES, DOWN FROM SEVEN, because the measured run went from 63 seconds to 190 (see
+ * the module note: a real municipal grid, not a short venue page). Seven minutes plus 190s
+ * lands at 610s — still inside the 700s budget, but with nothing left for a job any slower
+ * than the average one, which is precisely the job this bound exists to protect against.
+ * At five minutes a run TWICE the measured one finishes at 680s and still lands inside it.
+ * Past the bound the tick hands the job back and the next cron minute picks it up, so the
+ * cost of being early is a minute and the cost of being late is a killed job, a promise
+ * redelivered, and the whole corpus researched twice.
+ *
+ * IT IS ALSO WHY THERE IS NO CHUNKED-STAGE MACHINERY HERE. A leg that risked the ceiling
+ * would have to checkpoint its state in Postgres between stages; at 190 seconds against a
+ * 700-second budget that would be a durable state machine bought for nothing.
  */
-export const DEEP_RESEARCH_BUDGET_MS = 420_000;
+export const DEEP_RESEARCH_BUDGET_MS = 300_000;
 
 /**
  * ONE JOB PER PROMISE, FOREVER — and it is the job ID that guarantees it, not the key.
