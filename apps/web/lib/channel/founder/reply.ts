@@ -5,6 +5,7 @@ import { CONSUMED_SEND_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { posterLocation } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { cancelCommitment, fulfillCommitment, loadOpenCommitment } from '~/lib/commitments/ledger';
 import {
@@ -96,6 +97,15 @@ export interface FounderReplyDeps {
   /** REQUIRED (rule #11). A lane that can decide to send a personal note and then hold no
    * way to send it would close the offer, tell the founder it went, and text nobody. */
   transport: ChannelTransport;
+  /**
+   * Put the note in the RECEIVING family's own text thread — REQUIRED, same reason as
+   * the transport (rule #11). It is Hale's first personal words to that household and
+   * it invites an answer ("just say so right here"); `channel_messages` carries no body
+   * (rule #1), so a note that skips this is one the coach cannot see when they take it
+   * up. Their thread, never the founder's: one household's transcript never carries
+   * another's (lib/channel/thread.ts).
+   */
+  threadMessage: typeof threadProactiveMessage;
   fulfillCommitment: typeof fulfillCommitment;
   cancelCommitment: typeof cancelCommitment;
 }
@@ -165,11 +175,12 @@ export async function handleFounderWelcomeReply(
     return { status: 'note_sent', reply: FOUNDER_NOTE_SENT_ACK, noteChannelMessageId: already };
   }
 
+  const body = founderNote(location);
   let providerMessageId: string;
   try {
     ({ providerMessageId } = await deps.transport.send({
       to: recipient.phoneE164,
-      body: founderNote(location),
+      body,
     }));
   } catch (err) {
     console.error(
@@ -185,6 +196,13 @@ export async function handleFounderWelcomeReply(
     dedupeKey,
     providerMessageId,
     now: input.now,
+  });
+  // THE THREAD, on the receiving side. AFTER the send and unconditional: a note that
+  // never reached a transport is not something Hale said to anyone.
+  await deps.threadMessage(database, {
+    familyId: targetFamilyId,
+    parentUserId: recipient.parentUserId,
+    body,
   });
   return { status: 'note_sent', reply: FOUNDER_NOTE_SENT_ACK, noteChannelMessageId };
 }
@@ -300,6 +318,7 @@ export function defaultFounderReplyDeps(): FounderReplyDeps {
     loadOpenOffer: loadOpenCommitment,
     resolveRecipient: resolveFounderNoteRecipient,
     transport: createTwilioTransport(),
+    threadMessage: threadProactiveMessage,
     fulfillCommitment,
     cancelCommitment,
   };

@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { posterLocation } from '~/lib/channel/intake/copy';
 import { FOUNDER_PING_TEMPLATE_KEY, founderPing } from './copy';
 import { type FounderChannel, resolveFounderChannel } from './channel';
@@ -88,6 +89,15 @@ export interface FounderPingPorts {
    * whole point of the ledger row below is that an offer nobody received is not an offer.
    */
   transport: ChannelTransport;
+  /**
+   * Put the ping in the founder's OWN text thread — REQUIRED, same reason as the
+   * transport (rule #11). This ping is a question, and the word that answers it is
+   * "yes"; `channel_messages` carries no body (rule #1), so a ping that skips this is
+   * one the coach reads a bare YES against with nothing above it. The anchor derives
+   * from his family and user ids, so there is no absence to handle
+   * (lib/channel/thread.ts).
+   */
+  threadMessage: typeof threadProactiveMessage;
   resolveFounder: typeof resolveFounderChannel;
   dedupeActive: typeof dedupeActive;
   cancelCommitment: typeof cancelCommitment;
@@ -97,6 +107,7 @@ export interface FounderPingPorts {
 export function defaultFounderPingPorts(transport: ChannelTransport): FounderPingPorts {
   return {
     transport,
+    threadMessage: threadProactiveMessage,
     resolveFounder: resolveFounderChannel,
     dedupeActive,
     cancelCommitment,
@@ -127,11 +138,12 @@ export async function offerFounderWelcome(
   const dedupeKey = founderPingDedupeKey(input.newFamilyId);
   if (await ports.dedupeActive(dedupeKey, database)) return { status: 'already_pinged' };
 
+  const body = founderPing(location);
   let providerMessageId: string;
   try {
     ({ providerMessageId } = await ports.transport.send({
       to: founder.phoneE164,
-      body: founderPing(location),
+      body,
     }));
   } catch (err) {
     console.error(
@@ -141,11 +153,22 @@ export async function offerFounderWelcome(
     return { status: 'not_pinged', reason: 'send_failed' };
   }
 
-  return registerOffer(
+  const outcome = await registerOffer(
     database,
     { ...input, sourceCode, location, founder, providerMessageId, dedupeKey },
     ports,
   );
+  // THE THREAD, which is where his YES will be read. AFTER the registration and on
+  // EVERY path that got this far, including the ones that failed to write the offer
+  // down: the ping is on his phone either way, so it is a sentence he can answer, and
+  // a thread missing it is the state that makes the answer unreadable. Last, so a
+  // thread write can never be what stops the offer being recorded.
+  await ports.threadMessage(database, {
+    familyId: founder.familyId,
+    parentUserId: founder.userId,
+    body,
+  });
+  return outcome;
 }
 
 /**

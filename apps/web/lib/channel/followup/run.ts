@@ -4,6 +4,7 @@ import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import {
   type OutboundGatePorts,
@@ -241,6 +242,15 @@ export interface FollowupSweepDeps {
    * behind it (founder doctrine: no preset bodies), so a sweep without a voice does not
    * send a duller message — it sends nothing, visibly. */
   voice: FollowupVoice;
+  /**
+   * Put the sent ask in the parent's own text thread — REQUIRED, same reason as the two
+   * above (rule #11). Every message this sweep sends is a QUESTION, and the answer to it
+   * comes back as a coach turn; `channel_messages` carries no body (rule #1), so an ask
+   * that skips this is one the coach reads a reply to with nothing above it. There is no
+   * "no thread" to express: the anchor derives from the family and parent ids
+   * (lib/channel/thread.ts).
+   */
+  threadMessage: typeof threadProactiveMessage;
 }
 
 export interface FollowupSweepResult {
@@ -359,6 +369,14 @@ async function sendFollowup(
     dedupeKey: input.dedupeKey,
     providerMessageId,
     sentAt: input.now,
+  });
+  // THE THREAD, which is where the answer to this question will be read. AFTER the send
+  // and unconditional: a compose that never reached a transport asked nobody anything.
+  // The COMPOSED ask, never the wire body — the CASL line belongs on the wire alone.
+  await deps.threadMessage(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    body: composed.body,
   });
   return { status: 'sent' };
 }
@@ -748,5 +766,6 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
     },
     transport: createTwilioTransport(),
     voice: createFollowupVoice(followupVoiceClient),
+    threadMessage: threadProactiveMessage,
   };
 }

@@ -30,6 +30,7 @@ import { channelRouterDeps, defaultOpenQuestionReader } from '~/lib/channel/rout
 import { type ChannelRouterDeps, routeChannelMessage } from '~/lib/channel/router/route';
 import type { ChannelCoachRuntime } from '~/lib/channel/router/coach-runtime';
 import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
+import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -181,6 +182,16 @@ describe("the founder's welcome note", () => {
 
   // ── reads ──────────────────────────────────────────────────────────────────
 
+  /** The parent intake provisioned for a family — whose thread the note belongs in. */
+  async function primaryParentOf(familyId: string): Promise<string> {
+    const [row] = await database
+      .select({ userId: schema.familyMembers.userId })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.familyId, familyId));
+    if (!row) throw new Error(`fixture drift: family ${familyId} has no member`);
+    return row.userId;
+  }
+
   async function messages(familyId: string, templateKey: string) {
     return database
       .select({
@@ -213,6 +224,26 @@ describe("the founder's welcome note", () => {
       })
       .from(schema.agentCommitments)
       .where(eq(schema.agentCommitments.commitmentKind, 'founder_welcome_offer'));
+  }
+
+  /**
+   * The parent's own coach transcript — the ONE place a reply can find what it is
+   * replying to, because `channel_messages` deliberately stores `body: null` (rule #1).
+   * Read through the real note anchor the C1 router resolves on, so a row only shows up
+   * here if it landed in the thread the coach will actually re-read.
+   */
+  async function threadTurns(familyId: string, parentUserId: string) {
+    return database
+      .select({ role: schema.messages.role, content: schema.messages.content })
+      .from(schema.messages)
+      .innerJoin(schema.conversations, eq(schema.messages.conversationId, schema.conversations.id))
+      .where(
+        and(
+          eq(schema.conversations.familyId, familyId),
+          eq(schema.conversations.noteKey, channelSmsNoteKey(parentUserId)),
+        ),
+      )
+      .orderBy(schema.messages.createdAt);
   }
 
   async function auditVerbs(familyId: string): Promise<string[]> {
@@ -390,6 +421,47 @@ describe("the founder's welcome note", () => {
     expect(closed?.fulfilledAt).not.toBeNull();
     expect(closed?.fulfilledBy).toBe(note?.id);
     expect((await openQuestions(REPLY_AT)).map((q) => q.kind)).toEqual([]);
+  });
+
+  it("the ping lands in the founder's own thread, so his YES has an antecedent", async () => {
+    await arriveFrom(GEORGETOWN, PARENT_PHONE);
+
+    // His YES is read against `messages` and only against `messages`. An unthreaded
+    // ping is a question Hale asked and cannot see itself having asked — the coach
+    // reads a bare "yes" with nothing above it.
+    const turns = await threadTurns(founderFamilyId, founderUserId);
+    expect(turns).toEqual([{ role: 'assistant', content: founderPing('Georgetown') }]);
+  });
+
+  it("the note lands in the NEW family's thread, on their side of the wall", async () => {
+    const { familyId } = await arriveFrom(GEORGETOWN, PARENT_PHONE);
+    const parentUserId = await primaryParentOf(familyId);
+
+    await founderTexts(
+      'yes',
+      recordedResolver({
+        target: await offerQuestionId(REPLY_AT),
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+      REPLY_AT,
+      1,
+    );
+
+    // Hale's first personal words to this household, where their reply to it will be
+    // read. On THEIR thread: one household's transcript never carries another's.
+    expect(await threadTurns(familyId, parentUserId)).toEqual([
+      { role: 'assistant', content: founderNote('Georgetown') },
+    ]);
+    // And the founder's thread has his ping and his ack, and no trace of the note's
+    // recipient (rule #1).
+    const founderTurns = await threadTurns(founderFamilyId, founderUserId);
+    expect(founderTurns.map((t) => t.content)).toEqual([
+      founderPing('Georgetown'),
+      'yes',
+      FOUNDER_NOTE_SENT_ACK,
+    ]);
+    expect(founderTurns.map((t) => t.content).join(' ')).not.toContain(PARENT_PHONE);
   });
 
   it('a family that did not come from a poster is never mentioned to anyone', async () => {
