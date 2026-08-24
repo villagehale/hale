@@ -639,6 +639,7 @@ async function runToddlerJourney(): Promise<Journey> {
   // ── STAGE 6 · the registration sequence ───────────────────────────────────
   const claimed = new Set<string>();
   const sequenceDeps: SequenceRunDeps = {
+    refuseUnbackedSend: async () => [],
     /** SEAM: prod's selector is the same two INNER JOINs as the nudge's. */
     selectFamilies: async (): Promise<SequenceFamily[]> => {
       const family = fake.rows(schema.families)[0] as Record<string, unknown>;

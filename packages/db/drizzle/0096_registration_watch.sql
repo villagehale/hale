@@ -1,0 +1,22 @@
+-- VIL-293 · the registration WATCH — "I'm watching that morning and I'll text you
+-- before it goes live", carried on the MEM-10 open-loops ledger. Additive only
+-- (rule #9): one new enum value. Nothing existing is altered, and on an unmigrated
+-- database every statement here is a no-op.
+--
+-- WHY IT NEEDS ITS OWN KIND. `registration_plan` is the ladder's own promise, opened by
+-- the heads-up leg and kept by the battle plan: "I'll send your plan the evening
+-- before." This one is a different sentence with a different clock. A parent asked, in
+-- an ordinary text, for the registration morning to be watched; the coach said yes; and
+-- there was no row anywhere, because a coach turn cannot arm a sweep and the ladder mints
+-- nothing until its own heads-up leg fires ten days out. Folding the two together would
+-- make a household that has been PROMISED a watch indistinguishable from one whose
+-- ladder is already running, and the partial unique index would then silently refuse
+-- whichever came second.
+--
+-- WHEN IT IS DUE: the instant this family can first register. Past it, "I'll text you
+-- before it opens" is no longer a thing that can happen, so the promise is late — a
+-- query on an open row, never a state anything has to remember to write.
+--
+-- WHO KEEPS IT: the registration ladder's `go` leg, the message that taps the parent
+-- fifteen minutes before the doors open. That is the promise, delivered.
+ALTER TYPE "public"."agent_commitment_kind" ADD VALUE IF NOT EXISTS 'registration_watch';

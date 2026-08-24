@@ -1,9 +1,10 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
+import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { CATEGORY_CAPS } from './config';
 import { SENT_STATUSES, acceptedStatus } from './ledger';
-import type { Channel, ChannelKind, LoopCategory, LoopMessage } from './types';
+import type { Channel, ChannelKind, LoopCategory, LoopMessage, RenderedContent } from './types';
 
 /**
  * F11 · The Sunday Loop — the dispatch (VIL-213 · A2). THE one place loop policy
@@ -229,6 +230,22 @@ async function dispatchLeg(
   }
 
   const rendered = ports.renderer.render(msg, channel, prefs.childNameLevel);
+  // THE CHOKE POINT'S OWN HONESTY GATE (VIL-293), and it is the ledger-FREE half of the
+  // reconciliation primitive on purpose. This seam has no database handle by design — it
+  // is a decision engine over injected ports — so it cannot ask whether a promise has a
+  // row. What it can do without asking anything is refuse the claims no row anywhere
+  // could ever back: a promise about how Hale itself behaves. Those are false at compose
+  // time, they are false at send time, and this is the one place every loop message
+  // passes through, so refusing them here is a guarantee rather than a habit.
+  //
+  // A REFUSAL, not a rewrite. These bodies are TEMPLATES: a claim in one is a bug in the
+  // template, and trimming a sentence out of a weekly plan would ship a subtly wrong
+  // artifact instead of a loud row saying the template needs fixing.
+  const unbacked = claimsNoLedgerCanBack(claimText(rendered));
+  if (unbacked.length > 0) {
+    await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
+    return { channel, outcome: 'failed', reason: 'unbacked_claim' };
+  }
   const adapter = ports.channels[channel];
   if (!adapter) {
     await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'channel_unavailable' });
@@ -286,6 +303,13 @@ async function dispatchLeg(
   const errorCode = result.status === 'error' ? result.code : result.reason;
   await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
   return { channel, outcome: 'failed', reason: errorCode };
+}
+
+/** The words a parent will actually read, whatever the channel renders them into. An
+ * email's HTML is not checked — its plain-text alternative carries the same sentences
+ * and is the one a regex can read honestly. */
+function claimText(rendered: RenderedContent): string {
+  return rendered.kind === 'push' ? `${rendered.title} ${rendered.body}` : rendered.text;
 }
 
 /** The single point every terminal channel_messages write goes through: it writes

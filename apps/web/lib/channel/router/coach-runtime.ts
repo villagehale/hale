@@ -78,7 +78,26 @@ export interface ChannelTurnResult {
 }
 
 export interface ChannelCoachRuntime {
-  respond(turn: ChannelTurn): Promise<ChannelTurnResult>;
+  /**
+   * `rejectedLastAttempt` is WHY THE LAST ATTEMPT WAS NOT SENDABLE — the reconciliation
+   * primitive's violations (VIL-293), in the second person the model will act on.
+   *
+   * Empty on every first attempt, which is nearly every turn. Non-empty means this turn
+   * has already run once and wrote a sentence claiming a row that does not exist: a
+   * watch nothing is watching, a follow-up nothing registered, a booking nothing holds.
+   * The reply was NOT sent, so it is a rewrite rather than a correction — the parent has
+   * heard nothing yet.
+   *
+   * A PARAMETER RATHER THAN A FIELD ON {@link ChannelTurn}, because a turn is what a
+   * parent said and this is what Hale got wrong about it. `HandlerContext` widens
+   * `ChannelTurn`, and every deterministic handler in the chain would otherwise carry a
+   * field about a model retry none of them can have.
+   *
+   * REQUIRED, not optional (rule #11): a caller that forgot it would silently get the
+   * first-attempt prompt on a retry, and the turn would compose the same false sentence
+   * forever with nothing saying why.
+   */
+  respond(turn: ChannelTurn, rejectedLastAttempt: readonly string[]): Promise<ChannelTurnResult>;
 }
 
 /**

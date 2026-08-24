@@ -261,7 +261,7 @@ describe('the offer is a proposal', () => {
       standingQuestions: [] as string[][],
       async respond(turn: { standingQuestions: readonly string[] }) {
         coach.standingQuestions.push([...turn.standingQuestions]);
-        return { reply, planOffer: null };
+        return { reply, planOffer: null, activityPromise: null };
       },
     };
     return coach as ChannelCoachRuntime & { standingQuestions: string[][] };

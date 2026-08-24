@@ -78,6 +78,9 @@ function harness(
     deep?: Awaited<ReturnType<ActivityFollowUpDeps['deep']['research']>>;
     sharePage?: Awaited<ReturnType<ActivityFollowUpDeps['sharePage']>>;
     recordWatch?: Awaited<ReturnType<ActivityFollowUpDeps['recordWatch']>>;
+    /** What the reconciliation gate says about the wire body (VIL-293). Empty is the
+     * ordinary answer: nothing in an activity follow-up claims a row by default. */
+    unbacked?: Awaited<ReturnType<ActivityFollowUpDeps['refuseUnbackedSend']>>;
     /** The thread the promise's own message carried, or null when it carried none. */
     conversationId?: string | null;
   } = {},
@@ -92,6 +95,7 @@ function harness(
   const watched: unknown[] = [];
 
   const deps: ActivityFollowUpDeps = {
+    refuseUnbackedSend: async () => overrides.unbacked ?? [],
     loadDue: async () => overrides.due ?? [DUE],
     resolveRecipient: async () => ({
       parentUserId: PARENT,
@@ -882,6 +886,22 @@ describe('the last read of the string that actually leaves', () => {
     expect(h.threaded).toEqual([]);
     expect(h.fulfilled).toEqual([]);
     expect(h.watched).toEqual([]);
+  });
+
+  it('VIL-293 - a wire body claiming a row that does not exist is refused, promise left open', async () => {
+    armed();
+    const h = harness({
+      find: { found: true, picks: [PICK] },
+      compose: { status: 'composed', message: `${PICK.name} runs Saturdays. Your spot is booked.` },
+      unbacked: ['no_scheduled_row'],
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ due: 1, sent: 0, refusedAtSend: 1, deferred: 0, failed: 0 });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.threaded).toEqual([]);
+    expect(h.fulfilled).toEqual([]);
   });
 
   it('POSITIVE CONTROL - the two things code DOES append still go out', async () => {

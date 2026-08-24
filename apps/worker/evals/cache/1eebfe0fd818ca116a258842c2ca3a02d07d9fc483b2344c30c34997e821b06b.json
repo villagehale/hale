@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply handles both pieces correctly. The registration window is stated flat as a Hale-verified fact (correct — no hedging), and `watching: true` means Hale is already on it, so \"I'm on it\" is accurate and complete. The webFind (Tiny Tumblers) is handed over with attribution to the venue's program page implied by \"Their site lists\" and notes no price yet — exactly what the webFind rule requires. No URL invented (referralLinkAppended is null). No app referral. No markdown, no greeting, no sign-off. The one small blemish: \"Their site lists\" is slightly ambiguous (which site?) and could more clearly say \"the venue's own program page\" as the source demands, but it is close enough to the attribution rule to not be a real failure. The reply is concise, actionable, and correct in shape.",
+    "score": 4
+  }
+}

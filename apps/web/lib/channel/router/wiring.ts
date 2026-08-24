@@ -21,6 +21,8 @@ import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
+import { loadReconcileView } from '~/lib/channel/reconcile/view';
+import { recordRegistrationWatch } from '~/lib/registration/watch';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import {
   defaultActivityPromisePorts,
@@ -454,6 +456,11 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
     recordActivityPromise: (db, input) =>
       recordActivityPromise(db, input, defaultActivityPromisePorts()),
+    // VIL-293. The view is read beside the model call, and the mint is bound here for
+    // the same reason the two writers above it are: the row is minted against the SENT
+    // message, and the router is the only thing that knows which row that was.
+    reconcileView: loadReconcileView,
+    recordRegistrationWatch,
     limiter: new PostgresRateLimiter(database),
     now: () => new Date(),
     log: console,

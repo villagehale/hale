@@ -85,7 +85,11 @@ export type AnalyticsEvent =
   | 'agent_send_failed'
   | 'agent_relay_refused'
   | 'agent_reply_trimmed'
-  | 'agent_commitment_failed';
+  | 'agent_commitment_failed'
+  // A sentence Hale wrote and was not allowed to send: it claimed a row that does not
+  // exist and could not be made to (lib/channel/reconcile). The class is the refusal
+  // reason, so the rate says WHICH claim the model keeps inventing.
+  | 'agent_claim_refused';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

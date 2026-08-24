@@ -5,6 +5,7 @@ import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
+import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   type OutboundGatePorts,
@@ -278,6 +279,10 @@ export interface ActivityFollowUpDeps {
     input: { familyId: string; slots: readonly DeepSlot[] },
   ): Promise<ActivitySharePage>;
   buildGate(database: Database): OutboundGatePorts;
+  /** The reconciliation primitive's send-boundary gate (VIL-293). REQUIRED (rule #11):
+   * "no gate wired" is not a state this sweep has — a lane that could silently skip the
+   * check would send exactly the claims it exists to stop, and look identical doing it. */
+  refuseUnbackedSend: typeof refuseUnbackedSend;
   dedupeActive: typeof dedupeActive;
   resolveSendablePhone: typeof resolveSendablePhone;
   /** REQUIRED (rule #11). A sweep that can decide to keep a promise and quietly fail to
@@ -581,6 +586,26 @@ async function keepOne(
     );
     return;
   }
+  // THE SECOND HALF OF THE SAME BOUNDARY (VIL-293). The gate above asks whether the wire
+  // body asks anything; this asks whether it CLAIMS anything — a booking with nothing on
+  // the calendar, a registration watch nothing is watching, a promise about Hale's own
+  // behaviour. The composer's own grounding gates cover the claim this lane is most
+  // likely to invent ("I'll keep looking" with `watch: false`, followup-note.ts); these
+  // are the three it has no opinion about, and it is the same discipline: refused rather
+  // than trimmed, promise left open, and the count says a body got this far.
+  const unbacked = await deps.refuseUnbackedSend(database, {
+    familyId: commitment.familyId,
+    body,
+    now,
+  });
+  if (unbacked.length > 0) {
+    result.refusedAtSend += 1;
+    console.error(
+      { commitmentId: commitment.id, reasons: unbacked },
+      'activity follow-up: the wire body claims a row that does not exist - refused at the send boundary, promise left open',
+    );
+    return;
+  }
   const { providerMessageId } = await deps.transport.send({ to, body });
   const channelMessageId = await deps.recordSend(database, {
     familyId: commitment.familyId,
@@ -711,6 +736,7 @@ export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
     threadMessage: threadProactiveMessage,
     fulfillCommitment,
     cancelPromise: cancelActivityPromise,
+    refuseUnbackedSend,
     recordWatch: (database, input) =>
       recordActivityPromise(database, input, defaultActivityPromisePorts()),
   };

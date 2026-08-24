@@ -12,8 +12,22 @@ import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
+import { extractStateClaims } from '~/lib/channel/reconcile/claims';
+import {
+  type ReconcileVerdict,
+  type ReconcileView,
+  type RegistrationWatchMint,
+  reconcile,
+  reconcileViolations,
+  withoutRefusedClaims,
+} from '~/lib/channel/reconcile/reconcile';
 import type { ApologyFallback, TurnApology } from './apology';
-import { type ChannelCoachRuntime, type ChannelTurn, draftsFromFailure } from './coach-runtime';
+import {
+  type ChannelCoachRuntime,
+  type ChannelTurn,
+  type ChannelTurnResult,
+  draftsFromFailure,
+} from './coach-runtime';
 import { FLOOD_REPLY, clarifyWhichQuestion, partialFailureReply } from './copy';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
@@ -242,6 +256,31 @@ export interface ChannelRouterDeps {
     input: {
       familyId: string;
       promise: ActivityPromise;
+      channelMessageId: string | null;
+      now: Date;
+    },
+  ): Promise<unknown>;
+  /**
+   * What this family's ledger says, read beside the model call — the reconciliation
+   * primitive's view (VIL-293). Non-nullable (rule #11): a router that could not read
+   * the ledger would send every claim the model invented, which is the exact defect
+   * this dep exists to close, and it would do it invisibly.
+   */
+  reconcileView(
+    database: Database,
+    input: { familyId: string; now: Date },
+  ): Promise<ReconcileView>;
+  /**
+   * Write down the registration watch the coach just promised, against the message that
+   * carried it. Non-nullable for the same reason `recordActivityPromise` is: the whole
+   * point of MINTING rather than refusing is that the promise gets kept, and a mint that
+   * silently did not happen leaves the parent with the sentence and nothing behind it.
+   */
+  recordRegistrationWatch(
+    database: Database,
+    input: {
+      familyId: string;
+      mint: RegistrationWatchMint;
       channelMessageId: string | null;
       now: Date;
     },
@@ -685,10 +724,20 @@ async function runAgentTurn(
   },
 ): Promise<RouterResult> {
   try {
-    const { reply, planOffer, activityPromise } = await deps.coach.respond({
-      ...args.turn,
-      standingQuestions: args.questions.map((question) => question.subject),
+    // THE LEDGER, READ BESIDE THE MODEL AND NOT AFTER IT. The reconciliation view depends
+    // only on WHICH family is talking, never on what the coach ends up saying, so the
+    // whole batch resolves inside the seconds the turn is already thinking. That is what
+    // keeps a gate on Hale's honesty off the critical path of a parent holding a phone —
+    // the added wall-clock on an ordinary turn is the regex pass and nothing else.
+    const view = deps.reconcileView(deps.database, {
+      familyId: args.turn.familyId,
+      now: args.turn.now,
     });
+    const { reply, planOffer, activityPromise, mints } = await composeReconciledReply(
+      deps,
+      args,
+      view,
+    );
     const channelMessageId = await args.answer(reply);
     // AFTER the send, against the row that carried it — the MEM-10 send-time discipline
     // (lib/commitments/ledger.ts). A turn that composed an offer and then failed to
@@ -711,6 +760,19 @@ async function runAgentTurn(
       await deps.recordActivityPromise(deps.database, {
         familyId: args.turn.familyId,
         promise: activityPromise,
+        channelMessageId,
+        now: args.turn.now,
+      });
+    }
+    // THE PROMISE THE RECONCILE KEPT (VIL-293). The coach said it was watching a
+    // registration morning; the ledger had no row for that, and a matched municipal
+    // window with the ladder armed is the fact that lets one be written rather than the
+    // sentence deleted. Same send-time discipline and same never-throws contract as the
+    // two writers above it: the parent already has the text.
+    for (const mint of mints) {
+      await deps.recordRegistrationWatch(deps.database, {
+        familyId: args.turn.familyId,
+        mint,
         channelMessageId,
         now: args.turn.now,
       });
@@ -787,6 +849,88 @@ async function runAgentTurn(
       lane: null,
     });
   }
+}
+
+/**
+ * ONE RE-ASK, AND THEN THE KNIFE. Two attempts, deliberately (VIL-293).
+ *
+ * A coach turn cannot be refused the way a sweep's can. The activity follow-up sweep
+ * meets an unbacked sentence by sending nothing and leaving the promise open for the
+ * next tick (#529, `refusedAtSend`) — there is no parent waiting on that message. Here
+ * there is: refusing outright means a text that never gets answered, which is a worse
+ * failure than the one being prevented. So the turn is composed again, once, with the
+ * violation named in the second person — the #529 composer's shape, reused rather than
+ * re-invented — and the parent has still heard nothing at that point, so it is a rewrite
+ * rather than a correction.
+ *
+ * IF IT SAYS IT AGAIN, the offending SENTENCES are cut and the rest goes out verbatim
+ * (`withoutRefusedClaims`). That is a subtraction, never a paraphrase: what the parent
+ * reads is what the model wrote minus the parts nothing backs. A reply that was ENTIRELY
+ * an unbacked claim leaves nothing to send, and that is a failed turn — the router's
+ * apology path, which is the honest end of the road for a turn whose every sentence was
+ * about a row that does not exist.
+ *
+ * Every refusal is a LOG LINE and a RATE, per attempt and per reason (rule #11). A gate
+ * that quietly rewrites the model's answer and reports nothing is a gate nobody can tell
+ * is firing — and how often the coach invents a watch is exactly the number that says
+ * whether the skill needs work.
+ */
+const MAX_RECONCILE_ATTEMPTS = 2;
+
+async function composeReconciledReply(
+  deps: ChannelRouterDeps,
+  args: {
+    turn: HandlerContext;
+    questions: readonly OpenQuestion[];
+  },
+  view: Promise<ReconcileView>,
+): Promise<ChannelTurnResult & { mints: readonly RegistrationWatchMint[] }> {
+  const standingQuestions = args.questions.map((question) => question.subject);
+  let rejected: readonly string[] = [];
+  let result: ChannelTurnResult | null = null;
+  let verdict: ReconcileVerdict | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RECONCILE_ATTEMPTS; attempt += 1) {
+    result = await deps.coach.respond({ ...args.turn, standingQuestions }, rejected);
+    verdict = reconcile(extractStateClaims(result.reply), {
+      ...(await view),
+      // What THIS turn's tools already registered. A promise the router is about to write
+      // is a promise: the sentence and the row go out together, so the model calling
+      // `promise_activity_followup` is what makes "I'll come back to you" true.
+      pendingKinds: new Set(result.activityPromise ? ['activity_followup' as const] : []),
+    });
+    if (verdict.refused.length === 0) {
+      return { ...result, mints: verdict.mints };
+    }
+    rejected = reconcileViolations(verdict);
+    for (const refusal of verdict.refused) {
+      deps.log.error(
+        { attempt, reason: refusal.reason },
+        'channel router: the reply claimed a row that does not exist - not sent as written',
+      );
+      await captureAgentError({
+        lane: 'reconcile',
+        reason: refusal.reason,
+        familyId: args.turn.familyId,
+      });
+    }
+  }
+
+  // Asked twice, claimed it twice. `result` and `verdict` are both set — the loop runs at
+  // least once and only leaves early on the clean path.
+  const composed = result as ChannelTurnResult;
+  const refusedVerdict = verdict as ReconcileVerdict;
+  const reply = withoutRefusedClaims(composed.reply, refusedVerdict);
+  if (reply === '') {
+    throw new Error(
+      'channel router: every sentence of the reply claimed a row that does not exist',
+    );
+  }
+  deps.log.error(
+    { cut: refusedVerdict.refused.length },
+    'channel router: sending the reply with the unbacked sentences cut out',
+  );
+  return { ...composed, reply, mints: refusedVerdict.mints };
 }
 
 /**

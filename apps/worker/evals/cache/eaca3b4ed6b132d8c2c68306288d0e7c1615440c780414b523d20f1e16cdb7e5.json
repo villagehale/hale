@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does exactly what is required: one event matches (\"soccer\" → Saturday Soccer practice at Cedarvale Park), so no clarifying question is needed. It drafts the move (within the cap), names the change clearly, keeps the venue from the original event, and ends with \"YES to confirm.\" as the contract requires. No greeting, no sign-off, no markdown, no app referral, no invented detail. Perfectly shaped.",
+    "score": 5
+  }
+}

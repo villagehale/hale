@@ -460,3 +460,69 @@ describe('a channel-pinned message', () => {
     expect(push.calls).toHaveLength(0);
   });
 });
+
+// ── VIL-293 · the choke point's own honesty gate ─────────────────────────────
+
+describe('a rendered body that claims something no row can back never reaches a provider', () => {
+  /** A template that promises to change how Hale itself behaves — the 2026-08-12
+   * sentence, in the one seam every loop message passes through. */
+  const claiming = {
+    render: () => ({
+      kind: 'sms' as const,
+      text: "Here's your week. I'll cut the one sec messages and just answer.",
+    }),
+  };
+
+  it('refuses the leg, writes the row, and calls no adapter', async () => {
+    const sms = fakeChannel('sms');
+    const { ports, ledger } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      renderer: claiming,
+      channels: { sms },
+    });
+    const result = await dispatchLoopMessage(message(), ports);
+
+    expect(result.legs).toEqual([
+      { channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' },
+    ]);
+    expect(sms.calls).toEqual([]);
+    expect(ledger).toEqual([
+      expect.objectContaining({ status: 'failed', errorCode: 'unbacked_claim' }),
+    ]);
+  });
+
+  it('leaves an ordinary template alone', async () => {
+    const sms = fakeChannel('sms');
+    const { ports } = makePorts({ prefs: { loopChannel: 'sms' }, channels: { sms } });
+    const result = await dispatchLoopMessage(message(), ports);
+
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+    expect(sms.calls).toHaveLength(1);
+  });
+
+  it('checks the push leg on its title and body, not only the SMS text', async () => {
+    const push = fakeChannel('push');
+    const { ports } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      hasLivePushToken: async () => true,
+      renderer: {
+        render: (_m, channel) =>
+          channel === 'push'
+            ? {
+                kind: 'push' as const,
+                title: 'This week',
+                body: "I'll stop sending you check-ins.",
+              }
+            : { kind: 'sms' as const, text: 'Here is your week.' },
+      },
+      channels: { sms: fakeChannel('sms'), push },
+    });
+    const result = await dispatchLoopMessage(message(), ports);
+
+    expect(result.legs).toEqual([
+      { channel: 'sms', outcome: 'sent' },
+      { channel: 'push', outcome: 'failed', reason: 'unbacked_claim' },
+    ]);
+    expect(push.calls).toEqual([]);
+  });
+});
