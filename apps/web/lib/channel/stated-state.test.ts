@@ -147,3 +147,89 @@ describe('readStatedState — the near misses that must never write a suppressio
     expect(readStatedState(body)).toBeNull();
   });
 });
+
+/**
+ * The five frames that put a past participle in a sentence where nothing was done.
+ *
+ * A participle is not evidence on its own — "booked" appears verbatim in every one of
+ * these, and in none of them is there an appointment. What settles it is the frame the
+ * participle sits in, and each block below is one frame the reader must refuse.
+ *
+ * The cost is asymmetric and that is the whole design: refusing a true statement costs
+ * one repeated nudge, and accepting a false one silences an immunization reminder for a
+ * window months wide. So every frame here fails CLOSED.
+ */
+describe('readStatedState — a participle in a frame where nothing happened', () => {
+  it.each([
+    // Counterfactual. The modal perfect says the opposite of what the participle says.
+    "we would have booked it if the slots weren't gone",
+    "we would've booked it but they were full",
+    'we could have booked it',
+    'we should have booked it',
+    'we might have booked it by now',
+    'we wish we had booked it',
+    'we almost booked it',
+    'we were supposed to book it',
+    // Progressive / future. The arranging is underway or ahead of us, not behind.
+    "we're booking it tomorrow",
+    'we are getting it booked tomorrow',
+    "we're getting her booked in next week",
+    'I am scheduling it this afternoon',
+    'we are still sorting out the appointment',
+    // Negation, in the auxiliaries the founder thread's own vocabulary missed.
+    "we couldn't get the appointment booked",
+    "we weren't booked in",
+    "the clinic wouldn't book us in",
+    'we booked it and then cancelled',
+    // A question with no question mark, which is most questions in a text message.
+    'have we booked it already',
+    'did we already book the appointment',
+    'is the appointment booked',
+    // Somebody else's household. `already` is an adverb and cannot supply a subject.
+    'my sister booked hers already',
+    'our neighbours already booked theirs',
+    'her cousin has the appointment on Friday',
+  ])('leaves %j alone', (body) => {
+    expect(readStatedState(body)).toBeNull();
+  });
+});
+
+/**
+ * Held out from the vocabulary, then run against it.
+ *
+ * Every sentence here was written to fool the guards above WITHOUT reusing their words,
+ * and each one below is a paraphrase that got through on a first run and forced the frame
+ * it names to be read structurally rather than as a longer list: an infinitive rather than
+ * a list of modals, a reporting verb rather than a list of relatives, a hedge rather than
+ * a list of denials. They are fixtures now so the next widening cannot quietly undo them.
+ */
+describe('readStatedState — paraphrases the vocabulary had not seen', () => {
+  it.each([
+    'we ought to have booked that back in June',
+    'I ring them Monday to get her scheduled',
+    'we failed to get the appointment booked',
+    'we were this close to having it booked',
+    'in a perfect world we booked this months ago',
+    'wondering whether we already booked that one',
+    'I thought we booked it',
+    'the woman at playgroup said she booked hers already',
+    'grandma reckons she already scheduled it',
+  ])('leaves %j alone', (body) => {
+    expect(readStatedState(body)).toBeNull();
+  });
+
+  /**
+   * And the other direction, because a guard that refuses everything passes every test
+   * above. These are statements no fixture taught the reader, and they must still mint —
+   * including the one that opens on `just`, which the instruction prefix strips, and the
+   * `-ing` word that is not one of the progressive forms.
+   */
+  it.each([
+    'just confirming we booked her in for the 17th',
+    'yes, we booked already, sorry for the slow reply',
+    "we rebooked, she's in on the 8th",
+    'the 3rd, we got the appointment',
+  ])('still reads %j as handled', (body) => {
+    expect(readStatedState(body)).toBe('health_visit_handled');
+  });
+});

@@ -60,16 +60,23 @@ interface Segment {
   question: boolean;
 }
 
+/** A question that never got its mark, which on a phone keyboard is most of them. The
+ * inversion is the evidence and it lives at the front of the clause: "have we booked it
+ * already" opens on its auxiliary where the statement "we have booked it already" opens
+ * on its subject. */
+const ASKED =
+  /^(?:did|do|does|have|has|had|is|are|was|were|am|can|could|would|will|shall|should|what|whats|when|where|why|how|who|whose|which|any)\b/;
+
 /** Sentence-ish, keeping only whether the sentence was ASKED. Terminal punctuation is
  * the whole grammar of a text message, and a parent's capitalisation is not evidence of
  * anything — so this splits where the outbound extractor's `sentencesOf` deliberately
  * does not, on any terminator at all. */
 function segmentsOf(body: string): Segment[] {
   return [...body.matchAll(/([^.!?\n]+)([.!?\n]*)/g)]
-    .map((match) => ({
-      words: words(match[1] ?? ''),
-      question: (match[2] ?? '').includes('?'),
-    }))
+    .map((match) => {
+      const text = words(match[1] ?? '');
+      return { words: text, question: (match[2] ?? '').includes('?') || ASKED.test(text) };
+    })
     .filter((segment) => segment.words.length > 0);
 }
 
@@ -90,24 +97,95 @@ const SETTLED = /\b(?:already|we|i|weve|ive|its|thats|hes|shes|theyve)\b/;
  * else, and deliberately broad: a false negative costs one repeated reminder, a false
  * positive silences a legal obligation for months. `yet` is in here on its own because
  * "booked yet" is only ever half of a denial.
+ *
+ * The hedges are here for the same reason. "I thought we booked it" is a parent trying to
+ * remember, not a parent reporting, and a reminder is the right answer to it.
  */
 const UNSETTLED =
-  /\b(?:not|no|never|nothing|yet|havent|hasnt|hadnt|didnt|dont|doesnt|isnt|arent|wasnt|cant|cannot|wont|maybe|if|unless|trying)\b/;
+  /\b(?:not|no|nope|nah|never|nothing|yet|havent|hasnt|hadnt|didnt|dont|doesnt|isnt|arent|wasnt|werent|cant|cannot|couldnt|wouldnt|shouldnt|wont|aint|maybe|if|unless|trying|wondering|whether|unsure|think|thought|guess|assume|assumed|swear|dream|dreamt|imagine|cancelled|canceled|missed)\b/;
 
-/** An intention, not a fact. "next Tuesday" is absent on purpose — an appointment that
+/**
+ * An intention, not a fact. "next Tuesday" is absent on purpose — an appointment that
  * IS booked is nearly always in the future, and a guard that read the date would refuse
- * every true statement of this kind. */
+ * every true statement of this kind.
+ *
+ * The `to have` / `to get` / `to be` forms are here because an infinitive is where a
+ * participle goes to stop being a fact: "ought to have booked", "ring them Monday to get
+ * her scheduled" and "failed to get the appointment booked" are three different sentences
+ * that a list of modals catches none of, and one infinitive catches all three.
+ */
 const INTENDED =
-  /\b(?:will|ll|going to|gonna|planning|plan to|need to|have to|want to|should|about to)\b/;
+  /\b(?:will|ll|going to|gonna|planning|plan to|need to|have to|want to|should|about to|to have|to get|to be|ought to|got to|gotta|due to)\b/;
 
-/** Somebody else's sentence, reported. "You said it was booked" is Hale's own claim
- * handed back, and reading it as the parent's would let Hale confirm itself. */
-const REPORTED = /\byou\b/;
+/**
+ * A modal perfect says the opposite of the participle it governs. "We would have booked
+ * it" contains "booked" and contains no appointment, and neither does "we almost booked
+ * it" — the only thing separating them from "we booked it" is the word in front, which is
+ * why no amount of widening ARRANGED could have caught either.
+ *
+ * The adverbials carry it without a modal at all — "in a perfect world we booked this
+ * months ago" is a plain past tense and still describes no appointment.
+ *
+ * `instead` is deliberately absent: "we booked the other clinic instead" is a true one.
+ */
+const COUNTERFACTUAL =
+  /\b(?:would|wouldve|could|couldve|might|mightve|shouldve|wish|wished|hoping|hoped|almost|nearly|supposed to|meant to|ideally|in theory|on paper|perfect world)\b/;
+
+/**
+ * The arranging is underway or ahead of us. "We are getting it booked tomorrow" is the
+ * same participle again, this time governed by a progressive — so the frame is what gets
+ * read, not the date, because "we booked her in for tomorrow" is a true statement with
+ * the same forward-looking word in it.
+ */
+const IN_PROGRESS =
+  /\b(?:booking|rebooking|scheduling|rescheduling|getting|having|arranging|sorting|chasing|waiting|calling)\b/;
+
+/**
+ * Secondhand. "You said it was booked" is Hale's own claim handed back, and reading it as
+ * the parent's would let Hale confirm itself — but a reporting verb does the same job for
+ * any speaker, and it is the verb rather than the speaker that gives them away: "the woman
+ * at playgroup said she booked hers" names nobody this guard could ever have listed.
+ */
+const REPORTED =
+  /\b(?:you|said|says|saying|told|tells|telling|reckons|reckon|mentioned|heard|claims|apparently|supposedly)\b/;
+
+/**
+ * Somebody else's appointment. `already` earns its place in SETTLED because "already
+ * booked" is elliptical and the ellipsis is this family — but an adverb cannot supply a
+ * subject, so "my sister booked hers already" reads as settled today.
+ *
+ * The clinic, the doctor and the daycare are absent on purpose: those act FOR the family,
+ * and "the clinic booked us in" is a true statement. The relations here are the ones with
+ * appointments of their own, and they are matched bare rather than after a possessive
+ * because "grandma already scheduled it" has no possessive in it.
+ *
+ * A co-parent referred to in the third person ("dad booked it already") is refused by
+ * this, and that is the side of the trade to be wrong on: one repeated nudge.
+ */
+const SOMEONE_ELSE =
+  /\b(?:sister|brother|mom|mum|mother|dad|father|parents|inlaws|friend|friends|cousin|aunt|uncle|grandma|grandmother|grandpa|grandfather|granny|nana|neighbour|neighbours|neighbor|neighbors|coworker|colleague)\b/;
 
 /** The parent is asking Hale to act. An instruction is the opposite of a fact about what
  * is already true, and the propose_* verbs are what answer it. */
 const INSTRUCTION =
   /^(?:please |just |ok |okay )*(?:add|put|book|schedule|rebook|move|cancel|change|find|send|make|set|remind|call|can|could|would|will|do|lets|let us)\b/;
+
+/**
+ * Any one of these and the sentence is not an unambiguous assertion that this household
+ * has already been. The list is read as a whole and a single hit refuses the segment,
+ * because the cost either way is not the same size: refusing a true statement costs one
+ * repeated nudge, and accepting a false one silences an immunization reminder for a
+ * window months wide. So this reader fails CLOSED, once, in one place.
+ */
+const BLOCKERS = [
+  REPORTED,
+  SOMEONE_ELSE,
+  INSTRUCTION,
+  UNSETTLED,
+  COUNTERFACTUAL,
+  INTENDED,
+  IN_PROGRESS,
+] as const;
 
 /**
  * What this message says is ALREADY TRUE, or null — the ordinary answer, and it means
@@ -118,10 +196,7 @@ export function readStatedState(body: string): StatedState | null {
   for (const segment of segmentsOf(body)) {
     if (segment.question) continue;
     const text = segment.words;
-    if (REPORTED.test(text)) continue;
-    if (INSTRUCTION.test(text)) continue;
-    if (UNSETTLED.test(text)) continue;
-    if (INTENDED.test(text)) continue;
+    if (BLOCKERS.some((blocker) => blocker.test(text))) continue;
     if (!ARRANGED.test(text)) continue;
     if (!SETTLED.test(text)) continue;
     return 'health_visit_handled';
