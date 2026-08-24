@@ -7,11 +7,16 @@ import { owesDepth } from './evidence';
  *
  * WHY IT IS NOT ONE OF THE HOT QUEUES. Every other queue in this system carries a job
  * measured in seconds: a text to route, an action to execute, a rank to materialise.
- * This one carries three concurrent research legs and an `xhigh` merge — a job whose
- * measured wall clock is in the low hundreds of seconds. Put on a hot queue it would be
- * expired by pg-boss's own timeout sweep WHILE STILL RUNNING (`HOT_QUEUE_EXPIRE_SECONDS`
- * is 180) and redelivered, so a parent would get the same expensive answer twice and the
- * bill three times. Its expiry is its own number, sized off the measured run.
+ * This one carries three concurrent research legs and an `xhigh` merge. MEASURED LIVE,
+ * 2026-08-24, production wiring, against the real web: legs of 34.9s, 39.3s and 47.9s run
+ * concurrently, plus a 15.4s Opus merge — 63.3 seconds of wall clock, against 122.1s if
+ * the legs had run one after another. Eight pages opened, fifty search results, $1.3646.
+ *
+ * Sixty-three seconds is inside the hot expiry, but not by the margin an outlier needs: a
+ * municipal PDF that takes two minutes to fetch is an ordinary bad day, and a job that
+ * runs past 180s is expired by pg-boss's own timeout sweep WHILE STILL RUNNING and
+ * redelivered — so a parent gets the same expensive answer twice and the bill three
+ * times. Its expiry is its own number.
  */
 
 /** The queue name. A DATA value: it is a row in pg-boss's `queue` table and a string in
@@ -21,8 +26,8 @@ export const DEEP_RESEARCH_QUEUE = 'deep.research';
 /**
  * How long a deep job may run before pg-boss reclaims it.
  *
- * FIFTEEN MINUTES, against a measured run of a few minutes. The margin is deliberate and
- * it is not slack: the failure mode of a too-small expiry is INVISIBLE and expensive — the
+ * FIFTEEN MINUTES, against a measured run of 63 seconds. The margin is deliberate and it
+ * is not slack: the failure mode of a too-small expiry is INVISIBLE and expensive — the
  * job keeps running to completion, sends its text, and is redelivered anyway because the
  * sweep already took it back. A generous expiry costs nothing, because the drain's own
  * wall-clock budget is what actually bounds the run; this number only decides when a job
@@ -46,9 +51,14 @@ export const DEEP_RESEARCH_BATCH_SIZE = 1;
  *
  * The step's slice is measured from the start of the run (drain.ts), and this queue is
  * drained LAST — so the number answers one question: if we begin a deep job now, does it
- * finish inside the run's own 700-second budget? Seven minutes plus a measured run of
- * three or four leaves headroom under both that budget and the route's `maxDuration` of
- * 800. Past it the tick hands the job back, and the next cron minute picks it up.
+ * finish inside the run's own 700-second budget? Seven minutes plus the measured 63-second
+ * run lands at 483s, comfortably under that budget and under the route's `maxDuration` of
+ * 800 — with room for a job several times slower than the one that was measured. Past it
+ * the tick hands the job back, and the next cron minute picks it up.
+ *
+ * IT IS ALSO WHY THERE IS NO CHUNKED-STAGE MACHINERY HERE. A leg that risked the 300s
+ * ceiling would have to checkpoint its state in Postgres between stages; at 63 seconds
+ * against a 700-second budget that would be a durable state machine bought for nothing.
  */
 export const DEEP_RESEARCH_BUDGET_MS = 420_000;
 
