@@ -218,7 +218,12 @@ describe('runFanOut', () => {
     // so it gets the whole page - and the fact that lives at character 27,153 is a fact
     // the leg read, the merge can honestly report, and the refutation can confirm.
     const tail = 'Sundays 9:30AM - 10:15AM, Oct 05 - Dec 07, code 108969';
-    const huge = `${'A'.repeat(MAX_PAGE_NOTE_CHARS + 5_000)}\n${tail}`;
+    const boilerplate = Array.from(
+      { length: 600 },
+      (_, line) => `Accessibility notice paragraph ${line}, no schedule detail in it at all.`,
+    ).join('\n');
+    const huge = `${boilerplate}\n${tail}`;
+    expect(huge.length).toBeGreaterThan(MAX_PAGE_NOTE_CHARS);
     const { client } = clientByAngle({
       venue_site: { content: [searchHit(), fetched('https://venue.example/fees.pdf', huge)] },
     });
@@ -230,11 +235,17 @@ describe('runFanOut', () => {
     );
 
     const leg = legBy(result.legs, 'venue_site');
+    // The CHECKER holds the page whole - it is string work and pays nothing.
     expect(leg.pages[0]?.text).toHaveLength(huge.length);
     expect(leg.pages[0]?.text).toContain(tail);
+    // The PROMPT is bounded, counted, and spends its budget on the schedule rather than
+    // on the first 24,000 characters - a head slice would have kept 300 paragraphs of
+    // accessibility notice and dropped the one line with the class on it.
     expect(leg.pagesTruncated).toBe(1);
+    expect(huge.slice(0, MAX_PAGE_NOTE_CHARS)).not.toContain(tail);
     expect(leg.notes).toContain('--- page: https://venue.example/fees.pdf ---');
-    expect(leg.notes).not.toContain(tail);
+    expect(leg.notes).toContain(tail);
+    expect(leg.notes).toContain('[...]');
     expect(leg.notes.length).toBeLessThan(huge.length);
   });
 

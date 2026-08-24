@@ -3,6 +3,7 @@ import { type AgentClient, laneRequestFields, pickLane } from '@hale/agent';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ActivityQuery } from './deidentify';
 import { type GroundingEvidence, readEvidence } from './evidence';
+import { scheduleExcerpt } from './quote-match';
 
 /**
  * THE FAN-OUT — three angles on one question, run at the same time.
@@ -187,9 +188,13 @@ export function boundEvidence(evidence: GroundingEvidence): {
 } {
   let pagesTruncated = 0;
   const shown = evidence.pages.map((page) => {
-    if (page.text.length <= MAX_PAGE_NOTE_CHARS) return page;
+    // NOT THE FIRST 24,000 CHARACTERS - the 24,000 that carry the schedule. A head slice
+    // of a municipal page buys the parking information and drops the grid, which is the
+    // other half of the 2026-08-24 failure (quote-match.ts `scheduleExcerpt`).
+    const excerpt = scheduleExcerpt(page.text, MAX_PAGE_NOTE_CHARS);
+    if (!excerpt.truncated) return page;
     pagesTruncated += 1;
-    return { url: page.url, text: page.text.slice(0, MAX_PAGE_NOTE_CHARS) };
+    return { url: page.url, text: excerpt.text };
   });
   // JOINED FROM PARTS, never cut back out of the joined string: `prose` and `pages` are
   // separate fields on the evidence for exactly this reason (evidence.ts).

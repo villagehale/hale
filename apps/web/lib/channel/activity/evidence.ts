@@ -110,6 +110,24 @@ interface FetchResultBlock {
   };
 }
 
+/**
+ * A FILENAME IS NOT SOMETHING A PAGE SAID.
+ *
+ * The fetch pipeline returns markdown, and an image comes back as `![](…/Term_dates_
+ * 20262027.png)` — alt text usually empty, the only words in it the ones somebody typed
+ * into a filename. Live, 2026-08-24: the extract put "Term 1, Fall 2026 (see Term dates
+ * 2026-2027 schedule)" on four slots for a venue whose page never prints 2027 anywhere in
+ * its text. The whole figure came out of that filename.
+ *
+ * It is dropped rather than flattened to its alt text because both halves are hazards, and
+ * for the same reason: a schedule published as a PICTURE has not been published in a form
+ * anything downstream can read, and a checker that accepts a filename as the page saying
+ * something is a checker that can be beaten with a URL.
+ */
+function readableText(markdown: string): string {
+  return markdown.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
+}
+
 /** A read is TODAY only if it is stamped and the stamp is inside the horizon. An
  * unparseable or absent stamp is stale: unknown age is not evidence of freshness. */
 function readToday(retrievedAt: string | undefined, now: Date): boolean {
@@ -162,7 +180,7 @@ export function readEvidence(now: Date, content: Anthropic.ContentBlock[]): Grou
     if (!readToday(result.retrieved_at, now)) pagesStale += 1;
     const url = result.url ?? '';
     if (url !== '') urlsRead.push(url);
-    const text = result.content?.source?.data ?? '';
+    const text = readableText(result.content?.source?.data ?? '');
     // The URL rides with its text so a downstream extraction can cite the page a fact
     // came off rather than the venue in the abstract.
     if (text !== '') {

@@ -295,6 +295,52 @@ describe('an offer is a proposal, so this lane makes none', () => {
   });
 });
 
+describe('naming the find a parent is being handed', () => {
+  const GRID_ROW = {
+    ...PICK,
+    name: 'Parent and Tot 1, 2, 3 - Gellert Community Centre (Mon 10:00AM daytime, code 108969)',
+  };
+
+  it('THE 2026-08-24 DEFERRAL: a name disambiguated in brackets is still named by its place', () => {
+    // Once the merge could see the grid it returned thirty rows differing only by
+    // weekday and told them apart inside `name`. Read whole, that made "daytime" and
+    // "108969" identifying words - so the gate wanted an SMS to quote a session code,
+    // no draft could, and a complete verified schedule deferred into silence.
+    const body =
+      'Gellert Community Centre runs Parent and Tot swim Mondays 10:00-10:30am, Oct 5 to Dec 7, $86.22 for 9 lessons - their site says.';
+
+    expect(topPickLeads(body, [GRID_ROW])).toBe(true);
+  });
+
+  it('POSITIVE CONTROL - a message that names no place is still refused', () => {
+    const vague = 'There is a toddler swim class running this fall - their site says.';
+
+    expect(topPickLeads(vague, [GRID_ROW])).toBe(false);
+  });
+
+  it('a session code is not a name, brackets or no brackets', () => {
+    // The merge disambiguates however it likes, and it does not always reach for
+    // brackets. A bare code is the same demand in a different shape: no SMS is going to
+    // say "108969", and no parent would want it to.
+    const bare = { ...PICK, name: 'Parent and Tot 108969, Gellert Community Centre' };
+    const body =
+      'Gellert Community Centre runs Parent and Tot swim Mondays 10:00-10:30am, $86.22 for 9 lessons - their site says.';
+
+    expect(topPickLeads(body, [bare])).toBe(true);
+  });
+
+  it('still needs two words when the name outside the brackets carries two', () => {
+    const twoWords = { ...PICK, name: 'Kinderfun Toddler Program, Cartwheels Gym Centre (Sat 9:15)' };
+
+    expect(topPickLeads('Cartwheels runs a toddler program Saturdays 9:15.', [twoWords])).toBe(
+      false,
+    );
+    expect(
+      topPickLeads('Cartwheels Gym Centre runs Kinderfun Saturdays 9:15.', [twoWords]),
+    ).toBe(true);
+  });
+});
+
 describe('a claim about a page requires a page', () => {
   it.each([
     "Their fall days, times and prices aren't posted yet.",
@@ -326,6 +372,12 @@ describe('a claim about a page requires a page', () => {
     // produce, and the one a widened gate would otherwise make unwritable.
     'Their site lists this one, though I could not confirm the day or the price.',
     "Their fall page is up but I couldn't pin down the times, so I'll keep looking.",
+    // THE CANONICAL GOOD MESSAGE, and the one an optional apostrophe refuses: "Parent"
+    // ends in the same two letters as "aren't". Beside "lists" that read a complete,
+    // correct find as a report that nothing was published - three recompositions and
+    // then silence, on this product's most common subject.
+    'Gellert lists Parent and Tot Mondays 10:00, $86.22 for nine.',
+    'The current term is important and their site lists it.',
   ])('lets %s through - none of these claims a page said nothing', (body) => {
     expect(claimsNotPosted(body)).toBe(false);
   });

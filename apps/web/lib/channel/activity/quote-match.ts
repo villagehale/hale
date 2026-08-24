@@ -370,3 +370,113 @@ export function quoteIsBackedBy(quote: string, page: PageEvidence): boolean {
 export function pageCarriesSchedule(page: PageEvidence): boolean {
   return page.anchors.some((anchor) => anchor.kind === 'money' || anchor.kind === 'time');
 }
+
+/**
+ * How much of a long page's HEAD is kept for context no matter what it contains.
+ *
+ * A page's first few thousand characters are its title, its season, its "registration
+ * opens Tuesday, September 1" paragraph — the things that say WHAT the rest of it is about
+ * and that carry no clock time to mark themselves with. Dropping them to make room for
+ * more table rows would hand the merge a grid with nothing to attach it to.
+ */
+export const HEAD_CONTEXT_CHARS = 4_000;
+
+/** A line that is carrying schedule detail: a fee, or a clock time. The same two signals
+ * {@link pageCarriesSchedule} trusts, and for the same reason — a session code cannot be
+ * told from a phone number, and every municipal page has a phone number on it. */
+const SCHEDULE_LINE = /\$\s?\d|\b\d{1,2}:\d{2}\b|\b\d{1,2}\s?[ap]\.?\s?m\.?\b/i;
+
+/** What was cut, said out loud, so the merge reads a page with gaps in it rather than a
+ * page that ended early. */
+const ELISION = '\n[...]\n';
+
+/**
+ * THE BUDGETED VIEW OF A LONG PAGE — the schedule kept, the boilerplate dropped.
+ *
+ * A HEAD SLICE IS THE WRONG CUT, and this is the second half of the 2026-08-24 failure.
+ * Bounding a page for the merge's prompt is a real cost decision (fanout.ts), but taking
+ * the FIRST 24,000 characters of an 88,501-character municipal page keeps the accessibility
+ * notice and the parking information and throws away the grid, which begins somewhere past
+ * 27,000 on every page of this kind. The merge cannot report what it was not shown, so the
+ * lane spent three research legs and an Opus turn to answer "their site lists it".
+ *
+ * So the budget buys the SCHEDULE instead of the beginning: the head for context, then
+ * every line carrying a fee or a clock time, each with the line above it — because a fee
+ * table's meaning is in its heading ("Halton Hills Taxpayer Fees:", "Program | Day | Time |
+ * Dates | code") and a row torn off from it is a row about nothing.
+ *
+ * IT NEVER GROWS THE PROMPT. A page inside the budget is returned untouched, and the result
+ * is never longer than `budget`. What it changes is WHICH characters get bought.
+ */
+export function scheduleExcerpt(
+  text: string,
+  budget: number,
+): { text: string; truncated: boolean } {
+  if (text.length <= budget) return { text, truncated: false };
+
+  const lines = text.split('\n');
+  const keep = new Array<boolean>(lines.length).fill(false);
+  const cost = (index: number) => (lines[index] as string).length + 1;
+
+  let used = 0;
+  let head = 0;
+  while (head < lines.length && used + cost(head) <= HEAD_CONTEXT_CHARS) {
+    keep[head] = true;
+    used += cost(head);
+    head += 1;
+  }
+
+  // Schedule lines next, in document order, each pulling in the heading above it. Order
+  // matters: a grid read out of sequence is a grid whose columns no longer line up with
+  // the row they came from.
+  for (let index = head; index < lines.length; index += 1) {
+    if (!SCHEDULE_LINE.test(lines[index] as string)) continue;
+    // The line itself first, and `continue` rather than `break`: one unaffordable row
+    // must not abandon the rest of the grid, and a heading too big to afford must not
+    // cost us the row it labels.
+    if (used + cost(index) + ELISION.length > budget) continue;
+    const heading = index > 0 && !keep[index - 1] ? index - 1 : null;
+    if (heading !== null && used + cost(index) + cost(heading) + ELISION.length <= budget) {
+      keep[heading] = true;
+      used += cost(heading);
+    }
+    keep[index] = true;
+    used += cost(index);
+  }
+
+  // WHATEVER IS LEFT OF THE BUDGET GOES BACK TO THE PAGE, in order — and a line too long
+  // to keep whole is kept as a PREFIX rather than skipped.
+  //
+  // Without this the function could hand back less than the head slice it replaced. A PDF
+  // flattened to text arrives as one enormous unbroken line: the head pass cannot afford
+  // it, the schedule pass cannot afford it, and the merge would be handed thirty-five
+  // characters of a ninety-thousand-character page. Spending the remainder guarantees this
+  // is never a worse view than the cut it replaced, only a better-chosen one.
+  const partial = new Map<number, string>();
+  for (let index = 0; index < lines.length; index += 1) {
+    const room = budget - used - ELISION.length;
+    if (room <= 0) break;
+    if (keep[index]) continue;
+    if (cost(index) <= room) {
+      keep[index] = true;
+      used += cost(index);
+      continue;
+    }
+    partial.set(index, (lines[index] as string).slice(0, room));
+    used += room;
+  }
+
+  const out: string[] = [];
+  let elided = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = keep[index] ? (lines[index] as string) : partial.get(index);
+    if (line === undefined) {
+      elided = true;
+      continue;
+    }
+    if (elided) out.push(ELISION.trim());
+    elided = partial.has(index);
+    out.push(line);
+  }
+  return { text: out.join('\n').slice(0, budget), truncated: true };
+}

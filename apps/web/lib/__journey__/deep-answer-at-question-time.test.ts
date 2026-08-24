@@ -842,12 +842,18 @@ describe('the deep answer arrives at question time', () => {
     if (!payload) throw new Error('journey: nothing was enqueued');
 
     const lane = gellertLane();
-    // THE ASYMMETRY IS REAL IN THIS FIXTURE, not asserted into existence: the merge's
-    // prompt genuinely stops before the grid, and the checker's evidence genuinely does
-    // not. Without this pair the test would pass on a page that fit.
+    // THE PAGE IS REAL IN THIS FIXTURE, not asserted into existence. Without these four
+    // the test would pass on a page that fit, which is the case that never broke.
+    //
+    // A HEAD SLICE WOULD HAVE LOST THE GRID - it begins past the bound...
     expect(lane.bounded.pagesTruncated).toBe(1);
-    expect(lane.bounded.notes).not.toContain('108969');
-    expect(lane.bounded.pages[0]?.text.indexOf('108969')).toBeGreaterThan(MAX_PAGE_NOTE_CHARS);
+    expect(GELLERT_TEXT.slice(0, MAX_PAGE_NOTE_CHARS)).not.toContain('108969');
+    // ...so the budget buys the schedule instead of the beginning, and the merge is
+    // prompted with a page it can actually answer from,
+    expect(lane.bounded.notes).toContain('108969');
+    expect(lane.bounded.notes.length).toBeLessThan(GELLERT_TEXT.length);
+    // ...while the CHECKER holds the page whole, because it spends no tokens.
+    expect(lane.bounded.pages[0]?.text).toHaveLength(GELLERT_TEXT.length);
 
     const outcome = await runDeepResearchJob(database, payload, jobDeps(transport, lane), JOB_AT);
 

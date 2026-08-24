@@ -218,3 +218,40 @@ describe('readPageVerdict', () => {
     ).toBe('page_has_schedule');
   });
 });
+
+/**
+ * A PICTURE OF A SCHEDULE IS NOT A PUBLISHED SCHEDULE.
+ *
+ * Live, 2026-08-24: the extract read "Term dates 2026-2027" off
+ * `![](.../images/Term_dates_20262027.png)` and put it on four slots. The venue's page
+ * prints 2027 nowhere in its text - the whole figure came out of a filename somebody typed.
+ */
+describe('image references are not page text', () => {
+  it('drops the filename a figure could be read off, and keeps the words around it', () => {
+    const page = readEvidence(
+      new Date('2026-08-24T12:00:00.000Z'),
+      [
+        block({
+          type: 'web_fetch_tool_result',
+          content: {
+            type: 'web_fetch_result',
+            url: 'https://cartwheels.example/programs',
+            retrieved_at: '2026-08-24T11:59:00.000Z',
+            content: {
+              source: {
+                data: '## Programs\n![](https://cartwheels.example/images/Term_dates_20262027.png)\nTiny Gym runs Sundays 9:30.',
+              },
+            },
+          },
+        }),
+      ],
+    );
+
+    const text = page.pages[0]?.text ?? '';
+    expect(text).not.toContain('2027');
+    // POSITIVE CONTROL - the page's actual words are untouched, so this is a filter and
+    // not a page that came back empty.
+    expect(text).toContain('Tiny Gym runs Sundays 9:30.');
+    expect(page.pagesRead).toBe(1);
+  });
+});

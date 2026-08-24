@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   ANCHOR_WINDOW_CHARS,
+  HEAD_CONTEXT_CHARS,
   pageCarriesSchedule,
   preparePage,
   quoteIsBackedBy,
+  scheduleExcerpt,
 } from './quote-match';
 
 /**
@@ -178,5 +180,93 @@ describe('pageCarriesSchedule', () => {
   it('is true as soon as a single price or clock time is printed', () => {
     expect(pageCarriesSchedule(preparePage('Drop-in swim. Adult $4.00.'))).toBe(true);
     expect(pageCarriesSchedule(preparePage('Doors open at 9:15am.'))).toBe(true);
+  });
+});
+
+/**
+ * THE BUDGET BUYS THE SCHEDULE, NOT THE BEGINNING.
+ *
+ * The 2026-08-24 page was 88,501 characters and its grid began past 27,000. Bounded by a
+ * head slice at 24,000 the merge was shown the accessibility notice and the parking
+ * information, and answered "their site lists it" - which is the lane failing at the exact
+ * case it was built for.
+ */
+describe('scheduleExcerpt', () => {
+  const HEAD = 'Swimming Lessons - Town of Halton Hills\nRegistration for Fall Recreation Programs opens Tuesday, September 1.';
+  const BOILERPLATE = Array.from(
+    { length: 400 },
+    () => 'Please shower before entering the pool deck and arrive ten minutes early.',
+  ).join('\n');
+  const FEES = 'Halton Hills Taxpayer Fees:\nP&T to Swimmer 3: $86.22 for 9 lessons (30 minute lesson)';
+  const GRID =
+    'Program | Day | Time | Dates | code |\nParent and Tot 1, 2, 3 | Mon | 10:00AM - 10:30AM | Oct 05 - Dec 07 | 108969 |';
+  const PAGE = [HEAD, BOILERPLATE, FEES, BOILERPLATE, GRID].join('\n');
+
+  it('keeps the grid a head slice would have thrown away', () => {
+    expect(PAGE.length).toBeGreaterThan(24_000);
+    expect(PAGE.indexOf('108969')).toBeGreaterThan(24_000);
+    expect(PAGE.slice(0, 24_000)).not.toContain('108969');
+
+    const excerpt = scheduleExcerpt(PAGE, 24_000);
+
+    expect(excerpt.truncated).toBe(true);
+    expect(excerpt.text.length).toBeLessThanOrEqual(24_000);
+    expect(excerpt.text).toContain('Parent and Tot 1, 2, 3 | Mon | 10:00AM - 10:30AM');
+    expect(excerpt.text).toContain('$86.22 for 9 lessons');
+  });
+
+  it('keeps the heading a table row means nothing without', () => {
+    const excerpt = scheduleExcerpt(PAGE, 24_000);
+
+    expect(excerpt.text).toContain('Program | Day | Time | Dates | code |');
+    expect(excerpt.text).toContain('Halton Hills Taxpayer Fees:');
+  });
+
+  it('keeps the head, which carries the season and no clock time of its own', () => {
+    const excerpt = scheduleExcerpt(PAGE, 24_000);
+
+    expect(excerpt.text).toContain('Swimming Lessons - Town of Halton Hills');
+    expect(excerpt.text).toContain('Registration for Fall Recreation Programs opens Tuesday, September 1.');
+    expect(HEAD.length).toBeLessThan(HEAD_CONTEXT_CHARS);
+  });
+
+  it('says where it cut, and spends the whole budget', () => {
+    const excerpt = scheduleExcerpt(PAGE, 24_000);
+
+    // The cut is marked rather than silent, so the merge reads a page with gaps in it and
+    // not a page that ended early.
+    expect(excerpt.text).toContain('[...]');
+    const kept = excerpt.text.split('Please shower before entering').length - 1;
+    const whole = PAGE.split('Please shower before entering').length - 1;
+    expect(whole).toBe(800);
+    // Most of the boilerplate is gone; what room is left after the schedule goes back to
+    // the page rather than being handed back unspent.
+    expect(kept).toBeLessThan(whole / 2);
+    expect(excerpt.text.length).toBeGreaterThan(23_000);
+  });
+
+  it('never hands back less of the page than a head slice would have', () => {
+    // A PDF flattened to text arrives as one enormous unbroken line. The schedule pass
+    // finds nothing it can afford, and without the fill the merge would be handed the
+    // empty string - a page silently reduced to nothing, which is the failure this whole
+    // change is about wearing different clothes.
+    const unbroken = 'A'.repeat(30_000);
+    expect(scheduleExcerpt(unbroken, 24_000).text.length).toBeGreaterThan(23_000);
+
+    // ...and the schedule line after it is still what the budget is spent on FIRST.
+    const oneLongLineThenSchedule = `${'A'.repeat(30_000)}\nTiny Gym Sundays 9:30AM, $124`;
+    const degenerate = scheduleExcerpt(oneLongLineThenSchedule, 24_000);
+    expect(degenerate.text).toContain('Tiny Gym Sundays 9:30AM, $124');
+    expect(degenerate.text.length).toBeGreaterThan(23_000);
+
+    // And a page with no schedule on it at all still spends its whole budget on the page.
+    const prose = Array.from({ length: 900 }, () => 'Our fall guide will be posted soon.').join('\n');
+    const excerpt = scheduleExcerpt(prose, 24_000);
+    expect(excerpt.text.length).toBeGreaterThan(23_000);
+  });
+
+  it('leaves a page inside the budget exactly as it was', () => {
+    const short = `${HEAD}\n${GRID}`;
+    expect(scheduleExcerpt(short, 24_000)).toEqual({ text: short, truncated: false });
   });
 });

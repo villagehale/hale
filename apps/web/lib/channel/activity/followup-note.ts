@@ -229,11 +229,28 @@ const GENERIC_NAME_WORDS = new Set([
   'summer',
 ]);
 
+/**
+ * A PARENTHESIS IS A DISAMBIGUATOR, NOT A NAME — and a number is never a name.
+ *
+ * Live, 2026-08-24, once the merge could finally see the grid: thirty rows came back
+ * differing only by weekday, and it told them apart in the `name` field — "Parent and Tot
+ * 1, 2, 3 - Gellert Community Centre (Mon 10:00AM daytime, code 108969)". Read whole,
+ * that name's identifying words are "gellert", "daytime" and "108969", so the gate
+ * demanded an SMS quote a session code to prove it had named the find. No message can,
+ * three recompositions failed, and the promise deferred with a complete verified schedule
+ * in hand — the fix causing the silence it was fixing.
+ *
+ * What a parent needs in the first segment is which PLACE and which PROGRAMME. The day,
+ * the clock time and the code are what `when` is for, and they are in the message anyway.
+ */
 function identifyingWords(name: string): string[] {
   return name
+    .replace(/\([^)]*\)/g, ' ')
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter((word) => word.length >= 5 && !GENERIC_NAME_WORDS.has(word));
+    .filter(
+      (word) => word.length >= 5 && !/^\d+$/.test(word) && !GENERIC_NAME_WORDS.has(word),
+    );
 }
 
 export function topPickLeads(body: string, picks: readonly ActivityPick[]): boolean {
@@ -296,9 +313,20 @@ export function claimsVerification(body: string): boolean {
  */
 const UNPUBLISHED_WORD =
   /\b(?:post(?:ed|s|ing)?|list(?:ed|s|ing)?|publish(?:ed|es|ing)?|announced|available|shown|out|up)\b/i;
-/** `n'?t\b` deliberately has no LEADING boundary: the contraction that carries this claim
- * in practice is "aren't", and its "n" is glued to the stem. */
-const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n'?t\b/i;
+/**
+ * The contraction that carries this claim in practice is "aren't", and its "n" is glued to
+ * the stem — so this alternative has no LEADING boundary and cannot have one.
+ *
+ * THE APOSTROPHE IS THEREFORE REQUIRED. With it optional, `n?t\b` matches the last two
+ * letters of every word ending in "nt": parent, want, moment, different, recent, consent.
+ * Beside a publishing word that reads "Gellert lists Parent and Tot Mondays 10:00, $86.22
+ * for nine" as a claim that nothing is posted — the canonical GOOD message for this
+ * product's beachhead subject, refused three times and then deferred, which is Hale going
+ * quiet on a find it had. Both apostrophes are accepted because this predicate is also
+ * read over raw slot fields (deliver.ts `carriesFact`), which have not been through
+ * `plainText`'s typographic fold.
+ */
+const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n['’]t\b/i;
 /**
  * NAMING THE SURFACE IS THE SAME CLAIM WITHOUT THE VERB. "The fall times aren't on their
  * page yet" carries no publishing word at all and is the identical assertion — the live
