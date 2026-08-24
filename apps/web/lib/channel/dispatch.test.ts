@@ -34,6 +34,7 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
   const emailSends: { emailType: string; recipient: string }[] = [];
   const audits: { actionTaken: string; after: Record<string, unknown> }[] = [];
   const captures: Capture[] = [];
+  const threaded: { familyId: string; parentUserId: string; body: string }[] = [];
   const prefs: LoopPrefsView = { ...DEFAULT_LOOP_PREFS, ...(overrides.prefs ?? {}) };
 
   const ports: DispatchPorts = {
@@ -59,11 +60,14 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
       captures.push({ event, distinctId, properties });
       return 'sent';
     },
+    threadMessage: async (input) => {
+      threaded.push(input);
+    },
     channels: { email: fakeChannel('email'), sms: fakeChannel('sms'), push: fakeChannel('push') },
     renderer: fakeRenderer,
     ...overrides,
   };
-  return { ports, ledger, emailSends, audits, captures };
+  return { ports, ledger, emailSends, audits, captures, threaded };
 }
 
 function message(over: Partial<LoopMessage> = {}): LoopMessage {
@@ -209,6 +213,50 @@ describe('email CASL dual-write + audit', () => {
     });
     await dispatchLoopMessage(message(), ports);
     expect(emailSends).toEqual([]);
+  });
+});
+
+describe("the parent's own text thread", () => {
+  it('threads a delivered SMS leg with the body that went on the wire', async () => {
+    // The weekly plan is a thing Hale SAID, and the parent answers it by text.
+    // `channel_messages` stores no body (rule #1), so this is the only record a coach
+    // turn can read the reply against.
+    const { ports, threaded } = makePorts({ prefs: { loopChannel: 'sms' } });
+    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+
+    expect(threaded).toEqual([
+      { familyId: 'fam-1', parentUserId: 'user-1', body: 'weekly-plan-v1' },
+    ]);
+  });
+
+  it('threads the SMS leg only — an email or a push mirror is not a text', async () => {
+    // The thread is the SMS thread (channelSmsNoteKey). A push MIRRORS the same
+    // sentence, so threading it too would show the parent Hale saying it twice.
+    const { ports, threaded } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      hasLivePushToken: async () => true,
+    });
+    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+
+    expect(result.legs.map((l) => `${l.channel}:${l.outcome}`)).toEqual(['sms:sent', 'push:sent']);
+    expect(threaded).toHaveLength(1);
+
+    const viaEmail = makePorts();
+    await dispatchLoopMessage(message({ category: 'weekly_plan' }), viaEmail.ports);
+    expect(viaEmail.threaded).toEqual([]);
+  });
+
+  it('threads nothing when the SMS leg never reached the provider', async () => {
+    // The positive control: same channel, same message, refused. A suppressed leg is
+    // not something Hale said.
+    const { ports, threaded } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      smsConsentLive: async () => false,
+    });
+    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'suppressed_consent' }]);
+    expect(threaded).toEqual([]);
   });
 });
 

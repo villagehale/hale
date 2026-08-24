@@ -13,6 +13,7 @@ import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
@@ -48,6 +49,7 @@ export function buildIntakeDeps(): IntakeDeps {
   const client = anthropicClient();
   return {
     transport: createTwilioTransport(),
+    threadMessage: threadProactiveMessage,
     extractor: createIntakeExtractor(client),
     intentReader: createReplyIntentReader(client),
     radar: createRadarComposer({ database, weather: createOpenMeteoWeather(), client }),

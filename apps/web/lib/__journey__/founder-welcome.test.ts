@@ -10,6 +10,7 @@ import {
   fakeRadar,
   fakeSilentAnswerComposer,
 } from '~/lib/channel/intake/fakes';
+import { WATCH_OFFER } from '~/lib/channel/intake/copy';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import {
   FOUNDER_NOTE_DECLINED_ACK,
@@ -30,6 +31,7 @@ import { channelRouterDeps, defaultOpenQuestionReader } from '~/lib/channel/rout
 import { type ChannelRouterDeps, routeChannelMessage } from '~/lib/channel/router/route';
 import type { ChannelCoachRuntime } from '~/lib/channel/router/coach-runtime';
 import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -125,6 +127,9 @@ describe("the founder's welcome note", () => {
   function intakeDeps(transport: FakeTransport): IntakeDeps {
     return {
       transport,
+      // The REAL threader over the same store: what intake says after provisioning is
+      // what the coach picks the conversation up from.
+      threadMessage: threadProactiveMessage,
       // SEAM: the model that reads a parent's sentence. Faked for MECHANICS only — what
       // it can actually pull out of real words is an eval's job (rule #8).
       extractor: new FakeExtractor([
@@ -449,10 +454,15 @@ describe("the founder's welcome note", () => {
     );
 
     // Hale's first personal words to this household, where their reply to it will be
-    // read. On THEIR thread: one household's transcript never carries another's.
-    expect(await threadTurns(familyId, parentUserId)).toEqual([
-      { role: 'assistant', content: founderNote('Georgetown') },
-    ]);
+    // read. On THEIR thread: one household's transcript never carries another's — and
+    // it sits under what intake said to them, so the coach picks up a whole
+    // conversation rather than a note with nothing above it.
+    const familyTurns = await threadTurns(familyId, parentUserId);
+    expect(familyTurns.at(-1)).toEqual({
+      role: 'assistant',
+      content: founderNote('Georgetown'),
+    });
+    expect(familyTurns.at(0)?.content).toContain(WATCH_OFFER);
     // And the founder's thread has his ping and his ack, and no trace of the note's
     // recipient (rule #1).
     const founderTurns = await threadTurns(founderFamilyId, founderUserId);

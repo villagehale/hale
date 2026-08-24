@@ -88,18 +88,26 @@ function harness(options: {
   identityAsk: FakeIdentityAsk;
   /** Every seeding/compose step, in the order the machine ran them. */
   steps: string[];
+  /** Every message that landed in the parent's own coach thread (channel/thread.ts). */
+  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
 } {
   const fake = makeFakeDb();
   const transport = new FakeTransport();
   const steps: string[] = [];
   const identityAsk = options.identityAsk ?? new FakeIdentityAsk();
+  const threaded: Array<{ familyId: string; parentUserId: string; body: string }> = [];
   return {
     fake,
     transport,
     steps,
     identityAsk,
+    threaded,
     deps: {
       transport,
+      threadMessage: async (_db, input) => {
+        threaded.push(input);
+        return 'conv-1';
+      },
       extractor: new FakeExtractor(options.extractions ?? [MAYA_AND_LEO]),
       intentReader: new FakeIntentReader(options.intents ?? [assent('yes')]),
       radar: {
@@ -413,6 +421,47 @@ describe('intake · happy path', () => {
  * half-year is not a midpoint, it is an error — and an unrecoverable one, because every
  * downstream consumer re-derives the age OUT of the stored date.
  */
+describe("intake · the handoff into the parent's own thread", () => {
+  /**
+   * The seam this closes. Intake answers its own questions right up until it stops:
+   * the moment the session closes, the NEXT text is a coach turn, and the coach reads
+   * `messages` and only `messages` (`channel_messages` stores `body: null`, rule #1).
+   * So every sentence intake says AFTER provisioning — the radar, the consent ask, and
+   * the name ask it hands over on — has to be in the thread, or the coach picks up a
+   * conversation whose last five turns it cannot see.
+   */
+  it('threads every sentence it says once the family exists', async () => {
+    const { fake, transport, deps, threaded } = harness({});
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
+    await text(fake, transport, deps, 'yes please');
+
+    // The radar + watch offer, then the consent ack carrying the name ask — the exact
+    // question the parent's first coach turn answers.
+    expect(threaded.map((t) => t.body)).toEqual([
+      transport.bodies().at(-2),
+      transport.bodies().at(-1),
+    ]);
+    expect(threaded.at(-1)?.body).toBe(`${ASSENT_ACK} ASK`);
+    expect(threaded.every((t) => t.familyId.length > 0 && t.parentUserId.length > 0)).toBe(true);
+  });
+
+  it('threads nothing before the family exists, because there is no thread to write to', async () => {
+    // Not a silent skip — a structural one. `conversations` is family-scoped, and a
+    // number that has only said "hi" has no family row yet. The pre-account transcript
+    // lives encrypted on the intake session, and provisioning replays it into
+    // channel_messages; what the coach needs is everything from the radar on, which the
+    // test above pins.
+    const { fake, transport, deps, threaded } = harness({});
+
+    await text(fake, transport, deps, 'hi');
+
+    expect(transport.bodies()).toHaveLength(1);
+    expect(threaded).toEqual([]);
+  });
+});
+
 describe('intake · the age the parent stated', () => {
   /** Read a child row back the way production does: age out of the stored date. */
   function storedAge(fake: FakeDb, index = 0): number {
@@ -960,6 +1009,7 @@ describe('intake · CASL keywords', () => {
     const transport = new FakeTransport();
     const deps: IntakeDeps = {
       transport,
+      threadMessage: async () => 'conv-1',
       extractor,
       intentReader,
       radar: fakeRadar,

@@ -5,6 +5,7 @@ import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { hasOptedOut, recordEmailSend } from '~/lib/cron/email-compliance';
 import { loadLoopPrefsView } from '~/lib/loop/prefs';
 import type { DispatchPorts } from './dispatch';
+import { threadProactiveMessage } from './thread';
 import { countRecentSends, dedupeActive, recordChannelMessage } from './ledger';
 import type { Channel, ChannelKind, TemplateRenderer } from './types';
 
@@ -64,6 +65,9 @@ export function buildDispatchPorts(
       }),
     audit: async (r) => {
       await database.insert(schema.auditLog).values(r);
+    },
+    threadMessage: async (input) => {
+      await threadProactiveMessage(database, input);
     },
     channels: opts.channels,
     renderer: opts.renderer,

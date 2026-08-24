@@ -420,6 +420,9 @@ async function runToddlerJourney(): Promise<Journey> {
 
   const intakeDeps: IntakeDeps = {
     transport,
+    // A FakeDb has no `conversations` to resolve, and what this file pins is not the
+    // thread — the machine's own suite owns that (intake/machine.test.ts).
+    threadMessage: async () => 'conv-1',
     extractor: new FakeExtractor(extractions),
     intentReader: new FakeIntentReader([assent('yes please')]),
     // The REAL radar composer, on the REAL production fallback path (`client: null`
@@ -748,6 +751,10 @@ async function runToddlerJourney(): Promise<Journey> {
     // plan the evening before" is a promise, and the battle plan is what keeps it.
     recordCommitment,
     fulfillCommitment,
+    // The REAL threader over the same store, for the reason the nudge's is real: the
+    // whole ladder is a conversation, and a leg the parent answers has to be a row in
+    // `messages` or the answer arrives with nothing above it.
+    threadMessage: threadProactiveMessage,
   };
 
   const propose = await runRegistrationSequenceCron(fake.db, sequenceDeps, SEQUENCE_AT);
@@ -1018,10 +1025,19 @@ describe('4 · the 48h nudge reaches a transport', () => {
     // happened to be standing. The wire body carries the CASL line and this row must
     // not — the thread is history, not a compliance surface.
     const threaded = journey.fake.rows(schema.messages).filter((row) => row.role === 'assistant');
-    expect(threaded).toHaveLength(1);
+    // Three proactive sends happen in this journey and all three are now sentences the
+    // coach can see: the 48h nudge, then the registration ladder's heads-up and its
+    // battle plan. The ladder matters most — it is the one Hale runs as a conversation,
+    // and its heads-up asks for the YES that stage 7 gives.
+    expect(threaded).toHaveLength(3);
     const body = String(threaded[0]?.content);
     expect(journey.nudgeSends[0]?.body).toContain(body);
     expect(body).not.toContain(NUDGE_OPT_OUT);
+    // Nothing invented: every threaded sentence is one that actually went on the wire.
+    const wire = journey.transport.bodies();
+    expect(
+      threaded.every((row) => wire.some((sent) => sent.includes(String(row.content)))),
+    ).toBe(true);
   });
 });
 

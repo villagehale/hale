@@ -210,6 +210,17 @@ export async function notifyGuestsOfCancellation(
  *
  * The plaintext number exists only inside this function and is handed straight to the
  * transport. It is never returned, logged, or put in the ledger row (rule #1).
+ *
+ * DELIBERATELY NOT THREADED, and it is the one outbound SMS lane in the product that
+ * is not. `threadProactiveMessage` writes an `assistant` turn into a PARENT's coach
+ * transcript, and this message went to a guest — a stranger with no users row, who is
+ * on the ledger under the host only because `parent_user_id` is NOT NULL. Threading it
+ * would assert Hale said this sentence to the host, which it did not, and one party
+ * would drop N identical turns into the window the coach re-reads every turn. The
+ * guest's own reply cannot reach the host's thread either: an unknown number opens its
+ * own intake session, and the C1 handoff requires a verified channel and a parent role
+ * (twilio/inbound.ts). Nothing is missing here — there is no parent conversation this
+ * message belongs to.
  */
 async function sendToGuest(
   database: Database,

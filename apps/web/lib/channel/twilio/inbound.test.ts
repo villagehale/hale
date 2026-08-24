@@ -92,6 +92,9 @@ function harness(): Harness {
   const state = { intakeBuilds: 0 };
   const intake: IntakeDeps = {
     transport,
+    // A FakeDb has no `conversations` to resolve, and what this file pins is not the
+    // thread — the machine's own suite owns that (intake/machine.test.ts).
+    threadMessage: async () => 'conv-1',
     extractor: new FakeExtractor([{ children: [], postalCode: null }]),
     intentReader: new FakeIntentReader([
       { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
