@@ -11,6 +11,7 @@ import {
   type ActivityPromiseRecordOutcome,
 } from './commitment';
 import type { DeepSlot } from './deep';
+import type { PageVerdict } from './evidence';
 import {
   type FollowUpComposer,
   type FollowUpFallback,
@@ -171,8 +172,10 @@ export interface FollowUpDeliveryInput {
   /** Everything found, including what the text cannot carry. A share page is minted only
    * when this is longer than the text can hold. */
   rest: readonly DeepSlot[];
-  /** A page, TODAY. The licence to say what a page does not carry. */
-  pagesOpened: boolean;
+  /** What the pages actually read license this message to say about what a page does NOT
+   * carry (evidence.ts `PageVerdict`). Never inferred from how many facts survived the
+   * refutation - see `FollowUpGrounding.pageEvidence`. */
+  pageEvidence: PageVerdict;
   evidence: FollowUpEvidence;
 }
 
@@ -219,7 +222,7 @@ export async function deliverFollowUp(
   const composed = await deps.composer.compose({
     subject: input.subject,
     picks: input.picks,
-    pagesOpened: input.pagesOpened,
+    pageEvidence: input.pageEvidence,
     watch,
   });
   if (composed.status === 'deferred') {

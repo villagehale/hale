@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cancelActivityPromise } from '~/lib/channel/activity/commitment';
 import { type DeepJobDeps, runDeepResearchJob } from '~/lib/channel/activity/deep-job';
 import type { DeepLaneDeps } from '~/lib/channel/activity/deep-lane';
-import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
+import { MAX_PAGE_NOTE_CHARS, boundEvidence } from '~/lib/channel/activity/fanout';
+import { claimsNotPosted, createFollowUpComposer } from '~/lib/channel/activity/followup-note';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import { defaultActivitySharePorts, mintActivitySharePage } from '~/lib/channel/activity/share-page';
@@ -288,6 +289,153 @@ describe('the deep answer arrives at question time', () => {
     };
   }
 
+
+  /**
+   * THE 2026-08-24 PAGE, at its real shape.
+   *
+   * A municipal programme page that runs to tens of thousands of characters before it gets
+   * to the grid. On the live run the extracted text was 63,846 characters, the fee line sat
+   * at 17,956 and the Parent-and-Tot grid began at 27,153 — past the 24,000-character bound
+   * the merge is prompted with. Every fact below is published; none of it is a paraphrase.
+   */
+  const GELLERT_PAGE = 'https://haltonhills.example/play/recreation/swimming/swimming-lessons';
+  
+  const GELLERT_FEES = [
+    'Halton Hills Taxpayer Fees:',
+    'P&T to Swimmer 3: $86.22 for 9 lessons (30 minute lesson)',
+    'Swimmer 4-6: $117.09 for 9 lessons (45 minute lesson)',
+  ].join('\n');
+  
+  const GELLERT_GRID = [
+    'Program | Day | Time | Dates | code |',
+    'Parent and Tot 1, 2, 3 | Mon | 10:00AM - 10:30AM | Oct 05 - Dec 07 | 108969 |',
+    'Parent and Tot 1, 2, 3 | Wed | 10:00AM - 10:30AM | Oct 07 - Dec 02 | 109044 |',
+    'Parent and Tot 1 | Sat | 9:00AM - 9:30AM | Oct 03 - Nov 28 | 108938 |',
+  ].join('\n');
+  
+  /** Everything a municipal page puts between the fee table and the grid: rules, closures,
+   * refund policy, the other twelve programmes. Sized so the grid lands past the bound. */
+  const FILLER = 'Please arrive ten minutes before your lesson and shower before entering the pool deck. '.repeat(
+    300,
+  );
+  
+  const GELLERT_TEXT = [
+    'Swimming Lessons - Town of Halton Hills',
+    'Halton Hills taxpayers can register for Fall Recreation Programs beginning Tuesday, September 1 at 7 a.m.',
+    GELLERT_FEES,
+    FILLER,
+    'Gellert Evenings & Weekends - Fall Schedule',
+    GELLERT_GRID,
+  ].join('\n');
+  
+  /**
+   * The fan-out, holding ONE leg that opened that page — built through the production
+   * {@link boundEvidence} so the bound the merge is prompted under is the real one and not
+   * a number this test chose.
+   */
+  function gellertLane(options: { unquotableSchedule?: boolean; silentPage?: boolean } = {}): DeepLaneDeps & {
+    bounded: ReturnType<typeof boundEvidence>;
+  } {
+    // The GENUINELY empty page: it announces the season and the registration day and
+    // prints no clock time and no fee anywhere. This is the one state that earns the
+    // honest "nothing is posted yet", and it is earned by evidence rather than by the
+    // absence of it.
+    const text = options.silentPage
+      ? [
+          'Swimming Lessons - Town of Halton Hills',
+          'Registration for Fall Recreation Programs opens on Tuesday, September 1.',
+          'Our fall lesson schedule will be posted here when it is ready.',
+          FILLER,
+          'Questions? Call the Gellert Community Centre front desk.',
+        ].join('\n')
+      : GELLERT_TEXT;
+    const bounded = boundEvidence({
+      searchResults: 6,
+      pagesRead: 1,
+      pagesStale: 0,
+      pagesRefused: 0,
+      urlsRead: [GELLERT_PAGE],
+      pages: [{ url: GELLERT_PAGE, text }],
+      prose: 'Read the swimming lessons page. It carries the fall Parent and Tot grid and the taxpayer fee table.',
+      notes: '',
+    });
+    return {
+      bounded,
+      researcher: {
+        async research(_query, angle) {
+          if (angle !== 'municipal') {
+            return {
+              angle,
+              status: 'unread',
+              searchResults: 3,
+              pagesRead: 0,
+              pagesStale: 0,
+              pagesRefused: 2,
+              pages: [],
+              notes: '',
+              pagesTruncated: 0,
+              reason: null,
+            };
+          }
+          return {
+            angle,
+            status: 'read',
+            searchResults: 6,
+            pagesRead: 1,
+            pagesStale: 0,
+            pagesRefused: 0,
+            pages: bounded.pages,
+            notes: bounded.notes,
+            pagesTruncated: bounded.pagesTruncated,
+            reason: null,
+          };
+        },
+      },
+      synthesiser: {
+        async merge() {
+          return {
+            status: 'synthesised',
+            rows: [
+              {
+                name: 'Parent and Tot 1, 2, 3, Gellert Community Centre',
+                age_fit: 'Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years',
+                // THE QUOTES THE LIVE RUN RETURNED: a table row read left to right and
+                // written back as a sentence, and a fee composed with the heading above it.
+                // Neither is a substring of anything.
+                when: options.silentPage
+                  ? null
+                  : options.unquotableSchedule
+                    ? 'Fall Parent and Tot sessions'
+                    : 'Mondays 10:00-10:30AM, Oct 05 - Dec 07',
+                when_quote: options.silentPage
+                  ? null
+                  : options.unquotableSchedule
+                    ? 'Parent and Tot sessions run through the fall term'
+                    : 'Mondays 10:00-10:30AM, Oct 05 - Dec 07 (code 108969)',
+                price: options.silentPage
+                  ? null
+                  : options.unquotableSchedule
+                    ? 'Fees apply'
+                    : '$86.22 for 9 lessons',
+                price_quote: options.silentPage
+                  ? null
+                  : options.unquotableSchedule
+                    ? 'fees are set by the Town and apply to all lessons'
+                    : '$86.22 for 9 lessons (30 minute lesson), Halton Hills taxpayer fee',
+                registration: 'Registration opens Tuesday, September 1',
+                registration_quote: options.silentPage
+                  ? 'Registration for Fall Recreation Programs opens on Tuesday, September 1.'
+                  : 'Halton Hills taxpayers can register for Fall Recreation Programs beginning Tuesday, September 1 at 7 a.m.',
+                source_name: 'Town of Halton Hills',
+                source_url: GELLERT_PAGE,
+              },
+            ],
+          };
+        },
+      },
+    };
+  }
+
   // ── the coach, with real tools and a scripted set of calls ─────────────────
 
   function scriptedRunAgent(
@@ -509,12 +657,13 @@ describe('the deep answer arrives at question time', () => {
     transport: FakeTransport,
     enqueued: DeepResearchPayload[],
     dispatchFails = false,
+    subject = 'Cartwheels Gym Centre fall schedule',
   ): Promise<void> {
     const coach = coachFor(
       [
         {
           tool: 'find_activities',
-          input: { subject: 'Cartwheels Gym Centre fall schedule', window: 'this fall' },
+          input: { subject, window: 'this fall' },
         },
       ],
       (results) => {
@@ -666,6 +815,120 @@ describe('the deep answer arrives at question time', () => {
         ),
       );
     expect(audit?.after).toMatchObject({ factsRefused: 1 });
+  });
+
+  // ── THE 2026-08-24 FAILURE ─────────────────────────────────────────────────
+
+  /**
+   * THE RUN THAT SENT A LIE, REPLAYED.
+   *
+   * Live, 2026-08-24, on the real subject. The merge returned twenty-seven true rows off
+   * the Halton Hills swim page — day, clock time, session code, taxpayer fee, all of it
+   * published. The refutation refused all fifty-three facts, and the parent was texted
+   * "their site lists these but no day, time or price on the fall page yet".
+   *
+   * Two things had to be wrong at once, and both are asserted here:
+   *
+   *   THE CHECKER READ A SHORTER PAGE THAN THE LEG DID. The grid begins past the bound the
+   *   merge is PROMPTED under, and the checker was holding that same bounded copy.
+   *   THE CHECK COULD NOT READ A TABLE. The quotes are table cells written back as a
+   *   sentence, which is what an honest quote of a grid looks like.
+   */
+  it('THE 2026-08-24 FAILURE - a grid past the prompt bound reaches the parent as facts', async () => {
+    const transport = new FakeTransport();
+    const enqueued: DeepResearchPayload[] = [];
+    await askAboutTheGym(transport, enqueued, false, 'Gellert Community Centre fall swim schedule');
+    const payload = enqueued[0];
+    if (!payload) throw new Error('journey: nothing was enqueued');
+
+    const lane = gellertLane();
+    // THE ASYMMETRY IS REAL IN THIS FIXTURE, not asserted into existence: the merge's
+    // prompt genuinely stops before the grid, and the checker's evidence genuinely does
+    // not. Without this pair the test would pass on a page that fit.
+    expect(lane.bounded.pagesTruncated).toBe(1);
+    expect(lane.bounded.notes).not.toContain('108969');
+    expect(lane.bounded.pages[0]?.text.indexOf('108969')).toBeGreaterThan(MAX_PAGE_NOTE_CHARS);
+
+    const outcome = await runDeepResearchJob(database, payload, jobDeps(transport, lane), JOB_AT);
+
+    expect(outcome.status).toBe('sent');
+    const second = transport.bodies()[1] ?? '';
+    // The facts the parent was told did not exist.
+    expect(second).toMatch(/10|Mon/);
+    expect(second).toContain('86');
+    // ...and NOT the sentence that went out instead of them.
+    expect(claimsNotPosted(second)).toBe(false);
+
+    // Nothing was refused, so nothing had to be forgiven: the check now agrees with the
+    // page. The audit row is where a lane silently dropping facts becomes visible.
+    const [audit] = await database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, familyId),
+          eq(schema.auditLog.actionTaken, 'activity_followup_sent'),
+        ),
+      );
+    expect(audit?.after).toMatchObject({ factsRefused: 0, slotsRefused: 0, picks: 1 });
+  });
+
+  /**
+   * MASS REFUSAL IS NOT AN EMPTY PAGE. The other half of the same defect: when the check
+   * genuinely cannot stand behind the schedule facts, what is owed is uncertainty. The
+   * page plainly publishes times and fees, so "not posted yet" is false whatever the
+   * checker managed.
+   */
+  it('THE 2026-08-24 FAILURE - facts it cannot verify become uncertainty, never an absence', async () => {
+    const transport = new FakeTransport();
+    const enqueued: DeepResearchPayload[] = [];
+    await askAboutTheGym(transport, enqueued, false, 'Gellert Community Centre fall swim schedule');
+    const payload = enqueued[0];
+    if (!payload) throw new Error('journey: nothing was enqueued');
+
+    const outcome = await runDeepResearchJob(
+      database,
+      payload,
+      jobDeps(transport, gellertLane({ unquotableSchedule: true })),
+      JOB_AT,
+    );
+
+    expect(outcome.status).toBe('sent');
+    const second = transport.bodies()[1] ?? '';
+    // The unbacked day and fee never reach the wire...
+    expect(second).not.toContain('86');
+    // ...and neither does the claim that they were never published.
+    expect(claimsNotPosted(second)).toBe(false);
+    // The registration fact WAS quotable, so the message is not empty-handed.
+    expect(second).toMatch(/September 1|registration/i);
+    // A RECOMPOSE IS EXPECTED HERE and is the loop working: the first attempt wrote "the
+    // fall day/time and price aren't posted yet", the gate refused it, and the second
+    // said Hale could not pin them down. Two live turns need more than the 5s default.
+  }, 30_000);
+
+  /**
+   * THE POSITIVE CONTROL FOR ALL OF IT. A page that really does publish nothing still
+   * earns the honest negative sentence and the watch behind it — otherwise the fix above
+   * would just be a gate that never opens, and Hale would have traded a false claim for
+   * permanent vagueness.
+   */
+  it('a page that truly publishes nothing still licenses "not posted yet" and a watch', async () => {
+    const transport = new FakeTransport();
+    const enqueued: DeepResearchPayload[] = [];
+    await askAboutTheGym(transport, enqueued, false, 'Gellert Community Centre fall swim schedule');
+    const payload = enqueued[0];
+    if (!payload) throw new Error('journey: nothing was enqueued');
+
+    const outcome = await runDeepResearchJob(
+      database,
+      payload,
+      jobDeps(transport, gellertLane({ silentPage: true })),
+      JOB_AT,
+    );
+
+    expect(outcome).toMatchObject({ status: 'sent', watch: true });
+    const second = transport.bodies()[1] ?? '';
+    expect(claimsNotPosted(second)).toBe(true);
   });
 
   // ── THE FALLBACK ───────────────────────────────────────────────────────────

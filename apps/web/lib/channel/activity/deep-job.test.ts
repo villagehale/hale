@@ -65,6 +65,7 @@ const READ: DeepResult = {
   pagesRead: 3,
   pagesStale: 0,
   pagesRefused: 1,
+        pageVerdict: 'page_has_schedule',
 };
 
 /**
@@ -291,6 +292,7 @@ describe('runDeepResearchJob', () => {
         pagesRead: 3,
         pagesStale: 0,
         pagesRefused: 0,
+        pageVerdict: 'page_has_schedule',
       },
     });
 

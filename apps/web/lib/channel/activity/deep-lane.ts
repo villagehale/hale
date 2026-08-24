@@ -3,6 +3,7 @@ import { activityClient } from '~/lib/pipeline/client';
 import type { DeepFailure, DeepResult } from './deep';
 import type { ActivityQuery } from './deidentify';
 import type { FollowUpEvidence } from './deliver';
+import { readPageVerdict } from './evidence';
 import { type AngleResearcher, type FanOutResult, createAngleResearcher, runFanOut } from './fanout';
 import { type RefutationResult, refuteSlots } from './refute';
 import { type SynthesisOutcome, type Synthesiser, createSynthesiser } from './synthesis';
@@ -164,9 +165,11 @@ export async function runDeepLane(
     };
   }
 
-  // THE ADVERSARIAL PASS, against exactly the page text the synthesis was handed. Not the
-  // provider's original response and not a re-fetch: checking a quote against more text
-  // than the merge could see would pass a fact it could not have read.
+  // THE ADVERSARIAL PASS, against the WHOLE of every page any leg opened — not the bounded
+  // copy the merge was prompted with. The leg read the page in its own context and may
+  // honestly report a fact from anywhere in it, so a checker holding a shorter copy refuses
+  // published facts (fanout.ts `MAX_PAGE_NOTE_CHARS`, and the 2026-08-24 run where it
+  // refused fifty-three of them).
   const pages = fanOut.legs.flatMap((leg) => [...leg.pages]);
   const refutation = refuteSlots(merged.rows, pages);
 
@@ -178,6 +181,14 @@ export async function runDeepLane(
       pagesRead: fanOut.pagesRead,
       pagesStale: fanOut.pagesStale,
       pagesRefused: fanOut.pagesRefused,
+      // READ OFF THE PAGES, not off the refutation's body count. Every row being refused
+      // is Hale unable to stand behind a fact; it is not a page that published nothing,
+      // and only one of those two licenses a negative sentence (evidence.ts).
+      pageVerdict: readPageVerdict({
+        pagesRead: fanOut.pagesRead,
+        pagesStale: fanOut.pagesStale,
+        pages,
+      }),
     },
     evidence: evidenceOf(fanOut, merged.rows.length, refutation),
     fanOut,

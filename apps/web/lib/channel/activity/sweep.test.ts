@@ -404,7 +404,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
   function payable(overrides: Parameters<typeof harness>[0] = {}) {
     return harness({
       due: [CARTWHEELS_DUE],
-      deep: { status: 'read', slots: SLOTS, searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 1 },
+      deep: { status: 'read', slots: SLOTS, searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 1, pageVerdict: 'page_has_schedule' },
       ...overrides,
     });
   }
@@ -475,6 +475,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
         pagesRead: 1,
         pagesStale: 0,
         pagesRefused: 0,
+        pageVerdict: 'page_has_schedule',
       },
     });
 
@@ -519,7 +520,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     armed();
     const h = harness({
       due: [CARTWHEELS_DUE],
-      deep: { status: 'read', slots: [], searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 0 },
+      deep: { status: 'read', slots: [], searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 0, pageVerdict: 'page_has_schedule' },
       compose: { status: 'composed', message: 'I read their fall page and there is nothing up.' },
     });
 
@@ -541,7 +542,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
     }));
     const h = harness({
       due,
-      deep: { status: 'read', slots: SLOTS, searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 0 },
+      deep: { status: 'read', slots: SLOTS, searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 0, pageVerdict: 'page_has_schedule' },
     });
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);
@@ -587,6 +588,7 @@ describe('a partial answer registers the watch it talks about', () => {
         pagesRead: 2,
         pagesStale: 0,
         pagesRefused: 1,
+        pageVerdict: 'page_has_schedule',
       },
       compose: {
         status: 'composed',
@@ -643,7 +645,7 @@ describe('a partial answer registers the watch it talks about', () => {
 
     await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    expect(h.composed[0]).toMatchObject({ watch: true, pagesOpened: true });
+    expect(h.composed[0]).toMatchObject({ watch: true, pageEvidence: 'page_has_schedule' });
   });
 
   it('THE LIVE SHAPE: a when/price that explains its own absence is still a gap', async () => {
@@ -666,6 +668,7 @@ describe('a partial answer registers the watch it talks about', () => {
         pagesRead: 4,
         pagesStale: 0,
         pagesRefused: 0,
+        pageVerdict: 'page_has_schedule',
       },
     });
 
@@ -685,6 +688,7 @@ describe('a partial answer registers the watch it talks about', () => {
         pagesRead: 2,
         pagesStale: 0,
         pagesRefused: 0,
+        pageVerdict: 'page_has_schedule',
       },
     });
 
@@ -728,10 +732,11 @@ describe('a partial answer registers the watch it talks about', () => {
 /**
  * D5 — WHAT LICENSES "THEIR PAGE DOESN'T SAY".
  *
- * `pagesOpened` is the composer's only route to a negative claim about a page, and it is
- * false for every answer that did not open one TODAY: a shallow snippet search, a deep
- * pass that was refused everywhere, and a deep pass whose reads all came back out of the
- * provider's cache from before today.
+ * The licence is read off the PAGES by the research pass (evidence.ts `readPageVerdict`,
+ * tested directly there over real page text) and this sweep only carries it. What is
+ * asserted here is that carrying: a shallow snippet answer has opened nothing and must say
+ * so, and a deep pass's verdict must arrive at the composer unchanged rather than being
+ * recomputed into a second opinion.
  */
 describe('the licence to say a page carries nothing', () => {
   it('is withheld from a shallow answer - no page was opened at all', async () => {
@@ -740,28 +745,10 @@ describe('the licence to say a page carries nothing', () => {
 
     await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    expect(h.composed[0]).toMatchObject({ pagesOpened: false });
+    expect(h.composed[0]).toMatchObject({ pageEvidence: 'no_page_read' });
   });
 
-  it('is withheld when every page read came out of the cache', async () => {
-    armed();
-    const h = harness({
-      deep: {
-        status: 'read',
-        slots: [],
-        searchResults: 8,
-        pagesRead: 3,
-        pagesStale: 3,
-        pagesRefused: 0,
-      },
-    });
-
-    await runActivityFollowUpSweep(database, h.deps, NOW);
-
-    expect(h.composed[0]).toMatchObject({ pagesOpened: false });
-  });
-
-  it('POSITIVE CONTROL - one page read today is enough', async () => {
+  it('carries a deep verdict of "the page published nothing" through to the composer', async () => {
     armed();
     const h = harness({
       deep: {
@@ -771,12 +758,34 @@ describe('the licence to say a page carries nothing', () => {
         pagesRead: 3,
         pagesStale: 2,
         pagesRefused: 0,
+        pageVerdict: 'page_has_no_schedule',
       },
     });
 
     await runActivityFollowUpSweep(database, h.deps, NOW);
 
-    expect(h.composed[0]).toMatchObject({ pagesOpened: true });
+    expect(h.composed[0]).toMatchObject({ pageEvidence: 'page_has_no_schedule' });
+  });
+
+  it('THE 2026-08-24 DEFECT: a deep pass that read a schedule it could not pin licenses nothing', async () => {
+    // Every row refused, so `slots` is empty - which used to be indistinguishable from a
+    // page that published nothing, and was the sentence the parent got.
+    armed();
+    const h = harness({
+      deep: {
+        status: 'read',
+        slots: [],
+        searchResults: 8,
+        pagesRead: 3,
+        pagesStale: 0,
+        pagesRefused: 0,
+        pageVerdict: 'page_has_schedule',
+      },
+    });
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(h.composed[0]).toMatchObject({ pageEvidence: 'page_has_schedule' });
   });
 
   it('counts a deep leg that never ran, instead of leaving it invisible', async () => {
@@ -810,6 +819,7 @@ describe('the audit row carries the evidence', () => {
         pagesRead: 3,
         pagesStale: 0,
         pagesRefused: 2,
+        pageVerdict: 'page_has_schedule',
       },
     });
 
@@ -852,6 +862,7 @@ describe('the audit row carries the evidence', () => {
         pagesRead: 3,
         pagesStale: 0,
         pagesRefused: 0,
+        pageVerdict: 'page_has_schedule',
       },
     });
 
@@ -915,7 +926,15 @@ describe('the last read of the string that actually leaves', () => {
       sourceUrl: 'https://haltonhillsgymnastics.ca/programs',
     }));
     const h = harness({
-      deep: { status: 'read', slots, searchResults: 8, pagesRead: 2, pagesStale: 0, pagesRefused: 0 },
+      deep: {
+        status: 'read',
+        slots,
+        searchResults: 8,
+        pagesRead: 2,
+        pagesStale: 0,
+        pagesRefused: 0,
+        pageVerdict: 'page_has_schedule',
+      },
     });
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);

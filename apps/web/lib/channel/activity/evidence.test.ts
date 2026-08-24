@@ -1,6 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
-import { FETCH_FRESHNESS_MS, namesAVenue, readEvidence } from './evidence';
+import { FETCH_FRESHNESS_MS, namesAVenue, readEvidence, readPageVerdict } from './evidence';
 
 /**
  * THE TEST FOR THE SENTENCE THAT CAUSED THE BENCHMARK DEFECT.
@@ -168,5 +168,53 @@ describe('namesAVenue', () => {
   it('is false for a subject with nothing in it', () => {
     expect(namesAVenue('')).toBe(false);
     expect(namesAVenue('   ')).toBe(false);
+  });
+});
+
+/**
+ * WHAT LICENSES "THEIR PAGE DOESN'T SAY" — the decision itself, not a caller carrying it.
+ *
+ * The 2026-08-24 run had this wrong in the one direction that reaches a parent: seven
+ * pages opened, the fall grid published on one of them, every fact refused by the
+ * checker, and the composer told it was free to report the schedule as unposted. So the
+ * negative verdict is asserted against a page that really does publish nothing, and each
+ * assertion is paired with the page that publishes something.
+ */
+describe('readPageVerdict', () => {
+  const GRID =
+    'Parent and Tot 1, 2, 3 | Mon | 10:00AM - 10:30AM | Oct 05 - Dec 07 | 108969 | $86.22';
+  const SILENT =
+    'Fall programs at Gellert Community Centre. Our fall brochure will be posted soon. Call 905-877-4244.';
+
+  it('licenses an absence only when a page opened today publishes nothing', () => {
+    expect(
+      readPageVerdict({ pagesRead: 1, pagesStale: 0, pages: [{ text: SILENT }] }),
+    ).toBe('page_has_no_schedule');
+    expect(readPageVerdict({ pagesRead: 1, pagesStale: 0, pages: [{ text: GRID }] })).toBe(
+      'page_has_schedule',
+    );
+  });
+
+  it('licenses nothing when every read came out of the cache from before today', () => {
+    // A schedule that went up this morning makes this morning's cached copy a false
+    // witness to what is on the page now.
+    expect(readPageVerdict({ pagesRead: 3, pagesStale: 3, pages: [{ text: SILENT }] })).toBe(
+      'no_page_read',
+    );
+    expect(readPageVerdict({ pagesRead: 3, pagesStale: 2, pages: [{ text: SILENT }] })).toBe(
+      'page_has_no_schedule',
+    );
+  });
+
+  it('licenses nothing when no page was opened at all', () => {
+    expect(readPageVerdict({ pagesRead: 0, pagesStale: 0, pages: [] })).toBe('no_page_read');
+  });
+
+  it('one page publishing a schedule withholds the licence from the whole run', () => {
+    // Fail-closed across pages: Hale cannot tell which of the pages it read the parent's
+    // question was about, so any published detail anywhere withholds the negative report.
+    expect(
+      readPageVerdict({ pagesRead: 2, pagesStale: 0, pages: [{ text: SILENT }, { text: GRID }] }),
+    ).toBe('page_has_schedule');
   });
 });

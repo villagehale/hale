@@ -5,6 +5,7 @@ import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { PageVerdict } from './evidence';
 import type { ActivityPick } from './lane';
 
 /**
@@ -91,19 +92,23 @@ export interface FollowUpGrounding {
    * note on why the bad-news half is the half that makes the promise honest. */
   picks: readonly FollowUpPick[];
   /**
-   * WAS A PAGE OPENED, TODAY, for these picks — the licence to say what a page does not
-   * carry.
+   * WHAT HALE MAY SAY ABOUT WHAT A PAGE DOES NOT CARRY (evidence.ts {@link PageVerdict}).
    *
-   * False for every shallow-lane answer (snippets only) and for a deep pass whose reads
-   * all came out of the provider's cache from before today (deep.ts `pagesStale`). With
-   * it false, {@link claimsNotPosted} refuses "the fall dates aren't posted yet" and the
-   * honest sentence is the uncertain one: Hale could not read their page.
+   * This was a boolean called `pagesOpened` until 2026-08-24, and the boolean answered the
+   * wrong question. It says somebody opened something; the sentence it was licensing says
+   * what the page CONTAINS. On the live run seven pages were opened, the fall grid was on
+   * one of them, the refutation had refused every fact off it, and `pagesOpened: true`
+   * licensed "no day, time or price on the fall page yet" about a schedule that was
+   * published. A REFUSED FACT IS NOT AN ABSENT ONE — the first is Hale not knowing.
    *
-   * It is a REQUIRED field rather than an optional one for the reason `registration` was
-   * the wrong shape as an optional: a caller that forgets it is a caller that gets the
-   * permissive reading by accident, and the permissive reading is the defect.
+   * Only `page_has_no_schedule` licenses a negative report, and it is positive evidence: a
+   * page was opened today and carries no clock time and no price anywhere on it.
+   *
+   * It is REQUIRED rather than optional for the reason `registration` was the wrong shape
+   * as an optional: a caller that forgets it is a caller that gets the permissive reading
+   * by accident, and the permissive reading is the defect.
    */
-  pagesOpened: boolean;
+  pageEvidence: PageVerdict;
   /**
    * IS THERE A CONTINUATION ROW BEHIND THIS MESSAGE — the sweep has already registered a
    * fresh `activity_followup` promise against the text about to go out, so the message
@@ -153,9 +158,13 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     subject: grounding.subject,
     // The two facts about the SWEEP rather than about a pick, and both are here for the
     // reason `registration` is: a projection that does not carry them is a model that
-    // cannot act on them. `pages_opened: false` is Hale saying it did not get into
-    // anybody's page today; `watch: true` is Hale saying the row is already written.
-    pages_opened: grounding.pagesOpened,
+    // cannot act on them. `page_evidence` is what Hale knows about the pages themselves;
+    // `watch: true` is Hale saying the row is already written.
+    //
+    // It is told rather than merely gated on, because the three states have three
+    // different honest sentences and a model that cannot see which one it is in writes the
+    // negative report, gets refused, and burns its three attempts arriving at silence.
+    page_evidence: grounding.pageEvidence,
     watch: grounding.watch,
     picks: grounding.picks.map((pick) => ({
       name: pick.name,
@@ -266,21 +275,52 @@ export function claimsVerification(body: string): boolean {
  * report of a schedule that was, in fact, sitting on the venue's own programs page and
  * in a PDF linked off it. The parent stops looking, because they think Hale looked.
  *
- * Clause-scoped with the same machinery {@link claimsVerification} uses, and matched as
- * NEGATION + A WORD ABOUT PUBLISHING inside one clause. Broad on purpose: with no page
- * read there is no negative claim about a page this lane is entitled to make, so the
- * gate is fail-closed and the honest sentence — "I could not get into their schedule
- * page today" — contains no publishing word at all and passes.
+ * SENTENCE-SCOPED, AND IT USED TO BE CLAUSE-SCOPED — which is how the 2026-08-24 message
+ * went out with this gate green. The sentence was "their site lists these but no day, time
+ * or price on the fall page yet", and splitting it on commas tore the negation off the
+ * thing negated: one fragment held "no day", the next held "time or price on the fall page
+ * yet", and neither fragment carried both halves of the claim. A comma-separated list is
+ * the ordinary way to say this and the gate could not see it at all.
+ *
+ * WHOSE ABSENCE IS IT — the page's, or Hale's? That is the whole distinction, and it is
+ * what the widened scope needs a guard for:
+ *
+ *   "their site lists these but no day or price on the fall page yet"  — the PAGE lacks it.
+ *     A claim, and false unless a page was read and really carries nothing.
+ *   "their site lists this, I could not confirm the day or the price"  — HALE lacks it.
+ *     The honest sentence, and the one this lane must be able to write.
+ *
+ * Both contain a negation and a publishing word, so only the self-limiting phrase tells
+ * them apart. The guard is the shape {@link claimsVerification} already uses for the same
+ * reason: a whole-body match would refuse the sentence Hale is supposed to write.
  */
-const UNPUBLISHED_WORD = /\b(?:posted|listed|published|announced|out|up)\b/i;
+const UNPUBLISHED_WORD =
+  /\b(?:post(?:ed|s|ing)?|list(?:ed|s|ing)?|publish(?:ed|es|ing)?|announced|available|shown|out|up)\b/i;
 /** `n'?t\b` deliberately has no LEADING boundary: the contraction that carries this claim
  * in practice is "aren't", and its "n" is glued to the stem. */
 const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n'?t\b/i;
+/**
+ * NAMING THE SURFACE IS THE SAME CLAIM WITHOUT THE VERB. "The fall times aren't on their
+ * page yet" carries no publishing word at all and is the identical assertion — the live
+ * composer wrote exactly that shape when it had the licence, so it is exactly what an
+ * unlicensed one would write too.
+ */
+const PAGE_SURFACE =
+  /\bon (?:their|the|its) (?:site|website|web ?page|page|pages|schedule|calendar|listing)\b|\bthere yet\b/i;
+/** Hale saying it could not get at something — never the page saying it has nothing. */
+const SELF_LIMITED =
+  /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
+const SENTENCE_BOUNDARY = /[.!?\n]/;
 
 export function claimsNotPosted(body: string): boolean {
   return body
-    .split(CLAUSE_BOUNDARY)
-    .some((clause) => ABSENCE.test(clause) && UNPUBLISHED_WORD.test(clause));
+    .split(SENTENCE_BOUNDARY)
+    .some(
+      (sentence) =>
+        ABSENCE.test(sentence) &&
+        (UNPUBLISHED_WORD.test(sentence) || PAGE_SURFACE.test(sentence)) &&
+        !SELF_LIMITED.test(sentence),
+    );
 }
 
 /**
@@ -355,9 +395,15 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
       'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
     );
   }
-  if (!grounding.pagesOpened && claimsNotPosted(text)) {
+  // THE ABSENCE CLAIM NEEDS POSITIVE EVIDENCE. Two ways to be wrong about a page and they
+  // need two different corrections: nobody opened it, or somebody opened it and it plainly
+  // does publish a schedule this run could not pin down. The second is the 2026-08-24
+  // failure, and it is the one the old boolean could not express (see `pageEvidence`).
+  if (grounding.pageEvidence !== 'page_has_no_schedule' && claimsNotPosted(text)) {
     violations.push(
-      'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.',
+      grounding.pageEvidence === 'no_page_read'
+        ? 'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.'
+        : 'The message says something is not posted or not up. Their page WAS opened today and it does publish times and prices - Hale just could not pin these ones to it. Say their site lists this and that you could not confirm the day or the price, never that they are not posted.',
     );
   }
   // BOTH DIRECTIONS, and the second one is not symmetry for its own sake. The first live

@@ -32,6 +32,7 @@ import {
   deliverFollowUp,
   noEvidence,
 } from './deliver';
+import type { PageVerdict } from './evidence';
 import { type FollowUpPick, createFollowUpComposer } from './followup-note';
 import { type ActivityFinder, createActivityFinder } from './lane';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
@@ -342,10 +343,11 @@ async function keepOne(
   let rest: readonly DeepSlot[] = [];
   let researched = false;
   const evidence = noEvidence();
-  // A PAGE, TODAY, and nothing else licenses a sentence about what a page does not carry.
-  // Not a snippet, and not a `web_fetch` the provider answered out of a cache from before
-  // today (deep.ts `pagesStale`).
-  let pagesOpened = false;
+  // WHAT THE PAGES LICENSE, and nothing else licenses a sentence about what a page does
+  // not carry (evidence.ts `PageVerdict`). It starts at the most restrictive value and is
+  // only ever widened by a deep pass that actually opened something: a shallow snippet
+  // answer has read no page at all.
+  let pageEvidence: PageVerdict = 'no_page_read';
   if (result.deepRead + result.deepUnread + result.deepUnavailable < MAX_DEEP_PER_RUN) {
     const deep = await deps.deep.research(deidentified.query);
     if (deep.status === 'read') {
@@ -355,7 +357,7 @@ async function keepOne(
       evidence.searchResults = deep.searchResults;
       evidence.pagesRead = deep.pagesRead;
       evidence.pagesRefused = deep.pagesRefused;
-      pagesOpened = deep.pagesRead - deep.pagesStale > 0;
+      pageEvidence = deep.pageVerdict;
       // The text carries the best one or two; everything else goes on a page. Slicing
       // HERE rather than asking the model for a shortlist is what makes "and the rest is
       // at this link" true — the remainder is a real list, not a claim.
@@ -420,7 +422,7 @@ async function keepOne(
       optOut: verdict.optOut,
       picks,
       rest,
-      pagesOpened,
+      pageEvidence,
       evidence,
     },
     now,

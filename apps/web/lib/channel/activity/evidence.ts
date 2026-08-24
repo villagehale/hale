@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { pageCarriesSchedule, preparePage } from './quote-match';
 
 /**
  * WHAT A GROUNDING TURN ACTUALLY READ — the value the lane did not have, and the
@@ -180,6 +181,54 @@ export function readEvidence(now: Date, content: Anthropic.ContentBlock[]): Grou
     prose: prose.join('\n').trim(),
     notes: notes.join('\n').trim(),
   };
+}
+
+/**
+ * WHAT HALE MAY SAY ABOUT WHAT A PAGE DOES NOT CARRY.
+ *
+ * ONE VALUE, THREE ANSWERS, because the composer has three different honest sentences and
+ * a boolean could only tell it two of them. Until 2026-08-24 the licence was
+ * `pagesOpened`, and that boolean answered the wrong question: it says somebody opened
+ * something, and the sentence it was licensing — "no day, time or price on the fall page
+ * yet" — needs to know what the page CARRIES. On the live run it said true, seven pages
+ * had been opened, the grid was on one of them, the checker had refused every fact off it,
+ * and Hale reported a published fall schedule as unpublished.
+ *
+ *   NO PAGE READ — snippets only, every fetch refused, or the only reads came out of the
+ *   provider's cache from before today. Hale does not know what those pages say. The
+ *   honest sentence is that it could not get into their page.
+ *
+ *   PAGE HAS NO SCHEDULE — a page WAS opened today and there is no clock time and no price
+ *   anywhere on it. This is the one state that licenses "their fall page has nothing on it
+ *   yet", and it is positive evidence rather than the absence of evidence.
+ *
+ *   PAGE HAS SCHEDULE — a page was opened and it does publish detail, whether or not this
+ *   run could stand behind any particular fact off it. A REFUSAL IS NOT AN ABSENCE: Hale
+ *   failing to pin a fact to a page says nothing whatever about what the page published,
+ *   and the sentence that follows from it is uncertainty, not a negative report.
+ */
+export type PageVerdict = 'no_page_read' | 'page_has_no_schedule' | 'page_has_schedule';
+
+/**
+ * Read the verdict off what the turn actually opened.
+ *
+ * A STALE READ IS NOT A READ. The provider answers some fetches out of a cache from hours
+ * ago (`pagesStale`), and a schedule that went up this morning makes this morning's copy a
+ * false witness to what is on the page now — so a run whose every read was cached has no
+ * page today and says so.
+ *
+ * The scan is over the WHOLE text of every page opened, for the reason the refutation's is
+ * (refute.ts): it is deterministic string work over bytes already in memory, and bounding
+ * it would be answering a question about a page from a piece of one.
+ */
+export function readPageVerdict(evidence: {
+  pagesRead: number;
+  pagesStale: number;
+  pages: ReadonlyArray<{ text: string }>;
+}): PageVerdict {
+  if (evidence.pagesRead - evidence.pagesStale <= 0) return 'no_page_read';
+  const published = evidence.pages.some((page) => pageCarriesSchedule(preparePage(page.text)));
+  return published ? 'page_has_schedule' : 'page_has_no_schedule';
 }
 
 /**

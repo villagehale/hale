@@ -63,19 +63,25 @@ export const MAX_ANGLE_FETCHES = 3;
 export const ANGLE_MAX_TOKENS = 12288;
 
 /**
- * How much of one opened page rides into the synthesis.
+ * How much of one opened page rides into the synthesis PROMPT.
  *
- * IT IS A COST BOUND AND A CORRECTNESS BOUND AT ONCE. `readEvidence` pipes
+ * IT IS A COST BOUND, AND IT IS ONLY A COST BOUND. `readEvidence` pipes
  * `content.source.data` verbatim, and when the provider answers a `web_fetch` with a PDF
  * that data is BASE64: the live probe measured 232,118 input tokens against 249,292
  * characters of notes (≈1 token/char) versus 60,941 against 110,754 for text (≈0.55),
  * and that one PDF doubled the cost of the run on its own. Nine pages unbounded is a
- * synthesis prompt nobody sized.
+ * synthesis prompt nobody sized. 24,000 characters is roughly a long municipal programme
+ * page in full, and the cut is COUNTED, never silent (rule #11).
  *
- * 24,000 characters is roughly a long municipal programme page in full. The cut is
- * COUNTED, never silent (rule #11) — and because the refutation checks quotes against
- * exactly the text the synthesis was given, a fact past the cut is a fact that is never
- * claimed rather than one that is claimed and then refused.
+ * IT DOES NOT BOUND THE CHECK, and the sentence that used to stand here — "a fact past the
+ * cut is a fact that is never claimed rather than one that is claimed and then refused" —
+ * was false in production. The leg model reads the page IN ITS OWN CONTEXT, whole, and
+ * writes what it found into its prose; the merge can therefore report a fact from past the
+ * cut perfectly honestly. On 2026-08-24 it did: the Parent-and-Tot grid began at character
+ * 27,153 of a 63,846-character page, the merge returned twenty-seven true rows off it, and
+ * the refutation — checking against the 24,000-character snapshot — refused all fifty-three
+ * facts as absent. So {@link AngleLeg.pages} carries the WHOLE page and only `notes` is
+ * bounded: tokens are what cost money, and the checker spends none.
  */
 export const MAX_PAGE_NOTE_CHARS = 24_000;
 
@@ -90,14 +96,15 @@ export interface AngleLeg {
   pagesRead: number;
   pagesStale: number;
   pagesRefused: number;
-  /** The pages this leg opened, bounded by {@link MAX_PAGE_NOTE_CHARS}. Exactly what the
-   * synthesis is given and exactly what the refutation checks against. */
+  /** The pages this leg opened, WHOLE. The refutation's evidence and the absence
+   * licence's, neither of which spends a token on them. */
   pages: ReadonlyArray<{ url: string; text: string }>;
-  /** Everything the leg wrote down — its prose and its opened pages — bounded the same
-   * way. Empty on a `failed` leg. */
+  /** Everything the leg wrote down — its prose and its opened pages — with each page cut
+   * at {@link MAX_PAGE_NOTE_CHARS}. This is the string the synthesis is prompted with, and
+   * the only place the bound applies. Empty on a `failed` leg. */
   notes: string;
-  /** How many of `pages` were cut at the bound. Counted so a synthesis that saw half a
-   * fee table is legible as such. */
+  /** How many pages were cut on their way into `notes`. Counted so a synthesis that was
+   * shown half a fee table is legible as such. */
   pagesTruncated: number;
   /** Why a `failed` leg failed. A message, never a payload: a provider error can echo the
    * request back (rule #1), so only the class and message are kept. */
@@ -165,24 +172,30 @@ function failedLeg(angle: DeepAngle, detail: string): AngleLeg {
   };
 }
 
-/** Bound each opened page and rebuild the notes off the bounded text, so the string the
- * synthesis reads and the pages the refutation checks can never disagree. */
+/**
+ * Build the leg's two views of what it read: the WHOLE pages, and the bounded string the
+ * merge is prompted with.
+ *
+ * They are deliberately not the same value. The bound is a bill, not a fact about the
+ * world (see {@link MAX_PAGE_NOTE_CHARS}), and letting it reach the checker is what turned
+ * a published grid into "not posted yet".
+ */
 export function boundEvidence(evidence: GroundingEvidence): {
-  pages: Array<{ url: string; text: string }>;
+  pages: ReadonlyArray<{ url: string; text: string }>;
   notes: string;
   pagesTruncated: number;
 } {
   let pagesTruncated = 0;
-  const pages = evidence.pages.map((page) => {
+  const shown = evidence.pages.map((page) => {
     if (page.text.length <= MAX_PAGE_NOTE_CHARS) return page;
     pagesTruncated += 1;
     return { url: page.url, text: page.text.slice(0, MAX_PAGE_NOTE_CHARS) };
   });
   // JOINED FROM PARTS, never cut back out of the joined string: `prose` and `pages` are
   // separate fields on the evidence for exactly this reason (evidence.ts).
-  const body = pages.map((page) => `--- page: ${page.url} ---\n${page.text}`);
+  const body = shown.map((page) => `--- page: ${page.url} ---\n${page.text}`);
   return {
-    pages,
+    pages: evidence.pages,
     notes: [evidence.prose, ...body].join('\n').trim(),
     pagesTruncated,
   };

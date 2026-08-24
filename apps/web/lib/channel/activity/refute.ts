@@ -1,5 +1,6 @@
 import { plainText } from '~/lib/channel/coach/reply';
 import type { DeepSlot } from './deep';
+import { type PageEvidence, normaliseForMatch, preparePage, quoteIsBackedBy } from './quote-match';
 import type { SynthesisRow } from './synthesis';
 
 /**
@@ -20,7 +21,10 @@ import type { SynthesisRow } from './synthesis';
  *   QUOTE ABSENT — the fact's span is not on the page the fact names. This is the defect a
  *   three-angle merge makes newly easy and a single leg could barely produce: the $86.22
  *   really is printed, on the MUNICIPAL page, for a different programme — and attached to
- *   the gym's row it is a parent turning up with the wrong money.
+ *   the gym's row it is a parent turning up with the wrong money. What "on the page" means
+ *   is quote-match.ts's — verbatim, or every load-bearing token in order inside one short
+ *   window — because a verbatim-only reading refuses TABLES, and on 2026-08-24 it refused
+ *   fifty-three published facts in one run.
  *
  *   SOURCE NOT READ — the fact names a page no leg opened. Same defect as an uncited row,
  *   one level down, and it is the hole a per-fact citation would otherwise open.
@@ -103,18 +107,6 @@ function pageKey(url: string): string {
     .replace(/\/+$/, '');
 }
 
-/**
- * Text identity, forgiven for the things a page renders and a model retypes.
- *
- * Whitespace collapses because an HTML table cell arrives as three spaces here and a
- * newline there; typographic punctuation folds to ASCII because a page's en dash comes
- * back as a hyphen through half the fetch pipeline. `plainText` already owns that second
- * mapping for the SMS budget, so the two readings of "same characters" cannot drift apart.
- */
-function normalise(text: string): string {
-  return plainText(text).toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
 function field(value: unknown): string {
   return typeof value === 'string' ? plainText(value).trim() : '';
 }
@@ -150,7 +142,7 @@ function tryFact(
   quote: unknown,
   source: unknown,
   rowUrl: string,
-  byPage: ReadonlyMap<string, string>,
+  byPage: ReadonlyMap<string, PageEvidence>,
 ): FactVerdict {
   const stated = field(value);
   if (stated === '') return { value: null, refusal: null };
@@ -158,36 +150,43 @@ function tryFact(
   const span = typeof quote === 'string' ? quote.trim() : '';
   if (span === '') return { value: null, refusal: 'no_quote' };
 
-  const needle = normalise(span);
-  if (needle.length < MIN_QUOTE_CHARS) return { value: null, refusal: 'quote_too_short' };
+  if (normaliseForMatch(span).length < MIN_QUOTE_CHARS) {
+    return { value: null, refusal: 'quote_too_short' };
+  }
 
   const cited = citation(source) ?? rowUrl;
-  const pageText = byPage.get(pageKey(cited));
-  if (pageText === undefined) return { value: null, refusal: 'source_not_read' };
-  if (!pageText.includes(needle)) return { value: null, refusal: 'quote_absent' };
+  const page = byPage.get(pageKey(cited));
+  if (page === undefined) return { value: null, refusal: 'source_not_read' };
+  if (!quoteIsBackedBy(span, page)) return { value: null, refusal: 'quote_absent' };
   return { value: stated, refusal: null };
 }
 
 /**
  * Try to break every row, and hand back only what survived.
  *
- * `pages` is EXACTLY the text the synthesis was given — the bounded page notes from the
- * fan-out, not the provider's original response. That identity is load-bearing: checking
- * against more text than the synthesis saw would pass a fact it could not have read, and
- * checking against less would refuse one it did.
+ * `pages` is THE WHOLE OF WHAT THE LEG READ — every character the provider returned for
+ * every page it opened, not the bounded copy the merge was prompted with. That distinction
+ * is the 2026-08-24 defect. The bound exists because page text is billed as input tokens
+ * (fanout.ts), and this pass spends none: it is string work over bytes already in memory.
+ * Checking against the smaller copy meant refusing facts the leg genuinely read — the
+ * grid began at character 27,153, the merge's snapshot stopped at 24,000, and the leg had
+ * summarised the whole thing from its own context. Storage and prompts may be bounded;
+ * truth may not.
  */
 export function refuteSlots(
   rows: readonly SynthesisRow[],
   pages: ReadonlyArray<{ url: string; text: string }>,
 ): RefutationResult {
-  const byPage = new Map<string, string>();
+  const byPage = new Map<string, PageEvidence>();
   for (const page of pages) {
     const key = pageKey(page.url);
     // One page fetched twice (two legs can surface the same URL) is one body of evidence;
     // the longer read wins, because a truncated one is a subset of it.
-    const existing = byPage.get(key) ?? '';
-    const text = normalise(page.text);
-    if (text.length > existing.length) byPage.set(key, text);
+    const existing = byPage.get(key);
+    const prepared = preparePage(page.text);
+    if (existing === undefined || prepared.text.length > existing.text.length) {
+      byPage.set(key, prepared);
+    }
   }
 
   const slots: DeepSlot[] = [];

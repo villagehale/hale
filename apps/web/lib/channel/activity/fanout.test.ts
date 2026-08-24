@@ -211,8 +211,14 @@ describe('runFanOut', () => {
     expect(legBy(result.legs, 'venue_site').reason).toContain('not_grounded');
   });
 
-  it('bounds a huge page and COUNTS the cut, so a base64 PDF cannot swallow the merge', async () => {
-    const huge = 'A'.repeat(MAX_PAGE_NOTE_CHARS + 5_000);
+  it('bounds the PROMPT and not the evidence, so a base64 PDF cannot swallow the merge', async () => {
+    // THE 2026-08-24 ASYMMETRY, as a test. The bound is a bill: page text is billed as
+    // input tokens, so the merge is prompted with the first 24,000 characters. The
+    // CHECKER is deterministic string work over bytes already in memory and pays nothing,
+    // so it gets the whole page - and the fact that lives at character 27,153 is a fact
+    // the leg read, the merge can honestly report, and the refutation can confirm.
+    const tail = 'Sundays 9:30AM - 10:15AM, Oct 05 - Dec 07, code 108969';
+    const huge = `${'A'.repeat(MAX_PAGE_NOTE_CHARS + 5_000)}\n${tail}`;
     const { client } = clientByAngle({
       venue_site: { content: [searchHit(), fetched('https://venue.example/fees.pdf', huge)] },
     });
@@ -224,11 +230,11 @@ describe('runFanOut', () => {
     );
 
     const leg = legBy(result.legs, 'venue_site');
-    expect(leg.pages[0]?.text).toHaveLength(MAX_PAGE_NOTE_CHARS);
+    expect(leg.pages[0]?.text).toHaveLength(huge.length);
+    expect(leg.pages[0]?.text).toContain(tail);
     expect(leg.pagesTruncated).toBe(1);
-    // The notes the synthesis reads are rebuilt off the BOUNDED text, so the string it
-    // sees and the pages the refutation checks can never disagree.
-    expect(leg.notes).toContain("--- page: https://venue.example/fees.pdf ---");
+    expect(leg.notes).toContain('--- page: https://venue.example/fees.pdf ---');
+    expect(leg.notes).not.toContain(tail);
     expect(leg.notes.length).toBeLessThan(huge.length);
   });
 

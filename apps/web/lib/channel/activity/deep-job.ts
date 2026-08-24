@@ -233,9 +233,10 @@ export async function runDeepResearchJob(
       // at this link" true — the remainder is a real list, not a claim.
       picks: run.result.slots.slice(0, SLOTS_IN_TEXT),
       rest: run.result.slots,
-      // A PAGE, TODAY. Not a snippet, and not a `web_fetch` the provider answered out of
-      // a cache from before today (evidence.ts `pagesStale`).
-      pagesOpened: run.result.pagesRead - run.result.pagesStale > 0,
+      // READ OFF THE PAGES BY THE LANE (deep-lane.ts), not recomputed here from counts:
+      // a second reader of "may Hale report an absence" is a second answer waiting to
+      // disagree with the first.
+      pageEvidence: run.result.pageVerdict,
       evidence: run.evidence,
     },
     now,
