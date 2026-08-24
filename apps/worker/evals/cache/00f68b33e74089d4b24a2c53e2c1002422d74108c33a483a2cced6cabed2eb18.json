@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked what Nora has on Tuesday. The week shows a private calendar item at Tue 3:45pm. Hale correctly gives the day and time while noting the content is redacted — exactly the right handling per the rules. The reply is short, accurate, and complete. No invented details, no referral, no markdown, no sign-off. One small note: \"Nora\" is not a name in `knows.children` (the teenager's name is null), so Hale cannot confirm it is Nora's item — but since the private item is the teenager's redacted entry, and the parent named Nora, treating the item as the answer is the only sensible move. The reply handles it cleanly. This is the product working correctly.",
+    "score": 5
+  }
+}

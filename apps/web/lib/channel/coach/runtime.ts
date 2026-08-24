@@ -168,7 +168,10 @@ export interface ChannelCoachPorts {
 
 export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRuntime {
   return {
-    async respond(turn: ChannelTurn): Promise<ChannelTurnResult> {
+    async respond(
+      turn: ChannelTurn,
+      rejectedLastAttempt: readonly string[],
+    ): Promise<ChannelTurnResult> {
       // This turn's own ledger of committed drafts. Every exit that is not an answer
       // carries it out (see `failed` below) — a draft is a row the parent can approve,
       // so a failure that hid it would leave them holding an action they never heard of.
@@ -235,6 +238,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // so a turn that is plainly an answer to one of them can be treated as one, and a
         // turn that is not can stop claiming nothing is pending when something is.
         standingQuestions: turn.standingQuestions,
+        // WHAT THE LAST ATTEMPT CLAIMED AND COULD NOT BACK (VIL-293). Absent on every
+        // first attempt — the key does not appear at all rather than appearing empty, so
+        // the ordinary turn's prompt bytes, and its cache prefix, are untouched.
+        ...(rejectedLastAttempt.length > 0 ? { rejectedLastAttempt } : {}),
         // The hand-verified municipal open dates this family must act on, soonest
         // first, each saying whether Hale's ladder is already on it. Empty for a family
         // outside the covered set — and then the skill has nothing to claim.

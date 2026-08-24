@@ -92,7 +92,7 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
 
 describe('channelCoachRuntime', () => {
   it('answers a turn with the post-processed reply', async () => {
-    const { reply } = await channelCoachRuntime(ports()).respond(turn());
+    const { reply } = await channelCoachRuntime(ports()).respond(turn(), []);
 
     expect(reply).toBe('Move swim to Tue 4:30? YES to confirm.');
   });
@@ -106,7 +106,7 @@ describe('channelCoachRuntime', () => {
   it('grounds the model on the conversation C1 threaded, whole-family scope', async () => {
     const p = ports();
 
-    await channelCoachRuntime(p).respond(turn('cancel swim'));
+    await channelCoachRuntime(p).respond(turn('cancel swim'), []);
 
     expect(p.contextInputs).toEqual([
       expect.objectContaining({
@@ -127,7 +127,7 @@ describe('channelCoachRuntime', () => {
       },
     });
 
-    await channelCoachRuntime(p).respond(turn());
+    await channelCoachRuntime(p).respond(turn(), []);
 
     expect(seen[0]).toEqual(
       expect.objectContaining({
@@ -157,7 +157,7 @@ describe('channelCoachRuntime', () => {
       },
     });
 
-    await channelCoachRuntime(p).respond(turn());
+    await channelCoachRuntime(p).respond(turn(), []);
 
     expect(seen[0]).not.toHaveProperty('appLink');
     expect(JSON.stringify(seen[0])).not.toContain(LINK);
@@ -166,7 +166,7 @@ describe('channelCoachRuntime', () => {
   it("redacts a 13+ child's name out of the reply before returning it (rule #1)", async () => {
     const p = ports({ runAgent: answering('Nora has practice Thursday.') });
 
-    const { reply } = await channelCoachRuntime(p).respond(turn());
+    const { reply } = await channelCoachRuntime(p).respond(turn(), []);
 
     expect(reply).toBe('your kid has practice Thursday.');
   });
@@ -175,7 +175,7 @@ describe('channelCoachRuntime', () => {
     const long = Array.from({ length: 12 }, (_, i) => `Sentence number ${i} about swim.`).join(' ');
     const p = ports({ runAgent: answering(long) });
 
-    const { reply } = await channelCoachRuntime(p).respond(turn());
+    const { reply } = await channelCoachRuntime(p).respond(turn(), []);
 
     expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
     expect(reply).not.toContain(LINK);
@@ -188,7 +188,7 @@ describe('channelCoachRuntime', () => {
   it('throws when the loop produced no answer, and records the run as failed', async () => {
     const p = ports({ runAgent: answering(null, true) });
 
-    await expect(channelCoachRuntime(p).respond(turn())).rejects.toThrow(/maxSteps/i);
+    await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(/maxSteps/i);
     expect(p.recorded).toEqual([
       expect.objectContaining({ agentName: 'coach-channel-sms', status: 'failed' }),
     ]);
@@ -218,7 +218,7 @@ describe('channelCoachRuntime', () => {
     });
 
     const err = await channelCoachRuntime(p)
-      .respond(turn())
+      .respond(turn(), [])
       .catch((e: unknown) => e);
 
     expect(draftsFromFailure(err)).toEqual(['action-1', 'action-2']);
@@ -230,7 +230,7 @@ describe('channelCoachRuntime', () => {
     const p = ports({ runAgent: answering(null, true) });
 
     const err = await channelCoachRuntime(p)
-      .respond(turn())
+      .respond(turn(), [])
       .catch((e: unknown) => e);
 
     expect(draftsFromFailure(err)).toEqual([]);
@@ -240,7 +240,7 @@ describe('channelCoachRuntime', () => {
   it('records a completed run with its latency (the p50 the ticket gates on)', async () => {
     const p = ports();
 
-    await channelCoachRuntime(p).respond(turn());
+    await channelCoachRuntime(p).respond(turn(), []);
 
     expect(p.recorded).toEqual([
       expect.objectContaining({ agentName: 'coach-channel-sms', status: 'completed' }),
@@ -273,7 +273,7 @@ describe('channelCoachRuntime', () => {
       }),
     });
 
-    await channelCoachRuntime(p).respond(turn());
+    await channelCoachRuntime(p).respond(turn(), []);
 
     expect(p.recorded[0]?.costUsd).toBeCloseTo(0.0073809, 9);
   });
@@ -284,8 +284,8 @@ describe('channelCoachRuntime', () => {
     const buildTools = vi.fn(() => [] as RegisteredTool[]);
     const runtime = channelCoachRuntime(ports({ buildTools }));
 
-    await runtime.respond(turn());
-    await runtime.respond(turn());
+    await runtime.respond(turn(), []);
+    await runtime.respond(turn(), []);
 
     expect(buildTools).toHaveBeenCalledTimes(2);
   });

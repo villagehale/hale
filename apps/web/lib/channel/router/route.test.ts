@@ -7,6 +7,8 @@ import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
+import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -105,14 +107,17 @@ function passingHandler(name: string): DeterministicHandler & { calls: number; b
 
 function fakeCoach(
   reply = 'coach says hi',
-): ChannelCoachRuntime & { calls: number; standingQuestions: string[][] } {
+): ChannelCoachRuntime & { calls: number; standingQuestions: string[][]; rejected: string[][] } {
   const coach = {
     calls: 0,
     /** What each turn told the coach Hale was waiting on. */
     standingQuestions: [] as string[][],
-    async respond(turn: ChannelTurn) {
+    /** What each attempt was told the last one got wrong (VIL-293). */
+    rejected: [] as string[][],
+    async respond(turn: ChannelTurn, rejectedLastAttempt: readonly string[]) {
       coach.calls += 1;
       coach.standingQuestions.push([...turn.standingQuestions]);
+      coach.rejected.push([...rejectedLastAttempt]);
       return { reply, planOffer: null, activityPromise: null };
     },
   };
@@ -265,6 +270,20 @@ function fakeResolver(reading: ReplyReading): ReplyResolver & { calls: number } 
   return resolver;
 }
 
+/** A family Hale owes nothing and has nothing booked for — the state in which every
+ * claim is false. The default, so a test that says nothing about the ledger cannot
+ * accidentally be relying on one. */
+function emptyReconcileView(overrides: Partial<ReconcileView> = {}): ReconcileView {
+  return {
+    openKinds: new Set(),
+    pendingKinds: new Set(),
+    registrationLaddered: false,
+    mintableWindow: null,
+    scheduledTitles: [],
+    ...overrides,
+  };
+}
+
 interface Harness {
   deps: ChannelRouterDeps;
   fake: FakeDb;
@@ -287,6 +306,8 @@ function harness(
     replyResolver?: ReplyResolver;
     recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
     recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
+    reconcileView?: ChannelRouterDeps['reconcileView'];
+    recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -319,6 +340,9 @@ function harness(
       recordPlanOffer: options.recordPlanOffer ?? (async () => ({ status: 'recorded' })),
       recordActivityPromise:
         options.recordActivityPromise ?? (async () => ({ status: 'recorded' as const })),
+      reconcileView: options.reconcileView ?? (async () => emptyReconcileView()),
+      recordRegistrationWatch:
+        options.recordRegistrationWatch ?? (async () => ({ status: 'recorded' as const })),
       questions: options.questions ?? fakeQuestions([]),
       replyResolver: options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
@@ -2287,5 +2311,206 @@ describe('a failed turn is recorded as a failure', () => {
 
     expect(h.turns.deferred).toEqual([job().channel_message_id]);
     expect(h.turns.failed).toEqual([]);
+  });
+});
+
+// ── VIL-293 · the reconciliation primitive, replayed against the audit ───────
+
+/**
+ * Every body below is a sentence Hale actually sent in the 2026-08-21/22 audit, and every
+ * assertion is the thing that did not happen. On main each of these bodies reached the
+ * transport verbatim with no row anywhere behind it.
+ */
+describe('audit replay: a claim reaches the wire only when a row backs it', () => {
+  const OPENS = new Date('2026-09-01T11:00:00.000Z');
+
+  /** A coach whose answers are scripted per attempt — the re-ask is the point. */
+  function scriptedCoach(
+    turns: readonly { reply: string; activityPromise?: ActivityPromise }[],
+  ): ChannelCoachRuntime & { rejected: string[][] } {
+    let attempt = 0;
+    const coach = {
+      rejected: [] as string[][],
+      async respond(_turn: ChannelTurn, rejectedLastAttempt: readonly string[]) {
+        coach.rejected.push([...rejectedLastAttempt]);
+        const scripted = turns[Math.min(attempt, turns.length - 1)];
+        attempt += 1;
+        return {
+          reply: scripted?.reply ?? '',
+          planOffer: null,
+          activityPromise: scripted?.activityPromise ?? null,
+        };
+      },
+    };
+    return coach;
+  }
+
+  it('(a) Aug 21 — "I\'m watching that morning" MINTS the watch against the matched window', async () => {
+    const minted: unknown[] = [];
+    const h = harness({
+      coach: fakeCoach("I'm watching that morning and I'll text you before it goes live."),
+      reconcileView: async () =>
+        emptyReconcileView({ mintableWindow: { town: 'Halton Hills', opensForFamilyAt: OPENS } }),
+      recordRegistrationWatch: async (_db, input) => {
+        minted.push(input);
+        return { status: 'recorded' as const };
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      "I'm watching that morning and I'll text you before it goes live.",
+    ]);
+    expect(minted).toHaveLength(1);
+    expect(minted[0]).toMatchObject({
+      familyId: FAMILY,
+      mint: {
+        kind: 'registration_watch',
+        summary: 'Halton Hills registration: a text before it opens.',
+        dueAt: OPENS,
+      },
+      // Against the row that CARRIED it — the MEM-10 send-time discipline.
+      channelMessageId: ledgerRows(h.fake)[0]?.id,
+    });
+  });
+
+  it('(a2) refuses the same sentence when no window matched and no ladder runs', async () => {
+    const minted: unknown[] = [];
+    const h = harness({
+      coach: scriptedCoach([
+        { reply: "I'm watching that morning and I'll text you before it goes live." },
+        { reply: 'Halton Hills has not published a fall date yet.' },
+      ]),
+      recordRegistrationWatch: async (_db, input) => {
+        minted.push(input);
+        return { status: 'recorded' as const };
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+
+    expect(minted).toEqual([]);
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      'Halton Hills has not published a fall date yet.',
+    ]);
+  });
+
+  it('(b) Aug 12 — the finds promise is re-asked, and the second attempt registers it', async () => {
+    const promises: unknown[] = [];
+    const coach = scriptedCoach([
+      { reply: "I'm checking details on 5 finds nearby - I'll text you the good ones." },
+      {
+        reply: "I'm checking details on 5 finds nearby - I'll text you the good ones.",
+        activityPromise: { subject: 'toddler classes nearby', childId: null },
+      },
+    ]);
+    const h = harness({
+      coach,
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const };
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+
+    // Asked twice: the first attempt promised with nothing registered, and the violation
+    // told the second what to do about it.
+    expect(coach.rejected).toHaveLength(2);
+    expect(coach.rejected[0]).toEqual([]);
+    expect(coach.rejected[1]?.[0]).toContain('promise_activity_followup');
+    expect(promises).toHaveLength(1);
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      "I'm checking details on 5 finds nearby - I'll text you the good ones.",
+    ]);
+  });
+
+  it('(b2) the same promise passes on the FIRST attempt when the tool was called', async () => {
+    const coach = scriptedCoach([
+      {
+        reply: "I'm checking details on 5 finds nearby - I'll text you the good ones.",
+        activityPromise: { subject: 'toddler classes nearby', childId: null },
+      },
+    ]);
+    const h = harness({ coach });
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.rejected).toEqual([[]]);
+  });
+
+  it('(c) Aug 12 — the self-referential promise is cut, and the rest goes out verbatim', async () => {
+    const coach = scriptedCoach([
+      { reply: "Swim runs Tuesdays at 4. I'll cut the one sec messages and just answer." },
+      { reply: "Swim runs Tuesdays at 4. I'll cut the one sec messages and just answer." },
+    ]);
+    const h = harness({ coach });
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(coach.rejected[1]?.[0]).toContain('promises to change how Hale itself behaves');
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['Swim runs Tuesdays at 4.']);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('(d) a booking claim with nothing on the calendar never reaches the wire', async () => {
+    const coach = scriptedCoach([
+      { reply: 'Your well-baby visit is booked.' },
+      { reply: 'Your well-baby visit is booked.' },
+    ]);
+    const h = harness({ coach, apology: fakeApology({ status: 'composed', reply: 'sorry' }) });
+    const result = await routeChannelMessage(h.deps, job());
+
+    // Nothing survived the cut, so the turn is a FAILURE with an apology — not a blank
+    // text, and not the claim.
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['sorry']);
+    expect(result.status).toBe('agent_failed');
+  });
+
+  it('(d2) the same claim is sent when the calendar actually holds it', async () => {
+    const h = harness({
+      coach: fakeCoach('Your well-baby visit is booked.'),
+      reconcileView: async () => emptyReconcileView({ scheduledTitles: ['Well-baby checkup'] }),
+    });
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['Your well-baby visit is booked.']);
+  });
+
+  it('(e) a second-person prediction is not a claim — one attempt, sent verbatim', async () => {
+    const coach = scriptedCoach([
+      { reply: "You'll want to register soon - Halton Hills opens Sep 1." },
+    ]);
+    const minted: unknown[] = [];
+    const h = harness({
+      coach,
+      recordRegistrationWatch: async (_db, input) => {
+        minted.push(input);
+        return { status: 'recorded' as const };
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.rejected).toEqual([[]]);
+    expect(minted).toEqual([]);
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      "You'll want to register soon - Halton Hills opens Sep 1.",
+    ]);
+  });
+
+  it('(e2) a quoted parent promise is not a claim', async () => {
+    const coach = scriptedCoach([
+      { reply: 'Your note said "I\'ll sign her up Monday" so I have not touched it.' },
+    ]);
+    const h = harness({ coach });
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.rejected).toEqual([[]]);
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('an ordinary reply costs one attempt and no rewrite', async () => {
+    const coach = scriptedCoach([{ reply: 'Swim runs Tuesdays at 4 at the Gellert.' }]);
+    const h = harness({ coach });
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.rejected).toEqual([[]]);
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['Swim runs Tuesdays at 4 at the Gellert.']);
   });
 });

@@ -456,4 +456,12 @@ export const agentCommitmentKindEnum = pgEnum('agent_commitment_kind', [
   // the same reason: a question that lives only as prose inside a sent SMS is a question
   // the reply resolver cannot see, so the answer lands on whatever else is standing.
   'founder_welcome_offer',
+  // "I'm watching that morning and I'll text you before it goes live." — the coach's
+  // own promise about a registration morning, made in an ordinary text hours or weeks
+  // before the ladder's heads-up leg would fire. Distinct from `registration_plan`,
+  // which is the LADDER's promise ("your plan, the evening before") opened by that leg:
+  // one household can be owed both, and the partial unique index would silently refuse
+  // the second if they shared a kind. Due when this family can first register, and kept
+  // by the `go` leg — the tap fifteen minutes before the doors open.
+  'registration_watch',
 ]);

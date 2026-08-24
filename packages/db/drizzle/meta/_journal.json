@@ -652,6 +652,13 @@
       "when": 1781468940000,
       "tag": "0095_founder_welcome",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1781469000000,
+      "tag": "0096_registration_watch",
+      "breakpoints": true
     }
   ]
 }

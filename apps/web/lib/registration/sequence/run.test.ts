@@ -119,6 +119,9 @@ function harness(
     /** A claim that loses the race returns null, exactly as ON CONFLICT DO NOTHING does. */
     claimReturnsNull?: boolean;
     draftThrows?: boolean;
+    /** What the reconciliation gate says about the wire body (VIL-293). Empty is the
+     * ordinary answer: a leg's claim is matched by the live sequence sending it. */
+    unbacked?: Awaited<ReturnType<SequenceRunDeps['refuseUnbackedSend']>>;
     enrolled?: boolean;
     consented?: boolean;
     transport?: FakeTransport;
@@ -135,6 +138,7 @@ function harness(
   const transport = options.transport ?? new FakeTransport();
 
   const deps: SequenceRunDeps = {
+    refuseUnbackedSend: async () => options.unbacked ?? [],
     selectFamilies: async () => options.families ?? [family()],
     loadChildren: async () => options.children ?? CHILDREN,
     loadWindows: async () => options.windows ?? [],
@@ -474,6 +478,28 @@ describe('the legs', () => {
 
     expect(h.kept).toEqual([{ kind: 'registration_plan', channelMessageId: 'msg-1' }]);
     expect(h.promised).toEqual([]);
+  });
+
+  it('closes the coach\'s registration WATCH with the go leg that kept it (VIL-293)', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()] });
+
+    await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
+
+    // The go leg is the text fifteen minutes before the doors open — the thing the coach
+    // actually promised. Not the heads-up, not the battle plan.
+    expect(h.kept).toEqual([{ kind: 'registration_watch', channelMessageId: 'msg-1' }]);
+  });
+
+  it('refuses a leg whose wire body claims a row that does not exist (VIL-293)', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()], unbacked: ['no_registration_watch'] });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
+
+    expect(result).toMatchObject({ sent: 0, refused: 1, failed: 0 });
+    expect(h.transport.sent).toEqual([]);
+    expect(h.kept).toEqual([]);
   });
 
   it('withholds the battle plan from a family that has not approved the shortlist', async () => {

@@ -86,7 +86,13 @@ export async function captureServerEvent(
  */
 
 /** Which seam broke. One lane per place that can fail without anybody being told. */
-export type AgentErrorLane = 'coach' | 'transport' | 'relay' | 'reply_budget' | 'commitments';
+export type AgentErrorLane =
+  | 'coach'
+  | 'transport'
+  | 'relay'
+  | 'reply_budget'
+  | 'commitments'
+  | 'reconcile';
 
 export type AgentError =
   /** A coach turn that answered nobody; `reason` is a TurnDeferralReason. */
@@ -98,7 +104,9 @@ export type AgentError =
   /** The model's answer ran past the SMS segment budget and lost its tail. */
   | { lane: 'reply_budget'; overBy: number; familyId: string | null }
   /** A due promise the sweep could not keep this tick. */
-  | { lane: 'commitments'; kind: string; familyId: string };
+  | { lane: 'commitments'; kind: string; familyId: string }
+  /** A claim Hale wrote that no row backed; `reason` is a reconcile RefusalReason. */
+  | { lane: 'reconcile'; reason: string; familyId: string };
 
 const EVENT_BY_LANE: Record<AgentErrorLane, AnalyticsEvent> = {
   coach: 'agent_turn_failed',
@@ -106,6 +114,7 @@ const EVENT_BY_LANE: Record<AgentErrorLane, AnalyticsEvent> = {
   relay: 'agent_relay_refused',
   reply_budget: 'agent_reply_trimmed',
   commitments: 'agent_commitment_failed',
+  reconcile: 'agent_claim_refused',
 };
 
 /**
@@ -126,6 +135,7 @@ const TWILIO_CODE = /^(\d{1,6}|unknown)$/;
 function classOf(error: AgentError): string {
   switch (error.lane) {
     case 'coach':
+    case 'reconcile':
       return ENUM_TOKEN.test(error.reason) ? error.reason : 'unclassified';
     case 'relay':
       return ENUM_TOKEN.test(error.reason) ? error.reason : 'unclassified';

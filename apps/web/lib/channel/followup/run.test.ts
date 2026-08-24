@@ -120,6 +120,9 @@ function harness(
     inbound?: Record<string, string[]>;
     timeZone?: string;
     voiceDefers?: ComposeDeferral | null;
+    /** What the reconciliation gate says about the wire body (VIL-293). Empty is the
+     * ordinary answer: a follow-up ASK claims nothing by design. */
+    unbacked?: Awaited<ReturnType<FollowupSweepDeps['refuseUnbackedSend']>>;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -140,6 +143,7 @@ function harness(
   };
 
   const deps: FollowupSweepDeps = {
+    refuseUnbackedSend: async () => overrides.unbacked ?? [],
     selectFamilies: async () => families,
     loadDueIntros: async () => overrides.intros ?? [],
     discoverableUserIds: async (_db, userIds) => overrides.discoverable ?? new Set(userIds),
@@ -545,6 +549,25 @@ describe('when the voice has nothing sendable', () => {
     expect(composing.transport.bodies()).toEqual([
       withOptOut('How was Swim class? No pressure to reply.', 'short'),
     ]);
+  });
+
+  /**
+   * VIL-293. A deferral is the voice having nothing to say; this is the voice saying
+   * something untrue. They are counted apart because the fault is in different places —
+   * and neither may leave the claim spent.
+   */
+  it('refuses a composed ask whose wire body claims a row that does not exist', async () => {
+    const h = harness({
+      activities: { [FAM_A]: [activity()] },
+      unbacked: ['no_scheduled_row'],
+    });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result).toMatchObject({ activityAsked: 0, refusedAtSend: 1, composeDeferred: 0 });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.recorded).toEqual([]);
+    expect(h.audits).toEqual([]);
   });
 
   it.each([
