@@ -94,8 +94,8 @@ function harness(
     audit: async (_db, row) => {
       audits.push(row);
     },
-    appendMessage: async (_conversationId, _role, content) => {
-      threaded.push(content);
+    threadMessage: async (_db, input) => {
+      threaded.push(input.body);
       return 'thread-1';
     },
     fulfillCommitment: async (_db, input) => {
@@ -178,6 +178,19 @@ describe('a due check-in', () => {
     // conversation, and it needs the question in front of it to read as one.
     // THREADED WITHOUT the compliance line: what the parent reads back in their history is
     // Hale's sentence, not the footer the wire needed.
+    expect(h.threaded).toEqual([COMPOSED]);
+  });
+
+  it('threads the check-in even when the plan message carried no thread of its own', async () => {
+    // Same shape as the activity follow-up's: the thread came off the plan message's
+    // `related_conversation_id`, which is null for every plan a proactive sender put
+    // out. The check-in still went, and the question it asks still needed an antecedent.
+    process.env[F14_ENABLED_ENV] = 'true';
+    const h = harness({ recipient: { parentUserId: PARENT, conversationId: null } });
+
+    await h.run();
+
+    expect(h.sent).toHaveLength(1);
     expect(h.threaded).toEqual([COMPOSED]);
   });
 

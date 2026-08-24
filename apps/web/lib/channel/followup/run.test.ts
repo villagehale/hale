@@ -96,6 +96,8 @@ interface Harness {
   }>;
   /** Every told-anywhere scan this run performed, as [familyId, since]. */
   scans: Array<[string, Date]>;
+  /** Every ask that landed in the parent's own text thread (lib/channel/thread.ts). */
+  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
 }
 
 /**
@@ -124,6 +126,7 @@ function harness(
   const recorded: Recorded[] = [];
   const audits: Harness['audits'] = [];
   const scans: Harness['scans'] = [];
+  const threaded: Harness['threaded'] = [];
   const families = overrides.families ?? [family(FAM_A), family(FAM_B)];
 
   const gate: OutboundGatePorts = {
@@ -168,6 +171,10 @@ function harness(
       });
     },
     transport,
+    threadMessage: async (_db, input) => {
+      threaded.push(input);
+      return 'conv-1';
+    },
     voice: {
       async compose(request) {
         const defer = overrides.voiceDefers;
@@ -176,7 +183,7 @@ function harness(
     },
   };
 
-  return { deps, transport, recorded, audits, scans };
+  return { deps, transport, recorded, audits, scans, threaded };
 }
 
 beforeEach(() => {
@@ -213,6 +220,41 @@ describe('the dark-launch flag', () => {
 
     expect(result.enabled).toBe(true);
     expect(h.recorded.map((r) => r.familyId)).toEqual([FAM_A]);
+  });
+});
+
+describe("the ask in the parent's own thread", () => {
+  it('threads every ask it sends, so the answer has an antecedent', async () => {
+    // A follow-up is a QUESTION ("how did it go?"), and the reply to it arrives as a
+    // coach turn. `channel_messages` stores no body (rule #1), so an unthreaded ask is
+    // one the coach reads the answer to with nothing above it.
+    const h = harness({ intros: [PAIR] });
+
+    await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(h.threaded).toHaveLength(2);
+    expect(h.threaded.map((t) => t.familyId)).toEqual([FAM_A, FAM_B]);
+    expect(h.threaded[0]?.body).toBe(INTRO_ASK);
+  });
+
+  it('threads the composed ask, never the CASL footer on the wire', async () => {
+    const h = harness({ intros: [PAIR] });
+
+    await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(h.transport.bodies()[0]).toBe(withOptOut(INTRO_ASK, 'short'));
+    expect(h.threaded[0]?.body).not.toMatch(/STOP/i);
+    expect(h.transport.bodies()[0]).toContain(h.threaded[0]?.body ?? ' ');
+  });
+
+  it('threads nothing when the voice deferred and no ask went out', async () => {
+    // The positive control for the two above: nothing sent, nothing said.
+    const h = harness({ intros: [PAIR], voiceDefers: 'client_unavailable' });
+
+    await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.threaded).toEqual([]);
   });
 });
 

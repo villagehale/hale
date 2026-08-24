@@ -78,6 +78,8 @@ function harness(
     deep?: Awaited<ReturnType<ActivityFollowUpDeps['deep']['research']>>;
     sharePage?: Awaited<ReturnType<ActivityFollowUpDeps['sharePage']>>;
     recordWatch?: Awaited<ReturnType<ActivityFollowUpDeps['recordWatch']>>;
+    /** The thread the promise's own message carried, or null when it carried none. */
+    conversationId?: string | null;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -91,7 +93,10 @@ function harness(
 
   const deps: ActivityFollowUpDeps = {
     loadDue: async () => overrides.due ?? [DUE],
-    resolveRecipient: async () => ({ parentUserId: PARENT, conversationId: 'conv-1' }),
+    resolveRecipient: async () => ({
+      parentUserId: PARENT,
+      conversationId: overrides.conversationId === undefined ? 'conv-1' : overrides.conversationId,
+    }),
     reader: {
       municipality: async () => 'halton_hills',
       stage: async () => 'toddler',
@@ -133,9 +138,10 @@ function harness(
     audit: async (_db, row) => {
       audited.push(row);
     },
-    appendMessage: (async (_conversationId: string, _role: string, body: string) => {
-      threaded.push(body);
-    }) as unknown as ActivityFollowUpDeps['appendMessage'],
+    threadMessage: (async (_db: Database, input: { body: string }) => {
+      threaded.push(input.body);
+      return 'conv-1';
+    }) as unknown as ActivityFollowUpDeps['threadMessage'],
     fulfillCommitment: (async (_db: Database, input: unknown) => {
       fulfilled.push(input);
       return { status: 'closed' as const, commitmentIds: ['commitment-1'] };
@@ -189,6 +195,22 @@ describe('a promise with finds', () => {
     });
     expect(h.watched).toEqual([]);
     expect(JSON.stringify(h.audited)).not.toContain(PICK.name);
+  });
+
+  it('threads the follow-up even when the promise carried no thread of its own', async () => {
+    // The thread was resolved off `channel_messages.related_conversation_id` of the
+    // message that OPENED the promise — and every proactive sender leaves that column
+    // null. So the one class of family this follow-up exists for, the one whose promise
+    // came out of a nudge rather than a coach turn, was the one it never threaded for.
+    // The anchor is derivable from the family and parent ids, so there is nothing here
+    // that can be absent (lib/channel/thread.ts).
+    armed();
+    const h = harness({ conversationId: null });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+
+    expect(result).toMatchObject({ sent: 1 });
+    expect(h.threaded).toEqual([`${PICK.name} runs Saturdays.`]);
   });
 
   it('re-runs the search on the stored subject, with the town and band read fresh', async () => {

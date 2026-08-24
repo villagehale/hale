@@ -59,6 +59,7 @@ import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { type IntakeKeywordMatch, matchKeyword } from './keywords';
+import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import type { RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
@@ -98,6 +99,20 @@ const INTAKE_ROUTE = 'sms-inbound';
 
 export interface IntakeDeps {
   transport: { send(input: { to: string; body: string }): Promise<{ providerMessageId: string }> };
+  /**
+   * Put an outbound in the parent's own coach thread — REQUIRED (rule #11), for the
+   * seam this machine sits on rather than for anything it does itself.
+   *
+   * Intake answers its own questions right up until it stops. The moment the session
+   * closes the NEXT text is a C1 turn, and C1 reads `messages` and only `messages`
+   * (`channel_messages` stores `body: null`, rule #1). The last thing intake says is the
+   * consent ack carrying the name ask — so without this, the coach picks up a
+   * conversation on its second sentence and cannot see the first one.
+   *
+   * Only reachable AFTER provisioning, and that is structural rather than a skip: see
+   * {@link sendAndRecord}.
+   */
+  threadMessage: typeof threadProactiveMessage;
   extractor: IntakeExtractor;
   intentReader: ReplyIntentReader;
   radar: RadarComposer;
@@ -279,6 +294,13 @@ interface SendContext {
  * the intake session and are replayed into channel_messages at provisioning — so the
  * ledger ends up complete either way, it just cannot be written in real time.
  *
+ * THE COACH THREAD rides the SAME branch, and for the same reason: `conversations` is
+ * family-scoped, so a number that has only said "hi" has no thread a row could occupy
+ * either. That is a structural absence, not a withheld effect — there is nothing to log
+ * about it, because before provisioning there is no parent for the message to be to. It
+ * also costs the coach nothing: everything from the radar on IS threaded, and those are
+ * the only sentences a C1 turn ever picks up from (the handoff is the consent ack).
+ *
  * The row id comes back (null before provisioning, exactly as {@link recordInbound}
  * does it) because a message that told a family something durable has to be able to say
  * WHICH row carried it — see the checkpoint marker in {@link provision}.
@@ -304,6 +326,13 @@ async function sendAndRecord(
   };
   if (ctx.session.familyId && ctx.session.userId) {
     const id = await writeChannelMessage(database, ctx.session, entry, ctx.now, templateKey);
+    // What the parent reads back, and what the coach re-reads next turn. The body as
+    // SENT: intake appends no CASL footer, so the wire and the thread are one string.
+    await deps.threadMessage(database, {
+      familyId: ctx.session.familyId,
+      parentUserId: ctx.session.userId,
+      body,
+    });
     return { transcript, channelMessageId: id };
   }
   return { transcript: [...transcript, entry], channelMessageId: null };

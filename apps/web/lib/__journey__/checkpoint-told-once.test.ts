@@ -90,6 +90,9 @@ async function runIntakeRadar(): Promise<Intake> {
 
   const deps: IntakeDeps = {
     transport,
+    // A FakeDb has no `conversations` to resolve, and what this file pins is not the
+    // thread — the machine's own suite owns that (intake/machine.test.ts).
+    threadMessage: async () => 'conv-1',
     extractor: new FakeExtractor([{ children: [MIA], postalCode: AREA }]),
     intentReader: new FakeIntentReader([
       { intent: 'assent', verbatim: 'yes please', interpretation: 'a clear yes' },

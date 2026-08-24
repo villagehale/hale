@@ -28,14 +28,28 @@ const PARENT_PHONE = '+14165551234';
 const GRAN_PHONE = '+16475550199';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
 
-function harness(now: Date = NOW): { fake: FakeDb; transport: FakeTransport; deps: IntakeDeps } {
+function harness(now: Date = NOW): {
+  fake: FakeDb;
+  transport: FakeTransport;
+  deps: IntakeDeps;
+  /** Everything that landed in the PARENT's own coach thread (channel/thread.ts). */
+  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+} {
   const fake = makeFakeDb();
   const transport = new FakeTransport();
+  const threaded: Array<{ familyId: string; parentUserId: string; body: string }> = [];
   return {
     fake,
     transport,
+    threaded,
     deps: {
       transport,
+      // Recorded rather than executed: a FakeDb has no `conversations` to resolve, and
+      // what this file pins is WHICH sends reach the thread, not how the row is written.
+      threadMessage: async (_db, input) => {
+        threaded.push(input);
+        return 'conv-1';
+      },
       extractor: new FakeExtractor([{ children: [], postalCode: null }]),
       intentReader: new FakeIntentReader([
         { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
@@ -391,6 +405,62 @@ describe('caregiver invite · the ways it does not happen', () => {
 
     expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'own_number' });
     expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: OWN_NUMBER });
+  });
+
+  /**
+   * WHOSE THREAD, and the reason the split is not a nicety.
+   *
+   * A parent who has finished intake has no open session, so EVERY ordinary text they
+   * send arrives here first and falls through to C1 when this route has nothing to say
+   * (twilio/inbound.ts handOffToConversation). That makes this module the last thing
+   * that spoke before a coach turn — and `scopeConfirm` ("Reply YES and I'll text
+   * them") is an open question. Unthreaded, the coach reads whatever comes back with
+   * nothing above it.
+   *
+   * The caregiver's own side stays out. Hale texts a third party on the parent's
+   * say-so, and their messages are not the parent's conversation — putting them in it
+   * would both disclose an exchange the parent is not part of and make the transcript
+   * claim Hale said to the parent something it said to somebody else.
+   */
+  it('threads what it says to the PARENT, and only that', async () => {
+    const { fake, transport, deps, threaded } = harness();
+    await seedFamily(fake);
+
+    await text(fake, transport, deps, PARENT_PHONE, 'add grandma 647-555-0199 as grandparent');
+    await text(fake, transport, deps, PARENT_PHONE, 'yes');
+
+    // Two sentences reached the parent — the scope confirmation and the sent-ack — and
+    // both are in their thread, in order.
+    const toParent = transport.sent.filter((sent) => sent.to === PARENT_PHONE);
+    expect(threaded.map((t) => t.body)).toEqual(toParent.map((sent) => sent.body));
+    expect(threaded).toHaveLength(2);
+    expect(threaded[0]).toMatchObject({ parentUserId: expect.any(String) });
+
+    // The caregiver was texted too, and that text is in nobody's coach transcript.
+    const toCaregiver = transport.sent.filter((sent) => sent.to === GRAN_PHONE);
+    expect(toCaregiver).toHaveLength(1);
+    expect(threaded.map((t) => t.body)).not.toContain(toCaregiver[0]?.body);
+  });
+
+  it('threads the refusal it hands the parent, which is also a thing Hale said', async () => {
+    const { fake, transport, deps, threaded } = harness();
+    await seedFamily(fake);
+
+    await text(fake, transport, deps, PARENT_PHONE, `add me ${PARENT_PHONE} as grandparent`);
+
+    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: OWN_NUMBER });
+    expect(threaded.map((t) => t.body)).toEqual([OWN_NUMBER]);
+  });
+
+  it('threads nothing when it had nothing to say', async () => {
+    // The positive control: same parent, same number, no send — and no phantom turn.
+    const { fake, transport, deps, threaded } = harness();
+    await seedFamily(fake);
+
+    await text(fake, transport, deps, PARENT_PHONE, 'what is on saturday');
+
+    expect(transport.sent).toHaveLength(0);
+    expect(threaded).toEqual([]);
   });
 
   it('leaves an ordinary message alone rather than inventing a reply', async () => {

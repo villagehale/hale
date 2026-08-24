@@ -95,6 +95,22 @@ export interface DispatchPorts {
     targetId: string;
     after: Record<string, unknown>;
   }): Promise<void>;
+  /**
+   * Put a delivered SMS into the parent's own text thread — REQUIRED (rule #11). This
+   * is the one seam every loop send passes through, so it is the one place the weekly
+   * plan, a reminder and an ICS invite all become things the coach can see Hale having
+   * said. `channel_messages` carries no body (rule #1), so a leg that skips this leaves
+   * the parent's reply with no antecedent.
+   *
+   * The SMS leg ONLY, and that is a decision rather than an omission: the thread is the
+   * SMS thread (coach/note-key.ts), a push MIRRORS the same sentence — threading both
+   * would show the parent Hale saying it twice — and an email is a different surface
+   * whose unification is its own piece of work.
+   *
+   * No db handle, like every other port here: the dispatch stays a decision engine and
+   * wiring.ts binds the real writer (lib/channel/thread.ts).
+   */
+  threadMessage(input: { familyId: string; parentUserId: string; body: string }): Promise<void>;
   channels: Partial<Record<ChannelKind, Channel>>;
   renderer: {
     render: (
@@ -252,6 +268,17 @@ async function dispatchLeg(
       targetId: id,
       after: { channel, category: msg.category },
     });
+    // THE THREAD, which is where the parent's answer will be read. AFTER the send, like
+    // every other post-send write here: a leg that a suppression or a refusal stopped is
+    // not something Hale said. `rendered.text` is byte-identical to what the adapter put
+    // on the wire — this path appends no footer, so there is no draft-vs-sent gap.
+    if (channel === 'sms' && rendered.kind === 'sms') {
+      await ports.threadMessage({
+        familyId: msg.familyId,
+        parentUserId: msg.parentUserId,
+        body: rendered.text,
+      });
+    }
     return { channel, outcome: 'sent' };
   }
 
