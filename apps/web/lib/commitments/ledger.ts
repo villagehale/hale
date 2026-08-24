@@ -306,6 +306,39 @@ export async function loadOpenCommitment(
   return rows[0] ?? null;
 }
 
+/**
+ * ONE promise, by id, and only while it is still owed.
+ *
+ * The reader a QUEUED job needs. A sweep asks "who is due?"; a job carries a pointer and
+ * has to ask "is this still mine to keep?" — and the open predicate in the WHERE clause
+ * is what makes the answer safe. A promise fulfilled between the enqueue and the run
+ * (the parent asked again, the hourly sweep got there first, the job was redelivered
+ * after its own send) comes back null, and a null is a job that drops rather than a
+ * second text about the same question.
+ *
+ * The row shape is {@link DueCommitment}'s on purpose: the job and the sweep run the same
+ * delivery over it, so they must be reading the same thing.
+ */
+export async function loadOpenCommitmentById(
+  database: Database,
+  id: string,
+): Promise<DueCommitment | null> {
+  const [row] = await database
+    .select({
+      id: schema.agentCommitments.id,
+      familyId: schema.agentCommitments.familyId,
+      topic: schema.agentCommitments.topic,
+      summary: schema.agentCommitments.summary,
+      createdFrom: schema.agentCommitments.createdFrom,
+      subjectChildId: schema.agentCommitments.subjectChildId,
+      dueAt: schema.agentCommitments.dueAt,
+    })
+    .from(schema.agentCommitments)
+    .where(and(eq(schema.agentCommitments.id, id), openPredicate()))
+    .limit(1);
+  return row ?? null;
+}
+
 /** One promise, anywhere, that has come due — the shape a sweep acts on. */
 export interface DueCommitment {
   id: string;

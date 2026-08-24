@@ -2,17 +2,15 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { withOptOut } from '~/lib/channel/opt-out';
-import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
-import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
@@ -22,9 +20,6 @@ import {
 } from '~/lib/commitments/ledger';
 import { activityClient, pipelineClient } from '~/lib/pipeline/client';
 import {
-  ACTIVITY_WATCH_DUE_HOURS,
-  type ActivityPromise,
-  type ActivityPromiseRecordOutcome,
   cancelActivityPromise,
   defaultActivityPromisePorts,
   recordActivityPromise,
@@ -32,21 +27,15 @@ import {
 import { type DeepResearcher, type DeepSlot, createDeepResearcher } from './deep';
 import { deidentifyActivityQuery } from './deidentify';
 import {
-  type FollowUpComposer,
-  type FollowUpPick,
-  asksTheParent,
-  claimsNotPosted,
-  createFollowUpComposer,
-} from './followup-note';
+  type FollowUpDelivery,
+  type FollowUpRecipient,
+  deliverFollowUp,
+  noEvidence,
+} from './deliver';
+import { type FollowUpPick, createFollowUpComposer } from './followup-note';
 import { type ActivityFinder, createActivityFinder } from './lane';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
-import {
-  type ActivitySharePage,
-  SLOTS_IN_TEXT,
-  defaultActivitySharePorts,
-  mintActivitySharePage,
-  withSharePage,
-} from './share-page';
+import { SLOTS_IN_TEXT, defaultActivitySharePorts, mintActivitySharePage } from './share-page';
 
 /**
  * THE SWEEP THAT KEEPS THE PROMISE.
@@ -190,72 +179,15 @@ function emptyResult(enabled: boolean): ActivityFollowUpResult {
 }
 
 /**
- * WHAT THIS FOLLOW-UP ACTUALLY DID TO GET ITS ANSWER — the row an ops reader needs and
- * did not have.
+ * WHAT THE SWEEP NEEDS, on top of what a delivery needs.
  *
- * Diagnosing the 2026-08-22 message took an hour of live probing because its audit row
- * said `{"picks":2}` and nothing else. Every question that mattered — did the deep pass
- * run, did it open a page, was the page refused, did the search return anything — had no
- * answer anywhere. COUNTS ONLY: never a venue, never a URL, never a subject (rule #1).
+ * It EXTENDS {@link FollowUpDelivery} rather than restating it: the nine effects between
+ * a set of picks and a parent's phone belong to the delivery, both callers hand over the
+ * same object, and a second declaration of them is the seam a second implementation grows
+ * out of. What is left here is what makes this the SWEEP — the due query, the recipient
+ * read, the two researchers, the outbound gate and the cancellation.
  */
-interface FollowUpEvidence {
-  picks: number;
-  deepRead: number;
-  deepUnread: number;
-  pagesRead: number;
-  pagesRefused: number;
-  searchResults: number;
-}
-
-function noEvidence(): FollowUpEvidence {
-  return { picks: 0, deepRead: 0, deepUnread: 0, pagesRead: 0, pagesRefused: 0, searchResults: 0 };
-}
-
-/**
- * IS THERE ANYTHING LEFT TO COME BACK FOR?
- *
- * Nothing found at all, or a best find whose day or price the answer could not carry.
- * Those are the two shapes where a parent is left holding half a thing — and they are
- * exactly the two shapes that used to end in "Want me to check back once they're up?",
- * which is Hale asking permission for the work it is going to do anyway.
- *
- * Read off the TOP pick because the top pick is what the text leads with (followup-note.ts
- * `topPickLeads`); a complete second find does not fill the gap in the one the parent
- * actually sees.
- */
-export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
-  const top = picks[0];
-  if (!top) return true;
-  return !carriesFact(top.when) || !carriesFact(top.price);
-}
-
-/**
- * A FIELD THAT EXPLAINS ITS OWN ABSENCE IS AN ABSENCE.
- *
- * The extract skill says to leave `when` and `price` out when no page carried them, and
- * live on 2026-08-22 the Cartwheels turn did not: it filled `price` with "Not listed on
- * main site; pricing varies by term length and is only visible after logging into the
- * Registration Website" and `when` with a paragraph about a PDF it could not decode.
- * Read as prose those are values; read as facts they are gaps — and a null check alone
- * let the one venue this whole arc is named after come back with nothing to watch for.
- *
- * Deterministic, and it reuses the composer's own reading of an absence claim rather
- * than inventing a second one: the two questions ("is this a fact?" and "may the text say
- * a page carries nothing?") turn on exactly the same words.
- */
-function carriesFact(field: string | null): boolean {
-  return field !== null && field.trim() !== '' && !claimsNotPosted(field);
-}
-
-/** Who the promise is owed to, and the thread it was made in. */
-export interface FollowUpRecipient {
-  parentUserId: string;
-  /** The conversation the promise was made in, so the answer lands where the question was
-   * asked. Null when the carrying message was not threaded. */
-  conversationId: string | null;
-}
-
-export interface ActivityFollowUpDeps {
+export interface ActivityFollowUpDeps extends FollowUpDelivery {
   loadDue: typeof loadDueCommitments;
   /** The parent who was actually texted the promise, read back off the row that carried
    * it. Never a household lookup: a co-parent did not ask this question. */
@@ -270,63 +202,9 @@ export interface ActivityFollowUpDeps {
    * absent is a sweep that can silently be the old one.
    */
   deep: DeepResearcher;
-  composer: FollowUpComposer;
-  /** Puts the slots the text cannot carry on a page the parent can open. Required: a
-   * deep pass that reads eight class times and can only say two, with nowhere to put the
-   * other six, has thrown away most of what it just paid for. */
-  sharePage(
-    database: Database,
-    input: { familyId: string; slots: readonly DeepSlot[] },
-  ): Promise<ActivitySharePage>;
   buildGate(database: Database): OutboundGatePorts;
-  /** The reconciliation primitive's send-boundary gate (VIL-293). REQUIRED (rule #11):
-   * "no gate wired" is not a state this sweep has — a lane that could silently skip the
-   * check would send exactly the claims it exists to stop, and look identical doing it. */
-  refuseUnbackedSend: typeof refuseUnbackedSend;
   dedupeActive: typeof dedupeActive;
-  resolveSendablePhone: typeof resolveSendablePhone;
-  /** REQUIRED (rule #11). A sweep that can decide to keep a promise and quietly fail to
-   * send is the worst version of this: the debt closes, the ledger reads as paid, and
-   * nobody ever hears back. */
-  transport: ChannelTransport;
-  recordSend(
-    database: Database,
-    write: {
-      familyId: string;
-      parentUserId: string;
-      templateKey: string;
-      dedupeKey: string;
-      providerMessageId: string;
-      relatedConversationId: string | null;
-      sentAt: Date;
-    },
-  ): Promise<string>;
-  audit(database: Database, row: Record<string, unknown>): Promise<void>;
-  /** The parent's own text thread — REQUIRED, and RESOLVE-OR-CREATE (rule #11). It used
-   * to append to a conversation id carried in from the promise's own ledger row, behind
-   * a null check; every proactive sender leaves `related_conversation_id` null, so the
-   * one family this follow-up exists for — the one whose promise came out of a nudge
-   * rather than a coach turn — was the one whose reply had nothing above it. The anchor
-   * derives from the family and parent ids, so there is no absence left to check. */
-  threadMessage: typeof threadProactiveMessage;
-  fulfillCommitment: typeof fulfillCommitment;
   cancelPromise: typeof cancelActivityPromise;
-  /**
-   * The CONTINUATION promise, minted against the message that said Hale would keep
-   * watching. REQUIRED (rule #11), and it is the whole of D1: a sweep that can be wired
-   * without this writer is a sweep that can tell a parent it is still on something while
-   * nothing in the system is.
-   */
-  recordWatch(
-    database: Database,
-    input: {
-      familyId: string;
-      promise: ActivityPromise;
-      channelMessageId: string | null;
-      dueInHours: number;
-      now: Date;
-    },
-  ): Promise<ActivityPromiseRecordOutcome>;
 }
 
 export async function runActivityFollowUpSweep(
@@ -526,152 +404,40 @@ async function keepOne(
   }
   evidence.picks = picks.length;
 
-  // THE OFFER IS A PROPOSAL, AND A PROPOSAL IS A ROW — decided HERE, before a word is
-  // composed, because the composer's gates read it. `watch` is what the message is
-  // allowed to say and what the ledger is about to be told, and they are one value so
-  // they cannot disagree (#521, and the 2026-08-22 repeat of it through this door).
-  const watch = watchWarranted(picks);
-  const composed = await deps.composer.compose({ subject, picks, pagesOpened, watch });
-  if (composed.status === 'deferred') {
-    result.deferred += 1;
-    console.error(
-      { commitmentId: commitment.id, reason: composed.reason },
-      'activity follow-up: nothing sendable composed - promise left open for the next tick',
-    );
-    return;
-  }
-
-  const to = await deps.resolveSendablePhone(database, recipient.parentUserId);
-  if (!to) {
-    // The gate just said this parent has a live channel, so there IS one — a missing
-    // number here is a contradiction, not a state to paper over.
-    throw new Error(`activity follow-up: no send target for parent ${recipient.parentUserId}`);
-  }
-
-  // THE REST OF THE SCHEDULE, on a page. Minted only when the deep pass read more slots
-  // than two segments of SMS can hold — a follow-up that already said everything it found
-  // needs no link, and a link to a page repeating the text is noise.
-  //
-  // The link is appended by CODE, after the composer's gates have passed on the sentence.
-  // That is deliberate: `followUpViolations` refuses any message containing a URL, and
-  // that gate is right — a model that may write links will eventually write a wrong one.
-  // So the model never sees a URL, and the one link Hale sends is built from a token this
-  // process just minted (share-page.ts `withSharePage`, the same shape as `withOptOut`).
-  let message = composed.message;
-  if (rest.length > SLOTS_IN_TEXT) {
-    const page = await deps.sharePage(database, {
+  // THE SEND HALF, shared verbatim with the question-time deep job (deliver.ts). Nine
+  // steps in a fixed order, seven of them added because one had gone wrong in production
+  // — and exactly one copy of them, so the two callers cannot drift.
+  const outcome = await deliverFollowUp(
+    database,
+    deps,
+    {
+      commitmentId: commitment.id,
       familyId: commitment.familyId,
-      slots: rest,
-    });
-    if (page.status === 'minted') {
-      message = withSharePage(message, page.url);
-      result.shared += 1;
-    }
-  }
-
-  const body = withOptOut(message, verdict.optOut);
-  // THE GATE, RE-READ ON THE STRING THAT ACTUALLY LEAVES — and it must stay the last
-  // thing before the send, because everything between it and `transport.send` is
-  // unchecked by construction. `followUpViolations` refuses a question in the sentence
-  // the MODEL wrote, and then two appends run after it; a mutation that added "Want me
-  // to check back once they're up?" here survived all 193 tests of this lane. A question
-  // on the wire has no row behind it, so the parent's yes lands on whatever the router
-  // guesses next (2026-08-22). Refused rather than trimmed: the promise stays open and
-  // the next tick composes a whole message, and the count says a body got this far.
-  if (asksTheParent(body)) {
-    result.refusedAtSend += 1;
-    console.error(
-      { commitmentId: commitment.id },
-      'activity follow-up: the wire body asks the parent a question - refused at the send boundary, promise left open',
-    );
-    return;
-  }
-  // THE SECOND HALF OF THE SAME BOUNDARY (VIL-293). The gate above asks whether the wire
-  // body asks anything; this asks whether it CLAIMS anything — a booking with nothing on
-  // the calendar, a registration watch nothing is watching, a promise about Hale's own
-  // behaviour. The composer's own grounding gates cover the claim this lane is most
-  // likely to invent ("I'll keep looking" with `watch: false`, followup-note.ts); these
-  // are the three it has no opinion about, and it is the same discipline: refused rather
-  // than trimmed, promise left open, and the count says a body got this far.
-  const unbacked = await deps.refuseUnbackedSend(database, {
-    familyId: commitment.familyId,
-    body,
+      subjectChildId: commitment.subjectChildId,
+      subject,
+      recipient,
+      dedupeKey,
+      optOut: verdict.optOut,
+      picks,
+      rest,
+      pagesOpened,
+      evidence,
+    },
     now,
-  });
-  if (unbacked.length > 0) {
-    result.refusedAtSend += 1;
-    console.error(
-      { commitmentId: commitment.id, reasons: unbacked },
-      'activity follow-up: the wire body claims a row that does not exist - refused at the send boundary, promise left open',
-    );
-    return;
-  }
-  const { providerMessageId } = await deps.transport.send({ to, body });
-  const channelMessageId = await deps.recordSend(database, {
-    familyId: commitment.familyId,
-    parentUserId: recipient.parentUserId,
-    templateKey: 'activity_followup:kept',
-    dedupeKey,
-    providerMessageId,
-    relatedConversationId: recipient.conversationId,
-    sentAt: now,
-  });
-  await deps.audit(database, {
-    familyId: commitment.familyId,
-    actor: 'system',
-    actionTaken: 'activity_followup_sent',
-    targetTable: 'channel_messages',
-    targetId: channelMessageId,
-    // COUNTS, never the finds themselves: an audit row is read by ops and by a
-    // right-to-access export, and neither needs the venue names (rule #1). What it DOES
-    // need is what this follow-up did to get its answer — see FollowUpEvidence.
-    after: { ...evidence, watch },
-  });
-  // Threaded so the parent's answer arrives as an ordinary coach turn with the finds in
-  // front of it. The COMPOSED sentence, not the wire body: the CASL line belongs on the
-  // wire and nowhere else (plan check-in keeps the same rule, for the same reason).
-  await deps.threadMessage(database, {
-    familyId: commitment.familyId,
-    parentUserId: recipient.parentUserId,
-    body: message,
-  });
-  // KEPT, against the message that kept it — including when the message was bad news. The
-  // promise was to come back.
-  await deps.fulfillCommitment(database, {
-    familyId: commitment.familyId,
-    kind: 'activity_followup',
-    channelMessageId,
-    now,
-  });
-  result.sent += 1;
-  if (picks.length === 0) result.sentEmptyHanded += 1;
-
-  if (!watch) return;
-  // THE CONTINUATION, minted against the message that carried the sentence — the same
-  // send-time discipline the coach's own promise keeps, and AFTER the fulfilment above
-  // because the ledger permits one open promise of a kind per family: recording first
-  // would be refused by the partial unique index and the watch would silently not exist.
-  //
-  // It never throws. The parent already has the text, so an exception here would buy a
-  // carrier retry and a duplicate send — the failure is a COUNT instead, because a
-  // message that says Hale is still watching with no row behind it is the exact defect
-  // this whole change is about.
-  const recorded = await deps.recordWatch(database, {
-    familyId: commitment.familyId,
-    promise: { subject, childId: commitment.subjectChildId },
-    channelMessageId,
-    dueInHours: ACTIVITY_WATCH_DUE_HOURS,
-    now,
-  });
-  if (recorded.status === 'recorded') {
-    result.watching += 1;
-    return;
-  }
-  result.watchUnrecorded += 1;
-  console.error(
-    { commitmentId: commitment.id, reason: recorded.reason },
-    'activity follow-up: the parent was told Hale is still watching and no row was written',
   );
+  if (outcome.status === 'deferred') {
+    result.deferred += 1;
+    return;
+  }
+  if (outcome.status === 'refused_at_send') {
+    result.refusedAtSend += 1;
+    return;
+  }
+  result.sent += 1;
+  if (outcome.emptyHanded) result.sentEmptyHanded += 1;
+  if (outcome.shared) result.shared += 1;
+  if (outcome.watchRecorded === true) result.watching += 1;
+  if (outcome.watchRecorded === false) result.watchUnrecorded += 1;
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────

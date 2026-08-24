@@ -68,6 +68,28 @@ export interface GroundingEvidence {
   pagesRefused: number;
   /** The URLs behind `pagesRead`, so a pick can cite the page it was read off. */
   urlsRead: string[];
+  /**
+   * The pages, KEPT APART — one entry per opened page, url and text.
+   *
+   * `notes` below is the same material joined into one string, which is what a model
+   * wants and what a CHECKER cannot use. A refutation asks "does this quote appear on
+   * the page this row cites", and against a joined blob that question can only be
+   * answered as "does it appear anywhere at all" — which passes a fact lifted off a
+   * different venue's page and attributed to this one. That is the citation defect, and
+   * it is unrepresentable once the text is indexed by the URL it came off.
+   */
+  pages: ReadonlyArray<{ url: string; text: string }>;
+  /**
+   * What the turn SAID and ASKED FOR — its prose and its tool arguments, with no page
+   * text in it.
+   *
+   * Kept as its own field so a caller that has to rebuild the notes (the fan-out bounds
+   * each page before the merge reads it) can do so by JOINING PARTS rather than by
+   * cutting the joined string back up. The first attempt did the second thing, split on
+   * the page marker, and silently returned the whole unbounded blob whenever the turn
+   * wrote no prose before its first fetch — which is most turns.
+   */
+  prose: string;
   /** Everything the turn wrote down: its prose, its tool arguments, and the TEXT OF THE
    * PAGES IT OPENED. The last is the point — a composer handed only prose is standing on
    * the model's summary of a page, and a composer handed the page can be checked. */
@@ -109,14 +131,18 @@ export function readEvidence(now: Date, content: Anthropic.ContentBlock[]): Grou
   let pagesStale = 0;
   let pagesRefused = 0;
   const urlsRead: string[] = [];
+  const pages: Array<{ url: string; text: string }> = [];
+  const prose: string[] = [];
   const notes: string[] = [];
 
   for (const block of content) {
     if (block.type === 'text') {
+      prose.push(block.text);
       notes.push(block.text);
       continue;
     }
     if (block.type === 'tool_use') {
+      prose.push(JSON.stringify(block.input));
       notes.push(JSON.stringify(block.input));
       continue;
     }
@@ -138,7 +164,10 @@ export function readEvidence(now: Date, content: Anthropic.ContentBlock[]): Grou
     const text = result.content?.source?.data ?? '';
     // The URL rides with its text so a downstream extraction can cite the page a fact
     // came off rather than the venue in the abstract.
-    if (text !== '') notes.push(`--- page: ${url} ---\n${text}`);
+    if (text !== '') {
+      pages.push({ url, text });
+      notes.push(`--- page: ${url} ---\n${text}`);
+    }
   }
 
   return {
@@ -147,6 +176,8 @@ export function readEvidence(now: Date, content: Anthropic.ContentBlock[]): Grou
     pagesStale,
     pagesRefused,
     urlsRead,
+    pages,
+    prose: prose.join('\n').trim(),
     notes: notes.join('\n').trim(),
   };
 }
@@ -217,4 +248,81 @@ export function namesAVenue(subject: string): boolean {
       if (first !== first.toUpperCase() || first === first.toLowerCase()) return false;
       return !PROGRAMME_WORDS.has(word.toLowerCase());
     });
+}
+
+/**
+ * The parent is asking for something that lives on a TIMETABLE — a day, a fee, a date
+ * registration opens.
+ *
+ * The companion to {@link namesAVenue}, and the second half of the same question. A named
+ * place buys the deep lane because there is one site whose pages hold the answer. A
+ * schedule word buys it because the answer is a GRID: a municipality publishes its whole
+ * fall swim table on one page and opens registration on another, and both of the 2026-08-21
+ * benchmark defects were a turn reading snippets of those two pages and reporting the
+ * grid as unpublished.
+ *
+ * Neither of those is true of "something for my toddler". There is no one page to open,
+ * the inline lane's three picks already answer it, and the hourly sweep still keeps the
+ * promise with its own single-leg pass — so nothing is lost by not paying at question time.
+ */
+const SCHEDULE_WORDS = new Set([
+  'schedule',
+  'schedules',
+  'timetable',
+  'registration',
+  'register',
+  'registering',
+  'signup',
+  'sign-up',
+  'enrol',
+  'enroll',
+  'enrolment',
+  'enrollment',
+  'dates',
+  'date',
+  'times',
+  'time',
+  'fees',
+  'fee',
+  'price',
+  'prices',
+  'pricing',
+  'cost',
+  'costs',
+  'session',
+  'sessions',
+  'term',
+  'fall',
+  'winter',
+  'spring',
+  'summer',
+  'september',
+  'october',
+  'november',
+  'december',
+  'january',
+  'february',
+]);
+
+export function seeksASchedule(subject: string): boolean {
+  return subject
+    .toLowerCase()
+    .split(/[^a-z0-9'-]+/)
+    .some((word) => SCHEDULE_WORDS.has(word));
+}
+
+/**
+ * IS THIS SUBJECT WORTH OPENING PAGES FOR, RIGHT NOW?
+ *
+ * The one predicate that decides whether a promise gets the deep lane AT QUESTION TIME
+ * — three concurrent research legs and an Opus synthesis, which is the most expensive
+ * thing Hale does on a parent's behalf.
+ *
+ * DETERMINISTIC, for the reason `namesAVenue` is: this decides how a turn spends money,
+ * and a decision a model can be talked into is one that fires on every turn. It is also
+ * the reason a `false` here costs nothing — the promise is already a row, and the hourly
+ * sweep keeps every promise whether or not this said yes.
+ */
+export function owesDepth(subject: string): boolean {
+  return namesAVenue(subject) || seeksASchedule(subject);
 }

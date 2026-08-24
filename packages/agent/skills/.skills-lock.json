@@ -1,11 +1,15 @@
 {
   "activity-deep.md": {
     "file": "activity-deep.md",
-    "sha256": "72e4e92d7f990f822c9906ab0b712e65c1670f664749f03d1d9ddf1df68592ba"
+    "sha256": "52089c15d9d945c296b0a684b383a522f7e0b68b93318e398bd525aa458919eb"
   },
   "activity-finder.md": {
     "file": "activity-finder.md",
     "sha256": "418f060854f85f1d7f1c0f70af54eacf8b2f67be32c46d4f3908e3acec2ca724"
+  },
+  "activity-synthesis.md": {
+    "file": "activity-synthesis.md",
+    "sha256": "b410b51d6f75b6829fe4454903021af57a1ade9c3ba95646ea8ad6ee5fd144f9"
   },
   "ask-hale.md": {
     "file": "ask-hale.md",

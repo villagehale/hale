@@ -50,6 +50,8 @@ import {
  */
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
+/** The ledger row a recorded promise mints - the id the deep dispatch is keyed on. */
+const PROMISE_COMMITMENT_ID = '77777777-7777-4777-8777-777777777777';
 const PARENT = '22222222-2222-4222-8222-222222222222';
 const PHONE = '+14165551234';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
@@ -310,6 +312,7 @@ function harness(
     reconcileView?: ChannelRouterDeps['reconcileView'];
     recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
+    dispatchDeepResearch?: ChannelRouterDeps['dispatchDeepResearch'];
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -341,7 +344,8 @@ function harness(
       coach: options.coach ?? fakeCoach(),
       recordPlanOffer: options.recordPlanOffer ?? (async () => ({ status: 'recorded' })),
       recordActivityPromise:
-        options.recordActivityPromise ?? (async () => ({ status: 'recorded' as const })),
+        options.recordActivityPromise ??
+        (async () => ({ status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID })),
       reconcileView: options.reconcileView ?? (async () => emptyReconcileView()),
       // VIL-294. Nothing is stated by default, so a test that says nothing about the
       // inbound half cannot accidentally be relying on a write.
@@ -349,6 +353,8 @@ function harness(
         options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
       recordRegistrationWatch:
         options.recordRegistrationWatch ?? (async () => ({ status: 'recorded' as const })),
+      dispatchDeepResearch:
+        options.dispatchDeepResearch ?? (async () => ({ status: 'enqueued' as const })),
       questions: options.questions ?? fakeQuestions([]),
       replyResolver: options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
@@ -2416,7 +2422,7 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
       coach,
       recordActivityPromise: async (_db, input) => {
         promises.push(input);
-        return { status: 'recorded' as const };
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
       },
     });
     await routeChannelMessage(h.deps, job());
@@ -2601,5 +2607,130 @@ describe('what the parent stated is written before anything reads it', () => {
     await routeChannelMessage(h.deps, job());
 
     expect(JSON.stringify(h.logs)).toContain('nothing was open to settle');
+  });
+});
+
+/**
+ * THE QUESTION-TIME DISPATCH — the promise becomes a row AND a job, in the same breath.
+ *
+ * The row is #532's, unchanged: the coach's tool registers an intent, the router writes it
+ * against the message that carried it once the transport accepts. What is new is the four
+ * lines after: a promise about a NAMED PLACE or a TIMETABLE also goes on a queue the drain
+ * runs within the minute, so the parent gets the dated answer in minutes rather than in a
+ * day.
+ *
+ * THE MUTATION AT THE BOTTOM IS THE POINT OF THE WHOLE BLOCK. Delete the enqueue and
+ * nothing breaks, nothing throws and nobody is worse off than they were last week — the
+ * ledger row is still there and the hourly sweep still keeps it. That is exactly why the
+ * dispatch has to be a COUNTED outcome rather than a fire-and-forget: an enqueue that
+ * silently stopped happening is invisible from every other signal in the system.
+ */
+describe('a promise worth opening pages for is dispatched at question time', () => {
+  function promisingCoach(subject: string): ChannelCoachRuntime {
+    return {
+      async respond() {
+        return {
+          reply: `Cartwheels runs a parent and tot block. I'll go and read their fall schedule and text you.`,
+          planOffer: null,
+          activityPromise: { subject, childId: null },
+        };
+      },
+    };
+  }
+
+  it('mints the commitment AND enqueues the deep pass keyed to it', async () => {
+    const promises: unknown[] = [];
+    const dispatched: unknown[] = [];
+    const h = harness({
+      coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+      },
+      dispatchDeepResearch: async (payload) => {
+        dispatched.push(payload);
+        return { status: 'enqueued' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    // The reply went first, and the row is minted against the message that carried it.
+    expect(h.transport.sent).toHaveLength(1);
+    expect(promises).toHaveLength(1);
+    expect(promises[0]).toMatchObject({
+      familyId: FAMILY,
+      channelMessageId: ledgerRows(h.fake)[0]?.id,
+    });
+    // ONE job, keyed to the promise that was just written — never to the message, never
+    // to the family: the commitment is what the job is about and what it re-reads.
+    expect(dispatched).toEqual([
+      { commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY },
+    ]);
+  });
+
+  it('does NOT enqueue for a subject with no place and no timetable in it', async () => {
+    const dispatched: unknown[] = [];
+    const h = harness({
+      coach: promisingCoach('something for a toddler'),
+      dispatchDeepResearch: async (payload) => {
+        dispatched.push(payload);
+        return { status: 'enqueued' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(dispatched).toEqual([]);
+    // ...and the promise is still a row, so the hourly sweep still owes them an answer.
+    expect(JSON.stringify(h.logs)).toContain('no_depth_owed');
+  });
+
+  it('does not enqueue against a promise that was never recorded', async () => {
+    const dispatched: unknown[] = [];
+    const h = harness({
+      coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
+      recordActivityPromise: async () => ({
+        status: 'not_recorded' as const,
+        reason: 'no_ledger_row' as const,
+      }),
+      dispatchDeepResearch: async (payload) => {
+        dispatched.push(payload);
+        return { status: 'enqueued' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(dispatched).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('not_recorded');
+  });
+
+  /**
+   * THE MUTATION: the queue is gone. The parent must still have been promised, the row
+   * must still exist and be open, and the failure must be VISIBLE — because the only
+   * thing that changed for the parent is that their answer now takes a day.
+   */
+  it('leaves the promise standing and COUNTS the failure when the enqueue cannot happen', async () => {
+    const promises: unknown[] = [];
+    const h = harness({
+      coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+      },
+      dispatchDeepResearch: async () => ({
+        status: 'not_enqueued' as const,
+        reason: 'queue_unavailable' as const,
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(1);
+    // The debt exists. The sweep will keep it.
+    expect(promises).toHaveLength(1);
+    // And the lost speed is on the record rather than nowhere.
+    expect(JSON.stringify(h.logs)).toContain('queue_unavailable');
   });
 });

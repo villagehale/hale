@@ -26,6 +26,10 @@ import { recordStatedState } from '~/lib/channel/stated-state';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import {
+  type DeepResearchQueue,
+  dispatchDeepResearch,
+} from '~/lib/channel/activity/deep-queue';
+import {
   defaultActivityPromisePorts,
   loadOpenActivityPromise,
   recordActivityPromise,
@@ -457,6 +461,10 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
     recordActivityPromise: (db, input) =>
       recordActivityPromise(db, input, defaultActivityPromisePorts()),
+    // The question-time deep pass. The producer only ENQUEUES — the drain's every-minute
+    // tick is the consumer — so the reply is never waiting on research.
+    dispatchDeepResearch: (payload) =>
+      dispatchDeepResearch(async () => (await getQueue()) as unknown as DeepResearchQueue, payload),
     // VIL-294 · the inbound half. Bound to the ONE writer that files a checkpoint as
     // handled (health/reply.ts), so a natural statement and the word "done" land on the
     // same row through the same audited transaction.
