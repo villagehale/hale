@@ -121,6 +121,55 @@ describe('readStatedState — what a statement of an already-handled visit looks
   });
 });
 
+/**
+ * The idioms a parent reaches for instead of the word "booked".
+ *
+ * None of these carry a "we", an "I" or an "already" — a text message drops its subject —
+ * so the pronoun gate refuses every one of them, and what stands in its place is the
+ * sentence naming the visit. An appointment verb may lean on the thread for its subject,
+ * because "we booked already" answers the message Hale just sent; a generic completion
+ * idiom may not, and the negatives below are why.
+ */
+describe('readStatedState — the same fact in the words a parent reaches for', () => {
+  it.each([
+    'got him in for sept 3 at the clinic',
+    "all done - visit's on the books for friday",
+    'we locked in the 18-month appointment yesterday',
+    "she's booked. sept 12, 10am",
+    'got her in at the doctor on Friday',
+    'the visit is on the books',
+    "the appointment's locked in",
+    'we locked in the immunisation for the 30th',
+    'got her in for the checkup on the 19th',
+    'the appointment is on the books for wednesday',
+  ])('reads %j as handled', (body) => {
+    expect(readStatedState(body)).toBe('health_visit_handled');
+  });
+
+  /**
+   * The same idioms, completing something that is not an appointment. Each of these
+   * minted on the first run of this round: "got him in" fits a car, "locked in" fits a
+   * nanny, and a swim class goes on the books like anything else does.
+   */
+  it.each([
+    'we got him in the car and drove past the clinic',
+    'we locked in a new nanny for tuesdays',
+    'swim lessons are on the books for thursday',
+    "we're locking in tomorrow",
+    'trying to get him in',
+    'would have gotten him in',
+    'let me know once the visit is on the books',
+    'nothing on the books yet for the 18 month',
+    // The visit is named, but it is not what anybody was got in for.
+    'we got him in for a haircut before the doctor',
+    // A hedge, and a grandparent's own knee.
+    'pretty sure the appointment is on the books',
+    'grandad locked in the doctor visit for his own knee',
+  ])('leaves %j alone', (body) => {
+    expect(readStatedState(body)).toBeNull();
+  });
+});
+
 describe('readStatedState — the near misses that must never write a suppression', () => {
   it.each([
     // The opposite of the claim, in the shapes a parent actually types.

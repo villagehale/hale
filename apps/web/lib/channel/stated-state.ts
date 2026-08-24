@@ -92,6 +92,46 @@ const ARRANGED =
  * present, so a fragment naming the verb and nobody ("booked solid") is not a claim. */
 const SETTLED = /\b(?:already|we|i|weve|ive|its|thats|hes|shes|theyve)\b/;
 
+/** What makes a completion idiom an appointment rather than a nanny or a swim class. A
+ * recall gate rather than a guard, so a word missing from it costs a nudge, not a row.
+ * The plurals are load-bearing: `words` closes up apostrophes, so the possessive in
+ * "visit's on the books" reaches this pattern as "visits". */
+const VISIT_WORDS =
+  'appointments?|appts?|visits?|checkups?|check up|clinics?|doctors?|dr|pediatricians?|paediatricians?|shots?|jabs?|immunizations?|immunisations?|vaccines?|vaccinations?|well baby';
+
+const THE_VISIT = new RegExp(`\\b(?:${VISIT_WORDS})\\b`);
+
+/**
+ * The same fact, in the idioms a parent reaches for instead of "booked".
+ *
+ * These carry no `we`, no `I` and no `already` — a text message drops its subject — so
+ * SETTLED refuses all of them and would go on refusing them forever. What stands in its
+ * place is THE_VISIT, and the swap is the whole point: an appointment verb may lean on
+ * the thread for its subject, because "we booked already" answers the message Hale just
+ * sent. A generic completion idiom may not. This reader runs on every inbound message
+ * rather than only on replies, so "swim lessons are on the books for thursday" would
+ * otherwise file an immunization visit as done.
+ */
+const ARRANGED_IDIOM = /\b(?:on the books|locked in)\b/;
+
+/**
+ * "Got her in" is the same idiom with two more ways to go wrong, and it took both of them
+ * on the first run of this round: "we got him in the car and drove past the clinic" is
+ * the same four words, and "we got him in for a haircut before the doctor" names a visit
+ * that is not the thing anybody was got in for.
+ *
+ * So the visit has to be the COMPLEMENT and not merely present — reachable from the slot
+ * frame across nothing but determiners and dates. "Got him in for sept 3 at the clinic"
+ * crosses "sept 3 at the" to reach it; "in for a haircut before the doctor" would have to
+ * cross a haircut, and stops.
+ */
+const WHEN_WORDS =
+  'the|a|an|his|her|their|at|on|in|next|this|coming|early|late|morning|afternoon|\\d+(?:st|nd|rd|th)?|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday';
+
+const GOT_IN = new RegExp(
+  `\\bgot (?:him|her|them) in (?:for|at|on) (?:(?:${WHEN_WORDS}) )*(?:${VISIT_WORDS})\\b`,
+);
+
 /**
  * The sentence denies, defers or conditions the thing it names. Checked before anything
  * else, and deliberately broad: a false negative costs one repeated reminder, a false
@@ -102,7 +142,7 @@ const SETTLED = /\b(?:already|we|i|weve|ive|its|thats|hes|shes|theyve)\b/;
  * remember, not a parent reporting, and a reminder is the right answer to it.
  */
 const UNSETTLED =
-  /\b(?:not|no|nope|nah|never|nothing|yet|havent|hasnt|hadnt|didnt|dont|doesnt|isnt|arent|wasnt|werent|cant|cannot|couldnt|wouldnt|shouldnt|wont|aint|maybe|if|unless|trying|wondering|whether|unsure|think|thought|guess|assume|assumed|swear|dream|dreamt|imagine|cancelled|canceled|missed)\b/;
+  /\b(?:not|no|nope|nah|never|nothing|yet|havent|hasnt|hadnt|didnt|dont|doesnt|isnt|arent|wasnt|werent|cant|cannot|couldnt|wouldnt|shouldnt|wont|aint|maybe|if|unless|when|once|trying|wondering|whether|unsure|sure|think|thought|guess|assume|assumed|swear|dream|dreamt|imagine|cancelled|canceled|missed)\b/;
 
 /**
  * An intention, not a fact. "next Tuesday" is absent on purpose — an appointment that
@@ -138,7 +178,7 @@ const COUNTERFACTUAL =
  * the same forward-looking word in it.
  */
 const IN_PROGRESS =
-  /\b(?:booking|rebooking|scheduling|rescheduling|getting|having|arranging|sorting|chasing|waiting|calling)\b/;
+  /\b(?:booking|rebooking|scheduling|rescheduling|getting|having|locking|arranging|sorting|chasing|waiting|calling)\b/;
 
 /**
  * Secondhand. "You said it was booked" is Hale's own claim handed back, and reading it as
@@ -163,12 +203,12 @@ const REPORTED =
  * this, and that is the side of the trade to be wrong on: one repeated nudge.
  */
 const SOMEONE_ELSE =
-  /\b(?:sister|brother|mom|mum|mother|dad|father|parents|inlaws|friend|friends|cousin|aunt|uncle|grandma|grandmother|grandpa|grandfather|granny|nana|neighbour|neighbours|neighbor|neighbors|coworker|colleague)\b/;
+  /\b(?:sister|brother|mom|mum|mother|dad|father|parents|inlaws|friend|friends|cousin|aunt|uncle|grandma|grandmother|grandpa|grandfather|grandad|granddad|gramps|granny|nana|nan|neighbour|neighbours|neighbor|neighbors|coworker|colleague)\b/;
 
 /** The parent is asking Hale to act. An instruction is the opposite of a fact about what
  * is already true, and the propose_* verbs are what answer it. */
 const INSTRUCTION =
-  /^(?:please |just |ok |okay )*(?:add|put|book|schedule|rebook|move|cancel|change|find|send|make|set|remind|call|can|could|would|will|do|lets|let us)\b/;
+  /^(?:please |just |ok |okay )*(?:add|put|book|schedule|rebook|move|cancel|change|find|send|make|set|remind|let me|call|can|could|would|will|do|lets|let us)\b/;
 
 /**
  * Any one of these and the sentence is not an unambiguous assertion that this household
@@ -197,8 +237,11 @@ export function readStatedState(body: string): StatedState | null {
     if (segment.question) continue;
     const text = segment.words;
     if (BLOCKERS.some((blocker) => blocker.test(text))) continue;
-    if (!ARRANGED.test(text)) continue;
-    if (!SETTLED.test(text)) continue;
+    const stated =
+      (ARRANGED.test(text) && SETTLED.test(text)) ||
+      (ARRANGED_IDIOM.test(text) && THE_VISIT.test(text)) ||
+      GOT_IN.test(text);
+    if (!stated) continue;
     return 'health_visit_handled';
   }
   return null;
