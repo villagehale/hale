@@ -5,6 +5,7 @@ import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
@@ -13,7 +14,6 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { appendMessage } from '~/lib/coach/conversation';
 import {
   type DueCommitment,
   fulfillCommitment,
@@ -297,7 +297,13 @@ export interface ActivityFollowUpDeps {
     },
   ): Promise<string>;
   audit(database: Database, row: Record<string, unknown>): Promise<void>;
-  appendMessage: typeof appendMessage;
+  /** The parent's own text thread — REQUIRED, and RESOLVE-OR-CREATE (rule #11). It used
+   * to append to a conversation id carried in from the promise's own ledger row, behind
+   * a null check; every proactive sender leaves `related_conversation_id` null, so the
+   * one family this follow-up exists for — the one whose promise came out of a nudge
+   * rather than a coach turn — was the one whose reply had nothing above it. The anchor
+   * derives from the family and parent ids, so there is no absence left to check. */
+  threadMessage: typeof threadProactiveMessage;
   fulfillCommitment: typeof fulfillCommitment;
   cancelPromise: typeof cancelActivityPromise;
   /**
@@ -599,9 +605,11 @@ async function keepOne(
   // Threaded so the parent's answer arrives as an ordinary coach turn with the finds in
   // front of it. The COMPOSED sentence, not the wire body: the CASL line belongs on the
   // wire and nowhere else (plan check-in keeps the same rule, for the same reason).
-  if (recipient.conversationId) {
-    await deps.appendMessage(recipient.conversationId, 'assistant', message, database);
-  }
+  await deps.threadMessage(database, {
+    familyId: commitment.familyId,
+    parentUserId: recipient.parentUserId,
+    body: message,
+  });
   // KEPT, against the message that kept it — including when the message was bad news. The
   // promise was to come back.
   await deps.fulfillCommitment(database, {
@@ -700,7 +708,7 @@ export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row as never);
     },
-    appendMessage,
+    threadMessage: threadProactiveMessage,
     fulfillCommitment,
     cancelPromise: cancelActivityPromise,
     recordWatch: (database, input) =>
