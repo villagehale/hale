@@ -372,6 +372,26 @@ export function pageCarriesSchedule(page: PageEvidence): boolean {
 }
 
 /**
+ * Does this sentence actually STATE a schedule fact, or only talk about one?
+ *
+ * "Sundays 9:30-10:15" states one. "$124 per term" states one. "Fees set by Council each
+ * year, published in the current Recreation Guide" is a sentence about where a price
+ * lives, offered where a price should be — and a lane that reads it as an answer hands a
+ * parent a non-answer and writes down no promise to go back for the real one
+ * (deliver.ts `carriesFact`).
+ *
+ * A DAY COUNTS, unlike in {@link pageCarriesSchedule}. The two questions are different:
+ * there, "does this whole page publish a schedule" must not fire on the day-of-week in a
+ * building's opening hours; here the field is already claiming to BE the `when` of a
+ * class, so "Sundays" is a real if partial answer to it.
+ */
+export function statesAFigure(field: string): boolean {
+  return readAnchors(normaliseForMatch(field)).some(
+    (anchor) => anchor.kind !== 'number' && anchor.kind !== 'code',
+  );
+}
+
+/**
  * How much of a long page's HEAD is kept for context no matter what it contains.
  *
  * A page's first few thousand characters are its title, its season, its "registration

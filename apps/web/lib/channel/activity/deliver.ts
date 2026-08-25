@@ -12,6 +12,7 @@ import {
 } from './commitment';
 import type { DeepSlot } from './deep';
 import type { PageVerdict } from './evidence';
+import { statesAFigure } from './quote-match';
 import {
   type FollowUpComposer,
   type FollowUpFallback,
@@ -90,7 +91,7 @@ export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
 }
 
 /**
- * A FIELD THAT EXPLAINS ITS OWN ABSENCE IS AN ABSENCE.
+ * A FIELD THAT EXPLAINS ITS OWN ABSENCE IS AN ABSENCE — AND SO IS ONE WITH NO FACT IN IT.
  *
  * The extract skill says to leave `when` and `price` out when no page carried them, and
  * live on 2026-08-22 the Cartwheels turn did not: it filled `price` with "Not listed on
@@ -99,12 +100,22 @@ export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
  * Read as prose those are values; read as facts they are gaps — and a null check alone
  * let the one venue this whole arc is named after come back with nothing to watch for.
  *
- * Deterministic, and it reuses the composer's own reading of an absence claim rather
- * than inventing a second one: the two questions ("is this a fact?" and "may the text say
- * a page carries nothing?") turn on exactly the same words.
+ * TWO READINGS, BECAUSE ONE OF THEM MISSES THE POLITE NON-ANSWER. Refusing an absence
+ * CLAIM only catches the fields that admit what they are. "Fees set by Council each year,
+ * published in the current Recreation Guide" claims nothing and answers nothing: it is a
+ * sentence about where a price lives, offered where a price should be. It survived only
+ * by accident until 2026-08-24 — the old absence regex matched the "nt" in "current" —
+ * and when that bug was fixed Hale started handing it over as a complete find and writing
+ * no follow-up, leaving the parent with no price and no promise to get one.
+ *
+ * So a schedule fact must also CARRY one: a day, a clock time, a date or an amount
+ * (quote-match.ts's anchors, the same reading the refutation uses). Erring towards "this
+ * is a gap" costs a watch Hale would have kept anyway; erring the other way is a parent
+ * told they have the whole answer.
  */
 function carriesFact(field: string | null): boolean {
-  return field !== null && field.trim() !== '' && !claimsNotPosted(field);
+  if (field === null || field.trim() === '' || claimsNotPosted(field)) return false;
+  return statesAFigure(field);
 }
 
 /** Who the promise is owed to, and the thread it was made in. */
