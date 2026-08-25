@@ -8,6 +8,7 @@ import {
   followUpViolations,
   statesTheReturn,
   topPickLeads,
+  waitsOnAPageItCouldNotRead,
 } from './followup-note';
 import type { ActivityPick } from './lane';
 
@@ -160,6 +161,76 @@ describe('the top pick lands in the first segment', () => {
         grounding({ picks: [] }),
       ),
     ).toEqual([]);
+  });
+});
+
+/**
+ * THE CONTINUATION IS A CLAIM ABOUT WHY HALE IS COMING BACK.
+ *
+ * `claimsNotPosted` refuses the present tense and cannot see the same claim in the
+ * future: "I'll keep watching and text you once the details are up" presupposes they are
+ * not up. Live on 2026-08-24 the composer got the gap right in Hale's own voice — "I
+ * couldn't pin down the day, time or price from their term PDF" — and then handed it
+ * straight back to the page one clause later, about a venue whose term schedule WAS
+ * posted, in a PDF it could not decode and behind a login it could not enter.
+ */
+describe('a message may not say Hale could not get at a fact AND that it awaits posting', () => {
+  const CANNOT = 'I could not pin down the day, time or price from their term PDF.';
+
+  it.each([
+    "I'll keep watching and text you once the details are up.",
+    "I'll keep watching and text you when they post those.",
+    "I'll keep watching and text you when more posts.",
+    "I'll keep watching and text you when the fall guide goes up.",
+    "I'll text you as soon as they're posted.",
+  ])('refuses it beside an access failure: %s', (tail) => {
+    expect(waitsOnAPageItCouldNotRead(`${CANNOT} ${tail}`)).toBe(true);
+  });
+
+  it.each([
+    // What Hale is really waiting on, said beside the same access failure.
+    "I'll keep watching and text you when I can get to them.",
+    "I'll keep watching and text you when I can read them.",
+    "I'll text you once I can look it up.",
+    "I'll keep watching and text you if that changes.",
+  ])('lets through the honest continuation: %s', (tail) => {
+    expect(waitsOnAPageItCouldNotRead(`${CANNOT} ${tail}`)).toBe(false);
+  });
+
+  /**
+   * AND WITHOUT THE ACCESS FAILURE THERE IS NO CONTRADICTION. `page_evidence` is one
+   * verdict for a whole message while the gaps are per-field, so a body whose schedule
+   * the page published and whose FEES really do live in a Council guide is entitled to
+   * wait on the town. Gating on the verdict alone refused that message three times and
+   * deferred a promise the judge scored 4.
+   */
+  it('POSITIVE CONTROL - the same waiting sentence stands when Hale claimed no failure', () => {
+    const honest =
+      "Oakville's Learn to Swim has Preschool A Saturdays 9:00-9:30 - their site says, price set in the current Recreation Guide. I'll keep watching and text you when more posts.";
+
+    const oakville: ActivityPick = {
+      ...PICK,
+      name: 'Preschool A, Town of Oakville Learn to Swim',
+      sourceName: 'Town of Oakville',
+    };
+
+    expect(waitsOnAPageItCouldNotRead(honest)).toBe(false);
+    expect(
+      followUpViolations(
+        honest,
+        grounding({ picks: [oakville], pageEvidence: 'page_has_schedule', watch: true }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('is a violation whatever the page verdict says, because the body contradicts itself', () => {
+    const body = `${PICK.name} runs Saturdays - their site says, though I could not pin down the price. I'll keep watching and text you once the price is up.`;
+
+    for (const pageEvidence of ['page_has_schedule', 'no_page_read'] as const) {
+      expect(followUpViolations(body, grounding({ pageEvidence, watch: true })).join(' ')).toContain(
+        'when YOU can get at them',
+      );
+    }
   });
 });
 

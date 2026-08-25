@@ -536,6 +536,21 @@ function carriesFact(field, kind) {
  * what gets handed BACK to the model on a recompose, so it has to be the sentence
  * production would hand back; the `tag` is what this eval counts.
  */
+/** Mirrors `awaitsAPostedPage` (followup-note.ts). A continuation is a claim about WHY
+ * Hale is coming back; in the future tense the absence-claim gate cannot see it. The
+ * trigger clause may not open on Hale - "when I can get to them" is the true sentence
+ * under `page_has_schedule` and must never be refused. */
+const AWAITS_PUBLICATION =
+  /\b(?:when|once|as soon as)\s+(?!i\b|i'|we\b|we')[^.!?]{0,40}?\b(?:post(?:s|ed|ing)?|publish(?:es|ed)?|listed|up|out|available|lands?)\b/i;
+
+/** One message may not say Hale could not get at a fact AND that it awaits the venue
+ * posting it. Read off the BODY, never off `page_evidence`: that verdict is one value for
+ * a whole message while the gaps are per-field, and gating on it refused a true sentence
+ * about fees that really do live off-page. */
+function waitsOnAPageItCouldNotRead(body) {
+  return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
+}
+
 /** Mirrors the length correction's protected list (followup-note.ts). A cut that can be
  * satisfied by deleting the continuation sentence is a recompose loop ending in silence,
  * so what may NOT go is named beside what may. */
@@ -597,11 +612,25 @@ function followUpViolations(body, picks, smsSegments, pageEvidence, watch) {
           : 'The message says something is not posted or not up. Their page WAS opened today and it does publish times and prices - Hale just could not pin these ones to it. Say their site lists this and that you could not confirm the day or the price, never that they are not posted.',
     });
   }
+  if (waitsOnAPageItCouldNotRead(body)) {
+    violations.push({
+      tag: 'awaits_a_posted_page',
+      reason:
+        'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
+    });
+  }
   if (watch !== STATES_RETURN.test(body)) {
     violations.push({
       tag: watch ? 'silent_watch' : 'unbacked_promise',
+      // The EXAMPLE is page-state-aware or the two corrections fight: under
+      // `page_has_schedule` the gate above refuses the very sentence this one used to
+      // hand the model as the fix.
       reason: watch
-        ? 'This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "I\'ll keep watching and text you when they post."'
+        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "${
+            pageEvidence === 'page_has_schedule'
+              ? "I'll keep watching and text you when I can get to them."
+              : "I'll keep watching and text you when they post."
+          }"`
         : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }

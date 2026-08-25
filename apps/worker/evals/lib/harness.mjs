@@ -319,6 +319,30 @@ export const JUDGE_SAMPLES_MEDIAN = 3;
  * so the twenty-odd suites that take a single verdict replay their committed corpus
  * unchanged and only a suite that opts in pays for the extra draws.
  */
+/**
+ * IS THIS A VERDICT, OR THE WRECKAGE OF ONE?
+ *
+ * `cachedToolCall` has refused to cache a forced tool call cut off at `max_tokens` since
+ * 2026-08-24, because such a call still arrives well-formed with `input: {}` and reads
+ * downstream as a real answer. The judge's own draw never got that guard, and the judge's
+ * output IS the gate — so the wreckage voted.
+ *
+ * `activity-deep/cartwheels-live-research` carried three committed draws of `[{}, 2, 4]`.
+ * Sorted by `a.score - b.score`, the empty one compares NaN against everything, the sort
+ * leaves it where it lies, and the median lands on the 2: a suite failing on a message
+ * that two of its three real draws passed, printed as "judge:2 of /2/4" with the blank
+ * where a number should be. The schema puts `reason` before `score` deliberately - a
+ * score emitted first is a score reasoned backwards from - and the price of that order is
+ * that `score` is the field truncation eats.
+ *
+ * Read on the way OUT of the cache as well as into it, because the bad draws are already
+ * committed. A cached non-verdict is treated as absent: re-drawn live, or reported as the
+ * honest cache miss it always was under `--cached-only`.
+ */
+export function isVerdict(parsed) {
+  return typeof parsed?.score === 'number';
+}
+
 export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, cost, options) {
   const samples = options?.samples ?? 1;
 
@@ -326,7 +350,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     const sampleTag = index === 0 ? `${tagPrefix}:judge:${tag}` : `${tagPrefix}:judge:${tag}#${index}`;
     const key = cacheKey(sampleTag, `${model}\n${judgeSystem}\n${userMessage}`);
     const cached = await cacheGet(key);
-    if (cached) return cached.parsed;
+    if (cached && isVerdict(cached.parsed)) return cached.parsed;
     if (cachedOnly) failCachedMiss(sampleTag, key);
 
     const response = await getClient().messages.create({
@@ -341,7 +365,16 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
       // header records as unexplained; this is the explanation. The key does not include
       // max_tokens, so raising it leaves every cached verdict valid and only affects
       // calls that are actually made.
-      max_tokens: 1024,
+      // 4096, and the ceiling has now been raised twice by the same failure. At 256 a
+      // thorough judge ran out MID-STRING; at 1024 the deep lane's four-slot fixture did
+      // the same, live, on 2026-08-24 — its surviving draws argue for 2800+ characters
+      // before they reach a number. `reason` comes BEFORE `score` on purpose (a score
+      // emitted first is a score reasoned backwards from), which makes `score` precisely
+      // the field a truncation eats, so the budget has to clear the longest honest
+      // argument rather than the average one. The key does not include max_tokens, so
+      // raising it leaves every committed verdict valid and only touches calls actually
+      // made — and `isVerdict` above means a draw that still runs out is loud, not a zero.
+      max_tokens: 4096,
       system: judgeSystem,
       tools: [{ name: 'score', description: 'Return the score.', input_schema: JUDGE_SCHEMA }],
       tool_choice: { type: 'tool', name: 'score' },
@@ -349,6 +382,11 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     });
     const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'score');
     if (!toolUse) throw new Error(`judge (${tag}) returned no score tool call`);
+    if (response.stop_reason === 'max_tokens' || !isVerdict(toolUse.input)) {
+      throw new Error(
+        `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
+      );
+    }
     noteUsage(cost, model, response.usage);
     await cachePut(key, { parsed: toolUse.input });
     return toolUse.input;

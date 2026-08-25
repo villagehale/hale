@@ -403,6 +403,45 @@ export function statesTheReturn(body: string): boolean {
 }
 
 /**
+ * WHETHER THE COMING-BACK SENTENCE IS WAITING ON A PAGE THAT HAS ALREADY POSTED.
+ *
+ * {@link claimsNotPosted} refuses the present tense — "the fall times aren't up yet" —
+ * and cannot see the same claim wearing the future. "I'll keep watching and text you
+ * once the details are up" asserts nothing and presupposes everything: that they are not
+ * up, and that the venue is the one Hale is waiting on.
+ *
+ * Live, 2026-08-24: the composer got the gap right in Hale's own voice ("I couldn't pin
+ * down the day, time or price from their term PDF") and gave it straight back to the page
+ * one clause later, about a venue whose term schedule WAS posted — in a PDF it could not
+ * decode, behind a registration login it could not enter. Two of three judge draws scored
+ * that 2. The first half of the sentence is the fix that commit 6d0fc033 made for the gap
+ * sentence; this is the same defect surviving in the sentence after it.
+ *
+ * THE SUBJECT DECIDES IT, so the trigger clause may not open on Hale: "when I can get to
+ * them" and "once I can look it up" are Hale waiting on its own access, which is the
+ * true sentence here and the one this predicate must never refuse.
+ */
+const AWAITS_PUBLICATION =
+  /\b(?:when|once|as soon as)\s+(?!i\b|i'|we\b|we')[^.!?]{0,40}?\b(?:post(?:s|ed|ing)?|publish(?:es|ed)?|listed|up|out|available|lands?)\b/i;
+
+/**
+ * ONE MESSAGE MAY NOT SAY BOTH. If Hale says it could not get at a fact, it cannot also
+ * say it is waiting for the venue to publish that fact: one of those sentences is false,
+ * and it is always the second one — Hale is waiting on its own access, not on them.
+ *
+ * READ OFF THE BODY, not off `page_evidence`, and that is a correction to the first
+ * version of this gate. `page_evidence` is ONE verdict for the whole message while the
+ * gaps are per-field (the skill's own rule: never let one field's reason swallow
+ * another's). Fired on `page_has_schedule` alone it refused a true sentence — an Oakville
+ * find whose schedule the page published and whose FEES really do live in a Council guide
+ * Hale never claimed to have read — three times, and the promise deferred on a message
+ * the judge scored 4. The contradiction is what is provable, and it needs no verdict.
+ */
+export function waitsOnAPageItCouldNotRead(body: string): boolean {
+  return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
+}
+
+/**
  * DOES THIS MESSAGE ASK THE PARENT ANYTHING?
  *
  * ONE READER, TWO STRINGS, and that is the whole point of it being a function. The gate
@@ -500,10 +539,24 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
   // no row behind it, which is the 2026-08-20 defect verbatim, produced by the very
   // change that was fixing it. A sentence claiming a commitment is only true when the
   // commitment exists, and `watch` is the one value that knows.
+  // AND THE COMING-BACK SENTENCE CARRIES THE SAME ATTRIBUTION AS THE GAP SENTENCE.
+  if (waitsOnAPageItCouldNotRead(text)) {
+    violations.push(
+      'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
+    );
+  }
   if (grounding.watch !== statesTheReturn(text)) {
+    // THE EXAMPLE IS PAGE-STATE-AWARE OR THE TWO CORRECTIONS FIGHT: under
+    // `page_has_schedule` the gate above refuses the very sentence this one used to hand
+    // the model as the remedy, and a composer bounced between two contradictory fixes
+    // spends its three attempts and sends nothing.
     violations.push(
       grounding.watch
-        ? 'This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "I\'ll keep watching and text you when they post."'
+        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "${
+            grounding.pageEvidence === 'page_has_schedule'
+              ? "I'll keep watching and text you when I can get to them."
+              : "I'll keep watching and text you when they post."
+          }"`
         : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     );
   }
