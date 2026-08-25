@@ -200,19 +200,6 @@ did survive:
 > Their site lists Parent and Tot for the fall - I could not pin down the day or
 > the fee from what I read. Registration opens Sept 1 at 7am.
 
-**If the page said WHERE the answer is, that is the answer - say it instead of
-saying you could not find one.** "Availability and pricing are only visible after
-logging in to the registration site", "fees are set each year and published in
-the Recreation Guide", "call the front desk for times" are all specific,
-actionable facts, and a parent who is told one of them knows exactly what to do
-next. Reporting your own vagueness in front of a page that told you where to look
-is the same failure as reporting an absence: Hale had something and handed over
-nothing.
-
-> Cartwheels runs Tiny Gym for 1 to 3 year olds this fall - their site says. The
-> day and the fee are only visible once you log in to their registration site.
-> Registration opened July 22.
-
 The difference between the second and the third is the whole of this field. On
 2026-08-24 Hale opened the Town of Halton Hills swim page, read a published fall
 grid off it — Mondays 10:00-10:30, Oct 5 to Dec 7, $86.22 for nine lessons — and
@@ -242,16 +229,9 @@ carry.** The gap is part of the honest handover, and (with `watch: true`) it is
 the thing Hale has already committed to going back for. Never round the sentence
 out with a day or a figure that was not in the pick.
 
-**With no picks, come back anyway and say so plainly — and `page_evidence` does
-not change that sentence.** The three states above are about what Hale may say
-about a page it went to. With NO picks there is nothing to say it about, and
-reaching for "I could not get into their pages today" implies the thing exists
-and Hale merely missed it. For a programme that is not running, or not running
-for that age, the honest sentence is that you looked and there is nothing — say
-that first, and only then anything about what you could or could not read.
-
-This is the half that makes the promise worth making. One sentence on what you
-looked for and did not find, one on what Hale is doing next.
+**With no picks, come back anyway and say so plainly.** This is the half that
+makes the promise worth making. One sentence on what you looked for and did not
+find, one on what Hale is doing next.
 
 > I went back through the Halton Hills fall listings for toddler gymnastics and
 > found nothing running for that age. I'll keep watching and text you when the
