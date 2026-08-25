@@ -176,6 +176,46 @@ describe('the mechanical gates', () => {
     );
   });
 
+  /**
+   * THE OVER-LONG REFUSAL SAYS WHAT TO DROP, because it is the only place in this lane
+   * that has MEASURED anything. The skill used to carry the rule ("cut the SECOND find")
+   * and the model had to guess when it applied; guessing costs a whole find, so it
+   * guessed early and dropped a complete second find into a message with room for it.
+   */
+  it('the over-long refusal names the cut - the last find whole, never the leading find', () => {
+    const second: ActivityPick = { ...PICK, name: 'Preschool Drop-In Gym' };
+    const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
+
+    const twoFinds = followUpViolations(long, grounding({ picks: [PICK, second] })).join(' ');
+    expect(twoFinds).toContain('Drop the LAST find whole');
+
+    // POSITIVE CONTROL, and the reason the sentence is conditional: with one find there
+    // is no find to drop, and telling the model to drop it is telling it to go quiet.
+    const oneFind = followUpViolations(long, grounding()).join(' ');
+    expect(oneFind).not.toContain('Drop the LAST find whole');
+    expect(oneFind).toContain('never the facts');
+  });
+
+  /**
+   * AND THE CUT MAY NOT BE PAID FOR OUT OF A DIFFERENT GATE. The first version of the
+   * length correction ended "keep the rest as they are", and the composer read that as
+   * licence: it kept both finds whole and deleted the continuation sentence instead, then
+   * failed `statesTheReturn` twice more and sent a kept promise that never said Hale was
+   * still on it. A correction satisfiable by breaking another gate is a loop into silence.
+   */
+  it('the over-long refusal protects the continuation sentence when a row exists', () => {
+    const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
+
+    expect(followUpViolations(long, grounding({ watch: true })).join(' ')).toContain(
+      'never the sentence saying Hale will keep watching',
+    );
+    // POSITIVE CONTROL - with no row written there is no such sentence to protect, and
+    // demanding one is the unbacked promise this lane refuses in the other direction.
+    expect(followUpViolations(long, grounding({ watch: false })).join(' ')).not.toContain(
+      'keep watching',
+    );
+  });
+
   it('refuses an empty body outright', () => {
     expect(followUpViolations('   ', grounding({ subject: 's' }))).toEqual([
       'The message was empty.',
@@ -252,6 +292,38 @@ describe('the payload the composer is handed', () => {
       JSON.parse(followUpUserMessage(grounding({ pageEvidence: 'page_has_schedule' })))
         .page_evidence,
     ).toBe('page_has_schedule');
+  });
+
+  /**
+   * WITH NO PICKS THERE ARE NO PAGES TO REPORT ON, so the payload carries none.
+   *
+   * The skill's precedence rule already said `page_evidence` is not the subject of an
+   * empty-handed message, and the rule lost: handed `no_page_read` and nothing else to
+   * talk about, the composer wrote "I could not get into any pages today for toddler
+   * underwater basket weaving" — a sentence that tells a parent the programme exists and
+   * Hale merely missed it. It does not exist. A model that is never handed a page fact
+   * cannot blame a page, which is the difference between a rule and a construction.
+   *
+   * `picks_empty` rather than a dropped key, for the same reason the picks carry an
+   * explicit `registration: null`: silence reads to a model as a field it may fill in,
+   * and this one is a fact about the search that the message is entirely about.
+   */
+  it('with NO picks the payload carries no page state at all - only that there was nothing', () => {
+    const payload = JSON.parse(
+      followUpUserMessage(
+        grounding({ picks: [], pageEvidence: 'no_page_read', watch: true }),
+      ),
+    );
+
+    expect(Object.keys(payload).sort()).toEqual([
+      'mode',
+      'picks',
+      'picks_empty',
+      'subject',
+      'watch',
+    ]);
+    expect(payload.picks_empty).toBe(true);
+    expect(payload.picks).toEqual([]);
   });
 
   it('carries the subject and the mode, and nothing about the family (rule #1)', () => {

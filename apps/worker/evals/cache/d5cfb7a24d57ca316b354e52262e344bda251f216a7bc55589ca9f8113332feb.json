@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick list is correctly empty because no such program exists. The message is honest and specific about what was searched and what was found (nothing). It does not invent a venue, does not hedge with vague apologies, and does not withhold a find. The watch flag is TRUE and the message correctly includes a first-person commitment to keep watching and text if that changes (\"I'll keep watching and text you if that changes\"). No question is asked, no offer is made, no link is included, and no unearned negative claim about a page is made (no_page_read is irrelevant here since no picks exist and no page claim is made). This is a clean, honest, correct response to a search that genuinely returned nothing.",
+    "score": 5
+  }
+}

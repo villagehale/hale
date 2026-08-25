@@ -191,12 +191,18 @@ function readExtract(raw) {
  * absence from that projection is the defect this eval's last gate exists for.
  *
  * `page_evidence` replaced a `pages_opened` boolean on 2026-08-24: the boolean said
- * somebody opened something, and the sentence it licensed says what the page CARRIES. */
+ * somebody opened something, and the sentence it licensed says what the page CARRIES.
+ *
+ * WITH NO PICKS, NO PAGE STATE AT ALL. There is no find to have a gap in and no venue
+ * whose pages could be at fault, so the composer is handed `picks_empty` and nothing about
+ * pages: a model that never sees a page fact cannot blame a page for a programme that does
+ * not exist ("I could not get into any pages today for toddler underwater basket weaving",
+ * 2026-08-24). */
 function followUpUserMessage(subject, slots, pageEvidence, watch) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
-    page_evidence: pageEvidence,
+    ...(slots.length === 0 ? { picks_empty: true } : { page_evidence: pageEvidence }),
     watch,
     picks: slots.map((slot) => ({
       name: slot.name,
@@ -473,13 +479,26 @@ function carriesFact(field, kind) {
   return statesAFigure(String(field));
 }
 
+/** Mirrors the length correction's protected list (followup-note.ts). A cut that can be
+ * satisfied by deleting the continuation sentence is a recompose loop ending in silence,
+ * so what may NOT go is named beside what may. */
+function keepUnderTrim(watch) {
+  return watch
+    ? "never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes"
+    : 'never the facts of the find you led with';
+}
+
 function followUpViolations(body, slots, smsSegments, pageEvidence, watch) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
     violations.push({
       tag: 'over_segment_cap',
-      reason: `The message is ${smsSegments(body)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. Cut it to about 300 characters.`,
+      reason: `The message is ${smsSegments(body)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
+        slots.length > 1
+          ? `Drop the LAST find whole - ${keepUnderTrim(watch)}.`
+          : `Shorten the wording around the facts, never the facts themselves - ${keepUnderTrim(watch)}.`
+      }`,
     });
   }
   if (LINK_SHAPE.test(body)) {

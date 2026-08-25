@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Slots: Both Tiny Gym and Kinderfun are correctly extracted from the page with accurate days, times, date ranges, durations, prices, registration windows, and source URLs. The membership note ($25 annual) is properly included. Age bands match the page exactly. Registration date (July 22) is present in both slots as required by watchFor.\n\nMessage: Leads with Tiny Gym by name — the right pick for a toddler (walking to 3.5 years). Day, time, date range, and price are all exactly as printed on the page. Attribution is present (\"their site says\"). Registration window is carried (\"Registration opened July 22 and runs until classes fill\") — the key fact per watchFor. No link. No question. No unearned claim. Two plain ASCII sentences. No fabricated data, no borrowed figures from a different program. watch=false, no coming-back promise is present (correct — nothing is behind it).\n\npageEvidence=page_has_schedule: page was opened and does carry times and prices, and Hale tied the facts to it. No negative schedule claim is made. Correct.\n\nThe message is clean, complete, attributed, and carries the registration date exactly as printed. No deductions apply.",
+    "score": 5
+  }
+}

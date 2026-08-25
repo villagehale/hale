@@ -1,0 +1,6 @@
+{
+  "value": {
+    "picks": "{\"picks\":[{\"name\":\"Kids & Me, Halton Hills Public Library (Acton Branch)\",\"age_fit\":\"families with babies or children up to 6 years of age\",\"when\":\"Thursdays 10:30am - 12:00pm\",\"price\":\"free\",\"source_name\":\"Halton Hills Public Library\"},{\"name\":\"Kids & Me, St. Andrew's United Church, Georgetown\",\"age_fit\":\"families with babies or children up to 6 years of age\",\"when\":\"Tuesdays 9:30am - 11:00am\",\"price\":\"free\",\"source_name\":\"Halton Region\"},{\"name\":\"EarlyON Child and Family Centres, Acton & Georgetown locations\",\"age_fit\":\"birth to their 6th birthday\",\"price\":\"free\",\"source_name\":\"Links2Care\"}]}"
+  },
+  "latencyMs": 3031
+}

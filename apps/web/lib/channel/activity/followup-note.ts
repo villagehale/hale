@@ -164,7 +164,18 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     // It is told rather than merely gated on, because the three states have three
     // different honest sentences and a model that cannot see which one it is in writes the
     // negative report, gets refused, and burns its three attempts arriving at silence.
-    page_evidence: grounding.pageEvidence,
+    //
+    // AND WITH NO PICKS IT IS NOT TOLD AT ALL. There is no find to have a gap in and no
+    // venue whose pages could be at fault, so every honest sentence about a page is one
+    // this message cannot contain. The skill said as much in prose and the prose lost: on
+    // 2026-08-24 an empty search for a programme that does not exist came back "I could
+    // not get into any pages today for toddler underwater basket weaving", which tells a
+    // parent it exists. A model handed no page fact cannot blame a page. What replaces it
+    // is not silence — `picks_empty` is the one fact this message is about, and an omitted
+    // key reads to a model as a field it may fill in (rule #11).
+    ...(grounding.picks.length === 0
+      ? { picks_empty: true }
+      : { page_evidence: grounding.pageEvidence }),
     watch: grounding.watch,
     picks: grounding.picks.map((pick) => ({
       name: pick.name,
@@ -414,9 +425,32 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
   const text = plainText(body);
 
   if (text === '') return ['The message was empty.'];
+  // ONE RULER, AND IT IS THIS ONE. The skill used to teach the model to predict the fit
+  // and pre-drop for it ("when it will not fit, cut the SECOND find"), which is a model
+  // eyeballing segment arithmetic it cannot do: on 2026-08-24 it dropped a complete
+  // second find — a price and a schedule — out of a 263-character message with room for
+  // it, and nothing downstream could tell that answer from one that had only one find.
+  // Fit is measured HERE, and the correction says what to give up, so the model never has
+  // to guess whether it is in the losing case.
+  //
+  // AND IT SAYS WHAT MAY NOT GO, because a correction that names only the cut leaves
+  // everything it did not name looking spare. The first version of this sentence ended
+  // "and keep the rest as they are": handed it, the composer kept both finds intact and
+  // deleted the continuation sentence instead — the one thing `watch` had already written
+  // a row for — then spent its last attempt without putting it back and the promise went
+  // out silent about itself. A length correction that can be satisfied by breaking a
+  // different gate is a recompose loop that ends in silence, so the two things a trim may
+  // never reach are named here, in the same breath as the cut.
   if (smsSegments(text) > MAX_FOLLOWUP_SEGMENTS) {
+    const keep = grounding.watch
+      ? "never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes"
+      : 'never the facts of the find you led with';
     violations.push(
-      `The message is ${smsSegments(text)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. Cut it to about 300 characters.`,
+      `The message is ${smsSegments(text)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
+        grounding.picks.length > 1
+          ? `Drop the LAST find whole - ${keep}.`
+          : `Shorten the wording around the facts, never the facts themselves - ${keep}.`
+      }`,
     );
   }
   if (smsEncoding(text) !== 'gsm7') {
