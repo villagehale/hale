@@ -1,0 +1,19 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Kindergym (Toddler Program), Halton Hills Gymnastics Centre",
+        "age_fit": "18 months - 3.11 yrs",
+        "when": "Fall Rec Program begins September 12th (registration began July 20th)",
+        "source_name": "Halton Hills Gymnastics Centre"
+      },
+      {
+        "name": "Georgetown EarlyON Centre / Acton EarlyON Centre (Halton Hills)",
+        "age_fit": "birth to their 6th birthday",
+        "price": "Free",
+        "source_name": "Links2Care"
+      }
+    ]
+  },
+  "latencyMs": 2614
+}

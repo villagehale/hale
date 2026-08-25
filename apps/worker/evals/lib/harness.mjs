@@ -74,10 +74,34 @@ export async function readMemoryLimits() {
   return { factLimit: Number(fact[1]), episodeLimit: Number(ep[1]) };
 }
 
-export async function readJudgeModel() {
+/**
+ * WHICH MODEL GRADES.
+ *
+ * `'haiku'` is the default and stays the default: most rubrics in this directory are
+ * short, and a cheap judge run over a small corpus is the point of the harness.
+ *
+ * `'sonnet'` is for the rubrics that have outgrown it. Measured 2026-08-25 on the activity
+ * suites, whose rubric runs to about four thousand characters: Haiku marked a message down
+ * for attributing a find to the venue's own site, and again for dropping a second find to
+ * fit the first complete — both of which the rubric states IN SO MANY WORDS are correct and
+ * must never be marked down. Those are not harsh readings, they are the grader not holding
+ * the instructions, and no amount of median sampling fixes a judge that cannot read the
+ * rubric it was given.
+ *
+ * IT IS THE 4.6 TIER AND NOT SONNET 5, DELIBERATELY. These suites run their SUBJECT on
+ * Sonnet 5 — the composer and the research legs both — and a model grading its own output
+ * is not a second opinion. model.ts reserves SONNET_MODEL as the judge rung for exactly
+ * that reason and says so. The step that was needed here is Haiku → something that can hold
+ * the rubric, not Haiku → the model under test.
+ *
+ * Read out of packages/agent's model.ts rather than pinned here, so a re-tier moves the
+ * evals with production instead of leaving them grading against a retired id.
+ */
+export async function readJudgeModel(tier = 'haiku') {
   const src = await readFile(MODEL_TS, 'utf8');
-  const m = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
-  if (!m) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS}`);
+  const symbol = tier === 'sonnet' ? 'SONNET_MODEL' : 'HAIKU_MODEL';
+  const m = src.match(new RegExp(`${symbol}\\s*=\\s*'([^']+)'`));
+  if (!m) throw new Error(`could not parse ${symbol} from ${MODEL_TS}`);
   return m[1];
 }
 

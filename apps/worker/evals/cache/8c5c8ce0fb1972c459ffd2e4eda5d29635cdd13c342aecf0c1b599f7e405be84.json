@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Slots: Both slots are accurate, fully sourced to the correct page, carry the right day/time, dates, fee, membership note, and registration window. The age bands match exactly what the page says. All slot fields are correct.\n\nMessage: Leads with Tiny Gym by name — the right pick for a toddler (walking to 3.5 years). Carries the day, times, full date range, price, membership note, and the registration window (\"opened July 22 and runs until classes fill\"). Attribution is correct: \"their site says\" (placed mid-sentence, slightly awkwardly but present). No link, no question, no offer — correct. Two plain ASCII sentences. watch=false so no coming-back sentence is wanted, and none appears.\n\npageEvidence=page_has_schedule: the page was read and does carry times and prices, and Hale tied those facts to it — no unearned negative claim anywhere.\n\nNo errors detected: no fabricated figures, no borrowed prices, no wrong age band, registration date is present in both slots and in the message, facts are attributed rather than claimed as verified. The second slot (Kinderfun, 3–5 years) was dropped whole, which is correct — it doesn't fit a toddler stage as well as Tiny Gym, and dropping it to keep the best one complete within two sentences is explicitly correct behaviour.\n\nThis is a clean 5.",
+    "score": 5
+  }
+}

@@ -266,10 +266,23 @@ function identifyingWords(name: string): string[] {
     );
 }
 
+/**
+ * A FIND IS IDENTIFIED BY ITS PROGRAMME OR BY ITS PLACE, and a composite `name` does not
+ * always carry either.
+ *
+ * "Toddler Program (18 months - 3 years), Preschool and Kinderfun" at Halton Hills
+ * Gymnastics Centre reduces to the single word "kinderfun" — a programme stream nobody
+ * would text — so a message opening "Halton Hills Gymnastics Centre runs a Toddler Program
+ * for 18 months-3 years" was refused for not naming the find. A parent reading that knows
+ * exactly which find it is. The question this gate asks is "can I tell WHICH one?", and the
+ * venue answers it as well as the programme does.
+ */
 export function topPickLeads(body: string, picks: readonly ActivityPick[]): boolean {
   const top = picks[0];
   if (!top) return true;
   const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  const venue = identifyingWords(top.sourceName ?? '');
+  if (venue.length > 0 && venue.every((word) => head.includes(word))) return true;
   const words = identifyingWords(top.name);
   // A name with nothing distinctive in it at all ("Toddler Class") can only be matched
   // whole — there is no word in it that would tell one find from another.

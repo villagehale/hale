@@ -440,6 +440,10 @@ function topPickLeads(body, picks) {
   const top = picks[0];
   if (!top) return true;
   const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  // A find is identified by its programme OR by its place: a composite `name` that reduces
+  // to a programme stream ("...Preschool and Kinderfun") is not what a parent reads.
+  const venue = identifyingWords(top.sourceName ?? top.source_name ?? '');
+  if (venue.length > 0 && venue.every((word) => head.includes(word))) return true;
   const words = identifyingWords(top.name);
   if (words.length === 0) return head.includes(spokenName(top.name).toLowerCase());
   return words.filter((word) => head.includes(word)).length >= Math.min(2, words.length);
@@ -855,7 +859,9 @@ async function main() {
   const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const skill = await agent.loadSkill(ACTIVITY_SKILL);
   const model = agent.pickModel(skill.meta.task);
-  const judgeModel = await readJudgeModel();
+  // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two
+  // behaviours the rubric states in so many words are correct (harness.mjs readJudgeModel).
+  const judgeModel = await readJudgeModel('sonnet');
   // MEDIAN OF THREE, not one draw: this suite failed on a tail sample of a message every
   // other draw passed (harness.mjs `JUDGE_SAMPLES_MEDIAN`). JUDGE_MIN is untouched.
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'activity-finder', cachedOnly, getClient, cost, {

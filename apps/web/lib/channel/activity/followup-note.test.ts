@@ -331,6 +331,29 @@ describe('naming the find a parent is being handed', () => {
     expect(topPickLeads('There is a swim class on Mondays at 10:00am.', [bracketed])).toBe(false);
   });
 
+  it('naming the VENUE names the find, when the name itself carries a programme stream', () => {
+    // "Toddler Program (18 months - 3 years), Preschool and Kinderfun" reduces to
+    // "kinderfun" - a stream nobody would text - and the venue lives in `sourceName`.
+    // A parent reading "Halton Hills Gymnastics Centre runs a Toddler Program" knows
+    // exactly which find this is; the gate used to refuse it.
+    const streamNamed = {
+      ...PICK,
+      name: 'Toddler Program (18 months - 3 years), Preschool and Kinderfun',
+      sourceName: 'Halton Hills Gymnastics Centre',
+    };
+
+    expect(
+      topPickLeads(
+        'Halton Hills Gymnastics Centre runs a Toddler Program for 18 months-3 years, fall session Sept 10 to Dec 16 - their site says.',
+        [streamNamed],
+      ),
+    ).toBe(true);
+    // POSITIVE CONTROL - naming neither the venue nor the programme is still refused.
+    expect(
+      topPickLeads('There is a fall toddler session running Sept 10 to Dec 16.', [streamNamed]),
+    ).toBe(false);
+  });
+
   it('a session code is not a name, brackets or no brackets', () => {
     // The merge disambiguates however it likes, and it does not always reach for
     // brackets. A bare code is the same demand in a different shape: no SMS is going to
