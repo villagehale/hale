@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The slots correctly capture a real program (Parent & Tot Swimming Lessons at Gellert Community Centre for ages 4 months to 3 years) with appropriate sourcing to the Town of Halton Hills. Both day/time and price are null because no page was successfully read (pageEvidence: no_page_read) - both URLs returned url_not_accessible and url_not_allowed. The slot is grounded in search results mentioning a fall session without exposing schedule details. No message was composed (message: null), which is correct for a research turn that could not open any page. The slots do not make an unearned negative claim about what the page carries - they simply report nulls where access failed. The watchFor note confirms both fetches were refused, and the slot list appropriately reflects this by carrying null for when and price rather than claiming \"not posted yet.\" This is the right answer when a page cannot be accessed."
+  }
+}

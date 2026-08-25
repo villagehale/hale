@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message leads with the strongest pick (EarlyON) by name, correctly attributes it (\"offers\"), and plainly states the access limitation in first person: \"I couldn't get into their schedule page today for days or times.\" This earned negative claim is appropriate under `no_page_read`. The message commits to follow-up action (\"I'll keep looking and text you what it says\") which aligns with the `watch:true` requirement that Hale has already written a continuation promise. Two picks are presented; both are real, specific, local to Halton Hills, and age-appropriate for toddler stage. No invented times or prices appear. The message makes no offer or question. It is plain text stating facts with proper attribution, exactly as specified."
+  }
+}

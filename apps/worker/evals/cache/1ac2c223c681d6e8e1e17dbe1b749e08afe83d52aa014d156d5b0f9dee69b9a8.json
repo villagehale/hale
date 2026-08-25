@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message fails on multiple fronts. First, it invents a narrative about pages it couldn't access when there are no pages to read (pageEvidence: no_page_read means nobody opened a page today). The correct phrasing here is \"I could not get into their page today\" only when referring to a specific venue that exists. More critically, the message ends with \"I'll keep looking and text you what I find\" — this is a vague promise to search again. The watch field is TRUE, meaning a continuation commitment row already exists, and the message MUST reference it specifically in first person as \"I'll keep watching and text you when they post\" (tied to venues posting updates). Instead, this says \"when I find\" (search activity), which is neither the commitment that exists nor honest about what Hale can do. Additionally, with an empty pick list for a non-existent program type, the message should either plainly state what was searched and found nothing, or name the nearest real alternative. It does neither. The opening sentence confuses inability to access pages (which didn't exist to access) with uncertainty about offerings."
+  }
+}

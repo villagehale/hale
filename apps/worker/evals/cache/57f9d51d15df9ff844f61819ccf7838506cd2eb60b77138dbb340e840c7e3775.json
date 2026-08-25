@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Every slot is real and accurate from the page: Tiny Gym (walking to 3.5 years, Sundays 9:30-10:15am, September 14 to October 26, 2026, $124 plus $25 membership) and Kinderfun (3 to 5 years, Saturdays 10:30-11:15am, September 13 to October 25, 2026, $145 plus $25 membership) are all exactly as printed. Both slots carry the registration fact: \"Fall registration opened July 22 and runs until classes fill; register online or by phone.\" The message leads with the best slot by name (Tiny Gym), attributes the facts (\"their site says\"), carries the registration window (opened July 22, stays open until classes fill), and is two plain-ASCII sentences with no link and no question. The message correctly makes no offer. Watch is FALSE so no continuation promise was needed or made. The page was opened today and does have a schedule (pageEvidence: page_has_schedule), so the attribution \"their site says\" is appropriate and the message does not unearned claim the page lacks content. The message drops the second slot (Kinderfun) to fit the best one complete, which is correct strategy and not withholding."
+  }
+}

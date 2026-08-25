@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The slot is correct: it names a real program (Parent & Tot Swimming Lessons at Gellert Community Centre) with the accurate age band (4 months to 3 years, with a parent) sourced from search results. The when, price, and registration fields are all properly null because no pages were actually opened (pageEvidence is \"no_page_read\"). The notes correctly identify that both fetch attempts failed (url_not_accessible and url_not_allowed), making it impossible to extract schedule details. No message was composed, which is correct procedure when no page was read. The slot does not claim anything about a posted or unposted schedule—it simply carries what the search results indicated about the program itself. The watchFor instruction is properly heeded: no URL is cited as having been opened, and the null fields reflect the genuine inability to access the pages rather than any unearned negative claim."
+  }
+}

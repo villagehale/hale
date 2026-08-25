@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message names the specific venue the parent asked about (Cartwheels Gym Centre), provides a real, named program (Tiny Gym) with the exact age range (1-3 years with parent), and gives concrete, multiple session times across three days of the week for a defined term (Sept 14 - Nov 1, 2026). Attribution is clean (\"their site says\"). The message honestly names the gap (\"I couldn't pin down the price\") rather than inventing detail, and under page_has_schedule this is the correct form—Hale read the page, found times, but could not connect price information. The watch commitment is present and in first person (\"I'll keep watching and text you those details\"), which is earned since watch=true. No questions are posed. No offers are made. The message is two sentences of plain text with no link. Every element is specific to the named venue and genuine. This directly answers what the parent asked about the one place they named."
+  }
+}

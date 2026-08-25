@@ -272,13 +272,38 @@ const JUDGE_SCHEMA = {
   required: ['reason', 'score'],
 };
 
-export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, cost) {
-  return async function judge(tag, payload) {
-    const userMessage = JSON.stringify(payload);
-    const key = cacheKey(`${tagPrefix}:judge:${tag}`, `${model}\n${judgeSystem}\n${userMessage}`);
+/**
+ * HOW MANY TIMES THE JUDGE IS ASKED, when one draw is not a measurement.
+ *
+ * THREE, and it is the smallest number that HAS a median. A judge is a sampled model and
+ * its score is a draw from a distribution, but the gate is a hard floor: one draw in the
+ * tail fails the suite on a message every other draw passes. Measured on
+ * `activity-deep/cartwheels-live-research`, 2026-08-24 — the same rubric, the same payload,
+ * the same message — the committed verdict was 2 and three fresh draws were 4, 4, 5. The
+ * message passed every deterministic gate; what failed was the sampling.
+ *
+ * A gate that fails on variance is a gate nobody can trust, and the two ways out are not
+ * equivalent. Lowering the floor would accept genuinely worse messages at every score. A
+ * median accepts nothing new: it takes the score the judge gives MOST of the time, so a
+ * message that is really a 2 still fails (two draws below the floor is a median below the
+ * floor) and a message that is really a 4 stops failing one time in four.
+ */
+export const JUDGE_SAMPLES_MEDIAN = 3;
+
+/**
+ * `samples` defaults to ONE, and sample zero keeps the historical cache key byte for byte,
+ * so the twenty-odd suites that take a single verdict replay their committed corpus
+ * unchanged and only a suite that opts in pays for the extra draws.
+ */
+export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, cost, options) {
+  const samples = options?.samples ?? 1;
+
+  async function draw(tag, userMessage, index) {
+    const sampleTag = index === 0 ? `${tagPrefix}:judge:${tag}` : `${tagPrefix}:judge:${tag}#${index}`;
+    const key = cacheKey(sampleTag, `${model}\n${judgeSystem}\n${userMessage}`);
     const cached = await cacheGet(key);
     if (cached) return cached.parsed;
-    if (cachedOnly) failCachedMiss(`${tagPrefix}:judge:${tag}`, key);
+    if (cachedOnly) failCachedMiss(sampleTag, key);
 
     const response = await getClient().messages.create({
       model,
@@ -303,6 +328,22 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     noteUsage(cost, model, response.usage);
     await cachePut(key, { parsed: toolUse.input });
     return toolUse.input;
+  }
+
+  return async function judge(tag, payload) {
+    const userMessage = JSON.stringify(payload);
+    const drawn = [];
+    for (let index = 0; index < samples; index += 1) {
+      drawn.push(await draw(tag, userMessage, index));
+    }
+    // One sample returns exactly what it always did - same object, no extra field - so a
+    // caller that never opted in cannot tell this function changed.
+    if (samples === 1) return drawn[0];
+    const ordered = [...drawn].sort((a, b) => a.score - b.score);
+    // The median VERDICT, not just the median number: the reason a run prints has to be
+    // the argument for the score it printed, or the failure line cites a different draw.
+    const median = ordered[Math.floor(samples / 2)];
+    return { ...median, samples: ordered.map((verdict) => verdict.score) };
   };
 }
 

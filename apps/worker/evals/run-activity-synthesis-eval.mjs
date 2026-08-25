@@ -53,6 +53,7 @@ import {
   noteUsage,
   totalUsd,
 } from './lib/harness.mjs';
+import { normaliseForMatch, preparePage, quoteIsBackedBy } from './lib/quote-match.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -109,22 +110,6 @@ function synthesisUserMessage(fixture) {
 
 // ── the refutation, replicated from activity/refute.ts ───────────────────────
 
-/** Mirrors `plainText`'s unicode folding (coach/reply.ts) — the same substitutions the
- * runtime's `normalise` runs through before comparing. */
-const GSM7_SUBSTITUTIONS = [
-  [/[‘’‛]/g, "'"],
-  [/[“”]/g, '"'],
-  [/[–—―]/g, '-'],
-  [/…/g, '...'],
-  [/[    ]/g, ' '],
-];
-
-function normalise(text) {
-  let out = String(text);
-  for (const [pattern, replacement] of GSM7_SUBSTITUTIONS) out = out.replace(pattern, replacement);
-  return out.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
 /** Mirrors `pageKey`: a scheme, a `www.`, a trailing slash and a fragment are not
  * identity; a PATH is. */
 function pageKey(url) {
@@ -142,9 +127,14 @@ function citation(value) {
   return /^https?:\/\/\S+$/i.test(raw) ? raw : null;
 }
 
-/** Every page the fan-out actually opened, indexed the way the runtime indexes it. The
- * fixtures carry page text inside `notes` behind a `--- page: <url> ---` marker, which is
- * exactly how the runtime builds them (fanout.ts `boundEvidence`). */
+/** Every page the fan-out actually opened, TOKENISED ONCE and indexed the way the runtime
+ * indexes it. The fixtures carry page text inside `notes` behind a `--- page: <url> ---`
+ * marker, which is exactly how the runtime builds them (fanout.ts `boundEvidence`).
+ *
+ * The whole page goes in, never a slice of one. That asymmetry — a checker reading fewer
+ * bytes than the leg did — is half of what refused fifty-three published facts on
+ * 2026-08-24, and the runtime now hands the refutation whole pages for the same reason
+ * (refute.ts): storage and prompts may be bounded, truth may not. */
 function pagesFrom(legs) {
   const byPage = new Map();
   for (const leg of legs) {
@@ -153,7 +143,7 @@ function pagesFrom(legs) {
       const [header, ...rest] = chunk.split('\n');
       const url = (header ?? '').replace(/\s*---\s*$/, '').trim();
       if (!url.startsWith('http')) continue;
-      byPage.set(pageKey(url), normalise(rest.join('\n')));
+      byPage.set(pageKey(url), preparePage(rest.join('\n')));
     }
   }
   return byPage;
@@ -168,13 +158,17 @@ function tryFact(value, quote, source, rowUrl, byPage) {
   const span = typeof quote === 'string' ? quote.trim() : '';
   if (span === '') return { kept: null, refusal: 'no_quote' };
 
-  const needle = normalise(span);
-  if (needle.length < MIN_QUOTE_CHARS) return { kept: null, refusal: 'quote_too_short' };
+  if (normaliseForMatch(span).length < MIN_QUOTE_CHARS) {
+    return { kept: null, refusal: 'quote_too_short' };
+  }
 
   const cited = citation(source) ?? rowUrl;
-  const pageText = byPage.get(pageKey(cited));
-  if (pageText === undefined) return { kept: null, refusal: 'source_not_read' };
-  if (!pageText.includes(needle)) return { kept: null, refusal: 'quote_absent' };
+  const page = byPage.get(pageKey(cited));
+  if (page === undefined) return { kept: null, refusal: 'source_not_read' };
+  // Verbatim first, then every load-bearing token in order inside one short window
+  // (quote-match.ts). A verbatim-only reading does not refuse fabrication on a grid, it
+  // refuses TABLES: the model reads four cells and writes them as one sentence.
+  if (!quoteIsBackedBy(span, page)) return { kept: null, refusal: 'quote_absent' };
   return { kept: stated, refusal: null };
 }
 

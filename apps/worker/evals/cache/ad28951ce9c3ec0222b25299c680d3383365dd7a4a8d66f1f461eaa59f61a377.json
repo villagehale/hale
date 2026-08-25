@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly leads with Preschool A by name, attributes facts to \"their site says\", carries the exact registration window (Tuesday Aug 11 at 7am for residents) from the page, and appropriately sets price to null since the page states fees are set by Council and published in the Recreation Guide but does not provide a specific amount. The two slots correctly capture both preschool levels at their respective times, which are the same program offered at two different session times. The commitment \"I'll keep watching for the fee and text you\" is valid because watch=true, indicating a continuation promise already exists. The message makes no unearned negative claims, does not present page facts as verified (attribution is used throughout), contains no questions or proposals, and is plain ASCII without links. The registration date is correctly carried in both the slots and the message. This is a complete, accurate research pass that properly handles the fee gap with a legitimate watch commitment rather than inventing information."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly leads with the best slot (Preschool A) by name with all attributes exactly as printed on the page. Every fact is attributed to their site (\"their site says\"). The registration window is carried precisely (\"Fall registration opens Tues Aug 11 at 7am for residents\"). The price is properly handled as null - the page prints no fee, and the message correctly states \"I couldn't pin down the fee from what I read\" (first-person acknowledgment that this is Hale's limitation, not a page shortcoming). The watch parameter is TRUE, so the continuation commitment \"I'll keep watching and text you the price\" is appropriate and correctly signals an existing tracking row. The message is plain ASCII, two sentences, makes no offer, asks no questions, and makes no unearned negative claims. The slots are accurate: two preschool levels at different times sharing the same age band and dates, not an invented third. All slot data (times, dates, age fit, registration window) match the page exactly and are properly sourced."
+  }
+}

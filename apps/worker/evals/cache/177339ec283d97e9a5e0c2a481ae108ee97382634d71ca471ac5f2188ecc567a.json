@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Every slot is accurately extracted from the page with correct day, times, dates, and age fit. The price field correctly notes that fees are \"set by Council each year, published in the current Recreation Guide\" - exactly as stated on the page, which is the honest answer when no specific fee is published. The registration window is accurately captured: \"Fall registration opens Tuesday, August 11 at 7 a.m. for Oakville residents; program options browsable online starting August 4.\" The message leads with the best slot by name, attributes facts to \"their site says,\" includes the registration window (Aug 11 at 7am), and attributes rather than claiming confirmation. It plainly states \"I couldn't pin down the exact fee\" - a first-person acknowledgment of the page's own practice of referencing the Recreation Guide, which is specific and actionable. The message is plain ASCII, one sentence with no link, no question, and no unverified offer. The watch flag is TRUE and the message correctly includes \"I'll keep watching\" in the form of committing to follow up. Two slots are extracted (Preschool A and B at different times), which is correct - they are the same program at two session times, not three separate classes. All facts are cited to the correct source page."
+  }
+}
