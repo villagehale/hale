@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Slots: Both slots are real, accurately extracted from the page. Tiny Gym: age, day, times, dates, price, registration all correct and sourced. Kinderfun: same quality. Both cite the correct URL. Registration date (July 22) is present in both slots. The watchFor note is satisfied: registration is in the slots and the message.\n\nMessage: Leads with \"Tiny Gym\" by name (correct best slot for a toddler). Attributes facts with \"their site says\" (attribution present, though placed at the end of the first sentence — acceptable). Carries the registration window (\"open since July 22 and runs until classes fill\"). Presents page facts as attributed rather than verified. Two short plain-ASCII sentences. No link. No question — correctly omits a closing question per the scoring rules. watch is FALSE and no coming-back promise is made — correct. pageEvidence is page_has_schedule and no unearned negative claim is made — correct. The $25 membership is noted. All figures match the page exactly. The message is clean, factual, and complete.",
+    "score": 5
+  }
+}

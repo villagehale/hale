@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the strongest, most specific pick (Town of Oakville's named program, ages, browsability date, and registration date/time), attributing it correctly (\"Town of Oakville lists\"). It names two other real local venues (YMCA of Oakville, Goldfish Swim School - Oakville) and honestly states \"I couldn't get into the YMCA or Goldfish Oakville pages today\" — which is exactly the right phrasing under `no_page_read` for a negative claim about those pages. The Town of Oakville pick has no price in the picks, and the message doesn't invent one — correct. The `watch` flag is TRUE and the message closes with \"I'll keep watching and text you updates,\" fulfilling the first-person commitment requirement. There is no question, no offer, no fabricated detail, no aggregator source, no generic venue, no hedging instead of naming. The message is two sentences of plain text with no link. All picks are real, named, local, and stage-appropriate. This is a near-perfect execution.",
+    "score": 5
+  }
+}

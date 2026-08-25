@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the best pick by name (\"Learn to Swim - Preschool (Levels A-E)\"), attributes it correctly (\"Town of Oakville lists\"), and gives the specific registration detail from the picks (browsable Aug 4, fall registration Aug 11 at 7am). Price is null and the source page was not read, so the gap is handled correctly with \"I couldn't get into the YMCA or Goldfish Oakville pages today\" — which is exactly the right phrasing under `no_page_read`. The message is plain text, no link, no question, no unearned negative claim, no invented times or prices. Watch is TRUE and the message includes a first-person continuation commitment (\"I'll keep watching and text you updates\"), which satisfies that requirement. The message is two segments (one about the Town pick, one about the unread pages + watch promise), fitting the hard ceiling. No directory-style list, no vague hedging, no invented detail, no aggregator source. This is a well-formed, honest, fully attributed message.",
+    "score": 5
+  }
+}

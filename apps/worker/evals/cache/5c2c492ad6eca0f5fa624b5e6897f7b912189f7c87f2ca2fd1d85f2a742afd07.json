@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick is a real, named, local program (Tiny Gym at Cartwheels Gym Centre, Halton Hills) that fits the toddler stage. The message leads with the venue name, attributes the schedule to their site (\"their site says\"), and correctly acknowledges only the price gap (not the schedule, which the page does carry) with \"I could not pin down the price or registration details\" - an appropriate first-person framing consistent with page_has_schedule. The watch flag is TRUE and the message correctly carries the commitment \"I'll keep watching and text you when those are up\" in the first person. There is no question, no offer, no invented detail, no directory list, no generic venue. The message is within two short sentences and names the find fully. The only minor concern is the watchFor note - the parent asked about a specific place (Cartwheels Gym Centre), and this message IS about that exact place, so that concern is not triggered. The price null is honestly flagged with first-person language rather than \"not posted yet,\" which is correct under page_has_schedule. This is a clean 5.",
+    "score": 5
+  }
+}

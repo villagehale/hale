@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick is a real, named, local program (Tiny Gym at Cartwheels Gym Centre, Halton Hills) that fits the toddler stage. The message leads with the venue name, attributes to \"their site says,\" and correctly names the days and times that the picks carry. Price is null in the picks, and pageEvidence is page_has_schedule, so the correct form is \"I could not pin down the price\" — which is exactly what the message says (\"I could not pin down the price or registration details\"). That is the right construction for page_has_schedule. Watch is TRUE, and the message carries a first-person commitment (\"I'll keep watching and text you when those are up\"), which is correct. The message is two short sentences, no link, no question, no directory list, no invented details, no unearned negative claim. One specific pick, properly attributed, with the gap honestly named in the form the evidence earns, and a backed commitment. This is a 5.",
+    "score": 5
+  }
+}

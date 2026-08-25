@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with a specific, named local find (Kids & Me Drop-In at Halton Hills Public Library, Acton Branch), includes real schedule details (Thursdays 1-2:30pm, free, no registration) correctly attributed to Halton Region. It then names the two EarlyON centres by location, which is correct - dropping their names in is appropriate since there was room. The negative claim about EarlyON is \"I could not get into their pages today,\" which is exactly the right phrasing for `no_page_read`. No invented times or prices for EarlyON. No closing question. No watch promise (watch is false, and no coming-back sentence is present). Two segments, under the ceiling. All picks are real, named, local, plausible for a toddler. Attribution is clear. This is a near-perfect message.",
+    "score": 5
+  }
+}
