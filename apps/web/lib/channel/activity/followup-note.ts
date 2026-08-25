@@ -242,10 +242,23 @@ const GENERIC_NAME_WORDS = new Set([
  *
  * What a parent needs in the first segment is which PLACE and which PROGRAMME. The day,
  * the clock time and the code are what `when` is for, and they are in the message anyway.
+ *
+ * ONE STRIPPED NAME, READ BY BOTH RULES. The first version stripped the parenthetical for
+ * the word test and then fell back to matching the RAW name whole — so a pick called
+ * "Parent and Tot (18 months - 3.11 yrs)", whose stripped name has no distinctive word in
+ * it at all, was asked to reproduce the very bracket just declared not part of the name.
+ * That is the same defect as the one above wearing the other face, and it deferred a good
+ * message for a fixture that had been passing.
  */
-function identifyingWords(name: string): string[] {
+function spokenName(name: string): string {
   return name
     .replace(/\([^)]*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function identifyingWords(name: string): string[] {
+  return spokenName(name)
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(
@@ -260,7 +273,7 @@ export function topPickLeads(body: string, picks: readonly ActivityPick[]): bool
   const words = identifyingWords(top.name);
   // A name with nothing distinctive in it at all ("Toddler Class") can only be matched
   // whole — there is no word in it that would tell one find from another.
-  if (words.length === 0) return head.includes(top.name.toLowerCase());
+  if (words.length === 0) return head.includes(spokenName(top.name).toLowerCase());
   return words.filter((word) => head.includes(word)).length >= Math.min(2, words.length);
 }
 

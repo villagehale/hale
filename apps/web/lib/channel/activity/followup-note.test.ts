@@ -318,6 +318,19 @@ describe('naming the find a parent is being handed', () => {
     expect(topPickLeads(vague, [GRID_ROW])).toBe(false);
   });
 
+  it('a name whose only distinctive word is IN the bracket is matched without it', () => {
+    // "Parent and Tot (18 months - 3.11 yrs)" - the venue lives in `sourceName`, and
+    // stripping the bracket leaves nothing over five letters that is not a programme
+    // noun. The first version then fell back to demanding the RAW name whole, bracket
+    // included: the same defect as the one above, wearing the other face.
+    const bracketed = { ...PICK, name: 'Parent and Tot (18 months - 3.11 yrs)' };
+
+    expect(
+      topPickLeads('Halton Hills runs Parent and Tot swim Mondays 10:00am.', [bracketed]),
+    ).toBe(true);
+    expect(topPickLeads('There is a swim class on Mondays at 10:00am.', [bracketed])).toBe(false);
+  });
+
   it('a session code is not a name, brackets or no brackets', () => {
     // The merge disambiguates however it likes, and it does not always reach for
     // brackets. A bare code is the same demand in a different shape: no SMS is going to

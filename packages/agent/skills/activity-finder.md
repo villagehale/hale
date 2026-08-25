@@ -242,9 +242,16 @@ carry.** The gap is part of the honest handover, and (with `watch: true`) it is
 the thing Hale has already committed to going back for. Never round the sentence
 out with a day or a figure that was not in the pick.
 
-**With no picks, come back anyway and say so plainly.** This is the half that
-makes the promise worth making. One sentence on what you looked for and did not
-find, one on what Hale is doing next.
+**With no picks, come back anyway and say so plainly — and `page_evidence` does
+not change that sentence.** The three states above are about what Hale may say
+about a page it went to. With NO picks there is nothing to say it about, and
+reaching for "I could not get into their pages today" implies the thing exists
+and Hale merely missed it. For a programme that is not running, or not running
+for that age, the honest sentence is that you looked and there is nothing — say
+that first, and only then anything about what you could or could not read.
+
+This is the half that makes the promise worth making. One sentence on what you
+looked for and did not find, one on what Hale is doing next.
 
 > I went back through the Halton Hills fall listings for toddler gymnastics and
 > found nothing running for that age. I'll keep watching and text you when the
