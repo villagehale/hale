@@ -16,8 +16,10 @@ import { owesDepth } from './evidence';
  *   synthesis   89.5s (Opus, 64,046 in / 11,314 out)
  *   JOB TOTAL   189.4s, and $1.81 — $1.75 of tokens plus six web searches at $0.01
  *
- * The whole question-to-two-messages turn, including the inline lane that answers the
- * parent immediately, measured $2.80 and 8 searches.
+ * THREE RUNS OF THAT SAME SUBJECT LANDED AT 189.4s, 198.8s AND 167.2s, so the spread is
+ * real but narrow and the number to size against is two hundred seconds rather than the
+ * luckiest one. The whole question-to-two-messages turn, including the inline lane that
+ * answers the parent immediately, measured $2.80 and 8 searches.
  *
  * THOSE NUMBERS REPLACED AN EARLIER 63.3s / $1.3646, AND THE GAP IS THE SUBJECT. The first
  * measurement ran against a venue with a short programme page. A municipality publishing
@@ -67,11 +69,12 @@ export const DEEP_RESEARCH_BATCH_SIZE = 1;
  * drained LAST — so the number answers one question: if we begin a deep job now, does it
  * finish inside the run's own 700-second budget?
  *
- * FIVE MINUTES, DOWN FROM SEVEN, because the measured run went from 63 seconds to 190 (see
- * the module note: a real municipal grid, not a short venue page). Seven minutes plus 190s
- * lands at 610s — still inside the 700s budget, but with nothing left for a job any slower
- * than the average one, which is precisely the job this bound exists to protect against.
- * At five minutes a run TWICE the measured one finishes at 680s and still lands inside it.
+ * FIVE MINUTES, DOWN FROM SEVEN, because the measured run went from 63 seconds to ~190 (see
+ * the module note: a real municipal grid, not a short venue page, measured three times at
+ * 167-199s). Seven minutes plus 190s lands at 610s — still inside the 700s budget, but with
+ * nothing left for a job any slower than the average one, which is precisely the job this
+ * bound exists to protect against. At five minutes a run TWICE the slowest measured one
+ * finishes at 698s and still lands inside it.
  * Past the bound the tick hands the job back and the next cron minute picks it up, so the
  * cost of being early is a minute and the cost of being late is a killed job, a promise
  * redelivered, and the whole corpus researched twice.
