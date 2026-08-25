@@ -392,6 +392,21 @@ export function statesAFigure(field: string): boolean {
 }
 
 /**
+ * FREE IS A PRICE — a complete one, and the answer to the question.
+ *
+ * {@link statesAFigure} asks for a figure, and a free drop-in has none. Requiring one made
+ * five of the six fixtures it moved look like unanswered questions: a parent told "it's
+ * free" has everything they need, and minting a watch to go back for the fee they already
+ * have is Hale promising to answer a question nobody asked. Only ever consulted for a
+ * PRICE, because "free" in a `when` is a description of the session, not a time.
+ */
+const NO_COST = /\bfree\b|\bno charge\b|\bno cost\b|\bno fee\b|\bcomplimentary\b/i;
+
+export function statesNoCost(field: string): boolean {
+  return NO_COST.test(field);
+}
+
+/**
  * How much of a long page's HEAD is kept for context no matter what it contains.
  *
  * A page's first few thousand characters are its title, its season, its "registration

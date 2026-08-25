@@ -57,6 +57,16 @@ describe('watchWarranted', () => {
     expect(watchWarranted([pick({ when: 'Fall session, dates to be confirmed' })])).toBe(true);
   });
 
+  it('FREE IS A PRICE - and demanding a figure made five free drop-ins look unanswered', () => {
+    // Measured across the eval corpus's twenty-six top picks: requiring a figure moved
+    // six, and five of them were free. A parent told "it's free" has the whole answer,
+    // and a watch row to go back for the fee is Hale promising to answer nothing.
+    expect(watchWarranted([pick({ price: 'Free' })])).toBe(false);
+    expect(watchWarranted([pick({ price: 'Free drop-in, no registration' })])).toBe(false);
+    // ...but "free" is not a WHEN. A session described as free play still has no day.
+    expect(watchWarranted([pick({ when: 'Free play', price: '$124 per term' })])).toBe(true);
+  });
+
   it('POSITIVE CONTROL - a partial figure is still a figure', () => {
     // The gate must not become "only a perfect field counts", or every find grows a watch
     // and the sentence that promises one stops meaning anything.

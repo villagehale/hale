@@ -12,7 +12,7 @@ import {
 } from './commitment';
 import type { DeepSlot } from './deep';
 import type { PageVerdict } from './evidence';
-import { statesAFigure } from './quote-match';
+import { statesAFigure, statesNoCost } from './quote-match';
 import {
   type FollowUpComposer,
   type FollowUpFallback,
@@ -87,7 +87,7 @@ export function noEvidence(): FollowUpEvidence {
 export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
   const top = picks[0];
   if (!top) return true;
-  return !carriesFact(top.when) || !carriesFact(top.price);
+  return !carriesFact(top.when, 'when') || !carriesFact(top.price, 'price');
 }
 
 /**
@@ -112,9 +112,15 @@ export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
  * (quote-match.ts's anchors, the same reading the refutation uses). Erring towards "this
  * is a gap" costs a watch Hale would have kept anyway; erring the other way is a parent
  * told they have the whole answer.
+ *
+ * EXCEPT THAT FREE IS A PRICE. Measured across the corpus's twenty-six distinct top picks,
+ * demanding a figure moved six of them and five were free drop-ins — a complete answer
+ * turned into an open question, on one of this product's beachhead subjects. Which field
+ * is being read decides whether "free" means anything, so the field says which it is.
  */
-function carriesFact(field: string | null): boolean {
+function carriesFact(field: string | null, kind: 'when' | 'price'): boolean {
   if (field === null || field.trim() === '' || claimsNotPosted(field)) return false;
+  if (kind === 'price' && statesNoCost(field)) return true;
   return statesAFigure(field);
 }
 
