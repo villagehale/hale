@@ -1,0 +1,19 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Kids & Me, Halton Hills Public Library – Acton Branch",
+        "age_fit": "families with babies or children up to 6 years of age",
+        "when": "Thursdays 1:00 p.m. to 2:30 p.m., following the school calendar starting the second week of September",
+        "price": "Free, registration not required",
+        "source_name": "Halton Region"
+      },
+      {
+        "name": "EarlyON Child and Family Centre – Acton & Georgetown",
+        "age_fit": "children from birth to their 6th birthday, with a parent or caregiver",
+        "source_name": "Links2Care (EarlyON Acton & Georgetown)"
+      }
+    ]
+  },
+  "latencyMs": 6546
+}

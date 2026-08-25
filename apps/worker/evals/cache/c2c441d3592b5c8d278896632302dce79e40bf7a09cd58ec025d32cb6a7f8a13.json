@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names the right venue (Cartwheels Gym Centre / Tiny Gym), matches the parent's request, gives the stage-appropriate age range, and cites the source (\"their site says\"). The when fields are drawn directly from the picks. The price is null in the picks, and pageEvidence is page_has_schedule, meaning the page was open and does carry times/prices — so the correct framing for a missing price is first-person (\"I could not pin down the price\") not \"not posted yet,\" and the message correctly says \"I could not pin down the price or registration details.\" That is exactly the right language for page_has_schedule. watch is TRUE and the message closes with \"I'll keep watching and text you when I can get to them\" — a first-person commitment that matches the existing watch row. There is no question, no offer, no invented detail, no directory list. The only minor issue is the closing phrase \"when I can get to them\" is slightly ambiguous (could mean the venue, could mean the details), but it reads as \"when I can pin down those details\" which is acceptable. Overall this is clean, attributed, correctly limited to one pick, correctly handles the schedule gap, and honours the watch commitment.",
+    "score": 5
+  }
+}

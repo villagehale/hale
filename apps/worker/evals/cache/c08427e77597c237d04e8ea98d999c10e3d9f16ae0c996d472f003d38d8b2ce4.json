@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names a real, specific local pick (Kids & Me at Halton Hills Public Library, Acton Branch) with correct details drawn from the picks: free, Thursdays 1:00–2:30pm, no registration, starting second week of September. It attributes correctly (\"their site says\" — though technically the source is Halton Region, not the library's own site, this is a minor imprecision rather than a fabrication). It then names the second pick (EarlyON Acton & Georgetown) and handles the null when/price correctly under `no_page_read`: \"I could not get into their page today for times\" — this is exactly the right formulation for `no_page_read`. No invented times or prices for EarlyON. No question asked. No watch promise (watch is false, so none expected). Two sentences, under the two-segment ceiling. No directory list, no vague hedging, no withholding. The only small imprecision is \"their site says\" when the source is Halton Region rather than the library's own site, but this is not a fabricated claim and does not materially mislead. Overall this is a strong, compliant message.",
+    "score": 5
+  }
+}

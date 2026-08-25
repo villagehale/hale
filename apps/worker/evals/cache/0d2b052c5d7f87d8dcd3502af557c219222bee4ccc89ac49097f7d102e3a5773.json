@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick is the correct venue (Cartwheels Gym Centre / Tiny Gym in Halton Hills), it fits the toddler stage (1–3 years with parent), and the message leads with the name. The when details (Term 1 dates, specific slots) come from the pick and are attributed via \"their site says.\" The price is null in the pick, and pageEvidence is page_has_schedule, meaning the page was open and did publish times — which it did (the when is populated). The price was apparently not on the page or not found, so \"I could not pin down the price or registration details\" is a first-person admission, which is the correct form under page_has_schedule. That is scored correctly. Watch is TRUE and the message contains a first-person commitment (\"I'll keep watching and text you when I can get to them\") — this satisfies the requirement. The message is two sentences (within the ceiling), makes no unearned negative claim, asks no question, makes no offer, and names a real specific local program. The only minor issue: \"when I can get to them\" is slightly ambiguous compared to the ideal \"when they post\" but it still conveys a monitoring commitment rather than a vague non-promise. Overall this is a well-formed, attribution-correct, commitment-bearing message with no invented details.",
+    "score": 5
+  }
+}
