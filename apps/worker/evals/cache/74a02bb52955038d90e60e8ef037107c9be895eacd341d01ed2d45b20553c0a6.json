@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message delivers an empty pick list with no actual venues named. While `watch` is TRUE (so a continuation promise is required and correctly stated as \"I'll keep looking and text you what they say\"), the core failure here is that Hale found NOTHING in a search for drop-in play groups in a covered town where these programs are \"always running somewhere.\" The message says \"I could not get into the drop-in play group pages today\" - but there are no picks listed at all, which means no pages were identified to fail to get into. This is not an honest account of what was searched; it's a hedge that avoids naming any venue Hale looked at and found blocked. A parent asking what their toddler can do locally has been handed zero actionable options and no specificity about what was actually attempted. The promise to follow up is correct in form, but cannot rescue a message that withholds all finds and names nothing."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets all criteria for a perfect score: (1) The slot facts are real and exactly as printed on the page - day/time (Sundays 9:30-10:15am), dates (Sept 14 to Oct 26), and price ($124 plus $25 membership) are all accurately cited. (2) The registration window is correctly carried - \"Registration opened July 22 and stays open until classes fill\" matches the page exactly. (3) Attribution is correct (\"their site says\") rather than false claims of confirmation. (4) The message is one sentence, plain ASCII, no link, and ends on a statement with NO QUESTION - this is correct form, not a gap. (5) Since watch=false, no continuation promise was needed or should be made, and none was made. (6) The pageEvidence indicates page_has_schedule, and the message does not make any false negative claims about what the page carries. (7) The child's age (toddler, walking to 3.5 years) matches the Tiny Gym age band exactly. (8) The best slot by name (Tiny Gym) leads the message. (9) The registration date from the slot is preserved and delivered to the parent. This is a complete, accurate research pass with no violations."
+  }
+}

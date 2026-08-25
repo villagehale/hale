@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the best, most specific pick by full name (\"Oakville's Preschool Learn to Swim (levels A-E)\"), attributes it to the town's own site (\"their site says\"), and correctly handles the missing price/time gap. The page evidence is `no_page_read`, meaning the right phrasing for the negative claim is \"I could not get into their page today\" — and the message uses exactly that wording, which is correct. `watch` is TRUE and the message closes with a first-person commitment (\"I'll keep watching and text you once I have those details\"), satisfying that requirement. The message is two short sentences of plain text, no link, no question, no offer. It drops the YMCA and Goldfish picks to fit the best one complete — that is correct, not withholding. The source (\"Town of Oakville\") is a legitimate municipal recreation program, not a generic venue or a listings aggregator. No invented days, times or prices appear. All rules are satisfied.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the best pick by name, quotes the day and time accurately from the picks, attributes to Halton Region, and correctly notes no registration needed. For the EarlyON centres, when/price are null and pageEvidence is `no_page_read`, so the correct phrasing is \"I could not get into their pages today\" — and that is exactly what the message says. No invented times or prices. No question asked. No watch promise (watch is false, so none is needed). All three picks are real, specific, named local venues fitting the toddler stage. Two sentences, plain text, no link. This is a clean execution.",
+    "score": 5
+  }
+}

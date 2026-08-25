@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "All criteria met: (1) The slot accurately reflects page content - age band (12 months to 4 years), day/time (Tuesdays and Thursdays, 9:30-11:00am), and dates (September 8 to December 11) are all directly from the programme page, not borrowed from the rentals page. (2) The price slot correctly carries \"Not posted on this page\" and explains where to find it, avoiding the trap of applying the $185 birthday party rental rate to a toddler class. (3) Registration is correctly marked as not stated. (4) The message leads with the programme name, attributes facts to the site (\"their site says\"), and correctly uses first-person attribution for the price gap (\"I could not pin down the price\") rather than claiming the page never published one - this is the right phrasing given pageEvidence=page_has_schedule. (5) Watch=true, and the message includes the required continuation commitment: \"I'll keep watching and text you when I confirm them\" - this signals an existing promise to return. (6) The message is two plain sentences with no link, no question, and no unearned offer. (7) No registration date appears on either page, so omitting it from both slot and message is correct. The response avoids the watchFor trap entirely by refusing to attach rental figures to the class."
+  }
+}

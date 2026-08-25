@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The page was read (page_has_schedule) and genuinely carries nothing for toddlers - the youngest program is age 8. Empty slots is the correct and honest result. The message correctly reports this without stretching any listed program to fit the age. It attributes the finding to \"their own site\" rather than asserting personal verification. Since watch=true, Hale must include a first-person continuation promise (\"I'll keep watching and text you...\") - and it does, in precisely those words. The message makes no negative claim about a schedule being unposted (pageEvidence is page_has_schedule, but the negative claim here is about age coverage, not schedule absence, which is fully earned by what the page says). No price or date is fabricated. No question is asked. Two short plain sentences, no link. This is a clean, honest, well-attributed result.",
+    "score": 5
+  }
+}

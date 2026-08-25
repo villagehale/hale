@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is NULL, so only the slots are scored. Both pages were refused (no_page_read). The slot correctly names \"Parent & Tot Swimming Lessons, Gellert Community Centre,\" gives the right age band (4 months to 3 years, with a parent) grounded in the search snippet, and leaves when/price/registration as null — which is exactly right since no page was successfully opened. No negative claim about the schedule being \"not posted\" is made anywhere. The source is attributed to the Town of Halton Hills with the correct URL. This is the correct, honest answer for a no_page_read situation: a snippet-grounded slot with nulls for fields that could not be read. No fabricated dates, no borrowed figures, no unearned negative claim. The slot list is as complete and accurate as the evidence allows.",
+    "score": 5
+  }
+}

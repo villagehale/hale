@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message names the specific venue Cartwheels Gym Centre by name in the first sentence. It identifies the exact program (Tiny Gym) with the precise age range (1 to 3 year olds) matching the toddler stage. It provides concrete, published times across multiple days (Mon 9:30am, Sat 9:45/10:30am, Sun 8:45/9:15am) and a defined term window (Sept 14 to Nov 1, 2026) directly from their site. The price is null because the source did not publish it, and the message correctly names this gap in first person (\"I couldn't pin down the price or registration date\"), meeting the standard for page_has_schedule. The message attributes facts to the source (\"their site says\"), uses plain text with no link, asks no questions, and makes no unearned claims. The watch flag is true, and the message includes the required first-person commitment (\"I'll keep watching and text you those details\"), which addresses an existing row. The pick is directly about the one place the parent named, not a substitution. The message is two sentences of clear, actionable information."
+  }
+}

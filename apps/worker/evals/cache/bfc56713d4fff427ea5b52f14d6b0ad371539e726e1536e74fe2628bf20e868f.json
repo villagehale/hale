@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Slots: Both slots are well-formed and faithful to the page. Tiny Gym and Kinderfun slots accurately reflect the page's day/time, date range, price, registration window, and source URL. The $25 membership note is correctly appended. No fabricated figures, no wrong age bands, no missing registration dates.\n\nMessage: Leads with the best slot by name (\"Tiny Gym\"), attributes facts to \"their site says,\" carries the registration window (\"Registration opened July 22 and runs until classes fill\"), does not present facts as personally verified, and is two short plain-ASCII sentences with no link and no question. The hard ceiling of two segments is respected by dropping Kinderfun entirely, which is correct since Tiny Gym is the stronger toddler fit and there is no room. watch=false and no coming-back promise is made, which is correct. pageEvidence=page_has_schedule and no negative claim is made about the page, which is also correct.\n\nThe one minor roughness is the attribution phrase \"their site says\" appears mid-sentence rather than leading or cleanly closing, but the rules require attribution not a specific placement, and the meaning is unambiguous. Everything the watchFor note flags (registration date, fee, block dates) is present in the message. No deductions warranted.",
+    "score": 5
+  }
+}

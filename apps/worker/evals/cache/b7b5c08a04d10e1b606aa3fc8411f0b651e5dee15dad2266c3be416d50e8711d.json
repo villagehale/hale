@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message scores a 5. It correctly names the specific venue the parent asked about (Cartwheels Gym Centre), attributes the program details to their site (\"their site says\"), describes a real toddler class (Tiny Gym) with age-appropriate details (1-year-olds walking independently), and handles the missing schedule information properly given pageEvidence=no_page_read by stating \"I could not get into their fall schedule page today.\" The message includes the required first-person continuation commitment (\"I'll keep looking and text you what it says\") since watch=true. It is plain text with no link, no question, and no false offer. The message directly answers the parent's question about what the named venue offers without substituting other gyms, and the pick is genuine and specific to the requested location."
+  }
+}

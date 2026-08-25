@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The slots are accurate and complete. Both Tiny Gym and Kinderfun are real programs on the page with exact details: days, times, dates, fees, and the registration window (opened July 22, runs until full). The message correctly leads with the best slot by name (Tiny Gym), attributes facts to \"their site says,\" includes the registration window opened July 22, cites the source page, and avoids presenting information as verified rather than reported from the site. The message is plain ASCII, one sentence, contains no link, and asks no question - all correct. No watch continuation is present, which is correct since watch=false. The page was opened (pageEvidence=page_has_schedule) and the message makes no false negative claims about what the page carries. All cited facts (day, time, date range, price, registration date) match the page exactly."
+  }
+}

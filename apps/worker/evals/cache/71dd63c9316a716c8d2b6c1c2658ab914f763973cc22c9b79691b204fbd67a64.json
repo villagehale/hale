@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message names the best pick first (EarlyON) with its actual name and age range, attributes the information correctly (\"offers free drop-in\"), acknowledges the page was not readable today with first-person language (\"I couldn't get into their schedule page today\"), and makes an honest commitment to follow up (\"I'll keep looking and text you what it says\"). The message is one sentence of plain text with no link and no question, making no offer. The second pick (Kids & Me) is correctly omitted to keep focus on the strongest find. The price is not invented—it remains null where the source had not published it, which is correct. The watch flag is TRUE, so the continuation promise is properly backed by an existing row commitment. No negative claims are made beyond what the unfetched page evidence (no_page_read) earns: \"I couldn't get into their schedule page\" is an honest report of an unopened page, not an invention."
+  }
+}

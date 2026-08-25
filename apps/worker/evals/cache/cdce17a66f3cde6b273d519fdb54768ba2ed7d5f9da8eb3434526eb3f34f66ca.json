@@ -1,0 +1,22 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Learn to Swim - Parent and Tot / Preschool, Town of Oakville",
+        "age_fit": "Preschool levels (Swim for Life program) - children must be the required age for the level by the program start date",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "Preschool Swim Lessons, YMCA of Oakville",
+        "age_fit": "children between 3 to 5 years old",
+        "source_name": "YMCA of Oakville"
+      },
+      {
+        "name": "Preschool Swim Lessons, Goldfish Swim School Oakville",
+        "age_fit": "indoor lessons for children ages 4 months through 12 years old, with preschool-stage classes following the infant level",
+        "source_name": "Goldfish Swim School Oakville"
+      }
+    ]
+  },
+  "latencyMs": 2433
+}

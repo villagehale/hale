@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Slots: Both slots are accurate and fully grounded in the page. Tiny Gym and Kinderfun details — days, times, session windows, fees, membership note, registration window — all match the page exactly. Each slot is cited to the correct URL. The registration date (July 22) is carried in both slots as required. Slot quality is excellent.\n\nMessage: Leads with the best slot by name (\"Tiny Gym\"). All facts — day, time, session window, fee, membership — match the page. The registration window (\"opened July 22 and runs until classes fill\") is present, satisfying the watchFor requirement. Attribution is present (\"their site says\"). No link included. No question asked — correct per the rubric. Two short plain-ASCII sentences. No unverified claims; \"their site says\" is proper attribution, not verification. pageEvidence is page_has_schedule and no negative claim is made about the page, so no issue there. watch is false and no coming-back promise is made — correct. Dropping Kinderfun whole to keep the message tight is correct per the rubric. This is essentially a clean 5.",
+    "score": 5
+  }
+}

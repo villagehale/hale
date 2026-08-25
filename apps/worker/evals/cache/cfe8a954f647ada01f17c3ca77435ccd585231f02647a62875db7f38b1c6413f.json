@@ -1,0 +1,15 @@
+{
+  "value": {
+    "slots": [
+      {
+        "name": "Tiny Tumblers, Riverbend Community Centre",
+        "age_fit": "12 months - 4 yrs",
+        "when": "Tuesdays 9:30-10:15 AM, September 8 to December 11",
+        "when_quote": "Tiny Tumblers | Tue | 9:30-10:15 AM | 12 months - 4 yrs\nSession runs September 8 to December 11.",
+        "source_name": "Riverbend Community Centre",
+        "source_url": "https://riverbend.example/programs"
+      }
+    ]
+  },
+  "latencyMs": 3575
+}

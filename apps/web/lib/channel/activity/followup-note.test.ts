@@ -8,6 +8,7 @@ import {
   followUpViolations,
   statesTheReturn,
   topPickLeads,
+  waitsOnAPageItCouldNotRead,
 } from './followup-note';
 import type { ActivityPick } from './lane';
 
@@ -37,7 +38,7 @@ function grounding(over: Partial<FollowUpGrounding> = {}): FollowUpGrounding {
   return {
     subject: 'toddler gymnastics',
     picks: [PICK],
-    pagesOpened: true,
+    pageEvidence: 'page_has_no_schedule',
     watch: false,
     ...over,
   };
@@ -163,6 +164,76 @@ describe('the top pick lands in the first segment', () => {
   });
 });
 
+/**
+ * THE CONTINUATION IS A CLAIM ABOUT WHY HALE IS COMING BACK.
+ *
+ * `claimsNotPosted` refuses the present tense and cannot see the same claim in the
+ * future: "I'll keep watching and text you once the details are up" presupposes they are
+ * not up. Live on 2026-08-24 the composer got the gap right in Hale's own voice — "I
+ * couldn't pin down the day, time or price from their term PDF" — and then handed it
+ * straight back to the page one clause later, about a venue whose term schedule WAS
+ * posted, in a PDF it could not decode and behind a login it could not enter.
+ */
+describe('a message may not say Hale could not get at a fact AND that it awaits posting', () => {
+  const CANNOT = 'I could not pin down the day, time or price from their term PDF.';
+
+  it.each([
+    "I'll keep watching and text you once the details are up.",
+    "I'll keep watching and text you when they post those.",
+    "I'll keep watching and text you when more posts.",
+    "I'll keep watching and text you when the fall guide goes up.",
+    "I'll text you as soon as they're posted.",
+  ])('refuses it beside an access failure: %s', (tail) => {
+    expect(waitsOnAPageItCouldNotRead(`${CANNOT} ${tail}`)).toBe(true);
+  });
+
+  it.each([
+    // What Hale is really waiting on, said beside the same access failure.
+    "I'll keep watching and text you when I can get to them.",
+    "I'll keep watching and text you when I can read them.",
+    "I'll text you once I can look it up.",
+    "I'll keep watching and text you if that changes.",
+  ])('lets through the honest continuation: %s', (tail) => {
+    expect(waitsOnAPageItCouldNotRead(`${CANNOT} ${tail}`)).toBe(false);
+  });
+
+  /**
+   * AND WITHOUT THE ACCESS FAILURE THERE IS NO CONTRADICTION. `page_evidence` is one
+   * verdict for a whole message while the gaps are per-field, so a body whose schedule
+   * the page published and whose FEES really do live in a Council guide is entitled to
+   * wait on the town. Gating on the verdict alone refused that message three times and
+   * deferred a promise the judge scored 4.
+   */
+  it('POSITIVE CONTROL - the same waiting sentence stands when Hale claimed no failure', () => {
+    const honest =
+      "Oakville's Learn to Swim has Preschool A Saturdays 9:00-9:30 - their site says, price set in the current Recreation Guide. I'll keep watching and text you when more posts.";
+
+    const oakville: ActivityPick = {
+      ...PICK,
+      name: 'Preschool A, Town of Oakville Learn to Swim',
+      sourceName: 'Town of Oakville',
+    };
+
+    expect(waitsOnAPageItCouldNotRead(honest)).toBe(false);
+    expect(
+      followUpViolations(
+        honest,
+        grounding({ picks: [oakville], pageEvidence: 'page_has_schedule', watch: true }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('is a violation whatever the page verdict says, because the body contradicts itself', () => {
+    const body = `${PICK.name} runs Saturdays - their site says, though I could not pin down the price. I'll keep watching and text you once the price is up.`;
+
+    for (const pageEvidence of ['page_has_schedule', 'no_page_read'] as const) {
+      expect(followUpViolations(body, grounding({ pageEvidence, watch: true })).join(' ')).toContain(
+        'when YOU can get at them',
+      );
+    }
+  });
+});
+
 describe('the mechanical gates', () => {
   it('refuses a link, an over-long body and a non-GSM7 character', () => {
     const withLink = `${PICK.name} runs Saturdays - see haltonhillsgym.ca`;
@@ -173,6 +244,46 @@ describe('the mechanical gates', () => {
     const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
     expect(followUpViolations(long, grounding({ subject: 's' })).join(' ')).toContain(
       'segments',
+    );
+  });
+
+  /**
+   * THE OVER-LONG REFUSAL SAYS WHAT TO DROP, because it is the only place in this lane
+   * that has MEASURED anything. The skill used to carry the rule ("cut the SECOND find")
+   * and the model had to guess when it applied; guessing costs a whole find, so it
+   * guessed early and dropped a complete second find into a message with room for it.
+   */
+  it('the over-long refusal names the cut - the last find whole, never the leading find', () => {
+    const second: ActivityPick = { ...PICK, name: 'Preschool Drop-In Gym' };
+    const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
+
+    const twoFinds = followUpViolations(long, grounding({ picks: [PICK, second] })).join(' ');
+    expect(twoFinds).toContain('Drop the LAST find whole');
+
+    // POSITIVE CONTROL, and the reason the sentence is conditional: with one find there
+    // is no find to drop, and telling the model to drop it is telling it to go quiet.
+    const oneFind = followUpViolations(long, grounding()).join(' ');
+    expect(oneFind).not.toContain('Drop the LAST find whole');
+    expect(oneFind).toContain('never the facts');
+  });
+
+  /**
+   * AND THE CUT MAY NOT BE PAID FOR OUT OF A DIFFERENT GATE. The first version of the
+   * length correction ended "keep the rest as they are", and the composer read that as
+   * licence: it kept both finds whole and deleted the continuation sentence instead, then
+   * failed `statesTheReturn` twice more and sent a kept promise that never said Hale was
+   * still on it. A correction satisfiable by breaking another gate is a loop into silence.
+   */
+  it('the over-long refusal protects the continuation sentence when a row exists', () => {
+    const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
+
+    expect(followUpViolations(long, grounding({ watch: true })).join(' ')).toContain(
+      'never the sentence saying Hale will keep watching',
+    );
+    // POSITIVE CONTROL - with no row written there is no such sentence to protect, and
+    // demanding one is the unbacked promise this lane refuses in the other direction.
+    expect(followUpViolations(long, grounding({ watch: false })).join(' ')).not.toContain(
+      'keep watching',
     );
   });
 
@@ -236,16 +347,54 @@ describe('the payload the composer is handed', () => {
     expect(payload.picks[0]).toHaveProperty('registration', null);
   });
 
-  it('carries whether a page was opened and whether a continuation row exists', () => {
+  it('carries what the pages license and whether a continuation row exists', () => {
     // Both are facts about the SWEEP, and both reached the model through nothing until
     // now — which is how a turn that opened no page went on writing "not posted yet",
-    // and how an offer with no row behind it went out.
+    // and how an offer with no row behind it went out. `page_evidence` is three-valued
+    // rather than a boolean because "I could not open it" and "I opened it and could not
+    // pin these details" are different sentences (2026-08-24).
     const payload = JSON.parse(
-      followUpUserMessage(grounding({ pagesOpened: false, watch: true })),
+      followUpUserMessage(grounding({ pageEvidence: 'no_page_read', watch: true })),
     );
 
-    expect(payload.pages_opened).toBe(false);
+    expect(payload.page_evidence).toBe('no_page_read');
     expect(payload.watch).toBe(true);
+    expect(
+      JSON.parse(followUpUserMessage(grounding({ pageEvidence: 'page_has_schedule' })))
+        .page_evidence,
+    ).toBe('page_has_schedule');
+  });
+
+  /**
+   * WITH NO PICKS THERE ARE NO PAGES TO REPORT ON, so the payload carries none.
+   *
+   * The skill's precedence rule already said `page_evidence` is not the subject of an
+   * empty-handed message, and the rule lost: handed `no_page_read` and nothing else to
+   * talk about, the composer wrote "I could not get into any pages today for toddler
+   * underwater basket weaving" — a sentence that tells a parent the programme exists and
+   * Hale merely missed it. It does not exist. A model that is never handed a page fact
+   * cannot blame a page, which is the difference between a rule and a construction.
+   *
+   * `picks_empty` rather than a dropped key, for the same reason the picks carry an
+   * explicit `registration: null`: silence reads to a model as a field it may fill in,
+   * and this one is a fact about the search that the message is entirely about.
+   */
+  it('with NO picks the payload carries no page state at all - only that there was nothing', () => {
+    const payload = JSON.parse(
+      followUpUserMessage(
+        grounding({ picks: [], pageEvidence: 'no_page_read', watch: true }),
+      ),
+    );
+
+    expect(Object.keys(payload).sort()).toEqual([
+      'mode',
+      'picks',
+      'picks_empty',
+      'subject',
+      'watch',
+    ]);
+    expect(payload.picks_empty).toBe(true);
+    expect(payload.picks).toEqual([]);
   });
 
   it('carries the subject and the mode, and nothing about the family (rule #1)', () => {
@@ -255,7 +404,7 @@ describe('the payload the composer is handed', () => {
 
     expect(Object.keys(payload).sort()).toEqual([
       'mode',
-      'pages_opened',
+      'page_evidence',
       'picks',
       'subject',
       'watch',
@@ -289,12 +438,106 @@ describe('an offer is a proposal, so this lane makes none', () => {
   });
 });
 
+describe('naming the find a parent is being handed', () => {
+  const GRID_ROW = {
+    ...PICK,
+    name: 'Parent and Tot 1, 2, 3 - Gellert Community Centre (Mon 10:00AM daytime, code 108969)',
+  };
+
+  it('THE 2026-08-24 DEFERRAL: a name disambiguated in brackets is still named by its place', () => {
+    // Once the merge could see the grid it returned thirty rows differing only by
+    // weekday and told them apart inside `name`. Read whole, that made "daytime" and
+    // "108969" identifying words - so the gate wanted an SMS to quote a session code,
+    // no draft could, and a complete verified schedule deferred into silence.
+    const body =
+      'Gellert Community Centre runs Parent and Tot swim Mondays 10:00-10:30am, Oct 5 to Dec 7, $86.22 for 9 lessons - their site says.';
+
+    expect(topPickLeads(body, [GRID_ROW])).toBe(true);
+  });
+
+  it('POSITIVE CONTROL - a message that names no place is still refused', () => {
+    const vague = 'There is a toddler swim class running this fall - their site says.';
+
+    expect(topPickLeads(vague, [GRID_ROW])).toBe(false);
+  });
+
+  it('a name whose only distinctive word is IN the bracket is matched without it', () => {
+    // "Parent and Tot (18 months - 3.11 yrs)" - the venue lives in `sourceName`, and
+    // stripping the bracket leaves nothing over five letters that is not a programme
+    // noun. The first version then fell back to demanding the RAW name whole, bracket
+    // included: the same defect as the one above, wearing the other face.
+    const bracketed = { ...PICK, name: 'Parent and Tot (18 months - 3.11 yrs)' };
+
+    expect(
+      topPickLeads('Halton Hills runs Parent and Tot swim Mondays 10:00am.', [bracketed]),
+    ).toBe(true);
+    expect(topPickLeads('There is a swim class on Mondays at 10:00am.', [bracketed])).toBe(false);
+  });
+
+  it('naming the VENUE names the find, when the name itself carries a programme stream', () => {
+    // "Toddler Program (18 months - 3 years), Preschool and Kinderfun" reduces to
+    // "kinderfun" - a stream nobody would text - and the venue lives in `sourceName`.
+    // A parent reading "Halton Hills Gymnastics Centre runs a Toddler Program" knows
+    // exactly which find this is; the gate used to refuse it.
+    const streamNamed = {
+      ...PICK,
+      name: 'Toddler Program (18 months - 3 years), Preschool and Kinderfun',
+      sourceName: 'Halton Hills Gymnastics Centre',
+    };
+
+    expect(
+      topPickLeads(
+        'Halton Hills Gymnastics Centre runs a Toddler Program for 18 months-3 years, fall session Sept 10 to Dec 16 - their site says.',
+        [streamNamed],
+      ),
+    ).toBe(true);
+    // POSITIVE CONTROL - naming neither the venue nor the programme is still refused.
+    expect(
+      topPickLeads('There is a fall toddler session running Sept 10 to Dec 16.', [streamNamed]),
+    ).toBe(false);
+  });
+
+  it('a session code is not a name, brackets or no brackets', () => {
+    // The merge disambiguates however it likes, and it does not always reach for
+    // brackets. A bare code is the same demand in a different shape: no SMS is going to
+    // say "108969", and no parent would want it to.
+    const bare = { ...PICK, name: 'Parent and Tot 108969, Gellert Community Centre' };
+    const body =
+      'Gellert Community Centre runs Parent and Tot swim Mondays 10:00-10:30am, $86.22 for 9 lessons - their site says.';
+
+    expect(topPickLeads(body, [bare])).toBe(true);
+  });
+
+  it('still needs two words when the name outside the brackets carries two', () => {
+    const twoWords = { ...PICK, name: 'Kinderfun Toddler Program, Cartwheels Gym Centre (Sat 9:15)' };
+
+    expect(topPickLeads('Cartwheels runs a toddler program Saturdays 9:15.', [twoWords])).toBe(
+      false,
+    );
+    expect(
+      topPickLeads('Cartwheels Gym Centre runs Kinderfun Saturdays 9:15.', [twoWords]),
+    ).toBe(true);
+  });
+});
+
 describe('a claim about a page requires a page', () => {
   it.each([
     "Their fall days, times and prices aren't posted yet.",
     'The fall guide is not up.',
     'Nothing is listed for the fall session.',
     'No dates published for the fall term.',
+    // THE SENTENCE THAT SHIPPED, 2026-08-24. Comma-scoped, this gate could not see it:
+    // one fragment held "no day" and the next held "on the fall page yet", and the claim
+    // lived across the join.
+    'Their site lists these but no day, time or price on the fall page yet.',
+    'The site shows the programs but the fall times are not up yet.',
+    // THE LIST COMMA, which is the ordinary way to say this: the negation is in the first
+    // item and the publishing word is after the last one, so no CLAUSE holds both halves.
+    'No day, time or price is posted for the fall term.',
+    // WHAT THE LIVE COMPOSER ACTUALLY WROTE when it had the licence, 2026-08-24. There is
+    // no publishing verb in it at all - it names the surface instead, and it is the same
+    // assertion.
+    "Their site says, but fall days and times aren't on the page yet.",
   ])('reads %s as a claim about a page', (body) => {
     expect(claimsNotPosted(body)).toBe(true);
   });
@@ -304,28 +547,57 @@ describe('a claim about a page requires a page', () => {
     "I could not read their page today, so I'll keep watching.",
     'Their site says Tiny Gym runs Sundays 9:30.',
     'Registration has been open since July 22.',
+    // HALE'S ABSENCE, NOT THE PAGE'S - the sentence the uncertain state is supposed to
+    // produce, and the one a widened gate would otherwise make unwritable.
+    'Their site lists this one, though I could not confirm the day or the price.',
+    "Their fall page is up but I couldn't pin down the times, so I'll keep looking.",
+    // THE CANONICAL GOOD MESSAGE, and the one an optional apostrophe refuses: "Parent"
+    // ends in the same two letters as "aren't". Beside "lists" that read a complete,
+    // correct find as a report that nothing was published - three recompositions and
+    // then silence, on this product's most common subject.
+    'Gellert lists Parent and Tot Mondays 10:00, $86.22 for nine.',
+    'The current term is important and their site lists it.',
   ])('lets %s through - none of these claims a page said nothing', (body) => {
     expect(claimsNotPosted(body)).toBe(false);
   });
 
-  it('THE DEFECT: with no page opened, the unposted claim is refused', () => {
-    const body = `${PICK.name} runs a toddler class - their site says, but fall days and prices aren't posted yet. I'll keep watching and text you when they go up.`;
+  const UNPOSTED = `${PICK.name} runs a toddler class - their site says, but fall days and prices aren't posted yet. I'll keep watching and text you when they go up.`;
 
+  it('THE DEFECT: with no page opened, the unposted claim is refused', () => {
     expect(
-      followUpViolations(body, grounding({ pagesOpened: false, watch: true })).join(' '),
+      followUpViolations(UNPOSTED, grounding({ pageEvidence: 'no_page_read', watch: true })).join(
+        ' ',
+      ),
     ).toContain('not posted');
   });
 
-  it('POSITIVE CONTROL - the SAME words pass once a page was actually opened today', () => {
-    const body = `${PICK.name} runs a toddler class - their site says, but fall days and prices aren't posted yet. I'll keep watching and text you when they go up.`;
+  it('THE 2026-08-24 DEFECT: a page that DOES publish a schedule refuses it too', () => {
+    // Seven pages opened, the fall grid on one of them, every fact off it refused by the
+    // checker - and the old boolean licensed exactly this sentence about a schedule that
+    // was published. A refusal is Hale not knowing; it is not a page being empty.
+    const violations = followUpViolations(
+      UNPOSTED,
+      grounding({ pageEvidence: 'page_has_schedule', watch: true }),
+    );
 
-    expect(followUpViolations(body, grounding({ pagesOpened: true, watch: true }))).toEqual([]);
+    expect(violations.join(' ')).toContain('not posted');
+    expect(violations.join(' ')).toContain('could not pin');
   });
 
-  it('POSITIVE CONTROL - the uncertain sentence passes with no page opened', () => {
-    const body = `${PICK.name} runs a toddler class for under-3s - their site says. I could not get into their fall schedule page today, so I'll keep looking and text you what it says.`;
+  it('POSITIVE CONTROL - the SAME words pass when the page really does carry nothing', () => {
+    expect(
+      followUpViolations(UNPOSTED, grounding({ pageEvidence: 'page_has_no_schedule', watch: true })),
+    ).toEqual([]);
+  });
 
-    expect(followUpViolations(body, grounding({ pagesOpened: false, watch: true }))).toEqual([]);
+  it('POSITIVE CONTROL - the uncertain sentence passes in both unlicensed states', () => {
+    const unread = `${PICK.name} runs a toddler class for under-3s - their site says. I could not get into their fall schedule page today, so I'll keep looking and text you what it says.`;
+    const unpinned = `${PICK.name} runs a toddler class for under-3s - their site lists it. I could not pin down the fall day or fee, so I'll keep looking and text you what it says.`;
+
+    expect(followUpViolations(unread, grounding({ pageEvidence: 'no_page_read', watch: true }))).toEqual([]);
+    expect(
+      followUpViolations(unpinned, grounding({ pageEvidence: 'page_has_schedule', watch: true })),
+    ).toEqual([]);
   });
 });
 

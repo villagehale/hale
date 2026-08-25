@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Preschool & Kinderfun – Toddler Class, Halton Hills Gymnastics Centre",
+        "age_fit": "18 months - 3 years",
+        "when": "Fall Session Sept 10 - Dec 16 (no classes Oct 10); registration began February 21",
+        "source_name": "Halton Hills Gymnastics Centre"
+      },
+      {
+        "name": "Preschool Drop-In Gym, Halton Hills Gymnastics Centre",
+        "age_fit": "Preschool aged child (under 4)",
+        "when": "Runs Oct 9 to June 26, school-year schedule; none on statutory holidays",
+        "price": "$15, one parent / up to 4 children",
+        "source_name": "Halton Hills Gymnastics Centre"
+      }
+    ]
+  },
+  "latencyMs": 2975
+}

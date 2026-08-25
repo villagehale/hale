@@ -1,0 +1,17 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Preschool Swim Lessons (Levels A–E), Town of Oakville Aquatics",
+        "age_fit": "3 - 5 years",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "YMCA Preschool Swim Lessons, YMCA of Oakville",
+        "age_fit": "3 to 5 years old",
+        "source_name": "YMCA of Oakville"
+      }
+    ]
+  },
+  "latencyMs": 2386
+}

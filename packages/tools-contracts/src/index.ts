@@ -50,6 +50,29 @@ export const rerankJobPayloadSchema = z.object({
 export type RerankJobPayload = z.infer<typeof rerankJobPayloadSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// deep.research — the async contract for keeping an activity promise AT QUESTION
+// TIME rather than a day later.
+//
+// A coach turn that names a place and promises to come back writes the promise to
+// the MEM-10 ledger and enqueues this. The drain runs it within the minute: three
+// concurrent research legs, an Opus synthesis, an adversarial refutation, and a
+// second text.
+//
+// POINTERS ONLY, and here that is not merely the convention. Everything the job
+// needs — the de-identified subject, the child it is about, the message that
+// carried the promise — is on the `agent_commitments` row the id points at, and
+// re-reading it is what makes a redelivery safe: a promise fulfilled between the
+// enqueue and the run is no longer open, so the handler drops rather than texting
+// a parent twice. A payload carrying the subject would carry a parent's own words
+// across a queue for no benefit (rule #1).
+// ─────────────────────────────────────────────────────────────────────────────
+export const deepResearchPayloadSchema = z.object({
+  commitment_id: z.string().uuid(),
+  family_id: z.string().uuid(),
+});
+export type DeepResearchPayload = z.infer<typeof deepResearchPayloadSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // F11 · The Sunday Loop (VIL-213 · A2): the channel.send queue payload — one loop
 // message to dispatch. The dispatch resolves the parent's prefs/consent/timezone
 // from Postgres, so the payload carries ids + a structured (already-safe) payload

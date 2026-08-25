@@ -49,6 +49,7 @@ import { tsImport } from 'tsx/esm/api';
 import { DEEP_FIXTURES } from './activity-deep-fixtures.mjs';
 import {
   JUDGE_MIN,
+  JUDGE_SAMPLES_MEDIAN,
   cacheGet,
   cacheKey,
   cachePut,
@@ -60,6 +61,12 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import {
+  pageCarriesSchedule,
+  preparePage,
+  statesAFigure,
+  statesNoCost,
+} from './lib/quote-match.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -73,7 +80,11 @@ const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-s
 const MAX_DEEP_SEARCHES = 4;
 const MAX_DEEP_FETCHES = 4;
 const RESEARCH_MAX_TOKENS = 8192;
-const EXTRACT_MAX_TOKENS = 4096;
+// 16384, matching the runtime (activity/deep.ts). It was 4096 here long after production
+// raised it, so this eval was scoring a request production does not make — and on a real
+// municipal page's worth of notes that budget TRUNCATES, which the harness then cached as
+// an empty extraction.
+const EXTRACT_MAX_TOKENS = 16384;
 const SLOTS_IN_TEXT = 2;
 const MAX_FOLLOWUP_SEGMENTS = 2;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
@@ -130,13 +141,68 @@ function deepExtractMessage(q, notes) {
   return JSON.stringify({ ...JSON.parse(deepUserMessage(q)), research_notes: notes });
 }
 
+/**
+ * Mirrors the runtime's PARSE BOUNDARY (activity/deep.ts `unwrapStringifiedEnvelope` +
+ * `arrayFromMaybeString`) — and it has to, because a request shape replica that stops at
+ * the request is only half a replica.
+ *
+ * Sonnet 5 fills a container it is not given a grammar for with a stringified blob: `slots`
+ * comes back as the whole tool payload as a JSON STRING, `{"pages_read":[...],"slots":[...]}`
+ * stuffed into one of its own fields. Production collapses both encodings where the value
+ * is read and carries on. This eval did not, so on 2026-08-24 it scored a live extraction
+ * that had found four real programmes as "a real page answered with a shrug" — a FAILURE
+ * PRODUCTION DOES NOT HAVE, cached and reported as a skill regression.
+ */
+function parseJson(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function arrayFromMaybeString(value) {
+  const parsed = parseJson(value);
+  return Array.isArray(parsed) ? parsed : value;
+}
+
+function unwrapStringifiedEnvelope(value) {
+  if (typeof value !== 'object' || value === null) return value;
+  for (const field of Object.values(value)) {
+    const inner = parseJson(field);
+    if (inner !== null && !Array.isArray(inner) && typeof inner === 'object' && 'slots' in inner) {
+      return { ...value, ...inner };
+    }
+  }
+  return value;
+}
+
+/** The extract payload, read the way the runtime reads it. */
+function readExtract(raw) {
+  const envelope = unwrapStringifiedEnvelope(raw) ?? {};
+  return {
+    pages_read: arrayFromMaybeString(envelope.pages_read),
+    slots: arrayFromMaybeString(envelope.slots),
+  };
+}
+
 /** Mirrors `followUpUserMessage` (followup-note.ts) — INCLUDING `registration`, whose
- * absence from that projection is the defect this eval's last gate exists for. */
-function followUpUserMessage(subject, slots, pagesOpened, watch) {
+ * absence from that projection is the defect this eval's last gate exists for.
+ *
+ * `page_evidence` replaced a `pages_opened` boolean on 2026-08-24: the boolean said
+ * somebody opened something, and the sentence it licensed says what the page CARRIES.
+ *
+ * WITH NO PICKS, NO PAGE STATE AT ALL. There is no find to have a gap in and no venue
+ * whose pages could be at fault, so the composer is handed `picks_empty` and nothing about
+ * pages: a model that never sees a page fact cannot blame a page for a programme that does
+ * not exist ("I could not get into any pages today for toddler underwater basket weaving",
+ * 2026-08-24). */
+function followUpUserMessage(subject, slots, pageEvidence, watch) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
-    pages_opened: pagesOpened,
+    ...(slots.length === 0 ? { picks_empty: true } : { page_evidence: pageEvidence }),
     watch,
     picks: slots.map((slot) => ({
       name: slot.name,
@@ -148,6 +214,25 @@ function followUpUserMessage(subject, slots, pagesOpened, watch) {
       source: 'web',
     })),
   });
+}
+
+/**
+ * A FILENAME IS NOT SOMETHING A PAGE SAID - mirrors `readableText` (activity/evidence.ts).
+ *
+ * The fetch pipeline returns markdown, and an image comes back as `![](.../Term_dates_
+ * 20262027.png)` - alt text usually empty, the only words in it the ones somebody typed
+ * into a filename. Live, 2026-08-24: the extract put "Term 1, Fall 2026 (see Term dates
+ * 2026-2027 schedule)" on four slots for a venue whose page never prints 2027 anywhere in
+ * its text. The whole figure came out of that filename, and this corpus is where it was
+ * caught - `fabricated_figure:...:2027`, four times in one pass.
+ *
+ * It is dropped rather than flattened to its alt text because both halves are hazards, and
+ * for the same reason: a schedule published as a PICTURE has not been published in a form
+ * anything downstream can read, and a checker that accepts a filename as the page saying
+ * something is a checker that can be beaten with a URL.
+ */
+function readableText(markdown) {
+  return markdown.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
 }
 
 /** How recent a fetch has to be to count as a page read TODAY - mirrors
@@ -167,6 +252,7 @@ function readEvidence(content, now = Date.now()) {
   let pagesRead = 0;
   let pagesStale = 0;
   let pagesRefused = 0;
+  const pages = [];
   const notes = [];
   for (const block of content) {
     if (block.type === 'text') {
@@ -184,11 +270,41 @@ function readEvidence(content, now = Date.now()) {
       pagesRead += 1;
       const at = Date.parse(result.retrieved_at ?? '');
       if (!Number.isFinite(at) || now - at > FETCH_FRESHNESS_MS) pagesStale += 1;
-      const text = result.content?.source?.data ?? '';
-      if (text !== '') notes.push(`--- page: ${result.url ?? ''} ---\n${text}`);
+      const text = readableText(result.content?.source?.data ?? '');
+      if (text !== '') {
+        // Kept APART as well as joined: "does this page publish a schedule" is a question
+        // about one page and cannot be asked of a joined blob (evidence.ts).
+        pages.push({ url: result.url ?? '', text });
+        notes.push(`--- page: ${result.url ?? ''} ---\n${text}`);
+      }
     }
   }
-  return { searchResults, pagesRead, pagesStale, pagesRefused, notes: notes.join('\n').trim() };
+  return {
+    searchResults,
+    pagesRead,
+    pagesStale,
+    pagesRefused,
+    pages,
+    notes: notes.join('\n').trim(),
+  };
+}
+
+/**
+ * WHAT MAY THIS PASS SAY ABOUT WHAT A PAGE DOES NOT CARRY? Mirrors `readPageVerdict`
+ * (activity/evidence.ts).
+ *
+ * THREE ANSWERS, NOT TWO. This was `pagesRead - pagesStale > 0` until 2026-08-24, and that
+ * boolean answers the wrong question — somebody opened something, not what the page
+ * CONTAINS. On the live run seven pages were opened, the fall grid was on one of them, the
+ * refutation had refused every fact off it, and the boolean licensed "no day, time or
+ * price on the fall page yet" about a published schedule. A REFUSED FACT IS NOT AN ABSENT
+ * ONE: only `page_has_no_schedule` — a page opened today with no clock time and no price
+ * anywhere on it — licenses a negative report.
+ */
+function readPageVerdict(evidence) {
+  if (evidence.pagesRead - evidence.pagesStale <= 0) return 'no_page_read';
+  const published = evidence.pages.some((page) => pageCarriesSchedule(preparePage(page.text)));
+  return published ? 'page_has_schedule' : 'page_has_no_schedule';
 }
 
 /** Mirrors `plainText` (coach/reply.ts), which sits behind `~/`. */
@@ -258,55 +374,146 @@ const GENERIC_WORDS = new Set([
   'recreation', 'session', 'fall', 'winter', 'spring', 'summer',
 ]);
 
-function identifyingWords(name) {
+/**
+ * A PARENTHESIS IS A DISAMBIGUATOR, NOT A NAME - and a number is never a name.
+ *
+ * Live, 2026-08-24, once the merge could finally see the grid: thirty rows came back
+ * differing only by weekday, and it told them apart in the `name` field - "Parent and Tot
+ * 1, 2, 3 - Gellert Community Centre (Mon 10:00AM daytime, code 108969)". Read whole, that
+ * name's identifying words are "gellert", "daytime" and "108969", so the gate demanded an
+ * SMS quote a session code to prove it had named the find. No message can, three
+ * recompositions failed, and the promise deferred with a complete verified schedule in
+ * hand - the fix causing the silence it was fixing.
+ *
+ * What a parent needs in the first segment is which PLACE and which PROGRAMME. The day,
+ * the clock time and the code are what `when` is for, and they are in the message anyway. *
+ * ONE STRIPPED NAME, READ BY BOTH RULES. The first version stripped the parenthetical for
+ * the word test and then fell back to matching the RAW name whole - so a pick called
+ * "Parent and Tot (18 months - 3.11 yrs)", whose stripped name has no distinctive word in
+ * it at all, was asked to reproduce the very bracket just declared not part of the name.
+ * That is the same defect wearing the other face, and it deferred a good message for a
+ * fixture that had been passing.
+ */
+function spokenName(name) {
   return name
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function identifyingWords(name) {
+  return spokenName(name)
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter((word) => word.length >= 5 && !GENERIC_WORDS.has(word));
+    .filter((word) => word.length >= 5 && !/^\d+$/.test(word) && !GENERIC_WORDS.has(word));
 }
 
 function topPickLeads(body, slots) {
   const top = slots[0];
   if (!top) return true;
   const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  // A find is identified by its programme OR by its place: a composite `name` that reduces
+  // to a programme stream ("...Preschool and Kinderfun") is not what a parent reads.
+  const venue = identifyingWords(top.sourceName ?? top.source_name ?? '');
+  if (venue.length > 0 && venue.every((word) => head.includes(word))) return true;
   const words = identifyingWords(top.name);
-  if (words.length === 0) return head.includes(top.name.toLowerCase());
+  if (words.length === 0) return head.includes(spokenName(top.name).toLowerCase());
   return words.filter((word) => head.includes(word)).length >= Math.min(2, words.length);
 }
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
 /** Mirrors `claimsNotPosted`, `statesTheReturn` and `watchWarranted` — see the same three
- * in run-activity-finder-eval.mjs and in the runtime (followup-note.ts, sweep.ts). */
-const UNPUBLISHED_WORD = /\b(?:posted|listed|published|announced|out|up)\b/i;
-const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n'?t\b/i;
+ * in run-activity-finder-eval.mjs and in the runtime (followup-note.ts, deliver.ts).
+ *
+ * SENTENCE-SCOPED since 2026-08-24: clause scoping split "no day, time or price on the
+ * fall page yet" on its commas and neither fragment carried both halves of the claim, so
+ * the gate was green on the message that shipped. {@link SELF_LIMITED} is what keeps
+ * "I could not pin it down" — Hale's gap, not the page's — writable. */
+const UNPUBLISHED_WORD =
+  /\b(?:post(?:ed|s|ing)?|list(?:ed|s|ing)?|publish(?:ed|es|ing)?|announced|available|shown|out|up)\b/i;
+const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n['’]t\b/i;
+const PAGE_SURFACE =
+  /\bon (?:their|the|its) (?:site|website|web ?page|page|pages|schedule|calendar|listing)\b|\bthere yet\b/i;
+const SELF_LIMITED =
+  /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
+const SENTENCE_BOUNDARY = /[.!?\n]/;
 const STATES_RETURN =
   /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
 
 function claimsNotPosted(body) {
   return body
-    .split(CLAUSE_BOUNDARY)
-    .some((clause) => ABSENCE.test(clause) && UNPUBLISHED_WORD.test(clause));
+    .split(SENTENCE_BOUNDARY)
+    .some(
+      (sentence) =>
+        ABSENCE.test(sentence) &&
+        (UNPUBLISHED_WORD.test(sentence) || PAGE_SURFACE.test(sentence)) &&
+        !SELF_LIMITED.test(sentence),
+    );
 }
 
 function watchWarranted(slots) {
   const top = slots[0];
   if (!top) return true;
-  return !carriesFact(top.when) || !carriesFact(top.price);
+  return !carriesFact(top.when, 'when') || !carriesFact(top.price, 'price');
 }
 
-/** Mirrors `carriesFact` (sweep.ts). */
-function carriesFact(field) {
-  return Boolean(field) && String(field).trim() !== '' && !claimsNotPosted(String(field));
+/**
+ * A FIELD THAT EXPLAINS ITS OWN ABSENCE IS AN ABSENCE - AND SO IS ONE WITH NO FACT IN IT.
+ * Mirrors `carriesFact` (deliver.ts).
+ *
+ * TWO READINGS, BECAUSE ONE OF THEM MISSES THE POLITE NON-ANSWER. Refusing an absence CLAIM
+ * only catches the fields that admit what they are. "Fees set by Council each year,
+ * published in the current Recreation Guide" claims nothing and answers nothing: it is a
+ * sentence about where a price lives, offered where a price should be. It survived only by
+ * accident until 2026-08-24 - the old absence regex matched the "nt" in "current" - and
+ * when that bug was fixed Hale started handing it over as a complete find with no follow-up.
+ *
+ * EXCEPT THAT FREE IS A PRICE. Demanding a figure moved six of this corpus's twenty-six
+ * distinct top picks and five were free drop-ins, so which field is being read decides
+ * whether "free" means anything - hence the `kind`.
+ */
+function carriesFact(field, kind) {
+  if (!field || String(field).trim() === '' || claimsNotPosted(String(field))) return false;
+  if (kind === 'price' && statesNoCost(String(field))) return true;
+  return statesAFigure(String(field));
 }
 
-function followUpViolations(body, slots, smsSegments, pagesOpened, watch) {
+/** Mirrors `awaitsAPostedPage` (followup-note.ts). A continuation is a claim about WHY
+ * Hale is coming back; in the future tense the absence-claim gate cannot see it. The
+ * trigger clause may not open on Hale - "when I can get to them" is the true sentence
+ * under `page_has_schedule` and must never be refused. */
+const AWAITS_PUBLICATION =
+  /\b(?:when|once|as soon as)\s+(?!i\b|i'|we\b|we')[^.!?]{0,40}?\b(?:post(?:s|ed|ing)?|publish(?:es|ed)?|listed|up|out|available|lands?)\b/i;
+
+/** One message may not say Hale could not get at a fact AND that it awaits the venue
+ * posting it. Read off the BODY, never off `page_evidence`: that verdict is one value for
+ * a whole message while the gaps are per-field, and gating on it refused a true sentence
+ * about fees that really do live off-page. */
+function waitsOnAPageItCouldNotRead(body) {
+  return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
+}
+
+/** Mirrors the length correction's protected list (followup-note.ts). A cut that can be
+ * satisfied by deleting the continuation sentence is a recompose loop ending in silence,
+ * so what may NOT go is named beside what may. */
+function keepUnderTrim(watch) {
+  return watch
+    ? "never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes"
+    : 'never the facts of the find you led with';
+}
+
+function followUpViolations(body, slots, smsSegments, pageEvidence, watch) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
     violations.push({
       tag: 'over_segment_cap',
-      reason: `The message is ${smsSegments(body)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. Cut it to about 300 characters.`,
+      reason: `The message is ${smsSegments(body)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
+        slots.length > 1
+          ? `Drop the LAST find whole - ${keepUnderTrim(watch)}.`
+          : `Shorten the wording around the facts, never the facts themselves - ${keepUnderTrim(watch)}.`
+      }`,
     });
   }
   if (LINK_SHAPE.test(body)) {
@@ -335,18 +542,37 @@ function followUpViolations(body, slots, smsSegments, pagesOpened, watch) {
         'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
     });
   }
-  if (!pagesOpened && claimsNotPosted(body)) {
+  // THE ABSENCE CLAIM NEEDS POSITIVE EVIDENCE. Two ways to be wrong about a page and two
+  // different corrections: nobody opened it, or somebody did and it plainly DOES publish a
+  // schedule this run could not pin down. The second is the 2026-08-24 failure.
+  if (pageEvidence !== 'page_has_no_schedule' && claimsNotPosted(body)) {
     violations.push({
-      tag: 'unread_not_unposted',
+      tag: `unearned_absence:${pageEvidence}`,
       reason:
-        'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.',
+        pageEvidence === 'no_page_read'
+          ? 'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.'
+          : 'The message says something is not posted or not up. Their page WAS opened today and it does publish times and prices - Hale just could not pin these ones to it. Say their site lists this and that you could not confirm the day or the price, never that they are not posted.',
+    });
+  }
+  if (waitsOnAPageItCouldNotRead(body)) {
+    violations.push({
+      tag: 'awaits_a_posted_page',
+      reason:
+        'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
     });
   }
   if (watch !== STATES_RETURN.test(body)) {
     violations.push({
       tag: watch ? 'silent_watch' : 'unbacked_promise',
+      // The EXAMPLE is page-state-aware or the two corrections fight: under
+      // `page_has_schedule` the gate above refuses the very sentence this one used to
+      // hand the model as the fix.
       reason: watch
-        ? 'This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "I\'ll keep watching and text you when they post."'
+        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "${
+            pageEvidence === 'page_has_schedule'
+              ? "I'll keep watching and text you when I can get to them."
+              : "I'll keep watching and text you when they post."
+          }"`
         : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }
@@ -408,19 +634,26 @@ const JUDGE_SYSTEM = [
   'watching and text you when they post"): that is a commitment that exists, not an',
   'unverified claim, and scoring it as one is wrong. When it is FALSE no such row exists',
   'and any coming-back sentence is a promise nothing is behind - THAT is the low score.',
-  'You are given `pagesOpened`. FALSE means Hale read SEARCH SNIPPETS rather than opening',
-  "a page. Attribution is still correct and still expected - a snippet off the venue's own",
-  'site IS "their site says", and marking that down is wrong. What FALSE forbids is a',
-  'NEGATIVE claim about what a page carries ("the fall times are not posted yet"), because',
-  'nobody looked; the honest form of that sentence is "I could not get into their page',
-  'today". Score the negative claim low, never the attribution.',
+  'You are given `pageEvidence`. It bears on ONE thing: whether a NEGATIVE claim about what',
+  'a page carries is earned. A message that makes no such claim is correct under every',
+  'state and is never marked down for the field, and attribution is not such a claim - a',
+  'snippet off the venue\'s own site IS "their site says" in all three states.',
+  '`page_has_no_schedule` - a page was opened today and carries no time and no price, so',
+  '"no fall days, times or prices are up yet" is TRUE here and is not a fault.',
+  '`no_page_read` - nobody opened a page today, so "not posted yet" would be a report on a',
+  'page nobody read; where that sentence is wanted it is "I could not get into their page',
+  'today".',
+  '`page_has_schedule` - a page was opened and DOES publish times and prices, and Hale could',
+  "not tie these facts to it; the gap is HALE'S, so where that sentence is wanted it is",
+  'first person - "I could not pin down the day or the price" - never "not posted yet".',
+  'Score an UNEARNED negative claim low. Score nothing else off this field.',
   'Two segments is a hard ceiling. Dropping a second or third find WHOLE to fit the best',
   'one complete is correct and is not withholding; withholding is going quiet about a find',
   'when there was room, or hedging instead of naming anything at all.',
   'A LOW score is any of: a price or a date that is not on the page it is attributed to;',
   'a figure borrowed from a different program or a room rental on the same site; a slot for',
-  'an age band the page does not serve; reporting a schedule as "not posted" when the notes',
-  'show the page was never opened; an empty result when the page plainly lists something',
+  'an age band the page does not serve; reporting a schedule as "not posted" when',
+  '`pageEvidence` does not say `page_has_no_schedule`; an empty result when the page plainly lists something',
   'fitting; a message that drops the registration date the slots carried; a message that',
   'presents page-read facts as verified.',
   'An EMPTY slot list is CORRECT when the page was read and genuinely has nothing for this',
@@ -523,21 +756,46 @@ function brokenExtract(fixture) {
  * opened NO page (`cartwheels-live-research`, notes null) is also the one the shrug hands
  * no slots — so `watch` is true there and the claim is unlicensed, which is the pair the
  * gate exists to catch.
+ *
+ * IT IS THE SENTENCE THAT ACTUALLY SHIPPED on 2026-08-24, verbatim, and not the tidy
+ * "their fall times are not posted yet" that stood here. The tidy one is caught by the
+ * clause-scoped predicate this gate USED to have, so it could never show that the widening
+ * is load-bearing; the real one splits on its commas into "no day" and "time or price on
+ * the fall page yet" and the old reading saw neither half.
  */
 function brokenFollowUp(watch) {
   return {
     message: watch
-      ? 'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across the nearby towns. Their fall times are not posted yet. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest. Want me to check back once they are up?'
+      ? 'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across the nearby towns. Their site lists these but no day, time or price on the fall page yet. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest. Want me to check back once they are up?'
       : 'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across the nearby towns. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest, and I will keep looking and text you when the fall schedule lands.',
   };
 }
 
+/**
+ * THE RECORD IS WHAT THE PROVIDER RETURNED, NOT WHAT OUR READER MADE OF IT.
+ *
+ * This used to cache `readEvidence`'s OUTPUT, and that froze the reader's behaviour into
+ * the corpus: when `readableText` was added to production on 2026-08-24, the strip could
+ * not take effect on any replay, because the notes it was supposed to strip had been
+ * derived before it existed. A change to the reader then looked like a change to nothing -
+ * a cache HIT, a green suite, and a rule nobody was running. That is the same shape as an
+ * eval scoring a request production no longer makes, one layer down.
+ *
+ * So the RAW content blocks are stored and `readEvidence` runs on every replay. It is also
+ * what makes the reader falsifiable: flip the filter off and the failures it fixed come
+ * straight back out of the same bytes, which is not a claim a derived record can support.
+ *
+ * `recordedAt` rides with them because freshness is the one input that is NOT a property
+ * of the content (the runtime passes `now` in for exactly this reason, evidence.ts). Under
+ * today's clock every recorded read is stale and the corpus would drift to `no_page_read`
+ * overnight; under the clock the turn was taken with, the reads are what they were.
+ */
 async function cachedResearch(opts) {
   const { tag, model, system, userMessage, cachedOnly, getClient, cost } = opts;
   const canonical = JSON.stringify({ model, system, userMessage, tools: RESEARCH_TOOLS });
   const key = cacheKey(tag, canonical);
   const cached = await cacheGet(key);
-  if (cached) return cached;
+  if (cached) return readEvidence(cached.content, cached.recordedAt);
   if (cachedOnly) {
     console.error(
       `cache miss in --cached-only mode (${tag}, key ${key}). Re-run live (with --env-file) to populate, then commit the cache.`,
@@ -558,9 +816,9 @@ async function cachedResearch(opts) {
     })
     .finalMessage();
   noteUsage(cost, model, response.usage);
-  const value = readEvidence(response.content);
-  await cachePut(key, value);
-  return value;
+  const recordedAt = Date.now();
+  await cachePut(key, { content: response.content, recordedAt });
+  return readEvidence(response.content, recordedAt);
 }
 
 async function main() {
@@ -575,8 +833,14 @@ async function main() {
   const finderSkill = await agent.loadSkill(FINDER_SKILL);
   const model = agent.pickModel(deepSkill.meta.task);
   const composerModel = agent.pickModel(finderSkill.meta.task);
-  const judgeModel = await readJudgeModel();
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'activity-deep', cachedOnly, getClient, cost);
+  // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two
+  // behaviours the rubric states in so many words are correct (harness.mjs readJudgeModel).
+  const judgeModel = await readJudgeModel('sonnet');
+  // MEDIAN OF THREE, not one draw: this suite failed on a tail sample of a message every
+  // other draw passed (harness.mjs `JUDGE_SAMPLES_MEDIAN`). JUDGE_MIN is untouched.
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'activity-deep', cachedOnly, getClient, cost, {
+    samples: JUDGE_SAMPLES_MEDIAN,
+  });
 
   console.log(
     `activity-deep eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | deep=${model} composer=${composerModel} judge=${judgeModel}`,
@@ -612,10 +876,15 @@ async function main() {
             pagesRead: fixture.expectPagesRead === false ? 0 : 1,
             pagesStale: 0,
             pagesRefused: fixture.expectPagesRead === false ? 2 : 0,
+            // The frozen turn's page, as one entry — `readPageVerdict` asks each page
+            // whether it carries a clock time or a price, and `some` over one page holding
+            // the whole of these notes is the same question as `some` over the pages in
+            // them. A fixture that opened nothing has no page to ask.
+            pages: fixture.expectPagesRead === false ? [] : [{ url: '', text: fixture.notes }],
             notes: fixture.notes,
           }
         : broken
-          ? { searchResults: 0, pagesRead: 0, pagesStale: 0, pagesRefused: 0, notes: '' }
+          ? { searchResults: 0, pagesRead: 0, pagesStale: 0, pagesRefused: 0, pages: [], notes: '' }
           : await cachedResearch({
               tag: `activity-deep-research:${fixture.id}`,
               model,
@@ -651,8 +920,9 @@ async function main() {
           })
         ).value;
 
-    const { kept, dropped } = normalizeSlots(extracted.slots);
-    const pagesRead = Array.isArray(extracted.pages_read) ? extracted.pages_read : [];
+    const payload = readExtract(extracted);
+    const { kept, dropped } = normalizeSlots(payload.slots);
+    const pagesRead = Array.isArray(payload.pages_read) ? payload.pages_read : [];
     if (dropped.length > 0) failures.push(`uncited_or_half_slot:${dropped.length}`);
 
     // A CLAIM ABOUT A PAGE REQUIRES A PAGE — both directions.
@@ -703,10 +973,10 @@ async function main() {
     // would be scoring a message the product does not send.
     const composesText = fixture.composesText !== false;
     const inText = composesText ? kept.slice(0, SLOTS_IN_TEXT) : [];
-    // The two sweep facts the composer is told (sweep.ts). A page read out of the
-    // provider's cache is not a page read today, so it buys no licence to say what a page
-    // does not carry.
-    const pagesOpened = evidence.pagesRead - evidence.pagesStale > 0;
+    // The two sweep facts the composer is told (deliver.ts). A page read out of the
+    // provider's cache is not a page read today, and a page that was read and DOES publish
+    // a schedule buys no licence to report an absence either.
+    const pageEvidence = readPageVerdict(evidence);
     const watch = watchWarranted(inText);
     let body = '';
     let violations = [];
@@ -720,7 +990,7 @@ async function main() {
               model: composerModel,
               system: finderSkill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, inText, pagesOpened, watch),
+                followUpUserMessage(fixture.subject, inText, pageEvidence, watch),
                 violations,
               ),
               toolName: 'followup_text',
@@ -733,7 +1003,7 @@ async function main() {
             })
           ).value;
       body = flatten(composed.message);
-      violations = followUpViolations(body, inText, smsSegments, pagesOpened, watch);
+      violations = followUpViolations(body, inText, smsSegments, pageEvidence, watch);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
@@ -751,7 +1021,7 @@ async function main() {
     if (!broken) {
       const verdict = await judge(fixture.id, {
         watch,
-        pagesOpened,
+        pageEvidence,
         subject: fixture.subject,
         town: fixture.town,
         stage: fixture.stage,
@@ -760,7 +1030,9 @@ async function main() {
         message: composesText ? body : null,
         watchFor: fixture.watchFor,
       });
-      if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
+      if (verdict.score < JUDGE_MIN) {
+        failures.push(`judge:${verdict.score} of ${verdict.samples.join('/')} (${verdict.reason})`);
+      }
     }
 
     results.push({
@@ -808,7 +1080,7 @@ async function main() {
     `asks for permission:       ${count('asks_for_permission')}  (an offer is a proposal, and this lane can write no row)`,
   );
   console.log(
-    `unread claimed unposted:   ${count('unread_not_unposted')}  (a claim about a page nobody opened today)`,
+    `unearned absence:          ${count('unearned_absence')}  (a page's silence claimed without a page that is silent)`,
   );
   console.log(
     `unbacked promise:          ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,

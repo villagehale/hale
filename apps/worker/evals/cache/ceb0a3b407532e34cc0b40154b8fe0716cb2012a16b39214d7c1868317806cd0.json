@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message is NULL as expected (production discards research turns that opened no page before reaching the composer). The slots alone are scored. The slot is correctly structured with: (1) a real program name and venue from search results; (2) an accurate age fit from the snippet (\"4 months to 3 years, with a parent\"); (3) null values for when, price, and registration because no page was actually opened (pageEvidence is \"no_page_read\"); (4) proper source attribution to the Town of Halton Hills. The watchFor note confirms this is correct: the slot is snippet-grounded with null when/price, which is the right answer when pages could not be opened. No claim is made that the schedule is not posted—that would be an unearned negative claim given that no page was read to verify it. The slot correctly reflects what could be learned from search results alone without page access."
+  }
+}

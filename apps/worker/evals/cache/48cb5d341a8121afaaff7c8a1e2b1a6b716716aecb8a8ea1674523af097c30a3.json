@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The page was read (pageEvidence=page_has_schedule) and it genuinely has nothing for toddlers - the youngest program is age 8. Empty slots is correct and honest. The message accurately reports no toddler offering, attributes to \"their site,\" and does not stretch the 8-12 class to cover toddlers. Because watch=true, the message must include a first-person continuation promise (\"I'll keep watching and text you...\"), and it does: \"I'll keep watching and text you if that changes.\" The message makes no unearned negative claim - the page was read and does explicitly state \"We do not offer preschool or toddler classes,\" so this is earned. The message is plain ASCII, no link, no question, no offer, two short sentences. No registration dates to carry since there are no slots. No price or date fabrication. This is a clean, correct, complete result.",
+    "score": 5
+  }
+}

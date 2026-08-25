@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a correct empty research result. The pages could not be opened (no_page_read), so no schedule data could be extracted. The slot correctly names the program found in search results (\"Parent & Tot Swimming Lessons, Gellert Community Centre\"), correctly identifies the age fit from the snippet (\"4 months to 3 years, with a parent\"), attributes it to the Town of Halton Hills, and properly leaves when, price, and registration as null since the pages were not accessible. The message is null, which is correct per production protocol when no page was opened. The watchFor instruction is satisfied: both fetches were refused, so pages_read is empty (no false claim of page access), and the null fields reflect what could actually be extracted from snippets alone, not a negative claim about what the inaccessible page contains. Watch is true, so a continuation commitment exists behind this pass. This is the correct handling of a blocked research attempt."
+  }
+}

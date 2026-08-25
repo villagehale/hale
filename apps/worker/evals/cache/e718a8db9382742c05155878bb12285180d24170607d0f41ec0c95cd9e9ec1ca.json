@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Critical failure on the first sentence. The message states \"their site says\" for the claim that Cartwheels \"runs Tiny Gym for 1 to 3 year olds with a parent this fall,\" but the page provides no fall-specific information about what is actually running this fall. The page describes Tiny Gym's structure and age range in general terms only; it explicitly redirects pricing and availability to the login-protected Uplifter registration site and notes that a \"Schedule at a glance\" PDF exists but could not be read as text to confirm actual fall dates/times. The message thus attributes a schedule-dependent fact (\"this fall\") to the page without the page actually stating what is running when. Additionally, while `watch` is TRUE (correctly signaled by \"I'll keep watching and text you what it says\"), the lead sentence makes an unearned positive claim about fall scheduling that the page does not support. The page_has_schedule evidence flag indicates a schedule PDF exists on the page but its contents could not be confirmed; the message should have acknowledged this constraint more carefully. The closing commitment is correctly formulated for the watch=TRUE condition, but the opening attribution is factually unmoored."
+  }
+}

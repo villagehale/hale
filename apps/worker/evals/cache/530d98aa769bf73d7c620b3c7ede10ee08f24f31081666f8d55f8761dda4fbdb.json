@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Slots: Both slots are clean and accurate. Tiny Gym and Kinderfun details (days, times, dates, weeks, prices, membership note, registration window, source URL) all match the page exactly. The registration date (July 22, open until classes fill) is correctly carried in both slots.\n\nMessage: Leads with the best slot (Tiny Gym) by name. All facts — day, time, session dates, duration, price, membership fee — are exactly as printed on the page. Attribution is present (\"their site says\"). The registration window (\"opened July 22 and stays open until classes fill\") is carried. The message does not present facts as personally verified, just as the site says. No question asked at the end — correct per rubric. Two short plain-ASCII sentences, no link. watch=false, so no continuation promise is needed or present — correct.\n\nwatch=false and pageEvidence=page_has_schedule: the message makes no unearned negative claim and no coming-back promise — both correct.\n\nThe only minor stylistic note: the attribution \"their site says\" appears at the end of the first sentence rather than leading the clause, but the rubric requires attribution to be present, not in a specific position, and it is clearly present. Everything checks out. This is a 5.",
+    "score": 5
+  }
+}

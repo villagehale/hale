@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The slot correctly identifies the program as \"Parent & Tot Playtime\" from the preschool play page and accurately captures all posted details: age fit (12 months to 4 years), day and time (Tuesdays and Thursdays, 9:30-11:00 a.m.), and session dates (September 8 to December 11), all sourced from the correct page. The price slot properly recognizes that no fee is published on the programme page and accurately describes the page's direction to call reception - this is a null price stated truthfully, not a false claim. No registration date was stated on the page, and the slot correctly leaves this empty. The message leads with the program by name, attributes the facts to \"their site says,\" properly handles the absent fee with a direct quote of the page's instruction, and includes the commitment \"I'll keep watching and text you if registration details post\" as required by watch=true. The message contains no questions, makes no offers, and correctly avoids conflating the birthday party rental rate ($185) with this toddler class - the watchFor concern is fully addressed by the slot's proper null price and the message's accurate reporting. The message is plain ASCII, two sentences, and appropriately ends on a statement."
+  }
+}

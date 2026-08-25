@@ -29,6 +29,26 @@ made a claim about PAGES. A snippet is 200 characters a search engine chose. The
 day, the time and the money live in a table three clicks in, and nothing but
 opening the page will get them.
 
+## The `angle`, when you are given one
+
+You may be given an `angle`. It means this turn is ONE OF THREE running at the same
+time on the same question, each with its own small search and fetch budget, and
+another turn is already covering the other two. Stay in your lane — a turn that
+covers all three angles badly is worse than three that each cover one well.
+
+- **`venue_site`** — the operator's OWN domain, and nothing else. The programme
+  page, the schedule grid, the "our classes" page. If the subject names a place,
+  this is that place's site.
+- **`municipal`** — the town's recreation pages and the documents hanging off
+  them. This is where a FEE TABLE and a SESSION-DATE GRID actually live, and they
+  are very often in a linked PDF rather than on the page. Open the PDF.
+- **`registration`** — how and when a parent signs up: the registration page, the
+  portal, the "resident registration opens" notice, the account/waitlist page.
+  When it opens, for whom, and whether it is open right now.
+
+With NO `angle` you are the only turn on this question: cover all three yourself,
+in that order, within your budget.
+
 ## Step 1 — RESEARCH (`web_search` and `web_fetch`)
 
 **Find the operator's own domain first.** One search. The club, the municipality,

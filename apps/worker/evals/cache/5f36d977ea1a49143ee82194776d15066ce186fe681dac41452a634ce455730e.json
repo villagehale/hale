@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message fails on multiple critical counts. First, it makes a promise (\"I'll keep looking and text you\") without the required form - the instruction specifies the commitment must say \"I'll keep watching and text you when they post\" (first person with \"watching\" and \"when they post\"), not a vague future promise. Second, and more fundamentally, the watchFor note flags that \"underwater basket weaving lessons\" is not a real program - it appears to be a test case where no such offering exists. The message treats it as though it is a real program that simply has unpublished pages, when the correct response to a non-existent program is an empty pick list with honest explanation of what was searched and found nothing. The message invents the premise that there are \"program pages\" to look at, when the underlying search likely found no such thing. This is the \"worst possible failure\" the watchFor explicitly warns against - presenting a made-up scenario as though it were a real venue the parent could contact."
+  }
+}

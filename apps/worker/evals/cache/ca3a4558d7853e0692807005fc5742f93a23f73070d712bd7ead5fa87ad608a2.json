@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the best pick by name, gives the day, time, cadence, price, and age fit, and correctly attributes all of it to \"Halton Region's site says\" — not claimed as verified. The second pick (EarlyON James St) has null when and null price. pageEvidence is no_page_read, so the correct phrasing for the gap is \"I could not get into their page today\" — and the message says exactly \"I could not get into the EarlyON James St page today to check its hours.\" That is the precise language the rubric requires under no_page_read. Both picks are real, named, local, stage-appropriate, and at most three. No link, no question, no closing offer, no unearned schedule claim. watch is false and there is no coming-back promise. No invented price or time. The message fits cleanly within two segments. Nothing to mark down.",
+    "score": 5
+  }
+}

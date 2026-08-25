@@ -32,6 +32,21 @@ interface ForceToolJsonArgs<TSchema extends z.ZodTypeAny> {
   inputJsonSchema: Anthropic.Tool.InputSchema;
   schema: TSchema;
   maxTokens: number;
+  /**
+   * How the request is carried. `create` (the default) is every existing caller and is
+   * right for a turn that answers in seconds.
+   *
+   * `stream` exists for the one shape `create` cannot carry: a long-thinking lane over a
+   * large prompt. The SDK clears its abort timer when the response HEADERS arrive, and a
+   * non-streamed request produces headers only once the whole body is generated — so a
+   * turn that thinks for two minutes is killed by a client timeout sized for a turn that
+   * answers in ten seconds, and the deep lane's research leg already proved it (deep.ts:
+   * `messages.create` died at 120s where the same request streamed returned in 88.8s).
+   * The stream reaches headers in about a second, so the timeout bounds a stall rather
+   * than the answer. Everything after the transport — the truncation guard, the tool
+   * lookup, the zod parse — is one reader for both.
+   */
+  transport?: 'create' | 'stream';
 }
 
 export interface ForceToolJsonResult<TValue> {
@@ -42,7 +57,7 @@ export interface ForceToolJsonResult<TValue> {
 export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   args: ForceToolJsonArgs<TSchema>,
 ): Promise<ForceToolJsonResult<z.infer<TSchema>>> {
-  const response = await args.client.messages.create({
+  const params = {
     // The pinned SDK (0.41.0) types neither `thinking`'s adaptive shape nor
     // `output_config`; both are plain body fields the SDK serialises as given.
     // Narrowing to the one field it does know keeps the rest type-checked.
@@ -56,9 +71,13 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
         input_schema: args.inputJsonSchema,
       },
     ],
-    tool_choice: { type: 'tool', name: args.toolName },
-    messages: [{ role: 'user', content: args.userMessage }],
-  });
+    tool_choice: { type: 'tool' as const, name: args.toolName },
+    messages: [{ role: 'user' as const, content: args.userMessage }],
+  };
+  const response =
+    args.transport === 'stream'
+      ? await args.client.messages.stream(params).finalMessage()
+      : await args.client.messages.create(params);
 
   // A response cut off at max_tokens leaves the forced tool call incomplete —
   // often `input: {}` — and parsing that empty object reports every required field

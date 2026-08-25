@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Slots are correctly empty - the page was read and genuinely has nothing for toddlers; the youngest program starts at age 8. No invented or stretched slot. The message correctly attributes the finding to the site (\"their own schedule page\"), correctly states it lists classes but has nothing for toddlers, does not report the schedule as \"not posted\" (which would be wrong given page_has_schedule), and does not present facts as independently verified. It does not drop a registration date (none exists for this age band). The watch=true flag is honored: the message includes a first-person continuation promise (\"I'll keep watching and text you if that changes\"), which is correct and required. The message is plain ASCII, two short sentences, no link, no question, no offer. This is a clean, honest, fully correct pass.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly names the specific venue the parent asked about (Cartwheels Gym Centre) and provides a real program detail from their site without claiming verification. It properly attributes the information (\"their site says\") and honestly states that the fall schedule page could not be accessed today. The watch=true condition is met with the commitment \"I'll keep looking and text you what it says\" - a first-person promise tied to what was actually attempted. The pick carries no invented when or price (both correctly null since the page was not read). The message is one sentence of plain text with no link, no question, and no unearned claims. It directly answers the parent's question about what their named place offers for this stage rather than substituting alternatives, which matches the watchFor requirement."
+  }
+}

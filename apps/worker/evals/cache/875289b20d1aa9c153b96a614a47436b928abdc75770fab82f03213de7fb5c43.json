@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The page was opened (pageEvidence: page_has_schedule) and genuinely has nothing for toddlers - the youngest program is age 8+, and the page explicitly states \"We do not offer preschool or toddler classes.\" Empty slots is the correct and honest answer here. The message correctly reports this negative finding, attributed to the site (\"I checked Northfield Fencing Club's site\"), without stretching the 8-12 program to fit. The message is plain ASCII, two short sentences, no question, no link. Because watch=TRUE, Hale had already written a continuation promise, and the message correctly carries the first-person \"I'll keep watching and text you if that changes\" commitment - which is a real existing row, not an unverified claim. The negative claim (\"they don't offer anything for toddlers, their classes start at older ages\") IS earned because pageEvidence is page_has_schedule - a page was opened and read, and it genuinely has nothing for this age band, so this is a true and honest report. No fabricated slots, no borrowed figures, no age-band mismatch. This is a model empty-result response.",
+    "score": 5
+  }
+}

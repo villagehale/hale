@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names a real, specific local program (Town of Oakville's Learn to Swim - Preschool, levels A-E, up to age 5), leads with it by name, attributes it correctly (\"their site says\"), and handles the missing day/time/price detail. However, under `no_page_read`, the correct phrasing for the gap is \"I could not get into their page today\" — and the message does say exactly that (\"I couldn't get into their page today\"), which is correct and earned. The source is the Town of Oakville Recreation and Culture, not a listings aggregator. The watch flag is TRUE and the message does carry a first-person coming-back commitment (\"I'll keep watching and text you once I can confirm those\"). The message fits within two segments, asks no question, makes no offer, invents no day/time/price, and does not hedge instead of naming something. The only minor note is \"confirm those\" slightly implies personal verification of already-published facts rather than just retrieving them, but this is a very small stylistic imprecision and does not constitute presenting web-read facts as verified or inventing data. Overall this is a strong, compliant message.",
+    "score": 5
+  }
+}

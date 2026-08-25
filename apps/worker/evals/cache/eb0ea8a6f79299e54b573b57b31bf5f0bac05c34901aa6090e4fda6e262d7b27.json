@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message covers two real, named, local picks (Kids & Me at Halton Hills Public Library Acton Branch, and EarlyON centres in Acton and Georgetown) — both plausibly fitting the toddler / free drop-in stage and town. The first pick leads, named specifically, with attribution (\"Halton Region's site says\") and real details (Thursdays 10:30–12pm, free) that match the picks exactly — no invented times or prices. The second pick is named and attributed (Links2Care), and the null when/price is handled as \"I couldn't get into their page today\" — which is the correct phrasing under `no_page_read` (not \"not posted yet\", which would imply a page was opened). The message is two short sentences of plain text, no link, no question, no offer, no closing promise (watch is false, correctly absent). No invented details, no hedging instead of naming, no vague community-centre language. The only minor imperfection is a very slight awkwardness in word order (\"Halton Region's site says\" placed at the end of the first sentence rather than inline), but this does not violate any scoring rule. Overall this is a strong, fully compliant message.",
+    "score": 5
+  }
+}

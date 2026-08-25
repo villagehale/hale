@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "All requirements met: (1) Both slots accurately extract real preschool levels from the page with correct ages, times, and date ranges. (2) Each slot correctly attributes the price to the source's statement that \"Fees are set by Council each year, published in the current Recreation Guide\" - a vague price is the page's own vague statement, not Hale's gap. (3) Registration date is captured in both slots and carried into the message (\"Fall registration opens Aug 11 at 7am for residents\"). (4) Message leads with the best slot by name, attributes facts to \"their site says\", carries the registration window with correct date, and uses first-person attribution for the fee gap (\"I couldn't pin down the exact fee\") - this is earned because pageEvidence confirms page_has_schedule yet the page itself prints no specific fee amount. (5) Message is two plain-ASCII sentences, no link, no question, no offer. (6) The watch field is TRUE, and the message correctly includes \"I'll keep watching\" commitment in the promised first-person form. (7) No invented third slot - both preschool levels at their two different times are correctly listed as separate slots. (8) The message correctly distinguishes that registration has NOT YET opened (Aug 11 is in the future), not that it opened in the past."
+  }
+}

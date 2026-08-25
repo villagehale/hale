@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Slots are excellent: both Tiny Gym and Kinderfun are accurately extracted with correct days, times, dates, durations, prices, membership note, registration window, and source URL — all matching the page exactly. The message focuses on Tiny Gym (the best fit for a toddler, walking to 3.5 years), names it correctly, gives the correct day/time, correct date range, correct price with membership note, and carries the registration date (\"open since July 22 and runs until classes fill\"). Attribution is present (\"their site says\"). No question is asked — correct. No link included — correct. No fabricated verification — correct. The message is two short plain-ASCII sentences. watch is FALSE and no coming-back promise appears — correct. pageEvidence is page_has_schedule and no unearned negative claim is made — correct. The one minor issue: \"their site says\" appears mid-sentence after the facts rather than leading the attribution cleanly, but this is a stylistic quibble and does not misrepresent anything. Everything the watchFor note demands (registration date, fee, fall block) is present in both slots and message. This is a near-perfect pass.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This message meets all criteria for a 5. The single pick is a real, specific local venue by name (Halton Hills Gymnastics Centre) with proper age fit (18 months - 3.11 yrs matches toddler stage), a concrete fall session start date and structure (Sept 10 - Dec 16 with one closure noted), and attribution (\"their site says\"). The message is two short sentences of plain text with no link and no question—correctly ending on a statement. The price is appropriately null with no invented detail. The message correctly uses first-person commitment language (\"I'll keep looking and text you what it says\") matching the watch=true state, indicating a continuation promise already exists. There is no attempt to verify or claim confirmation—only attribution. The message does not withhold the find or hedge; it names the program directly and honestly acknowledges the gap in pricing information using the form earned by pageEvidence=\"no_page_read\" (\"I could not get into their page for price\"). This is exactly the path this lane exists to fix: a parent receives a named, real, local program with clear session timing, proper attribution, and a genuine follow-up commitment."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message violates a core rule: when `pageEvidence` is `no_page_read`, any sentence about what could not be retrieved from a page must use first-person acknowledgment of the reading failure. The message states \"I couldn't get into the page today to confirm price or registration\" which is correct form, BUT the continuation promise \"I'll keep checking and text you those details\" fails the `watch` requirement. When `watch` is TRUE, the message must reference an EXISTING commitment already written in a continuation row (\"I'll keep watching and text you when they post\" - referencing what's already tracked). The phrase \"I'll keep checking and text you those details\" sounds like a fresh promise being made here, not a report of prior commitment. Additionally, the message only names one pick despite two being available. The second pick (EarlyON) is genuine, local, age-appropriate, and free - there was room to name it. Withholding it in favor of hedge language around the first pick's unconfirmed price is a failure to give the parent what was found. The message should lead with both picks or clearly state why the second was not suitable, rather than going quiet about it."
+  }
+}

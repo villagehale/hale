@@ -1,4 +1,5 @@
 import { type Database, type UnmetIntentLane, schema } from '@hale/db';
+import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -10,7 +11,14 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import type {
+  ActivityPromise,
+  ActivityPromiseRecordOutcome,
+} from '~/lib/channel/activity/commitment';
+import {
+  type DeepDispatchOutcome,
+  dispatchDepthForPromise,
+} from '~/lib/channel/activity/deep-queue';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import {
@@ -260,7 +268,22 @@ export interface ChannelRouterDeps {
       channelMessageId: string | null;
       now: Date;
     },
-  ): Promise<unknown>;
+  ): Promise<ActivityPromiseRecordOutcome>;
+  /**
+   * SEND THE DEEP PASS AFTER IT — the question-time half of the promise.
+   *
+   * The row above says Hale owes this family a find; this puts the research on a queue
+   * the drain runs within the minute, so a parent who named a place gets the dated answer
+   * in about four minutes rather than in a day (activity/deep-queue.ts).
+   *
+   * Non-nullable (rule #11), and its absence is IN the outcome: `not_enqueued` with a
+   * reason is what a router that could not dispatch says out loud. It has to be, because
+   * every failure here is INVISIBLE from the parent's side — the promise is still a row,
+   * the hourly sweep still keeps it, and the only thing lost is the speed this whole lane
+   * exists for. A silent no-op would look exactly like a subject nobody thought worth
+   * researching.
+   */
+  dispatchDeepResearch(payload: DeepResearchPayload): Promise<DeepDispatchOutcome>;
   /**
    * What the parent's own message settled, written down before anything reads state
    * (VIL-294 — lib/channel/stated-state.ts).
@@ -801,12 +824,27 @@ async function runAgentTurn(
     // buy a carrier retry and a duplicate reply. A turn that composed "I'll come back to
     // you" and then failed to deliver it promised nobody anything.
     if (activityPromise) {
-      await deps.recordActivityPromise(deps.database, {
+      const recorded = await deps.recordActivityPromise(deps.database, {
         familyId: args.turn.familyId,
         promise: activityPromise,
         channelMessageId,
         now: args.turn.now,
       });
+      // AND THE RESEARCH, NOW. The promise used to wait for the hourly sweep whatever it
+      // was about; a parent who names a gym and asks when the fall term starts is asking
+      // about pages that exist right now, and the answer is worth four minutes rather
+      // than a day. Never throws and never blocks the reply — the reply has already been
+      // sent — and every way it can decline is a counted outcome, because the promise is
+      // kept either way and the only thing at stake is how fast (deep-queue.ts).
+      const dispatched = await dispatchDepthForPromise(deps.dispatchDeepResearch, {
+        familyId: args.turn.familyId,
+        subject: activityPromise.subject,
+        recorded,
+      });
+      deps.log.info(
+        { dispatch: dispatched.status, ...('reason' in dispatched ? { reason: dispatched.reason } : {}) },
+        'channel router: activity promise recorded',
+      );
     }
     // THE PROMISE THE RECONCILE KEPT (VIL-293). The coach said it was watching a
     // registration morning; the ledger had no row for that, and a matched municipal

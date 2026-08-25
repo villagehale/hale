@@ -5,7 +5,7 @@ import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ActivityQuery } from './deidentify';
-import { readEvidence } from './evidence';
+import { type PageVerdict, readEvidence, readPageVerdict } from './evidence';
 import type { ActivityPick } from './lane';
 
 /**
@@ -128,6 +128,10 @@ export type DeepResult =
        * page carries NOW, which is the only claim the follow-up ever wants to make. */
       pagesStale: number;
       pagesRefused: number;
+      /** What these reads license the follow-up to say about what a page does NOT carry
+       * (evidence.ts). Never derived from how many facts survived the check — a refusal
+       * is Hale not knowing, and a page publishing nothing is a different thing. */
+      pageVerdict: PageVerdict;
     }
   | { status: 'unread'; searchResults: number; pagesRefused: number }
   | { status: 'unavailable'; reason: DeepFailure };
@@ -447,6 +451,7 @@ export function createDeepResearcher(
         pagesRead: evidence.pagesRead,
         pagesStale: evidence.pagesStale,
         pagesRefused: evidence.pagesRefused,
+        pageVerdict: readPageVerdict(evidence),
       };
     },
   };

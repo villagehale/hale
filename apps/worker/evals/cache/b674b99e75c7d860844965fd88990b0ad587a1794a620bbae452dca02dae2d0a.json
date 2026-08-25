@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the strongest, most complete pick by name (Kids & Me Drop-In at Halton Hills Public Library, Acton Branch), gives the day, time, and price exactly as the picks carry them, and attributes to Halton Region correctly. It then names both EarlyON centres (Georgetown and Acton) without inventing any times or prices. The pageEvidence is `no_page_read`, so the correct phrasing for the gap is \"I could not get into their pages today\" — and that is exactly what the message says, which is the earned form for this state. There is no question, no offer, no \"want me to...\" closing. No watch=false violation (no coming-back promise is made). No invented details. Three picks total, all real and local to Halton Hills, all age-appropriate for toddlers. Attribution is present (\"per Halton Region\"). Two segments (one sentence each pick group) fits within the hard ceiling. This is a clean, compliant message.",
+    "score": 5
+  }
+}

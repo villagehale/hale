@@ -34,6 +34,11 @@ export const PRICE = {
   // the entry stays correct once list pricing resumes.
   'claude-sonnet-5': { input: 3.0, output: 15.0 },
   'claude-opus-4-8': { input: 15.0, output: 75.0 },
+  // Opus 5, matching packages/agent/src/cost.ts (the runtime's own LIST table). It was
+  // MISSING while the deep synthesis lane was already spending on it, and `totalUsd`
+  // skipped what it could not price — so a live eval run reported $0.0000 and looked
+  // free. An unpriced model is now loud (see below) rather than costless.
+  'claude-opus-5': { input: 5.0, output: 25.0 },
 };
 
 // --- single sources of truth ------------------------------------------------
@@ -69,10 +74,34 @@ export async function readMemoryLimits() {
   return { factLimit: Number(fact[1]), episodeLimit: Number(ep[1]) };
 }
 
-export async function readJudgeModel() {
+/**
+ * WHICH MODEL GRADES.
+ *
+ * `'haiku'` is the default and stays the default: most rubrics in this directory are
+ * short, and a cheap judge run over a small corpus is the point of the harness.
+ *
+ * `'sonnet'` is for the rubrics that have outgrown it. Measured 2026-08-25 on the activity
+ * suites, whose rubric runs to about four thousand characters: Haiku marked a message down
+ * for attributing a find to the venue's own site, and again for dropping a second find to
+ * fit the first complete — both of which the rubric states IN SO MANY WORDS are correct and
+ * must never be marked down. Those are not harsh readings, they are the grader not holding
+ * the instructions, and no amount of median sampling fixes a judge that cannot read the
+ * rubric it was given.
+ *
+ * IT IS THE 4.6 TIER AND NOT SONNET 5, DELIBERATELY. These suites run their SUBJECT on
+ * Sonnet 5 — the composer and the research legs both — and a model grading its own output
+ * is not a second opinion. model.ts reserves SONNET_MODEL as the judge rung for exactly
+ * that reason and says so. The step that was needed here is Haiku → something that can hold
+ * the rubric, not Haiku → the model under test.
+ *
+ * Read out of packages/agent's model.ts rather than pinned here, so a re-tier moves the
+ * evals with production instead of leaving them grading against a retired id.
+ */
+export async function readJudgeModel(tier = 'haiku') {
   const src = await readFile(MODEL_TS, 'utf8');
-  const m = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
-  if (!m) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS}`);
+  const symbol = tier === 'sonnet' ? 'SONNET_MODEL' : 'HAIKU_MODEL';
+  const m = src.match(new RegExp(`${symbol}\\s*=\\s*'([^']+)'`));
+  if (!m) throw new Error(`could not parse ${symbol} from ${MODEL_TS}`);
   return m[1];
 }
 
@@ -114,7 +143,16 @@ export function totalUsd(cost) {
   let usd = 0;
   for (const [model, b] of Object.entries(cost.byModel)) {
     const p = PRICE[model];
-    if (!p) continue;
+    if (!p) {
+      // NEVER SILENTLY FREE. A model missing from the table used to contribute nothing,
+      // so a suite that had moved to a new tier reported a spend of zero while billing
+      // normally — the one number an operator reads to decide whether a corpus is
+      // affordable, saying the opposite of the truth (rule #11).
+      console.warn(
+        `eval harness: no price for ${model} (${b.input} in / ${b.output} out tokens) - add it to PRICE; this run's spend is UNDERSTATED`,
+      );
+      continue;
+    }
     usd += (b.input / 1e6) * p.input + (b.output / 1e6) * p.output;
   }
   return usd;
@@ -169,6 +207,17 @@ export async function cachedToolCall(opts) {
     messages: [{ role: 'user', content: userMessage }],
   });
   const latencyMs = Date.now() - startedAt;
+  // TRUNCATION IS NOT AN ANSWER, and it must never be CACHED as one. A response cut at
+  // max_tokens leaves the forced tool call incomplete — usually `input: {}` — which reads
+  // downstream as a model that looked and found nothing. The runtime has guarded this for
+  // months (pipeline/structured.ts); the harness did not, so on 2026-08-24 the deep eval
+  // recorded a `{"slots":[]}` for a fixture whose notes plainly listed four programmes,
+  // cached it forever, and reported it as "a real page answered with a shrug".
+  if (response.stop_reason === 'max_tokens') {
+    throw new Error(
+      `${tag}: tool call truncated at max_tokens (${opts.maxTokens ?? 1024}) - raise the budget; nothing cached`,
+    );
+  }
   const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === toolName);
   if (!toolUse) throw new Error(`${tag}: model returned no ${toolName} tool call`);
   noteUsage(cost, model, response.usage);
@@ -247,13 +296,62 @@ const JUDGE_SCHEMA = {
   required: ['reason', 'score'],
 };
 
-export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, cost) {
-  return async function judge(tag, payload) {
-    const userMessage = JSON.stringify(payload);
-    const key = cacheKey(`${tagPrefix}:judge:${tag}`, `${model}\n${judgeSystem}\n${userMessage}`);
+/**
+ * HOW MANY TIMES THE JUDGE IS ASKED, when one draw is not a measurement.
+ *
+ * THREE, and it is the smallest number that HAS a median. A judge is a sampled model and
+ * its score is a draw from a distribution, but the gate is a hard floor: one draw in the
+ * tail fails the suite on a message every other draw passes. Measured on
+ * `activity-deep/cartwheels-live-research`, 2026-08-24 — the same rubric, the same payload,
+ * the same message — the committed verdict was 2 and three fresh draws were 4, 4, 5. The
+ * message passed every deterministic gate; what failed was the sampling.
+ *
+ * A gate that fails on variance is a gate nobody can trust, and the two ways out are not
+ * equivalent. Lowering the floor would accept genuinely worse messages at every score. A
+ * median accepts nothing new: it takes the score the judge gives MOST of the time, so a
+ * message that is really a 2 still fails (two draws below the floor is a median below the
+ * floor) and a message that is really a 4 stops failing one time in four.
+ */
+export const JUDGE_SAMPLES_MEDIAN = 3;
+
+/**
+ * `samples` defaults to ONE, and sample zero keeps the historical cache key byte for byte,
+ * so the twenty-odd suites that take a single verdict replay their committed corpus
+ * unchanged and only a suite that opts in pays for the extra draws.
+ */
+/**
+ * IS THIS A VERDICT, OR THE WRECKAGE OF ONE?
+ *
+ * `cachedToolCall` has refused to cache a forced tool call cut off at `max_tokens` since
+ * 2026-08-24, because such a call still arrives well-formed with `input: {}` and reads
+ * downstream as a real answer. The judge's own draw never got that guard, and the judge's
+ * output IS the gate — so the wreckage voted.
+ *
+ * `activity-deep/cartwheels-live-research` carried three committed draws of `[{}, 2, 4]`.
+ * Sorted by `a.score - b.score`, the empty one compares NaN against everything, the sort
+ * leaves it where it lies, and the median lands on the 2: a suite failing on a message
+ * that two of its three real draws passed, printed as "judge:2 of /2/4" with the blank
+ * where a number should be. The schema puts `reason` before `score` deliberately - a
+ * score emitted first is a score reasoned backwards from - and the price of that order is
+ * that `score` is the field truncation eats.
+ *
+ * Read on the way OUT of the cache as well as into it, because the bad draws are already
+ * committed. A cached non-verdict is treated as absent: re-drawn live, or reported as the
+ * honest cache miss it always was under `--cached-only`.
+ */
+export function isVerdict(parsed) {
+  return typeof parsed?.score === 'number';
+}
+
+export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, cost, options) {
+  const samples = options?.samples ?? 1;
+
+  async function draw(tag, userMessage, index) {
+    const sampleTag = index === 0 ? `${tagPrefix}:judge:${tag}` : `${tagPrefix}:judge:${tag}#${index}`;
+    const key = cacheKey(sampleTag, `${model}\n${judgeSystem}\n${userMessage}`);
     const cached = await cacheGet(key);
-    if (cached) return cached.parsed;
-    if (cachedOnly) failCachedMiss(`${tagPrefix}:judge:${tag}`, key);
+    if (cached && isVerdict(cached.parsed)) return cached.parsed;
+    if (cachedOnly) failCachedMiss(sampleTag, key);
 
     const response = await getClient().messages.create({
       model,
@@ -267,7 +365,16 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
       // header records as unexplained; this is the explanation. The key does not include
       // max_tokens, so raising it leaves every cached verdict valid and only affects
       // calls that are actually made.
-      max_tokens: 1024,
+      // 4096, and the ceiling has now been raised twice by the same failure. At 256 a
+      // thorough judge ran out MID-STRING; at 1024 the deep lane's four-slot fixture did
+      // the same, live, on 2026-08-24 — its surviving draws argue for 2800+ characters
+      // before they reach a number. `reason` comes BEFORE `score` on purpose (a score
+      // emitted first is a score reasoned backwards from), which makes `score` precisely
+      // the field a truncation eats, so the budget has to clear the longest honest
+      // argument rather than the average one. The key does not include max_tokens, so
+      // raising it leaves every committed verdict valid and only touches calls actually
+      // made — and `isVerdict` above means a draw that still runs out is loud, not a zero.
+      max_tokens: 4096,
       system: judgeSystem,
       tools: [{ name: 'score', description: 'Return the score.', input_schema: JUDGE_SCHEMA }],
       tool_choice: { type: 'tool', name: 'score' },
@@ -275,9 +382,30 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     });
     const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'score');
     if (!toolUse) throw new Error(`judge (${tag}) returned no score tool call`);
+    if (response.stop_reason === 'max_tokens' || !isVerdict(toolUse.input)) {
+      throw new Error(
+        `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
+      );
+    }
     noteUsage(cost, model, response.usage);
     await cachePut(key, { parsed: toolUse.input });
     return toolUse.input;
+  }
+
+  return async function judge(tag, payload) {
+    const userMessage = JSON.stringify(payload);
+    const drawn = [];
+    for (let index = 0; index < samples; index += 1) {
+      drawn.push(await draw(tag, userMessage, index));
+    }
+    // One sample returns exactly what it always did - same object, no extra field - so a
+    // caller that never opted in cannot tell this function changed.
+    if (samples === 1) return drawn[0];
+    const ordered = [...drawn].sort((a, b) => a.score - b.score);
+    // The median VERDICT, not just the median number: the reason a run prints has to be
+    // the argument for the score it printed, or the failure line cites a different draw.
+    const median = ordered[Math.floor(samples / 2)];
+    return { ...median, samples: ordered.map((verdict) => verdict.score) };
   };
 }
 

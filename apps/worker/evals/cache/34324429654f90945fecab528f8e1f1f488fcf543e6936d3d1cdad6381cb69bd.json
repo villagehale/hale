@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick is a real, specific, named local program (Tiny Gym at Cartwheels Gym Centre in Halton Hills), age-fit for the toddler stage, and the message leads with the venue name. The when details are present in the picks and correctly reported. Price is null in the picks, which is appropriate given pageEvidence is page_has_schedule - however, the message says \"I could not pin down the price or registration details,\" which is the correct first-person phrasing for a page_has_schedule state where Hale could not tie the price to the page (not \"not posted yet\"). That attribution is earned and correctly phrased. The message uses \"their site says\" attribution, does not claim to have confirmed anything, and ends with a first-person continuation promise (\"I'll keep watching and text you when those are up\") - which is correct and required because watch=true. No question is asked. The message is within two sentences (effectively two segments). No invented times or prices. The watchFor note about not substituting other gyms is satisfied - only Cartwheels is named. The only minor issue is \"registration details\" is slightly vague but not a fabrication. Overall this is a clean, well-formed message.",
+    "score": 5
+  }
+}

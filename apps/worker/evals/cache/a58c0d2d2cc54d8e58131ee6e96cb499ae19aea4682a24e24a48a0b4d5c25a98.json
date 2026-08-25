@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "All slot data is accurate and properly sourced: the program name, age range (12 months to 4 years), schedule (Tuesdays and Thursdays, 9:30-11:00 a.m., September 8 to December 11), and source page are all correctly extracted from the Riverbend Community Centre preschool-play page. The price slot correctly reports it is not posted on the page and directs to front desk/phone, avoiding contamination from the unrelated room rentals page. The message leads with the program name, attributes facts to \"their site says,\" accurately states what could not be pinpointed (price and registration date), and fulfills the watch=true commitment with first-person language (\"I'll keep watching and text you those details\"). The message is two plain sentences in plain ASCII with no link or question. The slot correctly carries no registration date because the page does not state one, and the message appropriately drops it rather than forcing it. This avoids the critical error of borrowing the $185 birthday party figure from the rentals page or any other fabrication."
+  }
+}

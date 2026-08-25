@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message names a real, specific local venue (Halton Hills Gymnastics Centre) with a real, age-fitting program (Parent and Tot for 18 months - 3.11 yrs). It leads with the best pick by name and attributes the details correctly (\"their site says\"). The session dates are specific and concrete (Sept 10 - Dec 16, no class Oct 10), meeting the requirement for a day or session start rather than \"ongoing\". The price is null, which is correct when the source had not published it. The message properly names the gap using the form earned by `no_page_read` (\"I could not get into their page for price or registration today\") and commits to follow-up in first person (\"I'll keep looking and text you what it says\"), which is correct because `watch` is TRUE and a continuation promise row exists. The message is plain text with no link, no question, and no offer—it makes a statement only. It contains no invented details and does not withhold or hedge when naming the program. All requirements are met."
+  }
+}

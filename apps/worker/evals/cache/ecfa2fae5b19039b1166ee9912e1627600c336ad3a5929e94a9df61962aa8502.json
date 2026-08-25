@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message violates multiple critical requirements. First, it makes a false negative claim: \"I couldn't pin down which ones fit that age or their times and prices\" is dishonest when the page plainly states \"Our youngest program starts at age 8. We do not offer preschool or toddler classes.\" The page was opened (pageEvidence: page_has_schedule) and explicitly says there is nothing for this age—the correct message is to state that plainly: \"there is nothing running\" for toddlers at this venue. Second, the message ends with \"I'll keep digging and text you the details\" which is an unearned promise—`watch` is TRUE, meaning Hale already wrote a continuation commitment elsewhere and must report that existing promise in first person (\"I'll keep watching\"), not create a new, vague \"keep digging\" pledge with no backing row. Third, the message stretches facts inappropriately by implying uncertainty about what the page says when it is entirely clear. The empty `slots` list is correct, but the message must say directly and specifically that the club does not serve toddlers, citing the page's own statement."
+  }
+}

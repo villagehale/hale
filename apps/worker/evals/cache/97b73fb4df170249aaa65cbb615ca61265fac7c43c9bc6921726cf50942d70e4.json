@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message names the specific venue the parent asked about (Cartwheels Gym Centre), attributes the schedule details to their site (\"their site says\"), leads with the best find by name, stays within two sentences of plain text with no link or question, and makes no offer. The price is missing from the pick but the message honestly names this gap in first person (\"I couldn't pin down the price\") without inventing details. The watch flag is true and the message correctly includes the commitment in first person (\"I'll keep watching and text you those details\"), which means this row exists as a continuation promise. The pageEvidence is \"page_has_schedule\" - a page was opened with times and prices, but the price detail was not pinned down by Hale, so the first-person attribution of the gap is correct. All picks are real, specific, local, named details matching the subject and stage (toddler parent-tot class at the exact venue asked about). This is a complete, honest, attributed answer."
+  }
+}
