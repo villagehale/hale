@@ -182,6 +182,59 @@ describe('createTwilioTransport', () => {
   });
 });
 
+describe('media', () => {
+  beforeEach(configure);
+  afterEach(() => vi.unstubAllEnvs());
+
+  const CARD = 'https://www.villagehale.com/hale.vcf';
+
+  it('carries every media url as its own repeated MediaUrl field', async () => {
+    const fetchMock = vi.fn(async () => okResponse());
+    const transport = createTwilioTransport({ fetch: fetchMock as unknown as typeof fetch });
+
+    await transport.send({ to: TO, body: BODY, mediaUrls: [CARD, `${CARD}?two`] });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const sent = new URLSearchParams(init.body as string);
+    // Twilio's MediaUrl is repeatable, not comma-joined: getAll, not get.
+    expect(sent.getAll('MediaUrl')).toEqual([CARD, `${CARD}?two`]);
+    expect(sent.get('Body')).toBe(BODY);
+  });
+
+  it('sends no MediaUrl at all when the caller asked for none', async () => {
+    const fetchMock = vi.fn(async () => okResponse());
+    const transport = createTwilioTransport({ fetch: fetchMock as unknown as typeof fetch });
+
+    await transport.send({ to: TO, body: BODY });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URLSearchParams(init.body as string).getAll('MediaUrl')).toEqual([]);
+  });
+
+  it('refuses an empty media array rather than quietly downgrading to a plain SMS', async () => {
+    const fetchMock = vi.fn(async () => okResponse());
+    const transport = createTwilioTransport({ fetch: fetchMock as unknown as typeof fetch });
+
+    await expect(transport.send({ to: TO, body: BODY, mediaUrls: [] })).rejects.toThrow(
+      /mediaUrls/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('types the media-specific refusals as PERMANENT — a card Twilio cannot fetch or carry is not a retry', async () => {
+    // 21620 unfetchable MediaUrl, 12300 unsupported content-type, 21623 too many media,
+    // 21617 body+media over the size limit: all four are the same message re-sent
+    // identically, so a retry can only earn them again.
+    for (const code of [21620, 12300, 21623, 21617]) {
+      const error = await refusedWith(refusal(code, 400));
+
+      expect(error).toBeInstanceOf(TwilioSendError);
+      const twilio = error as TwilioSendError;
+      expect([twilio.code, twilio.permanent]).toEqual([String(code), true]);
+    }
+  });
+});
+
 describe('messaging service sender', () => {
   it('sends via MessagingServiceSid when configured, and the bare From otherwise', async () => {
     configure();
