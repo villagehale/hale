@@ -72,7 +72,9 @@ import {
   loadOpenSession,
   saveSession,
 } from './session';
+import type { ChannelTransport } from './transport';
 import { recordWatchConsent } from './watch-consent';
+import { sendWelcomeContactCard } from './welcome-card';
 
 /**
  * VIL-237 · M2 — the conversational SMS intake state machine.
@@ -98,7 +100,7 @@ import { recordWatchConsent } from './watch-consent';
 const INTAKE_ROUTE = 'sms-inbound';
 
 export interface IntakeDeps {
-  transport: { send(input: { to: string; body: string }): Promise<{ providerMessageId: string }> };
+  transport: ChannelTransport;
   /**
    * Put an outbound in the parent's own coach thread — REQUIRED (rule #11), for the
    * seam this machine sits on rather than for anything it does itself.
@@ -695,6 +697,21 @@ async function provision(
     areaCoarse: gathered.location.areaCoarse,
   });
   const sent = await sendAndRecord(database, ctx, `${radar.message}\n\n${WATCH_OFFER}`, deps, []);
+
+  // THE INTRODUCTION, once the radar has already earned it: an MMS carrying Hale's own
+  // vCard, so the parent taps Add and every later text arrives under a name instead of a
+  // 289 number. Its own message rather than media on the radar above — a MediaUrl the
+  // provider cannot fetch fails the WHOLE message, and the radar is the one text a
+  // stranger is guaranteed to read (welcome-card.ts).
+  //
+  // Not branched on, for the reason the writes below are not: the parent already has
+  // their radar, and a contact card is not worth losing them over. Every way it can
+  // decline is a named outcome with the cost in the log (rule #11).
+  await sendWelcomeContactCard(
+    database,
+    { familyId, parentUserId: userId, phoneE164, now },
+    { transport: deps.transport, threadMessage: deps.threadMessage },
+  );
 
   // The radar can be the first surface ever to tell this family about a health
   // checkpoint (VIL-238's third rung), and the 48h nudge is two days behind it. Marked

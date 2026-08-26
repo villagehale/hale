@@ -36,7 +36,21 @@ export interface TwilioTransportDeps {
  * SMS. Everything else — an outage, a throttle, a timeout — is transient by default, so
  * a code Twilio adds tomorrow keeps being retried rather than silently dropped.
  */
-const PERMANENT_TWILIO_CODES = new Set(['21610', '21408', '21211', '21614']);
+const PERMANENT_TWILIO_CODES = new Set([
+  '21610',
+  '21408',
+  '21211',
+  '21614',
+  // The MEDIA refusals, permanent for the same reason: the identical request re-sent
+  // earns the identical answer. 21620 Twilio could not fetch the MediaUrl, 12300 the
+  // URL served a content type MMS cannot carry, 21617 body + media exceeded the size
+  // ceiling, 21623 too many media on one message. Left transient, a broken card would
+  // be re-fetched by every retry — and none of them can succeed.
+  '21620',
+  '12300',
+  '21617',
+  '21623',
+]);
 
 /**
  * A Twilio refusal, typed so a caller can act on it without parsing a string. Carries
@@ -69,11 +83,40 @@ function readErrorCode(payload: unknown): string {
 export function createTwilioTransport(deps: TwilioTransportDeps = {}): ChannelTransport {
   const doFetch = deps.fetch ?? globalThis.fetch;
   return {
-    async send({ to, body }) {
+    async send({ to, body, mediaUrls }) {
+      // An empty array is a caller that MEANT to attach something and has nothing —
+      // sending it as a plain SMS would be the silent drop rule #11 forbids, and the
+      // parent would get a sentence about a card that never arrived. `undefined` is the
+      // different, legitimate thing: a text with no media, which is most of them.
+      if (mediaUrls && mediaUrls.length === 0) {
+        throw new Error('twilio send: mediaUrls was empty — send without it to mean no media');
+      }
+
       const config = requireTwilioConfig();
       const credentials = Buffer.from(`${config.apiKeySid}:${config.apiKeySecret}`).toString(
         'base64',
       );
+
+      const form = new URLSearchParams({
+        To: to,
+        // Via the Messaging Service when configured (Twilio-side queueing and
+        // encoding; the pool holds the same brand number, so the parent still
+        // sees the contact they saved) — direct From otherwise.
+        ...(config.messagingServiceSid
+          ? { MessagingServiceSid: config.messagingServiceSid }
+          : { From: config.fromNumber }),
+        Body: body,
+        // Live-gate finding (2026-08-11): Twilio only sends delivery receipts to a
+        // StatusCallback named IN the send request — the number-level field does
+        // not apply to API-created messages, so without this the ledger's rows
+        // stop at 'sent' forever and a failed delivery is invisible.
+        StatusCallback: `${appBaseUrl()}/api/channels/twilio/status`,
+      });
+      // MediaUrl is REPEATED, not comma-joined: Twilio reads one attachment per
+      // occurrence of the field, and a joined string is one URL it cannot fetch (21620).
+      for (const url of mediaUrls ?? []) {
+        form.append('MediaUrl', url);
+      }
 
       const response = await doFetch(
         `${TWILIO_API_BASE}/Accounts/${config.accountSid}/Messages.json`,
@@ -83,21 +126,7 @@ export function createTwilioTransport(deps: TwilioTransportDeps = {}): ChannelTr
             authorization: `Basic ${credentials}`,
             'content-type': 'application/x-www-form-urlencoded',
           },
-          body: new URLSearchParams({
-            To: to,
-            // Via the Messaging Service when configured (Twilio-side queueing and
-            // encoding; the pool holds the same brand number, so the parent still
-            // sees the contact they saved) — direct From otherwise.
-            ...(config.messagingServiceSid
-              ? { MessagingServiceSid: config.messagingServiceSid }
-              : { From: config.fromNumber }),
-            Body: body,
-            // Live-gate finding (2026-08-11): Twilio only sends delivery receipts to a
-            // StatusCallback named IN the send request — the number-level field does
-            // not apply to API-created messages, so without this the ledger's rows
-            // stop at 'sent' forever and a failed delivery is invisible.
-            StatusCallback: `${appBaseUrl()}/api/channels/twilio/status`,
-          }).toString(),
+          body: form.toString(),
           signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
         },
       );
