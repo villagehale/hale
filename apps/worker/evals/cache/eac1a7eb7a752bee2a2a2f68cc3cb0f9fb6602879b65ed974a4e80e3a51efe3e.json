@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child is experiencing respiratory distress after allergen exposure — immediate danger, needs emergency response"
+  },
+  "latencyMs": 1195
+}

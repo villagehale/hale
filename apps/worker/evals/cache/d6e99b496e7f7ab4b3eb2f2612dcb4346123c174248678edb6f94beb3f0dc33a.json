@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces a verified offerable find (Riverdale Farm, free, outdoor, open daily, Sun Aug 9) and also skips the second offerable (library story time), which is fine since the parent asked about a park. However, there are two issues: 1) The reply asks \"Want me to add it to the calendar?\" — this is a dangling question that invites a bare \"yes\" reply without the required draft-and-confirm contract shape. Hale should have drafted the calendar item and ended with \"...? YES to confirm.\" instead of asking whether to add it at all. 2) It omits the second offerable (Central Library story time) which is arguably not a park, so that's forgivable. The main structural failure is the question about whether to add it rather than drafting it with the YES-to-confirm contract. This is a shape failure — the product contract requires drafting and asking YES to confirm, not asking permission to draft. That said, the core information is correct and useful, and no bad details are invented.",
+    "score": 3
+  }
+}

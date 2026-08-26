@@ -16,6 +16,7 @@ import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
+import { WEEKDAYS, weekdayOf, weekdayViolation } from './weekday';
 
 /**
  * VIL-221 · C2 — the schedule verbs, over text.
@@ -146,6 +147,14 @@ const wallClock = z
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'time must be HH:MM on a 24-hour family-local clock');
 
 /**
+ * The weekday the model believes its `date` is — checked against the date before a row
+ * is minted (weekday.ts). REQUIRED on both dating verbs, and that is the whole mechanism:
+ * a date on its own is an unverifiable inference, and a date plus the weekday it is
+ * claimed to be is two facts that must agree.
+ */
+const weekday = z.enum(WEEKDAYS);
+
+/**
  * How far ahead a text may reach. Zero is the week the parent is standing in, one is
  * the next — the two weeks "move swim to Tuesday" can possibly mean. A bounded offset
  * rather than the ticket's `week_start` string on purpose: a model-authored date that
@@ -173,6 +182,47 @@ function localWhen(at: Date, timeZone: string): string {
     .replace(/\s/g, '')
     .toLowerCase();
   return `${weekday} ${time}`;
+}
+
+/**
+ * The same instant with the CALENDAR DATE in it: "Thu, Aug 20, 4:30pm".
+ *
+ * `localWhen` is the parent-facing label and stays as it is — a text about this week
+ * does not need the date, and every character is a septet. This one is what a DRAFT
+ * hands back to the model, because the sentence after a draft is where the date gets
+ * said out loud, and the tool result was the only place the true one could come from.
+ * On 2026-08-20 it carried no date at all and the model supplied its own: "Thursday,
+ * August twenty-second", which was a Saturday.
+ */
+function longWhen(at: Date, timeZone: string): string {
+  const day = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone,
+  }).format(at);
+  return `${day}, ${localWhen(at, timeZone).split(' ')[1]}`;
+}
+
+/**
+ * The cross-check, before anything is minted and before the draft budget is claimed
+ * (weekday.ts). Thrown rather than returned: a handler throw becomes the tool_result the
+ * model reads mid-turn, which is the re-ask seam every other refusal here uses — and a
+ * refused draft that had already spent one of the two per-turn changes would cost the
+ * parent a change they never got.
+ */
+function refuseMismatchedWeekday(
+  input: { date: string; weekday: (typeof WEEKDAYS)[number] },
+  timeZone: string,
+  tool: string,
+): void {
+  const violation = weekdayViolation({
+    date: input.date,
+    weekday: input.weekday,
+    timeZone,
+    tool,
+  });
+  if (violation) throw new Error(violation);
 }
 
 /** A private row is named only by its shape, and never by where it is (rule #1). */
@@ -220,7 +270,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const lookupWeek = defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary plus every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
     inputSchema: z.object({ weekOffset }),
     inputExamples: [{}, { weekOffset: 1 }],
     monetary: false,
@@ -239,6 +289,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       return {
         weekStart: window.startKey,
         timeZone,
+        // THE CALENDAR, SO NOBODY HAS TO DO CALENDAR ARITHMETIC (VIL-295). "This Thursday"
+        // has to become a date before a draft can carry it, and the model was the only
+        // thing in the loop resolving it — which is how "Thursday, August twenty-second"
+        // reached a parent out loud about a Saturday. The window already computes all
+        // seven day keys; withholding them made the model guess at something already
+        // known. `weekday` here is the same token the propose_* verbs take, so the two
+        // arguments of a draft can be READ OFF this rather than worked out.
+        days: window.dayKeys.map((date) => ({ weekday: weekdayOf(date, timeZone), date })),
         summary,
         events: events.map((event) => ({
           eventId: event.eventId,
@@ -253,14 +311,22 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const proposeMove = defineTool({
     name: 'propose_calendar_move',
     description:
-      "DRAFT a re-time of one existing event for the parent to approve — it does NOT move anything. `eventId` must come from lookup_week; `date`/`time` are the family's own wall clock. The event keeps its title, place and child.",
-    inputSchema: z.object({ eventId: z.string().min(1), date: dayKey, time: wallClock }),
-    inputExamples: [{ eventId: EXAMPLE_EVENT_ID, date: '2026-09-15', time: '17:15' }],
+      "DRAFT a re-time of one existing event for the parent to approve — it does NOT move anything. `eventId` must come from lookup_week; `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. The event keeps its title, place and child.",
+    inputSchema: z.object({
+      eventId: z.string().min(1),
+      date: dayKey,
+      time: wallClock,
+      weekday,
+    }),
+    inputExamples: [
+      { eventId: EXAMPLE_EVENT_ID, date: '2026-09-15', time: '17:15', weekday: 'tue' },
+    ],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
       const event = await requireEvent(input.eventId);
       const timeZone = await reader.timeZone(familyId);
+      refuseMismatchedWeekday(input, timeZone, 'propose_calendar_move');
       const startsAt = zonedLocalInstant(input.date, input.time, timeZone);
       claimDraftBudget();
 
@@ -281,7 +347,12 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: move to ${localWhen(startsAt, timeZone)}`,
         teenContent: event.teen,
       });
-      return { drafted: true as const, actionId, newWhen: localWhen(startsAt, timeZone) };
+      return {
+        drafted: true as const,
+        actionId,
+        newWhen: localWhen(startsAt, timeZone),
+        when: longWhen(startsAt, timeZone),
+      };
     },
   });
 
@@ -322,11 +393,12 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const proposeAdd = defineTool({
     name: 'propose_calendar_add',
     description:
-      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
+      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
     inputSchema: z.object({
       title: z.string().min(1).max(120),
       date: dayKey,
       time: wallClock,
+      weekday,
       location: z.string().max(120).optional(),
       childId: z.string().min(1).optional(),
     }),
@@ -335,11 +407,12 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     // run's context, never composed (rule #1: the id here is an invented
     // placeholder, since examples are cached outside message protections).
     inputExamples: [
-      { title: 'Swim lesson', date: '2026-09-15', time: '17:15' },
+      { title: 'Swim lesson', date: '2026-09-15', time: '17:15', weekday: 'tue' },
       {
         title: 'Dentist',
         date: '2026-09-18',
         time: '09:30',
+        weekday: 'fri',
         location: 'Main Street Dental',
         childId: EXAMPLE_CHILD_ID,
       },
@@ -351,6 +424,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     touchesChildContent: true,
     handler: async (input, ctx) => {
       const timeZone = await reader.timeZone(familyId);
+      refuseMismatchedWeekday(input, timeZone, 'propose_calendar_add');
       const startsAt = zonedLocalInstant(input.date, input.time, timeZone);
       claimDraftBudget();
 
@@ -370,7 +444,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
-      return { drafted: true as const, actionId, when: localWhen(startsAt, timeZone) };
+      return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
     },
   });
 

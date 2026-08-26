@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeQmwNAqdA9YFVKy5QGgp",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_0141up2VPu9DuwooxyDtqVBc",
+        "name": "share_referral_link",
+        "input": {
+          "forward": "Hale is a texting assistant that keeps your family's week straight - schedule, activities, parenting Qs."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 557,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 15829,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 85,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

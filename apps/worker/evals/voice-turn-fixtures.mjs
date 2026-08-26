@@ -143,6 +143,77 @@ const MAX_DRAFTS_PER_TURN = 2;
  * `calls` collects every invocation and `results` everything the model was HANDED, which
  * is what the fabrication gate is allowed to hold it to.
  */
+/**
+ * REPLICATED from apps/web/lib/channel/coach/weekday.ts — the cross-check the production
+ * handlers run before they mint (VIL-295). Replicated rather than imported for the reason
+ * everything web-side in this folder is: `~/` does not resolve under this loader. A turn
+ * that says Thursday and passes a Saturday is refused here exactly as it is on a real
+ * call, so the corpus grades what prod would actually do.
+ */
+const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const WEEKDAY_FULL = {
+  sun: 'Sunday',
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday',
+};
+
+/**
+ * REPLICATED from apps/web/lib/channel/coach/tools.ts — the seven dates of the week with
+ * the weekday each one is, which prod's `lookup_week` returns so the model READS a date
+ * instead of computing one. Withheld here, the corpus would grade a turn against a week
+ * the real one does not hand back.
+ */
+function weekDaysFrom(startKey, timeZone) {
+  return Array.from({ length: 7 }, (_, i) => {
+    const at = new Date(`${startKey}T12:00:00Z`);
+    at.setUTCDate(at.getUTCDate() + i);
+    const date = at.toISOString().slice(0, 10);
+    return {
+      weekday: new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone })
+        .format(new Date(`${date}T12:00:00Z`))
+        .toLowerCase(),
+      date,
+    };
+  });
+}
+
+function refuseMismatchedWeekday(input, timeZone, tool) {
+  if (!input.weekday) {
+    throw new Error(
+      `${tool} needs a weekday: which day of the week ${input.date} is. Call it again with one.`,
+    );
+  }
+  // The enum prod declares and `passthrough()` erases — see the long note on the coach
+  // harness's copy of this function. Without it a model that writes 'Sunday' instead of
+  // 'sun' is refused with a sentence built out of `WEEKDAY_FULL[undefined]`, which it
+  // cannot act on, and the turn dies retrying capitalisations.
+  if (!WEEKDAYS.includes(input.weekday)) {
+    throw new Error(
+      `${tool}: 'weekday' must be one of ${WEEKDAYS.map((d) => `'${d}'`).join(', ')} — you sent '${input.weekday}'. Call it again with the three-letter token.`,
+    );
+  }
+  const at = new Date(`${input.date}T12:00:00Z`);
+  const actual = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone })
+    .format(at)
+    .toLowerCase();
+  if (actual === input.weekday) return;
+  const parts = input.date.split('-').map(Number);
+  const shifted = new Date(
+    Date.UTC(
+      parts[0],
+      parts[1] - 1,
+      parts[2] + (WEEKDAYS.indexOf(input.weekday) - WEEKDAYS.indexOf(actual)),
+    ),
+  );
+  throw new Error(
+    `${input.date} is a ${WEEKDAY_FULL[actual]}, not a ${WEEKDAY_FULL[input.weekday]}. The ${WEEKDAY_FULL[input.weekday]} of that week is ${shifted.toISOString().slice(0, 10)}. Work out which one the parent meant and call ${tool} again with a date and a weekday that agree — and say the same day back to them.`,
+  );
+}
+
 export function buildVoiceFixtureTools(agent, z, calls, results) {
   let draftsThisTurn = 0;
 
@@ -177,7 +248,7 @@ export function buildVoiceFixtureTools(agent, z, calls, results) {
     agent.defineTool({
       name: 'lookup_week',
       description:
-        "THIS family's week: the composed plan summary plus every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
+        "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
       inputSchema: passthrough(),
       monetary: false,
       touchesChildContent: false,
@@ -186,6 +257,7 @@ export function buildVoiceFixtureTools(agent, z, calls, results) {
         return record('lookup_week', {
           weekStart: FIXTURE_WEEK_START,
           timeZone: FIXTURE_TIMEZONE,
+          days: weekDaysFrom(FIXTURE_WEEK_START, FIXTURE_TIMEZONE),
           summary: empty ? null : FIXTURE_WEEK_SUMMARY,
           events: empty
             ? []
@@ -202,12 +274,13 @@ export function buildVoiceFixtureTools(agent, z, calls, results) {
     agent.defineTool({
       name: 'propose_calendar_move',
       description:
-        "DRAFT a re-time of one existing event for the parent to approve — it does NOT move anything. `eventId` must come from lookup_week; `date`/`time` are the family's own wall clock. The event keeps its title, place and child.",
+        "DRAFT a re-time of one existing event for the parent to approve — it does NOT move anything. `eventId` must come from lookup_week; `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. The event keeps its title, place and child.",
       inputSchema: passthrough(),
       monetary: false,
       touchesChildContent: false,
       handler: async (input) => {
         const event = requireEvent(input.eventId);
+        refuseMismatchedWeekday(input, FIXTURE_TIMEZONE, 'propose_calendar_move');
         claimDraftBudget();
         return record('propose_calendar_move', {
           drafted: true,
@@ -239,11 +312,12 @@ export function buildVoiceFixtureTools(agent, z, calls, results) {
     agent.defineTool({
       name: 'propose_calendar_add',
       description:
-        "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
+        "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
       inputSchema: passthrough(),
       monetary: false,
       touchesChildContent: true,
       handler: async (input) => {
+        refuseMismatchedWeekday(input, FIXTURE_TIMEZONE, 'propose_calendar_add');
         claimDraftBudget();
         return record('propose_calendar_add', {
           drafted: true,
@@ -375,6 +449,24 @@ export const VOICE_TURN_FIXTURES = [
       noQuestion: true,
       noDrafting: true,
       forbidden: ['anything else', 'let me know', 'happy to help', 'feel free'],
+    },
+  },
+  {
+    id: '09-first-words',
+    note: "The FIRST utterance of a call, which the corpus never graded — and the one the founder's line died on twice (2026-08-20 03:48 and 03:49, both answered with \"Sorry, I lost that one\" a minute later). A bare greeting is the likeliest thing a parent opens with and the likeliest turn to be cold, so it is where silence costs the most: the only thing under test here is that WORDS COME OUT, quickly and without reaching for anything.",
+    prompt: 'Hi.',
+    transcript: [],
+    expect: {
+      // The property that was zero on the live call. Everything else on this fixture is
+      // a ceiling; this is the floor.
+      minWords: 2,
+      maxWords: 20,
+      // Nothing was asked, so nothing may be looked up and nothing may be changed. A
+      // greeting that goes to the week is two seconds of silence for no answer.
+      noTools: true,
+      noDrafting: true,
+      // The turn is an opening, not a menu. Hale does not list itself (capability table).
+      forbidden: ['i can help with', 'i can do', 'here are', 'schedule, parenting'],
     },
   },
 ];

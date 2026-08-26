@@ -1,0 +1,36 @@
+{
+  "response": {
+    "id": "msg_011CeQvwpF34LuMmyibbHwS3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "Es0GCpABCBEYAipA0BhJuPdgaBXz864c7R+iqmrcAHg5fmAHZfDryCf3pEVA8rAT6rAicS2pwE/eaeCZXpBKZ0Kjp2aOvXwmxrG/AzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAe+eutQGEgypz3JK7A94mguSK5UaDG1sYq+PcSDqc2PikCIwS7JOPiGCtdLYxpQLHEkNNmEcwNWQsb6I/HFbzkgQAb8IPAM5p+pg56hXopaeHByTKukEE7QbCHMcX3KFtplx7notFg1Nyj4P9Un7rb0hCw8Hn/pgIbhQpJVbJEtHUz4k4hy1ZuA5sKyvBwCoHW61FyEuhASP9ppgbdc5E287WkshLo+t3EqMGaJ78qi1CkgAmsIWJhXnBxYxh0dI4W5Y1ZHyQJc23sJ2nAGjFyPv3D0fqOm4/V27Wk0RS4IRxCJunwmiAR+kuMyRNjDP6iWt58A6AHYdzL7mhblliiLcNG+37Rg6TXKkb5gVOeXxs/YKk/tprPErOgcGyZbZs4omQF7bTGpjtV7KvtYr1oYW++mX60E040TIcpEJkKWMLR6ZaVnD+PeGlPfGMFD7FnZsRhY+h3hq9R2mbsdyG90zQt2bGlnAh2PX/fpjifLFz2irxkmBsPfSIPkE0kzNYOnG2spjXbF/y0E2Z+hpM4z964Yf2EK84TJ3d1qltFJTsF5k1zty6pRZZon86umYlFSzkuGOApcKxAkL8MzTxMczeGT7lerUXHKL7zoptiOb8BG+a6uObZl9OIBhutYTu6hKnKwKZRjey0T+XwSLXn3mgnSGvrVCiwDR32UZnlYVTPQEciHYRei27Ea928RqGvbUCWFqmy5058fH9YHOcGO8v0D7TSGqHLitkPEVinjxawX2ukRTD/axfXP7yJZ1gUrCsgx1B4ACgsxLLDN3Bre04Wd8AE7JjFHrNsk96JJUatP1JmLtlvMZ8mv6wAJOKB0TIW30WUENBt7mIbgGBKbRLLxQXbDU4qSawqaz6uvUSRamTMSCjK6pirhR3CYK+qbPsSWw6IJphvXNJ1avx0m3SjEgXENiMWDpJ3qhOEcYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "I want to make sure I point to the right thing - which two options are you asking about for Remy?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 425,
+      "cache_creation_input_tokens": 15829,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 15829,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 220,
+      "output_tokens_details": {
+        "thinking_tokens": 190
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

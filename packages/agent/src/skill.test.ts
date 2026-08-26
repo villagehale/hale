@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadSkill, parseSkill } from './skill.js';
 
@@ -91,5 +94,38 @@ describe('loadSkill', () => {
     expect(curate.meta.task).toBe('discover');
     const classify = await loadSkill('classify-event');
     expect(classify.meta.task).toBe('classify');
+  });
+});
+
+/**
+ * The capability table is a PARTIAL — one file both the coach skills and the lane
+ * classifier pull in, so "what Hale does" has a single owner (VIL-295). These are the
+ * mechanics of that seam: resolution happens at load, an unknown partial is loud, and a
+ * marker left in a skill nobody wired is never shipped to a model as literal braces.
+ */
+describe('loadSkill partials', () => {
+  it('substitutes an include marker with the partial body', async () => {
+    const skill = await loadSkill('coach-channel-sms');
+    expect(skill.instructions).not.toContain('{{include:');
+    expect(skill.instructions).toContain('THE CAPABILITY TABLE');
+  });
+
+  it('gives the classifier and the coach byte-identical capability text', async () => {
+    const coach = await loadSkill('coach-channel-sms');
+    const lane = await loadSkill('inbound-lane');
+    const voice = await loadSkill('voice-turn');
+    const table = await readFile(
+      join(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'capability-table.md'),
+      'utf8',
+    );
+
+    for (const skill of [coach, lane, voice]) {
+      expect(skill.instructions).toContain(table.trim());
+    }
+  });
+
+  it('throws on a marker naming a partial that does not exist', () => {
+    const raw = SKILL.replace('# Ask Hale', '{{include:no-such-partial}}');
+    expect(() => parseSkill(raw)).toThrow(/unresolved include/);
   });
 });

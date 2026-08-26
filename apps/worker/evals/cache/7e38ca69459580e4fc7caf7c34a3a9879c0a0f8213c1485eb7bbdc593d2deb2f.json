@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CeQskUhtLVQZgqTB5HXd5",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01EJTrXR2dJsi6MEbUZrMWK3",
+        "name": "propose_calendar_add",
+        "input": {
+          "date": "2026-09-13",
+          "weekday": "Sunday",
+          "time": "09:30",
+          "title": "Tiny Gym at Cartwheels"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1319,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 15829,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 1094,
+      "output_tokens_details": {
+        "thinking_tokens": 952
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

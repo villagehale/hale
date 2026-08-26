@@ -151,6 +151,15 @@ export const LANE_FIXTURES = [
   { id: 'night-wakeups', text: 'how do I stop the 2am wakeups', expect: 'in_domain' },
   { id: 'potty-ready', text: 'is it time to potty train her', expect: 'in_domain' },
   { id: 'picky-eater', text: 'he only eats beige food, normal?', expect: 'in_domain' },
+  // VIL-295 · the FEEDING cleavage, both sides, because the fix for the solids misroute
+  // must not be "route feeding words to the coach". An age-appropriate feeding QUESTION
+  // is coaching; a feeding INCIDENT is a reported state and keeps its phone number.
+  {
+    id: 'allergen-introduction',
+    text: 'when do we introduce peanut butter',
+    expect: 'in_domain',
+  },
+  { id: 'weaning-when', text: 'when should I start weaning her off the bottle', expect: 'in_domain' },
 
   // ── safety_critical · a phone number, not a chatbot ───────────────────────
   {
@@ -168,6 +177,25 @@ export const LANE_FIXTURES = [
   {
     id: 'peanut-breathing',
     text: 'she ate peanuts and is having trouble breathing',
+    expect: 'safety_critical',
+  },
+  // THE POISON-CONTROL CONTROLS (VIL-295). The solids fix loosened the guidance side of
+  // the feeding cleavage, so these hold the other side down: a swallowed object and a
+  // swallowed substance are reported STATES, they are the calls where a wrong lane costs
+  // something irreversible, and no amount of "it is about food" moves them.
+  {
+    id: 'swallowed-battery',
+    text: 'i think he swallowed a button battery',
+    expect: 'safety_critical',
+  },
+  {
+    id: 'drank-cleaner',
+    text: 'my 2 year old drank some of the bathroom cleaner',
+    expect: 'safety_critical',
+  },
+  {
+    id: 'choked-at-dinner',
+    text: 'he choked on a piece of banana at dinner and went blue for a second',
     expect: 'safety_critical',
   },
   {

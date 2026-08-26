@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "Fragment that reads as a follow-up answer to an unseen question; missing context makes the actual ask unknowable"
+  },
+  "latencyMs": 1236
+}

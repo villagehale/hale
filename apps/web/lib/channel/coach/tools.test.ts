@@ -3,8 +3,8 @@ import { invokeTool } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
-  MAX_DRAFTS_PER_TURN,
   type ChannelScheduleReader,
+  MAX_DRAFTS_PER_TURN,
   type ScheduleEvent,
   buildChannelCoachTools,
 } from './tools';
@@ -175,6 +175,7 @@ describe('propose_calendar_move', () => {
       eventId: MON_SWIM,
       date: '2026-08-04',
       time: '16:30',
+      weekday: 'tue',
     })) as { drafted: boolean; actionId: string };
 
     expect(result.drafted).toBe(true);
@@ -196,6 +197,7 @@ describe('propose_calendar_move', () => {
         eventId: '99999999-9999-4999-8999-999999999999',
         date: '2026-08-04',
         time: '16:30',
+        weekday: 'tue',
       }),
     ).rejects.toThrow(/not on this family's calendar/i);
     expect(h.port.drafts).toEqual([]);
@@ -204,7 +206,12 @@ describe('propose_calendar_move', () => {
   it('flags the synthetic event as teen content when the target is a teen’s', async () => {
     const h = harness([scheduleEvent({ childId: TEEN_KID, teen: true })]);
 
-    await h.call('propose_calendar_move', { eventId: MON_SWIM, date: '2026-08-04', time: '16:30' });
+    await h.call('propose_calendar_move', {
+      eventId: MON_SWIM,
+      date: '2026-08-04',
+      time: '16:30',
+      weekday: 'tue',
+    });
 
     expect(h.port.drafts[0]?.teenContent).toBe(true);
     expect(h.port.drafts[0]?.payload.childId).toBe(TEEN_KID);
@@ -239,6 +246,7 @@ describe('propose_calendar_add', () => {
       title: 'Library storytime',
       date: '2026-08-05',
       time: '10:00',
+      weekday: 'wed',
       location: 'Beaches branch',
     });
 
@@ -257,6 +265,7 @@ describe('propose_calendar_add', () => {
         title: 'Orthodontist',
         date: '2026-08-05',
         time: '10:00',
+        weekday: 'wed',
         childId: TEEN_KID,
       }),
     ).rejects.toThrow(/guardrail/i);
@@ -264,18 +273,115 @@ describe('propose_calendar_add', () => {
   });
 });
 
+/**
+ * VIL-295. The founder's own call, 2026-08-20 05:04: asked for swim "this Thursday at
+ * four thirty" on Thursday the 20th, the turn drafted and said "Swim lessons this
+ * Thursday, August twenty-second at four thirty" — the 22nd was a Saturday. The date
+ * schema validated the SHAPE and nothing validated the RESOLUTION, so the model's
+ * arithmetic was the only arithmetic in the system.
+ */
+describe('the weekday a draft claims must be the weekday its date is', () => {
+  it('refuses an add whose weekday and date disagree, and mints nothing', async () => {
+    const h = harness();
+
+    const refusal = await h
+      .call('propose_calendar_add', {
+        title: 'Swim lessons',
+        date: '2026-08-22',
+        time: '16:30',
+        weekday: 'thu',
+      })
+      .then(() => null)
+      .catch((err: unknown) => (err as Error).message);
+
+    expect(refusal).toContain('2026-08-22 is a Saturday');
+    expect(refusal).toContain('2026-08-20');
+    expect(h.port.drafts).toEqual([]);
+    expect(h.minted).toEqual([]);
+  });
+
+  it('refuses a move the same way', async () => {
+    const h = harness();
+
+    const refusal = await h
+      .call('propose_calendar_move', {
+        eventId: MON_SWIM,
+        date: '2026-08-22',
+        time: '16:30',
+        weekday: 'fri',
+      })
+      .then(() => null)
+      .catch((err: unknown) => (err as Error).message);
+
+    expect(refusal).toContain('not a Friday');
+    expect(h.port.drafts).toEqual([]);
+  });
+
+  /** A refused draft must not spend the two-change budget: the parent asked for one
+   * change and would otherwise get one fewer than they can have. */
+  it('does not spend a draft from the per-turn cap when it refuses', async () => {
+    const h = harness();
+
+    await h
+      .call('propose_calendar_add', {
+        title: 'Swim',
+        date: '2026-08-22',
+        time: '16:30',
+        weekday: 'thu',
+      })
+      .catch(() => null);
+
+    await expect(
+      h.call('propose_calendar_add', {
+        title: 'Swim',
+        date: '2026-08-22',
+        time: '16:30',
+        weekday: 'sat',
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      h.call('propose_calendar_add', {
+        title: 'Second',
+        date: '2026-08-22',
+        time: '17:30',
+        weekday: 'sat',
+      }),
+    ).resolves.toBeDefined();
+    expect(h.port.drafts).toHaveLength(2);
+  });
+
+  /** The positive control: the same two verbs still draft when the two agree, and the
+   * result hands back the FULL date so the sentence after it has one to say. */
+  it('drafts when they agree, and returns the resolved date to say back', async () => {
+    const h = harness();
+
+    const result = (await h.call('propose_calendar_add', {
+      title: 'Swim lessons',
+      date: '2026-08-20',
+      time: '16:30',
+      weekday: 'thu',
+    })) as { drafted: boolean; when: string };
+
+    expect(result.drafted).toBe(true);
+    expect(result.when).toContain('Thu');
+    expect(result.when).toContain('Aug 20');
+  });
+});
+
 describe('the per-turn draft cap', () => {
   it(`refuses the change after ${MAX_DRAFTS_PER_TURN} and tells the model to carry the rest`, async () => {
-    const h = harness([
-      scheduleEvent(),
-      scheduleEvent({ eventId: THU_SWIM }),
-    ]);
+    const h = harness([scheduleEvent(), scheduleEvent({ eventId: THU_SWIM })]);
 
     await h.call('propose_calendar_cancel', { eventId: MON_SWIM });
     await h.call('propose_calendar_cancel', { eventId: THU_SWIM });
 
     const refusal = await h
-      .call('propose_calendar_add', { title: 'Third thing', date: '2026-08-05', time: '10:00' })
+      .call('propose_calendar_add', {
+        title: 'Third thing',
+        date: '2026-08-05',
+        time: '10:00',
+        weekday: 'wed',
+      })
       .then(() => null)
       .catch((err: unknown) => (err as Error).message);
 
@@ -314,9 +420,15 @@ describe('the per-turn draft cap', () => {
         eventId: '99999999-9999-4999-8999-999999999999',
         date: '2026-08-04',
         time: '16:30',
+        weekday: 'tue',
       }),
     ).rejects.toThrow();
-    await h.call('propose_calendar_add', { title: 'Story time', date: '2026-08-05', time: '10:00' });
+    await h.call('propose_calendar_add', {
+      title: 'Story time',
+      date: '2026-08-05',
+      time: '10:00',
+      weekday: 'wed',
+    });
 
     expect(h.minted).toEqual(['action-1', 'action-2']);
     expect(h.minted).toEqual(h.port.drafts.map((_, i) => `action-${i + 1}`));
@@ -343,7 +455,10 @@ describe('get_framework_guidance — the coaching tool the skill instructs (audi
 
   it('answers a toddler coaching lookup with companion content and the provider note', async () => {
     const h = harness([]);
-    const result = (await h.call('get_framework_guidance', { stage: 'toddler', ageMonths: 18 })) as {
+    const result = (await h.call('get_framework_guidance', {
+      stage: 'toddler',
+      ageMonths: 18,
+    })) as {
       stage: string;
       whatsNow: unknown[];
       confirmWithProvider: string;

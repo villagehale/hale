@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "mental-health",
+    "reason": "report of suicidal ideation in a child; immediate crisis requiring phone support"
+  },
+  "latencyMs": 1154
+}

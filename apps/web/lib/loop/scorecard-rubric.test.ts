@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEMAND_WEEKLY_TARGET_SOURCE_CODED,
+  RETENTION_GRADED_WEEK,
+  RETENTION_W2_TARGET,
+  type RetentionCohort,
   UNIT_COST_BUDGET_USD_PER_FAMILY,
   gradeActivation,
   gradeDeliverability,
@@ -9,10 +12,11 @@ import {
   gradeRadarAccuracy,
   gradeSafety,
   gradeUnitCost,
+  gradeW4Retention,
 } from './scorecard-rubric';
 
 /**
- * The founder scorecard's rubric — seven pure graders, each one worked here against a
+ * The founder scorecard's rubric — eight pure graders, each one worked here against a
  * summary whose expected score is DERIVED FROM THE THRESHOLD, not copied from what the
  * code happens to return. Every band boundary below is stated as the arithmetic that
  * lands on it (7 of a 10 target is exactly the 0.7 band), so a moved threshold fails a
@@ -127,6 +131,75 @@ describe('gradeEngagement — families Hale reached out to first', () => {
 
     expect(row.score).toBe(0);
     expect(row.reason).not.toContain('not enough data');
+  });
+});
+
+describe('gradeW4Retention — families that came back a month in', () => {
+  /** A cohort cell, written as the arithmetic that lands on a band rather than as a
+   * number copied out of a run. */
+  function cohort(weekN: number, cohortSize: number, retained: number): RetentionCohort {
+    return { signupWeek: '2026-06-29', weekN, cohortSize, retained };
+  }
+
+  /** `retained` for a cohort of `size` sitting exactly on `multiple` × the north star. */
+  function retainedAt(multiple: number, size: number): number {
+    return RETENTION_W2_TARGET * multiple * size;
+  }
+
+  /**
+   * Before any cohort has finished its fourth week there is no denominator, so the row
+   * abstains. Zero would say the opposite — that a month's worth of families were asked
+   * and none came back — out of a product that is three weeks old.
+   */
+  it('has nothing to grade until a cohort has finished the graded week', () => {
+    const row = gradeW4Retention([cohort(1, 12, 9), cohort(2, 12, 7), cohort(3, 12, 5)]);
+
+    expect(row.score).toBeNull();
+    expect(row.reason).toBe(
+      `not enough data (n=0) - no cohort has finished week ${RETENTION_GRADED_WEEK} yet`,
+    );
+  });
+
+  it('scores 10 when week 4 is still holding at the W2 north star', () => {
+    const row = gradeW4Retention([cohort(RETENTION_GRADED_WEEK, 20, retainedAt(1, 20))]);
+
+    expect(row.score).toBe(10);
+    expect(row.reason).toBe(
+      `8 of 20 families texted back in week 4 (40%) · north star is W2 ${RETENTION_W2_TARGET * 100}%`,
+    );
+  });
+
+  it('scores 6 at half the north star, and 3 at a quarter of it', () => {
+    expect(
+      gradeW4Retention([cohort(RETENTION_GRADED_WEEK, 40, retainedAt(0.5, 40))]).score,
+    ).toBe(6);
+    expect(
+      gradeW4Retention([cohort(RETENTION_GRADED_WEEK, 40, retainedAt(0.25, 40))]).score,
+    ).toBe(3);
+  });
+
+  /** A measured zero over real families is a 0, not a shrug (rule 3): a month-old
+   * cohort where nobody texted is the worst news this scorecard can carry. */
+  it('grades a cohort nobody came back to 0 rather than calling it missing data', () => {
+    const row = gradeW4Retention([cohort(RETENTION_GRADED_WEEK, 15, 0)]);
+
+    expect(row.score).toBe(0);
+    expect(row.reason).not.toContain('not enough data');
+    expect(row.reason).toContain('0 of 15 families texted back in week 4 (0%)');
+  });
+
+  /** Pooled across signup weeks, and ONLY over the graded week: a five-family cohort's
+   * bad month must not be the grade, and week 1's healthy number must not flatter it. */
+  it('pools the graded week across cohorts and ignores every other week', () => {
+    const row = gradeW4Retention([
+      { signupWeek: '2026-06-29', weekN: 1, cohortSize: 30, retained: 30 },
+      { signupWeek: '2026-06-29', weekN: RETENTION_GRADED_WEEK, cohortSize: 20, retained: 2 },
+      { signupWeek: '2026-07-06', weekN: RETENTION_GRADED_WEEK, cohortSize: 5, retained: 4 },
+    ]);
+
+    // 6 of 25 = 24%, which is 0.6 of the 40% north star — the 0.5 band.
+    expect(row.score).toBe(6);
+    expect(row.reason).toContain('6 of 25 families texted back in week 4 (24%)');
   });
 });
 

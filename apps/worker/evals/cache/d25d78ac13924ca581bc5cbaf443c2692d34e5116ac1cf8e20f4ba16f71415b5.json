@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child ingested a toxic substance — immediate emergency requiring 911"
+  },
+  "latencyMs": 1399
+}

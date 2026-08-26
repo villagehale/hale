@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week (Monday swim lesson and Thursday swim lesson). With more than one matching event, Hale must ask which one before drafting — that is exactly what this reply does. It names both clearly (day, time, venue) and asks which to cancel. No greeting, no sign-off, one question, all details traceable to the week. This is the correct and complete handling.",
+    "score": 5
+  }
+}

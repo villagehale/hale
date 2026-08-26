@@ -182,9 +182,23 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
       // separately because they answer different questions: whether to cover a pause,
       // and whether this turn actually told the caller anything (see below).
       let modelSpoke = false;
+      // The last character the caller actually heard, and whether a turn boundary has been
+      // crossed since. The separator is OWED at the reset and PAID at the next word: paying
+      // it eagerly would leave a trailing space on every turn that ends in a tool call.
+      let lastSpoken = '';
+      let separatorOwed = false;
       const say = (token: string): void => {
+        if (token === '') return;
         hasSpoken = true;
+        lastSpoken = token.slice(-1);
         emit(token);
+      };
+      const sayAfterBoundary = (token: string): void => {
+        if (separatorOwed && token !== '') {
+          separatorOwed = false;
+          say(' ');
+        }
+        say(token);
       };
 
       const startedAt = Date.now();
@@ -210,7 +224,7 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
           guardDeps: ports.guardDeps,
           onTextDelta: (delta) => {
             modelSpoke = true;
-            say(delta);
+            sayAfterBoundary(delta);
           },
           onToolCall: () => {
             if (!hasSpoken) say(`${VOICE_TOOL_ACK} `);
@@ -219,22 +233,45 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
           // text of a tool turn was reasoning rather than the answer — but on a call
           // those words are already out of a speaker, so the only honest thing to do is
           // keep them: what the recorder writes down is what the caller actually heard.
-          onTurnReset: () => {},
+          //
+          // KEEPING THEM STILL OWES THE NEXT TURN A BOUNDARY. What arrived was TWO
+          // utterances — the line said before the tool, and the answer streamed after —
+          // and concatenating them gave a caller "Let me pull up your week.You've got
+          // Noah's eighteen-month well-baby visit" (founder call, 2026-08-20 05:02),
+          // which Twilio's TTS reads as one word. The reset is the only moment either
+          // side of that seam is visible, so the space belongs here.
+          onTurnReset: () => {
+            separatorOwed = hasSpoken && !/\s/.test(lastSpoken);
+          },
         });
       } catch (err) {
-        if (draftedActionIds.length === 0) throw err;
-        // The turn changed the family's queue and then broke. "Sorry, I lost that one"
-        // would be false and would orphan real rows the parent can approve.
+        // WHAT MAKES THE APOLOGY HONEST IS WHETHER THE CALLER HEARD THE ANSWER — not
+        // whether anything was drafted, which is what this asked until VIL-295. A turn
+        // that streamed its whole answer and then broke on the way out (a closed socket,
+        // a ledger write, anything after the last token) rethrew, and the session spoke
+        // "Sorry - I lost that one" on top of words the caller had just been told. That
+        // is Hale contradicting itself about something the caller can hear.
+        //
+        // So the throw is reserved for the case it describes: nothing of the model's
+        // reached the caller. Everything else is logged loudly — an operator must still
+        // see a broken turn (rule #11) — and the caller keeps what they heard, plus the
+        // count of any rows they can now approve.
+        const spoke = modelSpoke;
+        const drafted = draftedActionIds.length;
+        if (drafted === 0 && !spoke) throw err;
         ports.log.error(
           {
             familyId: input.ticket.familyId,
             callSid: input.ticket.callSid,
-            draftedThisTurn: draftedActionIds.length,
+            draftedThisTurn: drafted,
+            modelSpoke: spoke,
             err: err instanceof Error ? err.message : String(err),
           },
-          'voice turn: broke after drafting - the caller hears the count instead',
+          'voice turn: broke after the caller had already heard something',
         );
-        emit(voiceDraftedButFailed(draftedActionIds.length));
+        // The turn changed the family's queue and then broke. Saying nothing would orphan
+        // real rows the parent can approve; "I lost that one" would be false about both.
+        if (drafted > 0) emit(voiceDraftedButFailed(drafted));
         return;
       } finally {
         await ports.recordRun(
@@ -242,15 +279,25 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
         );
       }
 
-      if (result.answer === null) {
-        // A NULL ANSWER IS NOT ALWAYS A FAILED TURN HERE, and the difference is what the
-        // caller heard. The commonest real shape (found by the eval, not by reading the
-        // loop) is a model that says the whole answer in the SAME turn as its tool call
-        // and then, holding the result, has nothing left to add — the loop's last turn is
-        // empty, `answer` is null, and the parent has already been told everything. On a
-        // text that turn produces no reply and must fail; out loud the words are already
-        // spoken, and apologising for them would be Hale contradicting itself.
-        if (modelSpoke) return;
+      // ONE QUESTION, ONE READER: did the caller HEAR the model? On a call that is the
+      // only thing that decides whether this turn worked, and until VIL-295 three places
+      // answered it three ways — the catch above asked whether anything was drafted, this
+      // branch asked whether `answer` was null, and `record` asked whether either was
+      // truthy. `modelSpoke` is the fact, set by the delta handler, and it is now the only
+      // reader anywhere in the turn.
+      //
+      // The two came apart on a content block with no words in it: no delta fires, so
+      // nothing reaches the speaker, and `answer` is a non-null string all the same. The
+      // turn returned normally, so the session had nothing to apologise with, and the
+      // caller was left holding a silent line on a turn filed as completed.
+      //
+      // Going the other way, a NULL answer is often not a failure at all. The commonest
+      // real shape (found by the eval, not by reading the loop) is a model that says the
+      // whole answer in the SAME turn as its tool call and then, holding the result, has
+      // nothing left to add: the last turn is empty, `answer` is null, and the parent has
+      // already been told everything. Apologising for words they just heard would be Hale
+      // contradicting itself.
+      if (!modelSpoke) {
         // Nothing of the model's was heard — at most the line covering the pause. A turn
         // that drafted owes the parent the count; one that did not owes the session its
         // fixed line.
@@ -258,7 +305,7 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
           emit(voiceDraftedButFailed(draftedActionIds.length));
           return;
         }
-        throw new Error('voice turn: the model produced no answer');
+        throw new Error('voice turn: the model produced no answer the caller could hear');
       }
     },
   };
@@ -276,9 +323,12 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
  * gap: no agent ran, so there is no agent run. It leaves its own rows where it acted —
  * the approvals spine's audit trail (rule #6).
  *
- * `modelSpoke` is what makes the status honest on a call: a loop can end with a null
- * `answer` having already said everything out loud (see respond), and counting that as a
- * failure would put the surface's healthiest common shape in the failure column.
+ * `modelSpoke` is the ONLY thing the status reads, and it is the same fact `respond` acts
+ * on — one question, one reader (VIL-295). It cuts both ways: a loop can end with a null
+ * `answer` having already said everything out loud, and counting that as a failure would
+ * put the surface's healthiest common shape in the failure column; and a loop can compose
+ * an answer no delta ever carried, which used to be filed as a success on a call the
+ * parent heard nothing on.
  */
 function record(
   familyId: string,
@@ -296,7 +346,7 @@ function record(
   return {
     familyId,
     agentName: VOICE_AGENT_NAME,
-    status: result?.answer || modelSpoke ? 'completed' : 'failed',
+    status: modelSpoke ? 'completed' : 'failed',
     latencyMs,
     promptTokens: usage.promptTokens,
     completionTokens: usage.completionTokens,
