@@ -12,20 +12,23 @@ import { MAX_PAGE_NOTE_CHARS, boundEvidence } from '~/lib/channel/activity/fanou
 import { claimsNotPosted, createFollowUpComposer } from '~/lib/channel/activity/followup-note';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
-import { defaultActivitySharePorts, mintActivitySharePage } from '~/lib/channel/activity/share-page';
+import {
+  defaultActivitySharePorts,
+  mintActivitySharePage,
+} from '~/lib/channel/activity/share-page';
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
+import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
 import type { ChannelRouterDeps } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
-import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
 import { channelRouterDeps } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { searchVillageTool } from '~/lib/coach/tools';
+import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -91,6 +94,9 @@ describe('the deep answer arrives at question time', () => {
   let familyId: string;
   let parentUserId: string;
 
+  // PGlite + the full migration chain can exceed Vitest's 10s hook default
+  // when CI is already running hundreds of files. Twice in a row this
+  // beforeEach died at exactly 10000ms while the rest of @hale/web passed.
   beforeEach(async () => {
     db = await createTestDb();
     database = db.database;
@@ -128,12 +134,12 @@ describe('the deep answer arrives at question time', () => {
     await database
       .insert(schema.children)
       .values({ familyId, name: 'Noah', dateOfBirth: CHILD_DOB });
-  });
+  }, 30_000);
 
   afterEach(async () => {
     vi.unstubAllEnvs();
     await db.close();
-  });
+  }, 30_000);
 
   // ── the web, as a port ─────────────────────────────────────────────────────
 
@@ -273,7 +279,9 @@ describe('the deep answer arrives at question time', () => {
                 when_quote: 'Tiny Gym | Sun | 9:30-10:15 AM',
                 price: '$124 for the 10-week term',
                 // The poisoned run attributes a figure that is on NO page it read.
-                price_quote: options.poison ? '$310.00 per term' : 'Tiny Gym (10 wks) .......... $124.00',
+                price_quote: options.poison
+                  ? '$310.00 per term'
+                  : 'Tiny Gym (10 wks) .......... $124.00',
                 registration: 'Registration opened July 22',
                 registration_quote: 'Fall registration opens Tuesday, July 22 at 7:00 a.m.',
                 // The one fact that lives on ANOTHER leg's page. Naming its source is
@@ -289,7 +297,6 @@ describe('the deep answer arrives at question time', () => {
     };
   }
 
-
   /**
    * THE 2026-08-24 PAGE, at its real shape.
    *
@@ -299,26 +306,27 @@ describe('the deep answer arrives at question time', () => {
    * the merge is prompted with. Every fact below is published; none of it is a paraphrase.
    */
   const GELLERT_PAGE = 'https://haltonhills.example/play/recreation/swimming/swimming-lessons';
-  
+
   const GELLERT_FEES = [
     'Halton Hills Taxpayer Fees:',
     'P&T to Swimmer 3: $86.22 for 9 lessons (30 minute lesson)',
     'Swimmer 4-6: $117.09 for 9 lessons (45 minute lesson)',
   ].join('\n');
-  
+
   const GELLERT_GRID = [
     'Program | Day | Time | Dates | code |',
     'Parent and Tot 1, 2, 3 | Mon | 10:00AM - 10:30AM | Oct 05 - Dec 07 | 108969 |',
     'Parent and Tot 1, 2, 3 | Wed | 10:00AM - 10:30AM | Oct 07 - Dec 02 | 109044 |',
     'Parent and Tot 1 | Sat | 9:00AM - 9:30AM | Oct 03 - Nov 28 | 108938 |',
   ].join('\n');
-  
+
   /** Everything a municipal page puts between the fee table and the grid: rules, closures,
    * refund policy, the other twelve programmes. Sized so the grid lands past the bound. */
-  const FILLER = 'Please arrive ten minutes before your lesson and shower before entering the pool deck. '.repeat(
-    300,
-  );
-  
+  const FILLER =
+    'Please arrive ten minutes before your lesson and shower before entering the pool deck. '.repeat(
+      300,
+    );
+
   const GELLERT_TEXT = [
     'Swimming Lessons - Town of Halton Hills',
     'Halton Hills taxpayers can register for Fall Recreation Programs beginning Tuesday, September 1 at 7 a.m.',
@@ -327,13 +335,15 @@ describe('the deep answer arrives at question time', () => {
     'Gellert Evenings & Weekends - Fall Schedule',
     GELLERT_GRID,
   ].join('\n');
-  
+
   /**
    * The fan-out, holding ONE leg that opened that page — built through the production
    * {@link boundEvidence} so the bound the merge is prompted under is the real one and not
    * a number this test chose.
    */
-  function gellertLane(options: { unquotableSchedule?: boolean; silentPage?: boolean } = {}): DeepLaneDeps & {
+  function gellertLane(
+    options: { unquotableSchedule?: boolean; silentPage?: boolean } = {},
+  ): DeepLaneDeps & {
     bounded: ReturnType<typeof boundEvidence>;
   } {
     // The GENUINELY empty page: it announces the season and the registration day and
@@ -356,7 +366,8 @@ describe('the deep answer arrives at question time', () => {
       pagesRefused: 0,
       urlsRead: [GELLERT_PAGE],
       pages: [{ url: GELLERT_PAGE, text }],
-      prose: 'Read the swimming lessons page. It carries the fall Parent and Tot grid and the taxpayer fee table.',
+      prose:
+        'Read the swimming lessons page. It carries the fall Parent and Tot grid and the taxpayer fee table.',
       notes: '',
     });
     return {
@@ -598,8 +609,7 @@ describe('the deep answer arrives at question time', () => {
       lane,
       delivery: {
         composer,
-        sharePage: (db2, input) =>
-          mintActivitySharePage(db2, input, defaultActivitySharePorts()),
+        sharePage: (db2, input) => mintActivitySharePage(db2, input, defaultActivitySharePorts()),
         refuseUnbackedSend,
         resolveSendablePhone: async () => PHONE,
         transport,
@@ -986,7 +996,12 @@ describe('the deep answer arrives at question time', () => {
     if (!payload) throw new Error('journey: nothing was enqueued');
 
     await runDeepResearchJob(database, payload, jobDeps(transport, deepLane()), JOB_AT);
-    const again = await runDeepResearchJob(database, payload, jobDeps(transport, deepLane()), JOB_AT);
+    const again = await runDeepResearchJob(
+      database,
+      payload,
+      jobDeps(transport, deepLane()),
+      JOB_AT,
+    );
 
     expect(again).toEqual({ status: 'dropped', reason: 'not_open' });
     expect(transport.sent).toHaveLength(2);
