@@ -81,6 +81,130 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'earlyon-acton': { name: 'EarlyON centre', areaCoarse: 'L7J', poster: 'Acton' },
   // The pitch deck's QR — so we see which investors actually texted the product.
   'investor-deck': { name: 'the pitch deck', areaCoarse: 'M5V' },
+  // Toronto postering-column run (2026-08). One code per column — the posters are
+  // visually identical and the code rides the SMS body, so the weekly re-postering
+  // pass can prune columns that never text. City surfaces are cleared weekly, so a
+  // code going quiet means the spot, not the poster. No lifetime comp on these.
+  'poster-bayview-sheppard': {
+    name: 'Bayview & Sheppard poster',
+    areaCoarse: 'M2K',
+    poster: 'Bayview & Sheppard',
+  },
+  'poster-yonge-sheppard': {
+    name: 'Yonge & Sheppard poster',
+    areaCoarse: 'M2N',
+    poster: 'Yonge & Sheppard',
+  },
+  'poster-yonge-hollywood': {
+    name: 'Yonge & Hollywood poster',
+    areaCoarse: 'M2N',
+    poster: 'Yonge & Hollywood',
+  },
+  'poster-north-york-centre': {
+    name: 'North York Centre poster',
+    areaCoarse: 'M2N',
+    poster: 'North York Centre',
+  },
+  'poster-yonge-ellerslie': {
+    name: 'Yonge & Ellerslie poster',
+    areaCoarse: 'M2N',
+    poster: 'Yonge & Ellerslie',
+  },
+  'poster-kensington': {
+    name: 'Kensington Market poster',
+    areaCoarse: 'M5T',
+    poster: 'Kensington Market',
+  },
+  'poster-spadina-dundas': {
+    name: 'Spadina & Dundas poster',
+    areaCoarse: 'M5T',
+    poster: 'Spadina & Dundas',
+  },
+  'poster-grange-park': {
+    name: 'Grange Park poster',
+    areaCoarse: 'M5T',
+    poster: 'Grange Park',
+  },
+  'poster-queen-john': {
+    name: 'Queen & John poster',
+    areaCoarse: 'M5V',
+    poster: 'Queen & John',
+  },
+  'poster-queen-spadina': {
+    name: 'Queen & Spadina poster',
+    areaCoarse: 'M5V',
+    poster: 'Queen & Spadina',
+  },
+  'poster-queen-bathurst': {
+    name: 'Queen & Bathurst poster',
+    areaCoarse: 'M5V',
+    poster: 'Queen & Bathurst',
+  },
+  'poster-leslieville-carlaw': {
+    name: 'Queen & Carlaw poster',
+    areaCoarse: 'M4M',
+    poster: 'Leslieville — Queen & Carlaw',
+  },
+  'poster-leslieville-jones': {
+    name: 'Queen & Jones poster',
+    areaCoarse: 'M4M',
+    poster: 'Leslieville — Queen & Jones',
+  },
+  'poster-queen-coxwell': {
+    name: 'Queen & Coxwell poster',
+    areaCoarse: 'M4L',
+    poster: 'Queen & Coxwell',
+  },
+  'poster-beaches-woodbine': {
+    name: 'Queen & Woodbine poster',
+    areaCoarse: 'M4L',
+    poster: 'The Beaches — Queen & Woodbine',
+  },
+  'poster-beaches-lee': {
+    name: 'Queen & Lee poster',
+    areaCoarse: 'M4E',
+    poster: 'The Beaches — Queen & Lee',
+  },
+  'poster-high-park-humberside': {
+    name: 'High Park & Humberside poster',
+    areaCoarse: 'M6P',
+    poster: 'High Park & Humberside',
+  },
+  'poster-high-park-annette': {
+    name: 'High Park & Annette poster',
+    areaCoarse: 'M6P',
+    poster: 'High Park & Annette',
+  },
+  'poster-junction-pacific': {
+    name: 'Dundas & Pacific poster',
+    areaCoarse: 'M6P',
+    poster: 'The Junction — Dundas & Pacific',
+  },
+  'poster-junction-clendenan': {
+    name: 'Dundas & Clendenan poster',
+    areaCoarse: 'M6P',
+    poster: 'The Junction — Dundas & Clendenan',
+  },
+  'poster-leaside-laird': {
+    name: 'Eglinton & Laird poster',
+    areaCoarse: 'M4G',
+    poster: 'Leaside — Eglinton & Laird',
+  },
+  'poster-leaside-rumsey': {
+    name: 'Millwood & Rumsey poster',
+    areaCoarse: 'M4G',
+    poster: 'Leaside — Millwood & Rumsey',
+  },
+  'poster-bayview-belsize': {
+    name: 'Bayview & Belsize poster',
+    areaCoarse: 'M4S',
+    poster: 'Bayview & Belsize',
+  },
+  'poster-bayview-fleming': {
+    name: 'Bayview & Fleming poster',
+    areaCoarse: 'M4S',
+    poster: 'Bayview & Fleming',
+  },
 };
 
 /**
