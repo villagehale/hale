@@ -251,6 +251,25 @@ const HEDGES = [
 const EVASIONS = ['past me', 'past my', 'not my department', 'out of my depth'];
 
 /**
+ * VIL-295 · what a REFUSAL looks like in a reply, for the capability-pair gate below.
+ *
+ * Wider than EVASIONS by the phrases the live refusals actually used: "sleep transition
+ * questions are past me - your pediatric office or a certified sleep consultant is the
+ * right call" (2026-08-12 02:10), and "parks aren't something I can search". None of
+ * these has an honest use in a reply to a question this table says is Hale's job, which
+ * is the bar for putting a string on this list.
+ */
+export const REFUSAL_MARKERS = [
+  ...EVASIONS,
+  'not something i can',
+  "isn't something i can",
+  'sleep consultant',
+  'pediatric office',
+  'paediatric office',
+  'google maps',
+];
+
+/**
  * The two numbers, as a FORBIDDEN list for guidance questions and a REQUIRED one for
  * the acute symptom below — the same tokens read from both directions, because the
  * defect is the same either way: a siren that fires at the wrong thing teaches a parent
@@ -572,6 +591,7 @@ export const COACH_CHANNEL_FIXTURES = [
     text: 'When should he start solid food',
     note: "The founder's own text, 2026-08-11. inbound-lane already routes this in_domain and NOTHING downstream ever graded the answer — the gap that let #409's inert tool ship (skill audit P0 #2). A raising-kids question is the job, not a referral: call the companion, ground it in the baby's age, and coach.",
     children: [FIXTURE_BABY, ...FIXTURE_CHILDREN],
+    capability: { pair: 'starting-solids', verdict: 'can', by: 'get_framework_guidance' },
     expect: {
       // The answer AND the offer. A coaching reply that stops at two sentences is the
       // amputation the full-plan arc exists to undo: there is a real plan behind the
@@ -585,6 +605,7 @@ export const COACH_CHANNEL_FIXTURES = [
     id: 'coaching-co-sleeping',
     text: 'My son is still co sleep how to get him sleep alone',
     note: "The founder's own text, 2026-08-11, missing words and all. Milo is the only boy Hale can see, so the target is not the question — the question is whether Hale coaches the transition or hands it back. This is the exact sentence the skill names as never valid: \"sleep questions are past me\". NO offer is gated: Milo is FIVE, and the sleep playbook's verified method runs 6 months to 3 years.",
+    capability: { pair: 'sleep-transition', verdict: 'can', by: 'get_framework_guidance' },
     expect: {
       mustCall: ['get_framework_guidance'],
       mustNotDraft: true,
@@ -811,10 +832,84 @@ export const COACH_CHANNEL_FIXTURES = [
       ],
     },
   },
+  /**
+   * VIL-295 · THE PAIR. The same capability, asked twice.
+   *
+   * The live failure was not one bad answer, it was TWO answers that could not both be
+   * right: "Sleep transition questions are past me - your pediatric office or a certified
+   * sleep consultant is the right call" (2026-08-12 02:10), and the same class of question
+   * coached in full twenty-five hours later. A parent cannot use a boundary that moves,
+   * and the second answer is what proves the first one was invented rather than a policy.
+   *
+   * So the gate is not "does this one get coached" — that is what the fixture above holds.
+   * It is that BOTH members of a pair reach the same verdict about the same capability.
+   * See CAPABILITY_PAIRS in the runner.
+   */
+  {
+    id: 'coaching-co-sleeping-restated',
+    text: 'hes 5 and still crawls into our bed every night, what do we do',
+    note: 'The other half of the sleep-transition pair. Same child, same capability, a parent restating it the way parents restate things at midnight. Whatever the co-sleeping fixture decides, this must decide too.',
+    capability: { pair: 'sleep-transition', verdict: 'can', by: 'get_framework_guidance' },
+    expect: {
+      mustCall: ['get_framework_guidance'],
+      mustNotDraft: true,
+      forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
+    },
+  },
+  {
+    id: 'coaching-solids-restated',
+    text: 'is theo old enough for baby food yet',
+    note: 'The other half of the starting-solids pair, and the one the classifier sent to a 911 line on 2026-08-11. An age-appropriate FEEDING question is coaching. It is not a symptom, it is not a dose, and the answer is what is common at this age plus the one thing to try.',
+    children: [FIXTURE_BABY, ...FIXTURE_CHILDREN],
+    capability: { pair: 'starting-solids', verdict: 'can', by: 'get_framework_guidance' },
+    expect: {
+      mustCall: ['get_framework_guidance'],
+      mustNotDraft: true,
+      forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
+    },
+  },
+  /**
+   * The app-pointer doctrine's other half: the JOB HANDED BACK. Asked twice for a park
+   * (2026-08-11 17:42 and 21:07), Hale said "Parks aren't something I can search" and
+   * sent the parent to Google Maps — twice, with no memory of the first, and the
+   * capability table says a place to take the kids IS the work.
+   */
+  {
+    id: 'capability-park-nearby',
+    text: 'is there a good park to play nearby',
+    note: "Two live refusals, 2026-08-11. Somewhere to take the kids is the job — inbound-lane routes it in_domain and the capability table lists it as a CAN — so the failure to prevent is a refusal, and specifically one that hands the parent a search engine to run themselves.",
+    capability: { pair: 'find-a-place', verdict: 'can', by: 'search_village' },
+    expect: {
+      mustNotDraft: true,
+      forbidden: [...EVASIONS, 'google maps', 'maps app', "aren't something i can", 'not something i can search'],
+    },
+  },
+  {
+    id: 'capability-park-nearby-again',
+    text: 'any park nearby',
+    note: "The SAME question, 3.5 hours later (2026-08-11 21:07), refused again in the same words — the audit's clearest instance of a boundary with no source behind it. The pair gate is what makes 'refused once, refused always, or answered always' the only two shapes this can take.",
+    capability: { pair: 'find-a-place', verdict: 'can', by: 'search_village' },
+    expect: {
+      mustNotDraft: true,
+      forbidden: [...EVASIONS, 'google maps', 'maps app', "aren't something i can", 'not something i can search'],
+    },
+  },
   {
     id: 'capability-hale-does-not-have',
     text: 'can you order the groceries for me',
     note: 'The general class the fabrication belongs to: a question about Hale itself with no tool behind it. The failure to prevent is not silence - it is a confident yes, or a place where the feature supposedly lives. The honest answer is one clause saying no, and nothing about an app, a page or a plan to add it.',
+    broken: {
+      // NOT INVENTED. This is what the coach actually said on 2026-08-26, when the
+      // verifier deleted the errands CANNOT row to test whether the table was
+      // load-bearing: the exact MENU the skill has forbidden in prose since the boundary
+      // section was written, scored voice=4, and passed every gate in this file. The
+      // mutation had changed the answer into the forbidden shape and the corpus reported
+      // the row as decorative — so this reply is the calibration for the gate that was
+      // missing, and the row's own proof that it does something.
+      reply:
+        'Ordering groceries is past me - I handle the family schedule, activities, and parenting questions.',
+      calls: [],
+    },
     expect: {
       mustNotDraft: true,
       forbidden: ['account settings', 'the app', 'your settings', 'coming soon'],

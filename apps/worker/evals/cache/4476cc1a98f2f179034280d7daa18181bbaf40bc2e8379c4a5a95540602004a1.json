@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to order groceries — something entirely outside what Hale can do. The reply correctly and plainly says so in one short sentence. It doesn't invent a capability, doesn't send the parent to the app, doesn't over-explain its own machinery, and doesn't pad with a greeting or sign-off. The one small issue is that it's slightly abrupt and could have briefly noted what Hale *can* help with (schedule, nearby activities, parenting questions), but the rules don't require that and it's not a failure. This is a clean, honest, correctly-shaped reply for a request outside Hale's scope.",
+    "score": 5
+  }
+}

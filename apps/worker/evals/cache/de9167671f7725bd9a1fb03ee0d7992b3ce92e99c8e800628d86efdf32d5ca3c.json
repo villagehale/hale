@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a physical symptom (fever) persisting for three days — a state requiring immediate medical assessment"
+  },
+  "latencyMs": 1244
+}

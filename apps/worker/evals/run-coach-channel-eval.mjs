@@ -102,6 +102,7 @@ import { tsImport } from 'tsx/esm/api';
 import { z } from 'zod';
 import {
   COACH_CHANNEL_FIXTURES,
+  REFUSAL_MARKERS,
   FIXTURE_CHILDREN,
   FIXTURE_EVENTS,
   FIXTURE_NOW,
@@ -110,6 +111,7 @@ import {
   FIXTURE_WEEK_START,
   FIXTURE_WEEK_SUMMARY,
 } from './coach-channel-fixtures.mjs';
+import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
 import {
   JUDGE_MIN,
@@ -484,6 +486,24 @@ function redactedWeek() {
  * loader. A model that says Thursday and passes a Saturday is refused here exactly as it
  * is in prod, so the corpus grades the recovery rather than a draft prod would never make.
  */
+/**
+ * REPLICATED from apps/web/lib/channel/coach/tools.ts — the seven dates of the week with
+ * the weekday each one is, so the model READS a date instead of computing one (VIL-295).
+ */
+function weekDaysFrom(startKey, timeZone) {
+  return Array.from({ length: 7 }, (_, i) => {
+    const at = new Date(`${startKey}T12:00:00Z`);
+    at.setUTCDate(at.getUTCDate() + i);
+    const date = at.toISOString().slice(0, 10);
+    return {
+      weekday: new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone })
+        .format(new Date(`${date}T12:00:00Z`))
+        .toLowerCase(),
+      date,
+    };
+  });
+}
+
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const WEEKDAY_FULL = {
   sun: 'Sunday',
@@ -498,6 +518,20 @@ const WEEKDAY_FULL = {
 function refuseMismatchedWeekday(input, timeZone, tool) {
   if (!input.weekday) {
     throw new Error(`${tool} needs a weekday: which day of the week ${input.date} is. Call it again with one.`);
+  }
+  // THE ENUM PROD DECLARES AND THIS HARNESS ERASES (VIL-295). `weekday` is `z.enum(WEEKDAYS)`
+  // in tools.ts, so production shows the model the seven allowed tokens in the schema and
+  // zod rejects anything else by name. Here the tool takes `passthrough()` — deliberately,
+  // because a sealed schema makes every argument unsamplable — which leaves the model with
+  // no format to copy and the comparison below with 'Sunday' on one side and 'sun' on the
+  // other. It then read `WEEKDAY_FULL['Sunday']` as undefined and refused a CORRECT draft
+  // with "2026-09-13 is a Sunday, not a undefined", six times, until the turn ran out of
+  // steps and the parent got nothing. Prod's zod error is actionable; that sentence is not,
+  // and the corpus was grading a failure production cannot have.
+  if (!WEEKDAYS.includes(input.weekday)) {
+    throw new Error(
+      `${tool}: 'weekday' must be one of ${WEEKDAYS.map((d) => `'${d}'`).join(', ')} — you sent '${input.weekday}'. Call it again with the three-letter token.`,
+    );
   }
   const at = zonedLocalInstant(input.date, '12:00', timeZone);
   const actual = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone })
@@ -542,7 +576,7 @@ function buildFixtureTools(agent, calls, village) {
   const lookupWeek = agent.defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary plus every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
     inputSchema: passthrough(),
     handler: async (input) => {
       record('lookup_week');
@@ -552,6 +586,7 @@ function buildFixtureTools(agent, calls, village) {
       return {
         weekStart: FIXTURE_WEEK_START,
         timeZone: FIXTURE_TIMEZONE,
+        days: weekDaysFrom(FIXTURE_WEEK_START, FIXTURE_TIMEZONE),
         summary: empty ? null : FIXTURE_WEEK_SUMMARY,
         events: empty
           ? []
@@ -1226,11 +1261,86 @@ function checkFixture(fixture, reply, calls, auditLog, composed) {
     if (pattern.test(reply)) failures.push(`APP-POINTING: ${label}`);
   }
 
+  // THE MENU, which the skill and the capability table have both forbidden in prose the
+  // whole time and nothing graded (VIL-295). Every reply, not just the refusals: Hale
+  // reciting its own feature list is wrong wherever it turns up, and keying this to a
+  // refusal marker would have missed the one the verifier caught, whose refusal clause
+  // ("is past me") the good answer does not even use.
+  const menu = menuShape(reply);
+  if (menu !== null) failures.push(`THE MENU: Hale listed itself - "${menu}"`);
+
   if (auditLog.length === 0 && (expect.mustCall ?? []).length > 0) {
     failures.push('no audit_log row for a turn that used tools (rule #6)');
   }
 
+  const capability = fixture.capability;
+  if (capability) {
+    const observed = capabilityVerdict(reply, toolNames, capability);
+    if (observed !== capability.verdict) {
+      failures.push(
+        `capability '${capability.pair}' read as ${observed}, declared ${capability.verdict}`,
+      );
+    }
+  }
+
   return failures;
+}
+
+/**
+ * VIL-295 · WHAT THIS TURN DECIDED ABOUT A CAPABILITY — 'can' or 'cannot'.
+ *
+ * Read from what the turn DID, not only from what it said: a coaching reply that used
+ * `get_framework_guidance` and carries none of the refusal phrasings is Hale doing the
+ * job. A refusal marker overrides the tool call, because "I called the companion and then
+ * told them it was past me" is a refusal to the parent whatever the trace says.
+ */
+function capabilityVerdict(reply, toolNames, capability) {
+  const lower = reply.toLowerCase();
+  if (REFUSAL_MARKERS.some((marker) => lower.includes(marker))) return 'cannot';
+  return toolNames.has(capability.by) ? 'can' : 'cannot';
+}
+
+/**
+ * THE PAIR GATE, and the reason VIL-295 is not just a set of better answers.
+ *
+ * The live defect was two answers that could not both be right: "Sleep transition
+ * questions are past me - your pediatric office or a certified sleep consultant is the
+ * right call" at 02:10, and the same class of question coached in full a day later. Every
+ * per-fixture gate in this file passed both, because each is a defensible reply on its
+ * own; what is indefensible is the PAIR. A boundary that moves is one nobody wrote down.
+ *
+ * So each member of a pair is graded against the declared verdict above, and then the
+ * members are compared with each other. A split fails BOTH — there is no way to know
+ * which half was the wrong one, and a gate that guessed would let the wrong half stand.
+ */
+function capabilityPairSplits(results) {
+  const byPair = new Map();
+  for (const result of results) {
+    const capability = result.fixture.capability;
+    if (!capability) continue;
+    const seen = byPair.get(capability.pair) ?? [];
+    seen.push({
+      id: result.fixture.id,
+      verdict:
+        result.reply === null
+          ? 'cannot'
+          : capabilityVerdict(result.reply, new Set(result.calls.map((c) => c.tool)), capability),
+    });
+    byPair.set(capability.pair, seen);
+  }
+  const splits = [];
+  for (const [pair, members] of byPair) {
+    if (members.length < 2) continue;
+    const verdicts = new Set(members.map((m) => m.verdict));
+    if (verdicts.size > 1) {
+      splits.push({
+        pair,
+        detail: members.map((m) => `${m.id}=${m.verdict}`).join(' vs '),
+        members: members.map((m) => m.id),
+      });
+    }
+  }
+  return splits;
 }
 
 const JUDGE_SYSTEM = [
@@ -1270,6 +1380,14 @@ const JUDGE_SYSTEM = [
   'X on this week" is the complete and correct answer; do not mark it down for failing to',
   'raise the private rows as possibilities. Surfacing their day and time is right only',
   'when the parent asked ABOUT one.',
+  "AND THE TEENAGER'S NAME IS REDACTED FROM YOU TOO. A `knows.children` entry reading",
+  '`{stage: "teenager", name: null}` is a real child of this family whose name rule #1',
+  'withholds from Hale AND from this rubric. So a name in the parent\'s text that matches',
+  'none of the listed names is very often HER, not an invention — and the correct reply',
+  'is exactly what Hale gave: the shape of the item and a refusal to say what it is.',
+  'Do not score that as answering about a child who does not exist. You cannot tell the',
+  'two apart from here, and the redaction is the reason; when a reply relays no content',
+  'and no name, it has obeyed the rule whichever child was meant.',
   'HALE HAS ONE LINK, AND ONLY WHEN `knows.referralLinkAppended` IS SET. That is the',
   "family's own referral link for telling a friend, appended by the runtime — not written",
   'by Hale and not a link to the app. When it is present the reply SHOULD carry it, and a',
@@ -1496,6 +1614,7 @@ async function main() {
           fixture,
           reply: null,
           score: null,
+          calls,
           failures: [
             `agent returned no answer after ${run.steps} steps (calls: ${
               calls.map((c) => c.tool).join(', ') || 'none'
@@ -1586,8 +1705,14 @@ async function main() {
                 // What THIS text's Village read returned, split the way the
                 // tool splits it — a judge shown only titles cannot tell an offer Hale
                 // could stand behind from one it could not.
+                // The SUMMARY belongs here with the rest. search_village returns it to
+                // the model (lib/coach/tools.ts), so "Free outdoor farm, open daily" is
+                // recall — and a judge handed only the title, venue and day scored those
+                // same four words an invented detail and put a correct reply below the
+                // floor. Same half-blindness as `webFind` and `standingPlace` above, same
+                // fix: show the judge what the tool showed the model.
                 offerable: villageFor(fixture).candidates.map(
-                  (c) => `${c.title} at ${c.venue}, ${c.when}`,
+                  (c) => `${c.title} at ${c.venue}, ${c.when} — ${c.summary}`,
                 ),
                 stillBeingChecked: villageFor(fixture).inVerification,
                 // The standing place, when the tool handed one over. Without it a judge
@@ -1638,6 +1763,7 @@ async function main() {
       fixture,
       reply,
       score,
+      calls,
       reason: verdict === null ? null : verdict.reason,
       invented,
       failures: [
@@ -1659,6 +1785,16 @@ async function main() {
     if (show && result.reply) console.log(`        > ${result.reply}`);
   }
 
+  // VIL-295 · a pair whose two members disagreed fails BOTH, before the pass count is
+  // taken — there is no way to know which half was the wrong one.
+  for (const split of capabilityPairSplits(results)) {
+    for (const result of results.filter((r) => split.members.includes(r.fixture.id))) {
+      result.failures.push(
+        `CAPABILITY SPLIT: the '${split.pair}' pair disagreed about what Hale does (${split.detail})`,
+      );
+    }
+  }
+
   const answered = results.filter((r) => r.reply !== null);
   const passes = results.filter((r) => r.failures.length === 0);
   const fabricating = results.filter((r) => (r.invented ?? []).length > 0);
@@ -1669,6 +1805,8 @@ async function main() {
     r.failures.some((f) => f.startsWith('never drafted')),
   );
   const overBudget = answered.filter((r) => smsSegments(r.reply) > MAX_REPLY_SEGMENTS);
+  const splits = results.filter((r) => r.failures.some((f) => f.startsWith('CAPABILITY SPLIT')));
+  const menus = results.filter((r) => r.failures.some((f) => f.startsWith('THE MENU')));
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');
   const meanScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
   const belowFloor = results.filter(
@@ -1692,6 +1830,12 @@ async function main() {
     `missed action on a clear ask: ${missedAction.length}/${clearAsks.length}  (0 required)`,
   );
   console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
+  console.log(
+    `capability pairs that split:  ${splits.length}  (0 required — a boundary that moves is one nobody wrote down)`,
+  );
+  console.log(
+    `refusals shaped as a menu:    ${menus.length}  (0 required — a parent who asked for one thing did not ask for the list)`,
+  );
   console.log(
     `mean voice score:             ${meanScore.toFixed(2)}  (corpus mean >= ${JUDGE_MIN})`,
   );

@@ -16,7 +16,7 @@ import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
-import { WEEKDAYS, weekdayViolation } from './weekday';
+import { WEEKDAYS, weekdayOf, weekdayViolation } from './weekday';
 
 /**
  * VIL-221 · C2 — the schedule verbs, over text.
@@ -270,7 +270,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const lookupWeek = defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary plus every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
     inputSchema: z.object({ weekOffset }),
     inputExamples: [{}, { weekOffset: 1 }],
     monetary: false,
@@ -289,6 +289,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       return {
         weekStart: window.startKey,
         timeZone,
+        // THE CALENDAR, SO NOBODY HAS TO DO CALENDAR ARITHMETIC (VIL-295). "This Thursday"
+        // has to become a date before a draft can carry it, and the model was the only
+        // thing in the loop resolving it — which is how "Thursday, August twenty-second"
+        // reached a parent out loud about a Saturday. The window already computes all
+        // seven day keys; withholding them made the model guess at something already
+        // known. `weekday` here is the same token the propose_* verbs take, so the two
+        // arguments of a draft can be READ OFF this rather than worked out.
+        days: window.dayKeys.map((date) => ({ weekday: weekdayOf(date, timeZone), date })),
         summary,
         events: events.map((event) => ({
           eventId: event.eventId,

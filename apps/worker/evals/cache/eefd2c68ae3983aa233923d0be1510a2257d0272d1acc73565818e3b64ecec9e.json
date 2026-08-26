@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "routine health admin: asking when a checkup is due"
+  },
+  "latencyMs": 1024
+}

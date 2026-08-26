@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "request to move an existing activity (swim) to a different day in the family's schedule"
+  },
+  "latencyMs": 1284
+}

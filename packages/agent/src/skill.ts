@@ -154,7 +154,7 @@ function resolveIncludes(body: string, baseDir: string): string {
   // A marker the regex could not read (a typo, a capital, a path) must never ship to a
   // model as literal braces — the model would read it as instructions about braces.
   if (resolved.includes('{{include')) {
-    throw new Error(`skill file: unresolved include marker left in the body`);
+    throw new Error('skill file: unresolved include marker left in the body');
   }
   return resolved;
 }

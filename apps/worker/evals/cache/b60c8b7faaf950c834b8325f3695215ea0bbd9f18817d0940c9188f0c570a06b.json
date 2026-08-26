@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior Hale message naming the class: \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" The parent is now asking to add it to the calendar. The reply drafts it (drafted is non-empty), names the change clearly, and ends with \"YES to confirm.\" — exactly the contract shape. The venue and time come from Hale's own earlier message (recall, not invention). No greeting, no sign-off, no markdown, one clean sentence. This is the product working correctly.",
+    "score": 5
+  }
+}

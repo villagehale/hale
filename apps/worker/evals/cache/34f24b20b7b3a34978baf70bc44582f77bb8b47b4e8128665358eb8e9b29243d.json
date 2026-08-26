@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "message reads as a reply or follow-up to something Hale said; missing context makes it unclear what the parent is referring to, and this is the default when context is absent"
+  },
+  "latencyMs": 1473
+}

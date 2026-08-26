@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asking for family activity planning for a specific day; weather is the context, not the question — the ask is what to do indoors Saturday"
+  },
+  "latencyMs": 1558
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "child-safety",
+    "reason": "child cannot be found, reports a state of danger happening now"
+  },
+  "latencyMs": 1239
+}

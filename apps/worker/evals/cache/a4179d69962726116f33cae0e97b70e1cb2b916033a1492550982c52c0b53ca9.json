@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "nearby-places",
+    "reason": "asking for a business location without family or child context"
+  },
+  "latencyMs": 1311
+}

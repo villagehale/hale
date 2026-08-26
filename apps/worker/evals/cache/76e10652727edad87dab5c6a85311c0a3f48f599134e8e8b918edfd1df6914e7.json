@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the registration window as Hale's own verified fact (no \"their site says\" hedge), correctly says it is already watching it (watching: true), and correctly hands over the webFind with attribution (\"Their site lists... per the venue's own program page\" is what the source demands — though the reply says \"Their site lists\" which is appropriate attribution). The webFind is for Remy (19 months, toddler, fits \"walking to 3 years\"). No URL invented (referralLinkAppended is null). No app mention. No invented details. Concise, no greeting/sign-off. One small issue: the registration window attribution — the reply says \"Their site lists Tiny Tumblers\" but the registration window fact is Hale's own verified data, not from a site, while the webFind IS from a site. The reply conflates the two by using \"Their site lists\" for the webFind, which is actually correct attribution for the webFind. The registration window is stated flatly (correct). The reply is clean, short, accurate, and complete. Minor: \"Their site lists\" could ambiguously refer to the town recreation site OR the venue's program page, but it's close enough to the webFind attribution requirement. This is essentially a 5.",
+    "score": 5
+  }
+}

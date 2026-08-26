@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "Fragment that reads as a follow-up to a question not visible in this message; missing context means it is in_domain by default"
+  },
+  "latencyMs": 1468
+}
