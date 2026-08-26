@@ -37,7 +37,13 @@ import {
   type ChannelTurnResult,
   draftsFromFailure,
 } from './coach-runtime';
+import { readAffirmative } from '~/lib/channel/affirmative';
 import { FLOOD_REPLY, clarifyWhichQuestion, partialFailureReply } from './copy';
+import {
+  type DisambiguationOption,
+  type DisambiguationStore,
+  matchDisambiguation,
+} from './disambiguation';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
@@ -220,6 +226,13 @@ export interface ChannelRouterDeps {
    */
   questions: OpenQuestionReader;
   replyResolver: ReplyResolver;
+  /**
+   * The menu Hale last put in front of this parent, and its memory (disambiguation.ts).
+   * Non-nullable (rule #11) for the reason the two readers above it are: a router with no
+   * store would go on asking "which one?" and go on failing to hear the answer — invisibly,
+   * because every one of those turns looks like a perfectly ordinary coach turn.
+   */
+  disambiguation: DisambiguationStore;
   /** The cheap screen that answers what Hale does not do, before the coach is woken.
    * Non-nullable (rule #11): "no lane wired" is not a state this router has — a lane
    * that cannot run says so by returning `in_domain` with a named fallback. */
@@ -366,8 +379,9 @@ export type RouterStatus =
   /** A deterministic handler owned it. */
   | 'handled'
   /** A parent answered an open question in their own words, and the handler that owns
-   * that question acted on it (resolve.ts). Distinct from `handled` on purpose: it is
-   * the number that says whether this arc is working. */
+   * that question acted on it — either read against everything outstanding (resolve.ts)
+   * or picked off the menu Hale had just offered them (disambiguation.ts). Distinct from
+   * `handled` on purpose: it is the number that says whether this arc is working. */
   | 'resolved'
   /** More than one question was open and the reply named none of them, so Hale asked
    * which — in one sentence, never a menu. */
@@ -530,6 +544,28 @@ export async function routeChannelMessage(
       medicalSource,
     });
 
+  // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
+  //
+  // FIRST, ahead of the deterministic chain, and that ordering is the point rather than a
+  // preference. The only numbered list Hale prints any more is the choice sentence, so
+  // while one is standing "2" belongs to IT and not to the approval grammar's ordinal —
+  // which would otherwise read the same character as consent to execute the second
+  // drafted action, an action that may not even have been on the menu (rule #4). The
+  // whole gate costs one indexed select and, on the overwhelming majority of turns, ends
+  // there: no menu, nothing to match, nothing read.
+  //
+  // A reply that picks nothing falls straight through to the chain below with the menu
+  // SPENT — one shot, whatever the outcome.
+  const picked = await consumePendingDisambiguation(deps, turn, answer);
+  if (picked.status === 'handled') {
+    return done(deps, job, {
+      status: 'resolved',
+      handler: picked.handler,
+      conversationId,
+      lane: null,
+    });
+  }
+
   // GATE 2 — the deterministic handlers, in order. First claim ends the turn.
   for (const handler of deps.handlers) {
     const verdict = await handler.handle(deps.database, turn);
@@ -634,8 +670,116 @@ export async function routeChannelMessage(
     // gets the canned choice sentence as its fallback, because that turn is the one where
     // silence-plus-an-apology would read as Hale ignoring a decision the parent made.
     questions: natural.questions,
-    unplacedAnswer: natural.status === 'unplaced',
+    unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
   });
+}
+
+/**
+ * GATE 2a — the answer to Hale's own "which one?".
+ *
+ * THE MENU IS SPENT ON THE WAY PAST, whatever the reply turns out to be. That is M7's
+ * `reasked_at` discipline and it is what makes this one-shot: a list that could be
+ * answered twice is a list that answers a later, unrelated text. A parent who ignored the
+ * question and asked something else clears it and gets an ordinary turn — which is the
+ * common case and costs them nothing.
+ *
+ * WHAT IT DISPATCHES IS AN ORDINARY RESOLUTION. The chosen option goes to the handler that
+ * DECLARES its kind, in the same shape and through the same contract the resolver stage
+ * uses (`ResolvedAnswer`), so nothing downstream — the consent ledger included — can tell
+ * whether the parent's words were read by a model or matched against a list Hale printed.
+ * `high` is the honest confidence: they did not describe the thing, they picked it off a
+ * menu Hale wrote itself, which is stronger evidence than any reading.
+ *
+ * Every way it declines is NAMED and logged (rule #11). A menu that quietly matched
+ * nothing, over and over, would look exactly like a feature nobody uses.
+ */
+async function consumePendingDisambiguation(
+  deps: ChannelRouterDeps,
+  turn: HandlerContext,
+  answer: (body: string) => Promise<string>,
+): Promise<{ status: 'handled'; handler: string } | { status: 'carry_on' }> {
+  const pending = await deps.disambiguation.pending(deps.database, {
+    familyId: turn.familyId,
+    parentUserId: turn.parentUserId,
+    now: turn.now,
+  });
+  if (!pending) return { status: 'carry_on' };
+  await deps.disambiguation.consume(deps.database, { id: pending.id, now: turn.now });
+
+  const choice = matchDisambiguation(pending, turn.body, await turn.openQuestions());
+  if (choice.status !== 'chosen') {
+    deps.log.info(
+      { reason: choice.reason, offered: pending.options.length },
+      'channel router: the reply did not pick one of the options Hale offered',
+    );
+    return { status: 'carry_on' };
+  }
+
+  const owner = deps.handlers.find((handler) => handler.resolves?.has(choice.option.kind));
+  if (!owner) {
+    deps.log.error(
+      { kind: choice.option.kind },
+      'channel router: no handler owns the option the parent picked',
+    );
+    return { status: 'carry_on' };
+  }
+  const verdict = await owner.handle(deps.database, {
+    ...turn,
+    resolved: {
+      kind: choice.option.kind,
+      questionId: choice.option.questionId,
+      polarity: choice.polarity,
+      confidence: 'high',
+    },
+  });
+  if (!verdict.claimed) {
+    deps.log.info(
+      { handler: owner.name, kind: choice.option.kind },
+      'channel router: the owning handler declined the option the parent picked',
+    );
+    return { status: 'carry_on' };
+  }
+  await deliver(verdict, answer);
+  return { status: 'handled', handler: owner.name };
+}
+
+/**
+ * The clarifier's other half: the options, written down against the message that carried
+ * them (disambiguation.ts).
+ *
+ * SEND-TIME ONLY, like every other writer in this router — a question that never reached a
+ * transport was asked of nobody, so it may not bind the next reply. Never throws, and its
+ * failure is counted rather than swallowed: the parent has the question either way, and
+ * what is lost is only that their answer takes the long route.
+ */
+async function mintDisambiguation(
+  deps: ChannelRouterDeps,
+  turn: HandlerContext,
+  input: {
+    channelMessageId: string;
+    polarity: 'yes' | 'no';
+    numbered: boolean;
+    options: readonly OpenQuestion[];
+  },
+): Promise<void> {
+  const options: DisambiguationOption[] = input.options.map((question) => ({
+    questionId: question.id,
+    kind: question.kind,
+    subject: question.subject,
+  }));
+  const outcome = await deps.disambiguation.mint(deps.database, {
+    familyId: turn.familyId,
+    parentUserId: turn.parentUserId,
+    channelMessageId: input.channelMessageId,
+    polarity: input.polarity,
+    numbered: input.numbered,
+    options,
+    now: turn.now,
+  });
+  deps.log.info(
+    { mint: outcome.status, numbered: input.numbered, offered: options.length },
+    'channel router: asked which one',
+  );
 }
 
 /**
@@ -648,9 +792,26 @@ export async function routeChannelMessage(
 type NaturalReplyOutcome =
   | { status: 'handled'; result: Pick<RouterResult, 'status' | 'handler'> }
   /** They plainly ANSWERED something and Hale could not place which. */
-  | { status: 'unplaced'; questions: readonly OpenQuestion[] }
+  | { status: 'unplaced'; questions: readonly OpenQuestion[]; answer: UnplacedAnswer }
   /** An ordinary message, or a degraded read. Carry on to the coach. */
   | { status: 'carry_on'; questions: readonly OpenQuestion[] };
+
+/**
+ * The answer Hale could not place — and, when it can be had for free, WHICH answer it was.
+ *
+ * `polarity` is what the clarifier's menu is minted with, because the sentence Hale is
+ * about to send asks WHICH, never WHETHER: the yes or no was already given, and re-reading
+ * it off a reply that only names a target would turn "no thanks" followed by "the calendar
+ * one" into a calendar write nobody consented to (rule #4).
+ *
+ * It is read by the free, deterministic vocabulary (affirmative.ts) rather than taken from
+ * the resolver, and NULL when that vocabulary cannot read it. Null means nothing is minted
+ * and the turn behaves exactly as it did before VIL-304: a polarity Hale would have had to
+ * guess at is not one it may carry into somebody's calendar or another household's thread.
+ */
+interface UnplacedAnswer {
+  polarity: 'yes' | 'no' | null;
+}
 
 /**
  * GATE 2b — the parent's own words, read against what Hale is actually waiting on.
@@ -685,9 +846,15 @@ async function resolveNaturalReply(
 
   const reading = await deps.replyResolver.read({ text: turn.body, questions });
   if (reading.status === 'unresolved') {
-    return questions.length > 1 && warrantsClarifying(reading.reason)
-      ? { status: 'unplaced', questions }
-      : { status: 'carry_on', questions };
+    if (questions.length > 1 && warrantsClarifying(reading.reason)) {
+      const word = readAffirmative(turn.body);
+      return {
+        status: 'unplaced',
+        questions,
+        answer: { polarity: word === 'unclear' ? null : word },
+      };
+    }
+    return { status: 'carry_on', questions };
   }
 
   const owner = deps.handlers.find((handler) => handler.resolves?.has(reading.kind));
@@ -780,14 +947,18 @@ async function runAgentTurn(
      * ChannelTurn), and a coach that cannot run gets the choice sentence built from them. */
     questions: readonly OpenQuestion[];
     /**
-     * The parent plainly answered something and the resolver could not place which.
+     * The parent plainly answered something and the resolver could not place which, or
+     * null when this is an ordinary turn.
      *
-     * The coach owns this turn (see resolveNaturalReply), so this flag changes only what
-     * happens if the coach cannot run: a turn that broke here is the one turn where an
-     * apology alone reads as Hale ignoring a decision, so the choice sentence is sent
+     * The coach owns this turn (see resolveNaturalReply), so its PRESENCE changes only
+     * what happens if the coach cannot run: a turn that broke here is the one turn where
+     * an apology alone reads as Hale ignoring a decision, so the choice sentence is sent
      * instead. It is the fallback and never the first answer.
+     *
+     * Its POLARITY is what the menu is minted with, on whichever of those two sentences
+     * actually goes out — see {@link UnplacedAnswer}.
      */
-    unplacedAnswer: boolean;
+    unplacedAnswer: UnplacedAnswer | null;
   },
 ): Promise<RouterResult> {
   try {
@@ -806,6 +977,19 @@ async function runAgentTurn(
       view,
     );
     const channelMessageId = await args.answer(reply);
+    // THE MENU THE COACH JUST OFFERED (VIL-304). This turn was an answer Hale could not
+    // place, so the coach was handed the candidates and asked which — in its own words,
+    // which is why nothing here claims a number was printed. Written down against the
+    // message that carried the question, so the reply to it lands on the option the parent
+    // names rather than on a fresh reading of the whole open set.
+    if (args.unplacedAnswer?.polarity) {
+      await mintDisambiguation(deps, args.turn, {
+        channelMessageId,
+        polarity: args.unplacedAnswer.polarity,
+        numbered: false,
+        options: args.questions,
+      });
+    }
     // AFTER the send, against the row that carried it — the MEM-10 send-time discipline
     // (lib/commitments/ledger.ts). A turn that composed an offer and then failed to
     // deliver it promised nobody anything, and must not leave a debt behind. The writer
@@ -902,7 +1086,13 @@ async function runAgentTurn(
       });
       throw new TurnDeferred(disposition.reason, err);
     }
-    if (disposition.reply !== null) await args.answer(disposition.reply);
+    if (disposition.reply !== null) {
+      const channelMessageId = await args.answer(disposition.reply);
+      // Only the choice sentence has one: it is the only reply on this path that asks the
+      // parent a question, and a question that is not written down is the defect VIL-304
+      // exists to close.
+      await disposition.afterSend?.(channelMessageId);
+    }
     // AN APOLOGY IS NOT AN ANSWER. The reply above claims the turn (turn-ledger.ts), so
     // `sms_turn_answered` is written and the re-drive stays quiet — correctly: the parent
     // has their text. What that row must never do is stand alone. On 2026-08-22 it did,
@@ -1049,6 +1239,14 @@ type FailedTurnDisposition =
        * in the 2026-08-22 audit trail.
        */
       reason: TurnFailureReason;
+      /**
+       * Work that may only happen once the reply has actually reached the parent, handed
+       * the `channel_messages` id that carried it — the same contract
+       * {@link HandlerVerdict.afterSend} keeps, and for the same reason: the choice
+       * sentence's menu is minted against the message that ASKED, so a turn that composed
+       * a question and failed to deliver it binds nothing.
+       */
+      afterSend?: (channelMessageId: string) => Promise<void>;
       log: object;
     }
   | { outcome: 'deferred'; reason: TurnDeferralReason; log: object };
@@ -1061,7 +1259,7 @@ async function disposeOfFailedTurn(
     answer: (body: string) => Promise<string>;
     hasAnswered: () => boolean;
     questions: readonly OpenQuestion[];
-    unplacedAnswer: boolean;
+    unplacedAnswer: UnplacedAnswer | null;
   },
   err: unknown,
   drafted: readonly string[],
@@ -1131,12 +1329,29 @@ async function disposeOfFailedTurn(
   // a decision Hale could not place, and the coach — whose job that turn now is — could
   // not run. Deferring would leave a decision unacknowledged for as long as the outage
   // lasts, and an apology would answer a question they did not ask, so Hale asks which
-  // one, in the subjects it was already holding.
-  if (args.unplacedAnswer && args.questions.length > 1) {
+  // one, in the subjects it was already holding — NUMBERED, and written down against the
+  // message that carries them, so that "2" and "the welcome note one" both land on the
+  // option the parent actually read (VIL-304).
+  const unplaced = args.unplacedAnswer;
+  if (unplaced && args.questions.length > 1) {
+    const { reply, shown } = clarifyWhichQuestion(args.questions);
+    const polarity = unplaced.polarity;
     return {
       outcome: 'agent_failed',
-      reply: clarifyWhichQuestion(args.questions),
+      reply,
       reason: 'unplaced_choice',
+      // `shown` and nothing else: the ordinal a parent types counts positions in the
+      // sentence they were sent, so the row has to hold exactly that list in exactly that
+      // order — which is why the sentence hands it back rather than being rebuilt here.
+      afterSend: polarity
+        ? (channelMessageId) =>
+            mintDisambiguation(deps, args.turn, {
+              channelMessageId,
+              polarity,
+              numbered: true,
+              options: shown,
+            })
+        : undefined,
       log: { unplacedAnswer: true },
     };
   }

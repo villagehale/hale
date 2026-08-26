@@ -16,6 +16,11 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, type ChannelTurnResult, ChannelTurnFailed } from './coach-runtime';
 import type { SmokeAlarmClaim } from './smoke-alarm';
+import type {
+  DisambiguationOption,
+  DisambiguationStore,
+  PendingDisambiguation,
+} from './disambiguation';
 import type { OpenQuestion, OpenQuestionReader } from './open-questions';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import {
@@ -24,16 +29,22 @@ import {
   DISCOVERABILITY_ON,
 } from '~/lib/village/intros/copy';
 import { villageIntroHandler } from './handlers';
-import type { ReplyReading, ReplyResolver } from './resolve';
+import { type ReplyReading, type ReplyResolver, toReading } from './resolve';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 import { FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
-import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
+import {
+  approvalHandler,
+  founderWelcomeHandler,
+  healthReplyHandler,
+  sequenceReplyHandler,
+} from './handlers';
 import { AGENT_TURNS_PER_HOUR } from './flood';
 import {
   type ChannelCoachRuntime,
   type ChannelRouterDeps,
   type DeterministicHandler,
   type InboundContext,
+  type RouterResult,
   TurnDeferred,
   routeChannelMessage,
 } from './route';
@@ -261,6 +272,50 @@ function fakeQuestions(questions: OpenQuestion[]): OpenQuestionReader & { calls:
   return reader;
 }
 
+/**
+ * The menu Hale last offered, in memory. Injected for the same reason the turn ledger and
+ * the alarm's claim are: the fake db does not evaluate `where` clauses, so a read through
+ * it would return rows this very turn wrote and match a menu nobody was shown.
+ *
+ * It keeps the one property the real store's partial unique index keeps — AT MOST ONE
+ * live menu per parent, superseded rather than accumulated — because a fake that let two
+ * stand would pass a test the deployed code fails.
+ */
+function fakeDisambiguation(): DisambiguationStore & { minted: number } {
+  let live: (PendingDisambiguation & { parentUserId: string }) | null = null;
+  let seq = 0;
+  const store = {
+    minted: 0,
+    async pending(_db: unknown, input: { parentUserId: string }) {
+      return live && live.parentUserId === input.parentUserId ? live : null;
+    },
+    async mint(
+      _db: unknown,
+      input: {
+        parentUserId: string;
+        polarity: 'yes' | 'no';
+        numbered: boolean;
+        options: readonly DisambiguationOption[];
+      },
+    ) {
+      seq += 1;
+      store.minted += 1;
+      live = {
+        id: `menu-${seq}`,
+        parentUserId: input.parentUserId,
+        polarity: input.polarity,
+        numbered: input.numbered,
+        options: input.options,
+      };
+      return { status: 'minted' as const };
+    },
+    async consume(_db: unknown, input: { id: string }) {
+      if (live?.id === input.id) live = null;
+    },
+  };
+  return store as unknown as DisambiguationStore & { minted: number };
+}
+
 function fakeResolver(reading: ReplyReading): ReplyResolver & { calls: number } {
   const resolver = {
     calls: 0,
@@ -357,6 +412,7 @@ function harness(
         options.dispatchDeepResearch ?? (async () => ({ status: 'enqueued' as const })),
       questions: options.questions ?? fakeQuestions([]),
       replyResolver: options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+      disambiguation: fakeDisambiguation(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
@@ -2026,10 +2082,12 @@ describe('natural reply resolution', () => {
 
     expect(result.status).toBe('agent_failed');
     expect(h.transport.bodies()).toEqual([
-      'Which one - reschedule on your calendar or meeting the family nearby?',
+      'Which one - 1) reschedule on your calendar, 2) meeting the family nearby? Reply 1 or 2, or just say which.',
     ]);
-    // No ordinal, no numbered list, and nothing the parent has to type back verbatim.
-    expect(h.transport.bodies()[0]).not.toMatch(/\bYES\b|\b1\./);
+    // A number is offered and is never the only way in — the 2026-08-13 principle survives
+    // the numbers coming back (VIL-304). No keyword to recite either way.
+    expect(h.transport.bodies()[0]).toContain('or just say which');
+    expect(h.transport.bodies()[0]).not.toMatch(/\bYES\b/);
   });
 
   it('does not send the choice sentence for an ordinary broken turn', async () => {
@@ -2732,5 +2790,263 @@ describe('a promise worth opening pages for is dispatched at question time', () 
     expect(promises).toHaveLength(1);
     // And the lost speed is on the record rather than nowhere.
     expect(JSON.stringify(h.logs)).toContain('queue_unavailable');
+  });
+});
+
+/**
+ * VIL-304 — THE CLARIFIER OWNS THE NEXT REPLY.
+ *
+ * On 2026-08-24 the founder answered an offer with "YES", got "Which one - add to your
+ * calendar, sending your welcome note to the new family or note in your digest?", quoted
+ * one of those options straight back, and was told Hale cannot message other families.
+ *
+ * The menu was a sentence Hale said and then forgot. Nothing anywhere recorded that
+ * three named options had just been put in front of this parent, so the next inbound was
+ * read cold against every open question at once — and a reply that names a target with
+ * no yes or no in it reads as `no_target` (resolve.ts `toReading`, pinned in both
+ * directions by resolve.test.ts), which is the coach lane, which cannot send that note.
+ *
+ * These tests drive the REAL reading (`toReading`) over the raw model output those two
+ * turns actually produced, so what they pin is the live failure rather than a stipulated
+ * fixture: turn one is genuinely ambiguous, turn two genuinely names a target with no
+ * polarity. What had to change is that turn two never gets that far.
+ */
+describe('the disambiguation a clarifier owns', () => {
+  const OFFER = 'ffff1111-1111-4111-8111-111111111111';
+  const DRAFT = 'aaaa2222-2222-4222-8222-222222222222';
+
+  /** The founder's own standing offer — the one whose YES writes into ANOTHER household,
+   * and the one the coach can never send for itself (coach-runtime.ts). */
+  const founderOffer = (): OpenQuestion => ({
+    id: OFFER,
+    kind: 'founder_welcome_offer',
+    description: 'An offer to send your welcome note to a new family from the Georgetown poster.',
+    subject: 'sending your welcome note to the new family',
+    answerable: { yes: true, no: true },
+  });
+
+  const calendarDraft = (): OpenQuestion => ({
+    id: DRAFT,
+    kind: 'approval',
+    description: 'Add to your calendar',
+    subject: 'add to your calendar',
+    answerable: { yes: true, no: true },
+  });
+
+  /**
+   * The resolver, driven through its REAL reading of a scripted model output. Faking the
+   * READING would let these tests assert against a decision nobody's code makes; faking
+   * the model's raw JSON and running `toReading` over it is the live transcript.
+   */
+  function replayedResolver(
+    script: Record<string, { target: string; polarity: string; confidence: string }>,
+  ): ReplyResolver & { seen: string[] } {
+    const resolver = {
+      seen: [] as string[],
+      async read({ text, questions }: { text: string; questions: readonly OpenQuestion[] }) {
+        resolver.seen.push(text);
+        const raw = script[text];
+        if (!raw) throw new Error(`replayedResolver: nothing scripted for ${JSON.stringify(text)}`);
+        return toReading(raw, questions);
+      },
+    };
+    return resolver;
+  }
+
+  /** A stand-in for the handler that owns a kind, claiming only the RESOLVED pass. Named
+   * after the real one, whose own declaration is asserted below so this cannot quietly
+   * stop mirroring it. */
+  function owner(name: string, kind: OpenQuestion['kind']) {
+    const seen: Array<Record<string, unknown>> = [];
+    return {
+      seen,
+      handler: {
+        name,
+        resolves: new Set([kind]),
+        async handle(_db: unknown, ctx: { resolved: unknown }) {
+          if (!ctx.resolved) return { claimed: false };
+          seen.push(ctx.resolved as Record<string, unknown>);
+          return { claimed: true, outcome: 'acted', reply: 'Sent - your note is in their thread.' };
+        },
+      } as unknown as DeterministicHandler,
+    };
+  }
+
+  /** Successive texts from one parent, each its own inbound message. */
+  function conversation(
+    options: Parameters<typeof harness>[0] & { bodies: string[] },
+  ): { h: Harness; run: () => Promise<RouterResult> } {
+    const { bodies, ...rest } = options;
+    const h = harness(rest);
+    let turn = 0;
+    h.deps.loadContext = async () => ({
+      body: bodies[turn - 1] as string,
+      role: 'primary_parent',
+      primaryParentName: 'Sam',
+      phoneE164: PHONE,
+    });
+    return {
+      h,
+      run: async () => {
+        turn += 1;
+        return routeChannelMessage(h.deps, nthJob(turn));
+      },
+    };
+  }
+
+  const NAMED_IT = 'sending your welcome note to the new family';
+
+  it('mirrors the kind the real founder handler declares', () => {
+    // The stand-ins above answer for `founder_welcome`. If production ever stopped
+    // declaring that kind, every test in this block would go on passing against nothing.
+    expect(founderWelcomeHandler({} as never).resolves).toEqual(
+      new Set(['founder_welcome_offer']),
+    );
+  });
+
+  it('resolves the option the parent quoted back, instead of handing it to the coach', async () => {
+    const founder = owner('founder_welcome', 'founder_welcome_offer');
+    const coach = brokenCoach();
+    const resolver = replayedResolver({
+      // Turn one: an answer, and which one cannot be told from the word.
+      YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+      // Turn two: the target named exactly, and no polarity in the sentence at all —
+      // which `toReading` reads as `no_target`, the coach lane, the bug.
+      [NAMED_IT]: { target: OFFER, polarity: 'unclear', confidence: 'high' },
+    });
+    const c = conversation({
+      bodies: ['YES', NAMED_IT],
+      handlers: [founder.handler],
+      // The turn that broke in production: the coach could not run, so the canned choice
+      // sentence went out. The next test drives the same arc through a coach that can.
+      coach,
+      questions: fakeQuestions([calendarDraft(), founderOffer()]),
+      replyResolver: resolver,
+    });
+
+    const asked = await c.run();
+    expect(asked.status).toBe('agent_failed');
+    expect(c.h.transport.bodies()[0]).toMatch(/Which one/i);
+
+    const answered = await c.run();
+
+    expect(answered.status).toBe('resolved');
+    expect(answered.handler).toBe('founder_welcome');
+    expect(founder.seen).toEqual([
+      {
+        kind: 'founder_welcome_offer',
+        questionId: OFFER,
+        polarity: 'yes',
+        confidence: 'high',
+      },
+    ]);
+    expect(c.h.transport.bodies()[1]).toBe('Sent - your note is in their thread.');
+    // It never cost a resolver call either: naming one of a handful of options Hale just
+    // printed is a selection, not a reading problem.
+    expect(resolver.seen).toEqual(['YES']);
+  });
+
+  it('resolves it after the COACH asked which one, in its own words', async () => {
+    const founder = owner('founder_welcome', 'founder_welcome_offer');
+    const coach = fakeCoach(
+      'Which of those did you mean - the calendar change, or the welcome note?',
+    );
+    const c = conversation({
+      bodies: ['YES', NAMED_IT],
+      handlers: [founder.handler],
+      coach,
+      questions: fakeQuestions([calendarDraft(), founderOffer()]),
+      replyResolver: replayedResolver({
+        YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+        [NAMED_IT]: { target: OFFER, polarity: 'unclear', confidence: 'high' },
+      }),
+    });
+
+    expect((await c.run()).status).toBe('agent_replied');
+    const answered = await c.run();
+
+    expect(answered.status).toBe('resolved');
+    expect(founder.seen).toHaveLength(1);
+    // One coach turn, the one that asked. The answer did not need a second.
+    expect(coach.calls).toBe(1);
+  });
+
+  it('resolves the ordinal it printed', async () => {
+    const founder = owner('founder_welcome', 'founder_welcome_offer');
+    const c = conversation({
+      bodies: ['YES', '2'],
+      handlers: [founder.handler],
+      coach: brokenCoach(),
+      questions: fakeQuestions([calendarDraft(), founderOffer()]),
+      replyResolver: replayedResolver({
+        YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+        '2': { target: 'none', polarity: 'unclear', confidence: 'low' },
+      }),
+    });
+
+    const asked = await c.run();
+    // The numbers are IN the sentence, which is the only thing that makes an ordinal an
+    // answer at all: a parent cannot pick "2" off a list they were never shown.
+    expect(c.h.transport.bodies()[0]).toContain('2)');
+    expect(asked.status).toBe('agent_failed');
+
+    expect((await c.run()).status).toBe('resolved');
+    expect(founder.seen).toEqual([
+      { kind: 'founder_welcome_offer', questionId: OFFER, polarity: 'yes', confidence: 'high' },
+    ]);
+  });
+
+  it('is spent by the next text whatever that text says', async () => {
+    const founder = owner('founder_welcome', 'founder_welcome_offer');
+    const c = conversation({
+      bodies: ['YES', 'what time is storytime on saturday', NAMED_IT],
+      handlers: [founder.handler],
+      coach: fakeCoach(),
+      questions: fakeQuestions([calendarDraft(), founderOffer()]),
+      replyResolver: replayedResolver({
+        YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+        'what time is storytime on saturday': {
+          target: 'none',
+          polarity: 'unclear',
+          confidence: 'high',
+        },
+        [NAMED_IT]: { target: OFFER, polarity: 'unclear', confidence: 'high' },
+      }),
+    });
+
+    await c.run();
+    // An ordinary question clears it and is answered as an ordinary question.
+    expect((await c.run()).status).toBe('agent_replied');
+    expect(founder.seen).toEqual([]);
+
+    // And the menu is gone: the same words that would have resolved it a turn ago are
+    // now just words, because Hale is no longer standing in front of that question. Its
+    // positive control is the first test in this block — the identical body, through the
+    // identical harness, reaching the handler — so this cannot pass by never matching.
+    expect((await c.run()).status).toBe('agent_replied');
+    expect(founder.seen).toEqual([]);
+  });
+
+  it('will not carry an answer into a question that has since closed', async () => {
+    const founder = owner('founder_welcome', 'founder_welcome_offer');
+    const open = [calendarDraft(), founderOffer()];
+    const c = conversation({
+      bodies: ['YES', NAMED_IT],
+      handlers: [founder.handler],
+      coach: fakeCoach(),
+      questions: fakeQuestions(open),
+      replyResolver: replayedResolver({
+        YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+        [NAMED_IT]: { target: OFFER, polarity: 'unclear', confidence: 'high' },
+      }),
+    });
+
+    await c.run();
+    // The offer lapsed between the question and the answer. Same positive control as
+    // above: these exact words resolve when the row is still there.
+    open.splice(1, 1);
+
+    expect((await c.run()).status).toBe('agent_replied');
+    expect(founder.seen).toEqual([]);
   });
 });
