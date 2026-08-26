@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -115,14 +116,62 @@ function expectStringArray(fm: Record<string, string | string[]>, key: string): 
   return value;
 }
 
-/** Parse a raw skill file (frontmatter + body) into a validated Skill. */
-export function parseSkill(raw: string): Skill {
+/**
+ * `{{include:<partial>}}` — a marker in a skill body, replaced at load with the whole
+ * of `<partial>.md` from the same directory.
+ *
+ * ONE mechanism, for ONE reason: a boundary that several skills state is a boundary
+ * several skills can state differently. The capability table (VIL-295) is read by the
+ * lane classifier that decides whether the coach is woken at all, by the coach, and by
+ * the spoken turn — three surfaces that spent two weeks disagreeing about whether a
+ * solids question was a 911 call, a refusal, or the job. A partial makes agreeing the
+ * default and disagreeing impossible.
+ *
+ * Resolved at PARSE time rather than at prompt-assembly time, so the substituted text is
+ * part of `skill.instructions` — which is what every eval hashes into its cache key and
+ * what `skills:check` locks. A table edit therefore re-keys the corpora that read it and
+ * fails the drift gate, exactly as an edit to the skill file itself does.
+ *
+ * ONE LEVEL, deliberately: a partial that includes a partial is a prompt whose text you
+ * cannot read in one file, which is the property this whole seam exists to protect.
+ */
+const INCLUDE = /\{\{include:([a-z0-9-]+)\}\}/g;
+
+function resolveIncludes(body: string, baseDir: string): string {
+  const resolved = body.replace(INCLUDE, (_marker, name: string) => {
+    const path = join(baseDir, `${name}.md`);
+    let partial: string;
+    try {
+      partial = readFileSync(path, 'utf8');
+    } catch {
+      throw new Error(`skill file: unresolved include '{{include:${name}}}' — no ${path}`);
+    }
+    if (INCLUDE.test(partial)) {
+      throw new Error(`skill file: partial '${name}' includes another partial — one level only`);
+    }
+    return partial.trim();
+  });
+  // A marker the regex could not read (a typo, a capital, a path) must never ship to a
+  // model as literal braces — the model would read it as instructions about braces.
+  if (resolved.includes('{{include')) {
+    throw new Error(`skill file: unresolved include marker left in the body`);
+  }
+  return resolved;
+}
+
+/**
+ * Parse a raw skill file (frontmatter + body) into a validated Skill. `baseDir` is where
+ * `{{include:…}}` partials are looked up — the skill file's own directory when it was
+ * loaded from one, so a relocated bundle resolves them beside the skill rather than
+ * beside this compiled module.
+ */
+export function parseSkill(raw: string, baseDir: string = skillsDir()): Skill {
   const match = FRONTMATTER.exec(raw);
   if (!match) {
     throw new Error('skill file: missing or malformed YAML frontmatter (--- ... ---)');
   }
   const fm = parseFrontmatter(match[1] as string);
-  const instructions = (match[2] as string).trim();
+  const instructions = resolveIncludes((match[2] as string).trim(), baseDir);
   if (instructions === '') {
     throw new Error('skill file: empty instructions body');
   }
@@ -154,5 +203,5 @@ export async function loadSkill(nameOrPath: string): Promise<Skill> {
       ? nameOrPath
       : join(skillsDir(), `${nameOrPath}.md`);
   const raw = await readFile(path, 'utf8');
-  return parseSkill(raw);
+  return parseSkill(raw, dirname(path));
 }

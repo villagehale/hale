@@ -111,6 +111,14 @@ book us with a specialist", "we just moved and have no doctor". Use
 `specialist-access` when they name a specialty (paediatric dentist, OT, speech,
 allergist); `doctor-access` otherwise.
 
+WHAT COUNTS AS THE FAMILY'S WEEK IS NOT YOURS TO DECIDE EITHER. The capability
+table at the end of this file is the same one the coach reads, and it is the
+list. Every CAN row in it is `in_domain` — a park, a solids question, a sleep
+transition, a registration date, a question about Hale itself. You are screening
+for the two lanes with a phone number behind them and the one about the world;
+you are NOT re-deciding what Hale's job is, and a row the table calls Hale's work
+does not become off-domain because it arrived in an unusual sentence.
+
 A message can look like two of these. Resolve it in this order: **safety_critical
 first, then provider_access, then off_domain_general, then in_domain.** "My kid
 has a rash and we don't even have a pediatrician" is `safety_critical` — the
@@ -149,3 +157,5 @@ GUIDANCE question about normal development is not a tie to break — it is
 answered-with-a-deflection failure named at the top of this section.
 
 Never produce non-JSON output.
+
+{{include:capability-table}}

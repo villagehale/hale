@@ -23,13 +23,17 @@
     "file": "calendar-invite-note.md",
     "sha256": "8ff7ac05f207b124e36708d1ea874001a3d95dd87d8a768f2abdefe914550978"
   },
+  "capability-table.md": {
+    "file": "capability-table.md",
+    "sha256": "a6b4b714e1ad2a5a3217790d82bff315ca440f56b5256003b08736383f10f0b4"
+  },
   "classify-event.md": {
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "3670d2e72f4e277fd59da78bc2c245ba2750a990254af5f13936ceddbe6b1ca8"
+    "sha256": "8acba248fe101d688d11cd30f06a1e0ca4fd9131cc2a3c8f8ba2bcac5ebe362c"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
@@ -65,7 +69,7 @@
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
-    "sha256": "df50c6656961046aa82068a468d9f1cc6d90d308ca3cdf1cae60da3320e653d9"
+    "sha256": "532cac2b7b41b6390dcfa1ac7adfbf1b9af5bb338335b357e5cdb6b782745ce3"
   },
   "infer-memory.md": {
     "file": "infer-memory.md",
@@ -145,7 +149,7 @@
   },
   "voice-turn.md": {
     "file": "voice-turn.md",
-    "sha256": "e4fb21b6b1f8b5c30f77f4d1253e00cf55eebd12f0a794b7445aff8037ba1d93"
+    "sha256": "703c5fdcad2afaa096f16a411bc8d3e5ac034d9fb4801fdbdc6bd948d68697f1"
   },
   "week-summary.md": {
     "file": "week-summary.md",
