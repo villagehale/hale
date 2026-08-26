@@ -1,7 +1,7 @@
 import type { IntakeFunnel, LlmCogs, TtfaStat } from './funnel-scoreboard';
 
 /**
- * THE FOUNDER SCORECARD'S RUBRIC — seven graded rows, and every threshold that
+ * THE FOUNDER SCORECARD'S RUBRIC — eight graded rows, and every threshold that
  * produces them, in one auditable file.
  *
  * A dashboard hands a founder counts and lets them decide, every Monday, whether
@@ -215,7 +215,90 @@ export function gradeEngagement(engagement: FamilyEngagement): ScorecardRow {
   };
 }
 
-// ── 4 · Radar accuracy ───────────────────────────────────────────────────────
+// ── 4 · W4 retention ─────────────────────────────────────────────────────────
+
+/**
+ * THE NORTH STAR, as a fraction: the F14 Build Plan's scoreboard declares W2 >= 40%.
+ *
+ * It is stated here rather than re-derived because it is the one retention number the
+ * plan actually committed to, and the D15 monetization trigger reads it too (">= 25
+ * watch-enrolled + W2 >= 40% twice"). Every band below is a multiple of it, so raising
+ * or lowering the product's ambition is a single edit a code review can see.
+ */
+export const RETENTION_W2_TARGET = 0.4;
+
+/** The week whose retention the scorecard grades. A month in is the first point at
+ * which "came back" has stopped meaning "has not left yet". */
+export const RETENTION_GRADED_WEEK = 4;
+
+/** Fractions of {@link RETENTION_W2_TARGET}, measured at week 4. */
+const RETENTION_BANDS: readonly Band[] = [
+  // A month in and still at the week-2 north star: the curve went flat, which is the
+  // only shape that means the product became part of the week.
+  { bound: 1.0, score: 10 },
+  // Three quarters of it. Normal decay for something parents genuinely use.
+  { bound: 0.75, score: 8 },
+  // Half. Real usage that is still leaking.
+  { bound: 0.5, score: 6 },
+  // A quarter — a handful of households, and no habit.
+  { bound: 0.25, score: 3 },
+];
+
+/**
+ * One cell of the retention grid: of the families that signed up in `signupWeek` and
+ * have had week `weekN` FULLY elapse, how many texted Hale back during it.
+ *
+ * `cohortSize` counts only the families for which the week is OBSERVABLE. A week that
+ * has not finished yet is absent from the grid entirely rather than present as a zero —
+ * "nobody came back" and "we cannot know yet" are the rule-2 pair, and a cohort that
+ * signed up on Friday would otherwise drag every recent week toward 0%.
+ */
+export interface RetentionCohort {
+  /** Monday-aligned signup week in the founder's zone, as `YYYY-MM-DD`. */
+  signupWeek: string;
+  /** Whole weeks since the family was provisioned, 1-based. */
+  weekN: number;
+  cohortSize: number;
+  retained: number;
+}
+
+/**
+ * W4 retention — of the families old enough to have had a fourth week, how many texted
+ * Hale during it.
+ *
+ * THIS ROW REPLACED "opened the app on 3+ days in 14". The pivot demoted the web app to
+ * a receipts room (D4/D20), so an app-open stopped being evidence of anything: the
+ * product is a number you text, and the only honest proof a family is still using it is
+ * that they sent it a message. It sits directly after Engagement because the two are
+ * one question asked from both ends — engagement is whether Hale reached them, this is
+ * whether they came back.
+ *
+ * Pooled across cohorts rather than reported per signup week: the grade is one number,
+ * and a five-family cohort's 0% is noise next to the whole population's rate.
+ */
+export function gradeW4Retention(cohorts: readonly RetentionCohort[]): ScorecardRow {
+  const label = 'W4 retention';
+  const graded = cohorts.filter((cohort) => cohort.weekN === RETENTION_GRADED_WEEK);
+  const cohortSize = graded.reduce((sum, cohort) => sum + cohort.cohortSize, 0);
+  // An empty cohort is not a 0% cohort. Before any family has had five weeks elapse
+  // there is nothing to grade, and scoring that 0 would report a young product as a
+  // failed one (rule 2).
+  if (cohortSize === 0) {
+    return {
+      label,
+      score: null,
+      reason: notEnoughData(0, `no cohort has finished week ${RETENTION_GRADED_WEEK} yet`),
+    };
+  }
+  const retained = graded.reduce((sum, cohort) => sum + cohort.retained, 0);
+  return {
+    label,
+    score: scoreAtLeast(retained / cohortSize / RETENTION_W2_TARGET, RETENTION_BANDS),
+    reason: `${retained} of ${cohortSize} families texted back in week ${RETENTION_GRADED_WEEK} (${percent(retained, cohortSize)}) · north star is W2 ${Math.round(RETENTION_W2_TARGET * 100)}%`,
+  };
+}
+
+// ── 5 · Radar accuracy ───────────────────────────────────────────────────────
 
 /** Share of due registration windows the weekly sweep re-confirmed against source. */
 const RADAR_BANDS: readonly Band[] = [
@@ -292,7 +375,7 @@ export function gradeRadarAccuracy(radar: RadarVerification): ScorecardRow {
   return { label, score, reason };
 }
 
-// ── 5 · Deliverability ───────────────────────────────────────────────────────
+// ── 6 · Deliverability ───────────────────────────────────────────────────────
 
 /** Share of outbound legs that reached a family. */
 const DELIVERABILITY_BANDS: readonly Band[] = [
@@ -361,7 +444,7 @@ export function gradeDeliverability(counts: readonly DeliveryCount[]): Scorecard
   };
 }
 
-// ── 6 · Safety ───────────────────────────────────────────────────────────────
+// ── 7 · Safety ───────────────────────────────────────────────────────────────
 
 /** Safety-lane deflections in the week. Counts, not a rate: one parent shown a fixed
  * door with a hurt child is a thing to read about, whatever the denominator. */
@@ -433,7 +516,7 @@ export function gradeSafety(
   };
 }
 
-// ── 7 · Unit cost ────────────────────────────────────────────────────────────
+// ── 8 · Unit cost ────────────────────────────────────────────────────────────
 
 /**
  * The LLM budget line, in USD per family per week. Two dollars is the founder's

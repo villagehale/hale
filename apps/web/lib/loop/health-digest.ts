@@ -1,5 +1,19 @@
 import { type Database, schema } from '@hale/db';
-import { and, count, countDistinct, desc, eq, gt, gte, inArray, isNotNull, lt } from 'drizzle-orm';
+import {
+  and,
+  count,
+  countDistinct,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  notInArray,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { Resend } from 'resend';
 import { founderAddress } from '~/lib/auth/founder-signal';
@@ -17,10 +31,12 @@ import {
   type FunnelScoreboard,
   formatFunnelScoreboard,
 } from './funnel-scoreboard';
+import { resolveMetricsExclusions } from './metrics-scope';
 import {
   type FamilyEngagement,
   type MedicalAnswers,
   type RadarVerification,
+  type RetentionCohort,
   type ScorecardRow,
   gradeActivation,
   gradeDeliverability,
@@ -29,6 +45,7 @@ import {
   gradeRadarAccuracy,
   gradeSafety,
   gradeUnitCost,
+  gradeW4Retention,
 } from './scorecard-rubric';
 
 /**
@@ -96,6 +113,13 @@ export interface LoopHealthSummary {
   /** The scorecard's engagement row: families that had a full week in which to hear
    * from Hale, and how many did. */
   engagement: FamilyEngagement;
+  /**
+   * VIL-295 · the retention grid, and the other POINT-IN-TIME read on this summary: a
+   * cohort's fourth week is a fact about that cohort, not about the seven days this
+   * digest covers, so it is read as of `windowEnd` on the `commitmentDebt` precedent
+   * rather than over `[windowStart, windowEnd)`.
+   */
+  w4Retention: RetentionCohort[];
   /** The scorecard's radar row: whether the weekly re-verify sweep ran, and how much
    * of the actionable dataset it re-confirmed at source. */
   radar: RadarVerification;
@@ -227,6 +251,8 @@ export async function aggregateLoopHealth(
   // founder, and texting a family "sorry, I still owe you" is a send-policy decision
   // nobody has made yet.
   const commitmentDebt = await aggregateCommitmentDebt(database, windowEnd);
+  // VIL-295 · same reasoning, same seam: retention is a balance too.
+  const w4Retention = await aggregateW4Retention(database, windowEnd);
 
   return {
     windowStart,
@@ -241,6 +267,7 @@ export async function aggregateLoopHealth(
     scoreboard,
     commitmentDebt,
     engagement,
+    w4Retention,
     radar,
     medicalAnswers,
     // The check constraint makes a half-stamped row unwritable, so a lane implies a
@@ -292,6 +319,101 @@ export async function aggregateFamilyEngagement(
     );
 
   return { families: familiesRow?.count ?? 0, contacted: contactedRow?.count ?? 0 };
+}
+
+/** The founder's reporting zone — the only place a cohort LABEL is anchored to a
+ * calendar. Reversible in one word: Postgres `week` is ISO, so the label is Monday-
+ * aligned by construction and a different zone just moves the boundary. */
+const RETENTION_TIME_ZONE = 'America/Toronto';
+
+/** How far the grid runs. Reversible: the scorecard grades week 4, and the weeks either
+ * side of it are what make that number checkable — a W4 of 0% under a W1 of 90% is a
+ * churn problem, under a W1 of 0% it is a broken reader. */
+const RETENTION_CURVE_WEEKS = 8;
+
+/**
+ * W4 RETENTION (VIL-295) — of the families old enough to have had a fourth week, how
+ * many texted Hale back during it.
+ *
+ * IT REPLACED `family_active_days` ("opened the app on 3+ days in 14"). That metric was
+ * true and meaningless after the pivot: the web app is the receipts room (D4/D20), so a
+ * parent who never opens it and texts Hale twice a week is the SUCCESS case, and the
+ * old reader scored them as churned. The signal moved to the channel, so the reader did.
+ *
+ * A POINT-IN-TIME read, on the `aggregateCommitmentDebt` precedent: `asOf` is a
+ * horizon, not a window. Week 4 belongs to the cohort, not to the seven days the digest
+ * happens to cover.
+ *
+ * The predicates, and what each one is holding out (all three mutation-proven — dropping
+ * any of them changes the number):
+ *
+ *   `direction = 'in'`   — Hale's own reply is not a family coming back. Without this
+ *                          every contacted family retains itself.
+ *   `category = 'reply'` — the parent talking to the coach, on ANY channel: SMS, email,
+ *                          and a phone call (voice turns are written `channel:'voice',
+ *                          category:'reply'` — see channel/twilio/voice-record.ts), so a
+ *                          family whose whole week-4 contact was a call does count.
+ *                          `intake` is held out because it is the signup conversation
+ *                          itself, replayed at provisioning with its original timestamps
+ *                          — counting it would retain every family in its own week 0.
+ *                          `caregiver` and `rsvp` are held out because the person who
+ *                          sent them is not the parent: a grandmother answering an
+ *                          invite and a party guest RSVPing are somebody else's evidence.
+ *   the observability cut — a week is in the grid only once it has FULLY elapsed.
+ *                          Otherwise a cohort provisioned on Friday reads 0% for a week
+ *                          it has had two days of, and every good growth week looks like
+ *                          a collapse (the `aggregateFamilyEngagement` failure mode).
+ *
+ * Reversible one-liners: `created_at` rather than `sent_at` because `created_at` is NOT
+ * NULL and `sent_at` is nullable; `n` starts at 1 because week 0 is the intake
+ * conversation; no `status` filter because inbound rows are always written `delivered`,
+ * so filtering would be a second reader of a fact one column already answers.
+ */
+export async function aggregateW4Retention(
+  database: Database,
+  asOf: Date,
+): Promise<RetentionCohort[]> {
+  // Resolved HERE rather than passed in, so a caller cannot measure the founder's own
+  // household by forgetting an argument.
+  const excluded = await resolveMetricsExclusions(database);
+
+  const provisionedAt = schema.families.createdAt;
+  const weekN = sql`w.n`;
+  /** The per-family boundary `weeks` whole weeks after provisioning. Per-family, so a
+   * Wednesday signup gets a fair week 1 — reversible to a calendar-aligned boundary. */
+  const afterWeeks = (weeks: SQL) => sql`${provisionedAt} + make_interval(days => 7 * (${weeks}))`;
+  const signupWeek = sql<string>`(date_trunc('week', ${provisionedAt} at time zone ${RETENTION_TIME_ZONE}))::date::text`;
+
+  const cameBack = sql`exists (select 1 from ${schema.channelMessages} where ${and(
+    eq(schema.channelMessages.familyId, schema.families.id),
+    eq(schema.channelMessages.direction, 'in'),
+    eq(schema.channelMessages.category, 'reply'),
+    gte(schema.channelMessages.createdAt, afterWeeks(weekN)),
+    lt(schema.channelMessages.createdAt, afterWeeks(sql`${weekN} + 1`)),
+  )})`;
+
+  return database
+    .select({
+      signupWeek,
+      weekN: sql<number>`w.n`,
+      cohortSize: sql<number>`count(*)::int`,
+      retained: sql<number>`count(*) filter (where ${cameBack})::int`,
+    })
+    .from(
+      sql`${schema.families} cross join generate_series(1, ${RETENTION_CURVE_WEEKS}::int) as w(n)`,
+    )
+    .where(
+      and(
+        notInArray(schema.families.id, [...excluded]),
+        sql`${afterWeeks(sql`${weekN} + 1`)} <= ${asOf.toISOString()}::timestamptz`,
+      ),
+    )
+    // Grouped by OUTPUT POSITION rather than by repeating the expression. Postgres
+    // matches a GROUP BY expression to the select list structurally, and Drizzle binds
+    // the timezone as a placeholder — so the repeated form is two different `$n` and
+    // Postgres rejects `families.created_at` as ungrouped.
+    .groupBy(sql`1`, sql`2`)
+    .orderBy(sql`1`, sql`2`);
 }
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -443,13 +565,16 @@ function openLoopsLine(debt: CommitmentDebt): string {
 }
 
 /**
- * The seven graded rows, each fed the slice of the week it grades and nothing else.
+ * The eight graded rows, each fed the slice of the week it grades and nothing else.
  *
  * The order is the loop's own: a family is found (demand), answered (activation),
- * looked after (engagement), told the truth (radar accuracy), actually reached
- * (deliverability), kept safe (safety), and paid for (unit cost). Read top to bottom
- * it is the product's whole causal chain, so the first row that drops is usually the
- * one the others are downstream of.
+ * looked after (engagement), comes back (W4 retention), told the truth (radar
+ * accuracy), actually reached (deliverability), kept safe (safety), and paid for
+ * (unit cost). Read top to bottom it is the product's whole causal chain, so the first
+ * row that drops is usually the one the others are downstream of.
+ *
+ * Retention sits directly under engagement because the two are one question asked from
+ * both ends — whether Hale reached them, then whether they came back.
  */
 export function buildScorecard(summary: LoopHealthSummary): ScorecardRow[] {
   const { intake, ttfa, cogs } = summary.scoreboard;
@@ -461,6 +586,7 @@ export function buildScorecard(summary: LoopHealthSummary): ScorecardRow[] {
       sessionsStarted: intake.sessionsStarted,
     }),
     gradeEngagement(summary.engagement),
+    gradeW4Retention(summary.w4Retention),
     gradeRadarAccuracy(summary.radar),
     gradeDeliverability(summary.messageCounts),
     gradeSafety(summary.unmetIntents, summary.medicalAnswers),
@@ -489,7 +615,7 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
   const lines: string[] = [
     `Hale · loop health · ${isoDate(summary.windowStart)} – ${isoDate(summary.windowEnd)}`,
     '',
-    // The scorecard leads. Everything below it is the evidence for these seven
+    // The scorecard leads. Everything below it is the evidence for these eight
     // judgements, not a second set of things to interpret.
     'SCORECARD · every threshold is a named constant in lib/loop/scorecard-rubric.ts',
     ...scorecardLines(buildScorecard(summary)),
