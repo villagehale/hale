@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -196,16 +196,37 @@ async function ensureJoinUser(tx: Database, externalAuthId: string): Promise<str
  * their verified channel, their membership, the token's burn, and the audit trail. A
  * crash anywhere leaves none of it — there is no state in which a co-parent is a member
  * of a family without the consent row saying they agreed to be.
+ *
+ * THE BURN IS THE CLAIM, AND IT GOES FIRST. {@link loadOpenJoinInvite} read the token
+ * outside this transaction, so by the time we are here somebody else may have spent it:
+ * a forward that landed in a group thread is opened by two phones in the same second,
+ * and a burn that trusted that read would seat BOTH of them on one link. The conditional
+ * UPDATE is the only thing that decides — the row is locked, `consumed_at IS NULL` is
+ * re-tested against it, and the loser matches nothing.
+ *
+ * NULL IS THE LOSER'S ANSWER, and it is the same answer a spent link gives a bystander:
+ * nobody is seated, nothing is written, and the caller falls back to the ordinary
+ * greeting. It is returned rather than thrown because losing a race for a forwarded
+ * link is not an error — it is the single-use rule working.
  */
 export async function redeemJoinInvite(
   database: Database,
   input: { invite: JoinInvite; phoneE164: string; verbatimReply: string; now: Date },
-): Promise<{ coParentUserId: string }> {
+): Promise<{ coParentUserId: string } | null> {
   const { invite, phoneE164, now } = input;
   const hash = phoneBlindIndex(phoneE164);
 
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    // Claimed before a single row is written for this redeemer: everything below is
+    // work that a loser must not commit, and returning from a transaction COMMITS it.
+    const burned = await tx
+      .update(schema.joinInvites)
+      .set({ consumedAt: now })
+      .where(and(eq(schema.joinInvites.id, invite.id), isNull(schema.joinInvites.consumedAt)))
+      .returning({ id: schema.joinInvites.id });
+    if (burned.length === 0) return null;
+
     const coParentUserId = await ensureJoinUser(tx, `sms:${hash}`);
 
     const [consent] = await tx
@@ -262,9 +283,11 @@ export async function redeemJoinInvite(
         set: { role: invite.role, invitedByUserId: invite.invitedByUserId },
       });
 
+    // Who spent it — the attribution, not the claim. It cannot ride on the burn above
+    // because the seat that answers "who" does not exist until the claim is won.
     await tx
       .update(schema.joinInvites)
-      .set({ consumedAt: now, consumedByUserId: coParentUserId })
+      .set({ consumedByUserId: coParentUserId })
       .where(eq(schema.joinInvites.id, invite.id));
 
     await tx.insert(schema.auditLog).values([

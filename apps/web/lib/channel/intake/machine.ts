@@ -250,6 +250,29 @@ export async function handleInboundSms(
     return handleKeyword(database, { match, phoneE164, inbound, session, now }, deps);
   }
 
+  // 6. A live join code outranks whatever conversation this number is already in.
+  //
+  // It has to be read HERE rather than inside the greeting, because a session shadows
+  // the greeting entirely: a partner who texted "Hello" before they tapped the link —
+  // or who tapped a link that had already been spent, since that fallback opens a
+  // session too — would hold an open conversation that routes every later message to
+  // the intake handlers, and could never redeem. The failure reinforces itself, and
+  // what it ends in is a SECOND household for a family that already has one.
+  //
+  // The link is the newer and far more specific instruction, so it wins, and the
+  // conversation it interrupts is closed by the same turn.
+  const joinTag = joinTagFromBody(inbound.body);
+  if (joinTag) {
+    const joined = await joinFromTag(
+      database,
+      { tag: joinTag, session, phoneE164, inbound, now },
+      deps,
+    );
+    if (joined) return joined;
+    // Spent, lapsed, forged, or a number that already has its own channel: nothing was
+    // seated, so the turn carries on exactly as if the tag had not been there.
+  }
+
   if (!session || session.state === 'stopped') {
     // No conversation is open. A first-ever text starts one; a text after the flow has
     // finished belongs to the loop's inbound-reply seam (A3/C3), not here — answering
@@ -277,7 +300,7 @@ export async function handleInboundSms(
       );
       return outcome ?? { status: 'ignored', reason: 'no_open_conversation' };
     }
-    return greet(database, { phoneE164, inbound, now }, deps);
+    return greet(database, { phoneE164, inbound, now, joinTag }, deps);
   }
 
   if (session.state === 'awaiting_watch_reply' || session.state === 'awaiting_clarify') {
@@ -285,6 +308,64 @@ export async function handleInboundSms(
   }
 
   return handleDetails(database, { session, phoneE164, inbound, now }, deps);
+}
+
+/**
+ * The join tag on this inbound, or null — the ONE reader of "is somebody carrying a
+ * co-parent link". Both callers ask the same question of the same string, and two
+ * spellings of it is how the router and the greeting end up disagreeing about which
+ * tags are capabilities.
+ */
+function joinTagFromBody(body: string): string | null {
+  const tag = sourceCodeFromBody(body);
+  return tag !== null && isJoinCode(tag) ? tag : null;
+}
+
+/**
+ * Redeem a join tag, or hand the turn back.
+ *
+ * Null means NOTHING WAS SEATED — a spent, lapsed or forged token, or a number that is
+ * already enrolled — and the caller carries on with the routing it would have done
+ * anyway. It is not an error and is never answered as one.
+ */
+async function joinFromTag(
+  database: Database,
+  args: {
+    tag: string;
+    session: IntakeSession | null;
+    phoneE164: string;
+    inbound: Inbound;
+    now: Date;
+  },
+  deps: IntakeDeps,
+): Promise<IntakeOutcome | null> {
+  // A number that already owns an active verified channel cannot be SEATED by a link:
+  // one active channel per number is a database constraint
+  // (`parent_channels_phone_hash_active_idx`), so redeeming would fail the whole
+  // transaction. They keep the known-number path they have always had. A number that
+  // pressed STOP has no active channel, so their own text — which is what a forwarded
+  // link makes them send — is an origination like any other, exactly as START is.
+  if (await resolveVerifiedChannelByPhone(database, args.phoneE164)) return null;
+
+  const joined = await handleJoinArrival(
+    database,
+    { code: args.tag, phoneE164: args.phoneE164, inbound: args.inbound, now: args.now },
+    deps,
+  );
+  if (!joined) return null;
+
+  // The conversation the link interrupted is closed in the same turn that seated them,
+  // or it shadows their next text exactly as it shadowed this one. `superseded` rather
+  // than `complete`: nothing was assembled here.
+  if (args.session) {
+    await saveSession(
+      database,
+      args.session,
+      { state: 'superseded', closedAt: args.now, lastProviderId: args.inbound.providerId },
+      args.now,
+    );
+  }
+  return { ...joined, supersededSessionId: args.session?.id ?? null };
 }
 
 // ── outbound plumbing ────────────────────────────────────────────────────────
@@ -478,37 +559,31 @@ async function reportIntakeStep(
 // ── branches ─────────────────────────────────────────────────────────────────
 
 /**
- * A first-ever text. Almost always the start of a new household — except when it
- * carries a co-parent join tag, which names one that already exists.
+ * A first-ever text, and the start of a new household.
  *
- * THE DIVERSION HAPPENS BEFORE `createSession`, and that ordering is the whole of it. A
- * session is the record of a household being ASSEMBLED: it collects ages and a postal
- * code, seeds a radar, feeds the founder ping and the comp-poster promo, and ends by
- * inserting a `families` row. None of that is anything a partner joining an existing
- * family should be put through, and every one of those readers takes `session.sourceCode`
- * — so diverting a step later would mean unpicking each of them instead of never
- * entering the flow.
+ * A DEAD JOIN TOKEN LANDS HERE, with the tag dropped. Spent, lapsed and forged all fall
+ * through to this branch, and none of them is a fault of the person holding the link:
+ * they are met like any other stranger rather than told they are too late by a product
+ * they have never used.
  *
- * A DEAD TOKEN FALLS THROUGH TO THE ORDINARY GREETING, with the tag DROPPED. Spent,
- * lapsed and forged all land here, and none of them is a fault of the person holding the
- * link: they get met like any other stranger. The tag is not carried onto the session
- * because a source code rides on into the consent evidence and the provisioning audit
- * row, and a live-looking capability string has no business in either (rule #1).
+ * A LIVE one never reaches it — `handleInboundSms` diverts before `createSession`, and
+ * that ordering is the whole of it. A session is the record of a household being
+ * ASSEMBLED: it collects ages and a postal code, seeds a radar, feeds the founder ping
+ * and the comp-poster promo, and ends by inserting a `families` row. None of that is
+ * anything a partner joining an existing family should be put through, and every one of
+ * those readers takes `session.sourceCode` — so diverting a step later would mean
+ * unpicking each of them instead of never entering the flow.
  */
 async function greet(
   database: Database,
-  args: { phoneE164: string; inbound: Inbound; now: Date },
+  args: { phoneE164: string; inbound: Inbound; now: Date; joinTag: string | null },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
-  const tag = sourceCodeFromBody(args.inbound.body);
-  if (tag !== null && isJoinCode(tag)) {
-    const joined = await handleJoinArrival(
-      database,
-      { code: tag, phoneE164: args.phoneE164, inbound: args.inbound, now: args.now },
-      deps,
-    );
-    return joined ?? greetNewFamily(database, args, deps, null);
-  }
+  // Whatever the join tag was worth was decided before this branch was reached, so all
+  // that is left of it here is a DROP: it is not carried onto the session, because a
+  // source code rides on into the consent evidence and the provisioning audit row, and
+  // a live-looking capability string has no business in either (rule #1).
+  const tag = args.joinTag === null ? sourceCodeFromBody(args.inbound.body) : null;
   return greetNewFamily(database, args, deps, tag);
 }
 
@@ -1089,7 +1164,11 @@ async function handleKeyword(
   if (session) {
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
-  return greet(database, { phoneE164, inbound, now }, deps);
+  return greet(
+    database,
+    { phoneE164, inbound, now, joinTag: joinTagFromBody(inbound.body) },
+    deps,
+  );
 }
 
 async function handleStop(

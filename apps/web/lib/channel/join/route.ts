@@ -31,16 +31,32 @@ export interface JoinDeps {
   threadMessage: typeof threadProactiveMessage;
 }
 
+/**
+ * What the redemption itself decided.
+ *
+ * `inviterNotified` names an absence rather than hiding one (rule #11): the parent who
+ * minted the link may have pressed STOP in the days since, and a revoked channel is a
+ * message we may not send. The join still happens — their authorisation was recorded
+ * when they asked — but an operator reading this outcome has to be able to tell a
+ * delivered confirmation from a skipped one.
+ */
+export interface JoinAcceptance {
+  status: 'join_link_accepted';
+  familyId: string;
+  inviterNotified: boolean;
+}
+
 export type JoinOutcome =
   | { status: 'join_link_minted' }
   /**
-   * `inviterNotified` names an absence rather than hiding one (rule #11): the parent
-   * who minted the link may have pressed STOP in the days since, and a revoked channel
-   * is a message we may not send. The join still happens — their authorisation was
-   * recorded when they asked — but an operator reading this outcome has to be able to
-   * tell a delivered confirmation from a skipped one.
+   * `supersededSessionId` is the other absence this path has to name: a link can arrive
+   * mid-conversation, and the intake session it interrupts is CLOSED in the same turn
+   * that seats the co-parent. Null means there was nothing open to close — which is the
+   * ordinary case — and an id means a conversation ended without finishing, which
+   * nobody should have to infer from a closed_at they went looking for. The intake
+   * machine fills it: that row is intake's to close, not this module's.
    */
-  | { status: 'join_link_accepted'; familyId: string; inviterNotified: boolean };
+  | (JoinAcceptance & { supersededSessionId: string | null });
 
 /**
  * One channel_messages row + its audit row (rule #6).
@@ -198,7 +214,7 @@ export async function handleJoinArrival(
   database: Database,
   args: { code: string; phoneE164: string; inbound: InboundMessage; now: Date },
   deps: JoinDeps,
-): Promise<JoinOutcome | null> {
+): Promise<JoinAcceptance | null> {
   const { inbound, now } = args;
   const invite = await loadOpenJoinInvite(database, args.code, now);
   if (!invite) return null;
@@ -208,12 +224,17 @@ export async function handleJoinArrival(
   const inviterName = await userName(database, invite.invitedByUserId);
   const inviterPhone = await resolveSendablePhone(database, invite.invitedByUserId);
 
-  const { coParentUserId } = await redeemJoinInvite(database, {
+  const redeemed = await redeemJoinInvite(database, {
     invite,
     phoneE164: args.phoneE164,
     verbatimReply: inbound.body,
     now,
   });
+  // Somebody else spent this link between the read above and the burn. That is the
+  // single-use rule working, and it is the SAME answer a link spent yesterday gives:
+  // null, and the ordinary greeting.
+  if (!redeemed) return null;
+  const { coParentUserId } = redeemed;
 
   // Recorded AFTER the seat exists, not before: channel_messages.parent_user_id is a
   // NOT NULL reference to a users row, and until the transaction above commits there is

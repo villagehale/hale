@@ -1,3 +1,4 @@
+import { smsEncoding } from '~/lib/channel/sms-segments';
 import { joinLink } from './code';
 
 /**
@@ -33,13 +34,36 @@ export function joinInviteForward(code: string): string {
   ].join('\n');
 }
 
+/** The longest inviter name this message will spend budget on — a full name, with room
+ * to spare against the two-segment ceiling the rest of the body already leans on. */
+const MAX_INVITER_NAME_CHARS = 24;
+
+/**
+ * The inviter's name if this message can afford it, else null.
+ *
+ * `users.name` is free text a parent typed, and it is the one part of this body Hale did
+ * not write. ONE character outside GSM-7 re-encodes the WHOLE message as UCS-2 and cuts
+ * the budget from 306 characters to 134 (sms-segments.ts), so "Zoe" with a diaeresis or
+ * a name in any script but Latin would split the partner's first message into three.
+ *
+ * DROPPED, NOT FOLDED — the call `affordableNames` makes in health/copy.ts, and the one
+ * sms-copy-encoding.test.ts makes about never folding at the transport: respelling
+ * somebody as "Zoe" on the first sentence they ever get from Hale is worse than not
+ * naming them, and the anonymous form is already a sentence that works.
+ */
+function affordableInviterName(inviterName: string | null): string | null {
+  const trimmed = inviterName?.trim() ?? '';
+  if (trimmed === '' || trimmed.length > MAX_INVITER_NAME_CHARS) return null;
+  return smsEncoding(trimmed) === 'gsm7' ? trimmed : null;
+}
+
 /**
  * The partner's first message from Hale: who added them, what they now share, and how
  * to leave. The STOP line is CASL's and rides on the first message, exactly as it does
  * on a caregiver invite.
  */
 export function joinWelcome(inviterName: string | null): string {
-  const who = inviterName ?? 'The other parent';
+  const who = affordableInviterName(inviterName) ?? 'The other parent';
   return `You're in - ${who} added you as a co-parent, so you both see the same thing here: the week, the reminders, the plans, anything I'm keeping track of. Text me anything. Reply STOP anytime.`;
 }
 

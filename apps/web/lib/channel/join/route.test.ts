@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import type { FamilyRole } from '~/lib/channel/role-scope';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   FakeExtractor,
@@ -95,8 +96,12 @@ function harness(): Harness {
   };
 }
 
-/** A household that already exists: one primary parent on a verified SMS channel. */
-async function seedFamily(fake: FakeDb): Promise<{ familyId: string; parentUserId: string }> {
+/** A household that already exists: one member on a verified SMS channel, a primary
+ * parent unless a test needs somebody who is not one. */
+async function seedFamily(
+  fake: FakeDb,
+  role: FamilyRole = 'primary_parent',
+): Promise<{ familyId: string; parentUserId: string }> {
   const [user] = await fake.db
     .insert(schema.users)
     .values({ externalAuthId: `sms:${phoneBlindIndex(PARENT_PHONE)}`, email: null, name: 'Ana' })
@@ -109,7 +114,7 @@ async function seedFamily(fake: FakeDb): Promise<{ familyId: string; parentUserI
   const parentUserId = user?.id as string;
   await fake.db
     .insert(schema.familyMembers)
-    .values({ familyId, userId: parentUserId, role: 'primary_parent' });
+    .values({ familyId, userId: parentUserId, role });
   await fake.db.insert(schema.parentChannels).values({
     userId: parentUserId,
     familyId,
@@ -236,6 +241,22 @@ describe('minting the link · "add my partner", no number', () => {
       true,
     );
   });
+
+  it('refuses to mint a link for a member who is not a parent', async () => {
+    const h = harness();
+    // `extended` is the legacy bucket the scope matrix gives NOTHING to, and it is
+    // neither a caregiver role nor a parent one — so it reaches the mint gate rather
+    // than being turned away by the scoped-reply branch above it. A co_parent seat is
+    // the whole family surface; handing one out belongs to parents alone.
+    await seedFamily(h.fake, 'extended');
+
+    const asked = await text(h, PARENT_PHONE, 'add my partner');
+
+    expect(asked).not.toEqual({ status: 'join_link_minted' });
+    expect(inserts(h.fake, schema.joinInvites)).toHaveLength(0);
+    expect(h.transport.bodies().join(' ')).not.toMatch(/join-[0-9a-f]{32}/);
+    expect(auditActions(h.fake)).not.toContain('co_parent_join_link_minted');
+  });
 });
 
 describe('redeeming the link · the partner texts from their own phone', () => {
@@ -247,7 +268,12 @@ describe('redeeming the link · the partner texts from their own phone', () => {
 
     const joined = await text(h, PARTNER_PHONE, arrival(code));
 
-    expect(joined).toEqual({ status: 'join_link_accepted', familyId, inviterNotified: true });
+    expect(joined).toEqual({
+      status: 'join_link_accepted',
+      familyId,
+      inviterNotified: true,
+      supersededSessionId: null,
+    });
     // No second household, and no intake conversation: the diversion happens BEFORE the
     // session is created, so nobody is asked for their children's ages.
     expect(inserts(h.fake, schema.families)).toHaveLength(1);
@@ -419,5 +445,68 @@ describe('a link that is no longer good · never an error to the person holding 
     // evidence and the provisioning audit row, and a live-looking capability token has
     // no business in either.
     expect(inserts(h.fake, schema.smsIntakeSessions)[0]?.sourceCode).toBeNull();
+  });
+});
+describe('a live link outranks whatever conversation is already open', () => {
+  it('redeems for a partner who said hello first, and closes the session it supersedes', async () => {
+    const h = harness();
+    const { familyId } = await seedFamily(h.fake);
+    await text(h, PARENT_PHONE, 'add my partner');
+    const code = mintedCode(h.transport);
+    // The partner texts before they tap the link — or taps a link that was already
+    // spent — and an intake session opens on their number.
+    expect(await text(h, PARTNER_PHONE, 'Hello')).toEqual({ status: 'greeted' });
+    const session = h.fake.rows(schema.smsIntakeSessions).at(-1);
+
+    const joined = await text(h, PARTNER_PHONE, arrival(code));
+
+    expect(joined).toEqual({
+      status: 'join_link_accepted',
+      familyId,
+      inviterNotified: true,
+      supersededSessionId: session?.id,
+    });
+    // Seated in the household that already exists, not asked for their children's ages.
+    expect(
+      inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent'),
+    ).toHaveLength(1);
+    expect(inserts(h.fake, schema.families)).toHaveLength(1);
+    // The conversation the link interrupted is CLOSED, or it shadows their next text
+    // exactly as it shadowed this one.
+    expect(session?.closedAt).toEqual(NOW);
+  });
+});
+
+describe('two people redeem the same link at once', () => {
+  it('seats exactly ONE co-parent and hands the loser the ordinary greeting', async () => {
+    const h = harness();
+    await seedFamily(h.fake);
+    await text(h, PARENT_PHONE, 'add my partner');
+    const code = mintedCode(h.transport);
+
+    // The forward went to a group thread: two phones open it in the same second, so
+    // both read the invite as open before either has spent it.
+    const [first, second] = await Promise.all([
+      text(h, PARTNER_PHONE, arrival(code)),
+      text(h, BYSTANDER_PHONE, arrival(code)),
+    ]);
+
+    const statuses = [first?.status, second?.status].sort();
+    expect(statuses).toEqual(['greeted', 'join_link_accepted']);
+    expect(
+      inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent'),
+    ).toHaveLength(1);
+    const redeemerHashes = [PARTNER_PHONE, BYSTANDER_PHONE].map(phoneBlindIndex);
+    expect(
+      inserts(h.fake, schema.parentChannels).filter((r) =>
+        redeemerHashes.includes(r.phoneE164Hash as string),
+      ),
+    ).toHaveLength(1);
+    // One seat, one consent row: the loser wrote nothing at all.
+    expect(
+      inserts(h.fake, schema.consentRecords).filter(
+        (r) => r.consentScope === 'sms_join_origination',
+      ),
+    ).toHaveLength(1);
   });
 });

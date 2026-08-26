@@ -209,6 +209,13 @@ describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
     joinInviteForward: joinInviteForward(CODE),
     'joinWelcome (named)': joinWelcome('Ana'),
     'joinWelcome (anonymous)': joinWelcome(null),
+    // The one part of this message Hale did not write: a name a parent typed. Toronto
+    // types accents, and one of them re-encodes the WHOLE welcome as UCS-2 and halves
+    // the budget it is already spending — so the interpolation is under the same gate
+    // as the copy around it.
+    'joinWelcome (accented name)': joinWelcome('Zoe\u0308'),
+    'joinWelcome (accented, precomposed)': joinWelcome('Zo\u00eb'),
+    'joinWelcome (a name nobody could text back)': joinWelcome('X'.repeat(120)),
     JOIN_ACCEPTED_ACK,
   };
 
@@ -217,6 +224,17 @@ describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
       encoding: 'gsm7',
       overBudget: false,
     });
+  });
+
+  /** The link is the payload; everything else is what fits around it. Asserted whole so
+   * a trimmed or split URL fails here rather than in a stranger's inbox. */
+  // What it does INSTEAD of mangling them: a name the alphabet cannot carry is dropped
+  // for the anonymous form, the same call `affordableNames` makes in health/copy.ts.
+  // Folding it would spell somebody's name wrong on the first message they ever get.
+  it('falls back to the anonymous form rather than respelling a name', () => {
+    expect(joinWelcome('Zo\u00eb')).toBe(joinWelcome(null));
+    expect(joinWelcome('X'.repeat(120))).toBe(joinWelcome(null));
+    expect(joinWelcome('Ana')).toContain('Ana');
   });
 
   /** The link is the payload; everything else is what fits around it. Asserted whole so
