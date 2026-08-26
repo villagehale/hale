@@ -225,16 +225,32 @@ export function outOfRangeReply(pendingCount: number): string {
 }
 
 /**
- * The disambiguation — ONE human sentence, and no menu.
+ * The disambiguation — the choices NAMED, and a number beside each one.
  *
- * It used to print "1. … 2. … - reply YES 1 or NO 1." and it was the last numbered menu
- * Hale sent. A menu is a fine interface and a terrible thing to receive as a text: it
- * makes the parent Hale's data-entry clerk, and it is the same instinct that produced
- * "Reply YES INTROS". So the rows are NAMED and the parent answers however they like —
- * "the swim one", "do the second", "just the checkup" all resolve (resolve.ts), and
- * "YES 2" still resolves too, because no read was removed. The ORDER is unchanged and is
- * still built from the same array in the same call as the resolver reads, so an ordinal a
- * parent chooses to type still points at the row they were shown.
+ * IT PRINTED NUMBERS, THEN IT STOPPED, AND NOW IT PRINTS THEM AGAIN — with the one thing
+ * that was missing both times. The original "1. … 2. … - reply YES 1 or NO 1." was a form
+ * to fill in, and dropping it (2026-08-13) was right: a parent should be able to say "the
+ * swim one" and be understood. What went with it, unnoticed, was the only cheap answer a
+ * tired parent has at 22:00 — and the words that replaced it were not actually read,
+ * because nothing recorded that these options had been offered at all. A parent quoted one
+ * back verbatim on 2026-08-24 and reached the general coach (VIL-304).
+ *
+ * So both readings exist now and neither is a keyword: the ordinal, and the parent's own
+ * words, resolved against the menu this sentence is minted alongside
+ * (router/disambiguation.ts). "Reply 1 or 2, or just say which" is that offer stated
+ * plainly — the number is the shortcut, never the grammar, and the sentence says so.
+ *
+ * THE ORDER IS THE MINT'S ORDER. The row written when this goes out stores the options in
+ * exactly the sequence printed here, which is what makes an ordinal point at the option a
+ * parent actually read rather than at a position that has since moved.
+ *
+ * `numbered` IS NOT A STYLE CHOICE — it is whether a menu is going to exist. The row is
+ * only minted when the polarity the parent already gave could be read for free, and a
+ * sentence that says "Reply 1 or 2" while nothing was written down invites a digit that
+ * no menu is standing behind: the approvals queue's own ordering would answer it, off a
+ * list this parent never saw (verifier, 2026-08-26; rule #4). So when there is no mint
+ * the sentence goes back to the words it used before VIL-304 — still asking, still by
+ * name, promising nothing that does not exist.
  *
  * Labels come in already rendered (`actionTypeLabel`), which keeps this function unable to
  * see an action's payload at all (rule #1).
@@ -242,21 +258,32 @@ export function outOfRangeReply(pendingCount: number): string {
  * The overflow is disclosed and points nowhere (skill audit P0 #4): the list is re-read
  * every turn, so answering the ones in front is what brings the next ones up.
  */
-export function whichOneReply(subjects: readonly string[]): string {
+export function whichOneReply(subjects: readonly string[], numbered: boolean): string {
   const shown = subjects.slice(0, MAX_LISTED_APPROVALS);
-  const last = shown.at(-1);
-  if (last === undefined) {
+  if (shown.length === 0) {
     // Both callers ask only when they are holding at least two, so this is unreachable —
     // and it THROWS rather than casting the hole away, because the alternative is texting
     // a parent "Which one - undefined?". A thrown turn is re-driven by the drain; a
     // nonsense one is read by a person.
     throw new Error('whichOneReply: nothing to choose between');
   }
-  const head = shown.slice(0, -1);
   const overflow = subjects.length - shown.length;
   const tail = overflow > 0 ? ` (${overflow} more behind those.)` : '';
-  const list = head.length === 0 ? last : `${head.join(', ')} or ${last}`;
-  return `Which one - ${list}?${tail}`;
+  if (!numbered) {
+    const head = shown.slice(0, -1);
+    const last = shown.at(-1) as string;
+    const named = head.length === 0 ? last : `${head.join(', ')} or ${last}`;
+    return `Which one - ${named}?${tail}`;
+  }
+  const list = shown.map((subject, i) => `${i + 1}) ${subject}`).join(', ');
+  return `Which one - ${list}? Reply ${orJoinNumbers(shown.length)}, or just say which.${tail}`;
+}
+
+/** "1, 2 or 3" — the numbers on offer, serial-comma joined like every other Hale list. */
+function orJoinNumbers(count: number): string {
+  if (count === 1) return '1';
+  const head = Array.from({ length: count - 1 }, (_, i) => String(i + 1));
+  return `${head.join(', ')} or ${count}`;
 }
 
 /**
@@ -274,10 +301,16 @@ export function whichOneReply(subjects: readonly string[]): string {
  * So it takes ONE per kind, newest kind last, and never prints an overflow. A parent
  * choosing between "a calendar change" and "meeting the family nearby" can then say which,
  * and the next turn resolves the specific one.
+ *
+ * IT HANDS BACK WHAT IT PRINTED, not just the sentence. The caller mints those options
+ * against the message that carries them (router/disambiguation.ts), and the two must be
+ * the same list in the same order or an ordinal points at something the parent never read
+ * — so there is one call and one array rather than a rule the two sides both implement.
  */
-export function clarifyWhichQuestion(
-  questions: ReadonlyArray<{ kind: string; subject: string }>,
-): string {
+export function clarifyWhichQuestion<T extends { kind: string; subject: string }>(
+  questions: readonly T[],
+  numbered: boolean,
+): { reply: string; shown: readonly T[] } {
   // EVERY KIND FIRST, then fill the remaining slots in order. Taking one per kind and
   // stopping would drop the second of two drafted changes, which is the case the numbered
   // menu handled best; taking the first three in order buries a lone introduction behind a
@@ -291,10 +324,12 @@ export function clarifyWhichQuestion(
   const ordered = [...firstOfEachKind, ...questions.filter((q) => !firstOfEachKind.includes(q))];
   const shown = ordered.slice(0, MAX_LISTED_APPROVALS);
   const dropped = ordered.length - shown.length;
-  const list = whichOneReply(shown.map((question) => question.subject));
+  const list = whichOneReply(shown.map((question) => question.subject), numbered);
   // Honest and destination-free. NOT "behind those": nothing queues behind an
   // introduction, so the approvals list's own tail would be a false promise here.
-  return dropped === 0 ? list : `${list} (and ${dropped} other${dropped === 1 ? '' : 's'}.)`;
+  const reply =
+    dropped === 0 ? list : `${list} (and ${dropped} other${dropped === 1 ? '' : 's'}.)`;
+  return { reply, shown };
 }
 
 /**

@@ -56,6 +56,7 @@ import {
   type InboundContext,
   routeChannelMessage,
 } from './route';
+import { createDisambiguationStore } from './disambiguation';
 import { createOpenQuestionReader, type OpenQuestionReader } from './open-questions';
 import { createReplyResolver } from './resolve';
 import type { SmokeAlarmClaim } from './smoke-alarm';
@@ -446,6 +447,10 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // key, one failure story, and a missing key never stops an approval.
     questions: defaultOpenQuestionReader(),
     replyResolver: createReplyResolver(screenClient),
+    // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
+    // spent by the next inbound. No model and no client: picking one of a handful of
+    // options Hale itself printed is a string comparison.
+    disambiguation: createDisambiguationStore(),
     offDomain: defaultOffDomainLane(database),
     smokeAlarm: auditSmokeAlarmClaim(database),
     turns: auditTurnLedger(database),
