@@ -97,7 +97,7 @@ describe('the welcome contact card', () => {
     // Rule #6: the send has its own audit row.
     const audits = fake.writes.filter((w) => w.table === schema.auditLog).map((w) => w.payload);
     expect(audits).toHaveLength(1);
-    expect(audits[0]).toMatchObject({ familyId: FAMILY, actionTaken: 'intake_welcome_card_sent' });
+    expect(audits[0]).toMatchObject({ familyId: FAMILY, actionTaken: 'sms_intake_contact_card' });
   });
 
   it('sends the card at most once per family, ever — a second run reaches no provider', async () => {

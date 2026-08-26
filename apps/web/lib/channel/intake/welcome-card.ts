@@ -88,7 +88,7 @@ export async function sendWelcomeContactCard(
   await database.insert(schema.auditLog).values({
     familyId,
     actor: parentUserId,
-    actionTaken: 'intake_welcome_card_sent',
+    actionTaken: 'sms_intake_contact_card',
     targetTable: 'channel_messages',
     targetId: claimed.id,
   });

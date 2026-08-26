@@ -480,7 +480,9 @@ async function runToddlerJourney(): Promise<Journey> {
   const followUp = await text('Max and Mia, we are at L3R');
   const provisioned = await text('Max is 4, Mia is 18 months');
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
-  const radarBody = transport.bodies().at(-1) as string;
+  // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
+  // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
+  const radarBody = transport.bodies().findLast((b) => b.includes(WATCH_OFFER)) as string;
   const watched = await text('yes please');
 
   const parentUser = fake.rows(schema.users)[0] as { id: string; externalAuthId: string };
