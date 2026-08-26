@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
 import { CONTENT_CLASSES, type ContentClass, roleAllows } from '~/lib/channel/role-scope';
-import { inviteBody, scopeConfirm } from './copy';
+import { CO_PARENT_REDIRECT, inviteBody, scopeConfirm } from './copy';
 
 /**
  * The copy is what a caregiver AGREES to, so it has to say what the matrix actually
@@ -68,6 +69,17 @@ describe('caregiver copy · promises match the matrix', () => {
   it('says who asked, and falls back honestly when the parent has no name on file', () => {
     expect(inviteBody('Ana', 'babysitter')).toContain('Ana added you');
     expect(inviteBody(null, 'babysitter')).toContain('A parent added you');
+  });
+
+  /**
+   * The refusal has to end somewhere a parent can actually go. It names the exact words
+   * that mint a join link, so the sentence is checkable against the parser rather than
+   * being a paraphrase that drifts from it.
+   */
+  it('points the refused co-parent add at the command that does work', () => {
+    expect(looksLikeJoinRequest('add my partner')).toBe(true);
+    expect(CO_PARENT_REDIRECT).toContain('add my partner');
+    expect(CO_PARENT_REDIRECT).not.toMatch(/sign in|the app|https?:/i);
   });
 
   it('introduces the inviter BEFORE saying "their family" — no dangling referent', () => {

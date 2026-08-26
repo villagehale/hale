@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { Column, Param, SQL, StringChunk, is } from 'drizzle-orm';
 import type {
   IdentityAskOutcome,
   IdentityAskRequest,
@@ -167,6 +168,119 @@ export function echoIntroAsk(request: IntroAskRequest): string {
   return `A Hale family near you has a ${request.counterpartWord} around ${request.ownChildPossessive} age.${anchor} Want an intro?`;
 }
 
+/**
+ * An UPDATE's `where` clause, evaluated against a stored row.
+ *
+ * SELECT's where is still ignored (every reader post-filters what it gets, and they all
+ * do it as defense in depth against exactly that). An UPDATE has no second reader: its
+ * predicate IS the decision, and some of those predicates are CLAIMS — the co-parent
+ * link's `SET consumed_at = now WHERE consumed_at IS NULL` decides which of two
+ * simultaneous redeemers gets the seat. A fake that wrote every row would hand both of
+ * them the same one, which is the precise bug a test double must not be able to hide.
+ *
+ * Only the operators the code under test uses are modelled, and an unrecognised one
+ * THROWS: a fake that quietly matched everything it could not read would be back to
+ * updating the whole table, silently.
+ */
+type WhereToken =
+  | { kind: 'column'; key: string }
+  | { kind: 'value'; value: unknown }
+  | { kind: 'text'; text: string };
+
+/** Rows here are keyed by the drizzle PROPERTY name, so a `Column` has to be mapped back
+ * to the key it was declared under rather than to its database name. */
+function columnKey(table: unknown, column: unknown): string {
+  const entry = Object.entries(table as Record<string, unknown>).find(([, v]) => v === column);
+  if (!entry) throw new Error('fake where: column does not belong to the table being updated');
+  return entry[0];
+}
+
+function tokenize(expr: unknown, table: unknown, out: WhereToken[]): WhereToken[] {
+  if (is(expr, SQL)) {
+    for (const chunk of expr.queryChunks) tokenize(chunk, table, out);
+    return out;
+  }
+  if (is(expr, Column)) {
+    out.push({ kind: 'column', key: columnKey(table, expr) });
+    return out;
+  }
+  if (is(expr, Param)) {
+    out.push({ kind: 'value', value: expr.value });
+    return out;
+  }
+  if (is(expr, StringChunk)) {
+    const text = expr.value.join('').trim();
+    if (text !== '') out.push({ kind: 'text', text });
+    return out;
+  }
+  throw new Error('fake where: unsupported SQL fragment');
+}
+
+const sameValue = (a: unknown, b: unknown): boolean =>
+  a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b;
+
+/** Split on a boolean operator that is not inside a parenthesised group. */
+function splitTopLevel(tokens: WhereToken[], operator: 'and' | 'or'): WhereToken[][] {
+  const parts: WhereToken[][] = [];
+  let depth = 0;
+  let current: WhereToken[] = [];
+  for (const token of tokens) {
+    if (token.kind === 'text' && token.text === '(') depth += 1;
+    if (token.kind === 'text' && token.text === ')') depth -= 1;
+    if (depth === 0 && token.kind === 'text' && token.text === operator) {
+      parts.push(current);
+      current = [];
+      continue;
+    }
+    current.push(token);
+  }
+  parts.push(current);
+  return parts;
+}
+
+/** Whether `tokens` wrap the whole expression in one group, rather than opening and
+ * closing several. */
+function isWrapped(tokens: WhereToken[]): boolean {
+  const first = tokens[0];
+  if (!(first?.kind === 'text' && first.text === '(')) return false;
+  let depth = 0;
+  for (const [index, token] of tokens.entries()) {
+    if (token.kind === 'text' && token.text === '(') depth += 1;
+    if (token.kind === 'text' && token.text === ')') {
+      depth -= 1;
+      if (depth === 0) return index === tokens.length - 1;
+    }
+  }
+  return false;
+}
+
+function evaluate(tokens: WhereToken[], row: Record<string, unknown>): boolean {
+  if (isWrapped(tokens)) return evaluate(tokens.slice(1, -1), row);
+  for (const operator of ['or', 'and'] as const) {
+    const parts = splitTopLevel(tokens, operator);
+    if (parts.length > 1) {
+      return operator === 'or'
+        ? parts.some((part) => evaluate(part, row))
+        : parts.every((part) => evaluate(part, row));
+    }
+  }
+  const [left, operator, right] = tokens;
+  if (left?.kind !== 'column' || operator?.kind !== 'text') {
+    throw new Error('fake where: unsupported predicate shape');
+  }
+  const value = row[left.key];
+  if (operator.text === 'is null') return value === null || value === undefined;
+  if (operator.text === 'is not null') return value !== null && value !== undefined;
+  if (right?.kind !== 'value') throw new Error(`fake where: unsupported operator ${operator.text}`);
+  if (operator.text === '=') return sameValue(value, right.value);
+  if (operator.text === '<>') return !sameValue(value, right.value);
+  throw new Error(`fake where: unsupported operator ${operator.text}`);
+}
+
+function matchesWhere(table: unknown, expr: unknown, row: Record<string, unknown>): boolean {
+  return evaluate(tokenize(expr, table, []), row);
+}
+
 export interface RecordedWrite {
   op: 'insert' | 'update';
   table: unknown;
@@ -250,6 +364,12 @@ export function makeFakeDb(): FakeDb {
    *      first.
    *   3. channel_messages(dedupe_key) WHERE dedupe_key IS NOT NULL — at-most-once per
    *      logical message: the winner is the only attempt that reaches a provider.
+   *   4. parent_channels(phone_e164_hash) WHERE revoked_at IS NULL — one active channel
+   *      per number. Not a race but an INVARIANT, and modelled for the same reason: four
+   *      separate paths enrol a number (intake, re-enrol on START, a caregiver's yes, a
+   *      co-parent's link), each one guards it by a check of its own, and a fake that
+   *      accepted the second row would let a routing bug read as "two rows, both fine"
+   *      here while 500-ing the webhook in production and handing the carrier a retry.
    *
    * Faithful in BOTH directions: a conflicting insert that declared
    * `onConflictDoNothing` resolves to no rows, and one that did NOT raises the unique
@@ -277,6 +397,18 @@ export function makeFakeDb(): FakeDb {
       existing.some((row) => row.dedupeKey === value.dedupeKey)
     ) {
       return 'channel_messages_dedupe_key_uniq';
+    }
+    if (
+      table === schema.parentChannels &&
+      typeof value.phoneE164Hash === 'string' &&
+      (value.revokedAt === null || value.revokedAt === undefined) &&
+      existing.some(
+        (row) =>
+          row.phoneE164Hash === value.phoneE164Hash &&
+          (row.revokedAt === null || row.revokedAt === undefined),
+      )
+    ) {
+      return 'parent_channels_phone_hash_active_idx';
     }
     if (
       table === schema.smsIntakeSessions &&
@@ -340,10 +472,27 @@ export function makeFakeDb(): FakeDb {
       const chain = thenable([]);
       chain.set = (payload: Record<string, unknown>) => {
         writes.push({ op: 'update', table, payload });
-        for (const row of store.get(table) ?? []) {
-          Object.assign(row, payload);
-        }
-        return thenable(store.get(table) ?? []);
+        let predicate: unknown = null;
+        const apply = () => {
+          const matched = (store.get(table) ?? []).filter((row) =>
+            predicate === null ? true : matchesWhere(table, predicate, row),
+          );
+          for (const row of matched) {
+            Object.assign(row, payload);
+          }
+          return matched;
+        };
+        const updated: Record<string, unknown> = {
+          where: (expr: unknown) => {
+            predicate = expr;
+            return updated;
+          },
+          returning: () => Promise.resolve(apply()),
+          // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
+          then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+            Promise.resolve(apply()).then(res, rej),
+        };
+        return updated;
       };
       return chain;
     },

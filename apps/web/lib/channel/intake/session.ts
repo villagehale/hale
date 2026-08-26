@@ -31,7 +31,11 @@ export type IntakeState =
   /** The flow finished (watch-offer answered, or the region gate refused). */
   | 'complete'
   /** The parent sent STOP. Terminal. */
-  | 'stopped';
+  | 'stopped'
+  /** A co-parent join link arrived on this number and outranked the conversation.
+   * Terminal, and deliberately not `complete`: nothing was assembled here, and a row
+   * that claimed otherwise would read as a household that finished intake. */
+  | 'superseded';
 
 export interface TranscriptEntry {
   direction: 'in' | 'out';

@@ -48,6 +48,13 @@ export type CaregiverInviteState =
    * DISTINCT from 'declined' because nobody was ever texted — which is exactly what the
    * volume meter below needs to know. */
   | 'superseded'
+  /** This number was seated as a CO-PARENT by a forwarded join link while the invite was
+   * still open. Terminal, and its own state rather than 'declined': nobody refused
+   * anything, and rather than 'superseded': that one means nobody was ever texted, and
+   * this one may have reached them (see the meter below, which counts it as delivered —
+   * over-counting a family's daily budget is the safe direction, letting an invite that
+   * DID text a stranger fall off the meter is not). */
+  | 'superseded_by_join'
   /** 72h of silence on whichever side we were waiting for. Terminal. */
   | 'expired';
 
@@ -403,7 +410,10 @@ export async function recordParentAssent(
 async function closeInvite(
   database: Database,
   invite: CaregiverInvite,
-  state: Extract<CaregiverInviteState, 'declined' | 'expired' | 'superseded'>,
+  state: Extract<
+    CaregiverInviteState,
+    'declined' | 'expired' | 'superseded' | 'superseded_by_join'
+  >,
   now: Date,
   actionTaken: string,
   actor?: string,
@@ -584,4 +594,43 @@ export async function declineOpenInviteOnStop(
   if (!invite) return false;
   await declineInvite(database, { invite, by: 'caregiver', now });
   return true;
+}
+
+/**
+ * A number with an invite in flight has just been seated as a CO-PARENT by a forwarded
+ * join link. The invite is closed by the same turn, and this is the ONE invariant behind
+ * both halves: a number that owns an active channel has no open caregiver invite.
+ *
+ * {@link startCaregiverInvite} keeps that end (`number_in_use`); nothing kept this one,
+ * and the two states are not merely redundant. `loadOpenInviteByPhone` is read BEFORE
+ * the channel in the intake machine — deliberately, so a caregiver's "yes" is not read
+ * as a stranger starting an intake — so an invite left armed OUTRANKS the seat the link
+ * just granted: every ordinary message the new co-parent sends is answered with the
+ * invite's question, and the "yes" that ends the loop tries to enrol their number a
+ * second time, against a partial unique index that refuses it.
+ *
+ * NOT `declineInvite`: nobody refused anything. The person did the larger version of
+ * what they were being asked, and the row has to be able to say so — a 'declined' here
+ * would tell the inviting parent's audit trail that their caregiver said no.
+ *
+ * Returns the closed invite's id, or null when there was nothing open (the ordinary
+ * case). Named rather than a bare boolean because the join outcome carries it: an invite
+ * that ended without either side answering is not something anyone should have to infer
+ * from a `closed_at` they went looking for.
+ */
+export async function supersedeOpenInviteOnJoin(
+  database: Database,
+  phoneE164: string,
+  now: Date,
+): Promise<string | null> {
+  const invite = await loadOpenInviteByPhone(database, phoneE164, now);
+  if (!invite) return null;
+  await closeInvite(
+    database,
+    invite,
+    'superseded_by_join',
+    now,
+    'caregiver_invite_superseded_by_join',
+  );
+  return invite.id;
 }

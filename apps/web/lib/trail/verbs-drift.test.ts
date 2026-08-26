@@ -117,16 +117,18 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'document_deleted_other',
   ],
   // closeInvite takes its verb as a POSITIONAL parameter and writes it as object
-  // shorthand — the four terminal states of a caregiver invite.
+  // shorthand — the terminal states of a caregiver invite.
   'apps/web/lib/channel/caregiver/invites.ts': [
     'caregiver_invite_expired',
     'caregiver_invite_superseded',
+    'caregiver_invite_superseded_by_join',
     'caregiver_invite_withdrawn',
     'caregiver_invite_refused',
   ],
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
   'apps/web/lib/channel/coach/draft.ts': ['channel_sms.calendar_drafted'],
   'apps/web/lib/channel/caregiver/route.ts': ['caregiver_sms_inbound', 'caregiver_sms_outbound'],
+  'apps/web/lib/channel/join/route.ts': ['join_sms_inbound', 'join_sms_outbound'],
   'apps/web/lib/channel/intake/machine.ts': ['sms_intake_inbound', 'sms_intake_outbound'],
   'apps/web/lib/channel/intake/watch-consent.ts': [
     'proactive_watch_granted',

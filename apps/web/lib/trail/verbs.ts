@@ -178,10 +178,16 @@ export const AUDIT_VERBS = [
   'caregiver_invite_accepted',
   'caregiver_invite_expired',
   'caregiver_invite_superseded',
+  'caregiver_invite_superseded_by_join',
   'caregiver_invite_withdrawn',
   'caregiver_invite_refused',
   'caregiver_sms_inbound',
   'caregiver_sms_outbound',
+  // ── the co-parent join link ─────────────────────────────────────────────
+  'co_parent_join_link_minted',
+  'co_parent_join_accepted',
+  'join_sms_inbound',
+  'join_sms_outbound',
   // ── the executor's own writes (internal-writes.ts) ──────────────────────
   'action.routine_pinned',
   'action.routine_pinned.skipped_duplicate',
@@ -508,10 +514,27 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you replaced an earlier caregiver invite',
     family: 'note',
   },
+  caregiver_invite_superseded_by_join: {
+    // Says only what the parent's own NUMBER_IN_USE refusal already says to them —
+    // never which household the number joined, which may not be theirs (rule #1).
+    sentence: 'a caregiver invite closed because that number is already set up with Hale',
+    family: 'note',
+  },
   caregiver_invite_withdrawn: { sentence: 'you withdrew a caregiver invite', family: 'done' },
   caregiver_invite_refused: { sentence: 'a caregiver declined your invite', family: 'note' },
   caregiver_sms_inbound: { sentence: 'a caregiver texted Hale', family: 'note' },
   caregiver_sms_outbound: { sentence: 'Hale texted a caregiver', family: 'note' },
+  // ── the co-parent join link ─────────────────────────────────────────────
+  co_parent_join_link_minted: {
+    sentence: 'you asked for a link to add your co-parent',
+    family: 'done',
+  },
+  co_parent_join_accepted: {
+    sentence: 'your co-parent used your link and joined your family',
+    family: 'done',
+  },
+  join_sms_inbound: { sentence: 'a co-parent texted Hale', family: 'note' },
+  join_sms_outbound: { sentence: 'Hale texted about your co-parent', family: 'note' },
   // ── what the executor actually did ──────────────────────────────────────
   'action.routine_pinned': { sentence: 'pinned an activity to your week', family: 'done' },
   'action.routine_pinned.skipped_duplicate': {
