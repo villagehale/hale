@@ -477,6 +477,42 @@ function redactedWeek() {
   }));
 }
 
+/**
+ * REPLICATED from apps/web/lib/channel/coach/weekday.ts — the cross-check the production
+ * handlers run before they mint (VIL-295). It is replicated rather than imported for the
+ * reason every web-side module in this folder is: `~/` does not resolve under this
+ * loader. A model that says Thursday and passes a Saturday is refused here exactly as it
+ * is in prod, so the corpus grades the recovery rather than a draft prod would never make.
+ */
+const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const WEEKDAY_FULL = {
+  sun: 'Sunday',
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday',
+};
+
+function refuseMismatchedWeekday(input, timeZone, tool) {
+  if (!input.weekday) {
+    throw new Error(`${tool} needs a weekday: which day of the week ${input.date} is. Call it again with one.`);
+  }
+  const at = zonedLocalInstant(input.date, '12:00', timeZone);
+  const actual = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone })
+    .format(at)
+    .toLowerCase();
+  if (actual === input.weekday) return;
+  const parts = input.date.split('-').map(Number);
+  const shifted = new Date(
+    Date.UTC(parts[0], parts[1] - 1, parts[2] + (WEEKDAYS.indexOf(input.weekday) - WEEKDAYS.indexOf(actual))),
+  );
+  throw new Error(
+    `${input.date} is a ${WEEKDAY_FULL[actual]}, not a ${WEEKDAY_FULL[input.weekday]}. The ${WEEKDAY_FULL[input.weekday]} of that week is ${shifted.toISOString().slice(0, 10)}. Work out which one the parent meant and call ${tool} again with a date and a weekday that agree — and say the same day back to them.`,
+  );
+}
+
 function buildFixtureTools(agent, calls, village) {
   let draftsThisTurn = 0;
 
@@ -532,10 +568,11 @@ function buildFixtureTools(agent, calls, village) {
   const proposeMove = agent.defineTool({
     name: 'propose_calendar_move',
     description:
-      "DRAFT a re-time of one existing event for the parent to approve — it does NOT move anything. `eventId` must come from lookup_week; `date`/`time` are the family's own wall clock. The event keeps its title, place and child.",
+      "DRAFT a re-time of one existing event for the parent to approve — it does NOT move anything. `eventId` must come from lookup_week; `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. The event keeps its title, place and child.",
     inputSchema: passthrough(),
     handler: async (input) => {
       const event = requireEvent(input.eventId);
+      refuseMismatchedWeekday(input, FIXTURE_TIMEZONE, 'propose_calendar_move');
       const startsAt = zonedLocalInstant(input.date, input.time, FIXTURE_TIMEZONE);
       claimDraftBudget();
       record('propose_calendar_move', { actionType: 'calendar_move', eventId: event.eventId });
@@ -563,10 +600,11 @@ function buildFixtureTools(agent, calls, village) {
   const proposeAdd = agent.defineTool({
     name: 'propose_calendar_add',
     description:
-      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
+      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
     inputSchema: passthrough(),
     touchesChildContent: true,
     handler: async (input) => {
+      refuseMismatchedWeekday(input, FIXTURE_TIMEZONE, 'propose_calendar_add');
       const startsAt = zonedLocalInstant(input.date, input.time, FIXTURE_TIMEZONE);
       claimDraftBudget();
       record('propose_calendar_add', { actionType: 'calendar_add', eventId: null });
