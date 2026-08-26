@@ -170,6 +170,13 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // parent's channel consent): the scope column carries the ROLE, because what they
   // agreed to receive is defined by that role's scope and nothing wider.
   'caregiver_scoped_messages',
+  // The PARENT's authorization to seat a CO-PARENT in their household by forwarding a
+  // join link. Distinct from caregiver_access_grant, which authorizes a scoped slice to
+  // a named third party on a named number: this one authorizes the FULL family surface
+  // for whoever redeems the link, so what it grants, who it names (nobody yet) and what
+  // it is read from (the parent's own request, not a yes/no answer) are all different.
+  // Written at MINT time, because the mint is the moment the capability exists.
+  'co_parent_access_grant',
   // Village intros v1 · the parent's decision about being INTRODUCED to another Hale
   // household. Two scopes ride this one type and they are different acts: the standing
   // "you may look for a match for us" (revocable at any time by texting NO INTROS), and

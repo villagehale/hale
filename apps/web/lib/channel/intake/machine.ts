@@ -19,6 +19,8 @@ import {
   handleCaregiverInviteReply,
   handleKnownNumberInbound,
 } from '~/lib/channel/caregiver/route';
+import { isJoinCode } from '~/lib/channel/join/code';
+import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { projectCivicCandidates } from '~/lib/civic/project';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { recordCommitment } from '~/lib/commitments/ledger';
@@ -191,7 +193,11 @@ export type IntakeOutcome =
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
   // belongs to, which is a lookup, not a second inbox.
-  | CaregiverOutcome;
+  | CaregiverOutcome
+  // The co-parent join link's two ends. Kept OUT of `ignored` deliberately: that
+  // outcome's `no_open_conversation` reason is what hands the turn to C1
+  // (twilio/inbound.ts), and a redemption has already been answered.
+  | JoinOutcome;
 
 interface Inbound {
   from: string;
@@ -471,12 +477,47 @@ async function reportIntakeStep(
 
 // ── branches ─────────────────────────────────────────────────────────────────
 
+/**
+ * A first-ever text. Almost always the start of a new household — except when it
+ * carries a co-parent join tag, which names one that already exists.
+ *
+ * THE DIVERSION HAPPENS BEFORE `createSession`, and that ordering is the whole of it. A
+ * session is the record of a household being ASSEMBLED: it collects ages and a postal
+ * code, seeds a radar, feeds the founder ping and the comp-poster promo, and ends by
+ * inserting a `families` row. None of that is anything a partner joining an existing
+ * family should be put through, and every one of those readers takes `session.sourceCode`
+ * — so diverting a step later would mean unpicking each of them instead of never
+ * entering the flow.
+ *
+ * A DEAD TOKEN FALLS THROUGH TO THE ORDINARY GREETING, with the tag DROPPED. Spent,
+ * lapsed and forged all land here, and none of them is a fault of the person holding the
+ * link: they get met like any other stranger. The tag is not carried onto the session
+ * because a source code rides on into the consent evidence and the provisioning audit
+ * row, and a live-looking capability string has no business in either (rule #1).
+ */
 async function greet(
   database: Database,
   args: { phoneE164: string; inbound: Inbound; now: Date },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
-  const sourceCode = sourceCodeFromBody(args.inbound.body);
+  const tag = sourceCodeFromBody(args.inbound.body);
+  if (tag !== null && isJoinCode(tag)) {
+    const joined = await handleJoinArrival(
+      database,
+      { code: tag, phoneE164: args.phoneE164, inbound: args.inbound, now: args.now },
+      deps,
+    );
+    return joined ?? greetNewFamily(database, args, deps, null);
+  }
+  return greetNewFamily(database, args, deps, tag);
+}
+
+async function greetNewFamily(
+  database: Database,
+  args: { phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+  sourceCode: string | null,
+): Promise<IntakeOutcome> {
   const session = await createSession(database, {
     phoneE164: args.phoneE164,
     state: 'awaiting_details',

@@ -1,4 +1,5 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { isJoinCode } from '~/lib/channel/join/code';
 import { isReferralCode } from '~/lib/channel/referral/code';
 import { PRIVACY_URL } from '~/lib/legal-links';
 
@@ -381,8 +382,16 @@ const SOURCE_TAG_SUFFIX = /\(via\s+([a-z0-9]+(?:-[a-z0-9]+)*)\)$/i;
  * referral tag is echoed nowhere and selects nothing — `venueForCode` returns null for
  * it, so the arrival gets the ordinary no-venue greeting and is still asked for a postal
  * code, which is correct: a friend of a Toronto family may live anywhere.
+ *
+ * A JOIN tag (`join-…`, lib/channel/join/code.ts) is recognised the same way and for the
+ * same reason, but what happens to it afterwards is the opposite: the machine DIVERTS on
+ * it before a session is ever created, because it names a household that already exists.
+ * It is passed through here rather than resolved here because the answer lives in a
+ * table and this function is pure — and because a token that buys nothing must still be
+ * recognised, so the arrival can be greeted normally rather than told it is too late.
  */
 function resolveCode(raw: string): string | null {
+  if (isJoinCode(raw)) return raw.toLowerCase();
   if (isReferralCode(raw)) return raw.toLowerCase();
   if (raw in SOURCE_VENUES) return raw;
   const upper = raw.toUpperCase();

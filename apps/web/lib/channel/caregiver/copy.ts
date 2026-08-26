@@ -70,17 +70,18 @@ export const ADD_EXAMPLE =
   'Tell me who, their number, and what they are - like: add grandma 647-555-0199 as grandparent. I can do grandparent, nanny or babysitter.';
 
 /**
- * A co-parent sees the whole family surface; a texted YES is not enough to authorise
- * that, so this path is closed on purpose and says why.
+ * A co-parent sees the whole family surface, so Hale will not text a number the other
+ * parent typed and take a yes from whoever answers it. The refusal stands — what
+ * changed is that it now has somewhere to send them.
  *
- * It used to close with "add them in the app" (skill audit P0 #4). What actually
- * unblocks this is not a screen but a PERSON: the co-parent signing in as themselves, on
- * an invite the other parent mints, which is the whole of rule #5. Naming the condition
- * rather than the surface is both the true statement and the one that survives the day
- * the invite moves.
+ * It used to close with "add them in the app" (skill audit P0 #4), then with "they need
+ * to sign in as themselves". Both were true when written and neither is the shortest
+ * true answer any more: the co-parent join link (lib/channel/join) makes the unblocking
+ * move a text the parent sends and a link they forward. A refusal that names a
+ * capability Hale actually has is the difference between a boundary and a dead end.
  */
 export const CO_PARENT_REDIRECT =
-  "A co-parent sees everything I show you, so a texted yes isn't enough - they need to sign in as themselves before I can add them.";
+  "A co-parent sees everything I show you, so I won't add one from a number you typed. Text me add my partner and I'll send you a link to forward to them.";
 
 /** The number already has its own Hale account or an active caregiver slot. */
 export const NUMBER_IN_USE =

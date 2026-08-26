@@ -22,6 +22,21 @@ describe('parseSourceCode (venue attribution from ?s=)', () => {
     expect(parseSourceCode('qr1')).toBe('qr1');
   });
 
+  /**
+   * The two tags that are not venues at all and still ride this funnel: a per-family
+   * referral (`friend-…`) and a co-parent join link (`join-…`). Neither is minted here
+   * — the app writes them — so this is the cross-app control that the grammar has not
+   * quietly narrowed under them. A `?s=` this page dropped would pre-write a greeting
+   * with no tag in it, and the arrival would be a stranger starting a new household.
+   */
+  it('passes the app-minted tags through untouched', () => {
+    expect(parseSourceCode('friend-0123456789ab')).toBe('friend-0123456789ab');
+    expect(parseSourceCode('join-x7k2')).toBe('join-x7k2');
+    expect(parseSourceCode('join-0123456789abcdef0123456789abcdef')).toBe(
+      'join-0123456789abcdef0123456789abcdef',
+    );
+  });
+
   it('rejects anything that is not a lowercase kebab code — the token is pasted into an SMS body and an analytics property', () => {
     for (const bad of [
       undefined,

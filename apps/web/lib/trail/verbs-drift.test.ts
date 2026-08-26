@@ -127,6 +127,7 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
   'apps/web/lib/channel/coach/draft.ts': ['channel_sms.calendar_drafted'],
   'apps/web/lib/channel/caregiver/route.ts': ['caregiver_sms_inbound', 'caregiver_sms_outbound'],
+  'apps/web/lib/channel/join/route.ts': ['join_sms_inbound', 'join_sms_outbound'],
   'apps/web/lib/channel/intake/machine.ts': ['sms_intake_inbound', 'sms_intake_outbound'],
   'apps/web/lib/channel/intake/watch-consent.ts': [
     'proactive_watch_granted',

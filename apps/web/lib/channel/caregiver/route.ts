@@ -2,7 +2,9 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
+import { type FamilyRole, isCaregiverRole, isParentRole } from '~/lib/channel/role-scope';
+import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
+import { type JoinOutcome, handleJoinRequest } from '~/lib/channel/join/route';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import {
@@ -297,7 +299,7 @@ export async function handleKnownNumberInbound(
     now: Date;
   },
   deps: CaregiverDeps,
-): Promise<CaregiverOutcome | null> {
+): Promise<CaregiverOutcome | JoinOutcome | null> {
   const { owner, inbound, now } = args;
   const role = await memberRole(database, owner.familyId, owner.userId);
 
@@ -321,6 +323,15 @@ export async function handleKnownNumberInbound(
   }
 
   const parentPhoneE164 = args.phoneE164;
+
+  // "add my partner" — the ONE add command with no number in it, because the person
+  // being added is not somebody Hale may text. It is answered with a link the parent
+  // forwards themselves, and only ever to a PARENT: a co_parent seat is the whole family
+  // surface, so the ability to hand one out belongs to nobody else in the household.
+  if (role && isParentRole(role) && looksLikeJoinRequest(inbound.body)) {
+    return handleJoinRequest(database, { owner, phoneE164: parentPhoneE164, inbound, now }, deps);
+  }
+
   const pending = await loadPendingAssent(database, owner.userId, now);
   if (pending) {
     const answer = readAffirmative(inbound.body);

@@ -26,6 +26,11 @@ import {
   greeting,
 } from '~/lib/channel/intake/copy';
 import {
+  JOIN_ACCEPTED_ACK,
+  joinInviteForward,
+  joinWelcome,
+} from '~/lib/channel/join/copy';
+import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
@@ -82,6 +87,7 @@ const SMS_COPY_SOURCES = [
   'lib/channel/intake/copy.ts',
   'lib/channel/off-domain/copy.ts',
   'lib/channel/caregiver/copy.ts',
+  'lib/channel/join/copy.ts',
   'lib/channel/twilio/copy.ts',
   'lib/channel/founder/copy.ts',
   'lib/health/copy.ts',
@@ -185,6 +191,38 @@ describe('the intake script stays GSM-7 once rendered', () => {
   it('keeps the consent ask, privacy link and all, inside one GSM-7 segment', () => {
     expect(WATCH_OFFER).toContain(PRIVACY_URL);
     expect(smsSegments(WATCH_OFFER)).toBe(1);
+  });
+});
+
+/**
+ * The co-parent join link, rendered — the composition the file scan cannot see.
+ *
+ * The mint message is the longest deterministic body Hale sends, because 72 of its
+ * characters are a URL it did not write. That makes the segment ceiling the real gate
+ * here rather than the alphabet: a sentence added to this copy without counting is a
+ * third segment on a message every joining family pays for, and a link amputated by a
+ * split is a link that adds nobody.
+ */
+describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
+  const CODE = 'join-0123456789abcdef0123456789abcdef';
+  const RENDERED: Record<string, string> = {
+    joinInviteForward: joinInviteForward(CODE),
+    'joinWelcome (named)': joinWelcome('Ana'),
+    'joinWelcome (anonymous)': joinWelcome(null),
+    JOIN_ACCEPTED_ACK,
+  };
+
+  it.each(Object.entries(RENDERED))('%s', (_name, body) => {
+    expect({ encoding: smsEncoding(body), overBudget: smsSegments(body) > 2 }).toEqual({
+      encoding: 'gsm7',
+      overBudget: false,
+    });
+  });
+
+  /** The link is the payload; everything else is what fits around it. Asserted whole so
+   * a trimmed or split URL fails here rather than in a stranger's inbox. */
+  it('carries the whole link inside the budget', () => {
+    expect(joinInviteForward(CODE)).toContain(`https://www.villagehale.com/text?s=${CODE}`);
   });
 });
 
