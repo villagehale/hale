@@ -149,6 +149,7 @@ export const AUDIT_VERBS = [
   'sms_intake_inbound',
   'sms_intake_outbound',
   'sms_intake_provisioned',
+  'sms_intake_contact_card',
   'voice_call_received',
   // v0's callback text. No new row carries it — an enrolled caller now has a spoken
   // conversation instead — but months of rows in production do, and a verb the trail
@@ -441,6 +442,7 @@ const VERBS: Record<AuditVerb, Verb> = {
   sms_intake_inbound: { sentence: 'you texted Hale while getting set up', family: 'note' },
   sms_intake_outbound: { sentence: 'Hale texted you while getting set up', family: 'note' },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
+  sms_intake_contact_card: { sentence: 'Hale texted you its contact card', family: 'note' },
   voice_call_received: {
     // Hale keeps no audio and no transcript — only that a call arrived.
     sentence: 'a call came in to Hale’s number',

@@ -9,6 +9,7 @@ import {
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
+import { WATCH_OFFER } from '~/lib/channel/intake/copy';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
 import {
@@ -124,7 +125,9 @@ async function runIntakeRadar(): Promise<Intake> {
   await text('hi');
   const provisioned = await text('Nora is 30 months, we are at L7G');
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
-  const radarBody = transport.bodies().at(-1) as string;
+  // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
+  // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
+  const radarBody = transport.bodies().findLast((b) => b.includes(WATCH_OFFER)) as string;
   await text('yes please');
 
   return { fake, transport, familyId, radarBody };

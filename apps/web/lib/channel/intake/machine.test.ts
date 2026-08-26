@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -42,6 +42,7 @@ import {
 import type { IntentReading } from './intent';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { FakeTransport } from './transport';
+import { CONTACT_CARD_URL, WELCOME_CARD_BODY, WELCOME_CARD_TEMPLATE_KEY } from './welcome-card';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+14165551234';
@@ -222,8 +223,9 @@ describe('intake · happy path', () => {
     expect(channel?.phoneE164Hash).toMatch(/^[0-9a-f]{64}$/);
     expect(channel?.phoneE164Encrypted).not.toContain('416');
 
-    // ── the watch offer went out ──
-    expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
+    // ── the watch offer went out, with the contact card as its postscript ──
+    expect(transport.bodies().at(-2)).toContain(WATCH_OFFER);
+    expect(transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
 
     const answered = await text(fake, transport, deps, 'yes please');
     expect(answered).toEqual({
@@ -437,10 +439,11 @@ describe("intake · the handoff into the parent's own thread", () => {
     await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
     await text(fake, transport, deps, 'yes please');
 
-    // The radar + watch offer, then the consent ack carrying the name ask — the exact
-    // question the parent's first coach turn answers.
+    // The radar + watch offer, the contact card's own line, then the consent ack
+    // carrying the name ask — the exact question the parent's first coach turn answers.
     expect(threaded.map((t) => t.body)).toEqual([
-      transport.bodies().at(-2),
+      transport.bodies().at(-3),
+      WELCOME_CARD_BODY,
       transport.bodies().at(-1),
     ]);
     expect(threaded.at(-1)?.body).toBe(`${ASSENT_ACK} ASK`);
@@ -459,6 +462,87 @@ describe("intake · the handoff into the parent's own thread", () => {
 
     expect(transport.bodies()).toHaveLength(1);
     expect(threaded).toEqual([]);
+  });
+});
+
+describe('intake · the contact card', () => {
+  /**
+   * The SMS-native equivalent of sharing a profile: one MMS carrying Hale's own vCard,
+   * so the parent taps Add once and every later text arrives under a name and a face
+   * instead of a 289 number nobody recognises.
+   *
+   * ITS OWN MESSAGE, immediately after the radar — never media hung on the radar itself.
+   * Verified live against the prod messaging service: a MediaUrl Twilio cannot fetch
+   * fails the WHOLE message (error_code 11200), body included, so attaching the card
+   * would put the one message a stranger is guaranteed to read — and the consent ask
+   * carrying the privacy link — behind the availability of a static file.
+   */
+  it('follows the first radar with one MMS carrying its own vCard', async () => {
+    const { fake, transport, deps } = harness({});
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
+
+    const [greeting, radar, card] = transport.sent;
+    expect(greeting?.mediaUrls).toBeUndefined();
+    expect(radar?.body).toContain(WATCH_OFFER);
+    expect(radar?.mediaUrls).toBeUndefined();
+    expect(card).toEqual({
+      to: PHONE,
+      body: WELCOME_CARD_BODY,
+      mediaUrls: [CONTACT_CARD_URL],
+    });
+  });
+
+  it('carries the card exactly once across the whole conversation', async () => {
+    const { fake, transport, deps } = harness({ intents: [assent('yes please')] });
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
+    await text(fake, transport, deps, 'yes please');
+
+    expect(transport.media()).toEqual([[CONTACT_CARD_URL]]);
+    const cardRows = inserts(fake, schema.channelMessages).filter(
+      (r) => r.templateKey === WELCOME_CARD_TEMPLATE_KEY,
+    );
+    expect(cardRows).toHaveLength(1);
+  });
+
+  /**
+   * The reason the card is a separate send, stated as a test: the radar is already on
+   * the parent's phone as plain text before the card is attempted, so a provider that
+   * refuses the MMS costs the card and nothing else. The refusal is counted — the
+   * claimed ledger row flips to `failed` with the code — never silently dropped.
+   */
+  it('loses only the card when the provider refuses media, and writes down why', async () => {
+    const errors: unknown[] = [];
+    vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => errors.push(...args));
+    const { fake, transport, deps } = harness({});
+    const mediaRefusing: IntakeDeps['transport'] = {
+      async send(input) {
+        if (input.mediaUrls) throw new TwilioSendError('21620', 400);
+        return transport.send(input);
+      },
+    };
+
+    await text(fake, transport, deps, 'hi', { ...deps, transport: mediaRefusing });
+    const provisioned = await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V', {
+      ...deps,
+      transport: mediaRefusing,
+    });
+
+    // The intake completed and the radar landed as plain text.
+    expect(provisioned.status).toBe('provisioned');
+    expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
+    expect(transport.media()).toEqual([]);
+    // Counted, not dropped: the row that claimed the send says the provider refused it.
+    expect(
+      fake.writes
+        .filter((w) => w.op === 'update' && w.table === schema.channelMessages)
+        .map((w) => w.payload),
+    ).toContainEqual({ status: 'failed', errorCode: '21620' });
+    expect(JSON.stringify(errors)).toContain('21620');
+    vi.restoreAllMocks();
   });
 });
 
@@ -709,7 +793,7 @@ describe('intake · seeding the first radar', () => {
     });
 
     expect(result.status).toBe('provisioned');
-    expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
+    expect(transport.bodies().at(-2)).toContain(WATCH_OFFER);
   });
 
   it('does not seed anything for a conversation that never provisioned', async () => {
