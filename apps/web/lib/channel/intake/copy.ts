@@ -205,6 +205,154 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
     areaCoarse: 'M4S',
     poster: 'Bayview & Fleming',
   },
+  // Expansion wave (2026-08): family corridors from the City structure inventory —
+  // Riverdale/Danforth, Roncesvalles, Bloor West Village, midtown Yonge, deeper
+  // Beaches and High Park, St Clair West.
+  'poster-queen-broadview': {
+    name: 'Queen & Broadview poster',
+    areaCoarse: 'M4M',
+    poster: 'Riverdale — Queen & Broadview',
+  },
+  'poster-queen-logan': {
+    name: 'Queen & Logan poster',
+    areaCoarse: 'M4M',
+    poster: 'Riverdale — Queen & Logan',
+  },
+  'poster-danforth-broadview': {
+    name: 'Danforth & Broadview poster',
+    areaCoarse: 'M4K',
+    poster: 'The Danforth — Broadview',
+  },
+  'poster-danforth-playter': {
+    name: 'Danforth & Playter poster',
+    areaCoarse: 'M4K',
+    poster: 'The Danforth — Playter Estates',
+  },
+  'poster-danforth-pape': {
+    name: 'Danforth Avenue poster',
+    areaCoarse: 'M4J',
+    poster: 'The Danforth — 975 Danforth Ave',
+  },
+  'poster-roncesvalles-marion': {
+    name: 'Roncesvalles & Marion poster',
+    areaCoarse: 'M6R',
+    poster: 'Roncesvalles — Marion',
+  },
+  'poster-roncesvalles-galley': {
+    name: 'Roncesvalles & Galley poster',
+    areaCoarse: 'M6R',
+    poster: 'Roncesvalles — Galley',
+  },
+  'poster-roncesvalles-fermanagh': {
+    name: 'Roncesvalles & Fermanagh poster',
+    areaCoarse: 'M6R',
+    poster: 'Roncesvalles — Fermanagh',
+  },
+  'poster-roncesvalles-grenadier': {
+    name: 'Roncesvalles & Grenadier poster',
+    areaCoarse: 'M6R',
+    poster: 'Roncesvalles — Grenadier',
+  },
+  'poster-roncesvalles-howard-park': {
+    name: 'Roncesvalles & Howard Park poster',
+    areaCoarse: 'M6R',
+    poster: 'Roncesvalles — Howard Park',
+  },
+  'poster-bloor-parkside': {
+    name: 'Bloor & Parkside poster',
+    areaCoarse: 'M6P',
+    poster: 'High Park — Bloor & Parkside',
+  },
+  'poster-bloor-west-glendonwynne': {
+    name: 'Bloor West Village poster',
+    areaCoarse: 'M6S',
+    poster: 'Bloor West Village — Glendonwynne',
+  },
+  'poster-bloor-west-willard': {
+    name: 'Bloor & Willard poster',
+    areaCoarse: 'M6S',
+    poster: 'Bloor West Village — Willard',
+  },
+  'poster-bloor-west-riverview': {
+    name: 'Bloor & Riverview poster',
+    areaCoarse: 'M6S',
+    poster: 'Bloor West Village — Riverview Gardens',
+  },
+  'poster-bloor-west-old-mill': {
+    name: 'Bloor & Old Mill poster',
+    areaCoarse: 'M8X',
+    poster: 'Old Mill & Swansea',
+  },
+  'poster-yonge-davisville': {
+    name: 'Yonge & Davisville poster',
+    areaCoarse: 'M4S',
+    poster: 'Davisville — Yonge & Davisville',
+  },
+  'poster-yonge-millwood': {
+    name: 'Yonge & Millwood poster',
+    areaCoarse: 'M4S',
+    poster: 'Davisville — Yonge & Millwood',
+  },
+  'poster-mt-pleasant-manor': {
+    name: 'Mount Pleasant & Manor poster',
+    areaCoarse: 'M4S',
+    poster: 'Mount Pleasant — Manor Rd',
+  },
+  'poster-yonge-eglinton': {
+    name: 'Yonge & Eglinton poster',
+    areaCoarse: 'M4R',
+    poster: 'Yonge & Eglinton',
+  },
+  'poster-yonge-lawrence-park': {
+    name: 'Lawrence Park poster',
+    areaCoarse: 'M4N',
+    poster: 'Lawrence Park — 3060 Yonge',
+  },
+  'poster-yonge-bedford-park': {
+    name: 'Yonge & Woburn poster',
+    areaCoarse: 'M4N',
+    poster: 'Bedford Park — Yonge & Woburn',
+  },
+  'poster-beaches-kew': {
+    name: 'Queen & Brookmount poster',
+    areaCoarse: 'M4E',
+    poster: 'The Beaches — Kew Gardens',
+  },
+  'poster-kingston-waverley': {
+    name: 'Kingston & Waverley poster',
+    areaCoarse: 'M4L',
+    poster: 'The Beaches — Kingston & Waverley',
+  },
+  'poster-upper-beaches': {
+    name: 'Kingston & Scarborough Rd poster',
+    areaCoarse: 'M4E',
+    poster: 'Upper Beaches',
+  },
+  'poster-high-park-glenlake': {
+    name: 'High Park & Glenlake poster',
+    areaCoarse: 'M6P',
+    poster: 'High Park — Glenlake',
+  },
+  'poster-high-park-dundas': {
+    name: 'High Park & Dundas poster',
+    areaCoarse: 'M6P',
+    poster: 'High Park — Dundas',
+  },
+  'poster-st-clair-christie': {
+    name: 'St Clair & Christie poster',
+    areaCoarse: 'M6C',
+    poster: 'St Clair West — Christie',
+  },
+  'poster-st-clair-rushton': {
+    name: 'St Clair & Rushton poster',
+    areaCoarse: 'M6C',
+    poster: 'St Clair West — Rushton',
+  },
+  'poster-st-clair-atlas': {
+    name: 'St Clair & Atlas poster',
+    areaCoarse: 'M6C',
+    poster: 'St Clair West — Atlas',
+  },
 };
 
 /**
