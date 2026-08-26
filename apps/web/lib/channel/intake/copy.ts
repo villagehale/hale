@@ -143,12 +143,12 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'poster-leslieville-carlaw': {
     name: 'Queen & Carlaw poster',
     areaCoarse: 'M4M',
-    poster: 'Leslieville — Queen & Carlaw',
+    poster: 'Leslieville - Queen & Carlaw',
   },
   'poster-leslieville-jones': {
     name: 'Queen & Jones poster',
     areaCoarse: 'M4M',
-    poster: 'Leslieville — Queen & Jones',
+    poster: 'Leslieville - Queen & Jones',
   },
   'poster-queen-coxwell': {
     name: 'Queen & Coxwell poster',
@@ -158,12 +158,12 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'poster-beaches-woodbine': {
     name: 'Queen & Woodbine poster',
     areaCoarse: 'M4L',
-    poster: 'The Beaches — Queen & Woodbine',
+    poster: 'The Beaches - Queen & Woodbine',
   },
   'poster-beaches-lee': {
     name: 'Queen & Lee poster',
     areaCoarse: 'M4E',
-    poster: 'The Beaches — Queen & Lee',
+    poster: 'The Beaches - Queen & Lee',
   },
   'poster-high-park-humberside': {
     name: 'High Park & Humberside poster',
@@ -178,22 +178,22 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'poster-junction-pacific': {
     name: 'Dundas & Pacific poster',
     areaCoarse: 'M6P',
-    poster: 'The Junction — Dundas & Pacific',
+    poster: 'The Junction - Dundas & Pacific',
   },
   'poster-junction-clendenan': {
     name: 'Dundas & Clendenan poster',
     areaCoarse: 'M6P',
-    poster: 'The Junction — Dundas & Clendenan',
+    poster: 'The Junction - Dundas & Clendenan',
   },
   'poster-leaside-laird': {
     name: 'Eglinton & Laird poster',
     areaCoarse: 'M4G',
-    poster: 'Leaside — Eglinton & Laird',
+    poster: 'Leaside - Eglinton & Laird',
   },
   'poster-leaside-rumsey': {
     name: 'Millwood & Rumsey poster',
     areaCoarse: 'M4G',
-    poster: 'Leaside — Millwood & Rumsey',
+    poster: 'Leaside - Millwood & Rumsey',
   },
   'poster-bayview-belsize': {
     name: 'Bayview & Belsize poster',
@@ -211,72 +211,72 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'poster-queen-broadview': {
     name: 'Queen & Broadview poster',
     areaCoarse: 'M4M',
-    poster: 'Riverdale — Queen & Broadview',
+    poster: 'Riverdale - Queen & Broadview',
   },
   'poster-queen-logan': {
     name: 'Queen & Logan poster',
     areaCoarse: 'M4M',
-    poster: 'Riverdale — Queen & Logan',
+    poster: 'Riverdale - Queen & Logan',
   },
   'poster-danforth-broadview': {
     name: 'Danforth & Broadview poster',
     areaCoarse: 'M4K',
-    poster: 'The Danforth — Broadview',
+    poster: 'The Danforth - Broadview',
   },
   'poster-danforth-playter': {
     name: 'Danforth & Playter poster',
     areaCoarse: 'M4K',
-    poster: 'The Danforth — Playter Estates',
+    poster: 'The Danforth - Playter Estates',
   },
   'poster-danforth-pape': {
     name: 'Danforth Avenue poster',
     areaCoarse: 'M4J',
-    poster: 'The Danforth — 975 Danforth Ave',
+    poster: 'The Danforth - 975 Danforth Ave',
   },
   'poster-roncesvalles-marion': {
     name: 'Roncesvalles & Marion poster',
     areaCoarse: 'M6R',
-    poster: 'Roncesvalles — Marion',
+    poster: 'Roncesvalles - Marion',
   },
   'poster-roncesvalles-galley': {
     name: 'Roncesvalles & Galley poster',
     areaCoarse: 'M6R',
-    poster: 'Roncesvalles — Galley',
+    poster: 'Roncesvalles - Galley',
   },
   'poster-roncesvalles-fermanagh': {
     name: 'Roncesvalles & Fermanagh poster',
     areaCoarse: 'M6R',
-    poster: 'Roncesvalles — Fermanagh',
+    poster: 'Roncesvalles - Fermanagh',
   },
   'poster-roncesvalles-grenadier': {
     name: 'Roncesvalles & Grenadier poster',
     areaCoarse: 'M6R',
-    poster: 'Roncesvalles — Grenadier',
+    poster: 'Roncesvalles - Grenadier',
   },
   'poster-roncesvalles-howard-park': {
     name: 'Roncesvalles & Howard Park poster',
     areaCoarse: 'M6R',
-    poster: 'Roncesvalles — Howard Park',
+    poster: 'Roncesvalles - Howard Park',
   },
   'poster-bloor-parkside': {
     name: 'Bloor & Parkside poster',
     areaCoarse: 'M6P',
-    poster: 'High Park — Bloor & Parkside',
+    poster: 'High Park - Bloor & Parkside',
   },
   'poster-bloor-west-glendonwynne': {
     name: 'Bloor West Village poster',
     areaCoarse: 'M6S',
-    poster: 'Bloor West Village — Glendonwynne',
+    poster: 'Bloor West Village - Glendonwynne',
   },
   'poster-bloor-west-willard': {
     name: 'Bloor & Willard poster',
     areaCoarse: 'M6S',
-    poster: 'Bloor West Village — Willard',
+    poster: 'Bloor West Village - Willard',
   },
   'poster-bloor-west-riverview': {
     name: 'Bloor & Riverview poster',
     areaCoarse: 'M6S',
-    poster: 'Bloor West Village — Riverview Gardens',
+    poster: 'Bloor West Village - Riverview Gardens',
   },
   'poster-bloor-west-old-mill': {
     name: 'Bloor & Old Mill poster',
@@ -286,17 +286,17 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'poster-yonge-davisville': {
     name: 'Yonge & Davisville poster',
     areaCoarse: 'M4S',
-    poster: 'Davisville — Yonge & Davisville',
+    poster: 'Davisville - Yonge & Davisville',
   },
   'poster-yonge-millwood': {
     name: 'Yonge & Millwood poster',
     areaCoarse: 'M4S',
-    poster: 'Davisville — Yonge & Millwood',
+    poster: 'Davisville - Yonge & Millwood',
   },
   'poster-mt-pleasant-manor': {
     name: 'Mount Pleasant & Manor poster',
     areaCoarse: 'M4S',
-    poster: 'Mount Pleasant — Manor Rd',
+    poster: 'Mount Pleasant - Manor Rd',
   },
   'poster-yonge-eglinton': {
     name: 'Yonge & Eglinton poster',
@@ -306,22 +306,22 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'poster-yonge-lawrence-park': {
     name: 'Lawrence Park poster',
     areaCoarse: 'M4N',
-    poster: 'Lawrence Park — 3060 Yonge',
+    poster: 'Lawrence Park - 3060 Yonge',
   },
   'poster-yonge-bedford-park': {
     name: 'Yonge & Woburn poster',
     areaCoarse: 'M4N',
-    poster: 'Bedford Park — Yonge & Woburn',
+    poster: 'Bedford Park - Yonge & Woburn',
   },
   'poster-beaches-kew': {
     name: 'Queen & Brookmount poster',
     areaCoarse: 'M4E',
-    poster: 'The Beaches — Kew Gardens',
+    poster: 'The Beaches - Kew Gardens',
   },
   'poster-kingston-waverley': {
     name: 'Kingston & Waverley poster',
     areaCoarse: 'M4L',
-    poster: 'The Beaches — Kingston & Waverley',
+    poster: 'The Beaches - Kingston & Waverley',
   },
   'poster-upper-beaches': {
     name: 'Kingston & Scarborough Rd poster',
@@ -331,27 +331,27 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'poster-high-park-glenlake': {
     name: 'High Park & Glenlake poster',
     areaCoarse: 'M6P',
-    poster: 'High Park — Glenlake',
+    poster: 'High Park - Glenlake',
   },
   'poster-high-park-dundas': {
     name: 'High Park & Dundas poster',
     areaCoarse: 'M6P',
-    poster: 'High Park — Dundas',
+    poster: 'High Park - Dundas',
   },
   'poster-st-clair-christie': {
     name: 'St Clair & Christie poster',
     areaCoarse: 'M6C',
-    poster: 'St Clair West — Christie',
+    poster: 'St Clair West - Christie',
   },
   'poster-st-clair-rushton': {
     name: 'St Clair & Rushton poster',
     areaCoarse: 'M6C',
-    poster: 'St Clair West — Rushton',
+    poster: 'St Clair West - Rushton',
   },
   'poster-st-clair-atlas': {
     name: 'St Clair & Atlas poster',
     areaCoarse: 'M6C',
-    poster: 'St Clair West — Atlas',
+    poster: 'St Clair West - Atlas',
   },
 };
 
