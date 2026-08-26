@@ -3,11 +3,15 @@ import { replyLanguage } from '~/lib/channel/language';
 import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  DIRECT_ACCESS_EYE_REPLY,
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY,
   SAFETY_REPLY_BY_LANGUAGE,
+  UNPLACEABLE_PROVIDER_REPLY,
+  UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE,
   reachesForTheHealthLine,
+  referralReply,
 } from './copy';
 
 /**
@@ -87,16 +91,89 @@ describe('the French off-domain lines', () => {
   });
 
   it('routes a French question to the French line and everything else to the English one', () => {
-    const french = "Mon fils est tombé, je ne sais pas quoi faire";
+    const french = 'Mon fils est tombé, je ne sais pas quoi faire';
     const english = 'my son fell off the couch, what do I do';
 
     expect(SAFETY_REPLY_BY_LANGUAGE[replyLanguage(french)]).toBe(SAFETY_REPLY_BY_LANGUAGE.fr);
     expect(SAFETY_REPLY_BY_LANGUAGE[replyLanguage(english)]).toBe(SAFETY_REPLY);
-    expect(PROVIDER_ACCESS_REPLY_BY_LANGUAGE[replyLanguage('Je cherche un medecin de famille')]).toBe(
-      PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr,
-    );
+    expect(
+      PROVIDER_ACCESS_REPLY_BY_LANGUAGE[replyLanguage('Je cherche un medecin de famille')],
+    ).toBe(PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr);
     expect(PROVIDER_ACCESS_REPLY_BY_LANGUAGE[replyLanguage('looking for a family doctor')]).toBe(
       PROVIDER_ACCESS_REPLY,
+    );
+  });
+});
+
+/**
+ * VIL-295 · the referral table.
+ *
+ * The live defect (founder's own thread, 2026-08-13 03:15): "Find a optometrist near me"
+ * was answered with Health Care Connect, which places family doctors and nurse
+ * practitioners and has never placed an optometrist. The eye branch fixed that ONE ask
+ * and left the shape underneath it — a two-way if/else whose DEFAULT was the registry —
+ * so every other practitioner a parent can name (a paediatric dentist, an OT, a speech
+ * therapist, an audiologist, a physio, a child psychologist) got the same confidently
+ * wrong answer. The classifier even has a `specialist-access` bucket for exactly those.
+ *
+ * A table with a MISS branch is the fix: a service Hale has verified an access path for
+ * gets that path, and one it has not gets told so. Honest ignorance is a correct answer;
+ * a registry that will never call you back is not.
+ */
+describe('the provider referral table', () => {
+  it('sends an eye-care ask to the direct-access answer, not the registry', () => {
+    for (const ask of [
+      'Find a optometrist near me',
+      'when should he get an eye exam',
+      'need to get her eyes checked before school',
+    ]) {
+      expect(referralReply(ask, 'en')).toBe(DIRECT_ACCESS_EYE_REPLY);
+    }
+  });
+
+  it('sends a primary-care ask to Health Care Connect', () => {
+    for (const ask of [
+      'we just moved and need a family doctor',
+      'how do I find a pediatrician',
+      'looking for a nurse practitioner',
+    ]) {
+      expect(referralReply(ask, 'en')).toBe(PROVIDER_ACCESS_REPLY);
+    }
+  });
+
+  /**
+   * THE INCIDENT CLASS, and the one this table exists for. Every ask below is a real
+   * `specialist-access` bucket, none of them is placed by Health Care Connect, and on
+   * main every single one received its line.
+   */
+  it('never answers an unplaceable specialist with the registry', () => {
+    for (const ask of [
+      'can you find us a pediatric dentist',
+      'we need an OT for my son',
+      'looking for a speech therapist for my 3 year old',
+      'how do I get a childrens audiologist',
+      'need a physiotherapist for her ankle',
+      'trying to find a child psychologist',
+    ]) {
+      expect(referralReply(ask, 'en')).not.toBe(PROVIDER_ACCESS_REPLY);
+      expect(referralReply(ask, 'en')).toBe(UNPLACEABLE_PROVIDER_REPLY);
+    }
+  });
+
+  /** A refusal that names no adjacent can is the shape the capability table forbids. */
+  it('says it does not know, and names what Hale can still do', () => {
+    expect(UNPLACEABLE_PROVIDER_REPLY).not.toMatch(/health care connect/i);
+    expect(UNPLACEABLE_PROVIDER_REPLY).not.toMatch(/https?:|\.ca\b|\.com\b/);
+    expect(UNPLACEABLE_PROVIDER_REPLY).not.toMatch(/\bthe app\b|settings/i);
+    expect(UNPLACEABLE_PROVIDER_REPLY).toMatch(/calendar|week/i);
+  });
+
+  it('answers a French provider ask in French on every branch it has one for', () => {
+    expect(referralReply('Je cherche un medecin de famille', 'fr')).toBe(
+      PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr,
+    );
+    expect(referralReply('je cherche un orthophoniste pour mon fils', 'fr')).toBe(
+      UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE.fr,
     );
   });
 });

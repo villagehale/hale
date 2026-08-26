@@ -4,14 +4,6 @@ import type { ActionType } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import {
-  approvedReceipt,
-  declinedReceipt,
-  failureReply,
-  partialFailureReply,
-  whichOneReply,
-} from '~/lib/channel/router/copy';
-import { mediaUnsupportedReply } from '~/lib/channel/twilio/copy';
-import {
   AMBIGUOUS_CLARIFY,
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
   ASSENT_ACK,
@@ -41,7 +33,17 @@ import {
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY,
   SAFETY_REPLY_BY_LANGUAGE,
+  UNPLACEABLE_PROVIDER_REPLY,
+  UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE,
 } from '~/lib/channel/off-domain/copy';
+import {
+  approvedReceipt,
+  declinedReceipt,
+  failureReply,
+  partialFailureReply,
+  whichOneReply,
+} from '~/lib/channel/router/copy';
+import { mediaUnsupportedReply } from '~/lib/channel/twilio/copy';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
 
@@ -217,6 +219,10 @@ describe('the French script stays GSM-7 and inside the English budgets', () => {
     ANSWER_UNAVAILABLE_REPLY: { body: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
     SAFETY_REPLY: { body: SAFETY_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
     PROVIDER_ACCESS_REPLY: { body: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
+    UNPLACEABLE_PROVIDER_REPLY: {
+      body: UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE.fr,
+      maxSegments: 2,
+    },
   };
 
   it.each(Object.entries(RENDERED))('%s', (_name, { body, maxSegments }) => {
@@ -260,17 +266,19 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
     SAFETY_REPLY,
     PROVIDER_ACCESS_REPLY,
     DIRECT_ACCESS_EYE_REPLY,
+    UNPLACEABLE_PROVIDER_REPLY,
   };
 
   it.each(Object.entries(RENDERED))('%s', (_name, body) => {
     expect(smsEncoding(body)).toBe('gsm7');
   });
 
-  it('keeps all four fixed lines inside the two-segment ceiling', () => {
+  it('keeps all five fixed lines inside the two-segment ceiling', () => {
     expect(smsSegments(ANSWER_UNAVAILABLE_REPLY)).toBe(1);
     expect(smsSegments(SAFETY_REPLY)).toBe(1);
     expect(smsSegments(PROVIDER_ACCESS_REPLY)).toBeLessThanOrEqual(2);
     expect(smsSegments(DIRECT_ACCESS_EYE_REPLY)).toBeLessThanOrEqual(2);
+    expect(smsSegments(UNPLACEABLE_PROVIDER_REPLY)).toBeLessThanOrEqual(2);
   });
 
   /**

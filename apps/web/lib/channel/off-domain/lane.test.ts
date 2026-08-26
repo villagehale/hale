@@ -9,6 +9,7 @@ import {
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY,
   SAFETY_REPLY_BY_LANGUAGE,
+  UNPLACEABLE_PROVIDER_REPLY,
 } from './copy';
 import {
   type OffDomainPorts,
@@ -147,7 +148,10 @@ describe('what each lane says', () => {
   it('answers a provider ask with the Ontario workflow, and invents nothing', async () => {
     const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
 
-    const verdict = await consider(p);
+    // The TEXT now decides which of the table's rows answers, so this fixture has to say
+    // what it is asking for. It used to read 'anything' and still get the registry —
+    // which is the defect the table replaced, sitting inside the test that guarded it.
+    const verdict = await consider(p, 'we just moved and need a family doctor');
 
     expect(verdict).toMatchObject({ status: 'deflected', reply: PROVIDER_ACCESS_REPLY });
     expect(PROVIDER_ACCESS_REPLY).toContain('Health Care Connect');
@@ -187,15 +191,23 @@ describe('what each lane says', () => {
   /**
    * An ophthalmologist is a physician specialist and IS the referral case, so the
    * direct-access line would be the same class of wrong answer in the other direction.
+   *
+   * IT IS NOT THE REGISTRY EITHER, which is what this assertion used to say. Health Care
+   * Connect places family doctors, nurse practitioners and primary care teams; it has
+   * never placed an ophthalmologist, so the old expectation was the wrong-service defect
+   * written down as the desired behaviour (VIL-295). The honest answer is that Hale does
+   * not have a verified path for this one — and it says the thing it CAN do next.
    */
-  it('does not claim direct access for an ophthalmologist', async () => {
+  it('claims neither direct access nor the registry for an ophthalmologist', async () => {
     const p = ports({
       read: reading({ lane: 'provider_access', category: 'specialist-access' }),
     });
 
     const verdict = await consider(p, 'we need an ophthalmologist for her');
 
-    expect(verdict).toMatchObject({ reply: PROVIDER_ACCESS_REPLY });
+    expect(verdict).toMatchObject({ reply: UNPLACEABLE_PROVIDER_REPLY });
+    expect(verdict).not.toMatchObject({ reply: DIRECT_ACCESS_EYE_REPLY });
+    expect(UNPLACEABLE_PROVIDER_REPLY).not.toContain('Health Care Connect');
   });
 
   /**
@@ -244,17 +256,20 @@ describe('what each lane says', () => {
     'skill_unavailable',
     'model_failed',
     'unsendable',
-  ] as GeneralAnswerFallback[])('falls back to the fixed line when the answer %s', async (reason) => {
-    const p = ports({ answer: { status: 'unavailable', reason } });
+  ] as GeneralAnswerFallback[])(
+    'falls back to the fixed line when the answer %s',
+    async (reason) => {
+      const p = ports({ answer: { status: 'unavailable', reason } });
 
-    const verdict = await consider(p);
+      const verdict = await consider(p);
 
-    expect(verdict).toMatchObject({
-      status: 'deflected',
-      reply: ANSWER_UNAVAILABLE_REPLY,
-      replySource: reason,
-    });
-  });
+      expect(verdict).toMatchObject({
+        status: 'deflected',
+        reply: ANSWER_UNAVAILABLE_REPLY,
+        replySource: reason,
+      });
+    },
+  );
 
   /** The two doors are FIXED copy, and the way to keep them that way is for the composer
    * never to be woken for them — not for a prompt to be asked nicely to decline. */
@@ -444,7 +459,9 @@ describe('the demand signal', () => {
    * quietly empties it.
    */
   it('still records the demand signal when the answer was composed', async () => {
-    const p = ports({ read: reading({ lane: 'off_domain_general', category: 'general-knowledge' }) });
+    const p = ports({
+      read: reading({ lane: 'off_domain_general', category: 'general-knowledge' }),
+    });
 
     const verdict = await consider(p);
 
@@ -526,7 +543,10 @@ describe('recordUnmetIntent', () => {
 
     expect(await recordUnmetIntent(database)(input)).toBe('not_recorded');
     // Named, not swallowed: the failure class and the lane, and nothing else.
-    expect(log.mock.calls[0]?.[0]).toEqual({ err: 'deadlock detected', lane: 'off_domain_general' });
+    expect(log.mock.calls[0]?.[0]).toEqual({
+      err: 'deadlock detected',
+      lane: 'off_domain_general',
+    });
     log.mockRestore();
   });
 });
@@ -544,7 +564,7 @@ describe('the lane answers in the language the question was asked in', () => {
   it('sends the safety line in French to a French safety ask', async () => {
     const p = ports({ read: reading({ lane: 'safety_critical', category: 'child-safety' }) });
 
-    const fr = await consider(p, "Ma fille a avale quelque chose, je fais quoi");
+    const fr = await consider(p, 'Ma fille a avale quelque chose, je fais quoi');
     expect(fr).toMatchObject({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
 
     const en = await consider(p, 'my daughter swallowed something, what do I do');
@@ -581,7 +601,7 @@ describe('the lane answers in the language the question was asked in', () => {
   it('substitutes the French safety line when the composer reached for a referral', async () => {
     const p = ports({ answer: { status: 'safety' } });
 
-    const fr = await consider(p, "Mon fils est tombe de la table, il pleure beaucoup");
+    const fr = await consider(p, 'Mon fils est tombe de la table, il pleure beaucoup');
     expect(fr).toMatchObject({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
   });
 });

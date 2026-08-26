@@ -1,25 +1,19 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import type { AgentClient } from '@hale/agent';
+import { replyLanguage } from '~/lib/channel/language';
 import {
   type GeneralAnswerComposer,
   type GeneralAnswerFallback,
   createGeneralAnswer,
 } from './answer';
-import { replyLanguage } from '~/lib/channel/language';
 import {
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
-  DIRECT_ACCESS_EYE_REPLY,
-  PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY_BY_LANGUAGE,
-  asksAboutEyeCare,
+  referralReply,
 } from './copy';
 import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
-import {
-  type InboundLaneScreen,
-  type LaneScreenFallback,
-  createInboundLaneScreen,
-} from './screen';
+import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScreen } from './screen';
 
 /**
  * VIL-273 — the off-domain capability lane, end to end minus the sending.
@@ -169,30 +163,24 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // anywhere near what a parent is told about their child's head injury is the
       // failure this shape makes impossible rather than merely discouraged.
       //
-      // The provider door has TWO fixed sentences behind it, chosen by a substring test
-      // rather than by the screen. Ontario's answer to "get me a doctor" depends on WHICH
-      // KIND: a family doctor or paediatrician means the Health Care Connect registry,
-      // and an optometrist means no registry at all — you book one directly, and OHIP
-      // pays. Sending the registry line to a parent asking about eyes was not a vague
-      // answer, it was a WRONG one (founder, live gate). The split is deterministic for
-      // the same reason the door itself is: this is what a parent is told about getting
-      // care, and a cheap model choosing between two of them buys nothing.
+      // The provider door is a TABLE keyed by service (copy.ts referralReply), not a
+      // model and not a default. Ontario's answer to "get me X" depends entirely on WHICH
+      // X: a family doctor or paediatrician means the Health Care Connect registry, an
+      // optometrist means no registry at all (you book one directly and OHIP pays), and a
+      // paediatric dentist, an OT, a speech therapist or an audiologist mean none of the
+      // above — Health Care Connect has never placed one. This door used to be a two-way
+      // if/else whose DEFAULT was the registry, so every one of those got a line that was
+      // not vague but WRONG (founder, live gate, 2026-08-13, on an optometrist). The
+      // table's miss branch says so instead, which is a correct answer where a guessed
+      // registry is a wasted phone call.
       // Which LANGUAGE those fixed sentences go out in is decided the same way and for
       // the same reason — off the words in front of it, with no model consulted.
-      // DIRECT_ACCESS_EYE_REPLY has no French twin yet, and its token list is English, so
-      // a French eye question does not match it and leaves by the registry door in French
-      // rather than by this one in English.
       const language = replyLanguage(input.text);
       const { reply, replySource } =
         lane === 'safety_critical'
           ? { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
           : lane === 'provider_access'
-            ? {
-                reply: asksAboutEyeCare(input.text)
-                  ? DIRECT_ACCESS_EYE_REPLY
-                  : PROVIDER_ACCESS_REPLY_BY_LANGUAGE[language],
-                replySource: 'fixed' as const,
-              }
+            ? { reply: referralReply(input.text, language), replySource: 'fixed' as const }
             : await answerOrFallback(ports, input.text);
 
       const signal = await ports.recordUnmetIntent({

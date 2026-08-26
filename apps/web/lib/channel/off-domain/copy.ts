@@ -144,10 +144,7 @@ export const EMERGENCY_TOKENS = [
  * "seizures", and losing a real emergency to a plural is precisely the miss the bar
  * above forbids. It still refuses "9110" and "0911", which are the cases that matter.
  */
-const EMERGENCY_PATTERN = new RegExp(
-  `(?<![\\w$])(?:${EMERGENCY_TOKENS.join('|')})(?!\\d)`,
-  'i',
-);
+const EMERGENCY_PATTERN = new RegExp(`(?<![\\w$])(?:${EMERGENCY_TOKENS.join('|')})(?!\\d)`, 'i');
 
 /** Whether an inbound text names an emergency unambiguously enough to answer without a
  * model. Calibrated toward the false positive on purpose — see the bar above. */
@@ -327,4 +324,111 @@ const EYE_CARE_PATTERN = new RegExp(`\\b(?:${EYE_CARE_TOKENS.join('|')})`, 'i');
  * registry answer and the direct-access one. Deterministic, and no model sees it. */
 export function asksAboutEyeCare(body: string): boolean {
   return EYE_CARE_PATTERN.test(body);
+}
+
+/**
+ * The practitioners Health Care Connect actually places, and only those.
+ *
+ * The program matches an Ontario resident to a family doctor, a nurse practitioner or a
+ * primary care team (ontario.ca "Find a family doctor or nurse practitioner"). A
+ * paediatrician is included because that is how the registry's own intake describes a
+ * child's primary care provider, and because it is the ask this line was written for.
+ *
+ * NOTHING ELSE GOES ON THIS LIST. Every addition is a promise that calling 811 gets a
+ * parent that kind of practitioner, and the whole point of the table below is that the
+ * promise is false for most of them.
+ */
+const PRIMARY_CARE_TOKENS = [
+  'family doctor',
+  'family physician',
+  'gp',
+  'general practitioner',
+  'pediatrician',
+  'paediatrician',
+  'nurse practitioner',
+  'family practice',
+  'medecin de famille',
+  'médecin de famille',
+  'pediatre',
+  'pédiatre',
+  'infirmiere praticienne',
+  'infirmière praticienne',
+] as const;
+
+const PRIMARY_CARE_PATTERN = new RegExp(`\\b(?:${PRIMARY_CARE_TOKENS.join('|')})`, 'i');
+
+/**
+ * What a parent hears when they ask Hale to place them with a practitioner it has NO
+ * verified access path for — a paediatric dentist, an OT, a speech-language pathologist,
+ * an audiologist, a physio, a child psychologist.
+ *
+ * THIS LINE IS THE POINT OF THE TABLE. Until it existed the provider door had two
+ * branches and its DEFAULT was the registry, so every one of those asks was answered
+ * with Health Care Connect — a program that has never placed any of them. That is not a
+ * vague answer, it is a wrong one, and it is the most discouraging kind: the parent makes
+ * a call that was never going to work and concludes the system has nothing for them.
+ * The eye branch fixed one ask and left the shape (founder, live gate, 2026-08-13).
+ *
+ * SO IT SAYS IT DOES NOT KNOW. Honest ignorance is a correct answer and a guessed
+ * registry is not, and the difference is a real phone call a parent does not waste.
+ *
+ * AND IT NAMES THE ADJACENT CAN, which is the capability table's rule for every refusal:
+ * once they have a date, Hale puts it on the week and reminds them. That is true, it is
+ * this thread's own next turn, and it is not a place a parent has to go — no app, no
+ * page, no directory Hale has not verified.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO. It names no registry, no directory and no clinic; it
+ * does not say "ask your family doctor for a referral", because whether a referral is
+ * even needed depends on the class (an optometrist needs none, an ophthalmologist does)
+ * and this line is the branch that fires when Hale does not know the class. It does not
+ * name 811 either: this is not a health question, and the number that answers health
+ * questions is not the number that books a speech therapist.
+ */
+export const UNPLACEABLE_PROVIDER_REPLY =
+  "I don't have a verified way to get you that one, and I'd rather say so than send you somewhere that can't help. Once you've got an appointment, tell me and I'll put it on your week.";
+
+/** The same refusal in French, with the same two halves: the honest no, then the can. */
+export const UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: UNPLACEABLE_PROVIDER_REPLY,
+  fr: "Je n'ai pas de piste vérifiée pour celui-là, et je préfère le dire que vous envoyer au mauvais endroit. Dès que vous avez un rendez-vous, dites-le moi et je l'ajoute à votre semaine.",
+};
+
+/**
+ * THE REFERRAL TABLE — which fixed answer a `provider_access` text gets, by SERVICE.
+ *
+ * Ordered, first match wins, and the order is load-bearing: "eye doctor" contains
+ * "doctor", so eye care is asked first. A MISS is a real outcome and lands on
+ * {@link UNPLACEABLE_PROVIDER_REPLY} — there is no default branch that answers an
+ * unrecognised ask with somebody else's registry, which is the whole defect this
+ * replaced.
+ *
+ * Deterministic, and no model is consulted, for the reason the door itself is
+ * deterministic: this is what a parent is told about getting care for their child, and a
+ * cheap model choosing between three reviewed sentences buys nothing.
+ */
+const REFERRAL_TABLE: ReadonlyArray<{
+  service: 'eye-care' | 'primary-care';
+  matches(body: string): boolean;
+  reply(language: ReplyLanguage): string;
+}> = [
+  {
+    service: 'eye-care',
+    matches: asksAboutEyeCare,
+    // DIRECT_ACCESS_EYE_REPLY has no French twin yet and its token list is English, so a
+    // French eye question does not match here and leaves by the registry or the
+    // unplaceable line in French rather than by this one in English.
+    reply: () => DIRECT_ACCESS_EYE_REPLY,
+  },
+  {
+    service: 'primary-care',
+    matches: (body) => PRIMARY_CARE_PATTERN.test(body),
+    reply: (language) => PROVIDER_ACCESS_REPLY_BY_LANGUAGE[language],
+  },
+];
+
+/** The fixed answer for one provider-access text: the verified path for a service Hale
+ * has one for, and an honest "I don't know" for every service it does not. */
+export function referralReply(body: string, language: ReplyLanguage): string {
+  const row = REFERRAL_TABLE.find((entry) => entry.matches(body));
+  return row ? row.reply(language) : UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE[language];
 }
