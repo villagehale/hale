@@ -273,6 +273,7 @@ describe('redeeming the link · the partner texts from their own phone', () => {
       familyId,
       inviterNotified: true,
       supersededSessionId: null,
+      supersededInviteId: null,
     });
     // No second household, and no intake conversation: the diversion happens BEFORE the
     // session is created, so nobody is asked for their children's ages.
@@ -465,6 +466,9 @@ describe('a live link outranks whatever conversation is already open', () => {
       familyId,
       inviterNotified: true,
       supersededSessionId: session?.id,
+      // No caregiver invite was in flight on this number, and the outcome SAYS so
+      // rather than leaving it to be inferred.
+      supersededInviteId: null,
     });
     // Seated in the household that already exists, not asked for their children's ages.
     expect(
@@ -474,6 +478,54 @@ describe('a live link outranks whatever conversation is already open', () => {
     // The conversation the link interrupted is CLOSED, or it shadows their next text
     // exactly as it shadowed this one.
     expect(session?.closedAt).toEqual(NOW);
+  });
+});
+
+describe('a live link outranks an OPEN CAREGIVER INVITE on the same number', () => {
+  it('closes the invite as it seats them, so their next text is an ordinary turn', async () => {
+    const h = harness();
+    await seedFamily(h.fake);
+    // The same number is in both flows at once — a household described it as a sitter
+    // and Hale texted it the invite, and it is also the number the forwarded co-parent
+    // link reaches. Nothing prevents that: the invite is opened while the number still
+    // has no channel, which is exactly the state a redemption walks into.
+    await text(h, PARENT_PHONE, 'add Sam 647-555-0199 as babysitter');
+    await text(h, PARENT_PHONE, 'yes');
+    expect(h.fake.rows(schema.caregiverInvites)[0]?.state).toBe('awaiting_caregiver_reply');
+
+    await text(h, PARENT_PHONE, 'add my partner');
+    const code = mintedCode(h.transport);
+    const joined = await text(h, PARTNER_PHONE, arrival(code));
+
+    // Closed by the turn that seated them, and closed as what it WAS: a question
+    // overtaken by a bigger answer, not a refusal by the person holding the phone.
+    const invite = h.fake.rows(schema.caregiverInvites)[0];
+    expect(invite).toMatchObject({ state: 'superseded_by_join', closedAt: NOW });
+    expect(auditActions(h.fake)).toContain('caregiver_invite_superseded_by_join');
+    expect(auditActions(h.fake)).not.toContain('caregiver_invite_refused');
+    expect(joined).toMatchObject({
+      status: 'join_link_accepted',
+      supersededInviteId: invite?.id,
+    });
+
+    // So their next ordinary message is a KNOWN-NUMBER turn. Left armed, the invite
+    // outranks the channel they were just given and re-asks its question at them
+    // forever, and the conversation belongs to a role they already left behind.
+    const before = h.transport.sent.length;
+    const next = await text(h, PARTNER_PHONE, "what's on this week?");
+    expect(next).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    expect(h.transport.sent.slice(before)).toHaveLength(0);
+
+    // And their "yes" can never mint a SECOND active row on this number —
+    // parent_channels_phone_hash_active_idx would refuse it, taking the whole webhook
+    // down with it and leaving the carrier to re-deliver the inbound.
+    const yes = await text(h, PARTNER_PHONE, 'yes');
+    expect(yes).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    expect(
+      inserts(h.fake, schema.parentChannels).filter(
+        (r) => r.phoneE164Hash === phoneBlindIndex(PARTNER_PHONE),
+      ),
+    ).toHaveLength(1);
   });
 });
 

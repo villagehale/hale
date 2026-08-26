@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { maskPhoneE164 } from '~/lib/channels/phone';
+import { supersedeOpenInviteOnJoin } from '~/lib/channel/caregiver/invites';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -212,7 +213,7 @@ async function ensureJoinUser(tx: Database, externalAuthId: string): Promise<str
 export async function redeemJoinInvite(
   database: Database,
   input: { invite: JoinInvite; phoneE164: string; verbatimReply: string; now: Date },
-): Promise<{ coParentUserId: string } | null> {
+): Promise<{ coParentUserId: string; supersededInviteId: string | null } | null> {
   const { invite, phoneE164, now } = input;
   const hash = phoneBlindIndex(phoneE164);
 
@@ -290,6 +291,15 @@ export async function redeemJoinInvite(
       .set({ consumedByUserId: coParentUserId })
       .where(eq(schema.joinInvites.id, invite.id));
 
+    // A caregiver invite in flight on this same number is closed HERE, inside the
+    // transaction that seats them, because the two rows describe the same phone and
+    // only one of them can be true: an open invite outranks the channel we have just
+    // written (the intake machine reads invites first, by design), so a crash between
+    // the seat and the closure would leave a co-parent whose every message is answered
+    // with a caregiver's yes/no question — and whose "yes" tries to enrol their number
+    // a second time. See supersedeOpenInviteOnJoin for the invariant.
+    const supersededInviteId = await supersedeOpenInviteOnJoin(tx, phoneE164, now);
+
     await tx.insert(schema.auditLog).values([
       {
         familyId: invite.familyId,
@@ -313,6 +323,6 @@ export async function redeemJoinInvite(
       },
     ]);
 
-    return { coParentUserId };
+    return { coParentUserId, supersededInviteId };
   });
 }

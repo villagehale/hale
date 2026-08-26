@@ -39,11 +39,17 @@ export interface JoinDeps {
  * message we may not send. The join still happens — their authorisation was recorded
  * when they asked — but an operator reading this outcome has to be able to tell a
  * delivered confirmation from a skipped one.
+ *
+ * `supersededInviteId` is the second: the redeeming number may have had a CAREGIVER
+ * invite still in flight, which the seat closes (see supersedeOpenInviteOnJoin). Null is
+ * the ordinary case — nothing was open — and an id means a question somebody was asked
+ * ended without either side answering it.
  */
 export interface JoinAcceptance {
   status: 'join_link_accepted';
   familyId: string;
   inviterNotified: boolean;
+  supersededInviteId: string | null;
 }
 
 export type JoinOutcome =
@@ -234,7 +240,7 @@ export async function handleJoinArrival(
   // single-use rule working, and it is the SAME answer a link spent yesterday gives:
   // null, and the ordinary greeting.
   if (!redeemed) return null;
-  const { coParentUserId } = redeemed;
+  const { coParentUserId, supersededInviteId } = redeemed;
 
   // Recorded AFTER the seat exists, not before: channel_messages.parent_user_id is a
   // NOT NULL reference to a users row, and until the transaction above commits there is
@@ -274,5 +280,6 @@ export async function handleJoinArrival(
     status: 'join_link_accepted',
     familyId: invite.familyId,
     inviterNotified: inviterPhone !== null,
+    supersededInviteId,
   };
 }

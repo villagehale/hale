@@ -364,6 +364,12 @@ export function makeFakeDb(): FakeDb {
    *      first.
    *   3. channel_messages(dedupe_key) WHERE dedupe_key IS NOT NULL — at-most-once per
    *      logical message: the winner is the only attempt that reaches a provider.
+   *   4. parent_channels(phone_e164_hash) WHERE revoked_at IS NULL — one active channel
+   *      per number. Not a race but an INVARIANT, and modelled for the same reason: four
+   *      separate paths enrol a number (intake, re-enrol on START, a caregiver's yes, a
+   *      co-parent's link), each one guards it by a check of its own, and a fake that
+   *      accepted the second row would let a routing bug read as "two rows, both fine"
+   *      here while 500-ing the webhook in production and handing the carrier a retry.
    *
    * Faithful in BOTH directions: a conflicting insert that declared
    * `onConflictDoNothing` resolves to no rows, and one that did NOT raises the unique
@@ -391,6 +397,18 @@ export function makeFakeDb(): FakeDb {
       existing.some((row) => row.dedupeKey === value.dedupeKey)
     ) {
       return 'channel_messages_dedupe_key_uniq';
+    }
+    if (
+      table === schema.parentChannels &&
+      typeof value.phoneE164Hash === 'string' &&
+      (value.revokedAt === null || value.revokedAt === undefined) &&
+      existing.some(
+        (row) =>
+          row.phoneE164Hash === value.phoneE164Hash &&
+          (row.revokedAt === null || row.revokedAt === undefined),
+      )
+    ) {
+      return 'parent_channels_phone_hash_active_idx';
     }
     if (
       table === schema.smsIntakeSessions &&
