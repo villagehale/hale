@@ -179,6 +179,64 @@ describe('the polarity is not re-decided here', () => {
   });
 });
 
+/**
+ * A NAMING THAT REFUSES IS NOT A SELECTION (verifier, 2026-08-26).
+ *
+ * "not the calendar one" named exactly one option, carried no yes and no no, and was read
+ * as a pick — so the standing YES was applied to the very thing the parent had just
+ * excluded, and the owning handler executed it. The negators were STOPWORDS ("not", "but"
+ * were dropped before anything was compared) and the polarity guard reads word by word,
+ * so neither of the two things that could have caught it ever saw the word.
+ *
+ * This is the consent class (rule #4): a reply that refuses may never be chosen, whatever
+ * else it names. It goes to the coach, which can ask.
+ */
+describe('a naming that refuses is never a selection', () => {
+  const open = [CALENDAR, WELCOME];
+
+  it.each([
+    'not the calendar one',
+    'do not do the calendar one',
+    'dont do the calendar one',
+    'anything but the calendar',
+    'except the calendar one',
+    'never mind the calendar one',
+    'without the calendar one',
+  ])('refuses %j rather than acting on the option it excludes', (body) => {
+    expect(matchDisambiguation(menu(open), body, open)).toEqual({
+      status: 'no_choice',
+      reason: 'changed_their_mind',
+    });
+  });
+
+  it('cannot be read as a refusal of a refusal either', () => {
+    // The parent had already said NO. A negated naming on top of that is a sentence, not
+    // a decline of one named thing, and there is nothing safe to infer from it.
+    expect(
+      matchDisambiguation(menu(open, { polarity: 'no' }), 'not the calendar one', open),
+    ).toEqual({ status: 'no_choice', reason: 'not_a_choice' });
+  });
+
+  it('still hears the same words when nothing negates them', () => {
+    // The positive control for every assertion above, through the identical menu: without
+    // the negator these bodies pick, so the block cannot pass by refusing everything.
+    expect(matchDisambiguation(menu(open), 'the calendar one', open)).toMatchObject({
+      status: 'chosen',
+      option: { questionId: 'action-1' },
+      polarity: 'yes',
+    });
+    expect(matchDisambiguation(menu(open), 'the welcome one', open)).toMatchObject({
+      status: 'chosen',
+      option: { questionId: 'offer-1' },
+    });
+    // And the plain opposite still reads as the plain opposite, not as a negation.
+    expect(matchDisambiguation(menu(open), 'no thanks', open)).toEqual({
+      status: 'no_choice',
+      reason: 'changed_their_mind',
+    });
+  });
+});
+
 describe('what is still actually open', () => {
   it('refuses every option whose question has closed', () => {
     const open = [CALENDAR, WELCOME];
@@ -335,6 +393,29 @@ describe('the menus own memory', () => {
     expect(await store.pending(db.database, { ...seeded, now: NOW })).toMatchObject({
       options: [option(WELCOME)],
     });
+  });
+
+  it('can only be spent once, whatever order two turns reach it in', async () => {
+    // One-shot is what stops a menu answering a later, unrelated text, and today it rests
+    // on the queue handing this parent's inbounds over one at a time. That is a property
+    // of the enqueue rather than of this table, so the spend states it itself: the UPDATE
+    // only matches a row nobody has spent, and a turn that matched nothing is told so
+    // rather than carrying on as though it had won the race (rule #11).
+    const seeded = await household();
+    await store.mint(db.database, {
+      ...seeded,
+      channelMessageId: 'msg-1',
+      polarity: 'yes',
+      numbered: true,
+      options: [option(CALENDAR)],
+      now: NOW,
+    });
+    const live = await store.pending(db.database, { ...seeded, now: NOW });
+
+    expect(await store.consume(db.database, { id: live?.id as string, now: NOW })).toBe('spent');
+    expect(await store.consume(db.database, { id: live?.id as string, now: NOW })).toBe(
+      'already_spent',
+    );
   });
 
   it('stops standing once it is stale', async () => {

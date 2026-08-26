@@ -43,6 +43,7 @@ import {
   type DisambiguationOption,
   type DisambiguationStore,
   matchDisambiguation,
+  readsAsOrdinal,
 } from './disambiguation';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
@@ -567,16 +568,27 @@ export async function routeChannelMessage(
   }
 
   // GATE 2 — the deterministic handlers, in order. First claim ends the turn.
-  for (const handler of deps.handlers) {
-    const verdict = await handler.handle(deps.database, turn);
-    if (!verdict.claimed) continue;
-    await deliver(verdict, answer);
-    return done(deps, job, {
-      status: 'handled',
-      handler: handler.name,
-      conversationId,
-      lane: null,
-    });
+  //
+  // SKIPPED ENTIRELY when the menu above spent a digit it could not place. Hale's other
+  // numbered list is the approvals queue, and its ordering has nothing to do with the
+  // sentence this parent just read: "yes 2" answering a menu whose second option has
+  // since closed would otherwise be read by the approval grammar as consent to execute
+  // the second DRAFTED action — one that may never have been on the menu at all (rule
+  // #4). A digit typed while a menu was standing belongs to that menu; when the menu
+  // cannot use it, nobody else may. The turn carries on to the resolver and the coach,
+  // which can ask.
+  if (!picked.ordinalSpent) {
+    for (const handler of deps.handlers) {
+      const verdict = await handler.handle(deps.database, turn);
+      if (!verdict.claimed) continue;
+      await deliver(verdict, answer);
+      return done(deps, job, {
+        status: 'handled',
+        handler: handler.name,
+        conversationId,
+        lane: null,
+      });
+    }
   }
 
   // GATE 2b — DID THEY JUST ANSWER SOMETHING? The words a parent uses are theirs, and
@@ -697,22 +709,41 @@ async function consumePendingDisambiguation(
   deps: ChannelRouterDeps,
   turn: HandlerContext,
   answer: (body: string) => Promise<string>,
-): Promise<{ status: 'handled'; handler: string } | { status: 'carry_on' }> {
+): Promise<
+  | { status: 'handled'; handler: string }
+  /** Carried on — and whether a digit went with the menu rather than on down the chain. */
+  | { status: 'carry_on'; ordinalSpent: boolean }
+> {
   const pending = await deps.disambiguation.pending(deps.database, {
     familyId: turn.familyId,
     parentUserId: turn.parentUserId,
     now: turn.now,
   });
-  if (!pending) return { status: 'carry_on' };
-  await deps.disambiguation.consume(deps.database, { id: pending.id, now: turn.now });
+  if (!pending) return { status: 'carry_on', ordinalSpent: false };
+  // Read while the menu is known to have been STANDING, and true whatever the match then
+  // makes of it — see the skip at GATE 2.
+  const ordinalSpent = readsAsOrdinal(turn.body);
+  const spent = await deps.disambiguation.consume(deps.database, {
+    id: pending.id,
+    now: turn.now,
+  });
+  if (spent === 'already_spent') {
+    // Another turn for this parent got there first. One shot means one, so this one does
+    // not also act on it — and the digit is still that menu's.
+    deps.log.info(
+      { offered: pending.options.length },
+      'channel router: the menu was already spent by another turn',
+    );
+    return { status: 'carry_on', ordinalSpent };
+  }
 
   const choice = matchDisambiguation(pending, turn.body, await turn.openQuestions());
   if (choice.status !== 'chosen') {
     deps.log.info(
-      { reason: choice.reason, offered: pending.options.length },
+      { reason: choice.reason, offered: pending.options.length, ordinalSpent },
       'channel router: the reply did not pick one of the options Hale offered',
     );
-    return { status: 'carry_on' };
+    return { status: 'carry_on', ordinalSpent };
   }
 
   const owner = deps.handlers.find((handler) => handler.resolves?.has(choice.option.kind));
@@ -721,7 +752,7 @@ async function consumePendingDisambiguation(
       { kind: choice.option.kind },
       'channel router: no handler owns the option the parent picked',
     );
-    return { status: 'carry_on' };
+    return { status: 'carry_on', ordinalSpent };
   }
   const verdict = await owner.handle(deps.database, {
     ...turn,
@@ -737,7 +768,7 @@ async function consumePendingDisambiguation(
       { handler: owner.name, kind: choice.option.kind },
       'channel router: the owning handler declined the option the parent picked',
     );
-    return { status: 'carry_on' };
+    return { status: 'carry_on', ordinalSpent };
   }
   await deliver(verdict, answer);
   return { status: 'handled', handler: owner.name };
@@ -1334,8 +1365,11 @@ async function disposeOfFailedTurn(
   // option the parent actually read (VIL-304).
   const unplaced = args.unplacedAnswer;
   if (unplaced && args.questions.length > 1) {
-    const { reply, shown } = clarifyWhichQuestion(args.questions);
+    // NUMBERED ONLY IF A MENU IS ABOUT TO EXIST. Without a polarity nothing is minted, so
+    // the numbers would point at a row that was never written — and the digit they invite
+    // would be read by the approvals queue's own ordering instead (copy.ts).
     const polarity = unplaced.polarity;
+    const { reply, shown } = clarifyWhichQuestion(args.questions, polarity !== null);
     return {
       outcome: 'agent_failed',
       reply,

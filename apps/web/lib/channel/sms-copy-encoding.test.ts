@@ -333,13 +333,17 @@ describe('nothing Hale texts sends a parent to the app', () => {
     failureReply: failureReply(),
     'partialFailureReply (1)': partialFailureReply(1),
     'partialFailureReply (2)': partialFailureReply(2),
-    'whichOneReply (overflow)': whichOneReply([
-      'calendar_move',
-      'calendar_add',
-      'calendar_cancel',
-      'send_email',
-      'add_to_routine',
-    ]),
+    'whichOneReply (overflow)': whichOneReply(
+      ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email', 'add_to_routine'],
+      true,
+    ),
+    // The same sentence with no menu behind it (VIL-304 verifier): it must be GSM-7 and
+    // inside the budget too, since it is what a parent gets whenever the polarity could
+    // not be read for free.
+    'whichOneReply (unnumbered)': whichOneReply(
+      ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email'],
+      false,
+    ),
     mediaUnsupportedReply: mediaUnsupportedReply(),
     CO_PARENT_REDIRECT,
   };
@@ -356,7 +360,10 @@ describe('nothing Hale texts sends a parent to the app', () => {
   /** The overflow is disclosed either way — what changed is that the rest are reachable
    * by answering the three in front of them, rather than on another surface. */
   it('discloses the approvals it could not list, without a destination', () => {
-    const reply = whichOneReply(Array.from({ length: 8 }, () => 'calendar_move'));
+    const reply = whichOneReply(
+      Array.from({ length: 8 }, () => 'calendar_move'),
+      true,
+    );
 
     expect(reply).toMatch(/5 more behind those/i);
     // Disclosed WITHOUT a destination, and without a menu: the choices are named, the

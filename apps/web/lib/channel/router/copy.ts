@@ -244,13 +244,21 @@ export function outOfRangeReply(pendingCount: number): string {
  * exactly the sequence printed here, which is what makes an ordinal point at the option a
  * parent actually read rather than at a position that has since moved.
  *
+ * `numbered` IS NOT A STYLE CHOICE — it is whether a menu is going to exist. The row is
+ * only minted when the polarity the parent already gave could be read for free, and a
+ * sentence that says "Reply 1 or 2" while nothing was written down invites a digit that
+ * no menu is standing behind: the approvals queue's own ordering would answer it, off a
+ * list this parent never saw (verifier, 2026-08-26; rule #4). So when there is no mint
+ * the sentence goes back to the words it used before VIL-304 — still asking, still by
+ * name, promising nothing that does not exist.
+ *
  * Labels come in already rendered (`actionTypeLabel`), which keeps this function unable to
  * see an action's payload at all (rule #1).
  *
  * The overflow is disclosed and points nowhere (skill audit P0 #4): the list is re-read
  * every turn, so answering the ones in front is what brings the next ones up.
  */
-export function whichOneReply(subjects: readonly string[]): string {
+export function whichOneReply(subjects: readonly string[], numbered: boolean): string {
   const shown = subjects.slice(0, MAX_LISTED_APPROVALS);
   if (shown.length === 0) {
     // Both callers ask only when they are holding at least two, so this is unreachable —
@@ -261,6 +269,12 @@ export function whichOneReply(subjects: readonly string[]): string {
   }
   const overflow = subjects.length - shown.length;
   const tail = overflow > 0 ? ` (${overflow} more behind those.)` : '';
+  if (!numbered) {
+    const head = shown.slice(0, -1);
+    const last = shown.at(-1) as string;
+    const named = head.length === 0 ? last : `${head.join(', ')} or ${last}`;
+    return `Which one - ${named}?${tail}`;
+  }
   const list = shown.map((subject, i) => `${i + 1}) ${subject}`).join(', ');
   return `Which one - ${list}? Reply ${orJoinNumbers(shown.length)}, or just say which.${tail}`;
 }
@@ -295,6 +309,7 @@ function orJoinNumbers(count: number): string {
  */
 export function clarifyWhichQuestion<T extends { kind: string; subject: string }>(
   questions: readonly T[],
+  numbered: boolean,
 ): { reply: string; shown: readonly T[] } {
   // EVERY KIND FIRST, then fill the remaining slots in order. Taking one per kind and
   // stopping would drop the second of two drafted changes, which is the case the numbered
@@ -309,7 +324,7 @@ export function clarifyWhichQuestion<T extends { kind: string; subject: string }
   const ordered = [...firstOfEachKind, ...questions.filter((q) => !firstOfEachKind.includes(q))];
   const shown = ordered.slice(0, MAX_LISTED_APPROVALS);
   const dropped = ordered.length - shown.length;
-  const list = whichOneReply(shown.map((question) => question.subject));
+  const list = whichOneReply(shown.map((question) => question.subject), numbered);
   // Honest and destination-free. NOT "behind those": nothing queues behind an
   // introduction, so the approvals list's own tail would be a false promise here.
   const reply =

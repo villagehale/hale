@@ -112,6 +112,39 @@ const STOPWORDS: ReadonlySet<string> = new Set(
 );
 
 /**
+ * The words that REFUSE, scanned over the whole reply before anything is matched.
+ *
+ * "not the calendar one" names exactly one option and carries neither a yes nor a no, so
+ * every guard in this module used to wave it through and hand the parent's standing YES
+ * to the one thing they had just excluded — which the owning handler then executed
+ * (verifier, 2026-08-26; rule #4). Two separate reasons it got that far, and they are why
+ * this is a scan of its own rather than another word added to a list:
+ *
+ *   THE NEGATORS WERE STOPWORDS. 'not' and 'but' are function words, so the matcher
+ *   dropped them before comparing — the one class of word whose whole job is to invert
+ *   the sentence, deleted first.
+ *
+ *   THE POLARITY GUARD READS WORD BY WORD. It asks whether any single word IS a yes or a
+ *   no (affirmative.ts's whole-string vocabulary, applied per token). 'not' is neither.
+ *   'dont' happens to be in that vocabulary and so was caught; 'not', 'but', 'except',
+ *   'never' and 'without' are not, and a guard that catches one spelling of a refusal and
+ *   not the next four is not a guard.
+ *
+ * SCOPE IS DELIBERATELY THE WHOLE UTTERANCE rather than the words adjoining the match. A
+ * negator anywhere means this sentence is doing something other than picking one thing off
+ * a list — excluding, correcting, hedging — and none of those may resolve to consent. The
+ * cost of being broad is a turn that goes to the coach, which can ask; the cost of being
+ * narrow is an action nobody agreed to.
+ *
+ * French, for the reason affirmative.ts reads three languages: the identical sentence in
+ * the identical shape must not be the one that gets through.
+ */
+const NEGATORS: ReadonlySet<string> = new Set(
+  `not dont doesnt didnt cant cannot wont isnt arent never neither nor but except without
+   pas sans sauf jamais`.split(/\s+/),
+);
+
+/**
  * Which option this reply picked, if any.
  *
  * Pure, and that is not incidental: every branch below is a decision about somebody's
@@ -134,6 +167,15 @@ export function matchDisambiguation(
   if (live.length === 0) return { status: 'no_choice', reason: 'nothing_open' };
 
   const words = normalizeReply(body).split(' ').filter(Boolean);
+  // A REFUSAL IS NEVER A SELECTION, whatever else it names, and this runs before the
+  // ordinal and before any word is compared. After a yes it is the parent contradicting
+  // the answer on the row; after a no there is nothing left to read at all.
+  if (words.some((word) => NEGATORS.has(word))) {
+    return {
+      status: 'no_choice',
+      reason: polarity === 'yes' ? 'changed_their_mind' : 'not_a_choice',
+    };
+  }
   // The parent had already said yes or no; this sentence was only ever about WHICH. One
   // that carries the opposite word is not a selection at all, and reading it as one would
   // apply an acceptance to something they had just refused (rule #4).
@@ -198,6 +240,21 @@ function contentWords(phrase: string): Set<string> {
 }
 
 /**
+ * Is this reply a NUMBER — the shape a menu's ordinal comes back in?
+ *
+ * Asked by the router about a turn the menu did NOT place (an option that closed, a
+ * position that was never printed), because the digit is spent either way. Hale's other
+ * numbered list is the approvals queue, whose ordering has nothing to do with the menu
+ * this parent just read, and letting the same character fall through to it approves an
+ * action they were never shown (verifier, 2026-08-26; rule #4). One reader per question:
+ * the shape is decided here, by the same function the match itself uses.
+ */
+export function readsAsOrdinal(body: string): boolean {
+  const words = normalizeReply(body).split(' ').filter(Boolean);
+  return readOrdinal(body, words) !== null;
+}
+
+/**
  * The number this reply is, or null.
  *
  * Two shapes and no more: the bare digit, and the approval grammar's own "yes 2" (which
@@ -247,8 +304,20 @@ export interface DisambiguationStore {
       now: Date;
     },
   ): Promise<DisambiguationMintOutcome>;
-  /** Spend it. Called on the way past whatever the reply turned out to be. */
-  consume(database: Database, input: { id: string; now: Date }): Promise<void>;
+  /**
+   * Spend it, and SAY WHETHER THIS CALL IS THE ONE THAT SPENT IT.
+   *
+   * One-shot is the property that stops a menu answering a later, unrelated text, and it
+   * used to rest entirely on the queue handing one parent's inbounds over one at a time —
+   * a fact about the enqueue, not about this table, and therefore one an unrelated change
+   * to the drain could take away silently. So the spend states it itself: the UPDATE
+   * matches only a row nobody has spent, and a caller that matched nothing is TOLD
+   * (rule #11) rather than carrying on as though it had won the race.
+   */
+  consume(
+    database: Database,
+    input: { id: string; now: Date },
+  ): Promise<'spent' | 'already_spent'>;
 }
 
 export function createDisambiguationStore(): DisambiguationStore {
@@ -317,10 +386,17 @@ export function createDisambiguationStore(): DisambiguationStore {
     },
 
     async consume(database, { id, now }) {
-      await database
+      const spent = await database
         .update(schema.pendingDisambiguations)
         .set({ consumedAt: now })
-        .where(eq(schema.pendingDisambiguations.id, id));
+        .where(
+          and(
+            eq(schema.pendingDisambiguations.id, id),
+            isNull(schema.pendingDisambiguations.consumedAt),
+          ),
+        )
+        .returning({ id: schema.pendingDisambiguations.id });
+      return spent.length === 0 ? 'already_spent' : 'spent';
     },
   };
 }

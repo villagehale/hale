@@ -310,7 +310,11 @@ function fakeDisambiguation(): DisambiguationStore & { minted: number } {
       return { status: 'minted' as const };
     },
     async consume(_db: unknown, input: { id: string }) {
-      if (live?.id === input.id) live = null;
+      // The real store spends by UPDATE ... WHERE consumed_at IS NULL, so a second call
+      // for the same menu matches nothing and says so (disambiguation.ts).
+      if (live?.id !== input.id) return 'already_spent' as const;
+      live = null;
+      return 'spent' as const;
     },
   };
   return store as unknown as DisambiguationStore & { minted: number };
@@ -2090,6 +2094,29 @@ describe('natural reply resolution', () => {
     expect(h.transport.bodies()[0]).not.toMatch(/\bYES\b/);
   });
 
+  it('does not offer numbers when no menu was written down', async () => {
+    // The mint only happens when the free vocabulary could read a yes or a no off the
+    // reply; when it could not, NOTHING is recorded — and "Reply 1 or 2" would then be
+    // inviting a digit no menu is standing behind, which the approvals queue's own
+    // numbering would answer instead. The copy has to match what exists.
+    const h = harness({
+      context: { body: 'the second thing i guess' },
+      coach: brokenCoach(),
+      questions: fakeQuestions([approvalQuestion(), introQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'ambiguous' }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect((h.deps.disambiguation as unknown as { minted: number }).minted).toBe(0);
+    const sent = h.transport.bodies()[0] as string;
+    // Still asked, still by name — the sentence that went out before VIL-304.
+    expect(sent).toBe('Which one - reschedule on your calendar or meeting the family nearby?');
+    expect(sent).not.toContain('1)');
+    expect(sent).not.toMatch(/Reply 1/);
+  });
+
   it('does not send the choice sentence for an ordinary broken turn', async () => {
     // The apology composer owns that turn. Answering "which one did you mean?" to a
     // parent who asked a question would be Hale inventing a decision they never made.
@@ -3048,5 +3075,81 @@ describe('the disambiguation a clarifier owns', () => {
 
     expect((await c.run()).status).toBe('agent_replied');
     expect(founder.seen).toEqual([]);
+  });
+
+  /** Two pending drafts, in the queue's own order — a numbering that has nothing to do
+   * with the menu Hale just printed. */
+  function approvalsQueue() {
+    const approved: string[] = [];
+    return {
+      approved,
+      spine: {
+        listPending: async () => [
+          { actionId: 'a-1', actionType: 'calendar_add' },
+          { actionId: 'a-2', actionType: 'calendar_move' },
+        ],
+        latestUndoable: async () => null,
+        approve: async (_db: unknown, args: { actionId: string }) => {
+          approved.push(args.actionId);
+          return true;
+        },
+        decline: async () => true,
+        undo: async () => true,
+      },
+    };
+  }
+
+  it('never lets the approvals queue read a digit the menu was standing for', async () => {
+    // The offer was option 2 on the menu and lapsed before the answer came back. "yes 2"
+    // then fell out of the menu and into the approval grammar, where 2 counts positions
+    // in a DIFFERENT list — and the second drafted action, which the parent was never
+    // shown and never picked, was executed (rule #4). A digit typed while a menu is
+    // standing belongs to that menu and to nothing else.
+    const queue = approvalsQueue();
+    const open = [calendarDraft(), founderOffer()];
+    const c = conversation({
+      bodies: ['YES', 'yes 2'],
+      handlers: [approvalHandler(queue.spine as never)],
+      coach: brokenCoach(),
+      questions: fakeQuestions(open),
+      replyResolver: replayedResolver({
+        YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+        'yes 2': { target: 'none', polarity: 'unclear', confidence: 'high' },
+      }),
+    });
+
+    await c.run();
+    expect(c.h.transport.bodies()[0]).toContain('2)');
+    // Option 2 closes between the question and the answer, so the menu cannot place it.
+    open.splice(1, 1);
+
+    await c.run();
+
+    expect(queue.approved).toEqual([]);
+  });
+
+  it('reads the same digit against the approvals queue when no menu was standing', async () => {
+    // The positive control for the assertion above, through the identical handler and
+    // the identical spine: without a menu in front of them, "yes 2" is the approval
+    // grammar's own ordinal and still approves the second drafted action.
+    const queue = approvalsQueue();
+    const c = conversation({
+      bodies: ['what time is storytime on saturday', 'yes 2'],
+      handlers: [approvalHandler(queue.spine as never)],
+      coach: fakeCoach(),
+      questions: fakeQuestions([calendarDraft(), founderOffer()]),
+      replyResolver: replayedResolver({
+        'what time is storytime on saturday': {
+          target: 'none',
+          polarity: 'unclear',
+          confidence: 'high',
+        },
+      }),
+    });
+
+    await c.run();
+    expect((await c.run()).handler).toBe('approval');
+
+    expect(queue.approved).toEqual(['a-2']);
   });
 });
