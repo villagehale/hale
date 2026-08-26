@@ -250,22 +250,14 @@
         "tag": "推荐",
         "title": "Hale 来建议",
         "line": "这一周值得知道的那件事，以及为什么现在要紧。",
-        "checks": [
-          "周一早上的一份简报",
-          "报名开放那一周的提前知会",
-          "其余时间安安静静"
-        ],
+        "checks": ["周一早上的一份简报", "报名开放那一周的提前知会", "其余时间安安静静"],
         "linkLabel": "育儿指南"
       },
       {
         "tag": "准备",
         "title": "Hale 来备好",
         "line": "精选清单、链接、时间——在窗口打开之前，而不是之后。",
-        "checks": [
-          "前一晚的方案",
-          "开放上线时的一记提醒",
-          "链接和时间"
-        ],
+        "checks": ["前一晚的方案", "开放上线时的一记提醒", "链接和时间"],
         "linkLabel": "价格几何"
       },
       {
@@ -427,6 +419,10 @@
       }
     ],
     "lede": "家庭们真正会用到的免费和低价出行选择——故事会、随到随玩、亲子游泳、公园，还有本地项目。选择你的城市开始吧。",
+    "registrationLead": "秋季报名按城市查——不是这个周末去哪儿玩：",
+    "linkTorontoFall": "多伦多秋季文体报名",
+    "linkTorontoSwim": "多伦多游泳报名",
+    "linkBramptonSwim": "布兰普顿游泳（9月9日）",
     "ctaHeading": "问问 Hale 这个周末有什么值得去",
     "ctaSub": "把这一周的问题发短信问 Hale，得到一个贴着你孩子年龄的答案。报名日的盯梢目前只覆盖大多伦多地区。免费开始——你的数据始终留在加拿大。"
   },
@@ -501,6 +497,31 @@
     "footerPre": "Village Hale Technologies Inc.，安大略省乔治敦。你的数据始终留在加拿大——",
     "privacyLink": "隐私政策",
     "qrAria": "二维码——扫码给 Hale 发短信"
+  },
+  "Registration": {
+    "updated": "Updated {date, date, long}",
+    "when": "When",
+    "what": "What opens",
+    "questionsEyebrow": "Questions parents type",
+    "questionsHeadline": [
+      {
+        "text": "The questions that"
+      },
+      {
+        "text": "show up at 6:58 a.m.",
+        "accent": true
+      }
+    ],
+    "officialEyebrow": "Official register",
+    "officialHeadline": [
+      {
+        "text": "Confirm on the"
+      },
+      {
+        "text": "official page",
+        "accent": true
+      }
+    ]
   },
   "Jsonld": {
     "orgDescription": "Hale 是一个发短信就能用的家庭助手——它盯着城市的报名窗口、安排一周，并在你同意下处理杂务。每个家庭的数据都留在加拿大。",

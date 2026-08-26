@@ -65,6 +65,20 @@ export default async function ActivitiesHub({ params }: PageProps) {
           <p className="meta reading-measure mt-6 text-lg" style={{ lineHeight: 1.6 }}>
             {t('lede')}
           </p>
+          <p className="meta reading-measure mt-5 text-base" style={{ lineHeight: 1.6 }}>
+            {t('registrationLead')}{' '}
+            <a href={localeHref(locale, '/toronto-fall-recreation-registration')} className="link">
+              {t('linkTorontoFall')}
+            </a>
+            {' · '}
+            <a href={localeHref(locale, '/toronto-swim-registration')} className="link">
+              {t('linkTorontoSwim')}
+            </a>
+            {' · '}
+            <a href={localeHref(locale, '/brampton-swim-registration')} className="link">
+              {t('linkBramptonSwim')}
+            </a>
+          </p>
         </div>
       </section>
 

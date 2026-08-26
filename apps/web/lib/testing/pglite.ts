@@ -18,6 +18,10 @@ import { drizzle } from 'drizzle-orm/pglite';
  * Applying the migrations rather than a hand-written fixture schema is what keeps
  * it honest: the table under test is byte-for-byte the one production has, and a
  * new migration is exercised here the first time it ships.
+ *
+ * The full chain is applied ONCE per worker, then cloned via dumpDataDir. Replaying
+ * every SQL file in every beforeEach is what blew Vitest's 10s hookTimeout in CI
+ * (deep-answer-at-question-time, twice in a row, while the rest of @hale/web passed).
  */
 
 const MIGRATIONS_DIR = fileURLToPath(new URL('../../../../packages/db/drizzle/', import.meta.url));
@@ -43,14 +47,35 @@ export function migrationFiles(): string[] {
     .sort();
 }
 
+async function applyMigrations(client: PGlite, through?: string): Promise<void> {
+  for (const file of migrationFiles()) {
+    if (through && file > through) break;
+    const contents = readFileSync(`${MIGRATIONS_DIR}${file}`, 'utf8');
+    for (const statement of contents.split(STATEMENT_BREAKPOINT)) {
+      if (!statement.trim()) continue;
+      await client.exec(statement);
+    }
+  }
+}
+
 /**
- * Boots an empty Postgres and applies migrations up to and including `through`
- * (default: all of them). Stopping early is how a migration proves it repairs
- * pre-existing data — seed the mess against the schema as it was, then apply the
- * migration under test.
+ * One migrated WASM snapshot per worker. Cloning it is cheap; replaying every
+ * SQL file on every test is not. `through` (partial schema) never shares this.
  */
-export async function createTestDb(through?: string): Promise<TestDb> {
-  const client = new PGlite();
+let fullSchemaDump: Promise<Blob> | undefined;
+
+async function dumpOfFullSchema(): Promise<Blob> {
+  fullSchemaDump ??= (async () => {
+    const client = await PGlite.create();
+    await applyMigrations(client);
+    const dump = await client.dumpDataDir('none');
+    await client.close();
+    return dump;
+  })();
+  return fullSchemaDump;
+}
+
+function wrap(client: PGlite): TestDb {
   const applyMigration = async (file: string) => {
     const contents = readFileSync(`${MIGRATIONS_DIR}${file}`, 'utf8');
     for (const statement of contents.split(STATEMENT_BREAKPOINT)) {
@@ -58,11 +83,6 @@ export async function createTestDb(through?: string): Promise<TestDb> {
       await client.exec(statement);
     }
   };
-
-  for (const file of migrationFiles()) {
-    if (through && file > through) break;
-    await applyMigration(file);
-  }
 
   // `casing` matches createDb so column resolution is identical to production.
   // PgliteDatabase and PostgresJsDatabase differ only in their driver internals;
@@ -76,6 +96,24 @@ export async function createTestDb(through?: string): Promise<TestDb> {
     applyMigration,
     close: () => client.close(),
   };
+}
+
+/**
+ * Boots an empty Postgres and applies migrations up to and including `through`
+ * (default: all of them). Stopping early is how a migration proves it repairs
+ * pre-existing data — seed the mess against the schema as it was, then apply the
+ * migration under test.
+ */
+export async function createTestDb(through?: string): Promise<TestDb> {
+  if (through) {
+    const client = await PGlite.create();
+    await applyMigrations(client, through);
+    return wrap(client);
+  }
+
+  const dump = await dumpOfFullSchema();
+  const client = await PGlite.create({ loadDataDir: dump });
+  return wrap(client);
 }
 
 export interface SeededFamily {

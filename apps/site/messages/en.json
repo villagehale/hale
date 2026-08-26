@@ -427,6 +427,10 @@
       }
     ],
     "lede": "The free and low-cost outings families actually use — story-times, drop-in play, parent-and-tot swim, parks, and local programs. Pick your city to start.",
+    "registrationLead": "Fall rec registration, by city — not this weekend’s outings:",
+    "linkTorontoFall": "Toronto fall rec",
+    "linkTorontoSwim": "Toronto swim",
+    "linkBramptonSwim": "Brampton swim (Sept 9)",
     "ctaHeading": "Ask Hale what’s worth doing this weekend",
     "ctaSub": "Text Hale a question about your week and get an answer pitched at your kids’ ages. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
   },
@@ -501,6 +505,31 @@
     "footerPre": "Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada —",
     "privacyLink": "privacy policy",
     "qrAria": "QR code — scan to text Hale"
+  },
+  "Registration": {
+    "updated": "Updated {date, date, long}",
+    "when": "When",
+    "what": "What opens",
+    "questionsEyebrow": "Questions parents type",
+    "questionsHeadline": [
+      {
+        "text": "The questions that"
+      },
+      {
+        "text": "show up at 6:58 a.m.",
+        "accent": true
+      }
+    ],
+    "officialEyebrow": "Official register",
+    "officialHeadline": [
+      {
+        "text": "Confirm on the"
+      },
+      {
+        "text": "official page",
+        "accent": true
+      }
+    ]
   },
   "Jsonld": {
     "orgDescription": "Hale is the family assistant you text — it watches city registration windows, plans the week, and handles the admin with your say-so. Every family’s data stays in Canada.",
