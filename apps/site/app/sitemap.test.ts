@@ -41,9 +41,7 @@ describe('sitemap', () => {
   });
 
   it('lists exactly the published answer slugs (and the /answers index)', () => {
-    const answerUrls = urls
-      .filter((u) => u.startsWith(`${SITE_URL}/answers`))
-      .sort();
+    const answerUrls = urls.filter((u) => u.startsWith(`${SITE_URL}/answers`)).sort();
     const expected = [
       `${SITE_URL}/answers`,
       ...PUBLISHED_SLUGS.map((slug) => `${SITE_URL}/answers/${slug}`),
@@ -86,6 +84,28 @@ describe('sitemap', () => {
   it('still carries no checkpoint slug anywhere in the sitemap', () => {
     for (const checkpoint of allCheckpoints) {
       expect(entries.find((e) => e.url.endsWith(`/${checkpoint.slug}`))).toBeUndefined();
+    }
+  });
+
+  it('lists the four city-registration landings', () => {
+    for (const path of [
+      '/toronto-fall-recreation-registration',
+      '/toronto-swim-registration',
+      '/brampton-swim-registration',
+      '/ymca-gta-swim-registration',
+    ]) {
+      expect(urls).toContain(`${SITE_URL}${path}`);
+    }
+  });
+
+  it('does not advertise held-back city registration URLs', () => {
+    for (const path of [
+      '/york-region-swim-registration',
+      '/vaughan-recreation-registration',
+      '/vaughan-swim-registration',
+      '/mississauga-swim-registration',
+    ]) {
+      expect(urls).not.toContain(`${SITE_URL}${path}`);
     }
   });
 });

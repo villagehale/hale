@@ -9,11 +9,15 @@ import ActivityCityRoute from './[locale]/activities/[city]/page.js';
 import ActivitiesHub from './[locale]/activities/page.js';
 import AnswerRoute from './[locale]/answers/[slug]/page.js';
 import AnswersIndexPage from './[locale]/answers/page.js';
+import BramptonSwimPage from './[locale]/brampton-swim-registration/page.js';
 import ContactPage from './[locale]/contact/page.js';
 import FaqPage from './[locale]/faq/page.js';
 import PricingPage from './[locale]/pricing/page.js';
 import PrivacyPage from './[locale]/privacy/page.js';
 import TermsPage from './[locale]/terms/page.js';
+import TorontoFallPage from './[locale]/toronto-fall-recreation-registration/page.js';
+import TorontoSwimPage from './[locale]/toronto-swim-registration/page.js';
+import YmcaSwimPage from './[locale]/ymca-gta-swim-registration/page.js';
 
 /**
  * The subpage design language (2026-08) — the five devices that carried the
@@ -66,6 +70,10 @@ const slugHtml = await renderAsync(
 const cityHtml = await renderAsync(
   ActivityCityRoute({ params: Promise.resolve({ city: 'toronto', ...EN }) }),
 );
+const torontoFallHtml = await renderAsync(TorontoFallPage({ params: Promise.resolve(EN) }));
+const torontoSwimHtml = await renderAsync(TorontoSwimPage({ params: Promise.resolve(EN) }));
+const bramptonSwimHtml = await renderAsync(BramptonSwimPage({ params: Promise.resolve(EN) }));
+const ymcaSwimHtml = await renderAsync(YmcaSwimPage({ params: Promise.resolve(EN) }));
 const privacyHtml = await renderAsync(PrivacyPage({ params: Promise.resolve(EN) }));
 const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
 
@@ -80,6 +88,26 @@ const PULLED_UP: [name: string, html: string, headline: string][] = [
   ['/activities', pages['/activities'], 'Things to do with your kids, by city.'],
   ['/answers/[slug]', slugHtml, 'When and how do I introduce peanuts to my baby?'],
   ['/activities/[city]', cityHtml, 'Things to do with your kids in Toronto'],
+  [
+    '/toronto-fall-recreation-registration',
+    torontoFallHtml,
+    'Toronto fall recreation registration 2026: which 7 a.m. is yours',
+  ],
+  [
+    '/toronto-swim-registration',
+    torontoSwimHtml,
+    'Toronto swim registration 2026: it is not a separate day',
+  ],
+  [
+    '/brampton-swim-registration',
+    bramptonSwimHtml,
+    'Brampton swim registration is September 9, not August 24',
+  ],
+  [
+    '/ymca-gta-swim-registration',
+    ymcaSwimHtml,
+    'YMCA Greater Toronto swim registration: August 27 at 9 a.m.',
+  ],
 ];
 
 describe('the pulled-up headline', () => {
@@ -264,7 +292,9 @@ describe('/pricing — the tier cards have anatomy', () => {
     expect(text).toContain(
       'The whole core — every stage, every child — is free. Plus and Family add more of the work Hale does for you, on your approval, as each integration ships.',
     );
-    expect(text).toContain('The whole core is free. Paid plans are for the doing, never the watching.');
+    expect(text).toContain(
+      'The whole core is free. Paid plans are for the doing, never the watching.',
+    );
     expect(text).toContain('Founding families join free.');
     expect(text).toContain(
       'Hale is free to start. Plus and Family open as their integrations ship.',
@@ -334,8 +364,8 @@ describe('grain stays under the copy', () => {
       if (decl.value.includes('--grain')) opacityOnGrain.push(decl.value);
     });
     expect(opacityOnGrain).toEqual([]);
-    const ink = /--grain-ink: light-dark\(rgb\([^)]*\/\s*([\d.]+)\), rgb\([^)]*\/\s*([\d.]+)\)\);/
-      .exec(CSS);
+    const ink =
+      /--grain-ink: light-dark\(rgb\([^)]*\/\s*([\d.]+)\), rgb\([^)]*\/\s*([\d.]+)\)\);/.exec(CSS);
     if (!ink) throw new Error('--grain-ink is not declared as a light-dark() colour pair');
     for (const value of [ink[1], ink[2]]) {
       expect(Number(value)).toBeGreaterThan(0);
