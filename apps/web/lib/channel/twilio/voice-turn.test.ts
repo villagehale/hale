@@ -56,7 +56,14 @@ function build(overrides: Partial<VoiceTurnPorts> = {}) {
     { role: 'assistant', content: 'anytime' },
   ];
   const loadContext = vi.fn(async (_input: LoadAgentContextInput) => CONTEXT);
-  const runStreaming = vi.fn(async (_args: RunAgentStreamingArgs) => RESULT);
+  // The default fake STREAMS what it returns, because the real loop does: every text
+  // block it ends up reporting as `answer` reached `onTextDelta` first. A fake that
+  // returned an answer nobody heard was modelling a turn production cannot produce, and
+  // it is what let a silent turn read as a completed one for as long as it did (VIL-295).
+  const runStreaming = vi.fn(async (args: RunAgentStreamingArgs) => {
+    if (RESULT.answer !== null) args.onTextDelta(RESULT.answer);
+    return RESULT;
+  });
   const recordRun = vi.fn(async () => {});
   const answerSpoken = vi.fn(async () => ({ status: 'not_an_answer' }) as const);
   const buildTools = vi.fn(() => TOOLS);
@@ -184,6 +191,27 @@ describe('voiceTurnStream', () => {
     });
 
     await expect(t.turn.respond(input, vi.fn())).rejects.toThrow(/no answer/);
+    expect(t.recordRun).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
+  });
+
+  it('treats an answer the caller never heard as a failure too, not as a completed turn', async () => {
+    // VIL-295. `answer` is what the loop COMPOSED; the question this branch is asking is
+    // what the caller HEARD. They come apart on a content block with no words in it: the
+    // stream fires no delta, so nothing reaches the speaker, and `answer` is a non-null
+    // string all the same. The turn then returned normally — the caller got dead air on a
+    // line they were holding, the session had nothing to apologise with because nothing
+    // had thrown, and the run was filed as completed.
+    const emitted: string[] = [];
+    const t = build({
+      runStreaming: vi.fn(async () => ({ ...RESULT, answer: '   ' })),
+    });
+
+    await expect(
+      t.turn.respond(input, (token) => {
+        emitted.push(token);
+      }),
+    ).rejects.toThrow(/no answer/);
+    expect(emitted).toEqual([]);
     expect(t.recordRun).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
   });
 

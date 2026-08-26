@@ -350,6 +350,12 @@ function checkTurn(fixture, spoken, grounding, score, run) {
   for (const tool of expect.mustCallTools ?? []) {
     if (!run.calls.includes(tool)) failures.push(`answered without calling ${tool}`);
   }
+  // A turn that had nothing to look up must not look anything up. On a call every tool is
+  // a couple of seconds of silence bought with the caller's patience, and buying it to
+  // answer "Hi" is how the first turn of a call becomes the slowest one (VIL-295).
+  if (expect.noTools && run.calls.length > 0) {
+    failures.push(`nothing was asked and the turn went looking anyway: ${run.calls.join(', ')}`);
+  }
   if (expect.mustDraft && !run.calls.some((call) => DRAFTING_TOOLS.includes(call))) {
     failures.push('asked to change something and drafted nothing');
   }
@@ -455,6 +461,11 @@ async function main() {
       // is the token-plumbing property the tool-free version of this eval asserted.
       let lastTurn = '';
       let heardBeforeFirstTool = null;
+      // REPLICATED from voice-turn.ts — the separator prod owes at a turn boundary and
+      // pays at the next word (VIL-295). Without it this corpus grades "your week.You've
+      // got", a string production stopped producing, and could never fail on the join
+      // that Twilio's TTS reads as one word.
+      let separatorOwed = false;
       const tools = [
         ...buildVoiceFixtureTools(agent, z, calls, toolResults),
         recordingFrameworkTool(frameworkGuidanceTool, calls, toolResults),
@@ -478,6 +489,11 @@ async function main() {
           checkChildContentAccess: async () => ({ ok: true, reason: 'fixture' }),
         },
         onTextDelta: (delta) => {
+          if (delta === '') return;
+          if (separatorOwed) {
+            separatorOwed = false;
+            heard += ' ';
+          }
           heard += delta;
           lastTurn += delta;
         },
@@ -485,8 +501,10 @@ async function main() {
           heardBeforeFirstTool ??= heard;
         },
         // The turn's text was reasoning, not the answer — but the caller already heard
-        // it, so only the ANSWER buffer is reset.
+        // it, so only the ANSWER buffer is reset. The BOUNDARY it crossed is owed to the
+        // next word, exactly as prod owes it.
         onTurnReset: () => {
+          separatorOwed = heard !== '' && !/\s/.test(heard.slice(-1));
           lastTurn = '';
         },
       });

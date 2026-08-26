@@ -279,15 +279,25 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
         );
       }
 
-      if (result.answer === null) {
-        // A NULL ANSWER IS NOT ALWAYS A FAILED TURN HERE, and the difference is what the
-        // caller heard. The commonest real shape (found by the eval, not by reading the
-        // loop) is a model that says the whole answer in the SAME turn as its tool call
-        // and then, holding the result, has nothing left to add — the loop's last turn is
-        // empty, `answer` is null, and the parent has already been told everything. On a
-        // text that turn produces no reply and must fail; out loud the words are already
-        // spoken, and apologising for them would be Hale contradicting itself.
-        if (modelSpoke) return;
+      // ONE QUESTION, ONE READER: did the caller HEAR the model? On a call that is the
+      // only thing that decides whether this turn worked, and until VIL-295 three places
+      // answered it three ways — the catch above asked whether anything was drafted, this
+      // branch asked whether `answer` was null, and `record` asked whether either was
+      // truthy. `modelSpoke` is the fact, set by the delta handler, and it is now the only
+      // reader anywhere in the turn.
+      //
+      // The two came apart on a content block with no words in it: no delta fires, so
+      // nothing reaches the speaker, and `answer` is a non-null string all the same. The
+      // turn returned normally, so the session had nothing to apologise with, and the
+      // caller was left holding a silent line on a turn filed as completed.
+      //
+      // Going the other way, a NULL answer is often not a failure at all. The commonest
+      // real shape (found by the eval, not by reading the loop) is a model that says the
+      // whole answer in the SAME turn as its tool call and then, holding the result, has
+      // nothing left to add: the last turn is empty, `answer` is null, and the parent has
+      // already been told everything. Apologising for words they just heard would be Hale
+      // contradicting itself.
+      if (!modelSpoke) {
         // Nothing of the model's was heard — at most the line covering the pause. A turn
         // that drafted owes the parent the count; one that did not owes the session its
         // fixed line.
@@ -295,7 +305,7 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
           emit(voiceDraftedButFailed(draftedActionIds.length));
           return;
         }
-        throw new Error('voice turn: the model produced no answer');
+        throw new Error('voice turn: the model produced no answer the caller could hear');
       }
     },
   };
@@ -313,9 +323,12 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
  * gap: no agent ran, so there is no agent run. It leaves its own rows where it acted —
  * the approvals spine's audit trail (rule #6).
  *
- * `modelSpoke` is what makes the status honest on a call: a loop can end with a null
- * `answer` having already said everything out loud (see respond), and counting that as a
- * failure would put the surface's healthiest common shape in the failure column.
+ * `modelSpoke` is the ONLY thing the status reads, and it is the same fact `respond` acts
+ * on — one question, one reader (VIL-295). It cuts both ways: a loop can end with a null
+ * `answer` having already said everything out loud, and counting that as a failure would
+ * put the surface's healthiest common shape in the failure column; and a loop can compose
+ * an answer no delta ever carried, which used to be filed as a success on a call the
+ * parent heard nothing on.
  */
 function record(
   familyId: string,
@@ -333,7 +346,7 @@ function record(
   return {
     familyId,
     agentName: VOICE_AGENT_NAME,
-    status: result?.answer || modelSpoke ? 'completed' : 'failed',
+    status: modelSpoke ? 'completed' : 'failed',
     latencyMs,
     promptTokens: usage.promptTokens,
     completionTokens: usage.completionTokens,
