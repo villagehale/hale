@@ -182,9 +182,23 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
       // separately because they answer different questions: whether to cover a pause,
       // and whether this turn actually told the caller anything (see below).
       let modelSpoke = false;
+      // The last character the caller actually heard, and whether a turn boundary has been
+      // crossed since. The separator is OWED at the reset and PAID at the next word: paying
+      // it eagerly would leave a trailing space on every turn that ends in a tool call.
+      let lastSpoken = '';
+      let separatorOwed = false;
       const say = (token: string): void => {
+        if (token === '') return;
         hasSpoken = true;
+        lastSpoken = token.slice(-1);
         emit(token);
+      };
+      const sayAfterBoundary = (token: string): void => {
+        if (separatorOwed && token !== '') {
+          separatorOwed = false;
+          say(' ');
+        }
+        say(token);
       };
 
       const startedAt = Date.now();
@@ -210,7 +224,7 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
           guardDeps: ports.guardDeps,
           onTextDelta: (delta) => {
             modelSpoke = true;
-            say(delta);
+            sayAfterBoundary(delta);
           },
           onToolCall: () => {
             if (!hasSpoken) say(`${VOICE_TOOL_ACK} `);
@@ -219,22 +233,45 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
           // text of a tool turn was reasoning rather than the answer — but on a call
           // those words are already out of a speaker, so the only honest thing to do is
           // keep them: what the recorder writes down is what the caller actually heard.
-          onTurnReset: () => {},
+          //
+          // KEEPING THEM STILL OWES THE NEXT TURN A BOUNDARY. What arrived was TWO
+          // utterances — the line said before the tool, and the answer streamed after —
+          // and concatenating them gave a caller "Let me pull up your week.You've got
+          // Noah's eighteen-month well-baby visit" (founder call, 2026-08-20 05:02),
+          // which Twilio's TTS reads as one word. The reset is the only moment either
+          // side of that seam is visible, so the space belongs here.
+          onTurnReset: () => {
+            separatorOwed = hasSpoken && !/\s/.test(lastSpoken);
+          },
         });
       } catch (err) {
-        if (draftedActionIds.length === 0) throw err;
-        // The turn changed the family's queue and then broke. "Sorry, I lost that one"
-        // would be false and would orphan real rows the parent can approve.
+        // WHAT MAKES THE APOLOGY HONEST IS WHETHER THE CALLER HEARD THE ANSWER — not
+        // whether anything was drafted, which is what this asked until VIL-295. A turn
+        // that streamed its whole answer and then broke on the way out (a closed socket,
+        // a ledger write, anything after the last token) rethrew, and the session spoke
+        // "Sorry - I lost that one" on top of words the caller had just been told. That
+        // is Hale contradicting itself about something the caller can hear.
+        //
+        // So the throw is reserved for the case it describes: nothing of the model's
+        // reached the caller. Everything else is logged loudly — an operator must still
+        // see a broken turn (rule #11) — and the caller keeps what they heard, plus the
+        // count of any rows they can now approve.
+        const spoke = modelSpoke;
+        const drafted = draftedActionIds.length;
+        if (drafted === 0 && !spoke) throw err;
         ports.log.error(
           {
             familyId: input.ticket.familyId,
             callSid: input.ticket.callSid,
-            draftedThisTurn: draftedActionIds.length,
+            draftedThisTurn: drafted,
+            modelSpoke: spoke,
             err: err instanceof Error ? err.message : String(err),
           },
-          'voice turn: broke after drafting - the caller hears the count instead',
+          'voice turn: broke after the caller had already heard something',
         );
-        emit(voiceDraftedButFailed(draftedActionIds.length));
+        // The turn changed the family's queue and then broke. Saying nothing would orphan
+        // real rows the parent can approve; "I lost that one" would be false about both.
+        if (drafted > 0) emit(voiceDraftedButFailed(drafted));
         return;
       } finally {
         await ports.recordRun(

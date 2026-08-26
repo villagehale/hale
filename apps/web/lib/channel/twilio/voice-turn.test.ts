@@ -143,7 +143,7 @@ describe('voiceTurnStream', () => {
     );
   });
 
-  it("tells the skill it is on a CALL — the register depends on it", async () => {
+  it('tells the skill it is on a CALL — the register depends on it', async () => {
     const t = build();
     await t.turn.respond(input, vi.fn());
 
@@ -201,11 +201,51 @@ describe('voiceTurnStream', () => {
       }),
     });
 
-    await expect(
-      t.turn.respond(input, (token) => emitted.push(token)),
-    ).resolves.toBeUndefined();
+    await expect(t.turn.respond(input, (token) => emitted.push(token))).resolves.toBeUndefined();
     expect(emitted.join('')).toBe("That's swim moved to Friday, pending your yes.");
     expect(t.recordRun).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+  });
+
+  /**
+   * VIL-295. The apology is a claim about what happened, and it was wrong whenever the
+   * words were already out of the speaker: the catch asked "did we draft?" when the
+   * question that decides whether "I lost that one" is honest is "did the caller HEAR the
+   * answer?". A recorder blip, a ledger write, anything after the last token, and a
+   * caller who had just been told everything heard Hale apologise for it.
+   */
+  it('does not apologise when the model already spoke and the turn broke afterwards', async () => {
+    const emitted: string[] = [];
+    const t = build({
+      runStreaming: vi.fn(async (args: RunAgentStreamingArgs) => {
+        args.onTextDelta('Swim is Thursday at four thirty.');
+        throw new Error('socket closed');
+      }),
+    });
+
+    await expect(t.turn.respond(input, (token) => emitted.push(token))).resolves.toBeUndefined();
+    expect(emitted.join('')).toBe('Swim is Thursday at four thirty.');
+    expect(t.log.error).toHaveBeenCalled();
+    // The words reached the caller, so the run is not a failure — the cost row has to say
+    // the same thing the caller heard.
+    expect(t.recordRun).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+  });
+
+  it('still says the draft count when it spoke AND drafted before breaking', async () => {
+    const emitted: string[] = [];
+    const t = build({
+      buildTools: vi.fn((_turn, onDraft) => {
+        onDraft('act-1');
+        return TOOLS;
+      }),
+      runStreaming: vi.fn(async (args: RunAgentStreamingArgs) => {
+        args.onTextDelta('Right, one sec.');
+        throw new Error('overloaded');
+      }),
+    });
+
+    await t.turn.respond(input, (token) => emitted.push(token));
+
+    expect(emitted.join('')).toContain('one change');
   });
 
   it('still fails when all the caller heard was the line covering the pause', async () => {
@@ -295,6 +335,68 @@ describe('the pause while a tool runs', () => {
 
     expect(emitted).toEqual(['Let me pull that up. ', 'Swim is Thursday.']);
     expect(emitted.join('')).not.toContain(VOICE_TOOL_ACK);
+  });
+
+  /**
+   * VIL-295, the live one: "Let me pull up your week.You've got Noah's eighteen-month
+   * well-baby visit" (founder call, 2026-08-20 05:02). Two SEPARATE utterances — the
+   * preamble the model said before it reached for a tool, and the answer it streamed
+   * after — arrive as one unbroken string because `onTurnReset` was a no-op. Twilio's TTS
+   * reads "week.You've" as one word.
+   *
+   * The reset is exactly where the boundary belongs: it is the loop telling this consumer
+   * that a turn ended. Voice cannot DROP the text the way a text surface does, so it must
+   * separate it.
+   */
+  it('separates the preamble from the answer that follows it', async () => {
+    const emitted: string[] = [];
+    const t = build({
+      runStreaming: vi.fn(async (args: RunAgentStreamingArgs) => {
+        args.onTextDelta('Let me pull up your week.');
+        args.onToolCall?.({ name: 'lookup_week' } as never);
+        args.onTurnReset();
+        args.onTextDelta("You've got the well-baby visit this week.");
+        return RESULT;
+      }),
+    });
+
+    await t.turn.respond(input, (token) => emitted.push(token));
+
+    expect(emitted.join('')).toBe(
+      "Let me pull up your week. You've got the well-baby visit this week.",
+    );
+  });
+
+  it('adds no second space when the preamble already ended in one', async () => {
+    const emitted: string[] = [];
+    const t = build({
+      runStreaming: vi.fn(async (args: RunAgentStreamingArgs) => {
+        args.onTextDelta('Let me check. ');
+        args.onToolCall?.({ name: 'lookup_week' } as never);
+        args.onTurnReset();
+        args.onTextDelta('Swim is Thursday.');
+        return RESULT;
+      }),
+    });
+
+    await t.turn.respond(input, (token) => emitted.push(token));
+
+    expect(emitted.join('')).toBe('Let me check. Swim is Thursday.');
+  });
+
+  it('says nothing at all when the reset lands before a single word', async () => {
+    const emitted: string[] = [];
+    const t = build({
+      runStreaming: vi.fn(async (args: RunAgentStreamingArgs) => {
+        args.onTurnReset();
+        args.onTextDelta('Swim is Thursday.');
+        return RESULT;
+      }),
+    });
+
+    await t.turn.respond(input, (token) => emitted.push(token));
+
+    expect(emitted.join('')).toBe('Swim is Thursday.');
   });
 
   it('keeps what a tool turn already said out loud — a reset cannot un-speak it', async () => {
@@ -463,7 +565,12 @@ describe('the wire a spoken turn builds', () => {
     });
 
     const tools = (stream.mock.calls[0]?.[0].tools ?? []) as Array<Record<string, unknown>>;
-    expect(tools.filter((t) => t.strict === true).map((t) => t.name).sort()).toEqual([
+    expect(
+      tools
+        .filter((t) => t.strict === true)
+        .map((t) => t.name)
+        .sort(),
+    ).toEqual([
       'get_framework_guidance',
       'lookup_week',
       'propose_calendar_add',
