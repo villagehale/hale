@@ -28,7 +28,6 @@
     "linkGuides": "Parenting guides",
     "linkAbout": "About",
     "linkContact": "Contact",
-    "linkSignIn": "Sign in",
     "linkPrivacy": "Privacy policy",
     "linkTerms": "Terms of service",
     "copyright": "© {year} Hale. All rights reserved.",
@@ -133,7 +132,7 @@
       {
         "when": "Then every week",
         "step": "I keep watch",
-        "body": "A brief on Monday, the plan the night before, a nudge as it opens."
+        "body": "A brief on Sunday, the plan the night before, a nudge as it opens."
       }
     ],
     "howRail": "How Hale works, in three steps",
@@ -251,7 +250,7 @@
         "title": "Hale suggests",
         "line": "The thing worth knowing this week, and why it matters now.",
         "checks": [
-          "A brief on Monday morning",
+          "A brief on Sunday",
           "A heads-up the week a registration opens",
           "Quiet in between"
         ],
@@ -318,10 +317,11 @@
     "annualNote": "billed yearly — about three months free",
     "footnote": "Hale is free to start. Plus and Family open as their integrations ship.",
     "tierLines": {
-      "free": "Text Hale, see what families near you recommend, and share what you love. The whole core — every stage, every child — free, always.",
+      "free": "Text Hale, rec dates watched, answers, and the founding rate.",
       "plus": "For when you want Hale to do more: once it has earned your trust, it acts on your approval — reminders, drafts, and your calendar, every child, as integrations roll out.",
       "family": "For when you want Hale to handle it: full autonomy on your approval, commerce and booking as they roll out, concierge and priority support."
-    }
+    },
+    "freeFeatures": ["Text Hale", "Rec dates watched", "Answers", "Founding rate"]
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -393,7 +393,7 @@
       },
       {
         "question": "How often will Hale text me?",
-        "answer": "A brief on Monday morning, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. It is quiet in between, and STOP works at any time."
+        "answer": "A brief on Sunday, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. It is quiet in between, and STOP works at any time."
       },
       {
         "question": "Can Hale answer parenting questions, or only scheduling ones?",
@@ -487,8 +487,7 @@
     "lastUpdated": "Last updated {date, date, long}",
     "disclaimer": "This document is provided in good faith but is not legal advice. Hale should have it reviewed by a qualified lawyer before relying on it.",
     "onThisPage": "On this page",
-    "seeAlsoPre": "See also our",
-    "signIn": "Sign in"
+    "seeAlsoPre": "See also our"
   },
   "Text": {
     "metaTitle": "Text Hale",

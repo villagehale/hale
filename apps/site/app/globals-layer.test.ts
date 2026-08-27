@@ -66,3 +66,44 @@ describe('globals.css — @layer discipline (SITE-01)', () => {
     }
   });
 });
+
+describe('skip-link — keyboard focus only', () => {
+  const skipRule = (() => {
+    let found: postcss.Rule | undefined;
+    root.walkRules((rule) => {
+      if (rule.selector === '.skip-link') found = rule;
+    });
+    return found;
+  })();
+  const focusRule = (() => {
+    let found: postcss.Rule | undefined;
+    root.walkRules((rule) => {
+      if (rule.selector.includes('.skip-link:focus')) found = rule;
+    });
+    return found;
+  })();
+
+  it('exists as a layered class, with a :focus reveal', () => {
+    expect(skipRule, '.skip-link rule').toBeDefined();
+    expect(focusRule, '.skip-link:focus rule').toBeDefined();
+  });
+
+  it('hides off-screen without transform — transform hide fails when a parent is a containing block', () => {
+    // The old `translateY(-150%)` pill stayed painted on every page: any
+    // ancestor with transform/filter (theme, motion, the v4 hero) makes
+    // `position: fixed` resolve against that ancestor, so the "hidden" skip
+    // link sat on the canvas. Clip / overflow / 1px box is the standard hide.
+    const decls = new Map<string, string>();
+    skipRule?.walkDecls((decl) => decls.set(decl.prop, decl.value));
+    expect(decls.get('transform')).toBeUndefined();
+    expect(decls.get('overflow')).toBe('hidden');
+    expect(decls.get('clip-path') ?? decls.get('clip')).toBeTruthy();
+  });
+
+  it('becomes a visible pill only on :focus', () => {
+    const decls = new Map<string, string>();
+    focusRule?.walkDecls((decl) => decls.set(decl.prop, decl.value));
+    expect(decls.get('position')).toBe('fixed');
+    expect(decls.get('overflow')).toBe('visible');
+  });
+});

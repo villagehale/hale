@@ -28,7 +28,6 @@
     "linkGuides": "Guides parentaux",
     "linkAbout": "À propos",
     "linkContact": "Contact",
-    "linkSignIn": "Se connecter",
     "linkPrivacy": "Politique de confidentialité",
     "linkTerms": "Conditions d’utilisation",
     "copyright": "© {year} Hale. Tous droits réservés.",
@@ -133,7 +132,7 @@
       {
         "when": "Chaque semaine",
         "step": "Je monte la garde",
-        "body": "Un topo le lundi, le plan la veille au soir, une relance dès l’ouverture."
+        "body": "Un topo le dimanche, le plan la veille au soir, une relance dès l’ouverture."
       }
     ],
     "howRail": "Comment Hale fonctionne, en trois étapes",
@@ -251,7 +250,7 @@
         "title": "Hale suggère",
         "line": "Ce qui vaut la peine d’être su cette semaine, et pourquoi ça compte maintenant.",
         "checks": [
-          "Un topo le lundi matin",
+          "Un topo le dimanche",
           "Un avis la semaine où une inscription ouvre",
           "Le silence entre les deux"
         ],
@@ -318,10 +317,11 @@
     "annualNote": "facturé à l’année — environ trois mois gratuits",
     "footnote": "Hale est gratuit pour commencer. Plus et Famille s’ouvrent à mesure que leurs intégrations arrivent.",
     "tierLines": {
-      "free": "Textez Hale, voyez ce que les familles près de chez vous recommandent, et partagez ce que vous aimez. Tout l’essentiel — chaque étape, chaque enfant — gratuit, toujours.",
+      "free": "Textez Hale, dates d’inscription surveillées, réponses, et le tarif fondateur.",
       "plus": "Pour quand vous voulez que Hale en fasse plus : une fois qu’il a gagné votre confiance, il agit avec votre accord — rappels, brouillons et votre calendrier, pour chaque enfant, à mesure que les intégrations se déploient.",
       "family": "Pour quand vous voulez que Hale s’en occupe : autonomie complète avec votre accord, achats et réservations à mesure de leur déploiement, service de conciergerie et soutien prioritaire."
-    }
+    },
+    "freeFeatures": ["Textez Hale", "Dates d’inscription surveillées", "Réponses", "Tarif fondateur"]
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -393,7 +393,7 @@
       },
       {
         "question": "À quelle fréquence Hale va-t-il me texter?",
-        "answer": "Un topo le lundi matin, puis seulement quand quelque chose a besoin de vous : un avis la semaine où une inscription ouvre, le plan la veille au soir, et une relance dès l’ouverture. Il est silencieux entre les deux, et STOP fonctionne en tout temps."
+        "answer": "Un topo le dimanche, puis seulement quand quelque chose a besoin de vous : un avis la semaine où une inscription ouvre, le plan la veille au soir, et une relance dès l’ouverture. Il est silencieux entre les deux, et STOP fonctionne en tout temps."
       },
       {
         "question": "Est-ce que Hale peut répondre aux questions de parentalité, ou seulement à celles d’horaire?",
@@ -487,8 +487,7 @@
     "lastUpdated": "Dernière mise à jour le {date, date, long}",
     "disclaimer": "Ce document est fourni de bonne foi, mais ne constitue pas un avis juridique. Hale devrait le faire réviser par un avocat qualifié avant de s’y fier.",
     "onThisPage": "Sur cette page",
-    "seeAlsoPre": "Voir aussi notre",
-    "signIn": "Se connecter"
+    "seeAlsoPre": "Voir aussi notre"
   },
   "Text": {
     "metaTitle": "Texter Hale",

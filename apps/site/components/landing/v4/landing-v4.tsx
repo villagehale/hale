@@ -202,9 +202,8 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               {/* The numeral already carries the order, so the empty half of its
                * line carries the first-week contract instead: when each step
                * actually happens. Step three is "then every week" rather than a
-               * named day — the body names Monday, and the brief's default really
-               * is Monday 08:00 local (users.weekStartDay 1 + loop_prefs
-               * weekly_plan_send_time 08:00, read by apps/web/lib/loop/send.ts). */}
+               * named day — the body names Sunday, the day weekly_plan ships
+               * (VIL-218 / F11). */}
               <p className="v4-card-n">
                 0{i + 1}
                 <span className="v4-when">{s.when}</span>

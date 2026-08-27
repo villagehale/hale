@@ -5,7 +5,6 @@ import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { APP_URL } from '~/lib/app-url';
 
 /**
  * The marketing footer — ONE foot, on the homepage and on every subpage.
@@ -45,7 +44,6 @@ export function SiteFooter({ locale = routing.defaultLocale }: { locale?: Locale
         { label: t('linkGuides'), href: localeHref(locale, '/answers') },
         { label: t('linkAbout'), href: localeHref(locale, '/about') },
         { label: t('linkContact'), href: localeHref(locale, '/contact') },
-        { label: t('linkSignIn'), href: `${APP_URL}/sign-in` },
       ],
     },
   ];

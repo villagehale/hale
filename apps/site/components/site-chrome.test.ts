@@ -207,4 +207,11 @@ describe('the footer says what the site is', () => {
     // Legal lives in the bottom bar only — a column would duplicate it.
     expect(footer).not.toContain('>Legal</h2>');
   });
+
+  it('offers no Sign in — the footer does not send a cold parent to the app', async () => {
+    const footer = renderToStaticMarkup(createElement(SiteFooter));
+    expect(footer).not.toContain('/sign-in');
+    expect(footer).not.toContain('app.villagehale.com');
+    expect(footer).not.toContain('Sign in');
+  });
 });

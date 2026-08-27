@@ -273,17 +273,24 @@ describe('/pricing — the tier cards have anatomy', () => {
   });
 
   it('titles each card with its price and lists every feature as a check', () => {
-    for (const tier of PLAN_TIERS_ORDERED) {
+    const marketingFree = ['Text Hale', 'Rec dates watched', 'Answers', 'Founding rate'];
+    for (const feature of marketingFree) {
+      expect(html).toContain(feature);
+    }
+    expect(html).not.toContain('Your village feed');
+    expect(html).not.toContain('Companion:');
+    for (const tier of PLAN_TIERS_ORDERED.filter((t) => t !== 'free')) {
       for (const feature of PLAN_DISPLAY[tier].features) {
         expect(html).toContain(feature);
       }
     }
     expect(html.match(/numbered-card-list/g)).toHaveLength(PLAN_TIERS_ORDERED.length);
-    // The lucide Check, once per feature line.
-    const features = PLAN_TIERS_ORDERED.reduce(
-      (total, tier) => total + PLAN_DISPLAY[tier].features.length,
-      0,
-    );
+    const features =
+      marketingFree.length +
+      PLAN_TIERS_ORDERED.filter((t) => t !== 'free').reduce(
+        (total, tier) => total + PLAN_DISPLAY[tier].features.length,
+        0,
+      );
     expect(html.match(/lucide-check/g)).toHaveLength(features);
   });
 
