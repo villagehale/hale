@@ -11,7 +11,7 @@ import type { AgentContext, LoadAgentContextInput } from '~/lib/coach/context';
 import type { TranscriptMessage } from '~/lib/coach/conversation';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { VOICE_TOOL_ACK } from './copy';
+import { VOICE_GOODBYE_BY_LANGUAGE, VOICE_TOOL_ACK } from './copy';
 import { VOICE_AGENT_NAME, type VoiceTurnPorts, voiceTurnStream } from './voice-turn';
 
 const TICKET = {
@@ -229,7 +229,7 @@ describe('voiceTurnStream', () => {
       }),
     });
 
-    await expect(t.turn.respond(input, (token) => emitted.push(token))).resolves.toBeUndefined();
+    await expect(t.turn.respond(input, (token) => emitted.push(token))).resolves.toBe('spoke');
     expect(emitted.join('')).toBe("That's swim moved to Friday, pending your yes.");
     expect(t.recordRun).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
   });
@@ -250,7 +250,7 @@ describe('voiceTurnStream', () => {
       }),
     });
 
-    await expect(t.turn.respond(input, (token) => emitted.push(token))).resolves.toBeUndefined();
+    await expect(t.turn.respond(input, (token) => emitted.push(token))).resolves.toBe('spoke');
     expect(emitted.join('')).toBe('Swim is Thursday at four thirty.');
     expect(t.log.error).toHaveBeenCalled();
     // The words reached the caller, so the run is not a failure — the cost row has to say
@@ -622,5 +622,71 @@ describe('the wire a spoken turn builds', () => {
     await t.turn.respond(input, (token) => emitted.push(token));
 
     expect(emitted.join('')).toBe('Swim is Thursday.');
+  });
+});
+
+/**
+ * A GOODBYE IS NOT A QUESTION. On CA170c1fb0 every farewell was handed to the model,
+ * which answered it — politely, at a couple of seconds and a model call each — and left
+ * the line up. The turn settles it here instead, and the two assertions that matter are
+ * that it says the line and that NOTHING ELSE RUNS: no thread read, no family context, no
+ * Haiku, on the one turn where the caller is actively waiting to leave.
+ */
+describe('voiceTurnStream — the caller says goodbye', () => {
+  it('says the fixed line and reports the call over, without reading or asking anything', async () => {
+    const t = build();
+    const spoken: string[] = [];
+    const outcome = await t.turn.respond({ ...input, prompt: "yeah it's ciao, bye bye" }, (token) =>
+      spoken.push(token),
+    );
+
+    expect(outcome).toBe('call_ended_by_hale');
+    expect(spoken.join('')).toBe(VOICE_GOODBYE_BY_LANGUAGE.en);
+    expect(t.loadContext).not.toHaveBeenCalled();
+    expect(t.runStreaming).not.toHaveBeenCalled();
+    expect(t.recordRun).not.toHaveBeenCalled();
+  });
+
+  it('answers the caller in the language they left in', async () => {
+    const t = build();
+    const spoken: string[] = [];
+    await t.turn.respond({ ...input, prompt: 'au revoir' }, (token) => spoken.push(token));
+
+    expect(spoken.join('')).toBe(VOICE_GOODBYE_BY_LANGUAGE.fr);
+  });
+
+  /**
+   * THE POSITIVE CONTROL, and the one that would have caught a farewell table that ate
+   * ordinary speech: the same path, an ordinary question, and the model must still run.
+   */
+  it('hands an ordinary question to the model and keeps the line', async () => {
+    const t = build();
+    const outcome = await t.turn.respond(input, vi.fn());
+
+    expect(outcome).toBe('spoke');
+    expect(t.runStreaming).toHaveBeenCalled();
+  });
+
+  /**
+   * CONSENT BEATS THE HANG-UP. "Yes, that's all" is one utterance doing two jobs and only
+   * one of them is undoable by redialling — so the approvals grammar gets first refusal
+   * and the call stays up for the turn the caller uses to say goodbye again (rule #4).
+   */
+  it('settles an approval that also sounds like a goodbye, and does NOT hang up', async () => {
+    const t = build({
+      answerSpoken: vi.fn(async () => ({
+        status: 'answered' as const,
+        spoken: 'Done - swim is moved to Friday.',
+        handler: 'approvals',
+        outcome: 'approved',
+      })),
+    });
+    const spoken: string[] = [];
+    const outcome = await t.turn.respond({ ...input, prompt: "yes that's all" }, (token) =>
+      spoken.push(token),
+    );
+
+    expect(outcome).toBe('spoke');
+    expect(spoken.join('')).toBe('Done - swim is moved to Friday.');
   });
 });

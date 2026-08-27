@@ -11,8 +11,9 @@ import {
 import type { AgentContext, LoadAgentContextInput } from '~/lib/coach/context';
 import type { TranscriptMessage } from '~/lib/coach/conversation';
 import { VOICE_TOOL_ACK, voiceDraftedButFailed } from './copy';
-import type { VoiceTurnInput, VoiceTurnStream } from './relay-session';
+import type { VoiceTurnInput, VoiceTurnOutcome, VoiceTurnStream } from './relay-session';
 import type { SpokenAnswer, SpokenTurn } from './voice-answer';
+import { spokenFarewell } from './voice-goodbye';
 
 /**
  * Voice v2 — one spoken turn, over the same brain, the same thread AND the same verbs as
@@ -125,7 +126,10 @@ export interface VoiceTurnPorts {
 
 export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
   return {
-    async respond(input: VoiceTurnInput, emit: (token: string) => void): Promise<void> {
+    async respond(
+      input: VoiceTurnInput,
+      emit: (token: string) => void,
+    ): Promise<VoiceTurnOutcome> {
       // CONSENT FIRST, and with no model in the loop. A "yes" is an answer to a question
       // Hale already asked, and the fastest, safest turn on a call is the one where the
       // approvals spine answers it directly.
@@ -138,7 +142,24 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
       });
       if (settled.status === 'answered') {
         emit(settled.spoken);
-        return;
+        return 'spoke';
+      }
+
+      // GOODBYE SECOND, AND CONSENT IS WHY IT IS SECOND. "Yes, that's all" is one
+      // utterance doing two jobs, and only one of them is undoable by redialling: a
+      // hang-up that swallowed the yes would drop a change the parent released out loud
+      // (rule #4). So the approvals grammar gets first refusal, every time, and a
+      // goodbye that also settled something keeps the line for one more turn — which is
+      // the turn the caller uses to say goodbye again.
+      //
+      // Ahead of everything else, though. A farewell is not a question: loading a thread,
+      // building a family context and asking Haiku what to say about "bye bye" spends two
+      // seconds and a cent to produce a line this file already knows, and it spends them
+      // in the one part of a call where the caller is waiting to leave.
+      const farewell = spokenFarewell(input.prompt);
+      if (farewell) {
+        emit(farewell);
+        return 'call_ended_by_hale';
       }
 
       const [skill, transcript] = await Promise.all([
@@ -272,7 +293,7 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
         // The turn changed the family's queue and then broke. Saying nothing would orphan
         // real rows the parent can approve; "I lost that one" would be false about both.
         if (drafted > 0) emit(voiceDraftedButFailed(drafted));
-        return;
+        return 'spoke';
       } finally {
         await ports.recordRun(
           record(input.ticket.familyId, skill, result, modelSpoke, Date.now() - startedAt),
@@ -303,10 +324,11 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
         // fixed line.
         if (draftedActionIds.length > 0) {
           emit(voiceDraftedButFailed(draftedActionIds.length));
-          return;
+          return 'spoke';
         }
         throw new Error('voice turn: the model produced no answer the caller could hear');
       }
+      return 'spoke';
     },
   };
 }

@@ -1,4 +1,5 @@
 import { COLD_START_ASK } from '~/lib/channel/intake/copy';
+import type { ReplyLanguage } from '~/lib/channel/language';
 
 /**
  * VIL-214 · A3 — the one line A3 owns. Everything else Hale says over SMS belongs to
@@ -108,6 +109,28 @@ export const VOICE_CALL_WRAP_UP =
   "I need to let you go - we've been on a while. Text me anything else and I'll pick it up there. Bye for now.";
 
 /**
+ * Voice v2 — what Hale says when the caller has said goodbye, immediately before hanging
+ * up from our side (voice-goodbye.ts).
+ *
+ * ONE CLAUSE, and it is the shortest fixed line in this file on purpose. The caller has
+ * already ended the conversation; every word after that is a person waiting to put their
+ * phone down. It offers nothing, asks nothing and points nowhere — an invitation back is
+ * the exact move the skill spends a paragraph forbidding, and it is worst here, where it
+ * would hand a turn back to someone who has just closed the call.
+ *
+ * It is FIXED rather than composed for the reason the failure line is: the thing that
+ * speaks at the end of a call must not need a model, a tool or a thread read to say four
+ * words, and a composed goodbye is a couple of seconds of silence in the one place a
+ * caller has no reason to wait through it.
+ */
+export const VOICE_GOODBYE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'Talk soon.',
+  // Not "À bientôt": this line lands in the thread as a channel_messages row, and every
+  // string in this file has to survive the GSM-7 alphabet gate (sms-copy-encoding).
+  fr: 'Au revoir.',
+};
+
+/**
  * Voice v2 — the line that fills the pause while a tool runs.
  *
  * A tool turn costs a couple of seconds, and on a phone a couple of seconds of nothing is
@@ -118,9 +141,12 @@ export const VOICE_CALL_WRAP_UP =
  * silence (voice-turn.ts).
  *
  * Deliberately not "one moment please": a receptionist's phrase, and the one register the
- * skill spends a section telling the model to avoid.
+ * skill spends a section telling the model to avoid. And not "Let me check": eleven of
+ * nineteen turns on the founder's first real call opened with "Let me X", the skill now
+ * bans the shape by name, and the backstop underneath a doctrine cannot speak the one
+ * line the doctrine forbids.
  */
-export const VOICE_TOOL_ACK = 'Let me check.';
+export const VOICE_TOOL_ACK = 'Checking now.';
 
 /**
  * The two approval receipts a CALL cannot borrow from the texting router.

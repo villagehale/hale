@@ -43,6 +43,18 @@ export interface VoiceTurnInput {
   conversationId: string;
 }
 
+/**
+ * What the turn did, beyond speaking. Named rather than void (rule #11): a turn that
+ * ENDED THE CALL is a different event from one that answered, the session is the only
+ * thing that can act on the difference, and a boolean squeezed into the emit callback
+ * would make hanging up a side effect of saying something.
+ */
+export type VoiceTurnOutcome =
+  | 'spoke'
+  /** The caller said goodbye and Hale answered it. The line comes down from OUR side —
+   * see voice-goodbye.ts for why that is worth a named outcome. */
+  | 'call_ended_by_hale';
+
 export interface VoiceTurnStream {
   /**
    * Compose one spoken answer, calling `emit` with each token as it arrives.
@@ -51,12 +63,12 @@ export interface VoiceTurnStream {
    * time: a turn that resolves with a finished paragraph is a turn the parent waits out
    * in silence. A throw is a FAILED turn — the session owns what happens next.
    */
-  respond(input: VoiceTurnInput, emit: (token: string) => void): Promise<void>;
+  respond(input: VoiceTurnInput, emit: (token: string) => void): Promise<VoiceTurnOutcome>;
 }
 
-/** How a call finished. Only the two a call can actually reach — a socket that never
+/** How a call finished. Only the three a call can actually reach — a socket that never
  * authorized has no family to write a row against, and says so in the log instead. */
-export type VoiceCallOutcome = 'completed' | 'time_capped';
+export type VoiceCallOutcome = 'completed' | 'time_capped' | 'call_ended_by_hale';
 
 export interface VoiceTurnRecord {
   ticket: RelayTicket;
@@ -153,6 +165,29 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
   // Turns run one at a time. Two overlapping streams would arrive at the TTS engine
   // interleaved token by token, which is not two answers — it is one unusable sentence.
   let pending: Promise<void> = Promise.resolve();
+  /**
+   * FRAGMENTS OF ONE THOUGHT, waiting to be asked as one question.
+   *
+   * Twilio marks a prompt `last` at every speech-final pause, not at the end of a
+   * thought, so a parent who hesitates hands us their sentence in pieces. On
+   * CA170c1fb0 "My song is" / "turning too soon. Like, when should we start" / "potty
+   * train?" arrived as three `last` prompts, and each one ran a whole turn: the caller
+   * heard the same potty-training answer three times in ninety seconds, the third one
+   * still opening with "Let me get Noah's guidance". Hale was not repeating itself out
+   * of forgetfulness — it can see its own turns (voice-self-memory.test.ts) — it was
+   * being asked the same question three times and answering honestly each time.
+   *
+   * MERGED, NOT DEBOUNCED, and that distinction is the whole design. A debounce would
+   * make every turn wait on a timer for a fragment that usually never comes, which
+   * spends the one budget a call has (silence) on the common case to fix the rare one.
+   * This spends nothing: a fragment that arrives while a turn is ALREADY RUNNING is,
+   * by definition, something the caller said before they had heard an answer — so it is
+   * the rest of what they were saying, and it joins the queued utterance instead of
+   * becoming a second question. A single prompt arriving on an idle line is untouched
+   * and runs the instant it lands.
+   */
+  let queuedFragments: string[] = [];
+  let draining = false;
 
   const clearAuthDeadline = (): void => {
     if (authTimer) clearTimeout(authTimer);
@@ -246,12 +281,54 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
     }
   };
 
+  /**
+   * Hale puts the phone down: the end frame, the socket, and the one call row.
+   *
+   * The reason code Twilio stores in `handoffData` IS the outcome, so the platform's
+   * status callback and the audit row can never tell two different stories about how a
+   * call ended (rule #6). It is an enum either way — nothing a family said travels in it.
+   */
+  const hangUp = (outcome: Exclude<VoiceCallOutcome, 'completed'>): void => {
+    if (ended) return;
+    deps.socket.send(endSession(outcome));
+    deps.socket.close();
+    void finish(outcome);
+  };
+
+  /**
+   * A line Hale spoke that no turn owns, written down anyway (rule #6).
+   *
+   * The wrap-up is the only one: it is composed by a timer rather than by a prompt, and
+   * for two versions it went out of a speaker and into no row at all — the parent's
+   * thread ended mid-conversation while the call they remember ended with Hale saying
+   * goodbye. Best-effort and loud, exactly like the recording half of a turn: the words
+   * are already out, and a throw here would take down an instance over a row.
+   *
+   * It takes the NEXT turn index without claiming one, so the call's turn count stays a
+   * count of what the caller said, and the provider id it derives cannot collide with a
+   * turn already in flight.
+   */
+  const recordUnpromptedLine = async (authorized: RelayTicket, text: string): Promise<void> => {
+    if (conversationId === null) return;
+    try {
+      await deps.recorder.haleSaid({
+        ticket: authorized,
+        conversationId,
+        text,
+        turnIndex: turns + 1,
+        at: deps.now(),
+      });
+    } catch (err) {
+      logFailure(authorized, err, 'twilio relay: Hale said this out loud and it was not recorded');
+    }
+  };
+
   const wrapUp = (): void => {
     if (ended) return;
     deps.socket.send(textToken(VOICE_CALL_WRAP_UP, true));
-    deps.socket.send(endSession('time_capped'));
-    deps.socket.close();
-    void finish('time_capped');
+    const authorized = ticket;
+    if (authorized) void recordUnpromptedLine(authorized, VOICE_CALL_WRAP_UP);
+    hangUp('time_capped');
   };
 
   /**
@@ -279,6 +356,11 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
     };
     let thread: string | null = null;
     let turnIndex = 0;
+    // A BROKEN TURN NEVER HANGS UP. The default outcome is the one that keeps the line,
+    // so every path that throws before the turn reported for itself — the thread, the
+    // recorder, the model — leaves the caller with a call they can carry on, and only a
+    // turn that explicitly says the conversation is over ends it (rule #11).
+    let outcome: VoiceTurnOutcome = 'spoke';
 
     try {
       if (conversationId === null) {
@@ -294,7 +376,7 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
         turnIndex,
         at: deps.now(),
       });
-      await deps.turn.respond({ prompt, ticket: authorized, conversationId: thread }, emit);
+      outcome = await deps.turn.respond({ prompt, ticket: authorized, conversationId: thread }, emit);
     } catch (err) {
       logFailure(
         authorized,
@@ -309,18 +391,53 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
 
     // No thread means the failure was before there was anywhere to write. Nothing was
     // recorded, and the log above already says so.
-    if (thread === null) return;
+    if (thread !== null) {
+      try {
+        await deps.recorder.haleSaid({
+          ticket: authorized,
+          conversationId: thread,
+          // What the caller HEARD, which is not always what Hale composed.
+          text: spokenBeforeInterrupt(composed, heardBeforeInterrupt ?? ''),
+          turnIndex,
+          at: deps.now(),
+        });
+      } catch (err) {
+        logFailure(
+          authorized,
+          err,
+          'twilio relay: Hale said this out loud and it was not recorded',
+        );
+      }
+    }
+
+    // THE GOODBYE GOES DOWN LAST, after the `last` frame and after the row. Hanging up
+    // before Twilio has been told the turn is over throws the farewell away — the caller
+    // hears the click instead of the words — and hanging up before the write loses the
+    // last thing Hale ever said to them from the thread (rule #6).
+    if (outcome === 'call_ended_by_hale') hangUp('call_ended_by_hale');
+  };
+
+  /**
+   * Ask everything the caller has said since the last answer, as ONE question.
+   *
+   * The loop is what makes the merge hold under a caller who keeps going: fragments that
+   * land WHILE this turn runs are picked up on the next pass rather than starting a
+   * second, parallel turn. `queuedFragments` is emptied before the turn runs, so a
+   * fragment arriving mid-turn is never swallowed by the turn that did not carry it.
+   *
+   * It cannot throw — `runTurn` owns its own failures for the reason stated there — so
+   * `draining` is released in `finally` regardless, or one broken turn would leave the
+   * rest of the call unanswered with the caller still talking.
+   */
+  const drainFragments = async (authorized: RelayTicket): Promise<void> => {
     try {
-      await deps.recorder.haleSaid({
-        ticket: authorized,
-        conversationId: thread,
-        // What the caller HEARD, which is not always what Hale composed.
-        text: spokenBeforeInterrupt(composed, heardBeforeInterrupt ?? ''),
-        turnIndex,
-        at: deps.now(),
-      });
-    } catch (err) {
-      logFailure(authorized, err, 'twilio relay: Hale said this out loud and it was not recorded');
+      while (queuedFragments.length > 0) {
+        const spokenAsOne = queuedFragments.join(' ');
+        queuedFragments = [];
+        await runTurn(spokenAsOne, authorized);
+      }
+    } finally {
+      draining = false;
     }
   };
 
@@ -391,7 +508,12 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
           // A partial transcript: the caller has not stopped talking, and answering the
           // first half of a sentence is worse than waiting for the second.
           if (!message.last) return;
-          pending = pending.then(() => runTurn(message.voicePrompt, authorized));
+          queuedFragments.push(message.voicePrompt);
+          // A turn is already running, so this is the rest of what they were saying —
+          // the drain below will ask it as one question. See `queuedFragments`.
+          if (draining) return pending;
+          draining = true;
+          pending = drainFragments(authorized);
           return pending;
         }
         case 'interrupt': {

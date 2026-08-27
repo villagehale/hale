@@ -4,6 +4,7 @@ import {
   CALL_CAP_MS,
   PRE_AUTH_IDLE_MS,
   type RelaySocket,
+  type VoiceTurnStream,
   type VoiceCallRecorder,
   createRelaySession,
 } from './relay-session';
@@ -102,7 +103,7 @@ describe('createRelaySession', () => {
 
   function build(
     token: string | null,
-    respond = vi.fn(async () => {}),
+    respond: VoiceTurnStream['respond'] = vi.fn(async () => 'spoke' as const),
     claimCall = fakeClaims().claimCall,
   ) {
     const wire = fakeSocket();
@@ -124,6 +125,7 @@ describe('createRelaySession', () => {
     const respond = vi.fn(async (_input, emit: (token: string) => void) => {
       emit('Swim is ');
       emit('Thursday.');
+      return 'spoke' as const;
     });
     const t = build(mintRelayToken(TICKET, NOW), respond);
 
@@ -191,12 +193,12 @@ describe('createRelaySession', () => {
     const token = mintRelayToken(TICKET, NOW);
     const first = build(
       token,
-      vi.fn(async () => {}),
+      vi.fn(async () => 'spoke' as const),
       claims.claimCall,
     );
     const second = build(
       token,
-      vi.fn(async () => {}),
+      vi.fn(async () => 'spoke' as const),
       claims.claimCall,
     );
 
@@ -227,7 +229,7 @@ describe('createRelaySession', () => {
     });
     const t = build(
       mintRelayToken(TICKET, NOW),
-      vi.fn(async () => {}),
+      vi.fn(async () => 'spoke' as const),
       claimCall,
     );
 
@@ -247,7 +249,7 @@ describe('createRelaySession', () => {
     const claims = fakeClaims();
     const t = build(
       mintRelayToken(TICKET, NOW),
-      vi.fn(async () => {}),
+      vi.fn(async () => 'spoke' as const),
       claims.claimCall,
     );
 
@@ -363,6 +365,7 @@ describe('createRelaySession', () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       emit(input.prompt);
       order.push(`end:${input.prompt}`);
+      return 'spoke' as const;
     });
     const t = build(mintRelayToken(TICKET, NOW), respond);
 
@@ -417,7 +420,7 @@ describe('the record a call leaves behind', () => {
     vi.useRealTimers();
   });
 
-  function build(respond = vi.fn(async () => {})) {
+  function build(respond: VoiceTurnStream['respond'] = vi.fn(async () => 'spoke' as const)) {
     const wire = fakeSocket();
     const recorder = fakeRecorder();
     const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
@@ -438,6 +441,7 @@ describe('the record a call leaves behind', () => {
     const respond = vi.fn(async (_i, emit: (t: string) => void) => {
       seen.push('turn');
       emit('Thursday at four thirty.');
+      return 'spoke' as const;
     });
     const t = build(respond);
     t.recorder.callerSaid.mockImplementation(async () => {
@@ -475,6 +479,7 @@ describe('the record a call leaves behind', () => {
   it('a database blip is a spoken apology, not silence — and the next turn still works', async () => {
     const respond = vi.fn(async (_i, emit: (t: string) => void) => {
       emit('Thursday at four thirty.');
+      return 'spoke' as const;
     });
     const t = build(respond);
     t.recorder.callerSaid.mockRejectedValueOnce(new Error('connection terminated'));
@@ -512,6 +517,7 @@ describe('the record a call leaves behind', () => {
       emit('Swim is Thursday at');
       await interrupt?.();
       emit(' five fifteen at the Y.');
+      return 'spoke' as const;
     });
     const t = build(respond);
     interrupt = () =>
@@ -534,6 +540,7 @@ describe('the record a call leaves behind', () => {
   it('does not carry an interrupt forward into the next turn', async () => {
     const respond = vi.fn(async (_i, emit: (t: string) => void) => {
       emit('the whole answer');
+      return 'spoke' as const;
     });
     const t = build(respond);
 
@@ -577,7 +584,7 @@ describe('the record a call leaves behind', () => {
     const session = createRelaySession({
       socket: wire.socket,
       token: 'nonsense',
-      turn: { respond: vi.fn(async () => {}) },
+      turn: { respond: vi.fn(async () => 'spoke' as const) },
       recorder,
       claimCall: fakeClaims().claimCall,
       log,
@@ -614,7 +621,7 @@ describe('the nine-minute cap', () => {
     const session = createRelaySession({
       socket: wire.socket,
       token: mintRelayToken(TICKET, NOW),
-      turn: { respond: vi.fn(async () => {}) },
+      turn: { respond: vi.fn(async () => 'spoke' as const) },
       recorder,
       claimCall: fakeClaims().claimCall,
       log,
@@ -641,7 +648,7 @@ describe('the nine-minute cap', () => {
     const session = createRelaySession({
       socket: wire.socket,
       token: mintRelayToken(TICKET, NOW),
-      turn: { respond: vi.fn(async () => {}) },
+      turn: { respond: vi.fn(async () => 'spoke' as const) },
       recorder: fakeRecorder(),
       claimCall: fakeClaims().claimCall,
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -667,7 +674,7 @@ describe('the nine-minute cap', () => {
     const session = createRelaySession({
       socket: wire.socket,
       token: mintRelayToken(TICKET, NOW),
-      turn: { respond: vi.fn(async () => {}) },
+      turn: { respond: vi.fn(async () => 'spoke' as const) },
       recorder,
       claimCall: fakeClaims().claimCall,
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -687,7 +694,7 @@ describe('the nine-minute cap', () => {
     const session = createRelaySession({
       socket: wire.socket,
       token: mintRelayToken(TICKET, NOW),
-      turn: { respond: vi.fn(async () => {}) },
+      turn: { respond: vi.fn(async () => 'spoke' as const) },
       recorder,
       claimCall: fakeClaims().claimCall,
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
