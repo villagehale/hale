@@ -6,19 +6,13 @@ import { type Database, schema } from '@hale/db';
  * bound to its live page by the drift test in consent.test.ts, so a re-dated
  * policy cannot silently leave its constant behind (VIL-257).
  *
- * Both moved to August 20, 2026, the second revision in two days and a materially
- * larger one than the first: rebuilt on the CC0 General-Legal templates as
- * structural scaffolds. The terms gained a licence grant, an ownership clause, the
- * Privacy Policy incorporated by reference, a third-party disclaimer, a survival
- * list and an Ontario forum; the privacy policy gained collection-by-source,
- * purposes in PIPEDA vocabulary, a recipient-category sharing section naming the
- * caregiver, third-party-assistant and cross-household disclosures the ledger
- * already records, and the Law 25 automated-decision statement. Nothing here
- * forces a re-consent — POLICY_VERSION is only ever WRITTEN into a consent row,
- * never compared against a stored one.
+ * Terms last moved August 20, 2026 (CC0 General-Legal scaffold rebuild). Privacy
+ * moved again on August 27, 2026 to name Google Ads measurement cookies on the
+ * marketing site. Nothing here forces a re-consent — POLICY_VERSION is only ever
+ * WRITTEN into a consent row, never compared against a stored one.
  */
 export const TERMS_VERSION = 'August 20, 2026';
-export const PRIVACY_VERSION = 'August 20, 2026';
+export const PRIVACY_VERSION = 'August 27, 2026';
 
 /**
  * The policy version a consent is recorded against, so a consent row names the
