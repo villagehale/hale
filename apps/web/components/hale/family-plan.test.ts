@@ -37,6 +37,16 @@ describe('FamilyPlanView (settings plan section)', () => {
     expect(html).toContain(PLAN_DISPLAY.family.name);
   });
 
+  it('lists the SMS free bullets, not Village or Companion', () => {
+    const html = render();
+    expect(html).toContain('Text Hale');
+    expect(html).toContain('Rec dates watched');
+    expect(html).toContain('Answers');
+    expect(html).toContain('Founding rate');
+    expect(html).not.toContain('Your village feed');
+    expect(html).not.toContain('Companion:');
+  });
+
   it('shows the confirmed monthly prices in the monthly period', () => {
     const html = render({ period: 'monthly' });
     expect(html).toContain('Free');

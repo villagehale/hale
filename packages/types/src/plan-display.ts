@@ -40,12 +40,10 @@ export const PLAN_DISPLAY = {
     monthlyPriceCad: 0,
     annualPriceCad: 0,
     features: [
-      'Your village feed + trusted recommendations from families near you',
-      'Ask Hale, anything, any time',
-      'Your kid’s good local week, every stage',
-      'Share what you love + invite your village',
-      'Companion: logs, milestones, gentle guidance',
-      'Drafts held for your approval — nothing acts on its own',
+      'Text Hale',
+      'Rec dates watched',
+      'Answers',
+      'Founding rate',
     ],
   },
   plus: {
