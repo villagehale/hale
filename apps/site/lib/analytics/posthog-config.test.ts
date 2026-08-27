@@ -26,8 +26,13 @@ describe('marketing-site PostHog posture', () => {
     expect(POSTHOG_INIT_CONFIG.persistence).toBe('memory');
   });
 
-  it('never records a session on the marketing site', () => {
-    expect(POSTHOG_INIT_CONFIG.disable_session_recording).toBe(true);
+  it('records sessions with inputs masked (the Google Ads launch, 2026-08-27)', () => {
+    // Replay is a deliberate posture change: the page is Hale's own copy and the
+    // visitor is anonymous, so a recording carries no user text — but only while
+    // inputs stay masked and persistence stays in memory (asserted above), which is
+    // what keeps the privacy policy's write-nothing sentence true.
+    expect(POSTHOG_INIT_CONFIG.disable_session_recording).toBe(false);
+    expect(POSTHOG_INIT_CONFIG.session_recording.maskAllInputs).toBe(true);
   });
 
   it('infers nothing: autocapture is off, so every event is a named call site', () => {
