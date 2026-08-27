@@ -41,8 +41,8 @@ function wordmarkSvg(widthIn) {
   return `<svg viewBox="${wmViewBox}" style="width:${widthIn}in;height:auto" fill="${NAVY}"><g transform="${wmTransform}"><path d="${wmPath}"/></g></svg>`;
 }
 
-function qrSvg(value, sizeIn) {
-  const { size: modules, data } = encode(value, { ecc: 'M', border: 2 });
+function qrSvg(value, sizeIn, ecc = 'M') {
+  const { size: modules, data } = encode(value, { ecc, border: 2 });
   let path = '';
   for (const [y, row] of data.entries()) {
     for (const [x, dark] of row.entries()) {
@@ -74,11 +74,11 @@ function platePage(plate) {
     <div class="banner">No app to install — Hale lives in your texts. Free to start.</div>
 
     <div class="qrcard">
-      ${qrSvg(plate.qrValue, 2.0)}
+      ${qrSvg(plate.qrValue, 2.0, plate.qrEcc)}
       <div class="qrcopy">
-        <div class="scan">Scan to text Hale</div>
-        <p class="hint">Point your phone camera at the code — it opens a text to Hale, already started.</p>
-        <span class="pill">or text ${SMS_DISPLAY}</span>
+        <div class="scan">${plate.scan?.title ?? 'Scan to text Hale'}</div>
+        <p class="hint">${plate.scan?.hint ?? 'Point your phone camera at the code — it opens a text to Hale, already started.'}</p>
+        <span class="pill">${plate.scan?.site ?? `or text ${SMS_DISPLAY}`}</span>
       </div>
     </div>
   </section>`;
@@ -124,19 +124,20 @@ if (!plate) {
 }
 
 mkdirSync(join(HERE, 'print'), { recursive: true });
-const htmlPath = join(HERE, 'print', `${plate.code}.html`);
+const out = plate.outName ?? plate.code;
+const htmlPath = join(HERE, 'print', `${out}.html`);
 writeFileSync(htmlPath, html(plate));
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 816, height: 1056 }, deviceScaleFactor: 2 });
+const page = await browser.newPage({ viewport: { width: 816, height: 1056 }, deviceScaleFactor: 300 / 96 });
 await page.goto(`file://${htmlPath}`);
 await page.evaluate(() => document.fonts.ready);
 await page.pdf({
-  path: join(HERE, 'print', `${plate.code}.pdf`),
+  path: join(HERE, 'print', `${out}.pdf`),
   format: 'Letter',
   printBackground: true,
   margin: { top: 0, right: 0, bottom: 0, left: 0 },
 });
-await page.locator('.page').screenshot({ path: join(HERE, 'print', `${plate.code}.png`) });
+await page.locator('.page').screenshot({ path: join(HERE, 'print', `${out}.png`) });
 await browser.close();
-console.log(`cut ${plate.code}: print/${plate.code}.{html,pdf,png}`);
+console.log(`cut ${plate.code}: print/${out}.{html,pdf,png}`);

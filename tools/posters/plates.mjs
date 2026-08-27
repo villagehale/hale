@@ -9,6 +9,20 @@
 // via the "(via <code>)" suffix the site would otherwise add.
 export const PLATES = [
   {
+    // Indoor EarlyON board at EarlyON Markham / Family Day, 3990 14th Avenue —
+    // board placement pending Sheri's yes. Pure web attribution (UTM on the
+    // homepage; PostHog replay + utm capture live) — no source code, no phone
+    // number on the plate, camera opens the site.
+    code: 'earlyon-markham',
+    outName: 'earlyon-markham-poster',
+    band: 'Markham',
+    localLine:
+      'Markham families get pulled into Toronto rec, swim and camp mornings. Those windows open Sept 15 and 16 at 7 a.m. Hale watches the dates that matter to your family — and texts you before they open.',
+    qrValue: 'https://www.villagehale.com/?utm_source=earlyon-markham&utm_medium=flyer',
+    qrEcc: 'H',
+    scan: { title: 'Scan to start', hint: 'Point your phone camera at the code — it opens villagehale.com.', site: 'villagehale.com' },
+  },
+  {
     // Indoor EarlyON board at West Neighbourhood House, 248 Ossington Ave.
     // Registry: earlyon-ossington (M6J, poster 'Ossington') — no lifetime comp.
     code: 'earlyon-ossington',
