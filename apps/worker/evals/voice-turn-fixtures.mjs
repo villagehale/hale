@@ -81,6 +81,29 @@ export const FIXTURE_VILLAGE = {
   standingOption: null,
 };
 
+/**
+ * VIL-313 · what the LIVE web lookup returns, per fixture.
+ *
+ * `over_budget` is the one the corpus exists for. It is the call's own outcome — the
+ * search is still running and the caller's silence budget closed first
+ * (apps/web/lib/channel/twilio/voice-lookup.ts) — and it is the shape the model gets
+ * wrong in the most costly direction: read as "there is nothing", it tells a parent to
+ * stop looking for something that is there.
+ */
+export const FIXTURE_WEB_FIND = {
+  found: true,
+  picks: [
+    {
+      name: 'Parent & Tot Gymnastics',
+      ageFit: '18 months - 3 years',
+      when: 'Saturdays 9:15am, fall session from Sept 13',
+      price: '$142 for 12 weeks',
+      sourceName: 'Halton Hills Gymnastics Centre',
+      source: 'web',
+    },
+  ],
+};
+
 const BASE_CONTEXT = {
   parentName: 'Sam',
   location: { city: 'Toronto', province: 'ON', country: 'CA' },
@@ -214,7 +237,13 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   );
 }
 
-export function buildVoiceFixtureTools(agent, z, calls, results) {
+/**
+ * `webLookup` is what `find_activities` hands back for THIS fixture — the found picks by
+ * default, or a named failure ('over_budget', 'no_picks', ...). It is a parameter rather
+ * than a constant because the three outcomes are three different spoken answers, and a
+ * corpus that could only produce one of them could not grade the other two.
+ */
+export function buildVoiceFixtureTools(agent, z, calls, results, webLookup) {
   let draftsThisTurn = 0;
 
   const claimDraftBudget = () => {
@@ -335,6 +364,32 @@ export function buildVoiceFixtureTools(agent, z, calls, results) {
       monetary: false,
       touchesChildContent: false,
       handler: async () => record('search_village', FIXTURE_VILLAGE),
+    }),
+
+    agent.defineTool({
+      name: 'find_activities',
+      description:
+        "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no age, no address. Each pick carries a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run.",
+      inputSchema: passthrough(),
+      monetary: false,
+      touchesChildContent: true,
+      handler: async () =>
+        record(
+          'find_activities',
+          webLookup === undefined || webLookup === 'found'
+            ? FIXTURE_WEB_FIND
+            : { found: false, reason: webLookup },
+        ),
+    }),
+
+    agent.defineTool({
+      name: 'promise_activity_followup',
+      description:
+        "Register that you are telling this parent you will COME BACK to them about an activity search - because the search could not finish, because what you found needs checking, or because what they want is not out yet. Call it in the same turn you say so, and only when you actually say so. `subject` is the short, de-identified phrase you will search again on ('toddler gymnastics this fall'): no name, no age, no address. Something owes this family an answer, so a promise registered here is one Hale is on the hook for. Do NOT call it when you have already answered. Say the coming-back sentence yourself, in your own words, in this message.",
+      inputSchema: passthrough(),
+      monetary: false,
+      touchesChildContent: true,
+      handler: async () => record('promise_activity_followup', { promised: true }),
     }),
   ];
 }
@@ -467,6 +522,44 @@ export const VOICE_TURN_FIXTURES = [
       noDrafting: true,
       // The turn is an opening, not a menu. Hale does not list itself (capability table).
       forbidden: ['i can help with', 'i can do', 'here are', 'schedule, parenting'],
+    },
+  },
+  {
+    id: '10-web-search-over-budget',
+    note: "VIL-313. The parent asks Hale to LOOK, and the live search does not come back inside the caller's silence budget. The wrong answer is the one the old wiring gave on founder call CA170c1fb0 - a version of 'there's nothing' - because it tells a parent to stop looking for something that is there. The right one names the state and hands it to the channel that has no wall, and that sentence is a real ledger row the moment it is spoken.",
+    prompt: 'can you look up gymnastics classes for the fall',
+    webLookup: 'over_budget',
+    expect: {
+      mustCallTools: ['find_activities'],
+      mustSayOneOf: ['text you', 'text it', 'send it', 'send you', 'text them'],
+      // Every way of saying the thing that is false here: the search did not come back
+      // empty, it did not come back at all.
+      forbidden: [
+        "there's nothing",
+        'there is nothing',
+        'nothing running',
+        'nothing available',
+        "nothing's on",
+        "couldn't find anything",
+        'could not find anything',
+        "didn't find anything",
+        'no classes',
+      ],
+      noDrafting: true,
+      maxWords: 45,
+    },
+  },
+  {
+    id: '11-web-search-found',
+    note: 'VIL-313, the other side. The lookup beat the wall, so the call answers on the call - the fact, and whose page it came off. Nothing is owed and nothing may be promised.',
+    prompt: 'can you look up gymnastics classes for the fall',
+    webLookup: 'found',
+    expect: {
+      mustCallTools: ['find_activities'],
+      mustSayOneOf: ['nine fifteen', '9:15', 'saturdays', 'gymnastics centre', 'gymnastics center'],
+      noInventedSchedule: true,
+      noDrafting: true,
+      maxWords: 60,
     },
   },
 ];

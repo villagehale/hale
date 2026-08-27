@@ -10,7 +10,7 @@ import {
 } from '@hale/agent';
 import type { AgentContext, LoadAgentContextInput } from '~/lib/coach/context';
 import type { TranscriptMessage } from '~/lib/coach/conversation';
-import { VOICE_TOOL_ACK, voiceDraftedButFailed } from './copy';
+import { VOICE_STILL_LOOKING, VOICE_TOOL_ACK, voiceDraftedButFailed } from './copy';
 import type { VoiceTurnInput, VoiceTurnOutcome, VoiceTurnStream } from './relay-session';
 import type { SpokenAnswer, SpokenTurn } from './voice-answer';
 import { spokenFarewell } from './voice-goodbye';
@@ -71,6 +71,20 @@ const MAX_STEPS = 4;
  * forty words) and by the eval's hard word gate.
  */
 const MAX_TOKENS = 240;
+
+/**
+ * How long a tool may run before the caller is told, once, that Hale is still there.
+ *
+ * TWO AND A HALF SECONDS, which is about how far a single "Checking now." carries. Every
+ * tool on this call was a database read until the live web lookup arrived, and those come
+ * back inside the ack; the lookup is allowed six seconds (voice-lookup.ts), and four of
+ * them past one short clause is a caller deciding the line has dropped. So the pacing
+ * grows a second beat rather than the budget shrinking to fit the pacing.
+ *
+ * ONCE per turn, never on a repeat, and never on a turn the model is already speaking
+ * through — see {@link VOICE_STILL_LOOKING}.
+ */
+export const VOICE_HOLD_AFTER_MS = 2_500;
 
 export interface VoiceRunRecord {
   familyId: string;
@@ -222,6 +236,26 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
         say(token);
       };
 
+      // THE SECOND BEAT OF THE PACING. Armed when a tool starts, disarmed by the first
+      // word that arrives after it — so a tool that comes back fast is never spoken over,
+      // and a six-second web lookup does not leave a caller holding a line that has said
+      // one clause and gone quiet. At most one per turn.
+      let holdTimer: ReturnType<typeof setTimeout> | null = null;
+      let heldOnce = false;
+      const dropHold = (): void => {
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = null;
+      };
+      const armHold = (): void => {
+        if (heldOnce || holdTimer) return;
+        holdTimer = setTimeout(() => {
+          holdTimer = null;
+          heldOnce = true;
+          sayAfterBoundary(`${VOICE_STILL_LOOKING} `);
+        }, VOICE_HOLD_AFTER_MS);
+        holdTimer.unref?.();
+      };
+
       const startedAt = Date.now();
       let result: RunAgentResult | null = null;
       try {
@@ -244,11 +278,13 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
           toolContext: { familyId: input.ticket.familyId, actor: input.ticket.parentUserId },
           guardDeps: ports.guardDeps,
           onTextDelta: (delta) => {
+            dropHold();
             modelSpoke = true;
             sayAfterBoundary(delta);
           },
           onToolCall: () => {
             if (!hasSpoken) say(`${VOICE_TOOL_ACK} `);
+            armHold();
           },
           // NOT a discard, and it must never become one. The loop fires this to say the
           // text of a tool turn was reasoning rather than the answer — but on a call
@@ -295,6 +331,10 @@ export function voiceTurnStream(ports: VoiceTurnPorts): VoiceTurnStream {
         if (drafted > 0) emit(voiceDraftedButFailed(drafted));
         return 'spoke';
       } finally {
+        // Whatever happened — an answer, a throw, a hang-up — no timer may outlive the
+        // turn that armed it: a holding line spoken into the NEXT turn is Hale talking
+        // over itself, and one spoken after the call is a frame on a closed socket.
+        dropHold();
         await ports.recordRun(
           record(input.ticket.familyId, skill, result, modelSpoke, Date.now() - startedAt),
         );

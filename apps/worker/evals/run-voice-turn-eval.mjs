@@ -490,7 +490,7 @@ async function main() {
       // that Twilio's TTS reads as one word.
       let separatorOwed = false;
       const tools = [
-        ...buildVoiceFixtureTools(agent, z, calls, toolResults),
+        ...buildVoiceFixtureTools(agent, z, calls, toolResults, fixture.webLookup),
         recordingFrameworkTool(frameworkGuidanceTool, calls, toolResults),
       ];
 

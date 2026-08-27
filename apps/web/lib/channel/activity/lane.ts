@@ -180,7 +180,16 @@ export type ActivityFailure =
   | 'ground_failed'
   | 'not_grounded'
   | 'compose_failed'
-  | 'no_picks';
+  | 'no_picks'
+  /**
+   * The wall closed before the search came back — the CALL's outcome, never the text
+   * lane's (twilio/voice-lookup.ts). Its own member rather than a `ground_failed`,
+   * because the two license different sentences (rule #11): a failed search means Hale
+   * could not look, and this one means Hale is looking and the caller cannot hold a
+   * silent line for the rest of it. Only the second is honestly answered by "I'll text
+   * you what I find".
+   */
+  | 'over_budget';
 
 export type ActivityFindResult =
   | { found: true; picks: ActivityPick[] }

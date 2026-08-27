@@ -26,7 +26,8 @@ describe('voice-turn tools ↔ skill allowlist (live path)', () => {
       draftPort: {} as never,
       villageTool: searchVillageTool({} as never),
       onDraft: () => {},
-      activity: null,
+      activity: { reader: {} as never, finder: {} as never },
+      onPromise: () => {},
       now: new Date(),
     }).map((tool) => tool.name);
 
@@ -80,29 +81,55 @@ describe('voice-turn tools ↔ skill allowlist (live path)', () => {
     expect(withCollectors).toContain('share_referral_link');
   });
 
-  it('carries neither web verb: a live call cannot wait on a search', async () => {
+  /**
+   * VIL-313 reversed this. The call used to pass `activity: null`, so an explicit spoken
+   * "can you search for me" was answered out of `search_village` — a read of finds the
+   * radar already held — and on founder call CA170c1fb0 that read was empty, so the
+   * answer was "nothing verified in my list". A surface whose promise is "I answer"
+   * answering a search request by reading a table it knew was empty.
+   *
+   * The seconds of silence that kept the verbs out are still real; what changed is that
+   * they are now BOUNDED (voice-lookup.ts) and the over-budget case has an honest
+   * sentence with a ledger row under it, rather than the verb not existing.
+   */
+  it('carries BOTH web verbs, on both sides of the seam', async () => {
     const skill = await loadCronSkill('voice-turn');
 
-    // A `web_search` turn is seconds of silence with a parent holding the line, and the
-    // promise verb has nothing to hand back on a call. relay-deps.ts passes
-    // `activity: null`, so neither verb is built at all.
-    expect(registered()).not.toContain('find_activities');
-    expect(registered()).not.toContain('promise_activity_followup');
-    expect(skill.meta.tools).not.toContain('find_activities');
-    expect(skill.meta.tools).not.toContain('promise_activity_followup');
-    // The positive control: the same builder DOES register both the moment the lane is
-    // wired, so the absence above is a wiring decision rather than a missing tool.
-    const withActivity = buildChannelCoachTools({
+    expect(registered()).toContain('find_activities');
+    expect(registered()).toContain('promise_activity_followup');
+    expect(skill.meta.tools).toContain('find_activities');
+    expect(skill.meta.tools).toContain('promise_activity_followup');
+  });
+
+  /**
+   * The negative control for the pair above: the same builder still DROPS both the
+   * moment either half of the wiring is missing, so "the call can search" is a live
+   * wiring fact rather than a tool that is always there (rule #11 — the absent
+   * collector removes the VERB).
+   */
+  it('drops both web verbs when the lane or the collector is missing', async () => {
+    const withoutLane = buildChannelCoachTools({
+      familyId: 'f',
+      reader: {} as never,
+      draftPort: {} as never,
+      villageTool: null,
+      activity: null,
+      onPromise: () => {},
+      now: new Date(),
+    }).map((tool) => tool.name);
+    expect(withoutLane).not.toContain('find_activities');
+    expect(withoutLane).not.toContain('promise_activity_followup');
+
+    const withoutCollector = buildChannelCoachTools({
       familyId: 'f',
       reader: {} as never,
       draftPort: {} as never,
       villageTool: null,
       activity: { reader: {} as never, finder: {} as never },
-      onPromise: () => {},
       now: new Date(),
     }).map((tool) => tool.name);
-    expect(withActivity).toContain('find_activities');
-    expect(withActivity).toContain('promise_activity_followup');
+    expect(withoutCollector).not.toContain('find_activities');
+    expect(withoutCollector).not.toContain('promise_activity_followup');
   });
 
   it('still routes a spoken turn through the speak tier', async () => {

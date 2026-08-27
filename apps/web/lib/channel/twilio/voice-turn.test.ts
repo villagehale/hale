@@ -11,8 +11,13 @@ import type { AgentContext, LoadAgentContextInput } from '~/lib/coach/context';
 import type { TranscriptMessage } from '~/lib/coach/conversation';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { VOICE_GOODBYE_BY_LANGUAGE, VOICE_TOOL_ACK } from './copy';
-import { VOICE_AGENT_NAME, type VoiceTurnPorts, voiceTurnStream } from './voice-turn';
+import { VOICE_GOODBYE_BY_LANGUAGE, VOICE_STILL_LOOKING, VOICE_TOOL_ACK } from './copy';
+import {
+  VOICE_AGENT_NAME,
+  VOICE_HOLD_AFTER_MS,
+  type VoiceTurnPorts,
+  voiceTurnStream,
+} from './voice-turn';
 
 const TICKET = {
   callSid: 'CA00000000000000000000000000000011',
@@ -347,6 +352,65 @@ describe('the pause while a tool runs', () => {
     expect(emitted).toEqual([`${VOICE_TOOL_ACK} `, 'Swim is Thursday.']);
   });
 
+  /**
+   * VIL-313 · THE SECOND BEAT. "Checking now." carries a database read; it does not
+   * carry the six seconds the live web lookup is allowed (voice-lookup.ts), and four
+   * seconds past one short clause is a caller deciding the line has dropped.
+   */
+  it('says one more holding line when a tool runs long, and only one', async () => {
+    vi.useFakeTimers();
+    try {
+      const emitted: string[] = [];
+      const t = build({
+        runStreaming: vi.fn(async (args: RunAgentStreamingArgs) => {
+          args.onToolCall?.({ name: 'find_activities' } as never);
+          // The wall's worth of silence, twice over — a timer that re-armed would be
+          // audible as Hale reciting the same line at the caller.
+          await vi.advanceTimersByTimeAsync(VOICE_HOLD_AFTER_MS * 3);
+          args.onTurnReset();
+          args.onTextDelta("Still looking - I'll text you what I find.");
+          return RESULT;
+        }),
+      });
+
+      await t.turn.respond(input, (token) => emitted.push(token));
+
+      expect(emitted).toEqual([
+        `${VOICE_TOOL_ACK} `,
+        `${VOICE_STILL_LOOKING} `,
+        "Still looking - I'll text you what I find.",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stays silent about waiting when the tool comes back inside the first line', async () => {
+    vi.useFakeTimers();
+    try {
+      const emitted: string[] = [];
+      const t = build({
+        runStreaming: vi.fn(async (args: RunAgentStreamingArgs) => {
+          args.onToolCall?.({ name: 'lookup_week' } as never);
+          await vi.advanceTimersByTimeAsync(VOICE_HOLD_AFTER_MS - 1);
+          args.onTurnReset();
+          args.onTextDelta('Swim is Thursday.');
+          return RESULT;
+        }),
+      });
+
+      await t.turn.respond(input, (token) => emitted.push(token));
+
+      expect(emitted.join('')).not.toContain(VOICE_STILL_LOOKING);
+      // The positive control for the line above: the same path DOES say it once the tool
+      // runs past the threshold, so its absence here is the timer being beaten rather
+      // than a line nothing can reach.
+      expect(emitted).toEqual([`${VOICE_TOOL_ACK} `, 'Swim is Thursday.']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('stays quiet when the model said its own line first — never both', async () => {
     const emitted: string[] = [];
     const t = build({
@@ -537,7 +601,8 @@ describe('the wire a spoken turn builds', () => {
       familyId: TICKET.familyId,
       reader: {} as never,
       draftPort: {} as never,
-      activity: null,
+      activity: { reader: {} as never, finder: {} as never },
+      onPromise: () => {},
       villageTool: searchVillageTool({} as never),
       onDraft: () => {},
       now: NOW,
@@ -563,8 +628,10 @@ describe('the wire a spoken turn builds', () => {
     const tools = await wireTools();
 
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'find_activities',
       'get_framework_guidance',
       'lookup_week',
+      'promise_activity_followup',
       'propose_calendar_add',
       'propose_calendar_cancel',
       'propose_calendar_move',
@@ -599,8 +666,10 @@ describe('the wire a spoken turn builds', () => {
         .map((t) => t.name)
         .sort(),
     ).toEqual([
+      'find_activities',
       'get_framework_guidance',
       'lookup_week',
+      'promise_activity_followup',
       'propose_calendar_add',
       'propose_calendar_cancel',
       'propose_calendar_move',
