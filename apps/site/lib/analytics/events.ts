@@ -2,7 +2,9 @@
  * The acquisition-funnel event catalog and its privacy gate (hard rule #1).
  *
  * Nothing identifying may reach product analytics. The site is ANONYMOUS: no
- * identify, no autocapture, no session replay, no cookies (see posthog-provider.tsx).
+ * identify, no autocapture, no session replay, no PostHog cookies (see
+ * posthog-provider.tsx). Google Ads is a separate document-head tag for advertising
+ * measurement, not this catalog.
  * Every event below is fired by hand from a named call site, and its properties are
  * coarse, non-identifying primitives. `buildEvent` is the single chokepoint every
  * capture goes through: it drops any property whose key looks identifying or whose

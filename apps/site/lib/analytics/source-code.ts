@@ -15,8 +15,10 @@ import { parseSourceCode } from '~/lib/text-entry';
  * same session is therefore ignored rather than overwriting it.
  *
  * sessionStorage, deliberately, and it is the reason this file exists at all:
- *   · Not a cookie. The site sets NONE (posthog runs on memory persistence), which is
- *     why the legal pages carry no cookie table — see lib/analytics/posthog-provider.tsx.
+ *   · Not a cookie. First-touch attribution is sessionStorage (or URL-only). Google
+ *     Ads may set its own advertising cookies on this origin for landing-page
+ *     measurement (lib/analytics/google-ads.ts); that is a different layer and is
+ *     not how a visit is credited to a card.
  *   · Not localStorage. Attribution is a fact about ONE visit. A value that outlived the
  *     tab would credit a card seen in March for a text sent in August.
  *

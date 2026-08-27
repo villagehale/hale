@@ -4,15 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { POSTHOG_INIT_CONFIG } from './posthog-provider';
 
 /**
- * THE MARKETING SITE'S ANALYTICS POSTURE, and the legal page that depends on it.
+ * THE MARKETING SITE'S POSTHOG POSTURE, and the legal page that depends on it.
  *
- * The privacy policy has no Tracking Technologies / cookie section, deliberately — see
- * the header comment on app/[locale]/privacy/page.tsx, which named the marketing site's
- * unset `persistence` as the reason it could not yet be described. `persistence:
- * 'memory'` is what settles that: the site writes NOTHING to a visitor's device, so
- * there is no cookie table to omit. This file is the gate that keeps the two agreeing —
- * a future `persistence: 'localStorage+cookie'` would make the legal page wrong, and
- * fails here instead.
+ * PostHog on this site is still storage-free (`persistence: 'memory'`). Google Ads
+ * is a separate head tag that may set advertising cookies — that pairing lives in
+ * google-ads.test.ts, not here. This file keeps PostHog and the sentences that
+ * describe it from drifting: a future `persistence: 'localStorage+cookie'` would
+ * make the PostHog bullet wrong, and fails here instead.
  *
  * Expected values are derived from the posture (anonymous, explicit-only, storage-free),
  * not echoed back from the config.
@@ -53,11 +51,11 @@ describe('the privacy policy still matches that posture', () => {
     expect(privacyPage).toContain('cookieless');
   });
 
-  it('makes no cookie claim about the marketing site it would now have to describe', () => {
-    // Not "there is no cookie section" — that is true today and would stay true after a
-    // regression. The pairing that matters: memory persistence above, no cookie table
-    // here. Either one changing without the other is the drift.
+  it('still describes PostHog as writing nothing to the visitor’s device', () => {
+    // Google Ads may set advertising cookies (google-ads.test.ts). PostHog must not
+    // quietly start doing the same, or this sentence becomes a lie.
+    expect(privacyPage).toContain('On the marketing site, PostHog is configured');
+    expect(privacyPage).toContain('to write nothing to your device');
     expect(privacyPage).not.toContain('Tracking Technologies');
-    expect(privacyPage).not.toMatch(/marketing site[^.]*cookie/i);
   });
 });
