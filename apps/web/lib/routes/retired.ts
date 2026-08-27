@@ -15,8 +15,7 @@
  * bypassed — defense in depth, the way PROTECTED_PREFIXES backs the layout's own check.
  *
  * Their API routes are NOT retired, and must never be added here: /api/coach/* backs
- * mobile's Bearer bridge and the SMS coach, and /api/mobile/companion/* backs the
- * native Diary. Matching is prefix-on-segment, so an /api/* path never matches one of
+ * the SMS coach. Matching is prefix-on-segment, so an /api/* path never matches one of
  * these (it does not start with the prefix).
  */
 export const RETIRED_PREFIXES = ['/coach', '/companion', '/saved'];

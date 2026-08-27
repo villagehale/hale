@@ -9,9 +9,9 @@ import { RETIRED_PREFIXES, RETIRED_TARGET, isRetiredPath } from './retired';
  *
  *  - it must actually be gone (a real permanent redirect, from the middleware, so it
  *    is a redirect a browser and a crawler can see rather than a soft client push), and
- *  - it must take NOTHING live with it — above all the API routes that back mobile's
- *    Bearer bridge, the SMS coach and the native Diary, whose paths only differ by an
- *    /api prefix. A too-greedy match there would take the product down, silently.
+ *  - it must take NOTHING live with it — above all the API routes that back the SMS
+ *    coach, whose paths only differ by an /api prefix. A too-greedy match there would
+ *    take the product down, silently.
  */
 
 const middleware = readFileSync(
@@ -37,19 +37,11 @@ describe('isRetiredPath', () => {
   });
 
   /**
-   * The load-bearing one. /api/coach/* is the SMS coach and mobile's Bearer bridge;
-   * /api/mobile/companion/* is the native Diary. Retiring a browser page must never
-   * retire the API that shares its noun.
+   * The load-bearing one. /api/coach/* is the SMS coach. Retiring a browser page
+   * must never retire the API that shares its noun.
    */
   it('never matches an API route that shares a retired page’s noun', () => {
-    for (const api of [
-      '/api/coach',
-      '/api/coach/action',
-      '/api/coach/attachments',
-      '/api/companion',
-      '/api/mobile/companion/logs',
-      '/api/mobile/village/saved',
-    ]) {
+    for (const api of ['/api/coach', '/api/coach/action', '/api/coach/attachments', '/api/companion']) {
       expect(isRetiredPath(api), api).toBe(false);
     }
   });
