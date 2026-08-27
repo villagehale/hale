@@ -2,7 +2,6 @@ import NextAuth from 'next-auth';
 import { NextResponse } from 'next/server';
 import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
-import { bridgeBearerToSessionCookie } from '~/lib/auth/bearer-bridge';
 import { isProtectedPath } from '~/lib/auth/protected-routes';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { RETIRED_TARGET, isRetiredPath } from '~/lib/routes/retired';
@@ -24,29 +23,6 @@ const { auth } = NextAuth(authConfig);
 // protected route to an unauthenticated request (rule #1).
 export default auth((req) => {
   const { pathname } = req.nextUrl;
-
-  // Mobile Bearer bridge (runs before any page logic): for an /api/* request that
-  // carries `Authorization: Bearer <token>` and no existing session cookie, append
-  // the Auth.js session cookie to the REQUEST headers so every downstream
-  // `await auth()` in the route sees a session — mobile authenticates through the
-  // unchanged web path. `secure` is read the SAME way the token was minted
-  // (`x-forwarded-proto`, first hop) so the cookie name matches the JWT salt. An
-  // /api request never falls into a page branch below (no /api prefix is protected
-  // and it isn't /onboarding), so a bridged request's only outcome is pass-through
-  // with the rewritten headers; an unbridged/invalid one ends as the route's own
-  // 401, not a /sign-in redirect. Browser requests (no Authorization header) get
-  // null here and take the byte-identical pre-existing path.
-  const proto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
-  const bridged = bridgeBearerToSessionCookie({
-    headers: req.headers,
-    pathname,
-    secure: proto === 'https',
-  });
-  if (bridged) {
-    const headers = new Headers(req.headers);
-    headers.set('cookie', bridged.cookieHeader);
-    return NextResponse.next({ request: { headers } });
-  }
 
   // (The beta invite gate stood here. It gated exactly one path — /onboarding — and
   // that route is deleted (F14), so the gate had nothing left to admit anyone to.

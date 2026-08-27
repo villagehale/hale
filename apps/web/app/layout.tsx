@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
-import { AppPromo } from '~/components/hale/app-promo';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { THEME_STORAGE_KEY } from '~/lib/theme';
 import './globals.css';
@@ -40,7 +39,7 @@ const fraunces = localFont({
 // Hale Shore is a two-family system: numbers, dates and payloads render in the body
 // face, so no mono face is loaded. globals.css points --font-mono at --font-sans, and
 // `.tabular` keeps `font-variant-numeric` for the column alignment that role actually
-// needed (apps/mobile/DESIGN.md § Type).
+// needed (DESIGN.md § Type).
 
 export const metadata: Metadata = {
   title: 'Hale · the family assistant you text',
@@ -77,10 +76,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <PostHogProvider>{children}</PostHogProvider>
-        {/* <768px "better in the app" hand-off (§5) — flag-gated, session-scoped;
-         * mounted at the root so it covers the authed shell AND the public auth
-         * pages, and renders nothing at ≥768px (no layout shift). */}
-        <AppPromo />
       </body>
     </html>
   );
