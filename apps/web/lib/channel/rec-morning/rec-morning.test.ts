@@ -123,7 +123,8 @@ describe('rec-morning SMS · locked first-hello strings', () => {
   });
 
   it('sends the locked YMCA first answer, and the follow only for levels or membership', () => {
-    expect(YMCA_FIRST).toBe('YMCA GTA swim is Aug 27 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.');
+    expect(YMCA_FIRST).toBe('YMCA GTA swim opened Aug 27 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.');
+    expect(YMCA_FIRST.toLowerCase()).not.toContain('today');
     expect(reply('when does YMCA GTA swim registration open?')).toBe(YMCA_FIRST);
     expect(YMCA_FIRST).toContain(YMCA_PORTAL);
     firstAnswerIsClean(YMCA_FIRST);
@@ -131,6 +132,7 @@ describe('rec-morning SMS · locked first-hello strings', () => {
     expect(YMCA_FOLLOW).toBe(
       'Search Otter, Seal, Dolphin, Star, not Ultra. Membership is still needed for a lot of group classes, and kids 9 and under need an adult 16+ on deck.',
     );
+    expect(YMCA_FOLLOW.toLowerCase()).not.toContain('today');
     expect(reply('YMCA otter or Ultra?')).toBe(YMCA_FOLLOW);
     expect(reply('does YMCA need membership?')).toBe(YMCA_FOLLOW);
     expect(reply('when does YMCA swim open?')).not.toBe(YMCA_FOLLOW);

@@ -29,7 +29,7 @@ export const TORONTO_FOLLOW = `Wishlist can look frozen, so wait, don't mash ref
 
 export const EFUN_GONE = `eFun is gone. Rec is ${TORONTO_REC_PORTAL} now.`;
 
-export const YMCA_FIRST = `YMCA GTA swim is Aug 27 at 9:00 a.m. Sign in at ${YMCA_PORTAL}.`;
+export const YMCA_FIRST = `YMCA GTA swim opened Aug 27 at 9:00 a.m. Sign in at ${YMCA_PORTAL}.`;
 
 export const YMCA_FOLLOW =
   'Search Otter, Seal, Dolphin, Star, not Ultra. Membership is still needed for a lot of group classes, and kids 9 and under need an adult 16+ on deck.';
