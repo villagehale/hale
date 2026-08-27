@@ -9,6 +9,24 @@
 // via the "(via <code>)" suffix the site would otherwise add.
 export const PLATES = [
   {
+    // Outdoor Town boards, Oakville — 7 copies, founder-pinned, no form, Town
+    // may remove: River Oaks CC, Glen Abbey CC, Town Hall, Central Library
+    // (outside), Town Square, Bronte Boardwalk, Kerr St at Normandy Pl.
+    // No comp (outdoor, no partner cost). oakville.ca: fall registration "now
+    // open", no open date published — so the plate says open, never a date.
+    code: 'oakville-outdoor',
+    outName: 'oakville-outdoor-poster',
+    band: 'Oakville',
+    introLine:
+      'Rec, swim and camp registration — caught before it fills.<br>Your week, planned. Nothing without your say-so.',
+    cardTitle: 'Rec mornings, watched.',
+    localLine:
+      'Hale watches the swim, camp, and rec dates that matter to Oakville families, and texts you before they open.',
+    qrValue: 'https://www.villagehale.com/?utm_source=oakville-outdoor-board&utm_medium=flyer',
+    qrEcc: 'H',
+    scan: { title: 'Scan to start', hint: 'Point your phone camera at the code — it opens villagehale.com.', site: 'villagehale.com' },
+  },
+  {
     // Indoor EarlyON board at EarlyON Markham / Family Day, 3990 14th Avenue —
     // board placement pending Sheri's yes. Pure web attribution (UTM on the
     // homepage; PostHog replay + utm capture live) — no source code, no phone
