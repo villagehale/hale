@@ -123,7 +123,8 @@ describe('rec-morning SMS · locked first-hello strings', () => {
   });
 
   it('sends the locked YMCA first answer, and the follow only for levels or membership', () => {
-    expect(YMCA_FIRST).toBe('YMCA GTA swim opened at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.');
+    expect(YMCA_FIRST).toBe('YMCA GTA swim opened Aug 27 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.');
+    expect(YMCA_FIRST.toLowerCase()).not.toContain('today');
     expect(reply('when does YMCA GTA swim registration open?')).toBe(YMCA_FIRST);
     expect(YMCA_FIRST).toContain(YMCA_PORTAL);
     firstAnswerIsClean(YMCA_FIRST);
