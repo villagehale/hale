@@ -947,13 +947,15 @@ describe('intake · a question mid-signup gets an answer', () => {
     expect(reply).toContain(RETURN);
     expect(reply).not.toBe(AMBIGUOUS_CLARIFY);
 
-    // The composer saw the parent's words and Hale's own ask — and no session state,
-    // no postal code, no family id (rule #1).
+    // The composer saw the parent's words, Hale's own ask, and the postal already
+    // collected (rec-morning routing). No session state or family id (rule #1).
+    // The model context still omits the postal — see intakeAnswerContext.
     expect(composer.calls).toEqual([
       {
         parentWords: 'Does Sebastian needs eye exam?',
         pendingAsk: WATCH_OFFER_ASK,
         children: MAYA_AND_LEO.children,
+        postalCode: MAYA_AND_LEO.postalCode,
       },
     ]);
 

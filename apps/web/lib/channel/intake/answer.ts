@@ -160,6 +160,11 @@ export interface IntakeAnswerInput {
   /** The children collected so far: the ONLY child facts the answer may state, and all
    * of them things the parent typed into this same conversation. */
   children: readonly ExtractedChild[];
+  /**
+   * Coarse postal/FSA already collected in this conversation. Rec-morning routing
+   * only — never shown to the model (see {@link intakeAnswerContext}).
+   */
+  postalCode?: string | null;
 }
 
 export interface IntakeAnswerComposer {
@@ -293,7 +298,11 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // Rec-morning clock and portal are reviewed copy, not a composition. A first-time
       // texter asking which morning / which login must not wait on a model that still
       // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
-      const recMorning = recMorningIntakeReply(input);
+      const recMorning = recMorningIntakeReply({
+        parentWords: input.parentWords,
+        pendingAsk: input.pendingAsk,
+        postal: input.postalCode,
+      });
       if (recMorning !== null) return { status: 'answered', body: recMorning };
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the

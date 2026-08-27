@@ -512,7 +512,12 @@ async function writeChannelMessage(
  * its own reply is written for exactly this turn.
  */
 async function offScriptReply(
-  args: { parentWords: string; pendingAsk: string; children: readonly ExtractedChild[] },
+  args: {
+    parentWords: string;
+    pendingAsk: string;
+    children: readonly ExtractedChild[];
+    postalCode?: string | null;
+  },
   deps: IntakeDeps,
 ): Promise<{ body: string; source: 'composed' | 'safety' } | null> {
   const outcome = await deps.answerComposer.compose(args);
@@ -648,6 +653,7 @@ async function handleDetails(
         // its own words — in French when that is the question the parent was asked.
         pendingAsk: COLD_START_ASK_BY_LANGUAGE[language],
         children: collected.children,
+        postalCode: collected.postalCode,
       },
       deps,
     );
@@ -991,6 +997,7 @@ async function handleWatchReply(
         parentWords: inbound.body,
         pendingAsk: WATCH_OFFER_ASK,
         children: session.collected.children,
+        postalCode: session.collected.postalCode,
       },
       deps,
     );
