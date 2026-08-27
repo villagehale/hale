@@ -24,7 +24,7 @@ export const PLATES = [
       'Markham rec, swim and camp registration — caught before it fills.<br>Your week, planned. Nothing without your say-so.',
     cardTitle: 'Gone by 6:32 a.m.? Not&nbsp;anymore.',
     localLine:
-      "Markham's own rec and swim registration opens at 6:30 a.m. — this fall's window went live Aug. 11, and the winter dates come next. Hale watches the dates that matter to your family — and texts you before they open.",
+      'Markham registration opens at 6:30 a.m. — winter dates are next. Hale watches the ones that matter to your family and texts you before they open.',
     qrValue: 'https://www.villagehale.com/?utm_source=earlyon-markham&utm_medium=flyer',
     qrEcc: 'H',
     scan: { title: 'Scan to start', hint: 'Point your phone camera at the code — it opens villagehale.com.', site: 'villagehale.com' },
