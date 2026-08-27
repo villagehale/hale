@@ -16,15 +16,15 @@ export const PLATES = [
     code: 'earlyon-markham',
     outName: 'earlyon-markham-poster',
     band: 'Markham',
-    // Facts from markham.ca (Registration and General Information): e-reg opens
-    // 6:30 AM; "2026 Fall Programs, Swim Lessons and Winter Break Camps —
-    // Register starting Aug. 11 at 6:30 AM". Winter 2027 dates unpublished, so
-    // the plate promises watching, never a date we don't have.
     introLine:
       'Rec, swim and camp registration — caught before it fills.<br>Your week, planned. Nothing without your say-so.',
-    cardTitle: 'Rec mornings, watched.',
+    // The Georgetown gift-card layout: the comp IS the card (eyebrow + big serif
+    // title + one explainer), and the scan pill echoes it.
+    eyebrow: 'A gift for Markham EarlyON families',
+    cardTitle: 'The Family plan — free, for&nbsp;life.',
     localLine:
-      'Hale watches the swim, camp, and rec dates that matter to Markham families, and texts you before they open. Join from this poster and the Family plan is free for your household — for life.',
+      "Hale's top tier — full autonomy with your OK, bookings handled, priority support. Free forever when you join from this poster.",
+    scanPill: 'Scan → your Family plan is free, for life',
     qrValue: 'https://www.villagehale.com/text?s=earlyon-markham&utm_source=earlyon-markham&utm_medium=flyer',
     qrEcc: 'H',
     scan: { title: 'Scan to start', hint: 'Point your phone camera at the code — it opens villagehale.com.', site: 'villagehale.com' },

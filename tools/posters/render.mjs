@@ -66,7 +66,7 @@ function platePage(plate) {
     <p class="body">${plate.introLine ?? 'Toronto rec, swim and camp registration — caught before it fills.<br>Your week, planned. Nothing without your say-so.'}</p>
 
     <div class="card">
-      <div class="eyebrow">For ${plate.band} families</div>
+      <div class="eyebrow">${plate.eyebrow ?? `For ${plate.band} families`}</div>
       <div class="cardtitle">${plate.cardTitle ?? 'Gone by 7:02 a.m.? Not&nbsp;anymore.'}</div>
       <p class="cardbody">${plate.localLine}</p>
     </div>
@@ -78,7 +78,7 @@ function platePage(plate) {
       <div class="qrcopy">
         <div class="scan">${plate.scan?.title ?? 'Scan to text Hale'}</div>
         <p class="hint">${plate.scan?.hint ?? 'Point your phone camera at the code — it opens a text to Hale, already started.'}</p>
-        <span class="pill">${plate.scan?.site ?? `or text ${SMS_DISPLAY}`}</span>
+        <span class="pill">${plate.scanPill ?? plate.scan?.site ?? `or text ${SMS_DISPLAY}`}</span>
       </div>
     </div>
   </section>`;
