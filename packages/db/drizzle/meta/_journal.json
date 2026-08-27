@@ -673,6 +673,13 @@
       "when": 1781469120000,
       "tag": "0098_coparent_join_link",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1781469180000,
+      "tag": "0099_sunday_weekly_plan",
+      "breakpoints": true
     }
   ]
 }

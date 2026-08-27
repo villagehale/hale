@@ -13,6 +13,7 @@ import {
   loopChildName,
   renderChildName,
   resolveChildNameLevel,
+  weeklyPlanWeekday,
   writeLoopPref,
 } from './prefs';
 
@@ -124,12 +125,43 @@ describe('deliverableNow composes quiet hours with the urgent-bypass toggle', ()
   });
 });
 
-describe('weekly-plan send moment: Monday 08:00 local for each parent, DST-correct', () => {
+describe('weeklyPlanWeekday — identity on 0=Sun…6=Sat, never 7', () => {
+  it('sends the morning the week starts (0=Sunday, 1=Monday)', () => {
+    expect(weeklyPlanWeekday(0)).toBe(0);
+    expect(weeklyPlanWeekday(1)).toBe(1);
+  });
+
+  it('wraps 7 to Sunday — Sunday is 0, not a second Sunday at 7', () => {
+    expect(weeklyPlanWeekday(7)).toBe(0);
+  });
+});
+
+describe('weekly-plan send moment: the morning the week starts, DST-correct', () => {
   const view: LoopPrefsView = { ...DEFAULT_LOOP_PREFS }; // send 08:00
-  const WEEK_START_MON = 1; // Monday-start week → Monday-morning brief
+  const WEEK_START_SUN = 0; // product default — Sunday week / Sunday send
+  const WEEK_START_MON = 1; // Monday-start week → Monday morning (opt-in)
+
+  it('pins the live default to Sunday — users.weekStartDay 0, not Monday 1', () => {
+    // VIL-319: weeklyPlanWeekday is identity. The column default IS the send
+    // weekday. 0=Sunday per localParts / Date.getUTCDay(), not the plan-spine
+    // WEEKDAYS index (0=Monday).
+    expect(schema.users.weekStartDay.default).toBe(0);
+    expect(weeklyPlanWeekday(schema.users.weekStartDay.default as number)).toBe(0);
+  });
+
+  it('matches the default parent at their own local Sunday 08:00 in winter', () => {
+    // Toronto EST (UTC-5): Sun 08:00 local = Sun 13:00Z. 2026-01-18 is a Sunday.
+    expect(isWeeklyPlanMoment(view, new Date('2026-01-18T13:00:00Z'), 'America/Toronto', WEEK_START_SUN)).toBe(true);
+    // Vancouver PST (UTC-8): Sun 08:00 local = Sun 16:00Z.
+    expect(isWeeklyPlanMoment(view, new Date('2026-01-18T16:00:00Z'), 'America/Vancouver', WEEK_START_SUN)).toBe(true);
+  });
+
+  it('does not send the default parent on Monday', () => {
+    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T13:00:00Z'), 'America/Toronto', WEEK_START_SUN)).toBe(false);
+  });
 
   // 2026-01-19 and 2026-07-20 are both Mondays (winter EST/PST, summer EDT/PDT).
-  it('matches each parent at their own local Monday 08:00 in winter', () => {
+  it('matches a Monday-start parent at their own local Monday 08:00 in winter', () => {
     // Toronto EST (UTC-5): Mon 08:00 local = Mon 13:00Z.
     expect(isWeeklyPlanMoment(view, new Date('2026-01-19T13:00:00Z'), 'America/Toronto', WEEK_START_MON)).toBe(true);
     // Vancouver PST (UTC-8): Mon 08:00 local = Mon 16:00Z.
