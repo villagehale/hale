@@ -96,14 +96,14 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-acton')).toBe(true);
   });
 
-  it('reads the Ossington EarlyON venue from both forms, and it carries NO comp', () => {
+  it('reads the Ossington EarlyON venue from both forms, and it carries the comp', () => {
     // Indoor board at West Neighbourhood House — a venue plate like Richmond Hill.
     expect(sourceCodeFromBody('Hi (via earlyon-ossington)')).toBe('earlyon-ossington');
     expect(sourceCodeFromBody('HALE earlyon-ossington')).toBe('earlyon-ossington');
     expect(venueForCode('earlyon-ossington')?.name).toBe('EarlyON centre');
     expect(posterLocation('earlyon-ossington')).toBe('Ossington');
-    // The comp set is the Halton Hills pair above — a new venue must not drift in.
-    expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-ossington')).toBe(false);
+    // Founder-granted 2026-08-27, alongside Markham — the first GTA boards.
+    expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-ossington')).toBe(true);
   });
 
   it('reads the Markham EarlyON venue and grants the first-GTA-board comp', () => {

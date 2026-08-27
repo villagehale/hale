@@ -10,6 +10,7 @@
 export const LIFETIME_FAMILY_SOURCE_CODES = new Set<string>([
   'earlyon-georgetown',
   'earlyon-acton',
-  // First GTA board to agree to post (2026-08-27) — founder-granted.
+  // First GTA boards to agree to post (2026-08-27) — founder-granted.
   'earlyon-markham',
+  'earlyon-ossington',
 ]);

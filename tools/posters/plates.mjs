@@ -34,8 +34,11 @@ export const PLATES = [
     // Registry: earlyon-ossington (M6J, poster 'Ossington') — no lifetime comp.
     code: 'earlyon-ossington',
     band: 'Ossington',
+    eyebrow: 'A gift for Ossington EarlyON families',
+    cardTitle: 'The Family plan — free, for&nbsp;life.',
     localLine:
-      'Swim lessons, day camps and rec programs at Trinity-Bellwoods and around Ossington sell out minutes after registration opens. Hale watches the dates that matter to your family — and texts you before they open.',
+      "Hale's top tier — full autonomy with your OK, bookings handled, priority support. Free forever when you join from this poster.",
+    scanPill: 'Scan → your Family plan is free, for life',
     qrValue: 'sms:+12892172279?&body=Hi%20(via%20earlyon-ossington)',
   },
 ];

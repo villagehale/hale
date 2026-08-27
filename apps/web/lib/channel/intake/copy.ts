@@ -80,8 +80,8 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'earlyon-georgetown': { name: 'EarlyON centre', areaCoarse: 'L7G', poster: 'Georgetown' },
   // Per-location Halton Hills posters, so the source code says WHICH centre.
   'earlyon-acton': { name: 'EarlyON centre', areaCoarse: 'L7J', poster: 'Acton' },
-  // Indoor EarlyON board at West Neighbourhood House, 248 Ossington Ave. Like
-  // Richmond Hill — a venue plate, not a City column, and no lifetime comp.
+  // Indoor EarlyON board at West Neighbourhood House, 248 Ossington Ave — a
+  // venue plate, not a City column. Carries the lifetime comp (promo.ts).
   'earlyon-ossington': { name: 'EarlyON centre', areaCoarse: 'M6J', poster: 'Ossington' },
   // Indoor EarlyON board at EarlyON Markham / Family Day, 3990 14th Ave — the first
   // GTA board to say yes, so it carries the lifetime Family comp (promo.ts).
