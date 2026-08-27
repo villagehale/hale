@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import type { ActivityQuery } from './deidentify';
-import { MAX_SEARCHES, composeUserMessage, createActivityFinder, groundUserMessage } from './lane';
+import { MAX_SEARCHES, composeUserMessage, createActivityFinder, groundUserMessage, toPicks } from './lane';
 
 /**
  * THE LANE'S MECHANICS AND ITS INVARIANTS — not its judgement.
@@ -357,6 +357,19 @@ describe('sourcing is stamped, never claimed', () => {
 
     const result = await finder.find(QUERY);
     expect(result.found && result.picks[0]?.source).toBe('web');
+  });
+
+  it('drops a pick that still names ActiveTO or eFun as the rec portal', () => {
+    const picks = toPicks([
+      {
+        ...WHOLE_PICK,
+        name: 'Parent-and-tot swim, Toronto Community Centre',
+        source_name: 'City of Toronto ActiveTO / recreation portal',
+      },
+      { ...WHOLE_PICK, name: 'eFun family swim', source_name: 'eFun' },
+      WHOLE_PICK,
+    ]);
+    expect(picks.map((p) => p.name)).toEqual([WHOLE_PICK.name]);
   });
 });
 

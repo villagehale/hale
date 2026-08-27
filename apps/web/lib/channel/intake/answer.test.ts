@@ -148,6 +148,36 @@ describe('intake answer · the emergency tripwire', () => {
     // And the machine turns that into the reviewed line (machine.test.ts asserts the send).
     expect(SAFETY_REPLY).toContain('811');
   });
+
+  it('answers a Toronto swim clock question with reviewed copy, no model', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been called');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      ...INPUT,
+      parentWords: 'When does Toronto swim registration open?',
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain('toronto.ca/OnlineReg');
+    expect(outcome.body).toMatch(/eFun is gone/i);
+    expect(outcome.body).toMatch(/not ActiveTO/i);
+    expect(outcome.body).toContain('36');
+    expect(outcome.body.toLowerCase()).toContain('no queue number');
+    expect(outcome.body.toLowerCase()).toContain('email');
+    expect(outcome.body.toLowerCase()).toContain('dropped');
+    expect(outcome.body.toLowerCase()).toContain('frozen');
+    expect(outcome.body.toLowerCase()).toMatch(/mash refresh/);
+    expect(outcome.body.toLowerCase()).toMatch(/search live/);
+    expect(outcome.body).toMatch(/7:00/);
+    expect(outcome.body).not.toContain(WATCH_OFFER_ASK);
+    expect(outcome.body.endsWith('?')).toBe(true);
+  });
 });
 
 describe('intake answer · what the model is shown', () => {

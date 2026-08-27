@@ -22,6 +22,7 @@ import {
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
 } from '~/lib/village/intros/reply';
+import { recMorningReply } from '~/lib/channel/rec-morning';
 import { type ApprovalSpine, resolveApproval } from './approval';
 import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import { checkupDraftedReply, healthDoneReply } from './copy';
@@ -495,6 +496,27 @@ export function sequenceReplyHandler(deps: SequenceReplyDeps): DeterministicHand
       );
       if (outcome.status !== 'recorded') return { claimed: false };
       return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+    },
+  };
+}
+
+/**
+ * Rec-morning clock and portal. Reviewed copy, no model.
+ *
+ * AFTER registration: "waitlisted #3" is M7's to file, and a FAQ matcher that ran
+ * first would steal the report. BEFORE name capture: that handler claims a bare
+ * word, which is broader than a rec-morning question.
+ *
+ * A watch ask is deliberately not claimed — watching is the coach's job. This
+ * handler answers which morning and which login, which is the GTM miss.
+ */
+export function recMorningHandler(): DeterministicHandler {
+  return {
+    name: 'rec_morning',
+    async handle(_database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const reply = recMorningReply(ctx.body, ctx.now);
+      if (reply === null) return { claimed: false };
+      return { claimed: true, outcome: 'rec_morning', reply };
     },
   };
 }

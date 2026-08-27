@@ -9,6 +9,7 @@ import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import {
   approvalHandler,
   healthReplyHandler,
+  recMorningHandler,
   sequenceReplyHandler,
   villageIntroHandler,
 } from './handlers';
@@ -423,13 +424,39 @@ describe('the village intro lane and the lanes behind it', () => {
   });
 });
 
+describe('recMorningHandler', () => {
+  it('answers a Toronto swim clock question with the reviewed portal, not ActiveTO', async () => {
+    const verdict = await recMorningHandler().handle(
+      DB,
+      turn('When does Toronto swim registration open?'),
+    );
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed) return;
+    expect(verdict.reply).toContain('toronto.ca/OnlineReg');
+    expect(verdict.reply).toMatch(/not ActiveTO/i);
+    expect(verdict.reply).toMatch(/eFun is gone/i);
+    expect(verdict.reply).toContain('36');
+    expect(verdict.reply.toLowerCase()).toContain('no queue number');
+    expect(verdict.reply.toLowerCase()).toContain('frozen');
+    expect(verdict.reply.toLowerCase()).toMatch(/mash refresh/);
+    expect(verdict.reply.toLowerCase()).toMatch(/search live/);
+  });
+
+  it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {
+    expect((await recMorningHandler().handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
+    expect(
+      (await recMorningHandler().handle(DB, turn('can you watch swim registration for Milo this fall?'))).claimed,
+    ).toBe(false);
+  });
+});
+
 /**
  * The order production actually ships. The tests above drive each handler directly, so
  * without this one the whole ordering argument could hold while `defaultHandlers`
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, founder_welcome, health, coach_plan, registration, name_capture', async () => {
+  it('is village_intro, approval, email_capture, founder_welcome, health, coach_plan, registration, rec_morning, name_capture', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -441,6 +468,7 @@ describe('the shipped order', () => {
       'health',
       'coach_plan',
       'registration',
+      'rec_morning',
       'name_capture',
     ]);
   });
@@ -457,6 +485,7 @@ describe('the shipped order', () => {
     const names = defaultHandlers().map((h) => h.name);
     expect(names.at(-1)).toBe('name_capture');
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('registration'));
+    expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('rec_morning'));
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('health'));
   });
 

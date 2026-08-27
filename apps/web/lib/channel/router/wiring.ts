@@ -47,6 +47,7 @@ import {
   healthReplyHandler,
   nameCaptureHandler,
   planReplyHandler,
+  recMorningHandler,
   sequenceReplyHandler,
   villageIntroHandler,
 } from './handlers';
@@ -262,6 +263,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     healthReplyHandler(defaultHealthReplyDeps()),
     planReplyHandler(defaultPlanReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps()),
+    recMorningHandler(),
     nameCaptureHandler(defaultNameCaptureDeps()),
   ];
 }
