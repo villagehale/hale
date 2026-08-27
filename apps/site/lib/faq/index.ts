@@ -56,7 +56,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'How often will Hale text me?',
     answer:
-      'A brief on Monday morning, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. It is quiet in between, and STOP works at any time.',
+      'A brief on Sunday, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. It is quiet in between, and STOP works at any time.',
   },
   {
     question: 'Can Hale answer parenting questions, or only scheduling ones?',

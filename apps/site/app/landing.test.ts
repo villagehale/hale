@@ -1,6 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { APP_URL } from '~/lib/app-url.js';
 import { impactNumbers } from '~/lib/landing/impact.js';
 import LandingPage from './[locale]/page.js';
 
@@ -225,12 +224,12 @@ describe('landing — no signup funnel; the only way in is texting Hale', () => 
     }
   });
 
-  it('keeps Sign in a single quiet link in the footer, pointed at the app', () => {
-    // v4 dropped the header Sign in; the footer's Resources column carries it.
-    expect([...html.matchAll(/\/sign-in"/g)]).toHaveLength(1);
-    for (const match of html.matchAll(/href="([^"]*\/sign-in)"/g)) {
-      expect(match[1]).toBe(`${APP_URL}/sign-in`);
-    }
+  it('offers no Sign in — a cold parent is not sent to the app', () => {
+    // Settings later, if needed, arrive as a magic link from SMS. The marketing
+    // chrome's only door is Text Hale. "Sign in tonight" in the thread is the
+    // municipal portal, not Hale's app.
+    expect(html).not.toContain('/sign-in');
+    expect(html).not.toContain('>Sign in<');
   });
 
   it('invents no urgency around the founding rate', () => {
@@ -319,10 +318,12 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text.toLowerCase()).toContain('receipts');
   });
 
-  it('describes the real cadence — a Monday brief and the open-day ladder, not pure silence', () => {
-    expect(text).toContain('A brief on Monday');
+  it('describes the real cadence — a Sunday week plan and the open-day ladder, not pure silence', () => {
+    expect(text).toContain('A brief on Sunday');
     expect(text).toContain('the night before');
     expect(text).not.toContain('Silence is the normal state');
+    expect(text).not.toContain('A brief on Monday');
+    expect(text).not.toContain('Monday morning');
   });
 
   it('names the calendar invite as the receipt an approval actually produces', () => {
@@ -587,15 +588,12 @@ describe('landing — the first-week contract, folded into How Hale works', () =
     expect(text).toContain('Then every week');
   });
 
-  it('never promises a Sunday plan — the weekly brief defaults to Monday morning', () => {
-    // packages/db: users.weekStartDay defaults to 1 and loop_prefs
-    // .weekly_plan_send_time to 08:00, and apps/web/lib/loop/send.ts sends on
-    // weeklyPlanWeekday(weekStartDay) — Monday 08:00 local, not Sunday.
-    expect(text).not.toContain('Sunday');
-    expect(text).not.toContain('Sunday plan');
-    // Positive control: the page DOES name the brief's day, so the absence above
-    // is the wrong day withheld rather than the cadence going unmentioned.
-    expect(text).toContain('A brief on Monday');
+  it('names the Sunday week plan — weekly_plan ships Sunday, not Monday morning', () => {
+    // VIL-218 / F11: the weekly_plan is the Sunday text. The old Monday-morning
+    // brief was retired; promising it on the landing is a cadence lie.
+    expect(text).toContain('A brief on Sunday');
+    expect(text).not.toContain('A brief on Monday');
+    expect(text).not.toContain('Monday morning');
   });
 
   it('claims no signup duration nobody measured', () => {

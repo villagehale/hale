@@ -4,7 +4,6 @@ import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator, isoToDate } from '~/i18n/server';
-import { APP_URL } from '~/lib/app-url';
 
 /**
  * The long-form shell for /terms and /privacy on the marketing domain
@@ -54,9 +53,6 @@ export function LegalLayout({
         <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
           <LogoMark size={28} />
           <Wordmark className="text-spruce" />
-        </a>
-        <a href={`${APP_URL}/sign-in`} className="py-1 text-sm font-medium text-slate-green">
-          {t('signIn')}
         </a>
       </header>
 

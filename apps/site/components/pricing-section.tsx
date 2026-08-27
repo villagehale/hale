@@ -21,7 +21,9 @@ const TIER_PANEL = {
  * is the one front door the site chrome offers — texting Hale — because there is no
  * other way in: these buttons pointed at the app's /onboarding wizard, which F14
  * deleted, so a pricing page's only action 308'd back to the homepage.
- * Names/prices/features render from @hale/types so they never drift.
+ * Names/prices render from @hale/types so they never drift. Free-tier
+ * features are marketing-only: SMS, rec dates, answers, founding rate —
+ * not the Village/Companion bullets the portal catalog still carries.
  */
 export function PricingSection({ locale = routing.defaultLocale }: { locale?: Locale }) {
   const t = getTranslator(locale, 'PricingSection');
@@ -30,6 +32,7 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
     plus: t('tierLines.plus'),
     family: t('tierLines.family'),
   };
+  const freeFeatures = t.raw('freeFeatures') as string[];
   const cta = chromeCta(locale);
   return (
     <section id="pricing" className="shell pb-20 lg:pb-28">
@@ -61,6 +64,7 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
         {PLAN_TIERS_ORDERED.map((tier, i) => {
           const plan = PLAN_DISPLAY[tier];
           const isFree = tier === 'free';
+          const features = isFree ? freeFeatures : plan.features;
           return (
             <li key={tier} className={`${TIER_PANEL[tier]} numbered-card`}>
               <div className="numbered-card-head">
@@ -84,7 +88,7 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
                 {tierLines[tier]}
               </p>
               <ul className="numbered-card-list">
-                {plan.features.map((feature) => (
+                {features.map((feature) => (
                   <li key={feature}>
                     <Check size={16} strokeWidth={2.5} aria-hidden="true" />
                     <span>{feature}</span>

@@ -59,7 +59,7 @@ describe('the FAQ this build serves', () => {
 
   it('scopes the never-texts-first promise to what CASL actually buys the reader', () => {
     // "Hale never texts you first" was flatly false three questions later, where
-    // the same page describes the Monday brief and the registration heads-up —
+    // the same page describes the Sunday week plan and the registration heads-up —
     // both real, both default-on (loop_prefs.catWeeklyPlan). The promise a parent
     // is owed is that Hale never COLD-texts: an unknown number is never messaged.
     const answers = FAQ.map((item) => item.answer).join(' ');
@@ -70,7 +70,9 @@ describe('the FAQ this build serves', () => {
     // Positive control: the proactive brief the old claim contradicted is still
     // described, so this passes because the claim was scoped, not because the
     // page went quiet about what Hale sends.
-    expect(answers).toContain('A brief on Monday morning');
+    expect(answers).toContain('A brief on Sunday');
+    expect(answers).not.toContain('A brief on Monday');
+    expect(answers).not.toContain('Monday morning');
   });
 
   it('reaches consent and privacy inside the top four questions', () => {

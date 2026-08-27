@@ -47,10 +47,13 @@ describe('PricingSection (landing pricing)', () => {
       // Visible prose only — the brand domain lives in an href, not in the argument.
       .replace(/<[^>]+>/g, ' ');
     expect(argument).not.toContain('village');
-    // Positive control: the word IS still on the page, in the feature lines this
-    // strips — so "absent" means the metaphor was retired, not that the whole
-    // section went missing.
-    expect(html).toContain('Your village feed');
+  });
+
+  it('sells the free tier as SMS, not Village or Companion', () => {
+    expect(html).toContain('Text Hale, rec dates watched, answers, and the founding rate.');
+    expect(html).not.toContain('see what families near you recommend');
+    expect(html).not.toContain('Your village feed');
+    expect(html).not.toContain('Companion:');
   });
 
   it('routes every tier to a LIVE action — no dead waitlist, checkout, or "Coming soon"', () => {

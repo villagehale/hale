@@ -68,6 +68,13 @@ describe('legal routes (unlinked until the flip)', () => {
       expect(html).not.toContain('Get started');
     }
   });
+
+  it('offers no Sign in — legal chrome does not send a parent to the app', () => {
+    for (const html of [termsHtml, privacyHtml]) {
+      expect(html).not.toContain('/sign-in');
+      expect(html).not.toContain('app.villagehale.com');
+    }
+  });
 });
 
 describe('legal pages (long-form shell)', () => {
