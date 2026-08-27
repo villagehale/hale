@@ -179,6 +179,7 @@ export const AUDIT_VERBS = [
   'caregiver_invite_expired',
   'caregiver_invite_superseded',
   'caregiver_invite_superseded_by_join',
+  'caregiver_invite_superseded_by_enrollment',
   'caregiver_invite_withdrawn',
   'caregiver_invite_refused',
   'caregiver_sms_inbound',
@@ -517,6 +518,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   caregiver_invite_superseded_by_join: {
     // Says only what the parent's own NUMBER_IN_USE refusal already says to them —
     // never which household the number joined, which may not be theirs (rule #1).
+    sentence: 'a caregiver invite closed because that number is already set up with Hale',
+    family: 'note',
+  },
+  caregiver_invite_superseded_by_enrollment: {
+    // Same disclosure bound as the join twin above: the number set itself up with
+    // Hale as a parent, and WHOSE household that is may not be this parent's to know.
     sentence: 'a caregiver invite closed because that number is already set up with Hale',
     family: 'note',
   },

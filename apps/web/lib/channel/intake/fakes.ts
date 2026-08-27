@@ -302,8 +302,13 @@ export interface FakeDb {
  *
  * It does NOT evaluate `where` clauses — it returns the whole table and lets the code
  * under test apply its own post-checks (which the real lookups already do as defense in
- * depth). The one exception is sms_intake_sessions, where "the OPEN session" is filtered
- * here, because that predicate is the machine's whole notion of an active conversation.
+ * depth). The one exception is sms_intake_sessions, whose SELECT predicate is evaluated
+ * in full here, because that predicate is the machine's whole notion of an active
+ * conversation — "the open session ON THIS NUMBER" — and its reader has no post-check to
+ * fall back on: the question is which row, and the where clause is the only thing that
+ * answers it. Returning another number's session would silently put two phones in one
+ * conversation, so every test that drives two numbers at once would be testing that
+ * fiction rather than the routing.
  */
 export function makeFakeDb(): FakeDb {
   const writes: RecordedWrite[] = [];
@@ -349,6 +354,16 @@ export function makeFakeDb(): FakeDb {
     // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
     chain.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
       Promise.resolve(rows).then(res, rej);
+    return chain;
+  };
+
+  /** A SELECT's rows. See the module note for why one table's predicate is evaluated. */
+  const selectFrom = (table: unknown) => {
+    const rows = rowsFor(table);
+    if (table !== schema.smsIntakeSessions) return thenable(rows);
+    const chain = thenable(rows);
+    chain.where = (expr: unknown) =>
+      thenable(rows.filter((row) => matchesWhere(table, expr, row)));
     return chain;
   };
 
@@ -440,7 +455,7 @@ export function makeFakeDb(): FakeDb {
   };
 
   const handle = {
-    select: () => ({ from: (table: unknown) => thenable(rowsFor(table)) }),
+    select: () => ({ from: selectFrom }),
     insert: (table: unknown) => {
       const chain = thenable([]);
       chain.values = (payload: Record<string, unknown> | Record<string, unknown>[]) => {
@@ -498,9 +513,30 @@ export function makeFakeDb(): FakeDb {
     },
   };
 
+  /**
+   * A transaction that ROLLS BACK. Without it the fake commits the writes of a
+   * transaction that threw, which is the one thing a test of "these rows exist together
+   * or not at all" must not be able to conclude wrongly: a write placed inside a
+   * transaction and a write placed just outside it would look identical the moment
+   * anything failed, and the difference between them is the whole point of putting it
+   * there (rule #6 — a crash may not leave half a record behind).
+   */
   const db = {
     ...handle,
-    transaction: async (cb: (tx: typeof handle) => Promise<unknown>) => cb(handle),
+    transaction: async (cb: (tx: typeof handle) => Promise<unknown>) => {
+      const snapshot = [...store].map(
+        ([table, rows]) => [table, rows.map((row) => ({ ...row }))] as const,
+      );
+      const committed = writes.length;
+      try {
+        return await cb(handle);
+      } catch (error) {
+        store.clear();
+        for (const [table, rows] of snapshot) store.set(table, rows);
+        writes.length = committed;
+        throw error;
+      }
+    },
   } as unknown as Database;
 
   return { db, writes, rows: (table) => store.get(table) ?? [] };
