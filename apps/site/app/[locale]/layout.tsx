@@ -7,6 +7,7 @@ import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { GoogleAdsTag } from '~/lib/analytics/google-ads-tag';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { SITE_URL } from '~/lib/app-url';
 import { NO_FLASH_SCRIPT, THEME_COLOR } from '~/lib/site/theme';
@@ -157,6 +158,7 @@ export default async function RootLayout({
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the pre-paint theme
             script must run before hydration, or the page flashes the wrong theme. */}
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
+        <GoogleAdsTag />
       </head>
       <body>
         <a href="#main" className="skip-link">

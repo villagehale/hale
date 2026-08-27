@@ -35,10 +35,12 @@ import type { Locale } from '~/i18n/routing';
  * DPO and EU/UK representatives. PIPEDA vocabulary replaces it, and the Law 25
  * automated-decision statement (s.12.1) is stated plainly in the AI section.
  *
- * No cookie section, and as of 2026-08-21 that is a FACT about the code rather than a
- * gap: the marketing site's posthog.init runs on `persistence: 'memory'`, so it writes
- * nothing to a visitor's device and there is nothing to describe. The pairing is gated
- * — apps/site/lib/analytics/posthog-config.test.ts fails if either half moves alone.
+ * 2026-08-27: Google Ads gtag (AW-18412881223) now loads in the document head of
+ * every public marketing page so advertising landing-page visits can be measured.
+ * That may set advertising cookies on villagehale.com; the product app still does
+ * not load it. PostHog on the marketing site remains memory-only. The pairing is
+ * gated — apps/site/lib/analytics/google-ads.test.ts fails if the tag and this
+ * disclosure move alone; posthog-config.test.ts still gates the PostHog half.
  *
  * Still left for counsel rather than invented: a stated retention period, and a postal
  * address for the Privacy Officer. Counsel should read the diff.
@@ -93,7 +95,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     <LegalLayout
       locale={locale}
       title="Privacy Policy"
-      lastUpdatedIso="2026-08-20"
+      lastUpdatedIso="2026-08-27"
       intro={
         <p>
           Hale helps families across every stage of childhood, and that means we handle some of the
@@ -195,8 +197,10 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           <a href="#sub-processors" className="link">
             Sub-processors
           </a>
-          . We do not buy personal information about your family from data brokers, and we do not
-          collect it from social media or other public sources.
+          . Visitors to the marketing site also have that visit measured by Google Ads so we can
+          tell whether an advertisement led them there. That measurement does not include family
+          data. We do not buy personal information about your family from data brokers, and we do
+          not collect it from social media or other public sources.
         </p>
       </LegalSectionBlock>
 
@@ -228,6 +232,11 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
               Terms of Service
             </a>
             , and protecting a child or another person from harm.
+          </li>
+          <li>
+            <strong>Measuring our advertisements.</strong> Understanding whether an ad led a visitor
+            to the marketing site. This is about the advertisement and the visit, not about your
+            family.
           </li>
         </ul>
         <p>
@@ -419,7 +428,16 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             conversations — is <strong>masked</strong> before the recording leaves your browser.
             Error tracking captures unhandled errors (a stack trace, not your data) so we can fix
             them. Autocapture stays off, and we identify you by an opaque account id, never your name
-            or email. Processed in the United States.
+            or email. Processed in the United States. On the marketing site, PostHog is configured
+            to write nothing to your device.
+          </li>
+          <li>
+            <strong>Google Ads</strong> — advertising measurement on the marketing site
+            (villagehale.com) only. Google&rsquo;s gtag (AW-18412881223) records that a visitor
+            reached a landing page after seeing an advertisement. It may set advertising cookies on
+            that visit. It does not run on the product app, does not receive family data, message
+            content, or children&rsquo;s information, and Hale still shows no advertising. Processed
+            in the United States.
           </li>
           <li>
             <strong>Resend</strong> — delivery of transactional and weekly-brief emails (United
@@ -442,11 +460,11 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
         </ul>
         <p>
           To be clear about where data travels: your primary data store is in Canada, while some
-          processing — AI, application hosting, email delivery, and observability — happens in the
-          United States. We ask for your consent to cross-border processing, and we put appropriate
-          contractual safeguards in place with these providers. Because some processing occurs
-          outside Quebec and Canada, that data may be accessible to authorities in those
-          jurisdictions under their laws.
+          processing — AI, application hosting, email delivery, observability, and advertising
+          measurement on the marketing site — happens in the United States. We ask for your consent
+          to cross-border processing, and we put appropriate contractual safeguards in place with
+          these providers. Because some processing occurs outside Quebec and Canada, that data may
+          be accessible to authorities in those jurisdictions under their laws.
         </p>
       </LegalSectionBlock>
 
@@ -601,6 +619,12 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
           <li>
             <strong>Decline to tell us something.</strong> Optional fields are optional. Some of
             Hale gets less useful without them, and none of Hale stops working.
+          </li>
+          <li>
+            <strong>Advertising cookies on the marketing site.</strong> villagehale.com loads Google
+            Ads so we can measure landing-page visits. It may set advertising cookies on that visit.
+            Blocking third-party scripts in your browser stops that measurement and does not affect
+            Hale over text. The product app does not load this tag.
           </li>
         </ul>
       </LegalSectionBlock>
