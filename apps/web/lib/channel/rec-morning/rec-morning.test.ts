@@ -132,6 +132,7 @@ describe('rec-morning SMS · locked first-hello strings', () => {
     expect(YMCA_FOLLOW).toBe(
       'Search Otter, Seal, Dolphin, Star, not Ultra. Membership is still needed for a lot of group classes, and kids 9 and under need an adult 16+ on deck.',
     );
+    expect(YMCA_FOLLOW.toLowerCase()).not.toContain('today');
     expect(reply('YMCA otter or Ultra?')).toBe(YMCA_FOLLOW);
     expect(reply('does YMCA need membership?')).toBe(YMCA_FOLLOW);
     expect(reply('when does YMCA swim open?')).not.toBe(YMCA_FOLLOW);
