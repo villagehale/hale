@@ -63,11 +63,11 @@ function platePage(plate) {
 
     <h1>The family assistant<br>you&nbsp;text.</h1>
     <p class="subhead">It takes the family admin off your&nbsp;plate.</p>
-    <p class="body">Toronto rec, swim and camp registration — caught before it fills.<br>Your week, planned. Nothing without your say-so.</p>
+    <p class="body">${plate.introLine ?? 'Toronto rec, swim and camp registration — caught before it fills.<br>Your week, planned. Nothing without your say-so.'}</p>
 
     <div class="card">
       <div class="eyebrow">For ${plate.band} families</div>
-      <div class="cardtitle">Gone by 7:02 a.m.? Not&nbsp;anymore.</div>
+      <div class="cardtitle">${plate.cardTitle ?? 'Gone by 7:02 a.m.? Not&nbsp;anymore.'}</div>
       <p class="cardbody">${plate.localLine}</p>
     </div>
 

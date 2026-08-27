@@ -16,8 +16,15 @@ export const PLATES = [
     code: 'earlyon-markham',
     outName: 'earlyon-markham-poster',
     band: 'Markham',
+    // Facts from markham.ca (Registration and General Information): e-reg opens
+    // 6:30 AM; "2026 Fall Programs, Swim Lessons and Winter Break Camps —
+    // Register starting Aug. 11 at 6:30 AM". Winter 2027 dates unpublished, so
+    // the plate promises watching, never a date we don't have.
+    introLine:
+      'Markham rec, swim and camp registration — caught before it fills.<br>Your week, planned. Nothing without your say-so.',
+    cardTitle: 'Gone by 6:32 a.m.? Not&nbsp;anymore.',
     localLine:
-      'Markham families get pulled into Toronto rec, swim and camp mornings. Those windows open Sept 15 and 16 at 7 a.m. Hale watches the dates that matter to your family — and texts you before they open.',
+      "Markham's own rec and swim registration opens at 6:30 a.m. — this fall's window went live Aug. 11, and the winter dates come next. Hale watches the dates that matter to your family — and texts you before they open.",
     qrValue: 'https://www.villagehale.com/?utm_source=earlyon-markham&utm_medium=flyer',
     qrEcc: 'H',
     scan: { title: 'Scan to start', hint: 'Point your phone camera at the code — it opens villagehale.com.', site: 'villagehale.com' },
