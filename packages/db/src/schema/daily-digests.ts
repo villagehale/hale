@@ -57,7 +57,7 @@ export interface DigestPerChildBreakdown {
 
 /**
  * One per-family-per-day digest summary. NOTHING WRITES THIS TABLE ANY MORE: the
- * daily brief was retired in favour of the weekly Monday brief + event-driven
+ * daily brief was retired in favour of the weekly Sunday brief + event-driven
  * interrupts, and its writers were deleted. The table and its historical rows are
  * retained deliberately (hard rule #9 — migrations are additive), and the Messages
  * inbox still READS them so a parent keeps their old briefs. Drop it in a later

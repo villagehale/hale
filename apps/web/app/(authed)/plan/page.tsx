@@ -44,7 +44,7 @@ export default async function PlanPage() {
     loadViewerProfile(),
   ]);
   const { routine } = village;
-  const weekStartDay = profile?.weekStartDay ?? 1;
+  const weekStartDay = profile?.weekStartDay ?? 0;
 
   // The composed "week ahead" from B1's persisted artifact — the SAME week the Sunday
   // text sends, so the two never disagree. The composer keys every row on Monday, so
