@@ -19,9 +19,9 @@ export const PLATES = [
     band: 'Oakville',
     introLine:
       'Rec, swim and camp registration — caught before it fills.<br>Your week, planned. Nothing without your say-so.',
-    cardTitle: 'Rec mornings, watched.',
+    cardTitle: 'Leftover spots, watched.',
     localLine:
-      'Hale watches the swim, camp, and rec dates that matter to Oakville families, and texts you before they open.',
+      'Oakville fall opened Aug 11. Hale watches leftover swim, camp, and rec spots, and texts you when the next date is posted.',
     qrValue: 'https://www.villagehale.com/?utm_source=oakville-outdoor-board&utm_medium=flyer',
     qrEcc: 'H',
     scan: { title: 'Scan to start', hint: 'Point your phone camera at the code — it opens villagehale.com.', site: 'villagehale.com' },
