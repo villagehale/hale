@@ -11,8 +11,9 @@ export type RecMorningTopic =
   | 'toronto_rec'
   | 'toronto_waitlist'
   | 'toronto_wishlist'
-  | 'toronto_portal'
+  | 'toronto_efun'
   | 'ymca_gta_swim'
+  | 'ymca_follow'
   | 'brampton_swim'
   | 'two_parents'
   | 'jack_of_sports';
@@ -29,11 +30,16 @@ function isNotOurs(text: string): boolean {
   return false;
 }
 
+function isYmca(text: string): boolean {
+  return /\bymca\b/.test(text) || /\bmy y\b/.test(text) || /\bmyy\.ymcagta\b/.test(text);
+}
+
 /**
  * The rec-morning topic this text is asking about, or null when it is not one.
  *
- * First match wins, most specific first: Jack of Sports before "swim", YMCA before
- * Toronto swim, waitlist/wishlist/portal before the general rec clock.
+ * First match wins, most specific first: Jack of Sports before "swim", YMCA follow
+ * before YMCA clock, waitlist/wishlist/eFun before the general rec clock. ActiveTO
+ * is routed to the first rec answer so the reply never names it.
  */
 export function matchRecMorning(body: string): RecMorningTopic | null {
   const text = fold(body);
@@ -48,7 +54,10 @@ export function matchRecMorning(body: string): RecMorningTopic | null {
     return 'two_parents';
   }
 
-  if (/\bymca\b/.test(text) || /\bmy y\b/.test(text) || /\bmyy\.ymcagta\b/.test(text)) {
+  if (isYmca(text)) {
+    if (/\b(otter|seal|dolphin|star|ultra|membership|levels?|on deck|9 and under)\b/.test(text)) {
+      return 'ymca_follow';
+    }
     return 'ymca_gta_swim';
   }
 
@@ -56,9 +65,7 @@ export function matchRecMorning(body: string): RecMorningTopic | null {
     return 'brampton_swim';
   }
 
-  if (/\bwaitlists?\b/.test(text) && /\b(toronto|rec|swim)\b/.test(text)) {
-    return 'toronto_waitlist';
-  }
+  if (/\bwaitlists?\b/.test(text)) return 'toronto_waitlist';
 
   if (
     /\bwish\s*lists?\b/.test(text) ||
@@ -67,9 +74,9 @@ export function matchRecMorning(body: string): RecMorningTopic | null {
     return 'toronto_wishlist';
   }
 
-  if (/\befun\b/.test(text) || /\bactiveto\b/.test(text) || /\bfitnessto\b/.test(text)) {
-    return 'toronto_portal';
-  }
+  if (/\befun\b/.test(text)) return 'toronto_efun';
+
+  if (/\bactiveto\b/.test(text) || /\bfitnessto\b/.test(text)) return 'toronto_rec';
 
   if (/\btoronto\b/.test(text) && /\bswim\b/.test(text)) return 'toronto_swim';
 

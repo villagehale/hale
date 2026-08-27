@@ -17,9 +17,9 @@ describe('extractStateClaims — the audit sentences', () => {
   });
 
   it('reads the Aug 12 activity promise as an activity_followup claim', () => {
-    expect(
-      kinds("I'm checking details on 5 finds nearby - I'll text you the good ones."),
-    ).toEqual(['activity_followup']);
+    expect(kinds("I'm checking details on 5 finds nearby - I'll text you the good ones.")).toEqual([
+      'activity_followup',
+    ]);
   });
 
   it('reads the Aug 12 behaviour promise as self-referential', () => {
@@ -80,7 +80,11 @@ describe('extractStateClaims — the false positives that would break production
   });
 
   it('leaves an absence assertion alone', () => {
-    expect(kinds("Drafted - reply YES and it goes on your week. Nothing's booked until you call the clinic.")).toEqual([]);
+    expect(
+      kinds(
+        "Drafted - reply YES and it goes on your week. Nothing's booked until you call the clinic.",
+      ),
+    ).toEqual([]);
   });
 
   it.each([
@@ -90,7 +94,7 @@ describe('extractStateClaims — the false positives that would break production
       'caregiver accepted',
     ],
     ["I've already texted them - I'll let you know as soon as they answer.", 'caregiver pending'],
-    ['Approved - book a checkup. I\'ll let you know once it\'s done.', 'approval receipt'],
+    ["Approved - book a checkup. I'll let you know once it's done.", 'approval receipt'],
     ["Thanks - I'll use that from now on.", 'name captured'],
     [
       "I'm still double-checking that one myself - nothing for you to do yet, I'll come back to you on it.",
@@ -98,7 +102,7 @@ describe('extractStateClaims — the false positives that would break production
     ],
     ["Sorry - that one filled. Noted, and I'll flag the next Halton Hills window early.", 'missed'],
     [
-      'Halton Hills Fall 2026 recreation registration opens Sep 1, 7:00 a.m. for Noah. I\'ll send your plan the evening before.',
+      "Halton Hills Fall 2026 recreation registration opens Sep 1, 7:00 a.m. for Noah. I'll send your plan the evening before.",
       'heads_up leg',
     ],
     [
@@ -106,7 +110,7 @@ describe('extractStateClaims — the false positives that would break production
       'battle_plan leg',
     ],
     ['Halton Hills Fall 2026 opens 7:00 a.m. Your link: https://x.test/a', 'go leg'],
-    ["Kids' names and ages, and I'll get to work.", 'cold start'],
+    ["Kids' names, ages, and your postal code and I'll look up what's coming.", 'cold start'],
     [
       "I'm still learning what's on around you - I'll have a pick for you soon.",
       'radar still learning',

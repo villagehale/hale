@@ -8,8 +8,12 @@ export {
   YMCA_SWIM_OPEN,
 } from './facts';
 export {
+  EFUN_GONE,
   REC_MORNING_COPY,
-  TORONTO_FIRST_CLASS,
+  TORONTO_FIRST_REC,
+  TORONTO_FOLLOW,
+  YMCA_FIRST,
+  YMCA_FOLLOW,
   recMorningBody,
   recMorningIntakeReply,
   recMorningReply,

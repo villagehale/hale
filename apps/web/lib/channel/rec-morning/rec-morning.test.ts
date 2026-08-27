@@ -3,10 +3,14 @@ import { COLD_START_ASK, WATCH_OFFER_ASK } from '~/lib/channel/intake/copy';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import {
   BRAMPTON_WAITLIST_HOURS,
+  EFUN_GONE,
   JACK_OF_SPORTS_PAGE,
-  TORONTO_FIRST_CLASS,
+  TORONTO_FIRST_REC,
+  TORONTO_FOLLOW,
   TORONTO_REC_PORTAL,
   TORONTO_WAITLIST_HOURS,
+  YMCA_FIRST,
+  YMCA_FOLLOW,
   YMCA_PORTAL,
   matchRecMorning,
   recMorningIntakeReply,
@@ -17,16 +21,7 @@ import {
  * pull the model composer (and @hale/agent) into a copy test. */
 const INTAKE_MAX_REPLY_CHARS = 300;
 
-/**
- * Rec-morning SMS — the facts a first-time texter is owed, pinned.
- *
- * City pages already carry these (apps/site/lib/registration/guides.ts). This file is
- * the live SMS path: a parent who texts Hale this morning must get clock and portal
- * right in-thread, with no model in the loop to invent ActiveTO or eFun.
- */
-
 const THIS_MORNING = new Date('2026-08-27T12:30:00-04:00');
-const NOT_TODAY = new Date('2026-08-26T12:00:00-04:00');
 
 function reply(text: string, now: Date = THIS_MORNING): string {
   const body = recMorningReply(text, now);
@@ -40,50 +35,30 @@ function intake(parentWords: string, pendingAsk = WATCH_OFFER_ASK): string {
   return body;
 }
 
-function neverSendsToEfun(body: string): void {
-  expect(body).toMatch(/eFun is gone/i);
-  expect(body).not.toMatch(/efun\.(com|ca)/i);
-  expect(body.toLowerCase()).not.toMatch(/\bon efun\b/);
-  expect(body.toLowerCase()).not.toMatch(/\buse efun\b/);
+function firstAnswerIsClean(body: string): void {
+  expect(body.toLowerCase()).not.toContain('activeto');
+  expect(body.toLowerCase()).not.toContain('unofficial');
+  expect(body).not.toMatch(/https?:\/\//i);
+  expect(body.toLowerCase()).not.toMatch(/\bwww\./);
+  expect(body).not.toMatch(/I'm an AI/i);
+  expect(body.toLowerCase()).not.toMatch(/\bapp\b/);
+  expect(body.toLowerCase()).not.toContain('jack of sports');
 }
 
-function neverSendsToActiveTo(body: string): void {
-  expect(body).toMatch(/not ActiveTO/i);
-  expect(body.toLowerCase()).not.toMatch(/activeto\.(com|ca|app)/);
-  expect(body.toLowerCase()).not.toMatch(/\bon activeto\b/);
-  expect(body.toLowerCase()).not.toMatch(/\buse activeto\b/);
-}
-
-/** GTM first-class facts — pinned on the first-time Toronto rec/swim path, not optional. */
-function pinsFirstClassTorontoFacts(body: string): void {
-  expect(body).toContain(TORONTO_FIRST_CLASS);
-  expect(body).toContain(String(TORONTO_WAITLIST_HOURS));
-  expect(body.toLowerCase()).toContain('hours');
-  expect(body.toLowerCase()).toContain('no queue number');
-  expect(body.toLowerCase()).toContain('email');
-  expect(body.toLowerCase()).toContain('dropped');
-  expect(body.toLowerCase()).toContain('frozen');
-  expect(body.toLowerCase()).toMatch(/\bwait\b/);
-  expect(body.toLowerCase()).toMatch(/don't mash refresh|do not mash refresh|mash refresh/);
-  expect(body).toMatch(/7:00/);
-  expect(body.toLowerCase()).toMatch(/search live/);
-  expect(body).toContain(TORONTO_REC_PORTAL);
-  neverSendsToEfun(body);
-  neverSendsToActiveTo(body);
-}
-
-describe('rec-morning matcher · first-time founding-family texts', () => {
-  it('reads Toronto swim, rec, waitlist, wishlist, and the retired portals', () => {
+describe('rec-morning matcher', () => {
+  it('reads Toronto swim, rec, waitlist, wishlist, and eFun', () => {
     expect(matchRecMorning('when does Toronto swim registration open?')).toBe('toronto_swim');
     expect(matchRecMorning('Toronto fall rec registration dates?')).toBe('toronto_rec');
     expect(matchRecMorning('how long is the Toronto waitlist?')).toBe('toronto_waitlist');
     expect(matchRecMorning('the wishlist looks frozen is that broken')).toBe('toronto_wishlist');
-    expect(matchRecMorning('do I still use eFun for rec?')).toBe('toronto_portal');
-    expect(matchRecMorning('is the portal ActiveTO?')).toBe('toronto_portal');
+    expect(matchRecMorning('do I still use eFun for rec?')).toBe('toronto_efun');
+    expect(matchRecMorning('is the portal ActiveTO?')).toBe('toronto_rec');
   });
 
-  it('reads YMCA this morning, Brampton swim, two phones, and Jack of Sports', () => {
+  it('reads YMCA clock vs levels, Brampton, two phones, and Jack of Sports', () => {
     expect(matchRecMorning('when does YMCA swim open?')).toBe('ymca_gta_swim');
+    expect(matchRecMorning('YMCA otter or Ultra?')).toBe('ymca_follow');
+    expect(matchRecMorning('does YMCA need membership?')).toBe('ymca_follow');
     expect(matchRecMorning('Brampton learn to swim - is it Aug 24?')).toBe('brampton_swim');
     expect(matchRecMorning('do we both text from one phone or two')).toBe('two_parents');
     expect(matchRecMorning('what about Jack of Sports if the city lane is gone')).toBe(
@@ -100,130 +75,70 @@ describe('rec-morning matcher · first-time founding-family texts', () => {
   });
 });
 
-describe('rec-morning SMS · first-time path pins GTM facts (not optional)', () => {
-  const firstTimeTexts = [
-    'When does Toronto swim registration open?',
-    'when is Toronto fall recreation registration?',
-  ];
-
-  it('puts 36h waitlist / no queue, frozen wishlist, and eFun-is-gone on Toronto swim AND rec', () => {
-    for (const text of firstTimeTexts) {
-      pinsFirstClassTorontoFacts(reply(text));
-      pinsFirstClassTorontoFacts(intake(text));
-      pinsFirstClassTorontoFacts(intake(text, COLD_START_ASK));
-    }
-  });
-
-  it('gives YMCA this morning My Y at 9:00 a.m. and never ActiveTO or eFun', () => {
-    const body = reply('when does YMCA GTA swim registration open?');
-    expect(body.toLowerCase()).toContain('today');
-    expect(body).toContain('Aug 27');
-    expect(body).toMatch(/9:00 a\.m\./);
-    expect(body).toContain(YMCA_PORTAL);
-    expect(body.toLowerCase()).not.toMatch(/activeto/i);
-    expect(body.toLowerCase()).not.toMatch(/efun\.(com|ca)/i);
-    expect(body.toLowerCase()).not.toMatch(/\bon efun\b/);
-    expect(body.toLowerCase()).not.toMatch(/\buse efun\b/);
-
-    const signed = intake('when does YMCA GTA swim registration open?');
-    expect(signed.toLowerCase()).toContain('today');
-    expect(signed).toContain(YMCA_PORTAL);
-    expect(signed.toLowerCase()).not.toMatch(/activeto/i);
-    expect(signed.length).toBeLessThanOrEqual(INTAKE_MAX_REPLY_CHARS);
-  });
-
-  it('never sends anyone to eFun, including a parent who asked for it', () => {
-    const body = reply('do I log into eFun for Toronto rec?');
-    neverSendsToEfun(body);
-    expect(body).toContain(TORONTO_REC_PORTAL);
-    expect(body.toLowerCase()).not.toMatch(/efun\.(com|ca)/);
-  });
-});
-
-describe('rec-morning SMS · Toronto clock and portal', () => {
-  it('gives Toronto swim the same 7 a.m. as rec, by centre district, not home address', () => {
-    const body = reply('When does Toronto swim registration open?');
-    expect(body.toLowerCase()).toContain('same 7 a.m.');
-    expect(body.toLowerCase()).toContain('district');
-    expect(body.toLowerCase()).toContain('not address');
-    expect(body.toLowerCase()).not.toMatch(/home address|your street|your postal/);
-    expect(body).toContain('Sept 15');
-    expect(body).toContain(TORONTO_REC_PORTAL);
-    pinsFirstClassTorontoFacts(body);
-    expect(body.toLowerCase()).not.toMatch(/\bred cross\b/);
-    expect(body.toLowerCase()).not.toMatch(/\botter\b/);
-  });
-
-  it('gives Toronto rec the district clocks and Early Local as catchment-only', () => {
-    const body = reply('when is Toronto fall recreation registration?');
-    expect(body).toContain('Sept 9');
-    expect(body.toLowerCase()).toContain('catchment');
-    expect(body).toContain('Sept 15');
-    expect(body.toLowerCase()).toContain('district');
-    expect(body.toLowerCase()).toContain('not address');
-    expect(body).toContain(TORONTO_REC_PORTAL);
-    pinsFirstClassTorontoFacts(body);
-  });
-});
-
-describe('rec-morning SMS · waitlist, wishlist, and portal when asked', () => {
-  it('says Toronto waitlist is 36 hours, email invitation, no queue number', () => {
-    const body = reply('how long is the Toronto rec waitlist? is there a queue number?');
-    expect(body).toContain(String(TORONTO_WAITLIST_HOURS));
-    expect(body.toLowerCase()).toContain('hours');
-    expect(body.toLowerCase()).toContain('email');
-    expect(body.toLowerCase()).toContain('invitation');
-    expect(body.toLowerCase()).toContain('dropped');
-    expect(body.toLowerCase()).toMatch(
-      /no queue number|not a queue number|will not show your queue/,
+describe('rec-morning SMS · locked first-hello strings', () => {
+  it('sends the locked Toronto first-rec line for swim AND rec', () => {
+    expect(TORONTO_FIRST_REC).toBe(
+      "Toronto rec and swim open 7:00 a.m. on your district morning: Sept 9 if you're catchment-only, Sept 15 or 16 otherwise. Sign in at toronto.ca/OnlineReg with the centre district, not your home address.",
     );
-    expect(body.toLowerCase()).not.toContain('24 hour');
+    expect(reply('When does Toronto swim registration open?')).toBe(TORONTO_FIRST_REC);
+    expect(reply('when is Toronto fall recreation registration?')).toBe(TORONTO_FIRST_REC);
+    expect(TORONTO_FIRST_REC).toContain(TORONTO_REC_PORTAL);
+    firstAnswerIsClean(TORONTO_FIRST_REC);
+    expect(TORONTO_FIRST_REC.toLowerCase()).not.toContain('efun');
+    expect(intake('When does Toronto swim registration open?')).toBe(
+      `${TORONTO_FIRST_REC} Still want me watching?`,
+    );
+    expect(intake('when is Toronto fall recreation registration?', COLD_START_ASK)).toBe(
+      `${TORONTO_FIRST_REC} ${COLD_START_ASK}`,
+    );
   });
 
-  it('says the wish list can look frozen - wait, do not mash refresh or search live at 7:00', () => {
-    const body = reply('the wishlist looks frozen, should I keep refreshing?');
-    expect(body.toLowerCase()).toContain('frozen');
-    expect(body.toLowerCase()).toMatch(/\bwait\b/);
-    expect(body.toLowerCase()).toMatch(/mash refresh|don't mash|do not mash|don't keep refresh/);
-    expect(body).toMatch(/7:00/);
-    expect(body.toLowerCase()).toMatch(/search live/);
+  it('never names ActiveTO on the first Toronto answer, even if they asked for it', () => {
+    const body = reply('is the portal ActiveTO?');
+    expect(body).toBe(TORONTO_FIRST_REC);
+    firstAnswerIsClean(body);
   });
 
-  it('says eFun is gone and rec is toronto.ca/OnlineReg - never a destination of eFun', () => {
-    const body = reply('do I log into eFun for Toronto rec?');
-    neverSendsToEfun(body);
-    expect(body).toContain(TORONTO_REC_PORTAL);
-    neverSendsToActiveTo(body);
-    expect(body.toLowerCase()).toContain('fitnessto');
+  it('names eFun only if they said eFun', () => {
+    expect(EFUN_GONE).toBe('eFun is gone. Rec is toronto.ca/OnlineReg now.');
+    expect(reply('do I log into eFun for Toronto rec?')).toBe(EFUN_GONE);
+    expect(reply('When does Toronto swim registration open?').toLowerCase()).not.toContain('efun');
+    expect(reply('is the portal ActiveTO?').toLowerCase()).not.toContain('efun');
+  });
+
+  it('sends the locked follow only when they need waitlist, wishlist, or two phones', () => {
+    expect(TORONTO_FOLLOW).toBe(
+      "Wishlist can look frozen, so wait, don't mash refresh. Waitlist email takes about 36 hours and there's no queue number. Two parents means two phones.",
+    );
+    expect(reply('how long is the Toronto rec waitlist? is there a queue number?')).toBe(
+      TORONTO_FOLLOW,
+    );
+    expect(reply('the wishlist looks frozen, should I keep refreshing?')).toBe(TORONTO_FOLLOW);
+    expect(reply('can both parents use one login?')).toBe(TORONTO_FOLLOW);
+    expect(TORONTO_FOLLOW).toContain(String(TORONTO_WAITLIST_HOURS));
+    expect(reply('When does Toronto swim registration open?')).not.toBe(TORONTO_FOLLOW);
+    expect(TORONTO_FOLLOW.toLowerCase()).not.toContain('activeto');
+    expect(TORONTO_FOLLOW.toLowerCase()).not.toContain('unofficial');
+    expect(TORONTO_FOLLOW.toLowerCase()).not.toContain('efun');
+  });
+
+  it('sends the locked YMCA first answer, and the follow only for levels or membership', () => {
+    expect(YMCA_FIRST).toBe('YMCA GTA swim is Aug 27 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.');
+    expect(reply('when does YMCA GTA swim registration open?')).toBe(YMCA_FIRST);
+    expect(YMCA_FIRST).toContain(YMCA_PORTAL);
+    firstAnswerIsClean(YMCA_FIRST);
+    expect(YMCA_FIRST.toLowerCase()).not.toContain('efun');
+    expect(YMCA_FOLLOW).toBe(
+      'Search Otter, Seal, Dolphin, Star, not Ultra. Membership is still needed for a lot of group classes, and kids 9 and under need an adult 16+ on deck.',
+    );
+    expect(reply('YMCA otter or Ultra?')).toBe(YMCA_FOLLOW);
+    expect(reply('does YMCA need membership?')).toBe(YMCA_FOLLOW);
+    expect(reply('when does YMCA swim open?')).not.toBe(YMCA_FOLLOW);
+    firstAnswerIsClean(YMCA_FOLLOW);
   });
 });
 
-describe('rec-morning SMS · YMCA this morning, Brampton, two phones, Jack of Sports', () => {
-  it('says YMCA Greater Toronto swim is today Aug 27 at 9:00 a.m. on My Y', () => {
-    const body = reply('when does YMCA GTA swim registration open?');
-    expect(body.toLowerCase()).toContain('today');
-    expect(body).toContain('Aug 27');
-    expect(body).toMatch(/9:00 a\.m\./);
-    expect(body).toContain(YMCA_PORTAL);
-    expect(body.toLowerCase()).toContain('members and non-residents');
-    expect(body.toLowerCase()).toContain('membership');
-    expect(body).toContain('Otter');
-    expect(body).toContain('Seal');
-    expect(body).toContain('Dolphin');
-    expect(body).toContain('Star');
-    expect(body.toLowerCase()).toMatch(/not ultra/);
-    expect(body).toContain('9 and under');
-    expect(body.toLowerCase()).toContain('unofficial');
-    expect(body.toLowerCase()).not.toMatch(/activeto/i);
-  });
-
-  it('does not say today when it is not Aug 27', () => {
-    const body = reply('when does YMCA swim open?', NOT_TODAY);
-    expect(body.toLowerCase()).not.toContain('today');
-    expect(body).toContain('Aug 27');
-    expect(body).toMatch(/9:00 a\.m\./);
-  });
-
+describe('rec-morning SMS · Brampton and Jack of Sports when asked', () => {
   it('says Brampton Learn to Swim is Sept 9 7 a.m. residents, 24-hour waitlist, in person', () => {
     const body = reply('is Brampton swim Aug 24?');
     expect(body).toContain('Sept 9');
@@ -232,22 +147,24 @@ describe('rec-morning SMS · YMCA this morning, Brampton, two phones, Jack of Sp
     expect(body).toContain(String(BRAMPTON_WAITLIST_HOURS));
     expect(body.toLowerCase()).toContain('in person');
     expect(body).toContain(String(TORONTO_WAITLIST_HOURS));
+    expect(body.toLowerCase()).not.toContain('activeto');
+    expect(body.toLowerCase()).not.toContain('efun');
+    expect(body.toLowerCase()).not.toContain('unofficial');
   });
 
-  it('keeps two-parent threads unmerged - two phones, two logins', () => {
-    const body = reply('can both parents use one login?');
-    expect(body.toLowerCase()).toContain('two phones');
-    expect(body.toLowerCase()).toContain('two logins');
-    expect(body.toLowerCase()).toMatch(/does not merge|doesn't merge|not merge/);
-  });
-
-  it('points Jack of Sports at the official page and invents no hours or portal', () => {
+  it('points Jack of Sports only when they ask, with no hours, app URL, or unofficial', () => {
     const body = reply('Jack of Sports if city swim is gone?');
     expect(body.toLowerCase()).toContain('backup');
     expect(body).toContain(JACK_OF_SPORTS_PAGE);
-    expect(body.toLowerCase()).toContain('unofficial');
+    expect(body.toLowerCase()).not.toContain('unofficial');
     expect(body).not.toMatch(/\d{1,2}:\d{2}/);
     expect(body).not.toMatch(/https?:\/\//i);
+    expect(body.toLowerCase()).not.toContain('activeto');
+    expect(body.toLowerCase()).not.toContain('efun');
+    expect(reply('When does Toronto swim registration open?').toLowerCase()).not.toContain(
+      'jack of sports',
+    );
+    expect(reply('when does YMCA swim open?').toLowerCase()).not.toContain('jack of sports');
   });
 });
 
@@ -260,6 +177,7 @@ describe('rec-morning SMS · budgets and the intake return', () => {
       'the wishlist looks frozen, should I keep refreshing?',
       'do I log into eFun for Toronto rec?',
       'when does YMCA GTA swim registration open?',
+      'YMCA otter or Ultra?',
       'is Brampton swim Aug 24?',
       'can both parents use one login?',
       'Jack of Sports if city swim is gone?',
@@ -283,28 +201,23 @@ describe('rec-morning SMS · budgets and the intake return', () => {
       'the wishlist looks frozen, should I keep refreshing?',
       'do I log into eFun for Toronto rec?',
       'when does YMCA GTA swim registration open?',
+      'YMCA otter or Ultra?',
       'is Brampton swim Aug 24?',
       'can both parents use one login?',
       'Jack of Sports if city swim is gone?',
     ];
     for (const text of texts) {
       const body = intake(text);
-      expect(body.endsWith('?'), text).toBe(true);
       expect(body, text).not.toContain(WATCH_OFFER_ASK);
       expect(body.length, text).toBeLessThanOrEqual(INTAKE_MAX_REPLY_CHARS);
       expect(smsEncoding(body), text).toBe('gsm7');
     }
 
-    const swim = intake('When does Toronto swim registration open?');
-    pinsFirstClassTorontoFacts(swim);
-
-    const rec = intake('when is Toronto fall recreation registration?', COLD_START_ASK);
-    pinsFirstClassTorontoFacts(rec);
-
-    const cold = intake('when does YMCA swim open?', COLD_START_ASK);
-    expect(cold.toLowerCase()).toContain('today');
-    expect(cold).not.toContain(COLD_START_ASK);
-    expect(cold.endsWith('?')).toBe(true);
-    expect(cold.length).toBeLessThanOrEqual(INTAKE_MAX_REPLY_CHARS);
+    expect(intake('When does Toronto swim registration open?')).toBe(
+      `${TORONTO_FIRST_REC} Still want me watching?`,
+    );
+    expect(intake('when does YMCA swim open?', COLD_START_ASK)).toBe(
+      `${YMCA_FIRST} ${COLD_START_ASK}`,
+    );
   });
 });

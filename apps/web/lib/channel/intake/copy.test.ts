@@ -4,7 +4,6 @@ import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { replyLanguage } from '~/lib/channel/language';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { PRIVACY_URL } from '~/lib/legal-links';
-import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 import {
   AMBIGUOUS_CLARIFY,
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
@@ -25,16 +24,17 @@ import {
   WATCH_OFFER,
   WATCH_OFFER_BY_LANGUAGE,
   detailsBlocked,
-  greeting,
   followUp,
+  greeting,
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
+import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {
     expect(greeting(null, 'en')).toBe(
-      "Hi, I'm Hale - an AI that quietly runs the family week. Registration dates, weekend plans, the stuff that slips. Tell me your kids' names and ages, plus your postal code - and I'll get to work.",
+      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Kids' names, ages, and your postal code and I'll look up what's coming.",
     );
   });
 
@@ -42,17 +42,16 @@ describe('greeting', () => {
     // The QR venue already tells us the area, so asking for the postal code would be
     // asking for data we don't need — the whole point of the venue variant.
     expect(greeting('library', 'en')).toBe(
-      "Hi, I'm Hale - an AI that quietly runs the family week for parents around here. You found me at the library, so I already know the area. Kids' names and ages, and I'll get to work.",
+      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. You found me at the library, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
     );
     expect(greeting('library', 'en')).not.toContain('postal');
   });
 
-  // v2 folded the AI disclosure INTO the first sentence rather than trailing it as a
-  // parenthetical. It is the same promise made better: a stranger reads "an AI" in the
-  // words Hale introduces itself with, not in a footnote after the ask.
-  it('discloses that Hale is an AI in the greeting itself, in BOTH variants', () => {
-    expect(greeting(null, 'en')).toContain("I'm Hale - an AI");
-    expect(greeting('library', 'en')).toContain("I'm Hale - an AI");
+  it("never says I'm an AI, and never uses the dropped family-week tagline", () => {
+    expect(greeting(null, 'en')).not.toMatch(/I'm an AI/i);
+    expect(greeting('library', 'en')).not.toMatch(/I'm an AI/i);
+    expect(greeting(null, 'en')).not.toContain('an AI that quietly runs the family week');
+    expect(greeting('library', 'en')).not.toContain('an AI that quietly runs the family week');
   });
 });
 
@@ -172,7 +171,7 @@ describe('the consent moment', () => {
    * half must carry none of its own. Two questions in one text is a parent choosing which
    * to answer, and the one that would lose is the one Hale cannot proceed without.
    */
-  it('ends without a question, leaving the turn\'s single ask to the composed one', () => {
+  it("ends without a question, leaving the turn's single ask to the composed one", () => {
     expect(ASSENT_ACK).not.toContain('?');
   });
 
@@ -207,7 +206,7 @@ describe('detailsBlocked', () => {
  * THE FRENCH SCRIPT.
  *
  * Every assertion here is a copy review written down. These are the same promises the
- * English lines above make — the AI disclosure, the restraint, the STOP escape, the
+ * English lines above make — the rec-morning first hello, the restraint, the STOP escape, the
  * region boundary — and a translation that drops one of them is a promise nobody made,
  * so the properties are asserted separately from the verbatim strings rather than being
  * assumed to have survived the trip.
@@ -218,7 +217,7 @@ describe('detailsBlocked', () => {
 describe('the French script', () => {
   it('asks a French parent for the same two facts, in the same order', () => {
     expect(COLD_START_ASK_BY_LANGUAGE.fr).toBe(
-      "Dites-moi le nom et l'age de vos enfants, plus votre code postal - et je me mets au travail.",
+      "Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
     );
     // The ask is the whole point of the turn: names, ages, postal code, nothing else.
     expect(COLD_START_ASK_BY_LANGUAGE.fr).toContain('nom');
@@ -226,12 +225,11 @@ describe('the French script', () => {
     expect(COLD_START_ASK_BY_LANGUAGE.fr).toContain('code postal');
   });
 
-  it('introduces Hale as an AI in French too, and closes on the same ask', () => {
+  it('introduces Hale in the rec-morning voice in French too, and closes on the same ask', () => {
     expect(greeting(null, 'fr')).toBe(
-      "Bonjour, je suis Hale - une IA qui gère discrètement la semaine familiale. Les dates d'inscription, les sorties de fin de semaine, ce qui risque de vous échapper. Dites-moi le nom et l'age de vos enfants, plus votre code postal - et je me mets au travail.",
+      "Bonjour, je suis Hale. Je surveille les matins rec pour qu'ils ne vous échappent pas. Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
     );
-    // The disclosure is IN the first sentence, exactly as the English one is.
-    expect(greeting(null, 'fr')).toContain('je suis Hale - une IA');
+    expect(greeting(null, 'fr')).not.toContain('une IA');
     expect(greeting(null, 'fr')).toContain(COLD_START_ASK_BY_LANGUAGE.fr);
   });
 
