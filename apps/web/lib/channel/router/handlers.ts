@@ -1,33 +1,22 @@
-import type { Database } from '@hale/db';
-import {
-  type EmailCaptureDeps,
-  handleEmailCaptureReply,
-} from '~/lib/channel/email-capture/reply';
-import {
-  type NameCaptureDeps,
-  handleNameCaptureReply,
-} from '~/lib/channel/identity/name-reply';
-import {
-  type SequenceReplyDeps,
-  handleSequenceReply,
-} from '~/lib/registration/sequence/reply';
-import {
-  type FounderReplyDeps,
-  handleFounderWelcomeReply,
-} from '~/lib/channel/founder/reply';
-import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
+import { readAffirmative } from '~/lib/channel/affirmative';
+import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
+import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
+import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
+import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
+import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import { type SequenceReplyDeps, handleSequenceReply } from '~/lib/registration/sequence/reply';
 import {
   type ResolvedIntroAnswer,
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
 } from '~/lib/village/intros/reply';
-import { recMorningReply } from '~/lib/channel/rec-morning';
 import { type ApprovalSpine, resolveApproval } from './approval';
-import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import { checkupDraftedReply, healthDoneReply } from './copy';
 import { matchFastPath } from './fast-path';
-import { readAffirmative } from '~/lib/channel/affirmative';
+import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
 
 /**
@@ -510,11 +499,32 @@ export function sequenceReplyHandler(deps: SequenceReplyDeps): DeterministicHand
  * A watch ask is deliberately not claimed — watching is the coach's job. This
  * handler answers which morning and which login, which is the GTM miss.
  */
+async function loadFamilyRecWhere(
+  database: Database,
+  familyId: string,
+): Promise<{ city: string | null; postal: string | null } | null> {
+  const [row] = await database
+    .select({
+      city: schema.families.city,
+      postalCode: schema.families.postalCode,
+      areaCoarse: schema.families.areaCoarse,
+    })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  if (!row) return null;
+  return { city: row.city, postal: row.postalCode ?? row.areaCoarse };
+}
+
 export function recMorningHandler(): DeterministicHandler {
   return {
     name: 'rec_morning',
-    async handle(_database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const reply = recMorningReply(ctx.body, ctx.now);
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const named = recMorningReply(ctx.body, ctx.now);
+      if (named !== null) return { claimed: true, outcome: 'rec_morning', reply: named };
+      if (!recMorningCouldUseWhere(ctx.body)) return { claimed: false };
+      const where = await loadFamilyRecWhere(database, ctx.familyId);
+      const reply = recMorningReply(ctx.body, ctx.now, where);
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };
     },

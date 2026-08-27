@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
-import { TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
+import { MARKHAM_FIRST, TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
 import {
   type IntakeAnswerInput,
   MAX_REPLY_CHARS,
@@ -172,6 +172,47 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body).not.toMatch(/I'm an AI/i);
     expect(outcome.body).not.toMatch(/https?:\/\//i);
     expect(outcome.body).not.toContain(WATCH_OFFER_ASK);
+  });
+
+  it('answers a Markham rec ask with the locked leftover, no model, no Toronto clock', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been called');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      ...INPUT,
+      parentWords: 'Markham fall rec dates?',
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toBe(`${MARKHAM_FIRST} Still want me watching?`);
+    expect(outcome.body).not.toContain('7:00');
+    expect(outcome.body).not.toMatch(/Sept?\s*15/i);
+    expect(outcome.body.toLowerCase()).not.toContain('activeto');
+    expect(outcome.body).not.toMatch(/I'm an AI/i);
+  });
+
+  it('uses a collected L3R postal to switch a generic rec ask to Markham', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been called');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      ...INPUT,
+      parentWords: 'when is fall rec?',
+      postalCode: 'L3R',
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toBe(`${MARKHAM_FIRST} Still want me watching?`);
   });
 });
 
