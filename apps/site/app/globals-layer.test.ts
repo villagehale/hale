@@ -94,7 +94,9 @@ describe('skip-link — keyboard focus only', () => {
     // `position: fixed` resolve against that ancestor, so the "hidden" skip
     // link sat on the canvas. Clip / overflow / 1px box is the standard hide.
     const decls = new Map<string, string>();
-    skipRule?.walkDecls((decl) => decls.set(decl.prop, decl.value));
+    skipRule?.walkDecls((decl) => {
+      decls.set(decl.prop, decl.value);
+    });
     expect(decls.get('transform')).toBeUndefined();
     expect(decls.get('overflow')).toBe('hidden');
     expect(decls.get('clip-path') ?? decls.get('clip')).toBeTruthy();
@@ -102,7 +104,9 @@ describe('skip-link — keyboard focus only', () => {
 
   it('becomes a visible pill only on :focus', () => {
     const decls = new Map<string, string>();
-    focusRule?.walkDecls((decl) => decls.set(decl.prop, decl.value));
+    focusRule?.walkDecls((decl) => {
+      decls.set(decl.prop, decl.value);
+    });
     expect(decls.get('position')).toBe('fixed');
     expect(decls.get('overflow')).toBe('visible');
   });
