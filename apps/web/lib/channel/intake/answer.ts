@@ -2,6 +2,7 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { namesAnEmergency, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
+import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
@@ -288,6 +289,12 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // the screened safety lane, and an emergency must not wait on a provider that may
       // be the reason this turn is degraded at all.
       if (namesAnEmergency(input.parentWords)) return { status: 'safety' };
+
+      // Rec-morning clock and portal are reviewed copy, not a composition. A first-time
+      // texter asking which morning / which login must not wait on a model that still
+      // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
+      const recMorning = recMorningIntakeReply(input);
+      if (recMorning !== null) return { status: 'answered', body: recMorning };
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the
       // middle of a stranger's first conversation, and no deploy problem is worth

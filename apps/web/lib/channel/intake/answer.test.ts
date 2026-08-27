@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
-import { WATCH_OFFER_ASK } from './copy';
+import { TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
 import {
   type IntakeAnswerInput,
   MAX_REPLY_CHARS,
@@ -9,6 +9,7 @@ import {
   readPair,
   refusals,
 } from './answer';
+import { WATCH_OFFER_ASK } from './copy';
 
 /**
  * The gates around the mid-signup answer. Whether Hale writes a GOOD one is the eval's
@@ -29,7 +30,7 @@ function problems(answer: string, returnLine = RETURN, input = INPUT) {
 }
 
 describe('intake answer · what may not go out', () => {
-  it('passes a grounded, plain answer with Hale\'s question on the end', () => {
+  it("passes a grounded, plain answer with Hale's question on the end", () => {
     expect(problems("I'm not a doctor, but Ontario covers a yearly eye check for kids.")).toEqual(
       [],
     );
@@ -147,6 +148,30 @@ describe('intake answer · the emergency tripwire', () => {
     ).toEqual({ status: 'safety' });
     // And the machine turns that into the reviewed line (machine.test.ts asserts the send).
     expect(SAFETY_REPLY).toContain('811');
+  });
+
+  it('answers a Toronto swim clock question with reviewed copy, no model', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been called');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      ...INPUT,
+      parentWords: 'When does Toronto swim registration open?',
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toBe(`${TORONTO_FIRST_REC} Still want me watching?`);
+    expect(outcome.body.toLowerCase()).not.toContain('activeto');
+    expect(outcome.body.toLowerCase()).not.toContain('unofficial');
+    expect(outcome.body.toLowerCase()).not.toContain('efun');
+    expect(outcome.body).not.toMatch(/I'm an AI/i);
+    expect(outcome.body).not.toMatch(/https?:\/\//i);
+    expect(outcome.body).not.toContain(WATCH_OFFER_ASK);
   });
 });
 

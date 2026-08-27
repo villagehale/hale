@@ -1,5 +1,5 @@
-import type { ReplyLanguage } from '~/lib/channel/language';
 import { isJoinCode } from '~/lib/channel/join/code';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { isReferralCode } from '~/lib/channel/referral/code';
 import { PRIVACY_URL } from '~/lib/legal-links';
 
@@ -426,13 +426,11 @@ export function posterLocation(code: string | null): string | null {
 }
 
 /**
- * The first thing a stranger ever reads from Hale.
- *
- * The AI disclosure is IN the introduction rather than trailing it: "an AI that quietly
- * runs the family week" is both what Hale is and what it does, so honesty costs no extra
- * sentence and cannot be skimmed past the way a closing parenthetical can. The privacy
- * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where a
- * parent is actually asked to agree to something.
+ * The first thing a stranger ever reads from Hale. VIL-308 locked the English
+ * no-venue line verbatim — rec mornings, not a product tagline. Never "an AI that
+ * quietly runs the family week". The privacy link is deliberately NOT here — it rides
+ * on {@link WATCH_OFFER}, the one turn where a parent is actually asked to agree to
+ * something.
  *
  * THE VENUE VARIANT HAS NO FRENCH TWIN, and that is a decision rather than a gap. The
  * body that triggers it is the PREFILLED one a QR code wrote — "HALE LIBRARY", or
@@ -445,12 +443,12 @@ export function posterLocation(code: string | null): string | null {
  */
 export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {
-    return `Hi, I'm Hale - an AI that quietly runs the family week for parents around here. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll get to work.`;
+    return `Hi, I'm Hale. I watch rec mornings so they don't sneak up. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
   }
   if (language === 'fr') {
-    return `Bonjour, je suis Hale - une IA qui gère discrètement la semaine familiale. Les dates d'inscription, les sorties de fin de semaine, ce qui risque de vous échapper. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
+    return `Bonjour, je suis Hale. Je surveille les matins rec pour qu'ils ne vous échappent pas. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
   }
-  return `Hi, I'm Hale - an AI that quietly runs the family week. Registration dates, weekend plans, the stuff that slips. ${COLD_START_ASK}`;
+  return `Hi, I'm Hale. I watch rec mornings so they don't sneak up. ${COLD_START_ASK}`;
 }
 
 /**
@@ -465,7 +463,7 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
  * tuned for.
  */
 export const COLD_START_ASK =
-  "Tell me your kids' names and ages, plus your postal code - and I'll get to work.";
+  "Kids' names, ages, and your postal code and I'll look up what's coming.";
 
 /**
  * The same ask, in the language the parent just wrote in.
@@ -479,7 +477,7 @@ export const COLD_START_ASK =
  */
 export const COLD_START_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: COLD_START_ASK,
-  fr: "Dites-moi le nom et l'age de vos enfants, plus votre code postal - et je me mets au travail.",
+  fr: "Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
 };
 
 /**

@@ -66,7 +66,7 @@ export const VOICE_GREETING_NO_TEXT = 'Hi, this is Hale. I work by text.';
  * phone. CASL's implied-consent-by-inquiry covers the send; the unsubscribe mechanism is
  * what makes it a message a parent can end.
  */
-export const VOICE_TEXT_OPENER = `Hi, this is Hale - you just called. I'm an AI that quietly runs the family week, and I work by text. ${COLD_START_ASK} Reply STOP to unsubscribe.`;
+export const VOICE_TEXT_OPENER = `Hi, this is Hale - you just called. I watch rec mornings so they don't sneak up, and I work by text. ${COLD_START_ASK} Reply STOP to unsubscribe.`;
 
 /**
  * Voice v1 — the first thing an ENROLLED caller hears, spoken by Twilio before the socket

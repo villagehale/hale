@@ -2,6 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
+import { namesRetiredRecPortal } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ActivityQuery } from './deidentify';
@@ -355,7 +356,7 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
     if (name === '' || ageFit === '' || sourceName === '') continue;
     const when = field(item.when);
     const price = field(item.price);
-    picks.push({
+    const pick: ActivityPick = {
       name,
       ageFit,
       when: when === '' ? null : when,
@@ -365,7 +366,15 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
       // was verified by us, which is what makes the two sourcing tiers a property of the
       // data rather than a request in a prompt.
       source: 'web',
-    });
+    };
+    if (
+      namesRetiredRecPortal(
+        `${pick.name} ${pick.ageFit} ${pick.when ?? ''} ${pick.price ?? ''} ${pick.sourceName}`,
+      )
+    ) {
+      continue;
+    }
+    picks.push(pick);
   }
   return picks;
 }

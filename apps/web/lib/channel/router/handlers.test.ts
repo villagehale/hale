@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
 import type { OpenCheckupOffer } from '~/lib/health/offer';
 import type { HealthReplyDeps } from '~/lib/health/reply';
-import type { ApprovalSpine, PendingAction } from './approval';
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
+import type { ApprovalSpine, PendingAction } from './approval';
 import {
   approvalHandler,
   healthReplyHandler,
+  recMorningHandler,
   sequenceReplyHandler,
   villageIntroHandler,
 } from './handlers';
@@ -234,7 +235,10 @@ describe('who owns "yes"', () => {
  */
 function sequenceDeps(
   options: { open?: boolean; reaskedAt?: Date | null } = {},
-): SequenceReplyDeps & { recorded: Array<{ outcome: string; position: number | null }>; reasks: number } {
+): SequenceReplyDeps & {
+  recorded: Array<{ outcome: string; position: number | null }>;
+  reasks: number;
+} {
   const recorded: Array<{ outcome: string; position: number | null }> = [];
   const reasks: { n: number } = { n: 0 };
   const sequence: AwaitingSequence = {
@@ -389,8 +393,12 @@ describe('handler order — registration last', () => {
     const sequence = sequenceDeps();
 
     expect((await approvalHandler(s).handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
-    expect((await healthReplyHandler(health).handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
-    expect((await sequenceReplyHandler(sequence).handle(DB, turn('waitlisted #3'))).claimed).toBe(true);
+    expect((await healthReplyHandler(health).handle(DB, turn('waitlisted #3'))).claimed).toBe(
+      false,
+    );
+    expect((await sequenceReplyHandler(sequence).handle(DB, turn('waitlisted #3'))).claimed).toBe(
+      true,
+    );
     expect(sequence.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
   });
 });
@@ -410,16 +418,52 @@ describe('the village intro lane and the lanes behind it', () => {
 
   it('does not swallow a bare yes - it stays the approval lane s to answer', async () => {
     expect((await villageIntroHandler(introDeps).handle(DB, turn('yes'))).claimed).toBe(false);
-    const pending = spine([{ actionId: 'act-1', actionType: 'book_checkup', reviewerApproved: true }]);
+    const pending = spine([
+      { actionId: 'act-1', actionType: 'book_checkup', reviewerApproved: true },
+    ]);
     expect((await approvalHandler(pending).handle(DB, turn('yes'))).claimed).toBe(true);
     expect(pending.approved).toEqual(['act-1']);
   });
 
   it('and the approval lane would not have answered YES INTRO even if it ran first', async () => {
-    const pending = spine([{ actionId: 'act-1', actionType: 'book_checkup', reviewerApproved: true }]);
+    const pending = spine([
+      { actionId: 'act-1', actionType: 'book_checkup', reviewerApproved: true },
+    ]);
     expect((await approvalHandler(pending).handle(DB, turn('YES INTRO'))).claimed).toBe(false);
     expect(pending.approved).toEqual([]);
     expect((await villageIntroHandler(introDeps).handle(DB, turn('YES INTRO'))).claimed).toBe(true);
+  });
+});
+
+describe('recMorningHandler', () => {
+  it('answers a Toronto swim clock question with the locked first-rec line', async () => {
+    const verdict = await recMorningHandler().handle(
+      DB,
+      turn('When does Toronto swim registration open?'),
+    );
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed || verdict.reply === null) return;
+    const body = verdict.reply;
+    expect(body).toBe(
+      "Toronto rec and swim open 7:00 a.m. on your district morning: Sept 9 if you're catchment-only, Sept 15 or 16 otherwise. Sign in at toronto.ca/OnlineReg with the centre district, not your home address.",
+    );
+    expect(body.toLowerCase()).not.toContain('activeto');
+    expect(body.toLowerCase()).not.toContain('unofficial');
+    expect(body.toLowerCase()).not.toContain('efun');
+    expect(body).not.toMatch(/I'm an AI/i);
+    expect(body).not.toMatch(/https?:\/\//i);
+  });
+
+  it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {
+    expect((await recMorningHandler().handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
+    expect(
+      (
+        await recMorningHandler().handle(
+          DB,
+          turn('can you watch swim registration for Milo this fall?'),
+        )
+      ).claimed,
+    ).toBe(false);
   });
 });
 
@@ -429,7 +473,7 @@ describe('the village intro lane and the lanes behind it', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, founder_welcome, health, coach_plan, registration, name_capture', async () => {
+  it('is village_intro, approval, email_capture, founder_welcome, health, coach_plan, registration, rec_morning, name_capture', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -441,6 +485,7 @@ describe('the shipped order', () => {
       'health',
       'coach_plan',
       'registration',
+      'rec_morning',
       'name_capture',
     ]);
   });
@@ -457,6 +502,7 @@ describe('the shipped order', () => {
     const names = defaultHandlers().map((h) => h.name);
     expect(names.at(-1)).toBe('name_capture');
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('registration'));
+    expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('rec_morning'));
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('health'));
   });
 
@@ -502,10 +548,7 @@ describe('a bare affirmative with more than one kind of question open', () => {
 
   it('still approves when the drafted change is the only thing waiting', async () => {
     const s = spine(pending);
-    const verdict = await approvalHandler(s).handle(
-      DB,
-      turn('yes', { open: [APPROVAL_QUESTION] }),
-    );
+    const verdict = await approvalHandler(s).handle(DB, turn('yes', { open: [APPROVAL_QUESTION] }));
 
     expect(verdict.claimed).toBe(true);
     expect(s.approved).toEqual(['a-1']);
