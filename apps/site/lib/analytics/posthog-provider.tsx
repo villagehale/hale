@@ -28,18 +28,25 @@ export function analyticsEnabled(): boolean {
  *    that may set advertising cookies; it is not this client (google-ads-tag.tsx).
  *  - `autocapture: false` — no clicks, no form interactions, no rageclicks are inferred.
  *    Every event in the catalog is fired by a named call site.
- *  - `disable_session_recording: true` — no replay on the marketing site. (The APP
- *    records, masked, and says so — apps/web/lib/analytics/posthog-provider.tsx.)
+ *  - `disable_session_recording: false` — replay is ON for the marketing site
+ *    (2026-08-27, the Google Ads launch): the page is Hale's own copy, the visitor is
+ *    anonymous, and watching where paid visitors stall is the one signal the funnel
+ *    events cannot carry. Inputs are masked (`session_recording.maskAllInputs`), and
+ *    `persistence: 'memory'` is unchanged, so a recording still writes nothing to the
+ *    visitor's device and the legal pages' no-cookie claim stays true. (The APP
+ *    records too, masked, and says so — apps/web/lib/analytics/posthog-provider.tsx.)
  *  - `capture_pageview: false` — the provider captures `$pageview` itself, AFTER
  *    resolving `source_code` and `locale`, so the first pageview of a visit carries its
  *    attribution. posthog-js fires its own during `init()`, which is one statement too
  *    early to stamp anything on.
- *  - `respect_dnt` + the masking pair, unchanged.
+ *  - `respect_dnt` + the masking pair, unchanged. `mask_all_text` governs autocapture
+ *    element text (off anyway), not replay — replays show the site's own copy.
  */
 export const POSTHOG_INIT_CONFIG = {
   autocapture: false,
   capture_pageview: false,
-  disable_session_recording: true,
+  disable_session_recording: false,
+  session_recording: { maskAllInputs: true },
   persistence: 'memory',
   respect_dnt: true,
   mask_all_text: true,
