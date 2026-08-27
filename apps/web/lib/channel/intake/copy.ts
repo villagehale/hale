@@ -80,6 +80,10 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   'earlyon-georgetown': { name: 'EarlyON centre', areaCoarse: 'L7G', poster: 'Georgetown' },
   // Per-location Halton Hills posters, so the source code says WHICH centre.
   'earlyon-acton': { name: 'EarlyON centre', areaCoarse: 'L7J', poster: 'Acton' },
+  // Indoor EarlyON board at West Neighbourhood House (248 Ossington Ave) — not a
+  // City postering column, so it is an earlyon-* venue like Georgetown / Acton /
+  // Richmond Hill, not a poster-* street code.
+  'earlyon-ossington': { name: 'EarlyON centre', areaCoarse: 'M6J', poster: 'Ossington' },
   // The pitch deck's QR — so we see which investors actually texted the product.
   'investor-deck': { name: 'the pitch deck', areaCoarse: 'M5V' },
   // Toronto postering-column run (2026-08). One code per column — the posters are
