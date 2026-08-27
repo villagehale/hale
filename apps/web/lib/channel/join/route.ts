@@ -41,7 +41,7 @@ export interface JoinDeps {
  * delivered confirmation from a skipped one.
  *
  * `supersededInviteId` is the second: the redeeming number may have had a CAREGIVER
- * invite still in flight, which the seat closes (see supersedeOpenInviteOnJoin). Null is
+ * invite still in flight, which the seat closes (see supersedeOpenInviteOnEnrollment). Null is
  * the ordinary case — nothing was open — and an id means a question somebody was asked
  * ended without either side answering it.
  */

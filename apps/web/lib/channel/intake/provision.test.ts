@@ -55,7 +55,17 @@ function fakeDatabase() {
     insert,
     select: () => ({
       from: (table: unknown) => ({
-        where: () => ({ limit: async () => [{ id: `${tableName(table)}-id` }] }),
+        where: () => {
+          const rows = [{ id: `${tableName(table)}-id` }];
+          return {
+            limit: async () => rows,
+            // The open-invite sweep awaits the `where` itself, with no `limit` after it
+            // — a builder whose only terminal is `limit` makes that read explode rather
+            // than come back with the rows it is post-filtering.
+            // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
+            then: (resolve: (v: unknown) => unknown) => Promise.resolve(rows).then(resolve),
+          };
+        },
       }),
     }),
     transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(handle),

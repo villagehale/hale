@@ -55,6 +55,14 @@ export type CaregiverInviteState =
    * over-counting a family's daily budget is the safe direction, letting an invite that
    * DID text a stranger fall off the meter is not). */
   | 'superseded_by_join'
+  /** This number finished its OWN intake and became a parent in its own household while
+   * the invite was still open. Terminal, and kept distinct from 'superseded_by_join'
+   * because a different thing happened to a different person: the join link seats
+   * somebody in the household that asked for them, and this one is the invitee walking
+   * away to a family of their own. An operator reading the inviting parent's trail has
+   * to be able to tell "they joined you as a co-parent instead" from "they signed up on
+   * their own and can no longer be your sitter". */
+  | 'superseded_by_enrollment'
   /** 72h of silence on whichever side we were waiting for. Terminal. */
   | 'expired';
 
@@ -412,7 +420,7 @@ async function closeInvite(
   invite: CaregiverInvite,
   state: Extract<
     CaregiverInviteState,
-    'declined' | 'expired' | 'superseded' | 'superseded_by_join'
+    'declined' | 'expired' | 'superseded' | 'superseded_by_join' | 'superseded_by_enrollment'
   >,
   now: Date,
   actionTaken: string,
@@ -597,40 +605,64 @@ export async function declineOpenInviteOnStop(
 }
 
 /**
- * A number with an invite in flight has just been seated as a CO-PARENT by a forwarded
- * join link. The invite is closed by the same turn, and this is the ONE invariant behind
- * both halves: a number that owns an active channel has no open caregiver invite.
+ * How a number that had an invite in flight came to own a channel of its own — the two
+ * doors onto {@link supersedeOpenInviteOnEnrollment}, each with the state and the audit
+ * verb that says what actually happened to that person.
  *
- * {@link startCaregiverInvite} keeps that end (`number_in_use`); nothing kept this one,
- * and the two states are not merely redundant. `loadOpenInviteByPhone` is read BEFORE
- * the channel in the intake machine — deliberately, so a caregiver's "yes" is not read
- * as a stranger starting an intake — so an invite left armed OUTRANKS the seat the link
- * just granted: every ordinary message the new co-parent sends is answered with the
- * invite's question, and the "yes" that ends the loop tries to enrol their number a
- * second time, against a partial unique index that refuses it.
+ * They are not one bucket, because they are not one event: `co_parent_join` is somebody
+ * accepting a BIGGER role in the household that invited them, and `sms_intake` is the
+ * same phone signing up as a parent of its OWN family and walking away from the ask.
+ * The inviting parent's trail has to be able to tell those apart.
+ */
+const ENROLMENT_SUPERSEDES = {
+  co_parent_join: {
+    state: 'superseded_by_join',
+    actionTaken: 'caregiver_invite_superseded_by_join',
+  },
+  sms_intake: {
+    state: 'superseded_by_enrollment',
+    actionTaken: 'caregiver_invite_superseded_by_enrollment',
+  },
+} as const satisfies Record<string, { state: CaregiverInviteState; actionTaken: string }>;
+
+export type EnrolmentDoor = keyof typeof ENROLMENT_SUPERSEDES;
+
+/**
+ * A number with an invite in flight has just been ENROLLED — given an active channel of
+ * its own, by a forwarded co-parent link (VIL-297) or by finishing its own SMS intake
+ * (VIL-305). The invite is closed by the same transaction, and this is the ONE invariant
+ * behind every door: a number that owns an active channel has no open caregiver invite.
  *
- * NOT `declineInvite`: nobody refused anything. The person did the larger version of
- * what they were being asked, and the row has to be able to say so — a 'declined' here
- * would tell the inviting parent's audit trail that their caregiver said no.
+ * {@link startCaregiverInvite} keeps the other end of it (`number_in_use`); nothing kept
+ * this one, and the two states are not merely redundant. `loadOpenInviteByPhone` is read
+ * BEFORE the channel in the intake machine — deliberately, so a caregiver's "yes" is not
+ * read as a stranger starting an intake — so an invite left armed OUTRANKS the channel
+ * that was just written: every ordinary message the newly enrolled person sends is
+ * answered with the invite's question, and the "yes" that ends the loop tries to enrol
+ * their number a SECOND time, against a partial unique index that refuses it and takes
+ * the webhook down with it.
+ *
+ * NOT `declineInvite`, whichever door: nobody refused anything. The person did something
+ * larger than what they were being asked, and the row has to be able to say so — a
+ * 'declined' here would tell the inviting parent's audit trail that their caregiver
+ * said no.
+ *
+ * MUST be called inside the same transaction as the channel insert. Both halves describe
+ * one phone and only one of them can be true, so a crash between them leaves exactly the
+ * armed invite above.
  *
  * Returns the closed invite's id, or null when there was nothing open (the ordinary
  * case). Named rather than a bare boolean because the join outcome carries it: an invite
  * that ended without either side answering is not something anyone should have to infer
  * from a `closed_at` they went looking for.
  */
-export async function supersedeOpenInviteOnJoin(
+export async function supersedeOpenInviteOnEnrollment(
   database: Database,
-  phoneE164: string,
-  now: Date,
+  input: { phoneE164: string; via: EnrolmentDoor; now: Date },
 ): Promise<string | null> {
-  const invite = await loadOpenInviteByPhone(database, phoneE164, now);
+  const invite = await loadOpenInviteByPhone(database, input.phoneE164, input.now);
   if (!invite) return null;
-  await closeInvite(
-    database,
-    invite,
-    'superseded_by_join',
-    now,
-    'caregiver_invite_superseded_by_join',
-  );
+  const { state, actionTaken } = ENROLMENT_SUPERSEDES[input.via];
+  await closeInvite(database, invite, state, input.now, actionTaken);
   return invite.id;
 }

@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { maskPhoneE164 } from '~/lib/channels/phone';
-import { supersedeOpenInviteOnJoin } from '~/lib/channel/caregiver/invites';
+import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -297,8 +297,12 @@ export async function redeemJoinInvite(
     // written (the intake machine reads invites first, by design), so a crash between
     // the seat and the closure would leave a co-parent whose every message is answered
     // with a caregiver's yes/no question — and whose "yes" tries to enrol their number
-    // a second time. See supersedeOpenInviteOnJoin for the invariant.
-    const supersededInviteId = await supersedeOpenInviteOnJoin(tx, phoneE164, now);
+    // a second time. See supersedeOpenInviteOnEnrollment for the invariant.
+    const supersededInviteId = await supersedeOpenInviteOnEnrollment(tx, {
+      phoneE164,
+      via: 'co_parent_join',
+      now,
+    });
 
     await tx.insert(schema.auditLog).values([
       {

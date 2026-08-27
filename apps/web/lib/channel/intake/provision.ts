@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { POLICY_VERSION } from '~/lib/consent';
 import { maskPhoneE164 } from '~/lib/channels/phone';
+import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
@@ -203,6 +204,16 @@ export async function provisionFromIntake(
     if (!channelId) {
       throw new Error('provisionFromIntake: parent_channels insert returned no row');
     }
+
+    // A caregiver invite in flight on this same number is closed HERE, inside the
+    // transaction that enrols it, because the two rows describe one phone and only one
+    // of them can be true. An invite is opened against a number that has no channel —
+    // which is also what a stranger part-way through their own intake looks like — and
+    // an invite left armed OUTRANKS the channel just written (the machine reads invites
+    // before channels, by design), so a crash between the enrolment and the closure
+    // would leave a parent whose every message is answered with a caregiver's yes/no
+    // question, and whose "yes" tries to enrol their number a second time.
+    await supersedeOpenInviteOnEnrollment(tx, { phoneE164, via: 'sms_intake', now });
 
     // The intake transcript, replayed now that there is a family for it to belong to.
     // channel_messages.family_id / parent_user_id are NOT NULL, so these rows could
