@@ -114,6 +114,24 @@ describe('rec-morning SMS · first-time path pins GTM facts (not optional)', () 
     }
   });
 
+  it('gives YMCA this morning My Y at 9:00 a.m. and never ActiveTO or eFun', () => {
+    const body = reply('when does YMCA GTA swim registration open?');
+    expect(body.toLowerCase()).toContain('today');
+    expect(body).toContain('Aug 27');
+    expect(body).toMatch(/9:00 a\.m\./);
+    expect(body).toContain(YMCA_PORTAL);
+    expect(body.toLowerCase()).not.toMatch(/activeto/i);
+    expect(body.toLowerCase()).not.toMatch(/efun\.(com|ca)/i);
+    expect(body.toLowerCase()).not.toMatch(/\bon efun\b/);
+    expect(body.toLowerCase()).not.toMatch(/\buse efun\b/);
+
+    const signed = intake('when does YMCA GTA swim registration open?');
+    expect(signed.toLowerCase()).toContain('today');
+    expect(signed).toContain(YMCA_PORTAL);
+    expect(signed.toLowerCase()).not.toMatch(/activeto/i);
+    expect(signed.length).toBeLessThanOrEqual(INTAKE_MAX_REPLY_CHARS);
+  });
+
   it('never sends anyone to eFun, including a parent who asked for it', () => {
     const body = reply('do I log into eFun for Toronto rec?');
     neverSendsToEfun(body);
@@ -196,6 +214,7 @@ describe('rec-morning SMS · YMCA this morning, Brampton, two phones, Jack of Sp
     expect(body.toLowerCase()).toMatch(/not ultra/);
     expect(body).toContain('9 and under');
     expect(body.toLowerCase()).toContain('unofficial');
+    expect(body.toLowerCase()).not.toMatch(/activeto/i);
   });
 
   it('does not say today when it is not Aug 27', () => {
