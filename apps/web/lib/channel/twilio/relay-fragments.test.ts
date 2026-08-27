@@ -47,7 +47,7 @@ function fakeRecorder() {
   return {
     openThread: vi.fn(async () => CONVERSATION_ID),
     callerSaid: vi.fn(async () => {}),
-    haleSaid: vi.fn(async () => {}),
+    haleSaid: vi.fn(async () => 'voice-msg-1'),
     callEnded: vi.fn(async () => {}),
   } as unknown as VoiceCallRecorder & { callerSaid: ReturnType<typeof vi.fn> };
 }
@@ -83,6 +83,7 @@ describe('a caller whose sentence arrives in pieces', () => {
       turn: { respond },
       recorder,
       claimCall: async () => true,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
       now: () => NOW,
     });
@@ -161,6 +162,7 @@ describe('a caller whose sentence arrives in pieces', () => {
       turn: { respond },
       recorder: fakeRecorder(),
       claimCall: async () => true,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
       now: () => NOW,
     });

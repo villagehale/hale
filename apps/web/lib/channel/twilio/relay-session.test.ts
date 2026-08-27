@@ -49,7 +49,7 @@ function fakeRecorder() {
   const calls = {
     openThread: vi.fn(async () => CONVERSATION_ID),
     callerSaid: vi.fn(async () => {}),
-    haleSaid: vi.fn(async () => {}),
+    haleSaid: vi.fn(async () => 'voice-msg-1'),
     callEnded: vi.fn(async () => {}),
   };
   return calls as unknown as VoiceCallRecorder & typeof calls;
@@ -115,6 +115,7 @@ describe('createRelaySession', () => {
       turn: { respond },
       recorder,
       claimCall,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       log,
       now: () => NOW,
     });
@@ -430,6 +431,7 @@ describe('the record a call leaves behind', () => {
       turn: { respond },
       recorder,
       claimCall: fakeClaims().claimCall,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       log,
       now: () => NOW,
     });
@@ -449,6 +451,7 @@ describe('the record a call leaves behind', () => {
     });
     t.recorder.haleSaid.mockImplementation(async () => {
       seen.push('haleSaid');
+      return 'voice-msg-1';
     });
 
     await t.session.handleMessage(setupFrame());
@@ -587,6 +590,7 @@ describe('the record a call leaves behind', () => {
       turn: { respond: vi.fn(async () => 'spoke' as const) },
       recorder,
       claimCall: fakeClaims().claimCall,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       log,
       now: () => NOW,
     });
@@ -624,6 +628,7 @@ describe('the nine-minute cap', () => {
       turn: { respond: vi.fn(async () => 'spoke' as const) },
       recorder,
       claimCall: fakeClaims().claimCall,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       log,
       now: () => NOW,
     });
@@ -651,6 +656,7 @@ describe('the nine-minute cap', () => {
       turn: { respond: vi.fn(async () => 'spoke' as const) },
       recorder: fakeRecorder(),
       claimCall: fakeClaims().claimCall,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
       now: () => NOW,
     });
@@ -677,6 +683,7 @@ describe('the nine-minute cap', () => {
       turn: { respond: vi.fn(async () => 'spoke' as const) },
       recorder,
       claimCall: fakeClaims().claimCall,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
       now: () => NOW,
     });
@@ -697,6 +704,7 @@ describe('the nine-minute cap', () => {
       turn: { respond: vi.fn(async () => 'spoke' as const) },
       recorder,
       claimCall: fakeClaims().claimCall,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
       now: () => NOW,
     });

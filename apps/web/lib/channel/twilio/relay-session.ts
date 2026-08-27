@@ -8,6 +8,7 @@ import {
   textToken,
 } from './relay-protocol';
 import { type RelayTicket, verifyRelayToken } from './relay-token';
+import type { SpokenPromiseOutcome } from './voice-promise';
 
 /**
  * Voice v1 — one call, as a state machine over the ConversationRelay socket.
@@ -88,7 +89,9 @@ export interface VoiceCallRecorder {
   /** The one long-lived thread this parent's texts and calls share. */
   openThread(ticket: RelayTicket): Promise<string>;
   callerSaid(record: VoiceTurnRecord): Promise<void>;
-  haleSaid(record: VoiceTurnRecord): Promise<void>;
+  /** Returns the `channel_messages` id of the row that says the caller heard this — the
+   * thing a promise spoken in the turn is minted against (voice-promise.ts). */
+  haleSaid(record: VoiceTurnRecord): Promise<string>;
   /** One immutable row for the call itself (rule #6). */
   callEnded(record: {
     ticket: RelayTicket;
@@ -116,6 +119,23 @@ export interface RelaySessionDeps {
    * cannot tell a replay from the real thing, and that is not a state this may be in.
    */
   claimCall(ticket: RelayTicket, at: Date): Promise<boolean>;
+  /**
+   * Turn a promise the caller HEARD into a row something is on the hook for
+   * (voice-promise.ts).
+   *
+   * Required, never nullable (rule #11), and it is the newest thing on this list for the
+   * oldest reason: a session wired without it speaks "I'll text you after this call" and
+   * leaves nothing behind, which looks exactly like a working call and is what founder
+   * call CA170c1fb0 actually was. An absent recorder is not a state this may be in; the
+   * "nothing was promised" case is a NAMED outcome of calling it.
+   */
+  promiseSpoken(input: {
+    familyId: string;
+    heard: string;
+    asked: string;
+    channelMessageId: string | null;
+    now: Date;
+  }): Promise<SpokenPromiseOutcome>;
   /** Required, never nullable (rule #11): every refusal and every broken turn on this
    * socket is invisible otherwise — there is no HTTP status a caller could see. */
   log: Pick<Console, 'error' | 'warn' | 'info'>;
@@ -392,12 +412,16 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
     // No thread means the failure was before there was anywhere to write. Nothing was
     // recorded, and the log above already says so.
     if (thread !== null) {
+      // What the caller HEARD, which is not always what Hale composed — and the string
+      // BOTH the thread row and the promise are judged on, so a promise cut off by an
+      // interrupt is a promise nobody was made (voice-promise.ts).
+      const heard = spokenBeforeInterrupt(composed, heardBeforeInterrupt ?? '');
+      let spokenRowId: string | null = null;
       try {
-        await deps.recorder.haleSaid({
+        spokenRowId = await deps.recorder.haleSaid({
           ticket: authorized,
           conversationId: thread,
-          // What the caller HEARD, which is not always what Hale composed.
-          text: spokenBeforeInterrupt(composed, heardBeforeInterrupt ?? ''),
+          text: heard,
           turnIndex,
           at: deps.now(),
         });
@@ -406,6 +430,32 @@ export function createRelaySession(deps: RelaySessionDeps): RelaySession {
           authorized,
           err,
           'twilio relay: Hale said this out loud and it was not recorded',
+        );
+      }
+      // A PROMISE THE CALLER HEARD IS A ROW. Best-effort and loud for the reason the
+      // recording above is: the words are already out of a speaker and a throw here would
+      // reject `pending` and silence the rest of the call. A null row id is passed through
+      // rather than skipped, so "the turn was never written down" arrives as the ledger's
+      // own named refusal instead of as this session quietly deciding not to ask.
+      try {
+        const promise = await deps.promiseSpoken({
+          familyId: authorized.familyId,
+          heard,
+          asked: prompt,
+          channelMessageId: spokenRowId,
+          now: deps.now(),
+        });
+        if (promise.status === 'not_recorded') {
+          deps.log.error(
+            { callSid: authorized.callSid, familyId: authorized.familyId, reason: promise.reason },
+            'twilio relay: Hale promised the caller a text and the debt was not written down',
+          );
+        }
+      } catch (err) {
+        logFailure(
+          authorized,
+          err,
+          'twilio relay: Hale may have promised the caller a text and the ledger could not be asked',
         );
       }
     }

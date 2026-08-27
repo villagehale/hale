@@ -60,7 +60,7 @@ function fakeRecorder() {
   const calls = {
     openThread: vi.fn(async () => CONVERSATION_ID),
     callerSaid: vi.fn(async () => {}),
-    haleSaid: vi.fn(async () => {}),
+    haleSaid: vi.fn(async () => 'voice-msg-1'),
     callEnded: vi.fn(async () => {}),
   };
   return calls as unknown as VoiceCallRecorder & typeof calls;
@@ -89,6 +89,7 @@ describe('createRelaySession — a turn that ends the call', () => {
       turn: { respond },
       recorder,
       claimCall: async () => true,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       log,
       now: () => NOW,
     });

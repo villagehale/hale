@@ -12,9 +12,11 @@ import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { db } from '~/lib/db';
 import { pipelineClient, voiceClient } from '~/lib/pipeline/client';
+import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import { claimRelayCall } from './relay-claim';
 import type { RelaySessionDeps, RelaySocket } from './relay-session';
 import { answerSpokenReply } from './voice-answer';
+import { defaultVoicePromisePorts, voicePromiseRecorder } from './voice-promise';
 import { voiceCallRecorder } from './voice-record';
 import { voiceTurnStream } from './voice-turn';
 
@@ -53,11 +55,16 @@ import { voiceTurnStream } from './voice-turn';
 
 export function voiceRelayDeps(socket: RelaySocket, token: string | null): RelaySessionDeps {
   const database = db();
+  const activityReader = bindActivityReader(database, productionActivityFamilyReader());
+  // Per SOCKET, like every other collaborator here: it holds the subject THIS call's
+  // search verb registered, and hands it to the row written after the words were spoken.
+  const promises = voicePromiseRecorder(database, defaultVoicePromisePorts(activityReader));
   return {
     socket,
     token,
     recorder: voiceCallRecorder(database),
     claimCall: (ticket, at) => claimRelayCall(database, ticket, at),
+    promiseSpoken: (input) => promises.record(input),
     turn: voiceTurnStream({
       loadSkill: () => loadCronSkill('voice-turn'),
       loadTranscript: (conversationId) => loadTranscript(conversationId, database),

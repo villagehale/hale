@@ -54,6 +54,25 @@ describe('extractStateClaims — the audit sentences', () => {
   it('reads I have added as a scheduled_event claim', () => {
     expect(kinds("I've added the dentist appointment for Thursday.")).toEqual(['scheduled_event']);
   });
+
+  /**
+   * VIL-313 · the two sentences Hale SPOKE on founder call CA170c1fb0 (2026-08-26,
+   * 03:11-03:14Z). Both are "I will send you a thing", and neither matched: the promise
+   * families were written from an SMS corpus where what Hale comes back with is a FIND,
+   * so the subject list held finds, classes and camps and nothing for the thing Hale
+   * composes itself. Zero rows were written for either, and no text ever followed.
+   */
+  it('reads the spoken "once I have the details I will text you" as an activity_followup claim', () => {
+    expect(kinds("Once I've got the details locked down I'll text you.")).toEqual([
+      'activity_followup',
+    ]);
+  });
+
+  it('reads the spoken "I will send you the breakdown" as an activity_followup claim', () => {
+    expect(kinds("I'll send you the Three-Day Potty breakdown after this call.")).toEqual([
+      'activity_followup',
+    ]);
+  });
 });
 
 describe('extractStateClaims — the false positives that would break production', () => {
