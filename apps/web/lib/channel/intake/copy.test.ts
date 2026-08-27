@@ -106,6 +106,13 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-ossington')).toBe(false);
   });
 
+  it('reads the Markham EarlyON venue and grants the first-GTA-board comp', () => {
+    expect(sourceCodeFromBody('Hi (via earlyon-markham)')).toBe('earlyon-markham');
+    expect(venueForCode('earlyon-markham')?.name).toBe('EarlyON centre');
+    expect(posterLocation('earlyon-markham')).toBe('Markham');
+    expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-markham')).toBe(true);
+  });
+
   it('refuses an unknown suffix code and ignores a mid-message "(via …)"', () => {
     expect(sourceCodeFromBody('Hi (via atlantis-nowhere)')).toBeNull();
     expect(sourceCodeFromBody('we went (via the highway) to the park')).toBeNull();

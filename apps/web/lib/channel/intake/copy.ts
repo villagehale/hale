@@ -83,6 +83,9 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   // Indoor EarlyON board at West Neighbourhood House, 248 Ossington Ave. Like
   // Richmond Hill — a venue plate, not a City column, and no lifetime comp.
   'earlyon-ossington': { name: 'EarlyON centre', areaCoarse: 'M6J', poster: 'Ossington' },
+  // Indoor EarlyON board at EarlyON Markham / Family Day, 3990 14th Ave — the first
+  // GTA board to say yes, so it carries the lifetime Family comp (promo.ts).
+  'earlyon-markham': { name: 'EarlyON centre', areaCoarse: 'L3R', poster: 'Markham' },
   // The pitch deck's QR — so we see which investors actually texted the product.
   'investor-deck': { name: 'the pitch deck', areaCoarse: 'M5V' },
   // Toronto postering-column run (2026-08). One code per column — the posters are

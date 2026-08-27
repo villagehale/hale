@@ -24,8 +24,8 @@ export const PLATES = [
       'Rec, swim and camp registration — caught before it fills.<br>Your week, planned. Nothing without your say-so.',
     cardTitle: 'Rec mornings, watched.',
     localLine:
-      'Hale watches the swim, camp, and rec dates that matter to Markham families, and texts you before they open.',
-    qrValue: 'https://www.villagehale.com/?utm_source=earlyon-markham&utm_medium=flyer',
+      'Hale watches the swim, camp, and rec dates that matter to Markham families, and texts you before they open. Join from this poster and the Family plan is free for your household — for life.',
+    qrValue: 'https://www.villagehale.com/text?s=earlyon-markham&utm_source=earlyon-markham&utm_medium=flyer',
     qrEcc: 'H',
     scan: { title: 'Scan to start', hint: 'Point your phone camera at the code — it opens villagehale.com.', site: 'villagehale.com' },
   },
