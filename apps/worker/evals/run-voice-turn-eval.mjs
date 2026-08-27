@@ -152,6 +152,13 @@ const RELATIVE_DAYS = ['tomorrow', 'tonight'];
 const EIGHT_ONE_ONE = /\b811\b|eight[\s-]?one[\s-]?one/i;
 const NINE_ONE_ONE = /\b911\b|nine[\s-]?one[\s-]?one/i;
 
+// The pre-tool clause was RE-RULED after the founder's first real v2 call (CA170c1fb0):
+// eleven of nineteen turns opened with "Let me X", and the old rubric line here — a
+// short line before checking ("let me pull that up") "is CORRECT and must not be marked
+// down" — was the fixture that kept the tic alive. It encoded the old copy, not a safety
+// property. The doctrine is now the skill's: the clause before a tool must NAME the
+// thing being checked; a filler opener that names the assistant instead is the tic of a
+// machine, and an answer that needed no tool opens with the answer.
 const JUDGE_SYSTEM = [
   'You are grading ONE turn of a live phone call. The speaker is Hale, an AI assistant',
   'that helps a parent run their family week, and the parent is holding a phone to their',
@@ -163,10 +170,12 @@ const JUDGE_SYSTEM = [
   'sign-off; "is there anything else"; restating the question back; listing several',
   'things; padding the answer with caveats before getting to the point; or being chirpy.',
   'Hale CAN look up this family\'s week and draft a change to it on the call, so a short',
-  'line before it goes to check ("let me pull that up") is CORRECT and must not be marked',
-  'down, and neither is saying a change is drafted and waiting on their yes — that is the',
-  'honest sentence, not a hedge. Reward brevity: a one-sentence answer to a small',
-  'question is a 5, not an incomplete one.',
+  'clause before it goes to check is CORRECT when it names the thing being checked',
+  '("checking your Thursday") — and so is saying a change is drafted and waiting on their',
+  'yes; that is the honest sentence, not a hedge. But MARK DOWN a filler opener: a turn',
+  'that starts with "let me" or "one sec" names the assistant instead of the thing, and',
+  'repeated across a call it is the tic of a machine. Reward brevity: a one-sentence',
+  'answer to a small question is a 5, not an incomplete one.',
 ].join(' ');
 
 /**
@@ -312,6 +321,10 @@ function grounded(contextJson, toolResults) {
 /** The word a caller can answer a draft with, asked for out loud. */
 const ASKS_FOR_YES = /\byes\b|\bgo ahead\b|\bwant me to\b|\bshall i\b/i;
 
+/** The shapes the skill bans by name, plus their nearest synonyms — an opener that
+ * names the assistant instead of the thing the caller asked about. */
+const FILLER_OPENER = /^(?:let me\b|one sec\b|one moment\b|just a sec(?:ond)?\b|hang on\b|allow me\b|i'll just\b)/i;
+
 function checkTurn(fixture, spoken, grounding, score, run) {
   const failures = [];
   const expect = fixture.expect;
@@ -375,6 +388,16 @@ function checkTurn(fixture, spoken, grounding, score, run) {
   // THE PAUSE. Only meaningful on a turn that actually called a tool.
   if (run.calls.length > 0 && run.heardBeforeFirstTool.trim() === '') {
     failures.push('went to a tool in silence — the caller heard nothing for the whole round trip');
+  }
+
+  // THE OPENER TIC (hard fail). Eleven of nineteen turns on the founder's first real
+  // call (CA170c1fb0) opened with "Let me X" — the same words regardless of the
+  // question, which is what a caller hears as a machine. The pause check above demands
+  // WORDS before a tool; this demands they be the caller's words, not the assistant
+  // announcing itself. Deterministic on the opener only, so a mid-sentence "let me
+  // know how it goes" is the forbidden-token list's business, not this one's.
+  if (FILLER_OPENER.test(spoken.trimStart())) {
+    failures.push(`opened with filler: ${JSON.stringify(spoken.trimStart().slice(0, 24))}`);
   }
 
   if (expect.mustReferOut) {
