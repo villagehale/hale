@@ -401,6 +401,29 @@ function resolveCode(raw: string): string | null {
   return null;
 }
 
+/**
+ * The parent's own words on a first inbound, with the QR / HALE tag stripped.
+ * "Hi (via earlyon-richmondhill)" → "Hi". "HALE LIBRARY" → "". A question with a
+ * trailing via token keeps the question.
+ */
+export function firstInboundWords(body: string): string {
+  const trimmed = body.trim();
+  if (SOURCE_TAG.test(trimmed)) return '';
+  return trimmed.replace(SOURCE_TAG_SUFFIX, '').trim();
+}
+
+const BARE_HELLO = /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)[.!,\s]*$/i;
+
+/**
+ * True when the first inbound is just a hello, empty, or a venue / HALE tag —
+ * the locked greeting path. A rec/camp question, a safety text, or anything else
+ * to answer is false so greet can hand the words to the existing answerer.
+ */
+export function isBareFirstHello(body: string): boolean {
+  const words = firstInboundWords(body);
+  return words === '' || BARE_HELLO.test(words);
+}
+
 /** The venue CODE (registry key) for a prefilled first body, or null when the body
  * carries no tag or a tag we don't recognise. */
 export function sourceCodeFromBody(body: string): string | null {
