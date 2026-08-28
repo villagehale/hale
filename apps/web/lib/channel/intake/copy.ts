@@ -488,6 +488,20 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
 }
 
 /**
+ * The greeting for a stranger whose whole first text was a postal code — the second
+ * half of {@link COLD_START_ASK}, answered before it was ever asked. It borrows the
+ * venue variant's tail verbatim, because it is the same situation: the area is
+ * settled, so the only thing left to ask for is the kids.
+ *
+ * English only, for the venue variant's reason — a bare postal token carries no
+ * evidence at all about the language the person holding the phone speaks, and
+ * `replyLanguage` reads it as English whatever they speak.
+ */
+export function greetingWithArea(areaCoarse: string): string {
+  return `Hi, I'm Hale. I watch rec mornings so they don't sneak up. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+}
+
+/**
  * The ONE thing Hale asks a stranger for, extracted from {@link greeting} because a
  * second door onto intake now exists: somebody who CALLS the number is texted an opener
  * by the voice front door (lib/channel/twilio/voice.ts), and their reply lands in this

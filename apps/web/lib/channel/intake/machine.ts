@@ -50,7 +50,9 @@ import {
   WATCH_OFFER,
   WATCH_OFFER_ASK,
   detailsBlocked,
+  firstInboundWords,
   greeting,
+  greetingWithArea,
   isBareFirstHello,
   looksLikeIntakeDetails,
   sourceCodeFromBody,
@@ -681,13 +683,18 @@ async function deliverFirstHello(
   const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
   const venue = venueForCode(sourceCode);
   const language = replyLanguage(args.inbound.body);
+  // A first text that is ONLY a postal code ("M4B 2B1", live 2026-08-28) answers half
+  // the cold-start ask before it is asked. It reaches no extractor — this branch never
+  // runs one — so it is captured here, or it is read for nothing and the one follow-up
+  // asks the parent for the postal code they opened with.
+  const postal = parseCanadianPostal(firstInboundWords(args.inbound.body));
   // ONE message. A bare hi / empty / QR tag still gets the locked greeting. A first
   // inbound that is a question (the site chips, a rec/camp ask) is answered with the
   // same off-script path turn 2 already had — then Hale's pending ask, in one text.
   // VIL-322: two site intakes dropped because greet() never read the inbound body.
-  let body = greeting(venue?.name ?? null, language);
+  let body = postal ? greetingWithArea(postal.areaCoarse) : greeting(venue?.name ?? null, language);
   let outcome: IntakeOutcome = { status: 'greeted' };
-  if (!isBareFirstHello(args.inbound.body)) {
+  if (postal === null && !isBareFirstHello(args.inbound.body)) {
     const offScript = await offScriptReply(
       {
         parentWords: args.inbound.body,
@@ -713,6 +720,17 @@ async function deliverFirstHello(
       lastProviderId: args.inbound.providerId,
       // So the hourly recovery sweep does not re-decrypt every sitting first-hello.
       firstReplyRecoveredAt: args.now,
+      ...(postal
+        ? {
+            collected: {
+              children: [],
+              // The FSA when that is all they sent (D2) — the token the extractor is
+              // handed back as `already_known` on the next turn, so it has to read the
+              // way a parent's own postal code does.
+              postalCode: postal.postalCode ?? postal.areaCoarse,
+            },
+          }
+        : {}),
     },
     args.now,
   );
