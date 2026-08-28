@@ -39,6 +39,17 @@ function localHourFromHm(hm: string): number {
 export const SITTING_REMINDER_TIMEZONE = 'America/Toronto';
 export const SITTING_REMINDER_HOUR_LOCAL = localHourFromHm(PROACTIVE_QUIET_HOURS.end);
 
+/**
+ * GTM lock 2026-08-28 — tonight's founder pair already got a text (Claude may
+ * have hit Twilio raw; Hale's ledger is empty). Do not send Still here to these
+ * two. Claim the reminder so a later tick stays quiet. Everyone else still sitting
+ * gets the locked line at 8:00 America/Toronto.
+ */
+export const FOUNDER_PAIR_SESSION_IDS: ReadonlySet<string> = new Set([
+  '605b0577-cd64-4a6b-91c7-821ca6ceca00',
+  '69310ee5-528d-4824-a2aa-27a853df4612',
+]);
+
 const MAX_SITTING_REMINDERS_PER_RUN = 50;
 
 export interface SittingReminderDeps {
@@ -102,6 +113,11 @@ export async function runSittingReminderCron(
 
   const candidates = await loadSittingCandidates(database);
   for (const row of candidates.slice(0, MAX_SITTING_REMINDERS_PER_RUN)) {
+    if (FOUNDER_PAIR_SESSION_IDS.has(row.id)) {
+      await claimSittingReminder(database, row.id, now);
+      result.skipped += 1;
+      continue;
+    }
     if (!sittingSessionEligible(row, now)) {
       result.skipped += 1;
       continue;

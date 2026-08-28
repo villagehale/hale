@@ -7,6 +7,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { SITTING_SESSION_REMINDER } from './copy';
 import { type FakeDb, makeFakeDb } from './fakes';
 import {
+  FOUNDER_PAIR_SESSION_IDS,
   SITTING_REMINDER_HOUR_LOCAL,
   SITTING_REMINDER_TIMEZONE,
   type SittingReminderDeps,
@@ -56,6 +57,7 @@ function dataBlob(): string {
 function seedSession(
   fake: FakeDb,
   over: {
+    id?: string;
     phoneE164?: string;
     state?: string;
     createdAt?: Date;
@@ -67,6 +69,7 @@ function seedSession(
 ): string {
   const phoneE164 = over.phoneE164 ?? PHONE;
   const values = {
+    ...(over.id ? { id: over.id } : {}),
     phoneHash: phoneBlindIndex(phoneE164),
     phoneEncrypted: encryptString(phoneE164),
     state: over.state ?? 'awaiting_details',
@@ -205,6 +208,24 @@ describe('runSittingReminderCron', () => {
     expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
     expect(transport.bodies()).toEqual([SITTING_SESSION_REMINDER]);
     expect(transport.sent[0]?.to).toBe(PHONE);
+  });
+
+  it("does not send Still here to tonight's founder-pair session ids", async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const [firstId, secondId] = [...FOUNDER_PAIR_SESSION_IDS];
+    expect(FOUNDER_PAIR_SESSION_IDS.size).toBe(2);
+    seedSession(fake, { id: firstId });
+    seedSession(fake, { id: secondId, phoneE164: OTHER });
+
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(result.sent).toBe(0);
+    expect(transport.bodies()).toEqual([]);
+    expect(transport.bodies()).not.toContain(SITTING_SESSION_REMINDER);
+    expect(fake.rows(schema.smsIntakeSessions).map((row) => row.sittingReminderSentAt)).toEqual([
+      TORONTO_8AM,
+      TORONTO_8AM,
+    ]);
   });
 
   it('caps at one send — a second tick in the same hour is quiet', async () => {
