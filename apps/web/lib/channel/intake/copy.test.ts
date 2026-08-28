@@ -17,6 +17,7 @@ import {
   HELP_REPLY_BY_LANGUAGE,
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  SITTING_SESSION_REMINDER,
   START_ACK,
   START_ACK_BY_LANGUAGE,
   STOP_ACK,
@@ -32,6 +33,14 @@ import {
   venueForCode,
 } from './copy';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
+
+describe('SITTING_SESSION_REMINDER', () => {
+  it('is the Designer-locked next-morning line, verbatim', () => {
+    expect(SITTING_SESSION_REMINDER).toBe(
+      "Still here if you want me watching. Reply with your kids' names, ages, and postal code and I'll send what's coming.",
+    );
+  });
+});
 
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {

@@ -44,6 +44,12 @@ export const smsIntakeSessions = pgTable(
     followUpCount: integer('follow_up_count').notNull().default(0),
     /** How many watch-offer clarifications have been asked. Hard-capped at one. */
     clarifyCount: integer('clarify_count').notNull().default(0),
+    /**
+     * VIL-324 — the next-morning sitting-session reminder. Claimed BEFORE the send
+     * (party-reminder shape), and deliberately NOT follow_up_count: that counter is
+     * the same-thread incomplete-details ask. This is a later, scheduled text.
+     */
+    sittingReminderSentAt: timestamp('sitting_reminder_sent_at', { withTimezone: true }),
     /** Set at provisioning; null while the session is still pre-family. */
     familyId: uuid('family_id').references(() => families.id, { onDelete: 'cascade' }),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),

@@ -328,6 +328,7 @@ export function makeFakeDb(): FakeDb {
       ? {
           followUpCount: 0,
           clarifyCount: 0,
+          sittingReminderSentAt: null,
           sourceCode: null,
           familyId: null,
           userId: null,
