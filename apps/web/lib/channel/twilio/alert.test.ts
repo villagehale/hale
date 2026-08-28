@@ -38,22 +38,33 @@ interface Call {
 
 function recorder(respond: () => Promise<Response> = async () => new Response('{}')): {
   calls: Call[];
-  fetch: typeof fetch;
+  fetch: typeof globalThis.fetch;
 } {
   const calls: Call[] = [];
-  const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const record: typeof globalThis.fetch = async (input, init) => {
     calls.push({
       url: String(input),
       headers: (init?.headers ?? {}) as Record<string, string>,
       body: String(init?.body ?? ''),
     });
     return respond();
-  }) as unknown as typeof fetch;
-  return { calls, fetch };
+  };
+  return { calls, fetch: record };
 }
 
 const twilioCall = (calls: Call[]) => calls.filter((call) => call.url.includes('api.twilio.com'));
 const posthogCall = (calls: Call[]) => calls.filter((call) => call.url.startsWith(POSTHOG_HOST));
+
+/** The single request of its kind, or a thrown failure — never an optional-chained
+ * `undefined` that would let a "must not contain" assertion pass on a request that was
+ * never made. */
+function only(calls: Call[], label: string): Call {
+  const [first, ...rest] = calls;
+  if (!first || rest.length > 0) {
+    throw new Error(`expected exactly one ${label} request, saw ${calls.length}`);
+  }
+  return first;
+}
 
 beforeEach(() => {
   resetWebhookAlertWindowForTests();
@@ -78,7 +89,7 @@ describe('webhookFailureAlert', () => {
 
     expect(outcome).toEqual({ sms: 'sent', analytics: 'sent' });
 
-    const [sms] = twilioCall(calls);
+    const sms = only(twilioCall(calls), 'twilio');
     expect(sms.url).toBe(`https://api.twilio.com/2010-04-01/Accounts/${ACCOUNT_SID}/Messages.json`);
     expect(sms.headers.authorization).toBe(
       `Basic ${Buffer.from(`${ACCOUNT_SID}:${AUTH_TOKEN}`).toString('base64')}`,
@@ -90,7 +101,7 @@ describe('webhookFailureAlert', () => {
     expect(form.get('Body')).toContain('TypeError');
     expect(form.get('Body')).toContain('fetch failed');
 
-    const [captured] = posthogCall(calls);
+    const captured = only(posthogCall(calls), 'posthog');
     expect(captured.url).toBe(`${POSTHOG_HOST}/i/v0/e/`);
     expect(JSON.parse(captured.body)).toEqual({
       api_key: POSTHOG_KEY,
@@ -112,14 +123,17 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    const body = new URLSearchParams(twilioCall(calls)[0].body).get('Body') ?? '';
+    const body = new URLSearchParams(only(twilioCall(calls), 'twilio').body).get('Body') ?? '';
     expect(body).not.toContain('14165551234');
     expect(body).toContain('[redacted]');
     // The founder still learns WHICH statement broke — the scrub takes the digits, not
     // the diagnosis.
     expect(body).toContain('insert into channel_messages failed');
 
-    const properties = JSON.parse(posthogCall(calls)[0].body).properties as Record<string, unknown>;
+    const properties = JSON.parse(only(posthogCall(calls), 'posthog').body).properties as Record<
+      string,
+      unknown
+    >;
     expect(properties).toEqual({ route: 'twilio_inbound', error_class: 'Error' });
     expect(JSON.stringify(properties)).not.toContain('Nora');
   });
@@ -133,7 +147,7 @@ describe('webhookFailureAlert', () => {
       { fetch },
     );
 
-    const body = new URLSearchParams(twilioCall(calls)[0].body).get('Body') ?? '';
+    const body = new URLSearchParams(only(twilioCall(calls), 'twilio').body).get('Body') ?? '';
     expect(body.length).toBeLessThan(220);
     expect(body).toContain('…');
   });
@@ -201,9 +215,9 @@ describe('webhookFailureAlert', () => {
 
   it('never throws out of the reporter when the network itself is gone', async () => {
     configure();
-    const fetch = (async () => {
+    const fetch: typeof globalThis.fetch = async () => {
       throw new Error('ECONNREFUSED');
-    }) as unknown as typeof fetch;
+    };
 
     await expect(
       webhookFailureAlert({ route: 'twilio_inbound', error: new Error('boom') }, { fetch }),
