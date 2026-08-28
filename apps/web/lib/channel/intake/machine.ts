@@ -79,6 +79,7 @@ import {
   createSession,
   loadOpenSession,
   saveSession,
+  transcriptHasOutbound,
 } from './session';
 import type { ChannelTransport } from './transport';
 import { recordWatchConsent } from './watch-consent';
@@ -311,6 +312,18 @@ export async function handleInboundSms(
 
   if (session.state === 'awaiting_watch_reply' || session.state === 'awaiting_clarify') {
     return handleWatchReply(database, { session, phoneE164, inbound, now }, deps);
+  }
+
+  // VIL-332: createSession commits before send. A leftover awaiting_details
+  // row with no outbound is not details — it is a first-hello that never
+  // left. handleDetails would extract / HELP / provision and skip greeting().
+  if (session.state === 'awaiting_details' && !transcriptHasOutbound(session.transcript)) {
+    return deliverFirstHello(
+      database,
+      { session, phoneE164, inbound, now },
+      deps,
+      session.sourceCode,
+    );
   }
 
   return handleDetails(database, { session, phoneE164, inbound, now }, deps);
@@ -627,6 +640,30 @@ async function greetNewFamily(
     state: 'awaiting_details',
     sourceCode,
   });
+  // Voice already releases a claim when the opener cannot be sent. Intake did
+  // not: createSession committed, send/model threw, and the open row swallowed
+  // every Twilio retry as details (VIL-332). Close the unfinished claim so the
+  // retry can greet on a new session.
+  try {
+    return await deliverFirstHello(
+      database,
+      { session, phoneE164: args.phoneE164, inbound: args.inbound, now: args.now },
+      deps,
+      sourceCode,
+    );
+  } catch (err) {
+    await saveSession(database, session, { closedAt: args.now }, args.now);
+    throw err;
+  }
+}
+
+async function deliverFirstHello(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+  sourceCode: string | null,
+): Promise<IntakeOutcome> {
+  const { session } = args;
   const ctx: SendContext = { session, phoneE164: args.phoneE164, now: args.now };
 
   // Site Text Hale prefills names / ages / postal. That is DETAILS, not a question —

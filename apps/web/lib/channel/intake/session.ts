@@ -223,3 +223,15 @@ export function appendTranscript(
 ): TranscriptEntry[] {
   return [...session.transcript, entry];
 }
+
+/** True when Hale has already spoken on this session — transcript outbound, not
+ * channel_messages. Pre-family sends have no ledger row they could occupy. */
+export function transcriptHasOutbound(transcript: readonly TranscriptEntry[]): boolean {
+  return transcript.some((entry) => entry.direction === 'out');
+}
+
+/** The encrypted transcript only, for recovery sweeps that have the blob and
+ * must not decrypt the phone until they have decided to send. */
+export function decodeIntakeTranscript(dataEncrypted: string): TranscriptEntry[] {
+  return decodeData(dataEncrypted).transcript;
+}
