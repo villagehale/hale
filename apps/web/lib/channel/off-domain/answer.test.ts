@@ -353,7 +353,7 @@ describe('after provision leftover facts · VIL-327', () => {
     });
     expect(MENTAL_CRISIS_REPLY).not.toContain('?');
     expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain("not something I should advise on");
+    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
   });
 });
 

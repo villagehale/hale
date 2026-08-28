@@ -1201,7 +1201,7 @@ describe('intake · a first-text question is answered', () => {
     expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
     expect(silent.transport.bodies()[0]).not.toContain('?');
     expect(silent.transport.bodies()[0]).not.toContain('811');
-    expect(silent.transport.bodies()[0]).not.toContain("not something I should advise on");
+    expect(silent.transport.bodies()[0]).not.toContain('not something I should advise on');
     expect(silent.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
   });
 

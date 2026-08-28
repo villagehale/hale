@@ -42,7 +42,7 @@ describe('mental-crisis tripwire · VIL-327', () => {
     );
     expect(MENTAL_CRISIS_REPLY).not.toContain('?');
     expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain("not something I should advise on");
+    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
     expect(SAFETY_REPLY).toBe(
       "That's not something I should advise on. Health811 (call 811) can help any time - and if it's an emergency, call 911.",
     );

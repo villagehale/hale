@@ -140,7 +140,7 @@ describe('what each lane says', () => {
     expect(MENTAL_CRISIS_REPLY).toContain('988');
     expect(MENTAL_CRISIS_REPLY).toContain('911');
     expect(MENTAL_CRISIS_REPLY).not.toContain('811');
-    expect(MENTAL_CRISIS_REPLY).not.toContain("not something I should advise on");
+    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
     expect(p.medicalCalls).toBe(0);
   });
 
