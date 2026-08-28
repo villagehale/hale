@@ -110,7 +110,10 @@ describe('extractStateClaims — the false positives that would break production
       'battle_plan leg',
     ],
     ['Halton Hills Fall 2026 opens 7:00 a.m. Your link: https://x.test/a', 'go leg'],
-    ["Reply with your kids' names, ages, and postal code and I'll text back what's coming.", 'cold start'],
+    [
+      "Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+      'cold start',
+    ],
     [
       "I'm still learning what's on around you - I'll have a pick for you soon.",
       'radar still learning',
