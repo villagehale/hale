@@ -99,7 +99,7 @@ describe('webhookFailureAlert', () => {
     expect(form.get('From')).toBe(ALERT_FROM_NUMBER);
     expect(form.get('Body')).toContain('twilio_inbound');
     expect(form.get('Body')).toContain('TypeError');
-    expect(form.get('Body')).toContain('fetch failed');
+    expect(form.get('Body')).not.toContain('fetch failed');
 
     const captured = only(posthogCall(calls), 'posthog');
     expect(captured.url).toBe(`${POSTHOG_HOST}/i/v0/e/`);
@@ -118,17 +118,23 @@ describe('webhookFailureAlert', () => {
     await webhookFailureAlert(
       {
         route: 'twilio_inbound',
-        error: new Error('insert into channel_messages failed for +14165551234: is Nora ok?'),
+        // Parent text AND a separator-formatted number a digit-run scrub would miss —
+        // the error MESSAGE must simply never reach a leg.
+        error: new Error(
+          'insert into channel_messages failed for +14165551234: is Nora ok? call 416-555-1234',
+        ),
       },
       { fetch },
     );
 
     const body = new URLSearchParams(only(twilioCall(calls), 'twilio').body).get('Body') ?? '';
     expect(body).not.toContain('14165551234');
-    expect(body).toContain('[redacted]');
-    // The founder still learns WHICH statement broke — the scrub takes the digits, not
-    // the diagnosis.
-    expect(body).toContain('insert into channel_messages failed');
+    expect(body).not.toContain('Nora');
+    expect(body).not.toContain('416-555');
+    expect(body).not.toContain('insert into channel_messages');
+    // The founder still learns which route and what KIND of failure.
+    expect(body).toContain('twilio_inbound');
+    expect(body).toContain('Error');
 
     const properties = JSON.parse(only(posthogCall(calls), 'posthog').body).properties as Record<
       string,
@@ -138,7 +144,7 @@ describe('webhookFailureAlert', () => {
     expect(JSON.stringify(properties)).not.toContain('Nora');
   });
 
-  it('truncates a long error message rather than sending an essay', async () => {
+  it('stays one GSM-7 segment no matter how long the error message is', async () => {
     configure();
     const { calls, fetch } = recorder();
 
@@ -148,8 +154,9 @@ describe('webhookFailureAlert', () => {
     );
 
     const body = new URLSearchParams(only(twilioCall(calls), 'twilio').body).get('Body') ?? '';
-    expect(body.length).toBeLessThan(220);
-    expect(body).toContain('…');
+    expect(body.length).toBeLessThanOrEqual(160);
+    // ASCII-only: a stray typographic character would silently flip the alert to UCS-2.
+    expect(/^[\x20-\x7e]*$/.test(body)).toBe(true);
   });
 
   it('names a missing FOUNDER_ALERT_PHONE instead of skipping in silence', async () => {

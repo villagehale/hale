@@ -104,7 +104,7 @@ describe('POST /api/channels/twilio/inbound', () => {
     expect(console.error).toHaveBeenCalled();
     expect(twilioCalls()).toHaveLength(1);
     expect(smsBody()).toContain('twilio_inbound');
-    expect(smsBody()).toContain('too many clients');
+    expect(smsBody()).not.toContain('too many clients');
     expect(captured()).toMatchObject({
       event: 'webhook_route_failed',
       properties: { route: 'twilio_inbound', error_class: 'Error' },
@@ -134,7 +134,8 @@ describe('POST /api/channels/twilio/inbound', () => {
     await POST(request());
 
     expect(smsBody()).not.toContain('14165551234');
-    expect(smsBody()).toContain('[redacted]');
+    expect(smsBody()).not.toContain('Nora');
+    expect(smsBody()).not.toContain('insert into channel_messages');
     expect(captured().properties).toEqual({
       route: 'twilio_inbound',
       error_class: 'Error',

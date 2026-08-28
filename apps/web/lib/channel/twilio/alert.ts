@@ -66,20 +66,9 @@ export const ALERT_FROM_NUMBER = '+12892172279';
  * response. */
 const ALERT_TIMEOUT_MS = 4_000;
 
-/** Enough of the error to tell a connection refusal from a constraint violation,
- * short enough that the alert stays a text. */
-const MESSAGE_MAX = 140;
-
 /** One founder SMS per instance per window: the incident that motivated this fired on
  * every inbound message for six hours. */
 const FOUNDER_SMS_MIN_INTERVAL_MS = 15 * 60 * 1_000;
-
-/**
- * Any run of 7+ digits, gone before the message reaches a body. A Postgres error that
- * quotes the row it was writing would otherwise carry a parent's E.164 into a text
- * (rule #1) — this makes that impossible rather than unlikely.
- */
-const DIGIT_RUN = /\d{7,}/g;
 
 /** Spent on the ATTEMPT rather than on delivery: an unconfigured or refusing Twilio
  * must not produce a log line per inbound message for six hours either. */
@@ -92,12 +81,6 @@ export function resetWebhookAlertWindowForTests(): void {
 
 function errorClass(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
-}
-
-function errorSummary(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  const scrubbed = raw.replace(DIGIT_RUN, '[redacted]').replace(/\s+/g, ' ').trim();
-  return scrubbed.length > MESSAGE_MAX ? `${scrubbed.slice(0, MESSAGE_MAX)}…` : scrubbed;
 }
 
 async function sendFounderSms(
@@ -131,7 +114,12 @@ async function sendFounderSms(
   const form = new URLSearchParams({
     To: to,
     From: ALERT_FROM_NUMBER,
-    Body: `Hale ALERT · ${route} threw\n${errorClass(error)}: ${errorSummary(error)}`,
+    // Route + error CLASS only, never the message: a DB error string can embed a
+    // parent's own words ("insert failed for ...: is Nora ok?"), and no scrub of
+    // free text is airtight (416-555-1234 slips a digit-run filter). The full
+    // message goes to console.error at the boundary; the class is enough to page.
+    // ASCII on purpose - GSM-7, one segment.
+    Body: `Hale ALERT: ${route} threw - ${errorClass(error)}. Details in logs + PostHog.`,
   });
 
   try {
