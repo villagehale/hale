@@ -255,6 +255,13 @@ describe('the smoke alarm', () => {
     expect(a.sent[0]).toBe(SAFETY_REPLY);
   });
 
+  it('sends the same reviewed safety line on a suicide crisis during an outage', async () => {
+    const a = alarm({ body: 'I want to die' });
+    expect(await a.run()).toBe('fired');
+    expect(a.sent).toEqual([SAFETY_REPLY]);
+    expect(a.sent[0]).not.toContain('?');
+  });
+
   /** Both conditions, independently insufficient. Either one alone is an ordinary
    * failed turn and must leave the router's existing honesty line in place. */
   it('stays quiet when the model is reachable, however bad the text is', async () => {

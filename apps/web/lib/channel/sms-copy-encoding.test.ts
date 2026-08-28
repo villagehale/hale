@@ -26,11 +26,7 @@ import {
   followUp,
   greeting,
 } from '~/lib/channel/intake/copy';
-import {
-  JOIN_ACCEPTED_ACK,
-  joinInviteForward,
-  joinWelcome,
-} from '~/lib/channel/join/copy';
+import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
@@ -88,6 +84,7 @@ const SMS_COPY_SOURCES = [
   'lib/channel/intake/copy.ts',
   'lib/channel/intake/adult-learn.ts',
   'lib/channel/intake/official-page.ts',
+  'lib/channel/intake/live-lookup.ts',
   'lib/channel/off-domain/copy.ts',
   'lib/channel/caregiver/copy.ts',
   'lib/channel/join/copy.ts',

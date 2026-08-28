@@ -1,10 +1,18 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
+import {
+  afterProvisionFallbackReply,
+  afterProvisionReplyFromNotes,
+  cheerUpAfterProvisionReply,
+  groundCurrentSource,
+  isCheerUpAsk,
+  isLiveLookupAsk,
+} from '~/lib/channel/intake/live-lookup';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { reachesForTheHealthLine } from './copy';
+import { namesAMentalCrisis, namesAnEmergency, reachesForTheHealthLine } from './copy';
 
 /**
  * Boundary v3 — the general answer.
@@ -154,11 +162,34 @@ function sendable(raw: string): GeneralAnswerOutcome {
 export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerComposer {
   return {
     async compose(text) {
+      // VIL-327: crisis first, no return ask. Same reviewed 811/911 line.
+      if (namesAnEmergency(text) || namesAMentalCrisis(text)) {
+        return { status: 'safety' };
+      }
+
+      if (isCheerUpAsk(text)) {
+        return { status: 'composed', reply: cheerUpAfterProvisionReply() };
+      }
+
       let resolved: AgentClient;
       try {
         resolved = client();
       } catch (err) {
         return unavailable('client_unavailable', message(err));
+      }
+
+      // Leftover current-source facts and therapist-find: live lookup, then
+      // one line back to the kids / the week. Do not stay in trivia.
+      if (isLiveLookupAsk(text)) {
+        const ground = await groundCurrentSource(resolved, text);
+        if (ground.status === 'ungrounded') {
+          console.error(
+            { reason: ground.reason },
+            'off-domain answer: current source not grounded, returned to Hale',
+          );
+          return { status: 'composed', reply: afterProvisionFallbackReply() };
+        }
+        return { status: 'composed', reply: afterProvisionReplyFromNotes(ground.notes) };
       }
 
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;

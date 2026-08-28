@@ -10,6 +10,7 @@ import {
   SAFETY_REPLY_BY_LANGUAGE,
   UNPLACEABLE_PROVIDER_REPLY,
   UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE,
+  namesAMentalCrisis,
   reachesForTheHealthLine,
   referralReply,
 } from './copy';
@@ -25,6 +26,16 @@ import {
  *
  * PENDING FOUNDER REVIEW, all three, plus the two proper nouns called out below.
  */
+describe('mental-crisis tripwire · VIL-327', () => {
+  it('fires on suicide / self-harm and leaves care-find and cheer-up alone', () => {
+    expect(namesAMentalCrisis('I want to die')).toBe(true);
+    expect(namesAMentalCrisis('thinking about suicide')).toBe(true);
+    expect(namesAMentalCrisis('self-harm tonight')).toBe(true);
+    expect(namesAMentalCrisis('I need a therapist')).toBe(false);
+    expect(namesAMentalCrisis('cheer me up')).toBe(false);
+  });
+});
+
 describe('the French off-domain lines', () => {
   /**
    * TWO PROPER NOUNS NEED VERIFYING BEFORE THIS SHIPS, and they are asserted verbatim so

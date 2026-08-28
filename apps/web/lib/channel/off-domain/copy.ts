@@ -153,6 +153,18 @@ export function namesAnEmergency(body: string): boolean {
 }
 
 /**
+ * VIL-327 — caregiver mental crisis. Same reviewed {@link SAFETY_REPLY} as a
+ * physical emergency (811 / 911). There is no 988 line in this repo; this
+ * ticket does not invent one. A therapist-find or cheer-up must not match.
+ */
+const MENTAL_CRISIS_PATTERN =
+  /\b(?:suicide|suicidal|kill(?:ing)? myself|end my life|self[-\s]?harm|want to die|wanna die|not want to be alive)\b|(?<![\w$])988(?!\d)/i;
+
+export function namesAMentalCrisis(body: string): boolean {
+  return MENTAL_CRISIS_PATTERN.test(body);
+}
+
+/**
  * The tripwire that makes {@link SAFETY_REPLY} the ONLY siren Hale sends (skill audit
  * P0 #3).
  *

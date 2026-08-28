@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { SAFETY_REPLY, namesAnEmergency } from '~/lib/channel/off-domain/copy';
+import { SAFETY_REPLY, namesAMentalCrisis, namesAnEmergency } from '~/lib/channel/off-domain/copy';
 
 /**
  * The outage smoke alarm — the one deliberate exception to the always-LLM doctrine
@@ -106,7 +106,11 @@ function isTransportFailure(err: unknown): boolean {
  */
 export function classifyTurnFailure(err: unknown): TurnFailure {
   let current: unknown = err;
-  for (let depth = 0; depth < MAX_CAUSE_DEPTH && current !== null && current !== undefined; depth += 1) {
+  for (
+    let depth = 0;
+    depth < MAX_CAUSE_DEPTH && current !== null && current !== undefined;
+    depth += 1
+  ) {
     if (isTransportFailure(current)) {
       return 'model_unreachable';
     }
@@ -146,7 +150,7 @@ export async function considerSmokeAlarm(input: SmokeAlarmInput): Promise<SmokeA
   if (!modelIsUnreachable(input.err)) {
     return 'not_an_outage';
   }
-  if (!namesAnEmergency(input.body)) {
+  if (!namesAnEmergency(input.body) && !namesAMentalCrisis(input.body)) {
     return 'no_emergency_token';
   }
   const { familyId, parentUserId, channelMessageId } = input;

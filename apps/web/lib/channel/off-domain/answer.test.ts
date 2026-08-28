@@ -1,5 +1,10 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  AFTER_PROVISION_RETURN_ASK,
+  CHEER_UP_REPLY,
+  NO_CURRENT_SOURCE_YET,
+} from '~/lib/channel/intake/live-lookup';
 import { MAX_ANSWER_SEGMENTS, createGeneralAnswer, generalAnswerUserMessage } from './answer';
 
 /** GSM-7 concatenation part size (sms-segments.ts GSM7_CONCAT_PART). A GSM-7 body of
@@ -174,9 +179,9 @@ describe('createGeneralAnswer', () => {
 
   it('refuses an answer that is empty once flattened', async () => {
     const log = quiet();
-    expect(await createGeneralAnswer(clientReturning({ answer: '  **  ** ' })).compose(ASK)).toEqual(
-      { status: 'unavailable', reason: 'unsendable' },
-    );
+    expect(
+      await createGeneralAnswer(clientReturning({ answer: '  **  ** ' })).compose(ASK),
+    ).toEqual({ status: 'unavailable', reason: 'unsendable' });
     log.mockRestore();
   });
 
@@ -259,15 +264,103 @@ describe('link refusal', () => {
  * branch carries no text, so the fixed line in copy.ts is the only thing the lane can
  * put on the wire (see lane.test.ts for the words).
  */
-describe('safety refusal', () => {
-  it.each([
-    'Not medical advice, but 811 can help any time.',
-    'That needs a person - call 911.',
-  ])('hands a composed referral to the fixed line instead of sending it: %s', async (body) => {
-    quiet();
+describe('after provision leftover facts · VIL-327', () => {
+  it('does not leave a current-source leftover fact in trivia', async () => {
+    const notes = 'Argentina won the 2022 FIFA World Cup.';
+    const client = () =>
+      ({
+        messages: {
+          create: async (req: { tools?: Array<{ type?: string }> }) => {
+            if (req.tools?.[0]?.type === 'web_search_20250305') {
+              return {
+                content: [
+                  { type: 'text', text: notes },
+                  {
+                    type: 'web_search_tool_result',
+                    tool_use_id: 'srvtu_3',
+                    content: [
+                      {
+                        type: 'web_search_result',
+                        url: 'https://www.fifa.com',
+                        title: 'World Cup',
+                      },
+                    ],
+                  },
+                ],
+              };
+            }
+            throw new Error('after-provision leftover facts must not invent from memory');
+          },
+        },
+      }) as unknown as AgentClient;
 
-    expect(await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK)).toEqual({
+    const outcome = await createGeneralAnswer(client).compose('who won the World Cup?');
+    expect(outcome.status).toBe('composed');
+    if (outcome.status !== 'composed') return;
+    expect(outcome.reply).toContain('Argentina');
+    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
+    expect(outcome.reply).not.toMatch(/https?:\/\//);
+  });
+
+  it('says no current source yet, then returns to the kids / the week', async () => {
+    const exploding = () =>
+      ({
+        messages: {
+          create: () => {
+            throw new Error('search down');
+          },
+        },
+      }) as unknown as AgentClient;
+    const log = quiet();
+    const outcome = await createGeneralAnswer(exploding).compose('Who is the US president?');
+    log.mockRestore();
+    expect(outcome.status).toBe('composed');
+    if (outcome.status !== 'composed') return;
+    expect(outcome.reply).toContain(NO_CURRENT_SOURCE_YET);
+    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
+  });
+
+  it('answers a cheer-up with warmth and a line back to the week', async () => {
+    const exploding = () =>
+      ({
+        messages: {
+          create: () => {
+            throw new Error('cheer-up is reviewed copy');
+          },
+        },
+      }) as unknown as AgentClient;
+    const outcome = await createGeneralAnswer(exploding).compose('cheer me up');
+    expect(outcome.status).toBe('composed');
+    if (outcome.status !== 'composed') return;
+    expect(outcome.reply).toContain(CHEER_UP_REPLY);
+    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
+    expect(outcome.reply).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
+  });
+
+  it('answers a crisis with safety and no return ask', async () => {
+    const exploding = () =>
+      ({
+        messages: {
+          create: () => {
+            throw new Error('a crisis must not reach a model');
+          },
+        },
+      }) as unknown as AgentClient;
+    expect(await createGeneralAnswer(exploding).compose('I want to die')).toEqual({
       status: 'safety',
     });
   });
+});
+
+describe('safety refusal', () => {
+  it.each(['Not medical advice, but 811 can help any time.', 'That needs a person - call 911.'])(
+    'hands a composed referral to the fixed line instead of sending it: %s',
+    async (body) => {
+      quiet();
+
+      expect(await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK)).toEqual({
+        status: 'safety',
+      });
+    },
+  );
 });
