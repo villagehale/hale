@@ -7,6 +7,7 @@ import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
 
 /**
@@ -294,6 +295,15 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // the screened safety lane, and an emergency must not wait on a provider that may
       // be the reason this turn is degraded at all.
       if (namesAnEmergency(input.parentWords)) return { status: 'safety' };
+
+      // VIL-323: adult-learn is a Designer-locked kids-only door, not a model "I
+      // don't do that" and not a city clock. Checked before rec-morning so
+      // "I wanna learn swimming in Brampton" never invents a date.
+      const adultLearn = adultLearnIntakeReply({
+        parentWords: input.parentWords,
+        pendingAsk: input.pendingAsk,
+      });
+      if (adultLearn !== null) return { status: 'answered', body: adultLearn };
 
       // Rec-morning clock and portal are reviewed copy, not a composition. A first-time
       // texter asking which morning / which login must not wait on a model that still

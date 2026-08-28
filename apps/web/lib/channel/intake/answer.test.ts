@@ -9,7 +9,8 @@ import {
   readPair,
   refusals,
 } from './answer';
-import { WATCH_OFFER_ASK } from './copy';
+import { ADULT_LEARN_DOOR } from './adult-learn';
+import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
 
 /**
  * The gates around the mid-signup answer. Whether Hale writes a GOOD one is the eval's
@@ -213,6 +214,39 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toBe(`${MARKHAM_FIRST} Still want me watching?`);
+  });
+
+  it("answers adult-learn / I wanna learn swimming with the kids-only door, never I don't do that", async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been called');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+
+    const first = await composer.compose({
+      parentWords: 'I wanna learn swimming',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(first.status).toBe('answered');
+    if (first.status !== 'answered') return;
+    expect(first.body).toBe(`${ADULT_LEARN_DOOR} ${COLD_START_ASK}`);
+    expect(first.body).toContain("I'm a kids' rec helper, not adult lessons");
+    expect(first.body).not.toContain("I don't do that");
+    expect(first.body).not.toMatch(/\b(Sept|Sep|Aug|Nov|Dec)\b/);
+    expect(first.body).not.toMatch(/\d{1,2}:\d{2}/);
+
+    const mid = await composer.compose({
+      ...INPUT,
+      parentWords: 'adult lessons',
+    });
+    expect(mid.status).toBe('answered');
+    if (mid.status !== 'answered') return;
+    expect(mid.body).toContain(ADULT_LEARN_DOOR);
+    expect(mid.body).not.toContain("I don't do that");
   });
 });
 
