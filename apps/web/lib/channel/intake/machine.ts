@@ -63,6 +63,7 @@ import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { type IntakeKeywordMatch, matchKeyword } from './keywords';
+import { isOfficialPageAsk, officialPageFallbackReply } from './official-page';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import type { RadarComposer } from './radar';
@@ -508,10 +509,10 @@ async function writeChannelMessage(
  * a question. When they are, the message that goes out is the ANSWER plus Hale's own
  * question again in different words — one text, the thread intact.
  *
- * Null is "there was nothing to answer" and the caller sends what it always sent. It is
- * not a silent absence: the composer names and logs every degraded path itself
- * (answer.ts), and what a caller could do differently with the distinction is nothing —
- * its own reply is written for exactly this turn.
+ * Null is "there was nothing to answer" — a hedge, a pleasantry, more signup
+ * detail — and the caller sends what it always sent. A real rec/camp question
+ * that the composer declined or could not use is not null (VIL-326): that empty
+ * fallback was the leak. Safety is the reviewed line alone.
  */
 async function offScriptReply(
   args: {
@@ -530,8 +531,13 @@ async function offScriptReply(
   if (outcome.status === 'safety') {
     return { body: SAFETY_REPLY_BY_LANGUAGE[replyLanguage(args.parentWords)], source: 'safety' };
   }
-  if (outcome.status !== 'answered') return null;
-  return { body: outcome.body, source: 'composed' };
+  if (outcome.status === 'answered') return { body: outcome.body, source: 'composed' };
+  // VIL-326: unavailable / empty must not fall back to the greet or the pending
+  // ask alone when they asked a real rec/camp question. Safety stays above.
+  if (isOfficialPageAsk(args.parentWords)) {
+    return { body: officialPageFallbackReply(args.pendingAsk), source: 'composed' };
+  }
+  return null;
 }
 
 /**
