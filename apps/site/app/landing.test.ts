@@ -307,10 +307,17 @@ describe('landing — sections, in the Surfaces Plan order', () => {
   });
 
   it('tells the three texts and the suggest → prepare → handle ladder with receipts', () => {
-    expect(text).toContain('You say hi');
+    // VIL-325: first text is names/ages/postal, not "hi". Step 1 (the result)
+    // and the Sunday watch stay. "no menus" stays; "no forms" does not.
+    expect(text).toContain('You text names, ages, and a postal code');
+    expect(text).toContain('One text. No app, no account.');
+    expect(text).not.toContain('You say hi');
+    expect(text).not.toMatch(/no forms/i);
+    expect(text).toContain('no menus');
     // Step 2 is where Hale proves itself, so it is written in a parent's words —
     // "radar" is internal vocabulary and cannot be the first description.
     expect(text).toContain('I text back your week');
+    expect(text).toContain('Names, ages, a postal code');
     expect(text).toContain('I keep watch');
     expect(text).toContain('I suggest');
     expect(text).toContain('I prepare');

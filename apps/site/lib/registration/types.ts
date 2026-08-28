@@ -59,4 +59,6 @@ export interface RegistrationGuide {
   ctaHeading: string;
   ctaSub: string;
   footerNote: string;
+  /** Page Text Hale composer body. Homepage chips/prefill stay elsewhere. */
+  smsPrefill?: string;
 }

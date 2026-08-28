@@ -121,8 +121,8 @@
     "steps": [
       {
         "when": "Right now",
-        "step": "You say hi",
-        "body": "One text. No app, no account, no forms."
+        "step": "You text names, ages, and a postal code",
+        "body": "One text. No app, no account."
       },
       {
         "when": "In the same thread",
@@ -290,7 +290,7 @@
       }
     ],
     "founderStory": "Hale is built by Anzhe Dong — a father, husband, and founder who spent years shipping production agentic systems. He started it raising a kid far from the village his own parents had: no elders down the street, no one who just knew which class was worth it. The trust was still out there, in what other parents told each other; it just couldn’t reach him. So he built the thing he kept wishing someone would text him.",
-    "cta": "It starts with one text — no app, no account, no form to fill in."
+    "cta": "It starts with names, ages, and a postal code. No app, no account."
   },
   "Pricing": {
     "metaTitle": "Pricing · Hale",
