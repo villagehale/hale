@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { runFirstReplyRecoveryCron } from '~/lib/channel/intake/first-reply-recovery';
 import { runSittingReminderCron } from '~/lib/channel/intake/sitting-reminder';
 import { requireCronSecret } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
@@ -9,12 +10,14 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 /**
- * GET /api/cron/intake-sitting-reminder — VIL-324.
+ * GET /api/cron/intake-sitting-reminder — VIL-324 + VIL-332.
  *
- * Hourly Vercel Cron. Sends at most once, only in the Toronto morning hour
- * (existing proactive quiet-hours end), only to open awaiting_details intakes
- * that sat past first-hello. Sitting sessions stay intakes — this route does
- * not provision a family.
+ * Hourly Vercel Cron. Two jobs, one schedule (the existing minute-8 slot):
+ *   - VIL-332 same-day first-hello recovery — every hour, no clock gate.
+ *     A session that got a SID and no outbound cannot wait until 8am.
+ *   - VIL-324 next-morning Still here — only in the Toronto morning hour.
+ *
+ * Sitting sessions stay intakes — this route does not provision a family.
  *
  * Cron-secret gated: a request without `Authorization: Bearer <CRON_SECRET>`
  * gets 401 and NOTHING runs.
@@ -23,6 +26,8 @@ export async function GET(req: Request) {
   const denied = requireCronSecret(req);
   if (denied) return denied;
 
-  const summary = await runSittingReminderCron(db());
-  return NextResponse.json({ ok: true, ...summary }, { status: 200 });
+  const database = db();
+  const firstReply = await runFirstReplyRecoveryCron(database);
+  const sitting = await runSittingReminderCron(database);
+  return NextResponse.json({ ok: true, ...sitting, firstReply }, { status: 200 });
 }

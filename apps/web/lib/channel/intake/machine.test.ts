@@ -9,6 +9,7 @@ import {
 } from '~/lib/channel/off-domain/copy';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { matchHealthCheckpoints } from '~/lib/health/match';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -1730,5 +1731,89 @@ describe('intake · the funnel milestones', () => {
 
     await expect(text(fake, transport, deps, 'hi')).resolves.toEqual({ status: 'greeted' });
     expect(transport.bodies()).toHaveLength(1);
+  });
+});
+
+/**
+ * VIL-332 — createSession commits before send. A crash or a refused first
+ * send must not leave an open awaiting_details row that swallows the retry
+ * as details / a duplicate and never greets.
+ */
+describe('intake · VIL-332 first-hello cannot die after createSession', () => {
+  function seedOpenSession(
+    fake: FakeDb,
+    over: {
+      lastProviderId?: string | null;
+      transcript?: Array<{
+        direction: 'in' | 'out';
+        body: string;
+        providerId: string | null;
+        at: string;
+      }>;
+    } = {},
+  ): void {
+    fake.db.insert(schema.smsIntakeSessions).values({
+      phoneHash: phoneBlindIndex(PHONE),
+      phoneEncrypted: encryptString(PHONE),
+      state: 'awaiting_details',
+      dataEncrypted: encryptString(
+        JSON.stringify({
+          collected: { children: [], postalCode: null },
+          transcript: over.transcript ?? [],
+        }),
+      ),
+      lastProviderId: over.lastProviderId === undefined ? 'SMin' : over.lastProviderId,
+    });
+  }
+
+  it('closes the new session when the first send fails, so a retry can greet', async () => {
+    const { fake, deps } = harness({});
+    await expect(
+      handleInboundSms(
+        fake.db,
+        { from: PHONE, body: 'hi', providerId: 'SM-first', receivedAt: NOW },
+        { ...deps, transport: refusingTransport(new Error('provider down')) },
+      ),
+    ).rejects.toThrow('provider down');
+
+    expect(fake.rows(schema.smsIntakeSessions)[0]).toMatchObject({
+      closedAt: NOW,
+      state: 'awaiting_details',
+    });
+
+    const { transport } = harness({});
+    const retry = await handleInboundSms(
+      fake.db,
+      { from: PHONE, body: 'hi', providerId: 'SM-retry', receivedAt: NOW },
+      { ...deps, transport },
+    );
+    expect(retry).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
+  });
+
+  it('sends the locked first-hello for an open session that has a SID and no outbound', async () => {
+    const { fake, transport, deps } = harness({});
+    seedOpenSession(fake, { lastProviderId: 'SMprior' });
+
+    const result = await handleInboundSms(
+      fake.db,
+      { from: PHONE, body: 'hi', providerId: 'SMnext', receivedAt: NOW },
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
+    expect(transport.bodies()[0]).toContain(COLD_START_ASK);
+  });
+
+  it('still treats a carrier retry as a no-op once outbound exists', async () => {
+    const { fake, transport, deps } = harness({});
+    const first = transport.inbound(PHONE, 'hi');
+    await handleInboundSms(fake.db, first, deps);
+    const sentAfterFirst = transport.sent.length;
+
+    const retry = await handleInboundSms(fake.db, { ...first }, deps);
+    expect(retry).toEqual({ status: 'duplicate' });
+    expect(transport.sent).toHaveLength(sentAfterFirst);
   });
 });

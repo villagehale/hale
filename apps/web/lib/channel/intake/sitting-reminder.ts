@@ -68,6 +68,7 @@ export interface SittingSessionRow {
   state: string;
   closedAt: Date | null;
   sittingReminderSentAt: Date | null;
+  firstReplyRecoveredAt: Date | null;
   familyId: string | null;
   createdAt: Date;
 }
@@ -96,6 +97,11 @@ export function sittingSessionEligible(row: SittingSessionRow, now: Date): boole
   if (row.sittingReminderSentAt !== null) return false;
   if (row.familyId !== null) return false;
   if (!isSittingReminderSlot(now)) return false;
+  // VIL-332: a same-run recovery first-hello must not also get Still here.
+  // Clock the reminder from the first-hello that actually left, when we know it.
+  if (row.firstReplyRecoveredAt && !isNextTorontoMorning(row.firstReplyRecoveredAt, now)) {
+    return false;
+  }
   return isNextTorontoMorning(row.createdAt, now);
 }
 
@@ -166,6 +172,7 @@ async function loadSittingCandidates(database: Database): Promise<SittingCandida
       state: schema.smsIntakeSessions.state,
       closedAt: schema.smsIntakeSessions.closedAt,
       sittingReminderSentAt: schema.smsIntakeSessions.sittingReminderSentAt,
+      firstReplyRecoveredAt: schema.smsIntakeSessions.firstReplyRecoveredAt,
       familyId: schema.smsIntakeSessions.familyId,
       createdAt: schema.smsIntakeSessions.createdAt,
     })
