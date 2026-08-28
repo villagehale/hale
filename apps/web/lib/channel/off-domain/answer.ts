@@ -13,6 +13,7 @@ import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import {
+  EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
   namesAMentalCrisis,
   namesAnEmergency,
@@ -167,9 +168,11 @@ function sendable(raw: string): GeneralAnswerOutcome {
 export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerComposer {
   return {
     async compose(text) {
-      // VIL-327: physical emergency keeps the child-health 811 line.
-      // Mental crisis is the reviewed 988 line, no return ask.
-      if (namesAnEmergency(text)) return { status: 'safety' };
+      // VIL-328: physical emergency is Call 911 now., never the 811 Telehealth
+      // line. Mental crisis is the reviewed 988 line, no return ask.
+      if (namesAnEmergency(text)) {
+        return { status: 'composed', reply: EMERGENCY_REPLY };
+      }
       if (namesAMentalCrisis(text)) {
         return { status: 'composed', reply: MENTAL_CRISIS_REPLY };
       }

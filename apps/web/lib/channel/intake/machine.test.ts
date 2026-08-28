@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
   SAFETY_REPLY,
   SAFETY_REPLY_BY_LANGUAGE,
@@ -1019,7 +1020,14 @@ describe('intake · a question mid-signup gets an answer', () => {
 
     const answered = await text(fake, transport, deps, "she's not breathing");
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
-    expect(transport.bodies().at(-1)).toBe(SAFETY_REPLY);
+    expect(transport.bodies().at(-1)).toBe(EMERGENCY_REPLY);
+    expect(transport.bodies().at(-1)).toBe('Call 911 now.');
+    expect(transport.bodies().at(-1)).not.toContain('811');
+    expect(transport.bodies().at(-1)).not.toContain('Health811');
+    expect(transport.bodies().at(-1)).not.toContain('988');
+    expect(transport.bodies().at(-1)).not.toContain('?');
+    expect(transport.bodies().at(-1)).not.toBe(SAFETY_REPLY);
+    expect(transport.bodies().at(-1)).not.toBe(MENTAL_CRISIS_REPLY);
   });
 
   it('never sends HELP_REPLY alone when a mid-signup rec question is declined', async () => {
@@ -1129,9 +1137,15 @@ describe('intake · a first-text question is answered', () => {
 
     const answered = await text(fake, transport, deps, "she's not breathing");
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
-    expect(transport.bodies()).toEqual([SAFETY_REPLY]);
+    expect(transport.bodies()).toEqual([EMERGENCY_REPLY]);
+    expect(transport.bodies()[0]).toBe('Call 911 now.');
+    expect(transport.bodies()[0]).not.toContain('811');
+    expect(transport.bodies()[0]).not.toContain('Health811');
+    expect(transport.bodies()[0]).not.toContain('988');
+    expect(transport.bodies()[0]).not.toContain('?');
     expect(transport.bodies()[0]).not.toContain(COLD_START_ASK);
     expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(transport.bodies()[0]).not.toBe(SAFETY_REPLY);
   });
 
   it('never sends greeting() alone when a first-text rec question is declined or unavailable', async () => {
@@ -1203,6 +1217,8 @@ describe('intake · a first-text question is answered', () => {
     expect(silent.transport.bodies()[0]).not.toContain('811');
     expect(silent.transport.bodies()[0]).not.toContain('not something I should advise on');
     expect(silent.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
+    expect(silent.transport.bodies()[0]).not.toBe(EMERGENCY_REPLY);
+    expect(silent.transport.bodies()[0]).not.toBe('Call 911 now.');
   });
 
   it('answers a first-text cheer-up with warmth, not the bare greeting', async () => {

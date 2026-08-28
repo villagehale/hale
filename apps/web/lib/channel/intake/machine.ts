@@ -16,6 +16,7 @@ import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import {
+  EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
   SAFETY_REPLY_BY_LANGUAGE,
   namesAMentalCrisis,
@@ -529,14 +530,15 @@ async function offScriptReply(
   // Crisis / physical emergency go out ALONE. A parent in that moment should be
   // dialling, not answering a signup question. Checked on the inbound words as
   // well as the composer outcome so a silent fake still cannot ask-alone.
-  // Mental crisis is the 988 line, never the child-health 811 SAFETY_REPLY.
-  if (
-    (namesAMentalCrisis(args.parentWords) && !namesAnEmergency(args.parentWords)) ||
-    outcome.status === 'mental_crisis'
-  ) {
+  // Physical emergency is Call 911 now. Mental crisis is the 988 line. Neither
+  // is the child-health 811 SAFETY_REPLY.
+  if (namesAnEmergency(args.parentWords)) {
+    return { body: EMERGENCY_REPLY, source: 'safety' };
+  }
+  if (namesAMentalCrisis(args.parentWords) || outcome.status === 'mental_crisis') {
     return { body: MENTAL_CRISIS_REPLY, source: 'safety' };
   }
-  if (namesAnEmergency(args.parentWords) || outcome.status === 'safety') {
+  if (outcome.status === 'safety') {
     return { body: SAFETY_REPLY_BY_LANGUAGE[replyLanguage(args.parentWords)], source: 'safety' };
   }
   if (outcome.status === 'answered') return { body: outcome.body, source: 'composed' };

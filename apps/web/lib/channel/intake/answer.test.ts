@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MENTAL_CRISIS_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { MARKHAM_FIRST, TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
 import { ADULT_LEARN_DOOR } from './adult-learn';
 import {
@@ -149,8 +149,12 @@ describe('intake answer · the emergency tripwire', () => {
     expect(
       await composer.compose({ ...INPUT, parentWords: "she's not breathing, what do I do" }),
     ).toEqual({ status: 'safety' });
-    // And the machine turns that into the reviewed line (machine.test.ts asserts the send).
+    // And the machine turns that into Call 911 now. (machine.test.ts asserts the send).
+    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
+    expect(EMERGENCY_REPLY).not.toContain('811');
+    expect(EMERGENCY_REPLY).not.toContain('?');
     expect(SAFETY_REPLY).toContain('811');
+    expect(SAFETY_REPLY).not.toBe(EMERGENCY_REPLY);
   });
 
   it('answers a Toronto swim clock question with reviewed copy, no model', async () => {
@@ -463,6 +467,8 @@ describe('intake answer · the emergency tripwire', () => {
     expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
     expect(SAFETY_REPLY).toContain('811');
     expect(SAFETY_REPLY).not.toContain('988');
+    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
+    expect(MENTAL_CRISIS_REPLY).not.toBe('Call 911 now.');
   });
 });
 

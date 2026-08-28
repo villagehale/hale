@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {
+  EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
-  SAFETY_REPLY,
   namesAMentalCrisis,
   namesAnEmergency,
 } from '~/lib/channel/off-domain/copy';
@@ -14,20 +14,22 @@ import {
  * are no preset bodies waiting to stand in, because a preset body is a sentence nobody
  * reviewed against the situation it lands in. This is the single exception: when the
  * model API is UNREACHABLE and a parent's text carries an unambiguous emergency token,
- * the fixed 811/911 line goes out rather than that text waiting on an outage.
+ * {@link EMERGENCY_REPLY} (`Call 911 now.`) goes out rather than that text waiting on an
+ * outage. Mental crisis during the same outage is {@link MENTAL_CRISIS_REPLY}.
  *
  * IT IS NOT A FALLBACK FOR THE LLM. It fires only when there is no LLM. A turn that
  * broke on a tool, ran out of steps, hit a bug, or was refused by a gate keeps the
  * honesty line it has always had, however alarming the words in it are — which is why
  * {@link modelIsUnreachable} is a POSITIVE list rather than "anything unrecognised".
  *
- * WHY IT HAS TO EXIST, which the doctrine alone does not show. The deterministic safety
- * lane already answers a symptom with this exact sentence (off-domain/lane.ts) — but its
- * screen FAILS OPEN by design (screen.ts openTheGate), so during a provider outage the
- * screen cannot classify, and "she's not breathing" falls through to a coach that is
- * also down. The outage disables the one path built for that message, and what the
- * parent receives instead is "Something went wrong on my end". Every minute the model is
- * up, this module is unreachable and the screened lane does the work.
+ * WHY IT HAS TO EXIST, which the doctrine alone does not show. The deterministic
+ * safety lane already answers an emergency token with {@link EMERGENCY_REPLY}
+ * (off-domain/lane.ts) — but its screen FAILS OPEN by design (screen.ts
+ * openTheGate), so during a provider outage the screen cannot classify, and
+ * "she's not breathing" falls through to a coach that is also down. The outage
+ * disables the one path built for that message, and what the parent receives
+ * instead is "Something went wrong on my end". Every minute the model is up,
+ * this module is unreachable and the screened lane does the work.
  *
  * PRIVACY. Nothing here logs, stores or transmits the parent's words. It reads the body
  * to answer one boolean and passes on a constant (rule #1).
@@ -167,11 +169,7 @@ export async function considerSmokeAlarm(input: SmokeAlarmInput): Promise<SmokeA
   // reason turned up one notch. A claim written first would turn a send that failed into
   // a text the parent never gets at all: the re-drive would read the claim and stay
   // quiet about an emergency nobody answered.
-  await input.say(
-    namesAMentalCrisis(input.body) && !namesAnEmergency(input.body)
-      ? MENTAL_CRISIS_REPLY
-      : SAFETY_REPLY,
-  );
+  await input.say(namesAnEmergency(input.body) ? EMERGENCY_REPLY : MENTAL_CRISIS_REPLY);
   await input.claim.recordFired({ familyId, parentUserId, channelMessageId });
   return 'fired';
 }

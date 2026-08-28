@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import { EMERGENCY_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
@@ -1437,8 +1437,10 @@ describe('the outage smoke alarm', () => {
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('smoke_alarm_fired');
-    expect(h.transport.bodies()).toEqual([SAFETY_REPLY]);
-    expect(h.transport.bodies()[0]).toBe(SAFETY_REPLY);
+    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY]);
+    expect(h.transport.bodies()[0]).toBe('Call 911 now.');
+    expect(h.transport.bodies()[0]).not.toContain('811');
+    expect(h.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
     expect(h.transport.bodies()).not.toContain(failureReply());
   });
 
@@ -1454,7 +1456,7 @@ describe('the outage smoke alarm', () => {
     expect(out).toHaveLength(1);
     expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
     const assistant = messageRows(h.fake).filter((r) => r.role === 'assistant');
-    expect(assistant.map((r) => r.content)).toEqual([SAFETY_REPLY]);
+    expect(assistant.map((r) => r.content)).toEqual([EMERGENCY_REPLY]);
   });
 
   it('records the alarm against the inbound message so a queue retry cannot re-ring it', async () => {
@@ -1472,7 +1474,7 @@ describe('the outage smoke alarm', () => {
     // line was this text's answer.
     const retry = await routeChannelMessage(h.deps, job());
     expect(retry.status).toBe('already_answered');
-    expect(h.transport.bodies()).toEqual([SAFETY_REPLY]);
+    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY]);
     expect(claim.fired).toHaveLength(1);
   });
 
@@ -1489,7 +1491,7 @@ describe('the outage smoke alarm', () => {
     );
 
     expect(second.status).toBe('smoke_alarm_fired');
-    expect(h.transport.bodies()).toEqual([SAFETY_REPLY, SAFETY_REPLY]);
+    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY, EMERGENCY_REPLY]);
   });
 
   // ── the non-triggers ───────────────────────────────────────────────────────

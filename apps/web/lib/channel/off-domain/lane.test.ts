@@ -5,6 +5,7 @@ import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
+  EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
@@ -141,8 +142,35 @@ describe('what each lane says', () => {
     expect(MENTAL_CRISIS_REPLY).toContain('911');
     expect(MENTAL_CRISIS_REPLY).not.toContain('811');
     expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
+    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
     expect(p.medicalCalls).toBe(0);
   });
+
+  it.each(['not breathing', 'unconscious', 'unresponsive', 'choking', 'seizure'] as const)(
+    'answers %s with Call 911 now. alone, never the 811 Telehealth line',
+    async (token) => {
+      const p = ports({
+        read: reading({ lane: 'safety_critical', category: 'medical-symptom' }),
+      });
+
+      const verdict = await consider(p, `she is ${token}`);
+
+      expect(verdict).toMatchObject({
+        status: 'deflected',
+        reply: EMERGENCY_REPLY,
+        replySource: 'fixed',
+      });
+      expect(EMERGENCY_REPLY).toBe('Call 911 now.');
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('811');
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('Health811');
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('988');
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('?');
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toBe(SAFETY_REPLY);
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toBe(MENTAL_CRISIS_REPLY);
+      expect(p.medicalCalls).toBe(0);
+      expect(p.composeCalls).toBe(0);
+    },
+  );
 
   /**
    * Skill audit P0 #3. The general terminal has a fourth outcome: the composer wrote a

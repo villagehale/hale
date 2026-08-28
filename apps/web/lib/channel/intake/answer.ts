@@ -56,9 +56,10 @@ import {
  *
  *   AN EMERGENCY NEVER REACHES A MODEL. `namesAnEmergency` is checked first, before the
  *   client is even resolved, and returns {@link IntakeAnswerOutcome} `safety` — the
- *   reviewed 811/911 line, with no return-to-script tacked onto it. Intake has never
- *   had the screened safety lane the router has (off-domain/lane.ts), so this is the
- *   whole of it, and it works during a provider outage because it is a substring test.
+ *   machine then sends {@link EMERGENCY_REPLY} (`Call 911 now.`), with no return-to-script
+ *   tacked onto it. Intake has never had the screened safety lane the router has
+ *   (off-domain/lane.ts), so this is the whole of it, and it works during a provider
+ *   outage because it is a substring test.
  *
  *   NOTHING IS AGREED TO YET, and the gates say so in code. Consent is the question
  *   still outstanding on the seam that calls this, so a composed line claiming Hale is

@@ -114,13 +114,21 @@ export const MENTAL_CRISIS_REPLY =
   "If you're in crisis, call 988 any time. If it's an emergency, call 911.";
 
 /**
- * The tokens that make {@link SAFETY_REPLY} go out with no model in the loop at all —
+ * VIL-328 — physical emergency. Designer-locked 2026-08-27, Advisor override
+ * the same night. Not {@link SAFETY_REPLY}: that line is Telehealth 811 and
+ * must not lead a real emergency. Not {@link MENTAL_CRISIS_REPLY}: 988 is the
+ * mental-crisis line. This is the line alone, verbatim. No return ask. No 811.
+ */
+export const EMERGENCY_REPLY = 'Call 911 now.';
+
+/**
+ * The tokens that make {@link EMERGENCY_REPLY} go out with no model in the loop at all —
  * the outage smoke alarm's trigger (router/smoke-alarm.ts, founder-approved
  * 2026-08-12), and the ONE place Hale answers a parent without composing anything.
  *
- * THE BAR, and nothing else gets on this list: a token belongs only if sending the
- * safety line to someone who was NOT in an emergency is obviously acceptable, and
- * missing a real one is obviously not. "Fever", "rash" and "hit her head" all fail it —
+ * THE BAR, and nothing else gets on this list: a token belongs only if sending
+ * {@link EMERGENCY_REPLY} to someone who was NOT in an emergency is obviously
+ * acceptable, and missing a real one is obviously not. "Fever", "rash" and "hit her head" all fail it —
  * a parent asking about a rash during an outage is owed a composed answer once the
  * model is back, not two phone numbers now. The six below pass it: there is no ordinary
  * Tuesday sentence they turn up in.
