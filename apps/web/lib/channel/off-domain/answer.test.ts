@@ -6,7 +6,7 @@ import {
   NO_CURRENT_SOURCE_YET,
 } from '~/lib/channel/intake/live-lookup';
 import { MAX_ANSWER_SEGMENTS, createGeneralAnswer, generalAnswerUserMessage } from './answer';
-import { MENTAL_CRISIS_REPLY } from './copy';
+import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from './copy';
 
 /** GSM-7 concatenation part size (sms-segments.ts GSM7_CONCAT_PART). A GSM-7 body of
  * this many characters is exactly {@link MAX_ANSWER_SEGMENTS} segments; one more tips it
@@ -354,6 +354,28 @@ describe('after provision leftover facts · VIL-327', () => {
     expect(MENTAL_CRISIS_REPLY).not.toContain('?');
     expect(MENTAL_CRISIS_REPLY).not.toContain('811');
     expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
+    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
+  });
+
+  it('answers a physical emergency with Call 911 now. and no return ask', async () => {
+    const exploding = () =>
+      ({
+        messages: {
+          create: () => {
+            throw new Error('a physical emergency must not reach a model');
+          },
+        },
+      }) as unknown as AgentClient;
+    expect(await createGeneralAnswer(exploding).compose('she is not breathing')).toEqual({
+      status: 'composed',
+      reply: EMERGENCY_REPLY,
+    });
+    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
+    expect(EMERGENCY_REPLY).not.toContain('811');
+    expect(EMERGENCY_REPLY).not.toContain('Health811');
+    expect(EMERGENCY_REPLY).not.toContain('988');
+    expect(EMERGENCY_REPLY).not.toContain('?');
+    expect(EMERGENCY_REPLY).not.toBe(SAFETY_REPLY);
   });
 });
 

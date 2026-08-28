@@ -9,6 +9,7 @@ import {
 } from './answer';
 import {
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
   SAFETY_REPLY_BY_LANGUAGE,
   namesAMentalCrisis,
@@ -135,6 +136,26 @@ export interface OffDomainLane {
 export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
   return {
     async consider(input) {
+      // VIL-328: a physical emergency token never waits on the screen or the
+      // medical composer. 811 is Telehealth and must not lead this inbound.
+      if (namesAnEmergency(input.text)) {
+        const signal = await ports.recordUnmetIntent({
+          channelMessageId: input.channelMessageId,
+          familyId: input.familyId,
+          lane: 'safety_critical',
+          category: 'emergency',
+        });
+        return {
+          status: 'deflected',
+          lane: 'safety_critical',
+          category: 'emergency',
+          reply: EMERGENCY_REPLY,
+          replySource: 'fixed',
+          medicalSource: null,
+          signal,
+        };
+      }
+
       const reading = await ports.screen.read(input.text);
       if (reading.lane === 'in_domain' || reading.category === null) {
         return { status: 'in_domain', fallback: reading.fallback };
@@ -181,11 +202,9 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       const language = replyLanguage(input.text);
       const { reply, replySource } =
         lane === 'safety_critical'
-          ? namesAnEmergency(input.text)
-            ? { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
-            : namesAMentalCrisis(input.text) || reading.category === 'mental-health'
-              ? { reply: MENTAL_CRISIS_REPLY, replySource: 'fixed' as const }
-              : { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
+          ? namesAMentalCrisis(input.text) || reading.category === 'mental-health'
+            ? { reply: MENTAL_CRISIS_REPLY, replySource: 'fixed' as const }
+            : { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
           : lane === 'provider_access'
             ? { reply: referralReply(input.text, language), replySource: 'fixed' as const }
             : await answerOrFallback(ports, input.text);
@@ -234,7 +253,10 @@ async function answerOrFallback(
   // the composer for a sentence it did not write would cost the founder's weekly count
   // the one distinction it is for (skill audit P0 #3).
   if (composed.status === 'safety') {
-    return { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' };
+    return {
+      reply: namesAnEmergency(text) ? EMERGENCY_REPLY : SAFETY_REPLY_BY_LANGUAGE[language],
+      replySource: 'fixed',
+    };
   }
   return { reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE[language], replySource: composed.reason };
 }

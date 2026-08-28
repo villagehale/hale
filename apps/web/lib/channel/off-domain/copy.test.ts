@@ -4,6 +4,7 @@ import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
+  EMERGENCY_REPLY,
   MENTAL_CRISIS_REPLY,
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
@@ -43,10 +44,24 @@ describe('mental-crisis tripwire · VIL-327', () => {
     expect(MENTAL_CRISIS_REPLY).not.toContain('?');
     expect(MENTAL_CRISIS_REPLY).not.toContain('811');
     expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
+    expect(MENTAL_CRISIS_REPLY).not.toBe('Call 911 now.');
     expect(SAFETY_REPLY).toBe(
       "That's not something I should advise on. Health811 (call 811) can help any time - and if it's an emergency, call 911.",
     );
     expect(SAFETY_REPLY).not.toContain('988');
+    expect(SAFETY_REPLY).not.toBe('Call 911 now.');
+  });
+});
+
+describe('physical-emergency tripwire · VIL-328', () => {
+  it('is Call 911 now. alone - no 811, no 988, no return ask', () => {
+    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
+    expect(EMERGENCY_REPLY).not.toContain('811');
+    expect(EMERGENCY_REPLY).not.toContain('Health811');
+    expect(EMERGENCY_REPLY).not.toContain('988');
+    expect(EMERGENCY_REPLY).not.toContain('?');
+    expect(EMERGENCY_REPLY).not.toBe(SAFETY_REPLY);
+    expect(EMERGENCY_REPLY).not.toBe(MENTAL_CRISIS_REPLY);
   });
 });
 
