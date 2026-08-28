@@ -105,6 +105,12 @@ describe('SITTING_SESSION_REMINDER — Designer lock', () => {
     expect(SITTING_REMINDER_HOUR_LOCAL).toBe(8);
     expect(SITTING_REMINDER_HOUR_LOCAL).not.toBe(9);
   });
+
+  it("never carries tonight's founder pair — Barton / Sebastian's dad / I built Hale", () => {
+    expect(SITTING_SESSION_REMINDER).not.toMatch(/Sebastian's dad/i);
+    expect(SITTING_SESSION_REMINDER).not.toMatch(/I built Hale/i);
+    expect(SITTING_SESSION_REMINDER).not.toMatch(/You're one of the first two/i);
+  });
 });
 
 describe('isSittingReminderSlot', () => {
