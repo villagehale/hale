@@ -11,9 +11,10 @@ export const maxDuration = 60;
 /**
  * GET /api/cron/intake-sitting-reminder — VIL-324.
  *
- * Hourly Vercel Cron. Sends at most once, only in the 8:00 America/Toronto hour,
- * only to open awaiting_details intakes that sat past first-hello. Sitting
- * sessions stay intakes — this route does not provision a family.
+ * Hourly Vercel Cron. Sends at most once, only in the Toronto morning hour
+ * (existing proactive quiet-hours end), only to open awaiting_details intakes
+ * that sat past first-hello. Sitting sessions stay intakes — this route does
+ * not provision a family.
  *
  * Cron-secret gated: a request without `Authorization: Bearer <CRON_SECRET>`
  * gets 401 and NOTHING runs.

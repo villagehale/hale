@@ -1,5 +1,6 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -20,9 +21,9 @@ import { FakeTransport } from './transport';
 /**
  * VIL-324 — one next-morning reminder for a sitting first-hello, then quiet.
  *
- * The clock is Designer-locked: 8:00 America/Toronto the morning AFTER the session
- * opened. Not 9:00. Not a 24-hour offset. Not a family-local hour — these rows are
- * still intakes, and they have no family timezone to consult.
+ * Clock: next America/Toronto calendar morning at the existing proactive
+ * quiet-hours end (08:00). Not 24 hours later to the minute. Not an invented
+ * 9:00. Sitting sessions stay intakes — no family, no family metrics.
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -37,6 +38,12 @@ const TORONTO_9AM = new Date('2026-08-27T13:00:00.000Z');
 const TORONTO_7AM = new Date('2026-08-27T11:00:00.000Z');
 /** Tuesday 26 Aug 2026, 7:00 p.m. Toronto — the first-hello the night before. */
 const FIRST_HELLO_PREVIOUS_EVENING = new Date('2026-08-26T23:00:00.000Z');
+/** Tuesday 26 Aug 2026, 8:25 p.m. ET — a 24h offset would leak at 8:25pm the next night. */
+const FIRST_HELLO_825PM_ET = new Date('2026-08-27T00:25:00.000Z');
+/** Tuesday 26 Aug 2026, 9:28 p.m. ET — a 24h offset would leak at 9:28pm the next night. */
+const FIRST_HELLO_928PM_ET = new Date('2026-08-27T01:28:00.000Z');
+/** Wednesday 27 Aug 2026, 8:25 p.m. ET — the 24h-later leak for the 8:25pm first-hello. */
+const NEXT_NIGHT_825PM_ET = new Date('2026-08-28T00:25:00.000Z');
 /** Wednesday 27 Aug 2026, 7:00 a.m. Toronto — same calendar morning as the 8:00 slot. */
 const FIRST_HELLO_SAME_MORNING = new Date('2026-08-27T11:00:00.000Z');
 
@@ -92,8 +99,9 @@ describe('SITTING_SESSION_REMINDER — Designer lock', () => {
     expect(smsEncoding(SITTING_SESSION_REMINDER)).toBe('gsm7');
   });
 
-  it('is locked to 8:00 America/Toronto — not 9:00, not another hour', () => {
+  it('uses the existing quiet-hours morning window — not an invented 9:00', () => {
     expect(SITTING_REMINDER_TIMEZONE).toBe('America/Toronto');
+    expect(PROACTIVE_QUIET_HOURS.end).toBe('08:00');
     expect(SITTING_REMINDER_HOUR_LOCAL).toBe(8);
     expect(SITTING_REMINDER_HOUR_LOCAL).not.toBe(9);
   });
@@ -113,6 +121,12 @@ describe('isNextTorontoMorning', () => {
     expect(isNextTorontoMorning(FIRST_HELLO_PREVIOUS_EVENING, TORONTO_8AM)).toBe(true);
     expect(isNextTorontoMorning(FIRST_HELLO_SAME_MORNING, TORONTO_8AM)).toBe(false);
     expect(isNextTorontoMorning(TORONTO_8AM, TORONTO_8AM)).toBe(false);
+  });
+
+  it('is a calendar morning, not 24 hours later to the minute', () => {
+    expect(isNextTorontoMorning(FIRST_HELLO_825PM_ET, TORONTO_8AM)).toBe(true);
+    expect(isNextTorontoMorning(FIRST_HELLO_928PM_ET, TORONTO_8AM)).toBe(true);
+    expect(isSittingReminderSlot(NEXT_NIGHT_825PM_ET)).toBe(false);
   });
 });
 
@@ -247,6 +261,21 @@ describe('runSittingReminderCron', () => {
     const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_9AM);
     expect(result).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
     expect(transport.bodies()).toEqual([]);
+  });
+
+  it('sends the next morning for 8:25pm / 9:28pm ET first-hellos — not 24h later', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, { createdAt: FIRST_HELLO_825PM_ET });
+    seedSession(fake, { phoneE164: OTHER, createdAt: FIRST_HELLO_928PM_ET });
+
+    const morning = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(morning.sent).toBe(2);
+    expect(transport.bodies()).toEqual([SITTING_SESSION_REMINDER, SITTING_SESSION_REMINDER]);
+
+    const leak = await runSittingReminderCron(fake.db, deps(transport), NEXT_NIGHT_825PM_ET);
+    expect(leak).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
+    expect(transport.bodies()).toEqual([SITTING_SESSION_REMINDER, SITTING_SESSION_REMINDER]);
   });
 
   it('does not mint a family — the session stays an intake', async () => {

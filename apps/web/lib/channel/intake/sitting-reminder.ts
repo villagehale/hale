@@ -4,6 +4,7 @@ import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { SITTING_SESSION_REMINDER } from '~/lib/channel/intake/copy';
 import { appendTranscript, loadOpenSession, saveSession } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
 import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import { localParts } from '~/lib/loop/prefs';
@@ -16,17 +17,27 @@ import { dayKeyIn } from '~/lib/plan/spine';
  * when details are incomplete, cap 1. This is a later, scheduled text for a
  * session that never came back.
  *
- * Clock (Designer lock): 8:00 America/Toronto the morning AFTER the session
- * opened. Not 9:00. Not a 24-hour offset. Not a family-local hour — these rows
- * are still intakes and have no family timezone. The hourly cron matches the
- * whole 8:00 hour so a tick a minute late still lands.
+ * Clock (Advisor + GTM lock): the NEXT America/Toronto calendar morning, at the
+ * existing proactive morning window (`PROACTIVE_QUIET_HOURS.end` = 08:00). Not
+ * 24 hours later to the minute — an 8:25pm / 9:28pm first-hello must not get a
+ * 10pm next-night ping. Not an invented 9:00. Not a family-local hour — these
+ * rows are still intakes and have no family timezone. The hourly cron matches
+ * the whole morning hour so a tick a minute late still lands.
  *
  * Send path is the existing intake Twilio transport (Hale's number / Messaging
- * Service). No second SMS stack. No family is minted.
+ * Service). No second SMS stack. No family is minted. No family metrics.
  */
 
+function localHourFromHm(hm: string): number {
+  const hour = Number(hm.split(':')[0]);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+    throw new Error(`sitting reminder: invalid morning window: ${hm}`);
+  }
+  return hour;
+}
+
 export const SITTING_REMINDER_TIMEZONE = 'America/Toronto';
-export const SITTING_REMINDER_HOUR_LOCAL = 8;
+export const SITTING_REMINDER_HOUR_LOCAL = localHourFromHm(PROACTIVE_QUIET_HOURS.end);
 
 const MAX_SITTING_REMINDERS_PER_RUN = 50;
 
@@ -50,7 +61,7 @@ export interface SittingSessionRow {
   createdAt: Date;
 }
 
-/** Whether `now` sits in the locked 8:00 America/Toronto hour. */
+/** Whether `now` sits in the locked Toronto morning hour (quiet-hours end). */
 export function isSittingReminderSlot(now: Date): boolean {
   return (
     Math.floor(localParts(now, SITTING_REMINDER_TIMEZONE).minutes / 60) ===
@@ -66,7 +77,7 @@ export function isNextTorontoMorning(createdAt: Date, now: Date): boolean {
 /**
  * Pure gate. Sitting sessions stay intakes: a provisioned family, a closed row,
  * STOP, a completed flow, or an already-claimed reminder all refuse. The clock
- * is the locked 8:00 Toronto hour on the morning after first-hello.
+ * is the existing Toronto morning window the calendar morning after first-hello.
  */
 export function sittingSessionEligible(row: SittingSessionRow, now: Date): boolean {
   if (row.state !== 'awaiting_details') return false;

@@ -519,7 +519,7 @@ export const COLD_START_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 /**
  * VIL-324 — Designer-locked next-morning reminder for a sitting first-hello.
  * GSM-7 hyphens, no invented date or city clock in the line. The send clock is
- * 8:00 America/Toronto the morning after, owned by sitting-reminder.ts.
+ * the existing Toronto morning window (quiet-hours end), owned by sitting-reminder.ts.
  */
 export const SITTING_SESSION_REMINDER =
   "Still here if you want me watching. Reply with your kids' names, ages, and postal code and I'll send what's coming.";
