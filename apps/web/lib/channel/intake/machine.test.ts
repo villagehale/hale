@@ -173,7 +173,7 @@ describe('intake · happy path', () => {
 
     expect(await text(fake, transport, deps, 'hi')).toEqual({ status: 'greeted' });
     expect(transport.bodies()[0]).toBe(
-      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Kids' names, ages, and your postal code and I'll look up what's coming.",
+      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     );
     expect(transport.bodies()[0]).not.toContain('an AI that quietly runs the family week');
     expect(transport.bodies()[0]).not.toMatch(/I'm an AI/i);
