@@ -27,6 +27,7 @@ import {
   followUp,
   greeting,
   isBareFirstHello,
+  looksLikeIntakeDetails,
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
@@ -90,6 +91,15 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(isBareFirstHello('When do winter-break camps open?')).toBe(false);
     expect(isBareFirstHello("she's not breathing")).toBe(false);
     expect(isBareFirstHello('who is this exactly?')).toBe(false);
+  });
+
+  it('treats the site Text Hale prefill as details, not a question or a hello', () => {
+    const prefill = 'Maya is 4, Theo is 18 months, L3R';
+    expect(isBareFirstHello(prefill)).toBe(false);
+    expect(looksLikeIntakeDetails(prefill)).toBe(true);
+    expect(looksLikeIntakeDetails('When does swim registration open near me?')).toBe(false);
+    expect(looksLikeIntakeDetails("she's not breathing")).toBe(false);
+    expect(looksLikeIntakeDetails('hi')).toBe(false);
   });
 
   it('reads the "(via <code>)" suffix the /text entry page prefills (VIL-240 convention)', () => {

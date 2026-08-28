@@ -54,6 +54,7 @@ import {
   detailsBlocked,
   greeting,
   isBareFirstHello,
+  looksLikeIntakeDetails,
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
@@ -605,6 +606,18 @@ async function greetNewFamily(
     sourceCode,
   });
   const ctx: SendContext = { session, phoneE164: args.phoneE164, now: args.now };
+
+  // Site Text Hale prefills names / ages / postal. That is DETAILS, not a question —
+  // the existing extractor / handleDetails path, never offScriptReply. Bare hi still
+  // greeting() below. Rec/camp questions still answer + COLD_START_ASK (VIL-322).
+  if (!isBareFirstHello(args.inbound.body) && looksLikeIntakeDetails(args.inbound.body)) {
+    await reportIntakeStep(deps, 'intake_started', session.id);
+    return handleDetails(
+      database,
+      { session, phoneE164: args.phoneE164, inbound: args.inbound, now: args.now },
+      deps,
+    );
+  }
 
   const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
   const venue = venueForCode(sourceCode);

@@ -424,6 +424,19 @@ export function isBareFirstHello(body: string): boolean {
   return words === '' || BARE_HELLO.test(words);
 }
 
+/** "Maya is 4", "Theo is 18 months" — the site prefill and a parent who skipped hello. */
+const NAME_IS_AGE =
+  /\b[A-Za-z][A-Za-z'-]{0,30}\s+is\s+\d+(?:\s*(?:months?|years?|ans|mois))?\b/i;
+
+/**
+ * True when the first inbound looks like names / ages / postal — details, not a
+ * question. Greet runs the existing extractor / handleDetails path for these
+ * and must not call offScriptReply (the site Text Hale prefill is this shape).
+ */
+export function looksLikeIntakeDetails(body: string): boolean {
+  return NAME_IS_AGE.test(firstInboundWords(body));
+}
+
 /** The venue CODE (registry key) for a prefilled first body, or null when the body
  * carries no tag or a tag we don't recognise. */
 export function sourceCodeFromBody(body: string): string | null {
