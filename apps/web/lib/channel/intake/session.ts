@@ -190,6 +190,8 @@ export interface SessionPatch {
   userId?: string;
   lastProviderId?: string;
   closedAt?: Date;
+  /** Stamped when a first-hello is persisted — live greet or VIL-332 recovery. */
+  firstReplyRecoveredAt?: Date;
 }
 
 /** Persist a state transition. `collected`/`transcript` are re-encrypted together. */
@@ -212,6 +214,9 @@ export async function saveSession(
       ...(patch.userId ? { userId: patch.userId } : {}),
       ...(patch.lastProviderId ? { lastProviderId: patch.lastProviderId } : {}),
       ...(patch.closedAt ? { closedAt: patch.closedAt } : {}),
+      ...(patch.firstReplyRecoveredAt
+        ? { firstReplyRecoveredAt: patch.firstReplyRecoveredAt }
+        : {}),
       updatedAt: now,
     })
     .where(eq(schema.smsIntakeSessions.id, session.id));

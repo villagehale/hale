@@ -707,7 +707,13 @@ async function deliverFirstHello(
   await saveSession(
     database,
     session,
-    { state: 'awaiting_details', transcript, lastProviderId: args.inbound.providerId },
+    {
+      state: 'awaiting_details',
+      transcript,
+      lastProviderId: args.inbound.providerId,
+      // So the hourly recovery sweep does not re-decrypt every sitting first-hello.
+      firstReplyRecoveredAt: args.now,
+    },
     args.now,
   );
   await reportIntakeStep(deps, 'intake_started', session.id);

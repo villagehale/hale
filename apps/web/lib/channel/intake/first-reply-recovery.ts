@@ -172,7 +172,8 @@ async function loadFirstReplyCandidates(database: Database): Promise<FirstReplyC
         eq(schema.smsIntakeSessions.state, 'awaiting_details'),
         isNotNull(schema.smsIntakeSessions.lastProviderId),
       ),
-    );
+    )
+    .limit(MAX_FIRST_REPLY_RECOVERIES_PER_RUN);
 }
 
 async function claimFirstReplyRecovery(
@@ -210,7 +211,10 @@ async function recordFirstReplyOutbound(
   now: Date,
 ): Promise<void> {
   const session = await loadOpenSession(database, phoneE164);
-  if (!session) return;
+  if (!session) {
+    console.warn('first-reply recovery: send succeeded but no open session to record outbound');
+    return;
+  }
   await saveSession(
     database,
     session,

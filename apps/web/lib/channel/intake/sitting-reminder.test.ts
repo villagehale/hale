@@ -144,6 +144,7 @@ describe('sittingSessionEligible', () => {
     state: 'awaiting_details' as const,
     closedAt: null,
     sittingReminderSentAt: null,
+    firstReplyRecoveredAt: null,
     familyId: null,
     createdAt: FIRST_HELLO_PREVIOUS_EVENING,
   };
@@ -188,6 +189,12 @@ describe('sittingSessionEligible', () => {
 
   it('refuses a provisioned family — sitting sessions stay intakes', () => {
     expect(sittingSessionEligible({ ...open, familyId: 'fam-1' }, TORONTO_8AM)).toBe(false);
+  });
+
+  it('refuses a first-hello recovered this morning — Still here waits until tomorrow', () => {
+    expect(
+      sittingSessionEligible({ ...open, firstReplyRecoveredAt: TORONTO_8AM }, TORONTO_8AM),
+    ).toBe(false);
   });
 });
 
