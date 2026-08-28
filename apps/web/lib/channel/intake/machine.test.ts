@@ -41,6 +41,7 @@ import {
 } from './fakes';
 import type { IntentReading } from './intent';
 import { type IntakeDeps, handleInboundSms } from './machine';
+import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 import { FakeTransport } from './transport';
 import { CONTACT_CARD_URL, WELCOME_CARD_BODY, WELCOME_CARD_TEMPLATE_KEY } from './welcome-card';
 
@@ -1015,6 +1016,18 @@ describe('intake · a question mid-signup gets an answer', () => {
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
     expect(transport.bodies().at(-1)).toBe(SAFETY_REPLY);
   });
+
+  it('never sends HELP_REPLY alone when a mid-signup rec question is declined', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }],
+    });
+    await text(fake, transport, deps, 'hi');
+    const answered = await text(fake, transport, deps, 'When do winter-break camps open?');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
+    expect(transport.bodies().at(-1)).toContain(NOT_POSTED_YET);
+    expect(transport.bodies().at(-1)).not.toContain(COLD_START_ASK);
+  });
 });
 
 /**
@@ -1102,6 +1115,36 @@ describe('intake · a first-text question is answered', () => {
     expect(transport.bodies()).toEqual([SAFETY_REPLY]);
     expect(transport.bodies()[0]).not.toContain(COLD_START_ASK);
     expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+  });
+
+  it('never sends greeting() alone when a first-text rec question is declined or unavailable', async () => {
+    // VIL-326: the leak. Composer finds nothing / is unusable → greet used to
+    // send the locked greeting and ignore the question.
+    const silent = harness({});
+    const declined = await text(
+      silent.fake,
+      silent.transport,
+      silent.deps,
+      'When does swim registration open near me?',
+    );
+    expect(declined).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).toContain(NOT_POSTED_YET);
+    expect(silent.transport.bodies()[0]).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+
+    const composer = new FakeAnswerComposer({ status: 'unavailable', reason: 'unusable' });
+    const unusable = harness({ answerComposer: composer });
+    const answered = await text(
+      unusable.fake,
+      unusable.transport,
+      unusable.deps,
+      'When do winter-break camps open?',
+    );
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(unusable.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(unusable.transport.bodies()[0]).toContain(NOT_POSTED_YET);
+    expect(unusable.transport.bodies()[0]).not.toContain(COLD_START_ASK);
   });
 });
 

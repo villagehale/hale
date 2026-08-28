@@ -1,5 +1,6 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
+import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
 import { namesAnEmergency, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
@@ -9,6 +10,13 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
+import {
+  deidentifyOfficialQuery,
+  isOfficialPageAsk,
+  notesGroundADate,
+  officialPageFallbackReply,
+  officialPageReplyFromNotes,
+} from './official-page';
 
 /**
  * THE ESCAPE FROM THE SCRIPT — what Hale says when a parent mid-signup asks a question
@@ -180,7 +188,7 @@ const answerJsonSchema = {
     answer: {
       type: 'string',
       description:
-        "The reply to what the parent asked, or an empty string if they did not ask anything.",
+        'The reply to what the parent asked, or an empty string if they did not ask anything.',
     },
     returnLine: {
       type: 'string',
@@ -234,7 +242,8 @@ export function refusals(
   if (answer.includes('?')) found.push('answer_carries_question');
   if (!returnLine.endsWith('?')) found.push('return_asks_nothing');
   if (returnLine === input.pendingAsk.trim()) found.push('return_repeats_the_ask');
-  if (findInventedFacts(joined, intakeAnswerFactSlots(input)).length > 0) found.push('invented_fact');
+  if (findInventedFacts(joined, intakeAnswerFactSlots(input)).length > 0)
+    found.push('invented_fact');
   if (APP_POINTER.test(joined)) found.push('points_at_the_app');
   if (CLAIMED_WORK.test(joined)) found.push('claimed_work');
   if (HUMANNESS.test(joined) && !DISCLOSES_AI.test(joined)) found.push('claimed_to_be_human');
@@ -288,6 +297,49 @@ export function readPair(
  * throws without a key, so "no client" is not a state this seam can be in — and rule
  * #11 says an effect that cannot be absent must not be nullable.
  */
+const MAX_OFFICIAL_SEARCHES = 2;
+const OFFICIAL_GROUND_MAX_TOKENS = 2048;
+
+type OfficialGround =
+  | { status: 'grounded'; notes: string }
+  | { status: 'ungrounded'; reason: string };
+
+/**
+ * GROUND a rec/camp clock against official pages. Zero searches, empty notes,
+ * or notes with no date are the same parent-facing sentence — not posted yet —
+ * and each reason is named in the log (rule #11). The search is Anthropic's US
+ * tool, so the query is de-identified first.
+ */
+async function groundOfficialPages(
+  client: AgentClient,
+  input: IntakeAnswerInput,
+): Promise<OfficialGround> {
+  let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+  try {
+    skill = await loadCronSkill('intake-official-ground');
+  } catch (err) {
+    return { status: 'ungrounded', reason: `skill_unavailable:${message(err)}` };
+  }
+
+  const query = deidentifyOfficialQuery(input.parentWords, input.children);
+  try {
+    const research = await client.messages.create({
+      model: pickModel(skill.meta.task),
+      max_tokens: OFFICIAL_GROUND_MAX_TOKENS,
+      system: skill.instructions,
+      tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_OFFICIAL_SEARCHES }],
+      messages: [{ role: 'user', content: query }],
+    });
+    const evidence = readEvidence(new Date(), research.content);
+    if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };
+    if (evidence.notes === '') return { status: 'ungrounded', reason: 'empty_research' };
+    if (!notesGroundADate(evidence.notes)) return { status: 'ungrounded', reason: 'no_date' };
+    return { status: 'grounded', notes: evidence.notes };
+  } catch (err) {
+    return { status: 'ungrounded', reason: `ground_failed:${message(err)}` };
+  }
+}
+
 export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerComposer {
   return {
     async compose(input) {
@@ -315,6 +367,24 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       });
       if (recMorning !== null) return { status: 'answered', body: recMorning };
 
+      // VIL-326: a rec/camp/registration clock that missed the city pins. Search
+      // official pages; if a date is not on them, say so. Never invent a clock,
+      // and never return unavailable — that was the greet/ask-alone leak.
+      if (isOfficialPageAsk(input.parentWords)) {
+        const ground = await groundOfficialPages(client, input);
+        if (ground.status === 'ungrounded') {
+          console.error(
+            { reason: ground.reason },
+            'intake answer: official page not grounded, said the date is not posted',
+          );
+          return { status: 'answered', body: officialPageFallbackReply(input.pendingAsk) };
+        }
+        return {
+          status: 'answered',
+          body: officialPageReplyFromNotes(ground.notes, input.pendingAsk),
+        };
+      }
+
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the
       // middle of a stranger's first conversation, and no deploy problem is worth
       // leaving that conversation unanswered.
@@ -332,7 +402,8 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
           system: skill.instructions,
           userMessage: JSON.stringify(intakeAnswerContext(input)),
           toolName: 'reply',
-          toolDescription: "Return the answer to the parent's question and the line back to Hale's.",
+          toolDescription:
+            "Return the answer to the parent's question and the line back to Hale's.",
           inputJsonSchema: answerJsonSchema,
           schema: answerSchema,
           maxTokens: MAX_TOKENS,

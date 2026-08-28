@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { MARKHAM_FIRST, TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
+import { ADULT_LEARN_DOOR } from './adult-learn';
 import {
   type IntakeAnswerInput,
   MAX_REPLY_CHARS,
@@ -9,8 +10,8 @@ import {
   readPair,
   refusals,
 } from './answer';
-import { ADULT_LEARN_DOOR } from './adult-learn';
 import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
+import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 
 /**
  * The gates around the mid-signup answer. Whether Hale writes a GOOD one is the eval's
@@ -247,6 +248,77 @@ describe('intake answer · the emergency tripwire', () => {
     if (mid.status !== 'answered') return;
     expect(mid.body).toContain(ADULT_LEARN_DOOR);
     expect(mid.body).not.toContain("I don't do that");
+  });
+
+  it('answers a rec/camp question that misses the city pins without a model', async () => {
+    // VIL-326: "When does swim registration open near me?" is not Toronto /
+    // Markham / YMCA, so the 544/548/555 pins miss. The old path invented a
+    // clock (refused) or returned unavailable, and greet sent the ask alone.
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been required to invent a clock');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      parentWords: 'When does swim registration open near me?',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain(NOT_POSTED_YET);
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toBe(COLD_START_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain("I don't do that");
+    expect(outcome.body).not.toMatch(/https?:\/\//);
+    expect(outcome.body).not.toMatch(/I'm an AI/i);
+  });
+
+  it('answers from official notes when search grounds a date, still no invented clock', async () => {
+    const notes = 'Hamilton swim registration opens September 8 at 7:00 a.m.';
+    const client = {
+      messages: {
+        create: async (req: { tools?: Array<{ type?: string }> }) => {
+          if (req.tools?.[0]?.type === 'web_search_20250305') {
+            return {
+              content: [
+                { type: 'text', text: notes },
+                {
+                  type: 'web_search_tool_result',
+                  tool_use_id: 'srvtu_1',
+                  content: [
+                    {
+                      type: 'web_search_result',
+                      url: 'https://www.hamilton.ca/recreation',
+                      title: 'Swim registration',
+                    },
+                  ],
+                },
+              ],
+            };
+          }
+          throw new Error('compose must not run when notes already ground a date');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(client);
+    const outcome = await composer.compose({
+      parentWords: 'Hamilton swim registration dates?',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain('September 8');
+    expect(outcome.body).toContain('7:00');
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain("I don't do that");
+    expect(outcome.body).not.toMatch(/https?:\/\//);
   });
 });
 

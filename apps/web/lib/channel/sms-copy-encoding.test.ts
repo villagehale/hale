@@ -86,6 +86,7 @@ const SMS_COPY_SOURCES = [
   'lib/channel/router/copy.ts',
   'lib/channel/intake/copy.ts',
   'lib/channel/intake/adult-learn.ts',
+  'lib/channel/intake/official-page.ts',
   'lib/channel/off-domain/copy.ts',
   'lib/channel/caregiver/copy.ts',
   'lib/channel/join/copy.ts',
