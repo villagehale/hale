@@ -171,6 +171,11 @@ export type IntakeAnswerOutcome =
    * a text field is one a later edit could fill from a model.
    */
   | { status: 'safety' }
+  /**
+   * Caregiver mental crisis. Carries NO body — the machine sends
+   * {@link MENTAL_CRISIS_REPLY} (988 / 911), never the child-health 811 line.
+   */
+  | { status: 'mental_crisis' }
   | { status: 'unavailable'; reason: IntakeAnswerFallback };
 
 export interface IntakeAnswerInput {
@@ -358,9 +363,8 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // FIRST, and with no model in the loop. See the module note: intake has never had
       // the screened safety lane, and an emergency must not wait on a provider that may
       // be the reason this turn is degraded at all.
-      if (namesAnEmergency(input.parentWords) || namesAMentalCrisis(input.parentWords)) {
-        return { status: 'safety' };
-      }
+      if (namesAnEmergency(input.parentWords)) return { status: 'safety' };
+      if (namesAMentalCrisis(input.parentWords)) return { status: 'mental_crisis' };
 
       // VIL-323: adult-learn is a Designer-locked kids-only door, not a model "I
       // don't do that" and not a city clock. Checked before rec-morning so

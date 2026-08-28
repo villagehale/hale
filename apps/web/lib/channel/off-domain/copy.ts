@@ -105,6 +105,15 @@ export const SAFETY_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 };
 
 /**
+ * VIL-327 — caregiver mental crisis. Designer-locked 2026-08-28. Not
+ * {@link SAFETY_REPLY}: that line is the child-health 811 reply and must not
+ * go out for suicide / self-harm. 988 is the Canada Suicide Crisis Helpline.
+ * No return ask. No 811. No "not something I should advise on."
+ */
+export const MENTAL_CRISIS_REPLY =
+  "If you're in crisis, call 988 any time. If it's an emergency, call 911.";
+
+/**
  * The tokens that make {@link SAFETY_REPLY} go out with no model in the loop at all —
  * the outage smoke alarm's trigger (router/smoke-alarm.ts, founder-approved
  * 2026-08-12), and the ONE place Hale answers a parent without composing anything.
@@ -153,9 +162,9 @@ export function namesAnEmergency(body: string): boolean {
 }
 
 /**
- * VIL-327 — caregiver mental crisis. Same reviewed {@link SAFETY_REPLY} as a
- * physical emergency (811 / 911). There is no 988 line in this repo; this
- * ticket does not invent one. A therapist-find or cheer-up must not match.
+ * VIL-327 — caregiver mental crisis. Sends {@link MENTAL_CRISIS_REPLY}
+ * (988 / 911), never {@link SAFETY_REPLY}. A therapist-find or cheer-up
+ * must not match.
  */
 const MENTAL_CRISIS_PATTERN =
   /\b(?:suicide|suicidal|kill(?:ing)? myself|end my life|self[-\s]?harm|want to die|wanna die|not want to be alive)\b|(?<![\w$])988(?!\d)/i;

@@ -1,7 +1,11 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
+import {
+  MENTAL_CRISIS_REPLY,
+  SAFETY_REPLY,
+  SAFETY_REPLY_BY_LANGUAGE,
+} from '~/lib/channel/off-domain/copy';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { matchHealthCheckpoints } from '~/lib/health/match';
@@ -1189,13 +1193,16 @@ describe('intake · a first-text question is answered', () => {
     expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
   });
 
-  it('sends the reviewed safety line alone on a first-text crisis - no return ask', async () => {
+  it('sends the reviewed 988 line alone on a first-text crisis - no return ask', async () => {
     const silent = harness({});
     const answered = await text(silent.fake, silent.transport, silent.deps, 'I want to die');
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
-    expect(silent.transport.bodies()).toEqual([SAFETY_REPLY]);
+    expect(silent.transport.bodies()).toEqual([MENTAL_CRISIS_REPLY]);
     expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
     expect(silent.transport.bodies()[0]).not.toContain('?');
+    expect(silent.transport.bodies()[0]).not.toContain('811');
+    expect(silent.transport.bodies()[0]).not.toContain("not something I should advise on");
+    expect(silent.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
   });
 
   it('answers a first-text cheer-up with warmth, not the bare greeting', async () => {

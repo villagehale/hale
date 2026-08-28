@@ -12,7 +12,12 @@ import {
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { namesAMentalCrisis, namesAnEmergency, reachesForTheHealthLine } from './copy';
+import {
+  MENTAL_CRISIS_REPLY,
+  namesAMentalCrisis,
+  namesAnEmergency,
+  reachesForTheHealthLine,
+} from './copy';
 
 /**
  * Boundary v3 — the general answer.
@@ -162,9 +167,11 @@ function sendable(raw: string): GeneralAnswerOutcome {
 export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerComposer {
   return {
     async compose(text) {
-      // VIL-327: crisis first, no return ask. Same reviewed 811/911 line.
-      if (namesAnEmergency(text) || namesAMentalCrisis(text)) {
-        return { status: 'safety' };
+      // VIL-327: physical emergency keeps the child-health 811 line.
+      // Mental crisis is the reviewed 988 line, no return ask.
+      if (namesAnEmergency(text)) return { status: 'safety' };
+      if (namesAMentalCrisis(text)) {
+        return { status: 'composed', reply: MENTAL_CRISIS_REPLY };
       }
 
       if (isCheerUpAsk(text)) {

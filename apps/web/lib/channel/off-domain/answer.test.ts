@@ -6,6 +6,7 @@ import {
   NO_CURRENT_SOURCE_YET,
 } from '~/lib/channel/intake/live-lookup';
 import { MAX_ANSWER_SEGMENTS, createGeneralAnswer, generalAnswerUserMessage } from './answer';
+import { MENTAL_CRISIS_REPLY } from './copy';
 
 /** GSM-7 concatenation part size (sms-segments.ts GSM7_CONCAT_PART). A GSM-7 body of
  * this many characters is exactly {@link MAX_ANSWER_SEGMENTS} segments; one more tips it
@@ -347,8 +348,12 @@ describe('after provision leftover facts · VIL-327', () => {
         },
       }) as unknown as AgentClient;
     expect(await createGeneralAnswer(exploding).compose('I want to die')).toEqual({
-      status: 'safety',
+      status: 'composed',
+      reply: MENTAL_CRISIS_REPLY,
     });
+    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
+    expect(MENTAL_CRISIS_REPLY).not.toContain("not something I should advise on");
   });
 });
 

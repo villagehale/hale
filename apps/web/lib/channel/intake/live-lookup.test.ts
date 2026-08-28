@@ -156,6 +156,8 @@ describe('live-lookup · no current source when search cannot ground', () => {
 describe('live-lookup · cheer-up is warm and not clinical', () => {
   it('is reviewed warmth, no diagnosis, no therapist claim, then one return ask', () => {
     const intake = cheerUpIntakeReply(COLD_START_ASK);
+    expect(CHEER_UP_REPLY).toBe("That's a lot to carry. You're doing the hard part.");
+    expect(CHEER_UP_REPLY).not.toContain('by showing up');
     expect(intake.startsWith(CHEER_UP_REPLY)).toBe(true);
     expect(intake).toContain(OFFICIAL_PAGE_RETURN_ASK);
     expect(intake).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);

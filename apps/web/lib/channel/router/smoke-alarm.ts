@@ -1,5 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { SAFETY_REPLY, namesAMentalCrisis, namesAnEmergency } from '~/lib/channel/off-domain/copy';
+import {
+  MENTAL_CRISIS_REPLY,
+  SAFETY_REPLY,
+  namesAMentalCrisis,
+  namesAnEmergency,
+} from '~/lib/channel/off-domain/copy';
 
 /**
  * The outage smoke alarm — the one deliberate exception to the always-LLM doctrine
@@ -162,7 +167,11 @@ export async function considerSmokeAlarm(input: SmokeAlarmInput): Promise<SmokeA
   // reason turned up one notch. A claim written first would turn a send that failed into
   // a text the parent never gets at all: the re-drive would read the claim and stay
   // quiet about an emergency nobody answered.
-  await input.say(SAFETY_REPLY);
+  await input.say(
+    namesAMentalCrisis(input.body) && !namesAnEmergency(input.body)
+      ? MENTAL_CRISIS_REPLY
+      : SAFETY_REPLY,
+  );
   await input.claim.recordFired({ familyId, parentUserId, channelMessageId });
   return 'fired';
 }

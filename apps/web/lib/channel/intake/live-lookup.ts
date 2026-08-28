@@ -31,7 +31,7 @@ export const AFTER_PROVISION_RETURN_ASK = 'Anything I can watch for the kids thi
  * Warm parent, not a clinician. Reviewed copy — a model does not write a
  * method, a diagnosis, or "I'm a therapist."
  */
-export const CHEER_UP_REPLY = "That's a lot to carry. You're doing the hard part by showing up.";
+export const CHEER_UP_REPLY = "That's a lot to carry. You're doing the hard part.";
 
 const NO_CURRENT_SOURCE_MARK = /no current source/i;
 

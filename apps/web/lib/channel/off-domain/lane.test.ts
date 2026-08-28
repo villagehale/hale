@@ -5,6 +5,7 @@ import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
+  MENTAL_CRISIS_REPLY,
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY,
@@ -108,8 +109,8 @@ describe('what each lane says', () => {
   /** Every safety_critical category EXCEPT medical-symptom still gets the fixed line,
    * with no model between a parent and what they are told about a crisis. medical-symptom
    * moved to its own answered lane (see the dedicated describe below). */
-  it.each(['mental-health', 'child-safety', 'emergency'] as const)(
-    'answers a %s safety ask with the fixed line, exactly',
+  it.each(['child-safety', 'emergency'] as const)(
+    'answers a %s safety ask with the child-health 811 line, exactly',
     async (category) => {
       const p = ports({ read: reading({ lane: 'safety_critical', category }) });
 
@@ -122,10 +123,26 @@ describe('what each lane says', () => {
       });
       expect(SAFETY_REPLY).toContain('811');
       expect(SAFETY_REPLY).toContain('911');
-      // The medical composer is only for medical-symptom — never woken for these.
       expect(p.medicalCalls).toBe(0);
     },
   );
+
+  it('answers a mental-health crisis with the reviewed 988 line, never the 811 child-health line', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'mental-health' }) });
+
+    const verdict = await consider(p);
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: MENTAL_CRISIS_REPLY,
+      replySource: 'fixed',
+    });
+    expect(MENTAL_CRISIS_REPLY).toContain('988');
+    expect(MENTAL_CRISIS_REPLY).toContain('911');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
+    expect(MENTAL_CRISIS_REPLY).not.toContain("not something I should advise on");
+    expect(p.medicalCalls).toBe(0);
+  });
 
   /**
    * Skill audit P0 #3. The general terminal has a fourth outcome: the composer wrote a

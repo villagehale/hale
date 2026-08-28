@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import { MENTAL_CRISIS_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { MARKHAM_FIRST, TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
 import { ADULT_LEARN_DOOR } from './adult-learn';
 import {
@@ -437,7 +437,7 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body).not.toContain(AFTER_PROVISION_RETURN_ASK);
   });
 
-  it('answers a crisis inbound with the reviewed safety line and no return ask', async () => {
+  it('answers a crisis inbound with the reviewed 988 line and no return ask', async () => {
     const exploding = {
       messages: {
         create: () => {
@@ -452,10 +452,16 @@ describe('intake answer · the emergency tripwire', () => {
         pendingAsk: COLD_START_ASK,
         children: [],
       }),
-    ).toEqual({ status: 'safety' });
+    ).toEqual({ status: 'mental_crisis' });
+    expect(MENTAL_CRISIS_REPLY).toBe(
+      "If you're in crisis, call 988 any time. If it's an emergency, call 911.",
+    );
+    expect(MENTAL_CRISIS_REPLY).toContain('988');
+    expect(MENTAL_CRISIS_REPLY).toContain('911');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
+    expect(MENTAL_CRISIS_REPLY).not.toContain("not something I should advise on");
     expect(SAFETY_REPLY).toContain('811');
-    expect(SAFETY_REPLY).toContain('911');
-    expect(SAFETY_REPLY).not.toContain('?');
     expect(SAFETY_REPLY).not.toContain('988');
   });
 });
