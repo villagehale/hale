@@ -1017,6 +1017,94 @@ describe('intake · a question mid-signup gets an answer', () => {
   });
 });
 
+/**
+ * VIL-322 · the greet hole. A first inbound that is a question used to open a
+ * session and send greeting() only — the words were ignored. Off-script answer
+ * already existed on turn 2. Site chips send the question as turn 1.
+ */
+describe('intake · a first-text question is answered', () => {
+  const ANSWER = 'ANSWER';
+  const RETURN = 'RETURN?';
+
+  function recorder() {
+    const calls: Array<{ event: string }> = [];
+    const capture: IntakeDeps['capture'] = async (event) => {
+      calls.push({ event });
+      return 'sent';
+    };
+    return { calls, capture };
+  }
+
+  it('answers a rec/camp first inbound instead of the bare greeting-only path', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ answerComposer: composer, capture });
+
+    const answered = await text(fake, transport, deps, 'When does swim registration open near me?');
+
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies()).toEqual([`${ANSWER} ${RETURN}`]);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(composer.calls).toEqual([
+      {
+        parentWords: 'When does swim registration open near me?',
+        pendingAsk: COLD_START_ASK,
+        children: [],
+        postalCode: null,
+      },
+    ]);
+
+    const [session] = fake.rows(schema.smsIntakeSessions);
+    expect(session).toMatchObject({ state: 'awaiting_details', followUpCount: 0 });
+    expect(calls.map((c) => c.event)).toEqual(['intake_started']);
+  });
+
+  it("still sends greeting() for a first inbound 'hi'", async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+
+    expect(await text(fake, transport, deps, 'hi')).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
+    expect(composer.calls).toHaveLength(0);
+  });
+
+  it('still sends the venue greeting for a QR / HALE tag', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+
+    expect(await text(fake, transport, deps, 'HALE LIBRARY')).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting('library', 'en')]);
+    expect(composer.calls).toHaveLength(0);
+
+    const via = harness({ answerComposer: composer });
+    expect(await text(via.fake, via.transport, via.deps, 'Hi (via earlyon-richmondhill)')).toEqual({
+      status: 'greeted',
+    });
+    expect(via.transport.bodies()).toEqual([greeting('EarlyON centre', 'en')]);
+    expect(composer.calls).toHaveLength(0);
+  });
+
+  it('sends the safety line alone on a first inbound - no signup ask stacked after it', async () => {
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+
+    const answered = await text(fake, transport, deps, "she's not breathing");
+    expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(transport.bodies()).toEqual([SAFETY_REPLY]);
+    expect(transport.bodies()[0]).not.toContain(COLD_START_ASK);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+  });
+});
+
 describe('intake · CASL keywords', () => {
   it('STOP before provisioning acks and provisions nothing', async () => {
     const { fake, transport, deps } = harness({});

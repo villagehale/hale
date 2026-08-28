@@ -53,6 +53,7 @@ import {
   WATCH_OFFER_ASK,
   detailsBlocked,
   greeting,
+  isBareFirstHello,
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
@@ -607,10 +608,28 @@ async function greetNewFamily(
 
   const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
   const venue = venueForCode(sourceCode);
-  // ONE message, disclosure included: the greeting introduces Hale as an AI in its own
-  // first sentence, so there is no second paragraph to append (and no second segment to
-  // pay for). The privacy link rides on the consent ask instead — see WATCH_OFFER.
-  const body = greeting(venue?.name ?? null, replyLanguage(args.inbound.body));
+  const language = replyLanguage(args.inbound.body);
+  // ONE message. A bare hi / empty / QR tag still gets the locked greeting. A first
+  // inbound that is a question (the site chips, a rec/camp ask) is answered with the
+  // same off-script path turn 2 already had — then Hale's pending ask, in one text.
+  // VIL-322: two site intakes dropped because greet() never read the inbound body.
+  let body = greeting(venue?.name ?? null, language);
+  let outcome: IntakeOutcome = { status: 'greeted' };
+  if (!isBareFirstHello(args.inbound.body)) {
+    const offScript = await offScriptReply(
+      {
+        parentWords: args.inbound.body,
+        pendingAsk: COLD_START_ASK_BY_LANGUAGE[language],
+        children: [],
+        postalCode: null,
+      },
+      deps,
+    );
+    if (offScript) {
+      body = offScript.body;
+      outcome = { status: 'question_answered', source: offScript.source };
+    }
+  }
   const { transcript } = await sendAndRecord(database, ctx, body, deps, recorded.transcript);
 
   await saveSession(
@@ -620,7 +639,7 @@ async function greetNewFamily(
     args.now,
   );
   await reportIntakeStep(deps, 'intake_started', session.id);
-  return { status: 'greeted' };
+  return outcome;
 }
 
 async function handleDetails(
