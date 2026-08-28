@@ -30,7 +30,7 @@ export const WATCH_OFFER_ASK = 'Want me to keep an eye on all of this for you?';
 /** The opener's ask, verbatim from copy.ts COLD_START_ASK — the OTHER seam, where no
  * family exists yet and Hale knows nothing about the children. */
 export const COLD_START_ASK =
-  "Reply with your kids' names, ages, and postal code and I'll text back what's coming.";
+  "Tell me your kids' names and ages, plus your postal code - and I'll get to work.";
 
 const SEBASTIAN = [{ name: 'Sebastian', ageMonths: 48 }];
 const TWO_KIDS = [
