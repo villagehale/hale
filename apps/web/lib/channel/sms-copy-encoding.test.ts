@@ -170,7 +170,7 @@ describe('outbound SMS copy stays in the GSM-7 alphabet', () => {
 describe('the intake script stays GSM-7 once rendered', () => {
   const RENDERED: Record<string, string> = {
     'greeting (no venue)': greeting(null, 'en'),
-    'greeting (venue)': greeting('EarlyON centre', 'en'),
+    'greeting (venue)': greeting('family centre', 'en'),
     WATCH_OFFER,
     ASSENT_ACK,
     DECLINE_ACK,

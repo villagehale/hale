@@ -1128,7 +1128,7 @@ describe('intake · a first-text question is answered', () => {
     expect(await text(via.fake, via.transport, via.deps, 'Hi (via earlyon-richmondhill)')).toEqual({
       status: 'greeted',
     });
-    expect(via.transport.bodies()).toEqual([greeting('EarlyON centre', 'en')]);
+    expect(via.transport.bodies()).toEqual([greeting('family centre', 'en')]);
     expect(composer.calls).toHaveLength(0);
   });
 
