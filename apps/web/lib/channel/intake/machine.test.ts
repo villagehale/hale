@@ -1105,6 +1105,50 @@ describe('intake · a first-text question is answered', () => {
   });
 });
 
+/**
+ * Site Text Hale prefills the first SMS as names / ages / postal. After VIL-322,
+ * greet() treated anything that was not a bare hello as a question — so this
+ * send got an answer + COLD_START_ASK instead of extraction. One send should
+ * run intake.
+ */
+describe('intake · a first-text details prefill is extracted', () => {
+  const SITE_PREFILL = 'Maya is 4, Theo is 18 months, L3R';
+  const MAYA_AND_THEO: IntakeCollected = {
+    children: [
+      { name: 'Maya', ageMonths: 48, agePrecision: 'years' },
+      { name: 'Theo', ageMonths: 18, agePrecision: 'months' },
+    ],
+    postalCode: 'L3R',
+  };
+
+  it('extracts kids + postal on first inbound and does not greet or answer as a question', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `ANSWER ${COLD_START_ASK}`,
+    });
+    const { fake, transport, deps } = harness({
+      extractions: [MAYA_AND_THEO],
+      answerComposer: composer,
+    });
+
+    const result = await text(fake, transport, deps, SITE_PREFILL);
+
+    expect(result.status).toBe('provisioned');
+    expect(composer.calls).toHaveLength(0);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(transport.bodies()[0]).not.toContain('ANSWER');
+    expect(transport.bodies().some((b) => b.includes(COLD_START_ASK))).toBe(false);
+
+    const kids = inserts(fake, schema.children);
+    expect(kids.map((k) => k.name)).toEqual(['Maya', 'Theo']);
+    expect(inserts(fake, schema.families)[0]).toMatchObject({
+      country: 'Canada',
+      postalCode: null,
+      areaCoarse: 'L3R',
+    });
+  });
+});
+
 describe('intake · CASL keywords', () => {
   it('STOP before provisioning acks and provisions nothing', async () => {
     const { fake, transport, deps } = harness({});
