@@ -89,7 +89,13 @@ export type AnalyticsEvent =
   // A sentence Hale wrote and was not allowed to send: it claimed a row that does not
   // exist and could not be made to (lib/channel/reconcile). The class is the refusal
   // reason, so the rate says WHICH claim the model keeps inventing.
-  | 'agent_claim_refused';
+  | 'agent_claim_refused'
+  // A Twilio webhook that threw before it could answer — the anonymous 500 Twilio logs
+  // as error 11200 and a parent experiences as silence (VIL-331). Carries the route and
+  // the error class only, and is fired from a leg that never touches the database,
+  // because the failure it exists to report is usually the database being gone
+  // (lib/channel/twilio/alert.ts).
+  | 'webhook_route_failed';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;
