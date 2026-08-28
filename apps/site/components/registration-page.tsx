@@ -13,6 +13,7 @@ import { getTranslator, isoToDate } from '~/i18n/server';
 import { registrationJsonLd } from '~/lib/registration/structured-data';
 import type { RegistrationGuide } from '~/lib/registration/types';
 import { chromeCta } from '~/lib/site/chrome-cta';
+import { buildSmsHrefForBody, readSmsNumber } from '~/lib/text-entry';
 
 /**
  * Shared chrome for the city-registration landings. The visual source of truth
@@ -50,6 +51,9 @@ export function RegistrationGuidePage({
 }) {
   const t = getTranslator(locale, 'Registration');
   const cta = chromeCta(locale);
+  const number = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
+  const href =
+    number && guide.smsPrefill ? buildSmsHrefForBody(number, guide.smsPrefill) : cta.href;
 
   return (
     <main id="main" tabIndex={-1} className="relative">
@@ -290,7 +294,7 @@ export function RegistrationGuidePage({
           <LandingCta
             event="cta_text_click"
             placement={guide.placement}
-            href={cta.href}
+            href={href}
             className="btn-on-navy"
           >
             {cta.label}

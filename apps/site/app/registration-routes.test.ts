@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRATION_GUIDES } from '~/lib/registration/index.js';
 import { chromeCta } from '~/lib/site/chrome-cta.js';
+import { buildSmsHrefForBody } from '~/lib/text-entry.js';
 import ActivitiesHub from './[locale]/activities/page.js';
 import BramptonPage, {
   generateMetadata as bramptonMeta,
@@ -103,6 +104,15 @@ describe('city registration routes — landing chrome, not a blog', () => {
       expect(html).not.toContain('text-entry');
       expect(html).not.toContain('Copy Hale');
     }
+  });
+
+  it('prefills Brampton Text Hale with Maya/Theo/L6Y — not hi, not a swim question', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    const html = await render(BramptonPage);
+    const locked = buildSmsHrefForBody(LIVE_NUMBER, 'Maya is 4, Theo is 18 months, L6Y');
+    expect(html).toContain(locked.replaceAll('&', '&amp;'));
+    expect(html).not.toContain('L3R');
+    expect(html).not.toMatch(/body=When%20does%20swim/);
   });
 
   it('does not print Hale’s number as readable text on the page body', async () => {

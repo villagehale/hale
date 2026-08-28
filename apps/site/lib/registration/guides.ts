@@ -383,7 +383,7 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
     { text: 'Brampton swim registration is' },
     { text: 'September 9, not August 24', accent: true },
   ],
-  lede: 'General rec already opened Aug 24. That was not swim. Learn to Swim and Learn to Skate open Wednesday, Sept 9 at 7 a.m. for residents, Monday, Sept 21 at 7 a.m. for non-residents. Sept 9 is the swim morning. Hale will text you the night before. Founding families free — villagehale.com.',
+  lede: 'General rec already opened Aug 24. That was not swim. Learn to Swim and Learn to Skate open Wednesday, Sept 9 at 7 a.m. for residents, Monday, Sept 21 at 7 a.m. for non-residents. Sept 9 is the swim morning. Hale watches kids\' swim for parents. Adult lessons stay on the city page. Text your kids\' names, ages, and postal and I\'ll watch Sept 9. Founding families free.',
   updated: '2026-08-26',
   placement: 'brampton_swim',
   datesEyebrow: 'Split calendar',
@@ -506,8 +506,10 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
     },
   ],
   ctaHeading: 'Sept 9 is the swim morning, not Aug 24.',
-  ctaSub: 'Hale will text you the night before. Founding families free — villagehale.com.',
+  ctaSub:
+    "Hale watches kids' swim for parents. Adult lessons stay on the city page. Text your kids' names, ages, and postal and I'll watch Sept 9. Founding families free.",
   footerNote: FOOTER,
+  smsPrefill: 'Maya is 4, Theo is 18 months, L6Y',
 };
 
 export const YMCA_GTA: RegistrationGuide = {
