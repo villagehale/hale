@@ -1,6 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
-import { EMERGENCY_TOKENS, SAFETY_REPLY, namesAnEmergency } from '~/lib/channel/off-domain/copy';
+import {
+  EMERGENCY_TOKENS,
+  MENTAL_CRISIS_REPLY,
+  SAFETY_REPLY,
+  namesAnEmergency,
+} from '~/lib/channel/off-domain/copy';
 import { ChannelTurnFailed } from './coach-runtime';
 import {
   type SmokeAlarmClaim,
@@ -253,6 +258,15 @@ describe('the smoke alarm', () => {
     // Strict equality against the one definition, not a substring: the whole point of
     // the line is that it is the reviewed sentence and not a near-miss of it.
     expect(a.sent[0]).toBe(SAFETY_REPLY);
+  });
+
+  it('sends the reviewed 988 line on a suicide crisis during an outage', async () => {
+    const a = alarm({ body: 'I want to die' });
+    expect(await a.run()).toBe('fired');
+    expect(a.sent).toEqual([MENTAL_CRISIS_REPLY]);
+    expect(a.sent[0]).not.toContain('?');
+    expect(a.sent[0]).not.toContain('811');
+    expect(a.sent[0]).not.toBe(SAFETY_REPLY);
   });
 
   /** Both conditions, independently insufficient. Either one alone is an ordinary

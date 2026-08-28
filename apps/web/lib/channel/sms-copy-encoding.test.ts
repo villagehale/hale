@@ -26,15 +26,12 @@ import {
   followUp,
   greeting,
 } from '~/lib/channel/intake/copy';
-import {
-  JOIN_ACCEPTED_ACK,
-  joinInviteForward,
-  joinWelcome,
-} from '~/lib/channel/join/copy';
+import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
+  MENTAL_CRISIS_REPLY,
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY,
@@ -88,6 +85,7 @@ const SMS_COPY_SOURCES = [
   'lib/channel/intake/copy.ts',
   'lib/channel/intake/adult-learn.ts',
   'lib/channel/intake/official-page.ts',
+  'lib/channel/intake/live-lookup.ts',
   'lib/channel/off-domain/copy.ts',
   'lib/channel/caregiver/copy.ts',
   'lib/channel/join/copy.ts',
@@ -325,6 +323,7 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
   const RENDERED: Record<string, string> = {
     ANSWER_UNAVAILABLE_REPLY,
     SAFETY_REPLY,
+    MENTAL_CRISIS_REPLY,
     PROVIDER_ACCESS_REPLY,
     DIRECT_ACCESS_EYE_REPLY,
     UNPLACEABLE_PROVIDER_REPLY,
@@ -334,9 +333,10 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
     expect(smsEncoding(body)).toBe('gsm7');
   });
 
-  it('keeps all five fixed lines inside the two-segment ceiling', () => {
+  it('keeps all seven fixed lines inside the two-segment ceiling', () => {
     expect(smsSegments(ANSWER_UNAVAILABLE_REPLY)).toBe(1);
     expect(smsSegments(SAFETY_REPLY)).toBe(1);
+    expect(smsSegments(MENTAL_CRISIS_REPLY)).toBe(1);
     expect(smsSegments(PROVIDER_ACCESS_REPLY)).toBeLessThanOrEqual(2);
     expect(smsSegments(DIRECT_ACCESS_EYE_REPLY)).toBeLessThanOrEqual(2);
     expect(smsSegments(UNPLACEABLE_PROVIDER_REPLY)).toBeLessThanOrEqual(2);

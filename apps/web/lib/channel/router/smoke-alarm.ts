@@ -1,5 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { SAFETY_REPLY, namesAnEmergency } from '~/lib/channel/off-domain/copy';
+import {
+  MENTAL_CRISIS_REPLY,
+  SAFETY_REPLY,
+  namesAMentalCrisis,
+  namesAnEmergency,
+} from '~/lib/channel/off-domain/copy';
 
 /**
  * The outage smoke alarm — the one deliberate exception to the always-LLM doctrine
@@ -106,7 +111,11 @@ function isTransportFailure(err: unknown): boolean {
  */
 export function classifyTurnFailure(err: unknown): TurnFailure {
   let current: unknown = err;
-  for (let depth = 0; depth < MAX_CAUSE_DEPTH && current !== null && current !== undefined; depth += 1) {
+  for (
+    let depth = 0;
+    depth < MAX_CAUSE_DEPTH && current !== null && current !== undefined;
+    depth += 1
+  ) {
     if (isTransportFailure(current)) {
       return 'model_unreachable';
     }
@@ -146,7 +155,7 @@ export async function considerSmokeAlarm(input: SmokeAlarmInput): Promise<SmokeA
   if (!modelIsUnreachable(input.err)) {
     return 'not_an_outage';
   }
-  if (!namesAnEmergency(input.body)) {
+  if (!namesAnEmergency(input.body) && !namesAMentalCrisis(input.body)) {
     return 'no_emergency_token';
   }
   const { familyId, parentUserId, channelMessageId } = input;
@@ -158,7 +167,11 @@ export async function considerSmokeAlarm(input: SmokeAlarmInput): Promise<SmokeA
   // reason turned up one notch. A claim written first would turn a send that failed into
   // a text the parent never gets at all: the re-drive would read the claim and stay
   // quiet about an emergency nobody answered.
-  await input.say(SAFETY_REPLY);
+  await input.say(
+    namesAMentalCrisis(input.body) && !namesAnEmergency(input.body)
+      ? MENTAL_CRISIS_REPLY
+      : SAFETY_REPLY,
+  );
   await input.claim.recordFired({ familyId, parentUserId, channelMessageId });
   return 'fired';
 }

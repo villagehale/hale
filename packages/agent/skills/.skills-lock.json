@@ -83,6 +83,10 @@
     "file": "intake-extraction.md",
     "sha256": "720f3851d0d2e369beb3fdfea82f191c3e8aa5369fe9f1daee20effe2a554f5d"
   },
+  "intake-live-ground.md": {
+    "file": "intake-live-ground.md",
+    "sha256": "c0c4b70e53ded0091008c52cab413d82dc5812325ed227299386c413f06ed8b7"
+  },
   "intake-official-ground.md": {
     "file": "intake-official-ground.md",
     "sha256": "b6d7a4653d427c12edbcb7f3db63fae4abafdd99b95f563ba982e40d72cccd61"

@@ -2,7 +2,11 @@ import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
-import { namesAnEmergency, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
+import {
+  namesAMentalCrisis,
+  namesAnEmergency,
+  reachesForTheHealthLine,
+} from '~/lib/channel/off-domain/copy';
 import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -10,6 +14,14 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
+import {
+  cheerUpIntakeReply,
+  groundCurrentSource,
+  isCheerUpAsk,
+  isLiveLookupAsk,
+  liveLookupFallbackReply,
+  liveLookupReplyFromNotes,
+} from './live-lookup';
 import {
   deidentifyOfficialQuery,
   isOfficialPageAsk,
@@ -159,6 +171,11 @@ export type IntakeAnswerOutcome =
    * a text field is one a later edit could fill from a model.
    */
   | { status: 'safety' }
+  /**
+   * Caregiver mental crisis. Carries NO body — the machine sends
+   * {@link MENTAL_CRISIS_REPLY} (988 / 911), never the child-health 811 line.
+   */
+  | { status: 'mental_crisis' }
   | { status: 'unavailable'; reason: IntakeAnswerFallback };
 
 export interface IntakeAnswerInput {
@@ -347,6 +364,7 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // the screened safety lane, and an emergency must not wait on a provider that may
       // be the reason this turn is degraded at all.
       if (namesAnEmergency(input.parentWords)) return { status: 'safety' };
+      if (namesAMentalCrisis(input.parentWords)) return { status: 'mental_crisis' };
 
       // VIL-323: adult-learn is a Designer-locked kids-only door, not a model "I
       // don't do that" and not a city clock. Checked before rec-morning so
@@ -382,6 +400,30 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
         return {
           status: 'answered',
           body: officialPageReplyFromNotes(ground.notes, input.pendingAsk),
+        };
+      }
+
+      // VIL-327 caregiver cheer-up: reviewed warmth, not a clinician, then
+      // one return ask. Crisis already left above. Therapist-find is live lookup.
+      if (isCheerUpAsk(input.parentWords)) {
+        return { status: 'answered', body: cheerUpIntakeReply(input.pendingAsk) };
+      }
+
+      // VIL-327: raising-kids, leftover current-source facts, therapist-find.
+      // Live lookup only. The SMS may only restate what search returned.
+      // Framework-only / model memory is not a path.
+      if (isLiveLookupAsk(input.parentWords)) {
+        const ground = await groundCurrentSource(client, input.parentWords, input.children);
+        if (ground.status === 'ungrounded') {
+          console.error(
+            { reason: ground.reason },
+            'intake answer: current source not grounded, said so',
+          );
+          return { status: 'answered', body: liveLookupFallbackReply(input.pendingAsk) };
+        }
+        return {
+          status: 'answered',
+          body: liveLookupReplyFromNotes(ground.notes, input.pendingAsk),
         };
       }
 

@@ -1,7 +1,11 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
+import {
+  MENTAL_CRISIS_REPLY,
+  SAFETY_REPLY,
+  SAFETY_REPLY_BY_LANGUAGE,
+} from '~/lib/channel/off-domain/copy';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { matchHealthCheckpoints } from '~/lib/health/match';
@@ -40,6 +44,7 @@ import {
   makeFakeDb,
 } from './fakes';
 import type { IntentReading } from './intent';
+import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 import { FakeTransport } from './transport';
@@ -1028,6 +1033,18 @@ describe('intake · a question mid-signup gets an answer', () => {
     expect(transport.bodies().at(-1)).toContain(NOT_POSTED_YET);
     expect(transport.bodies().at(-1)).not.toContain(COLD_START_ASK);
   });
+
+  it('never sends HELP_REPLY alone when a mid-signup raising-kids question is declined', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }],
+    });
+    await text(fake, transport, deps, 'hi');
+    const answered = await text(fake, transport, deps, 'How do I potty train?');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
+    expect(transport.bodies().at(-1)).toContain(NO_CURRENT_SOURCE_YET);
+    expect(transport.bodies().at(-1)).not.toContain(COLD_START_ASK);
+  });
 });
 
 /**
@@ -1145,6 +1162,56 @@ describe('intake · a first-text question is answered', () => {
     expect(unusable.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
     expect(unusable.transport.bodies()[0]).toContain(NOT_POSTED_YET);
     expect(unusable.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+
+  it('never sends greeting() alone when a first-text raising-kids question is declined', async () => {
+    const silent = harness({});
+    const declined = await text(
+      silent.fake,
+      silent.transport,
+      silent.deps,
+      'How do I get him to nap?',
+    );
+    expect(declined).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).toContain(NO_CURRENT_SOURCE_YET);
+    expect(silent.transport.bodies()[0]).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+
+  it('never sends greeting() alone when a first-text leftover fact is declined', async () => {
+    const silent = harness({});
+    const declined = await text(
+      silent.fake,
+      silent.transport,
+      silent.deps,
+      'Who is the US president?',
+    );
+    expect(declined).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).toContain(NO_CURRENT_SOURCE_YET);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+
+  it('sends the reviewed 988 line alone on a first-text crisis - no return ask', async () => {
+    const silent = harness({});
+    const answered = await text(silent.fake, silent.transport, silent.deps, 'I want to die');
+    expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(silent.transport.bodies()).toEqual([MENTAL_CRISIS_REPLY]);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+    expect(silent.transport.bodies()[0]).not.toContain('?');
+    expect(silent.transport.bodies()[0]).not.toContain('811');
+    expect(silent.transport.bodies()[0]).not.toContain('not something I should advise on');
+    expect(silent.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
+  });
+
+  it('answers a first-text cheer-up with warmth, not the bare greeting', async () => {
+    const silent = harness({});
+    const answered = await text(silent.fake, silent.transport, silent.deps, 'cheer me up');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).toContain(CHEER_UP_REPLY);
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
   });
 });
 

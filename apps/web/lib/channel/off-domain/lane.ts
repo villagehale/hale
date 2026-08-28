@@ -9,7 +9,10 @@ import {
 } from './answer';
 import {
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  MENTAL_CRISIS_REPLY,
   SAFETY_REPLY_BY_LANGUAGE,
+  namesAMentalCrisis,
+  namesAnEmergency,
   referralReply,
 } from './copy';
 import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
@@ -178,7 +181,11 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       const language = replyLanguage(input.text);
       const { reply, replySource } =
         lane === 'safety_critical'
-          ? { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
+          ? namesAnEmergency(input.text)
+            ? { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
+            : namesAMentalCrisis(input.text) || reading.category === 'mental-health'
+              ? { reply: MENTAL_CRISIS_REPLY, replySource: 'fixed' as const }
+              : { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
           : lane === 'provider_access'
             ? { reply: referralReply(input.text, language), replySource: 'fixed' as const }
             : await answerOrFallback(ports, input.text);

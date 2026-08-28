@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import { MENTAL_CRISIS_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { MARKHAM_FIRST, TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
 import { ADULT_LEARN_DOOR } from './adult-learn';
 import {
@@ -11,6 +11,7 @@ import {
   refusals,
 } from './answer';
 import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
+import { AFTER_PROVISION_RETURN_ASK, CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
 import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 
 /**
@@ -319,6 +320,149 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain("I don't do that");
     expect(outcome.body).not.toMatch(/https?:\/\//);
+  });
+
+  it('answers a raising-kids question without a model inventing a method', async () => {
+    // VIL-327: a nap question used to hit intake-answer with tools: [] and
+    // either invent a method or fall through to the pending ask alone.
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not invent a nap method from memory');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      parentWords: 'How do I get him to nap?',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toBe(COLD_START_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain("I don't do that");
+    expect(outcome.body).not.toMatch(/https?:\/\//);
+    expect(outcome.body).not.toMatch(/I'?m a therapist/i);
+  });
+
+  it('answers a leftover factual question from search notes, never from memory', async () => {
+    const notes = 'The official White House page names the current United States president.';
+    const client = {
+      messages: {
+        create: async (req: { tools?: Array<{ type?: string }> }) => {
+          if (req.tools?.[0]?.type === 'web_search_20250305') {
+            return {
+              content: [
+                { type: 'text', text: notes },
+                {
+                  type: 'web_search_tool_result',
+                  tool_use_id: 'srvtu_2',
+                  content: [
+                    {
+                      type: 'web_search_result',
+                      url: 'https://www.whitehouse.gov',
+                      title: 'The White House',
+                    },
+                  ],
+                },
+              ],
+            };
+          }
+          throw new Error('compose must not invent a leftover fact from memory');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(client);
+    const outcome = await composer.compose({
+      parentWords: 'Who is the US president?',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain('United States president');
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain("I don't do that");
+    expect(outcome.body).not.toMatch(/https?:\/\//);
+  });
+
+  it('answers a non-crisis therapist-find from live lookup or no current source', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not invent a hotline or a clinic');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      parentWords: 'I need a therapist',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toMatch(/I'?m a therapist/i);
+    expect(outcome.body).not.toMatch(/https?:\/\//);
+  });
+
+  it('answers a cheer-up with reviewed warmth, not a clinical method', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('cheer-up is reviewed copy, not a model');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      parentWords: 'cheer me up',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain(CHEER_UP_REPLY);
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain(AFTER_PROVISION_RETURN_ASK);
+  });
+
+  it('answers a crisis inbound with the reviewed 988 line and no return ask', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('a crisis must not reach a model');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    expect(
+      await composer.compose({
+        parentWords: 'I want to die',
+        pendingAsk: COLD_START_ASK,
+        children: [],
+      }),
+    ).toEqual({ status: 'mental_crisis' });
+    expect(MENTAL_CRISIS_REPLY).toBe(
+      "If you're in crisis, call 988 any time. If it's an emergency, call 911.",
+    );
+    expect(MENTAL_CRISIS_REPLY).toContain('988');
+    expect(MENTAL_CRISIS_REPLY).toContain('911');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
+    expect(SAFETY_REPLY).toContain('811');
+    expect(SAFETY_REPLY).not.toContain('988');
   });
 });
 
