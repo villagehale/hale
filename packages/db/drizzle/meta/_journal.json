@@ -680,6 +680,13 @@
       "when": 1781469180000,
       "tag": "0099_sunday_weekly_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1781469240000,
+      "tag": "0100_sitting_session_reminder",
+      "breakpoints": true
     }
   ]
 }

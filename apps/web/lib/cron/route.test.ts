@@ -15,6 +15,7 @@ const runPushRemindersCronMock = vi.fn();
 const runWeekPlanCronMock = vi.fn();
 const sweepAttachmentsMock = vi.fn();
 const runNudgeCronMock = vi.fn();
+const runSittingReminderCronMock = vi.fn();
 const dbMock = vi.fn();
 
 vi.mock('~/lib/db', () => ({ db: () => dbMock() }));
@@ -45,6 +46,9 @@ vi.mock('~/lib/coach/attachments', () => ({
 vi.mock('~/lib/channel/nudge/run', () => ({
   runNudgeCron: (...a: unknown[]) => runNudgeCronMock(...a),
 }));
+vi.mock('~/lib/channel/intake/sitting-reminder', () => ({
+  runSittingReminderCron: (...a: unknown[]) => runSittingReminderCronMock(...a),
+}));
 
 const SECRET = 'cron-secret-xyz';
 
@@ -70,6 +74,11 @@ const ROUTES = [
   },
   { name: 'week-plan', path: '~/app/api/cron/week-plan/route', mock: runWeekPlanCronMock },
   { name: 'nudge', path: '~/app/api/cron/nudge/route', mock: runNudgeCronMock },
+  {
+    name: 'intake-sitting-reminder',
+    path: '~/app/api/cron/intake-sitting-reminder/route',
+    mock: runSittingReminderCronMock,
+  },
 ] as const;
 
 describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock }) => {
@@ -81,6 +90,9 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     runWeekPlanCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });
     runNudgeCronMock.mockReset().mockResolvedValue({ enabled: false, evaluated: 0 });
+    runSittingReminderCronMock
+      .mockReset()
+      .mockResolvedValue({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
     dbMock.mockReset().mockReturnValue({});
   });
 
