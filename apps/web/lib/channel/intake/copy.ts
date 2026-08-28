@@ -426,11 +426,11 @@ export function posterLocation(code: string | null): string | null {
 }
 
 /**
- * The first thing a stranger ever reads from Hale. VIL-308 locked the English
- * no-venue line verbatim — rec mornings, not a product tagline. Never "an AI that
- * quietly runs the family week". The privacy link is deliberately NOT here — it rides
- * on {@link WATCH_OFFER}, the one turn where a parent is actually asked to agree to
- * something.
+ * The first thing a stranger ever reads from Hale. VIL-308 locked the rec-morning
+ * voice; VIL-321 / Designer locked the English no-venue line verbatim — the ask is
+ * {@link COLD_START_ASK}. Never "an AI that quietly runs the family week". The privacy
+ * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where
+ * a parent is actually asked to agree to something.
  *
  * THE VENUE VARIANT HAS NO FRENCH TWIN, and that is a decision rather than a gap. The
  * body that triggers it is the PREFILLED one a QR code wrote — "HALE LIBRARY", or
@@ -463,7 +463,7 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
  * tuned for.
  */
 export const COLD_START_ASK =
-  "Kids' names, ages, and your postal code and I'll look up what's coming.";
+  "Reply with your kids' names, ages, and postal code and I'll text back what's coming.";
 
 /**
  * The same ask, in the language the parent just wrote in.

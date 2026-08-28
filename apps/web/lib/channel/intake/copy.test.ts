@@ -34,7 +34,7 @@ import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {
     expect(greeting(null, 'en')).toBe(
-      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Kids' names, ages, and your postal code and I'll look up what's coming.",
+      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     );
   });
 
