@@ -38,12 +38,10 @@ function qrPath(html: string): string {
 }
 
 describe('TextEntry (persona copy)', () => {
-  it('leads with the family-assistant introduction and the one-text setup line', () => {
+  it('leads with the locked recut headline and lede', () => {
     for (const html of [liveHtml, unsetHtml]) {
-      expect(html).toContain('Hi, I’m Hale — the family assistant you text.');
-      expect(html).toContain(
-        'Text me your kids’ names and ages and a postal code, and I text back every registration date I’m now watching for you — swim, camps, programs — plus what’s worth knowing near you this week.',
-      );
+      expect(html).toContain('Change the names to yours and send.');
+      expect(html).toContain('I text back the rec dates for that postal. No app.');
     }
   });
 
@@ -74,13 +72,15 @@ describe('TextEntry (number live)', () => {
   it('makes "Text me" an sms: deep link carrying the pre-filled body and the venue token', () => {
     // React escapes the `&` of the cross-platform `?&body=` form into `&amp;`.
     expect(liveHtml).toContain(
-      'href="sms:+16475551234?&amp;body=Hi%20(via%20earlyon-richmondhill)"',
+      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R%20(via%20earlyon-richmondhill)"',
     );
     expect(liveHtml).toContain('Text me');
   });
 
-  it('pre-fills the bare greeting when no venue sent them', () => {
-    expect(liveNoSourceHtml).toContain('href="sms:+16475551234?&amp;body=Hi"');
+  it('pre-fills the locked intake sample when no venue sent them', () => {
+    expect(liveNoSourceHtml).toContain(
+      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R"',
+    );
   });
 
   it('never prints the digits — a copy chip stands in for the readable number', () => {

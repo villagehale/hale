@@ -1,42 +1,40 @@
 import { type Database, schema } from '@hale/db';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
-import {
-  resolveVerifiedChannelByPhone,
-  revokeSmsChannel,
-} from '~/lib/channels/sms-consent-core';
-import { acceptedStatus } from '~/lib/channel/ledger';
-import { normalizePhoneE164 } from '~/lib/channels/phone';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { RATE_LIMITS } from '~/lib/rate-limit/config';
-import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import {
-  declineOpenInviteOnStop,
-  loadOpenInviteByPhone,
-} from '~/lib/channel/caregiver/invites';
+import { declineOpenInviteOnStop, loadOpenInviteByPhone } from '~/lib/channel/caregiver/invites';
 import {
   type CaregiverOutcome,
   handleCaregiverInviteReply,
   handleKnownNumberInbound,
 } from '~/lib/channel/caregiver/route';
-import { isJoinCode } from '~/lib/channel/join/code';
-import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
-import { projectCivicCandidates } from '~/lib/civic/project';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
-import { recordCommitment } from '~/lib/commitments/ledger';
-import { recordCheckpointTold } from '~/lib/health/told';
-import { type LatLng, geocodeArea } from '~/lib/village/geocode';
-import {
-  type DiscoveryTrigger,
-  defaultDiscoveryTrigger,
-} from '~/lib/onboarding/trigger-discovery';
-import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName } from '~/lib/channel/identity/name-reply';
+import { isJoinCode } from '~/lib/channel/join/code';
+import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
-import { SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
+import { acceptedStatus } from '~/lib/channel/ledger';
+import {
+  EMERGENCY_REPLY,
+  MENTAL_CRISIS_REPLY,
+  SAFETY_REPLY_BY_LANGUAGE,
+  namesAMentalCrisis,
+  namesAnEmergency,
+} from '~/lib/channel/off-domain/copy';
+import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
+import { projectCivicCandidates } from '~/lib/civic/project';
+import { recordCommitment } from '~/lib/commitments/ledger';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { recordCheckpointTold } from '~/lib/health/told';
+import { type DiscoveryTrigger, defaultDiscoveryTrigger } from '~/lib/onboarding/trigger-discovery';
+import { optOutGuestRemindersOnStop } from '~/lib/party/store';
+import { RATE_LIMITS } from '~/lib/rate-limit/config';
+import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import type { IntakeAnswerComposer } from './answer';
 import { findRevokedChannelOwner, reenrolOnStart } from './channel-state';
 import {
@@ -53,6 +51,8 @@ import {
   WATCH_OFFER_ASK,
   detailsBlocked,
   greeting,
+  isBareFirstHello,
+  looksLikeIntakeDetails,
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
@@ -61,7 +61,13 @@ import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { type IntakeKeywordMatch, matchKeyword } from './keywords';
-import type { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  cheerUpIntakeReply,
+  isCheerUpAsk,
+  isLiveLookupAsk,
+  liveLookupFallbackReply,
+} from './live-lookup';
+import { isOfficialPageAsk, officialPageFallbackReply } from './official-page';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import type { RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
@@ -73,6 +79,7 @@ import {
   createSession,
   loadOpenSession,
   saveSession,
+  transcriptHasOutbound,
 } from './session';
 import type { ChannelTransport } from './transport';
 import { recordWatchConsent } from './watch-consent';
@@ -307,6 +314,18 @@ export async function handleInboundSms(
     return handleWatchReply(database, { session, phoneE164, inbound, now }, deps);
   }
 
+  // VIL-332: createSession commits before send. A leftover awaiting_details
+  // row with no outbound is not details — it is a first-hello that never
+  // left. handleDetails would extract / HELP / provision and skip greeting().
+  if (session.state === 'awaiting_details' && !transcriptHasOutbound(session.transcript)) {
+    return deliverFirstHello(
+      database,
+      { session, phoneE164, inbound, now },
+      deps,
+      session.sourceCode,
+    );
+  }
+
   return handleDetails(database, { session, phoneE164, inbound, now }, deps);
 }
 
@@ -506,25 +525,48 @@ async function writeChannelMessage(
  * a question. When they are, the message that goes out is the ANSWER plus Hale's own
  * question again in different words — one text, the thread intact.
  *
- * Null is "there was nothing to answer" and the caller sends what it always sent. It is
- * not a silent absence: the composer names and logs every degraded path itself
- * (answer.ts), and what a caller could do differently with the distinction is nothing —
- * its own reply is written for exactly this turn.
+ * Null is "there was nothing to answer" — a hedge, a pleasantry, more signup
+ * detail — and the caller sends what it always sent. A real rec/camp question
+ * that the composer declined or could not use is not null (VIL-326): that empty
+ * fallback was the leak. Safety is the reviewed line alone.
  */
 async function offScriptReply(
-  args: { parentWords: string; pendingAsk: string; children: readonly ExtractedChild[] },
+  args: {
+    parentWords: string;
+    pendingAsk: string;
+    children: readonly ExtractedChild[];
+    postalCode?: string | null;
+  },
   deps: IntakeDeps,
 ): Promise<{ body: string; source: 'composed' | 'safety' } | null> {
   const outcome = await deps.answerComposer.compose(args);
-  // The fixed line goes out ALONE. A parent standing over a hurt child should be
-  // dialling, not choosing whether Hale may watch their registration dates. In the
-  // language they wrote it in: this is the one message in intake where not being
-  // understood has a physical cost.
+  // Crisis / physical emergency go out ALONE. A parent in that moment should be
+  // dialling, not answering a signup question. Checked on the inbound words as
+  // well as the composer outcome so a silent fake still cannot ask-alone.
+  // Physical emergency is Call 911 now. Mental crisis is the 988 line. Neither
+  // is the child-health 811 SAFETY_REPLY.
+  if (namesAnEmergency(args.parentWords)) {
+    return { body: EMERGENCY_REPLY, source: 'safety' };
+  }
+  if (namesAMentalCrisis(args.parentWords) || outcome.status === 'mental_crisis') {
+    return { body: MENTAL_CRISIS_REPLY, source: 'safety' };
+  }
   if (outcome.status === 'safety') {
     return { body: SAFETY_REPLY_BY_LANGUAGE[replyLanguage(args.parentWords)], source: 'safety' };
   }
-  if (outcome.status !== 'answered') return null;
-  return { body: outcome.body, source: 'composed' };
+  if (outcome.status === 'answered') return { body: outcome.body, source: 'composed' };
+  // VIL-326 / VIL-327: unavailable / empty must not fall back to the greet or
+  // the pending ask alone when they asked a real question. Safety stays above.
+  if (isOfficialPageAsk(args.parentWords)) {
+    return { body: officialPageFallbackReply(args.pendingAsk), source: 'composed' };
+  }
+  if (isLiveLookupAsk(args.parentWords)) {
+    return { body: liveLookupFallbackReply(args.pendingAsk), source: 'composed' };
+  }
+  if (isCheerUpAsk(args.parentWords)) {
+    return { body: cheerUpIntakeReply(args.pendingAsk), source: 'composed' };
+  }
+  return null;
 }
 
 /**
@@ -598,24 +640,84 @@ async function greetNewFamily(
     state: 'awaiting_details',
     sourceCode,
   });
+  // Voice already releases a claim when the opener cannot be sent. Intake did
+  // not: createSession committed, send/model threw, and the open row swallowed
+  // every Twilio retry as details (VIL-332). Close the unfinished claim so the
+  // retry can greet on a new session.
+  try {
+    return await deliverFirstHello(
+      database,
+      { session, phoneE164: args.phoneE164, inbound: args.inbound, now: args.now },
+      deps,
+      sourceCode,
+    );
+  } catch (err) {
+    await saveSession(database, session, { closedAt: args.now }, args.now);
+    throw err;
+  }
+}
+
+async function deliverFirstHello(
+  database: Database,
+  args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },
+  deps: IntakeDeps,
+  sourceCode: string | null,
+): Promise<IntakeOutcome> {
+  const { session } = args;
   const ctx: SendContext = { session, phoneE164: args.phoneE164, now: args.now };
+
+  // Site Text Hale prefills names / ages / postal. That is DETAILS, not a question —
+  // the existing extractor / handleDetails path, never offScriptReply. Bare hi still
+  // greeting() below. Rec/camp questions still answer + COLD_START_ASK (VIL-322).
+  if (!isBareFirstHello(args.inbound.body) && looksLikeIntakeDetails(args.inbound.body)) {
+    await reportIntakeStep(deps, 'intake_started', session.id);
+    return handleDetails(
+      database,
+      { session, phoneE164: args.phoneE164, inbound: args.inbound, now: args.now },
+      deps,
+    );
+  }
 
   const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
   const venue = venueForCode(sourceCode);
-  // ONE message, disclosure included: the greeting introduces Hale as an AI in its own
-  // first sentence, so there is no second paragraph to append (and no second segment to
-  // pay for). The privacy link rides on the consent ask instead — see WATCH_OFFER.
-  const body = greeting(venue?.name ?? null, replyLanguage(args.inbound.body));
+  const language = replyLanguage(args.inbound.body);
+  // ONE message. A bare hi / empty / QR tag still gets the locked greeting. A first
+  // inbound that is a question (the site chips, a rec/camp ask) is answered with the
+  // same off-script path turn 2 already had — then Hale's pending ask, in one text.
+  // VIL-322: two site intakes dropped because greet() never read the inbound body.
+  let body = greeting(venue?.name ?? null, language);
+  let outcome: IntakeOutcome = { status: 'greeted' };
+  if (!isBareFirstHello(args.inbound.body)) {
+    const offScript = await offScriptReply(
+      {
+        parentWords: args.inbound.body,
+        pendingAsk: COLD_START_ASK_BY_LANGUAGE[language],
+        children: [],
+        postalCode: null,
+      },
+      deps,
+    );
+    if (offScript) {
+      body = offScript.body;
+      outcome = { status: 'question_answered', source: offScript.source };
+    }
+  }
   const { transcript } = await sendAndRecord(database, ctx, body, deps, recorded.transcript);
 
   await saveSession(
     database,
     session,
-    { state: 'awaiting_details', transcript, lastProviderId: args.inbound.providerId },
+    {
+      state: 'awaiting_details',
+      transcript,
+      lastProviderId: args.inbound.providerId,
+      // So the hourly recovery sweep does not re-decrypt every sitting first-hello.
+      firstReplyRecoveredAt: args.now,
+    },
     args.now,
   );
   await reportIntakeStep(deps, 'intake_started', session.id);
-  return { status: 'greeted' };
+  return outcome;
 }
 
 async function handleDetails(
@@ -648,6 +750,7 @@ async function handleDetails(
         // its own words — in French when that is the question the parent was asked.
         pendingAsk: COLD_START_ASK_BY_LANGUAGE[language],
         children: collected.children,
+        postalCode: collected.postalCode,
       },
       deps,
     );
@@ -722,7 +825,13 @@ async function handleDetails(
       return { status: 'follow_up_asked' };
     }
     if (session.followUpCount === 1) {
-      ({ transcript } = await sendAndRecord(database, ctx, detailsBlocked(missing), deps, transcript));
+      ({ transcript } = await sendAndRecord(
+        database,
+        ctx,
+        detailsBlocked(missing),
+        deps,
+        transcript,
+      ));
       await saveSession(database, session, { ...base, transcript, followUpCount: 2 }, now);
       return { status: 'details_blocked', missing };
     }
@@ -991,6 +1100,7 @@ async function handleWatchReply(
         parentWords: inbound.body,
         pendingAsk: WATCH_OFFER_ASK,
         children: session.collected.children,
+        postalCode: session.collected.postalCode,
       },
       deps,
     );
@@ -1153,22 +1263,14 @@ async function handleKeyword(
   // (see channel-state.ts) — otherwise it opens a fresh conversation.
   const owner = await findRevokedChannelOwner(database, phoneE164);
   if (owner) {
-    await reenrolOnStart(
-      database,
-      { ...owner, phoneE164, verbatimReply: inbound.body },
-      now,
-    );
+    await reenrolOnStart(database, { ...owner, phoneE164, verbatimReply: inbound.body }, now);
     await deps.transport.send({ to: phoneE164, body: START_ACK_BY_LANGUAGE[language] });
     return { status: 'restarted' };
   }
   if (session) {
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
-  return greet(
-    database,
-    { phoneE164, inbound, now, joinTag: joinTagFromBody(inbound.body) },
-    deps,
-  );
+  return greet(database, { phoneE164, inbound, now, joinTag: joinTagFromBody(inbound.body) }, deps);
 }
 
 async function handleStop(
@@ -1206,11 +1308,7 @@ async function handleStop(
       ? { userId: session.userId, familyId: session.familyId }
       : await resolveVerifiedChannelByPhone(database, phoneE164);
   if (owner) {
-    await revokeSmsChannel(
-      database,
-      { userId: owner.userId, familyId: owner.familyId },
-      { now },
-    );
+    await revokeSmsChannel(database, { userId: owner.userId, familyId: owner.familyId }, { now });
   }
 
   // Closed BEFORE the ack, never after: the unsubscribe is the instruction, the ack is

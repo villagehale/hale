@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * Tests for the web + mobile magic-link REQUEST routes. requestMagicLink runs FOR
- * REAL (real token mint + real SHA-256) against a tiny in-memory magic_link_tokens
+ * Tests for the web magic-link REQUEST route. requestMagicLink runs FOR REAL
+ * (real token mint + real SHA-256) against a tiny in-memory magic_link_tokens
  * fake — the token/DB logic is never mocked. ONLY the Resend transport boundary is
  * mocked, to capture the outbound URL and prove the emailed link carries a token
  * whose hash is what got persisted. Rate-limit is stubbed to drive the 429 path.
@@ -93,17 +93,6 @@ async function callWeb(body: unknown, headers: Record<string, string> = {}): Pro
   );
 }
 
-async function callMobile(body: unknown): Promise<Response> {
-  const { POST } = await import('~/app/api/mobile/auth/magic-link/request/route');
-  return POST(
-    new Request('http://localhost/api/mobile/auth/magic-link/request', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    }),
-  );
-}
-
 beforeEach(() => {
   vi.resetModules();
   sendMock.mockReset();
@@ -175,20 +164,5 @@ describe('POST /api/auth/magic-link/request (web)', () => {
     expect(res.status).toBe(429);
     expect(stored).toHaveLength(0);
     expect(sendMock).not.toHaveBeenCalled();
-  });
-});
-
-describe('POST /api/mobile/auth/magic-link/request (mobile)', () => {
-  it('mails a /m/magic deep-link landing URL whose token hashes to the stored value', async () => {
-    const res = await callMobile({ email: 'app-user@example.com' });
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: 'sent' });
-
-    await vi.waitFor(() => expect(sendMock).toHaveBeenCalledTimes(1));
-    const url = capturedUrl(`${APP_BASE}/m/magic?token=`);
-    expect(url.startsWith(`${APP_BASE}/m/magic?token=`)).toBe(true);
-    expect(stored).toHaveLength(1);
-    expect(stored[0]?.tokenHash).toBe(sha256(tokenFromUrl(url)));
   });
 });

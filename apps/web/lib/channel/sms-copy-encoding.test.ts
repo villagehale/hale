@@ -15,6 +15,7 @@ import {
   HELP_REPLY_BY_LANGUAGE,
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  SITTING_SESSION_REMINDER,
   START_ACK,
   START_ACK_BY_LANGUAGE,
   STOP_ACK,
@@ -25,15 +26,13 @@ import {
   followUp,
   greeting,
 } from '~/lib/channel/intake/copy';
-import {
-  JOIN_ACCEPTED_ACK,
-  joinInviteForward,
-  joinWelcome,
-} from '~/lib/channel/join/copy';
+import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
+  EMERGENCY_REPLY,
+  MENTAL_CRISIS_REPLY,
   PROVIDER_ACCESS_REPLY,
   PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY,
@@ -85,6 +84,9 @@ const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/,
 const SMS_COPY_SOURCES = [
   'lib/channel/router/copy.ts',
   'lib/channel/intake/copy.ts',
+  'lib/channel/intake/adult-learn.ts',
+  'lib/channel/intake/official-page.ts',
+  'lib/channel/intake/live-lookup.ts',
   'lib/channel/off-domain/copy.ts',
   'lib/channel/caregiver/copy.ts',
   'lib/channel/join/copy.ts',
@@ -168,7 +170,7 @@ describe('outbound SMS copy stays in the GSM-7 alphabet', () => {
 describe('the intake script stays GSM-7 once rendered', () => {
   const RENDERED: Record<string, string> = {
     'greeting (no venue)': greeting(null, 'en'),
-    'greeting (venue)': greeting('EarlyON centre', 'en'),
+    'greeting (venue)': greeting('family centre', 'en'),
     WATCH_OFFER,
     ASSENT_ACK,
     DECLINE_ACK,
@@ -177,6 +179,7 @@ describe('the intake script stays GSM-7 once rendered', () => {
     HELP_REPLY,
     START_ACK,
     REGION_UNAVAILABLE_REPLY,
+    SITTING_SESSION_REMINDER,
     'followUp (ages)': followUp('Maya (4) and Leo', ['ages']),
     'followUp (both)': followUp('Nora and Ben', ['ages', 'location']),
     'detailsBlocked (both)': detailsBlocked(['ages', 'location']),
@@ -321,6 +324,8 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
   const RENDERED: Record<string, string> = {
     ANSWER_UNAVAILABLE_REPLY,
     SAFETY_REPLY,
+    EMERGENCY_REPLY,
+    MENTAL_CRISIS_REPLY,
     PROVIDER_ACCESS_REPLY,
     DIRECT_ACCESS_EYE_REPLY,
     UNPLACEABLE_PROVIDER_REPLY,
@@ -330,9 +335,11 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
     expect(smsEncoding(body)).toBe('gsm7');
   });
 
-  it('keeps all five fixed lines inside the two-segment ceiling', () => {
+  it('keeps all eight fixed lines inside the two-segment ceiling', () => {
     expect(smsSegments(ANSWER_UNAVAILABLE_REPLY)).toBe(1);
     expect(smsSegments(SAFETY_REPLY)).toBe(1);
+    expect(smsSegments(EMERGENCY_REPLY)).toBe(1);
+    expect(smsSegments(MENTAL_CRISIS_REPLY)).toBe(1);
     expect(smsSegments(PROVIDER_ACCESS_REPLY)).toBeLessThanOrEqual(2);
     expect(smsSegments(DIRECT_ACCESS_EYE_REPLY)).toBeLessThanOrEqual(2);
     expect(smsSegments(UNPLACEABLE_PROVIDER_REPLY)).toBeLessThanOrEqual(2);

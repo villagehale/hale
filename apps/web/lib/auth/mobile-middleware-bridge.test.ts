@@ -2,15 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The middleware is wrapped by Auth.js's auth(); mock NextAuth so auth() just
 // returns the callback, letting the test drive the middleware body directly with a
-// fake request. authConfigured is stubbed to isolate the bridge glue
-// (the bridge DECISION itself is covered in bearer-bridge.test).
+// fake request. Cookie / session auth is the only remaining path — the Expo
+// Authorization: Bearer rewrite is gone (VIL-318).
 vi.mock('next-auth', () => ({
   default: () => ({ auth: (cb: unknown) => cb }),
 }));
 vi.mock('~/auth.config', () => ({ authConfig: {} }));
 vi.mock('~/lib/auth-config', () => ({ authConfigured: () => true }));
-
-const SECURE_COOKIE = '__Secure-authjs.session-token';
 
 type FakeReq = {
   headers: Headers;
@@ -37,7 +35,7 @@ async function loadMiddleware(): Promise<(req: FakeReq) => Promise<Response> | R
   return mod.default as unknown as (req: FakeReq) => Promise<Response> | Response;
 }
 
-describe('middleware mobile Bearer bridge', () => {
+describe('middleware cookie / session auth (no Bearer bridge)', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv('NODE_ENV', 'production');
@@ -48,7 +46,7 @@ describe('middleware mobile Bearer bridge', () => {
     vi.restoreAllMocks();
   });
 
-  it('rewrites the request cookie for a secure /api Bearer request', async () => {
+  it('does NOT rewrite cookies for an /api request that carries Authorization: Bearer', async () => {
     const middleware = await loadMiddleware();
     const { NextResponse } = await import('next/server');
     const nextSpy = vi.spyOn(NextResponse, 'next');
@@ -61,8 +59,7 @@ describe('middleware mobile Bearer bridge', () => {
     );
 
     expect(nextSpy).toHaveBeenCalledTimes(1);
-    const arg = nextSpy.mock.calls[0]?.[0] as { request?: { headers?: Headers } } | undefined;
-    expect(arg?.request?.headers?.get('cookie')).toBe(`${SECURE_COOKIE}=tok-abc.def`);
+    expect(nextSpy.mock.calls[0]?.[0]).toBeUndefined();
   });
 
   it('does NOT rewrite headers for a browser /api request with no Authorization', async () => {
@@ -73,8 +70,6 @@ describe('middleware mobile Bearer bridge', () => {
     await middleware(fakeReq({ pathname: '/api/village/preview' }));
 
     expect(nextSpy).toHaveBeenCalledTimes(1);
-    // Byte-identical pre-existing path: NextResponse.next() called with no request
-    // override (the non-protected pass-through), never the rewrite overload.
     expect(nextSpy.mock.calls[0]?.[0]).toBeUndefined();
   });
 

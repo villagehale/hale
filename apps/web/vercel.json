@@ -4,6 +4,7 @@
   "regions": ["yul1"],
   "crons": [
     { "path": "/api/cron/week-plan", "schedule": "2 * * * *" },
+    { "path": "/api/cron/intake-sitting-reminder", "schedule": "8 * * * *" },
     { "path": "/api/cron/sunday-send", "schedule": "7 * * * *" },
     { "path": "/api/cron/reminders", "schedule": "12 * * * *" },
     { "path": "/api/cron/registration-sequence", "schedule": "*/5 * * * *" },

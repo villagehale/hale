@@ -17,8 +17,9 @@ import {
  * the payload assembled from the artifact + children.
  */
 
-// DEFAULT_LOOP_PREFS.weeklyPlanSendTime is 08:00:00; weekStartDay=1 (Mon) → send Mon.
-// 2026-01-19 and 2026-07-20 are both Mondays (EST/PST winter, EDT/PDT summer).
+// DEFAULT_LOOP_PREFS.weeklyPlanSendTime is 08:00:00. Product default weekStartDay=0
+// (Sun) → send Sunday. Monday-start fixtures below still pass weekStartDay=1
+// explicitly — that is an opt-in week, not the product default.
 
 describe('isSendMoment — the local send weekday + time, one-hour slot, DST-safe', () => {
   const view = { ...DEFAULT_LOOP_PREFS };
@@ -43,9 +44,10 @@ describe('isSendMoment — the local send weekday + time, one-hour slot, DST-saf
     expect(isSendMoment(view, new Date('2026-01-18T13:00:00Z'), 'America/Toronto', 1)).toBe(false);
   });
 
-  it('sends Sunday morning for a Sunday-start week (weekStartDay=0)', () => {
+  it('sends Sunday morning for the product default (weekStartDay=0)', () => {
     // weekStartDay 0 → send weekday = Sunday. 2026-01-18 is a Sunday.
     expect(isSendMoment(view, new Date('2026-01-18T13:00:00Z'), 'America/Toronto', 0)).toBe(true);
+    expect(isSendMoment(view, new Date('2026-01-19T13:00:00Z'), 'America/Toronto', 0)).toBe(false);
   });
 });
 

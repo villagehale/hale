@@ -58,12 +58,6 @@
     "heroH1b": "que vous",
     "heroH1Accent": "textez.",
     "heroSub": "Déchargez-vous de l’admin de la famille — natation, camps et jour d’inscription, attrapés avant que tout soit complet. Pas d’appli : Hale est un contact dans votre téléphone.",
-    "chips": [
-      "Quand ouvrent les inscriptions à la natation près de chez moi?",
-      "Quand ouvrent les inscriptions aux camps du congé des Fêtes?",
-      "Qu’y a-t-il à faire cette fin de semaine avec un tout-petit?",
-      "Mon enfant de 2 ans refuse de faire la sieste — qu’est-ce que j’essaie?"
-    ],
     "threadEyebrow": "Texter Hale, ça ressemble à ça",
     "threadH2a": "Textez-moi comme vous textez",
     "threadH2Accent": "un ami.",
@@ -121,8 +115,8 @@
     "steps": [
       {
         "when": "Tout de suite",
-        "step": "Vous dites bonjour",
-        "body": "Un texto. Pas d’appli, pas de compte, pas de formulaire."
+        "step": "Vous textez les noms, les âges et un code postal",
+        "body": "Un texto. Pas d’appli, pas de compte."
       },
       {
         "when": "Dans le même fil",
@@ -290,7 +284,7 @@
       }
     ],
     "founderStory": "Hale est conçu par Anzhe Dong — un père, un mari et un fondateur qui a passé des années à livrer des systèmes agentiques en production. Il l’a lancé alors qu’il élevait un enfant loin du village qu’avaient eu ses propres parents : pas d’aînés au bout de la rue, personne qui savait tout simplement quel cours en valait la peine. La confiance existait toujours, dans ce que les parents se disaient entre eux; elle n’arrivait tout simplement pas jusqu’à lui. Alors il a bâti ce qu’il n’arrêtait pas de souhaiter que quelqu’un lui texte.",
-    "cta": "Ça commence par un seul texto — pas d’appli, pas de compte, pas de formulaire à remplir."
+    "cta": "Ça commence par les noms, les âges et un code postal. Pas d’appli, pas de compte."
   },
   "Pricing": {
     "metaTitle": "Tarifs · Hale",

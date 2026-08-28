@@ -77,11 +77,19 @@
   },
   "intake-answer.md": {
     "file": "intake-answer.md",
-    "sha256": "a0acae9c4b3fe96dcb935a5d2dc7da3b68e9fcacff93f2873f7fd1e465bb428f"
+    "sha256": "8f1202fff7a1ddea2a0d2dd9f13dc81d6e852028aeedbf5f0332a6a250075393"
   },
   "intake-extraction.md": {
     "file": "intake-extraction.md",
     "sha256": "720f3851d0d2e369beb3fdfea82f191c3e8aa5369fe9f1daee20effe2a554f5d"
+  },
+  "intake-live-ground.md": {
+    "file": "intake-live-ground.md",
+    "sha256": "c0c4b70e53ded0091008c52cab413d82dc5812325ed227299386c413f06ed8b7"
+  },
+  "intake-official-ground.md": {
+    "file": "intake-official-ground.md",
+    "sha256": "b6d7a4653d427c12edbcb7f3db63fae4abafdd99b95f563ba982e40d72cccd61"
   },
   "intake-voice.md": {
     "file": "intake-voice.md",

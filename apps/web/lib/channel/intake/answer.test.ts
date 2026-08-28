@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
-import { TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
+import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import { MARKHAM_FIRST, TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
+import { ADULT_LEARN_DOOR } from './adult-learn';
 import {
   type IntakeAnswerInput,
   MAX_REPLY_CHARS,
@@ -9,7 +10,9 @@ import {
   readPair,
   refusals,
 } from './answer';
-import { WATCH_OFFER_ASK } from './copy';
+import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
+import { AFTER_PROVISION_RETURN_ASK, CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
+import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 
 /**
  * The gates around the mid-signup answer. Whether Hale writes a GOOD one is the eval's
@@ -146,8 +149,12 @@ describe('intake answer · the emergency tripwire', () => {
     expect(
       await composer.compose({ ...INPUT, parentWords: "she's not breathing, what do I do" }),
     ).toEqual({ status: 'safety' });
-    // And the machine turns that into the reviewed line (machine.test.ts asserts the send).
+    // And the machine turns that into Call 911 now. (machine.test.ts asserts the send).
+    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
+    expect(EMERGENCY_REPLY).not.toContain('811');
+    expect(EMERGENCY_REPLY).not.toContain('?');
     expect(SAFETY_REPLY).toContain('811');
+    expect(SAFETY_REPLY).not.toBe(EMERGENCY_REPLY);
   });
 
   it('answers a Toronto swim clock question with reviewed copy, no model', async () => {
@@ -172,6 +179,296 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.body).not.toMatch(/I'm an AI/i);
     expect(outcome.body).not.toMatch(/https?:\/\//i);
     expect(outcome.body).not.toContain(WATCH_OFFER_ASK);
+  });
+
+  it('answers a Markham rec ask with the locked leftover, no model, no Toronto clock', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been called');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      ...INPUT,
+      parentWords: 'Markham fall rec dates?',
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toBe(`${MARKHAM_FIRST} Still want me watching?`);
+    expect(outcome.body).not.toContain('7:00');
+    expect(outcome.body).not.toMatch(/Sept?\s*15/i);
+    expect(outcome.body.toLowerCase()).not.toContain('activeto');
+    expect(outcome.body).not.toMatch(/I'm an AI/i);
+  });
+
+  it('uses a collected L3R postal to switch a generic rec ask to Markham', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been called');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      ...INPUT,
+      parentWords: 'when is fall rec?',
+      postalCode: 'L3R',
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toBe(`${MARKHAM_FIRST} Still want me watching?`);
+  });
+
+  it("answers adult-learn / I wanna learn swimming with the kids-only door, never I don't do that", async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been called');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+
+    const first = await composer.compose({
+      parentWords: 'I wanna learn swimming',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(first.status).toBe('answered');
+    if (first.status !== 'answered') return;
+    expect(first.body).toBe(`${ADULT_LEARN_DOOR} ${COLD_START_ASK}`);
+    expect(first.body).toContain("I'm a kids' rec helper, not adult lessons");
+    expect(first.body).not.toContain("I don't do that");
+    expect(first.body).not.toMatch(/\b(Sept|Sep|Aug|Nov|Dec)\b/);
+    expect(first.body).not.toMatch(/\d{1,2}:\d{2}/);
+
+    const mid = await composer.compose({
+      ...INPUT,
+      parentWords: 'adult lessons',
+    });
+    expect(mid.status).toBe('answered');
+    if (mid.status !== 'answered') return;
+    expect(mid.body).toContain(ADULT_LEARN_DOOR);
+    expect(mid.body).not.toContain("I don't do that");
+  });
+
+  it('answers a rec/camp question that misses the city pins without a model', async () => {
+    // VIL-326: "When does swim registration open near me?" is not Toronto /
+    // Markham / YMCA, so the 544/548/555 pins miss. The old path invented a
+    // clock (refused) or returned unavailable, and greet sent the ask alone.
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not have been required to invent a clock');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      parentWords: 'When does swim registration open near me?',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain(NOT_POSTED_YET);
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toBe(COLD_START_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain("I don't do that");
+    expect(outcome.body).not.toMatch(/https?:\/\//);
+    expect(outcome.body).not.toMatch(/I'm an AI/i);
+  });
+
+  it('answers from official notes when search grounds a date, still no invented clock', async () => {
+    const notes = 'Hamilton swim registration opens September 8 at 7:00 a.m.';
+    const client = {
+      messages: {
+        create: async (req: { tools?: Array<{ type?: string }> }) => {
+          if (req.tools?.[0]?.type === 'web_search_20250305') {
+            return {
+              content: [
+                { type: 'text', text: notes },
+                {
+                  type: 'web_search_tool_result',
+                  tool_use_id: 'srvtu_1',
+                  content: [
+                    {
+                      type: 'web_search_result',
+                      url: 'https://www.hamilton.ca/recreation',
+                      title: 'Swim registration',
+                    },
+                  ],
+                },
+              ],
+            };
+          }
+          throw new Error('compose must not run when notes already ground a date');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(client);
+    const outcome = await composer.compose({
+      parentWords: 'Hamilton swim registration dates?',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain('September 8');
+    expect(outcome.body).toContain('7:00');
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain("I don't do that");
+    expect(outcome.body).not.toMatch(/https?:\/\//);
+  });
+
+  it('answers a raising-kids question without a model inventing a method', async () => {
+    // VIL-327: a nap question used to hit intake-answer with tools: [] and
+    // either invent a method or fall through to the pending ask alone.
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not invent a nap method from memory');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      parentWords: 'How do I get him to nap?',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toBe(COLD_START_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain("I don't do that");
+    expect(outcome.body).not.toMatch(/https?:\/\//);
+    expect(outcome.body).not.toMatch(/I'?m a therapist/i);
+  });
+
+  it('answers a leftover factual question from search notes, never from memory', async () => {
+    const notes = 'The official White House page names the current United States president.';
+    const client = {
+      messages: {
+        create: async (req: { tools?: Array<{ type?: string }> }) => {
+          if (req.tools?.[0]?.type === 'web_search_20250305') {
+            return {
+              content: [
+                { type: 'text', text: notes },
+                {
+                  type: 'web_search_tool_result',
+                  tool_use_id: 'srvtu_2',
+                  content: [
+                    {
+                      type: 'web_search_result',
+                      url: 'https://www.whitehouse.gov',
+                      title: 'The White House',
+                    },
+                  ],
+                },
+              ],
+            };
+          }
+          throw new Error('compose must not invent a leftover fact from memory');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(client);
+    const outcome = await composer.compose({
+      parentWords: 'Who is the US president?',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain('United States president');
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain("I don't do that");
+    expect(outcome.body).not.toMatch(/https?:\/\//);
+  });
+
+  it('answers a non-crisis therapist-find from live lookup or no current source', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('the model must not invent a hotline or a clinic');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      parentWords: 'I need a therapist',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toMatch(/I'?m a therapist/i);
+    expect(outcome.body).not.toMatch(/https?:\/\//);
+  });
+
+  it('answers a cheer-up with reviewed warmth, not a clinical method', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('cheer-up is reviewed copy, not a model');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    const outcome = await composer.compose({
+      parentWords: 'cheer me up',
+      pendingAsk: COLD_START_ASK,
+      children: [],
+    });
+    expect(outcome.status).toBe('answered');
+    if (outcome.status !== 'answered') return;
+    expect(outcome.body).toContain(CHEER_UP_REPLY);
+    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(outcome.body).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
+    expect(outcome.body).not.toContain(COLD_START_ASK);
+    expect(outcome.body).not.toContain(AFTER_PROVISION_RETURN_ASK);
+  });
+
+  it('answers a crisis inbound with the reviewed 988 line and no return ask', async () => {
+    const exploding = {
+      messages: {
+        create: () => {
+          throw new Error('a crisis must not reach a model');
+        },
+      },
+    } as never;
+    const composer = createIntakeAnswerComposer(exploding);
+    expect(
+      await composer.compose({
+        parentWords: 'I want to die',
+        pendingAsk: COLD_START_ASK,
+        children: [],
+      }),
+    ).toEqual({ status: 'mental_crisis' });
+    expect(MENTAL_CRISIS_REPLY).toBe(
+      "If you're in crisis, call 988 any time. If it's an emergency, call 911.",
+    );
+    expect(MENTAL_CRISIS_REPLY).toContain('988');
+    expect(MENTAL_CRISIS_REPLY).toContain('911');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
+    expect(SAFETY_REPLY).toContain('811');
+    expect(SAFETY_REPLY).not.toContain('988');
+    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
+    expect(MENTAL_CRISIS_REPLY).not.toBe('Call 911 now.');
   });
 });
 

@@ -1,9 +1,15 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SAFETY_REPLY, SAFETY_REPLY_BY_LANGUAGE } from '~/lib/channel/off-domain/copy';
+import {
+  EMERGENCY_REPLY,
+  MENTAL_CRISIS_REPLY,
+  SAFETY_REPLY,
+  SAFETY_REPLY_BY_LANGUAGE,
+} from '~/lib/channel/off-domain/copy';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { matchHealthCheckpoints } from '~/lib/health/match';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -40,7 +46,9 @@ import {
   makeFakeDb,
 } from './fakes';
 import type { IntentReading } from './intent';
+import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
 import { type IntakeDeps, handleInboundSms } from './machine';
+import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 import { FakeTransport } from './transport';
 import { CONTACT_CARD_URL, WELCOME_CARD_BODY, WELCOME_CARD_TEMPLATE_KEY } from './welcome-card';
 
@@ -173,7 +181,7 @@ describe('intake · happy path', () => {
 
     expect(await text(fake, transport, deps, 'hi')).toEqual({ status: 'greeted' });
     expect(transport.bodies()[0]).toBe(
-      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Kids' names, ages, and your postal code and I'll look up what's coming.",
+      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     );
     expect(transport.bodies()[0]).not.toContain('an AI that quietly runs the family week');
     expect(transport.bodies()[0]).not.toMatch(/I'm an AI/i);
@@ -947,13 +955,15 @@ describe('intake · a question mid-signup gets an answer', () => {
     expect(reply).toContain(RETURN);
     expect(reply).not.toBe(AMBIGUOUS_CLARIFY);
 
-    // The composer saw the parent's words and Hale's own ask — and no session state,
-    // no postal code, no family id (rule #1).
+    // The composer saw the parent's words, Hale's own ask, and the postal already
+    // collected (rec-morning routing). No session state or family id (rule #1).
+    // The model context still omits the postal — see intakeAnswerContext.
     expect(composer.calls).toEqual([
       {
         parentWords: 'Does Sebastian needs eye exam?',
         pendingAsk: WATCH_OFFER_ASK,
         children: MAYA_AND_LEO.children,
+        postalCode: MAYA_AND_LEO.postalCode,
       },
     ]);
 
@@ -1011,7 +1021,258 @@ describe('intake · a question mid-signup gets an answer', () => {
 
     const answered = await text(fake, transport, deps, "she's not breathing");
     expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
-    expect(transport.bodies().at(-1)).toBe(SAFETY_REPLY);
+    expect(transport.bodies().at(-1)).toBe(EMERGENCY_REPLY);
+    expect(transport.bodies().at(-1)).toBe('Call 911 now.');
+    expect(transport.bodies().at(-1)).not.toContain('811');
+    expect(transport.bodies().at(-1)).not.toContain('Health811');
+    expect(transport.bodies().at(-1)).not.toContain('988');
+    expect(transport.bodies().at(-1)).not.toContain('?');
+    expect(transport.bodies().at(-1)).not.toBe(SAFETY_REPLY);
+    expect(transport.bodies().at(-1)).not.toBe(MENTAL_CRISIS_REPLY);
+  });
+
+  it('never sends HELP_REPLY alone when a mid-signup rec question is declined', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }],
+    });
+    await text(fake, transport, deps, 'hi');
+    const answered = await text(fake, transport, deps, 'When do winter-break camps open?');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
+    expect(transport.bodies().at(-1)).toContain(NOT_POSTED_YET);
+    expect(transport.bodies().at(-1)).not.toContain(COLD_START_ASK);
+  });
+
+  it('never sends HELP_REPLY alone when a mid-signup raising-kids question is declined', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }],
+    });
+    await text(fake, transport, deps, 'hi');
+    const answered = await text(fake, transport, deps, 'How do I potty train?');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
+    expect(transport.bodies().at(-1)).toContain(NO_CURRENT_SOURCE_YET);
+    expect(transport.bodies().at(-1)).not.toContain(COLD_START_ASK);
+  });
+});
+
+/**
+ * VIL-322 · the greet hole. A first inbound that is a question used to open a
+ * session and send greeting() only — the words were ignored. Off-script answer
+ * already existed on turn 2. Site chips send the question as turn 1.
+ */
+describe('intake · a first-text question is answered', () => {
+  const ANSWER = 'ANSWER';
+  const RETURN = 'RETURN?';
+
+  function recorder() {
+    const calls: Array<{ event: string }> = [];
+    const capture: IntakeDeps['capture'] = async (event) => {
+      calls.push({ event });
+      return 'sent';
+    };
+    return { calls, capture };
+  }
+
+  it('answers a rec/camp first inbound instead of the bare greeting-only path', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ answerComposer: composer, capture });
+
+    const answered = await text(fake, transport, deps, 'When does swim registration open near me?');
+
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies()).toEqual([`${ANSWER} ${RETURN}`]);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(composer.calls).toEqual([
+      {
+        parentWords: 'When does swim registration open near me?',
+        pendingAsk: COLD_START_ASK,
+        children: [],
+        postalCode: null,
+      },
+    ]);
+
+    const [session] = fake.rows(schema.smsIntakeSessions);
+    expect(session).toMatchObject({ state: 'awaiting_details', followUpCount: 0 });
+    expect(calls.map((c) => c.event)).toEqual(['intake_started']);
+  });
+
+  it("still sends greeting() for a first inbound 'hi'", async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+
+    expect(await text(fake, transport, deps, 'hi')).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
+    expect(composer.calls).toHaveLength(0);
+  });
+
+  it('still sends the venue greeting for a QR / HALE tag', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+
+    expect(await text(fake, transport, deps, 'HALE LIBRARY')).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting('library', 'en')]);
+    expect(composer.calls).toHaveLength(0);
+
+    const via = harness({ answerComposer: composer });
+    expect(await text(via.fake, via.transport, via.deps, 'Hi (via earlyon-richmondhill)')).toEqual({
+      status: 'greeted',
+    });
+    expect(via.transport.bodies()).toEqual([greeting('family centre', 'en')]);
+    expect(composer.calls).toHaveLength(0);
+  });
+
+  it('sends the safety line alone on a first inbound - no signup ask stacked after it', async () => {
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+
+    const answered = await text(fake, transport, deps, "she's not breathing");
+    expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(transport.bodies()).toEqual([EMERGENCY_REPLY]);
+    expect(transport.bodies()[0]).toBe('Call 911 now.');
+    expect(transport.bodies()[0]).not.toContain('811');
+    expect(transport.bodies()[0]).not.toContain('Health811');
+    expect(transport.bodies()[0]).not.toContain('988');
+    expect(transport.bodies()[0]).not.toContain('?');
+    expect(transport.bodies()[0]).not.toContain(COLD_START_ASK);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(transport.bodies()[0]).not.toBe(SAFETY_REPLY);
+  });
+
+  it('never sends greeting() alone when a first-text rec question is declined or unavailable', async () => {
+    // VIL-326: the leak. Composer finds nothing / is unusable → greet used to
+    // send the locked greeting and ignore the question.
+    const silent = harness({});
+    const declined = await text(
+      silent.fake,
+      silent.transport,
+      silent.deps,
+      'When does swim registration open near me?',
+    );
+    expect(declined).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).toContain(NOT_POSTED_YET);
+    expect(silent.transport.bodies()[0]).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+
+    const composer = new FakeAnswerComposer({ status: 'unavailable', reason: 'unusable' });
+    const unusable = harness({ answerComposer: composer });
+    const answered = await text(
+      unusable.fake,
+      unusable.transport,
+      unusable.deps,
+      'When do winter-break camps open?',
+    );
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(unusable.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(unusable.transport.bodies()[0]).toContain(NOT_POSTED_YET);
+    expect(unusable.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+
+  it('never sends greeting() alone when a first-text raising-kids question is declined', async () => {
+    const silent = harness({});
+    const declined = await text(
+      silent.fake,
+      silent.transport,
+      silent.deps,
+      'How do I get him to nap?',
+    );
+    expect(declined).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).toContain(NO_CURRENT_SOURCE_YET);
+    expect(silent.transport.bodies()[0]).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+
+  it('never sends greeting() alone when a first-text leftover fact is declined', async () => {
+    const silent = harness({});
+    const declined = await text(
+      silent.fake,
+      silent.transport,
+      silent.deps,
+      'Who is the US president?',
+    );
+    expect(declined).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).toContain(NO_CURRENT_SOURCE_YET);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+
+  it('sends the reviewed 988 line alone on a first-text crisis - no return ask', async () => {
+    const silent = harness({});
+    const answered = await text(silent.fake, silent.transport, silent.deps, 'I want to die');
+    expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(silent.transport.bodies()).toEqual([MENTAL_CRISIS_REPLY]);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+    expect(silent.transport.bodies()[0]).not.toContain('?');
+    expect(silent.transport.bodies()[0]).not.toContain('811');
+    expect(silent.transport.bodies()[0]).not.toContain('not something I should advise on');
+    expect(silent.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
+    expect(silent.transport.bodies()[0]).not.toBe(EMERGENCY_REPLY);
+    expect(silent.transport.bodies()[0]).not.toBe('Call 911 now.');
+  });
+
+  it('answers a first-text cheer-up with warmth, not the bare greeting', async () => {
+    const silent = harness({});
+    const answered = await text(silent.fake, silent.transport, silent.deps, 'cheer me up');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).toContain(CHEER_UP_REPLY);
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+});
+
+/**
+ * Site Text Hale prefills the first SMS as names / ages / postal. After VIL-322,
+ * greet() treated anything that was not a bare hello as a question — so this
+ * send got an answer + COLD_START_ASK instead of extraction. One send should
+ * run intake.
+ */
+describe('intake · a first-text details prefill is extracted', () => {
+  const SITE_PREFILL = 'Maya is 4, Theo is 18 months, L3R';
+  const MAYA_AND_THEO: IntakeCollected = {
+    children: [
+      { name: 'Maya', ageMonths: 48, agePrecision: 'years' },
+      { name: 'Theo', ageMonths: 18, agePrecision: 'months' },
+    ],
+    postalCode: 'L3R',
+  };
+
+  it('extracts kids + postal on first inbound and does not greet or answer as a question', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `ANSWER ${COLD_START_ASK}`,
+    });
+    const { fake, transport, deps } = harness({
+      extractions: [MAYA_AND_THEO],
+      answerComposer: composer,
+    });
+
+    const result = await text(fake, transport, deps, SITE_PREFILL);
+
+    expect(result.status).toBe('provisioned');
+    expect(composer.calls).toHaveLength(0);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(transport.bodies()[0]).not.toContain('ANSWER');
+    expect(transport.bodies().some((b) => b.includes(COLD_START_ASK))).toBe(false);
+
+    const kids = inserts(fake, schema.children);
+    expect(kids.map((k) => k.name)).toEqual(['Maya', 'Theo']);
+    expect(inserts(fake, schema.families)[0]).toMatchObject({
+      country: 'Canada',
+      postalCode: null,
+      areaCoarse: 'L3R',
+    });
   });
 });
 
@@ -1470,5 +1731,89 @@ describe('intake · the funnel milestones', () => {
 
     await expect(text(fake, transport, deps, 'hi')).resolves.toEqual({ status: 'greeted' });
     expect(transport.bodies()).toHaveLength(1);
+  });
+});
+
+/**
+ * VIL-332 — createSession commits before send. A crash or a refused first
+ * send must not leave an open awaiting_details row that swallows the retry
+ * as details / a duplicate and never greets.
+ */
+describe('intake · VIL-332 first-hello cannot die after createSession', () => {
+  function seedOpenSession(
+    fake: FakeDb,
+    over: {
+      lastProviderId?: string | null;
+      transcript?: Array<{
+        direction: 'in' | 'out';
+        body: string;
+        providerId: string | null;
+        at: string;
+      }>;
+    } = {},
+  ): void {
+    fake.db.insert(schema.smsIntakeSessions).values({
+      phoneHash: phoneBlindIndex(PHONE),
+      phoneEncrypted: encryptString(PHONE),
+      state: 'awaiting_details',
+      dataEncrypted: encryptString(
+        JSON.stringify({
+          collected: { children: [], postalCode: null },
+          transcript: over.transcript ?? [],
+        }),
+      ),
+      lastProviderId: over.lastProviderId === undefined ? 'SMin' : over.lastProviderId,
+    });
+  }
+
+  it('closes the new session when the first send fails, so a retry can greet', async () => {
+    const { fake, deps } = harness({});
+    await expect(
+      handleInboundSms(
+        fake.db,
+        { from: PHONE, body: 'hi', providerId: 'SM-first', receivedAt: NOW },
+        { ...deps, transport: refusingTransport(new Error('provider down')) },
+      ),
+    ).rejects.toThrow('provider down');
+
+    expect(fake.rows(schema.smsIntakeSessions)[0]).toMatchObject({
+      closedAt: NOW,
+      state: 'awaiting_details',
+    });
+
+    const { transport } = harness({});
+    const retry = await handleInboundSms(
+      fake.db,
+      { from: PHONE, body: 'hi', providerId: 'SM-retry', receivedAt: NOW },
+      { ...deps, transport },
+    );
+    expect(retry).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
+  });
+
+  it('sends the locked first-hello for an open session that has a SID and no outbound', async () => {
+    const { fake, transport, deps } = harness({});
+    seedOpenSession(fake, { lastProviderId: 'SMprior' });
+
+    const result = await handleInboundSms(
+      fake.db,
+      { from: PHONE, body: 'hi', providerId: 'SMnext', receivedAt: NOW },
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
+    expect(transport.bodies()[0]).toContain(COLD_START_ASK);
+  });
+
+  it('still treats a carrier retry as a no-op once outbound exists', async () => {
+    const { fake, transport, deps } = harness({});
+    const first = transport.inbound(PHONE, 'hi');
+    await handleInboundSms(fake.db, first, deps);
+    const sentAfterFirst = transport.sent.length;
+
+    const retry = await handleInboundSms(fake.db, { ...first }, deps);
+    expect(retry).toEqual({ status: 'duplicate' });
+    expect(transport.sent).toHaveLength(sentAfterFirst);
   });
 });

@@ -1,13 +1,34 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
+import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
-import { namesAnEmergency, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
+import {
+  namesAMentalCrisis,
+  namesAnEmergency,
+  reachesForTheHealthLine,
+} from '~/lib/channel/off-domain/copy';
 import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
+import {
+  cheerUpIntakeReply,
+  groundCurrentSource,
+  isCheerUpAsk,
+  isLiveLookupAsk,
+  liveLookupFallbackReply,
+  liveLookupReplyFromNotes,
+} from './live-lookup';
+import {
+  deidentifyOfficialQuery,
+  isOfficialPageAsk,
+  notesGroundADate,
+  officialPageFallbackReply,
+  officialPageReplyFromNotes,
+} from './official-page';
 
 /**
  * THE ESCAPE FROM THE SCRIPT — what Hale says when a parent mid-signup asks a question
@@ -35,9 +56,10 @@ import type { ExtractedChild } from './extract';
  *
  *   AN EMERGENCY NEVER REACHES A MODEL. `namesAnEmergency` is checked first, before the
  *   client is even resolved, and returns {@link IntakeAnswerOutcome} `safety` — the
- *   reviewed 811/911 line, with no return-to-script tacked onto it. Intake has never
- *   had the screened safety lane the router has (off-domain/lane.ts), so this is the
- *   whole of it, and it works during a provider outage because it is a substring test.
+ *   machine then sends {@link EMERGENCY_REPLY} (`Call 911 now.`), with no return-to-script
+ *   tacked onto it. Intake has never had the screened safety lane the router has
+ *   (off-domain/lane.ts), so this is the whole of it, and it works during a provider
+ *   outage because it is a substring test.
  *
  *   NOTHING IS AGREED TO YET, and the gates say so in code. Consent is the question
  *   still outstanding on the seam that calls this, so a composed line claiming Hale is
@@ -150,6 +172,11 @@ export type IntakeAnswerOutcome =
    * a text field is one a later edit could fill from a model.
    */
   | { status: 'safety' }
+  /**
+   * Caregiver mental crisis. Carries NO body — the machine sends
+   * {@link MENTAL_CRISIS_REPLY} (988 / 911), never the child-health 811 line.
+   */
+  | { status: 'mental_crisis' }
   | { status: 'unavailable'; reason: IntakeAnswerFallback };
 
 export interface IntakeAnswerInput {
@@ -160,6 +187,11 @@ export interface IntakeAnswerInput {
   /** The children collected so far: the ONLY child facts the answer may state, and all
    * of them things the parent typed into this same conversation. */
   children: readonly ExtractedChild[];
+  /**
+   * Coarse postal/FSA already collected in this conversation. Rec-morning routing
+   * only — never shown to the model (see {@link intakeAnswerContext}).
+   */
+  postalCode?: string | null;
 }
 
 export interface IntakeAnswerComposer {
@@ -174,7 +206,7 @@ const answerJsonSchema = {
     answer: {
       type: 'string',
       description:
-        "The reply to what the parent asked, or an empty string if they did not ask anything.",
+        'The reply to what the parent asked, or an empty string if they did not ask anything.',
     },
     returnLine: {
       type: 'string',
@@ -228,7 +260,8 @@ export function refusals(
   if (answer.includes('?')) found.push('answer_carries_question');
   if (!returnLine.endsWith('?')) found.push('return_asks_nothing');
   if (returnLine === input.pendingAsk.trim()) found.push('return_repeats_the_ask');
-  if (findInventedFacts(joined, intakeAnswerFactSlots(input)).length > 0) found.push('invented_fact');
+  if (findInventedFacts(joined, intakeAnswerFactSlots(input)).length > 0)
+    found.push('invented_fact');
   if (APP_POINTER.test(joined)) found.push('points_at_the_app');
   if (CLAIMED_WORK.test(joined)) found.push('claimed_work');
   if (HUMANNESS.test(joined) && !DISCLOSES_AI.test(joined)) found.push('claimed_to_be_human');
@@ -282,6 +315,49 @@ export function readPair(
  * throws without a key, so "no client" is not a state this seam can be in — and rule
  * #11 says an effect that cannot be absent must not be nullable.
  */
+const MAX_OFFICIAL_SEARCHES = 2;
+const OFFICIAL_GROUND_MAX_TOKENS = 2048;
+
+type OfficialGround =
+  | { status: 'grounded'; notes: string }
+  | { status: 'ungrounded'; reason: string };
+
+/**
+ * GROUND a rec/camp clock against official pages. Zero searches, empty notes,
+ * or notes with no date are the same parent-facing sentence — not posted yet —
+ * and each reason is named in the log (rule #11). The search is Anthropic's US
+ * tool, so the query is de-identified first.
+ */
+async function groundOfficialPages(
+  client: AgentClient,
+  input: IntakeAnswerInput,
+): Promise<OfficialGround> {
+  let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+  try {
+    skill = await loadCronSkill('intake-official-ground');
+  } catch (err) {
+    return { status: 'ungrounded', reason: `skill_unavailable:${message(err)}` };
+  }
+
+  const query = deidentifyOfficialQuery(input.parentWords, input.children);
+  try {
+    const research = await client.messages.create({
+      model: pickModel(skill.meta.task),
+      max_tokens: OFFICIAL_GROUND_MAX_TOKENS,
+      system: skill.instructions,
+      tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_OFFICIAL_SEARCHES }],
+      messages: [{ role: 'user', content: query }],
+    });
+    const evidence = readEvidence(new Date(), research.content);
+    if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };
+    if (evidence.notes === '') return { status: 'ungrounded', reason: 'empty_research' };
+    if (!notesGroundADate(evidence.notes)) return { status: 'ungrounded', reason: 'no_date' };
+    return { status: 'grounded', notes: evidence.notes };
+  } catch (err) {
+    return { status: 'ungrounded', reason: `ground_failed:${message(err)}` };
+  }
+}
+
 export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerComposer {
   return {
     async compose(input) {
@@ -289,12 +365,68 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // the screened safety lane, and an emergency must not wait on a provider that may
       // be the reason this turn is degraded at all.
       if (namesAnEmergency(input.parentWords)) return { status: 'safety' };
+      if (namesAMentalCrisis(input.parentWords)) return { status: 'mental_crisis' };
+
+      // VIL-323: adult-learn is a Designer-locked kids-only door, not a model "I
+      // don't do that" and not a city clock. Checked before rec-morning so
+      // "I wanna learn swimming in Brampton" never invents a date.
+      const adultLearn = adultLearnIntakeReply({
+        parentWords: input.parentWords,
+        pendingAsk: input.pendingAsk,
+      });
+      if (adultLearn !== null) return { status: 'answered', body: adultLearn };
 
       // Rec-morning clock and portal are reviewed copy, not a composition. A first-time
       // texter asking which morning / which login must not wait on a model that still
       // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
-      const recMorning = recMorningIntakeReply(input);
+      const recMorning = recMorningIntakeReply({
+        parentWords: input.parentWords,
+        pendingAsk: input.pendingAsk,
+        postal: input.postalCode,
+      });
       if (recMorning !== null) return { status: 'answered', body: recMorning };
+
+      // VIL-326: a rec/camp/registration clock that missed the city pins. Search
+      // official pages; if a date is not on them, say so. Never invent a clock,
+      // and never return unavailable — that was the greet/ask-alone leak.
+      if (isOfficialPageAsk(input.parentWords)) {
+        const ground = await groundOfficialPages(client, input);
+        if (ground.status === 'ungrounded') {
+          console.error(
+            { reason: ground.reason },
+            'intake answer: official page not grounded, said the date is not posted',
+          );
+          return { status: 'answered', body: officialPageFallbackReply(input.pendingAsk) };
+        }
+        return {
+          status: 'answered',
+          body: officialPageReplyFromNotes(ground.notes, input.pendingAsk),
+        };
+      }
+
+      // VIL-327 caregiver cheer-up: reviewed warmth, not a clinician, then
+      // one return ask. Crisis already left above. Therapist-find is live lookup.
+      if (isCheerUpAsk(input.parentWords)) {
+        return { status: 'answered', body: cheerUpIntakeReply(input.pendingAsk) };
+      }
+
+      // VIL-327: raising-kids, leftover current-source facts, therapist-find.
+      // Live lookup only. The SMS may only restate what search returned.
+      // Framework-only / model memory is not a path.
+      if (isLiveLookupAsk(input.parentWords)) {
+        const ground = await groundCurrentSource(client, input.parentWords, input.children);
+        if (ground.status === 'ungrounded') {
+          console.error(
+            { reason: ground.reason },
+            'intake answer: current source not grounded, said so',
+          );
+          return { status: 'answered', body: liveLookupFallbackReply(input.pendingAsk) };
+        }
+        return {
+          status: 'answered',
+          body: liveLookupReplyFromNotes(ground.notes, input.pendingAsk),
+        };
+      }
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the
       // middle of a stranger's first conversation, and no deploy problem is worth
@@ -313,7 +445,8 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
           system: skill.instructions,
           userMessage: JSON.stringify(intakeAnswerContext(input)),
           toolName: 'reply',
-          toolDescription: "Return the answer to the parent's question and the line back to Hale's.",
+          toolDescription:
+            "Return the answer to the parent's question and the line back to Hale's.",
           inputJsonSchema: answerJsonSchema,
           schema: answerSchema,
           maxTokens: MAX_TOKENS,

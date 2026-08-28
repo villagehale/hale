@@ -121,12 +121,19 @@ describe('city registration guides', () => {
     }
   });
 
-  it('says Hale is unofficial and points founding families at villagehale.com', () => {
+  it('says Hale is unofficial and names founding families', () => {
     for (const guide of REGISTRATION_GUIDES) {
       const text = allText(guide);
       expect(text.toLowerCase()).toContain('unofficial');
       expect(text.toLowerCase()).toContain('founding');
-      expect(text).toContain('villagehale.com');
+    }
+  });
+
+  it('points founding families at villagehale.com on the guides that still sell that way', () => {
+    for (const guide of REGISTRATION_GUIDES.filter(
+      (g) => g.slug !== 'brampton-swim-registration',
+    )) {
+      expect(allText(guide)).toContain('villagehale.com');
     }
   });
 });
@@ -163,6 +170,21 @@ describe('the rules that make parents miss', () => {
     expect(text).toContain('24');
     expect(text.toLowerCase()).toContain('in person');
     expect(text.toLowerCase()).toContain('account & residency validated');
+  });
+
+  it('sells Brampton Hale as kids-only watch, not adult Learn to Swim', () => {
+    const guide = requireGuide('brampton-swim-registration');
+    const sell = `${guide.lede}\n${guide.ctaSub}`;
+    expect(sell).toContain("Hale watches kids' swim for parents.");
+    expect(sell).toContain('Adult lessons stay on the city page.');
+    expect(sell).toContain("Text your kids' names, ages, and postal and I'll watch Sept 9.");
+    expect(sell).toContain('Founding families free.');
+    expect(sell).not.toContain('Hale will text you the night before');
+    expect(sell).not.toMatch(/Hale will run/i);
+    // City facts stay; Hale does not claim adult Learn to Swim.
+    expect(guide.lede).toContain('Aug 24');
+    expect(guide.lede).toContain('Sept 9');
+    expect(guide.smsPrefill).toBe('Maya is 4, Theo is 18 months, L6Y');
   });
 
   it('keeps YMCA on My Y at 9 a.m. with a membership gate', () => {

@@ -5,16 +5,8 @@ import type {
   IdentityAskRequest,
   IdentityAskVoice,
 } from '~/lib/channel/identity/ask-voice';
-import type {
-  IntroAskRequest,
-  IntroVoice,
-  IntroVoiceOutcome,
-} from '~/lib/village/intros/voice';
-import type {
-  IntakeAnswerComposer,
-  IntakeAnswerInput,
-  IntakeAnswerOutcome,
-} from './answer';
+import type { IntroAskRequest, IntroVoice, IntroVoiceOutcome } from '~/lib/village/intros/voice';
+import type { IntakeAnswerComposer, IntakeAnswerInput, IntakeAnswerOutcome } from './answer';
 import { followUp } from './copy';
 import type { IntakeCollected, IntakeExtractor } from './extract';
 import type { IntakeAck, IntakeAckComposer } from './intake-voice';
@@ -328,6 +320,8 @@ export function makeFakeDb(): FakeDb {
       ? {
           followUpCount: 0,
           clarifyCount: 0,
+          sittingReminderSentAt: null,
+          firstReplyRecoveredAt: null,
           sourceCode: null,
           familyId: null,
           userId: null,
@@ -345,7 +339,13 @@ export function makeFakeDb(): FakeDb {
 
   const thenable = (rows: unknown[]) => {
     const chain: Record<string, unknown> = {};
-    for (const method of ['where', 'orderBy', 'from', 'onConflictDoNothing', 'onConflictDoUpdate']) {
+    for (const method of [
+      'where',
+      'orderBy',
+      'from',
+      'onConflictDoNothing',
+      'onConflictDoUpdate',
+    ]) {
       chain[method] = () => chain;
     }
     chain.limit = () => Promise.resolve(rows);
@@ -362,8 +362,7 @@ export function makeFakeDb(): FakeDb {
     const rows = rowsFor(table);
     if (table !== schema.smsIntakeSessions) return thenable(rows);
     const chain = thenable(rows);
-    chain.where = (expr: unknown) =>
-      thenable(rows.filter((row) => matchesWhere(table, expr, row)));
+    chain.where = (expr: unknown) => thenable(rows.filter((row) => matchesWhere(table, expr, row)));
     return chain;
   };
 
@@ -391,10 +390,7 @@ export function makeFakeDb(): FakeDb {
    * violation real Postgres would. Otherwise a caller could drop the conflict clause
    * and still go green here while 23505-ing in production.
    */
-  const conflictingIndex = (
-    table: unknown,
-    value: Record<string, unknown>,
-  ): string | null => {
+  const conflictingIndex = (table: unknown, value: Record<string, unknown>): string | null => {
     const existing = store.get(table) ?? [];
     if (
       table === schema.channelMessages &&
@@ -441,9 +437,7 @@ export function makeFakeDb(): FakeDb {
   /** A conflicting insert: `onConflictDoNothing` swallows it, any other terminal throws. */
   const conflictChain = (constraint: string) => {
     const violation = () =>
-      Promise.reject(
-        new Error(`duplicate key value violates unique constraint "${constraint}"`),
-      );
+      Promise.reject(new Error(`duplicate key value violates unique constraint "${constraint}"`));
     const chain: Record<string, unknown> = {
       onConflictDoNothing: () => thenable([]),
       returning: violation,

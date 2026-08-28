@@ -58,12 +58,6 @@
     "heroH1b": "you",
     "heroH1Accent": "text.",
     "heroSub": "Take the family admin off your plate — swim, camps and registration day, caught before they fill. No app; Hale is a contact in your phone.",
-    "chips": [
-      "When does swim registration open near me?",
-      "When do winter-break camps open?",
-      "What’s on this weekend for a toddler?",
-      "My 2-year-old won’t nap — what do I try?"
-    ],
     "threadEyebrow": "Texting Hale looks like this",
     "threadH2a": "Text me like you’d text",
     "threadH2Accent": "a friend.",
@@ -121,8 +115,8 @@
     "steps": [
       {
         "when": "Right now",
-        "step": "You say hi",
-        "body": "One text. No app, no account, no forms."
+        "step": "You text names, ages, and a postal code",
+        "body": "One text. No app, no account."
       },
       {
         "when": "In the same thread",
@@ -290,7 +284,7 @@
       }
     ],
     "founderStory": "Hale is built by Anzhe Dong — a father, husband, and founder who spent years shipping production agentic systems. He started it raising a kid far from the village his own parents had: no elders down the street, no one who just knew which class was worth it. The trust was still out there, in what other parents told each other; it just couldn’t reach him. So he built the thing he kept wishing someone would text him.",
-    "cta": "It starts with one text — no app, no account, no form to fill in."
+    "cta": "It starts with names, ages, and a postal code. No app, no account."
   },
   "Pricing": {
     "metaTitle": "Pricing · Hale",
@@ -492,8 +486,8 @@
   "Text": {
     "metaTitle": "Text Hale",
     "metaDescription": "Start a conversation with Hale — the family assistant you text. It watches registration day where you live.",
-    "headline": "Hi, I’m Hale — the family assistant you text.",
-    "lede": "Text me your kids’ names and ages and a postal code, and I text back every registration date I’m now watching for you — swim, camps, programs — plus what’s worth knowing near you this week.",
+    "headline": "Change the names to yours and send.",
+    "lede": "I text back the rec dates for that postal. No app.",
     "textMe": "Text me",
     "saveContact": "Save Hale to your contacts",
     "prefilledWithSource": "Your message is already written — “{body}”. The tag just tells me where you came from.",

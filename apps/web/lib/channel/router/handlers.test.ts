@@ -454,6 +454,18 @@ describe('recMorningHandler', () => {
     expect(body).not.toMatch(/https?:\/\//i);
   });
 
+  it('answers a named Markham rec ask with the locked leftover, not Toronto', async () => {
+    const verdict = await recMorningHandler().handle(DB, turn('Markham fall rec dates?'));
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed || verdict.reply === null) return;
+    expect(verdict.reply).toBe(
+      "Markham fall rec, swim, and winter-break camps already opened Aug 11. Winter isn't posted. I can watch leftovers and the waitlist.",
+    );
+    expect(verdict.reply).not.toContain('7:00');
+    expect(verdict.reply).not.toMatch(/Sept?\s*15/i);
+    expect(verdict.reply.toLowerCase()).not.toContain('activeto');
+  });
+
   it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {
     expect((await recMorningHandler().handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
     expect(

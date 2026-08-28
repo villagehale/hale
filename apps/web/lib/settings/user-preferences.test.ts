@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 // readUserPreferences is keyed by the caller's EXTERNAL auth id (the Auth.js
 // session id / Google sub), NOT the internal users.id uuid — a text sub can never
 // equal a uuid, so a query straight at users.id always misses and always returns
-// the metric/Monday defaults. This drives the REAL two-step lookup the lib does:
+// the metric/Sunday defaults. This drives the REAL two-step lookup the lib does:
 // resolveUserIdForUser(external → users.id) THEN read prefs at users.id. The bug
 // this guards is the read silently defaulting for any non-default preference.
 
@@ -63,11 +63,11 @@ describe('readUserPreferences', () => {
     expect(prefs).toEqual({ units: 'imperial', weekStartDay: 0 });
   });
 
-  it('returns the metric/Monday defaults when the external auth id has no mirrored users row', async () => {
+  it('returns the metric/Sunday defaults when the external auth id has no mirrored users row', async () => {
     const db = fakeDb(null, null);
 
     const prefs = await readUserPreferences(EXTERNAL_AUTH_ID, db);
 
-    expect(prefs).toEqual({ units: 'metric', weekStartDay: 1 });
+    expect(prefs).toEqual({ units: 'metric', weekStartDay: 0 });
   });
 });

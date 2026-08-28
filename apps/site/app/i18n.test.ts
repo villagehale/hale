@@ -8,6 +8,7 @@ import { buildAlternates } from '~/i18n/metadata.js';
 import { LOCALE_NAMES, localeHref, stripLocalePrefix } from '~/i18n/navigation.js';
 import { routing } from '~/i18n/routing.js';
 import { FAQ } from '~/lib/faq/index.js';
+import AboutPage from './[locale]/about/page.js';
 import { generateMetadata as aboutMetadata } from './[locale]/about/page.js';
 
 /**
@@ -117,6 +118,19 @@ describe('the phone number is never literal text — messages included (hard rul
     }
   });
 
+  it('carries no homepage question chips in any locale', () => {
+    // Designer lock 2026-08-27 chips/prefill — the four first-text questions
+    // are gone from the homepage, including FR/ZH mirrors. An empty chips
+    // array would still be a clickable row if the UI read it.
+    for (const { locale, raw } of files) {
+      const bundle = JSON.parse(raw) as { Landing?: { chips?: unknown } };
+      expect(bundle.Landing?.chips, `${locale}.json must not keep Landing.chips`).toBeUndefined();
+      expect(raw, `${locale}.json must not keep swim-registration chip copy`).not.toContain(
+        'When does swim registration open near me?',
+      );
+    }
+  });
+
   it('carries no phone-number digits in any grouping', () => {
     const groupings = [
       '+16475551234',
@@ -143,5 +157,55 @@ describe('the FAQ translation source mirrors the canonical English list', () => 
       readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'),
     );
     expect(en.Faq.items).toEqual(FAQ.map((item) => ({ question: item.question, answer: item.answer })));
+  });
+});
+
+describe('VIL-325 designer-locked intake copy — homepage steps and About.cta', () => {
+  const bundles = Object.fromEntries(
+    (['en', 'fr', 'zh'] as const).map((locale) => [
+      locale,
+      JSON.parse(
+        readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+      ),
+    ]),
+  );
+
+  it('pins English Landing.steps[0] and About.cta exactly', () => {
+    expect(bundles.en.Landing.steps[0]).toEqual({
+      when: 'Right now',
+      step: 'You text names, ages, and a postal code',
+      body: 'One text. No app, no account.',
+    });
+    expect(bundles.en.About.cta).toBe(
+      'It starts with names, ages, and a postal code. No app, no account.',
+    );
+    expect(bundles.en.Landing.threadLede).toContain('no menus');
+    expect(JSON.stringify(bundles.en.Landing.steps[0])).not.toMatch(/You say hi|no forms/i);
+    expect(bundles.en.About.cta).not.toMatch(/no form/i);
+  });
+
+  it('mirrors the same keys in FR and ZH without inventing extra English', () => {
+    expect(bundles.fr.Landing.steps[0]).toEqual({
+      when: 'Tout de suite',
+      step: 'Vous textez les noms, les âges et un code postal',
+      body: 'Un texto. Pas d’appli, pas de compte.',
+    });
+    expect(bundles.fr.About.cta).toBe(
+      'Ça commence par les noms, les âges et un code postal. Pas d’appli, pas de compte.',
+    );
+    expect(bundles.zh.Landing.steps[0]).toEqual({
+      when: '现在就可以',
+      step: '你发来名字、年龄和一个邮编',
+      body: '一条短信就行。不用装应用，不用注册账号。',
+    });
+    expect(bundles.zh.About.cta).toBe('一切从名字、年龄和一个邮编开始。不用装应用，不用注册账号。');
+  });
+
+  it('renders the locked About.cta on /about', async () => {
+    const html = renderToStaticMarkup(
+      await AboutPage({ params: Promise.resolve({ locale: 'en' as const }) }),
+    );
+    expect(html).toContain('It starts with names, ages, and a postal code. No app, no account.');
+    expect(html).not.toContain('It starts with one text');
   });
 });

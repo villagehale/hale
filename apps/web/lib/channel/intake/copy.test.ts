@@ -17,6 +17,7 @@ import {
   HELP_REPLY_BY_LANGUAGE,
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  SITTING_SESSION_REMINDER,
   START_ACK,
   START_ACK_BY_LANGUAGE,
   STOP_ACK,
@@ -26,16 +27,26 @@ import {
   detailsBlocked,
   followUp,
   greeting,
+  isBareFirstHello,
+  looksLikeIntakeDetails,
   posterLocation,
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 
+describe('SITTING_SESSION_REMINDER', () => {
+  it('is the Designer-locked next-morning line, verbatim', () => {
+    expect(SITTING_SESSION_REMINDER).toBe(
+      "Still here if you want me watching. Reply with your kids' names, ages, and postal code and I'll send what's coming.",
+    );
+  });
+});
+
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {
     expect(greeting(null, 'en')).toBe(
-      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Kids' names, ages, and your postal code and I'll look up what's coming.",
+      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     );
   });
 
@@ -73,6 +84,32 @@ describe('sourceCodeFromBody / venueForCode', () => {
   it('is null for an ordinary first message', () => {
     expect(sourceCodeFromBody('hi, my kids are 4 and 1')).toBeNull();
     expect(sourceCodeFromBody('')).toBeNull();
+  });
+
+  it('treats a bare hi, empty body, and QR / HALE tag as the locked greeting', () => {
+    expect(isBareFirstHello('hi')).toBe(true);
+    expect(isBareFirstHello('Hi!')).toBe(true);
+    expect(isBareFirstHello('Bonjour')).toBe(true);
+    expect(isBareFirstHello('')).toBe(true);
+    expect(isBareFirstHello('   ')).toBe(true);
+    expect(isBareFirstHello('HALE LIBRARY')).toBe(true);
+    expect(isBareFirstHello('Hi (via earlyon-richmondhill)')).toBe(true);
+  });
+
+  it('does not treat a first-text question as a bare hello', () => {
+    expect(isBareFirstHello('When does swim registration open near me?')).toBe(false);
+    expect(isBareFirstHello('When do winter-break camps open?')).toBe(false);
+    expect(isBareFirstHello("she's not breathing")).toBe(false);
+    expect(isBareFirstHello('who is this exactly?')).toBe(false);
+  });
+
+  it('treats the site Text Hale prefill as details, not a question or a hello', () => {
+    const prefill = 'Maya is 4, Theo is 18 months, L3R';
+    expect(isBareFirstHello(prefill)).toBe(false);
+    expect(looksLikeIntakeDetails(prefill)).toBe(true);
+    expect(looksLikeIntakeDetails('When does swim registration open near me?')).toBe(false);
+    expect(looksLikeIntakeDetails("she's not breathing")).toBe(false);
+    expect(looksLikeIntakeDetails('hi')).toBe(false);
   });
 
   it('reads the "(via <code>)" suffix the /text entry page prefills (VIL-240 convention)', () => {

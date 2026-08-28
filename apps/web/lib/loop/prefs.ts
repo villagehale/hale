@@ -268,9 +268,10 @@ export function deliverableNow(
 
 /**
  * The local weekday the weekly brief is sent on: the MORNING the parent's week
- * starts (users.weekStartDay, 0=Sun/1=Mon). A Monday-start week → Monday, the
- * founder-decided default (2026-08-11: brief opens the week, action-adjacent,
- * rather than closing the weekend).
+ * starts (users.weekStartDay, 0=Sun/1=Mon — same convention as localParts /
+ * Date.getUTCDay(), never 7). Identity: a Sunday-start week → Sunday. The
+ * product default is Sunday (VIL-319 / F11 / VIL-218); a Monday-start week
+ * still sends Monday.
  */
 export function weeklyPlanWeekday(weekStartDay: number): number {
   return weekStartDay % 7;

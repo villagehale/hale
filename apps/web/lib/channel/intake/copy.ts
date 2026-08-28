@@ -414,6 +414,42 @@ function resolveCode(raw: string): string | null {
   return null;
 }
 
+/**
+ * The parent's own words on a first inbound, with the QR / HALE tag stripped.
+ * "Hi (via earlyon-richmondhill)" → "Hi". "HALE LIBRARY" → "". A question with a
+ * trailing via token keeps the question.
+ */
+export function firstInboundWords(body: string): string {
+  const trimmed = body.trim();
+  if (SOURCE_TAG.test(trimmed)) return '';
+  return trimmed.replace(SOURCE_TAG_SUFFIX, '').trim();
+}
+
+const BARE_HELLO = /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)[.!,\s]*$/i;
+
+/**
+ * True when the first inbound is just a hello, empty, or a venue / HALE tag —
+ * the locked greeting path. A rec/camp question, a safety text, or anything else
+ * to answer is false so greet can hand the words to the existing answerer.
+ */
+export function isBareFirstHello(body: string): boolean {
+  const words = firstInboundWords(body);
+  return words === '' || BARE_HELLO.test(words);
+}
+
+/** "Maya is 4", "Theo is 18 months" — the site prefill and a parent who skipped hello. */
+const NAME_IS_AGE =
+  /\b[A-Za-z][A-Za-z'-]{0,30}\s+is\s+\d+(?:\s*(?:months?|years?|ans|mois))?\b/i;
+
+/**
+ * True when the first inbound looks like names / ages / postal — details, not a
+ * question. Greet runs the existing extractor / handleDetails path for these
+ * and must not call offScriptReply (the site Text Hale prefill is this shape).
+ */
+export function looksLikeIntakeDetails(body: string): boolean {
+  return NAME_IS_AGE.test(firstInboundWords(body));
+}
+
 /** The venue CODE (registry key) for a prefilled first body, or null when the body
  * carries no tag or a tag we don't recognise. */
 export function sourceCodeFromBody(body: string): string | null {
@@ -439,11 +475,11 @@ export function posterLocation(code: string | null): string | null {
 }
 
 /**
- * The first thing a stranger ever reads from Hale. VIL-308 locked the English
- * no-venue line verbatim — rec mornings, not a product tagline. Never "an AI that
- * quietly runs the family week". The privacy link is deliberately NOT here — it rides
- * on {@link WATCH_OFFER}, the one turn where a parent is actually asked to agree to
- * something.
+ * The first thing a stranger ever reads from Hale. VIL-308 locked the rec-morning
+ * voice; VIL-321 / Designer locked the English no-venue line verbatim — the ask is
+ * {@link COLD_START_ASK}. Never "an AI that quietly runs the family week". The privacy
+ * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where
+ * a parent is actually asked to agree to something.
  *
  * THE VENUE VARIANT HAS NO FRENCH TWIN, and that is a decision rather than a gap. The
  * body that triggers it is the PREFILLED one a QR code wrote — "HALE LIBRARY", or
@@ -476,7 +512,7 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
  * tuned for.
  */
 export const COLD_START_ASK =
-  "Kids' names, ages, and your postal code and I'll look up what's coming.";
+  "Reply with your kids' names, ages, and postal code and I'll text back what's coming.";
 
 /**
  * The same ask, in the language the parent just wrote in.
@@ -492,6 +528,14 @@ export const COLD_START_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: COLD_START_ASK,
   fr: "Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
 };
+
+/**
+ * VIL-324 — Designer-locked next-morning reminder for a sitting first-hello.
+ * GSM-7 hyphens, no invented date or city clock in the line. The send clock is
+ * the existing Toronto morning window (quiet-hours end), owned by sitting-reminder.ts.
+ */
+export const SITTING_SESSION_REMINDER =
+  "Still here if you want me watching. Reply with your kids' names, ages, and postal code and I'll send what's coming.";
 
 /**
  * What intake still needs before a family can be set up. Both are hard requirements

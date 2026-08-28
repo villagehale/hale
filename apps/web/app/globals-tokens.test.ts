@@ -92,7 +92,7 @@ describe('globals.css — Hale Shore ↔ legacy token mirror (VIL-209)', () => {
     expect(drift).toEqual([]);
   });
 
-  it('pins the identity tokens to the Hale Shore values in apps/mobile/src/global.css', () => {
+  it('pins the identity tokens to the Hale Shore values', () => {
     const base = SCOPES.get('@theme');
     expect(base?.get('--color-canvas')).toBe('#fdfcfa');
     expect(base?.get('--color-card')).toBe('#ffffff');
