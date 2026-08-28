@@ -10,8 +10,11 @@ it, or build another renderer.** A new poster is a data entry, not a layout.
 
 1. **Registry first** — add the source code to `SOURCE_VENUES` in
    `apps/web/lib/channel/intake/copy.ts`:
-   - `earlyon-<place>` for an indoor board at a partner venue (EarlyON, library,
-     daycare); `poster-<place>` for a City postering column.
+   - the bare place name (`markham`, `ossington`) for an indoor board at a
+     partner venue (family centre, library, daycare); `poster-<place>` for a City
+     postering column. Never a program brand in a code or on a plate — "EarlyON"
+     is trademarked, and the legacy `earlyon-*` codes survive only because they
+     are printed on posters already hanging.
    - `name` is read back to the parent ("You found me at the …"), `areaCoarse`
      is the venue's FSA (rule #1: coarse only), `poster` is the place name the
      founder-welcome ping speaks.

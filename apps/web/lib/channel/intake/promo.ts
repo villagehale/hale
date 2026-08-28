@@ -10,7 +10,10 @@
 export const LIFETIME_FAMILY_SOURCE_CODES = new Set<string>([
   'earlyon-georgetown',
   'earlyon-acton',
-  // First GTA boards to agree to post (2026-08-27) — founder-granted.
+  // First GTA boards to agree to post (2026-08-27) — founder-granted. The
+  // earlyon-markham spelling is the legacy code on the copy already hanging at the
+  // Markham venue (copy.ts); it keeps the comp until the reprint replaces it.
+  'markham',
   'earlyon-markham',
-  'earlyon-ossington',
+  'ossington',
 ]);

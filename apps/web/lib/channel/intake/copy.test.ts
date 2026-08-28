@@ -78,17 +78,18 @@ describe('sourceCodeFromBody / venueForCode', () => {
   it('reads the "(via <code>)" suffix the /text entry page prefills (VIL-240 convention)', () => {
     expect(sourceCodeFromBody('Hi (via earlyon-richmondhill)')).toBe('earlyon-richmondhill');
     expect(sourceCodeFromBody('Hi (VIA Earlyon-Richmondhill)')).toBe('earlyon-richmondhill');
-    expect(venueForCode('earlyon-richmondhill')?.name).toBe('EarlyON centre');
+    // "EarlyON" is trademarked: the code survives on printed QRs, the spoken name must not.
+    expect(venueForCode('earlyon-richmondhill')?.name).toBe('family centre');
   });
 
-  it('reads the Georgetown EarlyON venue from both prefilled-body forms (the free-Family comp poster)', () => {
+  it('reads the Georgetown venue from both prefilled-body forms (the free-Family comp poster)', () => {
     // The comp poster's QR prefills one of these two bodies; both must resolve to the code
     // the lifetime-Family grant is keyed on (LIFETIME_FAMILY_SOURCE_CODES).
     expect(sourceCodeFromBody('HALE earlyon-georgetown')).toBe('earlyon-georgetown');
     expect(sourceCodeFromBody('Hi (via earlyon-georgetown)')).toBe('earlyon-georgetown');
-    expect(venueForCode('earlyon-georgetown')?.name).toBe('EarlyON centre');
+    expect(venueForCode('earlyon-georgetown')?.name).toBe('family centre');
     expect(sourceCodeFromBody('Hi (via earlyon-acton)')).toBe('earlyon-acton');
-    expect(venueForCode('earlyon-acton')?.name).toBe('EarlyON centre');
+    expect(venueForCode('earlyon-acton')?.name).toBe('family centre');
     expect(sourceCodeFromBody('Hi (via investor-deck)')).toBe('investor-deck');
     expect(LIFETIME_FAMILY_SOURCE_CODES.has('investor-deck')).toBe(false);
     // both Halton Hills poster codes carry the lifetime Family comp
@@ -96,19 +97,28 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-acton')).toBe(true);
   });
 
-  it('reads the Ossington EarlyON venue from both forms, and it carries the comp', () => {
+  it('reads the Ossington venue from both forms, and it carries the comp', () => {
     // Indoor board at West Neighbourhood House — a venue plate like Richmond Hill.
-    expect(sourceCodeFromBody('Hi (via earlyon-ossington)')).toBe('earlyon-ossington');
-    expect(sourceCodeFromBody('HALE earlyon-ossington')).toBe('earlyon-ossington');
-    expect(venueForCode('earlyon-ossington')?.name).toBe('EarlyON centre');
-    expect(posterLocation('earlyon-ossington')).toBe('Ossington');
+    expect(sourceCodeFromBody('Hi (via ossington)')).toBe('ossington');
+    expect(sourceCodeFromBody('HALE ossington')).toBe('ossington');
+    expect(venueForCode('ossington')?.name).toBe('family centre');
+    expect(posterLocation('ossington')).toBe('Ossington');
     // Founder-granted 2026-08-27, alongside Markham — the first GTA boards.
-    expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-ossington')).toBe(true);
+    expect(LIFETIME_FAMILY_SOURCE_CODES.has('ossington')).toBe(true);
   });
 
-  it('reads the Markham EarlyON venue and grants the first-GTA-board comp', () => {
+  it('reads the Markham venue and grants the first-GTA-board comp', () => {
+    expect(sourceCodeFromBody('Hi (via markham)')).toBe('markham');
+    expect(venueForCode('markham')?.name).toBe('family centre');
+    expect(posterLocation('markham')).toBe('Markham');
+    expect(LIFETIME_FAMILY_SOURCE_CODES.has('markham')).toBe(true);
+  });
+
+  it('keeps the legacy earlyon-markham code live: that QR is printed and hanging', () => {
+    // First scanned 2026-08-28 (the partner venue's own board). Same venue, same comp,
+    // until the reprint replaces the copy — then the alias goes.
     expect(sourceCodeFromBody('Hi (via earlyon-markham)')).toBe('earlyon-markham');
-    expect(venueForCode('earlyon-markham')?.name).toBe('EarlyON centre');
+    expect(venueForCode('earlyon-markham')?.name).toBe('family centre');
     expect(posterLocation('earlyon-markham')).toBe('Markham');
     expect(LIFETIME_FAMILY_SOURCE_CODES.has('earlyon-markham')).toBe(true);
   });

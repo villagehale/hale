@@ -72,20 +72,27 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   REC: { name: 'rec centre', areaCoarse: 'M6K' },
   CLINIC: { name: 'clinic', areaCoarse: 'M4K' },
   SCHOOL: { name: 'school', areaCoarse: 'L7G' },
+  // "family centre", never the centres' program brand: "EarlyON" is a trademarked
+  // term (Ontario), so it appears in no greeting, no plate, and no new code. The
+  // earlyon-* keys that remain are printed on posters already hanging and cannot
+  // change without orphaning those QRs.
   'earlyon-richmondhill': {
-    name: 'EarlyON centre',
+    name: 'family centre',
     areaCoarse: 'L4C',
     poster: 'Richmond Hill',
   },
-  'earlyon-georgetown': { name: 'EarlyON centre', areaCoarse: 'L7G', poster: 'Georgetown' },
+  'earlyon-georgetown': { name: 'family centre', areaCoarse: 'L7G', poster: 'Georgetown' },
   // Per-location Halton Hills posters, so the source code says WHICH centre.
-  'earlyon-acton': { name: 'EarlyON centre', areaCoarse: 'L7J', poster: 'Acton' },
-  // Indoor EarlyON board at West Neighbourhood House, 248 Ossington Ave — a
-  // venue plate, not a City column. Carries the lifetime comp (promo.ts).
-  'earlyon-ossington': { name: 'EarlyON centre', areaCoarse: 'M6J', poster: 'Ossington' },
-  // Indoor EarlyON board at EarlyON Markham / Family Day, 3990 14th Ave — the first
-  // GTA board to say yes, so it carries the lifetime Family comp (promo.ts).
-  'earlyon-markham': { name: 'EarlyON centre', areaCoarse: 'L3R', poster: 'Markham' },
+  'earlyon-acton': { name: 'family centre', areaCoarse: 'L7J', poster: 'Acton' },
+  // Indoor board at West Neighbourhood House, 248 Ossington Ave — a venue plate,
+  // not a City column. Carries the lifetime comp (promo.ts).
+  ossington: { name: 'family centre', areaCoarse: 'M6J', poster: 'Ossington' },
+  // Indoor board at 3990 14th Ave, Markham — the first GTA board to say yes, so it
+  // carries the lifetime Family comp (promo.ts).
+  markham: { name: 'family centre', areaCoarse: 'L3R', poster: 'Markham' },
+  // Legacy spelling of the Markham code: a copy with this QR is already on the
+  // venue's board (first scan 2026-08-28). Remove once the reprint replaces it.
+  'earlyon-markham': { name: 'family centre', areaCoarse: 'L3R', poster: 'Markham' },
   // The pitch deck's QR — so we see which investors actually texted the product.
   'investor-deck': { name: 'the pitch deck', areaCoarse: 'M5V' },
   // Toronto postering-column run (2026-08). One code per column — the posters are

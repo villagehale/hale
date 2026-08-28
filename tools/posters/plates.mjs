@@ -27,36 +27,36 @@ export const PLATES = [
     scan: { title: 'Scan to start', hint: 'Point your phone camera at the code — it opens villagehale.com.', site: 'villagehale.com' },
   },
   {
-    // Indoor EarlyON board at EarlyON Markham / Family Day, 3990 14th Avenue —
-    // board placement pending Sheri's yes. Pure web attribution (UTM on the
-    // homepage; PostHog replay + utm capture live) — no source code, no phone
-    // number on the plate, camera opens the site.
-    code: 'earlyon-markham',
-    outName: 'earlyon-markham-poster',
+    // Indoor board at 3990 14th Avenue, Markham. "EarlyON" is a trademarked term
+    // (Ontario) — it appears in no plate copy and no new code. The earlier
+    // earlyon-markham cut is already hanging at the venue; its code stays live as
+    // a registry alias (copy.ts) until this reprint replaces it.
+    code: 'markham',
+    outName: 'markham-poster',
     band: 'Markham',
     introLine:
       'Rec, swim and camp registration — caught before it fills.<br>Your week, planned. Nothing without your say-so.',
     // The Georgetown gift-card layout: the comp IS the card (eyebrow + big serif
     // title + one explainer), and the scan pill echoes it.
-    eyebrow: 'A gift for Markham EarlyON families',
+    eyebrow: 'A gift for Markham families',
     cardTitle: 'The Family plan — free, for&nbsp;life.',
     localLine:
       "Hale's top tier — full autonomy with your OK, bookings handled, priority support. Free forever when you join from this poster.",
     scanPill: 'Scan → your Family plan is free, for life',
-    qrValue: 'https://www.villagehale.com/text?s=earlyon-markham&utm_source=earlyon-markham&utm_medium=flyer',
+    qrValue: 'https://www.villagehale.com/text?s=markham&utm_source=markham&utm_medium=flyer',
     qrEcc: 'H',
     scan: { title: 'Scan to start', hint: 'Point your phone camera at the code — it opens villagehale.com.', site: 'villagehale.com' },
   },
   {
-    // Indoor EarlyON board at West Neighbourhood House, 248 Ossington Ave.
-    // Registry: earlyon-ossington (M6J, poster 'Ossington') — no lifetime comp.
-    code: 'earlyon-ossington',
+    // Indoor board at West Neighbourhood House, 248 Ossington Ave.
+    // Registry: ossington (M6J, poster 'Ossington') — carries the lifetime comp.
+    code: 'ossington',
     band: 'Ossington',
-    eyebrow: 'A gift for Ossington EarlyON families',
+    eyebrow: 'A gift for Ossington families',
     cardTitle: 'The Family plan — free, for&nbsp;life.',
     localLine:
       "Hale's top tier — full autonomy with your OK, bookings handled, priority support. Free forever when you join from this poster.",
     scanPill: 'Scan → your Family plan is free, for life',
-    qrValue: 'sms:+12892172279?&body=Hi%20(via%20earlyon-ossington)',
+    qrValue: 'sms:+12892172279?&body=Hi%20(via%20ossington)',
   },
 ];
