@@ -16,7 +16,9 @@ describe('site chrome CTA', () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
     const cta = chromeCta();
     expect(cta.label).toBe('Text Hale');
-    expect(cta.href).toBe('sms:+16475551234?&body=Hi');
+    expect(cta.href).toBe(
+      'sms:+16475551234?&body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R',
+    );
     expect(cta.href).not.toContain('/onboarding');
   });
 

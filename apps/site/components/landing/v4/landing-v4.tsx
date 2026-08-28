@@ -12,7 +12,7 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { MUNICIPALITIES } from '~/lib/site/municipalities';
 import { siteJsonLd } from '~/lib/site/structured-data';
-import { CONTACT_EMAIL, buildSmsHref, buildSmsHrefForBody } from '~/lib/text-entry';
+import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
 import { ScrollRail } from './scroll-rail';
 
 /**
@@ -57,7 +57,6 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
   const copy = getTranslator(locale, 'CopyNumber');
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
 
-  const chips = t.raw('chips') as string[];
   const bubbles = t.raw('threadBubbles') as ThreadRow[];
   const steps = t.raw('steps') as TimedStep[];
   const contrast = t.raw('contrast') as Card[];
@@ -129,26 +128,6 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               />
             )}
           </div>
-
-          {smsNumber && (
-            <ul className="v4-chips">
-              {chips.map((q) => (
-                <li key={q}>
-                  {/* A chip is an sms: deep link like the hero button, so it is the
-                      same conversion counted at the same seam — the placement is what
-                      tells you a pre-written question opened the composer. */}
-                  <LandingCta
-                    event="cta_text_click"
-                    placement="hero_chip"
-                    href={buildSmsHrefForBody(smsNumber, q)}
-                    className="v4-chip v4-glass"
-                  >
-                    {q}
-                  </LandingCta>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
       </section>
 
@@ -167,8 +146,8 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         a bare season where it prints the "Fall 2026" cycle label.
 
         The coaching exchange that used to share this slot moved out rather than
-        being kept alongside — breadth is already claimed twice above it (the
-        hero sub and the four chips), so the product shot can afford depth.
+        being kept alongside — breadth is already claimed above it (the hero
+        sub), so the product shot can afford depth.
       */}
       <section className="shell pt-12 sm:pt-20 lg:pt-28">
         <p className="v4-eyebrow text-center">{t('threadEyebrow')}</p>

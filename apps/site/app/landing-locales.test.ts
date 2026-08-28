@@ -63,6 +63,13 @@ describe('the registration loop renders in every locale', () => {
     expect([...HTML[locale].matchAll(/class="v4-contrast[^"]*"/g)]).toHaveLength(1);
   });
 
+  it.each(routing.locales)('%s has no homepage question chips', (locale) => {
+    const html = HTML[locale];
+    expect(html).not.toContain('class="v4-chip');
+    expect(html).not.toContain('class="v4-chips"');
+    expect(html).not.toContain('hero_chip');
+  });
+
   it.each(routing.locales)('%s keeps the demo evergreen — no calendar date', (locale) => {
     const thread = HTML[locale].match(/<div class="v4-thread[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(thread, 'the thread must render').toContain('v4-thread-time');
