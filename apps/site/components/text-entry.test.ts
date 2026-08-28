@@ -38,12 +38,10 @@ function qrPath(html: string): string {
 }
 
 describe('TextEntry (persona copy)', () => {
-  it('leads with the family-assistant introduction and the one-text setup line', () => {
+  it('leads with the locked recut headline and lede', () => {
     for (const html of [liveHtml, unsetHtml]) {
-      expect(html).toContain('Hi, I’m Hale — the family assistant you text.');
-      expect(html).toContain(
-        'Text me your kids’ names and ages and a postal code, and I text back every registration date I’m now watching for you — swim, camps, programs — plus what’s worth knowing near you this week.',
-      );
+      expect(html).toContain('Change the names to yours and send.');
+      expect(html).toContain('I text back the rec dates for that postal. No app.');
     }
   });
 

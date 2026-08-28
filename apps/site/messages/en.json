@@ -486,8 +486,8 @@
   "Text": {
     "metaTitle": "Text Hale",
     "metaDescription": "Start a conversation with Hale — the family assistant you text. It watches registration day where you live.",
-    "headline": "Hi, I’m Hale — the family assistant you text.",
-    "lede": "Text me your kids’ names and ages and a postal code, and I text back every registration date I’m now watching for you — swim, camps, programs — plus what’s worth knowing near you this week.",
+    "headline": "Change the names to yours and send.",
+    "lede": "I text back the rec dates for that postal. No app.",
     "textMe": "Text me",
     "saveContact": "Save Hale to your contacts",
     "prefilledWithSource": "Your message is already written — “{body}”. The tag just tells me where you came from.",
