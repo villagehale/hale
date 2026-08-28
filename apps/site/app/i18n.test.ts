@@ -117,6 +117,19 @@ describe('the phone number is never literal text — messages included (hard rul
     }
   });
 
+  it('carries no homepage question chips in any locale', () => {
+    // Designer lock 2026-08-27 chips/prefill — the four first-text questions
+    // are gone from the homepage, including FR/ZH mirrors. An empty chips
+    // array would still be a clickable row if the UI read it.
+    for (const { locale, raw } of files) {
+      const bundle = JSON.parse(raw) as { Landing?: { chips?: unknown } };
+      expect(bundle.Landing?.chips, `${locale}.json must not keep Landing.chips`).toBeUndefined();
+      expect(raw, `${locale}.json must not keep swim-registration chip copy`).not.toContain(
+        'When does swim registration open near me?',
+      );
+    }
+  });
+
   it('carries no phone-number digits in any grouping', () => {
     const groupings = [
       '+16475551234',

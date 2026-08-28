@@ -63,24 +63,29 @@ describe('parseSourceCode (venue attribution from ?s=)', () => {
 });
 
 describe('buildSmsBody (what the parent sends)', () => {
-  it('is a bare greeting when no venue sent them', () => {
-    expect(buildSmsBody(null)).toBe('Hi');
+  it('is the Designer-locked intake sample when no venue sent them', () => {
+    // Designer lock 2026-08-27 chips/prefill — first SMS looks like intake, not a question.
+    expect(buildSmsBody(null)).toBe('Maya is 4, Theo is 18 months, L3R');
   });
 
   it('appends the venue as a trailing "(via …)" token', () => {
-    expect(buildSmsBody('earlyon-richmondhill')).toBe('Hi (via earlyon-richmondhill)');
+    expect(buildSmsBody('earlyon-richmondhill')).toBe(
+      'Maya is 4, Theo is 18 months, L3R (via earlyon-richmondhill)',
+    );
   });
 });
 
 describe('buildSmsHref (the deep link)', () => {
   it('is an sms: URI whose body is percent-encoded, carrying the source token', () => {
     expect(buildSmsHref('+16475551234', 'earlyon-richmondhill')).toBe(
-      'sms:+16475551234?&body=Hi%20(via%20earlyon-richmondhill)',
+      'sms:+16475551234?&body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R%20(via%20earlyon-richmondhill)',
     );
   });
 
-  it('still pre-fills the greeting with no source', () => {
-    expect(buildSmsHref('+16475551234', null)).toBe('sms:+16475551234?&body=Hi');
+  it('pre-fills the locked intake sample with no source', () => {
+    expect(buildSmsHref('+16475551234', null)).toBe(
+      'sms:+16475551234?&body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R',
+    );
   });
 });
 

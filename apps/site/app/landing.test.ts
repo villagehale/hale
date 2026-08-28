@@ -82,7 +82,9 @@ describe('landing — the v4 hero', () => {
     // Two Text Hale CTAs above the fold — the nav pill and the hero — both the
     // composer deep link, so the first text costs a tap.
     expect([...html.matchAll(/>Text Hale</g)].length).toBeGreaterThanOrEqual(2);
-    expect(html).toContain('href="sms:+16475551234?&amp;body=Hi"');
+    expect(html).toContain(
+      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R"',
+    );
   });
 
   it('shows what texting Hale is like as a static thread, not a typed dramatisation', () => {
@@ -97,24 +99,21 @@ describe('landing — the v4 hero', () => {
     }
   });
 
-  it('renders the four reply chips as composer deep links carrying the parent’s words', () => {
-    expect([...html.matchAll(/class="v4-chip v4-glass"/g)]).toHaveLength(4);
-    expect(html).toContain('When does swim registration open near me?');
-    // Each chip pre-writes a question into the composer, not the bare greeting.
-    expect(html).toContain('sms:+16475551234?&amp;body=When%20does%20swim');
+  it('has no question chips — Designer lock 2026-08-27 chips/prefill', () => {
+    expect(html).not.toContain('class="v4-chip');
+    expect(html).not.toContain('class="v4-chips"');
+    expect(html).not.toContain('hero_chip');
+    expect(html).not.toContain('When does swim registration open near me?');
+    expect(html).not.toContain('When do winter-break camps open?');
+    expect(html).not.toContain('What’s on this weekend for a toddler?');
+    expect(html).not.toContain('My 2-year-old won’t nap — what do I try?');
   });
 
-  it('declares the hierarchy in the chips — three logistics questions, then one coaching one', () => {
-    // Registration is the lead job; coaching is why the thread stays open between
-    // windows. Four chips of equal billing made the page read as three products.
-    const order = [
-      'When does swim registration open near me?',
-      'When do winter-break camps open?',
-      'What’s on this weekend for a toddler?',
-      'My 2-year-old won’t nap — what do I try?',
-    ].map((chip) => html.indexOf(chip));
-    expect(order.every((i) => i >= 0)).toBe(true);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  it('prefills Text Hale with the locked intake sample, verbatim', () => {
+    expect(html).toContain(
+      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R"',
+    );
+    expect(html).not.toContain('href="sms:+16475551234?&amp;body=Hi"');
   });
 });
 
@@ -134,7 +133,9 @@ describe('landing — the number is reachable and never readable', () => {
     }
     // Positive control: the number IS on the page, invisibly, so "absent" means
     // withheld rather than never rendered at all.
-    expect(html).toContain('href="sms:+16475551234?&amp;body=Hi"');
+    expect(html).toContain(
+      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R"',
+    );
   });
 
   it('offers the clipboard as the laptop path instead of the digits', () => {
@@ -448,9 +449,10 @@ describe('landing — number not provisioned', () => {
     expect(html).not.toContain('>Text Hale<');
     expect(html).not.toContain('647');
     expect(html).toContain('href="mailto:aloha@villagehale.com"');
-    // Positive control: with no number the composer chips are gone too, so the
-    // absence above is the whole SMS surface withheld, not one link missing.
-    expect(html).not.toContain('class="v4-chip v4-glass"');
+    // Positive control: with no number the SMS surface is withheld entirely —
+    // no composer link, no leftover empty chip row.
+    expect(html).not.toContain('class="v4-chip');
+    expect(html).not.toContain('class="v4-chips"');
   });
 
   it('still shows the thread demo and the sections — neither needs the number', () => {

@@ -74,13 +74,15 @@ describe('TextEntry (number live)', () => {
   it('makes "Text me" an sms: deep link carrying the pre-filled body and the venue token', () => {
     // React escapes the `&` of the cross-platform `?&body=` form into `&amp;`.
     expect(liveHtml).toContain(
-      'href="sms:+16475551234?&amp;body=Hi%20(via%20earlyon-richmondhill)"',
+      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R%20(via%20earlyon-richmondhill)"',
     );
     expect(liveHtml).toContain('Text me');
   });
 
-  it('pre-fills the bare greeting when no venue sent them', () => {
-    expect(liveNoSourceHtml).toContain('href="sms:+16475551234?&amp;body=Hi"');
+  it('pre-fills the locked intake sample when no venue sent them', () => {
+    expect(liveNoSourceHtml).toContain(
+      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R"',
+    );
   });
 
   it('never prints the digits — a copy chip stands in for the readable number', () => {

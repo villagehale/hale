@@ -28,7 +28,7 @@ export function LandingCta({
   children,
 }: {
   event: AnalyticsEvent;
-  /** Which CTA this is — `hero`, `header`, `faq`, `hero_chip`… Omitted where the event
+  /** Which CTA this is — `hero`, `header`, `faq`… Omitted where the event
    * only ever has one home (the contact card lives on /text alone). */
   placement?: string;
   href: string;

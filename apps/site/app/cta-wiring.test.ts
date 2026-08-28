@@ -171,7 +171,7 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
    */
   it('really is reading rendered anchors — the known-wired CTAs are all present', () => {
     expect(smsAnchors.length).toBeGreaterThanOrEqual(20);
-    for (const placement of ['header', 'hero', 'hero_chip', 'closing', 'faq', 'text_entry']) {
+    for (const placement of ['header', 'hero', 'closing', 'faq', 'text_entry']) {
       expect(placements, `the walk must reach the ${placement} CTA`).toContain(placement);
     }
     expect(smsAnchors.every((anchor) => anchor.tag.includes(`href="sms:${LIVE_NUMBER}`))).toBe(
