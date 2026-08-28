@@ -31,6 +31,7 @@ import {
   WATCH_OFFER,
   WATCH_OFFER_ASK,
   detailsBlocked,
+  followUpQuestion,
   greeting,
 } from './copy';
 import type { IntakeCollected } from './extract';
@@ -1273,6 +1274,56 @@ describe('intake · a first-text details prefill is extracted', () => {
       postalCode: null,
       areaCoarse: 'L3R',
     });
+  });
+});
+
+/**
+ * A first text that is nothing but a postal code — live, 2026-08-28, a brand-new
+ * number whose whole first message was "M4B 2B1". It is not a hello and not a
+ * question: it is half the cold-start ask, already answered. It used to be read for
+ * NOTHING — greet sent the cold ask back, and the one follow-up then asked for the
+ * postal code the parent had already sent.
+ */
+describe('intake · a first text that is only a postal code', () => {
+  const MAYA_AND_LEO_IN_M4B: IntakeCollected = {
+    children: MAYA_AND_LEO.children,
+    postalCode: 'M4B 2B1',
+  };
+
+  it('keeps the postal from the first text and asks only for names and ages', async () => {
+    const { fake, transport, deps } = harness({});
+    const extractor = new FakeExtractor([MAYA_AND_LEO_IN_M4B]);
+    const withExtractor: IntakeDeps = { ...deps, extractor };
+
+    expect(await text(fake, transport, withExtractor, 'M4B 2B1')).toEqual({ status: 'greeted' });
+
+    const greeted = transport.bodies()[0] as string;
+    expect(greeted).toContain('M4B');
+    expect(greeted).toContain("Kids' names and ages");
+    expect(greeted).not.toContain(COLD_START_ASK);
+    expect(greeted).not.toMatch(/postal/i);
+
+    // The second turn is what proves the postal was STORED rather than echoed: it
+    // comes back out of the session as what the extractor is told is already known.
+    const provisioned = await text(fake, transport, withExtractor, 'Maya is 4 and Leo is 1');
+    expect(provisioned.status).toBe('provisioned');
+    expect(extractor.calls.map((c) => c.alreadyKnown.postalCode)).toEqual(['M4B 2B1']);
+    expect(transport.bodies().some((b) => b.includes(followUpQuestion(['location'])))).toBe(false);
+    expect(inserts(fake, schema.families)[0]).toMatchObject({
+      country: 'Canada',
+      postalCode: 'M4B 2B1',
+      areaCoarse: 'M4B',
+    });
+  });
+
+  it('still asks for the postal code alone when the first text is names and ages', async () => {
+    const { fake, transport, deps } = harness({ extractions: [NO_POSTAL] });
+
+    const asked = await text(fake, transport, deps, 'Maya is 4 and Leo is 1');
+
+    expect(asked).toEqual({ status: 'follow_up_asked' });
+    expect(transport.bodies().at(-1)).toContain(followUpQuestion(['location']));
+    expect(transport.bodies().at(-1)).not.toContain('how old are they');
   });
 });
 
