@@ -1,5 +1,3 @@
-import type { DigestPerChildBreakdown } from '@hale/db';
-
 /**
  * Sibling calendar-overlap detection — a pure function over the day's calendar
  * actions. When two calendar actions (create/update_calendar_event) for DIFFERENT
@@ -30,7 +28,13 @@ export interface CalendarActionInput {
   payload: Record<string, unknown>;
 }
 
-export type SiblingCalendarOverlapFlag = DigestPerChildBreakdown['coordinationFlags'][number];
+export interface SiblingCalendarOverlapFlag {
+  kind: 'sibling_calendar_overlap';
+  actionId: string;
+  childId: string | null;
+  siblingChildId: string;
+  detail: string;
+}
 
 interface Window {
   actionId: string;

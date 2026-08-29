@@ -1,19 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
-import {
-  type ActionMessageRow,
-  type DigestMessageRow,
-  toActionMessage,
-  toDigestMessage,
-} from './mappers';
+import { type ActionMessageRow, toActionMessage } from './mappers';
 
 const TZ = 'America/Toronto';
-
-const DIGEST: DigestMessageRow = {
-  id: '11111111-1111-4111-8111-111111111111',
-  briefText: 'A calm day — one feed logged, nothing needs you.',
-  generatedAt: new Date('2026-06-17T13:00:00.000Z'),
-};
 
 const ACTION: ActionMessageRow = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -23,23 +12,6 @@ const ACTION: ActionMessageRow = {
   revertedReason: null,
   teenContent: false,
 };
-
-describe('toDigestMessage', () => {
-  it('surfaces the brief prose wholesale (already a pre-redacted parent slice)', () => {
-    const view = toDigestMessage(DIGEST, TZ);
-    expect(view.kind).toBe('digest');
-    expect(view.eyebrow).toBe('Daily brief');
-    expect(view.body).toBe('A calm day — one feed logged, nothing needs you.');
-    // 13:00 UTC is 09:00 in America/Toronto (EDT).
-    expect(view.when).toBe('Jun 17, 09:00');
-    // A digest never navigates — no action state.
-    expect(view.actionState).toBeUndefined();
-  });
-
-  it('namespaces the id so a digest and an action never collide', () => {
-    expect(toDigestMessage(DIGEST, TZ).id).toBe(`digest-${DIGEST.id}`);
-  });
-});
 
 describe('toActionMessage — lifecycle framing', () => {
   it('frames a drafted action as awaiting the parent, tagged with the state so it navigates', () => {
@@ -85,27 +57,25 @@ describe('toActionMessage — lifecycle framing', () => {
 });
 
 describe('today flag — the notifications TODAY/EARLIER split (family zone)', () => {
-  // 2026-06-17T13:00:00Z is Jun 17 in America/Toronto.
+  // 2026-06-17T15:00:00Z is Jun 17 in America/Toronto.
   it('is true when the row falls on the same family-zone day as now', () => {
     const now = new Date('2026-06-17T22:00:00.000Z'); // still Jun 17, 18:00 ET
-    expect(toDigestMessage(DIGEST, TZ, now).today).toBe(true);
     expect(toActionMessage(ACTION, TZ, now).today).toBe(true);
   });
 
   it('is false when the row is on an earlier family-zone day than now', () => {
     const now = new Date('2026-06-20T13:00:00.000Z'); // Jun 20 ET
-    expect(toDigestMessage(DIGEST, TZ, now).today).toBe(false);
     expect(toActionMessage(ACTION, TZ, now).today).toBe(false);
   });
 
   it('judges the day in the family zone, not UTC (a 01:00Z row is the prior ET day)', () => {
     // 2026-06-18T01:00:00Z is Jun 17, 21:00 in America/Toronto — the family's
     // Jun 17, not UTC's Jun 18.
-    const row: DigestMessageRow = { ...DIGEST, generatedAt: new Date('2026-06-18T01:00:00.000Z') };
+    const row: ActionMessageRow = { ...ACTION, at: new Date('2026-06-18T01:00:00.000Z') };
     const nowSameEtDay = new Date('2026-06-18T02:00:00.000Z'); // Jun 17, 22:00 ET
     const nowNextEtDay = new Date('2026-06-18T05:00:00.000Z'); // Jun 18, 01:00 ET
-    expect(toDigestMessage(row, TZ, nowSameEtDay).today).toBe(true);
-    expect(toDigestMessage(row, TZ, nowNextEtDay).today).toBe(false);
+    expect(toActionMessage(row, TZ, nowSameEtDay).today).toBe(true);
+    expect(toActionMessage(row, TZ, nowNextEtDay).today).toBe(false);
   });
 });
 

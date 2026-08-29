@@ -28,7 +28,6 @@ export * from './outbound-sends.js';
 export * from './stripe-billing-events.js';
 export * from './sms-intake-sessions.js';
 export * from './email-sends.js';
-export * from './daily-digests.js';
 export * from './week-plans.js';
 export * from './family-events.js';
 export * from './party-invites.js';
