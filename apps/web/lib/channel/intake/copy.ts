@@ -688,9 +688,10 @@ export const AMBIGUOUS_CLARIFY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 };
 
 /**
- * The CASL keyword replies. STOP gets one final confirmation and then silence; HELP
- * (and anything unparseable) gets the same honest capability line, because a parent
- * who typed something we couldn't read needs to know what we CAN do, not an error.
+ * The CASL keyword replies, frozen verbatim. STOP gets one final confirmation and then
+ * silence; HELP gets the honest capability line. The unparseable reply during intake no
+ * longer shares it: that moment is conversational, not compliance, and has its own
+ * words now ({@link UNREADABLE_INTAKE_REPLY} — doctrine G7/L2).
  */
 export const STOP_ACK =
   "You're unsubscribed - I won't text you again. Reply START if you ever want me back.";
@@ -721,9 +722,11 @@ export const START_ACK = "You're back - I'll text you when something needs doing
  * and the tail now names the two words a French parent can actually send.
  *
  * WHY THE HELP LINE OFFERS AIDE AT ALL, given that a parent reading it may well have
- * just typed it: this line has a second door. An unparseable first reply during intake
- * lands on it too (machine.ts), and that parent never typed a keyword — for them
- * "AIDE pour de l'aide" is the instruction, not an echo.
+ * just typed it: the other keyword is still news (a parent who typed AIDE learns
+ * ARRET), and the line long had a second door — an unparseable first reply during
+ * intake — which now has its own constant
+ * ({@link UNREADABLE_INTAKE_REPLY_BY_LANGUAGE}, doctrine G7/L2), so this reply
+ * answers only the keyword that asked for it.
  *
  * `désabonner` keeps its é (GSM-7 has it). The keyword tokens are written WITHOUT their
  * accents — ARRET, DEBUT — because that is how a keyword is typed under pressure and
@@ -733,6 +736,26 @@ export const START_ACK = "You're back - I'll text you when something needs doing
 export const HELP_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: HELP_REPLY,
   fr: "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+};
+
+/**
+ * The unparseable-intake door, split off {@link HELP_REPLY} (doctrine G7/L2). An
+ * unreadable reply during intake used to get the frozen CASL capability line, which
+ * dragged compliance copy into a conversational moment. This one owns the moment
+ * instead: what could not be read, the reply shape in a parent's own words, and the
+ * STOP line an intake-stage message still owes. The HELP keyword keeps the frozen
+ * {@link HELP_REPLY} untouched.
+ *
+ * FOUNDER REVIEW: these words are new (SMS style doctrine v1). The French example
+ * postal is H2X so the sample reads the way that parent's own would, and the keyword
+ * tokens named are honoured ones only — the copy.test.ts scan reads them off the line.
+ */
+export const UNREADABLE_INTAKE_REPLY =
+  "I couldn't read that one. I keep the family week and kids' rec sign-ups - text me like 'Maya is 4, Theo is 1, M5V 2T6' and I'll take it from there. Reply STOP to unsubscribe.";
+
+export const UNREADABLE_INTAKE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: UNREADABLE_INTAKE_REPLY,
+  fr: "Je n'ai pas compris ce message. Je garde la semaine et les inscriptions rec - écrivez par exemple 'Maya a 4 ans, Theo a 1 an, H2X 1Y6' et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
 };
 
 /**

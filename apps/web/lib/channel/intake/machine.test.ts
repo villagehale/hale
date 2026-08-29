@@ -28,6 +28,7 @@ import {
   START_ACK_BY_LANGUAGE,
   STOP_ACK,
   STOP_ACK_BY_LANGUAGE,
+  UNREADABLE_INTAKE_REPLY,
   WATCH_OFFER,
   WATCH_OFFER_ASK,
   detailsBlocked,
@@ -1432,6 +1433,23 @@ describe('intake · CASL keywords', () => {
     const helped = await text(fake, transport, deps, 'HELP');
     expect(helped).toEqual({ status: 'helped' });
     expect(transport.bodies().at(-1)).toBe(HELP_REPLY);
+
+    // Still mid-intake: the next real answer still provisions.
+    const provisioned = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    expect(provisioned.status).toBe('provisioned');
+  });
+
+  it('answers an unreadable details reply with its own door, never the frozen HELP line', async () => {
+    // Doctrine G7/L2: the HELP keyword's reply is CASL-frozen; the conversational
+    // "couldn't read that" moment split off it and owns its own words.
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }, MAYA_AND_LEO],
+    });
+    await text(fake, transport, deps, 'hi');
+    const helped = await text(fake, transport, deps, 'qwerty asdf');
+    expect(helped).toEqual({ status: 'helped' });
+    expect(transport.bodies().at(-1)).toBe(UNREADABLE_INTAKE_REPLY);
+    expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
 
     // Still mid-intake: the next real answer still provisions.
     const provisioned = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
