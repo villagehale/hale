@@ -1,8 +1,11 @@
 import { ArrowUpRight, Check } from 'lucide-react';
 import type { Metadata } from 'next';
+import { CopyNumberButton } from '~/components/copy-number';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
+import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
 import { ProductFaqAccordion } from '~/components/product-faq-accordion';
+import { QrCode } from '~/components/qr-code';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
@@ -50,6 +53,8 @@ export function RegistrationGuidePage({
   guide: RegistrationGuide;
 }) {
   const t = getTranslator(locale, 'Registration');
+  const copy = getTranslator(locale, 'CopyNumber');
+  const textNs = getTranslator(locale, 'Text');
   const cta = chromeCta(locale);
   const number = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   const href =
@@ -57,6 +62,9 @@ export function RegistrationGuidePage({
 
   return (
     <main id="main" tabIndex={-1} className="relative">
+      {/* Renders nothing — how far down this money page an ad click actually got,
+          `landing_scroll` with a coarse `page` naming which city guide. */}
+      <LandingScrollAnalytics page={guide.placement} />
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
@@ -110,6 +118,30 @@ export function RegistrationGuidePage({
                 ))}
               </tbody>
             </table>
+          </div>
+          {/* The CTA where the reading happens: the dates table is what the ad
+              promised, so the composer is offered right under it rather than only
+              eight sections down in the closing band. Same event, its own
+              placement, so the two doors stay separable in the one funnel. */}
+          <div className="glass-panel mt-8 flex flex-col items-start gap-4 px-6 py-6 sm:flex-row sm:items-center sm:gap-6 sm:px-8">
+            <LandingCta
+              event="cta_text_click"
+              placement={`${guide.placement}_dates`}
+              href={href}
+              className="btn-primary"
+            >
+              {cta.label}
+            </LandingCta>
+            {number ? (
+              <CopyNumberButton
+                number={number}
+                placement={`${guide.placement}_dates`}
+                className="link font-medium"
+                label={copy('label')}
+                copiedLabel={copy('copied')}
+                ariaLabel={copy('aria')}
+              />
+            ) : null}
           </div>
           <p className="meta mt-8 max-w-2xl" style={{ lineHeight: 1.6 }}>
             {guide.unofficialNote}
@@ -290,7 +322,7 @@ export function RegistrationGuidePage({
         <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
           {guide.ctaSub}
         </p>
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <LandingCta
             event="cta_text_click"
             placement={guide.placement}
@@ -299,7 +331,31 @@ export function RegistrationGuidePage({
           >
             {cta.label}
           </LandingCta>
+          {number ? (
+            <CopyNumberButton
+              number={number}
+              placement={guide.placement}
+              className="btn-on-navy-quiet"
+              label={copy('label')}
+              copiedLabel={copy('copied')}
+              ariaLabel={copy('aria')}
+            />
+          ) : null}
         </div>
+        {/* The desktop path made visible: `sms:` is a silent no-op on a laptop
+            (rule #11 applied to the funnel), so the band also offers the same URI
+            as a scannable code. Hidden on phones, where the button IS the path. */}
+        {number ? (
+          <div className="mx-auto mt-10 hidden max-w-md items-center gap-6 text-left sm:flex">
+            <QrCode value={href} label={textNs('qrAria')} />
+            <div>
+              <p className="cta-sub font-semibold">{textNs('onLaptop')}</p>
+              <p className="cta-sub mt-2 text-sm" style={{ lineHeight: 1.6 }}>
+                {textNs('scanHint')}
+              </p>
+            </div>
+          </div>
+        ) : null}
       </CtaBand>
 
       <SiteFooter locale={locale} />

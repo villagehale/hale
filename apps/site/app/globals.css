@@ -813,11 +813,44 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   box-shadow: 0 0 0 3px var(--color-navy), 0 0 0 5px var(--color-cream);
 }
 
+/* The quiet action beside .btn-on-navy — same pill geometry, no fill: cream ink
+ * inside a soft cream edge, for the desktop copy-number chip that must not
+ * compete with the composer CTA it stands next to. */
+.btn-on-navy-quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.75rem;
+  background: transparent;
+  color: var(--color-cream);
+  border: 0;
+  border-radius: var(--r-full);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-cream) 45%, transparent);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 200ms var(--ease-breathe);
+}
+.btn-on-navy-quiet:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-cream) 75%, transparent);
+}
+.btn-on-navy-quiet:active { transform: translateY(0); }
+.btn-on-navy-quiet:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-navy), 0 0 0 5px var(--color-cream);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lift { transition: none; }
   .lift:hover { transform: none; }
   .btn-on-navy { transition: none; }
   .btn-on-navy:hover { transform: none; }
+  .btn-on-navy-quiet { transition: none; }
+  .btn-on-navy-quiet:hover { transform: none; }
 }
 
 /* ══ Legal long-form (2026-07, VIL-250 · M14 · B-legal) ══════════════════ *

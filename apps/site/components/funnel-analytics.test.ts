@@ -20,11 +20,19 @@ vi.mock('~/lib/analytics/posthog-provider', () => ({
 
 vi.mock('react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react')>();
-  return { ...actual, useState: (initial: unknown) => [initial, () => {}] };
+  return {
+    ...actual,
+    useState: (initial: unknown) => [initial, () => {}],
+    useRef: (initial: unknown) => ({ current: initial }),
+    useEffect: (effect: () => unknown) => {
+      effect();
+    },
+  };
 });
 
 const { LandingCta } = await import('./landing-cta.js');
 const { CopyNumberButton } = await import('./copy-number.js');
+const { LandingScrollAnalytics } = await import('./landing-scroll-analytics.js');
 
 function click(element: { props: Record<string, unknown> }): void {
   (element.props.onClick as () => void)();
@@ -85,8 +93,58 @@ describe('copy_number_click — the desktop path to the same act', () => {
       }),
     );
 
-    expect(capture).toHaveBeenCalledWith('copy_number_click');
+    expect(capture).toHaveBeenCalledWith('copy_number_click', {});
     expect(JSON.stringify(capture.mock.calls)).not.toContain('6475551234');
+    vi.unstubAllGlobals();
+  });
+
+  it('names which chip was copied from, the same way LandingCta names its door', () => {
+    capture.mockClear();
+    vi.stubGlobal('navigator', { clipboard: { writeText: async () => {} } });
+
+    click(
+      CopyNumberButton({
+        number: '+16475551234',
+        placement: 'closing',
+        label: 'Copy number',
+        copiedLabel: 'copied',
+        ariaLabel: 'Copy',
+      }),
+    );
+
+    expect(capture).toHaveBeenCalledWith('copy_number_click', { cta_placement: 'closing' });
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('landing_scroll — the money pages name which page was scrolled', () => {
+  /** A viewport as tall as the document: fully read on render, so the mocked
+   * effect reports every depth in one pass. */
+  function stubFullyReadPage(): void {
+    vi.stubGlobal('window', {
+      scrollY: 0,
+      innerHeight: 900,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+    vi.stubGlobal('document', { documentElement: { scrollHeight: 900 } });
+  }
+
+  it('threads the coarse page name onto every depth it reports', () => {
+    capture.mockClear();
+    stubFullyReadPage();
+    LandingScrollAnalytics({ page: 'toronto_swim' });
+    expect(capture).toHaveBeenCalledTimes(4);
+    expect(capture).toHaveBeenCalledWith('landing_scroll', { depth: 25, page: 'toronto_swim' });
+    expect(capture).toHaveBeenCalledWith('landing_scroll', { depth: 100, page: 'toronto_swim' });
+    vi.unstubAllGlobals();
+  });
+
+  it('sends no page from the homepage, whose historical rows have none', () => {
+    capture.mockClear();
+    stubFullyReadPage();
+    LandingScrollAnalytics({});
+    expect(capture).toHaveBeenCalledWith('landing_scroll', { depth: 100 });
     vi.unstubAllGlobals();
   });
 });
@@ -108,6 +166,13 @@ describe('the privacy gate holds for the new funnel properties', () => {
     expect(buildEvent('landing_scroll', { depth: 75 })).toEqual({
       event: 'landing_scroll',
       properties: { depth: 75 },
+    });
+  });
+
+  it('keeps the coarse page name a city guide stamps on its scrolls', () => {
+    expect(buildEvent('landing_scroll', { depth: 50, page: 'toronto_swim' })).toEqual({
+      event: 'landing_scroll',
+      properties: { depth: 50, page: 'toronto_swim' },
     });
   });
 });

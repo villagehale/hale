@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { CopyNumberButton } from '~/components/copy-number';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
 import { PricingSection } from '~/components/pricing-section';
@@ -10,6 +11,7 @@ import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { chromeCta } from '~/lib/site/chrome-cta';
+import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
@@ -41,6 +43,8 @@ export default async function PricingPage({ params }: PageProps) {
   const t = getTranslator(locale, 'Pricing');
   // Texting Hale is the one front door: /onboarding was deleted in F14.
   const cta = chromeCta(locale);
+  const copy = getTranslator(locale, 'CopyNumber');
+  const number = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   return (
     <main id="main" tabIndex={-1} className="relative">
       <SiteHeader locale={locale} />
@@ -69,7 +73,7 @@ export default async function PricingPage({ params }: PageProps) {
         >
           {t('cta')}
         </p>
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <LandingCta
             event="cta_text_click"
             placement="pricing_band"
@@ -78,6 +82,16 @@ export default async function PricingPage({ params }: PageProps) {
           >
             {cta.label}
           </LandingCta>
+          {number ? (
+            <CopyNumberButton
+              number={number}
+              placement="pricing_band"
+              className="btn-on-navy-quiet"
+              label={copy('label')}
+              copiedLabel={copy('copied')}
+              ariaLabel={copy('aria')}
+            />
+          ) : null}
         </div>
       </CtaBand>
 

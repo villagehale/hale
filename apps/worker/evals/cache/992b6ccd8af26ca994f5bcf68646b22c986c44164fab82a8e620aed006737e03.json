@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent named exactly one event (soccer on Saturday) and asked to move it to 11am. The reference is resolved — there is only one Saturday soccer event in the week. Hale correctly drafted the move and presented it clearly with the location preserved and the YES confirmation prompt. The reply is short, exact, and correct. It names the change, retains the venue from the existing event, and ends with the required \"YES to confirm.\" No greeting, no sign-off, no markdown, no extra questions. This is the product working perfectly.",
+    "score": 5
+  }
+}

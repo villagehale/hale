@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's \"Yes, please\" follows Hale's last message saying it will keep watching and text when fall dates post. standingQuestions is empty, so the yes attaches to that last message — it's agreeing to be notified. Hale's reply correctly identifies what the yes was about (watching for Cartwheels fall dates) and confirms that's already happening. It's clean, no markdown, no sign-off, no app referral, no invented detail. The only minor issue is that Hale said in the previous turn it would \"keep watching\" — but there's no registrationWindows entry for Cartwheels, so this is more of a soft promise to monitor and text back, which is within Hale's capability to track as a standing question or intent. The reply is short, accurate, and confirms the right thing. It's a solid 5.",
+    "score": 5
+  }
+}
