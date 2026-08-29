@@ -9,8 +9,7 @@ import { selectFamiliesNeedingDiscovery } from './families';
  * family can have somewhere to discover for via an ACTIVE saved area alone (no
  * legacy families.area_coarse) — resolveActiveAreaCoarse resolves it — so the gate
  * must NOT be area_coarse-only, or such a family never receives standing discovery.
- * We capture the WHERE predicate and compile it to assert the widened gate, the
- * same idiom as integrations/connect-nonce.test.ts.
+ * We capture the WHERE predicate and compile it to assert the widened gate.
  */
 function fakeDb() {
   const cap: { where?: SQL } = {};
