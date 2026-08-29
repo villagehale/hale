@@ -15,8 +15,12 @@ import { newlyCrossedDepths, scrolledFraction } from '~/lib/analytics/scroll-dep
  * The Set lives in a ref rather than in state on purpose: a re-render must not reset it
  * (that would re-report 25% on every theme toggle), and crossing a milestone must not
  * re-render the landing.
+ *
+ * `page` is a coarse name for WHICH long page was scrolled (the city guides pass their
+ * `guide.placement`). The homepage omits it — its historical `landing_scroll` rows have
+ * no `page`, and absent must keep meaning "the landing" rather than becoming a string.
  */
-export function LandingScrollAnalytics() {
+export function LandingScrollAnalytics({ page }: { page?: string } = {}) {
   const capture = useAnalytics();
   const ready = useAnalyticsReady();
   const sent = useRef<Set<number>>(new Set());
@@ -35,7 +39,7 @@ export function LandingScrollAnalytics() {
       });
       for (const depth of newlyCrossedDepths(fraction, sent.current)) {
         sent.current.add(depth);
-        capture('landing_scroll', { depth });
+        capture('landing_scroll', page ? { depth, page } : { depth });
       }
     };
 
@@ -44,7 +48,7 @@ export function LandingScrollAnalytics() {
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [capture, ready]);
+  }, [capture, ready, page]);
 
   return null;
 }

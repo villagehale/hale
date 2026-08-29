@@ -26,6 +26,11 @@ export function analyticsEnabled(): boolean {
  *    tab. It costs cross-visit stitching, which on a site whose only conversion leaves
  *    for an SMS composer was never measurable anyway. Google Ads is a separate head tag
  *    that may set advertising cookies; it is not this client (google-ads-tag.tsx).
+ *    ACCEPTED TRADEOFF (2026-08 ad-week audit): the distinct id also dies on every
+ *    NAVIGATION (each page load is a fresh id), so "sessions" ≈ pageviews and a
+ *    cross-page funnel (landing → /text → CTA) cannot be stitched into one visitor.
+ *    Read the funnel as per-page event counts with `source_code`/`cta_placement`
+ *    breakdowns, not as user journeys.
  *  - `autocapture: false` — no clicks, no form interactions, no rageclicks are inferred.
  *    Every event in the catalog is fired by a named call site.
  *  - `disable_session_recording: false` — replay is ON for the marketing site
