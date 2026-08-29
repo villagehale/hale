@@ -19,9 +19,7 @@ import type { DeepSlot } from './deep';
  * child-attributed row, projects through the closed `toPublicActivity` allow-list, has an
  * OG image, and carries the not-found state. Every one of those is a privacy property
  * that took review to get right (rule #1), and a second page system would be a second
- * place to get them wrong. The other two candidates were rejected on fit rather than
- * effort: `/w/:token` renders a WEEK, and `/picks/:token` renders a family's ENDORSED
- * shortlist through an inner join this row would never satisfy.
+ * place to get them wrong.
  *
  * SO A DEEP FIND IS A VILLAGE CANDIDATE, which it always was — "one discovered local
  * resource (a class, group, drop-in, program) the village agent surfaces for a family" is
@@ -95,8 +93,8 @@ export function shareSummary(slots: readonly DeepSlot[]): { summary: string; car
 /**
  * Put the schedule somewhere the parent can open it, and hand back the link.
  *
- * The token is `randomBytes(18).base64url` — the same mint `ensureShareToken` and
- * `ensureActivityShareToken` use, and the same property: it identifies no child and no
+ * The token is `randomBytes(18).base64url` — the same mint `ensureActivityShareToken`
+ * uses, and the same property: it identifies no child and no
  * parent, so the page it unlocks is a schedule and nothing else.
  */
 export async function mintActivitySharePage(

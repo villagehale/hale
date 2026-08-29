@@ -21,13 +21,11 @@ import type { WeekWindow } from '~/lib/plan/spine';
  * week", never a specific day. */
 export const APPOINTMENT_HORIZON_WEEKS = 1;
 
-/** At most this many items surface; the overflow collapses routines to a summary
- * line ("…and your usual routines") so the plan stays scannable (ticket cap). */
+/** At most this many items surface (ticket cap). */
 export const MAX_ITEMS = 8;
 
 const TEEN_APPOINTMENT_TITLE = 'a private appointment for your teen';
 const TEEN_BIRTHDAY_TITLE = 'a birthday in the family';
-const ROUTINES_OVERFLOW_TITLE = 'and your usual routines';
 
 export interface ComposeChild {
   id: string;
@@ -42,13 +40,6 @@ export interface ComposeHealth {
   kind: 'immunization' | 'well_child_visit';
   /** Whole weeks until due (month-coarse). */
   dueInWeeks: number;
-}
-
-/** A routine already condensed to a pattern by the gather layer (never a line-item).
- * `day` is a weekday label or null ("anytime") — not PII, survives teen redaction. */
-export interface ComposeRoutinePattern {
-  label: string;
-  day: string | null;
 }
 
 export interface ComposeVillage {
@@ -74,14 +65,15 @@ export interface ComposeInputs {
   window: WeekWindow;
   children: ComposeChild[];
   health: ComposeHealth[];
-  routines: ComposeRoutinePattern[];
   villageDated: ComposeVillage[];
   suggestion: ComposeVillage | null;
   familyEvents: ComposeFamilyEvent[];
 }
 
 /** Rank order for the cap + display: concrete commitments first, the optional
- * suggestion last. appointments > birthdays > village(dated) > routines > suggestion. */
+ * suggestion last. appointments > birthdays > village(dated) > suggestion.
+ * 'routine' stays ranked: WeekPlanItemKind is persisted artifact vocabulary
+ * (historical week_plans rows), even though nothing composes one any more. */
 const KIND_RANK: Record<WeekPlanItem['kind'], number> = {
   appointment: 0,
   birthday: 1,
@@ -200,20 +192,6 @@ function villageItems(inputs: ComposeInputs): WeekPlanItem[] {
   return items;
 }
 
-function routineItems(inputs: ComposeInputs): WeekPlanItem[] {
-  return inputs.routines.map((r) => ({
-    kind: 'routine' as const,
-    title: r.label,
-    childIds: [],
-    startsAt: null, // a recurring pattern has no single day; `day` label lives in the title
-    endsAt: null,
-    location: null,
-    sourceRef: null,
-    needs: 'none' as const,
-    privacySensitive: false,
-  }));
-}
-
 function suggestionItem(inputs: ComposeInputs): WeekPlanItem | null {
   const s = inputs.suggestion;
   if (!s) return null;
@@ -233,56 +211,28 @@ function suggestionItem(inputs: ComposeInputs): WeekPlanItem | null {
 
 /**
  * Compose the week's item list. Gathers each source into `WeekPlanItem`s, orders by
- * kind rank (then by any date), and caps to MAX_ITEMS — collapsing the routine
- * overflow into a single "…and your usual routines" line rather than dropping
- * concrete commitments. An empty week returns `[]` (a real artifact — the ticket).
+ * kind rank (then by any date), and caps to MAX_ITEMS. An empty week returns `[]`
+ * (a real artifact — the ticket).
  */
 export function composeWeekPlan(inputs: ComposeInputs, now: Date = new Date()): WeekPlanItem[] {
   const appointments = appointmentItems(inputs, now);
   const birthdays = [...birthdayItems(inputs, now), ...familyEventItems(inputs, now)];
   const village = villageItems(inputs);
-  const routines = routineItems(inputs);
   const suggestion = suggestionItem(inputs);
 
-  const ordered = sortItems([...appointments, ...birthdays, ...village, ...routines]);
-  const nonRoutine = ordered.filter((i) => i.kind !== 'routine');
-  const routineOrdered = ordered.filter((i) => i.kind === 'routine');
+  const ordered = sortItems([...appointments, ...birthdays, ...village]);
 
   // Reserve one slot for the suggestion (if any); everything else competes for the
-  // rest. Concrete commitments (appointments/birthdays/village) are kept whole; the
-  // routines collapse to a summary line when they'd push the plan past the cap.
+  // rest.
   const suggestionSlots = suggestion ? 1 : 0;
   const budget = MAX_ITEMS - suggestionSlots;
 
   const kept: WeekPlanItem[] = [];
-  for (const item of nonRoutine) {
+  for (const item of ordered) {
     if (kept.length < budget) kept.push(item);
-  }
-  const routineBudget = budget - kept.length;
-  if (routineOrdered.length > 0) {
-    if (routineOrdered.length <= routineBudget) {
-      kept.push(...routineOrdered);
-    } else if (routineBudget > 0) {
-      // Some routine room but not all fit → one collapsed summary line.
-      kept.push(routinesSummary());
-    }
   }
   if (suggestion) kept.push(suggestion);
   return kept;
-}
-
-function routinesSummary(): WeekPlanItem {
-  return {
-    kind: 'routine',
-    title: ROUTINES_OVERFLOW_TITLE,
-    childIds: [],
-    startsAt: null,
-    endsAt: null,
-    location: null,
-    sourceRef: null,
-    needs: 'none',
-    privacySensitive: false,
-  };
 }
 
 /** Stable order: by kind rank, then by start key (dated before undated), then title. */

@@ -1,29 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
-import {
-  type PublicCandidateRow,
-  type PublicProposalRow,
-  loadSharedWeekPlan,
-  toPublicWeekPlan,
-} from './public.js';
+import { describe, expect, it } from 'vitest';
+import { type PublicCandidateRow, toPublicActivity } from './public.js';
 
-const RAW_TITLE = 'Riverdale teen LGBTQ+ peer support drop-in';
-const RAW_SUMMARY = 'Confidential weekly group for your 15-year-old.';
-const RAW_COVERAGE = 'serves the east-end neighbourhoods';
-const RAW_SOURCE_URL = 'https://example.org/riverdale-teen-group';
-const CHILD_ID = 'child-teen-uuid';
-const FAMILY_ID = 'fam-uuid';
+/**
+ * The shared public-projection allow-list (rule #1): every unauthenticated share
+ * artifact (the /a activity card) projects through `toPublicActivity`, so its
+ * closed key set, untrusted-text caps, and sourceUrl scheme validation are the
+ * privacy contract. Expected values are derived from the spec (the caps, the
+ * http(s)-only rule), never read back from the code.
+ */
 
-/** The loader-query row shape: the public-safe fields plus the visibility fields
- * the freshness/temporal filter reads (never surfaced by the mapper). */
-type SharedCandidateRow = PublicCandidateRow & {
-  supersededAt: Date | null;
-  discoveredAt: Date;
-  eventDate: string | null;
-  cadence: string | null;
-  seasons: string[] | null;
-};
-
-function familyWideCandidate(overrides: Partial<SharedCandidateRow> = {}): SharedCandidateRow {
+function familyWideCandidate(overrides: Partial<PublicCandidateRow> = {}): PublicCandidateRow {
   return {
     childId: null,
     title: 'Saturday family swim drop-in',
@@ -31,39 +17,14 @@ function familyWideCandidate(overrides: Partial<SharedCandidateRow> = {}): Share
     summary: 'Parent-and-child swim at the community centre.',
     sourceUrl: 'https://example.org/swim',
     coverageNote: 'serves your area',
-    supersededAt: null,
-    discoveredAt: new Date(),
-    eventDate: null,
-    cadence: null,
-    seasons: null,
     ...overrides,
   };
 }
 
-function proposal(overrides: Partial<PublicProposalRow> = {}): PublicProposalRow {
-  return {
-    weekOf: '2026-06-15',
-    items: [],
-    ...overrides,
-  };
-}
-
-describe('toPublicWeekPlan — privacy contract (rule #1)', () => {
-  it('exposes ONLY the safe allow-list: weekOf, areaCoarse, activities with the safe candidate fields', () => {
-    const plan = toPublicWeekPlan({
-      proposal: proposal(),
-      areaCoarse: 'M4L',
-      candidates: [familyWideCandidate()],
-    });
-
-    expect(plan).not.toBeNull();
-    expect(Object.keys(plan ?? {}).sort()).toEqual(['activities', 'areaCoarse', 'weekOf']);
-    expect(plan?.weekOf).toBe('2026-06-15');
-    expect(plan?.areaCoarse).toBe('M4L');
-
-    const activity = plan?.activities[0];
-    expect(activity).toBeDefined();
-    expect(Object.keys(activity ?? {}).sort()).toEqual([
+describe('toPublicActivity — the closed allow-list (rule #1)', () => {
+  it('exposes ONLY the safe fields: title, kind, summary, sourceUrl, coverageNote, endorsementCount', () => {
+    const activity = toPublicActivity(familyWideCandidate());
+    expect(Object.keys(activity).sort()).toEqual([
       'coverageNote',
       'endorsementCount',
       'kind',
@@ -71,281 +32,57 @@ describe('toPublicWeekPlan — privacy contract (rule #1)', () => {
       'summary',
       'title',
     ]);
-    expect(activity?.title).toBe('Saturday family swim drop-in');
-    expect(activity?.kind).toBe('drop_in');
+    expect(activity.title).toBe('Saturday family swim drop-in');
+    expect(activity.kind).toBe('drop_in');
     // Aggregate count only — defaults to 0 when the loader resolved no counts.
-    expect(activity?.endorsementCount).toBe(0);
+    expect(activity.endorsementCount).toBe(0);
   });
 
-  it('DROPS any candidate attributed to a child (childId set) — no child-linked row is public', () => {
-    const plan = toPublicWeekPlan({
-      proposal: proposal(),
-      areaCoarse: 'M4L',
-      candidates: [
-        familyWideCandidate(),
-        {
-          childId: CHILD_ID,
-          title: RAW_TITLE,
-          kind: 'support_group',
-          summary: RAW_SUMMARY,
-          sourceUrl: RAW_SOURCE_URL,
-          coverageNote: RAW_COVERAGE,
-        },
-      ],
-    });
-
-    expect(plan?.activities).toHaveLength(1);
-    expect(plan?.activities[0]?.kind).toBe('drop_in');
-
-    const serialized = JSON.stringify(plan);
-    expect(serialized).not.toContain(RAW_TITLE);
-    expect(serialized).not.toContain(RAW_SUMMARY);
-    expect(serialized).not.toContain(RAW_COVERAGE);
-    expect(serialized).not.toContain(RAW_SOURCE_URL);
-    expect(serialized).not.toContain(CHILD_ID);
-  });
-
-  it('never leaks childId, familyId, or any internal id even from the family-wide rows it keeps', () => {
-    const plan = toPublicWeekPlan({
-      proposal: proposal(),
-      areaCoarse: 'Toronto',
-      candidates: [familyWideCandidate()],
-    });
-
-    const serialized = JSON.stringify(plan);
+  it('never echoes childId — the projection has no field to carry it', () => {
+    const serialized = JSON.stringify(toPublicActivity(familyWideCandidate({ childId: 'child-uuid' })));
     expect(serialized).not.toContain('childId');
-    expect(serialized).not.toContain('child_id');
-    expect(serialized).not.toContain('familyId');
-    expect(serialized).not.toContain('family_id');
-    expect(serialized).not.toContain(FAMILY_ID);
-    expect(serialized).not.toContain(CHILD_ID);
-  });
-
-  it('drops proposal items attributed to a child; keeps it as activity count only when family-wide', () => {
-    // Proposal items also carry childId in jsonb. They never carry their own
-    // surfaced copy in the public view (activities come from candidates), but the
-    // mapper must not echo a child-attributed item's raw text anywhere.
-    const plan = toPublicWeekPlan({
-      proposal: proposal({
-        items: [
-          { title: RAW_TITLE, kind: 'support_group', childId: CHILD_ID, stageNote: RAW_SUMMARY },
-          {
-            title: 'Family park day',
-            kind: 'activity',
-            childId: null,
-            stageNote: 'whole household',
-          },
-        ],
-      }),
-      areaCoarse: 'M4L',
-      candidates: [familyWideCandidate()],
-    });
-
-    const serialized = JSON.stringify(plan);
-    expect(serialized).not.toContain(RAW_TITLE);
-    expect(serialized).not.toContain(RAW_SUMMARY);
-    expect(serialized).not.toContain(CHILD_ID);
-  });
-
-  it('returns null areaCoarse passthrough when the family opted out of an area (never fabricates one)', () => {
-    const plan = toPublicWeekPlan({
-      proposal: proposal(),
-      areaCoarse: null,
-      candidates: [familyWideCandidate()],
-    });
-
-    expect(plan?.areaCoarse).toBeNull();
+    expect(serialized).not.toContain('child-uuid');
   });
 });
 
-describe('toPublicWeekPlan — untrusted text/URL hardening (rule #1, FIX 2)', () => {
+describe('toPublicActivity — untrusted text/URL hardening (rule #1)', () => {
   it('drops a non-http(s) sourceUrl (javascript:) to null', () => {
-    const plan = toPublicWeekPlan({
-      proposal: proposal(),
-      areaCoarse: 'M4L',
-      candidates: [familyWideCandidate({ sourceUrl: 'javascript:alert(1)' })],
-    });
-
-    expect(plan?.activities[0]?.sourceUrl).toBeNull();
+    expect(
+      toPublicActivity(familyWideCandidate({ sourceUrl: 'javascript:alert(1)' })).sourceUrl,
+    ).toBeNull();
   });
 
   it('drops a data: URL and a relative URL to null', () => {
-    const plan = toPublicWeekPlan({
-      proposal: proposal(),
-      areaCoarse: 'M4L',
-      candidates: [
-        familyWideCandidate({ sourceUrl: 'data:text/html,<script>1</script>' }),
-        familyWideCandidate({ sourceUrl: '/relative/path' }),
-      ],
-    });
-
-    expect(plan?.activities[0]?.sourceUrl).toBeNull();
-    expect(plan?.activities[1]?.sourceUrl).toBeNull();
+    expect(
+      toPublicActivity(familyWideCandidate({ sourceUrl: 'data:text/html,<script>1</script>' }))
+        .sourceUrl,
+    ).toBeNull();
+    expect(toPublicActivity(familyWideCandidate({ sourceUrl: '/relative/path' })).sourceUrl).toBeNull();
   });
 
   it('keeps a valid absolute http and https sourceUrl', () => {
-    const plan = toPublicWeekPlan({
-      proposal: proposal(),
-      areaCoarse: 'M4L',
-      candidates: [
-        familyWideCandidate({ sourceUrl: 'https://ex.com/a' }),
-        familyWideCandidate({ sourceUrl: 'http://ex.com/b' }),
-      ],
-    });
-
-    expect(plan?.activities[0]?.sourceUrl).toBe('https://ex.com/a');
-    expect(plan?.activities[1]?.sourceUrl).toBe('http://ex.com/b');
+    expect(toPublicActivity(familyWideCandidate({ sourceUrl: 'https://ex.com/a' })).sourceUrl).toBe(
+      'https://ex.com/a',
+    );
+    expect(toPublicActivity(familyWideCandidate({ sourceUrl: 'http://ex.com/b' })).sourceUrl).toBe(
+      'http://ex.com/b',
+    );
   });
 
   it('truncates title, summary, and coverageNote to their caps', () => {
-    const plan = toPublicWeekPlan({
-      proposal: proposal(),
-      areaCoarse: 'M4L',
-      candidates: [
-        familyWideCandidate({
-          title: 'T'.repeat(500),
-          summary: 'S'.repeat(900),
-          coverageNote: 'C'.repeat(500),
-        }),
-      ],
-    });
-
-    const activity = plan?.activities[0];
-    expect(activity?.title).toHaveLength(200);
-    expect(activity?.summary).toHaveLength(600);
-    expect(activity?.coverageNote).toHaveLength(300);
+    const activity = toPublicActivity(
+      familyWideCandidate({
+        title: 'T'.repeat(500),
+        summary: 'S'.repeat(900),
+        coverageNote: 'C'.repeat(500),
+      }),
+    );
+    expect(activity.title).toHaveLength(200);
+    expect(activity.summary).toHaveLength(600);
+    expect(activity.coverageNote).toHaveLength(300);
   });
 
   it('leaves a null coverageNote null (does not fabricate text)', () => {
-    const plan = toPublicWeekPlan({
-      proposal: proposal(),
-      areaCoarse: 'M4L',
-      candidates: [familyWideCandidate({ coverageNote: null })],
-    });
-
-    expect(plan?.activities[0]?.coverageNote).toBeNull();
-  });
-});
-
-const SHARE_TOKEN = 'tok_abc123';
-
-/**
- * Fakes the three select chains loadSharedWeekPlan runs:
- *   1. proposal (joined to families.areaCoarse) by share_token
- *   2. village_candidates for the family
- * Each entry in `chains` is the resolved rows for the next select(...) call.
- */
-function fakeDb(chains: unknown[][]) {
-  let call = 0;
-  const limitSpy = vi.fn();
-  const orderBySpy = vi.fn();
-  const select = vi.fn().mockImplementation(() => {
-    const rows = chains[call] ?? [];
-    call += 1;
-    // The candidate query is .where().orderBy().limit(); the proposal query is
-    // .innerJoin().where().limit(). Make limit() and orderBy() both record their
-    // args and resolve the rows, and let orderBy() also be chainable into limit.
-    const limit = vi.fn().mockImplementation((n: number) => {
-      limitSpy(n);
-      return Promise.resolve(rows);
-    });
-    const orderBy = vi.fn().mockImplementation((col: unknown) => {
-      orderBySpy(col);
-      return Object.assign(Promise.resolve(rows), { limit });
-    });
-    const where = vi.fn().mockReturnValue({ limit, orderBy });
-    const innerJoin = vi.fn().mockReturnValue({ where });
-    const from = vi.fn().mockReturnValue({ where, innerJoin });
-    return { from };
-  });
-  return { db: { select } as never, limitSpy, orderBySpy };
-}
-
-describe('loadSharedWeekPlan', () => {
-  it('returns null for an unknown token — no proposal row, no candidate query', async () => {
-    const { db } = fakeDb([[]]);
-
-    const result = await loadSharedWeekPlan('does-not-exist', db);
-
-    expect(result).toBeNull();
-  });
-
-  it('returns the public week plan when the token resolves a proposal', async () => {
-    const { db } = fakeDb([
-      [{ proposalFamilyId: FAMILY_ID, weekOf: '2026-06-15', items: [], areaCoarse: 'M4L' }],
-      [familyWideCandidate()],
-    ]);
-
-    const result = await loadSharedWeekPlan(SHARE_TOKEN, db);
-
-    expect(result).not.toBeNull();
-    expect(result?.weekOf).toBe('2026-06-15');
-    expect(result?.areaCoarse).toBe('M4L');
-    expect(result?.activities).toHaveLength(1);
-    // The plan exposes only the allow-listed top-level keys.
-    expect(Object.keys(result ?? {}).sort()).toEqual(['activities', 'areaCoarse', 'weekOf']);
-  });
-
-  it('fails closed after revoke: a nulled token matches no proposal row, so the loader returns null', async () => {
-    // Revoke nulls routine_proposals.share_token. The loader resolves WHERE
-    // share_token = :token; a nulled token equals no row, so the proposal select
-    // resolves empty — exactly the unknown-token path — and the page shows its
-    // "no longer active" state. This is the revocation guarantee at the read seam.
-    const { db } = fakeDb([[]]);
-
-    const result = await loadSharedWeekPlan('a-token-that-was-revoked', db);
-
-    expect(result).toBeNull();
-  });
-
-  it('bounds the public candidate query to the 24 most recent (FIX 4)', async () => {
-    const { db, limitSpy, orderBySpy } = fakeDb([
-      [{ proposalFamilyId: FAMILY_ID, weekOf: '2026-06-15', items: [], areaCoarse: 'M4L' }],
-      [familyWideCandidate()],
-    ]);
-
-    await loadSharedWeekPlan(SHARE_TOKEN, db);
-
-    expect(limitSpy).toHaveBeenCalledWith(24);
-    expect(orderBySpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('excludes superseded and out-of-window candidates from the shared plan (stale-pile fix)', async () => {
-    const { db } = fakeDb([
-      [{ proposalFamilyId: FAMILY_ID, weekOf: '2026-06-15', items: [], areaCoarse: 'M4L' }],
-      [
-        familyWideCandidate({ title: 'Fresh swim' }),
-        // a prior discovery run's pick, soft-retired — must never reach a shared page
-        familyWideCandidate({ title: 'Last month superseded pick', supersededAt: new Date() }),
-        // a one-time event whose day has already passed
-        familyWideCandidate({ title: 'Past festival', eventDate: '2020-01-01' }),
-      ],
-    ]);
-
-    const result = await loadSharedWeekPlan(SHARE_TOKEN, db);
-
-    expect(result?.activities.map((a) => a.title)).toEqual(['Fresh swim']);
-  });
-
-  it('applies the SHARING family timezone to the dated-event day boundary (not UTC/Toronto)', async () => {
-    // 01:30 Jul 4 in Toronto is still 22:30 Jul 3 in Vancouver. An event dated
-    // Jul 3 has passed under Toronto's local day but is still "today" under
-    // Vancouver's — so it survives ONLY because the sharing family's tz is threaded.
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-04T05:30:00Z'));
-    try {
-      const { db } = fakeDb([
-        [{ proposalFamilyId: FAMILY_ID, weekOf: '2026-06-15', items: [], areaCoarse: 'M4L' }],
-        [familyWideCandidate({ title: 'Vancouver Jul 3 fair', eventDate: '2026-07-03' })],
-        // the sharing family's timezone row (readFamilyTimezone's third select)
-        [{ timezone: 'America/Vancouver' }],
-      ]);
-
-      const result = await loadSharedWeekPlan(SHARE_TOKEN, db);
-
-      expect(result?.activities.map((a) => a.title)).toEqual(['Vancouver Jul 3 fair']);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(toPublicActivity(familyWideCandidate({ coverageNote: null })).coverageNote).toBeNull();
   });
 });

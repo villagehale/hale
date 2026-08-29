@@ -27,7 +27,7 @@ const MISSING_ITEM: WeekPlanItem = {
  * The deterministic composer is the substance of the Sunday plan, so these assert
  * every rule from the ticket directly — item kinds, the appointment horizon, teen
  * redaction (generic title, no name, no health detail), in-window filtering,
- * ranking, and the ≤8 cap with routine-overflow collapse. Expected values are
+ * ranking, and the ≤8 cap. Expected values are
  * derived from the spec, never read back from the composer.
  */
 
@@ -55,7 +55,6 @@ function inputs(over: Partial<ComposeInputs> = {}): ComposeInputs {
       { id: TEEN, name: 'Sam', dateOfBirth: TEEN_DOB },
     ],
     health: [],
-    routines: [],
     villageDated: [],
     suggestion: null,
     familyEvents: [],
@@ -197,56 +196,35 @@ describe('composeWeekPlan — village, suggestion, ordering', () => {
     expect(items.at(-1)).toMatchObject({ kind: 'suggestion', title: 'Nature walk', needs: 'decision' });
   });
 
-  it('orders appointments > birthdays > village > routines > suggestion', () => {
+  it('orders appointments > birthdays > village > suggestion', () => {
     const items = composeWeekPlan(
       inputs({
         children: [{ id: BABY, name: 'Maya', dateOfBirth: BABY_DOB_IN_WINDOW }],
         health: [{ childId: BABY, what: 'checkup', kind: 'well_child_visit', dueInWeeks: 0 }],
         villageDated: [{ id: 'v1', title: 'Storytime', eventDate: '2026-07-29', location: null }],
-        routines: [{ label: 'weekday mornings: breakfast', day: null }],
         suggestion: { id: 's1', title: 'Nature walk', eventDate: null, location: null },
       }),
       NOW,
     );
-    expect(items.map((i) => i.kind)).toEqual(['appointment', 'birthday', 'village', 'routine', 'suggestion']);
+    expect(items.map((i) => i.kind)).toEqual(['appointment', 'birthday', 'village', 'suggestion']);
   });
 });
 
-describe('composeWeekPlan — cap + routine overflow', () => {
-  it(`caps at ${MAX_ITEMS}, collapsing routine overflow to one summary line while keeping concrete items + the suggestion`, () => {
-    const villageDated = Array.from({ length: 6 }, (_, i) => ({
+describe('composeWeekPlan — cap', () => {
+  it(`caps at ${MAX_ITEMS}, keeping concrete items + the suggestion`, () => {
+    const villageDated = Array.from({ length: 9 }, (_, i) => ({
       id: `v${i}`,
       title: `Activity ${i}`,
       eventDate: '2026-07-29',
       location: null,
     }));
-    const routines = Array.from({ length: 5 }, (_, i) => ({ label: `routine ${i}`, day: null }));
     const items = composeWeekPlan(
-      inputs({ children: [], villageDated, routines, suggestion: { id: 's1', title: 'Nature walk', eventDate: null, location: null } }),
+      inputs({ children: [], villageDated, suggestion: { id: 's1', title: 'Nature walk', eventDate: null, location: null } }),
       NOW,
     );
     expect(items).toHaveLength(MAX_ITEMS);
-    // 6 village kept, routines collapsed to ONE summary, suggestion last.
-    expect(items.filter((i) => i.kind === 'village')).toHaveLength(6);
-    const routineItems = items.filter((i) => i.kind === 'routine');
-    expect(routineItems).toHaveLength(1);
-    expect(routineItems[0]?.title).toBe('and your usual routines');
+    // 7 village kept under the reserved-suggestion budget, suggestion last.
+    expect(items.filter((i) => i.kind === 'village')).toHaveLength(MAX_ITEMS - 1);
     expect(items.at(-1)?.kind).toBe('suggestion');
-  });
-
-  it('keeps every routine when they all fit under the cap (no summary collapse)', () => {
-    const items = composeWeekPlan(
-      inputs({
-        children: [],
-        villageDated: [{ id: 'v1', title: 'Storytime', eventDate: '2026-07-29', location: null }],
-        routines: [
-          { label: 'routine a', day: null },
-          { label: 'routine b', day: null },
-          { label: 'routine c', day: null },
-        ],
-      }),
-      NOW,
-    );
-    expect(items.filter((i) => i.kind === 'routine').map((i) => i.title)).toEqual(['routine a', 'routine b', 'routine c']);
   });
 });

@@ -2,7 +2,6 @@ import type { schema } from '@hale/db';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 
 export type VillageCandidate = typeof schema.villageCandidates.$inferSelect;
-export type RoutineProposal = typeof schema.routineProposals.$inferSelect;
 
 /**
  * Pure row → view-shape mappers for the read-only village page. Like the
@@ -95,24 +94,6 @@ export interface CandidateEngagement {
   accepted: boolean;
   /** True when this family has privately saved ("I'm interested") this candidate. */
   saved: boolean;
-}
-
-export interface RoutineItemView {
-  title: string;
-  kind: string;
-  stageNote: string;
-  /** The weekday the agent placed this item on ("monday"–"sunday"), or null for a
-   * row written before the day was persisted. A weekday is a placement label, not
-   * PII, so it survives teen redaction — the week-strip can still show where a
-   * redacted item sits. */
-  day: string | null;
-  teenAttributed: boolean;
-}
-
-export interface RoutineProposalView {
-  id: string;
-  weekOf: string;
-  items: RoutineItemView[];
 }
 
 /**
@@ -288,28 +269,4 @@ export function filterCandidatesByCadence(
   return candidates.filter((c) => c.cadence === wanted);
 }
 
-/**
- * Maps a routine proposal to its view shape. A routine item carries a nullable
- * childId; the query layer passes the set of teen child ids so per-item teen
- * attribution (rule #1) redacts the item's title/stage-note to the placeholder
- * while keeping its category visible.
- */
-export function toRoutineProposalView(
-  proposal: RoutineProposal,
-  teenChildIds: ReadonlySet<string>,
-): RoutineProposalView {
-  return {
-    id: proposal.id,
-    weekOf: proposal.weekOf,
-    items: proposal.items.map((item) => {
-      const teenAttributed = item.childId !== null && teenChildIds.has(item.childId);
-      return {
-        title: teenAttributed ? TEEN_REDACTED_PLACEHOLDER : item.title,
-        kind: item.kind,
-        stageNote: teenAttributed ? TEEN_REDACTED_PLACEHOLDER : item.stageNote,
-        day: item.day ?? null,
-        teenAttributed,
-      };
-    }),
-  };
-}
+

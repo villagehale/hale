@@ -8,7 +8,6 @@ import {
   recordReviewerVerdict,
   recordExecution,
   recordDiscovery,
-  recordRoutineProposal,
 } from './memory-writer.js';
 
 const familyId = '11111111-1111-4111-8111-111111111111';
@@ -262,21 +261,5 @@ describe('recordTransition single-writer — exactly one audit row per transitio
     expect(s.database.transaction as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
     expect(s.insertedTables()).toEqual([]);
     expect(s.auditInserts()).toBe(0);
-  });
-
-  it('recordRoutineProposal writes exactly one audit row and returns the proposal id', async () => {
-    const s = stubDb();
-    const result = await recordRoutineProposal(
-      {
-        familyId,
-        weekOf: '2026-06-15',
-        items: [{ title: 'Storytime', kind: 'library', childId: null, stageNote: 'toddler' }],
-      },
-      s.database,
-    );
-
-    expect(s.database.transaction as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
-    expect(s.auditInserts()).toBe(1);
-    expect(result.proposalId).toBe(actionId);
   });
 });

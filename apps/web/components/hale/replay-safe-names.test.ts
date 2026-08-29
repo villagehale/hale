@@ -127,7 +127,7 @@ describe('per-row controls still name their row (VIL-276)', () => {
   it('names the revoke control with its visible text plus the shared link', () => {
     const html = renderToStaticMarkup(
       h(SharedLinkRow, {
-        link: { kind: 'week_plan', id: 's1', token: 'tok', title: 'the Marisol week plan' },
+        link: { kind: 'activity', id: 's1', token: 'tok', title: 'the Marisol week plan' },
         onRevoked: () => {},
       }),
     );

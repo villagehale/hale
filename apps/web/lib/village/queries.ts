@@ -9,12 +9,7 @@ import { listFamilyAcceptedCandidateIds } from './accept';
 import { countEndorsementsForCandidates, listFamilyEndorsedCandidateIds } from './endorse';
 import { listFamilySavedCandidateIds } from './save';
 import { readSavedVillageCandidates } from './saved-list';
-import {
-  type RoutineProposalView,
-  type VillageCandidateView,
-  toRoutineProposalView,
-  toVillageCandidateView,
-} from './mappers';
+import { type VillageCandidateView, toVillageCandidateView } from './mappers';
 import { type Season, orderByDate, visibleCandidates, visibleSearchCandidates } from './visibility';
 
 /**
@@ -38,10 +33,9 @@ async function readForFamily<T>(
 
 export interface VillageData {
   candidates: VillageCandidateView[];
-  routine: RoutineProposalView | null;
 }
 
-const EMPTY_VILLAGE: VillageData = { candidates: [], routine: null };
+const EMPTY_VILLAGE: VillageData = { candidates: [] };
 
 /**
  * How to scope the village read. Absent → the STANDING weekly feed (existing
@@ -85,12 +79,12 @@ export function villageActiveFilter(familyId: string, opts?: VillageReadOptions)
 }
 
 /**
- * Reads ONE resolved family's discovered candidates + latest routine proposal,
- * teen-safe. Split out of loadVillage so the agent-ranked feed can reuse the exact
- * same teen-redacted candidate read (rule #1) against an already-resolved
- * family/database — the redaction lives in one place, the feed never re-implements
- * it. Teen attribution is derived LIVE from date_of_birth via deriveStage (never
- * stored); a candidate/routine item tied to a 13+ child is redacted at the mapper.
+ * Reads ONE resolved family's discovered candidates, teen-safe. Split out of
+ * loadVillage so the agent-ranked feed can reuse the exact same teen-redacted
+ * candidate read (rule #1) against an already-resolved family/database — the
+ * redaction lives in one place, the feed never re-implements it. Teen attribution
+ * is derived LIVE from date_of_birth via deriveStage (never stored); a candidate
+ * tied to a 13+ child is redacted at the mapper.
  */
 export async function readVillage(
   database: Database,
@@ -130,13 +124,6 @@ export async function readVillage(
   const visible = opts?.searchSeason ? visibleSearchCandidates : visibleCandidates;
   const candidateRows = orderByDate(visible(currentRunRows, new Date(), timeZone));
 
-  const routineRows = await database
-    .select()
-    .from(schema.routineProposals)
-    .where(eq(schema.routineProposals.familyId, familyId))
-    .orderBy(desc(schema.routineProposals.weekOf))
-    .limit(1);
-
   const candidateIds = candidateRows.map((row) => row.id);
   const [endorsementCounts, familyEndorsed, familyAccepted, familySaved] = await Promise.all([
     countEndorsementsForCandidates(database, candidateIds),
@@ -153,9 +140,7 @@ export async function readVillage(
       saved: familySaved.has(row.id),
     }),
   );
-  const routine = routineRows[0] ? toRoutineProposalView(routineRows[0], teenChildIds) : null;
-
-  return { candidates, routine };
+  return { candidates };
 }
 
 /**

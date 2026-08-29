@@ -7,7 +7,6 @@ import {
   PlanItemCard,
 } from '~/components/hale/plan-cards';
 import { PrivacyNote } from '~/components/hale/privacy-note';
-import { ShareWeekButton } from '~/components/hale/share-week-button';
 import {
   WeekPlanCard,
   WeekPlanToday,
@@ -21,11 +20,10 @@ import { loadFamilyTimezone, loadViewerTeenUnlocks } from '~/lib/dashboard/queri
 import { db } from '~/lib/db';
 import { currentFamilyId, loadViewerProfile } from '~/lib/family';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
-import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { loadAuthoredPlans } from '~/lib/plan/authored';
-import { buildPlanSpine, dayKeyIn, groupRoutineByDay, weekWindow } from '~/lib/plan/spine';
+import { buildPlanSpine, dayKeyIn, weekWindow } from '~/lib/plan/spine';
 import { planChildItems } from '~/lib/plan/week';
 import { loadVillage } from '~/lib/village/queries';
 
@@ -43,7 +41,6 @@ export default async function PlanPage() {
     loadFamilyTimezone(),
     loadViewerProfile(),
   ]);
-  const { routine } = village;
   const weekStartDay = profile?.weekStartDay ?? 0;
 
   // The composed "week ahead" from B1's persisted artifact — the SAME week the Sunday
@@ -56,14 +53,12 @@ export default async function PlanPage() {
   const weekPlanNeedsOk = weekPlan ? weekPlan.items.filter(itemNeedsOk).length : 0;
   const addedActivities = village.candidates.filter((c) => c.accepted && !c.teenAttributed);
   const childItems = planChildItems(children, await loadViewerTeenUnlocks());
-  const hasRoutine = (routine?.items.length ?? 0) > 0;
 
   const spine = buildPlanSpine(authoredPlans, new Date(), timeZone, weekStartDay);
   const spineHasDated = spine.days.some((d) => d.plans.length > 0);
   const hasAuthored = spineHasDated || spine.undated.length > 0;
 
   const hasPlan =
-    hasRoutine ||
     childItems.length > 0 ||
     addedActivities.length > 0 ||
     hasAuthored ||
@@ -180,47 +175,6 @@ export default async function PlanPage() {
         </section>
       ) : null}
 
-      {/* ── This week's routine ─────────────────────────────────────────── */}
-      {routine && hasRoutine ? (
-        <section className="rise rise-2 mb-8">
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-y-2">
-            <p className="eyebrow text-ink-3">
-              a gentle routine · week of {formatCalendarDate(routine.weekOf)}
-            </p>
-            <ShareWeekButton />
-          </div>
-          <div className="space-y-6">
-            {groupRoutineByDay(routine.items, weekStartDay).map((strip) => (
-              <div key={strip.weekday ?? 'anytime'}>
-                <span className="eyebrow text-ink-2">{strip.weekday ?? 'anytime'}</span>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-                  {strip.items.map((item, idx) => {
-                    const kindLabel = villageKindLabel(item.kind);
-                    return (
-                      <Card key={`${strip.weekday ?? 'x'}-${item.kind}-${idx}`} href="/village">
-                        {kindLabel ? (
-                          <span className="eyebrow text-ink">{kindLabel}</span>
-                        ) : null}
-                        <div data-hale-pii>
-                          <p className="text-lg text-ink leading-relaxed mt-3">{item.title}</p>
-                          {item.stageNote ? (
-                            <p className="meta mt-1 text-ink-2">{item.stageNote}</p>
-                          ) : null}
-                        </div>
-                        <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
-                          open in village
-                          <Icon as={ArrowRight} size={14} />
-                        </span>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       {/* ── Coming up for your kids ─────────────────────────────────────── */}
       {childItems.length > 0 ? (
         <section className="rise rise-3 mb-8">
@@ -245,8 +199,8 @@ export default async function PlanPage() {
           </p>
           <p className="meta mt-4 text-ink-2">
             once your kids&rsquo; birthdays and your area are on file, this page gathers the week
-            ahead — the routine for your family, what&rsquo;s coming up for each child, and the
-            activities you add from your village.
+            ahead — what&rsquo;s coming up for each child, and the activities you add from your
+            village.
           </p>
         </section>
       ) : null}

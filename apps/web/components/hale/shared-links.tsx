@@ -11,7 +11,7 @@ import { useEffect, useId, useState } from 'react';
  * calmly — never a silent failure.
  */
 
-type ShareLinkKind = 'week_plan' | 'activity';
+type ShareLinkKind = 'activity';
 
 interface SharedLink {
   kind: ShareLinkKind;
@@ -21,7 +21,6 @@ interface SharedLink {
 }
 
 const KIND_LABEL: Record<ShareLinkKind, string> = {
-  week_plan: 'this week with Hale',
   activity: 'a local pick',
 };
 

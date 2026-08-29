@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { TEEN_REDACTED_PLACEHOLDER } from '../dashboard/mappers.js';
 import {
-  type RoutineProposal,
   type VillageCandidate,
   filterCandidatesByCadence,
   filterCandidatesByScope,
-  toRoutineProposalView,
   toVillageCandidateView,
 } from './mappers.js';
 
@@ -54,18 +52,6 @@ const NO_ENGAGEMENT = {
   accepted: false,
   saved: false,
 };
-
-function proposal(overrides: Partial<RoutineProposal> = {}): RoutineProposal {
-  return {
-    id: 'prop-1',
-    familyId: 'fam-1',
-    weekOf: '2026-06-15',
-    items: [],
-    shareToken: null,
-    createdAt: new Date('2026-06-11T10:00:00Z'),
-    ...overrides,
-  };
-}
 
 describe('toVillageCandidateView', () => {
   it('marks teen-attributed, surfaces only the category, and never duplicates the redaction line', () => {
@@ -279,88 +265,5 @@ describe('filterCandidatesByCadence', () => {
   it('a one-time / seasonal filter keeps only that cadence (a derived-ongoing null row does not match)', () => {
     expect(filterCandidatesByCadence(all, 'one-time').map((c) => c.id)).toEqual(['c-once']);
     expect(filterCandidatesByCadence(all, 'seasonal').map((c) => c.id)).toEqual(['c-season']);
-  });
-});
-
-describe('toRoutineProposalView', () => {
-  it('redacts only the item whose childId is in the teen set; leaves a family-wide item alone', () => {
-    const view = toRoutineProposalView(
-      proposal({
-        items: [
-          {
-            title: RAW_TITLE,
-            kind: 'support_group',
-            childId: 'child-teen',
-            stageNote: RAW_SUMMARY,
-          },
-          {
-            title: 'Saturday family swim',
-            kind: 'activity',
-            childId: null,
-            stageNote: 'good for the whole household',
-          },
-        ],
-      }),
-      new Set(['child-teen']),
-    );
-
-    const teenItem = view.items[0];
-    const familyItem = view.items[1];
-
-    // The teen-attributed item: category survives, title/stageNote redacted.
-    expect(teenItem?.teenAttributed).toBe(true);
-    expect(teenItem?.kind).toBe('support_group');
-    expect(teenItem?.title).toBe(TEEN_REDACTED_PLACEHOLDER);
-    expect(teenItem?.stageNote).toBe(TEEN_REDACTED_PLACEHOLDER);
-
-    // The family-wide item (childId null) is never redacted.
-    expect(familyItem?.teenAttributed).toBe(false);
-    expect(familyItem?.title).toBe('Saturday family swim');
-    expect(familyItem?.stageNote).toBe('good for the whole household');
-
-    // No raw teen text anywhere in the serialized proposal.
-    const serialized = JSON.stringify(view);
-    expect(serialized).not.toContain(RAW_TITLE);
-    expect(serialized).not.toContain(RAW_SUMMARY);
-  });
-
-  it('carries the item day through the view (a weekday, not PII — survives teen redaction)', () => {
-    const view = toRoutineProposalView(
-      proposal({
-        items: [
-          {
-            title: RAW_TITLE,
-            kind: 'support_group',
-            childId: 'child-teen',
-            stageNote: RAW_SUMMARY,
-            day: 'tuesday',
-          },
-          {
-            title: 'Saturday family swim',
-            kind: 'activity',
-            childId: null,
-            stageNote: 'household',
-            day: 'saturday',
-          },
-        ],
-      }),
-      new Set(['child-teen']),
-    );
-
-    // The weekday is a placement label, not raw content: it survives even on the
-    // redacted teen item, so the week-strip can still show where an item sits.
-    expect(view.items[0]?.day).toBe('tuesday');
-    expect(view.items[0]?.teenAttributed).toBe(true);
-    expect(view.items[1]?.day).toBe('saturday');
-  });
-
-  it('reads a pre-day row (no day field) back as null, never undefined', () => {
-    const view = toRoutineProposalView(
-      proposal({
-        items: [{ title: 'Storytime', kind: 'library', childId: null, stageNote: 'toddler' }],
-      }),
-      new Set(),
-    );
-    expect(view.items[0]?.day).toBeNull();
   });
 });

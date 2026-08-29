@@ -2,14 +2,13 @@ import { type Database, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { type DiscoveryDeps, runDiscovery } from '../agents/discovery.js';
-import { runRoutine } from '../agents/routine.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
-import { recordDiscovery, recordRoutineProposal } from './memory-writer.js';
+import { recordDiscovery } from './memory-writer.js';
 
 interface VillageDiscoveryJob {
   familyId: string;
-  weekOf: string; // YYYY-MM-DD, the Monday of the routine week (set at enqueue, like digestDate).
+  weekOf: string; // YYYY-MM-DD, the Monday of the discovery week (set at enqueue, like digestDate).
 }
 
 /** Candidates carry no category column; persisted under one honest label. */
@@ -17,9 +16,8 @@ const CANDIDATE_KIND = 'activity';
 
 /**
  * Scheduled village discovery for one family: discover stage-appropriate local
- * activities (Fake provider by default, web-grounded behind a flag), arrange a
- * stage-aware weekly routine, and persist both via the memory writer (each write
- * carries its own audit row — rule #6).
+ * activities (Fake provider by default, web-grounded behind a flag) and persist
+ * them via the memory writer (each write carries its own audit row — rule #6).
  *
  * Privacy (rule #1): only the COARSE area reaches the provider and the logs;
  * never a child name, DOB, or precise location. A family with no opted-in
@@ -36,7 +34,7 @@ const CANDIDATE_KIND = 'activity';
 /**
  * The discovery inputs for a family, derived from NON-TEEN children only
  * (rule #1). Empty `stages` means there is nothing to discover for the public
- * pool — the caller skips discovery and routine generation.
+ * pool — the caller skips discovery.
  */
 export function selectDiscoveryInputs(
   children: ReadonlyArray<{ dateOfBirth: string | Date; interests: string[] }>,
@@ -100,7 +98,6 @@ export async function runVillageDiscovery(
     );
     return;
   }
-  const primaryStage = discoveryStages[0] as FamilyStage;
 
   logger.info(
     {
@@ -139,25 +136,10 @@ export async function runVillageDiscovery(
     })),
   });
 
-  const routine = await runRoutine({ stage: primaryStage, candidates, interests });
-
-  await recordRoutineProposal({
-    familyId: job.familyId,
-    weekOf: job.weekOf,
-    items: routine.routine.map((item) => ({
-      title: item.title,
-      kind: item.category,
-      childId: null,
-      stageNote: item.stageFitRationale,
-      day: item.day,
-    })),
-  });
-
   logger.info(
     {
       familyId: job.familyId,
       candidateCount: candidates.length,
-      routineItems: routine.routine.length,
     },
     'village discovery generated',
   );

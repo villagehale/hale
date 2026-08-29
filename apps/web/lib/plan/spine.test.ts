@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { RoutineItemView } from '../village/mappers.js';
 import type { AuthoredPlanView } from './authored.js';
-import { buildPlanSpine, groupRoutineByDay, orderedWeekdays } from './spine.js';
+import { buildPlanSpine, orderedWeekdays } from './spine.js';
 
 const TZ = 'America/Toronto';
 // Friday, 2026-07-03, mid-afternoon ET. The family's current week is Mon 2026-06-29
@@ -153,50 +152,5 @@ describe('buildPlanSpine — settling', () => {
     expect(settled.map((p) => p.id)).toEqual(['past']);
     expect(days.every((d) => d.plans.length === 0)).toBe(true);
     expect(undated).toHaveLength(0);
-  });
-});
-
-function routineItem(overrides: Partial<RoutineItemView> = {}): RoutineItemView {
-  return { title: 't', kind: 'activity', stageNote: '', day: null, teenAttributed: false, ...overrides };
-}
-
-describe('groupRoutineByDay', () => {
-  it('orders strips Monday→Sunday regardless of input order, with items kept per day', () => {
-    const strips = groupRoutineByDay([
-      routineItem({ title: 'sat', day: 'saturday' }),
-      routineItem({ title: 'mon', day: 'monday' }),
-      routineItem({ title: 'wed', day: 'wednesday' }),
-    ]);
-    expect(strips.map((s) => s.weekday)).toEqual(['monday', 'wednesday', 'saturday']);
-    expect(strips[0]?.items.map((i) => i.title)).toEqual(['mon']);
-  });
-
-  it('collects same-day items into one strip in input order', () => {
-    const strips = groupRoutineByDay([
-      routineItem({ title: 'first', day: 'tuesday' }),
-      routineItem({ title: 'second', day: 'tuesday' }),
-    ]);
-    expect(strips).toHaveLength(1);
-    expect(strips[0]?.items.map((i) => i.title)).toEqual(['first', 'second']);
-  });
-
-  it('puts day-less (pre-day) items in a trailing null "anytime" strip after every weekday', () => {
-    const strips = groupRoutineByDay([
-      routineItem({ title: 'loose', day: null }),
-      routineItem({ title: 'fri', day: 'friday' }),
-    ]);
-    expect(strips.map((s) => s.weekday)).toEqual(['friday', null]);
-    expect(strips[1]?.items.map((i) => i.title)).toEqual(['loose']);
-  });
-
-  it('orders strips Sunday-first when weekStartDay is 0', () => {
-    const strips = groupRoutineByDay(
-      [
-        routineItem({ title: 'mon', day: 'monday' }),
-        routineItem({ title: 'sun', day: 'sunday' }),
-      ],
-      0,
-    );
-    expect(strips.map((s) => s.weekday)).toEqual(['sunday', 'monday']);
   });
 });

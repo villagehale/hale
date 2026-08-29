@@ -5,11 +5,9 @@ import { VillageAiSearch } from '~/components/hale/village-ai-search';
 import { VillageBoard } from '~/components/hale/village-board';
 import { VillageFeedSkeleton, VillageSearchRun } from '~/components/hale/village-feed-section';
 import { VillageSeasonSelector } from '~/components/hale/village-season-selector';
-import { formatCalendarDate } from '~/lib/format/datetime';
-import { villageKindLabel } from '~/lib/format/labels';
 import { loadCuratedResources } from '~/lib/village/curated-resources';
 import { loadVillageFeed } from '~/lib/village/feed';
-import { loadSavedVillageCandidates, loadVillage } from '~/lib/village/queries';
+import { loadSavedVillageCandidates } from '~/lib/village/queries';
 import { seasonFromParam } from '~/lib/village/season-selector-ui';
 
 // The Village AI search Server Action (searchVillageAction) runs under this segment
@@ -18,12 +16,6 @@ import { seasonFromParam } from '~/lib/village/season-selector-ui';
 // discovery crons (maxDuration 300) so the after() work isn't killed mid-run and the
 // promised candidates actually land (mirrors api/mobile/village/search/route.ts).
 export const maxDuration = 300;
-
-/** A clean, minimal section label (Notion/Linear register) — small, muted, spaced
- * above its content. */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="eyebrow mb-3 text-ink-3">{children}</p>;
-}
 
 export default async function VillagePage({
   searchParams,
@@ -34,19 +26,15 @@ export default async function VillagePage({
   const activeSeason = seasonFromParam(season);
 
   // The board reads the feed (a pure DB round-trip) directly so its columns share
-  // one load, plus the family's saved candidates for the right rail. The standing
-  // weekly routine belongs to the standing feed, not a forward-looking season search
-  // — so its loadVillage read is skipped on a search view (and Saved is too: a season
-  // run is a focused result set). The page title + the coarse-area location pill now
-  // live in the shell top bar (design handoff §3.2), so this page carries no header
-  // of its own.
-  const [feed, resources, saved, { routine }] = await Promise.all([
+  // one load, plus the family's saved candidates for the right rail (skipped on a
+  // search view: a season run is a focused result set). The page title + the
+  // coarse-area location pill now live in the shell top bar (design handoff §3.2),
+  // so this page carries no header of its own.
+  const [feed, resources, saved] = await Promise.all([
     loadVillageFeed(),
     loadCuratedResources(),
     activeSeason ? Promise.resolve([]) : loadSavedVillageCandidates(),
-    activeSeason ? Promise.resolve({ routine: null }) : loadVillage(),
   ]);
-  const hasRoutine = (routine?.items.length ?? 0) > 0;
 
   return (
     // village-wide opts this surface up to a roomier column than the 58rem editorial
@@ -97,37 +85,8 @@ export default async function VillagePage({
            focused on its results, so these are the standing view only. ─────────── */}
       {activeSeason ? null : (
         <div className="mt-12 space-y-12">
-          {routine && hasRoutine ? (
-            <section className="rise rise-4">
-              <SectionLabel>
-                a gentle routine · week of {formatCalendarDate(routine.weekOf)}
-              </SectionLabel>
-              <div className="panel space-y-5">
-                {routine.items.map((item, idx) => {
-                  const kindLabel = villageKindLabel(item.kind);
-                  return (
-                    <div
-                      key={`${item.kind}-${idx}`}
-                      className="flex items-baseline gap-4 border-t border-rule pt-5 first:border-t-0 first:pt-0"
-                    >
-                      {kindLabel ? (
-                        <span className="eyebrow text-ink shrink-0">{kindLabel}</span>
-                      ) : null}
-                      <div data-hale-pii>
-                        <p className="text-lg text-ink leading-relaxed">{item.title}</p>
-                        {item.stageNote ? (
-                          <p className="meta mt-1 text-ink-2">{item.stageNote}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
-
           <section className="rise rise-4">
-            <BuildYourVillage nothingToShare={!hasRoutine} />
+            <BuildYourVillage />
           </section>
         </div>
       )}

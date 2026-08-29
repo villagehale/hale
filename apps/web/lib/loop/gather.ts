@@ -1,12 +1,11 @@
 import type { Database } from '@hale/db';
 import { companionForFamily } from '~/lib/companion/queries';
-import { dayKeyIn, groupRoutineByDay, type WeekWindow } from '~/lib/plan/spine';
+import { dayKeyIn, type WeekWindow } from '~/lib/plan/spine';
 import { readVillage } from '~/lib/village/queries';
 import type {
   ComposeFamilyEvent,
   ComposeHealth,
   ComposeInputs,
-  ComposeRoutinePattern,
   ComposeVillage,
 } from './compose';
 import { listFamilyEventsInWindow } from './queries';
@@ -61,16 +60,6 @@ export async function gatherWeekPlanInputs(
     ? { id: top.id, title: top.title, eventDate: top.eventDate, location: top.venueName }
     : null;
 
-  // Routines condensed to at most one pattern per active weekday-strip — never the raw
-  // line-items (ticket). A redacted teen item keeps its non-PII kind/day, so the strip
-  // label stays safe.
-  const routines: ComposeRoutinePattern[] = village.routine
-    ? groupRoutineByDay(village.routine.items).map((strip) => ({
-        label: routinePatternLabel(strip.weekday, strip.items),
-        day: strip.weekday,
-      }))
-    : [];
-
   const familyEvents: ComposeFamilyEvent[] = familyEventRows.map((e) => ({
     id: e.id,
     childId: e.childId,
@@ -80,18 +69,7 @@ export async function gatherWeekPlanInputs(
     location: e.location,
   }));
 
-  return { window, children, health, routines, villageDated, suggestion, familyEvents };
-}
-
-/** A condensed, non-PII label for a routine day-strip: the weekday + the distinct
- * kinds it carries ("weekday mornings" style), never the individual items. */
-function routinePatternLabel(
-  weekday: string | null,
-  items: ReadonlyArray<{ kind: string }>,
-): string {
-  const kinds = [...new Set(items.map((i) => i.kind))].join(', ');
-  const when = weekday ?? 'anytime';
-  return kinds ? `${when}: ${kinds}` : when;
+  return { window, children, health, villageDated, suggestion, familyEvents };
 }
 
 /** A UTC instant window generous enough to include every event whose FAMILY-LOCAL day

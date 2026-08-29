@@ -93,7 +93,7 @@ describe('GET /api/village/shares', () => {
   });
 
   it('returns the family-scoped list of shared links', async () => {
-    const links = [{ kind: 'week_plan', id: LINK_ID, token: 'tok', title: 'week of 2026-07-06' }];
+    const links = [{ kind: 'activity', id: LINK_ID, token: 'tok', title: 'Toddler music at the library' }];
     listMock.mockResolvedValue(links);
     const res = await callList();
     expect(res.status).toBe(200);
@@ -105,7 +105,7 @@ describe('GET /api/village/shares', () => {
 describe('POST /api/village/shares/revoke', () => {
   it('returns 501 when auth is unconfigured — never revokes unauthenticated', async () => {
     configureAuth(false);
-    const res = await callRevoke({ kind: 'week_plan', id: LINK_ID });
+    const res = await callRevoke({ kind: 'activity', id: LINK_ID });
     expect(res.status).toBe(501);
     expect(authMock).not.toHaveBeenCalled();
     expect(revokeMock).not.toHaveBeenCalled();
@@ -113,14 +113,14 @@ describe('POST /api/village/shares/revoke', () => {
 
   it('returns 401 when signed out', async () => {
     authMock.mockResolvedValue(session(null));
-    const res = await callRevoke({ kind: 'week_plan', id: LINK_ID });
+    const res = await callRevoke({ kind: 'activity', id: LINK_ID });
     expect(res.status).toBe(401);
     expect(revokeMock).not.toHaveBeenCalled();
   });
 
   it('returns 403 when the caller belongs to no family', async () => {
     resolveFamilyMock.mockResolvedValue(null);
-    const res = await callRevoke({ kind: 'week_plan', id: LINK_ID });
+    const res = await callRevoke({ kind: 'activity', id: LINK_ID });
     expect(res.status).toBe(403);
     expect(revokeMock).not.toHaveBeenCalled();
   });
@@ -145,7 +145,7 @@ describe('POST /api/village/shares/revoke', () => {
 
   it('returns 404 when the link is not the family’s (no cross-family write, rule #1)', async () => {
     revokeMock.mockResolvedValue(false);
-    const res = await callRevoke({ kind: 'week_plan', id: LINK_ID });
+    const res = await callRevoke({ kind: 'activity', id: LINK_ID });
     expect(res.status).toBe(404);
   });
 });

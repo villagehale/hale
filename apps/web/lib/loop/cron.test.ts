@@ -33,7 +33,6 @@ function fakeGather(): WeekPlanDeps['gather'] {
     window,
     children: [],
     health: [],
-    routines: [],
     villageDated: [{ id: 'v1', title: 'Storytime', eventDate: window.startKey, location: null }],
     suggestion: null,
     familyEvents: [],

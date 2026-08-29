@@ -86,7 +86,6 @@ const OUTBOUND_FILES = [
   ['lib/cron/inference-tools.ts', 'memory distillation feeds prompts, not a parent'],
   ['lib/telemetry/mask.ts', 'trace masking is the last backstop before Langfuse'],
   ['lib/village/public.ts', 'a public village page has no viewer identity'],
-  ['lib/village/public-picks.ts', 'a public picks page has no viewer identity'],
 ];
 
 /**

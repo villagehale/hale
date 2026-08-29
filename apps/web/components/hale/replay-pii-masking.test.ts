@@ -612,7 +612,7 @@ const SENTINEL_SURFACES: AttributeSurface[] = [
     render: () =>
       renderToStaticMarkup(
         h(SharedLinkRow, {
-          link: { kind: 'week_plan', id: 's1', token: 'tok', title: SHARE_TITLE },
+          link: { kind: 'activity', id: 's1', token: 'tok', title: SHARE_TITLE },
           onRevoked: () => {},
         }),
       ),
