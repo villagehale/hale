@@ -8,17 +8,17 @@ import { joinLink } from './code';
  * copy keep): the tests assert these strings, so a change to what a partner is PROMISED
  * before they text in is a reviewable diff rather than a quiet widening.
  *
- * THE MINT MESSAGE IS WRITTEN TO BE FORWARDED. It goes to the parent, but the parent's
- * next move is one tap that sends the whole body to somebody who has never heard from
- * Hale — so the second half is addressed to that person, and the first half is the only
- * sentence the parent needs. Splitting it into "here is a link" plus a separate blob to
- * copy would be asking a parent to do editing work in a text thread.
+ * THE MINT MESSAGE CARRIES ZERO CEREMONY (doctrine R10/L5): what it is, the link, one
+ * warning, stop. The old shape stacked four instructions in front of the tap; a parent
+ * forwarding a link is doing one move, and the copy matches it — the link first, then
+ * the single fact worth saying before the body leaves their thread.
  *
  * WHAT IS NOT SAID HERE, and where it is said instead: the full scope a co-parent gets.
  * The caregiver flow states its scope twice because Hale texts a stranger unprompted and
  * that stranger must be able to refuse something specific. Nobody is texted on this
  * path — the partner arrives on their own — so the scope is stated to the parent at the
- * mint ("whoever opens it is in") and in full to the partner in {@link joinWelcome},
+ * mint ("whoever opens it joins your family") and in full to the partner in
+ * {@link joinWelcome},
  * which is the first message they ever get and the last moment before they can reply
  * STOP.
  */
@@ -28,10 +28,7 @@ import { joinLink } from './code';
  * budget: the link alone costs 72 characters, so everything else is what is left.
  */
 export function joinInviteForward(code: string): string {
-  return [
-    'Forward this to them - whoever opens it is in, so just to them:',
-    `Your partner uses Hale to keep the family week straight. Open this from your phone and send the text it writes: ${joinLink(code)} Good for 7 days.`,
-  ].join('\n');
+  return `Here you go - forward this to them and they're in: ${joinLink(code)} Just to them, though: whoever opens it joins your family. Good for 7 days.`;
 }
 
 /** The longest inviter name this message will spend budget on — a full name, with room
@@ -63,8 +60,8 @@ function affordableInviterName(inviterName: string | null): string | null {
  * on a caregiver invite.
  */
 export function joinWelcome(inviterName: string | null): string {
-  const who = affordableInviterName(inviterName) ?? 'The other parent';
-  return `You're in - ${who} added you as a co-parent, so you both see the same thing here: the week, the reminders, the plans, anything I'm keeping track of. Text me anything. Reply STOP anytime.`;
+  const who = affordableInviterName(inviterName) ?? 'your co-parent';
+  return `You're in - ${who} added you as a co-parent, so you see what they see here and can text me anything, anytime. Reply STOP anytime.`;
 }
 
 /** Said to the parent who minted the link, in their own thread, once it is redeemed. */
