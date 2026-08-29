@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 export type ActivityShareResult =
   | { shareToken: string }

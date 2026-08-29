@@ -61,15 +61,14 @@ export async function GET(req: NextRequest) {
     // app (VIL-318): nothing mints a mobile state any more, so one arriving here is
     // stale or replayed — fail closed rather than complete an unbindable consent.
     return back('invalid', 'mobile');
-  } else {
-    const session = await auth();
-    const externalAuthId = session?.user?.id;
-    const sessionUserId = externalAuthId
-      ? await resolveUserIdForUser(externalAuthId, database)
-      : null;
-    if (!sessionUserId || sessionUserId !== bound.userId) {
-      return back('invalid');
-    }
+  }
+  const session = await auth();
+  const externalAuthId = session?.user?.id;
+  const sessionUserId = externalAuthId
+    ? await resolveUserIdForUser(externalAuthId, database)
+    : null;
+  if (!sessionUserId || sessionUserId !== bound.userId) {
+    return back('invalid');
   }
 
   try {
