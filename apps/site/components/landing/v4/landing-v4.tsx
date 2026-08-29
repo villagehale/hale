@@ -4,6 +4,7 @@ import { CopyNumberButton } from '~/components/copy-number';
 import { LandingCta } from '~/components/landing-cta';
 import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
 import { LogoMark } from '~/components/logo-mark';
+import { QrCode } from '~/components/qr-code';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { Wordmark } from '~/components/wordmark';
@@ -55,6 +56,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
   const t = getTranslator(locale, 'Landing');
   const common = getTranslator(locale, 'Common');
   const copy = getTranslator(locale, 'CopyNumber');
+  const textNs = getTranslator(locale, 'Text');
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
 
   const bubbles = t.raw('threadBubbles') as ThreadRow[];
@@ -121,6 +123,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             {smsNumber && (
               <CopyNumberButton
                 number={smsNumber}
+                placement="hero"
                 className="v4-btn v4-glass"
                 label={copy('label')}
                 copiedLabel={copy('copied')}
@@ -319,19 +322,46 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               {t('closingH2a')} <span className="v4-accent">{t('closingH2Accent')}</span>
             </h2>
             <p className="v4-hero-sub">{t('closingSub')}</p>
-            {smsHref ? (
-              <LandingCta
-                event="cta_text_click"
-                placement="closing"
-                href={smsHref}
-                className="v4-btn-solid v4-glass"
-              >
-                {common('textHale')}
-              </LandingCta>
-            ) : (
-              <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
-                {common('emailHale')}
-              </a>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {smsHref ? (
+                <LandingCta
+                  event="cta_text_click"
+                  placement="closing"
+                  href={smsHref}
+                  className="v4-btn-solid v4-glass"
+                >
+                  {common('textHale')}
+                </LandingCta>
+              ) : (
+                <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
+                  {common('emailHale')}
+                </a>
+              )}
+              {smsNumber && (
+                <CopyNumberButton
+                  number={smsNumber}
+                  placement="closing"
+                  className="v4-btn v4-glass"
+                  label={copy('label')}
+                  copiedLabel={copy('copied')}
+                  ariaLabel={copy('aria')}
+                />
+              )}
+            </div>
+            {/* The desktop path made visible: `sms:` is a silent no-op on a laptop
+                (rule #11 applied to the funnel), so the close also offers the same
+                URI as a scannable code. Hidden on phones, where the button IS the
+                path. */}
+            {smsHref && (
+              <div className="mt-8 hidden items-center gap-6 text-left sm:flex">
+                <QrCode value={smsHref} label={textNs('qrAria')} />
+                <div className="max-w-sm">
+                  <p className="font-semibold">{textNs('onLaptop')}</p>
+                  <p className="meta mt-2 text-sm" style={{ lineHeight: 1.6 }}>
+                    {textNs('scanHint')}
+                  </p>
+                </div>
+              </div>
             )}
           </div>
         </div>

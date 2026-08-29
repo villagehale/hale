@@ -15,15 +15,22 @@ import { useAnalytics } from '~/lib/analytics/posthog-provider';
  * same thing either way. The number is never a property — it is the one identifying
  * value on this component, and it is the one thing the desktop funnel does not need
  * to know (hard rule #1).
+ *
+ * `placement` mirrors LandingCta: one event, a `cta_placement` breakdown, and the
+ * `data-cta` pair making the wiring visible in markup so the site-wide guard
+ * (app/cta-wiring.test.ts) can pin every chip the way it pins every composer link.
  */
 export function CopyNumberButton({
   number,
+  placement,
   className,
   label = 'Copy number',
   copiedLabel = 'copied — text me from your phone',
   ariaLabel = "Copy Hale's phone number to your clipboard",
 }: {
   number: string;
+  /** Which chip this is — `hero`, `closing`, `text_entry`… See LandingCta. */
+  placement?: string;
   className?: string;
   label?: string;
   copiedLabel?: string;
@@ -37,8 +44,10 @@ export function CopyNumberButton({
       type="button"
       aria-label={ariaLabel}
       className={className}
+      data-cta="copy_number_click"
+      data-cta-placement={placement}
       onClick={() => {
-        capture('copy_number_click');
+        capture('copy_number_click', placement ? { cta_placement: placement } : {});
         navigator.clipboard
           .writeText(number)
           .then(() => {

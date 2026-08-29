@@ -1,6 +1,7 @@
 import { ArrowUpRight, Check } from 'lucide-react';
 import type { Metadata } from 'next';
 import { CharReveal } from '~/components/char-reveal';
+import { CopyNumberButton } from '~/components/copy-number';
 import { CtaBand } from '~/components/cta-band';
 import { Village } from '~/components/illos';
 import { LandingCta } from '~/components/landing-cta';
@@ -12,6 +13,7 @@ import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { chromeCta } from '~/lib/site/chrome-cta';
+import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
@@ -56,6 +58,8 @@ export default async function AboutPage({ params }: PageProps) {
   // app's /onboarding wizard, which F14 deleted — the only action on /about was
   // a 308 back to the homepage.
   const cta = chromeCta(locale);
+  const copy = getTranslator(locale, 'CopyNumber');
+  const number = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
 
   return (
     <main id="main" tabIndex={-1} className="relative">
@@ -175,7 +179,7 @@ export default async function AboutPage({ params }: PageProps) {
         >
           {t('cta')}
         </p>
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <LandingCta
             event="cta_text_click"
             placement="about"
@@ -184,6 +188,16 @@ export default async function AboutPage({ params }: PageProps) {
           >
             {cta.label}
           </LandingCta>
+          {number ? (
+            <CopyNumberButton
+              number={number}
+              placement="about"
+              className="btn-on-navy-quiet"
+              label={copy('label')}
+              copiedLabel={copy('copied')}
+              ariaLabel={copy('aria')}
+            />
+          ) : null}
         </div>
       </CtaBand>
 
