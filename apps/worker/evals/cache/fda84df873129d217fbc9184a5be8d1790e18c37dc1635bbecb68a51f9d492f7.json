@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked about parks nearby. Hale has two offerable candidates from search_village: Central Library story time and Riverdale Farm. Riverdale Farm is a verified, offerable find with a checked venue and day, so naming it whole (name, place, day) is correct. The reply does exactly that — it surfaces the Riverdale Farm visit with the full detail (free, outdoor, Sun Aug 9) as a park-adjacent pick. It doesn't invent anything, doesn't send the parent to the app, doesn't ask a clarifying question when none is needed, and doesn't mention the second offerable (story time at the library) — which is fine since draftCapPerMessage isn't strictly relevant here and one good match answers a casual \"any park nearby\" cleanly. The reply is concise, no greeting or sign-off, one sentence. A small blemish: it omits the Central Library story time which is also an offerable (though a library isn't a park, so skipping it is arguably correct judgment). The phrase \"lined up\" is slightly misleading — it suggests it's on their schedule, when it's just an offerable suggestion — but \"good outdoor pick if you're after parks nearby\" frames it as a suggestion rather than a booked event, so the damage is minimal. Overall this is a clean, correct, short reply.",
+    "score": 4
+  }
+}
