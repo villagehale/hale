@@ -169,6 +169,9 @@ export interface OpenCheckupOffer {
   /** Whose visit, or null for a household-scoped checkpoint. */
   childId: string | null;
   summary: string;
+  /** When the offer sentence went out — the ledger row's mint time (recorded against
+   * the sent message). The open-question reader's recency fact. */
+  askedAt: Date;
 }
 
 /**
@@ -204,6 +207,7 @@ export async function loadOpenCheckupOffer(
     checkpoint,
     childId: offer.subjectChildId,
     summary: offer.summary,
+    askedAt: offer.createdAt,
   };
 }
 

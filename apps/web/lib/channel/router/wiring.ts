@@ -540,14 +540,14 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
       // answerable. Reporting one as a question would let a parent accept a plan the
       // handler behind it is about to decline.
       if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
-      return { id: offer.id, summary: offer.summary };
+      return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
     },
     // The health nudge's booking offer. Its TTL is applied inside the reader, so an
     // offer past its week can never be listed, named in a clarifying sentence, or
     // resolved — the same discipline the plan offer keeps one line above.
     checkupOffer: async (database, familyId, now) => {
       const offer = await loadOpenCheckupOffer(database, familyId, now);
-      return offer && { id: offer.id, summary: offer.summary };
+      return offer && { id: offer.id, summary: offer.summary, askedAt: offer.askedAt };
     },
     // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
     // offers above keep: an expired offer is still an open ledger row, it has simply
@@ -556,14 +556,14 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     founderWelcomeOffer: async (database, familyId, now) => {
       const offer = await loadOpenCommitment(database, familyId, 'founder_welcome_offer');
       if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
-      return { id: offer.id, summary: offer.summary };
+      return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
     },
     // The coach's "I'll come back to you". NO TTL, unlike the two offers above: a promise
     // does not stop being owed by getting late (commitment.ts), so it is listed until the
     // sweep keeps it or a cancellation voids it.
     activityPromise: async (database, familyId) => {
       const promise = await loadOpenActivityPromise(database, familyId);
-      return promise && { id: promise.id, summary: promise.summary };
+      return promise && { id: promise.id, summary: promise.summary, askedAt: promise.askedAt };
     },
   });
 }

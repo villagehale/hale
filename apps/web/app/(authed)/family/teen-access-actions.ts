@@ -45,6 +45,6 @@ export async function revokeTeenAccessAction(
     return { status: 'error', message: 'This request is already closed.' };
   }
 
-  revalidatePath('/settings');
+  revalidatePath('/family');
   return { status: 'success', message: 'Access closed.' };
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { MARKHAM_FIRST, TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
-import { ADULT_LEARN_DOOR } from './adult-learn';
+import { adultLearnDoor } from './adult-learn';
 import {
   type IntakeAnswerInput,
   MAX_REPLY_CHARS,
@@ -239,7 +239,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(first.status).toBe('answered');
     if (first.status !== 'answered') return;
-    expect(first.body).toBe(`${ADULT_LEARN_DOOR} ${COLD_START_ASK}`);
+    expect(first.body).toBe(`${adultLearnDoor(null)} ${COLD_START_ASK}`);
     expect(first.body).toContain("I'm a kids' rec helper, not adult lessons");
     expect(first.body).not.toContain("I don't do that");
     expect(first.body).not.toMatch(/\b(Sept|Sep|Aug|Nov|Dec)\b/);
@@ -251,7 +251,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(mid.status).toBe('answered');
     if (mid.status !== 'answered') return;
-    expect(mid.body).toContain(ADULT_LEARN_DOOR);
+    expect(mid.body).toContain(adultLearnDoor(null));
     expect(mid.body).not.toContain("I don't do that");
   });
 

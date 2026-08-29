@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { familyHasSyntheticProbeChannel } from '~/lib/channels/sms-consent-core';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { posterLocation } from '~/lib/channel/intake/copy';
 import { FOUNDER_PING_TEMPLATE_KEY, founderPing } from './copy';
@@ -77,6 +78,11 @@ export type FounderPingOutcome =
   | { status: 'not_a_poster_arrival' }
   /** This family has already been pinged about. The dedupe key held. */
   | { status: 'already_pinged' }
+  /** The arriving family's channel sits in the operator's fictional probe range
+   * (+1 437-555-XXXX) — a live probe exercising the real intake. The probe keeps its
+   * own thread; the founder, a human, is never signalled about it (2026-08-28 ads-week
+   * audit: a probe join masked the real partner's join). Named, never silent (#11). */
+  | { status: 'skipped_synthetic' }
   | {
       status: 'not_pinged';
       reason: 'no_founder_channel' | 'send_failed' | 'write_failed' | 'not_recorded';
@@ -125,6 +131,26 @@ export async function offerFounderWelcome(
   const sourceCode = input.sourceCode;
   const location = posterLocation(sourceCode);
   if (sourceCode === null || location === null) return { status: 'not_a_poster_arrival' };
+
+  // The synthetic-probe guard, at the chokepoint where the family's channel is resolved
+  // (sms-consent-core.ts). After the poster check so an ordinary arrival still costs
+  // nothing; before the founder is resolved because a probe must never get that far.
+  // Fails toward the ping, in this module's own nothing-throws shape: a broken guard
+  // read costing the founder one probe ping is cheaper than costing him a real family.
+  try {
+    if (await familyHasSyntheticProbeChannel(database, input.newFamilyId)) {
+      console.warn(
+        { newFamilyId: input.newFamilyId },
+        'founder welcome: probe-range arrival - no human is signalled about a synthetic family',
+      );
+      return { status: 'skipped_synthetic' };
+    }
+  } catch (err) {
+    console.error(
+      { err, newFamilyId: input.newFamilyId },
+      'founder welcome: the synthetic-probe guard failed - proceeding as a real arrival',
+    );
+  }
 
   const founder = await ports.resolveFounder(database);
   if (!founder) {

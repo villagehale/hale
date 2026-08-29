@@ -401,6 +401,19 @@ describe('decideNudge — health checkpoints', () => {
     expect(nudge?.kind).toBe('health_checkpoint');
   });
 
+  it('still raises the 18-month window here — the POST-consent surface (ads-week audit positive control)', () => {
+    // The pre-consent first find no longer carries checkpoints (lib/channel/intake/radar.ts),
+    // and this sweep — gated on watch consent in run.ts — is where the same reviewed row
+    // now reaches the family. If this ever goes quiet too, the checkpoint is nowhere.
+    const nudge = decide({
+      healthChildren: [healthChild({ ageMonths: 18 })],
+      areaCoarse: 'L7G',
+    });
+    expect(nudge?.kind).toBe('health_checkpoint');
+    if (nudge?.kind !== 'health_checkpoint') throw new Error('expected a health nudge');
+    expect(nudge.checkpointRef.id).toBe('immunization_18_months');
+  });
+
   it('carries the checkpoint by reference and never names a 13+ child', () => {
     const nudge = decide({
       healthChildren: [healthChild({ id: 'teen-1', name: null, ageMonths: 180, isTeen: true })],

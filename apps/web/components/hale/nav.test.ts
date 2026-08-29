@@ -66,9 +66,9 @@ describe('shared nav definition', () => {
  * same resolved boolean and never disagree.
  */
 describe('receipts-room nav (flag on)', () => {
-  it('is exactly Approvals · Trail · Settings, in that order', () => {
-    expect(RECEIPTS_NAV.map((n) => n.label)).toEqual(['Approvals', 'Trail', 'Settings']);
-    expect(RECEIPTS_NAV.map((n) => n.href)).toEqual(['/approvals', '/trail', '/settings']);
+  it('is exactly Home · Family · Settings, in that order (the founder-decided nav)', () => {
+    expect(RECEIPTS_NAV.map((n) => n.label)).toEqual(['Home', 'Family', 'Settings']);
+    expect(RECEIPTS_NAV.map((n) => n.href)).toEqual(['/approvals', '/family', '/settings']);
   });
 
   it('every stop earns its place as a receipt or a control — no retired or demoted route is one', () => {
@@ -78,13 +78,13 @@ describe('receipts-room nav (flag on)', () => {
       expect(hrefs).not.toContain(retired);
     }
     // Demoted: still render, reachable by URL, but no longer destinations.
-    for (const demoted of ['/home', '/plan', '/village']) {
+    for (const demoted of ['/home', '/trail', '/messages', '/plan', '/village']) {
       expect(hrefs).not.toContain(demoted);
     }
   });
 
   it('DEMOTED_NAV names the reachable-but-unlisted routes, and never a retired one', () => {
-    expect(DEMOTED_NAV.map((n) => n.href)).toEqual(['/plan', '/village']);
+    expect(DEMOTED_NAV.map((n) => n.href)).toEqual(['/trail', '/messages', '/plan', '/village']);
     const stops = new Set<string>(RECEIPTS_NAV.map((n) => n.href));
     // A route cannot be both a stop and demoted, or the sidebar and the eyebrow
     // would disagree about whether it is a destination.
@@ -109,9 +109,10 @@ describe('receipts-room nav (flag on)', () => {
     // rather than the old one.
     expect(on.slice(0, RECEIPTS_NAV.length)).toEqual([...RECEIPTS_NAV]);
     // A route that is no longer a stop but STILL RENDERS keeps a label, so its page
-    // does not lose the running-head eyebrow.
-    expect(on.map((n) => n.href)).toContain('/plan');
-    expect(on.map((n) => n.href)).toContain('/village');
+    // does not lose the running-head eyebrow — the demoted Trail included.
+    for (const demoted of ['/trail', '/messages', '/plan', '/village']) {
+      expect(on.map((n) => n.href)).toContain(demoted);
+    }
     const hrefs = on.map((n) => n.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });

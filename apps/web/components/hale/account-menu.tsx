@@ -19,6 +19,7 @@ export function AccountMenu({
   parentName,
   parentImage = null,
   planTier = 'free',
+  maskedPhone = null,
   canSignOut = false,
 }: {
   parentName: string | null;
@@ -26,6 +27,8 @@ export function AccountMenu({
   parentImage?: string | null;
   /** The family's plan; defaults to free (the EMPTY_FAMILY_BASICS default). */
   planTier?: PlanTier;
+  /** The parent's masked SMS number for the chip's secondary line; null → plan label. */
+  maskedPhone?: string | null;
   /** Sign out only appears for a real session — never in the dev preview. */
   canSignOut?: boolean;
 }) {
@@ -64,6 +67,7 @@ export function AccountMenu({
       parentName={parentName}
       parentImage={parentImage}
       planTier={planTier}
+      maskedPhone={maskedPhone}
       canSignOut={canSignOut}
       menuId={menuId}
       onToggle={() => setOpen((prev) => !prev)}

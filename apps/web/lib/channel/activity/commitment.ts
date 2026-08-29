@@ -176,13 +176,13 @@ export async function recordActivityPromise(
 export async function loadOpenActivityPromise(
   database: Database,
   familyId: string,
-): Promise<{ id: string; summary: string; subject: string } | null> {
+): Promise<{ id: string; summary: string; subject: string; askedAt: Date } | null> {
   const row = await loadOpenCommitment(database, familyId, 'activity_followup');
   if (!row) return null;
   // A row whose subject is gone cannot be re-searched, so it is not a promise anything can
   // keep. Listed anyway: Hale still said it, and the coach being told it is holding
   // something is better than the parent's next "yes" landing on an unrelated approval.
-  return { id: row.id, summary: row.summary, subject: row.topic ?? '' };
+  return { id: row.id, summary: row.summary, subject: row.topic ?? '', askedAt: row.createdAt };
 }
 
 /**

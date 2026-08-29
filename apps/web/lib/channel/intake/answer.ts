@@ -373,6 +373,7 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       const adultLearn = adultLearnIntakeReply({
         parentWords: input.parentWords,
         pendingAsk: input.pendingAsk,
+        postal: input.postalCode ?? null,
       });
       if (adultLearn !== null) return { status: 'answered', body: adultLearn };
 
