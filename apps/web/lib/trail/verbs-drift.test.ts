@@ -104,18 +104,6 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'quick_log_health_done',
     'quick_log_booking_requested',
   ],
-  // `document_{uploaded,view_url,deleted}_${kind}` over DOC_KINDS.
-  'apps/web/lib/docs/documents.ts': [
-    'document_uploaded_health',
-    'document_uploaded_insurance',
-    'document_uploaded_other',
-    'document_view_url_health',
-    'document_view_url_insurance',
-    'document_view_url_other',
-    'document_deleted_health',
-    'document_deleted_insurance',
-    'document_deleted_other',
-  ],
   // closeInvite takes its verb as a POSITIONAL parameter and writes it as object
   // shorthand — the terminal states of a caregiver invite.
   'apps/web/lib/channel/caregiver/invites.ts': [

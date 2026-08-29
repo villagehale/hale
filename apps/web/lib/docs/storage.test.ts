@@ -4,7 +4,6 @@ import {
   removeDocument,
   SIGNED_URL_TTL_SECONDS,
   signDocumentUrl,
-  storagePathFor,
   uploadDocument,
 } from './storage.js';
 
@@ -42,12 +41,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-});
-
-describe('storagePathFor', () => {
-  it('is exactly {familyId}/{docId} — no client filename in the key', () => {
-    expect(storagePathFor('fam-1', 'doc-9')).toBe('fam-1/doc-9');
-  });
 });
 
 describe('uploadDocument', () => {

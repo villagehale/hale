@@ -14,7 +14,6 @@ export * from './family-invites.js';
 export * from './caregiver-invites.js';
 export * from './join-invites.js';
 export * from './children.js';
-export * from './child-documents.js';
 export * from './plans.js';
 export * from './integrations.js';
 export * from './connector-connect-nonces.js';

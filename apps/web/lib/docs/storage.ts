@@ -37,12 +37,6 @@ function readConfig(): StorageConfig {
 
 export type FetchLike = typeof fetch;
 
-/** The server-generated object key for a document. No client filename ever reaches
- * it (rule #1): {familyId}/{docId} only. */
-export function storagePathFor(familyId: string, docId: string): string {
-  return `${familyId}/${docId}`;
-}
-
 /**
  * Uploads a document's bytes to the private bucket at the given path. Uses the
  * service-role key server-side; the client never sees it. `upsert` defaults to false
