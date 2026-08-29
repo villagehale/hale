@@ -30,7 +30,7 @@ import { describe, expect, it } from 'vitest';
 
 /** Unlayered class rules remaining in globals.css. LOWER THIS as surfaces migrate;
  * never raise it. Any new component class goes inside `@layer components`. */
-const UNLAYERED_BASELINE = 479;
+const UNLAYERED_BASELINE = 470;
 
 const CSS = readFileSync(fileURLToPath(new URL('./globals.css', import.meta.url)), 'utf8');
 const root = postcss.parse(CSS);

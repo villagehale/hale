@@ -89,10 +89,12 @@ describe('empty states point somewhere', () => {
   // An empty state is not a dead end: each carries a next step a parent can take.
   // (The companion's no-children state was governed here until that surface was
   // retired to a permanent redirect — it has no empty state left to point anywhere.)
-  it('trail empty sends a parent to connect a source (/settings)', () => {
+  it('trail empty sends a parent to their thread — Hale is a number you text, not a connect flow', () => {
     const trail = sources.get('app/(authed)/trail/page.tsx') ?? '';
     expect(trail).toContain('nothing on the record yet');
-    expect(trail).toContain('connect a source');
-    expect(trail).toContain('href="/settings"');
+    // the scan lowercases sources, so the copy is asserted lowercased
+    expect(trail).toContain('text hale');
+    // The pre-pivot CTA pointed at a settings connect flow; that dead end is gone.
+    expect(trail).not.toContain('connect a source');
   });
 });

@@ -186,6 +186,7 @@ export const AUDIT_VERBS = [
   'caregiver_sms_outbound',
   // ── the co-parent join link ─────────────────────────────────────────────
   'co_parent_join_link_minted',
+  'co_parent_join_link_revoked',
   'co_parent_join_accepted',
   'join_sms_inbound',
   'join_sms_outbound',
@@ -534,6 +535,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   // ── the co-parent join link ─────────────────────────────────────────────
   co_parent_join_link_minted: {
     sentence: 'you asked for a link to add your co-parent',
+    family: 'done',
+  },
+  co_parent_join_link_revoked: {
+    sentence: 'you revoked a co-parent link before it was used',
     family: 'done',
   },
   co_parent_join_accepted: {

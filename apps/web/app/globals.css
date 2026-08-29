@@ -3299,74 +3299,11 @@ html, body, .sidebar, .panel, .card, .field {
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * W2b — Settings hub + centered modals (desktop design handoff §4.7 & §4.8)
- * Additive only. Every color goes through a role token, so light↔dark flips
- * automatically; nothing here overflows the page below 1024px (the hub stacks
- * and its sub-nav scrolls horizontally; the modal is desktop-only).
+ * W2b — Settings link rows + centered modals (desktop design handoff §4.7 & §4.8)
+ * (The 216px sub-nav hub these once framed was replaced by the one-column
+ * Instinct refresh — see the `.settings-col` block in @layer components below.)
+ * Every color goes through a role token, so light↔dark flips automatically.
  * ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Settings hub: 216px left sub-nav + panel (§4.7) ─────────────────────── */
-.settings-hub {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-@media (min-width: 1024px) {
-  .settings-hub {
-    display: grid;
-    grid-template-columns: 216px minmax(0, 1fr);
-    gap: 3rem;
-    align-items: start;
-  }
-}
-
-.settings-subnav {
-  display: flex;
-  gap: 0.25rem;
-  overflow-x: auto;
-  margin-inline: -0.25rem;
-  padding-inline: 0.25rem;
-}
-
-@media (min-width: 1024px) {
-  .settings-subnav {
-    position: sticky;
-    top: 1.5rem;
-    flex-direction: column;
-    overflow: visible;
-    margin-inline: 0;
-    padding-inline: 0;
-  }
-}
-
-.settings-subnav-item {
-  flex-shrink: 0;
-  white-space: nowrap;
-  text-align: left;
-  padding: 0.55rem 0.85rem;
-  border: 0;
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--color-faded-sage);
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
-}
-.settings-subnav-item:hover { color: var(--color-spruce); background: var(--color-chrome); }
-.settings-subnav-item[aria-current="page"] {
-  background: var(--color-warm-hover);
-  color: var(--color-spruce);
-  font-weight: 700;
-}
-.settings-subnav-item:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
-}
-
-.settings-panel { min-width: 0; }
 
 .settings-link-row {
   display: flex;
@@ -4257,5 +4194,105 @@ html, body, .sidebar, .panel, .card, .field {
   }
   @media (min-width: 768px) {
     .trace-step { grid-template-columns: 4.5rem 6.5rem 1fr; align-items: baseline; }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Settings, one centered lane (Instinct-adapted refresh). A single scrolling
+ * column of flat cards replaces the 216px sub-nav hub; each card is rows of
+ * icon · bold label · grey value · right-aligned action, stacking below 480px
+ * (the masked phone must never truncate). Inside `@layer components` — the rule
+ * for new CSS in this file — and every value is a role token, so both themes
+ * derive with no new colour.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  .settings-col {
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+    max-width: 42rem;
+    margin-inline: auto;
+  }
+
+  .settings-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-card);
+    padding: 0.25rem 1.5rem;
+  }
+  /* Row dividers fall out of adjacency, so reveal wrappers and blocks divide too. */
+  .settings-card > * + * { border-top: 1px solid var(--color-rule); }
+
+  .settings-flat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-block: 1rem;
+  }
+  .settings-flat-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+  .settings-flat-icon {
+    flex: none;
+    margin-top: 0.15rem;
+    color: var(--color-faded-sage);
+  }
+  .settings-flat-text { min-width: 0; }
+  .settings-flat-label {
+    display: block;
+    font-weight: 600;
+    color: var(--color-spruce);
+  }
+  .settings-flat-value {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--color-slate-green);
+    overflow-wrap: anywhere;
+  }
+  .settings-flat-action { flex: none; }
+  /* The revealed edit machinery hangs under its row, aligned past the icon gutter. */
+  .settings-flat-panel { padding: 0 0 1.25rem 2.4rem; }
+
+  /* Consent ledger: a native details whose summary IS the row (keyboard for free). */
+  .settings-flat-details > .settings-flat-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-block: 1rem;
+    cursor: pointer;
+    list-style: none;
+  }
+  .settings-flat-summary::-webkit-details-marker { display: none; }
+  .settings-flat-summary:focus-visible {
+    outline: none;
+    border-radius: var(--r-sm);
+    box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+  }
+  .settings-flat-summary > .settings-flat-text { flex: 1; min-width: 0; }
+  .settings-flat-cue { flex: none; }
+
+  @media (max-width: 479px) {
+    .settings-flat-row,
+    .settings-flat-details > .settings-flat-summary {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .settings-flat-action { width: 100%; }
+    .settings-flat-action > a,
+    .settings-flat-action > button,
+    .settings-flat-cue {
+      width: 100%;
+      justify-content: center;
+      display: inline-flex;
+    }
+    .settings-flat-panel { padding-left: 0; }
   }
 }

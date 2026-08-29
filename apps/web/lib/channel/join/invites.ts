@@ -79,7 +79,10 @@ export async function mintJoinInvite(
   input: {
     familyId: string;
     invitedByUserId: string;
-    verbatimRequest: string;
+    /** The parent's own words when the request arrived by text; NULL when it was a
+     * click in the app — a UI consent, where the click IS the evidence (the
+     * documented convention on consent_records.evidence). */
+    verbatimRequest: string | null;
     channelMessageId: string | null;
     now: Date;
   },
@@ -117,12 +120,15 @@ export async function mintJoinInvite(
       granted: true,
       consentScope: JOIN_GRANT_SCOPE,
       policyVersion: POLICY_VERSION,
-      evidence: {
-        verbatimReply: input.verbatimRequest,
-        interpretation:
-          'parent asked for a co-parent join link, authorising full family access for whoever redeems it',
-        channelMessageId: input.channelMessageId,
-      },
+      evidence:
+        input.verbatimRequest === null
+          ? null
+          : {
+              verbatimReply: input.verbatimRequest,
+              interpretation:
+                'parent asked for a co-parent join link, authorising full family access for whoever redeems it',
+              channelMessageId: input.channelMessageId,
+            },
     });
 
     await tx.insert(schema.auditLog).values({
@@ -170,6 +176,83 @@ export async function loadOpenJoinInvite(
     role: 'co_parent',
     expiresAt: new Date(row.expiresAt),
   };
+}
+
+/** The family's open (unconsumed, unexpired) invites, newest expiry first — the same
+ * post-filtered defense loadOpenJoinInvite keeps, keyed by family instead of code. */
+async function openInvitesForFamily(
+  database: Database,
+  familyId: string,
+  now: Date,
+): Promise<JoinInviteRow[]> {
+  const rows = (await database
+    .select(INVITE_COLUMNS)
+    .from(schema.joinInvites)
+    .where(eq(schema.joinInvites.familyId, familyId))) as JoinInviteRow[];
+  return rows
+    .filter(
+      (r) =>
+        r.familyId === familyId &&
+        r.consumedAt === null &&
+        new Date(r.expiresAt).getTime() > now.getTime(),
+    )
+    .sort((a, b) => new Date(b.expiresAt).getTime() - new Date(a.expiresAt).getTime());
+}
+
+/**
+ * The family's open invite, if any — the status the web card renders. Keyed by FAMILY
+ * because only the SHA-256 digest is stored: the persistent surface can show status +
+ * expiry and never the link itself (magic-link semantics — the raw code exists once,
+ * at mint). Null is the ordinary "no link out" answer, not an error.
+ */
+export async function loadOpenJoinInviteForFamily(
+  database: Database,
+  familyId: string,
+  now: Date,
+): Promise<{ id: string; expiresAt: Date } | null> {
+  const row = (await openInvitesForFamily(database, familyId, now))[0];
+  if (!row) return null;
+  return { id: row.id, expiresAt: new Date(row.expiresAt) };
+}
+
+/**
+ * Kill every open link the family has out, now. Stamping `expires_at = now` is enough
+ * because expiry is applied ON READ by every reader (loadOpenJoinInvite and the
+ * family-keyed status above) — the forwarded code dies everywhere instantly, with no
+ * sweep and no new read logic. The `consumed_at IS NULL` guard on the write means a
+ * link redeemed between the read and this write is left alone (the seat it bought
+ * stands — there is nothing left to revoke), and only links actually killed get the
+ * audit row (rule #6).
+ */
+export async function revokeOpenJoinInvites(
+  database: Database,
+  input: { familyId: string; actorUserId: string; now: Date },
+): Promise<{ revokedIds: string[] }> {
+  const open = await openInvitesForFamily(database, input.familyId, input.now);
+  if (open.length === 0) return { revokedIds: [] };
+
+  const revokedIds: string[] = [];
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    for (const row of open) {
+      const killed = (await tx
+        .update(schema.joinInvites)
+        .set({ expiresAt: input.now })
+        .where(and(eq(schema.joinInvites.id, row.id), isNull(schema.joinInvites.consumedAt)))
+        .returning({ id: schema.joinInvites.id })) as Array<{ id: string }>;
+      if (!killed[0]) continue;
+      revokedIds.push(row.id);
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.actorUserId,
+        actionTaken: 'co_parent_join_link_revoked',
+        targetTable: 'join_invites',
+        targetId: row.id,
+        after: { revoked: true, expiresAt: input.now.toISOString() },
+      });
+    }
+  });
+  return { revokedIds };
 }
 
 /** The users row for this number, created if absent. Keyed by the SAME blind index

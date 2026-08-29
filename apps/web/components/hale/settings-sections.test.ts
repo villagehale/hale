@@ -7,47 +7,52 @@ import {
 } from './settings-sections';
 
 /**
- * The hub is a six-section switcher that replaced the old seven-anchor Account
- * page. These pin the taxonomy (§4.7) and the deep-link contract: every OLD
- * anchor must still resolve to a live section so an existing link (an email, the
- * Family hub's /settings#billing) never dead-ends. Expected values come from the
- * spec's section mapping, not the resolver's current output.
+ * The one-column Settings lane restored the anchor model, so the ids are in-page
+ * anchors and the resolver is the deep-link contract: every PRIOR generation of
+ * link — the pre-hub seven anchors and the hub's six section ids — must still land
+ * on a live section. Expected values come from the Instinct-refresh spec's section
+ * mapping, not the resolver's current output.
  */
 
 describe('settings taxonomy', () => {
-  it('is exactly the six sections of the handoff, in order', () => {
+  it('is exactly the six one-column sections, in scroll order', () => {
     expect(SETTINGS_SECTIONS.map((s) => s.id)).toEqual([
       'account',
-      'family',
-      'plan',
       'notif',
+      'plan',
       'apps',
+      'trust',
       'about',
     ]);
   });
 
-  it('labels each section per §4.7', () => {
+  it('labels each section for the flat-card headers', () => {
     const byId = Object.fromEntries(SETTINGS_SECTIONS.map((s) => [s.id, s.label]));
     expect(byId).toEqual({
       account: 'Account',
-      family: 'Family & children',
-      plan: 'Plan & billing',
       notif: 'Notifications',
+      plan: 'Plan',
       apps: 'Connected apps',
-      about: 'Support & about',
+      trust: 'Trust',
+      about: 'About',
     });
   });
 });
 
-describe('resolveSection — old deep links keep working', () => {
+describe('resolveSection — every old deep link keeps working', () => {
   const cases: [string, SettingsSectionId][] = [
+    // pre-hub anchors
     ['#profile', 'account'],
     ['#preferences', 'account'],
     ['#appearance', 'account'],
     ['#connected-apps', 'apps'],
     ['#notifications', 'notif'],
     ['#billing', 'plan'],
-    ['#privacy', 'about'],
+    // privacy/data controls live in Trust now
+    ['#privacy', 'trust'],
+    // the hub's family section moved to /family; a hash resolver cannot leave the
+    // page, so it falls to Account — whose card carries the pointer row.
+    ['#family', 'account'],
   ];
   for (const [hash, section] of cases) {
     it(`maps ${hash} → ${section}`, () => {
@@ -60,7 +65,7 @@ describe('resolveSection — old deep links keep working', () => {
     expect(resolveSection('#Connected-Apps')).toBe('apps');
   });
 
-  it('resolves each new section id to itself', () => {
+  it('resolves each current section id to itself', () => {
     for (const { id } of SETTINGS_SECTIONS) {
       expect(resolveSection(`#${id}`)).toBe(id);
     }

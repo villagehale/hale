@@ -23,8 +23,11 @@ export interface AccountMenuViewProps {
   parentName: string | null;
   /** The signed-in parent's photo (Google `user.image`), or null → the initials disc. */
   parentImage?: string | null;
-  /** The family's plan, shown as the chip's secondary line per the desktop handoff. */
+  /** The family's plan — the chip's secondary line when no phone is enrolled. */
   planTier: PlanTier;
+  /** The parent's MASKED SMS number (Instinct-style name + phone chip). Null when
+   * not enrolled → the plan label stands in. Never the raw number (rule #1). */
+  maskedPhone?: string | null;
   canSignOut: boolean;
   menuId: string;
   onToggle: () => void;
@@ -50,6 +53,7 @@ export function AccountMenuView({
   parentName,
   parentImage = null,
   planTier,
+  maskedPhone = null,
   canSignOut,
   menuId,
   onToggle,
@@ -109,7 +113,15 @@ export function AccountMenuView({
         <Avatar tone="account" src={parentImage} initials={parentInitials(parentName)} size={32} />
         <span className="account-chip-identity" data-hale-pii>
           <span className="account-chip-name">{displayName}</span>
-          <span className="account-chip-family meta">You · {planLabel}</span>
+          {/* Instinct-style name + phone; the plan label stands in until a number
+           * is enrolled. The masked value is still PII-tagged for replay masking. */}
+          {maskedPhone ? (
+            <span className="account-chip-family meta" data-hale-pii>
+              {maskedPhone}
+            </span>
+          ) : (
+            <span className="account-chip-family meta">You · {planLabel}</span>
+          )}
         </span>
         <Icon as={ChevronsUpDown} size={16} className="account-chip-caret" />
       </button>

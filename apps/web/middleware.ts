@@ -58,6 +58,18 @@ export default auth((req) => {
     return NextResponse.redirect(new URL('/approvals', req.nextUrl), 302);
   }
 
+  // Under the same reframe the family EDITOR moved up a level: /family is the editor
+  // now, so /family/members has nothing of its own left to show. A real 308 beside the
+  // /home hinge, for the same streaming-layout reason; the page also permanentRedirects
+  // (defense in depth, the retired-routes pattern). Flag-conditional so the flag-off IA
+  // keeps its hub → editor split untouched.
+  if (
+    receiptsIaEnabled() &&
+    (pathname === '/family/members' || pathname.startsWith('/family/members/'))
+  ) {
+    return NextResponse.redirect(new URL('/family', req.nextUrl), 308);
+  }
+
   if (!authConfigured()) {
     if (process.env.NODE_ENV === 'production') {
       return NextResponse.redirect(new URL('/sign-in', req.nextUrl));

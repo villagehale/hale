@@ -26,7 +26,8 @@ import { type LocationInput, normalizeLocation } from './location-input';
  * family from the Auth.js session (never a fabricated id — rule #1), and writes an
  * immutable audit_log row alongside the mutation (rule #6). Each mutation
  * revalidates the page that renders it after a write: the children, location, and
- * intents live on /family/members; the parent profile and plan live on /settings
+ * intents live on /family (the editor — the Instinct refresh moved it up from
+ * /family/members); the parent profile and plan live on /settings
  * (the IA split — family control vs. account config).
  *
  * Degradation mirrors saveOnboardingChildren: no DATABASE_URL or auth-unconfigured
@@ -76,7 +77,7 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
         },
       ]),
     );
-    revalidatePath('/family/members');
+    revalidatePath('/family');
     return { status: 'added' };
   }
 
@@ -106,7 +107,7 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
     });
   });
 
-  revalidatePath('/family/members');
+  revalidatePath('/family');
   return { status: 'added' };
 }
 
@@ -207,7 +208,7 @@ export async function editChildAction(
   if (!updated) {
     return { status: 'not_found' };
   }
-  revalidatePath('/family/members');
+  revalidatePath('/family');
   return { status: 'updated' };
 }
 
@@ -273,7 +274,7 @@ export async function removeChildAction(childId: string): Promise<RemoveChildRes
   if (!removed) {
     return { status: 'not_found' };
   }
-  revalidatePath('/family/members');
+  revalidatePath('/family');
   return { status: 'removed' };
 }
 
@@ -366,7 +367,7 @@ export async function setLocationAction(input: LocationInput): Promise<SetLocati
     });
   });
 
-  revalidatePath('/family/members');
+  revalidatePath('/family');
   return { status: 'updated' };
 }
 
@@ -477,7 +478,7 @@ export async function setIntentsAction(rawIntents: string[]): Promise<SetIntents
     });
   });
 
-  revalidatePath('/family/members');
+  revalidatePath('/family');
   return { status: 'updated' };
 }
 
