@@ -12,7 +12,12 @@ import {
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import type { ExtractedChild } from './extract';
-import { type RadarCandidate, type RadarChild, decideRadar } from './radar-decide';
+import {
+  type RadarCandidate,
+  type RadarChild,
+  type RadarDecision,
+  decideRadar,
+} from './radar-decide';
 import { composeRadarMessage, promisesFirstFind } from './radar-voice';
 
 /** Words too generic to prove the checkpoint reached the parent. */
@@ -267,8 +272,10 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       // at the one composer that serves the intake first find, AFTER the decide so the
       // cascade's other rungs are untouched. Nothing is marked told, so the post-consent
       // surfaces (the 48h nudge, lib/channel/nudge/run.ts — gated on watch consent)
-      // raise the same checkpoint once consent exists.
-      const decision = {
+      // raise the same checkpoint once consent exists. The told-marker plumbing below is
+      // typed against the unfiltered decision on purpose: it is the machinery any future
+      // POST-consent radar surface re-enables, and on this path it can only ever be null.
+      const decision: RadarDecision = {
         ...decideRadar({
           children,
           candidates,
