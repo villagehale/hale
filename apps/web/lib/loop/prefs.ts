@@ -5,13 +5,13 @@ import { eq, inArray } from 'drizzle-orm';
 /**
  * F11 · The Sunday Loop — the pure enforcement hooks over per-parent loop
  * preferences (VIL-216 · A5). A2 (the send seam) composes these; this module owns
- * the read and the deterministic rules, never the send itself. Mirrors the shape
- * of lib/push/prefs.ts: pure async loaders with the Database injected as the last
- * argument, and a documented default for the absent-row state (a parent who never
- * opened Settings still has a well-defined loop).
+ * the read and the deterministic rules, never the send itself. Pure async loaders
+ * with the Database injected as the last argument, and a documented default for
+ * the absent-row state (a parent who never opened Settings still has a
+ * well-defined loop).
  *
- * The existing notification_prefs (push booleans) and email_opt_outs (CASL digest)
- * are a SEPARATE concern and are not read here — the loop taxonomy is its own.
+ * The existing notification_prefs and email_opt_outs (CASL digest) are a SEPARATE
+ * concern and are not read here — the loop taxonomy is its own.
  *
  * Privacy (rule #1): child_name_level composes WITH the deterministic teen age
  * gate (deriveStage). It can only make a message MORE private — a 13+ child is
