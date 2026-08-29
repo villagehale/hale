@@ -56,6 +56,7 @@ export function Sidebar({
   parentName = null,
   parentImage = null,
   planTier = 'free',
+  maskedPhone = null,
   kids = [],
   receiptsIa = false,
 }: {
@@ -66,6 +67,8 @@ export function Sidebar({
   parentImage?: string | null;
   /** The family's plan, for the account chip's secondary line. */
   planTier?: PlanTier;
+  /** The parent's masked SMS number — the chip's secondary line when enrolled. */
+  maskedPhone?: string | null;
   /** The family's children, for the foot child switcher. */
   kids?: SwitcherChild[];
   /** VIL-244 · M9: the receipts-room stops. Resolved from F14_RECEIPTS_IA by the
@@ -135,6 +138,7 @@ export function Sidebar({
               parentName={parentName}
               parentImage={parentImage}
               planTier={planTier}
+              maskedPhone={maskedPhone}
               canSignOut={authControls && signedIn}
             />
           </>

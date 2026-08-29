@@ -44,6 +44,18 @@ describe('AccountMenuView', () => {
     expect(render({ planTier: 'family' })).toContain('Family');
   });
 
+  it('shows the masked number as the secondary line once enrolled (Instinct chip: name + phone)', () => {
+    const html = render({ maskedPhone: '+1 ••• ••• 1234' });
+    expect(html).toContain('+1 ••• ••• 1234');
+    // The phone replaces the plan line — one secondary line, never both.
+    expect(html).not.toContain('Free plan');
+  });
+
+  it('falls back to the plan label while no number is enrolled', () => {
+    const html = render({ maskedPhone: null });
+    expect(html).toContain('Free plan');
+  });
+
   it('falls back to a neutral name when identity is absent (onboarding incomplete)', () => {
     const html = render({ parentName: null });
     expect(html).toContain('your account');

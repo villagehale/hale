@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { ExportDataButton } from '~/components/hale/export-data-button';
 import { TrailTimeline } from '~/components/hale/trail-timeline';
 import { loadTrail } from '~/lib/dashboard/queries';
@@ -41,14 +40,9 @@ export default async function TrailPage() {
             nothing on the record yet.
           </p>
           <p className="meta text-ink-2 max-w-xl mx-auto">
-            connect a calendar or inbox and every action, by Hale or by you, lands here in an
-            unbroken, exportable line.
+            text Hale — the trail fills from your thread, and every action, by Hale or by you,
+            lands here in an unbroken, exportable line.
           </p>
-          <div className="pt-2">
-            <Link href="/settings" className="btn-primary">
-              connect a source →
-            </Link>
-          </div>
         </section>
       ) : (
         <TrailTimeline entries={entries} />
