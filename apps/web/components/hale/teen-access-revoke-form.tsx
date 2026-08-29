@@ -4,7 +4,7 @@ import { useActionState } from 'react';
 import {
   type RevokeTeenAccessState,
   revokeTeenAccessAction,
-} from '~/app/(authed)/settings/teen-access-actions';
+} from '~/app/(authed)/family/teen-access-actions';
 
 const INITIAL_STATE: RevokeTeenAccessState = { status: 'idle' };
 

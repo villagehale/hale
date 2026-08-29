@@ -260,6 +260,36 @@ describe('the demoted daily feed', () => {
   });
 });
 
+describe('the family editor moved up a level (Instinct refresh)', () => {
+  const middleware = readFileSync(
+    fileURLToPath(new URL('../../middleware.ts', import.meta.url)),
+    'utf8',
+  );
+
+  it('forwards /family/members to /family as a real 308, sub-paths included, flag-gated', () => {
+    // Positive control: the hinge really reads the flag (same guard the /home test keeps).
+    expect(middleware).toContain('receiptsIaEnabled()');
+    expect(middleware).toContain("NextResponse.redirect(new URL('/family', req.nextUrl), 308)");
+    expect(middleware).toContain(
+      "pathname === '/family/members' || pathname.startsWith('/family/members/')",
+    );
+  });
+
+  it('the page itself permanentRedirects — defense in depth, the retired-routes pattern', () => {
+    const page = app('(authed)/family/members/page.tsx');
+    expect(page).toContain("permanentRedirect('/family')");
+  });
+
+  it('/family renders the editor content the members page used to own', () => {
+    const page = app('(authed)/family/page.tsx');
+    for (const editor of ['FamilyChildren', 'FamilyLocation', 'FamilyIntents', 'AddCoParentCard']) {
+      expect(page).toContain(editor);
+    }
+    // The hub's tiles died with the hub — /family is the people page, not a switchboard.
+    expect(page).not.toContain('FamilyHubCard');
+  });
+});
+
 describe('sign-in under the flag', () => {
   const src = app('sign-in/page.tsx');
 

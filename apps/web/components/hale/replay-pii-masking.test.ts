@@ -33,7 +33,7 @@ vi.mock('~/lib/companion/log', () => ({
   logQuickEpisode: vi.fn(),
 }));
 // Same reason for the teen-access revoke form's 'use server' action module.
-vi.mock('~/app/(authed)/settings/teen-access-actions', () => ({
+vi.mock('~/app/(authed)/family/teen-access-actions', () => ({
   revokeTeenAccessAction: vi.fn(),
 }));
 // Same reason for the plan cards' done/remove actions and the area switcher's.

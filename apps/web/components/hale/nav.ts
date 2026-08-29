@@ -1,9 +1,9 @@
 import type { Route } from 'next';
 import {
   CalendarDays,
-  ClipboardCheck,
   History,
   House,
+  MessageSquare,
   Settings,
   Users,
   UsersRound,
@@ -49,13 +49,14 @@ export const ALL_NAV = [
 /**
  * VIL-244 · M9 — the receipts-room stops (D4/D20), behind F14_RECEIPTS_IA. The app's
  * job stops being "a place to read a daily feed" and becomes "the place you check what
- * Hale did and decide what's next": the decision queue, the record, the dials. A stop
- * has to earn its place as a receipt or as a control that cannot live in a text; the
- * week and the village are neither, so they are demoted (see DEMOTED_NAV).
+ * Hale did and decide what's next": Home is the decision queue (/approvals — the full
+ * record hangs off its foot), Family is the household editor, Settings is the dials.
+ * A stop has to earn its place as a receipt or as a control that cannot live in a
+ * text; the trail, the week and the village render but are not stops (DEMOTED_NAV).
  */
 export const RECEIPTS_NAV = [
-  { href: '/approvals', label: 'Approvals', icon: ClipboardCheck },
-  { href: '/trail', label: 'Trail', icon: History },
+  { href: '/approvals', label: 'Home', icon: House },
+  { href: '/family', label: 'Family', icon: UsersRound },
   { href: '/settings', label: 'Settings', icon: Settings },
 ] as const satisfies ReadonlyArray<NavItem>;
 
@@ -67,6 +68,8 @@ export const RECEIPTS_NAV = [
  * label loses its eyebrow.
  */
 export const DEMOTED_NAV = [
+  { href: '/trail', label: 'Trail', icon: History },
+  { href: '/messages', label: 'Messages', icon: MessageSquare },
   { href: '/plan', label: 'Week', icon: CalendarDays },
   { href: '/village', label: 'Village', icon: Users },
 ] as const satisfies ReadonlyArray<NavItem>;
