@@ -818,3 +818,27 @@ export const REGION_UNAVAILABLE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string>
   en: REGION_UNAVAILABLE_REPLY,
   fr: "Je fonctionne seulement pour les familles au Canada pour l'instant, donc je ne peux pas encore vous aider - je n'ai rien mis en place.",
 };
+
+/**
+ * The identity-challenge accountability line (doctrine G15/L3). "Who is behind this
+ * number" is a CASL-shaped identification ask and deserves a real answer, not a
+ * stonewall — but the answer is a promise, so it is a constant the shell appends after
+ * the composed concession (the same decisions-vs-rendering split as {@link WATCH_OFFER}),
+ * never a sentence a model writes. It states only what is true and verifiable: an AI,
+ * a Canadian service, where the operator is named, and that STOP is final. No question
+ * and no close — a distrust turn may never end in one (R9). Wiring is the S2/S3
+ * skill-and-shell work; the words land here first so they are reviewed as copy.
+ *
+ * Built from {@link PRIVACY_URL} so a policy move cannot strand the one line that
+ * answers "who runs this". FOUNDER REVIEW: the operator naming and the URL target
+ * (privacy page vs a contact page) are the founder's to confirm.
+ *
+ * `qui me gère` carries no participle agreeing with "une IA": Hale takes no gender in
+ * French, here as everywhere in this file.
+ */
+export const IDENTITY_ACCOUNTABILITY_LINE = `Fair to ask. I'm an AI assistant, and Hale is a Canadian service - who runs it and how to reach them: ${PRIVACY_URL}. STOP ends my texts for good.`;
+
+export const IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: IDENTITY_ACCOUNTABILITY_LINE,
+  fr: `Bonne question. Je suis une IA - c'est Village Hale, un service canadien, qui me gère: ${PRIVACY_URL}. Répondez ARRET et je ne vous texte plus.`,
+};

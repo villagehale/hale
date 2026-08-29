@@ -15,6 +15,8 @@ import {
   DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY,
   HELP_REPLY_BY_LANGUAGE,
+  IDENTITY_ACCOUNTABILITY_LINE,
+  IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE,
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   SITTING_SESSION_REMINDER,
@@ -269,6 +271,18 @@ describe('detailsBlocked', () => {
   });
 });
 
+describe('the identity-challenge accountability line (doctrine G15/L3)', () => {
+  it('concedes, states what is true, names where the operator lives, and never closes', () => {
+    expect(IDENTITY_ACCOUNTABILITY_LINE).toBe(
+      `Fair to ask. I'm an AI assistant, and Hale is a Canadian service - who runs it and how to reach them: ${PRIVACY_URL}. STOP ends my texts for good.`,
+    );
+    // A distrust turn may never end in a close (R9): no question, no ask.
+    expect(IDENTITY_ACCOUNTABILITY_LINE).not.toContain('?');
+    // The CONSTANT, never a second copy of the URL — same rule as the consent ask.
+    expect(IDENTITY_ACCOUNTABILITY_LINE).toContain(PRIVACY_URL);
+  });
+});
+
 describe('the unparseable-intake door (doctrine G7/L2)', () => {
   it('owns its own words instead of the frozen CASL capability line', () => {
     expect(UNREADABLE_INTAKE_REPLY).toBe(
@@ -382,6 +396,14 @@ describe('the French script', () => {
     expect(HELP_REPLY_BY_LANGUAGE.fr).toContain('AIDE');
   });
 
+  it('answers an identity challenge in French without gendering Hale and without a close', () => {
+    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).toBe(
+      `Bonne question. Je suis une IA - c'est Village Hale, un service canadien, qui me gère: ${PRIVACY_URL}. Répondez ARRET et je ne vous texte plus.`,
+    );
+    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).not.toContain('?');
+    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).toContain(PRIVACY_URL);
+  });
+
   it('answers an unreadable intake reply in French with its own door, not the HELP line', () => {
     expect(UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.fr).toBe(
       "Je n'ai pas compris ce message. Je garde la semaine et les inscriptions rec - écrivez par exemple 'Maya a 4 ans, Theo a 1 an, H2X 1Y6' et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
@@ -403,6 +425,8 @@ describe('the French script', () => {
       'HELP_REPLY.fr': HELP_REPLY_BY_LANGUAGE.fr,
       'UNREADABLE_INTAKE_REPLY.en': UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.en,
       'UNREADABLE_INTAKE_REPLY.fr': UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.fr,
+      'IDENTITY_ACCOUNTABILITY_LINE.en': IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.en,
+      'IDENTITY_ACCOUNTABILITY_LINE.fr': IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr,
       'STOP_ACK.en': STOP_ACK_BY_LANGUAGE.en,
       'STOP_ACK.fr': STOP_ACK_BY_LANGUAGE.fr,
       'ASSENT_ACK.en': ASSENT_ACK_BY_LANGUAGE.en,
@@ -465,6 +489,7 @@ describe('the French script', () => {
     expect(AMBIGUOUS_CLARIFY_BY_LANGUAGE.en).toBe(AMBIGUOUS_CLARIFY);
     expect(HELP_REPLY_BY_LANGUAGE.en).toBe(HELP_REPLY);
     expect(UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.en).toBe(UNREADABLE_INTAKE_REPLY);
+    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.en).toBe(IDENTITY_ACCOUNTABILITY_LINE);
     expect(START_ACK_BY_LANGUAGE.en).toBe(START_ACK);
     expect(STOP_ACK_BY_LANGUAGE.en).toBe(STOP_ACK);
     expect(REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.en).toBe(REGION_UNAVAILABLE_REPLY);
