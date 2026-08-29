@@ -37,6 +37,9 @@ export type AnalyticsEvent =
   // THE conversion: a tap on an `sms:` deep link, anywhere on the site.
   // `cta_placement` names which one (hero, header, faq, a reply chip…), so the
   // whole site is one funnel with a breakdown rather than one event per page.
+  // NOTE for dashboards: the hero's placement was renamed mid-week during the
+  // 2026-08 ad launch — historical rows carry `hero_chip` where current ones say
+  // `hero`, so any query reading the hero's clicks must OR the two values.
   | 'cta_text_click'
   // The desktop path to the same act — the number onto the clipboard, because
   // `sms:` is a silent no-op on a laptop. Counted separately: it is an intention
