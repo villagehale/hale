@@ -13,16 +13,21 @@ import { SettingsRowReveal } from './settings-row-reveal';
  * toggle. Static render — the reveal's initial state is closed.
  */
 
+// The props-helper indirection upgrade-prompt.test.ts uses for components whose
+// children are required props.
+const renderSection = (props: Parameters<typeof SettingsSection>[0]) =>
+  renderToStaticMarkup(h(SettingsSection, props));
+const renderReveal = (props: Parameters<typeof SettingsRowReveal>[0]) =>
+  renderToStaticMarkup(h(SettingsRowReveal, props));
+
 describe('SettingsSection', () => {
   it('renders the anchor id, the muted header, and the explainer', () => {
-    const html = renderToStaticMarkup(
-      h(SettingsSection, {
-        id: 'trust',
-        label: 'Trust',
-        explainer: 'What Hale holds.',
-        children: h('p', null, 'body'),
-      }),
-    );
+    const html = renderSection({
+      id: 'trust',
+      label: 'Trust',
+      explainer: 'What Hale holds.',
+      children: h('p', null, 'body'),
+    });
     expect(html).toContain('id="trust"');
     expect(html).toContain('aria-label="Trust"');
     expect(html).toContain('What Hale holds.');
@@ -51,15 +56,13 @@ describe('SettingsRow', () => {
 });
 
 describe('SettingsRowReveal', () => {
-  const html = renderToStaticMarkup(
-    h(SettingsRowReveal, {
-      icon: Phone,
-      label: 'Phone',
-      value: 'No number linked yet',
-      actionLabel: 'Link',
-      children: h('p', null, 'the enrolment form'),
-    }),
-  );
+  const html = renderReveal({
+    icon: Phone,
+    label: 'Phone',
+    value: 'No number linked yet',
+    actionLabel: 'Link',
+    children: h('p', null, 'the enrolment form'),
+  });
 
   it('starts closed: the action button is collapsed and the machinery is not mounted', () => {
     expect(html).toContain('aria-expanded="false"');
