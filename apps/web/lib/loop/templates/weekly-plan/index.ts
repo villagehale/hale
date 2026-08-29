@@ -2,7 +2,6 @@ import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { renderWeeklyPlanEmail } from './email';
 import { asWeeklyPlanPayload } from './payload';
-import { renderWeeklyPlanPush } from './push';
 import { renderWeeklyPlanSms } from './sms';
 
 /**
@@ -20,8 +19,6 @@ export const weeklyPlanRenderer: TemplateRenderer = {
         return renderWeeklyPlanEmail(payload, nameLevel, now);
       case 'sms':
         return renderWeeklyPlanSms(payload, nameLevel, now);
-      case 'push':
-        return renderWeeklyPlanPush(payload, nameLevel, now);
       default: {
         const exhaustive: never = channel;
         throw new Error(`weekly_plan renderer: unsupported channel ${String(exhaustive)}`);

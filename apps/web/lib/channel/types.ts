@@ -3,7 +3,7 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
 
 /**
  * F11 · The Sunday Loop — the channel seam types (VIL-213 · A2). "Channels are
- * adapters": every loop feature composes ONE message model, and email/sms/push are
+ * adapters": every loop feature composes ONE message model, and email/sms are
  * interchangeable renderers behind one `Channel` interface. The dispatch (dispatch.ts)
  * is the single place policy is enforced; a `Channel` only performs the raw send.
  *
@@ -24,7 +24,10 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
  * voice renders the deterministic copy and still sends.
  */
 
-export type ChannelKind = 'email' | 'sms' | 'push';
+/** The live delivery legs. The persisted channel_message_channel enum still
+ * carries 'push' (and 'voice') for historical rows — this union is only what the
+ * dispatch can SEND today, narrowed when the Expo push channel died (VIL-318). */
+export type ChannelKind = 'email' | 'sms';
 
 /** Outbound loop taxonomy (mirrors loop_prefs categories; inbound 'reply' is A3). */
 export type LoopCategory = 'weekly_plan' | 'reminder' | 'approval' | 'alert';
@@ -48,12 +51,11 @@ export interface LoopMessage {
   relatedConversationId?: string;
   deepLink?: string;
   /**
-   * Pins the exchange leg to ONE channel instead of the parent's loop_channel, and
-   * suppresses the push mirror with it (VIL-249). For the one message class whose
-   * content exists on a single channel: a calendar invite IS a text/calendar
-   * attachment, so re-routing it to SMS would deliver an empty sentence and mirroring
-   * it to push would announce an email the parent is already holding. Everything
-   * else leaves this unset and gets the founder's mirror model.
+   * Pins the exchange leg to ONE channel instead of the parent's loop_channel
+   * (VIL-249). For the one message class whose content exists on a single channel:
+   * a calendar invite IS a text/calendar attachment, so re-routing it to SMS would
+   * deliver an empty sentence. Everything else leaves this unset and rides the
+   * parent's loop_channel.
    */
   channel?: ChannelKind;
 }
@@ -63,8 +65,7 @@ export interface LoopMessage {
  * health details or a child name above the family's privacy level (A5). */
 export type RenderedContent =
   | { kind: 'email'; subject: string; html: string; text: string; attachments?: ResendAttachment[] }
-  | { kind: 'sms'; text: string }
-  | { kind: 'push'; title: string; body: string; data?: Record<string, unknown> };
+  | { kind: 'sms'; text: string };
 
 /** Produces channel-specific content for a message, honoring the resolved child-name
  * privacy level. Injected — the seam ships a Fake; templates provide the real one. */

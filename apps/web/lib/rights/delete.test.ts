@@ -99,26 +99,22 @@ const DUE_IDS = [
 
 /**
  * Fakes the sweep's whole DB surface: the due-families select, the per-family
- * storage enumerations (chat_attachments + child_documents, each a queue drained in
+ * storage enumerations (chat_attachments + child avatars, each a queue drained in
  * due-family order), and the delete(families).where() issued per due family.
  * `removeObject` records the bytes purged and — via the shared `events` log — their
  * order relative to the row deletes, so a test can prove bytes leave BEFORE the row.
- * `attachmentPaths`/`documentPaths` are per-family path lists (dueIds order); omit
+ * `attachmentPaths`/`avatarPaths` are per-family path lists (dueIds order); omit
  * for families that own no storage.
  */
 function fakeSweepDb(
   dueIds: string[],
   opts: {
     attachmentPaths?: string[][];
-    documentPaths?: string[][];
     avatarPaths?: string[][];
-    memberIds?: string[][];
   } = {},
 ) {
   const attachmentQueue = [...(opts.attachmentPaths ?? dueIds.map(() => []))];
-  const documentQueue = [...(opts.documentPaths ?? dueIds.map(() => []))];
   const avatarQueue = [...(opts.avatarPaths ?? dueIds.map(() => []))];
-  const memberQueue = [...(opts.memberIds ?? dueIds.map(() => []))];
 
   const events: string[] = [];
   const removeObject = vi.fn(async (path: string) => {
@@ -128,12 +124,7 @@ function fakeSweepDb(
   const deletedWhere = vi.fn(async () => {
     events.push('delete-family');
   });
-  const deletedTokensWhere = vi.fn(async () => {
-    events.push('delete-tokens');
-  });
-  const deleteFn = vi.fn((table: unknown) => ({
-    where: table === schema.pushTokens ? deletedTokensWhere : deletedWhere,
-  }));
+  const deleteFn = vi.fn(() => ({ where: deletedWhere }));
 
   const select = vi.fn(() => ({
     from: (table: unknown) => {
@@ -141,16 +132,8 @@ function fakeSweepDb(
         const rows = (attachmentQueue.shift() ?? []).map((storagePath) => ({ storagePath }));
         return { where: async () => rows };
       }
-      if (table === schema.childDocuments) {
-        const rows = (documentQueue.shift() ?? []).map((storagePath) => ({ storagePath }));
-        return { where: async () => rows };
-      }
       if (table === schema.children) {
         const rows = (avatarQueue.shift() ?? []).map((storagePath) => ({ storagePath }));
-        return { where: async () => rows };
-      }
-      if (table === schema.familyMembers) {
-        const rows = (memberQueue.shift() ?? []).map((userId) => ({ userId }));
         return { where: async () => rows };
       }
       return { where: async () => dueIds.map((id) => ({ id })) };
@@ -160,7 +143,7 @@ function fakeSweepDb(
   return {
     db: { select, delete: deleteFn } as never,
     removeObject,
-    spies: { deleteFn, deletedWhere, deletedTokensWhere, events },
+    spies: { deleteFn, deletedWhere, events },
   };
 }
 
@@ -191,48 +174,40 @@ describe('runDeletionSweep', () => {
     expect(removeObject).not.toHaveBeenCalled();
   });
 
-  it('purges every chat-attachment AND child-document object from the bucket BEFORE dropping the family row (rule #1 / PIPEDA erasure)', async () => {
+  it('purges every chat-attachment object from the bucket BEFORE dropping the family row (rule #1 / PIPEDA erasure)', async () => {
     const attachmentPaths = [`chat/${FAMILY_ID}/att-1`, `chat/${FAMILY_ID}/att-2`];
-    const documentPaths = [`${FAMILY_ID}/doc-1`];
     const { db, removeObject, spies } = fakeSweepDb([FAMILY_ID], {
       attachmentPaths: [attachmentPaths],
-      documentPaths: [documentPaths],
     });
 
     const summary = await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), removeObject);
 
-    // The BYTES for both prefixes actually leave the private bucket.
-    expect(removeObject.mock.calls.map((c) => c[0]).sort()).toEqual(
-      [...attachmentPaths, ...documentPaths].sort(),
-    );
+    // The BYTES actually leave the private bucket.
+    expect(removeObject.mock.calls.map((c) => c[0]).sort()).toEqual([...attachmentPaths].sort());
     // …and every removal happens BEFORE the family row is deleted, so a stored object
     // can never outlive the row that points at it (crash-safe ordering).
     const deleteAt = spies.events.indexOf('delete-family');
-    expect(deleteAt).toBe(3);
+    expect(deleteAt).toBe(2);
     expect(spies.events.slice(0, deleteAt).every((e) => e.startsWith('remove:'))).toBe(true);
-    expect(summary).toEqual({ erased: 1, purgedObjects: 3 });
+    expect(summary).toEqual({ erased: 1, purgedObjects: 2 });
   });
 
-  it('purges each child AVATAR object from the bucket too — a third path source erasure must not miss (rule #1 / PIPEDA, child photos are the most sensitive asset)', async () => {
+  it('purges each child AVATAR object from the bucket too — a second path source erasure must not miss (rule #1 / PIPEDA, child photos are the most sensitive asset)', async () => {
     const attachmentPaths = [`chat/${FAMILY_ID}/att-1`];
-    const documentPaths = [`${FAMILY_ID}/doc-1`];
     const avatarPaths = [`avatars/${FAMILY_ID}/child-1`, `avatars/${FAMILY_ID}/child-2`];
     const { db, removeObject } = fakeSweepDb([FAMILY_ID], {
       attachmentPaths: [attachmentPaths],
-      documentPaths: [documentPaths],
       avatarPaths: [avatarPaths],
     });
 
     const summary = await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), removeObject);
 
-    // Every child's avatar bytes leave the private bucket alongside attachments + docs;
+    // Every child's avatar bytes leave the private bucket alongside attachments;
     // before the fix, purgeFamilyStorage never queried children, so these two objects
     // survived the account erasure — a stranded child photo (the exact gap this closes).
     const purged = removeObject.mock.calls.map((c) => c[0]);
     expect(purged).toEqual(expect.arrayContaining(avatarPaths));
-    expect(summary.purgedObjects).toBe(
-      attachmentPaths.length + documentPaths.length + avatarPaths.length,
-    );
+    expect(summary.purgedObjects).toBe(attachmentPaths.length + avatarPaths.length);
   });
 
   it('surfaces a storage failure and leaves the family row intact for the next sweep (rule #8)', async () => {
@@ -251,24 +226,4 @@ describe('runDeletionSweep', () => {
     expect(spies.deleteFn).not.toHaveBeenCalled();
   });
 
-  it('deletes the erased family members device push tokens (user-scoped, so the family cascade never reaches them — rule #1)', async () => {
-    const { db, removeObject, spies } = fakeSweepDb([FAMILY_ID], {
-      memberIds: [['user-a', 'user-b']],
-    });
-
-    const summary = await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), removeObject);
-
-    expect(summary).toEqual({ erased: 1, purgedObjects: 0 });
-    // The device tokens (push_tokens.user_id → users.id, NOT families.id) are removed
-    // so a device address can't outlive the erased account.
-    expect(spies.deletedTokensWhere).toHaveBeenCalledTimes(1);
-  });
-
-  it('issues no token delete for a family with no members (no empty delete)', async () => {
-    const { db, removeObject, spies } = fakeSweepDb([FAMILY_ID]);
-
-    await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), removeObject);
-
-    expect(spies.deletedTokensWhere).not.toHaveBeenCalled();
-  });
 });

@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { sniffMime } from '../docs/documents.js';
+import { sniffMime } from '../files/mime.js';
 import {
   type FetchLike,
   SIGNED_URL_TTL_SECONDS,

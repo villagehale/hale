@@ -804,7 +804,6 @@ const TARGET_NOUNS: Record<string, string> = {
   family_invites: 'invite',
   family_memory_episodes: 'logged moment',
   village_candidates: 'village suggestion',
-  routine_proposals: 'routine',
   consent_records: 'consent',
   teen_access_grants: 'teen privacy request',
   conversations: 'Hale',

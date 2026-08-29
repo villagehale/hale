@@ -1,5 +1,4 @@
 import type { AuthoredPlanView } from './authored.js';
-import type { RoutineItemView } from '../village/mappers.js';
 
 /**
  * Pure week-spine core for the Plan page. Folds the chronologically-ordered
@@ -193,43 +192,3 @@ export function buildPlanSpine(
   return { days, undated, settled };
 }
 
-/** One weekday strip of the village routine: the weekday it sits on (null = the
- * item was persisted before the day was captured), and its items in input order. */
-export interface RoutineDayStrip {
-  weekday: Weekday | null;
-  items: RoutineItemView[];
-}
-
-/**
- * Groups routine items into a light week strip: Monday→Sunday buckets in order,
- * then a trailing null-day ("anytime") bucket for pre-day rows. Only non-empty
- * strips are returned, so the strip shows just the days that carry an item. A
- * routine item's `day` is a weekday label, not PII (it survives teen redaction), so
- * grouping on it is safe. Pure — unit-tested without the page.
- */
-export function groupRoutineByDay(
-  items: readonly RoutineItemView[],
-  weekStartDay = 1,
-): RoutineDayStrip[] {
-  const byDay = new Map<Weekday, RoutineItemView[]>();
-  const anytime: RoutineItemView[] = [];
-
-  for (const item of items) {
-    const weekday = WEEKDAYS.find((w) => w === item.day);
-    if (weekday) {
-      const bucket = byDay.get(weekday) ?? [];
-      bucket.push(item);
-      byDay.set(weekday, bucket);
-    } else {
-      anytime.push(item);
-    }
-  }
-
-  const strips: RoutineDayStrip[] = [];
-  for (const weekday of orderedWeekdays(weekStartDay)) {
-    const bucket = byDay.get(weekday);
-    if (bucket && bucket.length > 0) strips.push({ weekday, items: bucket });
-  }
-  if (anytime.length > 0) strips.push({ weekday: null, items: anytime });
-  return strips;
-}

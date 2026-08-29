@@ -12,7 +12,6 @@ import { loadCurateSkill } from './skill';
  * The agent-driven shortlist curator. Same harness + same guarded signals as the
  * ranker, but the `curate-shortlist` skill assembles the FEW picks most worth
  * sharing to another family (best-fitting AND best-endorsed), not the full feed.
- * This is what the shareable /picks artifact draws from.
  *
  * Unlike ranking, curation is allowed to DROP candidates — a shortlist of two is
  * a fine answer. So we validate the model's chosen ids against the real candidate

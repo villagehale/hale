@@ -1,4 +1,3 @@
-import { companionForChild } from '@hale/types';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -14,7 +13,6 @@ import { ReviewNote } from './action-progress';
 import { ApprovalCard, ReversibleCard } from './approval-card';
 import { AttachmentChip } from './ask-hale-thread';
 import { ChildSwitcherView } from './child-switcher-view';
-import { GrowthSection, OverviewSection, RoutinesSection } from './companion-tabs';
 import { ConnectorCard } from './connector-card';
 import { AreaRemoveControl } from './location-switcher';
 import { LogsBrowser } from './logs-browser';
@@ -23,9 +21,8 @@ import { SharedLinkRow } from './shared-links';
 import { TeenAccessGrants } from './teen-access-grants';
 import { TrailTimeline } from './trail-timeline';
 
-// companion-tabs pulls done-button → the 'use server' log module; stub it so a
-// static render doesn't drag the auth/db chain into the test. The logs browser and
-// the Ask composer reach the same module for their own writes.
+// The logs browser and the Ask composer reach the 'use server' log module for their
+// writes; stub it so a static render doesn't drag the auth/db chain into the test.
 vi.mock('~/lib/companion/log', () => ({
   markCompanionItemDone: vi.fn(),
   editQuickEpisode: vi.fn(),
@@ -244,110 +241,6 @@ describe('a trail trace masks the folded step sentences as well as its summary',
   it('keeps every step individually anchored, so an M9 deep link still resolves', () => {
     expect(html).toContain('id="e1"');
     expect(html).toContain('id="e2"');
-  });
-});
-
-describe('companion growth section masks the measurement readings', () => {
-  const child = {
-    id: 'c-1',
-    dateOfBirth: '2025-06-01',
-    lastName: null,
-    avatarUrl: null,
-    ...companionForChild({ dateOfBirth: '2025-06-01', name: 'Noor' }),
-  };
-  // A unique reading string so the assertion can't pass on incidental markup.
-  const growthLogs = [
-    {
-      id: 'g1',
-      childId: 'c-1',
-      episodeType: 'measurement',
-      summary: '7.3 kg',
-      occurredAt: '2026-06-01T10:00:00.000Z',
-      measureKind: 'weight',
-      value: 7.3,
-      unit: 'kg',
-    },
-  ];
-  const html = renderToStaticMarkup(
-    h(GrowthSection, { child, growthLogs, stats: [], units: 'metric', timeZone: 'America/Toronto' }),
-  );
-
-  it('renders the reading at all (guards against a vacuous pass)', () => {
-    expect(html).toContain('7.3 kg');
-  });
-
-  it('keeps each measurement reading inside a [data-hale-pii] subtree', () => {
-    const residue = stripMaskedSubtrees(html);
-    expect(residue).not.toContain('7.3 kg');
-    // The non-PII frame — the WHO data-source disclaimer — survives the strip.
-    expect(residue).toContain('WHO Child Growth Standards');
-  });
-});
-
-describe('companion overview section masks the child name + a scheduled health item', () => {
-  // A newborn so nextHealth populates the HEALTH SCHEDULE card rows (mockup panel 2).
-  const child = {
-    id: 'c-1',
-    dateOfBirth: '2026-05-01',
-    lastName: null,
-    avatarUrl: null,
-    ...companionForChild({ dateOfBirth: '2026-05-01', name: 'Noor' }),
-  };
-  const html = renderToStaticMarkup(
-    h(OverviewSection, {
-      child,
-      recentLogs: [],
-      members: { primary: null, coParent: null },
-      viewerEmail: null,
-      timeZone: 'America/Toronto',
-      onNavigate: () => {},
-    }),
-  );
-
-  it('renders the child name + a scheduled health item at all (guards against a vacuous pass)', () => {
-    // The insight card personalizes with the first name; the health summary leads with
-    // the child's next scheduled visit — both are the child-identifying fields.
-    expect(html).toContain('Noor');
-    expect(html).toContain('well-baby visit');
-  });
-
-  it('keeps the child name and the health item inside a [data-hale-pii] subtree', () => {
-    const residue = stripMaskedSubtrees(html);
-    expect(residue).not.toContain('Noor');
-    expect(residue).not.toContain('well-baby visit');
-    // The non-PII frame — the card eyebrows + in-card links — survives the strip.
-    expect(residue).toContain('health summary');
-    expect(residue).toContain('View health records');
-  });
-});
-
-describe('companion routines section masks a routine item title + note', () => {
-  const routine = {
-    id: 'r-1',
-    weekOf: '2026-06-15',
-    items: [
-      {
-        title: 'Swim lessons at the Y',
-        kind: 'activity',
-        stageNote: 'builds water confidence',
-        day: 'saturday',
-        teenAttributed: false,
-      },
-    ],
-  };
-  const html = renderToStaticMarkup(h(RoutinesSection, { routine }));
-
-  it('renders the routine item at all (guards against a vacuous pass)', () => {
-    expect(html).toContain('Swim lessons at the Y');
-  });
-
-  it('keeps the item title and stage note inside a [data-hale-pii] subtree', () => {
-    const residue = stripMaskedSubtrees(html);
-    expect(residue).not.toContain('Swim lessons at the Y');
-    expect(residue).not.toContain('builds water confidence');
-    // The non-PII frame — the kind pill + the day — survives the strip.
-    expect(residue).toContain('activity');
-    expect(residue).toContain('saturday');
   });
 });
 
@@ -719,7 +612,7 @@ const SENTINEL_SURFACES: AttributeSurface[] = [
     render: () =>
       renderToStaticMarkup(
         h(SharedLinkRow, {
-          link: { kind: 'week_plan', id: 's1', token: 'tok', title: SHARE_TITLE },
+          link: { kind: 'activity', id: 's1', token: 'tok', title: SHARE_TITLE },
           onRevoked: () => {},
         }),
       ),

@@ -22,7 +22,6 @@ import { ExportDataButton } from '~/components/hale/export-data-button';
 import { FamilyParent } from '~/components/hale/family-parent';
 import { FamilyPlan } from '~/components/hale/family-plan';
 import { LoopPrefs } from '~/components/hale/loop-prefs';
-import { NotificationPrefs } from '~/components/hale/notification-prefs';
 import { PlanSummaryCard } from '~/components/hale/plan-summary-card';
 import { SettingsCard, SettingsRow, SettingsSection } from '~/components/hale/settings-card';
 import { SettingsColumn } from '~/components/hale/settings-column';
@@ -43,7 +42,6 @@ import { loadFamilyConnectors } from '~/lib/integrations/load';
 import { PRIVACY_URL, TERMS_URL } from '~/lib/legal-links';
 import { listMcpConnectionsForUser } from '~/lib/mcp/oauth-store';
 import { loadLoopNotificationPrefs } from '~/lib/settings/loop-prefs';
-import { loadPushNotificationPrefs } from '~/lib/settings/push-notification-prefs';
 import { isStripeCheckoutConfigured } from '~/lib/webhooks/stripe-billing';
 
 /**
@@ -58,13 +56,12 @@ import { isStripeCheckoutConfigured } from '~/lib/webhooks/stripe-billing';
  */
 export default async function SettingsPage() {
   const database = db();
-  const [profile, basics, members, connections, pushPrefs, loopPrefs, smsChannel, familyId, userId] =
+  const [profile, basics, members, connections, loopPrefs, smsChannel, familyId, userId] =
     await Promise.all([
       loadViewerProfile(),
       loadFamilyBasics(),
       loadFamilyMembers(),
       loadFamilyConnectors(),
-      loadPushNotificationPrefs(),
       loadLoopNotificationPrefs(),
       loadSmsChannel(),
       currentFamilyId(database),
@@ -180,10 +177,6 @@ export default async function SettingsPage() {
         explainer="What Hale is allowed to send you, and where."
       >
         <SettingsCard>
-          <div className="py-4">
-            <p className="eyebrow text-faded-sage mb-4">push</p>
-            <NotificationPrefs result={pushPrefs} />
-          </div>
           <div className="py-4">
             <p className="eyebrow text-faded-sage mb-4">the sunday loop</p>
             <LoopPrefs result={loopPrefs} />

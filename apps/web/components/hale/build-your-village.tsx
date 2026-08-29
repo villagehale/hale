@@ -1,20 +1,14 @@
 import { Sprout } from '~/components/illos';
 import { InviteCoParent } from '~/components/hale/invite-coparent';
-import { ShareButton } from '~/components/hale/share-button';
-import { ShareWeekButton } from '~/components/hale/share-week-button';
 
 /**
  * Build-your-village — the growth engine, made a primary, always-visible action
  * (it's how the village compounds). Warmer than the rest of the authed app: a
  * soft apricot band with the sprout illo, the co-parent invite as the headline
- * action, plus the two public-share affordances (this week's plan, and the
- * endorsed picks shortlist). Each share mints a privacy-safe public link and
- * writes an audit row server-side (rule #6).
- *
- * `nothingToShare` disables the week/picks share when there's no plan to anchor a
- * token, so a parent always sees why rather than hitting a dead button.
+ * action. (The week/picks public-share affordances died with routine_proposals —
+ * the per-activity share lives on each card.)
  */
-export function BuildYourVillage({ nothingToShare }: { nothingToShare: boolean }) {
+export function BuildYourVillage() {
   return (
     <section className="panel panel-apricot-tint">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-10 items-start">
@@ -31,25 +25,6 @@ export function BuildYourVillage({ nothingToShare }: { nothingToShare: boolean }
                 the more the picks are worth.
               </p>
             </div>
-          </div>
-          <div className="mt-6 flex flex-wrap items-start gap-x-6 gap-y-4">
-            {nothingToShare ? (
-              <ShareWeekButton nothingToShare />
-            ) : (
-              <>
-                <ShareButton
-                  endpoint="/api/village/share"
-                  label="share this week"
-                  shareTitle="this week's plan on Hale"
-                />
-                <ShareButton
-                  endpoint="/api/village/picks/share"
-                  label="share my picks"
-                  shareTitle="our village picks on Hale"
-                  variant="ghost"
-                />
-              </>
-            )}
           </div>
         </div>
         <div className="lg:col-span-7 lg:border-l lg:border-rule lg:pl-10">

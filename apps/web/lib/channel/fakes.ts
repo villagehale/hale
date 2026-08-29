@@ -37,9 +37,6 @@ export const fakeRenderer: TemplateRenderer = {
     if (channel === 'email') {
       return { kind: 'email', subject: message.templateKey, html: '', text: message.templateKey };
     }
-    if (channel === 'sms') {
-      return { kind: 'sms', text: message.templateKey };
-    }
-    return { kind: 'push', title: message.templateKey, body: '' };
+    return { kind: 'sms', text: message.templateKey };
   },
 };

@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { auth } from '~/auth';
 import { db } from '~/lib/db';
 import { resolveUserIdForUser } from '~/lib/family';
-import { consumeConnectNonce } from '~/lib/integrations/connect-nonce';
 import { verifyConnectState } from '~/lib/integrations/connect-state';
 import { CONNECTOR_SCOPES, exchangeCodeForTokens } from '~/lib/integrations/google-oauth';
 import { saveConnection } from '~/lib/integrations/store';
@@ -23,13 +22,9 @@ export const runtime = 'nodejs';
  * tokens would then land under the attacker's family (rule #1). So we bind the
  * completer to the minter before storing anything:
  *   - web (no `surface`): require an authed session whose user == the bound user.
- *   - mobile (no session possible): consume a single-use nonce minted at connect-url
- *     time — a captured/replayed mobile consent url is dead after one use. NOTE:
- *     this closes REPLAY only. The FIRST use by a phished non-minter still lands
- *     (accepted residual, typical of native OAuth; Google's consent screen still
- *     names Hale + the readonly scope). Fully closing it would mean verifying the
- *     granting Google account's id_token against the connecting user — a deliberate
- *     follow-up if the residual is ever unacceptable.
+ *   - mobile: rejected outright — the native mint route (and the single-use-nonce
+ *     binding that made mobile consent bindable) was retired with the Expo app
+ *     (VIL-318), so a mobile-surface state can only be stale or replayed.
  *
  * On success the connection is stored (tokens envelope-encrypted) and the parent is
  * bounced back to Settings. Failures redirect with a status flag — never a raw
@@ -62,19 +57,18 @@ export async function GET(req: NextRequest) {
 
   // Bind the completing party to the state's minter (consent-fixation guard, rule #1).
   if (bound.surface === 'mobile') {
-    // No browser session on the mobile leg — the single-use nonce is the binding.
-    if (!bound.nonce || !(await consumeConnectNonce(database, bound.nonce, bound.familyId))) {
-      return back('invalid', 'mobile');
-    }
-  } else {
-    const session = await auth();
-    const externalAuthId = session?.user?.id;
-    const sessionUserId = externalAuthId
-      ? await resolveUserIdForUser(externalAuthId, database)
-      : null;
-    if (!sessionUserId || sessionUserId !== bound.userId) {
-      return back('invalid');
-    }
+    // The mobile mint (and its single-use-nonce binding) was retired with the Expo
+    // app (VIL-318): nothing mints a mobile state any more, so one arriving here is
+    // stale or replayed — fail closed rather than complete an unbindable consent.
+    return back('invalid', 'mobile');
+  }
+  const session = await auth();
+  const externalAuthId = session?.user?.id;
+  const sessionUserId = externalAuthId
+    ? await resolveUserIdForUser(externalAuthId, database)
+    : null;
+  if (!sessionUserId || sessionUserId !== bound.userId) {
+    return back('invalid');
   }
 
   try {

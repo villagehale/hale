@@ -4,18 +4,21 @@ import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 
 /**
  * Pure row → view-shape mappers for the mobile Messages inbox — "Hale's notes to
- * you": the reverse-chron feed of the family's daily digests + the action
- * lifecycle a parent should see (a draft awaiting their yes, something Hale did,
- * something that needs them). Kept free of I/O so the redaction + copy logic is
- * unit-testable; the loader does the querying and passes rows in.
+ * you": the action lifecycle a parent should see (a draft awaiting their yes,
+ * something Hale did, something that needs them). Kept free of I/O so the
+ * redaction + copy logic is unit-testable; the loader does the querying and
+ * passes rows in.
  *
  * Hard rule #1 (teen privacy): an ACTION row that concerns a 13+ child is
  * redacted structurally — `teenContent` is an EXPLICIT input, and when true the
  * raw drafted payload never reaches the preview (it degrades to the shared
- * placeholder). The DIGEST brief is already a parent-facing, pre-redacted slice
- * (daily-digests.ts: "no raw teen content — rule #1"), so it surfaces as written.
+ * placeholder).
  */
 
+/** 'digest' has no producer since the daily brief was retired (its table is
+ * dropped), but it stays in the view vocabulary: `digest-<uuid>` note anchors
+ * persist in conversations.note_key (coach/note-key.ts keeps them addressable),
+ * and shipped mobile builds parse it as a legal kind. */
 export type MessageKind = 'digest' | 'action';
 
 /** The action lifecycle states a parent sees in the feed — a subset of the
@@ -46,12 +49,6 @@ export interface MessageView {
    * request time in the family's zone (like `when`), so it never leaks the server's
    * UTC day. */
   today?: boolean;
-}
-
-export interface DigestMessageRow {
-  id: string;
-  briefText: string;
-  generatedAt: Date;
 }
 
 export interface ActionMessageRow {
@@ -90,26 +87,9 @@ function actionBody(row: ActionMessageRow, label: string): string {
   }
 }
 
-const DIGEST_EYEBROW = 'Daily brief';
-
 /** Whether `instant` lands on the same family-zone calendar day as `now`. */
 function isToday(instant: Date, timeZone: string, now: Date): boolean {
   return dayKeyOf(instant, timeZone) === dayKeyOf(now, timeZone);
-}
-
-export function toDigestMessage(
-  row: DigestMessageRow,
-  timeZone: string,
-  now: Date = new Date(),
-): MessageView {
-  return {
-    id: `digest-${row.id}`,
-    kind: 'digest',
-    eyebrow: DIGEST_EYEBROW,
-    body: row.briefText,
-    when: formatDateTime(row.generatedAt, timeZone, now),
-    today: isToday(row.generatedAt, timeZone, now),
-  };
 }
 
 export function toActionMessage(

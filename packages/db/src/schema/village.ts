@@ -181,50 +181,6 @@ export const villageSaves = pgTable(
 );
 
 /**
- * One item within a week's routine proposal. Defined locally because @hale/db is
- * a leaf package and must not depend on @hale/types (would create a cycle) —
- * same pattern as ClassifierSuggestion in events.ts.
- */
-export interface RoutineProposalItem {
-  title: string;
-  kind: string;
-  childId: string | null;
-  stageNote: string;
-  /** The weekday the routine agent placed this item on ("monday"–"sunday").
-   * Additive + optional: rows written before this field stay valid and read back
-   * as undefined (no day chip), so no data migration is needed (rule #9). */
-  day?: string;
-}
-
-/**
- * A stage-aware weekly routine the village agent proposes for a family. The
- * unique (family_id, week_of) index makes a re-run upsert the same week's row
- * rather than duplicate it.
- */
-export const routineProposals = pgTable(
-  'routine_proposals',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    familyId: uuid('family_id')
-      .notNull()
-      .references(() => families.id, { onDelete: 'cascade' }),
-    weekOf: date('week_of').notNull(),
-    items: jsonb('items').$type<RoutineProposalItem[]>().notNull().default([]),
-    /** Opaque token for a public, read-only share of this routine (viral leg).
-     * Nullable: only set when a parent opts to share. UNIQUE so the token alone
-     * resolves the row. */
-    shareToken: text('share_token').unique(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    familyWeekIdx: uniqueIndex('routine_proposals_family_week_idx').on(
-      table.familyId,
-      table.weekOf,
-    ),
-  }),
-);
-
-/**
  * The materialized agent-ranked feed order for one family — one row per family
  * (family_id is the PK). The rank-recommendations agent (~25s) runs in the
  * BACKGROUND on the write events that change the candidate set, and stores the
@@ -249,8 +205,6 @@ export const villageFeedRank = pgTable('village_feed_rank', {
 
 export type VillageCandidate = typeof villageCandidates.$inferSelect;
 export type NewVillageCandidate = typeof villageCandidates.$inferInsert;
-export type RoutineProposal = typeof routineProposals.$inferSelect;
-export type NewRoutineProposal = typeof routineProposals.$inferInsert;
 export type VillageEndorsement = typeof villageEndorsements.$inferSelect;
 export type NewVillageEndorsement = typeof villageEndorsements.$inferInsert;
 export type VillageSave = typeof villageSaves.$inferSelect;

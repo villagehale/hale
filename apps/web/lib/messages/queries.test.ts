@@ -5,8 +5,9 @@ import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
  * loadMessages end-to-end over a fake db — the mobile Messages inbox loader. Covers
  * the two things that must be right structurally: rule #1 teen redaction (a teen
  * action's raw type never reaches the feed, including the double-miss family
- * fallback), and the reverse-chron merge of digest + action rows. The db chokepoint
- * (~/lib/db) is mocked; the loader owns the redaction so the route can stay thin.
+ * fallback), and the reverse-chron order of action rows by their settled instant.
+ * The db chokepoint (~/lib/db) is mocked; the loader owns the redaction so the
+ * route can stay thin.
  */
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
@@ -18,11 +19,6 @@ vi.mock('~/lib/family', () => ({ currentFamilyId: async () => FAMILY_ID,
   currentUserId: async () => null,
 }));
 
-interface DigestRow {
-  id: string;
-  breakdown: { briefText?: string } | null;
-  generatedAt: Date;
-}
 interface ActionRow {
   id: string;
   actionType: string;
@@ -36,7 +32,6 @@ interface ActionRow {
 }
 
 let childrenDob: Array<{ dateOfBirth: string }> = [];
-let digestRows: DigestRow[] = [];
 let actionRows: ActionRow[] = [];
 
 /** Fake db routed by projection keys, mirroring the approvals double-miss fake. */
@@ -52,15 +47,6 @@ function fakeDb() {
       return {
         from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [] }) }) }),
       };
-    }
-    // daily_digests read: select includes `breakdown`.
-    if (keys.includes('breakdown')) {
-      const node = () =>
-        Object.assign(Promise.resolve(digestRows), {
-          limit: () => Promise.resolve(digestRows),
-          orderBy: () => node(),
-        });
-      return { from: () => ({ where: () => node() }) };
     }
     // actions join: select includes `actionType`.
     const node = () =>
@@ -83,7 +69,6 @@ describe('loadMessages', () => {
   beforeEach(() => {
     process.env.DATABASE_URL = 'postgres://test';
     childrenDob = [{ dateOfBirth: TODDLER_DOB }];
-    digestRows = [];
     actionRows = [];
   });
   afterEach(() => {
@@ -115,21 +100,7 @@ describe('loadMessages', () => {
     expect(msg?.body).toBe('Hale drafted "Reply to email" for your yes.');
   });
 
-  it('surfaces the digest brief prose wholesale, skipping digest rows with no briefText', async () => {
-    digestRows = [
-      { id: 'd1', breakdown: { briefText: 'A calm day.' }, generatedAt: new Date('2026-06-20T13:00:00Z') },
-      { id: 'd2', breakdown: {}, generatedAt: new Date('2026-06-19T13:00:00Z') },
-    ];
-    const msgs = await loadMessages();
-    expect(msgs).toHaveLength(1);
-    expect(msgs[0]?.kind).toBe('digest');
-    expect(msgs[0]?.body).toBe('A calm day.');
-  });
-
-  it('merges digests + actions newest-first by their true instant, not the display string', async () => {
-    digestRows = [
-      { id: 'd1', breakdown: { briefText: 'Brief.' }, generatedAt: new Date('2026-06-20T09:00:00Z') },
-    ];
+  it('orders actions newest-first by their true settled instant, not the display string', async () => {
     actionRows = [
       {
         id: 'a1',
@@ -155,8 +126,8 @@ describe('loadMessages', () => {
       },
     ];
     const msgs = await loadMessages();
-    // a1 executed Jun 21 (newest), digest Jun 20, a2 drafted Jun 18 (oldest).
-    expect(msgs.map((m) => m.id)).toEqual(['action-a1', 'digest-d1', 'action-a2']);
+    // a1 executed Jun 21 (newest), a2 drafted Jun 18 (oldest).
+    expect(msgs.map((m) => m.id)).toEqual(['action-a1', 'action-a2']);
   });
 
   it('redacts a teen action end-to-end — the raw action type never reaches the feed (rule #1)', async () => {
@@ -215,13 +186,10 @@ describe('loadMessages', () => {
         childDob: null,
       },
     ];
-    digestRows = [
-      { id: 'd1', breakdown: { briefText: 'Brief.' }, generatedAt: new Date('2026-06-15T09:00:00Z') },
-    ];
     const msgs = await loadMessages();
-    // Declined Jun 22 sorts above the Jun 15 digest — by when it settled, not the
-    // Jun 10 draft; and the copy says declined, never "rolled back" (it never ran).
-    expect(msgs.map((m) => m.id)).toEqual(['action-a1', 'digest-d1']);
+    // Stamped by when it settled (Jun 22), not the Jun 10 draft; and the copy says
+    // declined, never "rolled back" (it never ran).
+    expect(msgs.map((m) => m.id)).toEqual(['action-a1']);
     expect(msgs[0]?.body).toBe('You declined "Reply to email".');
   });
 });

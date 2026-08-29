@@ -12,8 +12,8 @@ import type { Channel, ChannelKind, TemplateRenderer } from './types';
 /**
  * Builds the prod DispatchPorts from a db handle + the injected channels/renderer.
  * The dispatch stays a pure decision engine; this is the only place it touches the
- * real db, the CASL email seam (hasOptedOut/recordEmailSend), the loop prefs, the
- * SMS-consent read, and push-token existence — so policy lives in exactly one place.
+ * real db, the CASL email seam (hasOptedOut/recordEmailSend), the loop prefs, and
+ * the SMS-consent read — so policy lives in exactly one place.
  */
 export function buildDispatchPorts(
   database: Database,
@@ -42,14 +42,6 @@ export function buildDispatchPorts(
     // non-revoked parent_channels row (consent_records is its append-only CASL
     // ledger, not the live state).
     smsConsentLive: async (userId) => (await loadSmsChannelState(database, userId)).enrolled,
-    hasLivePushToken: async (userId) => {
-      const rows = await database
-        .select({ id: schema.pushTokens.id })
-        .from(schema.pushTokens)
-        .where(eq(schema.pushTokens.userId, userId))
-        .limit(1);
-      return rows.length > 0;
-    },
     countRecent: (userId, category, channel, since) =>
       countRecentSends(userId, category, channel, since, database),
     activeDedupe: (dedupeKey) => dedupeActive(dedupeKey, database),
