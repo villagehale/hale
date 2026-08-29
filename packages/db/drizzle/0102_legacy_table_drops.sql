@@ -1,7 +1,9 @@
--- DESTRUCTIVE by explicit founder approval 2026-08-28 (VIL-331-adjacent cleanup;
--- the rule #9 gate is satisfied by that approval). All eight tables are 0 rows at
--- drop time; every code path that read or wrote them was deleted earlier on this
--- branch. None has an inbound FK from any surviving table, so order is
+-- DESTRUCTIVE by explicit founder approval, 2026-08-28/29 operator session:
+-- the 5-table drop list was approved verbatim ("approved"), and push_tokens,
+-- push_sends, routine_proposals were each approved through an interactive
+-- decision ("Drop it all" / "Drop the leg the recommended way"). All eight
+-- tables held 0 rows at drop time; every code path that read or wrote them is
+-- deleted on this branch. No inbound FKs from surviving tables; order is
 -- unconstrained; each DROP removes its own outbound FKs, indexes and policies.
 DROP TABLE IF EXISTS "child_documents";--> statement-breakpoint
 DROP TABLE IF EXISTS "daily_digests";--> statement-breakpoint
