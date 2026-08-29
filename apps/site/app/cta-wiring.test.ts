@@ -102,6 +102,20 @@ const placements = new Set(
   smsAnchors.map((anchor) => /data-cta-placement="([^"]*)"/.exec(anchor.tag)?.[1] ?? ''),
 );
 
+/** The desktop chips, collected off the same walk: `sms:` is a silent no-op on a
+ * laptop, so wherever a band offers a composer it offers the clipboard too, and
+ * the chip wears the same visible `data-cta` wiring as the anchors above. */
+const copyChips = rendered.flatMap(({ route, html }) =>
+  [...html.matchAll(/<button\s[^>]*>/g)]
+    .map((match) => match[0])
+    .filter((tag) => tag.includes('data-cta="copy_number_click"'))
+    .map((tag) => ({ route, tag })),
+);
+
+const chipPlacements = new Set(
+  copyChips.map((chip) => /data-cta-placement="([^"]*)"/.exec(chip.tag)?.[1] ?? ''),
+);
+
 /** Every component and page file the site ships, read as source. */
 const sourceFiles = ['app', 'components']
   .flatMap((dir) =>
@@ -174,6 +188,10 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     for (const placement of ['header', 'hero', 'closing', 'faq', 'text_entry']) {
       expect(placements, `the walk must reach the ${placement} CTA`).toContain(placement);
     }
+    // The city pages' in-body door (2026-08 ad week): the dates table is what
+    // the ad promised, so each guide offers the composer right under it, on its
+    // own `_dates` placement, separable from the closing band's.
+    expect(placements).toContain('toronto_swim_dates');
     expect(smsAnchors.every((anchor) => anchor.tag.includes(`href="sms:${LIVE_NUMBER}`))).toBe(
       true,
     );
@@ -186,5 +204,50 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     // matches nothing".
     expect(rawAnchors('CONTACT_EMAIL').length).toBeGreaterThanOrEqual(3);
     expect(sourceFiles.length).toBeGreaterThanOrEqual(20);
+  });
+});
+
+describe('the desktop path is wired the same way', () => {
+  it('names a placement on every copy-number chip', () => {
+    // A chip with no `cta_placement` merges into the unnamed bucket — the same
+    // failure as an unwired anchor: the desktop funnel stops saying which door.
+    const unnamed = copyChips.filter((chip) => !/data-cta-placement="[^"]+"/.test(chip.tag));
+    expect(unnamed.map((chip) => `${chip.route} — ${chip.tag}`)).toEqual([]);
+  });
+
+  it('really is reading the chips — the known copy chips are all present', () => {
+    // Positive control, same shape as the anchors': an empty "unnamed" list must
+    // mean "all named", not "the walk found no buttons".
+    expect(copyChips.length).toBeGreaterThanOrEqual(10);
+    for (const placement of [
+      'hero',
+      'closing',
+      'text_entry',
+      'faq',
+      'about',
+      'pricing_band',
+      'toronto_swim_dates',
+    ]) {
+      expect(chipPlacements, `the walk must reach the ${placement} chip`).toContain(placement);
+    }
+  });
+});
+
+describe('the money pages report engagement, not just clicks', () => {
+  it('mounts the scroll tracker on the city guides, named per page', () => {
+    // LandingScrollAnalytics renders NOTHING, so no walk over markup can see a
+    // page that quietly stopped mounting it — source is the only surface the
+    // wiring exists on. The city guides stamp a coarse `page` (the guide's
+    // placement) on their `landing_scroll`; the homepage mounts it bare, since
+    // its historical rows carry no `page` and absent must keep meaning "the
+    // landing".
+    const registration = code(
+      readFileSync(join(SITE_ROOT, 'components/registration-page.tsx'), 'utf8'),
+    );
+    expect(registration).toContain('<LandingScrollAnalytics page={guide.placement} />');
+    const landing = code(
+      readFileSync(join(SITE_ROOT, 'components/landing/v4/landing-v4.tsx'), 'utf8'),
+    );
+    expect(landing).toContain('<LandingScrollAnalytics />');
   });
 });
