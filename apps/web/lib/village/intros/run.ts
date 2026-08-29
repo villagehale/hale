@@ -19,7 +19,10 @@ import {
 } from '~/lib/channel/identity/ask-voice';
 import { INTRO_IDENTITY_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
-import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import {
+  familyHasSyntheticProbeChannel,
+  resolveSendablePhone,
+} from '~/lib/channels/sms-consent-core';
 import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loop/prefs';
 import { discoverableUserIds } from './consent';
 import { INTRO_SOFT_CLOSE, stageWord } from './copy';
@@ -183,6 +186,14 @@ export interface IntroSweepAudit {
 
 export interface IntroSweepDeps {
   selectFamilies(database: Database, now: Date): Promise<IntroSweepFamily[]>;
+  /** Which of these families are the operator's synthetic probes (+1 437-555-XXXX,
+   * lib/channels/phone.ts). A probe exercises the real intake in its own thread and
+   * must never put a cross-household text in front of a HUMAN — neither as the family
+   * being announced nor as the recipient (2026-08-28 ads-week audit). */
+  syntheticProbeFamilyIds(
+    database: Database,
+    familyIds: readonly string[],
+  ): Promise<Set<string>>;
   discoverableUserIds(database: Database, userIds: readonly string[]): Promise<Set<string>>;
   /** Parents who already carry ANY answer on the discoverability scope. */
   askedUserIds(database: Database, userIds: readonly string[]): Promise<Set<string>>;
@@ -299,6 +310,9 @@ export interface IntroSweepResult {
   closed: number;
   held: Record<ProactiveHoldReason, number>;
   skipped: Record<IntroSkipReason, number>;
+  /** Synthetic probe families dropped before ANY phase ran (rule #11: counted, never a
+   * silent exclusion). Non-zero is a live probe running — routine, not a bug. */
+  skippedSynthetic: number;
   failed: number;
 }
 
@@ -316,6 +330,7 @@ function emptyResult(enabled: boolean): IntroSweepResult {
     closed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     skipped: { no_fsa: 0, no_matchable_child: 0 },
+    skippedSynthetic: 0,
     failed: 0,
   };
 }
@@ -991,9 +1006,18 @@ export async function runVillageIntroSweep(
   const scope = introScope(villageIntrosAllowlist());
 
   const result = emptyResult(true);
-  const families = (await deps.selectFamilies(database, now))
+  const selected = (await deps.selectFamilies(database, now))
     .filter((family) => scope(family.familyId))
     .slice(0, MAX_FAMILIES_PER_RUN);
+  // Probes out BEFORE any phase: a synthetic family must neither be announced to a real
+  // household nor receive a card about one, and dropping it here covers every phase at
+  // once. Counted, never silent (rule #11).
+  const synthetic = await deps.syntheticProbeFamilyIds(
+    database,
+    selected.map((family) => family.familyId),
+  );
+  const families = selected.filter((family) => !synthetic.has(family.familyId));
+  result.skippedSynthetic = selected.length - families.length;
   if (families.length === 0) return result;
 
   await runAskPhase(database, deps, scope, families, result, now);
@@ -1201,6 +1225,15 @@ async function readLiveProposals(database: Database): Promise<SweepProposal[]> {
 export function defaultIntroSweepDeps(): IntroSweepDeps {
   return {
     selectFamilies: (database) => selectIntroFamilies(database),
+    // Sequential per-family reads of an hourly, sub-200-family sweep — the ONE reader
+    // that knows what a probe is stays in sms-consent-core, and this stays a binding.
+    syntheticProbeFamilyIds: async (database, familyIds) => {
+      const synthetic = new Set<string>();
+      for (const familyId of familyIds) {
+        if (await familyHasSyntheticProbeChannel(database, familyId)) synthetic.add(familyId);
+      }
+      return synthetic;
+    },
     discoverableUserIds,
     askedUserIds: readAskedUserIds,
     loadChildren: readIntroChildren,

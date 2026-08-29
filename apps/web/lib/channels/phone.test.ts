@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { maskPhoneE164, normalizePhoneE164 } from './phone';
+import { isSyntheticProbeNumber, maskPhoneE164, normalizePhoneE164 } from './phone';
 
 describe('normalizePhoneE164 (NANP / CA+US only, v1)', () => {
   it('accepts a clean E.164 number', () => {
@@ -45,5 +45,15 @@ describe('normalizePhoneE164 (NANP / CA+US only, v1)', () => {
 describe('maskPhoneE164', () => {
   it('reveals only the last four digits', () => {
     expect(maskPhoneE164('+15195551234')).toBe('••• ••• 1234');
+  });
+});
+
+describe('isSyntheticProbeNumber', () => {
+  it('recognises the operator probe range and nothing beside it', () => {
+    expect(isSyntheticProbeNumber('+14375550142')).toBe(true);
+    // A real Toronto 437 number outside the 555 exchange is a person.
+    expect(isSyntheticProbeNumber('+14376550142')).toBe(false);
+    // Another area code's 555 exchange is not the probe range.
+    expect(isSyntheticProbeNumber('+14165550142')).toBe(false);
   });
 });
