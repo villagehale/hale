@@ -24,6 +24,8 @@ const WELCOME: OpenQuestion = {
   description: 'An offer to send your welcome note to a new family.',
   subject: 'sending your welcome note to the new family',
   answerable: { yes: true, no: true },
+  askedAt: null,
+  solicited: false,
 };
 
 const CALENDAR: OpenQuestion = {
@@ -32,6 +34,8 @@ const CALENDAR: OpenQuestion = {
   description: 'Add to your calendar',
   subject: 'add to your calendar',
   answerable: { yes: true, no: true },
+  askedAt: null,
+  solicited: false,
 };
 
 const DIGEST: OpenQuestion = {
@@ -40,6 +44,8 @@ const DIGEST: OpenQuestion = {
   description: 'Note it in your digest',
   subject: 'note in your digest',
   answerable: { yes: true, no: true },
+  askedAt: null,
+  solicited: false,
 };
 
 function menu(

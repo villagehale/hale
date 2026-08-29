@@ -86,6 +86,8 @@ const approvalQuestion: OpenQuestion = {
   description: 'Move a calendar item',
   subject: 'the calendar move',
   answerable: { yes: true, no: true },
+  askedAt: null,
+  solicited: false,
 };
 
 const introQuestion: OpenQuestion = {
@@ -94,6 +96,8 @@ const introQuestion: OpenQuestion = {
   description: 'Whether to meet one nearby Hale family',
   subject: 'meeting the family nearby',
   answerable: { yes: true, no: true },
+  askedAt: null,
+  solicited: false,
 };
 
 describe('a spoken yes', () => {

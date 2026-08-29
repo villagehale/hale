@@ -55,6 +55,8 @@ const APPROVAL_QUESTION: OpenQuestion = {
   description: 'Add to your calendar',
   subject: 'add to your calendar',
   answerable: { yes: true, no: true },
+  askedAt: null,
+  solicited: false,
 };
 
 const INTRO_QUESTION: OpenQuestion = {
@@ -63,6 +65,8 @@ const INTRO_QUESTION: OpenQuestion = {
   description: 'Whether to meet one nearby Hale family',
   subject: 'meeting the family nearby',
   answerable: { yes: true, no: true },
+  askedAt: null,
+  solicited: false,
 };
 
 function spine(pending: PendingAction[]): ApprovalSpine & { approved: string[] } {
@@ -94,6 +98,7 @@ function offerFrom(ref: string | null): OpenCheckupOffer | null {
     checkpoint,
     childId: parsed?.childId ?? null,
     summary: 'Whether to put booking this on your week',
+    askedAt: new Date('2026-08-20T14:00:00.000Z'),
   };
 }
 
