@@ -115,14 +115,6 @@ describe('a phone-claimed session (email NULL) can write its settings', () => {
     assertGotThroughTheDoor(result);
   });
 
-  it('can change a push notification preference', async () => {
-    const { setPushNotificationPref } = await import('~/lib/settings/push-notification-prefs');
-
-    const result = await setPushNotificationPref('pushNewPicks', false);
-
-    assertGotThroughTheDoor(result);
-  });
-
   it('can change the family plan tier', async () => {
     const { setPlanAction } = await import('~/lib/family/children-actions');
 
@@ -151,18 +143,18 @@ describe('a phone-claimed session (email NULL) can write its settings', () => {
 describe('the gate still shuts on a session that has no subject', () => {
   it('refuses a signed-out caller', async () => {
     authMock.mockResolvedValue(null);
-    const { setPushNotificationPref } = await import('~/lib/settings/push-notification-prefs');
+    const { setNotificationPrefAction } = await import('~/lib/settings/notification-prefs');
 
-    const result = await setPushNotificationPref('pushNewPicks', false);
+    const result = await setNotificationPrefAction('dailyBriefEmail', false);
 
     expect(result.status).toBe('unauthenticated');
   });
 
   it('refuses a session carrying an email but no subject — an id is what identifies', async () => {
     authMock.mockResolvedValue({ user: { email: 'p@example.com' } });
-    const { setPushNotificationPref } = await import('~/lib/settings/push-notification-prefs');
+    const { setNotificationPrefAction } = await import('~/lib/settings/notification-prefs');
 
-    const result = await setPushNotificationPref('pushNewPicks', false);
+    const result = await setNotificationPrefAction('dailyBriefEmail', false);
 
     expect(result.status).toBe('unauthenticated');
   });

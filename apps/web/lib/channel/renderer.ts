@@ -2,7 +2,7 @@ import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from
 
 /**
  * A placeholder renderer for the seam until per-template renderers land (B2/D1/E3
- * own templates/<key>/{sms,push,email}.ts). Real content — and any child name,
+ * own templates/<key>/{sms,email}.ts). Real content — and any child name,
  * routed through loopChildName — is the template's job; this only lets the seam be
  * wired end-to-end today. It reads pre-rendered fields a caller sets on payload; it
  * never interpolates content into HTML (rule #1 + injection safety), so a caller that
@@ -35,9 +35,6 @@ export const defaultLoopRenderer: TemplateRenderer = {
         text,
       };
     }
-    if (channel === 'sms') {
-      return { kind: 'sms', text };
-    }
-    return { kind: 'push', title: typeof p.title === 'string' ? p.title : 'Hale', body: text };
+    return { kind: 'sms', text };
   },
 };

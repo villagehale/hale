@@ -37,17 +37,12 @@ function makeQueue() {
   return { queue: { send }, send };
 }
 
-/** The injected new-picks notifier: a spy so the loop-wiring test asserts WHICH
- * families are notified, without touching the real push send path. */
-const notifyNewPicksMock = vi.fn(async () => ({ status: 'sent', notified: 1 }));
-
 describe('runDiscoveryCron', () => {
   beforeEach(() => {
     vi.resetModules();
     discoverForFamilyMock.mockReset();
     selectFamiliesNeedingDiscoveryMock.mockReset();
     backfillCandidateCoordsMock.mockReset();
-    notifyNewPicksMock.mockClear();
     backfillCandidateCoordsMock.mockResolvedValue({ scanned: 0, geocoded: 0 });
   });
 
@@ -63,13 +58,7 @@ describe('runDiscoveryCron', () => {
 
     const { queue, send } = makeQueue();
     const { runDiscoveryCron } = await import('./discovery');
-    const summary = await runDiscoveryCron(
-      {} as never,
-      queue,
-      DEPS,
-      new Date(),
-      notifyNewPicksMock,
-    );
+    const summary = await runDiscoveryCron({} as never, queue, DEPS, new Date());
 
     // Bounded by the discovery cap.
     expect(selectFamiliesNeedingDiscoveryMock).toHaveBeenCalledWith({}, 50, expect.any(Date));
@@ -83,10 +72,6 @@ describe('runDiscoveryCron', () => {
     // candidates (fam-a) — not for the no-children family (fam-b).
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith('village.rerank', { family_id: 'fam-a' });
-    // The new-picks push fires ONLY for the family that got new candidates (fam-a),
-    // with its coarse count — not for the no-children family (fam-b).
-    expect(notifyNewPicksMock).toHaveBeenCalledTimes(1);
-    expect(notifyNewPicksMock).toHaveBeenCalledWith('fam-a', 3, {});
     // The bounded coords backfill runs once per discovery run.
     expect(backfillCandidateCoordsMock).toHaveBeenCalledTimes(1);
     expect(summary.backfill).toEqual({ scanned: 0, geocoded: 0 });
@@ -100,13 +85,7 @@ describe('runDiscoveryCron', () => {
 
     const { queue, send } = makeQueue();
     const { runDiscoveryCron } = await import('./discovery');
-    const summary = await runDiscoveryCron(
-      {} as never,
-      queue,
-      DEPS,
-      new Date(),
-      notifyNewPicksMock,
-    );
+    const summary = await runDiscoveryCron({} as never, queue, DEPS, new Date());
 
     expect(discoverForFamilyMock).toHaveBeenCalledTimes(2);
     expect(summary.results).toEqual([
@@ -116,9 +95,6 @@ describe('runDiscoveryCron', () => {
     // The failed family is never enqueued; only the one that wrote candidates is.
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith('village.rerank', { family_id: 'fam-b' });
-    // Likewise the push fires only for the family that got candidates (fam-b).
-    expect(notifyNewPicksMock).toHaveBeenCalledTimes(1);
-    expect(notifyNewPicksMock).toHaveBeenCalledWith('fam-b', 1, {});
   });
 
   it('does NOT enqueue a rerank when discovery wrote zero candidates', async () => {
@@ -127,10 +103,8 @@ describe('runDiscoveryCron', () => {
 
     const { queue, send } = makeQueue();
     const { runDiscoveryCron } = await import('./discovery');
-    await runDiscoveryCron({} as never, queue, DEPS, new Date(), notifyNewPicksMock);
+    await runDiscoveryCron({} as never, queue, DEPS, new Date());
 
     expect(send).not.toHaveBeenCalled();
-    // Zero new candidates → nothing worth pushing about.
-    expect(notifyNewPicksMock).not.toHaveBeenCalled();
   });
 });

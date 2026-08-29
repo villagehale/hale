@@ -63,7 +63,7 @@ describe('loopTemplateRenderer', () => {
     // "You have a new update from Hale." delivered it as a message — the caller looked
     // successful and the parent got a sentence that says nothing.
     const empty = msg({ templateKey: 'reminder_t1h', payload: {} });
-    for (const channel of ['sms', 'push', 'email'] as const) {
+    for (const channel of ['sms', 'email'] as const) {
       expect(() => loopTemplateRenderer.render(empty, channel, 'generic')).toThrow(/no text/i);
     }
     // Text but no markup is the same bug on the email leg only.

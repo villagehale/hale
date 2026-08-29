@@ -60,7 +60,7 @@ function msg(p: WeeklyPlanPayload): LoopMessage {
 
 function render(
   p: WeeklyPlanPayload,
-  channel: 'email' | 'sms' | 'push',
+  channel: 'email' | 'sms',
   level: ChildNameLevel,
 ): RenderedContent {
   return weeklyPlanRenderer.render(msg(p), channel, level);
@@ -98,12 +98,6 @@ function sms(p: WeeklyPlanPayload, level: ChildNameLevel): string {
 function email(p: WeeklyPlanPayload, level: ChildNameLevel) {
   const r = render(p, 'email', level);
   if (r.kind !== 'email') throw new Error('expected email');
-  return r;
-}
-
-function push(p: WeeklyPlanPayload, level: ChildNameLevel) {
-  const r = render(p, 'push', level);
-  if (r.kind !== 'push') throw new Error('expected push');
   return r;
 }
 
@@ -244,12 +238,6 @@ describe('privacy_sensitive genericization', () => {
     expect(text).not.toContain('6-month checkup');
   });
 
-  it('push never emits the health title verbatim — shows "a checkup"', () => {
-    const body = push(twoItem, 'first_name').body;
-    expect(body).toContain('a checkup');
-    expect(body).not.toContain('6-month checkup');
-  });
-
   it('email MAY show the health detail (parent-facing, non-teen)', () => {
     const html = email(payload({ children: [maya], items: [healthAppt] }), 'first_name').html;
     expect(html).toContain('6-month checkup');
@@ -288,7 +276,6 @@ describe('teen child is forced generic at every level and every channel', () => 
     for (const level of ['first_name', 'relation', 'generic'] as ChildNameLevel[]) {
       expect(sms(teenPlan, level)).not.toContain('Sam');
       expect(email(teenPlan, level).html).not.toContain('Sam');
-      expect(push(teenPlan, level).title).not.toContain('Sam');
       expect(sms(teenPlan, level)).toContain("your teen's week");
     }
   });
@@ -329,9 +316,6 @@ describe('quiet week (0 items)', () => {
     expect(e.html.toLowerCase()).toContain('reply to this email to adjust');
   });
 
-  it('push title is "Your week is ready"', () => {
-    expect(push(quiet, 'generic').title).toBe('Your week is ready');
-  });
 });
 
 describe('all-placed week (items > 0, pending == 0)', () => {
@@ -428,15 +412,13 @@ describe('the pending heading agrees with itself in the singular', () => {
     items: [item({ title: 'Swim class', startsAt: '2026-07-21T16:30', needs: 'calendar_add' })],
   });
 
-  it('says "1 needs your OK" on the email and the push, never "1 need"', () => {
+  it('says "1 needs your OK" on the email, never "1 need"', () => {
     expect(email(one, 'first_name').html).toContain('1 needs your OK');
     expect(email(one, 'first_name').text).toContain('1 needs your OK');
-    expect(push(one, 'first_name').body).toContain('1 needs your OK');
   });
 
   it('keeps the plural for more than one', () => {
     expect(email(fullWeek, 'first_name').html).toContain('4 need your OK');
-    expect(push(fullWeek, 'first_name').body).toContain('4 need your OK');
   });
 });
 
@@ -450,7 +432,4 @@ describe('email — CASL footer + pending line + deep link', () => {
     expect(e.html).toContain('4 need your OK');
   });
 
-  it('push data carries the /plan deep link', () => {
-    expect(push(fullWeek, 'first_name').data?.deepLink).toBe('https://app.villagehale.com/plan');
-  });
 });

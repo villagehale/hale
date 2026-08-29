@@ -15,12 +15,12 @@ import {
 /**
  * The Settings-facing loader/mutator for F11 loop preferences (VIL-216 · A5) —
  * the single source of truth the web Settings card and the mobile route call.
- * Mirrors push-notification-prefs.ts: read the current view, or update one field
+ * Read the current view, or update one field
  * with the audited upsert (rule #6). The validation + write + absent-row default
  * live in lib/loop/prefs (auth-free, unit-tested); this file only adds the
  * auth/family resolution and the degradation contract.
  *
- * Degradation mirrors the push/email prefs libs: no DATABASE_URL / auth-
+ * Degradation mirrors the email prefs lib: no DATABASE_URL / auth-
  * unconfigured → `preview`; configured-but-signed-out → `unauthenticated`; a
  * signed-in parent whose family hasn't resolved → `not_found`. Never fabricates an
  * identity (rule #1).
@@ -83,7 +83,7 @@ type LoopPrefContext =
 
 /**
  * Resolves the signed-in parent's user id + family + db handle. Kept as its own
- * copy (as the push and email prefs libs each do) so the loop feature owns its
+ * copy (as the email prefs lib does) so the loop feature owns its
  * degradation contract; the three distinct auth boundaries never fabricate an
  * identity (rule #1).
  */

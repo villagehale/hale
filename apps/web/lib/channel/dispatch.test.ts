@@ -13,10 +13,9 @@ import type { LoopMessage } from './types';
 
 /**
  * VIL-213 · A2 dispatch policy. Deterministic (no LLM) → plain Vitest with Fakes +
- * an injected clock. Proves the AC + the founder's mirror model: policy is per
- * delivery leg (exchange channel + additive push), a ledger row per outcome
- * (suppression OR send), per-channel dedupe + caps, time_sensitive bypass, and the
- * email CASL dual-write.
+ * an injected clock. Proves the AC: policy is per delivery leg (the parent's
+ * exchange channel), a ledger row per outcome (suppression OR send), per-channel
+ * dedupe + caps, time_sensitive bypass, and the email CASL dual-write.
  */
 
 const TORONTO = 'America/Toronto';
@@ -43,7 +42,6 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     loadParent: async () => ({ email: 'parent@example.com', timezone: TORONTO }),
     emailOptedOut: async () => false,
     smsConsentLive: async () => true,
-    hasLivePushToken: async () => false,
     countRecent: async () => 0,
     activeDedupe: async () => false,
     record: async (w) => {
@@ -63,7 +61,7 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     threadMessage: async (input) => {
       threaded.push(input);
     },
-    channels: { email: fakeChannel('email'), sms: fakeChannel('sms'), push: fakeChannel('push') },
+    channels: { email: fakeChannel('email'), sms: fakeChannel('sms') },
     renderer: fakeRenderer,
     ...overrides,
   };
@@ -138,58 +136,20 @@ describe('suppression matrix — every refusal writes a per-leg ledger row and s
   });
 });
 
-describe('push mirrors, never substitutes — per-leg policy → per-leg rows', () => {
-  it('a suppressed email leg alongside a delivered push leg = two rows', async () => {
-    // Email opted out → suppressed_consent; push still delivers (mirror).
-    const { ports, ledger } = makePorts({
-      emailOptedOut: async () => true,
-      hasLivePushToken: async () => true,
-    });
-    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
-    expect(result.legs).toEqual([
-      { channel: 'email', outcome: 'suppressed_consent' },
-      { channel: 'push', outcome: 'sent' },
-    ]);
-    expect(ledger.map((r) => `${r.channel}:${r.status}`)).toEqual([
-      'email:suppressed_consent',
-      'push:sent',
-    ]);
-  });
-
-  it('both legs deliver, each carrying its own per-channel dedupe key', async () => {
-    const { ports, ledger } = makePorts({ hasLivePushToken: async () => true });
-    await dispatchLoopMessage(
-      message({ category: 'weekly_plan', dedupeKey: 'fam-1:2026-W23:weekly' }),
-      ports,
-    );
-    const sent = ledger.filter((r) => r.status === 'sent');
-    expect(sent.map((r) => `${r.channel}=${r.dedupeKey}`)).toEqual([
-      'email=fam-1:2026-W23:weekly:email',
-      'push=fam-1:2026-W23:weekly:push',
-    ]);
-  });
-});
-
-describe('per-channel dedupe idempotency — a re-drain double-sends neither leg', () => {
-  it('skips only the leg whose per-channel key is already sent; the mirror still delivers', async () => {
+describe('per-channel dedupe idempotency — a re-drain never double-sends', () => {
+  it('skips the leg whose per-channel key is already sent, writing no row', async () => {
     const sentKeys = new Set(['fam-1:2026-W23:weekly:email']); // email already went last drain
     const emailChannel = fakeChannel('email');
-    const pushChannel = fakeChannel('push');
     const { ports, ledger } = makePorts({
-      hasLivePushToken: async () => true,
       activeDedupe: async (key) => sentKeys.has(key),
-      channels: { email: emailChannel, push: pushChannel },
+      channels: { email: emailChannel },
     });
     const result = await dispatchLoopMessage(
       message({ category: 'weekly_plan', dedupeKey: 'fam-1:2026-W23:weekly' }),
       ports,
     );
-    expect(result.legs).toEqual([
-      { channel: 'email', outcome: 'deduped' },
-      { channel: 'push', outcome: 'sent' },
-    ]);
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'deduped' }]);
     expect(emailChannel.calls).toHaveLength(0); // not re-sent
-    expect(pushChannel.calls).toHaveLength(1); // mirror delivered
     expect(ledger.filter((r) => r.channel === 'email')).toHaveLength(0); // dedupe writes no row
   });
 });
@@ -205,12 +165,8 @@ describe('email CASL dual-write + audit', () => {
     ]);
   });
 
-  it('does NOT write email_sends for a push leg', async () => {
-    const { ports, emailSends } = makePorts({
-      prefs: { loopChannel: 'sms' },
-      smsConsentLive: async () => false, // sms leg suppressed
-      hasLivePushToken: async () => true, // push delivers
-    });
+  it('does NOT write email_sends for a non-email leg', async () => {
+    const { ports, emailSends } = makePorts({ prefs: { loopChannel: 'sms' } });
     await dispatchLoopMessage(message(), ports);
     expect(emailSends).toEqual([]);
   });
@@ -229,16 +185,12 @@ describe("the parent's own text thread", () => {
     ]);
   });
 
-  it('threads the SMS leg only — an email or a push mirror is not a text', async () => {
-    // The thread is the SMS thread (channelSmsNoteKey). A push MIRRORS the same
-    // sentence, so threading it too would show the parent Hale saying it twice.
-    const { ports, threaded } = makePorts({
-      prefs: { loopChannel: 'sms' },
-      hasLivePushToken: async () => true,
-    });
+  it('threads the SMS leg only — an email is not a text', async () => {
+    // The thread is the SMS thread (channelSmsNoteKey).
+    const { ports, threaded } = makePorts({ prefs: { loopChannel: 'sms' } });
     const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
 
-    expect(result.legs.map((l) => `${l.channel}:${l.outcome}`)).toEqual(['sms:sent', 'push:sent']);
+    expect(result.legs.map((l) => `${l.channel}:${l.outcome}`)).toEqual(['sms:sent']);
     expect(threaded).toHaveLength(1);
 
     const viaEmail = makePorts();
@@ -394,16 +346,12 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
     expect(captures[0]).toMatchObject({ event: 'loop_message_failed', properties: { reason: 'failed' } });
   });
 
-  it('two mirror legs (a suppressed email + a delivered push) fire two paired captures, one per row', async () => {
-    const { ports, ledger, captures } = makePorts({
-      emailOptedOut: async () => true,
-      hasLivePushToken: async () => true,
-    });
+  it('a suppressed leg fires its paired capture, one per row', async () => {
+    const { ports, ledger, captures } = makePorts({ emailOptedOut: async () => true });
     await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
     expect(captures).toHaveLength(ledger.length);
     expect(captures.map((c) => `${c.properties.channel}:${c.event}`)).toEqual([
       'email:loop_message_failed',
-      'push:loop_message_sent',
     ]);
   });
 
@@ -428,8 +376,7 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
 /**
  * VIL-249 — a message pinned to ONE channel. An ICS invite exists only as an email
  * (its whole payload is a text/calendar attachment), so it must reach a parent whose
- * exchange channel is SMS, and it must not be mirrored to a push that can carry no
- * attachment.
+ * exchange channel is SMS.
  */
 describe('a channel-pinned message', () => {
   it('dispatches on the pinned channel rather than the parent’s loop channel', async () => {
@@ -445,19 +392,6 @@ describe('a channel-pinned message', () => {
     expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
     expect(sms.calls).toHaveLength(0);
     expect(ledger.map((r) => r.channel)).toEqual(['email']);
-  });
-
-  it('sends no push mirror, even with a live push token', async () => {
-    const push = fakeChannel('push');
-    const { ports } = makePorts({
-      hasLivePushToken: async () => true,
-      channels: { email: fakeChannel('email'), push },
-    });
-
-    const result = await dispatchLoopMessage(message({ channel: 'email', category: 'approval' }), ports);
-
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
-    expect(push.calls).toHaveLength(0);
   });
 });
 
@@ -500,29 +434,4 @@ describe('a rendered body that claims something no row can back never reaches a 
     expect(sms.calls).toHaveLength(1);
   });
 
-  it('checks the push leg on its title and body, not only the SMS text', async () => {
-    const push = fakeChannel('push');
-    const { ports } = makePorts({
-      prefs: { loopChannel: 'sms' },
-      hasLivePushToken: async () => true,
-      renderer: {
-        render: (_m, channel) =>
-          channel === 'push'
-            ? {
-                kind: 'push' as const,
-                title: 'This week',
-                body: "I'll stop sending you check-ins.",
-              }
-            : { kind: 'sms' as const, text: 'Here is your week.' },
-      },
-      channels: { sms: fakeChannel('sms'), push },
-    });
-    const result = await dispatchLoopMessage(message(), ports);
-
-    expect(result.legs).toEqual([
-      { channel: 'sms', outcome: 'sent' },
-      { channel: 'push', outcome: 'failed', reason: 'unbacked_claim' },
-    ]);
-    expect(push.calls).toEqual([]);
-  });
 });

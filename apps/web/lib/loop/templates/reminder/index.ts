@@ -2,7 +2,6 @@ import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { renderReminderEmail } from './email';
 import { asReminderPayload } from './payload';
-import { renderReminderPush } from './push';
 import { renderReminderSms } from './sms';
 
 /**
@@ -20,8 +19,6 @@ export const reminderRenderer: TemplateRenderer = {
         return renderReminderEmail(payload, nameLevel, now);
       case 'sms':
         return renderReminderSms(payload, nameLevel, now);
-      case 'push':
-        return renderReminderPush(payload, nameLevel, now);
       default: {
         const exhaustive: never = channel;
         throw new Error(`reminder renderer: unsupported channel ${String(exhaustive)}`);

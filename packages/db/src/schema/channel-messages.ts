@@ -19,8 +19,8 @@ import { users } from './users.js';
  * Relationship to the existing ledgers (scout decision, do not blur):
  *   - email_sends stays the CASL legal sub-ledger — a loop EMAIL writes BOTH this
  *     row and an email_sends row (and honors the email opt-out).
- *   - outbound_sends (executor exactly-once) and push_sends (legacy debounce) are
- *     a different domain and are UNTOUCHED.
+ *   - outbound_sends (executor exactly-once) is a different domain and is
+ *     UNTOUCHED.
  *
  * `body` is nullable and populated for direction:'in' ONLY — the verbatim inbound
  * reply, which C3 treats as the approval's legal instrument (locked cross-ticket

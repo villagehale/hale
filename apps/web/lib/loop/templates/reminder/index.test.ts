@@ -52,7 +52,7 @@ function msg(p: ReminderPayload, templateKey = 'reminder', category: LoopCategor
   };
 }
 
-function render(p: ReminderPayload, channel: 'email' | 'sms' | 'push', level: ChildNameLevel): RenderedContent {
+function render(p: ReminderPayload, channel: 'email' | 'sms', level: ChildNameLevel): RenderedContent {
   return loopTemplateRenderer.render(msg(p), channel, level);
 }
 
@@ -60,12 +60,6 @@ function sms(p: ReminderPayload, level: ChildNameLevel): string {
   const r = render(p, 'sms', level);
   if (r.kind !== 'sms') throw new Error('expected sms');
   return r.text;
-}
-
-function push(p: ReminderPayload, level: ChildNameLevel) {
-  const r = render(p, 'push', level);
-  if (r.kind !== 'push') throw new Error('expected push');
-  return r;
 }
 
 function email(p: ReminderPayload, level: ChildNameLevel) {
@@ -78,13 +72,6 @@ const batch = payload({ offset: '-P1D', events: [apptAt10, swimAt430] });
 const single = payload({ offset: '-PT1H', events: [swimAt430], deepLink: null });
 
 describe('T-24h batch — Tomorrow lead, every event listed', () => {
-  it('push titles the lead and joins every event line inline, with the /plan deep link', () => {
-    const p = push(batch, 'first_name');
-    expect(p.title).toBe('Tomorrow');
-    expect(p.body).toBe(`an appointment at 10:00, Maya ${EM_DASH} Swim class at 4:30`);
-    expect(p.data?.deepLink).toBe(DEEP_LINK);
-  });
-
   it('sms folds to GSM-7 (em-dash → hyphen), one segment, no link (fits the budget)', () => {
     const text = sms(batch, 'first_name');
     expect(text).toBe('Tomorrow: an appointment at 10:00, Maya - Swim class at 4:30');
@@ -106,13 +93,6 @@ describe('T-24h batch — Tomorrow lead, every event listed', () => {
 });
 
 describe('T-1h single — In an hour lead, glanceable, no links anywhere (rule #6)', () => {
-  it('push titles In an hour, one event, and carries NO deep link', () => {
-    const p = push(single, 'first_name');
-    expect(p.title).toBe('In an hour');
-    expect(p.body).toBe(`Maya ${EM_DASH} Swim class at 4:30`);
-    expect(p.data).toBeUndefined();
-  });
-
   it('sms is one segment and carries no url', () => {
     const text = sms(single, 'first_name');
     expect(text).toBe('In an hour: Maya - Swim class at 4:30');
@@ -136,9 +116,8 @@ describe('teen event is generic at EVERY level and EVERY channel (rule #1)', () 
     for (const level of ['first_name', 'relation', 'generic'] as ChildNameLevel[]) {
       for (const p of [teenBatch, teenPing]) {
         const smsText = sms(p, level);
-        const pushBody = push(p, level).body;
         const html = email(p, level).html;
-        for (const out of [smsText, pushBody, html]) {
+        for (const out of [smsText, html]) {
           expect(out).toContain('an appointment');
           expect(out).not.toContain('Sam');
           expect(out).not.toContain('Therapy');
@@ -153,7 +132,7 @@ describe('a flagged-sensitive event is generic even for a non-teen (rule #1)', (
   const p = payload({ offset: '-P1D', events: [sensitive] });
 
   it('shows "an appointment", never the health title, on every channel', () => {
-    for (const out of [sms(p, 'first_name'), push(p, 'first_name').body, email(p, 'first_name').html]) {
+    for (const out of [sms(p, 'first_name'), email(p, 'first_name').html]) {
       expect(out).toContain('an appointment');
       expect(out).not.toContain('Blood test');
     }
@@ -239,17 +218,16 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
     expect(e.html).toContain(`Maya ${EM_DASH} Swim class`);
   });
 
-  it('SMS and push ignore the voice (email-only) — their deterministic budgets are kept', () => {
+  it('SMS ignores the voice (email-only) — its deterministic budget is kept', () => {
     const p = payload({ offset: '-P1D', events: [swimAt430], voice: { line: VOICE } });
     expect(sms(p, 'first_name')).not.toContain(VOICE);
-    expect(push(p, 'first_name').body).not.toContain(VOICE);
   });
 });
 
 describe('registry routing by templateKey', () => {
   it('routes a reminder message to the reminder renderer', () => {
-    const r = loopTemplateRenderer.render(msg(batch), 'push', 'first_name');
-    expect(r.kind === 'push' && r.title).toBe('Tomorrow');
+    const r = loopTemplateRenderer.render(msg(batch), 'sms', 'first_name');
+    expect(r.kind === 'sms' && r.text.startsWith('Tomorrow')).toBe(true);
   });
 
   it('still routes a weekly_plan message to its own renderer (not the reminder one)', () => {
@@ -268,7 +246,7 @@ describe('registry routing by templateKey', () => {
         unsubscribeUrl: UNSUB,
       },
     };
-    const r = loopTemplateRenderer.render(weekly, 'push', 'generic');
-    expect(r.kind === 'push' && r.title).toBe('Your week is ready');
+    const r = loopTemplateRenderer.render(weekly, 'email', 'generic');
+    expect(r.kind === 'email' && r.subject).toBe('Your week ahead');
   });
 });

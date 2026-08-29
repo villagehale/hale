@@ -41,7 +41,6 @@ describe('acceptedStatus — the status a successful send starts at', () => {
 
   it('leaves the receipt-less channels terminal on accept', () => {
     expect(acceptedStatus('email')).toBe('sent');
-    expect(acceptedStatus('push')).toBe('sent');
   });
 });
 

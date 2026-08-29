@@ -9,7 +9,6 @@ import { FamilyChildren } from '~/components/hale/family-children';
 import { FamilyPlan } from '~/components/hale/family-plan';
 import { InviteCoParent } from '~/components/hale/invite-coparent';
 import { LoopPrefs } from '~/components/hale/loop-prefs';
-import { NotificationPrefs } from '~/components/hale/notification-prefs';
 import { PlanSummaryCard } from '~/components/hale/plan-summary-card';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { SettingsHub } from '~/components/hale/settings-hub';
@@ -29,7 +28,6 @@ import { loadFamilyConnectors } from '~/lib/integrations/load';
 import { PRIVACY_URL, TERMS_URL } from '~/lib/legal-links';
 import { listMcpConnectionsForUser } from '~/lib/mcp/oauth-store';
 import { loadLoopNotificationPrefs } from '~/lib/settings/loop-prefs';
-import { loadPushNotificationPrefs } from '~/lib/settings/push-notification-prefs';
 import { listTeenAccessGrants } from '~/lib/teen-access';
 import { isStripeCheckoutConfigured } from '~/lib/webhooks/stripe-billing';
 
@@ -56,7 +54,6 @@ export default async function SettingsPage() {
     basics,
     members,
     connections,
-    pushPrefs,
     loopPrefs,
     smsChannel,
     familyId,
@@ -66,7 +63,6 @@ export default async function SettingsPage() {
     loadFamilyBasics(),
     loadFamilyMembers(),
     loadFamilyConnectors(),
-    loadPushNotificationPrefs(),
     loadLoopNotificationPrefs(),
     loadSmsChannel(),
     currentFamilyId(database),
@@ -185,10 +181,6 @@ export default async function SettingsPage() {
     // ── Notifications ────────────────────────────────────────────────────
     notif: (
       <div className="flex flex-col gap-y-10 max-w-2xl">
-        <div>
-          <SectionLabel>push notifications</SectionLabel>
-          <NotificationPrefs result={pushPrefs} />
-        </div>
         <div>
           <SectionLabel>the sunday loop</SectionLabel>
           <LoopPrefs result={loopPrefs} />

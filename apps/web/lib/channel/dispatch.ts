@@ -12,17 +12,13 @@ import type { Channel, ChannelKind, LoopCategory, LoopMessage, RenderedContent }
  * A5 per-category enables, quiet hours, caps, dedupe, the channel_messages ledger,
  * audit rows, and the email CASL dual-write all happen exactly once.
  *
- * Delivery model (founder, locked): two exchange channels, three delivery legs —
- * PUSH MIRRORS, it never substitutes. The exchange send always goes via the
- * parent's loop_channel (email today, sms when live); push is an ADDITIONAL
- * always-on leg when a live token exists. So a weekly plan lands as an email AND a
- * push, not one-or-the-other.
+ * Delivery model: the exchange send goes via the parent's loop_channel (email or
+ * sms). The Expo push mirror leg died with the mobile app (VIL-318); historical
+ * 'push' ledger rows keep their persisted enum value.
  *
  * Policy is evaluated PER LEG through this single point, and every leg writes its
- * own ledger row — a suppressed push leg alongside a delivered email leg is two
- * rows (one 'suppressed_*', one 'sent'). Dedupe + caps are per (parent, category,
- * CHANNEL) so a re-drain can't double-send EITHER leg, and the mirror's second leg
- * is never blocked by the first leg's cap.
+ * own ledger row. Dedupe + caps are per (parent, category, CHANNEL) so a re-drain
+ * can't double-send a leg.
  *
  * Pure orchestrator over injected ports so the policy is tested against Fakes with
  * no live provider.
@@ -59,10 +55,8 @@ export interface DispatchPorts {
   emailOptedOut(userId: string, emailType: string): Promise<boolean>;
   /** CASL express SMS consent, live (an active verified parent_channels row). */
   smsConsentLive(userId: string): Promise<boolean>;
-  hasLivePushToken(userId: string): Promise<boolean>;
   /** Non-suppressed sends of this category on THIS channel to this parent since
-   * `since` — the cap is per delivery leg (so a mirror leg isn't capped by the
-   * other). */
+   * `since` — the cap is per delivery leg. */
   countRecent(
     userId: string,
     category: LoopCategory,
@@ -104,9 +98,8 @@ export interface DispatchPorts {
    * the parent's reply with no antecedent.
    *
    * The SMS leg ONLY, and that is a decision rather than an omission: the thread is the
-   * SMS thread (coach/note-key.ts), a push MIRRORS the same sentence — threading both
-   * would show the parent Hale saying it twice — and an email is a different surface
-   * whose unification is its own piece of work.
+   * SMS thread (coach/note-key.ts), and an email is a different surface whose
+   * unification is its own piece of work.
    *
    * No db handle, like every other port here: the dispatch stays a decision engine and
    * wiring.ts binds the real writer (lib/channel/thread.ts).
@@ -161,22 +154,17 @@ export async function dispatchLoopMessage(
   ports: DispatchPorts,
 ): Promise<DispatchResult> {
   const now = ports.now();
-  // Three independent per-parent reads — fetch in parallel (one round-trip instead of
-  // three serial ones on the every-minute drain hot path).
-  const [prefs, parent, hasLivePush] = await Promise.all([
+  // Two independent per-parent reads — fetch in parallel (one round-trip instead of
+  // two serial ones on the every-minute drain hot path).
+  const [prefs, parent] = await Promise.all([
     ports.loadPrefs(msg.parentUserId),
     ports.loadParent(msg.parentUserId),
-    ports.hasLivePushToken(msg.parentUserId),
   ]);
 
-  // Legs: the exchange channel + push when a live token exists (mirror, not fallback).
-  // A channel-PINNED message (msg.channel — the ICS invite) has exactly one leg: its
-  // content exists on that channel alone, so neither re-routing nor mirroring it is a
-  // delivery of the same thing. See LoopMessage.channel.
+  // One leg: the exchange channel. A channel-PINNED message (msg.channel — the ICS
+  // invite) rides that channel alone: its content exists there and nowhere else.
+  // See LoopMessage.channel.
   const legs: ChannelKind[] = [msg.channel ?? prefs.loopChannel];
-  if (hasLivePush && !msg.channel) {
-    legs.push('push');
-  }
 
   const results: LegResult[] = [];
   for (const channel of legs) {
@@ -210,7 +198,7 @@ async function dispatchLeg(
   }
 
   // Per-channel dedupe: this exact leg already sent / is in flight → no-op (a
-  // re-drain can't double-send it), while the mirror leg stays independent.
+  // re-drain can't double-send it).
   const legKey = msg.dedupeKey ? `${msg.dedupeKey}:${channel}` : null;
   if (legKey && (await ports.activeDedupe(legKey))) {
     return { channel, outcome: 'deduped' };
@@ -309,7 +297,7 @@ async function dispatchLeg(
  * email's HTML is not checked — its plain-text alternative carries the same sentences
  * and is the one a regex can read honestly. */
 function claimText(rendered: RenderedContent): string {
-  return rendered.kind === 'push' ? `${rendered.title} ${rendered.body}` : rendered.text;
+  return rendered.text;
 }
 
 /** The single point every terminal channel_messages write goes through: it writes

@@ -142,8 +142,8 @@ describe('createTwilioSmsChannel().send', () => {
     await expect(
       createTwilioSmsChannel({ resolveTarget: async () => PHONE, configured: true }).send({
         userId: USER_ID,
-        rendered: { kind: 'push', title: 'x', body: 'y' },
+        rendered: { kind: 'email', subject: 'x', html: '<p>y</p>', text: 'y' },
       }),
-    ).rejects.toThrow(/received push content/);
+    ).rejects.toThrow(/received email content/);
   });
 });
