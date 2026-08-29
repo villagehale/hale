@@ -477,7 +477,10 @@ export function posterLocation(code: string | null): string | null {
 /**
  * The first thing a stranger ever reads from Hale. VIL-308 locked the rec-morning
  * voice; VIL-321 / Designer locked the English no-venue line verbatim — the ask is
- * {@link COLD_START_ASK}. Never "an AI that quietly runs the family week". The privacy
+ * {@link COLD_START_ASK}. Style doctrine v1 (G6/L1, founder-gated) swapped the hook's
+ * one word-pair: "rec mornings" was house coinage two strangers misread inside 48h;
+ * "sign-up mornings" says the same thing in parent language. The ask is untouched.
+ * Never "an AI that quietly runs the family week". The privacy
  * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where
  * a parent is actually asked to agree to something.
  *
@@ -492,12 +495,12 @@ export function posterLocation(code: string | null): string | null {
  */
 export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {
-    return `Hi, I'm Hale. I watch rec mornings so they don't sneak up. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+    return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
   }
   if (language === 'fr') {
-    return `Bonjour, je suis Hale. Je surveille les matins rec pour qu'ils ne vous échappent pas. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
+    return `Bonjour, je suis Hale. Je surveille les matins d'inscription pour qu'ils ne vous échappent pas. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
   }
-  return `Hi, I'm Hale. I watch rec mornings so they don't sneak up. ${COLD_START_ASK}`;
+  return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. ${COLD_START_ASK}`;
 }
 
 /**
@@ -511,7 +514,7 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
  * `replyLanguage` reads it as English whatever they speak.
  */
 export function greetingWithArea(areaCoarse: string): string {
-  return `Hi, I'm Hale. I watch rec mornings so they don't sneak up. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+  return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
 }
 
 /**
@@ -685,9 +688,10 @@ export const AMBIGUOUS_CLARIFY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 };
 
 /**
- * The CASL keyword replies. STOP gets one final confirmation and then silence; HELP
- * (and anything unparseable) gets the same honest capability line, because a parent
- * who typed something we couldn't read needs to know what we CAN do, not an error.
+ * The CASL keyword replies, frozen verbatim. STOP gets one final confirmation and then
+ * silence; HELP gets the honest capability line. The unparseable reply during intake no
+ * longer shares it: that moment is conversational, not compliance, and has its own
+ * words now ({@link UNREADABLE_INTAKE_REPLY} — doctrine G7/L2).
  */
 export const STOP_ACK =
   "You're unsubscribed - I won't text you again. Reply START if you ever want me back.";
@@ -718,9 +722,11 @@ export const START_ACK = "You're back - I'll text you when something needs doing
  * and the tail now names the two words a French parent can actually send.
  *
  * WHY THE HELP LINE OFFERS AIDE AT ALL, given that a parent reading it may well have
- * just typed it: this line has a second door. An unparseable first reply during intake
- * lands on it too (machine.ts), and that parent never typed a keyword — for them
- * "AIDE pour de l'aide" is the instruction, not an echo.
+ * just typed it: the other keyword is still news (a parent who typed AIDE learns
+ * ARRET), and the line long had a second door — an unparseable first reply during
+ * intake — which now has its own constant
+ * ({@link UNREADABLE_INTAKE_REPLY_BY_LANGUAGE}, doctrine G7/L2), so this reply
+ * answers only the keyword that asked for it.
  *
  * `désabonner` keeps its é (GSM-7 has it). The keyword tokens are written WITHOUT their
  * accents — ARRET, DEBUT — because that is how a keyword is typed under pressure and
@@ -730,6 +736,26 @@ export const START_ACK = "You're back - I'll text you when something needs doing
 export const HELP_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: HELP_REPLY,
   fr: "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+};
+
+/**
+ * The unparseable-intake door, split off {@link HELP_REPLY} (doctrine G7/L2). An
+ * unreadable reply during intake used to get the frozen CASL capability line, which
+ * dragged compliance copy into a conversational moment. This one owns the moment
+ * instead: what could not be read, the reply shape in a parent's own words, and the
+ * STOP line an intake-stage message still owes. The HELP keyword keeps the frozen
+ * {@link HELP_REPLY} untouched.
+ *
+ * FOUNDER REVIEW: these words are new (SMS style doctrine v1). The French example
+ * postal is H2X so the sample reads the way that parent's own would, and the keyword
+ * tokens named are honoured ones only — the copy.test.ts scan reads them off the line.
+ */
+export const UNREADABLE_INTAKE_REPLY =
+  "I couldn't read that one. I keep the family week and kids' rec sign-ups - text me like 'Maya is 4, Theo is 1, M5V 2T6' and I'll take it from there. Reply STOP to unsubscribe.";
+
+export const UNREADABLE_INTAKE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: UNREADABLE_INTAKE_REPLY,
+  fr: "Je n'ai pas compris ce message. Je garde la semaine et les inscriptions rec - écrivez par exemple 'Maya a 4 ans, Theo a 1 an, H2X 1Y6' et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
 };
 
 /**
@@ -791,4 +817,28 @@ export const REGION_UNAVAILABLE_REPLY =
 export const REGION_UNAVAILABLE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: REGION_UNAVAILABLE_REPLY,
   fr: "Je fonctionne seulement pour les familles au Canada pour l'instant, donc je ne peux pas encore vous aider - je n'ai rien mis en place.",
+};
+
+/**
+ * The identity-challenge accountability line (doctrine G15/L3). "Who is behind this
+ * number" is a CASL-shaped identification ask and deserves a real answer, not a
+ * stonewall — but the answer is a promise, so it is a constant the shell appends after
+ * the composed concession (the same decisions-vs-rendering split as {@link WATCH_OFFER}),
+ * never a sentence a model writes. It states only what is true and verifiable: an AI,
+ * a Canadian service, where the operator is named, and that STOP is final. No question
+ * and no close — a distrust turn may never end in one (R9). Wiring is the S2/S3
+ * skill-and-shell work; the words land here first so they are reviewed as copy.
+ *
+ * Built from {@link PRIVACY_URL} so a policy move cannot strand the one line that
+ * answers "who runs this". FOUNDER REVIEW: the operator naming and the URL target
+ * (privacy page vs a contact page) are the founder's to confirm.
+ *
+ * `qui me gère` carries no participle agreeing with "une IA": Hale takes no gender in
+ * French, here as everywhere in this file.
+ */
+export const IDENTITY_ACCOUNTABILITY_LINE = `Fair to ask. I'm an AI assistant, and Hale is a Canadian service - who runs it and how to reach them: ${PRIVACY_URL}. STOP ends my texts for good.`;
+
+export const IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: IDENTITY_ACCOUNTABILITY_LINE,
+  fr: `Bonne question. Je suis une IA - c'est Village Hale, un service canadien, qui me gère: ${PRIVACY_URL}. Répondez ARRET et je ne vous texte plus.`,
 };

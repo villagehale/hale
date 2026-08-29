@@ -47,6 +47,7 @@ import {
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   START_ACK_BY_LANGUAGE,
   STOP_ACK_BY_LANGUAGE,
+  UNREADABLE_INTAKE_REPLY_BY_LANGUAGE,
   WATCH_OFFER,
   WATCH_OFFER_ASK,
   detailsBlocked,
@@ -756,9 +757,9 @@ async function handleDetails(
 
   const base: SessionPatch = { collected, lastProviderId: inbound.providerId };
 
-  // Nothing readable came back. Before falling back to what Hale is for, find out
+  // Nothing readable came back. Before falling back to the unreadable door, find out
   // whether they asked something — a stranger's second text is as likely to be "who is
-  // this?" as it is to be two names and two ages, and the capability line answers
+  // this?" as it is to be two names and two ages, and the couldn't-read line answers
   // neither of them.
   if (collected.children.length === 0) {
     const offScript = await offScriptReply(
@@ -782,7 +783,7 @@ async function handleDetails(
     ({ transcript } = await sendAndRecord(
       database,
       ctx,
-      HELP_REPLY_BY_LANGUAGE[language],
+      UNREADABLE_INTAKE_REPLY_BY_LANGUAGE[language],
       deps,
       transcript,
     ));

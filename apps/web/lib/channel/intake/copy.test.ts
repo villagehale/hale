@@ -15,6 +15,8 @@ import {
   DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY,
   HELP_REPLY_BY_LANGUAGE,
+  IDENTITY_ACCOUNTABILITY_LINE,
+  IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE,
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   SITTING_SESSION_REMINDER,
@@ -22,6 +24,8 @@ import {
   START_ACK_BY_LANGUAGE,
   STOP_ACK,
   STOP_ACK_BY_LANGUAGE,
+  UNREADABLE_INTAKE_REPLY,
+  UNREADABLE_INTAKE_REPLY_BY_LANGUAGE,
   WATCH_OFFER,
   WATCH_OFFER_BY_LANGUAGE,
   detailsBlocked,
@@ -46,7 +50,7 @@ describe('SITTING_SESSION_REMINDER', () => {
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {
     expect(greeting(null, 'en')).toBe(
-      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+      "Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     );
   });
 
@@ -54,7 +58,7 @@ describe('greeting', () => {
     // The QR venue already tells us the area, so asking for the postal code would be
     // asking for data we don't need — the whole point of the venue variant.
     expect(greeting('library', 'en')).toBe(
-      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. You found me at the library, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
+      "Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. You found me at the library, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
     );
     expect(greeting('library', 'en')).not.toContain('postal');
   });
@@ -267,6 +271,32 @@ describe('detailsBlocked', () => {
   });
 });
 
+describe('the identity-challenge accountability line (doctrine G15/L3)', () => {
+  it('concedes, states what is true, names where the operator lives, and never closes', () => {
+    expect(IDENTITY_ACCOUNTABILITY_LINE).toBe(
+      `Fair to ask. I'm an AI assistant, and Hale is a Canadian service - who runs it and how to reach them: ${PRIVACY_URL}. STOP ends my texts for good.`,
+    );
+    // A distrust turn may never end in a close (R9): no question, no ask.
+    expect(IDENTITY_ACCOUNTABILITY_LINE).not.toContain('?');
+    // The CONSTANT, never a second copy of the URL — same rule as the consent ask.
+    expect(IDENTITY_ACCOUNTABILITY_LINE).toContain(PRIVACY_URL);
+  });
+});
+
+describe('the unparseable-intake door (doctrine G7/L2)', () => {
+  it('owns its own words instead of the frozen CASL capability line', () => {
+    expect(UNREADABLE_INTAKE_REPLY).toBe(
+      "I couldn't read that one. I keep the family week and kids' rec sign-ups - text me like 'Maya is 4, Theo is 1, M5V 2T6' and I'll take it from there. Reply STOP to unsubscribe.",
+    );
+    // The whole point of the seam split: the compliance reply and the conversational
+    // moment no longer share a string, so restyling one can never touch the other.
+    expect(UNREADABLE_INTAKE_REPLY).not.toBe(HELP_REPLY);
+    // CASL: an intake-stage message still names the way out.
+    expect(UNREADABLE_INTAKE_REPLY).toContain('STOP');
+    expect(UNREADABLE_INTAKE_REPLY).not.toContain('!');
+  });
+});
+
 /**
  * THE FRENCH SCRIPT.
  *
@@ -292,7 +322,7 @@ describe('the French script', () => {
 
   it('introduces Hale in the rec-morning voice in French too, and closes on the same ask', () => {
     expect(greeting(null, 'fr')).toBe(
-      "Bonjour, je suis Hale. Je surveille les matins rec pour qu'ils ne vous échappent pas. Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
+      "Bonjour, je suis Hale. Je surveille les matins d'inscription pour qu'ils ne vous échappent pas. Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
     );
     expect(greeting(null, 'fr')).not.toContain('une IA');
     expect(greeting(null, 'fr')).toContain(COLD_START_ASK_BY_LANGUAGE.fr);
@@ -366,6 +396,21 @@ describe('the French script', () => {
     expect(HELP_REPLY_BY_LANGUAGE.fr).toContain('AIDE');
   });
 
+  it('answers an identity challenge in French without gendering Hale and without a close', () => {
+    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).toBe(
+      `Bonne question. Je suis une IA - c'est Village Hale, un service canadien, qui me gère: ${PRIVACY_URL}. Répondez ARRET et je ne vous texte plus.`,
+    );
+    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).not.toContain('?');
+    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr).toContain(PRIVACY_URL);
+  });
+
+  it('answers an unreadable intake reply in French with its own door, not the HELP line', () => {
+    expect(UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.fr).toBe(
+      "Je n'ai pas compris ce message. Je garde la semaine et les inscriptions rec - écrivez par exemple 'Maya a 4 ans, Theo a 1 an, H2X 1Y6' et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+    );
+    expect(UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.fr).not.toBe(HELP_REPLY_BY_LANGUAGE.fr);
+  });
+
   /**
    * The rule #491's note was keeping by hand, kept structurally from here on: a fixed
    * line may not name a keyword the machine does not honour.
@@ -378,6 +423,10 @@ describe('the French script', () => {
     const LINES: Record<string, string> = {
       'HELP_REPLY.en': HELP_REPLY_BY_LANGUAGE.en,
       'HELP_REPLY.fr': HELP_REPLY_BY_LANGUAGE.fr,
+      'UNREADABLE_INTAKE_REPLY.en': UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.en,
+      'UNREADABLE_INTAKE_REPLY.fr': UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.fr,
+      'IDENTITY_ACCOUNTABILITY_LINE.en': IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.en,
+      'IDENTITY_ACCOUNTABILITY_LINE.fr': IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr,
       'STOP_ACK.en': STOP_ACK_BY_LANGUAGE.en,
       'STOP_ACK.fr': STOP_ACK_BY_LANGUAGE.fr,
       'ASSENT_ACK.en': ASSENT_ACK_BY_LANGUAGE.en,
@@ -439,6 +488,8 @@ describe('the French script', () => {
     expect(DECLINE_ACK_BY_LANGUAGE.en).toBe(DECLINE_ACK);
     expect(AMBIGUOUS_CLARIFY_BY_LANGUAGE.en).toBe(AMBIGUOUS_CLARIFY);
     expect(HELP_REPLY_BY_LANGUAGE.en).toBe(HELP_REPLY);
+    expect(UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.en).toBe(UNREADABLE_INTAKE_REPLY);
+    expect(IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.en).toBe(IDENTITY_ACCOUNTABILITY_LINE);
     expect(START_ACK_BY_LANGUAGE.en).toBe(START_ACK);
     expect(STOP_ACK_BY_LANGUAGE.en).toBe(STOP_ACK);
     expect(REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.en).toBe(REGION_UNAVAILABLE_REPLY);
