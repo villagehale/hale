@@ -107,6 +107,10 @@ describe('city registration routes — landing chrome, not a blog', () => {
       expect(html).toContain(expected.replaceAll('&', '&amp;'));
       expect(html).toContain('data-cta="copy_number_click"');
       expect(html).toContain('aria-label="QR code — scan to text Hale"');
+      // The QR block must stay a DESKTOP affordance: hidden on phones (where the
+      // sms: CTA works) and flex from sm: up. CSS-hiding it everywhere would pass
+      // the presence pins above while re-opening the desktop dead-end.
+      expect(html).toMatch(/class="[^"]*\bhidden\b[^"]*\bsm:flex\b[^"]*"[^>]*>(?:(?!<\/div>).)*aria-label="QR code/s);
       expect(html).toContain('On a laptop?');
       expect(html).not.toContain('text-entry');
     }
