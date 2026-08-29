@@ -94,15 +94,39 @@ describe('city registration routes — landing chrome, not a blog', () => {
     }
   });
 
-  it('closes on chromeCta — the site’s text-Hale path — never CopyNumber or TextEntry', async () => {
+  it('closes on chromeCta, arms the desktop paths — and never detours into /text', async () => {
+    // Until the 2026-08 ad-week audit this pinned the ABSENCE of the copy chip;
+    // two high-intent desktop researchers then clicked dead sms: links, so the
+    // pin now points the other way (rule #11 applied to the funnel): the chip
+    // and the QR of the same URI are REQUIRED beside the band CTA. What stays
+    // forbidden is the detour — this page is the landing, not a hop to /text.
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
     const expected = chromeCta().href;
     for (const { Page } of PAGES) {
       const html = await render(Page);
       expect(html).toContain(expected.replaceAll('&', '&amp;'));
-      expect(html).not.toContain('CopyNumber');
+      expect(html).toContain('data-cta="copy_number_click"');
+      expect(html).toContain('aria-label="QR code — scan to text Hale"');
+      // The QR block must stay a DESKTOP affordance: hidden on phones (where the
+      // sms: CTA works) and flex from sm: up. CSS-hiding it everywhere would pass
+      // the presence pins above while re-opening the desktop dead-end.
+      expect(html).toMatch(/class="[^"]*\bhidden\b[^"]*\bsm:flex\b[^"]*"[^>]*>(?:(?!<\/div>).)*aria-label="QR code/s);
+      expect(html).toContain('On a laptop?');
       expect(html).not.toContain('text-entry');
-      expect(html).not.toContain('Copy Hale');
+    }
+  });
+
+  it('offers the composer where the reading happens — a dates-band CTA per guide', async () => {
+    // 34 real-parent ad clicks produced 1 CTA click while the only in-body CTA
+    // sat below ~8 sections; the dates table is what the ad promised, so the
+    // door is beside it, on its own placement so the two doors stay separable.
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    for (const { slug, Page } of PAGES) {
+      const html = await render(Page);
+      const guide = REGISTRATION_GUIDES.find((g) => g.slug === slug);
+      if (!guide) throw new Error(slug);
+      expect(html).toContain(`data-cta-placement="${guide.placement}_dates"`);
+      expect(html).toContain(`data-cta-placement="${guide.placement}"`);
     }
   });
 

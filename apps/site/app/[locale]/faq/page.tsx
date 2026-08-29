@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { CopyNumberButton } from '~/components/copy-number';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
 import { ProductFaqAccordion } from '~/components/product-faq-accordion';
@@ -11,6 +12,7 @@ import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { FAQ, type FaqItem, faqJsonLd } from '~/lib/faq/index';
 import { chromeCta } from '~/lib/site/chrome-cta';
+import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
@@ -49,6 +51,8 @@ export default async function FaqPage({ params }: PageProps) {
   const t = getTranslator(locale, 'Faq');
   const items = faqItems(locale);
   const cta = chromeCta(locale);
+  const copy = getTranslator(locale, 'CopyNumber');
+  const number = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
 
   return (
     <main id="main" tabIndex={-1} className="relative">
@@ -78,7 +82,7 @@ export default async function FaqPage({ params }: PageProps) {
         <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
           {t('ctaSub')}
         </p>
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <LandingCta
             event="cta_text_click"
             placement="faq"
@@ -87,6 +91,16 @@ export default async function FaqPage({ params }: PageProps) {
           >
             {cta.label}
           </LandingCta>
+          {number ? (
+            <CopyNumberButton
+              number={number}
+              placement="faq"
+              className="btn-on-navy-quiet"
+              label={copy('label')}
+              copiedLabel={copy('copied')}
+              ariaLabel={copy('aria')}
+            />
+          ) : null}
         </div>
       </CtaBand>
 

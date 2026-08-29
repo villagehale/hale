@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces Saturday's soccer practice (from the week, with time and location) and the offerable story time (from offerable, with venue). Both are accurate recalls. The story time is listed as offerable — a verified candidate with checked venue and day — so naming it whole (name, place, day) is correct handling. No invented details, no app referral, no markdown, no sign-off. The reply is concise and complete. One small note: it doesn't mention the teenager's Saturday (private item at Tue/Wed, not Saturday anyway), and nothing is missing. The phrasing \"if they want something after\" is a natural connector. This is the product working correctly — short, exact, grounded in the week and offerable list.",
+    "score": 5
+  }
+}

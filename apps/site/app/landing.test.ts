@@ -143,6 +143,25 @@ describe('landing — the number is reachable and never readable', () => {
     // Windows/laptop path where `sms:` is a silent no-op.
     expect(text).toContain('Copy number');
     expect(html).not.toContain('displaySmsNumber');
+    // Both doors carry it, each named for the funnel: the hero chip and the
+    // closing chip beside the last CTA, so no band ends on a link that no-ops.
+    const chips = [...html.matchAll(/<button\s[^>]*data-cta="copy_number_click"[^>]*>/g)].map(
+      (match) => match[0],
+    );
+    expect(chips).toHaveLength(2);
+    expect(chips.some((tag) => tag.includes('data-cta-placement="hero"'))).toBe(true);
+    expect(chips.some((tag) => tag.includes('data-cta-placement="closing"'))).toBe(true);
+  });
+
+  it('draws the same composer URI as a QR at the close, for the desktop reader', () => {
+    // `sms:` is a silent no-op on a laptop (rule #11 applied to the funnel), so
+    // the closing band also offers the identical URI as a scannable code —
+    // hidden on phones, where the button IS the path — captioned with /text's
+    // existing laptop strings rather than new copy.
+    expect(html).toContain('aria-label="QR code — scan to text Hale"');
+    expect(html).toContain('hidden items-center gap-6 text-left sm:flex');
+    expect(text).toContain('On a laptop?');
+    expect(text).toContain('Scan the code with your phone’s camera');
   });
 });
 
@@ -179,10 +198,14 @@ describe('landing — the brand tile, the shore, and nothing else', () => {
     const svgs = html.match(/<svg[^>]*>/g) ?? [];
     expect(svgs.length).toBeGreaterThanOrEqual(5);
     for (const svg of svgs) {
+      // One drawing on the page is FUNCTIONAL rather than decorative: the QR of
+      // the composer URI, which carries its own name instead of hiding.
+      if (svg.includes('role="img"') && svg.includes('aria-label=')) continue;
       expect(svg, `a drawing that is not decorative: ${svg.slice(0, 90)}`).toContain(
         'aria-hidden="true"',
       );
     }
+    expect(svgs.filter((svg) => svg.includes('role="img"'))).toHaveLength(1);
     // Positive control: the wordmark's name still reaches the tree beside the art.
     expect([...html.matchAll(/<span class="sr-only" translate="no">Hale<\/span>/g)]).toHaveLength(3);
   });

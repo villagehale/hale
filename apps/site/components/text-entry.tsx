@@ -95,6 +95,7 @@ export function TextEntry({
               <p className="mt-2">
                 <CopyNumberButton
                   number={smsNumber}
+                  placement="text_entry"
                   className="link font-medium"
                   label={copy('label')}
                   copiedLabel={copy('copied')}

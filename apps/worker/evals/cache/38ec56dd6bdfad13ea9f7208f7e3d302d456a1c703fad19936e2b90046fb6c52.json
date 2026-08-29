@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a parenting question about a 19-month-old toddler's night wakings. The reply gives a concrete, actionable piece of advice (brief boring check-in instead of feeding/picking up, so the child practices resettling the same way they fell asleep), grounds it in the child's age appropriately, and appends the correct fixed line offering a full plan. The advice is sound and directly actionable tonight. No greeting, no sign-off, no markdown, no referral to a doctor (not needed here), no invented details. The one small note is that Remy's gender isn't stated in `knows` but the reply uses \"she\" — however this is a minor assumption that doesn't materially affect scoring. The reply is well within the character budget, concrete, and ends with the correct fixed line. This is the product working as designed.",
+    "score": 5
+  }
+}
