@@ -149,6 +149,24 @@ export const VOICE_GOODBYE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 export const VOICE_TOOL_ACK = 'Checking now.';
 
 /**
+ * Voice v2 — the SECOND holding line, spoken when a tool is still running well after the
+ * first one covered its start.
+ *
+ * {@link VOICE_TOOL_ACK} buys a couple of seconds, which is every tool this call had
+ * until the live lookup arrived. That one is allowed six (voice-lookup.ts
+ * `VOICE_LOOKUP_BUDGET_MS`), and four of them past a single "Checking now." is a caller
+ * deciding the line has dropped — the failure this whole pacing machinery exists to
+ * prevent, arriving later than it used to rather than being fixed.
+ *
+ * Three words, and it promises nothing: what comes back may be an answer or may be "I'll
+ * text you what I find", and a holding line that pre-committed to either would make one
+ * of them a contradiction the caller can hear. It is spoken at most ONCE per turn — a
+ * line that repeated on a timer would be the machine showing through, which is the exact
+ * register the skill spends a section forbidding.
+ */
+export const VOICE_STILL_LOOKING = 'Still on it.';
+
+/**
  * The two approval receipts a CALL cannot borrow from the texting router.
  *
  * `nothingPendingReply` and `nothingToUndoReply` both end in an app URL, which is the

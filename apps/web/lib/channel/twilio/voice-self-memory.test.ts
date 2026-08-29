@@ -83,6 +83,7 @@ describe('a spoken turn can see what Hale already said out loud', () => {
       token,
       recorder: voiceCallRecorder(db.database),
       claimCall: async () => true,
+      promiseSpoken: async () => ({ status: 'no_promise' }) as const,
       turn: voiceTurnStream({
         loadSkill: async () => skill,
         loadTranscript: (conversationId) => loadTranscript(conversationId, db.database),

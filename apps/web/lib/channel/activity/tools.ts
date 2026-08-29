@@ -61,7 +61,7 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
   return defineTool({
     name: 'find_activities',
     description:
-      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no age, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly; any other reason means the search itself could not run.",
+      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no age, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run.",
     inputSchema: z.object({
       subject: z.string().min(1),
       /** The season or window the parent asked about, in their own general terms. */
@@ -112,7 +112,23 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       }
 
       const result = await args.finder.find(deidentified.query);
-      if (!result.found) return { found: false as const, reason: result.reason };
+      if (!result.found) {
+        // A SEARCH THAT RAN OUT OF THE CALLER'S TIME REGISTERS ITS OWN FOLLOW-UP.
+        //
+        // `over_budget` is reachable only from a call (twilio/voice-lookup.ts) and it
+        // means the search is STILL RUNNING — Hale is coming back either way, so the
+        // debt is a fact about the tool's own outcome rather than about whether the model
+        // remembered to call the promise verb beside it. Same move, same reason, as the
+        // hole-in-a-find case below: the gap is the trigger.
+        //
+        // Every other failure is left alone. "I could not look" is not a promise, and
+        // registering one would put a family in Hale's debt for a search nothing is
+        // holding.
+        if (result.reason === 'over_budget') {
+          args.onPromise({ subject: deidentified.query.subject, childId });
+        }
+        return { found: false as const, reason: result.reason };
+      }
       // A REAL FIND WITH A HOLE IN IT REGISTERS ITS OWN FOLLOW-UP.
       //
       // The inline turn has thirty seconds and a parent watching, so it reads what a

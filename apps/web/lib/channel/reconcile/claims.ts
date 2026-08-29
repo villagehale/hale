@@ -114,9 +114,24 @@ const REGISTRATION_SUBJECT =
 const RETURN_VERB =
   /\b(?:come\s+back|circle\s+back|get\s+back|follow\s+up|check|checking|look|looking|find|finding|dig|digging|text|texting|message|send|let\s+you\s+know)\b/i;
 /** Something to look FOR. "schedule" is absent on purpose — the caregiver welcome says
- * "I'll text you the week's schedule", and that is the weekly loop, not a search. */
+ * "I'll text you the week's schedule", and that is the weekly loop, not a search.
+ *
+ * THE SECOND GROUP IS WHAT HALE COMPOSES rather than what Hale finds, and it was missing
+ * until VIL-313. This list was written off an SMS corpus, where a coming-back promise is
+ * always about a FIND; a CALL produced the other half of the shape on its first real
+ * outing — "Once I've got the details locked down I'll text you" and "I'll send you the
+ * Three-Day Potty breakdown after this call" (founder call CA170c1fb0, 03:11-03:14Z).
+ * Both are Hale promising to send a thing it will put together, both went unmatched,
+ * both left no row, and no text followed either.
+ *
+ * Nothing shipped says these words. Checked against every deterministic template on the
+ * wire — the caregiver welcome's "the week's schedule", the intros' "at the next good
+ * match", the ladder's "your plan the evening before", START_ACK — and none of them
+ * names a deliverable. "guide" and "plan" are deliberately absent: "guidance" is what
+ * the tool-ack line says out loud, and "plan" is the registration ladder's own promise,
+ * which is a different ledger kind. */
 const ACTIVITY_SUBJECT =
-  /\b(?:finds?|options?|class(?:es)?|programs?|activit(?:y|ies)|camps?|swim\w*|gym\w*|lessons?|listings?|sessions?|nearby|good\s+ones|keep\s+looking|keep\s+digging|keep\s+searching)\b/i;
+  /\b(?:finds?|options?|class(?:es)?|programs?|activit(?:y|ies)|camps?|swim\w*|gym\w*|lessons?|listings?|sessions?|nearby|good\s+ones|keep\s+looking|keep\s+digging|keep\s+searching|details|breakdown|rundown|write[-\s]?up|walkthrough|checklist)\b/i;
 
 /** Hale promises to change how Hale behaves. */
 const CEASE_VERB =

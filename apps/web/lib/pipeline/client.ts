@@ -56,8 +56,22 @@ export const VOICE_CLIENT_OPTIONS = { timeout: 8_000, maxRetries: 0 } as const;
  */
 export const ACTIVITY_CLIENT_OPTIONS = { timeout: 50_000, maxRetries: 0 } as const;
 
+/**
+ * Options for the activity lane's grounding call WHEN A CALLER IS ON THE LINE.
+ *
+ * The wall that bounds the caller's silence is six seconds and it lives in the tool
+ * (twilio/voice-lookup.ts), not here — a race cannot cancel an HTTP request. So this is
+ * the bill: once the wall closes, nobody is waiting on the search any more, and the fifty
+ * seconds above would keep a research turn running and billing for another forty-four for
+ * an answer no caller will ever hear. Ten is the wall plus enough slack that a search
+ * which was ALMOST in time still finishes and warms the provider's fetch cache for the
+ * sweep that pays the promise an hour later.
+ */
+export const VOICE_LOOKUP_CLIENT_OPTIONS = { timeout: 10_000, maxRetries: 0 } as const;
+
 let cached: Anthropic | undefined;
 let cachedVoice: Anthropic | undefined;
+let cachedVoiceLookup: Anthropic | undefined;
 let cachedActivity: Anthropic | undefined;
 
 export function pipelineClient(): AgentClient {
@@ -78,6 +92,19 @@ export function activityClient(): AgentClient {
   }
   cachedActivity ??= new Anthropic({ apiKey, ...ACTIVITY_CLIENT_OPTIONS });
   return cachedActivity;
+}
+
+/** The client for {@link VOICE_LOOKUP_CLIENT_OPTIONS} — the activity lane, reached from a
+ * phone call. Its own instance rather than `activityClient()`'s because the two differ
+ * only in the one thing that matters here, how long an abandoned search may keep
+ * spending. */
+export function voiceLookupClient(): AgentClient {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set');
+  }
+  cachedVoiceLookup ??= new Anthropic({ apiKey, ...VOICE_LOOKUP_CLIENT_OPTIONS });
+  return cachedVoiceLookup;
 }
 
 /** The client for the calls in {@link VOICE_CLIENT_OPTIONS} — process-cached like every

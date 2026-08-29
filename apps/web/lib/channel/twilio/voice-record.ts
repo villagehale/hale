@@ -91,9 +91,18 @@ export function voiceCallRecorder(database: Database): VoiceCallRecorder {
       });
     },
 
-    /** What Hale actually said — already truncated by the session to what the caller
-     * heard, so the thread records the conversation that happened. */
-    async haleSaid(record: VoiceTurnRecord): Promise<void> {
+    /**
+     * What Hale actually said — already truncated by the session to what the caller
+     * heard, so the thread records the conversation that happened.
+     *
+     * IT HANDS BACK THE LEDGER ROW'S ID, because a promise spoken in this turn is minted
+     * against it (voice-promise.ts). That is the MEM-10 send-time discipline arriving on
+     * a channel with no transport: over SMS the row is the message the carrier accepted,
+     * and here it is the row that says the caller heard the words. Both answer the same
+     * question — is there something to point the parent at — and neither lets a promise
+     * exist without one.
+     */
+    async haleSaid(record: VoiceTurnRecord): Promise<string> {
       const [row] = await database
         .insert(schema.channelMessages)
         .values({
@@ -121,6 +130,7 @@ export function voiceCallRecorder(database: Database): VoiceCallRecorder {
         targetTable: 'channel_messages',
         targetId: row.id,
       });
+      return row.id;
     },
 
     /**

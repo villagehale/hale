@@ -11,10 +11,14 @@ import { buildGuardDeps } from '~/lib/coach/guards';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { db } from '~/lib/db';
-import { pipelineClient, voiceClient } from '~/lib/pipeline/client';
+import { pipelineClient, voiceClient, voiceLookupClient } from '~/lib/pipeline/client';
+import { createActivityFinder } from '~/lib/channel/activity/lane';
+import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import { claimRelayCall } from './relay-claim';
+import { defaultVoiceLookupPorts, withVoiceLookupBudget } from './voice-lookup';
 import type { RelaySessionDeps, RelaySocket } from './relay-session';
 import { answerSpokenReply } from './voice-answer';
+import { defaultVoicePromisePorts, voicePromiseRecorder } from './voice-promise';
 import { voiceCallRecorder } from './voice-record';
 import { voiceTurnStream } from './voice-turn';
 
@@ -53,11 +57,16 @@ import { voiceTurnStream } from './voice-turn';
 
 export function voiceRelayDeps(socket: RelaySocket, token: string | null): RelaySessionDeps {
   const database = db();
+  const activityReader = bindActivityReader(database, productionActivityFamilyReader());
+  // Per SOCKET, like every other collaborator here: it holds the subject THIS call's
+  // search verb registered, and hands it to the row written after the words were spoken.
+  const promises = voicePromiseRecorder(database, defaultVoicePromisePorts(activityReader));
   return {
     socket,
     token,
     recorder: voiceCallRecorder(database),
     claimCall: (ticket, at) => claimRelayCall(database, ticket, at),
+    promiseSpoken: (input) => promises.record(input),
     turn: voiceTurnStream({
       loadSkill: () => loadCronSkill('voice-turn'),
       loadTranscript: (conversationId) => loadTranscript(conversationId, database),
@@ -80,13 +89,27 @@ export function voiceRelayDeps(socket: RelaySocket, token: string | null): Relay
       // the referral link): tools.ts registers each of those only when a collector is
       // passed, so not passing one removes the VERB rather than discarding what it
       // produces (rule #11).
+      //
+      // THE WEB VERBS ARE HERE NOW (VIL-313), and they are the same two the texting lane
+      // registers, over the same lane and the same de-identification. What is different is
+      // one wrapper: the finder is walled at VOICE_LOOKUP_BUDGET_MS, because a caller is
+      // holding a silent line and the lane's own budget is fifty seconds. `onPromise` is
+      // the promise recorder's collector — not a listener that discards, but the thing
+      // that supplies the subject the ledger row is searched on (voice-promise.ts).
       buildTools: (turn, onDraft) =>
         buildChannelCoachTools({
           familyId: turn.familyId,
           reader: channelScheduleReader(database),
           draftPort: productionChannelDraftPort(database, pipelineClient(), turn.now),
-          activity: null,
-      villageTool: searchVillageTool(database),
+          activity: {
+            reader: activityReader,
+            finder: withVoiceLookupBudget(
+              createActivityFinder(voiceLookupClient),
+              defaultVoiceLookupPorts(),
+            ),
+          },
+          onPromise: promises.collect,
+          villageTool: searchVillageTool(database),
           onDraft,
           now: turn.now,
         }),
