@@ -46,7 +46,7 @@ describe('SITTING_SESSION_REMINDER', () => {
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {
     expect(greeting(null, 'en')).toBe(
-      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+      "Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     );
   });
 
@@ -54,7 +54,7 @@ describe('greeting', () => {
     // The QR venue already tells us the area, so asking for the postal code would be
     // asking for data we don't need — the whole point of the venue variant.
     expect(greeting('library', 'en')).toBe(
-      "Hi, I'm Hale. I watch rec mornings so they don't sneak up. You found me at the library, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
+      "Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. You found me at the library, so I already know the area. Kids' names and ages, and I'll look up what's coming.",
     );
     expect(greeting('library', 'en')).not.toContain('postal');
   });
@@ -292,7 +292,7 @@ describe('the French script', () => {
 
   it('introduces Hale in the rec-morning voice in French too, and closes on the same ask', () => {
     expect(greeting(null, 'fr')).toBe(
-      "Bonjour, je suis Hale. Je surveille les matins rec pour qu'ils ne vous échappent pas. Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
+      "Bonjour, je suis Hale. Je surveille les matins d'inscription pour qu'ils ne vous échappent pas. Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
     );
     expect(greeting(null, 'fr')).not.toContain('une IA');
     expect(greeting(null, 'fr')).toContain(COLD_START_ASK_BY_LANGUAGE.fr);

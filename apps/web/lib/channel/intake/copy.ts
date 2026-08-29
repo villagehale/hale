@@ -477,7 +477,10 @@ export function posterLocation(code: string | null): string | null {
 /**
  * The first thing a stranger ever reads from Hale. VIL-308 locked the rec-morning
  * voice; VIL-321 / Designer locked the English no-venue line verbatim — the ask is
- * {@link COLD_START_ASK}. Never "an AI that quietly runs the family week". The privacy
+ * {@link COLD_START_ASK}. Style doctrine v1 (G6/L1, founder-gated) swapped the hook's
+ * one word-pair: "rec mornings" was house coinage two strangers misread inside 48h;
+ * "sign-up mornings" says the same thing in parent language. The ask is untouched.
+ * Never "an AI that quietly runs the family week". The privacy
  * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where
  * a parent is actually asked to agree to something.
  *
@@ -492,12 +495,12 @@ export function posterLocation(code: string | null): string | null {
  */
 export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {
-    return `Hi, I'm Hale. I watch rec mornings so they don't sneak up. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+    return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
   }
   if (language === 'fr') {
-    return `Bonjour, je suis Hale. Je surveille les matins rec pour qu'ils ne vous échappent pas. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
+    return `Bonjour, je suis Hale. Je surveille les matins d'inscription pour qu'ils ne vous échappent pas. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
   }
-  return `Hi, I'm Hale. I watch rec mornings so they don't sneak up. ${COLD_START_ASK}`;
+  return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. ${COLD_START_ASK}`;
 }
 
 /**
@@ -511,7 +514,7 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
  * `replyLanguage` reads it as English whatever they speak.
  */
 export function greetingWithArea(areaCoarse: string): string {
-  return `Hi, I'm Hale. I watch rec mornings so they don't sneak up. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+  return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
 }
 
 /**
