@@ -260,18 +260,29 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           })
         : [];
 
-      const decision = decideRadar({
-        children,
-        candidates,
-        windows,
-        weather,
-        teenChildIds: roster.teenChildIds,
-        healthChildren: roster.healthChildren,
-        areaCoarse: area,
-        suppressedCheckpointRefs,
-        now,
-        timeZone,
-      });
+      // THE FIRST FIND IS PRE-CONSENT — the watch offer rides on this very message
+      // (machine.ts appends WATCH_OFFER to it), so health-checkpoint content may not:
+      // a vaccine flag before the parent has consented to being watched is exactly what
+      // the 2026-08-28 ads-week audit observed live, twice. The rung is dropped HERE,
+      // at the one composer that serves the intake first find, AFTER the decide so the
+      // cascade's other rungs are untouched. Nothing is marked told, so the post-consent
+      // surfaces (the 48h nudge, lib/channel/nudge/run.ts — gated on watch consent)
+      // raise the same checkpoint once consent exists.
+      const decision = {
+        ...decideRadar({
+          children,
+          candidates,
+          windows,
+          weather,
+          teenChildIds: roster.teenChildIds,
+          healthChildren: roster.healthChildren,
+          areaCoarse: area,
+          suppressedCheckpointRefs,
+          now,
+          timeZone,
+        }),
+        checkpoint: null,
+      };
 
       const message = await composeRadarMessage(decision, {
         familyId: input.familyId,

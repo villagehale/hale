@@ -120,12 +120,35 @@ describe('createRadarComposer', () => {
     expect(payload.followUpNeeded).toBe(true);
   });
 
-  it('reaches for the age checkpoint when this family has no window and no candidate', async () => {
+  it('never lets a health checkpoint ride the pre-consent first find (ads-week audit, 2026-08-28)', async () => {
     const db = makeFakeDb();
-    const [mia] = (await db.db
+    db.db
+      .insert(schema.children)
+      .values({ familyId: FAMILY_ID, name: 'Mia', dateOfBirth: '2025-01-31' } as never);
+    seedCandidate(db, { ageRange: '6-24 months' });
+
+    const payload = await composer(db).compose({
+      familyId: FAMILY_ID,
+      children: [{ name: 'Mia', ageMonths: 18, agePrecision: 'months' }],
+      areaCoarse: 'L7G',
+    });
+
+    // The first find IS the pre-consent message — the watch offer rides on it. An
+    // 18-month-old is inside two reviewed vaccine windows, and neither may be said
+    // before the parent has consented to being watched. The activity still goes.
+    expect(payload.message).toContain('Library story time');
+    expect(payload.message).not.toMatch(/vaccine|18 month|well-baby/i);
+    // Nothing was told, so nothing is marked told: the post-consent 48h nudge is the
+    // surface that raises it, and a told-marker here would silence that surface too.
+    expect(payload.checkpointTold).toBeNull();
+  });
+
+  it('stays checkpoint-free even when the checkpoint is the only rung (pre-consent, ads-week audit)', async () => {
+    const db = makeFakeDb();
+    await db.db
       .insert(schema.children)
       .values({ familyId: FAMILY_ID, name: 'Mia', dateOfBirth: '2025-01-31' } as never)
-      .returning()) as Array<{ id: string }>;
+      .returning();
 
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
@@ -134,13 +157,14 @@ describe('createRadarComposer', () => {
     });
 
     // Halton Hills: no civic adapter, no registration windows, nothing discovered yet.
-    // The child is 18 months old, and Ontario publishes a calendar against that.
-    expect(payload.message).toContain('Mia');
-    expect(payload.message).toContain('18 months');
-    expect(payload.itemCount).toBe(1);
-    // And the message SAYS it, so the caller can mark it told for every other surface
-    // (lib/health/told.ts) — the 48h nudge is two days behind this one.
-    expect(payload.checkpointTold).toBe(`immunization_18_months:${mia?.id}:0`);
+    // The child is 18 months old and inside a reviewed window — but this message is the
+    // PRE-CONSENT first find, so the honest empty-handed answer goes out instead, with
+    // the first-find promise on it. The 48h nudge raises the checkpoint post-consent.
+    expect(payload.message).not.toMatch(/vaccine|18 month|well-baby/i);
+    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.itemCount).toBe(0);
+    expect(payload.checkpointTold).toBeNull();
+    expect(payload.firstFindPromised).toBe(true);
   });
 
   it('tells no checkpoint when the two leads already fill the message', async () => {
@@ -195,11 +219,13 @@ describe('createRadarComposer', () => {
     });
 
     expect(payload.message).not.toContain('Teen climbing night');
-    // The checkpoint block is the one thing a 13+ child's household still hears, and it
-    // hears it in the GENERIC wording with no name attached (rule #1).
-    expect(payload.message).toContain('A routine vaccine record check is due');
+    // The checkpoint block used to be the one thing a 13+ household still heard here.
+    // It no longer rides the pre-consent first find (ads-week audit, 2026-08-28) — the
+    // post-consent nudge carries it in the generic wording — so this family gets the
+    // honest empty-handed answer, still with no teen name in it (rule #1).
+    expect(payload.message).not.toContain('A routine vaccine record check is due');
     expect(payload.message).not.toContain('Ava');
-    expect(payload.itemCount).toBe(1);
+    expect(payload.itemCount).toBe(0);
   });
 
   it('still composes when the family has no postal-derived area at all', async () => {
