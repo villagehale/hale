@@ -85,6 +85,7 @@ function harness(overrides: {
   children?: Record<string, IntroSweepChild[]>;
   proposals?: SweepProposal[];
   pairedBefore?: Set<string>;
+  synthetic?: Set<string>;
   hold?: ProactiveHoldReason | null;
   anchor?: { id: string; title: string; startsAt: Date } | null;
   emailResult?: IntroEmailResult;
@@ -122,6 +123,7 @@ function harness(overrides: {
 
   const deps: IntroSweepDeps = {
     selectFamilies: async () => overrides.families ?? [],
+    syntheticProbeFamilyIds: async () => overrides.synthetic ?? new Set(),
     discoverableUserIds: async () => overrides.discoverable ?? new Set(),
     askedUserIds: async () => overrides.alreadyAsked ?? new Set(),
     loadChildren: async (_db, familyId) => overrides.children?.[familyId] ?? [child()],
@@ -227,6 +229,22 @@ afterEach(() => {
 });
 
 describe('the dark-launch gate', () => {
+  it('never lets a synthetic probe family into the sweep, and counts it (ads-week audit, 2026-08-28)', async () => {
+    process.env[VILLAGE_INTROS_ENABLED_ENV] = 'true';
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      synthetic: new Set([A]),
+    });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    // The probe is out BEFORE any phase runs: B is now alone in its FSA, so nobody is
+    // asked — a probe must not be the reason a real family gets a cross-household text.
+    expect(result.skippedSynthetic).toBe(1);
+    expect(result.asked).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+  });
+
   it('does nothing at all when neither the flag nor the allowlist is armed', async () => {
     process.env[VILLAGE_INTROS_ENABLED_ENV] = 'false';
     const h = harness({ families: [family({ familyId: A }), family({ familyId: B })] });

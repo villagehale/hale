@@ -1901,6 +1901,8 @@ describe('natural reply resolution', () => {
       description: 'Reschedule on your calendar',
       subject: 'reschedule on your calendar',
       answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
     };
   }
 
@@ -1911,6 +1913,8 @@ describe('natural reply resolution', () => {
       description: 'Whether to meet one nearby Hale family',
       subject: 'meeting the family nearby',
       answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
     };
   }
 
@@ -2253,6 +2257,8 @@ describe('the 09:47 sequence', () => {
     description: 'Whether to be introduced to other Hale families nearby',
     subject: 'introductions to other Hale families nearby',
     answerable: { yes: true, no: true },
+    askedAt: null,
+    solicited: false,
   };
 
   /** The real lane, over spies. `standing` is what the ledger already holds. */
@@ -2852,6 +2858,8 @@ describe('the disambiguation a clarifier owns', () => {
     description: 'An offer to send your welcome note to a new family from the Georgetown poster.',
     subject: 'sending your welcome note to the new family',
     answerable: { yes: true, no: true },
+    askedAt: null,
+    solicited: false,
   });
 
   const calendarDraft = (): OpenQuestion => ({
@@ -2860,6 +2868,8 @@ describe('the disambiguation a clarifier owns', () => {
     description: 'Add to your calendar',
     subject: 'add to your calendar',
     answerable: { yes: true, no: true },
+    askedAt: null,
+    solicited: false,
   });
 
   /**

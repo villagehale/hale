@@ -1,8 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
 import type { ChannelTransport } from './transport';
 
@@ -55,6 +57,11 @@ export interface WelcomeCardPorts {
 export type WelcomeCardOutcome =
   | { status: 'sent'; channelMessageId: string }
   | { status: 'not_sent'; reason: 'already_sent' }
+  /** Held for the parent's quiet hours (2026-08-28 ads-week audit): the card is a
+   * proactive EXTRA riding beside the radar reply, not the reply itself, and an MMS at
+   * 22:36 is Hale making noise, not answering. Named on the ledger and never on the
+   * dedupe key — a suppression must not spend this family's only card. */
+  | { status: 'not_sent'; reason: 'suppressed_quiet_hours' }
   | { status: 'not_sent'; reason: 'send_failed'; code: string; permanent: boolean };
 
 export async function sendWelcomeContactCard(
@@ -63,6 +70,28 @@ export async function sendWelcomeContactCard(
   ports: WelcomeCardPorts,
 ): Promise<WelcomeCardOutcome> {
   const { familyId, parentUserId, now } = args;
+
+  // QUIET HOURS, before the claim: the same window the outbound chokepoint enforces
+  // (outbound-gate.ts), applied here by hand because this send runs seconds after
+  // provisioning — before watch consent can exist — so the full gate cannot serve it.
+  // The radar reply this rides beside is exempt by design; the extra is not.
+  if (inProactiveQuietHours(now, await parentTimeZone(database, parentUserId))) {
+    await database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'intake',
+      templateKey: WELCOME_CARD_TEMPLATE_KEY,
+      dedupeKey: null,
+      status: 'suppressed_quiet_hours',
+    });
+    console.warn(
+      { familyId },
+      'intake welcome card: held for quiet hours - this family gets no contact card tonight (no re-drive exists yet)',
+    );
+    return { status: 'not_sent', reason: 'suppressed_quiet_hours' };
+  }
 
   // CLAIM FIRST. The unique index is the claim, so "have we sent this?" is answered by
   // the insert rather than by a read another request can race. At-most-once is the right
@@ -127,4 +156,15 @@ export async function sendWelcomeContactCard(
   await ports.threadMessage(database, { familyId, parentUserId, body: WELCOME_CARD_BODY });
 
   return { status: 'sent', channelMessageId: claimed.id };
+}
+
+/** The parent's wall clock, off their own users row. Post-filtered by id as every
+ * reader here is (defense in depth); the column is NOT NULL with a default in prod, so
+ * the fallback only ever serves a store that skipped the default. */
+async function parentTimeZone(database: Database, parentUserId: string): Promise<string> {
+  const rows = await database
+    .select({ id: schema.users.id, timezone: schema.users.timezone })
+    .from(schema.users)
+    .where(eq(schema.users.id, parentUserId));
+  return rows.find((row) => row.id === parentUserId)?.timezone ?? DEFAULT_TIMEZONE;
 }

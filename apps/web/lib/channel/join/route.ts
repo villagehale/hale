@@ -2,8 +2,10 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import type { InboundMessage, ChannelTransport } from '~/lib/channel/intake/transport';
+import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from './copy';
 import { loadOpenJoinInvite, mintJoinInvite, redeemJoinInvite } from './invites';
 
@@ -49,6 +51,16 @@ export interface JoinAcceptance {
   status: 'join_link_accepted';
   familyId: string;
   inviterNotified: boolean;
+  /**
+   * Why the inviter's confirmation was withheld when `inviterNotified` is false, or null
+   * when it went (rule #11 — the absence is typed, never inferred). `no_channel` is a
+   * STOP since minting; `quiet_hours` is the 2026-08-28 ads-week fix: the ack is a
+   * PROACTIVE message to somebody who texted nothing tonight — the partner's own welcome
+   * is the direct reply and still goes — so at 22:36 local it holds. The join itself
+   * happens either way, and the inviter finds out the way they always could: their
+   * partner is in the same house.
+   */
+  inviterHeld: 'no_channel' | 'quiet_hours' | null;
   supersededInviteId: string | null;
 }
 
@@ -151,12 +163,18 @@ async function sendThreaded(
   });
 }
 
-async function userName(database: Database, userId: string): Promise<string | null> {
+async function inviterRow(
+  database: Database,
+  userId: string,
+): Promise<{ name: string | null; timeZone: string }> {
   const rows = await database
-    .select({ id: schema.users.id, name: schema.users.name })
+    .select({ id: schema.users.id, name: schema.users.name, timezone: schema.users.timezone })
     .from(schema.users)
     .where(eq(schema.users.id, userId));
-  return rows.find((r) => r.id === userId)?.name ?? null;
+  const row = rows.find((r) => r.id === userId);
+  // The column is NOT NULL with a default in prod; the fallback only ever serves a
+  // store that skipped the default.
+  return { name: row?.name ?? null, timeZone: row?.timezone ?? DEFAULT_TIMEZONE };
 }
 
 /**
@@ -227,7 +245,7 @@ export async function handleJoinArrival(
 
   // Both read BEFORE the transaction, while the inviting parent is still the only
   // channel on this family: what we are about to write is a second one.
-  const inviterName = await userName(database, invite.invitedByUserId);
+  const inviter = await inviterRow(database, invite.invitedByUserId);
   const inviterPhone = await resolveSendablePhone(database, invite.invitedByUserId);
 
   const redeemed = await redeemJoinInvite(database, {
@@ -258,14 +276,26 @@ export async function handleJoinArrival(
 
   await sendThreaded(database, deps, {
     to: args.phoneE164,
-    body: joinWelcome(inviterName),
+    body: joinWelcome(inviter.name),
     familyId: invite.familyId,
     parentUserId: coParentUserId,
     category: 'intake',
     now,
   });
 
-  if (inviterPhone) {
+  // The ack is the one send on this path to somebody who texted NOTHING this turn — a
+  // proactive extra, not a reply — so it keeps the proactive quiet window (2026-08-28
+  // ads-week audit: a 22:36-local ack went out around the gate). The join above is
+  // already done and the partner already answered; only this sentence waits.
+  let inviterHeld: JoinAcceptance['inviterHeld'] = inviterPhone === null ? 'no_channel' : null;
+  if (inviterPhone && inProactiveQuietHours(now, inviter.timeZone)) {
+    inviterHeld = 'quiet_hours';
+    console.warn(
+      { familyId: invite.familyId },
+      'join accepted: the inviter ack is held for quiet hours - they learn in the morning, or from their partner',
+    );
+  }
+  if (inviterPhone && inviterHeld === null) {
     await sendThreaded(database, deps, {
       to: inviterPhone,
       body: JOIN_ACCEPTED_ACK,
@@ -279,7 +309,8 @@ export async function handleJoinArrival(
   return {
     status: 'join_link_accepted',
     familyId: invite.familyId,
-    inviterNotified: inviterPhone !== null,
+    inviterNotified: inviterHeld === null,
+    inviterHeld,
     supersededInviteId,
   };
 }

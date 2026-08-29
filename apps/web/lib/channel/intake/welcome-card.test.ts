@@ -150,3 +150,57 @@ describe('the welcome contact card', () => {
     expect(transport.sent).toEqual([]);
   });
 });
+
+describe('quiet hours — the card is a proactive extra, not the reply (ads-week audit, 2026-08-28)', () => {
+  /** 22:36 on Aug 26 in America/Toronto (EDT, UTC-4). */
+  const LOCAL_2236 = new Date('2026-08-27T02:36:00.000Z');
+  /** 09:00 on Aug 26 in America/Toronto. */
+  const LOCAL_0900 = new Date('2026-08-26T13:00:00.000Z');
+
+  function seedParent(fake: FakeDb) {
+    return fake.db
+      .insert(schema.users)
+      .values({ id: PARENT, email: null, name: 'Ana', timezone: 'America/Toronto' } as never);
+  }
+
+  async function sendAt(fake: FakeDb, cardPorts: WelcomeCardPorts, now: Date) {
+    return sendWelcomeContactCard(
+      fake.db,
+      { familyId: FAMILY, parentUserId: PARENT, phoneE164: PHONE, now },
+      cardPorts,
+    );
+  }
+
+  it('holds the 22:36-local card, names the outcome, and spends no idempotency', async () => {
+    const fake = makeFakeDb();
+    await seedParent(fake);
+    const transport = new FakeTransport();
+    const { ports: cardPorts, threaded } = ports(transport);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const outcome = await sendAt(fake, cardPorts, LOCAL_2236);
+
+    expect(outcome).toEqual({ status: 'not_sent', reason: 'suppressed_quiet_hours' });
+    expect(transport.sent).toEqual([]);
+    expect(threaded).toEqual([]);
+    // Named on the ledger like every dispatch suppression, and NEVER on the dedupe key:
+    // a suppression must not be the thing that spends this family's only card.
+    expect(ledgerRows(fake)).toEqual([
+      expect.objectContaining({ status: 'suppressed_quiet_hours', dedupeKey: null }),
+    ]);
+    expect(warn).toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it('sends the 09:00-local card (positive control)', async () => {
+    const fake = makeFakeDb();
+    await seedParent(fake);
+    const transport = new FakeTransport();
+    const { ports: cardPorts } = ports(transport);
+
+    const outcome = await sendAt(fake, cardPorts, LOCAL_0900);
+
+    expect(outcome).toEqual({ status: 'sent', channelMessageId: expect.any(String) });
+    expect(transport.sent).toHaveLength(1);
+  });
+});

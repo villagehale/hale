@@ -35,6 +35,7 @@ const FRESH_OFFER = {
   // family it is owed to are the same household.
   subjectFamilyId: null,
   dueAt: new Date('2026-08-14T14:00:00.000Z'),
+  createdAt: new Date('2026-08-11T14:00:00.000Z'),
 };
 const PLAN = [
   'Nights 1-3: the Ferber method - down drowsy but awake, wait 3 minutes before going in.',

@@ -104,7 +104,12 @@ async function seedFamily(
 ): Promise<{ familyId: string; parentUserId: string }> {
   const [user] = await fake.db
     .insert(schema.users)
-    .values({ externalAuthId: `sms:${phoneBlindIndex(PARENT_PHONE)}`, email: null, name: 'Ana' })
+    .values({
+      externalAuthId: `sms:${phoneBlindIndex(PARENT_PHONE)}`,
+      email: null,
+      name: 'Ana',
+      timezone: 'America/Toronto',
+    })
     .returning({ id: schema.users.id });
   const [family] = await fake.db
     .insert(schema.families)
@@ -272,6 +277,7 @@ describe('redeeming the link · the partner texts from their own phone', () => {
       status: 'join_link_accepted',
       familyId,
       inviterNotified: true,
+      inviterHeld: null,
       supersededSessionId: null,
       supersededInviteId: null,
     });
@@ -465,6 +471,7 @@ describe('a live link outranks whatever conversation is already open', () => {
       status: 'join_link_accepted',
       familyId,
       inviterNotified: true,
+      inviterHeld: null,
       supersededSessionId: session?.id,
       // No caregiver invite was in flight on this number, and the outcome SAYS so
       // rather than leaving it to be inferred.
@@ -560,5 +567,49 @@ describe('two people redeem the same link at once', () => {
         (r) => r.consentScope === 'sms_join_origination',
       ),
     ).toHaveLength(1);
+  });
+});
+
+describe("quiet hours · the inviter's ack is a proactive extra (ads-week audit, 2026-08-28)", () => {
+  /** 22:36 on Jul 30 in America/Toronto (EDT, UTC-4). */
+  const LOCAL_2236 = new Date('2026-07-31T02:36:00.000Z');
+  /** 09:00 on Jul 30 in America/Toronto. */
+  const LOCAL_0900 = new Date('2026-07-30T13:00:00.000Z');
+
+  it('holds "your partner is in" at 22:36 local but still answers the partner who texted', async () => {
+    const h = harness();
+    await seedFamily(h.fake);
+    await text(h, PARENT_PHONE, 'add my partner');
+    const code = mintedCode(h.transport);
+    const before = h.transport.sent.length;
+
+    const joined = await text(h, PARTNER_PHONE, arrival(code), LOCAL_2236);
+
+    expect(joined).toMatchObject({
+      status: 'join_link_accepted',
+      inviterNotified: false,
+      inviterHeld: 'quiet_hours',
+    });
+    // The DIRECT REPLY still goes — the partner texting at night gets their welcome —
+    // and the inviter, who texted nobody tonight, hears nothing until morning.
+    const late = h.transport.sent.slice(before);
+    expect(late).toHaveLength(1);
+    expect(late[0]?.to).toBe(PARTNER_PHONE);
+  });
+
+  it('sends the ack at 09:00 local (positive control)', async () => {
+    const h = harness();
+    await seedFamily(h.fake);
+    await text(h, PARENT_PHONE, 'add my partner');
+    const code = mintedCode(h.transport);
+
+    const joined = await text(h, PARTNER_PHONE, arrival(code), LOCAL_0900);
+
+    expect(joined).toMatchObject({
+      status: 'join_link_accepted',
+      inviterNotified: true,
+      inviterHeld: null,
+    });
+    expect(h.transport.sent.at(-1)?.to).toBe(PARENT_PHONE);
   });
 });

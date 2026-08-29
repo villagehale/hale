@@ -183,6 +183,20 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
  */
 export const PROACTIVE_QUIET_HOURS = { start: '21:00', end: '08:00' } as const;
 
+/**
+ * The same window, as a bare check for the intake-adjacent PROACTIVE EXTRAS that cannot
+ * route through {@link assertProactiveSendAllowed} — they run seconds after provisioning,
+ * before watch consent can exist, so the full gate would refuse them always. The direct
+ * reply to a parent's own inbound is exempt by design (a person texting at 23:00 gets
+ * their answer); what consults this is the extra beside it: the welcome contact card and
+ * the co-parent join's inviter ack, both observed leaving at 22:36 local around the gate
+ * in the 2026-08-28 ads-week audit. One window, one reader — a second literal would
+ * drift.
+ */
+export function inProactiveQuietHours(now: Date, timeZone: string): boolean {
+  return isWithinQuietHours(now, timeZone, PROACTIVE_QUIET_HOURS.start, PROACTIVE_QUIET_HOURS.end);
+}
+
 /** The `channel_messages.category` each proactive class is counted under. A class of
  * its own per kind, so one class's volume can never consume another's budget. */
 const PROACTIVE_CATEGORY: Record<

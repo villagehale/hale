@@ -285,6 +285,9 @@ export async function loadOpenCommitment(
   subjectChildId: string | null;
   subjectFamilyId: string | null;
   dueAt: Date;
+  /** When the promise was minted — which, for an offer, is when its ask went out (every
+   * writer records against the sent message). The open-question reader's recency fact. */
+  createdAt: Date;
 } | null> {
   const rows = await database
     .select({
@@ -294,6 +297,7 @@ export async function loadOpenCommitment(
       subjectChildId: schema.agentCommitments.subjectChildId,
       subjectFamilyId: schema.agentCommitments.subjectFamilyId,
       dueAt: schema.agentCommitments.dueAt,
+      createdAt: schema.agentCommitments.createdAt,
     })
     .from(schema.agentCommitments)
     .where(

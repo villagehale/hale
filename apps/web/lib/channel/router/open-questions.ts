@@ -185,6 +185,64 @@ export interface OpenQuestion {
   subject: string;
   /** What answering it could actually DO, read off the row — see {@link answerable}. */
   answerable: Answerable;
+  /**
+   * When this ask was last put in front of the parent, off the owning row, or null where
+   * no source threads it (an approval draft, the intro asks). Null is a fact, not a
+   * default: it says recency CANNOT be established, which disables the newest-solicited
+   * precedence for the whole list (see {@link newestSolicitedKind}).
+   */
+  askedAt: Date | null;
+  /** True when this class's ask PRINTS an explicit keyword instruction ("Reply YES ...")
+   * — see {@link SOLICITED}. */
+  solicited: boolean;
+}
+
+/**
+ * Which classes' asks print an explicit solicited keyword. The 2026-08-13 doctrine took
+ * the printed keywords away from the composed asks, but two fixed sentences still carry
+ * one — the founder ping ("Reply YES and I'll send them your welcome note", founder/
+ * copy.ts) and the plan offer ("Want the full plan? Reply YES and I'll send it.",
+ * channel/plan/offer.ts). A parent answering one of those with a bare YES is doing
+ * exactly what the last message told them to do, and on 2026-08-28 (ads-week audit)
+ * that YES fell to an older open question instead. Per CLASS, never per caller, the
+ * same way the outbound gate types urgency — a solicited flag at a call site could not
+ * widen this.
+ */
+const SOLICITED: Record<OpenQuestionKind, boolean> = {
+  approval: false,
+  intro_optin: false,
+  intro_proposal: false,
+  plan_offer: true,
+  checkup_offer: false,
+  activity_followup: false,
+  founder_welcome_offer: true,
+};
+
+/**
+ * The kind a bare affirmative binds to by RECENCY: the newest ask, when — and only when
+ * — every open question's ask time is known, the top is not a tie, and that newest ask
+ * is a solicited-keyword one. Everything else returns null and the 2026-08-13 rule
+ * stands (nobody claims; the resolver reads or Hale asks in a sentence).
+ *
+ * The undated guard is deliberate, not a shortcut: an approval draft carries no ask
+ * time here, and a bare YES near an open approval is exactly the coin flip the old
+ * priority order resolved in favour of the expensive outcome. Recency that cannot be
+ * established is not recency.
+ */
+export function newestSolicitedKind(
+  questions: readonly OpenQuestion[],
+): OpenQuestionKind | null {
+  if (questions.length === 0) return null;
+  if (questions.some((question) => question.askedAt === null)) return null;
+  const byRecency = [...questions].sort(
+    (a, b) => (b.askedAt as Date).getTime() - (a.askedAt as Date).getTime(),
+  );
+  const newest = byRecency[0] as OpenQuestion;
+  const runnerUp = byRecency[1];
+  if (runnerUp && (runnerUp.askedAt as Date).getTime() === (newest.askedAt as Date).getTime()) {
+    return null;
+  }
+  return newest.solicited ? newest.kind : null;
 }
 
 /**
@@ -241,6 +299,10 @@ export function soleOpenKind(
   questions: readonly OpenQuestion[],
   kind: OpenQuestionKind | null,
 ): boolean {
+  // The one exception to "every question must be of this kind": the parent is doing
+  // exactly what the newest message told them to do (ads-week audit, 2026-08-28) —
+  // see {@link newestSolicitedKind} for how narrow the claim is.
+  if (kind !== null && newestSolicitedKind(questions) === kind) return true;
   return questions.every((question) => question.kind === kind);
 }
 
@@ -269,18 +331,19 @@ export interface OpenQuestionSources {
     familyId: string,
     now: Date,
   ): Promise<{ id: string } | null>;
-  /** The live, unexpired plan offer, or null. */
+  /** The live, unexpired plan offer, or null. `askedAt` is the commitment row's own
+   * mint time — when the offer sentence went out. */
   planOffer(
     database: Database,
     familyId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
   /** The live, unexpired health-checkpoint booking offer, or null. */
   checkupOffer(
     database: Database,
     familyId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
   /**
    * The founder's live, unexpired welcome offer, or null. Null for every other family in
    * the product by construction — the row is only ever written against his.
@@ -289,7 +352,7 @@ export interface OpenQuestionSources {
     database: Database,
     familyId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
   /**
    * The activity follow-up Hale still owes this family, or null.
    *
@@ -300,7 +363,7 @@ export interface OpenQuestionSources {
   activityPromise(
     database: Database,
     familyId: string,
-  ): Promise<{ id: string; summary: string } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
 }
 
 /**
@@ -344,6 +407,10 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           description: 'Whether to be introduced to other Hale families nearby',
           subject: SUBJECT.intro_optin,
           answerable: KIND_ANSWERABLE.intro_optin,
+          // The ask time is not threaded off the ledger row here; null disables the
+          // recency precedence whenever this question is open (fail toward asking).
+          askedAt: null,
+          solicited: SOLICITED.intro_optin,
         });
       }
       if (proposal) {
@@ -354,6 +421,8 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           description: 'Whether to meet one nearby Hale family',
           subject: SUBJECT.intro_proposal,
           answerable: KIND_ANSWERABLE.intro_proposal,
+          askedAt: null,
+          solicited: SOLICITED.intro_proposal,
         });
       }
       if (offer) {
@@ -365,6 +434,8 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           description: offer.summary,
           subject: SUBJECT.plan_offer,
           answerable: KIND_ANSWERABLE.plan_offer,
+          askedAt: offer.askedAt,
+          solicited: SOLICITED.plan_offer,
         });
       }
       if (checkup) {
@@ -376,6 +447,8 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           description: checkup.summary,
           subject: SUBJECT.checkup_offer,
           answerable: KIND_ANSWERABLE.checkup_offer,
+          askedAt: checkup.askedAt,
+          solicited: SOLICITED.checkup_offer,
         });
       }
       if (welcome) {
@@ -387,6 +460,8 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           description: welcome.summary,
           subject: SUBJECT.founder_welcome_offer,
           answerable: KIND_ANSWERABLE.founder_welcome_offer,
+          askedAt: welcome.askedAt,
+          solicited: SOLICITED.founder_welcome_offer,
         });
       }
       if (promise) {
@@ -398,6 +473,8 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           description: promise.summary,
           subject: SUBJECT.activity_followup,
           answerable: KIND_ANSWERABLE.activity_followup,
+          askedAt: promise.askedAt,
+          solicited: SOLICITED.activity_followup,
         });
       }
       return questions;
@@ -445,6 +522,11 @@ function namedApprovals(approvals: ReadonlyArray<PendingAction>): OpenQuestion[]
       description: `${label}${position}`,
       subject: `${label.toLowerCase()}${position}`,
       answerable: { yes: action.reviewerApproved, no: true },
+      // Drafted-at is not threaded through PendingAction; null keeps the recency
+      // precedence OFF whenever a draft is pending, which is the safe side (a bare YES
+      // near an open approval is the expensive coin flip).
+      askedAt: null,
+      solicited: SOLICITED.approval,
     };
   });
 }
