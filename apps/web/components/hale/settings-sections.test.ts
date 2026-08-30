@@ -32,7 +32,7 @@ describe('settings taxonomy', () => {
       account: 'Account',
       notif: 'Notifications',
       plan: 'Plan',
-      apps: 'Connected apps',
+      apps: 'Connections',
       trust: 'Trust',
       about: 'About',
     });

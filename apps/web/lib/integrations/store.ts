@@ -19,6 +19,10 @@ export interface ConnectionSummary {
    * Always set by listConnections (the row's created_at); optional on the type so a
    * summary can be constructed without it (e.g. a coach-panel fixture). */
   connectedAt?: Date;
+  /** The owning parent's user id (null for a family-wide row). Only listConnections
+   * sets it — the web loader folds it into `ownedByViewer` and never ships the raw
+   * id to the client. */
+  userId?: string | null;
 }
 
 /** audit_log.action_taken values for a connector connect/disconnect (rule #6). */
@@ -127,6 +131,7 @@ export async function listConnections(
       scopes: schema.integrations.scopes,
       lastSyncAt: schema.integrations.lastSyncAt,
       connectedAt: schema.integrations.createdAt,
+      userId: schema.integrations.userId,
     })
     .from(schema.integrations)
     .where(eq(schema.integrations.familyId, familyId));
