@@ -1,5 +1,6 @@
 import type { Route } from 'next';
 import {
+  ListChecks,
   CalendarDays,
   History,
   House,
@@ -55,8 +56,8 @@ export const ALL_NAV = [
  * text; the trail, the week and the village render but are not stops (DEMOTED_NAV).
  */
 export const RECEIPTS_NAV = [
-  { href: '/approvals', label: 'Home', icon: House },
   { href: '/family', label: 'Family', icon: UsersRound },
+  { href: '/approvals', label: 'Approvals', icon: ListChecks },
   { href: '/settings', label: 'Settings', icon: Settings },
 ] as const satisfies ReadonlyArray<NavItem>;
 
@@ -91,7 +92,7 @@ export function primaryNav(receiptsIa: boolean): ReadonlyArray<NavItem> {
  * equal to the middleware's forward target is what receipts-ia.test.ts asserts.
  */
 export function brandHref(receiptsIa: boolean): Route {
-  return receiptsIa ? '/approvals' : '/home';
+  return receiptsIa ? '/family' : '/home';
 }
 
 /**
