@@ -21,18 +21,40 @@ import {
  * parent with no family yet is `not_found` — never a crash, never a fabricated id.
  */
 
+/** A family connection as the web Settings surface may see it: the summary with
+ * the owner folded into `ownedByViewer` — the raw owner user id never leaves the
+ * server. A co-parent's row is thereby visible (its sync feeds family-shared
+ * events) but attributed and non-actionable; only the owner's list entry matches
+ * the user-scoped revoke key. */
+export interface FamilyConnectorView {
+  provider: string;
+  status: string;
+  scopes: string[];
+  lastSyncAt: Date | null;
+  connectedAt?: Date;
+  ownedByViewer: boolean;
+}
+
 /**
- * The current family's connector connections, for the web Settings → Connectors UI.
- * Empty when signed out or when the user has no family yet (fail closed, rule #1).
+ * The current family's connector connections, for the web Settings → Connections
+ * UI. Empty when signed out or when the user has no family yet (fail closed,
+ * rule #1).
  */
-export async function loadFamilyConnectors(): Promise<ConnectionSummary[]> {
+export async function loadFamilyConnectors(): Promise<FamilyConnectorView[]> {
   const session = await auth();
   const externalAuthId = session?.user?.id;
   if (!externalAuthId) return [];
   const database = defaultDb();
-  const familyId = await resolveFamilyForUser(externalAuthId, database);
+  const [familyId, userId] = await Promise.all([
+    resolveFamilyForUser(externalAuthId, database),
+    resolveUserIdForUser(externalAuthId, database),
+  ]);
   if (!familyId) return [];
-  return listConnections(database, familyId);
+  const rows = await listConnections(database, familyId);
+  return rows.map(({ userId: ownerId, ...summary }) => ({
+    ...summary,
+    ownedByViewer: ownerId != null && ownerId === userId,
+  }));
 }
 
 export type ConnectorsStateResult =

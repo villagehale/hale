@@ -13,7 +13,8 @@ import {
 import Link from 'next/link';
 import { AccountPreferencesCard } from '~/components/hale/account-preferences-card';
 import { ConnectedAssistants } from '~/components/hale/connected-assistants';
-import { Connectors } from '~/components/hale/connectors';
+import { ConnectionChannelsCard } from '~/components/hale/connection-channels-card';
+import { ConnectionSources } from '~/components/hale/connection-sources';
 import { ConsentRecordsList } from '~/components/hale/consent-records-list';
 import { DeleteAccountButton } from '~/components/hale/delete-account-button';
 import { ExportDataButton } from '~/components/hale/export-data-button';
@@ -190,15 +191,25 @@ export default async function SettingsPage() {
         </div>
       </SettingsSection>
 
-      {/* ── Connected apps ──────────────────────────────────────────────── */}
+      {/* ── Connections ─────────────────────────────────────────────────── */}
       <SettingsSection
         id="apps"
-        label="Connected apps"
-        explainer="Read-only sources and assistants you’ve allowed in."
+        label="Connections"
+        explainer="How Hale reaches you, what it can read, and the assistants you’ve allowed in."
       >
         <div className="flex flex-col gap-y-8">
-          <Connectors connections={connections} />
-          <ConnectedAssistants connections={assistantConnections} />
+          <div>
+            <p className="eyebrow text-faded-sage mb-4">how hale reaches you</p>
+            <ConnectionChannelsCard sms={smsChannel} email={profile?.email ?? null} />
+          </div>
+          <div>
+            <p className="eyebrow text-faded-sage mb-4">what hale can read</p>
+            <ConnectionSources connections={connections} />
+          </div>
+          <div>
+            <p className="eyebrow text-faded-sage mb-4">assistants</p>
+            <ConnectedAssistants connections={assistantConnections} />
+          </div>
         </div>
       </SettingsSection>
 

@@ -55,7 +55,7 @@ export default auth((req) => {
   // flag-conditional hinge, so with the flag OFF `/home` remains the real daily feed and
   // the real landing. Retargeting those call sites would break the flag-off path.
   if (receiptsIaEnabled() && (pathname === '/home' || pathname.startsWith('/home/'))) {
-    return NextResponse.redirect(new URL('/approvals', req.nextUrl), 302);
+    return NextResponse.redirect(new URL('/family', req.nextUrl), 302);
   }
 
   // Under the same reframe the family EDITOR moved up a level: /family is the editor

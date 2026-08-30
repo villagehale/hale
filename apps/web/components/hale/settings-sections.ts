@@ -13,7 +13,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'account', label: 'Account' },
   { id: 'notif', label: 'Notifications' },
   { id: 'plan', label: 'Plan' },
-  { id: 'apps', label: 'Connected apps' },
+  { id: 'apps', label: 'Connections' },
   { id: 'trust', label: 'Trust' },
   { id: 'about', label: 'About' },
 ] as const;
