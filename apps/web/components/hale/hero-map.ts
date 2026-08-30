@@ -70,7 +70,7 @@ export const DRILL_HEROES: Record<string, DrillHero> = {
  */
 export const RECEIPTS_ROOT_HEROES: Record<string, RootHero> = {
   '/approvals': {
-    title: 'Home',
+    title: 'Approvals',
     subtitle: 'What Hale has drafted, waiting on your yes or no.',
   },
   '/family': {

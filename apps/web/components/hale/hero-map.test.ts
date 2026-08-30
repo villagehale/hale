@@ -60,7 +60,7 @@ describe('resolveHero under the receipts-room IA', () => {
     expect((resolveHero('/plan', roots, true)?.hero as RootHero).title).toBe('Week');
     expect((resolveHero('/trail', roots, true)?.hero as RootHero).title).toBe('Trail');
     // The nav's first stop reads "Home" — the approvals queue IS the landing surface.
-    expect((resolveHero('/approvals', roots, true)?.hero as RootHero).title).toBe('Home');
+    expect((resolveHero('/approvals', roots, true)?.hero as RootHero).title).toBe('Approvals');
     expect((resolveHero('/family', roots, true)?.hero as RootHero).title).toBe('Family');
   });
 
