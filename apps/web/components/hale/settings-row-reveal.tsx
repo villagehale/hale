@@ -1,8 +1,14 @@
 'use client';
 
-import type { LucideIcon } from 'lucide-react';
+import { Phone, Ruler, UserRound } from 'lucide-react';
 import { useId, useState } from 'react';
 import { SettingsRow } from '~/components/hale/settings-card';
+
+/** The reveal rows' icons, resolved CLIENT-SIDE by name: a Server Component cannot
+ * pass a component function across the RSC boundary (it is not serializable), so the
+ * page names the icon and this map owns the reference. */
+const REVEAL_ICONS = { user: UserRound, phone: Phone, ruler: Ruler } as const;
+export type RevealIconName = keyof typeof REVEAL_ICONS;
 
 /**
  * A flat row whose action button reveals its edit machinery inline (the Name and
@@ -18,7 +24,7 @@ export function SettingsRowReveal({
   actionLabel,
   children,
 }: {
-  icon: LucideIcon;
+  icon: RevealIconName;
   label: string;
   value?: React.ReactNode;
   pii?: boolean;
@@ -32,7 +38,7 @@ export function SettingsRowReveal({
   return (
     <div>
       <SettingsRow
-        icon={icon}
+        icon={REVEAL_ICONS[icon]}
         label={label}
         value={value}
         pii={pii}
