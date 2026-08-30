@@ -69,6 +69,27 @@ function cellText(column: AdmColumn, value: string | number | null): string {
   return String(value);
 }
 
+/**
+ * The row pipeline the table mounts — features, column defs and the global
+ * filter fn in one place, so sorting and filtering stay exercisable headlessly
+ * (these components are tested through static markup, with no DOM to click).
+ */
+export function admTableOptions(rows: AdmRow[], columns: AdmColumn[]) {
+  return {
+    features,
+    data: rows,
+    columns: columns.map(
+      (column): ColumnDef<typeof features, AdmRow> => ({
+        id: column.key,
+        accessorKey: column.key,
+        header: column.label,
+        sortFn: 'alphanumeric',
+      }),
+    ),
+    globalFilterFn: 'includesString' as const,
+  };
+}
+
 export function DataTable({
   rows,
   columns,
@@ -81,22 +102,10 @@ export function DataTable({
   initialSort?: { key: string; desc: boolean };
 }) {
   const [globalFilter, setGlobalFilter] = useState('');
-  const columnDefs = useMemo(
-    (): ColumnDef<typeof features, AdmRow>[] =>
-      columns.map((column) => ({
-        id: column.key,
-        accessorKey: column.key,
-        header: column.label,
-        sortFn: 'alphanumeric',
-      })),
-    [columns],
-  );
+  const options = useMemo(() => admTableOptions(rows, columns), [rows, columns]);
 
   const table = useTable({
-    features,
-    data: rows,
-    columns: columnDefs,
-    globalFilterFn: 'includesString',
+    ...options,
     initialState: {
       pagination: { pageIndex: 0, pageSize: PAGE_SIZE },
       sorting: initialSort ? [{ id: initialSort.key, desc: initialSort.desc }] : [],
