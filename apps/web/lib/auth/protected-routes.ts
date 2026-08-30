@@ -11,6 +11,7 @@
  * missing from the Edge gate until it is added here.
  */
 export const PROTECTED_PREFIXES = [
+  '/admin',
   '/approvals',
   '/coach',
   '/companion',
@@ -27,4 +28,13 @@ export const PROTECTED_PREFIXES = [
 /** True when `pathname` is one of the gated routes, or sits underneath one. */
 export function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+/**
+ * The founder-only analytics portal. Unlike every other protected prefix, an
+ * unauthenticated hit here must answer 404 — never a redirect that advertises
+ * the route exists (the (admin) layout 404s non-admins the same way).
+ */
+export function isAdminPath(pathname: string): boolean {
+  return pathname === '/admin' || pathname.startsWith('/admin/');
 }
