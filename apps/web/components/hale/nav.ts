@@ -91,7 +91,7 @@ export function primaryNav(receiptsIa: boolean): ReadonlyArray<NavItem> {
  * equal to the middleware's forward target is what receipts-ia.test.ts asserts.
  */
 export function brandHref(receiptsIa: boolean): Route {
-  return receiptsIa ? '/approvals' : '/home';
+  return receiptsIa ? '/family' : '/home';
 }
 
 /**

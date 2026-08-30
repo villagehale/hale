@@ -246,7 +246,7 @@ describe('the demoted daily feed', () => {
     expect(middleware).toContain('receiptsIaEnabled()');
     // Positive control first: if this passes, `middleware` really is the source text,
     // so the absence check below cannot pass vacuously on an empty/misread file.
-    expect(middleware).toContain("NextResponse.redirect(new URL('/approvals', req.nextUrl), 302)");
+    expect(middleware).toContain("NextResponse.redirect(new URL('/family', req.nextUrl), 302)");
     expect(middleware).not.toContain("new URL('/plan'");
   });
 
@@ -316,7 +316,7 @@ describe('sign-in under the flag', () => {
 
 describe('the brand mark follows the demotion (VIL-256)', () => {
   it('lands on the receipts room under the reframe, so a logo click costs no 302 hop', () => {
-    expect(brandHref(true)).toBe('/approvals');
+    expect(brandHref(true)).toBe('/family');
   });
 
   it('still lands on the daily feed with the flag off', () => {
