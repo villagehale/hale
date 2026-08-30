@@ -57,7 +57,7 @@ describe('SettingsRow', () => {
 
 describe('SettingsRowReveal', () => {
   const html = renderReveal({
-    icon: Phone,
+    icon: 'phone',
     label: 'Phone',
     value: 'No number linked yet',
     actionLabel: 'Link',
