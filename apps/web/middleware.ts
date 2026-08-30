@@ -2,7 +2,7 @@ import NextAuth from 'next-auth';
 import { NextResponse } from 'next/server';
 import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
-import { isProtectedPath } from '~/lib/auth/protected-routes';
+import { isAdminPath, isProtectedPath } from '~/lib/auth/protected-routes';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { RETIRED_TARGET, isRetiredPath } from '~/lib/routes/retired';
 
@@ -68,6 +68,15 @@ export default auth((req) => {
     (pathname === '/family/members' || pathname.startsWith('/family/members/'))
   ) {
     return NextResponse.redirect(new URL('/family', req.nextUrl), 308);
+  }
+
+  // The founder portal answers a session-less probe with a 404, NEVER the
+  // sign-in redirect the rest of the gated app uses — a redirect would advertise
+  // that /admin exists. The rewrite target matches no route, so Next renders the
+  // not-found page with a real 404 status; an authed non-admin gets the same 404
+  // from the (admin) layout itself.
+  if (isAdminPath(pathname) && (!authConfigured() || !req.auth)) {
+    return NextResponse.rewrite(new URL('/admin/__denied__/404', req.nextUrl));
   }
 
   if (!authConfigured()) {
