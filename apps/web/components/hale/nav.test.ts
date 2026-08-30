@@ -66,9 +66,9 @@ describe('shared nav definition', () => {
  * same resolved boolean and never disagree.
  */
 describe('receipts-room nav (flag on)', () => {
-  it('is exactly Home · Family · Settings, in that order (the founder-decided nav)', () => {
-    expect(RECEIPTS_NAV.map((n) => n.label)).toEqual(['Home', 'Family', 'Settings']);
-    expect(RECEIPTS_NAV.map((n) => n.href)).toEqual(['/approvals', '/family', '/settings']);
+  it('is exactly Family · Approvals · Settings, in that order (founder decisions 2026-08-30: Family is the landing, and a Home that is not home is a lie)', () => {
+    expect(RECEIPTS_NAV.map((n) => n.label)).toEqual(['Family', 'Approvals', 'Settings']);
+    expect(RECEIPTS_NAV.map((n) => n.href)).toEqual(['/family', '/approvals', '/settings']);
   });
 
   it('every stop earns its place as a receipt or a control — no retired or demoted route is one', () => {

@@ -5,11 +5,9 @@ import {
   Mail,
   MapPin,
   Phone,
-  Ruler,
   ScrollText,
   ShieldCheck,
   SunMoon,
-  UserRound,
   UsersRound,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -110,7 +108,7 @@ export default async function SettingsPage() {
         {profile ? (
           <SettingsCard>
             <SettingsRowReveal
-              icon={UserRound}
+              icon="user"
               label="Name"
               value={profile.name?.trim() || 'No name yet'}
               pii
@@ -121,7 +119,7 @@ export default async function SettingsPage() {
 
             {smsChannel.status === 'ready' ? (
               <SettingsRowReveal
-                icon={Phone}
+                icon="phone"
                 label="Phone"
                 value={phoneValue}
                 pii={phoneEnrolled}
@@ -145,7 +143,7 @@ export default async function SettingsPage() {
             <SettingsRow icon={SunMoon} label="Appearance" action={<ThemeToggle />} />
 
             <SettingsRowReveal
-              icon={Ruler}
+              icon="ruler"
               label="Display preferences"
               value="Units and the first day of your week"
               actionLabel="Change"
