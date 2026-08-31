@@ -238,6 +238,8 @@ export const AUDIT_VERBS = [
   'quick_log_measurement',
   'health_checkpoint_marked_done',
   // ── connectors, settings, billing ───────────────────────────────────────
+  'connector_link_minted',
+  'connector_link_signed_in',
   'integration_connected',
   'integration_revoked',
   'user_preferences_updated',
@@ -639,6 +641,14 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'done',
   },
   // ── connectors, settings, billing ───────────────────────────────────────
+  connector_link_minted: {
+    sentence: 'you asked to connect an account, so Hale texted you a sign-in link',
+    family: 'done',
+  },
+  connector_link_signed_in: {
+    sentence: 'you signed in with a link texted to your phone',
+    family: 'done',
+  },
   integration_connected: { sentence: 'you connected an account to Hale', family: 'done' },
   integration_revoked: { sentence: 'you disconnected an account', family: 'done' },
   user_preferences_updated: { sentence: 'you updated your preferences', family: 'done' },

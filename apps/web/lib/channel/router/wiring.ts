@@ -42,6 +42,7 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import {
   approvalHandler,
+  connectorLinkHandler,
   emailCaptureHandler,
   founderWelcomeHandler,
   healthReplyHandler,
@@ -259,6 +260,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     villageIntroHandler(defaultVillageIntroReplyDeps()),
     approvalHandler(defaultApprovalSpine()),
     emailCaptureHandler(defaultEmailCaptureDeps()),
+    connectorLinkHandler(),
     founderWelcomeHandler(defaultFounderReplyDeps()),
     healthReplyHandler(defaultHealthReplyDeps()),
     planReplyHandler(defaultPlanReplyDeps()),

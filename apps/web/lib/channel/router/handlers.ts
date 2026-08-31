@@ -1,6 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
+import { connectorOfferReply } from '~/lib/channel/connect/copy';
+import { matchConnectorRequest } from '~/lib/channel/connect/detect';
+import { offerConnectorLink } from '~/lib/channel/connect/offer';
+import { replyLanguage } from '~/lib/channel/language';
 import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
 import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
@@ -14,7 +18,7 @@ import {
   handleVillageIntroReply,
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
-import { checkupDraftedReply, healthDoneReply } from './copy';
+import { checkupDraftedReply, failureReply, healthDoneReply } from './copy';
 import { matchFastPath } from './fast-path';
 import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
@@ -212,6 +216,68 @@ export function emailCaptureHandler(deps: EmailCaptureDeps): DeterministicHandle
       );
       if (outcome.status === 'declined_to_claim') return { claimed: false };
       return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+    },
+  };
+}
+
+/**
+ * A plain ask to connect Google Calendar, Gmail or Drive (the connector handoff).
+ *
+ * PLACED AFTER the email capture and BEFORE the three bare-affirmative claimers, and
+ * the position costs nothing either way: it claims only a message carrying an explicit
+ * connect-verb + provider-noun pair (connect/detect.ts), a shape no other handler's
+ * vocabulary contains and no bare word can be. What the position buys is the same
+ * thing every deterministic handler buys — the model never sees the ask, so the answer
+ * is a REAL link minted this turn rather than a composed sentence about one (the
+ * registration-context failure class, closed the way the referral tool closed its own:
+ * with a fact instead of an instruction).
+ *
+ * BEFORE FLOOD by construction (the whole chain is), so a parent whose hour is spent
+ * still gets their link.
+ *
+ * Rule #11, all three ways out named: `sent` claims with the locked offer line (EN/FR
+ * twin, one segment, link inside it); `not_enrolled` — unreachable from the router,
+ * which does not reach the chain without a verified parent channel, but re-proven by
+ * the mint — declines to claim and says why in the log; `mint_failed` claims with the
+ * honest failure line rather than deferring the turn into hours of queue backoff.
+ */
+export function connectorLinkHandler(
+  log: Pick<Console, 'error'> = console,
+): DeterministicHandler {
+  return {
+    name: 'connector_link',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const provider = matchConnectorRequest(ctx.body);
+      if (!provider) return { claimed: false };
+
+      const outcome = await offerConnectorLink(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        provider,
+        now: ctx.now,
+      });
+      switch (outcome.status) {
+        case 'minted':
+          return {
+            claimed: true,
+            outcome: 'sent',
+            reply: connectorOfferReply(replyLanguage(ctx.body), provider, outcome.url),
+          };
+        case 'not_enrolled':
+          // Ids and the named outcome only, never the body (rule #1). The coach takes
+          // the turn, and its skill knows this branch exists.
+          log.error(
+            { familyId: ctx.familyId, provider, outcome: 'not_enrolled' },
+            'connector link: mint refused for an unenrolled turn',
+          );
+          return { claimed: false };
+        case 'mint_failed':
+          log.error(
+            { familyId: ctx.familyId, provider, outcome: 'mint_failed' },
+            'connector link: mint failed',
+          );
+          return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
+      }
     },
   };
 }

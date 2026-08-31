@@ -31,6 +31,7 @@ import {
   greeting,
 } from '~/lib/channel/intake/copy';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
+import { connectorOfferReply } from '~/lib/channel/connect/copy';
 import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
@@ -94,6 +95,7 @@ const SMS_COPY_SOURCES = [
   'lib/channel/off-domain/copy.ts',
   'lib/channel/caregiver/copy.ts',
   'lib/channel/join/copy.ts',
+  'lib/channel/connect/copy.ts',
   'lib/channel/twilio/copy.ts',
   'lib/channel/founder/copy.ts',
   'lib/health/copy.ts',
@@ -251,6 +253,45 @@ describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
    * a trimmed or split URL fails here rather than in a stranger's inbox. */
   it('carries the whole link inside the budget', () => {
     expect(joinInviteForward(CODE)).toContain(`https://www.villagehale.com/text?s=${CODE}`);
+  });
+});
+
+/**
+ * The connector offer, rendered — the other deterministic body that carries a URL Hale
+ * did not write. The link is the payload (a single-use, 15-minute sign-in token), so the
+ * gates are the join copy's: GSM-7 once rendered, the WHOLE link present, and ONE
+ * segment — the reply answers a parent who asked for exactly one thing, and a second
+ * segment here would be pure ceremony.
+ */
+describe('the connector offer stays GSM-7 and inside one segment, twins in lockstep', () => {
+  // Representative of the real mint: 16 bytes base64url is 22 characters.
+  const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ';
+  const PROVIDERS = ['gcal', 'gmail', 'gdrive'] as const;
+  const LANGUAGES = ['en', 'fr'] as const;
+
+  it.each(
+    LANGUAGES.flatMap((language) =>
+      PROVIDERS.map((provider) => [language, provider] as const),
+    ),
+  )('%s / %s', (language, provider) => {
+    const body = connectorOfferReply(language, provider, URL);
+    expect({
+      encoding: smsEncoding(body),
+      overBudget: smsSegments(body) > 1,
+      carriesWholeLink: body.includes(URL),
+    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true });
+  });
+
+  /** The twins are twins: same link, same window, different words — so a copy edit that
+   * touches one language and forgets the other fails here rather than in a thread. */
+  it('keeps the EN and FR twins in lockstep on the facts', () => {
+    for (const provider of PROVIDERS) {
+      const en = connectorOfferReply('en', provider, URL);
+      const fr = connectorOfferReply('fr', provider, URL);
+      expect(en).not.toBe(fr);
+      expect(en).toContain('15');
+      expect(fr).toContain('15');
+    }
   });
 });
 
