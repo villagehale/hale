@@ -9,13 +9,13 @@ import { SERVICE_TIMEOUT_MS, notConfigured, type ServiceOutcome, unreachable } f
  * any run of 7+ digits is scrubbed before the row exists — the same structural
  * rule lib/channel/twilio/alert.ts applies on the way out.
  */
-const ALERTS_URL = 'https://monitor.twilio.com/v1/Alerts?LogLevel=error&PageSize=50';
+export const ALERTS_URL = 'https://monitor.twilio.com/v1/Alerts?LogLevel=error&PageSize=50';
 
 export function scrubDigits(text: string): string {
   return text.replace(/\d{7,}/g, '[digits]');
 }
 
-function credentials(): { user: string; pass: string } | null {
+export function credentials(): { user: string; pass: string } | null {
   const { TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } =
     process.env;
   if (TWILIO_API_KEY_SID && TWILIO_API_KEY_SECRET) {
