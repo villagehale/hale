@@ -104,3 +104,27 @@ describe('medical reply-source vocabulary · SQL CHECK ↔ TypeScript source', (
     );
   });
 });
+
+/**
+ * The same seam for migration 0103's `reply_source` — the general deflection outcome the
+ * papercut digest counts. The value separates a composed answer from the fixed line that
+ * stood in for one, so a TS value the CHECK rejects would fail the stamp and the week's
+ * composer failures would read as zero — the silent nothing rule #11 exists to prevent.
+ */
+describe('reply-source vocabulary · SQL CHECK ↔ TypeScript source', () => {
+  const sql = fs.readFileSync(
+    path.resolve(scriptDir, '..', 'drizzle', '0103_reply_source.sql'),
+    'utf8',
+  );
+  const ts = fs.readFileSync(SCHEMA, 'utf8');
+
+  it('the CHECK allows exactly the sources the router can write', () => {
+    expect(checkedValues(sql, 'channel_messages_reply_source_check')).toEqual(
+      sourceValues(ts, 'REPLY_SOURCES'),
+    );
+  });
+
+  it('the constraint admits NULL and nothing outside the list', () => {
+    expect(sql).toMatch(/CHECK \("reply_source" IS NULL OR "reply_source" IN \(/);
+  });
+});
