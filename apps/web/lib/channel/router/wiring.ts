@@ -6,7 +6,8 @@ import { and, asc, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { createOwnerReplyDecider, createReplyTransport } from '~/lib/channel/reply-transport';
+import { createTwilioTransport, createTwilioWhatsAppTransport } from '~/lib/channel/twilio/transport';
 import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/reverse-calendar';
 import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
@@ -442,7 +443,16 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
   return {
     database,
     loadContext: loadInboundContext,
-    transport: createTwilioTransport(),
+    // The reply-routing transport (WhatsApp v1): the router's sends are ANSWERS to a
+    // parent's own message, minutes later via the queue — so the pipe is decided per
+    // send from their newest inbound row (WhatsApp inside its 24h window, SMS with a
+    // named fallback otherwise), and the result carries which pipe was used so
+    // sendReply's ledger row records what happened.
+    transport: createReplyTransport({
+      sms: createTwilioTransport(),
+      whatsapp: createTwilioWhatsAppTransport(),
+      decide: createOwnerReplyDecider(database),
+    }),
     handlers: defaultHandlers(),
     // What Hale is still waiting to hear back about, and the stage that reads a parent's
     // own words against it. On the same lazy client as the screen and the apology: one

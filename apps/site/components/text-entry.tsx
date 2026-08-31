@@ -8,7 +8,7 @@ import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { CONTACT_CARD_PATH } from '~/lib/contact-card';
-import { CONTACT_EMAIL, buildSmsBody, buildSmsHref } from '~/lib/text-entry';
+import { CONTACT_EMAIL, buildSmsBody, buildSmsHref, buildWaHref } from '~/lib/text-entry';
 
 /**
  * The /text entry surface (VIL-240 · M5) — what a QR card at an EarlyON drop-in,
@@ -29,10 +29,14 @@ import { CONTACT_EMAIL, buildSmsBody, buildSmsHref } from '~/lib/text-entry';
 export function TextEntry({
   source,
   smsNumber,
+  whatsappNumber = '',
   locale = routing.defaultLocale,
 }: {
   source: string | null;
   smsNumber: string;
+  /** '' while the WhatsApp sender is unprovisioned (readWhatsAppNumber) — the
+   * button then simply does not exist, the same honesty rule as the sms: link. */
+  whatsappNumber?: string;
   locale?: Locale;
 }) {
   const t = getTranslator(locale, 'Text');
@@ -87,6 +91,22 @@ export function TextEntry({
               {t('saveContact')}
             </LandingCta>
           </div>
+
+          {/* The other pipe to the SAME number and conversation (WhatsApp v1).
+              Rendered only while the sender env validates — never a dead button —
+              and only on the live page: the dark email-fallback state stays dark. */}
+          {whatsappNumber ? (
+            <div className="mt-3">
+              <LandingCta
+                event="cta_whatsapp_click"
+                placement="text_entry"
+                href={buildWaHref(whatsappNumber, source)}
+                className="btn-secondary"
+              >
+                {t('whatsappMe')}
+              </LandingCta>
+            </div>
+          ) : null}
 
           <div className="card mt-8 flex flex-col gap-6 sm:flex-row sm:items-center">
             <QrCode value={smsHref} label={t('qrAria')} />

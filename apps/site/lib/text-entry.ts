@@ -82,3 +82,23 @@ export function displaySmsNumber(number: string): string {
   const nanp = number.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
   return nanp ? `+1 (${nanp[1]}) ${nanp[2]}-${nanp[3]}` : number;
 }
+
+/**
+ * NEXT_PUBLIC_HALE_WHATSAPP_NUMBER, with the same validation and the same honesty
+ * contract as {@link readSmsNumber}: '' until the WhatsApp sender is provisioned
+ * (Meta verification pending = the env stays unset), so the page renders no wa.me
+ * button rather than a dead one — the Connections-card law.
+ */
+export function readWhatsAppNumber(raw: string | undefined): string {
+  return readSmsNumber(raw);
+}
+
+/**
+ * The wa.me composer deep link — WhatsApp's cross-platform equivalent of
+ * {@link buildSmsHref}, carrying the SAME pre-filled body (the `(via <code>)`
+ * venue token works verbatim in a WhatsApp prefill, so QR attribution carries
+ * over). wa.me addresses the number as bare digits, no `+`.
+ */
+export function buildWaHref(number: string, source: string | null): string {
+  return `https://wa.me/${number.replace(/^\+/, '')}?text=${encodeURIComponent(buildSmsBody(source))}`;
+}

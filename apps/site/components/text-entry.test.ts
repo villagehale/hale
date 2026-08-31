@@ -97,6 +97,37 @@ describe('TextEntry (number live)', () => {
     expect(liveHtml).not.toContain('(647) 555-1234');
   });
 
+  it('offers WhatsApp as a counted secondary path ONLY while its sender is provisioned — never a dead button', () => {
+    const withWhatsApp = renderToStaticMarkup(
+      createElement(TextEntry, {
+        source: 'earlyon-richmondhill',
+        smsNumber: LIVE_NUMBER,
+        whatsappNumber: LIVE_NUMBER,
+      }),
+    );
+    // The SAME pre-filled body and venue token as the sms: link, on wa.me digits.
+    expect(withWhatsApp).toContain(
+      'href="https://wa.me/16475551234?text=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R%20(via%20earlyon-richmondhill)"',
+    );
+    expect(withWhatsApp).toContain('Or WhatsApp me');
+    // Wired into the funnel, not a bare anchor (the cta-wiring law).
+    expect(withWhatsApp).toContain('data-cta="cta_whatsapp_click"');
+
+    // The positive control above is what lets these absences mean something: with no
+    // WhatsApp env (today's dark state) there is no wa.me anywhere on the page.
+    for (const html of [liveHtml, liveNoSourceHtml, unsetHtml]) {
+      expect(html).not.toContain('wa.me');
+      expect(html).not.toContain('WhatsApp');
+    }
+  });
+
+  it('keeps the dark page dark: no wa.me button on the email-fallback state even if the WhatsApp env leaks in', () => {
+    const darkWithWhatsApp = renderToStaticMarkup(
+      createElement(TextEntry, { source: null, smsNumber: '', whatsappNumber: LIVE_NUMBER }),
+    );
+    expect(darkWithWhatsApp).not.toContain('wa.me');
+  });
+
   it('offers the contact card as the secondary action under the CTA', () => {
     // Saved once, every later Hale text arrives with the turtle and a name on it
     // rather than as an unknown number. Secondary on purpose: texting is the job.
