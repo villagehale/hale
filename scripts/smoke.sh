@@ -47,7 +47,10 @@ elif docker info >/dev/null 2>&1; then
     sleep 1
   done
   DB_URL="postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/hale_smoke"
-elif command -v initdb >/dev/null 2>&1 && command -v pg_ctl >/dev/null 2>&1; then
+elif command -v initdb >/dev/null 2>&1 && command -v pg_ctl >/dev/null 2>&1 \
+  && command -v postgres >/dev/null 2>&1; then
+  # All three, deliberately: Homebrew's libpq keg ships initdb/pg_ctl WITHOUT the
+  # `postgres` server binary — probing only the tools half-runs into an initdb error.
   echo "smoke: docker unavailable — throwaway local Postgres (initdb/pg_ctl) on 127.0.0.1:${PG_PORT}"
   DATA_DIR="$(mktemp -d /tmp/hale-smoke-pg.XXXXXX)"
   initdb -D "$DATA_DIR" -U postgres -A trust >/dev/null
@@ -76,8 +79,14 @@ export F14_RECEIPTS_IA=true
 export ADMIN_PHONES=+14165550123
 
 # Blank every real service key .env/.env.local could otherwise hand the server.
-export LANGFUSE_PUBLIC_KEY= LANGFUSE_SECRET_KEY= LANGFUSE_BASE_URL= LANGFUSE_HOST= \
-  ANTHROPIC_API_KEY= TWILIO_ACCOUNT_SID= TWILIO_AUTH_TOKEN= \
+# Two need syntactically VALID throwaway values, not empty: the worker env schema
+# (apps/worker/src/config.ts, parsed during next build's page-data collection) is
+# `.optional()` — absent passes, but '' fails min(1)/url(). The localhost:9
+# discard-port URL means any accidental export dies on this machine.
+export ANTHROPIC_API_KEY=smoke-placeholder-never-a-real-key
+export LANGFUSE_HOST=http://127.0.0.1:9 LANGFUSE_BASE_URL=http://127.0.0.1:9
+export LANGFUSE_PUBLIC_KEY= LANGFUSE_SECRET_KEY= \
+  TWILIO_ACCOUNT_SID= TWILIO_AUTH_TOKEN= \
   POSTHOG_PERSONAL_API_KEY= POSTHOG_PROJECT_ID= SUPABASE_URL= \
   RESEND_API_KEY= GOOGLE_OAUTH_CLIENT_ID= GOOGLE_OAUTH_CLIENT_SECRET= \
   STRIPE_SECRET_KEY= STRIPE_WEBHOOK_SECRET= \

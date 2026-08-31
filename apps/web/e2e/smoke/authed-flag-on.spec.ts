@@ -55,7 +55,10 @@ async function mintSessionCookie(sub: string, email: string) {
 type Viewer = 'admin' | 'parent' | 'anonymous';
 
 async function openPage(browser: Browser, viewer: Viewer): Promise<{ page: Page; errors: string[] }> {
-  const context = await browser.newContext();
+  // reducedMotion: the app's `.rise` entry animation starts at opacity 0 (delays to
+  // 760ms), so an un-reduced screenshot catches blank cards; the reduce arm in
+  // globals.css renders everything settled — deterministic, eyeball-able artifacts.
+  const context = await browser.newContext({ reducedMotion: 'reduce' });
   if (viewer !== 'anonymous') {
     const sub = viewer === 'admin' ? 'smoke-admin' : 'smoke-parent';
     await context.addCookies([await mintSessionCookie(sub, `${sub}@example.test`)]);
@@ -107,7 +110,8 @@ test('/family renders the seeded family (RSC + DB path executed)', async ({ brow
   const { page, errors } = await openPage(browser, 'admin');
   const response = await page.goto('/family');
   expect(response?.status()).toBe(200);
-  await expect(page.getByText('Juniper')).toBeVisible();
+  // .first(): the seeded child renders twice (sidebar switcher + the family editor).
+  await expect(page.getByText('Juniper').first()).toBeVisible();
   await assertHealthy(page, errors, '03-family');
 });
 
@@ -158,7 +162,12 @@ test('/admin answers 404 for a signed-in non-admin (the layout notFound arm)', a
   // (admin)/admin/layout.tsx notFound() arm for a real session without the phone.
   expect(response?.status()).toBe(404);
   await page.screenshot({ path: path.join(SCREEN_DIR, '08-admin-denied.png'), fullPage: true });
-  expect(errors, `page/console errors on ${page.url()}`).toEqual([]);
+  // A 404 DOCUMENT always logs one resource console error in Chromium — expected
+  // here and only here, so it is filtered per-test rather than allowlisted globally.
+  const unexpected = errors.filter(
+    (line) => !/Failed to load resource: the server responded with a status of 404/.test(line),
+  );
+  expect(unexpected, `page/console errors on ${page.url()}`).toEqual([]);
 });
 
 test('/family redirects a cookie-less visitor to /sign-in (auth-gate positive control)', async ({
