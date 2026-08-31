@@ -15,6 +15,10 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  // The local flag-on smoke (playwright.smoke.config.ts) owns e2e/smoke — those
+  // specs need a seeded ephemeral DB + minted sessions and must never run against
+  // the deployed origin this config targets.
+  testIgnore: 'smoke/**',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
