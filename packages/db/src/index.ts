@@ -12,6 +12,7 @@ export type { FamilyEvent, NewFamilyEvent } from './schema/family-events.js';
 export type { ContentProvenance } from './schema/events.js';
 export type {
   MedicalReplySourceValue,
+  ReplySourceValue,
   UnmetIntentCategory,
   UnmetIntentLane,
 } from './schema/channel-messages.js';

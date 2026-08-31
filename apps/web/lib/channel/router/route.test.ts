@@ -646,6 +646,49 @@ describe('the off-domain lane', () => {
     expect(sent[0]?.medicalReplySource ?? null).toBeNull();
   });
 
+  /**
+   * The rest of the verdict's provenance gets the same treatment (migration 0103): the
+   * lane already NAMES where the words came from — composed, a fixed door, or one of the
+   * four reasons the composer could not run — and dropping that at the send seam is what
+   * made the weekly deflection count silently mix real answers with
+   * ANSWER_UNAVAILABLE sends. The row still carries no body (rule #1).
+   */
+  it.each([
+    ['composed', ANSWERED],
+    [
+      'model_failed',
+      {
+        ...ANSWERED,
+        reply: "Couldn't get to that one - ask me again tomorrow.",
+        replySource: 'model_failed',
+      } satisfies OffDomainVerdict,
+    ],
+  ] as const)(
+    'persists the deflection reply source (%s) on the reply row it sends',
+    async (source, verdict) => {
+      const h = harness({ context: { body: "how's the weather" }, offDomain: fakeLane(verdict) });
+
+      await routeChannelMessage(h.deps, job());
+
+      const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.replySource).toBe(source);
+      expect(sent[0]?.body).toBeNull();
+    },
+  );
+
+  /** A coach turn's reply is not a deflection — no provenance stamp belongs on it. */
+  it('leaves the reply source null on a coach answer', async () => {
+    const coach = fakeCoach();
+    const h = harness({ context: { body: 'what should we do this weekend' }, coach });
+
+    await routeChannelMessage(h.deps, job());
+
+    const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.replySource ?? null).toBeNull();
+  });
+
   it('answers an off-domain text without ever waking the coach', async () => {
     const lane = fakeLane(ANSWERED);
     const coach = fakeCoach();

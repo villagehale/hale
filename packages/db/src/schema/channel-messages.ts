@@ -91,6 +91,29 @@ export type UnmetIntentCategory = (typeof UNMET_INTENT_CATEGORIES)[number];
 export const MEDICAL_REPLY_SOURCES = ['web_grounded', 'fixed'] as const;
 
 export type MedicalReplySourceValue = (typeof MEDICAL_REPLY_SOURCES)[number];
+
+/**
+ * Where the words in a DEFLECTION reply came from — the off-domain lane's in-memory
+ * `replySource`, persisted (migration 0103) so the weekly papercut digest can split
+ * composed answers from the fixed line that stood in for one. The first three values are
+ * outcomes; the last four are the named reasons the general composer could not run
+ * (GeneralAnswerFallback in apps/web/lib/channel/off-domain/answer.ts).
+ *
+ * THIS ARRAY IS THE SOURCE, on the same terms as the two vocabularies above: migration
+ * 0103's CHECK restates it in SQL — the one copy TypeScript cannot own — held to this
+ * one by `unmet-vocabulary-consistency.test.mjs`.
+ */
+export const REPLY_SOURCES = [
+  'fixed',
+  'composed',
+  'web_grounded',
+  'client_unavailable',
+  'skill_unavailable',
+  'model_failed',
+  'unsendable',
+] as const;
+
+export type ReplySourceValue = (typeof REPLY_SOURCES)[number];
 export const channelMessages = pgTable(
   'channel_messages',
   {
@@ -135,6 +158,11 @@ export const channelMessages = pgTable(
      * MARKS a row as a medical answer — the inbound row is deliberately left unstamped,
      * because a question Hale answered is not an unmet intent (migration 0090). */
     medicalReplySource: text('medical_reply_source').$type<MedicalReplySourceValue>(),
+    /** OUTBOUND deflection replies only: where the words came from (see
+     * {@link ReplySourceValue}). Null on every row the off-domain lane did not answer —
+     * the papercut digest counts the four fallback values as composer papercuts
+     * (migration 0103). */
+    replySource: text('reply_source').$type<ReplySourceValue>(),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     /** INBOUND only: when this text was actually handed to C1's queue. Null means the
      * job does not exist — either the enqueue has not happened yet or it failed. It is a
