@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gt, isNotNull, isNull, lt } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
 import type { ChannelMessageReceivedJob } from './inbound';
 
 /**
@@ -92,8 +92,10 @@ export async function selectUnhandedInbound(
         // Exactly what handOffToConversation records, and nothing else. Intake,
         // caregiver, and email rows are written by handlers that consume them
         // themselves — an unmarked row there is not a text C1 is owed, and sweeping
-        // one in replays a message that was already answered.
-        eq(schema.channelMessages.channel, 'sms'),
+        // one in replays a message that was already answered. Both phone pipes
+        // (WhatsApp v1): the webhook stamps the real transport, and a sweep pinned
+        // to 'sms' would strand every abandoned WhatsApp turn forever.
+        inArray(schema.channelMessages.channel, ['sms', 'whatsapp']),
         eq(schema.channelMessages.category, 'reply'),
         eq(schema.channelMessages.direction, 'in'),
         isNull(schema.channelMessages.handedOffAt),

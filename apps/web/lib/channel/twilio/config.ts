@@ -48,6 +48,23 @@ export function twilioConfig(): TwilioConfig | null {
   return { accountSid, authToken, apiKeySid, apiKeySecret, fromNumber, messagingServiceSid };
 }
 
+/**
+ * The WhatsApp-enabled sender (WhatsApp v1), E.164 WITHOUT the `whatsapp:` prefix —
+ * the transport applies it. Null while the leg is not provisioned (no Meta-verified
+ * sender yet): every WhatsApp path must then degrade to a NAMED outcome — the reply
+ * decider answers `not_configured` and rides SMS (reply-transport.ts) — never a
+ * silent no-op (rule #11). Requires the base Twilio config too: a WhatsApp number
+ * with no account credentials could accept nothing and send nothing.
+ *
+ * Whitespace-stripped before the check — `vercel env add` stores a trailing newline
+ * (the flags-silently-OFF landmine), and that must read as "configured", not dark.
+ */
+export function twilioWhatsAppSender(): string | null {
+  const sender = (process.env.TWILIO_WHATSAPP_FROM ?? '').trim();
+  if (!sender || !twilioConfig()) return null;
+  return sender;
+}
+
 /** The config for a path that cannot proceed without it (an outbound send). Throws
  * naming only the MISSING variable names — never a value. */
 export function requireTwilioConfig(): TwilioConfig {

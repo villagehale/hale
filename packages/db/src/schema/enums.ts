@@ -286,6 +286,12 @@ export const channelMessageChannelEnum = pgEnum('channel_message_channel', [
   // sms 'reply' rows and re-drives them to the SMS coach, so a spoken turn recorded as
   // 'sms' would be answered a second time, by text, five minutes later.
   'voice',
+  // WhatsApp v1 · the same number, a different pipe. The person is the SAME (the blind
+  // index keys on the bare E.164 — continuity law), but the pipe must be recorded
+  // truthfully: the reply-destination decision reads this column to honor Meta's
+  // 24-hour session window (channel/reply-transport.ts), and a WhatsApp turn recorded
+  // as 'sms' is a ledger lying in a PIPEDA right-to-access read (migration 0104).
+  'whatsapp',
 ]);
 
 // Direction of a loop message. 'in' rows (replies) are the ONLY rows that carry a

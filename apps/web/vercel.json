@@ -18,6 +18,8 @@
     { "path": "/api/cron/loop-health-digest", "schedule": "52 14 * * 1" },
     { "path": "/api/cron/civic-sweep", "schedule": "57 15 * * 1" },
     { "path": "/api/cron/registration-verify", "schedule": "3 16 * * 1" },
+    { "path": "/api/cron/twilio-triage", "schedule": "4-59/10 * * * *" },
+    { "path": "/api/cron/papercut-digest", "schedule": "13 16 * * 1" },
     { "path": "/api/cron/drain", "schedule": "* * * * *" },
     { "path": "/api/cron/queue-maintenance", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/connector-sync", "schedule": "*/15 * * * *" }

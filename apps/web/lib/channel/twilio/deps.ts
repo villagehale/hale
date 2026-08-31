@@ -21,8 +21,11 @@ import { db } from '~/lib/db';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
+import { createReplyTransport, selectReplyTransport } from '~/lib/channel/reply-transport';
+import type { MessageTransport } from '~/lib/channel/transport-address';
 import type { ChannelMessageReceivedJob, TwilioInboundDeps } from './inbound';
-import { createTwilioTransport } from './transport';
+import { twilioWhatsAppSender } from './config';
+import { createTwilioTransport, createTwilioWhatsAppTransport } from './transport';
 import type { TwilioVoiceDeps } from './voice';
 
 /**
@@ -43,12 +46,28 @@ function anthropicClient(): AgentClient {
 }
 
 /** M2's deps, built for real. Called only AFTER the signature passes (see inbound.ts),
- * so a forged request never constructs a model client. */
-export function buildIntakeDeps(): IntakeDeps {
+ * so a forged request never constructs a model client.
+ *
+ * `inboundTransport` (WhatsApp v1) is the pipe THIS turn arrived on: a within-turn
+ * reply is trivially inside Meta's 24h window, so the decision needs no history read —
+ * a WhatsApp turn is answered on WhatsApp while the sender is provisioned, and
+ * everything else (or an unprovisioned leg — 'not_configured', named) rides SMS.
+ * Defaults to 'sms' for the cron callers that compose intake sends outside a webhook
+ * turn; those are proactive lanes and stay on SMS by policy. */
+export function buildIntakeDeps(inboundTransport: MessageTransport = 'sms'): IntakeDeps {
   const database = db();
   const client = anthropicClient();
   return {
-    transport: createTwilioTransport(),
+    transport: createReplyTransport({
+      sms: createTwilioTransport(),
+      whatsapp: createTwilioWhatsAppTransport(),
+      decide: async () =>
+        selectReplyTransport({
+          configured: twilioWhatsAppSender() !== null,
+          lastInbound: { transport: inboundTransport, receivedAt: new Date() },
+          now: new Date(),
+        }),
+    }),
     threadMessage: threadProactiveMessage,
     extractor: createIntakeExtractor(client),
     intentReader: createReplyIntentReader(client),

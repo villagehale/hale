@@ -3,7 +3,7 @@ import { TextEntry } from '~/components/text-entry';
 import { buildAlternates } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { parseSourceCode, readSmsNumber } from '~/lib/text-entry';
+import { parseSourceCode, readSmsNumber, readWhatsAppNumber } from '~/lib/text-entry';
 
 /**
  * villagehale.com/text — the QR cards' landing surface (VIL-240 · M5).
@@ -44,6 +44,7 @@ export default async function TextEntryPage({
     <TextEntry
       source={parseSourceCode(s)}
       smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+      whatsappNumber={readWhatsAppNumber(process.env.NEXT_PUBLIC_HALE_WHATSAPP_NUMBER)}
       locale={locale}
     />
   );

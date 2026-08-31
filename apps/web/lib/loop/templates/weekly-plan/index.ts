@@ -19,6 +19,10 @@ export const weeklyPlanRenderer: TemplateRenderer = {
         return renderWeeklyPlanEmail(payload, nameLevel, now);
       case 'sms':
         return renderWeeklyPlanSms(payload, nameLevel, now);
+      // A reply pipe, not a proactive one: the dispatch refuses a whatsapp leg
+      // before any render (channel/dispatch.ts), so reaching here is a routing bug.
+      case 'whatsapp':
+        throw new Error('weekly_plan renderer: whatsapp is a reply pipe — no proactive render');
       default: {
         const exhaustive: never = channel;
         throw new Error(`weekly_plan renderer: unsupported channel ${String(exhaustive)}`);

@@ -1,3 +1,5 @@
+import type { MessageTransport } from '~/lib/channel/transport-address';
+
 /**
  * VIL-237 · M2 — the raw two-way SMS transport, deliberately smaller than the loop's
  * `Channel` seam (lib/channel/types.ts). That seam sends to a RESOLVED PARENT
@@ -15,13 +17,18 @@
 /** A normalized inbound message, already lifted out of whatever the provider posted. */
 export interface InboundMessage {
   /** The sender's number as the provider gave it — normalized by the caller, never
-   * stored raw (rule #1: it is hashed + encrypted the moment it is used). */
+   * stored raw (rule #1: it is hashed + encrypted the moment it is used). Always the
+   * BARE address: the webhook strips any `whatsapp:` prefix before building this
+   * (lib/channel/transport-address.ts), so one number is one person on either pipe. */
   from: string;
   body: string;
   /** The provider's own id for this inbound. The idempotency key: a carrier retry
    * carries the SAME id, which is how a duplicate is told from a real second text. */
   providerId: string;
   receivedAt: Date;
+  /** The pipe the message arrived on. Absent means 'sms' — the historical transport
+   * every pre-WhatsApp caller and fixture assumes; the webhook always sets it. */
+  transport?: MessageTransport;
 }
 
 /** What one `send` carries. `mediaUrls`, when present, must be non-empty absolute
@@ -43,7 +50,14 @@ export interface OutboundMessage {
 }
 
 export interface ChannelTransport {
-  send(input: OutboundMessage): Promise<{ providerMessageId: string }>;
+  /** `transport` in the result names which pipe actually carried the send, for the
+   * one implementation that chooses per message (the reply-routing transport,
+   * lib/channel/reply-transport.ts) — the caller's ledger row must record the pipe
+   * that was used, not the one it assumed. Absent means the implementation has only
+   * one pipe (the plain SMS transport, every Fake). */
+  send(
+    input: OutboundMessage,
+  ): Promise<{ providerMessageId: string; transport?: MessageTransport }>;
 }
 
 /**

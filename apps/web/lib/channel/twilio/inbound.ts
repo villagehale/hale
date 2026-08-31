@@ -8,6 +8,7 @@ import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
+import { type MessageTransport, parseTransportAddress } from '~/lib/channel/transport-address';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { twilioConfig } from './config';
 import { mediaUnsupportedReply } from './copy';
@@ -56,9 +57,11 @@ export interface TwilioInboundDeps {
   /**
    * Built LAZILY. Constructing the intake deps reaches for an Anthropic client and a
    * Twilio transport; a forged request must never cause either, so nothing is built
-   * until the signature has passed.
+   * until the signature has passed. Told which pipe the message arrived on so the
+   * reply transport can ride it back (WhatsApp within its session, SMS otherwise —
+   * reply-transport.ts).
    */
-  intake: () => IntakeDeps;
+  intake: (inboundTransport: MessageTransport) => IntakeDeps;
   enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
   /** Required, not optional: the one thing that must never happen quietly here is a
    * text Hale accepted and never queued (rule #11). */
@@ -105,7 +108,7 @@ export async function routeTwilioInbound(
   inbound: InboundMessage,
   media: number,
 ): Promise<TwilioInboundOutcome> {
-  const intake = deps.intake();
+  const intake = deps.intake(inbound.transport ?? 'sms');
 
   // Media is answered here, but never before the CASL keywords: see the module note.
   if (media > 0 && !matchKeyword(inbound.body)) {
@@ -217,7 +220,11 @@ async function handOffToConversation(
     .values({
       familyId: owner.familyId,
       parentUserId: owner.userId,
-      channel: 'sms',
+      // The REAL pipe (WhatsApp v1). The reply-destination decision reads this row
+      // back to honor Meta's 24h session window, and the reconciler's select names
+      // both transports — a WhatsApp turn recorded as 'sms' would be re-driven down
+      // the wrong leg and lie in a right-to-access export.
+      channel: inbound.transport ?? 'sms',
       direction: 'in',
       category: 'reply',
       providerMessageId: inbound.providerId,
@@ -319,16 +326,21 @@ export async function handleTwilioInboundRequest(
     return Response.json({ error: 'invalid_signature' }, { status: 403 });
   }
 
-  const from = params.From ?? '';
+  // THE boundary strip (WhatsApp v1): `From=whatsapp:+1416…` is the same person as
+  // `From=+1416…`, so the prefix comes off HERE — once — and the entire spine
+  // (normalize → blind index → resolve → keywords → machine → C1) runs on the bare
+  // number unchanged. The pipe travels beside the address, never inside it.
+  const { transport, address } = parseTransportAddress(params.From ?? '');
   const providerId = params.MessageSid ?? params.SmsSid ?? '';
-  if (!from || !providerId) {
+  if (!address || !providerId) {
     return emptyTwiml();
   }
 
   await routeTwilioInbound(
     deps,
     {
-      from,
+      from: address,
+      transport,
       body: params.Body ?? '',
       providerId,
       receivedAt: deps.now?.() ?? new Date(),
