@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MonitorAlert } from '~/lib/channel/twilio/triage';
 import {
   TRIAGE_CLAIM_ROUTE,
@@ -7,6 +7,7 @@ import {
   type TwilioTriageDeps,
   advanceTriageCursor,
   claimTriageDigestWindow,
+  fetchMonitorAlerts,
   loadTriageCursor,
   resetTriageInstanceWindowForTests,
   runTwilioTriage,
@@ -47,15 +48,19 @@ function otherAlert(dateCreated: string): MonitorAlert {
   };
 }
 
+/** The paged read's success shape: these alerts, nothing left unread behind them. */
+function scanned(alerts: MonitorAlert[]) {
+  return { ok: true as const, data: { alerts, truncated: false } };
+}
+
 interface DepsOverrides extends Partial<TwilioTriageDeps> {}
 
 function deps(overrides: DepsOverrides = {}): TwilioTriageDeps {
   return {
     configured: () => ({ ok: true }),
-    fetchAlerts: vi.fn(async () => ({
-      ok: true as const,
-      data: [webhookAlert('2026-08-28T13:02:11Z'), webhookAlert('2026-08-28T13:04:20Z')],
-    })),
+    fetchAlerts: vi.fn(async () =>
+      scanned([webhookAlert('2026-08-28T13:02:11Z'), webhookAlert('2026-08-28T13:04:20Z')]),
+    ),
     loadCursor: vi.fn(async () => null),
     advanceCursor: vi.fn(async () => {}),
     claimWindow: vi.fn(async () => true),
@@ -127,10 +132,9 @@ describe('runTwilioTriage', () => {
 
   it('without a cursor, only the trailing lookback hour is eligible — no replaying old incidents', async () => {
     const d = deps({
-      fetchAlerts: vi.fn(async () => ({
-        ok: true as const,
-        data: [webhookAlert('2026-08-28T11:59:00Z'), webhookAlert('2026-08-28T13:02:11Z')],
-      })),
+      fetchAlerts: vi.fn(async () =>
+        scanned([webhookAlert('2026-08-28T11:59:00Z'), webhookAlert('2026-08-28T13:02:11Z')]),
+      ),
     });
     const result = await runTwilioTriage(database, d, NOW);
     expect(result).toMatchObject({ outcome: 'digest_sent', alerts: 1 });
@@ -173,10 +177,9 @@ describe('runTwilioTriage', () => {
 
   it('non-webhook alerts are counted, skipped, and the cursor moves past them', async () => {
     const d = deps({
-      fetchAlerts: vi.fn(async () => ({
-        ok: true as const,
-        data: [otherAlert('2026-08-28T13:05:00Z'), otherAlert('2026-08-28T13:06:00Z')],
-      })),
+      fetchAlerts: vi.fn(async () =>
+        scanned([otherAlert('2026-08-28T13:05:00Z'), otherAlert('2026-08-28T13:06:00Z')]),
+      ),
     });
     const result = await runTwilioTriage(database, d, NOW);
     expect(result).toMatchObject({ outcome: 'no_new_alerts', ignoredOtherAlerts: 2, cursor: 'advanced' });
@@ -207,6 +210,109 @@ describe('runTwilioTriage', () => {
     const result = await runTwilioTriage(database, d, NOW);
     expect(result).toMatchObject({ outcome: 'digest_sent', cursor: 'store_unavailable' });
     expect(d.sendSms).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── the paged Monitor read ───────────────────────────────────────────────────
+
+/**
+ * The gap this suite exists for: Twilio answers with ONE page of 50, newest first,
+ * and a burst of alerts about something else (a 30007 carrier-filter storm) fills it
+ * in minutes. Reading page one alone and then advancing the cursor past it steps
+ * over every webhook failure sitting on page two — silently, forever.
+ *
+ * So the paging is exercised for real here: `fetchMonitorAlerts` against a fake
+ * Twilio that links its pages with the `meta.next_page_url` the Monitor API actually
+ * returns, wired into a real run.
+ */
+
+/** A fake Monitor Alerts endpoint serving `pages` newest-first, each linked to the
+ * next by an absolute URL derived from the request — so the code under test must
+ * FOLLOW what the server said, not re-derive it. */
+function pagedMonitor(pages: MonitorAlert[][]) {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const page = Number(url.searchParams.get('Page') ?? '0');
+    const next = new URL(url);
+    next.searchParams.set('Page', String(page + 1));
+    return new Response(
+      JSON.stringify({
+        alerts: pages[page] ?? [],
+        meta: { next_page_url: page + 1 < pages.length ? next.toString() : null },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+  });
+}
+
+/** `n` carrier-error alerts, newest first, `offset` seconds before NOW. */
+function carrierStorm(n: number, offset: number): MonitorAlert[] {
+  return Array.from({ length: n }, (_, i) =>
+    otherAlert(new Date(NOW.getTime() - (offset + i + 1) * 1_000).toISOString()),
+  );
+}
+
+describe('the Monitor scan follows pages', () => {
+  beforeEach(() => {
+    vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC-test');
+    vi.stubEnv('TWILIO_AUTH_TOKEN', 'token');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('a burst filling page one cannot hide the webhook failure on page two', async () => {
+    const monitor = pagedMonitor([carrierStorm(50, 0), [webhookAlert('2026-08-28T13:03:00Z')]]);
+    const d = deps({
+      fetchAlerts: (since) => fetchMonitorAlerts(monitor as unknown as typeof fetch, since),
+    });
+
+    const result = await runTwilioTriage(database, d, NOW);
+
+    expect(d.sendSms).toHaveBeenCalledTimes(1);
+    const body = (d.sendSms as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
+    expect(body).toContain('inbound webhook failing');
+    expect(result).toMatchObject({
+      outcome: 'digest_sent',
+      alerts: 1,
+      class: 'crash_5xx',
+      scan: 'complete',
+    });
+    expect(monitor).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops at the page cap, names the truncated scan, and holds the cursor at the oldest alert it read', async () => {
+    const monitor = pagedMonitor(
+      Array.from({ length: 6 }, (_, page) => carrierStorm(50, page * 50)),
+    );
+    const d = deps({
+      fetchAlerts: (since) => fetchMonitorAlerts(monitor as unknown as typeof fetch, since),
+    });
+
+    const result = await runTwilioTriage(database, d, NOW);
+
+    expect(monitor).toHaveBeenCalledTimes(5);
+    expect(result).toMatchObject({
+      outcome: 'no_new_alerts',
+      ignoredOtherAlerts: 250,
+      scan: 'truncated_scan',
+      cursor: 'advanced',
+    });
+    // The sixth page was never read, so the cursor may not step past the 250th alert.
+    expect(d.advanceCursor).toHaveBeenCalledWith(database, new Date(NOW.getTime() - 250 * 1_000));
+  });
+
+  it('reads one page when it already reaches alerts the cursor covers', async () => {
+    const monitor = pagedMonitor([carrierStorm(50, 0), carrierStorm(50, 50)]);
+    const d = deps({
+      loadCursor: vi.fn(async () => new Date(NOW.getTime() - 10 * 1_000)),
+      fetchAlerts: (since) => fetchMonitorAlerts(monitor as unknown as typeof fetch, since),
+    });
+
+    const result = await runTwilioTriage(database, d, NOW);
+
+    expect(monitor).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ outcome: 'no_new_alerts', ignoredOtherAlerts: 9, scan: 'complete' });
   });
 });
 

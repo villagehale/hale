@@ -65,12 +65,35 @@ const OUTBOUND_WINDOW_MS = 15 * 60_000;
 
 const SMS_TIMEOUT_MS = 4_000;
 
+/** How many Monitor pages one run may follow back toward the cursor (PageSize=50, so
+ * 250 alerts). A burst of alerts about something ELSE — a 30007 carrier-filter storm
+ * fills a page in minutes — must not be able to push webhook failures off page one
+ * and out of sight; an UNBOUNDED follow would let that same storm hold the cron open
+ * instead, so the scan stops here and says so. */
+const MAX_ALERT_PAGES = 5;
+
 export type CursorOutcome = 'advanced' | 'unchanged' | 'store_unavailable';
+
+/** Whether the poll read back to the cursor, or the page cap cut it short with older
+ * alerts still unread — a truncated scan can never be reported as "nothing happened". */
+export type ScanCoverage = 'complete' | 'truncated_scan';
+
+/** One poll of the Monitor log: the alerts actually read, and whether anything was
+ * left behind them. */
+export interface AlertScan {
+  alerts: MonitorAlert[];
+  truncated: boolean;
+}
 
 export type TriageRunOutcome =
   | { outcome: 'skipped_not_configured'; missing: string[] }
   | { outcome: 'monitor_unreachable'; detail: string }
-  | { outcome: 'no_new_alerts'; ignoredOtherAlerts: number; cursor: CursorOutcome }
+  | {
+      outcome: 'no_new_alerts';
+      ignoredOtherAlerts: number;
+      scan: ScanCoverage;
+      cursor: CursorOutcome;
+    }
   | {
       outcome: 'digest_sent';
       alerts: number;
@@ -78,6 +101,7 @@ export type TriageRunOutcome =
       likelyLayer: LikelyLayer;
       evidence: string[];
       rateLimitStore: 'ok' | 'unavailable';
+      scan: ScanCoverage;
       cursor: CursorOutcome;
     }
   | { outcome: 'suppressed_rate_limit'; source: 'claim' | 'instance_window'; pendingAlerts: number }
@@ -85,7 +109,8 @@ export type TriageRunOutcome =
 
 export interface TwilioTriageDeps {
   configured(): { ok: true } | { ok: false; missing: string[] };
-  fetchAlerts(): Promise<ServiceOutcome<MonitorAlert[]>>;
+  /** Reads the Monitor log back to `since`, newest page first. */
+  fetchAlerts(since: Date): Promise<ServiceOutcome<AlertScan>>;
   loadCursor(database: Database): Promise<Date | null>;
   advanceCursor(database: Database, to: Date): Promise<void>;
   /** True exactly once per digest window — first claimer pages. */
@@ -143,7 +168,7 @@ export async function runTwilioTriage(
   }
   const since = Math.max(cursor?.getTime() ?? 0, now.getTime() - TRIAGE_LOOKBACK_MS);
 
-  const fetched = await deps.fetchAlerts();
+  const fetched = await deps.fetchAlerts(new Date(since));
   if (!fetched.ok) {
     if (fetched.status === 'not_configured') {
       return { outcome: 'skipped_not_configured', missing: [fetched.detail] };
@@ -154,7 +179,14 @@ export async function runTwilioTriage(
     return { outcome: 'monitor_unreachable', detail: fetched.detail };
   }
 
-  const newAlerts = fetched.data.filter((alert) => {
+  const scan: ScanCoverage = fetched.data.truncated ? 'truncated_scan' : 'complete';
+  if (fetched.data.truncated) {
+    console.error('twilio triage: scan hit the page cap — older alerts went unread this run', {
+      scanned: fetched.data.alerts.length,
+    });
+  }
+
+  const newAlerts = fetched.data.alerts.filter((alert) => {
     const at = createdAt(alert);
     return at !== null && at > since;
   });
@@ -162,14 +194,20 @@ export async function runTwilioTriage(
   const newTimestamps = newAlerts
     .map((alert) => createdAt(alert))
     .filter((at): at is number => at !== null);
-  const newestAt = newTimestamps.length ? new Date(Math.max(...newTimestamps)) : null;
+  // The cursor claims "everything up to here has been reported". A truncated scan may
+  // only claim as far as the OLDEST alert it actually read: advancing to the newest
+  // would step the cursor over the unread pages behind it, and those alerts — the
+  // webhook failure a carrier-error burst pushed off page one — would never be seen.
+  const cursorTarget = newTimestamps.length
+    ? new Date(fetched.data.truncated ? Math.min(...newTimestamps) : Math.max(...newTimestamps))
+    : null;
 
   const advance = async (): Promise<CursorOutcome> => {
-    if (!newestAt) {
+    if (!cursorTarget) {
       return 'unchanged';
     }
     try {
-      await deps.advanceCursor(database, newestAt);
+      await deps.advanceCursor(database, cursorTarget);
       return 'advanced';
     } catch (err) {
       console.error('twilio triage: cursor advance failed — next run re-reads this window', {
@@ -183,6 +221,7 @@ export async function runTwilioTriage(
     return {
       outcome: 'no_new_alerts',
       ignoredOtherAlerts: newAlerts.length,
+      scan,
       cursor: newAlerts.length ? await advance() : cursorStore === 'ok' ? 'unchanged' : 'store_unavailable',
     };
   }
@@ -251,6 +290,7 @@ export async function runTwilioTriage(
     likelyLayer: summary.dominant.likelyLayer,
     evidence: summary.dominant.evidence,
     rateLimitStore,
+    scan,
     cursor: await advance(),
   };
 }
@@ -360,26 +400,50 @@ async function sendTriageSms(
   }
 }
 
-/** The raw Monitor Alerts read — same URL, creds precedence and rule-#11 union as
- * the admin portal's fetchTwilioAlerts, but keeping the fields triage classifies on
- * (that one maps rows down to the display shape). */
-async function fetchMonitorAlerts(fetchImpl: typeof fetch): Promise<ServiceOutcome<MonitorAlert[]>> {
+/** The raw Monitor Alerts read — same creds precedence and rule-#11 union as the
+ * admin portal's fetchTwilioAlerts, but keeping the fields triage classifies on (that
+ * one maps rows down to the display shape) and, unlike it, reading past page one.
+ *
+ * Twilio answers newest-first and links older pages with `meta.next_page_url`, so the
+ * scan follows that link until it reaches an alert `since` already covers — one page
+ * on a quiet poll, more only while alerts are actually piling up — or MAX_ALERT_PAGES
+ * cuts it short, which is reported as `truncated` rather than passed off as the whole
+ * story. */
+export async function fetchMonitorAlerts(
+  fetchImpl: typeof fetch,
+  since: Date,
+): Promise<ServiceOutcome<AlertScan>> {
   const creds = credentials();
   if (!creds) {
     return notConfigured('TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not set');
   }
+  const headers = {
+    Authorization: `Basic ${Buffer.from(`${creds.user}:${creds.pass}`).toString('base64')}`,
+  };
+  const alerts: MonitorAlert[] = [];
+  let next: string | null = ALERTS_URL;
   try {
-    const res = await fetchImpl(ALERTS_URL, {
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${creds.user}:${creds.pass}`).toString('base64')}`,
-      },
-      signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      return unreachable(`Twilio answered ${res.status}`);
+    for (let page = 0; page < MAX_ALERT_PAGES && next !== null; page += 1) {
+      const res = await fetchImpl(next, { headers, signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS) });
+      if (!res.ok) {
+        return unreachable(`Twilio answered ${res.status}`);
+      }
+      const body = (await res.json()) as {
+        alerts?: MonitorAlert[];
+        meta?: { next_page_url?: string | null };
+      };
+      const rows = body.alerts ?? [];
+      alerts.push(...rows);
+      const reachedCursor = rows.some((alert) => {
+        const at = createdAt(alert);
+        return at !== null && at <= since.getTime();
+      });
+      if (reachedCursor) {
+        return { ok: true, data: { alerts, truncated: false } };
+      }
+      next = body.meta?.next_page_url ?? null;
     }
-    const body = (await res.json()) as { alerts?: MonitorAlert[] };
-    return { ok: true, data: body.alerts ?? [] };
+    return { ok: true, data: { alerts, truncated: next !== null } };
   } catch (error) {
     return unreachable(error instanceof Error ? error.name : 'fetch failed');
   }
@@ -393,7 +457,7 @@ export function defaultTwilioTriageDeps(fetchImpl: typeof fetch = fetch): Twilio
       );
       return missing.length === 0 ? { ok: true } : { ok: false, missing };
     },
-    fetchAlerts: () => fetchMonitorAlerts(fetchImpl),
+    fetchAlerts: (since) => fetchMonitorAlerts(fetchImpl, since),
     loadCursor: loadTriageCursor,
     advanceCursor: advanceTriageCursor,
     claimWindow: claimTriageDigestWindow,
