@@ -1,0 +1,13 @@
+-- WhatsApp v1 — a WhatsApp message is now a delivery leg of its own.
+--
+-- The continuity law says whatsapp:+1416… and +1416… are the SAME person: the blind
+-- index keys on the bare E.164, so no identity table changes. What must not be folded
+-- together is the PIPE — a ledger that records a WhatsApp turn as 'sms' is wrong in a
+-- PIPEDA right-to-access read, wrong in the reply-destination decision that has to
+-- honor Meta's 24-hour customer-service window (it reads this very column), and wrong
+-- in every count that separates the two transports' delivery behavior.
+--
+-- Additive only (rule #9): one enum value, hand-written (the Drizzle convention).
+-- Nothing is dropped and no existing value changes meaning. No row uses the new value
+-- in this transaction, so ADD VALUE is safe on its own (the 0091 voice precedent).
+ALTER TYPE "public"."channel_message_channel" ADD VALUE IF NOT EXISTS 'whatsapp';
