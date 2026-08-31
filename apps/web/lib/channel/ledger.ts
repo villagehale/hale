@@ -26,9 +26,13 @@ import type { ChannelKind, LoopCategory } from './types';
  *
  * Every other channel is terminal on accept, because none of them has a receipt wired:
  * a row that could never leave 'queued' would be a permanent lie in the other direction.
+ *
+ * WhatsApp rides the SAME receipt loop: its sends name the same StatusCallback and
+ * Twilio's `read` maps to delivered (twilio/status.ts), so its rows are born 'queued'
+ * like every SMS row.
  */
 export function acceptedStatus(channel: ChannelKind): AcceptedStatus {
-  return channel === 'sms' ? 'queued' : 'sent';
+  return channel === 'sms' || channel === 'whatsapp' ? 'queued' : 'sent';
 }
 
 /** What {@link acceptedStatus} can answer — the type a send's own ledger write carries. */

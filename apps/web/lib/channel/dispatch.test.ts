@@ -378,6 +378,34 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
  * (its whole payload is a text/calendar attachment), so it must reach a parent whose
  * exchange channel is SMS.
  */
+describe('WhatsApp is a reply pipe, never a proactive one (Meta session policy)', () => {
+  it('REFUSES a whatsapp leg outright with a named outcome — before prefs, before render, before any adapter', async () => {
+    const { ports, ledger, captures } = makePorts({
+      // Even a wired whatsapp adapter must never be reached from the dispatch.
+      channels: { email: fakeChannel('email'), sms: fakeChannel('sms'), whatsapp: fakeChannel('whatsapp') },
+    });
+
+    const result = await dispatchLoopMessage(message({ channel: 'whatsapp' }), ports);
+
+    expect(result.legs).toEqual([
+      { channel: 'whatsapp', outcome: 'failed', reason: 'whatsapp_proactive_unsupported' },
+    ]);
+    expect(ledger).toEqual([
+      expect.objectContaining({
+        channel: 'whatsapp',
+        status: 'failed',
+        errorCode: 'whatsapp_proactive_unsupported',
+      }),
+    ]);
+    expect(captures).toEqual([
+      expect.objectContaining({
+        event: 'loop_message_failed',
+        properties: expect.objectContaining({ channel: 'whatsapp' }),
+      }),
+    ]);
+  });
+});
+
 describe('a channel-pinned message', () => {
   it('dispatches on the pinned channel rather than the parent’s loop channel', async () => {
     const email = fakeChannel('email');

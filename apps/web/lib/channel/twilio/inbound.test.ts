@@ -82,6 +82,8 @@ interface Harness {
   errors: unknown[][];
   deps: TwilioInboundDeps;
   intakeBuilds: number;
+  /** The transport each intake build was told the message arrived on. */
+  intakeTransports: string[];
 }
 
 function harness(): Harness {
@@ -112,6 +114,7 @@ function harness(): Harness {
     jobs,
     errors,
     intakeBuilds: 0,
+    intakeTransports: [],
     deps: {
       database: fake.db,
       log: {
@@ -119,9 +122,10 @@ function harness(): Harness {
           errors.push(args);
         },
       },
-      intake: () => {
+      intake: (inboundTransport?: string) => {
         state.intakeBuilds += 1;
         h.intakeBuilds = state.intakeBuilds;
+        if (inboundTransport !== undefined) h.intakeTransports.push(inboundTransport);
         return intake;
       },
       enqueue: async (job) => {
@@ -334,7 +338,7 @@ describe('routing', () => {
 
   it('shares ONE rate-limit budget between the media path and the machine', async () => {
     const h = harness();
-    const limiter = h.deps.intake().limiter as FakeRateLimiter;
+    const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
     const spy = vi.spyOn(limiter, 'check');
 
     await routeTwilioInbound(h.deps, inbound({ body: '' }), 1);
@@ -368,7 +372,7 @@ describe('routing', () => {
 
   it('stays silent when the media path is over the limit', async () => {
     const h = harness();
-    const limiter = h.deps.intake().limiter as FakeRateLimiter;
+    const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
     vi.spyOn(limiter, 'check').mockResolvedValue({ allowed: false, retryAfterSec: 60 });
 
     const outcome = await routeTwilioInbound(h.deps, inbound({ body: '' }), 1);
@@ -676,5 +680,98 @@ describe('privacy (rule #1)', () => {
       h.deps,
     );
     expect(await res.text()).not.toContain(AUTH_TOKEN);
+  });
+});
+
+describe('WhatsApp continuity — whatsapp:+1416… IS +1416… (one person, one family)', () => {
+  const WA_SID = 'SM22222222222222222222222222222222';
+
+  /** THE continuity test: a family enrolled via the SMS blind index, reached over
+   * WhatsApp, resolves to the SAME family — and the ledger records the real pipe. */
+  it('routes a signed WhatsApp webhook to the family the SMS hash enrolled, recording channel whatsapp', async () => {
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake); // seeded via phoneBlindIndex(PHONE) — the SMS twin
+    closeIntake(h.fake);
+
+    const params = twilioParams({
+      From: `whatsapp:${PHONE}`,
+      Body: 'can you move swimming to Thursday?',
+      MessageSid: WA_SID,
+    });
+    const res = await handleTwilioInboundRequest(twilioRequest(params), h.deps);
+    expect(res.status).toBe(200);
+
+    const message = h.fake
+      .rows(schema.channelMessages)
+      .find((r) => r.providerMessageId === WA_SID);
+    expect(message).toMatchObject({
+      familyId,
+      parentUserId: userId,
+      channel: 'whatsapp',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: 'can you move swimming to Thursday?',
+    });
+
+    expect(h.jobs).toEqual([
+      {
+        family_id: familyId,
+        parent_user_id: userId,
+        channel_message_id: message?.id,
+        provider_message_id: WA_SID,
+        received_at: NOW.toISOString(),
+      },
+    ]);
+
+    // The intake deps were built knowing the pipe, so the reply can ride it back.
+    expect(h.intakeTransports).toEqual(['whatsapp']);
+  });
+
+  it('a WhatsApp STOP revokes the SAME channel row the SMS enrolment created (no carrier STOP on WhatsApp)', async () => {
+    const h = harness();
+    enrol(h.fake);
+
+    const params = twilioParams({ From: `whatsapp:${PHONE}`, Body: 'STOP', MessageSid: WA_SID });
+    const res = await handleTwilioInboundRequest(twilioRequest(params), h.deps);
+
+    expect(res.status).toBe(200);
+    expect(h.transport.bodies()).toEqual([STOP_ACK]);
+    const revoked = h.fake.writes.filter(
+      (w) => w.op === 'update' && w.table === schema.parentChannels,
+    );
+    expect(revoked.length).toBeGreaterThan(0);
+  });
+
+  it('rate limiting keys on the BARE number — one budget per person across both pipes', async () => {
+    const h = harness();
+    const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
+    const spy = vi.spyOn(limiter, 'check');
+
+    const params = twilioParams({
+      From: `whatsapp:${PHONE}`,
+      Body: '',
+      NumMedia: '1',
+      MessageSid: WA_SID,
+    });
+    await handleTwilioInboundRequest(twilioRequest(params), h.deps);
+
+    expect(spy).toHaveBeenCalledWith(
+      phoneBlindIndex(PHONE),
+      'sms-inbound',
+      expect.objectContaining({ limit: 30 }),
+    );
+  });
+
+  it('drops whatsapp:garbage exactly as it drops garbage — the one normalizer still refuses', async () => {
+    const h = harness();
+
+    const params = twilioParams({ From: 'whatsapp:not-a-number', MessageSid: WA_SID });
+    const res = await handleTwilioInboundRequest(twilioRequest(params), h.deps);
+
+    expect(res.status).toBe(200);
+    expect(h.fake.writes).toHaveLength(0);
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.jobs).toHaveLength(0);
   });
 });

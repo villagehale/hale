@@ -188,6 +188,18 @@ async function dispatchLeg(
     return { channel, outcome: status };
   };
 
+  // THE META-SAFETY GATE (WhatsApp v1), before everything else: WhatsApp is a REPLY
+  // pipe — free-form messages are only lawful inside the 24h window a parent's own
+  // message opens (reply-transport.ts owns that decision). No proactive lane may ride
+  // it, whatever the prefs or the pinned channel say, so the refusal is named and
+  // ledgered rather than routed around (rule #11).
+  if (channel === 'whatsapp') {
+    await writeLedgerRow(ports, msg, channel, 'failed', {
+      errorCode: 'whatsapp_proactive_unsupported',
+    });
+    return { channel, outcome: 'failed', reason: 'whatsapp_proactive_unsupported' };
+  }
+
   if (!categoryEnabled(prefs, msg.category)) {
     return suppressed('suppressed_pref');
   }

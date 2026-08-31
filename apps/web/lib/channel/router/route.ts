@@ -1462,21 +1462,25 @@ async function sendReply(
     replySource?: ReplySource | null;
   },
 ): Promise<string> {
-  const { providerMessageId } = await deps.transport.send({ to: args.to, body: args.body });
+  const sent = await deps.transport.send({ to: args.to, body: args.body });
   if (args.claim) await args.claim();
 
+  // The pipe that CARRIED it (WhatsApp v1): the reply-routing transport names its
+  // choice in the result; absent means a single-pipe SMS transport. The row records
+  // what happened, and the reply decider reads these rows back for the 24h window.
+  const carriedBy = sent.transport ?? 'sms';
   const [row] = await deps.database
     .insert(schema.channelMessages)
     .values({
       familyId: args.job.family_id,
       parentUserId: args.job.parent_user_id,
-      channel: 'sms',
+      channel: carriedBy,
       direction: 'out',
       category: 'reply',
-      providerMessageId,
+      providerMessageId: sent.providerMessageId,
       // Accepted by Twilio, not yet on a phone — the receipt advances it
       // (channel/ledger.ts acceptedStatus, channel/twilio/status.ts).
-      status: acceptedStatus('sms'),
+      status: acceptedStatus(carriedBy),
       body: null,
       medicalReplySource: args.medicalSource ?? null,
       replySource: args.replySource ?? null,

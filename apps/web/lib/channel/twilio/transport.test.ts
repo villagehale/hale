@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TwilioSendError, createTwilioTransport } from './transport';
+import { TwilioSendError, createTwilioTransport, createTwilioWhatsAppTransport } from './transport';
 
 /**
  * The provider leg, against a fake fetch. No network, no credentials, no SDK — the
@@ -247,5 +247,108 @@ describe('messaging service sender', () => {
     const sent = new URLSearchParams(init.body as string);
     expect(sent.get('MessagingServiceSid')).toBe('MG39e4469dd337f9952f026cbff0e4e964');
     expect(sent.get('From')).toBeNull();
+  });
+});
+
+describe('createTwilioWhatsAppTransport', () => {
+  const WA_FROM = '+14165550000';
+
+  beforeEach(() => {
+    configure();
+    vi.stubEnv('TWILIO_WHATSAPP_FROM', WA_FROM);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('prefixes BOTH ends with whatsapp: and posts to the same Messages endpoint', async () => {
+    const fetchMock = vi.fn(async () => okResponse('SM_WA'));
+    const transport = createTwilioWhatsAppTransport({
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    const result = await transport.send({ to: TO, body: BODY });
+
+    // The result NAMES its pipe, so a caller's `?? 'sms'` default can never
+    // mis-record a WhatsApp send in the ledger.
+    expect(result).toEqual({ providerMessageId: 'SM_WA', transport: 'whatsapp' });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`https://api.twilio.com/2010-04-01/Accounts/${ACCOUNT_SID}/Messages.json`);
+    const sent = new URLSearchParams(init.body as string);
+    expect(sent.get('To')).toBe(`whatsapp:${TO}`);
+    expect(sent.get('From')).toBe(`whatsapp:${WA_FROM}`);
+    expect(sent.get('Body')).toBe(BODY);
+  });
+
+  it('NEVER rides the Messaging Service — a WhatsApp sender is addressed by From alone', async () => {
+    vi.stubEnv('TWILIO_MESSAGING_SERVICE_SID', 'MG39e4469dd337f9952f026cbff0e4e964');
+    const fetchMock = vi.fn(async () => okResponse());
+    const transport = createTwilioWhatsAppTransport({
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    await transport.send({ to: TO, body: BODY });
+
+    const sent = new URLSearchParams(
+      (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(sent.get('MessagingServiceSid')).toBeNull();
+    expect(sent.get('From')).toBe(`whatsapp:${WA_FROM}`);
+  });
+
+  it('asks for delivery receipts at the same status webhook', async () => {
+    vi.stubEnv('APP_URL', 'https://app.example.test');
+    const fetchMock = vi.fn(async () => okResponse());
+    const transport = createTwilioWhatsAppTransport({
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    await transport.send({ to: TO, body: BODY });
+
+    const sent = new URLSearchParams(
+      (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(sent.get('StatusCallback')).toBe(
+      'https://app.example.test/api/channels/twilio/status',
+    );
+  });
+
+  it('throws NAMING the missing sender when TWILIO_WHATSAPP_FROM is unset — the leg is dark, never half-lit', async () => {
+    vi.stubEnv('TWILIO_WHATSAPP_FROM', '');
+    const fetchMock = vi.fn(async () => okResponse());
+    const transport = createTwilioWhatsAppTransport({
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(transport.send({ to: TO, body: BODY })).rejects.toThrow(
+      'TWILIO_WHATSAPP_FROM',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('REFUSES media rather than dropping it — the vCard rides SMS (reply-transport routes it there)', async () => {
+    const fetchMock = vi.fn(async () => okResponse());
+    const transport = createTwilioWhatsAppTransport({
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(
+      transport.send({ to: TO, body: BODY, mediaUrls: ['https://example.com/card.vcf'] }),
+    ).rejects.toThrow(/media/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('types the WhatsApp session refusals as PERMANENT — 63016 is Meta saying the 24h window is shut', async () => {
+    // 63016 free-form message outside the customer-service window; 63003/63005/63024
+    // are the channel/recipient refusals in the same family: the identical request
+    // re-sent earns the identical answer.
+    for (const code of [63016, 63003, 63005, 63024]) {
+      const transport = createTwilioWhatsAppTransport({
+        fetch: (async () => refusal(code, 400)) as unknown as typeof fetch,
+      });
+      const error = await transport.send({ to: TO, body: BODY }).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(TwilioSendError);
+      const twilio = error as TwilioSendError;
+      expect([twilio.code, twilio.permanent]).toEqual([String(code), true]);
+    }
   });
 });

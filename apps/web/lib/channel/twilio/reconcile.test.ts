@@ -117,7 +117,10 @@ describe('what the sweep may select', () => {
   async function seedInbound(
     family: { familyId: string; parentUserId: string },
     providerMessageId: string,
-    over: { channel?: 'sms' | 'email'; category?: 'reply' | 'intake' | 'caregiver' } = {},
+    over: {
+      channel?: 'sms' | 'whatsapp' | 'email';
+      category?: 'reply' | 'intake' | 'caregiver';
+    } = {},
   ) {
     const createdAt = new Date(NOW.getTime() - 10 * 60 * 1000);
     const [row] = await db.database
@@ -139,18 +142,21 @@ describe('what the sweep may select', () => {
     return row.id;
   }
 
-  it('selects only sms reply rows — never intake, caregiver, or email rows', async () => {
+  it('selects only sms and whatsapp reply rows — never intake, caregiver, or email rows', async () => {
     db = await createTestDb();
     const family = await seedFamily(db.database);
 
     const owed = await seedInbound(family, 'SM_owed');
+    // A WhatsApp reply is owed the SAME hand-off: the webhook records it with its real
+    // pipe (WhatsApp v1), and a sweep pinned to 'sms' would strand it forever.
+    const owedWhatsApp = await seedInbound(family, 'WA_owed', { channel: 'whatsapp' });
     await seedInbound(family, 'SM_intake', { category: 'intake' });
     await seedInbound(family, 'SM_caregiver', { category: 'caregiver' });
     await seedInbound(family, 'EM_reply', { channel: 'email' });
 
     const rows = await selectUnhandedInbound(db.database, NOW);
 
-    expect(rows.map((r) => r.id)).toEqual([owed]);
+    expect(new Set(rows.map((r) => r.id))).toEqual(new Set([owed, owedWhatsApp]));
   });
 });
 
