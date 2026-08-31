@@ -490,6 +490,7 @@
     "lede": "Textez-moi les noms et les âges de vos enfants et un code postal, et je vous réponds avec toutes les dates d’inscription que je surveille désormais pour vous — natation, camps, programmes — plus ce qui vaut la peine d’être su près de chez vous cette semaine.",
     "textMe": "Textez-moi",
     "saveContact": "Enregistrer Hale dans vos contacts",
+    "whatsappMe": "Ou écrivez-moi sur WhatsApp",
     "prefilledWithSource": "Votre message est déjà écrit — « {body} ». L’étiquette me dit simplement d’où vous venez.",
     "prefilledNoSource": "Votre message est déjà écrit. C’est vous qui l’envoyez; je ne texte jamais en premier.",
     "onLaptop": "Sur un ordinateur portable?",
