@@ -1,5 +1,6 @@
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
+import { TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
 import { type DailyOutlook, fakeWeather } from '~/lib/weather/open-meteo';
 import { WATCH_OFFER } from './copy.js';
 import { makeFakeDb } from './fakes.js';
@@ -103,7 +104,45 @@ describe('createRadarComposer', () => {
     expect(payload.message).not.toContain(WATCH_OFFER);
   });
 
-  it('is honest, and asks for a follow-up, when it knows nothing yet', async () => {
+  it('is honest, and asks for a follow-up, when it knows nothing yet in an unpinned town', async () => {
+    const db = makeFakeDb();
+
+    const payload = await composer(db).compose({
+      familyId: FAMILY_ID,
+      children: [MAYA],
+      areaCoarse: 'L7G',
+    });
+
+    // Halton Hills: no civic adapter, no windows, no Toronto pin. Leftover mapping
+    // plus the first-find beat — it does not shrug, and it does not steal the 555 pin.
+    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
+    expect(payload.message).not.toBe(TORONTO_FIRST_REC);
+    expect(payload.message).not.toContain('toronto.ca/OnlineReg');
+    expect(payload.itemCount).toBe(0);
+    expect(payload.followUpNeeded).toBe(true);
+  });
+
+  it('VIL-334: M1B still sends the Toronto pin when live lookup is empty', async () => {
+    const db = makeFakeDb();
+
+    const payload = await composer(db).compose({
+      familyId: FAMILY_ID,
+      children: [
+        { name: 'Theo', ageMonths: 36, agePrecision: 'years' },
+        { name: 'Cruz', ageMonths: 18, agePrecision: 'months' },
+      ],
+      areaCoarse: 'M1B',
+    });
+
+    expect(payload.message).toBe(TORONTO_FIRST_REC);
+    expect(payload.message).not.toMatch(/still mapping|mapping what's near you/i);
+    expect(payload.message).not.toContain('Your first weekend find lands in a day or two.');
+    expect(payload.message).not.toContain(WATCH_OFFER);
+    expect(payload.firstFindPromised).toBe(false);
+    expect(payload.followUpNeeded).toBe(true);
+  });
+
+  it('VIL-334: other Toronto FSAs pin the same way — leftover mapping is not the Toronto first-hello', async () => {
     const db = makeFakeDb();
 
     const payload = await composer(db).compose({
@@ -112,12 +151,8 @@ describe('createRadarComposer', () => {
       areaCoarse: 'M5V',
     });
 
-    // No candidates, no windows, and no children on file to key a checkpoint to: the
-    // one shape where all three rungs are empty. It maps, and it says when the first
-    // find lands — it does not shrug.
-    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
-    expect(payload.itemCount).toBe(0);
-    expect(payload.followUpNeeded).toBe(true);
+    expect(payload.message).toBe(TORONTO_FIRST_REC);
+    expect(payload.message).not.toMatch(/still mapping|mapping what's near you/i);
   });
 
   it('never lets a health checkpoint ride the pre-consent first find (ads-week audit, 2026-08-28)', async () => {
@@ -221,11 +256,13 @@ describe('createRadarComposer', () => {
     expect(payload.message).not.toContain('Teen climbing night');
     // The checkpoint block used to be the one thing a 13+ household still heard here.
     // It no longer rides the pre-consent first find (ads-week audit, 2026-08-28) — the
-    // post-consent nudge carries it in the generic wording — so this family gets the
-    // honest empty-handed answer, still with no teen name in it (rule #1).
+    // post-consent nudge carries it in the generic wording. M5V is a Toronto FSA, so
+    // the empty-lookup first-hello is the VIL-320 pin (VIL-334), still with no teen
+    // name in it (rule #1).
+    expect(payload.message).toBe(TORONTO_FIRST_REC);
     expect(payload.message).not.toContain('A routine vaccine record check is due');
     expect(payload.message).not.toContain('Ava');
-    expect(payload.itemCount).toBe(0);
+    expect(payload.itemCount).toBe(1);
   });
 
   it('still composes when the family has no postal-derived area at all', async () => {
