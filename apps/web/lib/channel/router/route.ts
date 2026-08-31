@@ -4,7 +4,7 @@ import { captureAgentError } from '~/lib/analytics/server-capture';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import type { OffDomainLane } from '~/lib/channel/off-domain/lane';
+import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
@@ -535,7 +535,11 @@ export async function routeChannelMessage(
    * delivery — see sendReply. Null for every answer that is not the medical lane's, which
    * is all of them but one.
    */
-  const answer = (body: string, medicalSource: MedicalReplySource | null = null) =>
+  const answer = (
+    body: string,
+    medicalSource: MedicalReplySource | null = null,
+    replySource: ReplySource | null = null,
+  ) =>
     sendReply(deps, {
       to: phoneE164,
       body,
@@ -543,6 +547,7 @@ export async function routeChannelMessage(
       conversationId,
       claim: claimAnswer,
       medicalSource,
+      replySource,
     });
 
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
@@ -663,7 +668,7 @@ export async function routeChannelMessage(
     text: context.body,
   });
   if (verdict.status === 'deflected') {
-    await answer(verdict.reply, verdict.medicalSource);
+    await answer(verdict.reply, verdict.medicalSource, verdict.replySource);
     return done(deps, job, {
       status: 'deflected',
       handler: null,
@@ -1449,6 +1454,12 @@ async function sendReply(
      * scorecard's safety row can count the fixed-line fallbacks it could not see while
      * the outcome lived only in memory. `body` stays null as ever (rule #1). */
     medicalSource?: MedicalReplySource | null;
+    /** Where a DEFLECTION reply's words came from (migration 0103) — composed, a fixed
+     * door, or one of the four named reasons the composer could not run — and null on
+     * every reply that is not the off-domain lane's. Persisting it is what lets the
+     * papercut digest split real answers from ANSWER_UNAVAILABLE sends; it is a closed
+     * vocabulary and never a word of what was said (rule #1). */
+    replySource?: ReplySource | null;
   },
 ): Promise<string> {
   const { providerMessageId } = await deps.transport.send({ to: args.to, body: args.body });
@@ -1468,6 +1479,7 @@ async function sendReply(
       status: acceptedStatus('sms'),
       body: null,
       medicalReplySource: args.medicalSource ?? null,
+      replySource: args.replySource ?? null,
       relatedConversationId: args.conversationId,
       sentAt: deps.now(),
     })
