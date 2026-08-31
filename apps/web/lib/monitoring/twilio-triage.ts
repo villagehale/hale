@@ -159,10 +159,10 @@ export async function runTwilioTriage(
     return at !== null && at > since;
   });
   const webhookAlerts = newAlerts.filter(isWebhookAlert);
-  // biome-ignore lint/style/noNonNullAssertion: newAlerts kept only parseable dates
-  const newestAt = newAlerts.length
-    ? new Date(Math.max(...newAlerts.map((alert) => createdAt(alert)!)))
-    : null;
+  const newTimestamps = newAlerts
+    .map((alert) => createdAt(alert))
+    .filter((at): at is number => at !== null);
+  const newestAt = newTimestamps.length ? new Date(Math.max(...newTimestamps)) : null;
 
   const advance = async (): Promise<CursorOutcome> => {
     if (!newestAt) {

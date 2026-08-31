@@ -98,7 +98,7 @@ describe('runTwilioTriage', () => {
     const result = await runTwilioTriage(database, d, NOW);
 
     expect(d.sendSms).toHaveBeenCalledTimes(1);
-    const body = (d.sendSms as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const body = (d.sendSms as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
     expect(body).toContain('inbound webhook failing');
     expect(body).toContain('2 alerts');
     expect(body).toContain('Outbound OK');
@@ -191,7 +191,7 @@ describe('runTwilioTriage', () => {
       }),
     });
     await runTwilioTriage(database, d, NOW);
-    const body = (d.sendSms as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const body = (d.sendSms as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
     expect(body).toContain('Outbound unchecked');
   });
 
