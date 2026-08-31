@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to move piano to Wednesday. There is no piano event visible on the calendar this week or next week shown. The reply correctly identifies that piano is not on this week's schedule. However, it then asks \"want me to check next week?\" — which is a reasonable follow-up, but the week shown is only the current week, and checking next week is a real capability Hale has. That question is fine. The two private items (Tue 3:45pm, Wed 9:00am) are correctly ignored — Hale cannot see what they are and must not speculate. The reply is short, accurate, and ends with one question. No invention, no app referral, no markdown. This is clean and correct handling of a case where the named event doesn't appear on the visible schedule.",
+    "score": 5
+  }
+}

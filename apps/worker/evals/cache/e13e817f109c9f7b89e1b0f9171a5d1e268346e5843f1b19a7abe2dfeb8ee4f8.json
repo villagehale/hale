@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly draws on the offerable Riverdale Farm item (name, place, free, outdoor, open daily) — all recall from `offerable`, not invention. It answers the question about a good nearby park/outdoor spot well. However, it then asks \"Want me to add that to the calendar?\" — this is a dangling question that isn't needed and isn't \"which event did you mean\" disambiguation (there's only one outdoor park-like option). More importantly, `offerable` items are verified candidates Hale can offer whole, but the reply frames it as \"on the radar\" for Aug 9 specifically while also saying \"open daily\" — the tension there is minor. The main issue is the question at the end: it's an invitation to chatter rather than a clean stop, and it's slightly off-shape (the parent asked about a park, Hale answered, done). That said, it's not a bad question — it's relevant and natural. The reply is close to correct but has the unnecessary trailing question that makes it a 4 rather than a 5.",
+    "score": 4
+  }
+}

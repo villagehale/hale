@@ -580,7 +580,11 @@ export const COACH_CHANNEL_FIXTURES = [
       mustNotDraft: true,
       // The last visible offer, by name. Both honest answers - the ask and the
       // confirmation - say this word; the menu says none of the thread's nouns at all.
-      mustMention: ['cartwheels'],
+      // The ROOT rather than the plural: live draws ground the recall as "Cartwheel's
+      // fall dates" and "Cartwheel Gym" (judge: correct confirmations, 2026-08-31),
+      // and the token exists to prove the thread's noun was read - which the root
+      // proves and a severed run still cannot produce.
+      mustMention: ['cartwheel'],
       // The incident's own two options, plus the queue they came out of. There is no
       // true sentence in reply to this text that contains any of them.
       forbidden: ['add it to your calendar', 'add to your calendar', 'digest', 'approvals', 'the app'],
@@ -665,6 +669,27 @@ export const COACH_CHANNEL_FIXTURES = [
       // else to sign up for on their end" is the correct thing to tell a parent, and
       // the gate was failing the truth for resembling the lie.
       forbidden: ['account settings', 'the app', 'your settings'],
+    },
+  },
+  {
+    id: 'connector-ask-safety-net',
+    text: 'can you get hooked into my google calendar',
+    note: "The connector handoff's safety net. A PLAIN connect ask (\"connect my Google Calendar\", \"read my Gmail\") never reaches the coach — the deterministic connector_link handler answers it with a real minted link before the model runs. This phrasing is one the detector deliberately misses, so it lands here, and the skill's instruction is exact: connecting is real, never refuse it, tell them texting the plain words 'connect my Google Calendar' is what sends the link, and never compose a URL. The failure to prevent is the live 2026-08 screenshot class: a fluent refusal (or a place where connecting supposedly lives) for a capability the product has.",
+    expect: {
+      mustNotDraft: true,
+      // The words the skill tells the coach to hand over — the exact ask the
+      // deterministic branch reads, so the parent's next text gets the link.
+      mustMention: ['connect my google calendar'],
+      // The refusal shapes and the invented places. No honest reply to this question
+      // contains any of them: connecting is real, and it lives nowhere but this thread.
+      forbidden: [
+        ...EVASIONS,
+        'not something i can',
+        "isn't something i can",
+        'account settings',
+        'your settings',
+        'the app',
+      ],
     },
   },
   {

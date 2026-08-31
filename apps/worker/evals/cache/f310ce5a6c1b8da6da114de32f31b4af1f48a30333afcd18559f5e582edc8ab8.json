@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2, so Hale correctly drafts the two swim cancellations and says it will line up the rest — that is the correct handling of overflow. The reply names both drafted items precisely (Mon 4:30 swim, Thu 5:15 swim), ends with \"YES to confirm these two\", and tells Sam that soccer and the Wednesday appointment follow next. No app referral, no invented details, no greeting or sign-off, no markdown. The Wednesday appointment matches the private item at Wed 9:00am — Hale doesn't expose the private content, just calls it \"the Wednesday appointment\" which is fine. One clean question, correctly formed. This is the product working exactly as designed.",
+    "score": 5
+  }
+}

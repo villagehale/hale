@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names exactly one event — Thursday swim lesson (Thu 5:15pm at East pool) — and asks to move it to Friday 5:15. The reference is fully resolved: one swim on Thursday, no ambiguity. Hale correctly drafted the move and asked for YES confirmation, naming the destination time and venue. The reply is short, accurate, and ends with the required YES confirmation prompt. No invented details, no app redirect, no greeting or sign-off. This is exactly the correct shape.",
+    "score": 5
+  }
+}

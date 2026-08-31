@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked whether Hale can integrate with Google Calendar. Looking at `knows.can`, there is no calendar-sync capability listed — Hale can read the family schedule, draft changes for approval, search nearby activities, coach parenting questions, hand over a referral link, and watch registration windows. Google Calendar integration is simply not in the product. The correct reply is a plain \"no\" — Hale works through text and does not connect to external calendars. Instead, the reply invents a \"one-tap link\" and a 15-minute token flow that has no basis anywhere in `knows`, `week`, or `thread`. That is a fabricated feature, which is the core failure the rubric calls out as a 1: inventing a detail. It also instructs the parent to reply with a specific phrase to trigger a flow that does not exist, compounding the invention.",
+    "score": 1
+  }
+}

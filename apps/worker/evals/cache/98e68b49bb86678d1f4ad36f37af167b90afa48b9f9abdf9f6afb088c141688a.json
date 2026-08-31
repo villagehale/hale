@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting Google Calendar is a real feature triggered by a specific text phrase, and hands Sam the exact words to send (\"connect my Google Calendar\") to trigger the deterministic branch that texts the one-tap sign-in link. No URL is invented, no app referral, no machinery explained beyond what's needed. This is precisely the correct shape described in the rubric for a connecting ask that the branch didn't catch. The only minor blemish is the opener \"Yep -\" which is a tiny casual filler, but it's minimal and doesn't affect clarity or correctness. This is essentially a 5.",
+    "score": 5
+  }
+}

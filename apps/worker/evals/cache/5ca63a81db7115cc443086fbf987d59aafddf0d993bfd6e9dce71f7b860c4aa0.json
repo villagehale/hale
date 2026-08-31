@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011Cebcpw548h2PSyZwqUmL6",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EsUDCpABCBEYAipAu1LXLXn/mvzrhsEgq6HIzkLiNHhmToMzwCE2lN/FlgP8LIltowEq3z1EziZlVPW6e4sJGRMI1y2KMM5jxn4w3TIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiRiMjYwM2FiYS1mMDUyLTQ4NGEtOTNjYy04OWM4ZTExMGRmMmWoAaWB2NQGEgwUVn2FnTZ2QaAD4yQaDFQm5alL6cfj/9tHzyIwDyri7ViG1nBMrWwKjGt/rnlHF/P1ySFFU6Fo5DqFR1hBBb/zfLd6Ev0TxPWL0p0gKuEB83u5PxwPWT6i3wb+NJm5YozmdFMjcugGVB6UnpLTAGfxpir6FeGNz50cqYe7y6HDCQRnilRh0GfOrout+CIYK+2aowhK1MgoMcsohs9CJjwimUchggkQveVMvEwScQWpdzc56O5BOQT7C6M710N/1b9+MrTzmfprpaQb0oCzOh3vCdbCH1iSMKUUv7bzRZV2ynJNujNqPeQcf8fudVlD71IOh01uP3QlvXCH0lR5grp4ckQHnKu2xfCS7QKnOWPBGdXe9n1rNUxDesNuilK7j1YXfs1nhtQy1HzTQ0uikWkzGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01BWJvNbCWXUXm8W6hUjK3Ve",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01JAg1Kri8rBeF3QvYsbo8nY",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "solids",
+          "childId": "kid-theo",
+          "offer": "Want the full first-foods plan? Reply YES and I'll send it."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 427,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 16598,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 279,
+      "output_tokens_details": {
+        "thinking_tokens": 78
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

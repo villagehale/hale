@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CebbH7FyF3cDfHgWBQeXS",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EoEECpABCBEYAipAGBzlGfRJylqzNHHoBPxLPjYE4WeLfIrkQms3yKdBM7PWGfawkQ9kobDmCjkDEX6lxe2Rsl8txMHTNhagqp/jRTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiRiMjYwM2FiYS1mMDUyLTQ4NGEtOTNjYy04OWM4ZTExMGRmMmWoAeP319QGEgxyi7yyzeasB8KYMcMaDGab63/NGT+Et/A3myIwefJksj0NWXS/g7flYiY5qg0diEbiBhnaCzMHOwIh2HfDSgntxPpJ8loIVk9g4qhGKp0CehNghS7Bn8g7B/h6YSVcAtjJqWVvenSXw0eilBfdWrx8jaZNKTEJ19rhDHI5WHxucThLKuB3ibtG2ttvcXYgj96tm2Zr+bMUHqive7nTtC8R+ie7ZCXU1RpTdIVWv5WUCF21we2UDjP1n6V07UPrkFpzFJPqcA6iuC+kfRzUWoaYissceuRLHs54MXYCC6Pi4g0Fb6SF7bRiNBRmj2GhBiSNmyDI5Xk3t0eOUxXZikQ2XATbTr6cL5UFlpLemA0vJcmX3Jv6hbi/MbY1z6A1phLhgpUMUu/f3fi7aQmAnzJAAHXXd16hAorUJLCoy2av6jgw+SDUzrAZ8kcvrWLNbp8SIl3hZDY8Lebm1hiIE23ciNEx4/bt9C9gCOOWGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01JH5p9CWvFhEp8oRQkqjU6H",
+        "name": "find_activities",
+        "input": {
+          "subject": "fall kids programs",
+          "window": "fall"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 632,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 16608,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 160,
+      "output_tokens_details": {
+        "thinking_tokens": 83
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly uses the referral link from `knows.referralLinkAppended` (not invented), describes what the friend gets, and tells Sam to forward it themselves — all correct. It's a clean, accurate answer with no greeting, no sign-off, no markdown. The only minor issue is the brief description of Hale in the middle sentence is slightly redundant given the parent already uses Hale, but it's useful context for why they'd forward the link to a friend. This is a very minor point and doesn't really hurt the reply. Overall this does the job correctly and concisely.",
+    "score": 5
+  }
+}

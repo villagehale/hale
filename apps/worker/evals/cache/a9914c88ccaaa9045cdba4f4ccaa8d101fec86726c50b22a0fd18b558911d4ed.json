@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not visible on this week's calendar and offers to check next week. This is the right handling — nothing in `week` is labeled piano (two events are private and Hale cannot guess at their contents), so \"I don't see piano this week\" is the complete and correct answer. The private rows must not be surfaced as possible matches, and they aren't. The offer to check next week is a reasonable and helpful forward move, not a dangling question or machinery. It's one short question at most, which is within the rules. The reply is concise, grounded, and stops cleanly. A minor blemish: it could have been slightly more direct in noting it will check next week without framing it as a question (since checking next week is clearly useful), but offering to check is fine. Overall this is very close to ideal.",
+    "score": 5
+  }
+}

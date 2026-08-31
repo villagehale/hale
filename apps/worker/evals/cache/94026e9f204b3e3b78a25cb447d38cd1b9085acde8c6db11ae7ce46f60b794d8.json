@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to move Thursday's swim lesson to 17h45 (5:45pm). There is exactly one swim lesson on Thursday (Thu 5:15pm at East pool), so the reference is fully resolved — no clarifying question needed, and drafting is correct. The reply drafts the move and asks for YES confirmation, which is exactly the contract. The reply is concise, names the event and the new time, and uses the correct confirmation trigger. One small issue: the reply phrases it as a question (\"Je déplace la natation de jeudi à 17h45?\") rather than a clear statement of what will be done (\"...? YES to confirm.\" shape), but it does include the YES confirmation cue implicitly. Actually re-reading: \"Je déplace la natation de jeudi à 17h45? Réponds YES pour confirmer.\" — this is essentially correct in shape. The drafted change is present. The reply is short, names the change, ends with YES to confirm. This is the product working correctly. Minor: the phrasing as a question could be read as Hale asking for clarification rather than confirming what it drafted, but the YES confirmation line makes the intent clear. This is a very small blemish at most.",
+    "score": 4
+  }
+}

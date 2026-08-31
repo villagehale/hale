@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hits the draft cap of 2 (Monday swim and Thursday swim), names both clearly with their times, uses the required YES confirmation format, and says it will handle soccer and the Wednesday appointment next — exactly the correct handling of overflow without sending Sam to the app or itemising the remainder. The Wednesday appointment is a private item (Wed 9:00am shown as \"A private calendar item\"), so Hale is right to treat it as cancellable without naming its content. One minor note: \"line up\" is slightly ambiguous (could mean queue or schedule), but the meaning is clear enough. This is the product working correctly — cap hit, overflow acknowledged without enumeration, confirmation gate in place. A clean 5.",
+    "score": 5
+  }
+}
