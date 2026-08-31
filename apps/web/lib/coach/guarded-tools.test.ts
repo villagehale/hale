@@ -1,6 +1,6 @@
 import { schema, type Database } from '@hale/db';
 import { GuardrailError, defineTool, invokeTool } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { buildGuardDeps } from './guards';
 import { buildAskHaleTools } from './tools';
@@ -284,6 +284,10 @@ describe('Ask Hale guard rails + family scoping', () => {
     // VIL-260 · WS5: 'child' spans four to twelve, so the midpoint reference DOB
     // answered a four-year-old's parent with an eight-year-old's milestones and
     // the Grade-7 immunization set. Asking about a 52-month-old must not.
+    // Pin a month-end clock: Date.setMonth(Aug 31 minus 52) used to overflow
+    // April 31 → May 1 and answer as 51 months.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-31T15:00:00-04:00'));
     const db = fakeDb(emptyState());
     const ask = (input: Record<string, unknown>) =>
       invokeTool(
@@ -298,16 +302,20 @@ describe('Ask Hale guard rails + family scoping', () => {
         nextHealth: Array<{ what: string }>;
       }>;
 
-    const preschooler = await ask({ stage: 'child', ageMonths: 52 });
-    expect(preschooler.ageMonths).toBe(52);
-    expect(preschooler.milestones.map((m) => m.what)).not.toContain(
-      'Manages homework with some support',
-    );
-    expect(preschooler.nextHealth[0]?.what).not.toMatch(/pre-teen/i);
+    try {
+      const preschooler = await ask({ stage: 'child', ageMonths: 52 });
+      expect(preschooler.ageMonths).toBe(52);
+      expect(preschooler.milestones.map((m) => m.what)).not.toContain(
+        'Manages homework with some support',
+      );
+      expect(preschooler.nextHealth[0]?.what).not.toMatch(/pre-teen/i);
 
-    // With no age the tool still answers, and the answer is the older child's.
-    const unspecified = await ask({ stage: 'child' });
-    expect(unspecified.whatsNow).not.toEqual(preschooler.whatsNow);
+      // With no age the tool still answers, and the answer is the older child's.
+      const unspecified = await ask({ stage: 'child' });
+      expect(unspecified.whatsNow).not.toEqual(preschooler.whatsNow);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('save_memory persists a family-scoped fact through the guarded invoker (rule #6)', async () => {

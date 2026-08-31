@@ -19,7 +19,7 @@ import { CONFIRM_WITH_PROVIDER, companionForChild, type FamilyStage } from '@hal
  * answering for the middle beats answering for an edge, but an age is always the
  * better question to answer — the description begs the model to pass one.
  */
-function stageReferenceDob(stage: FamilyStage, ageMonths?: number): Date {
+function stageReferenceDob(stage: FamilyStage, ageMonths?: number, now: Date = new Date()): Date {
   const monthsByStage: Record<FamilyStage, number> = {
     newborn: 6,
     toddler: 24,
@@ -27,9 +27,13 @@ function stageReferenceDob(stage: FamilyStage, ageMonths?: number): Date {
     child: 96,
     teenager: 168,
   };
-  const d = new Date();
-  d.setMonth(d.getMonth() - (ageMonths ?? monthsByStage[stage]));
-  return d;
+  const months = ageMonths ?? monthsByStage[stage];
+  // Clamp the day: Date.setMonth(Aug 31 → April) overflows to May 1 and the
+  // asked-for age comes back one month young (CI 2026-08-31, VIL-334).
+  const year = now.getFullYear();
+  const month = now.getMonth() - months;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  return new Date(year, month, Math.min(now.getDate(), lastDay));
 }
 
 export function frameworkGuidanceTool(): RegisteredTool {

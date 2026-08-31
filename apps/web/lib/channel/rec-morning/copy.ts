@@ -6,7 +6,7 @@ import {
   YMCA_PORTAL,
 } from './facts';
 import type { RecMorningTopic, RecMorningWhere } from './match';
-import { matchRecMorning } from './match';
+import { matchRecMorning, resolveHelloCity } from './match';
 
 /**
  * VIL-308 first-hello voice — design-locked, GSM-7, verbatim. A model does not write these.
@@ -25,6 +25,16 @@ import { matchRecMorning } from './match';
 const INTAKE_MAX_REPLY_CHARS = 300;
 
 export const TORONTO_FIRST_REC = `Toronto rec and swim open 7:00 a.m. on your district morning: Sept 9 if you're catchment-only, Sept 15 or 16 otherwise. Sign in at ${TORONTO_REC_PORTAL} with the centre district, not your home address.`;
+
+/**
+ * VIL-334 — Designer-locked Toronto first-hello for a postal that is a Toronto FSA.
+ * Null everywhere else: leftover mapping stays the empty-lookup answer in unpinned
+ * towns, and Halton Hills / Brampton keep the rec-morning pins they already have.
+ */
+export function torontoPinForPostal(postal: string | null | undefined): string | null {
+  if (!postal) return null;
+  return resolveHelloCity('', { postal }) === 'toronto' ? TORONTO_FIRST_REC : null;
+}
 
 export const TORONTO_FOLLOW = `Wishlist can look frozen, so wait, don't mash refresh. Waitlist email takes about ${TORONTO_WAITLIST_HOURS} hours and there's no queue number. Two parents means two phones.`;
 

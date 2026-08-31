@@ -18,6 +18,8 @@ import {
   matchRecMorning,
   recMorningIntakeReply,
   recMorningReply,
+  resolveHelloCity,
+  torontoPinForPostal,
 } from './index';
 
 /** Same ceiling as intake/answer.ts MAX_REPLY_CHARS — kept local so this spec does not
@@ -285,6 +287,24 @@ describe('rec-morning SMS · VIL-320 city-switched first-hello', () => {
     expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M5V' })).toBe(TORONTO_FIRST_REC);
     expect(reply('when does YMCA swim open?', THIS_MORNING, { postal: 'L3R' })).toBe(YMCA_FIRST);
     expect(YMCA_FIRST.toLowerCase()).not.toContain('today');
+  });
+
+  it('VIL-334: M1B (Scarborough) is a Toronto FSA and pins the locked first-hello', () => {
+    expect(resolveHelloCity('M1B')).toBe('toronto');
+    expect(resolveHelloCity('Theo is 3, Cruz is 18-months, M1B')).toBe('toronto');
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M1B' })).toBe(TORONTO_FIRST_REC);
+    expect(reply('M1B rec dates?')).toBe(TORONTO_FIRST_REC);
+    expect(torontoPinForPostal('M1B')).toBe(TORONTO_FIRST_REC);
+    expect(torontoPinForPostal('M5V')).toBe(TORONTO_FIRST_REC);
+    expect(torontoPinForPostal('m1b 0a1')).toBe(TORONTO_FIRST_REC);
+    // Unpinned / other-city FSAs keep their own rec-morning pins. This helper is
+    // the empty-lookup fallback, not a rewrite of Halton Hills 555 or Brampton.
+    expect(torontoPinForPostal('L7G')).toBeNull();
+    expect(torontoPinForPostal('L6T')).toBeNull();
+    expect(torontoPinForPostal('L3R')).toBeNull();
+    expect(torontoPinForPostal(null)).toBeNull();
+    expect(reply('Halton Hills rec registration?')).toBe(DATED_HELLOS['Halton Hills']);
+    expect(reply('when does Brampton rec open?')).toBe(BRAMPTON_REC);
   });
 
   it('does not invent a clock when the city is unknown', () => {
