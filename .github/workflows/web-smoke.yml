@@ -1,0 +1,129 @@
+# The lane PR #577 proved was missing: tsc + 386 unit tests green while the first
+# real authed flag-on render crashed into the error boundary (a lucide component
+# ref crossing the RSC/client seam). Only a real `next build` + `next start`
+# render sees that class — so this job builds the app, migrates a throwaway
+# Postgres, seeds two PII-free fixture accounts, mints session cookies and walks
+# the authed pages with Playwright. Own workflow (not a job in ci.yml) so the
+# paths filter keeps site-only PRs fast; it runs in PARALLEL with `verify`, so CI
+# wall-clock stays bounded by the slower of the two.
+#
+# Everything here is throwaway: the DB is a service container, AUTH_SECRET /
+# APP_ENCRYPTION_KEY are generated per run, and no real secret or prod endpoint
+# is ever in reach.
+name: Web smoke
+
+on:
+  push:
+    branches: [main, production]
+    paths:
+      - 'apps/web/**'
+      - 'apps/worker/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/web-smoke.yml'
+  pull_request:
+    branches: [main, production]
+    paths:
+      - 'apps/web/**'
+      - 'apps/worker/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/web-smoke.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-smoke:
+    name: Web E2E smoke (flag-on, real render)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hale_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hale_smoke
+      DATABASE_DIRECT_URL: postgresql://postgres:postgres@localhost:5432/hale_smoke
+      # Set via env block, never `echo |` (the trailing-\n landmine — the flag
+      # reader is strict equality on the literal 'true').
+      F14_RECEIPTS_IA: 'true'
+      # Fixture allowlist number — the seed enrolls the smoke-admin account's
+      # channel with this same value, so /admin opens by construction.
+      ADMIN_PHONES: '+14165550123'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Throwaway secrets (generated per run — never real ones)
+        run: |
+          AUTH_SECRET="$(openssl rand -base64 32)"
+          APP_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+          echo "::add-mask::${AUTH_SECRET}"
+          echo "::add-mask::${APP_ENCRYPTION_KEY}"
+          echo "AUTH_SECRET=${AUTH_SECRET}" >> "$GITHUB_ENV"
+          echo "APP_ENCRYPTION_KEY=${APP_ENCRYPTION_KEY}" >> "$GITHUB_ENV"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-ms-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ms-playwright-
+
+      - name: Install Playwright chromium
+        run: pnpm --filter @hale/web exec playwright install --with-deps chromium
+
+      # pnpm topo-order package scripts, NOT `pnpm build` (turbo): turbo v2 strict
+      # env mode would strip F14_RECEIPTS_IA at build time (absent from turbo.json's
+      # build env allowlist), and this skips apps/site + apps/mobile entirely.
+      - name: Build web + workspace deps
+        run: pnpm --filter @hale/web... build
+        env:
+          NODE_ENV: production
+
+      - name: Migrate (fresh container — the committed journal applies clean)
+        run: pnpm --filter @hale/db migrate
+
+      - name: Seed smoke fixtures
+        run: pnpm --filter @hale/web seed:e2e-smoke
+
+      - name: Smoke walk (next start + minted sessions)
+        run: pnpm --filter @hale/web test:smoke
+
+      - name: Upload screenshots + traces + server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-smoke-artifacts
+          path: apps/web/e2e-artifacts/
+          retention-days: 7
+          if-no-files-found: ignore

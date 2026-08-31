@@ -17,6 +17,7 @@
     "format": "biome format --write .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "smoke": "bash scripts/smoke.sh",
     "eval:agents": "pnpm --filter @hale/worker eval:agents",
     "eval:vil143": "pnpm --filter @hale/worker eval:vil143",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
