@@ -293,11 +293,12 @@
  * derivation, not a hazard — every --color-on-spruce consumer sits on a `spruce`
  * (cream) or `brand` (periwinkle) fill, never on `raised`.
  *
- * The app FRAME (sidebar + sticky header) keeps Shore's brand navy #1B2160, which
- * is a MORE saturated, more indigo 235° against the calmer 219° stage — so the
- * frame still separates by hue even though its lightness step vs the canvas
- * relaxes from 1.28:1 to 1.19:1 (light mode's own frame step is 1.06:1, so 1.19
- * is comfortably the stronger of the two).
+ * The app FRAME (sidebar + sticky header) is a RUNG OF THAT LADDER, not a second
+ * blue: chrome is `raised` #17294A exactly, so the frame is the content navy one
+ * tonal step up (1.20:1 on the canvas) at the stage's own 219° / 53%. It used to
+ * wear Shore's 235° / 56% indigo #1B2160, which beside a 219° stage read as a
+ * different palette rather than a step of this one. Light mode's own frame step is
+ * 1.06:1, so 1.20 is comfortably the stronger of the two.
  *
  * EVERY ratio below is computed against THIS ground, not carried over. The new
  * navy card (#13223E) is LIGHTER than the warm card it replaces (#1E1B15), so
@@ -313,7 +314,7 @@
   --color-oat: #13223E;          /* legacy name for `card` */
   --color-raised: #17294A;       /* RAISED — the BRAND ink navy itself (1.10:1 on card) */
   --color-tile: #152541;         /* inner tile — subtle lift on card (1.04:1); web-only role */
-  --color-chrome: #1B2160;       /* CHROME ANCHOR — Shore brand navy, sidebar frame only (1.19:1 on canvas) */
+  --color-chrome: #17294A;       /* CHROME ANCHOR — the ladder's own `raised` rung, sidebar frame only (1.20:1 on canvas) */
   --color-alt-surface: #192D52;  /* selected row — lift on the card (1.16:1) */
 
   /* Ink + text ladder — the SAME warm cream/blue-gray hexes, re-measured on the
@@ -461,9 +462,11 @@
 
 /* ── Chrome anchor (dark only) ───────────────────────────────────────────── *
  * The app frame — sidebar + sticky mobile header + the off-canvas drawer — wears
- * brand navy so the identity is unmistakable while the content canvas stays calm.
- * The content ground is now navy too, so the frame separates by HUE and saturation
- * (chrome is 235° / 56%, the stage 219° / 53%) on top of its 1.19:1 lightness step.
+ * the ladder's `raised` rung, so it separates from the content canvas purely by
+ * LIGHTNESS (1.20:1) at the stage's own hue. The frame used to wear a 235° / 56%
+ * indigo against the 219° / 53% stage: on a phone, where the drawer and the sticky
+ * header sit right against the content, that read as a SECOND blue rather than a
+ * step of the one palette.
  * We paint the frame with --color-chrome and locally re-point the "surface" tokens
  * nested controls lift onto (canvas / card), so a nav hover or theme-toggle thumb
  * steps UP from the navy frame instead of dropping back to the calm canvas —
@@ -475,15 +478,14 @@
 .dark .runninghead {
   background: var(--color-chrome);
   /* Lift surfaces, relative to the navy frame, for nested hover/active states.
-   * Shore's chrome #1B2160 is LIGHTER than the #151A44 these lifts were cut
-   * against, so the old hexes compressed to 1.03–1.21 against it (the toggle
-   * track all but vanished). Re-derived to reproduce the steps they held —
-   * hover 1.25 · track 1.17 · active-pill 1.38 — on the new frame. */
-  --color-canvas: #2D336D;       /* nav-item hover / theme-toggle thumb — 1.25:1 on chrome */
-  --color-card: #282D69;         /* theme-toggle track / menu hover — 1.17:1; brand label on it 5.37:1 */
-  --color-linen: #2D336D;
-  --color-oat: #282D69;
-  --color-alt-surface: #343971;  /* active-nav pill — 1.38:1 on chrome; brand label on it 4.55:1 */
+   * Cut on the ladder's OWN hue (219° / 53%), so no lift can reintroduce the indigo
+   * the frame just shed — each holds the step it has always held on the chrome:
+   * hover 1.25 · track 1.17 · active-pill 1.38. */
+  --color-canvas: #1F3866;       /* nav-item hover / theme-toggle thumb — 1.25:1 on chrome */
+  --color-card: #1D345E;         /* theme-toggle track / active-nav pill — 1.17:1; brand label on it 5.26:1 */
+  --color-linen: #1F3866;
+  --color-oat: #1D345E;
+  --color-alt-surface: #233E72;  /* selected switcher row — 1.38:1 on chrome; ink on it 9.31:1 */
 }
 
 html {
@@ -1649,6 +1651,22 @@ input[type="checkbox"] {
 }
 
 textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-radius: var(--r-md); }
+
+/* A time / date / number control carries its own intrinsic content width — a
+ * segmented clock, a picker, a spinner — so `.field`'s text-field `width: 100%`
+ * stretches it into a mostly empty box. Where two sit side by side (quiet hours)
+ * flex already sizes them to content and it never shows; a LONE one fills its
+ * column and reads oversized beside them, which is the settings "Weekly plan
+ * arrives" row. Asking for the control's OWN width is what makes the lone one match
+ * the pair exactly (both 160px) with no width to keep in sync — and it is a
+ * max-width, so `width: 100%` still bounds it inside a narrower column. It lives on
+ * the type, not the call site, so the next lone control is born sized.
+ * datetime-local is deliberately absent: it needs the full column. */
+@layer components {
+  input[type="time"].field,
+  input[type="date"].field,
+  input[type="number"].field { max-width: max-content; }
+}
 
 /* ── Ask Hale chat (the /coach transcript + composer) ──────────────────── *
  * The conversation is the hero: the parent's turns ride right in a navy bubble
