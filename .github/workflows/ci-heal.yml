@@ -14,7 +14,9 @@
 # workflow, stale head, diff containment) are named early-exits logged by the
 # heal script. This workflow always runs its default-branch version with full
 # secrets — even for fork-triggered runs — which is why the fork guard exits
-# before any PR code is checked out or executed; only main's own scripts run.
+# before any PR code is checked out or executed. The heal script itself runs from
+# main; the skills reseed leg executes the PR branch's check-skills.mjs (same-repo
+# only, post-fork-guard).
 name: CI heal
 
 on:
@@ -26,7 +28,6 @@ permissions:
   contents: write # push the lockfile reseed commit to same-repo PR branches
   actions: write # rerun-failed-jobs + workflow dispatch (read for logs is implied)
   pull-requests: write # escalation + receipt comments
-  issues: write # PR comments go through the issues API
 
 concurrency:
   group: heal-${{ github.event.workflow_run.head_branch }}
