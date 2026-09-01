@@ -33,6 +33,9 @@ export interface AdmColumn {
   dot?: boolean;
   /** Render the value as an external link labelled `label`. */
   link?: boolean;
+  /** Numeric column with an in-cell share bar (the `.adm-barlist` fill),
+   * scaled to the column's max over ALL rows so filtering never rescales. */
+  bar?: boolean;
 }
 
 export type AdmRow = Record<string, string | number | null>;
@@ -117,6 +120,14 @@ export function DataTable({
   const pageRows = table.getRowModel().rows;
   const total = table.getFilteredRowModel().rows.length;
   const paged = rows.length > PAGE_SIZE;
+  const barMax = new Map(
+    columns
+      .filter((column) => column.bar)
+      .map((column) => [
+        column.key,
+        Math.max(1, ...rows.map((row) => (typeof row[column.key] === 'number' ? Number(row[column.key]) : 0))),
+      ]),
+  );
 
   return (
     <div>
@@ -174,6 +185,22 @@ export function DataTable({
                           <a href={value} target="_blank" rel="noreferrer">
                             open ↗
                           </a>
+                        </td>
+                      );
+                    }
+                    if (column.bar && typeof value === 'number') {
+                      const max = barMax.get(column.key) ?? 1;
+                      return (
+                        <td key={column.key}>
+                          <span className="adm-cell-bar">
+                            <span className="adm-barlist-track">
+                              <span
+                                className="adm-barlist-fill"
+                                style={{ width: `${(value / max) * 100}%` }}
+                              />
+                            </span>
+                            <span className="adm-num">{value}</span>
+                          </span>
                         </td>
                       );
                     }

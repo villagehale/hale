@@ -16,3 +16,6 @@ export function serviceStateLine(
 }
 
 export const EMPTY_WINDOW_LINE = 'No rows in this window.';
+
+/** Radar honesty: a verify sweep older than this reads as stale (amber chip). */
+export const STALE_VERIFY_DAYS = 7;

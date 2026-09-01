@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayKey, fillWindow, lastDays } from './window';
+import { dayKey, fillWindow, lastDays, parseWindowParam, weekdayOfDayKey } from './window';
 
 describe('dayKey', () => {
   it('buckets an instant by the admin timezone, not UTC', () => {
@@ -22,6 +22,32 @@ describe('lastDays', () => {
       '2026-03-09',
       '2026-03-10',
     ]);
+  });
+});
+
+describe('parseWindowParam', () => {
+  it('accepts exactly the dial stops', () => {
+    expect(parseWindowParam('7')).toBe(7);
+    expect(parseWindowParam('30')).toBe(30);
+    expect(parseWindowParam('90')).toBe(90);
+    expect(parseWindowParam('365')).toBe(365);
+  });
+
+  it('falls back to 30 for absent, garbage, or in-between values', () => {
+    expect(parseWindowParam(null)).toBe(30);
+    expect(parseWindowParam('')).toBe(30);
+    expect(parseWindowParam('8')).toBe(30);
+    expect(parseWindowParam('banana')).toBe(30);
+    expect(parseWindowParam('-7')).toBe(30);
+  });
+});
+
+describe('weekdayOfDayKey', () => {
+  it('maps known dates to Monday-first indices', () => {
+    expect(weekdayOfDayKey('2026-08-31')).toBe(0); // a Monday
+    expect(weekdayOfDayKey('2026-09-01')).toBe(1); // a Tuesday
+    expect(weekdayOfDayKey('2026-08-30')).toBe(6); // a Sunday
+    expect(weekdayOfDayKey('2026-03-08')).toBe(6); // DST-start Sunday stays Sunday
   });
 });
 

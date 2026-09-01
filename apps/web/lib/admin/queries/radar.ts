@@ -10,6 +10,9 @@ export interface RadarData {
     cycleLabel: string;
     openAt: string;
     residentOpenAt: string | null;
+    /** Per-row honesty stamp (the column is NOT NULL; typed nullable so a
+     * degraded row renders the dash convention rather than crashing). */
+    verifiedAt: string | null;
   }[];
   /** Freshest verified_at across ALL windows — the radar's honesty stamp. */
   freshestVerifiedAt: string | null;
@@ -35,6 +38,7 @@ export async function loadRadar(database: Database = defaultDb()): Promise<Radar
       cycleLabel: w.cycleLabel,
       openAt: sql<string>`to_char(${w.openAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`,
       residentOpenAt: sql<string | null>`to_char(${w.residentOpenAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`,
+      verifiedAt: sql<string | null>`to_char(${w.verifiedAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`,
     })
     .from(w)
     .where(sql`${w.openAt} >= now() or ${w.residentOpenAt} >= now()`)

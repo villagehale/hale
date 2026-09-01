@@ -1,5 +1,6 @@
+import { schema } from '@hale/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { createTestDb, seedFamily, type TestDb } from '~/lib/testing/pglite';
 import { loadAgentSpend } from './agent-spend';
 import { loadAuditMix } from './audit-mix';
 import { loadDbErrors } from './errors';
@@ -56,8 +57,8 @@ describe('admin loaders execute against real Postgres', () => {
     expect(await loadTextingTrends(db.database)).toEqual([]);
   });
 
-  it('loadAgentSpend: days + byAgent (percentile_cont parses)', async () => {
-    expect(await loadAgentSpend(db.database)).toEqual({ days: [], byAgent: [] });
+  it('loadAgentSpend: days + byAgentDay (percentile_cont parses)', async () => {
+    expect(await loadAgentSpend(db.database)).toEqual({ days: [], byAgentDay: [] });
   });
 
   it('loadRadar: upcoming, freshness, outcomes', async () => {
@@ -71,5 +72,103 @@ describe('admin loaders execute against real Postgres', () => {
 
   it('loadDbErrors: merged empty ledger', async () => {
     expect(await loadDbErrors(db.database)).toEqual([]);
+  });
+});
+
+describe('loadAgentSpend — day-grain leaderboard rows (seeded, exact)', () => {
+  it('groups runs, failures and cost by Toronto day × agent', async () => {
+    const fam = await seedFamily(db.database, 'Spend Family');
+    const run = (
+      agentName: 'reviewer' | 'drafter',
+      startedAt: string,
+      status: 'completed' | 'failed' = 'completed',
+      costUsd = '0.010000',
+    ) => ({
+      familyId: fam.familyId,
+      agentName,
+      modelUsed: 'claude-sonnet-5',
+      status,
+      costUsd,
+      startedAt: new Date(startedAt),
+    });
+
+    await db.database.insert(schema.agentRuns).values([
+      run('reviewer', '2026-08-10T15:00:00.000Z'),
+      run('reviewer', '2026-08-10T16:00:00.000Z', 'failed', '0.020000'),
+      // 03:00Z on Aug 11 is Toronto Aug 10, 23:00 — the boundary is Toronto's.
+      run('drafter', '2026-08-11T03:00:00.000Z'),
+      run('drafter', '2026-08-11T15:00:00.000Z'),
+    ]);
+
+    const { byAgentDay } = await loadAgentSpend(db.database);
+    expect(byAgentDay).toEqual([
+      { day: '2026-08-10', agent: 'drafter', runs: 1, failedRuns: 0, costUsd: 0.01 },
+      { day: '2026-08-10', agent: 'reviewer', runs: 2, failedRuns: 1, costUsd: 0.03 },
+      { day: '2026-08-11', agent: 'drafter', runs: 1, failedRuns: 0, costUsd: 0.01 },
+    ]);
+  });
+});
+
+describe('loadRadar — per-row verified stamp (seeded, exact)', () => {
+  it('carries verifiedAt on every upcoming window', async () => {
+    await db.database.insert(schema.registrationWindows).values([
+      {
+        municipality: 'toronto',
+        programDomain: 'rec_program',
+        cycleLabel: 'Winter 2027',
+        openAt: new Date('2026-12-03T14:00:00.000Z'),
+        residentOpenAt: new Date('2026-12-01T14:00:00.000Z'),
+        sourceUrl: 'https://example.test/rec',
+        verifiedAt: new Date('2026-08-20T12:00:00.000Z'),
+      },
+    ]);
+
+    const radar = await loadRadar(db.database);
+    expect(radar.upcoming).toEqual([
+      {
+        municipality: 'toronto',
+        programDomain: 'rec_program',
+        cycleLabel: 'Winter 2027',
+        openAt: '2026-12-03T14:00:00Z',
+        residentOpenAt: '2026-12-01T14:00:00Z',
+        verifiedAt: '2026-08-20T12:00:00Z',
+      },
+    ]);
+  });
+});
+
+describe('loadIntakeFunnel — day-grain sources (seeded, exact)', () => {
+  it('groups starts and provisioned by Toronto day × code, coalescing null to direct', async () => {
+    const fam = await seedFamily(db.database, 'Sources Family');
+    const session = (
+      phoneHash: string,
+      createdAt: string,
+      sourceCode: string | null,
+      familyId: string | null = null,
+    ) => ({
+      phoneHash,
+      phoneEncrypted: 'enc',
+      state: 'awaiting_details',
+      dataEncrypted: 'enc',
+      sourceCode,
+      familyId,
+      createdAt: new Date(createdAt),
+    });
+
+    await db.database.insert(schema.smsIntakeSessions).values([
+      // Toronto Aug 10: two earlyon starts, one provisioned; one direct (null code).
+      session('h1', '2026-08-10T15:00:00.000Z', 'earlyon'),
+      session('h2', '2026-08-10T16:00:00.000Z', 'earlyon', fam.familyId),
+      session('h3', '2026-08-10T17:00:00.000Z', null),
+      // 03:00Z on Aug 10 is Toronto Aug 9 — the day boundary is Toronto's.
+      session('h4', '2026-08-10T03:00:00.000Z', 'earlyon'),
+    ]);
+
+    const { sources } = await loadIntakeFunnel(db.database);
+    expect(sources).toEqual([
+      { day: '2026-08-09', code: 'earlyon', started: 1, provisioned: 0 },
+      { day: '2026-08-10', code: 'direct', started: 1, provisioned: 0 },
+      { day: '2026-08-10', code: 'earlyon', started: 2, provisioned: 1 },
+    ]);
   });
 });

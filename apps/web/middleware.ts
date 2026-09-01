@@ -2,7 +2,7 @@ import NextAuth from 'next-auth';
 import { NextResponse } from 'next/server';
 import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
-import { isAdminPath, isProtectedPath } from '~/lib/auth/protected-routes';
+import { ADMIN_PROBE_HEADER, isAdminPath, isProtectedPath } from '~/lib/auth/protected-routes';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { RETIRED_TARGET, isRetiredPath } from '~/lib/routes/retired';
 
@@ -74,7 +74,7 @@ export default auth((req) => {
   // sign-in redirect the rest of the gated app uses — a redirect would advertise
   // that /admin exists. The rewrite target matches no route, so Next renders the
   // not-found page with a real 404 status; an authed non-admin gets the same 404
-  // from the (admin) layout itself.
+  // from the nested (authed)/admin layout itself.
   if (isAdminPath(pathname) && (!authConfigured() || !req.auth)) {
     return NextResponse.rewrite(new URL('/admin/__denied__/404', req.nextUrl));
   }
@@ -90,7 +90,17 @@ export default auth((req) => {
     return NextResponse.redirect(new URL('/sign-in', req.nextUrl));
   }
 
-  return NextResponse.next();
+  // The authed /admin probe: mark the request so the (authed) layout — which
+  // sits ABOVE the group's loading.tsx Suspense boundary — can 404 a signed-in
+  // non-admin BEFORE the streaming shell flushes a 200. Every other request has
+  // any client-sent copy STRIPPED, so only the middleware can speak this header.
+  const requestHeaders = new Headers(req.headers);
+  if (isAdminPath(pathname)) {
+    requestHeaders.set(ADMIN_PROBE_HEADER, '1');
+  } else {
+    requestHeaders.delete(ADMIN_PROBE_HEADER);
+  }
+  return NextResponse.next({ request: { headers: requestHeaders } });
 });
 
 export const config = {

@@ -18,9 +18,10 @@ const routesOfGroup = (group: string) =>
     .filter((entry) => entry.isDirectory())
     .map((entry) => `/${entry.name}`);
 
-// (admin) is session-gated at the Edge too — its layout additionally 404s
-// non-admins, but a request with no session at all must still never reach it.
-const authedRoutes = [...routesOfGroup('(authed)'), ...routesOfGroup('(admin)')];
+// /admin lives inside (authed) now (the portal shell) — its own nested layout
+// additionally 404s non-admins, but a request with no session at all must
+// still never reach it, so the derived list picks it up with the rest.
+const authedRoutes = routesOfGroup('(authed)');
 
 describe('the Edge gate covers the authed route group', () => {
   it('gates every route the (authed) group renders', () => {

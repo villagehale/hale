@@ -23,8 +23,17 @@ export interface IntakeDay {
 
 export interface IntakeFunnelData {
   days: IntakeDay[];
-  /** Where starts came from (QR venue codes), whole trend window. */
-  sources: { code: string; count: number }[];
+  /** Where starts came from (QR venue codes), per Toronto-local day — the
+   * client slices the dial window, then ranks; ranking is a display concern
+   * once rows are day-grain. */
+  sources: IntakeSourceDay[];
+}
+
+export interface IntakeSourceDay {
+  day: string;
+  code: string;
+  started: number;
+  provisioned: number;
 }
 
 export async function loadIntakeFunnel(database: Database = defaultDb()): Promise<IntakeFunnelData> {
@@ -45,16 +54,18 @@ export async function loadIntakeFunnel(database: Database = defaultDb()): Promis
     .groupBy(day)
     .orderBy(day);
 
+  const code = sql<string>`coalesce(${s.sourceCode}, 'direct')`;
   const sources = await database
     .select({
-      code: sql<string>`coalesce(${s.sourceCode}, 'direct')`,
-      count: sql<number>`count(*)::int`,
+      day,
+      code,
+      started: sql<number>`count(*)::int`,
+      provisioned: sql<number>`count(*) filter (where ${s.familyId} is not null)::int`,
     })
     .from(s)
     .where(since)
-    .groupBy(sql`coalesce(${s.sourceCode}, 'direct')`)
-    .orderBy(sql`count(*) desc`)
-    .limit(8);
+    .groupBy(day, code)
+    .orderBy(day, code);
 
   return { days, sources };
 }

@@ -46,3 +46,23 @@ export function fillWindow<T extends { day: string }>(
   const byDay = new Map(rows.map((r) => [r.day, r]));
   return lastDays(days, today).map((day) => byDay.get(day) ?? ({ day, ...zero } as T));
 }
+
+/**
+ * `?w=` → a valid dial stop. Anything that isn't exactly one of WINDOW_OPTIONS
+ * (absent, garbage, an in-between number) falls back to the 30d default — a
+ * deep link can never put the dial in a state the buttons can't reach.
+ */
+export function parseWindowParam(value: string | null): WindowDays {
+  const parsed = Number(value);
+  return WINDOW_OPTIONS.find((option) => option === parsed) ?? 30;
+}
+
+export const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+/** Weekday index (0 = Monday … 6 = Sunday) of a 'YYYY-MM-DD' day key. UTC-noon
+ * construction, the lastDays trick, so a DST boundary can never shift the day. */
+export function weekdayOfDayKey(day: string): number {
+  const [y, m, d] = day.split('-').map(Number);
+  const utcDay = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1, 12)).getUTCDay();
+  return (utcDay + 6) % 7;
+}

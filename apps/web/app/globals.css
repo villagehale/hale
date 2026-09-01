@@ -1282,7 +1282,7 @@ body {
  * its own full-height surface); the Village board opts UP to a wider column
  * (.village-wide) so its 330|1fr|300 map board keeps a real centrepiece map (§4.5),
  * the same "wide surface opts out" pattern the coach chat uses. */
-.main-stage > *:not(.coach-surface):not(.dev-preview-banner):not(.village-wide) {
+.main-stage > *:not(.coach-surface):not(.dev-preview-banner):not(.village-wide):not([data-surface='admin']) {
   max-width: 58rem;
   margin-inline: auto;
 }
@@ -1290,6 +1290,9 @@ body {
   max-width: 72rem;
   margin-inline: auto;
 }
+/* The admin ledger opts UP the same way the Village board does (75rem); its
+ * width rule lives in admin.css, inside @layer components — the :not() arm
+ * above is what keeps this unlayered column cap off the admin surface. */
 
 /* Ask Hale is a contained chat: the transcript scrolls inside its own region while
  * the composer stays pinned to the surface foot. So the STAGE itself must not
