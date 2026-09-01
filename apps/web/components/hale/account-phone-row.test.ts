@@ -67,7 +67,11 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
   redirect: vi.fn(),
+  notFound: vi.fn(),
 }));
+// The layout reads the middleware's admin-probe header (a request store the
+// test render has none of); an empty header bag is the non-admin-path arm.
+vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
 
 const { loadSmsChannel } = await import('~/lib/channels/sms-consent');
 const { default: SettingsPage } = await import('~/app/(authed)/settings/page');
@@ -105,6 +109,9 @@ beforeEach(() => {
   process.env.GOOGLE_OAUTH_CLIENT_ID = '';
   process.env.GOOGLE_OAUTH_CLIENT_SECRET = '';
   process.env.AUTH_SECRET = '';
+  // The admin gate resolves not_configured, keeping the founder stop out of a
+  // question that is only about the phone.
+  process.env.ADMIN_PHONES = '';
 });
 afterEach(() => {
   vi.mocked(loadSmsChannel).mockReset();

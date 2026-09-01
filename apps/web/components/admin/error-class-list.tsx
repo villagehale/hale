@@ -110,7 +110,8 @@ export function ErrorClassList({
           onChange={(event) => setFilter(event.target.value)}
           aria-label="Filter failure classes"
         />
-        <div className="adm-class-sort" role="group" aria-label="Sort failure classes">
+        <fieldset className="adm-class-sort">
+          <legend className="sr-only">Sort failure classes</legend>
           <button
             type="button"
             aria-pressed={sort === 'count'}
@@ -121,7 +122,7 @@ export function ErrorClassList({
           <button type="button" aria-pressed={sort === 'last'} onClick={() => setSort('last')}>
             by last-seen
           </button>
-        </div>
+        </fieldset>
       </div>
 
       {visible.length === 0 ? (

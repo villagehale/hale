@@ -1288,13 +1288,9 @@ body {
   max-width: 72rem;
   margin-inline: auto;
 }
-/* The admin ledger opts UP the same way the Village board does: a two-column
- * panel grid spreads thin inside the 58rem column. */
-.main-stage > [data-surface='admin'] {
-  max-width: 75rem;
-  margin-inline: auto;
-  width: 100%;
-}
+/* The admin ledger opts UP the same way the Village board does (75rem); its
+ * width rule lives in admin.css, inside @layer components — the :not() arm
+ * above is what keeps this unlayered column cap off the admin surface. */
 
 /* Ask Hale is a contained chat: the transcript scrolls inside its own region while
  * the composer stays pinned to the surface foot. So the STAGE itself must not

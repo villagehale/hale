@@ -48,7 +48,8 @@ export function TextingHeatmap({ rows }: { rows: TextingHourRow[] }) {
           return (
             <div key={label} className="adm-heatmap-row">
               <span className="adm-heatmap-day">{label}</span>
-              {weekdayRow.map((count, hour) => {
+              {HOURS.map((hour) => {
+                const count = weekdayRow[hour] ?? 0;
                 const detail = `${label} ${String(hour).padStart(2, '0')}:00 — ${count} ${count === 1 ? 'text' : 'texts'}`;
                 return (
                   <span
