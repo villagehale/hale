@@ -29,7 +29,7 @@ export async function loadDbErrors(database: Database = defaultDb()): Promise<Ad
     })
     .from(m)
     .where(
-      sql`${m.status} = 'failed' and ${m.createdAt} >= now() - make_interval(days => ${ERROR_WINDOW_DAYS})`,
+      sql`${m.direction} = 'out' and ${m.status} = 'failed' and ${m.createdAt} >= now() - make_interval(days => ${ERROR_WINDOW_DAYS})`,
     )
     .orderBy(sql`${m.createdAt} desc`)
     .limit(PER_SOURCE_LIMIT);

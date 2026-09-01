@@ -200,7 +200,7 @@ describe('loadIntakeFunnel — day-grain sources (seeded, exact)', () => {
 // Seeds "today" rows, so it must stay LAST — earlier describes assert on
 // windows that would otherwise pick these up.
 describe('loadPulse — failuresToday uses the one failure vocabulary (seeded, exact)', () => {
-  it('counts failed, timed_out and killed_cost runs; completed never', async () => {
+  it('counts failed/timed_out/killed_cost runs and outbound failed sends; inbound never', async () => {
     const fam = await seedFamily(db.database, 'Pulse Family');
     const run = (status: 'completed' | 'failed' | 'timed_out' | 'killed_cost') => ({
       familyId: fam.familyId,
@@ -215,7 +215,51 @@ describe('loadPulse — failuresToday uses the one failure vocabulary (seeded, e
       .insert(schema.agentRuns)
       .values([run('completed'), run('failed'), run('timed_out'), run('killed_cost')]);
 
+    const message = (direction: 'in' | 'out') => ({
+      familyId: fam.familyId,
+      parentUserId: fam.parentUserId,
+      channel: 'sms' as const,
+      direction,
+      category: 'reply' as const,
+      status: 'failed' as const,
+      createdAt: new Date(),
+    });
+
+    // The outbound failure counts; the inbound failed row must never — same
+    // structural guard as texting's msgsFailed (#594).
+    await db.database.insert(schema.channelMessages).values([message('out'), message('in')]);
+
     const pulse = await loadPulse(db.database);
-    expect(pulse.failuresToday).toBe(3);
+    // 3 failed runs + 1 outbound failed send.
+    expect(pulse.failuresToday).toBe(4);
+  });
+});
+
+// Also seeds "today" rows — stays after the empty-ledger assertions above.
+describe('loadDbErrors — the send-failure ledger is outbound only (seeded, exact)', () => {
+  it('lists an outbound failed send; an inbound failed row never appears', async () => {
+    const fam = await seedFamily(db.database, 'Ledger Family');
+    const message = (direction: 'in' | 'out', errorCode: string) => ({
+      familyId: fam.familyId,
+      parentUserId: fam.parentUserId,
+      channel: 'sms' as const,
+      direction,
+      category: 'reply' as const,
+      status: 'failed' as const,
+      errorCode,
+      createdAt: new Date(),
+    });
+
+    await db.database
+      .insert(schema.channelMessages)
+      .values([message('out', '30007'), message('in', '30099')]);
+
+    const codes = (await loadDbErrors(db.database))
+      .filter((row) => row.source === 'message')
+      .map((row) => row.code);
+    // Positive control: the outbound failure IS a ledger row...
+    expect(codes).toContain('30007');
+    // ...and the inbound one never is.
+    expect(codes).not.toContain('30099');
   });
 });

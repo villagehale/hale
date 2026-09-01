@@ -55,6 +55,18 @@ describe('loadErrorClasses', () => {
         status: 'delivered' as const,
         createdAt: new Date('2026-08-10T15:30:00.000Z'),
       },
+      // An INBOUND failed row must never join a send-failure class — the
+      // classes are outbound delivery health, not an inbound-writer convention.
+      {
+        familyId: fam.familyId,
+        parentUserId: fam.parentUserId,
+        channel: 'sms' as const,
+        direction: 'in' as const,
+        category: 'reply' as const,
+        status: 'failed' as const,
+        errorCode: '21211',
+        createdAt: new Date('2026-08-10T17:00:00.000Z'),
+      },
     ]);
 
     await db.database.insert(schema.agentRuns).values([
