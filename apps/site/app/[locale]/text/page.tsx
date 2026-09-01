@@ -15,6 +15,17 @@ import { parseSourceCode, readSmsNumber, readWhatsAppNumber } from '~/lib/text-e
  * chrome.
  */
 
+/**
+ * Explicitly dynamic: the chooser orders channels by the request's user-agent
+ * and threads `?s=` into the composer bodies, so it must render per request.
+ * Without this the route prerenders a static `unknown`-platform fallback (the
+ * headers() try/catch below swallows the dynamic bailout during build), and
+ * whether a CDN serves that fallback becomes a caching-layer accident. Baked-in
+ * `unknown` for everyone = no Messages button on an iPhone — the exact
+ * silently-dead-in-prod shape the UA feature must never have.
+ */
+export const dynamic = 'force-dynamic';
+
 export async function generateMetadata({
   params,
 }: {
