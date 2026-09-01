@@ -1652,6 +1652,22 @@ input[type="checkbox"] {
 
 textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-radius: var(--r-md); }
 
+/* A time / date / number control carries its own intrinsic content width — a
+ * segmented clock, a picker, a spinner — so `.field`'s text-field `width: 100%`
+ * stretches it into a mostly empty box. Where two sit side by side (quiet hours)
+ * flex already sizes them to content and it never shows; a LONE one fills its
+ * column and reads oversized beside them, which is the settings "Weekly plan
+ * arrives" row. Asking for the control's OWN width is what makes the lone one match
+ * the pair exactly (both 160px) with no width to keep in sync — and it is a
+ * max-width, so `width: 100%` still bounds it inside a narrower column. It lives on
+ * the type, not the call site, so the next lone control is born sized.
+ * datetime-local is deliberately absent: it needs the full column. */
+@layer components {
+  input[type="time"].field,
+  input[type="date"].field,
+  input[type="number"].field { max-width: max-content; }
+}
+
 /* ── Ask Hale chat (the /coach transcript + composer) ──────────────────── *
  * The conversation is the hero: the parent's turns ride right in a navy bubble
  * (spruce fill, cream text); Hale's answers read left as plain text beside a small
