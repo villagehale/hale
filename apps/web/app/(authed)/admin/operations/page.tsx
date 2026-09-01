@@ -1,51 +1,59 @@
 import nextDynamic from 'next/dynamic';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
-import { cachedDbErrors, cachedTwilioAlerts } from '~/lib/admin/cached';
+import { cachedDbErrors, cachedErrorClasses, cachedTextingTrends, cachedTwilioAlerts } from '~/lib/admin/cached';
+import { groupTwilioClasses } from '~/lib/admin/queries/error-classes';
 import { supabaseTableUrl, TWILIO_ERROR_LOGS_URL } from '~/lib/admin/links';
-import { serviceStateLine } from '~/lib/admin/panel-state';
+import { EMPTY_WINDOW_LINE, serviceStateLine } from '~/lib/admin/panel-state';
 
-const DataTable = nextDynamic(() =>
-  import('~/components/admin/data-table').then((m) => m.DataTable),
+const ErrorClassList = nextDynamic(() =>
+  import('~/components/admin/error-class-list').then((m) => m.ErrorClassList),
+);
+const DeliveryHealthChart = nextDynamic(() =>
+  import('~/components/admin/trend-chart').then((m) => m.DeliveryHealthChart),
 );
 
-/** Operations — "What's failing, how often, and is it new?" */
+/** Operations — "What's failing, how often, and is it new?" Classes are the
+ * landing; the raw rows are the drill-down. */
 
-async function ErrorsBody() {
-  const [dbErrors, twilio] = await Promise.all([cachedDbErrors(), cachedTwilioAlerts()]);
-  const rows = [...dbErrors, ...(twilio.ok ? twilio.data : [])].sort((a, b) =>
+async function ClassesBody() {
+  const [classes, dbErrors, twilio] = await Promise.all([
+    cachedErrorClasses(),
+    cachedDbErrors(),
+    cachedTwilioAlerts(),
+  ]);
+  const twilioClasses = twilio.ok ? groupTwilioClasses(twilio.data) : [];
+  const rawRows = [...dbErrors, ...(twilio.ok ? twilio.data : [])].sort((a, b) =>
     a.at < b.at ? 1 : -1,
   );
   return (
     <div>
       {!twilio.ok ? <p className="adm-state">{serviceStateLine('Twilio', twilio)}</p> : null}
-      {rows.length === 0 ? (
-        <p className="adm-state">No failures in the last 30 days.</p>
-      ) : (
-        <DataTable
-          rows={rows.map((row) => ({ ...row }))}
-          columns={[
-            { key: 'at', label: 'time', time: true },
-            { key: 'source', label: 'source', dot: true },
-            { key: 'code', label: 'code', mono: true },
-            { key: 'summary', label: 'summary' },
-          ]}
-          initialSort={{ key: 'at', desc: true }}
-          filterPlaceholder="filter errors…"
-        />
-      )}
+      <ErrorClassList classes={[...classes, ...twilioClasses]} rawRows={rawRows} />
     </div>
   );
+}
+
+async function DeliveryHealthBody() {
+  const rows = await cachedTextingTrends();
+  if (rows.length === 0) return <p className="adm-state">{EMPTY_WINDOW_LINE}</p>;
+  return <DeliveryHealthChart rows={rows} />;
 }
 
 export default function AdminOperationsPage() {
   const panels: PanelSpec[] = [
     {
-      eyebrow: 'Errors — Twilio + sends + agent runs',
+      eyebrow: 'Failure classes',
       links: [
         { label: 'Open in Twilio', href: TWILIO_ERROR_LOGS_URL },
         { label: 'Open in Supabase', href: supabaseTableUrl('channel_messages') },
       ],
-      body: <ErrorsBody />,
+      body: <ClassesBody />,
+      span2: true,
+    },
+    {
+      eyebrow: 'Delivery health — failed-send rate',
+      links: [{ label: 'Open in Supabase', href: supabaseTableUrl('channel_messages') }],
+      body: <DeliveryHealthBody />,
       span2: true,
     },
   ];

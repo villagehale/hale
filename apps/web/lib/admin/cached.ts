@@ -1,6 +1,7 @@
 import { unstable_cache } from 'next/cache';
 import { loadAgentSpend } from './queries/agent-spend';
 import { loadAuditMix } from './queries/audit-mix';
+import { loadErrorClasses } from './queries/error-classes';
 import { loadDbErrors } from './queries/errors';
 import { loadGrowth } from './queries/growth';
 import { loadIntakeFunnel } from './queries/intake-funnel';
@@ -33,6 +34,7 @@ export const cachedRadar = cached('admin-radar', () => loadRadar());
 export const cachedAuditMix = cached('admin-audit-mix', () => loadAuditMix());
 export const cachedAgentSpend = cached('admin-agent-spend', () => loadAgentSpend());
 export const cachedDbErrors = cached('admin-db-errors', () => loadDbErrors());
+export const cachedErrorClasses = cached('admin-error-classes', () => loadErrorClasses());
 export const cachedTwilioAlerts = cached('admin-twilio-alerts', () => fetchTwilioAlerts());
 export const cachedSiteFunnel = cached('admin-site-funnel', () => fetchSiteFunnel());
 export const cachedReplays = cached('admin-replays', () => fetchReplays());

@@ -439,6 +439,99 @@
     }
   }
 
+  /* ── failure classes (Operations landing) ──────────────────────────── */
+  .adm-class-controls {
+    display: flex;
+    gap: 8px 16px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .adm-class-sort {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--adm-wash);
+    border: 1px solid var(--adm-border);
+    border-radius: 999px;
+    padding: 2px;
+  }
+  .adm-class-sort button {
+    border: 0;
+    background: transparent;
+    color: var(--adm-ink-2);
+    font: inherit;
+    font-size: 12px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .adm-class-sort button[aria-pressed='true'] {
+    background: var(--adm-amber);
+    color: var(--adm-canvas);
+  }
+  .adm-class-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .adm-class summary {
+    display: grid;
+    grid-template-columns: auto auto minmax(120px, 1fr) auto minmax(90px, 180px) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 4px;
+    border-bottom: 1px dashed var(--adm-border);
+    font-size: 13px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .adm-class summary::-webkit-details-marker {
+    display: none;
+  }
+  .adm-class[open] summary {
+    border-bottom-style: solid;
+  }
+  .adm-class-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--adm-ink-2);
+  }
+  .adm-class-total {
+    font-size: 18px;
+  }
+  .adm-class-spark {
+    min-width: 90px;
+  }
+  .adm-class-nospark {
+    font-size: 11px;
+    color: var(--adm-ink-3);
+  }
+  .adm-class-last {
+    font-size: 12px;
+    color: var(--adm-ink-3);
+    white-space: nowrap;
+  }
+  .adm-class > div {
+    padding: 8px 4px 14px;
+  }
+  .adm-spark rect {
+    transition: height 200ms ease, y 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .adm-spark rect {
+      transition: none;
+    }
+  }
+  @media (max-width: 700px) {
+    .adm-class summary {
+      grid-template-columns: auto auto 1fr auto;
+    }
+    .adm-class-spark,
+    .adm-class-last {
+      display: none;
+    }
+  }
+
   /* ── in-cell share bars (sources, agent leaderboard) ───────────────── */
   .adm-cell-bar {
     display: flex;
