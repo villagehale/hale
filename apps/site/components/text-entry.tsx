@@ -52,12 +52,12 @@ function HandoffVisual({ primary }: { primary: ChannelId | undefined }) {
   return (
     <div className="mt-8 flex items-center gap-3" aria-hidden="true">
       {primary === 'whatsapp' ? (
-        <svg width="64" height="64" viewBox="0 0 64 64" className="shrink-0">
+        <svg width="64" height="64" viewBox="0 0 64 64" className="shrink-0" aria-hidden="true">
           <rect width="64" height="64" rx="14" fill="#ffffff" />
           <path d={WHATSAPP_GLYPH} fill="#25D366" transform="translate(14 14) scale(1.5)" />
         </svg>
       ) : (
-        <svg width="64" height="64" viewBox="0 0 64 64" className="shrink-0">
+        <svg width="64" height="64" viewBox="0 0 64 64" className="shrink-0" aria-hidden="true">
           <rect width="64" height="64" rx="14" fill="var(--color-sky-tint)" />
           <path
             d="M22 17h20a8 8 0 0 1 8 8v8a8 8 0 0 1-8 8H31l-8 7v-7h-1a8 8 0 0 1-8-8v-8a8 8 0 0 1 8-8Z"
@@ -75,6 +75,7 @@ function HandoffVisual({ primary }: { primary: ChannelId | undefined }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         className="shrink-0"
+        aria-hidden="true"
       >
         <path d="M5 12h14" />
         <path d="m13 6 6 6-6 6" />
