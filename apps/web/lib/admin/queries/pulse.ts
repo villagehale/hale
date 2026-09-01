@@ -12,7 +12,8 @@ export interface PulseData {
   msgsInToday: number;
   msgsOutToday: number;
   newFamiliesToday: number;
-  /** Failed sends + failed agent runs since Toronto midnight. */
+  /** Failed sends + failed/timed-out/cost-killed agent runs since Toronto
+   * midnight — the same failure vocabulary as the Operations tab. */
   failuresToday: number;
   spendTodayUsd: number;
   /** When these numbers were computed — the band's "data as of" stamp. */
@@ -51,7 +52,7 @@ export async function loadPulse(database: Database = defaultDb()): Promise<Pulse
   const [runs] = await database
     .select({
       spendTodayUsd: sql<number>`coalesce(sum(${schema.agentRuns.costUsd}), 0)::float8`,
-      failedRunsToday: sql<number>`count(*) filter (where ${schema.agentRuns.status} = 'failed')::int`,
+      failedRunsToday: sql<number>`count(*) filter (where ${schema.agentRuns.status} in ('failed', 'timed_out', 'killed_cost'))::int`,
     })
     .from(schema.agentRuns)
     .where(sql`${schema.agentRuns.startedAt} >= ${todayStart}`);
