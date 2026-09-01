@@ -59,6 +59,9 @@ describe('loadTextingTrends', () => {
       msg(a.familyId, a.parentUserId, 'out', day10),
       msg(a.familyId, a.parentUserId, 'out', '2026-08-10T17:00:00.000Z'),
       msg(a.familyId, a.parentUserId, 'out', '2026-08-10T18:00:00.000Z', 'failed'),
+      // An INBOUND failed row must never count toward msgsFailed — it is a
+      // delivery-health numerator for sends, not a convention on inbound writers.
+      msg(a.familyId, a.parentUserId, 'in', '2026-08-10T19:00:00.000Z', 'failed'),
     ]);
 
     const rows = await loadTextingTrends(db.database);
@@ -66,6 +69,6 @@ describe('loadTextingTrends', () => {
     const aug10 = rows.find((r) => r.day === '2026-08-10');
 
     expect(aug9).toEqual({ day: '2026-08-09', senders: 1, msgsIn: 1, msgsOut: 0, msgsFailed: 0 });
-    expect(aug10).toEqual({ day: '2026-08-10', senders: 1, msgsIn: 2, msgsOut: 3, msgsFailed: 1 });
+    expect(aug10).toEqual({ day: '2026-08-10', senders: 1, msgsIn: 3, msgsOut: 3, msgsFailed: 1 });
   });
 });

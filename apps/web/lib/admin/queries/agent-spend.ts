@@ -8,6 +8,8 @@ export interface SpendDay {
   day: string;
   costUsd: number;
   runs: number;
+  /** failed OR timed_out OR killed_cost — the same failure vocabulary as the
+   * Operations tab, so "failed" means one thing across the portal. */
   failedRuns: number;
   /** prompt_cache_hit true / non-null — the window's hit % is Σhits / Σknown. */
   cacheHits: number;
@@ -42,7 +44,7 @@ export async function loadAgentSpend(database: Database = defaultDb()): Promise<
       day,
       costUsd: sql<number>`coalesce(sum(${r.costUsd}), 0)::float8`,
       runs: sql<number>`count(*)::int`,
-      failedRuns: sql<number>`count(*) filter (where ${r.status} = 'failed')::int`,
+      failedRuns: sql<number>`count(*) filter (where ${r.status} in ('failed', 'timed_out', 'killed_cost'))::int`,
       cacheHits: sql<number>`count(*) filter (where ${r.promptCacheHit})::int`,
       cacheKnown: sql<number>`count(*) filter (where ${r.promptCacheHit} is not null)::int`,
       p50LatencyMs: sql<number | null>`(percentile_cont(0.5) within group (order by ${r.latencyMs}))::float8`,
@@ -57,7 +59,7 @@ export async function loadAgentSpend(database: Database = defaultDb()): Promise<
       day,
       agent: sql<string>`${r.agentName}::text`,
       runs: sql<number>`count(*)::int`,
-      failedRuns: sql<number>`count(*) filter (where ${r.status} = 'failed')::int`,
+      failedRuns: sql<number>`count(*) filter (where ${r.status} in ('failed', 'timed_out', 'killed_cost'))::int`,
       costUsd: sql<number>`coalesce(sum(${r.costUsd}), 0)::float8`,
     })
     .from(r)

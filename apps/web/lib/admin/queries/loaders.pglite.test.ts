@@ -81,7 +81,7 @@ describe('loadAgentSpend — day-grain leaderboard rows (seeded, exact)', () => 
     const run = (
       agentName: 'reviewer' | 'drafter',
       startedAt: string,
-      status: 'completed' | 'failed' = 'completed',
+      status: 'completed' | 'failed' | 'timed_out' | 'killed_cost' = 'completed',
       costUsd = '0.010000',
     ) => ({
       familyId: fam.familyId,
@@ -95,16 +95,40 @@ describe('loadAgentSpend — day-grain leaderboard rows (seeded, exact)', () => 
     await db.database.insert(schema.agentRuns).values([
       run('reviewer', '2026-08-10T15:00:00.000Z'),
       run('reviewer', '2026-08-10T16:00:00.000Z', 'failed', '0.020000'),
+      // timed_out and killed_cost are failures too — the ONE failure
+      // vocabulary, same as the Operations tab's classes.
+      run('reviewer', '2026-08-10T17:00:00.000Z', 'timed_out', '0.005000'),
       // 03:00Z on Aug 11 is Toronto Aug 10, 23:00 — the boundary is Toronto's.
       run('drafter', '2026-08-11T03:00:00.000Z'),
       run('drafter', '2026-08-11T15:00:00.000Z'),
+      run('drafter', '2026-08-11T16:00:00.000Z', 'killed_cost', '0.040000'),
     ]);
 
-    const { byAgentDay } = await loadAgentSpend(db.database);
+    const { days, byAgentDay } = await loadAgentSpend(db.database);
     expect(byAgentDay).toEqual([
       { day: '2026-08-10', agent: 'drafter', runs: 1, failedRuns: 0, costUsd: 0.01 },
-      { day: '2026-08-10', agent: 'reviewer', runs: 2, failedRuns: 1, costUsd: 0.03 },
-      { day: '2026-08-11', agent: 'drafter', runs: 1, failedRuns: 0, costUsd: 0.01 },
+      { day: '2026-08-10', agent: 'reviewer', runs: 3, failedRuns: 2, costUsd: 0.035 },
+      { day: '2026-08-11', agent: 'drafter', runs: 2, failedRuns: 1, costUsd: 0.05 },
+    ]);
+    expect(days).toEqual([
+      {
+        day: '2026-08-10',
+        costUsd: 0.045,
+        runs: 4,
+        failedRuns: 2,
+        cacheHits: 0,
+        cacheKnown: 0,
+        p50LatencyMs: null,
+      },
+      {
+        day: '2026-08-11',
+        costUsd: 0.05,
+        runs: 2,
+        failedRuns: 1,
+        cacheHits: 0,
+        cacheKnown: 0,
+        p50LatencyMs: null,
+      },
     ]);
   });
 });
@@ -170,5 +194,28 @@ describe('loadIntakeFunnel — day-grain sources (seeded, exact)', () => {
       { day: '2026-08-10', code: 'direct', started: 1, provisioned: 0 },
       { day: '2026-08-10', code: 'earlyon', started: 2, provisioned: 1 },
     ]);
+  });
+});
+
+// Seeds "today" rows, so it must stay LAST — earlier describes assert on
+// windows that would otherwise pick these up.
+describe('loadPulse — failuresToday uses the one failure vocabulary (seeded, exact)', () => {
+  it('counts failed, timed_out and killed_cost runs; completed never', async () => {
+    const fam = await seedFamily(db.database, 'Pulse Family');
+    const run = (status: 'completed' | 'failed' | 'timed_out' | 'killed_cost') => ({
+      familyId: fam.familyId,
+      agentName: 'reviewer' as const,
+      modelUsed: 'claude-sonnet-5',
+      status,
+      costUsd: '0.010000',
+      startedAt: new Date(),
+    });
+
+    await db.database
+      .insert(schema.agentRuns)
+      .values([run('completed'), run('failed'), run('timed_out'), run('killed_cost')]);
+
+    const pulse = await loadPulse(db.database);
+    expect(pulse.failuresToday).toBe(3);
   });
 });

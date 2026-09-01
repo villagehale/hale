@@ -23,7 +23,7 @@ export async function loadTextingTrends(database: Database = defaultDb()): Promi
       senders: sql<number>`count(distinct ${schema.channelMessages.parentUserId}) filter (where ${schema.channelMessages.direction} = 'in')::int`,
       msgsIn: sql<number>`count(*) filter (where ${schema.channelMessages.direction} = 'in')::int`,
       msgsOut: sql<number>`count(*) filter (where ${schema.channelMessages.direction} = 'out')::int`,
-      msgsFailed: sql<number>`count(*) filter (where ${schema.channelMessages.status} = 'failed')::int`,
+      msgsFailed: sql<number>`count(*) filter (where ${schema.channelMessages.direction} = 'out' and ${schema.channelMessages.status} = 'failed')::int`,
     })
     .from(schema.channelMessages)
     .where(sql`${schema.channelMessages.createdAt} >= now() - make_interval(days => ${TREND_DAYS})`)
