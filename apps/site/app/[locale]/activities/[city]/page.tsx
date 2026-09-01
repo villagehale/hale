@@ -142,6 +142,7 @@ export default async function ActivityCityRoute({ params }: PageProps) {
         <div className="mt-8 flex justify-center">
           <LandingCta
             event="cta_text_click"
+            channel="sms"
             placement="activities_city"
             href={cta.href}
             className="btn-on-navy"

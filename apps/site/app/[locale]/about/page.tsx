@@ -182,6 +182,7 @@ export default async function AboutPage({ params }: PageProps) {
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <LandingCta
             event="cta_text_click"
+            channel="sms"
             placement="about"
             href={cta.href}
             className="btn-on-navy"

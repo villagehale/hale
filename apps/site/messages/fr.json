@@ -2,7 +2,8 @@
   "Common": {
     "textHale": "Texter Hale",
     "emailHale": "Écrire à Hale",
-    "skipToContent": "Aller au contenu"
+    "skipToContent": "Aller au contenu",
+    "messageHale": "Écrire à Hale"
   },
   "HomeMeta": {
     "title": "Hale · l’assistant familial que vous textez",
@@ -13,7 +14,8 @@
   "Header": {
     "navPricing": "Tarifs",
     "navFaq": "FAQ",
-    "navAbout": "À propos"
+    "navAbout": "À propos",
+    "signIn": "Se connecter"
   },
   "Footer": {
     "blurb": "Hale est l’assistant familial que vous textez — toujours préparé, jamais en action sans vous.",
@@ -31,7 +33,8 @@
     "linkPrivacy": "Politique de confidentialité",
     "linkTerms": "Conditions d’utilisation",
     "copyright": "© {year} Hale. Tous droits réservés.",
-    "company": "Village Hale Technologies Inc., Georgetown, Ontario. Vos données restent au Canada."
+    "company": "Village Hale Technologies Inc., Georgetown, Ontario. Vos données restent au Canada.",
+    "signIn": "Se connecter"
   },
   "LanguageSwitcher": {
     "label": "Langue"
@@ -56,7 +59,7 @@
     "eyebrow": "Hale · /HAH-leh/ · hawaïen pour « maison »",
     "heroH1a": "L’assistant familial",
     "heroH1b": "que vous",
-    "heroH1Accent": "textez.",
+    "heroH1Accent": "messagez.",
     "heroSub": "Déchargez-vous de l’admin de la famille — natation, camps et jour d’inscription, attrapés avant que tout soit complet. Pas d’appli : Hale est un contact dans votre téléphone.",
     "threadEyebrow": "Texter Hale, ça ressemble à ça",
     "threadH2a": "Textez-moi comme vous textez",
@@ -206,7 +209,9 @@
     "privacyLink": "Comment je traite vos données",
     "closingH2a": "Les familles fondatrices adhèrent",
     "closingH2Accent": "gratuitement.",
-    "closingSub": "Gratuit tant que je suis nouveau — et les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Pas de compte à rebours, juste le numéro."
+    "closingSub": "Gratuit tant que je suis nouveau — et les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Pas de compte à rebours, juste le numéro.",
+    "heroTerms": "Gratuit pour commencer. C’est vous qui écrivez en premier; les tarifs de messagerie standards s’appliquent, répondez STOP à tout moment. Vos données restent au Canada —",
+    "heroTermsLink": "politique de confidentialité"
   },
   "About": {
     "metaTitle": "À propos · Hale",
@@ -488,9 +493,7 @@
     "metaDescription": "Commencez une conversation avec Hale — l’assistant familial que vous textez. Il surveille les journées d’inscription de votre région.",
     "headline": "Bonjour, je suis Hale — l’assistant familial que vous textez.",
     "lede": "Textez-moi les noms et les âges de vos enfants et un code postal, et je vous réponds avec toutes les dates d’inscription que je surveille désormais pour vous — natation, camps, programmes — plus ce qui vaut la peine d’être su près de chez vous cette semaine.",
-    "textMe": "Textez-moi",
     "saveContact": "Enregistrer Hale dans vos contacts",
-    "whatsappMe": "Ou écrivez-moi sur WhatsApp",
     "prefilledWithSource": "Votre message est déjà écrit — « {body} ». L’étiquette me dit simplement d’où vous venez.",
     "prefilledNoSource": "Votre message est déjà écrit. C’est vous qui l’envoyez; je ne texte jamais en premier.",
     "onLaptop": "Sur un ordinateur portable?",
@@ -498,7 +501,14 @@
     "numberComing": "Le numéro s’en vient — cette page n’est pas encore annoncée.",
     "footerPre": "Village Hale Technologies Inc., Georgetown, Ontario. Vos données restent au Canada —",
     "privacyLink": "politique de confidentialité",
-    "qrAria": "Code QR — scannez pour texter Hale"
+    "qrAria": "Code QR — scannez pour texter Hale",
+    "chooserHeadline": "Bienvenue. Choisissez où on se parle.",
+    "chooserLede": "Votre premier message est déjà écrit — vous l’envoyez, je réponds. Je n’écris jamais en premier.",
+    "continueMessages": "Continuer dans Messages",
+    "continueWhatsapp": "Continuer sur WhatsApp",
+    "orMessages": "Ou utiliser Messages",
+    "orWhatsapp": "Ou utiliser WhatsApp",
+    "termsLine": "Les tarifs de messagerie standards s’appliquent; répondez STOP à tout moment."
   },
   "Registration": {
     "updated": "Updated {date, date, long}",

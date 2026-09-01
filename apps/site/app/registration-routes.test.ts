@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRATION_GUIDES } from '~/lib/registration/index.js';
-import { chromeCta } from '~/lib/site/chrome-cta.js';
 import { buildSmsHrefForBody } from '~/lib/text-entry.js';
 import ActivitiesHub from './[locale]/activities/page.js';
 import BramptonPage, {
@@ -94,25 +93,32 @@ describe('city registration routes — landing chrome, not a blog', () => {
     }
   });
 
-  it('closes on chromeCta, arms the desktop paths — and never detours into /text', async () => {
+  it('keeps its own composer deep links in the body, arms the desktop paths — the ad funnel never detours', async () => {
     // Until the 2026-08 ad-week audit this pinned the ABSENCE of the copy chip;
     // two high-intent desktop researchers then clicked dead sms: links, so the
     // pin now points the other way (rule #11 applied to the funnel): the chip
     // and the QR of the same URI are REQUIRED beside the band CTA. What stays
-    // forbidden is the detour — this page is the landing, not a hop to /text.
+    // forbidden is the detour: the header pill may open the /text chooser like
+    // everywhere else (F14), but the BODY's money CTAs stay direct `sms:` deep
+    // links — zero added hops for the ad click (the spec's accepted call).
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
-    const expected = chromeCta().href;
     for (const { Page } of PAGES) {
       const html = await render(Page);
-      expect(html).toContain(expected.replaceAll('&', '&amp;'));
-      expect(html).toContain('data-cta="copy_number_click"');
-      expect(html).toContain('aria-label="QR code — scan to text Hale"');
+      const body = html
+        .replace(/<header[\s\S]*?<\/header>/, '')
+        .replace(/<footer[\s\S]*?<\/footer>/, '');
+      expect(body).toContain('href="sms:');
+      expect(body).toContain('data-cta="cta_text_click"');
+      expect(body).toContain('data-cta-channel="sms"');
+      expect(body).toContain('data-cta="copy_number_click"');
+      expect(body).toContain('aria-label="QR code — scan to text Hale"');
       // The QR block must stay a DESKTOP affordance: hidden on phones (where the
       // sms: CTA works) and flex from sm: up. CSS-hiding it everywhere would pass
       // the presence pins above while re-opening the desktop dead-end.
-      expect(html).toMatch(/class="[^"]*\bhidden\b[^"]*\bsm:flex\b[^"]*"[^>]*>(?:(?!<\/div>).)*aria-label="QR code/s);
-      expect(html).toContain('On a laptop?');
-      expect(html).not.toContain('text-entry');
+      expect(body).toMatch(/class="[^"]*\bhidden\b[^"]*\bsm:flex\b[^"]*"[^>]*>(?:(?!<\/div>).)*aria-label="QR code/s);
+      expect(body).toContain('On a laptop?');
+      // No in-body hop to the chooser — /text belongs to the chrome pill alone.
+      expect(body).not.toContain('href="/text"');
     }
   });
 

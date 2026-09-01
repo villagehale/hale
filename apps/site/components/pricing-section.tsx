@@ -104,6 +104,7 @@ export function PricingSection({ locale = routing.defaultLocale }: { locale?: Lo
                     three placement names would split one number into three. */}
                 <LandingCta
                   event="cta_text_click"
+                  channel="sms"
                   placement="pricing_tier"
                   href={cta.href}
                   className={isFree ? 'btn-primary' : 'btn-secondary'}

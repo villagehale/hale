@@ -196,6 +196,38 @@ describe('the chrome carries the theme control', () => {
   });
 });
 
+describe('the header carries the two doors, weighted correctly', () => {
+  it('makes the pill the chooser — one primary CTA that works on every device', () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
+    const header = chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
+    const pill = /<a[^>]*class="v4-btn-solid"[^>]*>/.exec(header)?.[0] ?? '';
+    expect(pill).toContain('href="/text"');
+    expect(pill).toContain('data-cta="cta_message_click"');
+    expect(pill).toContain('data-cta-placement="header"');
+    expect(header).toContain('>Message Hale</a>');
+    // The pill stopped being an sms: deep link — the chooser ended the header's
+    // three-way fork (deep link / scroll target / dead laptop click).
+    expect(header).not.toContain('sms:');
+    expect(header).not.toContain('cta_text_click');
+  });
+
+  it('adds sign-in as a quiet navlink, never a second pill', () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
+    const header = chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
+    const signIn = /<a[^>]*\/sign-in"[^>]*>/.exec(header)?.[0] ?? '';
+    expect(signIn).toContain('href="https://app.villagehale.com/sign-in"');
+    expect(signIn).toContain('class="v4-navlink"');
+    expect(signIn).not.toContain('v4-btn');
+  });
+
+  it('degrades the pill to email when no number is provisioned — never a chooser with nothing to choose', () => {
+    const header = chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
+    expect(header).toContain('href="mailto:aloha@villagehale.com"');
+    expect(header).not.toContain('href="/text"');
+    expect(header).not.toContain('Message Hale');
+  });
+});
+
 describe('the footer says what the site is', () => {
   it('carries the brand lines and the two policy links, and no Legal column', async () => {
     const footer = renderToStaticMarkup(createElement(SiteFooter));
@@ -208,10 +240,16 @@ describe('the footer says what the site is', () => {
     expect(footer).not.toContain('>Legal</h2>');
   });
 
-  it('offers no Sign in — the footer does not send a cold parent to the app', async () => {
+  it('offers Sign in as the quietest possible door — the bottom bar, beside the legal pair', async () => {
+    // The app is the receipts surface (D-register), so a returning parent gets a
+    // whisper, not a sell: one link in the legal row, styled like Privacy/Terms,
+    // pointing at the APP origin (never NEXT_PUBLIC_MARKETING_URL). It must not
+    // grow into a column link or a button.
     const footer = renderToStaticMarkup(createElement(SiteFooter));
-    expect(footer).not.toContain('/sign-in');
-    expect(footer).not.toContain('app.villagehale.com');
-    expect(footer).not.toContain('Sign in');
+    const bottomBar = footer.slice(footer.indexOf('<hr'));
+    expect(bottomBar).toContain('href="https://app.villagehale.com/sign-in"');
+    expect(bottomBar).toContain('>Sign in</a>');
+    // Once, in the bar — not repeated anywhere else in the footer.
+    expect([...footer.matchAll(/\/sign-in/g)]).toHaveLength(1);
   });
 });

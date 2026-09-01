@@ -41,6 +41,20 @@ export type AnalyticsEvent =
   // 2026-08 ad launch — historical rows carry `hero_chip` where current ones say
   // `hero`, so any query reading the hero's clicks must OR the two values.
   | 'cta_text_click'
+  // A step BEFORE the conversion: an internal navigation to the /text chooser
+  // (the header pill, the hero, the closing band). Deliberately NOT
+  // cta_text_click — that event's contract is "a composer opened" and the funnel
+  // dashboards read it that way; a nav click inside the site would silently
+  // inflate it. Composer events fired from the chooser carry a coarse `channel`
+  // property ('sms' today, 'amb' after the Apple Messages for Business swap;
+  // cta_whatsapp_click stamps 'whatsapp').
+  // DASHBOARD NOTES (2026-08 chooser ship):
+  //   1. placements `hero`/`closing`/`header` moved from cta_text_click to
+  //      cta_message_click on ship date — the composer now opens on /text,
+  //      placement `text_entry`.
+  //   2. copy_number_click placements `hero`/`closing` went quiet the same day
+  //      (the chip moved to the chooser, placement `text_entry`).
+  | 'cta_message_click'
   // The desktop path to the same act — the number onto the clipboard, because
   // `sms:` is a silent no-op on a laptop. Counted separately: it is an intention
   // to text later, not a composer that opened.

@@ -2,7 +2,8 @@
   "Common": {
     "textHale": "Text Hale",
     "emailHale": "Email Hale",
-    "skipToContent": "Skip to content"
+    "skipToContent": "Skip to content",
+    "messageHale": "Message Hale"
   },
   "HomeMeta": {
     "title": "Hale · the family assistant you text",
@@ -13,7 +14,8 @@
   "Header": {
     "navPricing": "Pricing",
     "navFaq": "FAQ",
-    "navAbout": "About"
+    "navAbout": "About",
+    "signIn": "Sign in"
   },
   "Footer": {
     "blurb": "Hale is the family assistant you text — always prepared, never acting without you.",
@@ -31,7 +33,8 @@
     "linkPrivacy": "Privacy policy",
     "linkTerms": "Terms of service",
     "copyright": "© {year} Hale. All rights reserved.",
-    "company": "Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada."
+    "company": "Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada.",
+    "signIn": "Sign in"
   },
   "LanguageSwitcher": {
     "label": "Language"
@@ -56,7 +59,7 @@
     "eyebrow": "Hale · /HAH-leh/ · Hawaiian for home",
     "heroH1a": "The family assistant",
     "heroH1b": "you",
-    "heroH1Accent": "text.",
+    "heroH1Accent": "message.",
     "heroSub": "Take the family admin off your plate — swim, camps and registration day, caught before they fill. No app; Hale is a contact in your phone.",
     "threadEyebrow": "Texting Hale looks like this",
     "threadH2a": "Text me like you’d text",
@@ -206,7 +209,9 @@
     "privacyLink": "How I handle your data",
     "closingH2a": "Founding families join",
     "closingH2Accent": "free.",
-    "closingSub": "Free while I’m new — and families who start now keep their founding rate for good. No countdown, just the number."
+    "closingSub": "Free while I’m new — and families who start now keep their founding rate for good. No countdown, just the number.",
+    "heroTerms": "Free to start. You message first; standard message rates apply, reply STOP any time. Your data stays in Canada —",
+    "heroTermsLink": "privacy policy"
   },
   "About": {
     "metaTitle": "About · Hale",
@@ -488,9 +493,7 @@
     "metaDescription": "Start a conversation with Hale — the family assistant you text. It watches registration day where you live.",
     "headline": "Change the names to yours and send.",
     "lede": "I text back the rec dates for that postal. No app.",
-    "textMe": "Text me",
     "saveContact": "Save Hale to your contacts",
-    "whatsappMe": "Or WhatsApp me",
     "prefilledWithSource": "Your message is already written — “{body}”. The tag just tells me where you came from.",
     "prefilledNoSource": "Your message is already written. You send it; I never text first.",
     "onLaptop": "On a laptop?",
@@ -498,7 +501,14 @@
     "numberComing": "The number’s coming — this page isn’t announced yet.",
     "footerPre": "Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada —",
     "privacyLink": "privacy policy",
-    "qrAria": "QR code — scan to text Hale"
+    "qrAria": "QR code — scan to text Hale",
+    "chooserHeadline": "Welcome. Pick where we talk.",
+    "chooserLede": "Your first message is already written — you send it, I reply. I never message first.",
+    "continueMessages": "Continue in Messages",
+    "continueWhatsapp": "Continue on WhatsApp",
+    "orMessages": "Or use Messages",
+    "orWhatsapp": "Or use WhatsApp",
+    "termsLine": "Standard message rates apply; reply STOP any time."
   },
   "Registration": {
     "updated": "Updated {date, date, long}",

@@ -248,6 +248,7 @@ export default async function AnswerRoute({ params }: PageProps) {
           </p>
           <LandingCta
             event="cta_text_click"
+            channel="sms"
             placement="answer_detail"
             href={cta.href}
             className="btn-primary shrink-0"

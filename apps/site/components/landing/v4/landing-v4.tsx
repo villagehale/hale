@@ -1,7 +1,6 @@
 import Image from 'next/image';
 import heroShore from '~/assets/hale-shore-hero.webp';
-import { CopyNumberButton } from '~/components/copy-number';
-import { LandingCta } from '~/components/landing-cta';
+import { ChooserLink } from '~/components/chooser-link';
 import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
 import { LogoMark } from '~/components/logo-mark';
 import { QrCode } from '~/components/qr-code';
@@ -55,7 +54,6 @@ interface ThreadRow {
 export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: string }) {
   const t = getTranslator(locale, 'Landing');
   const common = getTranslator(locale, 'Common');
-  const copy = getTranslator(locale, 'CopyNumber');
   const textNs = getTranslator(locale, 'Text');
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
 
@@ -105,32 +103,29 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           </h1>
           <p className="v4-hero-sub">{t('heroSub', { count: MUNICIPALITIES.length })}</p>
 
+          {/* Stanley beat: ONE big CTA — the chooser works on every device, so
+              the hero no longer needs a second (copy-chip) door; the desktop
+              affordances live on /text now. */}
           <div className="flex flex-wrap items-center justify-center gap-3">
             {smsHref ? (
-              <LandingCta
-                event="cta_text_click"
-                placement="hero"
-                href={smsHref}
-                className="v4-btn-solid v4-glass"
-              >
-                {common('textHale')}
-              </LandingCta>
+              <ChooserLink locale={locale} placement="hero" className="v4-btn-solid v4-glass">
+                {common('messageHale')} <span aria-hidden="true">→</span>
+              </ChooserLink>
             ) : (
               <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
                 {common('emailHale')}
               </a>
             )}
-            {smsNumber && (
-              <CopyNumberButton
-                number={smsNumber}
-                placement="hero"
-                className="v4-btn v4-glass"
-                label={copy('label')}
-                copiedLabel={copy('copied')}
-                ariaLabel={copy('aria')}
-              />
-            )}
           </div>
+          {smsHref && (
+            <p className="v4-hero-terms">
+              {t('heroTerms')}{' '}
+              <a href={localeHref(locale, '/privacy')} className="underline underline-offset-2">
+                {t('heroTermsLink')}
+              </a>
+              .
+            </p>
+          )}
         </div>
       </section>
 
@@ -322,30 +317,17 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               {t('closingH2a')} <span className="v4-accent">{t('closingH2Accent')}</span>
             </h2>
             <p className="v4-hero-sub">{t('closingSub')}</p>
+            {/* One CTA here too (Stanley grammar) — the chip moved to the
+                chooser; the QR below keeps the zero-hop desktop path. */}
             <div className="flex flex-wrap items-center justify-center gap-3">
               {smsHref ? (
-                <LandingCta
-                  event="cta_text_click"
-                  placement="closing"
-                  href={smsHref}
-                  className="v4-btn-solid v4-glass"
-                >
-                  {common('textHale')}
-                </LandingCta>
+                <ChooserLink locale={locale} placement="closing" className="v4-btn-solid v4-glass">
+                  {common('messageHale')} <span aria-hidden="true">→</span>
+                </ChooserLink>
               ) : (
                 <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
                   {common('emailHale')}
                 </a>
-              )}
-              {smsNumber && (
-                <CopyNumberButton
-                  number={smsNumber}
-                  placement="closing"
-                  className="v4-btn v4-glass"
-                  label={copy('label')}
-                  copiedLabel={copy('copied')}
-                  ariaLabel={copy('aria')}
-                />
               )}
             </div>
             {/* The desktop path made visible: `sms:` is a silent no-op on a laptop

@@ -65,7 +65,7 @@ describe('landing — the v4 hero', () => {
     // over a paragraph that never got to the point, and the 7:02-first hero died
     // as a hook with no introduction. H1 names the brand; the next line says what
     // it is in a parent's words.
-    expect(visibleText(h1)).toBe('The family assistant you text.');
+    expect(visibleText(h1)).toBe('The family assistant you message.');
     expect(h1).not.toContain('7:02');
     // Outcome-first, verb-led: the sub leads with what the reader gets rid of,
     // not with a pronoun that makes them wait for the subject.
@@ -79,12 +79,32 @@ describe('landing — the v4 hero', () => {
   });
 
   it('carries a conversion surface in the hero nav and the hero body', () => {
-    // Two Text Hale CTAs above the fold — the nav pill and the hero — both the
-    // composer deep link, so the first text costs a tap.
-    expect([...html.matchAll(/>Text Hale</g)].length).toBeGreaterThanOrEqual(2);
-    expect(html).toContain(
-      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R"',
+    // Two Message Hale CTAs above the fold — the nav pill and the hero — both
+    // opening the /text chooser, the one target that works on every device.
+    // Wired as cta_message_click (an internal navigation, NOT cta_text_click:
+    // that event means "a composer opened" and lives on the chooser now).
+    expect([...html.matchAll(/Message Hale/g)].length).toBeGreaterThanOrEqual(2);
+    const chooserAnchors = [...html.matchAll(/<a\s[^>]*data-cta="cta_message_click"[^>]*>/g)].map(
+      (m) => m[0],
     );
+    for (const placement of ['header', 'hero', 'closing']) {
+      expect(
+        chooserAnchors.some((tag) => tag.includes(`data-cta-placement="${placement}"`)),
+        `the ${placement} CTA must open the chooser, counted`,
+      ).toBe(true);
+    }
+    for (const tag of chooserAnchors) expect(tag).toContain('href="/text"');
+  });
+
+  it('shows the terms microcopy under the hero CTA, privacy link included', () => {
+    expect(html).toContain('class="v4-hero-terms"');
+    expect(visibleText(html)).toContain(
+      'Free to start. You message first; standard message rates apply, reply STOP any time.',
+    );
+    expect(visibleText(html)).toContain('Your data stays in Canada — privacy policy');
+    // No exclamation marks anywhere in the hero band.
+    const hero = html.match(/<section class="v4-hero v4-hero-top"[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(visibleText(hero)).not.toContain('!');
   });
 
   it('shows what texting Hale is like as a static thread, not a typed dramatisation', () => {
@@ -109,11 +129,14 @@ describe('landing — the v4 hero', () => {
     expect(html).not.toContain('My 2-year-old won’t nap — what do I try?');
   });
 
-  it('prefills Text Hale with the locked intake sample, verbatim', () => {
-    expect(html).toContain(
-      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R"',
-    );
-    expect(html).not.toContain('href="sms:+16475551234?&amp;body=Hi"');
+  it('opens no composer from the landing itself — the chooser owns the deep links now', () => {
+    // The locked intake prefill still rides in every channel href, but those
+    // hrefs live on /text (pinned in components/text-entry.test.ts). The landing
+    // deep-linking one pipe was the bug the chooser fixes, so a composer anchor
+    // reappearing here is a regression. The closing QR still ENCODES the sms:
+    // URI for the desktop reader — path data, not an anchor.
+    expect([...html.matchAll(/<a\s[^>]*href="sms:[^>]*>/g)]).toHaveLength(0);
+    expect(html).toContain('aria-label="QR code — scan to text Hale"');
   });
 });
 
@@ -131,26 +154,18 @@ describe('landing — the number is reachable and never readable', () => {
     ]) {
       expect(text, `${rendering} must not be visible`).not.toContain(rendering);
     }
-    // Positive control: the number IS on the page, invisibly, so "absent" means
-    // withheld rather than never rendered at all.
-    expect(html).toContain(
-      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R"',
-    );
+    // Positive control: the composer URI IS on the page, invisibly — encoded in
+    // the closing QR — so "absent" means withheld rather than never rendered.
+    expect(html).toContain('aria-label="QR code — scan to text Hale"');
   });
 
-  it('offers the clipboard as the laptop path instead of the digits', () => {
-    // The copy chip puts the number on the clipboard without printing it — the
-    // Windows/laptop path where `sms:` is a silent no-op.
-    expect(text).toContain('Copy number');
+  it('carries no copy chip of its own — the clipboard affordance moved to the chooser', () => {
+    // The hero and closing chips went with the Stanley one-CTA beat; the
+    // clipboard path lives on /text (placement text_entry, pinned there).
+    // DASHBOARD NOTE: copy_number_click placements hero/closing go quiet.
+    expect([...html.matchAll(/data-cta="copy_number_click"/g)]).toHaveLength(0);
+    expect(text).not.toContain('Copy number');
     expect(html).not.toContain('displaySmsNumber');
-    // Both doors carry it, each named for the funnel: the hero chip and the
-    // closing chip beside the last CTA, so no band ends on a link that no-ops.
-    const chips = [...html.matchAll(/<button\s[^>]*data-cta="copy_number_click"[^>]*>/g)].map(
-      (match) => match[0],
-    );
-    expect(chips).toHaveLength(2);
-    expect(chips.some((tag) => tag.includes('data-cta-placement="hero"'))).toBe(true);
-    expect(chips.some((tag) => tag.includes('data-cta-placement="closing"'))).toBe(true);
   });
 
   it('draws the same composer URI as a QR at the close, for the desktop reader', () => {
@@ -248,12 +263,18 @@ describe('landing — no signup funnel; the only way in is texting Hale', () => 
     }
   });
 
-  it('offers no Sign in — a cold parent is not sent to the app', () => {
-    // Settings later, if needed, arrive as a magic link from SMS. The marketing
-    // chrome's only door is Text Hale. "Sign in tonight" in the thread is the
-    // municipal portal, not Hale's app.
-    expect(html).not.toContain('/sign-in');
-    expect(html).not.toContain('>Sign in<');
+  it('offers Sign in only as the chrome’s quiet door — never as a body CTA', () => {
+    // Stanley grammar: a returning parent gets a whisper (the header navlink and
+    // the footer's bottom bar), a cold parent is never SOLD the app. The body
+    // sections must not point at it — only the shared chrome may.
+    const chrome = (html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? '') +
+      (html.match(/<footer[\s\S]*?<\/footer>/)?.[0] ?? '');
+    expect(chrome).toContain('/sign-in');
+    const body = html
+      .replace(/<header[\s\S]*?<\/header>/, '')
+      .replace(/<footer[\s\S]*?<\/footer>/, '');
+    expect(body).not.toContain('/sign-in');
+    expect(body).not.toContain('>Sign in<');
   });
 
   it('invents no urgency around the founding rate', () => {
@@ -474,9 +495,10 @@ describe('landing — number not provisioned', () => {
 
   it('never renders a dead sms: link, and falls back to email', () => {
     expect(html).not.toContain('sms:');
-    // No CTA labelled for a dead channel. The h1's "Text Hale." stays — it names
-    // what the product is — but every button degrades to the email door.
-    expect(html).not.toContain('>Text Hale<');
+    // No CTA labelled for a dead channel: with no number there is nothing to
+    // choose on /text either, so the chooser door degrades to email too.
+    expect(html).not.toContain('Message Hale');
+    expect(html).not.toContain('data-cta="cta_message_click"');
     expect(html).not.toContain('647');
     expect(html).toContain('href="mailto:aloha@villagehale.com"');
     // Positive control: with no number the SMS surface is withheld entirely —

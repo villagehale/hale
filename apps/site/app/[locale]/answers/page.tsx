@@ -89,6 +89,7 @@ export default async function AnswersIndexPage({ params }: PageProps) {
             <div className="mt-8">
               <LandingCta
                 event="cta_text_click"
+                channel="sms"
                 placement="answers_empty"
                 href={cta.href}
                 className="btn-primary"
@@ -112,6 +113,7 @@ export default async function AnswersIndexPage({ params }: PageProps) {
           <div className="mt-8 flex justify-center">
             <LandingCta
               event="cta_text_click"
+              channel="sms"
               placement="answers"
               href={cta.href}
               className="btn-on-navy"

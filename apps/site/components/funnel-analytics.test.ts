@@ -77,6 +77,60 @@ describe('cta_text_click — every sms: CTA is one event with a placement', () =
     click(LandingCta({ event: 'cta_text_click', placement: 'header', href, children: 'Text' }));
     expect(JSON.stringify(capture.mock.calls)).not.toContain('6475551234');
   });
+
+  it('names the pipe when the call site stamps one — the funnel splits by channel, not by event', () => {
+    capture.mockClear();
+    const element = LandingCta({
+      event: 'cta_text_click',
+      placement: 'text_entry',
+      channel: 'sms',
+      href: 'sms:+16475551234?&body=Hi',
+      children: 'Continue in Messages',
+    });
+    // The wiring is visible in the markup, same law as data-cta itself.
+    expect(element.props['data-cta-channel']).toBe('sms');
+    click(element);
+    expect(capture).toHaveBeenCalledWith('cta_text_click', {
+      cta_placement: 'text_entry',
+      channel: 'sms',
+    });
+  });
+
+  it('stamps whatsapp on the other pipe', () => {
+    capture.mockClear();
+    click(
+      LandingCta({
+        event: 'cta_whatsapp_click',
+        placement: 'text_entry',
+        channel: 'whatsapp',
+        href: 'https://wa.me/16475551234?text=Hi',
+        children: 'Continue on WhatsApp',
+      }),
+    );
+    expect(capture).toHaveBeenCalledWith('cta_whatsapp_click', {
+      cta_placement: 'text_entry',
+      channel: 'whatsapp',
+    });
+  });
+});
+
+describe('cta_message_click — a chooser navigation is not a composer open', () => {
+  it('fires its own event with the placement, so cta_text_click stays "a composer opened"', async () => {
+    capture.mockClear();
+    // The hydration effect reads the first-touch code; give it a bare window.
+    vi.stubGlobal('window', {
+      location: { search: '' },
+      sessionStorage: { getItem: () => null, setItem: () => {} },
+    });
+    const { ChooserLink } = await import('./chooser-link.js');
+    const element = ChooserLink({ locale: 'en', placement: 'hero', children: 'Message Hale' });
+    expect(element.props.href).toBe('/text');
+    expect(element.props['data-cta']).toBe('cta_message_click');
+    expect(element.props['data-cta-placement']).toBe('hero');
+    click(element);
+    expect(capture).toHaveBeenCalledWith('cta_message_click', { cta_placement: 'hero' });
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('copy_number_click — the desktop path to the same act', () => {
