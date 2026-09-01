@@ -1,0 +1,67 @@
+# Self-healing CI (deterministic v1 — no LLM calls; scripts/ci/heal.mjs).
+#
+# Listens for completed CI runs and, on failure of a same-repo PR branch,
+# classifies the failed run's logs against a fixed signature table and takes
+# exactly one founder-approved action (2026-08-31):
+#   1. skills-lock drift  -> push a single-file lockfile reseed commit, then
+#                            dispatch a fresh CI run (GITHUB_TOKEN pushes
+#                            don't retrigger pull_request workflows)
+#   2. eval cache miss    -> PR comment with the exact local re-record command
+#   3. pglite flake       -> rerun failed jobs exactly once per head SHA
+#   4. anything else      -> PR comment "no known remediation"
+#
+# All guards (fork PR, [ci-heal] marker, one attempt per SHA, non-CI source
+# workflow, stale head, diff containment) are named early-exits logged by the
+# heal script. This workflow always runs its default-branch version with full
+# secrets — even for fork-triggered runs — which is why the fork guard exits
+# before any PR code is checked out or executed; only main's own scripts run.
+name: CI heal
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write # push the lockfile reseed commit to same-repo PR branches
+  actions: write # rerun-failed-jobs + workflow dispatch (read for logs is implied)
+  pull-requests: write # escalation + receipt comments
+  issues: write # PR comments go through the issues API
+
+concurrency:
+  group: heal-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  heal:
+    name: Classify and heal
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Default-branch checkout: the healer only ever executes main's own
+      # scripts. The PR branch is fetched into a detached temp worktree by
+      # heal.mjs after the fork/stale-head guards pass.
+      - name: Checkout (default branch)
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Classify and heal
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: node scripts/ci/heal.mjs run

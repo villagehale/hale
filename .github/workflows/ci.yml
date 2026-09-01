@@ -5,6 +5,9 @@ on:
     branches: [main, production]
   pull_request:
     branches: [main, production]
+  # Lets ci-heal.yml dispatch a fresh run after pushing a heal commit —
+  # GITHUB_TOKEN pushes never retrigger pull_request workflows on their own.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -42,6 +45,9 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Repo scripts test (ci-heal classifier)
+        run: pnpm test:scripts
 
       - name: Prompt lockfile check
         run: pnpm --filter @hale/worker prompts:check
