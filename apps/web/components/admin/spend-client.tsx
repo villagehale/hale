@@ -1,9 +1,25 @@
 'use client';
 
+import { useReducedMotion } from 'motion/react';
+import {
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import type { AgentSpendData } from '~/lib/admin/queries/agent-spend';
-import { lastDays } from '~/lib/admin/window';
+import { fillWindow, lastDays } from '~/lib/admin/window';
 import { BarsChart } from './bars-chart';
+import { AdmChartTooltip } from './chart-tooltip';
 import { useWindowDays } from './window-dial';
+
+const AMBER = '#b26b1f';
+const NAVY = '#17294a';
+const GRID = '#e4e7ee';
+const INK3 = '#5c6b87';
 
 function medianOf(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -14,7 +30,62 @@ function medianOf(values: number[]): number | null {
   return a === undefined || b === undefined ? null : (a + b) / 2;
 }
 
-/** $/day bars + the window's cache-hit %, run count and latency stat row. */
+/** A small fleet-trend line: no-run days are GAPS (connectNulls off), never zeros. */
+function FleetLine({
+  data,
+  dataKey,
+  name,
+  stroke,
+  format,
+}: {
+  data: { day: string; [key: string]: string | number | null }[];
+  dataKey: string;
+  name: string;
+  stroke: string;
+  format: (v: number) => string;
+}) {
+  const reduced = useReducedMotion();
+  return (
+    <div style={{ width: '100%', height: 120 }}>
+      <ResponsiveContainer>
+        <ComposedChart data={data} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+          <CartesianGrid stroke={GRID} vertical={false} />
+          <XAxis
+            dataKey="day"
+            tickFormatter={(d: string) => d.slice(5)}
+            tick={{ fontSize: 11, fill: INK3 }}
+            tickLine={false}
+            axisLine={{ stroke: GRID }}
+            minTickGap={28}
+          />
+          <YAxis
+            tick={{ fontSize: 11, fill: INK3 }}
+            tickLine={false}
+            axisLine={false}
+            allowDecimals={false}
+            tickFormatter={(v: number) => format(v)}
+          />
+          <Tooltip content={<AdmChartTooltip format={format} />} />
+          <Line
+            type="monotone"
+            dataKey={dataKey}
+            name={name}
+            stroke={stroke}
+            strokeWidth={2}
+            dot={false}
+            connectNulls={false}
+            isAnimationActive={!reduced}
+            animationDuration={300}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** $/day bars + the window's cache-hit %, run count and latency stat row, plus
+ * the two fleet trends (p50 latency, cache-hit rate) that were loaded but
+ * never charted. Per-agent runs live in the leaderboard table now. */
 export function SpendClient({ data }: { data: AgentSpendData }) {
   const windowDays = useWindowDays();
   const inWindow = new Set(lastDays(windowDays));
@@ -36,7 +107,19 @@ export function SpendClient({ data }: { data: AgentSpendData }) {
   }
   const hitRate = cacheKnown > 0 ? Math.round((cacheHits / cacheKnown) * 100) : null;
   const p50 = medianOf(p50s);
-  const maxAgentRuns = data.byAgent[0]?.runs ?? 1;
+
+  const trendData = fillWindow(data.days, windowDays, {
+    costUsd: 0,
+    runs: 0,
+    failedRuns: 0,
+    cacheHits: 0,
+    cacheKnown: 0,
+    p50LatencyMs: null,
+  }).map((d) => ({
+    day: d.day,
+    p50LatencyMs: d.runs > 0 ? d.p50LatencyMs : null,
+    hitRate: d.cacheKnown > 0 ? Math.round((d.cacheHits / d.cacheKnown) * 100) : null,
+  }));
 
   return (
     <div>
@@ -64,24 +147,20 @@ export function SpendClient({ data }: { data: AgentSpendData }) {
         format="usd"
         height={150}
       />
-      {data.byAgent.length > 0 ? (
-        <div className="adm-barlist">
-          {data.byAgent.slice(0, 8).map((agent) => (
-            <div key={agent.agent} className="adm-barlist-row">
-              <span className="adm-barlist-label" title={agent.agent}>
-                {agent.agent}
-              </span>
-              <div className="adm-barlist-track">
-                <div
-                  className="adm-barlist-fill"
-                  style={{ width: `${(agent.runs / maxAgentRuns) * 100}%` }}
-                />
-              </div>
-              <span className="adm-num">{agent.runs}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <FleetLine
+        data={trendData}
+        dataKey="p50LatencyMs"
+        name="p50 latency"
+        stroke={NAVY}
+        format={(v) => `${Math.round(v)}ms`}
+      />
+      <FleetLine
+        data={trendData}
+        dataKey="hitRate"
+        name="cache-hit rate"
+        stroke={AMBER}
+        format={(v) => `${v}%`}
+      />
     </div>
   );
 }

@@ -8,8 +8,25 @@ import { skillsInventory } from '~/lib/admin/skills-inventory';
 const DataTable = nextDynamic(() =>
   import('~/components/admin/data-table').then((m) => m.DataTable),
 );
+const BarsChart = nextDynamic(() =>
+  import('~/components/admin/bars-chart').then((m) => m.BarsChart),
+);
 
 /** Ledger — "What has Hale actually done, on the record?" */
+
+async function ActionsPerDayBody() {
+  const rows = await cachedAuditMix();
+  if (rows.length === 0) return <p className="adm-state">No audit rows in this window.</p>;
+  // Zero new SQL: the day×action rows summed to day totals; the dial slices client-side.
+  const byDay = new Map<string, number>();
+  for (const row of rows) {
+    byDay.set(row.day, (byDay.get(row.day) ?? 0) + row.count);
+  }
+  const days = [...byDay.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([day, value]) => ({ day, value }));
+  return <BarsChart rows={days} name="actions" height={140} />;
+}
 
 async function AuditMixBody() {
   const rows = await cachedAuditMix();
@@ -36,6 +53,12 @@ function SkillsBody() {
 
 export default function AdminLedgerPage() {
   const panels: PanelSpec[] = [
+    {
+      eyebrow: 'Actions per day',
+      links: [{ label: 'Open in Supabase', href: supabaseTableUrl('audit_log') }],
+      body: <ActionsPerDayBody />,
+      span2: true,
+    },
     {
       eyebrow: 'What Hale did',
       links: [{ label: 'Open in Supabase', href: supabaseTableUrl('audit_log') }],

@@ -638,6 +638,60 @@
     cursor: default;
   }
 
+  /* ── the radar opening timeline ────────────────────────────────────── */
+  .adm-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .adm-timeline-row {
+    display: grid;
+    grid-template-columns: minmax(140px, 260px) 1fr auto;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .adm-timeline-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--adm-ink-2);
+  }
+  .adm-timeline-track {
+    position: relative;
+    display: block;
+    height: 14px;
+    background: var(--adm-canvas);
+    border-radius: 999px;
+    border: 1px solid var(--adm-border);
+  }
+  .adm-timeline-dot {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--adm-ink);
+  }
+  .adm-timeline-dot-resident {
+    background: var(--adm-card);
+    border: 2px solid var(--adm-ink);
+  }
+  .adm-timeline-chip {
+    font-size: 12px;
+    color: var(--adm-ink-2);
+    white-space: nowrap;
+  }
+  @media (max-width: 700px) {
+    .adm-timeline-row {
+      grid-template-columns: 1fr auto;
+    }
+    .adm-timeline-track {
+      display: none;
+    }
+  }
+
   /* ── radar list ────────────────────────────────────────────────────── */
   .adm-radar-list {
     display: flex;

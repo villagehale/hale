@@ -1,8 +1,13 @@
+import nextDynamic from 'next/dynamic';
 import { SpendClient } from '~/components/admin/spend-client';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
 import { cachedAgentSpend, cachedLangfuseDaily } from '~/lib/admin/cached';
 import { ANTHROPIC_USAGE_URL, langfuseHomeUrl } from '~/lib/admin/links';
 import { serviceStateLine } from '~/lib/admin/panel-state';
+
+const AgentLeaderboard = nextDynamic(() =>
+  import('~/components/admin/agent-leaderboard').then((m) => m.AgentLeaderboard),
+);
 
 /** Agents — "What does the fleet cost, and how is it performing?" */
 
@@ -25,6 +30,11 @@ async function SpendBody() {
   );
 }
 
+async function LeaderboardBody() {
+  const spend = await cachedAgentSpend();
+  return <AgentLeaderboard rows={spend.byAgentDay} />;
+}
+
 export default function AdminAgentsPage() {
   const panels: PanelSpec[] = [
     {
@@ -34,6 +44,12 @@ export default function AdminAgentsPage() {
         { label: 'Anthropic usage', href: ANTHROPIC_USAGE_URL },
       ],
       body: <SpendBody />,
+      span2: true,
+    },
+    {
+      eyebrow: 'Agent leaderboard',
+      links: [{ label: 'Langfuse', href: langfuseHomeUrl() }],
+      body: <LeaderboardBody />,
       span2: true,
     },
   ];

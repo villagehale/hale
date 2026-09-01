@@ -19,8 +19,17 @@ export interface SpendDay {
 export interface AgentSpendData {
   /** Per Toronto-local day. Sparse — fillWindow() zero-fills. */
   days: SpendDay[];
-  /** Runs by agent over the whole trend window (a mix, not a dial-sliced trend). */
-  byAgent: { agent: string; runs: number }[];
+  /** Per day × agent, so the leaderboard slices the dial window client-side
+   * (the old 365-fixed by-agent mix silently ignored the dial). */
+  byAgentDay: AgentDay[];
+}
+
+export interface AgentDay {
+  day: string;
+  agent: string;
+  runs: number;
+  failedRuns: number;
+  costUsd: number;
 }
 
 export async function loadAgentSpend(database: Database = defaultDb()): Promise<AgentSpendData> {
@@ -43,15 +52,18 @@ export async function loadAgentSpend(database: Database = defaultDb()): Promise<
     .groupBy(day)
     .orderBy(day);
 
-  const byAgent = await database
+  const byAgentDay = await database
     .select({
+      day,
       agent: sql<string>`${r.agentName}::text`,
       runs: sql<number>`count(*)::int`,
+      failedRuns: sql<number>`count(*) filter (where ${r.status} = 'failed')::int`,
+      costUsd: sql<number>`coalesce(sum(${r.costUsd}), 0)::float8`,
     })
     .from(r)
     .where(since)
-    .groupBy(r.agentName)
-    .orderBy(sql`count(*) desc`);
+    .groupBy(day, r.agentName)
+    .orderBy(day, r.agentName);
 
-  return { days, byAgent };
+  return { days, byAgentDay };
 }
