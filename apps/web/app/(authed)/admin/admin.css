@@ -20,10 +20,13 @@
     --adm-amber: #b26b1f;
     --adm-wash: #fef0c7;
     --adm-fail: #a63d2f;
-    min-height: 100dvh;
     background: var(--adm-canvas);
     color: var(--adm-ink);
     font-variant-numeric: tabular-nums;
+    /* Inside the portal stage the ledger is a bounded surface, not a full
+     * viewport: rounded like the app's cards, light-only by design. */
+    border-radius: 16px;
+    border: 1px solid var(--adm-border);
   }
 
   [data-surface='admin'] :focus-visible {
@@ -32,11 +35,112 @@
     border-radius: 4px;
   }
 
+  /* ── the tab bar + dial row (sticky, z 20) ─────────────────────────── */
+  .adm-nav-row {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px 16px;
+    flex-wrap: wrap;
+    padding: 12px clamp(16px, 3vw, 28px);
+    background: var(--adm-canvas);
+    border-bottom: 1px solid var(--adm-border);
+    border-radius: 16px 16px 0 0;
+  }
+  .adm-tabs {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--adm-wash);
+    border: 1px solid var(--adm-border);
+    border-radius: 999px;
+    padding: 3px;
+    flex-wrap: wrap;
+  }
+  .adm-tab {
+    position: relative;
+    color: var(--adm-ink-2);
+    font-size: 13px;
+    text-decoration: none;
+    padding: 5px 14px;
+    border-radius: 999px;
+  }
+  .adm-tab[aria-current='page'] {
+    color: var(--adm-canvas);
+  }
+  .adm-tab-thumb {
+    position: absolute;
+    inset: 0;
+    background: var(--adm-amber);
+    border-radius: 999px;
+  }
+  .adm-tab-label {
+    position: relative;
+    z-index: 10;
+  }
+
+  /* ── the page column every tab shares ──────────────────────────────── */
+  .adm-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px clamp(16px, 3vw, 28px) 40px;
+  }
+
+  /* ── the attention strip (Overview): doors, not charts ─────────────── */
+  .adm-tiles {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 900px) {
+    .adm-tiles {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  .adm-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--adm-card);
+    border: 1px solid var(--adm-border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: var(--adm-ink);
+    cursor: pointer;
+  }
+  .adm-tile:hover {
+    border-color: var(--adm-amber);
+  }
+  .adm-tile .adm-stat-v {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 22px;
+    line-height: 1.1;
+  }
+  .adm-tile-fail {
+    color: var(--adm-fail);
+  }
+
+  /* ── collapsed disclosures (raw ledger, skills inventory) ──────────── */
+  .adm-details summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--adm-ink-2);
+    padding: 4px 0;
+  }
+  .adm-details[open] summary {
+    margin-bottom: 8px;
+  }
+
   /* ── the navy band ─────────────────────────────────────────────────── */
   .adm-band {
     background: var(--adm-ink);
     color: var(--adm-canvas);
     padding: 20px clamp(16px, 4vw, 40px) 24px;
+    border-radius: 12px;
   }
   .adm-band-top {
     display: flex;
@@ -94,11 +198,6 @@
   }
 
   /* ── the window dial ───────────────────────────────────────────────── */
-  .adm-dial-row {
-    display: flex;
-    justify-content: center;
-    padding: 18px 16px 4px;
-  }
   .adm-dial {
     position: relative;
     display: inline-flex;
@@ -140,9 +239,6 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
-    padding: 16px clamp(16px, 4vw, 40px) 48px;
-    max-width: 1200px;
-    margin: 0 auto;
   }
   @media (max-width: 900px) {
     .adm-grid {

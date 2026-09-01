@@ -74,7 +74,7 @@ export default auth((req) => {
   // sign-in redirect the rest of the gated app uses — a redirect would advertise
   // that /admin exists. The rewrite target matches no route, so Next renders the
   // not-found page with a real 404 status; an authed non-admin gets the same 404
-  // from the (admin) layout itself.
+  // from the nested (authed)/admin layout itself.
   if (isAdminPath(pathname) && (!authConfigured() || !req.auth)) {
     return NextResponse.rewrite(new URL('/admin/__denied__/404', req.nextUrl));
   }

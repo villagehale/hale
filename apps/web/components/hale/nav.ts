@@ -2,6 +2,7 @@ import type { Route } from 'next';
 import {
   ListChecks,
   CalendarDays,
+  Gauge,
   History,
   House,
   MessageSquare,
@@ -76,6 +77,19 @@ export const DEMOTED_NAV = [
 ] as const satisfies ReadonlyArray<NavItem>;
 
 /**
+ * The founder-only analytics stop. NOT a member of any IA's pinned stops —
+ * `navWithAdmin` splices it in only when the server-resolved gate says the
+ * viewer is the founder, so non-admin HTML never contains the entry. (The
+ * label string still ships in the shared client bundle like every nav label;
+ * the middleware + gate 404s are the actual secret-keeping layer.)
+ */
+export const ADMIN_NAV = {
+  href: '/admin',
+  label: 'Admin',
+  icon: Gauge,
+} as const satisfies NavItem;
+
+/**
  * The sidebar's stops for the resolved flag. Pure and env-free by construction: the IA
  * flag is a server-read variable (no NEXT_PUBLIC_ prefix), so the authed layout resolves
  * it once and hands the boolean down. Reading it here — in a module the client bundle
@@ -83,6 +97,22 @@ export const DEMOTED_NAV = [
  */
 export function primaryNav(receiptsIa: boolean): ReadonlyArray<NavItem> {
   return receiptsIa ? RECEIPTS_NAV : PRIMARY_NAV;
+}
+
+/**
+ * The stops with the Admin entry spliced in for the founder: immediately before
+ * Settings when the IA has that stop (receipts IA reads Family, Approvals,
+ * Admin, Settings), else appended last (the flag-off primary stops carry no
+ * Settings). Pure — the server layout resolves the gate and hands a boolean.
+ */
+export function navWithAdmin(
+  items: ReadonlyArray<NavItem>,
+  showAdmin: boolean,
+): ReadonlyArray<NavItem> {
+  if (!showAdmin) return items;
+  const settingsIndex = items.findIndex((item) => item.href === SETTINGS_NAV.href);
+  if (settingsIndex === -1) return [...items, ADMIN_NAV];
+  return [...items.slice(0, settingsIndex), ADMIN_NAV, ...items.slice(settingsIndex)];
 }
 
 /**
@@ -103,5 +133,8 @@ export function brandHref(receiptsIa: boolean): Route {
 export function allNav(receiptsIa: boolean): ReadonlyArray<NavItem> {
   const stops = receiptsIa ? RECEIPTS_NAV : ALL_NAV;
   const seen = new Set<string>(stops.map((item) => item.href));
-  return [...stops, ...DEMOTED_NAV.filter((item) => !seen.has(item.href))];
+  // ADMIN_NAV rides along unconditionally: label-table entries are labels only,
+  // not stops (the DEMOTED_NAV precedent) — without one, /admin loses its
+  // running-head eyebrow for the one viewer who can see the page at all.
+  return [...stops, ...DEMOTED_NAV.filter((item) => !seen.has(item.href)), ADMIN_NAV];
 }

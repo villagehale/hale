@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  * a future panel cannot quietly grow a mutation the reviewer never sees.
  */
 
-const ROOTS = ['../../app/(admin)', '.'].map((p) =>
+const ROOTS = ['../../app/(authed)/admin', '.'].map((p) =>
   fileURLToPath(new URL(p, import.meta.url)),
 );
 

@@ -8,6 +8,7 @@ import { PageHero } from '~/components/hale/page-hero';
 import { ScrollReset } from '~/components/hale/scroll-reset';
 import { Sidebar } from '~/components/hale/sidebar';
 import { TopHeader } from '~/components/hale/top-header';
+import { resolveAdminGate } from '~/lib/admin/gate';
 import { IdentifyUser } from '~/lib/analytics/posthog-provider';
 import { authConfigured } from '~/lib/auth-config';
 import { loadSmsChannel } from '~/lib/channels/sms-consent';
@@ -58,12 +59,14 @@ export default async function AuthedLayout({ children }: { children: React.React
   // The foot child switcher + top-bar hero/bell/location read the same family-scoped
   // queries the authed pages use; every one degrades to an empty/absent state (no fake
   // child, no fake city, no fabricated notification) when there is no resolved family.
-  const [basics, notifications, areaData, viewerName, smsChannel] = await Promise.all([
+  const [basics, notifications, areaData, viewerName, smsChannel, adminGate] = await Promise.all([
     loadFamilyBasics(),
     loadNotifications(),
     loadAreaSwitcher(),
     loadViewerName(),
     loadSmsChannel(),
+    // Fails fast when ADMIN_PHONES is unset, so non-configured deploys pay ~nothing.
+    resolveAdminGate(),
   ]);
   // The account chip's secondary line (Instinct-style name + phone): the parent's
   // MASKED number when their SMS channel is enrolled, else null → the plan label.
@@ -112,6 +115,7 @@ export default async function AuthedLayout({ children }: { children: React.React
             maskedPhone={maskedPhone}
             kids={kids}
             receiptsIa={receiptsIa}
+            showAdmin={adminGate.status === 'admin'}
           />
         }
         header={

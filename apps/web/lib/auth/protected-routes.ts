@@ -33,7 +33,7 @@ export function isProtectedPath(pathname: string): boolean {
 /**
  * The founder-only analytics portal. Unlike every other protected prefix, an
  * unauthenticated hit here must answer 404 — never a redirect that advertises
- * the route exists (the (admin) layout 404s non-admins the same way).
+ * the route exists (the nested (authed)/admin layout 404s non-admins the same way).
  */
 export function isAdminPath(pathname: string): boolean {
   return pathname === '/admin' || pathname.startsWith('/admin/');
