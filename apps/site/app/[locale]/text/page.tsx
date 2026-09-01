@@ -8,11 +8,11 @@ import { platformFromUa } from '~/lib/chooser';
 import { parseSourceCode, readSmsNumber, readWhatsAppNumber } from '~/lib/text-entry';
 
 /**
- * villagehale.com/text — the chooser (F14): the QR cards' landing surface
- * (VIL-240 · M5), and now the destination of every "Message Hale" CTA on the
- * site. Still noindex and absent from the sitemap: it is a handoff, not a page
- * to rank — the ways in are a printed card, a forwarded link, or the site's own
- * chrome.
+ * villagehale.com/text — the QR cards' landing surface (VIL-240 · M5), and the
+ * destination of the site's "Text Hale" / "Message Hale" CTAs. Production is
+ * PR 566 one-tap until the WhatsApp sender is approved; the chooser only
+ * renders when NEXT_PUBLIC_HALE_WHATSAPP_NUMBER validates. Still noindex and
+ * absent from the sitemap: it is a handoff, not a page to rank.
  */
 
 /**
