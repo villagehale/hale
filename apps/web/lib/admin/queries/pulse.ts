@@ -30,7 +30,7 @@ export async function loadPulse(database: Database = defaultDb()): Promise<Pulse
       familiesToday: sql<number>`count(distinct ${m.parentUserId}) filter (where ${m.direction} = 'in')::int`,
       msgsInToday: sql<number>`count(*) filter (where ${m.direction} = 'in')::int`,
       msgsOutToday: sql<number>`count(*) filter (where ${m.direction} = 'out')::int`,
-      failedToday: sql<number>`count(*) filter (where ${m.status} = 'failed')::int`,
+      failedToday: sql<number>`count(*) filter (where ${m.direction} = 'out' and ${m.status} = 'failed')::int`,
     })
     .from(m)
     .where(sql`${m.createdAt} >= ${todayStart}`);
