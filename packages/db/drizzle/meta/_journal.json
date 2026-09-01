@@ -715,6 +715,13 @@
       "when": 1781469480000,
       "tag": "0104_whatsapp_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1781469540000,
+      "tag": "0105_channel_signin_token",
+      "breakpoints": true
     }
   ]
 }

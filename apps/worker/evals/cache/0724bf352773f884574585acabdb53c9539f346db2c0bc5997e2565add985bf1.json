@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent is asking to connect their Google Calendar. Per the rules, this is a real feature: a connecting ask that the automatic branch didn't catch should be answered by telling the parent the link is a text away and handing them the plain words to send it. That is exactly what this reply does — it names the trigger phrase verbatim (\"connect my Google Calendar\") and explains the link will come through, good for 15 minutes. No URL is invented, no app is mentioned, no machinery is exposed beyond what's needed, and no refusal is given. The reply is clean and correct. The only tiny blemish is the opening \"I can text you a one-tap link for that -\" which adds a clause before getting to the instruction — slightly more than needed, but not meaningfully harmful. Essentially a 5 with one small redundant opener.",
+    "score": 4
+  }
+}

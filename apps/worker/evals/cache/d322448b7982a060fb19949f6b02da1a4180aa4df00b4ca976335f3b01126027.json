@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week (Monday swim lesson and Thursday swim lesson). With more than one match, Hale must ask which one before drafting anything. The reply correctly identifies both swims with their times and venues and asks which to cancel — exactly the right handling. No greeting, no sign-off, no markdown, one clean question. This is the correct shape.",
+    "score": 5
+  }
+}

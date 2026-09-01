@@ -2,6 +2,7 @@ import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { authConfig } from '~/auth.config';
 import { authorizeClaimByPhone } from '~/lib/auth/claim-phone-authorize';
+import { consumeChannelSigninToken } from '~/lib/auth/channel-signin';
 import { authenticateCredential } from '~/lib/auth/credentials';
 import { consumeMagicLinkToken } from '~/lib/auth/magic-link';
 import { authRateLimited } from '~/lib/auth/rate-limit';
@@ -94,6 +95,36 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // The whole check (flag, per-IP throttle, OTP verify, both gates) lives in the
       // wrapper so this chokepoint is testable without standing up NextAuth.
       authorize: (raw) => authorizeClaimByPhone(raw),
+    }),
+    Credentials({
+      // The phone door's LINK shape (the connector handoff): a single-use, 15-minute
+      // token Hale texted into a verified parent's own thread. Like claim-phone — and
+      // unlike the two email providers above — authorize can create nothing: it
+      // resolves the external_auth_id the account already has, so redeeming a link can
+      // never fork a second account off the same family.
+      id: 'channel-link',
+      credentials: { token: { label: 'Token', type: 'text' } },
+      // The chokepoint for EVERY channel-link sign-in — the /connect redeem action AND
+      // a direct POST to /api/auth/callback/channel-link — so the per-IP rate limit
+      // lives here to throttle token guessing on both paths. Null on ANY failure
+      // (limited, malformed, unknown / expired / already consumed) so Auth.js surfaces
+      // one generic CredentialsSignin (rule #1: never which gate closed).
+      async authorize(raw) {
+        const token = typeof raw?.token === 'string' ? raw.token : '';
+        if (!token) {
+          return null;
+        }
+        if (await authRateLimited()) {
+          return null;
+        }
+        const result = await consumeChannelSigninToken(token, db());
+        if (!result.ok) {
+          // The label only — the token never reaches a log line (rule #1).
+          console.info({ reason: result.reason }, 'channel-link: sign-in refused');
+          return null;
+        }
+        return { id: result.identity.id, email: result.identity.email };
+      },
     }),
   ],
 });

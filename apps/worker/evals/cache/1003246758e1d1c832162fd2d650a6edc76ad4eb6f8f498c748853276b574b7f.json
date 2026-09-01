@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that ordering groceries is outside Hale's capabilities. It clearly states what Hale does do (schedule, activities, parenting), which is honest and accurate per `knows.can`. It doesn't send the parent to an app, doesn't invent anything, and doesn't hand the job back in a harmful way — it simply declines a task it genuinely cannot do. The shape is clean and direct. A minor blemish: listing \"the family schedule, activities and parenting stuff\" is a slightly longer clause than strictly needed, but it's not wrong and gives Sam a useful picture of what Hale can help with.",
+    "score": 4
+  }
+}

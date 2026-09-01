@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event (soccer on Saturday) and asks for exactly one change (move to 11am). The week has one matching entry: Soccer practice, Sat 10:00am, Cedarvale Park. The reference is fully resolved. Hale drafted the move (within the cap of 2) and returned the canonical confirmation prompt \"Move soccer practice to Sat 11:00am? YES to confirm.\" — naming the change clearly and ending with the exact word YES as the contract requires. No greeting, no sign-off, no extra questions, no app referral, no invented details. This is the product working exactly as specified.",
+    "score": 5
+  }
+}

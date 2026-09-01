@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO distinct swim lesson events this week (Mon 4:30pm at West pool and Thu 5:15pm at East pool). With more than one matching event, Hale must ask which one before drafting — that is exactly what the reply does. It names both events clearly and asks which to cancel. No greeting, no sign-off, no markdown, one question, all details traceable to the week. This is the correct handling of genuine ambiguity.",
+    "score": 5
+  }
+}

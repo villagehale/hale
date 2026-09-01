@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to order groceries. This is genuinely outside Hale's capabilities — it can only do what's listed in `knows.can`, and grocery ordering is not there. The reply correctly declines and briefly names what Hale actually does. It's honest, not evasive, doesn't send the parent to an app, doesn't invent a capability, and doesn't pad with extra text. The phrasing \"past me\" is natural and the scope list is short. A clean, correct refusal in the right shape.",
+    "score": 5
+  }
+}

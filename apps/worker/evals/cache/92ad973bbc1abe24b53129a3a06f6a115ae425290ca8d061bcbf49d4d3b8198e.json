@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not on this week's visible calendar. However, it then asks whether to check next week — which is a question the parent did not ask. Sam asked to MOVE piano to Wednesday, implying piano exists somewhere. Hale cannot find it this week, so the honest answer is \"I don't see piano on this week's schedule\" — and since the parent said \"move,\" the natural follow-up would be to check next week. But asking to check next week when the parent asked for a move (not a search) is slightly off; it's a reasonable inference but still an extra question that reframes the request. The reply is short and doesn't send the parent anywhere, doesn't invent details, and doesn't draft anything incorrectly. It's a clean, honest answer with one small mismatch: the parent wanted a move, and Hale replies with a search offer instead of clarifying that it can't find the source event. Still, the reply is essentially correct in that it cannot draft without finding the event — it just frames the follow-up slightly oddly. This is a minor blemish, warranting a 4.",
+    "score": 4
+  }
+}

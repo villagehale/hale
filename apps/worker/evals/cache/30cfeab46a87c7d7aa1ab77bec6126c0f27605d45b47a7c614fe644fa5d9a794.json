@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies this as a Google Calendar connection request and explains that a one-tap link is a text away, giving Sam the exact plain words to send (\"connect my Google Calendar\") to trigger the deterministic branch. This is precisely the correct handling per the rubric: recall of a real feature, quoting the short ask verbatim so the next text lands. No URL invented, no app referral, no internal machinery exposed. Clean and complete.",
+    "score": 5
+  }
+}

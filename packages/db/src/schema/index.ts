@@ -2,6 +2,7 @@ export * from './users.js';
 export * from './credentials.js';
 export * from './password-reset-tokens.js';
 export * from './magic-link-tokens.js';
+export * from './channel-signin-tokens.js';
 export * from './notification-prefs.js';
 export * from './loop-prefs.js';
 export * from './channel-messages.js';

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does exactly what is required: it hands over the referral link with a brief explanation of what a friend gets, and correctly tells Sam to forward it themselves. The link matches `knows.referralLinkAppended` exactly — recall, not invention. The description of Hale is accurate and useful context for forwarding. No app mention, no greeting, no sign-off, no markdown. The only tiny blemish is the opening \"Here's your link to send a friend\" is a mild restatement of the question, but it is also a natural lead-in to the link itself and serves the forward-to-a-friend framing. Essentially correct shape and substance.",
+    "score": 5
+  }
+}

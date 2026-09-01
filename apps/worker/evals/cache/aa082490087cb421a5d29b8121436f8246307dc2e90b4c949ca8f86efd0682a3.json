@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that ordering groceries is outside Hale's capabilities. It does not send the parent to an app, does not invent capabilities, and does not hand back a parenting question. The phrasing \"past me\" is exactly the kind of honest, brief denial appropriate here — grocery ordering is genuinely not in `knows.can`, so this is the right shape. It is short, accurate, and stops. No invented details, no machinery explained. The only minor concern is that \"past me\" is typically reserved for acute medical questions (per the rubric), but here it's used for a capability limit, which is acceptable and honest. The reply is clean and correct.",
+    "score": 5
+  }
+}

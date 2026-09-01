@@ -490,12 +490,17 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, founder_welcome, health, coach_plan, registration, rec_morning, name_capture', async () => {
+  it('is village_intro, approval, email_capture, connector_link, founder_welcome, health, coach_plan, registration, rec_morning, name_capture', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
       'approval',
       'email_capture',
+      // Claims only an explicit connect-verb + provider-noun pair — a shape no other
+      // handler's vocabulary contains — so its position among the specific-word
+      // handlers is free; what matters is only that it is ahead of the bare-word
+      // name capture, like everything else that matches something specific.
+      'connector_link',
       // Ahead of the three handlers that read a bare affirmative for a household's OWN
       // business: this is the only one whose wrong answer texts a different household.
       'founder_welcome',

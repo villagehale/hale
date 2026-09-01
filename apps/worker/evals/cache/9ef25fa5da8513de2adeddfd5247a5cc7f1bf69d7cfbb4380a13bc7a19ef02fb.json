@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the soccer practice from the week (Sat 10am, Cedarvale Park) and the offerable activity (Central Library story time at Bloor/Gladstone branch, Sat Aug 8). Both details are grounded — one from `week`, one from `offerable`. No invented URLs, no app referral, no sign-off, no greeting, no draft needed. The still-being-checked count (1) is not surfaced, which is correct since Hale has no name for it. The reply is clean and complete. A minor blemish: it doesn't flag that the story time is a free drop-in, which was part of the offerable detail and would have been useful to Sam, but omitting it is not a failure — just a small missed value-add. Overall this is a tight, accurate, correctly shaped reply.",
+    "score": 4
+  }
+}
