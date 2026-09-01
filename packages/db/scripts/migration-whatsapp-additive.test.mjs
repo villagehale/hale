@@ -48,9 +48,10 @@ describe('0104_whatsapp_channel is additive-only', () => {
     }
   });
 
-  it('is journaled after the last shipped migration', () => {
+  it('is journaled immediately after 0103_reply_source', () => {
+    // Ordering, not last-ness: asserting the tag is the journal's final entry
+    // would break on the NEXT migration (it broke #586's 0105 within a day).
     const tags = readJournal(drizzleDir).map((entry) => entry.tag);
-    expect(tags[tags.length - 1]).toBe(TAG);
     expect(tags.indexOf(TAG)).toBe(tags.indexOf('0103_reply_source') + 1);
   });
 });
