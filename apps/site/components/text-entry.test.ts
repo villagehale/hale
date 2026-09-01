@@ -5,15 +5,15 @@ import { CONTACT_CARD_PATH } from '~/lib/contact-card.js';
 import { TextEntry } from './text-entry.js';
 
 /**
- * The /text chooser (F14) — the page a QR card, a poster, a forwarded link, or
- * the site's own "Message Hale" CTAs open. The states that must be honest:
+ * The /text entry surface (VIL-240 · M5, designer lock 566).
  *
- *   number live   → pick where we talk: the live channels as buttons, ordered by
- *                   the UA hint (never gated by it), the QR + copy chip covering
- *                   desktop, and the `(via <code>)` token riding in EVERY
- *                   channel's pre-filled body (poster attribution is sacred).
- *   number unset  → no sms: anywhere, email is the only path, and the page says
- *                   so plainly — the pre-chooser fallback, verbatim.
+ * WhatsApp sender is not approved. Production is one tap, not a picker:
+ *
+ *   SMS live, WhatsApp dark  → PR 566: one "Text Hale" button, locked headline,
+ *                              Maya/Theo/L3R prefill. No channel names, no
+ *                              empty iMessage/WhatsApp chooser.
+ *   both live                → the chooser (a real choice exists).
+ *   SMS unset                → email only, never a dead sms: link.
  *
  * Rendered to static markup — TextEntry is a pure server component.
  */
@@ -49,21 +49,39 @@ function qrPath(html: string): string {
   return /<path d="([^"]+)"/.exec(svg)?.[1] ?? '';
 }
 
-describe('TextEntry (chooser copy)', () => {
-  it('welcomes and asks the one question — pick where we talk', () => {
-    expect(liveHtml).toContain('Welcome. Pick where we talk.');
-    expect(liveHtml).toContain(
-      'Your first message is already written — you send it, I reply. I never message first.',
-    );
+describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
+  it('leads with the locked recut headline and lede', () => {
+    for (const html of [liveHtml, unsetHtml]) {
+      expect(html).toContain('Change the names to yours and send.');
+      expect(html).toContain('I text back the rec dates for that postal. No app.');
+    }
+    expect(liveHtml).not.toContain('Pick where we talk');
+    expect(liveHtml).not.toContain('Welcome.');
   });
 
-  it('keeps the pre-chooser headline on the email-fallback state — there is nothing to pick yet', () => {
-    expect(unsetHtml).toContain('Change the names to yours and send.');
-    expect(unsetHtml).not.toContain('Pick where we talk');
+  it('is one Text Hale button — no picker, no channel names', () => {
+    expect(liveHtml).toContain('>Text Hale</a>');
+    expect(liveHtml).not.toContain('Continue in Messages');
+    expect(liveHtml).not.toContain('Or use Messages');
+    expect(liveHtml).not.toContain('iMessage');
+    expect(liveHtml).not.toContain('WhatsApp');
+    expect([...liveHtml.matchAll(/btn-primary/g)]).toHaveLength(1);
   });
 
-  it('says Messages, never iMessage — sms: opens the app named Messages on both platforms', () => {
-    for (const html of [liveHtml, render({ platform: 'android' })]) {
+  it('always offers the sms: composer — even on desktop-other and unknown', () => {
+    for (const platform of [
+      'apple',
+      'android',
+      'desktop-mac',
+      'desktop-other',
+      'unknown',
+    ] as const) {
+      const html = render({ platform });
+      expect(html).toContain('>Text Hale</a>');
+      expect(html).toContain('href="sms:+16475551234');
+      expect(html).not.toContain('wa.me');
+      expect(html).not.toContain('WhatsApp');
+      expect(html).not.toContain('Pick where we talk');
       expect(html).not.toContain('iMessage');
     }
   });
@@ -86,12 +104,12 @@ describe('TextEntry (chooser copy)', () => {
 describe('TextEntry — the channel matrix, rendered', () => {
   const WA = { whatsappNumber: LIVE_NUMBER };
 
-  it('apple: Messages primary carrying the pre-filled body and venue token, wired sms', () => {
+  it('apple WhatsApp dark: one Text Hale sms: CTA carrying the pre-filled body and venue token', () => {
     // React escapes the `&` of the cross-platform `?&body=` form into `&amp;`.
     expect(liveHtml).toContain(
       'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R%20(via%20earlyon-richmondhill)"',
     );
-    expect(liveHtml).toContain('Continue in Messages');
+    expect(liveHtml).toContain('>Text Hale</a>');
     const primary = anchors(liveHtml).find((a) => a.includes('href="sms:')) ?? '';
     expect(primary).toContain('btn-primary');
     expect(primary).toContain('data-cta="cta_text_click"');
@@ -101,6 +119,7 @@ describe('TextEntry — the channel matrix, rendered', () => {
 
   it('apple with WhatsApp live: WhatsApp is the secondary, wired whatsapp', () => {
     const html = render(WA);
+    expect(html).toContain('Welcome. Pick where we talk.');
     expect(html).toContain('Continue in Messages');
     expect(html).toContain('Or use WhatsApp');
     const wa = anchors(html).find((a) => a.includes('wa.me')) ?? '';
@@ -120,31 +139,36 @@ describe('TextEntry — the channel matrix, rendered', () => {
     expect(wa).toContain('btn-primary');
   });
 
-  it('android with WhatsApp dark: Messages primary, and no dead WhatsApp button anywhere', () => {
+  it('android with WhatsApp dark: one Text Hale button, and no dead WhatsApp button anywhere', () => {
     const html = render({ platform: 'android' });
-    expect(html).toContain('Continue in Messages');
+    expect(html).toContain('>Text Hale</a>');
+    expect(html).not.toContain('Continue in Messages');
     expect(html).not.toContain('wa.me');
     expect(html).not.toContain('WhatsApp');
   });
 
-  it('desktop-other: never an sms: button — dead on Windows/Linux — and the QR card leads', () => {
+  it('desktop-other: WhatsApp live withholds sms: (dead on Windows/Linux) and the QR card leads', () => {
     const html = render({ platform: 'desktop-other', ...WA });
     expect(anchors(html).filter((a) => a.includes('href="sms:'))).toEqual([]);
     // WhatsApp Web is offered iff live…
     expect(html).toContain('Continue on WhatsApp');
     // …and the QR card renders BEFORE any channel button.
     expect(html.indexOf('QR code')).toBeLessThan(html.indexOf('wa.me'));
-    // WhatsApp dark: no buttons at all — the QR card carries the page.
+    // WhatsApp dark: 566 one-tap — Text Hale is still one tap, plus the QR.
     const dark = render({ platform: 'desktop-other' });
-    expect(anchors(dark).filter((a) => a.includes('href="sms:'))).toEqual([]);
+    expect(dark).toContain('>Text Hale</a>');
+    expect(dark).toContain('href="sms:');
     expect(dark).not.toContain('wa.me');
     expect(dark).toContain('QR code');
+    expect(dark).not.toContain('Pick where we talk');
   });
 
-  it('unknown platform (no UA): the safest layout — same as desktop-other', () => {
+  it('unknown platform (no UA): WhatsApp dark is still one Text Hale tap', () => {
     const html = render({ platform: 'unknown' });
-    expect(anchors(html).filter((a) => a.includes('href="sms:'))).toEqual([]);
+    expect(html).toContain('>Text Hale</a>');
+    expect(html).toContain('href="sms:');
     expect(html).toContain('QR code');
+    expect(html).not.toContain('Pick where we talk');
   });
 
   it('threads the venue token into EVERY channel link — poster attribution is sacred', () => {
@@ -173,10 +197,16 @@ describe('TextEntry — the channel matrix, rendered', () => {
   });
 });
 
-describe('TextEntry — the handoff visual', () => {
+describe('TextEntry — the handoff visual (chooser only — WhatsApp live)', () => {
+  it('is absent while WhatsApp is dark — Stanley is one tap, not a picker', () => {
+    expect(liveHtml).not.toContain('var(--color-sky-tint)');
+    expect(unsetHtml).not.toContain('var(--color-sky-tint)');
+  });
+
   it('draws the neutral speech bubble in site tokens when Messages leads — never Apple’s green icon', () => {
-    expect(liveHtml).toContain('var(--color-sky-tint)');
-    expect(liveHtml).not.toContain('#25D366');
+    const html = render({ whatsappNumber: LIVE_NUMBER });
+    expect(html).toContain('var(--color-sky-tint)');
+    expect(html).not.toContain('#25D366');
   });
 
   it('shows the official WhatsApp glyph only when WhatsApp is the primary', () => {
@@ -188,7 +218,8 @@ describe('TextEntry — the handoff visual', () => {
   });
 
   it('is decorative, and absent from the email-fallback state', () => {
-    const tile = /<div[^>]*aria-hidden="true"[^>]*>[\s\S]*?var\(--color-sky-tint\)/.exec(liveHtml);
+    const html = render({ whatsappNumber: LIVE_NUMBER });
+    const tile = /<div[^>]*aria-hidden="true"[^>]*>[\s\S]*?var\(--color-sky-tint\)/.exec(html);
     expect(tile, 'the handoff row must be aria-hidden').not.toBeNull();
     expect(unsetHtml).not.toContain('var(--color-sky-tint)');
   });

@@ -13,24 +13,28 @@ import { CONTACT_CARD_PATH } from '~/lib/contact-card';
 import { CONTACT_EMAIL, buildSmsBody, buildSmsHref, buildWaHref } from '~/lib/text-entry';
 
 /**
- * The /text chooser (F14) — what a QR card at an EarlyON drop-in, a poster, a
- * forwarded referral link, or now the site's own "Message Hale" CTAs open: one
- * page, pick where we talk. Persona-led and deliberately thin — one decision, no
- * account, no form, no site chrome.
+ * The /text entry surface (VIL-240 · M5) — what a QR card, a poster, a
+ * forwarded referral, or the site's own CTAs open. Persona-led and thin: one
+ * thing to do, no account, no form, no site chrome.
  *
- * The channel matrix is lib/chooser.ts: liveness gates (a dark channel renders
- * NOTHING — no disabled buttons), and the server's UA hint only ORDERS the live
- * channels. The one withholding is the `sms:` button on non-Apple desktop,
- * where the link is a dead click and the QR card of the same URI leads instead.
+ * THE PICKER GATE: the channel chooser exists only while WhatsApp is actually
+ * live (`whatsappNumber` validates). Until the Twilio WhatsApp sender is
+ * approved, production is PR 566 — one "Text Hale" button, locked headline,
+ * Maya/Theo/L3R prefill. An empty iMessage/WhatsApp chooser is a dead door.
+ *
+ * When both pipes are live, lib/chooser.ts orders them: liveness gates (a dark
+ * channel renders NOTHING), and the UA hint only ORDERS. The one withholding
+ * is `sms:` on non-Apple desktop, where the link is a dead click and the QR
+ * of the same URI leads instead.
  *
  * The `?s=` tag is a venue or `friend-…` referral code; its `(via <code>)` token
  * rides in the pre-filled body of EVERY channel href (poster attribution is
  * sacred), and the line under the buttons discloses it rather than smuggling it.
  *
- * Two honest states, driven by whether the SMS number is provisioned:
- *   live  → the chooser above; the QR + copy chip cover desktop.
- *   unset → email is the only path, and the page says the number is coming.
- *           Never a dead link. (The pre-chooser page, kept verbatim.)
+ * Three honest states:
+ *   SMS live, WhatsApp dark → 566 one-tap. Always an sms: button.
+ *   both live               → the chooser.
+ *   SMS unset               → email is the only path. Never a dead sms: link.
  */
 
 /** The WhatsApp glyph (Simple Icons path, brand green on a white plate). The
@@ -107,11 +111,16 @@ export function TextEntry({
   locale?: Locale;
 }) {
   const t = getTranslator(locale, 'Text');
+  const common = getTranslator(locale, 'Common');
   const copy = getTranslator(locale, 'CopyNumber');
   const ec = getTranslator(locale, 'EmailCta');
   const live = smsNumber !== '';
+  const waLive = whatsappNumber !== '';
+  /** A picker only exists when there is a second live pipe. WhatsApp dark is
+   * 566 one-tap — never "Pick where we talk" over a single (or empty) choice. */
+  const picker = live && waLive;
 
-  const channels = live ? channelOrder(platform, { sms: true, wa: whatsappNumber !== '' }) : [];
+  const channels = picker ? channelOrder(platform, { sms: true, wa: true }) : [];
   const hrefFor = (id: ChannelId): string =>
     id === 'messages' ? buildSmsHref(smsNumber, source) : buildWaHref(whatsappNumber, source);
   const primary = channels[0];
@@ -173,26 +182,38 @@ export function TextEntry({
 
       <div className="rise rise-1">
         <Wordmark className="text-spruce" />
-        {live && <HandoffVisual primary={primary} />}
-        {/* The chooser is the highest-intent surface the site has, so it wears the
-            same display face as every other headline rather than the base sans. */}
+        {picker && <HandoffVisual primary={primary} />}
+        {/* Highest-intent surface: display face, not the base sans. 566 headline
+            until WhatsApp is live — the chooser copy is a picker, not a CTA. */}
         <h1 className="v4-display mt-6 text-[clamp(2rem,6.5vw,3.25rem)]">
-          {t(live ? 'chooserHeadline' : 'headline')}
+          {t(picker ? 'chooserHeadline' : 'headline')}
         </h1>
         <p className="mt-6 text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
-          {t(live ? 'chooserLede' : 'lede')}
+          {t(picker ? 'chooserLede' : 'lede')}
         </p>
       </div>
 
       {live ? (
         <div className="mt-10 rise rise-2">
-          {qrLeads(platform) ? <div className="mb-8">{desktopCard}</div> : null}
+          {picker && qrLeads(platform) ? <div className="mb-8">{desktopCard}</div> : null}
 
-          {primary !== undefined && (
-            <div className="flex flex-col items-start gap-3">
-              {channelCta(primary, true)}
-              {secondary !== undefined && channelCta(secondary, false)}
-            </div>
+          {picker ? (
+            primary !== undefined && (
+              <div className="flex flex-col items-start gap-3">
+                {channelCta(primary, true)}
+                {secondary !== undefined && channelCta(secondary, false)}
+              </div>
+            )
+          ) : (
+            <LandingCta
+              event="cta_text_click"
+              placement="text_entry"
+              channel="sms"
+              href={buildSmsHref(smsNumber, source)}
+              className="btn-primary"
+            >
+              {common('textHale')}
+            </LandingCta>
           )}
 
           <p className="meta mt-4">
@@ -214,7 +235,7 @@ export function TextEntry({
             </LandingCta>
           </div>
 
-          {qrLeads(platform) ? null : desktopCard}
+          {picker && qrLeads(platform) ? null : desktopCard}
         </div>
       ) : (
         <div className="mt-10 rise rise-2">
