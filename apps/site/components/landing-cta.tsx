@@ -23,6 +23,7 @@ import { useAnalytics } from '~/lib/analytics/posthog-provider';
 export function LandingCta({
   event,
   placement,
+  channel,
   href,
   className,
   children,
@@ -31,6 +32,11 @@ export function LandingCta({
   /** Which CTA this is — `hero`, `header`, `faq`… Omitted where the event
    * only ever has one home (the contact card lives on /text alone). */
   placement?: string;
+  /** Which messaging pipe the link opens — `sms` today (`amb` after the Apple
+   * Messages for Business swap), `whatsapp` on wa.me. Stamped on every composer
+   * CTA so the one funnel splits by pipe without a second event name; omitted
+   * on links that open no composer (the contact card, the chooser nav). */
+  channel?: 'sms' | 'whatsapp' | 'amb';
   href: string;
   className?: string;
   children: React.ReactNode;
@@ -42,7 +48,13 @@ export function LandingCta({
       className={className}
       data-cta={event}
       data-cta-placement={placement}
-      onClick={() => capture(event, placement ? { cta_placement: placement } : {})}
+      data-cta-channel={channel}
+      onClick={() =>
+        capture(event, {
+          ...(placement ? { cta_placement: placement } : {}),
+          ...(channel ? { channel } : {}),
+        })
+      }
     >
       {children}
     </a>
