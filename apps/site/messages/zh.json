@@ -2,7 +2,8 @@
   "Common": {
     "textHale": "给 Hale 发短信",
     "emailHale": "给 Hale 发邮件",
-    "skipToContent": "跳至正文"
+    "skipToContent": "跳至正文",
+    "messageHale": "给 Hale 发消息"
   },
   "HomeMeta": {
     "title": "Hale · 发短信就能用的家庭助手",
@@ -13,7 +14,8 @@
   "Header": {
     "navPricing": "价格",
     "navFaq": "常见问题",
-    "navAbout": "关于"
+    "navAbout": "关于",
+    "signIn": "登录"
   },
   "Footer": {
     "blurb": "Hale 是你发短信就能用的家庭助理——时刻准备就绪，绝不擅自行动。",
@@ -31,7 +33,8 @@
     "linkPrivacy": "隐私政策",
     "linkTerms": "服务条款",
     "copyright": "© {year} Hale。保留所有权利。",
-    "company": "Village Hale Technologies Inc.，安大略省乔治敦。你的数据始终留在加拿大。"
+    "company": "Village Hale Technologies Inc.，安大略省乔治敦。你的数据始终留在加拿大。",
+    "signIn": "登录"
   },
   "LanguageSwitcher": {
     "label": "语言"
@@ -54,7 +57,7 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · 夏威夷语，意为「家」",
-    "heroH1a": "发条短信就能用的",
+    "heroH1a": "发条消息就能用的",
     "heroH1b": "家庭",
     "heroH1Accent": "助理。",
     "heroSub": "把家里的琐事从你肩上卸下来——游泳、营队和报名日，在报满前抢到。不用装应用：Hale 就是你手机里的一个联系人。",
@@ -206,7 +209,9 @@
     "privacyLink": "我如何处理你的数据",
     "closingH2a": "创始家庭，",
     "closingH2Accent": "免费加入。",
-    "closingSub": "在我还是新面孔的这段时间，免费——现在就开始的家庭，会永远保留他们的创始价。没有倒计时，只有这个号码。"
+    "closingSub": "在我还是新面孔的这段时间，免费——现在就开始的家庭，会永远保留他们的创始价。没有倒计时，只有这个号码。",
+    "heroTerms": "起步免费。由你先发消息；按标准短信资费收费，随时回复 STOP 即可停止。你的数据始终留在加拿大——",
+    "heroTermsLink": "隐私政策"
   },
   "About": {
     "metaTitle": "关于 · Hale",
@@ -480,9 +485,7 @@
     "metaDescription": "开始和 Hale 对话——发短信就能用的家庭助手。它替你盯着你所在地区的报名日。",
     "headline": "你好，我是 Hale——发短信就能用的家庭助手。",
     "lede": "把孩子的名字和年龄，加上一个邮编发给我，我就回你一条消息，列出我从此替你盯着的每一个报名日期——游泳课、营队、各类项目——还有你家附近这一周值得知道的事。",
-    "textMe": "给我发短信",
     "saveContact": "把 Hale 存入通讯录",
-    "whatsappMe": "或者在 WhatsApp 上找我",
     "prefilledWithSource": "你的消息已经写好了——「{body}」。那个标签只是告诉我你从哪里来的。",
     "prefilledNoSource": "你的消息已经写好了。你来发送；我从不主动先发消息。",
     "onLaptop": "在用笔记本电脑？",
@@ -490,7 +493,14 @@
     "numberComing": "号码就快来了——这个页面还没有正式公布。",
     "footerPre": "Village Hale Technologies Inc.，安大略省乔治敦。你的数据始终留在加拿大——",
     "privacyLink": "隐私政策",
-    "qrAria": "二维码——扫码给 Hale 发短信"
+    "qrAria": "二维码——扫码给 Hale 发短信",
+    "chooserHeadline": "欢迎。选一个我们聊天的地方。",
+    "chooserLede": "你的第一条消息已经写好了——你发出去，我来回复。我从不先发消息。",
+    "continueMessages": "继续用「信息」聊",
+    "continueWhatsapp": "继续用 WhatsApp 聊",
+    "orMessages": "或者用「信息」",
+    "orWhatsapp": "或者用 WhatsApp",
+    "termsLine": "会按标准短信资费收费；随时回复 STOP 都可以。"
   },
   "Registration": {
     "updated": "Updated {date, date, long}",

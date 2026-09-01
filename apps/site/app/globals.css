@@ -1980,6 +1980,16 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     opacity: 0.9;
     /* Same invalid light-dark(<shadow>) shape as the h1's — never rendered. */
   }
+  /* The terms microcopy under the hero's one CTA — same ink and opacity as the
+   * sub (the 4.5:1 floor holds on the scrim), one step smaller. */
+  .v4-hero-terms {
+    margin-top: 1rem;
+    max-width: 52ch;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--color-navy);
+    opacity: 0.9;
+  }
 
   /* The reply-chip row — the questions parents actually send, echoing v3, as
    * glass pills that scroll to the thread section. */

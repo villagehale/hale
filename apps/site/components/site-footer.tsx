@@ -5,6 +5,7 @@ import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { APP_URL } from '~/lib/app-url';
 
 /**
  * The marketing footer — ONE foot, on the homepage and on every subpage.
@@ -51,6 +52,10 @@ export function SiteFooter({ locale = routing.defaultLocale }: { locale?: Locale
   const legal = [
     { label: t('linkPrivacy'), href: localeHref(locale, '/privacy') },
     { label: t('linkTerms'), href: localeHref(locale, '/terms') },
+    // The app is the receipts surface, not the daily one — sign-in lives in the
+    // quietest spot the site has, beside the legal pair, for the parent who
+    // already has an account. It sells nothing.
+    { label: t('signIn'), href: `${APP_URL}/sign-in` },
   ];
 
   return (

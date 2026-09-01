@@ -1,10 +1,11 @@
-import { LandingCta } from '~/components/landing-cta';
+import { ChooserLink } from '~/components/chooser-link';
 import { LogoMark } from '~/components/logo-mark';
 import { Wordmark } from '~/components/wordmark';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { CONTACT_EMAIL, buildSmsHref, readSmsNumber } from '~/lib/text-entry';
+import { APP_URL } from '~/lib/app-url';
+import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
 
 /**
  * The marketing header — the v4 liquid-glass nav pill, on every subpage.
@@ -15,27 +16,20 @@ import { CONTACT_EMAIL, buildSmsHref, readSmsNumber } from '~/lib/text-entry';
  * inline because it sits over the hero art; every other page renders this, sticky.
  *
  * The theme control does NOT live here — v4 moved it to the footer switch, which
- * every page ends in. The four pages the site has are reachable from the footer;
- * the bar carries the three that introduce the product plus the one conversion
- * surface the site has, the Text/Email Hale CTA.
- *
- * `scrollTargetId` is the one variation a page may ask for: `sms:` opens nothing
- * on a laptop, so where a page has an on-page CTA block to fall back to, the pill
- * scrolls there instead of firing a dead link. No number provisioned → email,
- * which works everywhere. Every internal link carries the locale prefix.
+ * every page ends in. The bar carries the three pages that introduce the product,
+ * a quiet sign-in link for the parent who already has an account (the app is the
+ * receipts surface, so the link whispers rather than sells), and ONE primary
+ * pill: Message Hale, which opens the /text chooser — the universal target that
+ * works on every device, which is why the pill no longer forks per surface
+ * (`sms:` deep link vs scroll target vs dead laptop click; the chooser ended
+ * that three-way fork). No number provisioned → email, which works everywhere.
+ * Every internal link carries the locale prefix.
  */
 
-export function SiteHeader({
-  locale = routing.defaultLocale,
-  scrollTargetId,
-}: {
-  locale?: Locale;
-  scrollTargetId?: string;
-}) {
+export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale }) {
   const t = getTranslator(locale, 'Header');
   const common = getTranslator(locale, 'Common');
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
-  const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
 
   const nav = [
     { label: t('navPricing'), href: localeHref(locale, '/pricing') },
@@ -43,20 +37,15 @@ export function SiteHeader({
     { label: t('navAbout'), href: localeHref(locale, '/about') },
   ];
 
-  const cta =
-    smsHref === null ? (
-      <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid">
-        {common('emailHale')}
-      </a>
-    ) : scrollTargetId !== undefined ? (
-      <a href={`#${scrollTargetId}`} className="v4-btn-solid">
-        {common('textHale')}
-      </a>
-    ) : (
-      <LandingCta event="cta_text_click" placement="header" href={smsHref} className="v4-btn-solid">
-        {common('textHale')}
-      </LandingCta>
-    );
+  const cta = smsNumber ? (
+    <ChooserLink locale={locale} placement="header" className="v4-btn-solid">
+      {common('messageHale')}
+    </ChooserLink>
+  ) : (
+    <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid">
+      {common('emailHale')}
+    </a>
+  );
 
   return (
     <header className="sticky top-0 z-50 px-4 sm:px-6">
@@ -72,6 +61,11 @@ export function SiteHeader({
                 {item.label}
               </a>
             ))}
+            {/* Collapses with the nav links on a phone; the footer's sign-in
+                covers small screens. */}
+            <a href={`${APP_URL}/sign-in`} className="v4-navlink">
+              {t('signIn')}
+            </a>
           </div>
           {cta}
         </div>
