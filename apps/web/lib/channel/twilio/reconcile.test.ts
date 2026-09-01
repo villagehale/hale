@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { ChannelMessageReceivedJob } from './inbound';
 import {
@@ -110,6 +110,13 @@ describe('the age band', () => {
 describe('what the sweep may select', () => {
   let db: TestDb;
 
+  // Booted in a hook, not the test body: pglite boot + migrations routinely
+  // exceed the 5s test timeout under full parallel CI load, and hooks carry
+  // their own timeout budget.
+  beforeEach(async () => {
+    db = await createTestDb();
+  });
+
   afterEach(async () => {
     await db.close();
   });
@@ -143,7 +150,6 @@ describe('what the sweep may select', () => {
   }
 
   it('selects only sms and whatsapp reply rows — never intake, caregiver, or email rows', async () => {
-    db = await createTestDb();
     const family = await seedFamily(db.database);
 
     const owed = await seedInbound(family, 'SM_owed');
