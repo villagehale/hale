@@ -19,7 +19,7 @@ import { CONTACT_EMAIL, buildSmsBody, buildSmsHref, buildWaHref } from '~/lib/te
  *
  * THE PICKER GATE: the channel chooser exists only while WhatsApp is actually
  * live (`whatsappNumber` validates). Until the Twilio WhatsApp sender is
- * approved, production is PR 566 — one "Text Hale" button, locked headline,
+ * approved, production is PR 566 — one "Message Hale" button, locked headline,
  * Maya/Theo/L3R prefill. An empty iMessage/WhatsApp chooser is a dead door.
  *
  * When both pipes are live, lib/chooser.ts orders them: liveness gates (a dark
@@ -32,7 +32,8 @@ import { CONTACT_EMAIL, buildSmsBody, buildSmsHref, buildWaHref } from '~/lib/te
  * sacred), and the line under the buttons discloses it rather than smuggling it.
  *
  * Three honest states:
- *   SMS live, WhatsApp dark → 566 one-tap. Always an sms: button.
+ *   SMS live, WhatsApp dark → 566 one-tap — except where sms: is a dead click
+ *                              (qrLeads), where the QR card leads and no button.
  *   both live               → the chooser.
  *   SMS unset               → email is the only path. Never a dead sms: link.
  */
@@ -195,7 +196,7 @@ export function TextEntry({
 
       {live ? (
         <div className="mt-10 rise rise-2">
-          {picker && qrLeads(platform) ? <div className="mb-8">{desktopCard}</div> : null}
+          {qrLeads(platform) ? <div className="mb-8">{desktopCard}</div> : null}
 
           {picker ? (
             primary !== undefined && (
@@ -205,15 +206,17 @@ export function TextEntry({
               </div>
             )
           ) : (
-            <LandingCta
-              event="cta_text_click"
-              placement="text_entry"
-              channel="sms"
-              href={buildSmsHref(smsNumber, source)}
-              className="btn-primary"
-            >
-              {common('textHale')}
-            </LandingCta>
+            !qrLeads(platform) && (
+              <LandingCta
+                event="cta_text_click"
+                placement="text_entry"
+                channel="sms"
+                href={buildSmsHref(smsNumber, source)}
+                className="btn-primary"
+              >
+                {common('messageHale')}
+              </LandingCta>
+            )
           )}
 
           <p className="meta mt-4">
@@ -235,7 +238,7 @@ export function TextEntry({
             </LandingCta>
           </div>
 
-          {picker && qrLeads(platform) ? null : desktopCard}
+          {qrLeads(platform) ? null : desktopCard}
         </div>
       ) : (
         <div className="mt-10 rise rise-2">
