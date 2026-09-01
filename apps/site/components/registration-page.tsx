@@ -126,6 +126,7 @@ export function RegistrationGuidePage({
           <div className="glass-panel mt-8 flex flex-col items-start gap-4 px-6 py-6 sm:flex-row sm:items-center sm:gap-6 sm:px-8">
             <LandingCta
               event="cta_text_click"
+              channel="sms"
               placement={`${guide.placement}_dates`}
               href={href}
               className="btn-primary"
@@ -325,6 +326,7 @@ export function RegistrationGuidePage({
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <LandingCta
             event="cta_text_click"
+            channel="sms"
             placement={guide.placement}
             href={href}
             className="btn-on-navy"

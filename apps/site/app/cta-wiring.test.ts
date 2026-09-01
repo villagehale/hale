@@ -184,8 +184,13 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
    * number never got stubbed, or either regex stopped matching JSX.
    */
   it('really is reading rendered anchors — the known-wired CTAs are all present', () => {
-    expect(smsAnchors.length).toBeGreaterThanOrEqual(20);
-    for (const placement of ['header', 'hero', 'closing', 'faq', 'text_entry']) {
+    // The F14 chooser moved the header/hero/closing doors off `sms:` (they are
+    // cta_message_click navigations to /text now, asserted below), and the walk
+    // sees /text as an unknown platform, whose layout leads with the QR rather
+    // than an sms: button — so the composer anchors left are the subpage bands,
+    // the pricing tiers, and the city guides' in-body doors.
+    expect(smsAnchors.length).toBeGreaterThanOrEqual(15);
+    for (const placement of ['faq', 'about', 'pricing_tier', 'answers', 'activities']) {
       expect(placements, `the walk must reach the ${placement} CTA`).toContain(placement);
     }
     // The city pages' in-body door (2026-08 ad week): the dates table is what
@@ -217,11 +222,12 @@ describe('the desktop path is wired the same way', () => {
 
   it('really is reading the chips — the known copy chips are all present', () => {
     // Positive control, same shape as the anchors': an empty "unnamed" list must
-    // mean "all named", not "the walk found no buttons".
+    // mean "all named", not "the walk found no buttons". The hero/closing chips
+    // are gone by design (the chooser owns the clipboard path, placement
+    // text_entry) — a chip reappearing there would be a Stanley-grammar break,
+    // not a coverage win.
     expect(copyChips.length).toBeGreaterThanOrEqual(10);
     for (const placement of [
-      'hero',
-      'closing',
       'text_entry',
       'faq',
       'about',
@@ -229,6 +235,92 @@ describe('the desktop path is wired the same way', () => {
       'toronto_swim_dates',
     ]) {
       expect(chipPlacements, `the walk must reach the ${placement} chip`).toContain(placement);
+    }
+    expect(chipPlacements).not.toContain('hero');
+    expect(chipPlacements).not.toContain('closing');
+  });
+});
+
+describe('every composer anchor names its channel', () => {
+  // The one funnel splits by PIPE without a second event name: cta_text_click
+  // carries channel=sms (→ 'amb' after the Apple Messages for Business swap),
+  // cta_whatsapp_click carries channel=whatsapp. The attribute is the wiring
+  // made visible, same as data-cta itself.
+  it('stamps data-cta-channel="sms" on every sms: anchor', () => {
+    const unstamped = smsAnchors.filter(
+      (anchor) => !anchor.tag.includes('data-cta-channel="sms"'),
+    );
+    expect(unstamped.map((anchor) => `${anchor.route} — ${anchor.tag}`)).toEqual([]);
+    // Positive control shared with the suite: smsAnchors is non-empty above.
+  });
+
+  it('renders no wa.me anchor anywhere while the WhatsApp env is unset — the never-dead-button pin, structural', () => {
+    const waAnchors = rendered.flatMap(({ route, html }) =>
+      [...html.matchAll(/<a\s[^>]*>/g)]
+        .map((match) => match[0])
+        .filter((tag) => tag.includes('wa.me'))
+        .map((tag) => `${route} — ${tag}`),
+    );
+    expect(waAnchors).toEqual([]);
+  });
+
+  it('positive control: with the WhatsApp env set, the chooser offers wa.me, wired and stamped', async () => {
+    // The absence above fails OPEN without this: prove the same walk machinery
+    // DOES surface a wa.me anchor once the sender env validates.
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    vi.stubEnv('NEXT_PUBLIC_HALE_WHATSAPP_NUMBER', LIVE_NUMBER);
+    const { default: TextPage } = await import(
+      pathToFileURL(join(LOCALE_ROOT, 'text/page.tsx')).href
+    );
+    const html = renderToStaticMarkup(
+      await TextPage({
+        params: Promise.resolve({ locale: 'en' }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    vi.unstubAllEnvs();
+    const waAnchors = [...html.matchAll(/<a\s[^>]*>/g)]
+      .map((match) => match[0])
+      .filter((tag) => tag.includes('wa.me'));
+    expect(waAnchors.length).toBeGreaterThanOrEqual(1);
+    for (const tag of waAnchors) {
+      expect(tag).toContain('data-cta="cta_whatsapp_click"');
+      expect(tag).toContain('data-cta-channel="whatsapp"');
+    }
+  });
+});
+
+describe('the chooser doors are wired the same way', () => {
+  // The header pill and the landing's hero/closing CTAs stopped being `sms:`
+  // anchors — they navigate to /text. An internal navigation none of the sms
+  // scans see is exactly the shape the original seven-miss bug had, so the
+  // chooser links get the same structural pin: visible wiring or red test.
+  const chooserAnchors = rendered.flatMap(({ route, html }) =>
+    [...html.matchAll(/<a\s[^>]*>/g)]
+      .map((match) => match[0])
+      .filter((tag) => /href="\/text["?]/.test(tag))
+      .map((tag) => ({ route, tag })),
+  );
+
+  it('fires cta_message_click from every internal /text link, with a placement', () => {
+    for (const anchor of chooserAnchors) {
+      expect(
+        anchor.tag,
+        `${anchor.route} — a chooser link no event counts: ${anchor.tag}`,
+      ).toContain('data-cta="cta_message_click"');
+      expect(anchor.tag).toMatch(/data-cta-placement="[^"]+"/);
+    }
+  });
+
+  it('really is reading chooser links — the header pill is on every chromed page, the landing adds hero and closing', () => {
+    expect(chooserAnchors.length).toBeGreaterThanOrEqual(12);
+    const chooserPlacements = new Set(
+      chooserAnchors.map((anchor) => /data-cta-placement="([^"]*)"/.exec(anchor.tag)?.[1] ?? ''),
+    );
+    for (const placement of ['header', 'hero', 'closing']) {
+      expect(chooserPlacements, `the walk must reach the ${placement} chooser door`).toContain(
+        placement,
+      );
     }
   });
 });

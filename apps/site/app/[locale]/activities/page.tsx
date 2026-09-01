@@ -115,6 +115,7 @@ export default async function ActivitiesHub({ params }: PageProps) {
         <div className="mt-8 flex justify-center">
           <LandingCta
             event="cta_text_click"
+            channel="sms"
             placement="activities"
             href={cta.href}
             className="btn-on-navy"
