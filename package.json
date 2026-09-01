@@ -17,6 +17,7 @@
     "format": "biome format --write .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:scripts": "vitest run",
     "smoke": "bash scripts/smoke.sh",
     "eval:agents": "pnpm --filter @hale/worker eval:agents",
     "eval:vil143": "pnpm --filter @hale/worker eval:vil143",
@@ -28,7 +29,8 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.6"
   },
   "pnpm": {
     "overrides": {
