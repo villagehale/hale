@@ -347,6 +347,12 @@
     background: var(--adm-ink);
     border-radius: 4px;
     min-width: 2px;
+    transition: width 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .adm-funnel-fill {
+      transition: none;
+    }
   }
   .adm-funnel-fill-amber {
     background: var(--adm-amber);
@@ -386,6 +392,72 @@
     background: var(--adm-ink);
     border-radius: 3px;
     min-width: 2px;
+    transition: width 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .adm-barlist-fill {
+      transition: none;
+    }
+  }
+
+  /* ── the texting heatmap (weekday × hour, amber ramp on wash) ──────── */
+  .adm-heatmap-wrap {
+    overflow-x: auto;
+    min-width: 0;
+  }
+  .adm-heatmap {
+    display: grid;
+    grid-template-columns: 34px repeat(24, minmax(12px, 1fr));
+    gap: 3px;
+    min-width: 440px;
+    background: var(--adm-wash);
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .adm-heatmap-row {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    gap: 3px;
+  }
+  .adm-heatmap-day,
+  .adm-heatmap-hour {
+    font-size: 10px;
+    color: var(--adm-ink-3);
+    align-self: center;
+  }
+  .adm-heatmap-cell {
+    display: block;
+    height: 16px;
+    border-radius: 3px;
+    background: var(--adm-amber);
+    transition: opacity 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .adm-heatmap-cell {
+      transition: none;
+    }
+  }
+
+  /* ── in-cell share bars (sources, agent leaderboard) ───────────────── */
+  .adm-cell-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 110px;
+  }
+  .adm-cell-bar .adm-barlist-track {
+    display: block;
+    flex: 1;
+  }
+  .adm-cell-bar .adm-barlist-fill {
+    display: block;
+    transition: width 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .adm-cell-bar .adm-barlist-fill {
+      transition: none;
+    }
   }
 
   /* ── the data table ────────────────────────────────────────────────── */

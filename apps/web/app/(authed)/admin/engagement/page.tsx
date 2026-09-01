@@ -1,6 +1,6 @@
 import nextDynamic from 'next/dynamic';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
-import { cachedGrowth, cachedTextingTrends } from '~/lib/admin/cached';
+import { cachedGrowth, cachedTextingByHour, cachedTextingTrends } from '~/lib/admin/cached';
 import { supabaseTableUrl } from '~/lib/admin/links';
 import { EMPTY_WINDOW_LINE } from '~/lib/admin/panel-state';
 
@@ -11,6 +11,9 @@ const TrendChart = nextDynamic(() =>
 const BarsChart = nextDynamic(() =>
   import('~/components/admin/bars-chart').then((m) => m.BarsChart),
 );
+const TextingHeatmap = nextDynamic(() =>
+  import('~/components/admin/texting-heatmap').then((m) => m.TextingHeatmap),
+);
 
 /** Engagement — "Are families using Hale, and when?" */
 
@@ -18,6 +21,12 @@ async function TextingBody() {
   const rows = await cachedTextingTrends();
   if (rows.length === 0) return <p className="adm-state">{EMPTY_WINDOW_LINE}</p>;
   return <TrendChart rows={rows} />;
+}
+
+async function HeatmapBody() {
+  const rows = await cachedTextingByHour();
+  if (rows.length === 0) return <p className="adm-state">{EMPTY_WINDOW_LINE}</p>;
+  return <TextingHeatmap rows={rows} />;
 }
 
 async function GrowthBody() {
@@ -44,6 +53,8 @@ async function GrowthBody() {
         rows={growth.days.map((d) => ({ day: d.day, value: d.families }))}
         name="new families"
         height={150}
+        cumulativeTotal={growth.total}
+        cumulativeName="all families"
       />
     </div>
   );
@@ -58,10 +69,14 @@ export default function AdminEngagementPage() {
       span2: true,
     },
     {
+      eyebrow: 'When families text',
+      links: [{ label: 'Open in Supabase', href: supabaseTableUrl('channel_messages') }],
+      body: <HeatmapBody />,
+    },
+    {
       eyebrow: 'Growth',
       links: [{ label: 'Open in Supabase', href: supabaseTableUrl('families') }],
       body: <GrowthBody />,
-      span2: true,
     },
   ];
   return (

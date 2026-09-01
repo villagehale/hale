@@ -13,6 +13,11 @@ export function torontoDay(column: SQL | unknown): SQL<string> {
   return sql<string>`(${column} at time zone ${TZ})::date::text`;
 }
 
+/** The Toronto-local hour-of-day (0–23) of a timestamptz column. */
+export function torontoHour(column: SQL | unknown): SQL<number> {
+  return sql<number>`extract(hour from ${column} at time zone ${TZ})::int`;
+}
+
 /** Toronto midnight today, as a timestamptz expression. */
 export function torontoTodayStart(): SQL {
   return sql`date_trunc('day', now() at time zone ${TZ}) at time zone ${TZ}`;

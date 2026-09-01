@@ -7,6 +7,7 @@ import { loadIntakeFunnel } from './queries/intake-funnel';
 import { loadPulse } from './queries/pulse';
 import { loadRadar } from './queries/radar';
 import { loadTextingTrends } from './queries/texting';
+import { loadTextingByHour } from './queries/texting-hours';
 import { fetchLangfuseDaily } from './services/langfuse';
 import { fetchReplays, fetchSiteFunnel } from './services/posthog';
 import { fetchTwilioAlerts } from './services/twilio';
@@ -25,6 +26,7 @@ function cached<T>(key: string, fn: () => Promise<T>): () => Promise<T> {
 
 export const cachedPulse = cached('admin-pulse', () => loadPulse());
 export const cachedTextingTrends = cached('admin-texting', () => loadTextingTrends());
+export const cachedTextingByHour = cached('admin-texting-hours', () => loadTextingByHour());
 export const cachedGrowth = cached('admin-growth', () => loadGrowth());
 export const cachedIntakeFunnel = cached('admin-intake-funnel', () => loadIntakeFunnel());
 export const cachedRadar = cached('admin-radar', () => loadRadar());

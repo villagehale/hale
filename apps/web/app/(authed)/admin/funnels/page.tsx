@@ -1,5 +1,6 @@
 import nextDynamic from 'next/dynamic';
 import { IntakeFunnelClient } from '~/components/admin/intake-funnel-client';
+import { IntakeSourcesTable } from '~/components/admin/intake-sources-table';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
 import { cachedIntakeFunnel, cachedReplays, cachedSiteFunnel } from '~/lib/admin/cached';
 import {
@@ -36,7 +37,12 @@ async function IntakeFunnelBody() {
   const funnel = await cachedIntakeFunnel();
   if (funnel.days.length === 0)
     return <p className="adm-state">No intake sessions in this window.</p>;
-  return <IntakeFunnelClient days={funnel.days} sources={funnel.sources} />;
+  return <IntakeFunnelClient days={funnel.days} />;
+}
+
+async function SourcesBody() {
+  const funnel = await cachedIntakeFunnel();
+  return <IntakeSourcesTable sources={funnel.sources} />;
 }
 
 async function ReplaysBody() {
@@ -76,6 +82,12 @@ export default function AdminFunnelsPage() {
       eyebrow: 'Text intake funnel',
       links: [{ label: 'Open in Supabase', href: supabaseTableUrl('sms_intake_sessions') }],
       body: <IntakeFunnelBody />,
+    },
+    {
+      eyebrow: 'Sources — which poster works',
+      links: [{ label: 'Open in Supabase', href: supabaseTableUrl('sms_intake_sessions') }],
+      body: <SourcesBody />,
+      span2: true,
     },
     {
       eyebrow: 'Session replays',

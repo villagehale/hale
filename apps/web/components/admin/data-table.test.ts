@@ -127,6 +127,26 @@ describe('DataTable — sorting', () => {
   });
 });
 
+describe('DataTable — in-cell share bars', () => {
+  it('renders a bar column scaled to the column max over ALL rows', () => {
+    const html = renderToStaticMarkup(
+      createElement(DataTable, {
+        rows: [
+          { code: 'earlyon', started: 10 },
+          { code: 'library', started: 5 },
+        ],
+        columns: [
+          { key: 'code', label: 'source' },
+          { key: 'started', label: 'started', bar: true },
+        ],
+      }),
+    );
+    expect(html).toContain('adm-cell-bar');
+    expect(html).toContain('width:100%');
+    expect(html).toContain('width:50%');
+  });
+});
+
 describe('DataTable — filtering', () => {
   it('narrows the rows as each character is typed, across every column', () => {
     expect(harnessCodes([], '')).toEqual(['30003', '21610', 'timeout']);
