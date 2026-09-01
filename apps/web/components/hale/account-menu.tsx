@@ -3,7 +3,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { PlanTier } from '@hale/types';
 import { AccountMenuView } from '~/components/hale/account-menu-view';
-import { useShell } from '~/components/hale/app-shell';
 import { signOutAction } from '~/lib/auth-actions';
 
 /**
@@ -32,7 +31,6 @@ export function AccountMenu({
   /** Sign out only appears for a real session — never in the dev preview. */
   canSignOut?: boolean;
 }) {
-  const { closeDrawer } = useShell();
   const [open, setOpen] = useState(false);
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -71,10 +69,6 @@ export function AccountMenu({
       canSignOut={canSignOut}
       menuId={menuId}
       onToggle={() => setOpen((prev) => !prev)}
-      onSelect={() => {
-        setOpen(false);
-        closeDrawer();
-      }}
       onSignOut={signOutAction}
       rootRef={rootRef}
       triggerRef={triggerRef}

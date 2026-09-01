@@ -138,7 +138,6 @@ describe('account chip (every authed page) masks the parent identity', () => {
       canSignOut: true,
       menuId: 'm',
       onToggle: () => {},
-      onSelect: () => {},
       onSignOut: () => {},
     }),
   );
@@ -646,7 +645,6 @@ const SENTINEL_SURFACES: AttributeSurface[] = [
           canSignOut: true,
           menuId: 'm',
           onToggle: () => {},
-          onSelect: () => {},
           onSignOut: () => {},
         }),
       ),
