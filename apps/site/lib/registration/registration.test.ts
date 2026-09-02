@@ -184,7 +184,7 @@ describe('the rules that make parents miss', () => {
     // City facts stay; Hale does not claim adult Learn to Swim.
     expect(guide.lede).toContain('Aug 24');
     expect(guide.lede).toContain('Sept 9');
-    expect(guide.smsPrefill).toBe('Maya is 4, Theo is 18 months, L6Y');
+    expect(guide.smsPrefill).toBe('Hi Hale');
   });
 
   it('keeps YMCA on My Y at 9 a.m. with a membership gate', () => {

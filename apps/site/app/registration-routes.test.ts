@@ -136,12 +136,13 @@ describe('city registration routes — landing chrome, not a blog', () => {
     }
   });
 
-  it('prefills Brampton Text Hale with Maya/Theo/L6Y — not hi, not a swim question', async () => {
+  it('prefills Brampton Text Hale with the locked hello — no dummy family, not a swim question', async () => {
+    // Founder lock 2026-09-01 /text expectations: every composer body is
+    // 'Hi Hale' — codes ride only in /text's ?s= links, never in a page body.
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
     const html = await render(BramptonPage);
-    const locked = buildSmsHrefForBody(LIVE_NUMBER, 'Maya is 4, Theo is 18 months, L6Y');
+    const locked = buildSmsHrefForBody(LIVE_NUMBER, 'Hi Hale');
     expect(html).toContain(locked.replaceAll('&', '&amp;'));
-    // Header chrome still uses the global L3R prefill; the city page body must not.
     const body = html.replace(/<header[\s\S]*?<\/header>/, '').replace(/<footer[\s\S]*?<\/footer>/, '');
     expect(body).not.toContain('L3R');
     expect(html).not.toMatch(/body=When%20does%20swim/);

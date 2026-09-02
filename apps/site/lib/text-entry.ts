@@ -12,7 +12,7 @@
  *            /^[a-z0-9]+(?:-[a-z0-9]+)*$/
  *            e.g. earlyon-richmondhill · swim-loyalfitness · daycare-brightpath-milton
  *   In SMS   appended to the pre-filled body as a trailing "(via <code>)" token:
- *              Maya is 4, Theo is 18 months, L3R (via earlyon-richmondhill)
+ *              Hi Hale (via earlyon-richmondhill)
  *   Parsed   by the M2 intake with
  *              /\(via\s+([a-z0-9]+(?:-[a-z0-9]+)*)\)\s*$/
  *            — strip the match to recover the parent's real message.
@@ -30,10 +30,13 @@ const SOURCE_CODE_MAX_LENGTH = 48;
 export const CONTACT_EMAIL = 'aloha@villagehale.com';
 
 /**
- * Designer lock 2026-08-27 chips/prefill — first SMS looks like intake, not a
- * question. The parent taps send; Hale never texts first. Verbatim.
+ * Founder lock 2026-09-01 /text expectations — the prefill is a hello the
+ * parent can send AS IS, not a sample family they would have to edit first.
+ * Hale's first reply asks for the names, ages, and postal code itself
+ * (apps/web/lib/channel/intake/copy.ts `greeting`), and /text previews that
+ * reply verbatim. The parent taps send; Hale never texts first. Verbatim.
  */
-const INTAKE_PREFILL = 'Maya is 4, Theo is 18 months, L3R';
+const INTAKE_PREFILL = 'Hi Hale';
 
 /** A `?s=` value, or null when absent, repeated, or not a venue code. */
 export function parseSourceCode(raw: string | string[] | undefined): string | null {

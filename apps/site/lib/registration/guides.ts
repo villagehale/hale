@@ -509,7 +509,7 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
   ctaSub:
     "Hale watches kids' swim for parents. Adult lessons stay on the city page. Text your kids' names, ages, and postal and I'll watch Sept 9. Founding families free.",
   footerNote: FOOTER,
-  smsPrefill: 'Maya is 4, Theo is 18 months, L6Y',
+  smsPrefill: 'Hi Hale',
 };
 
 export const YMCA_GTA: RegistrationGuide = {
