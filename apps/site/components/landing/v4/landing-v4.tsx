@@ -92,6 +92,12 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
           sizes="100vw"
           className="v4-hero-art"
         />
+        {/* Ambient drift: two gradient sheets between the art and the scrim —
+            cloud-light over the sky, a glint band on the water. CSS-only; gone
+            (not frozen) under prefers-reduced-motion. The closing band reuses
+            .v4-hero without them: one breathing shore per page. */}
+        <span className="v4-hero-drift v4-hero-drift-sky" aria-hidden="true" />
+        <span className="v4-hero-drift v4-hero-drift-sea" aria-hidden="true" />
         <span className="v4-hero-scrim" aria-hidden="true" />
 
         <div className="v4-hero-body">
