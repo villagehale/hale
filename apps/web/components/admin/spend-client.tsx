@@ -13,13 +13,46 @@ import {
 import type { AgentSpendData } from '~/lib/admin/queries/agent-spend';
 import { fillWindow, lastDays } from '~/lib/admin/window';
 import { BarsChart } from './bars-chart';
+import { useAdminChartTheme } from './chart-theme';
 import { AdmChartTooltip } from './chart-tooltip';
 import { useWindowDays } from './window-dial';
 
-const AMBER = '#b26b1f';
-const NAVY = '#17294a';
-const GRID = '#e4e7ee';
-const INK3 = '#5c6b87';
+/**
+ * Latency tick grammar. Every admin chart shares a fixed ~42px tick gutter
+ * (margin.left −18 against recharts' default 60px y-axis), and the old
+ * `${Math.round(v)}ms` emitted "4000ms"/"8000ms" — ~45px at 11px type — which
+ * overflowed the gutter leftward and was CLIPPED by the svg viewport to
+ * "000ms". Bounding the label ("800ms" under a second, "7.7s" above) makes
+ * that clipping class inexpressible instead of re-tuning the gutter per chart.
+ */
+export function formatMsTick(v: number): string {
+  if (v < 1000) return `${Math.round(v)}ms`;
+  return `${Math.round(v / 100) / 10}s`;
+}
+
+/**
+ * Axis for a fleet window. Recharts 3 renders NO numeric y-axis when the
+ * series holds zero numeric values — it discards even an explicit domain
+ * (live-probed in Chromium against recharts 3.10.1) — so a no-signal window
+ * STATES its axis: quarter ticks + allowDataOverflow, the one combination
+ * the probe proved renders. With signal, recharts scales itself.
+ */
+export function fleetAxis(
+  values: readonly (number | null)[],
+  emptyMax: number,
+):
+  | { domain: [number, 'auto']; allowDataOverflow: false; ticks?: undefined }
+  | { domain: [number, number]; allowDataOverflow: true; ticks: number[] } {
+  if (values.some((v) => typeof v === 'number' && v > 0)) {
+    return { domain: [0, 'auto'], allowDataOverflow: false };
+  }
+  const quarter = emptyMax / 4;
+  return {
+    domain: [0, emptyMax],
+    allowDataOverflow: true,
+    ticks: [0, quarter, quarter * 2, quarter * 3, emptyMax],
+  };
+}
 
 function medianOf(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -37,33 +70,47 @@ function FleetLine({
   name,
   stroke,
   format,
+  tickFormat = format,
+  emptyMax,
 }: {
   data: { day: string; [key: string]: string | number | null }[];
   dataKey: string;
   name: string;
   stroke: string;
   format: (v: number) => string;
+  /** Axis-only formatter when the exact tooltip format is too wide for a tick. */
+  tickFormat?: (v: number) => string;
+  /** Axis top when the whole window is gaps/zeros (no-signal days). */
+  emptyMax: number;
 }) {
   const reduced = useReducedMotion();
+  const theme = useAdminChartTheme();
+  const axis = fleetAxis(
+    data.map((row) => (typeof row[dataKey] === 'number' ? (row[dataKey] as number) : null)),
+    emptyMax,
+  );
   return (
     <div style={{ width: '100%', height: 120 }}>
       <ResponsiveContainer>
         <ComposedChart data={data} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-          <CartesianGrid stroke={GRID} vertical={false} />
+          <CartesianGrid stroke={theme.grid} vertical={false} />
           <XAxis
             dataKey="day"
             tickFormatter={(d: string) => d.slice(5)}
-            tick={{ fontSize: 11, fill: INK3 }}
+            tick={{ fontSize: 11, fill: theme.tick }}
             tickLine={false}
-            axisLine={{ stroke: GRID }}
+            axisLine={{ stroke: theme.axis }}
             minTickGap={28}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: INK3 }}
+            tick={{ fontSize: 11, fill: theme.tick }}
             tickLine={false}
             axisLine={false}
             allowDecimals={false}
-            tickFormatter={(v: number) => format(v)}
+            domain={axis.domain}
+            allowDataOverflow={axis.allowDataOverflow}
+            ticks={axis.ticks}
+            tickFormatter={(v: number) => tickFormat(v)}
           />
           <Tooltip content={<AdmChartTooltip format={format} />} />
           <Line
@@ -71,7 +118,7 @@ function FleetLine({
             dataKey={dataKey}
             name={name}
             stroke={stroke}
-            strokeWidth={2}
+            strokeWidth={1.5}
             dot={false}
             connectNulls={false}
             isAnimationActive={!reduced}
@@ -88,6 +135,7 @@ function FleetLine({
  * never charted. Per-agent runs live in the leaderboard table now. */
 export function SpendClient({ data }: { data: AgentSpendData }) {
   const windowDays = useWindowDays();
+  const theme = useAdminChartTheme();
   const inWindow = new Set(lastDays(windowDays));
   const sliced = data.days.filter((d) => inWindow.has(d.day));
 
@@ -151,15 +199,18 @@ export function SpendClient({ data }: { data: AgentSpendData }) {
         data={trendData}
         dataKey="p50LatencyMs"
         name="p50 latency"
-        stroke={NAVY}
+        stroke={theme.ink}
         format={(v) => `${Math.round(v)}ms`}
+        tickFormat={formatMsTick}
+        emptyMax={800}
       />
       <FleetLine
         data={trendData}
         dataKey="hitRate"
         name="cache-hit rate"
-        stroke={AMBER}
+        stroke={theme.amber}
         format={(v) => `${v}%`}
+        emptyMax={100}
       />
     </div>
   );

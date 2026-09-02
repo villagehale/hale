@@ -1,8 +1,9 @@
 /**
  * The pulse band's TickStrip re-parameterized: a tiny inline frequency
  * sparkline, one bar per day of the dial window, brick fill (failure
- * vocabulary). Pure and presentational — parents slice the window and hand
- * counts oldest-first.
+ * vocabulary — the .adm-spark rule carries it, so the dark ladder can lighten
+ * it). Pure and presentational — parents slice the window and hand counts
+ * oldest-first.
  */
 const BAR_W = 4;
 const BAR_GAP = 2;
@@ -32,7 +33,6 @@ export function SparkBars({ counts, label }: { counts: number[]; label: string }
             width={BAR_W}
             height={h}
             rx={1}
-            fill="#a63d2f"
             opacity={count === 0 ? 0.25 : 1}
           />
         );

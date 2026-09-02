@@ -19,6 +19,7 @@ function TickStrip({ hourly }: { hourly: PulseData['hourly'] }) {
   const total = hourly.reduce((sum, h) => sum + h.count, 0);
   return (
     <svg
+      className="adm-tick-strip"
       viewBox={`0 0 ${width} ${STRIP_H}`}
       width="100%"
       height={STRIP_H}
@@ -36,7 +37,6 @@ function TickStrip({ hourly }: { hourly: PulseData['hourly'] }) {
             width={TICK_W}
             height={h}
             rx={2}
-            fill="#b26b1f"
             opacity={hour.count === 0 ? 0.35 : 1}
           />
         );

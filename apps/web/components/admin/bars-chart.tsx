@@ -5,7 +5,6 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
-  Legend,
   Line,
   ResponsiveContainer,
   Tooltip,
@@ -13,13 +12,9 @@ import {
   YAxis,
 } from 'recharts';
 import { fillWindow } from '~/lib/admin/window';
+import { useAdminChartTheme } from './chart-theme';
 import { AdmChartTooltip } from './chart-tooltip';
 import { useWindowDays } from './window-dial';
-
-const NAVY = '#17294a';
-const AMBER = '#b26b1f';
-const GRID = '#e4e7ee';
-const INK3 = '#5c6b87';
 
 export interface DayValue {
   day: string;
@@ -73,25 +68,42 @@ export function BarsChart({
 }) {
   const days = useWindowDays();
   const reduced = useReducedMotion();
+  const theme = useAdminChartTheme();
   const sliced = fillWindow(rows, days, { value: 0 });
   const data =
     cumulativeTotal === undefined ? sliced : runningTotals(rows, sliced, cumulativeTotal);
 
+  // Editorial: two series never earn a legend — the cumulative line is named
+  // directly at its end, in ink-2 (AA on the panel in both themes), hugging
+  // the line the way a margin note hugs its sentence.
+  const lastIndex = data.length - 1;
+  const endLabel = (props: { x?: number | string; y?: number | string; index?: number }) =>
+    props.index === lastIndex && typeof props.x === 'number' && typeof props.y === 'number' ? (
+      <text x={props.x} y={props.y - 8} textAnchor="end" fontSize={11} fill={theme.label}>
+        {cumulativeName}
+      </text>
+    ) : null;
+
   return (
     <div style={{ width: '100%', height }}>
       <ResponsiveContainer>
-        <ComposedChart data={data} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-          <CartesianGrid stroke={GRID} vertical={false} />
+        {/* Extra headroom when the end-of-line label rides above the cumulative
+         * line's last (and highest) point, so it never clips at the top edge. */}
+        <ComposedChart
+          data={data}
+          margin={{ top: cumulativeTotal === undefined ? 4 : 18, right: 4, left: -18, bottom: 0 }}
+        >
+          <CartesianGrid stroke={theme.grid} vertical={false} />
           <XAxis
             dataKey="day"
             tickFormatter={(d: string) => d.slice(5)}
-            tick={{ fontSize: 11, fill: INK3 }}
+            tick={{ fontSize: 11, fill: theme.tick }}
             tickLine={false}
-            axisLine={{ stroke: GRID }}
+            axisLine={{ stroke: theme.axis }}
             minTickGap={28}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: INK3 }}
+            tick={{ fontSize: 11, fill: theme.tick }}
             tickLine={false}
             axisLine={false}
             allowDecimals={format === 'usd'}
@@ -101,19 +113,18 @@ export function BarsChart({
             <YAxis
               yAxisId="cumulative"
               orientation="right"
-              tick={{ fontSize: 11, fill: INK3 }}
+              tick={{ fontSize: 11, fill: theme.tick }}
               tickLine={false}
               axisLine={false}
               allowDecimals={false}
               width={36}
             />
           ) : null}
-          <Tooltip content={<AdmChartTooltip format={format === 'usd' ? usd : int} />} cursor={{ fill: '#fef0c7' }} />
-          {cumulativeTotal !== undefined ? <Legend wrapperStyle={{ fontSize: 12 }} /> : null}
+          <Tooltip content={<AdmChartTooltip format={format === 'usd' ? usd : int} />} cursor={{ fill: theme.cursor }} />
           <Bar
             dataKey="value"
             name={name}
-            fill={NAVY}
+            fill={theme.ink}
             radius={[4, 4, 0, 0]}
             isAnimationActive={!reduced}
             animationDuration={300}
@@ -124,9 +135,10 @@ export function BarsChart({
               type="monotone"
               dataKey="cumulative"
               name={cumulativeName}
-              stroke={AMBER}
+              stroke={theme.amber}
               strokeWidth={1.5}
               dot={false}
+              label={endLabel}
               isAnimationActive={!reduced}
               animationDuration={300}
             />
