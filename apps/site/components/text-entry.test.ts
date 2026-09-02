@@ -51,13 +51,43 @@ function qrPath(html: string): string {
 }
 
 describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
-  it('leads with the locked recut headline and lede', () => {
+  it('leads with what Hale IS — the five-second line, both arms', () => {
     for (const html of [liveHtml, unsetHtml]) {
-      expect(html).toContain('Change the names to yours and send.');
-      expect(html).toContain('I text back the rec dates for that postal. No app.');
+      expect(html).toContain('A family assistant you text.');
+      expect(html).toContain(
+        'Hale watches registration dates and the family week so you don’t have to. No app, no account — just this text thread.',
+      );
     }
+    expect(liveHtml).not.toContain('Change the names to yours and send.');
     expect(liveHtml).not.toContain('Pick where we talk');
     expect(liveHtml).not.toContain('Welcome.');
+  });
+
+  it('says what to DO — three light steps, one-tap arm only, never on the dark page', () => {
+    expect(liveHtml).toContain('Say hi — the first message is already written.');
+    expect(liveHtml).toContain('Answer one text: kids’ names, ages, postal code.');
+    expect(liveHtml).toContain(
+      'Your first watch arrives — the sign-up dates Hale now tracks for you.',
+    );
+    // A numbered row, not cards — the three land inside one ordered list.
+    expect([...liveHtml.matchAll(/<ol[\s>]/g)]).toHaveLength(1);
+    // The dark page promises no text back, so it makes no promises about one.
+    expect(unsetHtml).not.toContain('Say hi — the first message is already written.');
+  });
+
+  it('shows what comes BACK — an honestly-labeled bubble, absent while no channel is live', () => {
+    expect(liveHtml).toContain('The text you’ll get back:');
+    expect(liveHtml).toContain('I watch sign-up mornings so they don&#x27;t sneak up.');
+    expect(unsetHtml).not.toContain('sign-up mornings');
+    expect(unsetHtml).not.toContain('The text you’ll get back:');
+  });
+
+  it('carries the trust strip beside the door — free, no app, no account, STOP, privacy', () => {
+    expect(liveHtml).toContain('Free · No app · No account · Reply STOP anytime');
+    const trust = /Free · No app[\s\S]{0,200}?<a[^>]*href="\/privacy"[^>]*>/.exec(liveHtml);
+    expect(trust, 'the trust strip must end in the privacy link').not.toBeNull();
+    // The dark page has no number to STOP.
+    expect(unsetHtml).not.toContain('Reply STOP anytime');
   });
 
   it('is one Message Hale button — no picker, no channel names', () => {
@@ -113,7 +143,7 @@ describe('TextEntry — the channel matrix, rendered', () => {
   it('apple WhatsApp dark: one Message Hale sms: CTA carrying the pre-filled body and venue token', () => {
     // React escapes the `&` of the cross-platform `?&body=` form into `&amp;`.
     expect(liveHtml).toContain(
-      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R%20(via%20earlyon-richmondhill)"',
+      'href="sms:+16475551234?&amp;body=Hi%20Hale%20(via%20earlyon-richmondhill)"',
     );
     expect(liveHtml).toContain('>Message Hale</a>');
     const primary = anchors(liveHtml).find((a) => a.includes('href="sms:')) ?? '';
@@ -188,10 +218,8 @@ describe('TextEntry — the channel matrix, rendered', () => {
     }
   });
 
-  it('pre-fills the locked intake sample when no venue sent them', () => {
-    expect(liveNoSourceHtml).toContain(
-      'href="sms:+16475551234?&amp;body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R"',
-    );
+  it('pre-fills the locked hello when no venue sent them', () => {
+    expect(liveNoSourceHtml).toContain('href="sms:+16475551234?&amp;body=Hi%20Hale"');
   });
 
   it('keeps the dark page dark: no channel buttons on the email-fallback state even if the WhatsApp env leaks in', () => {
@@ -270,9 +298,19 @@ describe('TextEntry (number live) — the desktop card and the disclosures', () 
     expect(svg, 'a themed fill would invert the code in dark').not.toContain('var(--');
   });
 
-  it('discloses the attribution token instead of smuggling it', () => {
-    expect(liveHtml).toContain('(via earlyon-richmondhill)');
+  it('discloses the attribution in words — the raw token rides only inside hrefs, never in copy', () => {
+    // The disclosure line says a tag is in the message; the token itself stays
+    // out of every text node (founder lock 2026-09-01). Strip tags (attributes
+    // go with them) and the page prose must be token-free…
+    const textNodes = liveHtml.replace(/<[^>]+>/g, ' ');
+    expect(textNodes).not.toContain('(via');
+    expect(textNodes).not.toContain('earlyon-richmondhill');
+    expect(liveHtml).toContain('which poster or friend sent you');
+    // …while the composer href still carries it (positive control — the
+    // absence above must mean "moved into the link", not "attribution lost").
+    expect(liveHtml).toContain('(via%20earlyon-richmondhill)');
     expect(liveNoSourceHtml).not.toContain('(via');
+    expect(liveNoSourceHtml).not.toContain('which poster or friend sent you');
   });
 
   it('carries the STOP line on the terms row — mobile states never showed the scan hint’s copy', () => {
@@ -302,6 +340,33 @@ describe('TextEntry (the other two locales)', () => {
       expect(html).not.toContain('Text.chooserHeadline');
       expect(html).not.toContain('Text.continueMessages');
     }
+  });
+
+  it('previews Hale’s real first reply per locale — FR gets the French twin, ZH shows the English under a translated label', () => {
+    const fr = render({ source: null, locale: 'fr' });
+    // The FR greeting is copy.ts verbatim, GSM-7 fold included (l&#x27;age).
+    expect(fr).toContain('Bonjour, je suis Hale.');
+    expect(fr).toContain('l&#x27;age de vos enfants');
+    // ZH: copy.ts has no Chinese greeting, and the page never invents Hale
+    // speech — the bubble stays English, the frame label says so in Chinese.
+    const zh = render({ source: null, locale: 'zh' });
+    expect(zh).toContain('（英文原文）');
+    expect(zh).toContain('I watch sign-up mornings so they don&#x27;t sneak up.');
+  });
+});
+
+describe('TextEntry — the chooser arm keeps the five-second frame (WhatsApp live)', () => {
+  it('adds the what-is line and the preview bubble above the channel buttons', () => {
+    const html = render({ whatsappNumber: LIVE_NUMBER });
+    expect(html).toContain(
+      'Hale watches registration dates and the family week so you don’t have to.',
+    );
+    expect(html).toContain('The text you’ll get back:');
+    // The bubble sits above the first channel door.
+    expect(html.indexOf('I watch sign-up mornings')).toBeLessThan(html.indexOf('href="sms:'));
+    // Structure kept: still the chooser headline, no numbered steps row.
+    expect(html).toContain('Welcome. Pick where we talk.');
+    expect(html).not.toContain('<ol');
   });
 });
 

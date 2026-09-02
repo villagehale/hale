@@ -65,29 +65,26 @@ describe('parseSourceCode (venue attribution from ?s=)', () => {
 });
 
 describe('buildSmsBody (what the parent sends)', () => {
-  it('is the Designer-locked intake sample when no venue sent them', () => {
-    // Designer lock 2026-08-27 chips/prefill — first SMS looks like intake, not a question.
-    expect(buildSmsBody(null)).toBe('Maya is 4, Theo is 18 months, L3R');
+  it('is the locked hello when no venue sent them — a real first message, no dummy family', () => {
+    // Founder lock 2026-09-01 /text expectations — the parent says hi; Hale asks
+    // for names, ages, and postal itself. Nothing to edit before sending.
+    expect(buildSmsBody(null)).toBe('Hi Hale');
   });
 
   it('appends the venue as a trailing "(via …)" token', () => {
-    expect(buildSmsBody('earlyon-richmondhill')).toBe(
-      'Maya is 4, Theo is 18 months, L3R (via earlyon-richmondhill)',
-    );
+    expect(buildSmsBody('earlyon-richmondhill')).toBe('Hi Hale (via earlyon-richmondhill)');
   });
 });
 
 describe('buildSmsHref (the deep link)', () => {
   it('is an sms: URI whose body is percent-encoded, carrying the source token', () => {
     expect(buildSmsHref('+16475551234', 'earlyon-richmondhill')).toBe(
-      'sms:+16475551234?&body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R%20(via%20earlyon-richmondhill)',
+      'sms:+16475551234?&body=Hi%20Hale%20(via%20earlyon-richmondhill)',
     );
   });
 
-  it('pre-fills the locked intake sample with no source', () => {
-    expect(buildSmsHref('+16475551234', null)).toBe(
-      'sms:+16475551234?&body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R',
-    );
+  it('pre-fills the locked hello with no source', () => {
+    expect(buildSmsHref('+16475551234', null)).toBe('sms:+16475551234?&body=Hi%20Hale');
   });
 });
 
@@ -125,14 +122,12 @@ describe('readWhatsAppNumber (NEXT_PUBLIC_HALE_WHATSAPP_NUMBER)', () => {
 describe('buildWaHref (the wa.me deep link)', () => {
   it('carries the SAME pre-filled body as the sms: link, digits without the plus', () => {
     expect(buildWaHref('+16475551234', 'earlyon-richmondhill')).toBe(
-      'https://wa.me/16475551234?text=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R%20(via%20earlyon-richmondhill)',
+      'https://wa.me/16475551234?text=Hi%20Hale%20(via%20earlyon-richmondhill)',
     );
   });
 
-  it('pre-fills the locked intake sample with no source', () => {
-    expect(buildWaHref('+16475551234', null)).toBe(
-      'https://wa.me/16475551234?text=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R',
-    );
+  it('pre-fills the locked hello with no source', () => {
+    expect(buildWaHref('+16475551234', null)).toBe('https://wa.me/16475551234?text=Hi%20Hale');
   });
 });
 

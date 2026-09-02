@@ -10,7 +10,7 @@ import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { type ChannelId, type Platform, channelOrder, qrLeads } from '~/lib/chooser';
 import { CONTACT_CARD_PATH } from '~/lib/contact-card';
-import { CONTACT_EMAIL, buildSmsBody, buildSmsHref, buildWaHref } from '~/lib/text-entry';
+import { CONTACT_EMAIL, buildSmsHref, buildWaHref } from '~/lib/text-entry';
 
 /**
  * The /text entry surface (VIL-240 · M5) — what a QR card, a poster, a
@@ -19,8 +19,17 @@ import { CONTACT_EMAIL, buildSmsBody, buildSmsHref, buildWaHref } from '~/lib/te
  *
  * THE PICKER GATE: the channel chooser exists only while WhatsApp is actually
  * live (`whatsappNumber` validates). Until the Twilio WhatsApp sender is
- * approved, production is PR 566 — one "Message Hale" button, locked headline,
- * Maya/Theo/L3R prefill. An empty iMessage/WhatsApp chooser is a dead door.
+ * approved, production is PR 566 — one "Message Hale" button, "Hi Hale"
+ * prefill. An empty iMessage/WhatsApp chooser is a dead door.
+ *
+ * THE FIVE-SECOND FRAME (founder brief 2026-09-01): a stranger off a poster QR
+ * must read what Hale IS (headline + lede), what to DO (three light steps),
+ * and what comes BACK — a bubble carrying Hale's CURRENT first reply, byte-
+ * pinned to apps/web/lib/channel/intake/copy.ts by app/text-page-copy.test.ts.
+ * The page never invents Hale speech: ZH shows the English reply under a
+ * translated label because copy.ts has no Chinese greeting. The "(via <code>)"
+ * attribution token rides ONLY inside composer hrefs; on the page it is
+ * disclosed in words (prefilledWithSource), never printed raw.
  *
  * When both pipes are live, lib/chooser.ts orders them: liveness gates (a dark
  * channel renders NOTHING), and the UA hint only ORDERS. The one withholding
@@ -170,6 +179,20 @@ export function TextEntry({
     </div>
   ) : null;
 
+  /** What comes back — Hale's real first reply, honestly labeled. Only where a
+   * channel is live: the dark page promises no text back. */
+  const previewBubble = live ? (
+    <div className="mt-8">
+      <p className="meta">{t('previewLabel')}</p>
+      <p
+        className="mt-3 max-w-[30rem] rounded-[18px] rounded-bl-[4px] px-5 py-4 text-spruce"
+        style={{ background: 'var(--color-apricot-tint)', lineHeight: 1.55 }}
+      >
+        {t('greeting')}
+      </p>
+    </div>
+  ) : null;
+
   return (
     <main
       id="main"
@@ -192,6 +215,33 @@ export function TextEntry({
         <p className="mt-6 text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
           {t(picker ? 'chooserLede' : 'lede')}
         </p>
+        {/* The chooser keeps its own lede (the picker disclosure), so the
+            what-is line rides underneath it — same words as the one-tap arm. */}
+        {picker && (
+          <p className="mt-3 text-slate-green" style={{ lineHeight: 1.6 }}>
+            {t('lede')}
+          </p>
+        )}
+        {/* What to DO — three beats, a light numbered row (one-tap arm; the
+            chooser's job is picking a pipe, not re-teaching the steps). */}
+        {live && !picker && (
+          <ol className="mt-8 grid gap-2.5">
+            {(['step1', 'step2', 'step3'] as const).map((key, index) => (
+              <li key={key} className="flex gap-3">
+                <span
+                  className="w-5 shrink-0 text-right font-display text-spruce"
+                  aria-hidden="true"
+                >
+                  {index + 1}
+                </span>
+                <span className="text-slate-green" style={{ lineHeight: 1.6 }}>
+                  {t(key)}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+        {previewBubble}
       </div>
 
       {live ? (
@@ -219,10 +269,10 @@ export function TextEntry({
             )
           )}
 
+          {/* The attribution disclosure, in words — the raw "(via <code>)" token
+              stays inside the composer hrefs and never renders as page copy. */}
           <p className="meta mt-4">
-            {source
-              ? t('prefilledWithSource', { body: buildSmsBody(source) })
-              : t('prefilledNoSource')}
+            {source ? t('prefilledWithSource') : t('prefilledNoSource')}
           </p>
 
           {/* Saved once, every later Hale text arrives with the turtle and a name
@@ -239,6 +289,15 @@ export function TextEntry({
           </div>
 
           {qrLeads(platform) ? null : desktopCard}
+
+          {/* The trust strip — the four flat facts plus the one link that backs
+              them up. Live arms only: "reply STOP" needs a number to stop. */}
+          <p className="meta mt-8">
+            {t('trustLine')} ·{' '}
+            <a href={localeHref(locale, '/privacy')} className="link">
+              {t('privacyLink')}
+            </a>
+          </p>
         </div>
       ) : (
         <div className="mt-10 rise rise-2">
