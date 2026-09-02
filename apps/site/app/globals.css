@@ -75,7 +75,7 @@
    * see --color-navy / --color-cream below. */
   --color-on-spruce: light-dark(#f7f4ec, #0c1a36);
   --color-on-spruce-soft: light-dark(rgb(250 247 241 / 0.74), rgb(12 26 54 / 0.76));
-  --color-on-spruce-faint: light-dark(rgb(250 247 241 / 0.50), rgb(12 26 54 / 0.58));
+  --color-on-spruce-faint: light-dark(rgb(250 247 241 / 0.50), rgb(12 26 54 / 0.48));
 
   /* ── Landing + chrome roles ──────────────────────────────────────────── *
    * The homepage and the shared header/footer palette. Distinct token names so
@@ -1751,6 +1751,14 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * frosted glass. Every colour is a themed light-dark() token, so the footer
  * switch drives the whole page, hero included.
  * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* One tile-width per cycle (1100px, the .v4-hero-drift background-size), so the
+ * repeat-x pattern lands exactly where it started and the loop has no seam. */
+@keyframes v4-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(1100px, 0, 0); }
+}
+
 @layer components {
   /* The display face. Instrument Serif ships ONE master (400) — so at the 30–54px
    * every section heading actually renders at, its hairlines under-assert and
@@ -1867,6 +1875,74 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
         var(--color-linen) 100%
       );
   }
+  /* The type-block veil (landing hero only). The page-wide scrim above is tuned
+   * for the ARTWORK — it leaves the palest sky band nearly untouched, and that
+   * band is exactly where the eyebrow and the h1's top line sit (measured
+   * worst-case before this rule: eyebrow 2.19:1 dark / 3.33:1 light). A soft
+   * radial behind the type block only — same wash each theme already pours,
+   * poured a little deeper where the words are — so the shoreline at the edges
+   * still reads at full strength and nothing looks like a box. */
+  .v4-hero-top .v4-hero-body::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse 64% 56% at 50% 46%,
+      light-dark(rgb(253 252 250 / 0.62), rgb(12 26 54 / 0.48)) 0%,
+      light-dark(rgb(253 252 250 / 0.62), rgb(12 26 54 / 0.48)) 38%,
+      transparent 100%
+    );
+  }
+
+  /* ── Ambient drift — the hero breathes, barely ────────────────────────────
+   * Two gradient sheets between the shore art (z -2) and the scrim (z -1):
+   * soft cloud-light over the sky band, a faint glint band on the water. Pure
+   * CSS gradients (zero network weight), transform-only animation (GPU, no
+   * layout), tiled at exactly the keyframe distance so the 2-minute loops are
+   * seamless. Opacity is tuned to the squint test: at a glance the page is
+   * today's still; the drift only registers after a few seconds of looking.
+   * Landing hero only — the closing band stays still. Reduced motion removes
+   * the layers entirely (static shore, identical to today) at the foot of this
+   * @layer block. */
+  .v4-hero-drift {
+    position: absolute;
+    z-index: -2;
+    left: -1100px;
+    right: 0;
+    pointer-events: none;
+    background-repeat: repeat-x;
+    background-size: 1100px 100%;
+    animation: v4-drift 120s linear infinite;
+  }
+  .v4-hero-drift-sky {
+    top: 0;
+    height: 46%;
+    background-image:
+      radial-gradient(30% 44% at 22% 38%, rgb(255 255 255 / 0.95) 0%, transparent 70%),
+      radial-gradient(20% 30% at 58% 18%, rgb(255 255 255 / 0.7) 0%, transparent 70%),
+      radial-gradient(24% 34% at 84% 46%, rgb(255 255 255 / 0.6) 0%, transparent 70%);
+    mix-blend-mode: soft-light;
+    opacity: 0.6;
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+  }
+  .v4-hero-drift-sea {
+    top: 52%;
+    height: 28%;
+    background-image: radial-gradient(
+      26% 38% at 30% 52%,
+      rgb(255 255 255 / 0.8) 0%,
+      transparent 72%
+    );
+    mix-blend-mode: overlay;
+    opacity: 0.3;
+    animation-duration: 170s;
+    animation-direction: reverse;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 70%, transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 70%, transparent 100%);
+  }
 
   /* ── Floating glass nav pill ──────────────────────────────────────────── */
   .v4-nav {
@@ -1944,6 +2020,13 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * the quiet with a tint or an opacity would have bought it by making the line
    * inaccessible. -15.3%, colour untouched. */
   .v4-pronounce { font-size: 0.61rem; }
+  /* Over the shore, --color-amber loses the page it was tuned for: the palest
+   * sky band held it to 2.19:1 (dark) / 3.33:1 (light), measured on rendered
+   * pixels. On the veiled hero the same amber family is taken one step deeper
+   * in light and one step brighter in dark — the token itself is untouched, so
+   * the seven on-page eyebrows keep their 4.6:1. Measured worst-case with the
+   * veil: 5.0:1 light / 4.7:1 dark, clear of AA at any size. */
+  .v4-hero-top .v4-pronounce { color: light-dark(#8f5713, #f2c489); }
   .v4-hero-h1 {
     font-size: clamp(2.9rem, 8.5vw, 6.5rem);
     color: var(--color-ink);
@@ -2399,6 +2482,10 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 
   @media (prefers-reduced-motion: reduce) {
     .v4-hero-art { filter: light-dark(none, brightness(0.66)); }
+    /* Not paused — removed. The drift sheets are additive light, so a frozen
+     * frame would still tint the shore; without them the hero is the same
+     * still it was before the drift existed. */
+    .v4-hero-drift { display: none; }
     .v4-switch-knob,
     .v4-btn,
     .v4-btn-solid,
