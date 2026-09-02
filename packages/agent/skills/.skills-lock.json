@@ -1,4 +1,16 @@
 {
+  "activity-deep.md": {
+    "file": "activity-deep.md",
+    "sha256": "52089c15d9d945c296b0a684b383a522f7e0b68b93318e398bd525aa458919eb"
+  },
+  "activity-finder.md": {
+    "file": "activity-finder.md",
+    "sha256": "85b3238cd2da51a664d390b4ddb808feca9855d30612f08c202e706604c4261f"
+  },
+  "activity-synthesis.md": {
+    "file": "activity-synthesis.md",
+    "sha256": "6c0d3f55ef83e0bbc3f34d0335235f028fe902d26d431b06a71798a9cc42688f"
+  },
   "ask-hale.md": {
     "file": "ask-hale.md",
     "sha256": "480cc92c95fb3fc59480ae21d05692caa83e65067262dead008711cdd0026143"
@@ -11,13 +23,17 @@
     "file": "calendar-invite-note.md",
     "sha256": "8ff7ac05f207b124e36708d1ea874001a3d95dd87d8a768f2abdefe914550978"
   },
+  "capability-table.md": {
+    "file": "capability-table.md",
+    "sha256": "a6b4b714e1ad2a5a3217790d82bff315ca440f56b5256003b08736383f10f0b4"
+  },
   "classify-event.md": {
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "336416d690e54283c8cfbaa1f7a8564415376ffa6af1fe12f289ce64ee92d51e"
+    "sha256": "bea0a7a09c882a044c53c19202b24bb0bacd0ec5347b9765805b80e70ee3e0e7"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
@@ -45,27 +61,51 @@
   },
   "general-answer.md": {
     "file": "general-answer.md",
-    "sha256": "7078d30dfe7924a3eddfe9385ba533a7acf0f9714ba9485af2aced4443428b33"
+    "sha256": "c0a6f0eb71c7e9ab925407bbeac82ed77ad41498ee37612b0368c1b5ce520744"
   },
   "identity-ask.md": {
     "file": "identity-ask.md",
-    "sha256": "c3d5b900b78bb414b3403097ba27cc39894cb426d4e548573a18fc6597abe25b"
+    "sha256": "8a4b031f21f97c69b2a5298e05aea434d2ef7e18e19fc0b30d0be6249502c989"
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
-    "sha256": "df50c6656961046aa82068a468d9f1cc6d90d308ca3cdf1cae60da3320e653d9"
+    "sha256": "532cac2b7b41b6390dcfa1ac7adfbf1b9af5bb338335b357e5cdb6b782745ce3"
   },
   "infer-memory.md": {
     "file": "infer-memory.md",
     "sha256": "e59396e8e8de4ccd095c5740ef8d79d911b9d21f77ad751cbdd97d3f37c1adb2"
   },
+  "intake-answer.md": {
+    "file": "intake-answer.md",
+    "sha256": "8f1202fff7a1ddea2a0d2dd9f13dc81d6e852028aeedbf5f0332a6a250075393"
+  },
   "intake-extraction.md": {
     "file": "intake-extraction.md",
     "sha256": "720f3851d0d2e369beb3fdfea82f191c3e8aa5369fe9f1daee20effe2a554f5d"
   },
+  "intake-live-ground.md": {
+    "file": "intake-live-ground.md",
+    "sha256": "c0c4b70e53ded0091008c52cab413d82dc5812325ed227299386c413f06ed8b7"
+  },
+  "intake-official-ground.md": {
+    "file": "intake-official-ground.md",
+    "sha256": "b6d7a4653d427c12edbcb7f3db63fae4abafdd99b95f563ba982e40d72cccd61"
+  },
   "intake-voice.md": {
     "file": "intake-voice.md",
-    "sha256": "b9385d0652291a5b3f9f35c5e59fbcb91cd8345d47cc4b4b1e287c128930207f"
+    "sha256": "886097480805945cea7ca38ab38f5e504d9c9b478ba8dab4cf59f7c615f33b57"
+  },
+  "intro-voice.md": {
+    "file": "intro-voice.md",
+    "sha256": "329d7363f6481f3a2eb92276c7b6fb1b4a012a08e632195bf9b3cb269a77a443"
+  },
+  "medical-sanitize.md": {
+    "file": "medical-sanitize.md",
+    "sha256": "21584bd7ec574c64b27e2507c833d4b11dbfb0af41ff2522889ecc9cedd58d0c"
+  },
+  "medical-symptom.md": {
+    "file": "medical-symptom.md",
+    "sha256": "0978e05be270746ad83f4e26b0752e1817c5feaa4f056b41f6c8f9d2b207de82"
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
@@ -85,7 +125,7 @@
   },
   "radar-voice.md": {
     "file": "radar-voice.md",
-    "sha256": "27c6366c53cf931190b5fb1dcbe57b28e9a496ffd61d1e37354700a272d70b0a"
+    "sha256": "0e4661ee51c7983624db2360c643373be480921b88083ee0e12c44e236985ee1"
   },
   "rank-recommendations.md": {
     "file": "rank-recommendations.md",
@@ -99,6 +139,10 @@
     "file": "reply-intent.md",
     "sha256": "322e26a774f0c1a5d492dda049ce98d548fd7830c6ee76aa68c600c406e9b13f"
   },
+  "reply-resolver.md": {
+    "file": "reply-resolver.md",
+    "sha256": "83fec3c09426b2c2a8b811ee00266fe2f12a0ff5b2a26752644a181e95a8890c"
+  },
   "triage-child-event.md": {
     "file": "triage-child-event.md",
     "sha256": "da61a03c350cead4b23749a00ae1c688612298a387dcbef9ca0356447256b497"
@@ -111,9 +155,13 @@
     "file": "verify-registration-window.md",
     "sha256": "08b916a61b81d255b60910d50f2f3277fbdbc7d00a939f6356b7d864e673d1a7"
   },
+  "voice-turn.md": {
+    "file": "voice-turn.md",
+    "sha256": "2b5e322af338df8fe18cb69a7de33894368168780f8f468866bb53f3e592466a"
+  },
   "week-summary.md": {
     "file": "week-summary.md",
-    "sha256": "bceb5d8fc6a0d5146363ea67efcd581a6410c381797bee9464a9b389b4521fb9"
+    "sha256": "45146aa76de2af1f3dbdb32494e99159276a4acffc8c8f62fd03632ce3fc83cb"
   },
   "welcome-voice.md": {
     "file": "welcome-voice.md",

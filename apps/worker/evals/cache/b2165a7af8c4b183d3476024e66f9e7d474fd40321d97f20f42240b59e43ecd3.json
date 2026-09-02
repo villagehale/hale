@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies Ada as the child in question (ageMonths 101 = ~8 years old, matching the parent's \"at 8\"), grounds the advice in age-appropriate causes (anxiety, schedule shift, habit loop), and gives a concrete actionable beat for tonight (boring, low-stimulation wake-up response, plus a bedtime chat). It carries the correct fixed ending \"Want the full plan? Reply YES and I'll send it.\" No invented details, no referral, no greeting or sign-off, no markdown. The advice is cut naturally at the character limit (\"so it doesn't get...\") which is the product working as designed. One small note: the trailing \"...\" before the plan offer is a little abrupt and slightly awkward, but it is the tail-cut mechanism, not a mistake. This is essentially correct shape and content.",
+    "score": 5
+  }
+}

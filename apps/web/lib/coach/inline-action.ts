@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { type AgentClient, SONNET_MODEL } from '@hale/agent';
+import type { AgentClient } from '@hale/agent';
 import { type ContentProvenance, type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
@@ -245,7 +245,8 @@ export async function draftInlineAction(
     actionType,
     verdict: verdict.verdict,
     usage: verdict.usage,
-    model: SONNET_MODEL,
+    costUsd: verdict.costUsd,
+    model: verdict.model,
   });
 
   return { actionId, eventId };

@@ -1,26 +1,61 @@
-import type { Database } from '@hale/db';
-import {
-  type EmailCaptureDeps,
-  handleEmailCaptureReply,
-} from '~/lib/channel/email-capture/reply';
-import {
-  type NameCaptureDeps,
-  handleNameCaptureReply,
-} from '~/lib/channel/identity/name-reply';
-import {
-  type SequenceReplyDeps,
-  handleSequenceReply,
-} from '~/lib/registration/sequence/reply';
-import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
+import { readAffirmative } from '~/lib/channel/affirmative';
+import { connectorOfferReply } from '~/lib/channel/connect/copy';
+import { matchConnectorRequest } from '~/lib/channel/connect/detect';
+import { offerConnectorLink } from '~/lib/channel/connect/offer';
+import { replyLanguage } from '~/lib/channel/language';
+import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
+import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
+import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
+import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
+import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import { type SequenceReplyDeps, handleSequenceReply } from '~/lib/registration/sequence/reply';
 import {
+  type ResolvedIntroAnswer,
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
-import { checkupDraftedReply, healthDoneReply } from './copy';
+import { checkupDraftedReply, failureReply, healthDoneReply } from './copy';
 import { matchFastPath } from './fast-path';
+import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
+
+/**
+ * May this handler act on a BARE affirmative right now?
+ *
+ * An ordinal ("yes 2") and an undo are exempt: neither can be conversation and neither can
+ * be an answer to any question but the numbered one. Everything else consults
+ * {@link soleOpenKind} — see there for why the old priority order had to go.
+ */
+async function mayClaimBareWord(
+  ctx: HandlerContext,
+  command: { verb: string; index: number | null },
+  kind: OpenQuestionKind,
+): Promise<boolean> {
+  if (command.index !== null || command.verb === 'undo') return true;
+  return soleOpenKind(await ctx.openQuestions(), kind);
+}
+
+/**
+ * A resolved intro answer, in the shape the lane's own reader produces.
+ *
+ * The lane is keyed on the two-word keyword's NOUN (`intro` vs `intros`), and the resolver
+ * is keyed on the question kind. This is the one place the two vocabularies meet, and it
+ * is three lines rather than a shared enum because the lane's shape is the older and the
+ * more load-bearing of the two: it is what the consent ledger's writer branches on.
+ */
+function introKeywordFrom(ctx: HandlerContext): ResolvedIntroAnswer | null {
+  const resolved = ctx.resolved;
+  if (resolved?.kind !== 'intro_optin' && resolved?.kind !== 'intro_proposal') return null;
+  return {
+    target: resolved.kind === 'intro_optin' ? 'discoverability' : 'proposal',
+    granted: resolved.polarity === 'yes',
+    confidence: resolved.confidence,
+  };
+}
 
 /**
  * VIL-220 · C1 — the deterministic handlers, and the order they run in.
@@ -30,9 +65,10 @@ import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './rou
  * lives in M8. What lives HERE is only the mapping from those verdicts to a text
  * message, and the order.
  *
- * THE ORDER. "yes" is the one word both handlers could claim, and the rule that settles
- * it is not "approvals are more important" — it is that a handler may only claim a word
- * when it has something concrete for the word to mean:
+ * THE ORDER. "yes" is the one word several handlers could claim, and the rule that
+ * settles it is not "approvals are more important" — it is that a handler may only claim a
+ * word when it has something concrete for the word to mean, AND when that thing is the
+ * only thing the word could mean:
  *
  *   · The approval handler claims a bare affirmative ONLY when an action is actually
  *     drafted and waiting. With none — the overwhelmingly common case — it declines,
@@ -40,14 +76,19 @@ import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './rou
  *     handler in the chain from starving the ones behind it, and it is asserted in
  *     handlers.test.ts in both directions.
  *
- *   · When BOTH are open, approvals win. A draft is a question Hale asked and is holding
- *     an answer for, and it is the only one of the two whose wrong answer executes
- *     something the parent cannot see — a mis-filed "done" is recoverable, a mis-fired
- *     calendar write needs an undo.
+ *   · When TWO KINDS of question are open, NOBODY claims it (see `soleOpenKind` in
+ *     open-questions.ts). Approvals used to win that tie on the grounds that a mis-fired
+ *     calendar write is the most expensive wrong answer — which was true, and was still a
+ *     coin flip resolved in favour of the expensive outcome being possible. It survived
+ *     only because the intro card ended "Reply YES INTRO", so a bare "yes" could not have
+ *     meant the intro. Composing that card (2026-08-13) removed the disambiguator, and
+ *     the tie-break went with it: the turn now falls through to the natural-reply stage,
+ *     which either reads which question the words name or has Hale ask, in a sentence.
  *
  * An ORDINAL ("YES 2") never reaches the health handler at all: M8 matches exact words,
  * so it declines anything carrying a number, and the approval handler answers it even
- * when the queue is empty.
+ * when the queue is empty — and it never waits on `soleOpenKind`, because a number cannot
+ * be an answer to anything but a numbered list.
  *
  * WHY REGISTRATION IS LAST. The first two handlers claim only words they recognise
  * exactly. M7's does something none of the others do: inside an open check-in window it
@@ -61,7 +102,13 @@ import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './rou
  */
 
 /**
- * Village intros — YES INTROS / NO INTROS / YES INTRO / NO INTRO.
+ * Village intros — YES INTROS / NO INTROS / YES INTRO / NO INTRO, and, since 2026-08-13,
+ * whatever else the parent actually said.
+ *
+ * NOTHING PRINTS THOSE FOUR PHRASES ANY MORE. The asks are composed and ask their
+ * question in English (lib/village/intros/voice.ts). The phrases are still READ, because
+ * a parent who learned one must not discover it has been taken away — and reading them
+ * here is free, which is why this handler still runs before the model does.
  *
  * FIRST IN THE CHAIN, and the narrowest thing in it: it claims a two-word phrase whose
  * second word is `intro` or `intros` and nothing else, so it cannot starve a handler
@@ -76,6 +123,11 @@ import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './rou
 export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicHandler {
   return {
     name: 'village_intro',
+    // Both intro questions. The lane already distinguishes them by the noun in the
+    // keyword; on a resolved turn the KIND carries that distinction instead, and the
+    // grade above it is what makes the proposal (a disclosure) need `high` while the
+    // opt-in does not.
+    resolves: new Set<OpenQuestionKind>(['intro_optin', 'intro_proposal']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const outcome = await handleVillageIntroReply(
         database,
@@ -84,6 +136,7 @@ export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicH
           parentUserId: ctx.parentUserId,
           body: ctx.body,
           now: ctx.now,
+          resolved: introKeywordFrom(ctx),
         },
         deps,
       );
@@ -101,9 +154,19 @@ export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicH
 export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
   return {
     name: 'approval',
+    resolves: new Set<OpenQuestionKind>(['approval']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const command = matchFastPath(ctx.body);
+      // A resolved answer NAMES its action, so it does not need — and must not use — the
+      // ordinal grammar: the two reads of the pending list are a co-parent's tap apart,
+      // and only an id survives that.
+      const resolved = ctx.resolved?.kind === 'approval' ? ctx.resolved : null;
+      const command = resolved
+        ? ({ verb: resolved.polarity, index: null } as const)
+        : matchFastPath(ctx.body);
       if (!command) return { claimed: false };
+      if (!resolved && !(await mayClaimBareWord(ctx, command, 'approval'))) {
+        return { claimed: false };
+      }
 
       const outcome = await resolveApproval(
         database,
@@ -112,6 +175,7 @@ export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
           parentUserId: ctx.parentUserId,
           command,
           now: ctx.now,
+          targetActionId: resolved?.questionId,
         },
         spine,
       );
@@ -157,6 +221,68 @@ export function emailCaptureHandler(deps: EmailCaptureDeps): DeterministicHandle
 }
 
 /**
+ * A plain ask to connect Google Calendar, Gmail or Drive (the connector handoff).
+ *
+ * PLACED AFTER the email capture and BEFORE the three bare-affirmative claimers, and
+ * the position costs nothing either way: it claims only a message carrying an explicit
+ * connect-verb + provider-noun pair (connect/detect.ts), a shape no other handler's
+ * vocabulary contains and no bare word can be. What the position buys is the same
+ * thing every deterministic handler buys — the model never sees the ask, so the answer
+ * is a REAL link minted this turn rather than a composed sentence about one (the
+ * registration-context failure class, closed the way the referral tool closed its own:
+ * with a fact instead of an instruction).
+ *
+ * BEFORE FLOOD by construction (the whole chain is), so a parent whose hour is spent
+ * still gets their link.
+ *
+ * Rule #11, all three ways out named: `sent` claims with the locked offer line (EN/FR
+ * twin, one segment, link inside it); `not_enrolled` — unreachable from the router,
+ * which does not reach the chain without a verified parent channel, but re-proven by
+ * the mint — declines to claim and says why in the log; `mint_failed` claims with the
+ * honest failure line rather than deferring the turn into hours of queue backoff.
+ */
+export function connectorLinkHandler(
+  log: Pick<Console, 'error'> = console,
+): DeterministicHandler {
+  return {
+    name: 'connector_link',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const provider = matchConnectorRequest(ctx.body);
+      if (!provider) return { claimed: false };
+
+      const outcome = await offerConnectorLink(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        provider,
+        now: ctx.now,
+      });
+      switch (outcome.status) {
+        case 'minted':
+          return {
+            claimed: true,
+            outcome: 'sent',
+            reply: connectorOfferReply(replyLanguage(ctx.body), provider, outcome.url),
+          };
+        case 'not_enrolled':
+          // Ids and the named outcome only, never the body (rule #1). The coach takes
+          // the turn, and its skill knows this branch exists.
+          log.error(
+            { familyId: ctx.familyId, provider, outcome: 'not_enrolled' },
+            'connector link: mint refused for an unenrolled turn',
+          );
+          return { claimed: false };
+        case 'mint_failed':
+          log.error(
+            { familyId: ctx.familyId, provider, outcome: 'mint_failed' },
+            'connector link: mint failed',
+          );
+          return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
+      }
+    },
+  };
+}
+
+/**
  * The name a parent texts back after Hale asked what to call them.
  *
  * LAST, and the position is as deliberate as the address capture's is. This is the
@@ -194,6 +320,76 @@ export function nameCaptureHandler(deps: NameCaptureDeps): DeterministicHandler 
 }
 
 /**
+ * The founder's welcome note — his YES, and the note it puts in a new family's thread.
+ *
+ * PLACED HERE, ahead of the three handlers that read a bare affirmative for a household's
+ * own business, and the rule is the one stated at the top of this file: among handlers
+ * that recognise the SAME word, the one whose wrong answer costs most goes first.
+ * Everything below this line acts on the family that spoke; this one acts on a DIFFERENT
+ * household, and an unsolicited text to a stranger in a person's name is the most
+ * expensive wrong reading on the chain after an approval that executes something.
+ *
+ * IT CANNOT STARVE THEM. The offer row is only ever written against the founder's own
+ * family (lib/channel/founder/ping.ts), so for every other family in the product this
+ * handler declines after one indexed read — and for HIS family a bare affirmative still
+ * waits on `soleOpenKind` like every other one.
+ *
+ * BOTH POLARITIES CLAIM. Unlike the two offers behind it, a "no" here has somewhere to go:
+ * it voids the offer with its own reason and says so. An offer whose no went nowhere would
+ * be one he could only get rid of by ignoring it for two days.
+ */
+export function founderWelcomeHandler(deps: FounderReplyDeps): DeterministicHandler {
+  return {
+    name: 'founder_welcome',
+    resolves: new Set<OpenQuestionKind>(['founder_welcome_offer']),
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const resolved =
+        ctx.resolved?.kind === 'founder_welcome_offer' ? ctx.resolved.polarity : null;
+      if (
+        resolved === null &&
+        readAffirmative(ctx.body) !== 'unclear' &&
+        !soleOpenKind(await ctx.openQuestions(), 'founder_welcome_offer')
+      ) {
+        return { claimed: false };
+      }
+      const outcome = await handleFounderWelcomeReply(
+        database,
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          now: ctx.now,
+          resolved,
+        },
+        deps,
+      );
+      if (outcome.status === 'declined_to_claim') return { claimed: false };
+      if (outcome.status !== 'note_sent') {
+        return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      }
+      return {
+        claimed: true,
+        outcome: outcome.status,
+        reply: outcome.reply,
+        // Closed by the NOTE, not by the ack — `fulfilled_by` has to point at the message
+        // that made good on the promise, and that message is in the other family's thread.
+        // Closed AFTER the ack has actually gone, for the reason every MEM-10 writer closes
+        // late: a turn that sent the note and then failed to answer must be re-drivable
+        // against an offer that is still standing (the note's dedupe key makes the redrive
+        // free).
+        afterSend: () =>
+          deps.fulfillCommitment(database, {
+            familyId: ctx.familyId,
+            kind: 'founder_welcome_offer',
+            channelMessageId: outcome.noteChannelMessageId,
+            now: ctx.now,
+          }),
+      };
+    },
+  };
+}
+
+/**
  * M8's health-nudge replies. Two outcomes reach a parent: the paperwork is filed as
  * handled, or a checkup is DRAFTED for their approval — Hale never books (rule #4), and
  * the reply says so rather than implying an appointment exists.
@@ -204,17 +400,53 @@ export function nameCaptureHandler(deps: NameCaptureDeps): DeterministicHandler 
 export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler {
   return {
     name: 'health',
+    // The OFFER half only. "Done" is the other half of the same sentence and is not a
+    // polarity — filing a checkpoint as handled writes a permanent suppression — so it
+    // stays a word this handler reads for itself and is not a question the resolver may
+    // answer (see the OpenQuestionKind note in open-questions.ts).
+    resolves: new Set<OpenQuestionKind>(['checkup_offer']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const resolved = ctx.resolved?.kind === 'checkup_offer' ? ctx.resolved : null;
+      // A tick or the word "done" is unambiguous and claims immediately. A bare "yes" is
+      // not, and M8's own reading of one drafts an appointment — so it waits for
+      // `soleOpenKind` like every other bare affirmative. A RESOLVED answer skips the
+      // wait: it named its question, which is what the wait exists to establish.
+      if (
+        !resolved &&
+        readAffirmative(ctx.body) === 'yes' &&
+        !soleOpenKind(await ctx.openQuestions(), 'checkup_offer')
+      ) {
+        return { claimed: false };
+      }
       const outcome = await handleHealthCheckpointReply(
         database,
-        { familyId: ctx.familyId, parentUserId: ctx.parentUserId, body: ctx.body },
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          now: ctx.now,
+          resolved: resolved ? 'booking' : null,
+        },
         deps,
       );
       switch (outcome.status) {
         case 'recorded_done':
           return { claimed: true, outcome: outcome.status, reply: healthDoneReply() };
         case 'drafted_for_approval':
-          return { claimed: true, outcome: outcome.status, reply: checkupDraftedReply() };
+          return {
+            claimed: true,
+            outcome: outcome.status,
+            reply: checkupDraftedReply(),
+            // The offer is closed by the message that told the parent it was taken, never
+            // before it — a turn that drafted and then failed to reply must be re-drivable
+            // against an offer that is still standing (the MEM-10 send-time discipline).
+            afterSend: (channelMessageId) =>
+              deps.fulfillOffer(database, {
+                familyId: ctx.familyId,
+                channelMessageId,
+                now: ctx.now,
+              }),
+          };
         default:
           return { claimed: false };
       }
@@ -252,7 +484,12 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
 export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
   return {
     name: 'coach_plan',
+    resolves: new Set<OpenQuestionKind>(['plan_offer']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const resolved = ctx.resolved?.kind === 'plan_offer';
+      if (!resolved && readAffirmative(ctx.body) === 'yes') {
+        if (!soleOpenKind(await ctx.openQuestions(), 'plan_offer')) return { claimed: false };
+      }
       const outcome = await handlePlanYes(
         database,
         {
@@ -262,6 +499,7 @@ export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
           body: ctx.body,
           send: ctx.send,
           now: ctx.now,
+          resolved: resolved ? 'yes' : null,
         },
         deps,
       );
@@ -313,6 +551,48 @@ export function sequenceReplyHandler(deps: SequenceReplyDeps): DeterministicHand
       );
       if (outcome.status !== 'recorded') return { claimed: false };
       return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+    },
+  };
+}
+
+/**
+ * Rec-morning clock and portal. Reviewed copy, no model.
+ *
+ * AFTER registration: "waitlisted #3" is M7's to file, and a FAQ matcher that ran
+ * first would steal the report. BEFORE name capture: that handler claims a bare
+ * word, which is broader than a rec-morning question.
+ *
+ * A watch ask is deliberately not claimed — watching is the coach's job. This
+ * handler answers which morning and which login, which is the GTM miss.
+ */
+async function loadFamilyRecWhere(
+  database: Database,
+  familyId: string,
+): Promise<{ city: string | null; postal: string | null } | null> {
+  const [row] = await database
+    .select({
+      city: schema.families.city,
+      postalCode: schema.families.postalCode,
+      areaCoarse: schema.families.areaCoarse,
+    })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  if (!row) return null;
+  return { city: row.city, postal: row.postalCode ?? row.areaCoarse };
+}
+
+export function recMorningHandler(): DeterministicHandler {
+  return {
+    name: 'rec_morning',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const named = recMorningReply(ctx.body, ctx.now);
+      if (named !== null) return { claimed: true, outcome: 'rec_morning', reply: named };
+      if (!recMorningCouldUseWhere(ctx.body)) return { claimed: false };
+      const where = await loadFamilyRecWhere(database, ctx.familyId);
+      const reply = recMorningReply(ctx.body, ctx.now, where);
+      if (reply === null) return { claimed: false };
+      return { claimed: true, outcome: 'rec_morning', reply };
     },
   };
 }

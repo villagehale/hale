@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "This needs emergency care now - go to the ER or call 911. Fever with neck stiffness and light sensitivity together needs urgent checking, not watching at home.",
+    "triage": "Go to the ER right away, or call 911 immediately if there's also a rash that doesn't fade when pressed with a glass, drowsiness, confusion, or trouble waking. This is not a wait-and-see case, so skip 811 and act now.",
+    "sources": [
+      "Nemours KidsHealth",
+      "Meningitis Research Foundation",
+      "Boston Children's Hospital"
+    ]
+  },
+  "latencyMs": 3547
+}

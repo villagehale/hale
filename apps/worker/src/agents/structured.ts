@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { type LaneConfig, laneRequestFields } from '@hale/agent';
 import type { z } from 'zod';
 
 /**
@@ -24,7 +25,8 @@ export function cachedSystem(instructions: string): Anthropic.TextBlockParam[] {
  */
 interface ForceToolJsonArgs<TSchema extends z.ZodTypeAny> {
   client: Pick<Anthropic, 'messages'>;
-  model: string;
+  /** The LANE, not a bare model id — see the web-side mirror in pipeline/structured.ts. */
+  lane: LaneConfig;
   system: string;
   userMessage: string;
   toolName: string;
@@ -42,7 +44,9 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   args: ForceToolJsonArgs<TSchema>,
 ): Promise<ForceToolJsonResult<z.infer<TSchema>>> {
   const response = await args.client.messages.create({
-    model: args.model,
+    // See the web-side mirror: the pinned SDK types neither knob, so narrow to
+    // `model` and let the rest ride along on the wire.
+    ...(laneRequestFields(args.lane) as Pick<Anthropic.MessageCreateParams, 'model'>),
     max_tokens: 4096,
     system: cachedSystem(args.system),
     tools: [

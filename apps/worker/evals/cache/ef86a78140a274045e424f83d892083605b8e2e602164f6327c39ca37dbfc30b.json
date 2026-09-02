@@ -1,0 +1,17 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.4,
+    "rationale": "A private personal note by a 16-year-old about confidential reproductive healthcare — sensitive teen content that should not be surfaced or acted on by the family system.",
+    "payload": {
+      "withheld": true,
+      "reason": "sensitive_teen_health_content"
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-riley"
+  },
+  "latencyMs": 6052
+}

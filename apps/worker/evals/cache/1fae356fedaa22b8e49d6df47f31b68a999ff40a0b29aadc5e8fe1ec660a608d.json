@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The answer states that Mira uses her blue elephant for naps and travel, which accurately reflects the reference fact that \"mira settles for naps with her blue elephant.\" The answer correctly identifies the comfort object (blue elephant) and its use for naps. The additional context about travel and consistency helping her settle is drawn from the known family history (comfort_object context: \"naps and travel\") and represents reasonable parenting inference, not fabrication. The core fact about the blue elephant for naps matches the reference exactly.",
+    "score": 5
+  }
+}

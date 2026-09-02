@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGbG96kFZSJ8FC89zGZR",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EokGCpABCBEYAipAOIa5N1s1sGadDMsXvZY76QCJXzxOvSTiENRHYcbtdmvDrc8P+X3+c47ZDLp19opfj9mGz7JmG30PuLjIlfPHcDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAdKBo9QGEgyumwbhrubuIHNRcWgaDLS92Uzh+wObDU/1NSIwLbGuTOHRhWKFULPYuD6J2fg9VIpQmlBZYvBLuRokvPBY3BkTBJnaBc6aR9Or3d4NKqUEtPWuQ07Iwpmul19gNQuP6Ww07tY8wA3OJc3Sm2i2IzF72uDUO9L4pL7JkTmKF07lrzw065KuvCEBzzlHWg7T60ctR5s6d2cuj7Z/2KxN4andLt1i93ml6O3197VtmW0NOV7m8cGrmz8ujA/iNFIwiASui401SWSPwtPBG5V5BXfHkMAQ/P6o8dt8ItvU5s8WumA3FOi7pMnaO4dhngPU6tSqLRj0A3VM6da4D0hCEndyJfKu4QydGwmX3dPLh0JkdOywqA6kXkteDzkzP1BMq3fToXYgjp6e+xkPrMB5Fdl4iainvi+LV4YxJSobgnFMf/Vv3DCxmaOMdwHUi1Heu8U3u+w/dBSaNFq/jIWhS15nB3hbxTu6V2p0bVwl9v/npwjm3lwestMLC4QZE3evtu5Pf34aWg7io9nh5IEliz6JBwVPMYLYAA1oU4o4+6HNE6N5nmJS6w2Smk+xwIGMb++2ZG+G9QDFcmdrNhmr3QHkQFniykf6Opfnxo/K8Qv0LchMGpt/MR1OWDmCoUHXOo0EoModw2bCv48wPTyIW7pHAchOP9Ri+/hyCJ5vtlfU+sEI+ZcSEq9okJDqU6K6dbDuwT+SK+hJ3z8fYnqI0zEvD+yORrktx82jgOmfLzm+RUxDlIW9C7x+GYaFoesRgUTttcz6MuHxd6RJzxVbc/Zr3KdxQcjTwtZVe4i+e2ji5Ci7Teu9BD2VOAsE1tCunShrk3lHGAE="
+      },
+      {
+        "type": "text",
+        "text": "Mira's enrolled in the Tumbleweeds toddler gym class on Saturdays — that's been on the calendar since last September.\n\nWant me to check if there's a sign-up or schedule file for it in your Drive?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 16361,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 225,
+      "output_tokens_details": {
+        "thinking_tokens": 153
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 5015,
+  "firstInputTokens": 16361
+}

@@ -2,10 +2,13 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { POLICY_VERSION } from '~/lib/consent';
 import { maskPhoneE164 } from '~/lib/channels/phone';
+import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
 import type { TranscriptEntry } from './session';
+import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 
 /**
  * VIL-237 · M2 — provisioning a family from a text conversation. Mirrors
@@ -103,6 +106,20 @@ export async function provisionFromIntake(
   const { phoneE164, phoneHash, location, now } = input;
   const externalAuthId = `sms:${phoneHash}`;
 
+  // Resolved BEFORE the transaction and stamped into the audit row rather than
+  // recomputed on demand, for one reason: the code is HMAC(family id) under a versioned
+  // context label, so rotating that label would silently orphan every historical
+  // attribution. Who referred whom is a fact about the moment of arrival; recording it
+  // then is what makes it survive a key rotation, a code-shape change, or the referrer
+  // exercising their right to erasure. Null for a QR venue, an untagged arrival, or a
+  // tag that matches no family — all ordinary (see resolveReferrerFamilyId).
+  const referredByFamilyId = await resolveReferrerFamilyId(database, input.sourceCode);
+
+  // A comp poster (LIFETIME_FAMILY_SOURCE_CODES) grants the arriving family the Family
+  // tier for life — set on the insert below and recorded in its own audit row.
+  const lifetimeFamilyComp =
+    input.sourceCode !== null && LIFETIME_FAMILY_SOURCE_CODES.has(input.sourceCode);
+
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     const userId = await ensureIntakeUser(tx, externalAuthId);
@@ -117,6 +134,7 @@ export async function provisionFromIntake(
         country: INTAKE_COUNTRY,
         postalCode: location.postalCode,
         areaCoarse: location.areaCoarse,
+        ...(lifetimeFamilyComp ? { planTier: 'family' as const } : {}),
       })
       .returning({ id: schema.families.id });
     const familyId = family?.id;
@@ -187,6 +205,16 @@ export async function provisionFromIntake(
       throw new Error('provisionFromIntake: parent_channels insert returned no row');
     }
 
+    // A caregiver invite in flight on this same number is closed HERE, inside the
+    // transaction that enrols it, because the two rows describe one phone and only one
+    // of them can be true. An invite is opened against a number that has no channel —
+    // which is also what a stranger part-way through their own intake looks like — and
+    // an invite left armed OUTRANKS the channel just written (the machine reads invites
+    // before channels, by design), so a crash between the enrolment and the closure
+    // would leave a parent whose every message is answered with a caregiver's yes/no
+    // question, and whose "yes" tries to enrol their number a second time.
+    await supersedeOpenInviteOnEnrollment(tx, { phoneE164, via: 'sms_intake', now });
+
     // The intake transcript, replayed now that there is a family for it to belong to.
     // channel_messages.family_id / parent_user_id are NOT NULL, so these rows could
     // not have been written as the conversation happened; until this moment the
@@ -239,6 +267,7 @@ export async function provisionFromIntake(
           childCount: childRows.length,
           areaCoarse: location.areaCoarse,
           sourceCode: input.sourceCode,
+          referredByFamilyId,
           maskedPhone: maskPhoneE164(phoneE164),
         },
       },
@@ -254,6 +283,19 @@ export async function provisionFromIntake(
           verification: 'inbound_origination',
         },
       },
+      ...(lifetimeFamilyComp
+        ? [
+            {
+              familyId,
+              actor: userId,
+              actionTaken: 'family_plan_comped',
+              targetTable: 'families',
+              targetId: familyId,
+              before: { planTier: 'free' as const },
+              after: { planTier: 'family' as const, source: input.sourceCode, lifetime: true },
+            },
+          ]
+        : []),
     ]);
 
     return { familyId, userId, channelId };

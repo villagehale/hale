@@ -1,0 +1,22 @@
+{
+  "value": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.93,
+    "rationale": "Known clinic is offering a new slot for the 18-month visit and explicitly asks the parent to confirm, so it's a booking request rather than a reminder.",
+    "payload": {
+      "clinic": "Riverdale Peds",
+      "childName": "Mira",
+      "visitType": "18-month well-child visit",
+      "proposedDate": "2026-06-23",
+      "proposedTime": "17:30",
+      "timezone": "America/Toronto",
+      "confirmationRequested": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 4149
+}

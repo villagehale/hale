@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a competent retry that fixes the defect from the previous attempt. The rejected message used \"Hale can make an introduction\" (third-person self-reference), which was the sole problem. This version corrects that to \"I'll reach out to them first\" (first-person singular), eliminating the grammatical defect. It preserves all the essential elements from the rejected attempt: the nearby family reference, the toddler, Maya's age, the conditional offer, and crucially, the reassurance that nothing is shared until both families agree. The message is small in scope, uses correct English, gives a reason (both families must agree), doesn't oversell, and reads like a person, not a mass text. It's appropriately restrained and leaves room for the parent to say no."
+  }
+}

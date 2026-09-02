@@ -1,0 +1,43 @@
+{
+  "response": {
+    "id": "msg_011CeMxoTtRb49UQ2AHnYqmY",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvECCpABCBEYAipARwzpBI3b4FyTYwdKHBi3SlQ4r1UmDGbgxFAwwqXUbKyoORnR2V+V609r9vkzGIxQ65o8SKRIPVjuH8AO0wPjcTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAdb8sdQGEgzjRzHH2MUvb22qPKYaDITUBNfstwClkkw7sCIw1bCpzwTBInA/ziJBJvhMr6P6yc2g7EU0LufuVassqbopy6EkC5W5NTP/5I8zvhWjKo0BefKWtA4gLA2XggwSO02hLeJvXx9YlM/sF7cKdWkNmlyIyy3xEAghlmOpyKIvRANJejjomP/wzJ8lu6Bwt3jcMx6CHjPhC4yI+u6OOe7Vr3cRIbmIN5EYP6hPmoV861R7l+2i5TkyFjkkWG/3/XaeD8T5Ckk3mFmvcLqDZ4ha1wyINuCk8oEKyIg9gTOuGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Uo2S4HFZ9HC6ooctf5BfeP",
+        "name": "propose_calendar_cancel",
+        "input": {
+          "eventId": "evt-swim-thu"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 987,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 13908,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 117,
+      "output_tokens_details": {
+        "thinking_tokens": 53
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

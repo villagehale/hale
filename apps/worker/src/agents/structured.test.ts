@@ -1,3 +1,4 @@
+import { pickLane } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type Anthropic from '@anthropic-ai/sdk';
@@ -51,7 +52,7 @@ describe('cachedSystem', () => {
 
 describe('forceToolJson — prompt caching', () => {
   const args = {
-    model: 'claude-test',
+    lane: pickLane('classify'),
     system: 'STABLE AGENT INSTRUCTIONS',
     userMessage: JSON.stringify({ question: 'VARIABLE PER-RUN PAYLOAD' }),
     toolName: TOOL,

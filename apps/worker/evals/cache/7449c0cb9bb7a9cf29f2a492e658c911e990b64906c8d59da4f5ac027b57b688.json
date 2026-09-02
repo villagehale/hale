@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.9,
+    "rationale": "Ontario notice that the 16-year-old is eligible to book a G1 knowledge test — a dated identity/licence milestone to surface.",
+    "payload": {
+      "milestone": "G1 driver's licence knowledge test eligibility",
+      "issuer": "Ontario (DriveTest)",
+      "province": "ON",
+      "action_required": "Book G1 knowledge test appointment online at a DriveTest centre",
+      "source_email": "no-reply@ontario.ca"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": "child-theo",
+    "teen_content": false
+  },
+  "latencyMs": 5131
+}

@@ -101,6 +101,7 @@ export const AUDIT_VERBS = [
   'child_removed',
   'family_location_updated',
   'family_plan_updated',
+  'family_plan_comped',
   'family_intents_updated',
   'parent_name_updated',
   'invite_created',
@@ -148,8 +149,17 @@ export const AUDIT_VERBS = [
   'sms_intake_inbound',
   'sms_intake_outbound',
   'sms_intake_provisioned',
+  'sms_intake_contact_card',
   'voice_call_received',
+  // v0's callback text. No new row carries it — an enrolled caller now has a spoken
+  // conversation instead — but months of rows in production do, and a verb the trail
+  // cannot read makes them all say "recorded an update".
   'voice_callback_sent',
+  // Voice v1 · the spoken conversation itself.
+  'voice_turn_received',
+  'voice_turn_spoken',
+  'voice_call_completed',
+  'voice_relay_ticket_replayed',
   'channel_sent',
   'push_sent',
   'email_reply_received',
@@ -169,10 +179,18 @@ export const AUDIT_VERBS = [
   'caregiver_invite_accepted',
   'caregiver_invite_expired',
   'caregiver_invite_superseded',
+  'caregiver_invite_superseded_by_join',
+  'caregiver_invite_superseded_by_enrollment',
   'caregiver_invite_withdrawn',
   'caregiver_invite_refused',
   'caregiver_sms_inbound',
   'caregiver_sms_outbound',
+  // ── the co-parent join link ─────────────────────────────────────────────
+  'co_parent_join_link_minted',
+  'co_parent_join_link_revoked',
+  'co_parent_join_accepted',
+  'join_sms_inbound',
+  'join_sms_outbound',
   // ── the executor's own writes (internal-writes.ts) ──────────────────────
   'action.routine_pinned',
   'action.routine_pinned.skipped_duplicate',
@@ -221,6 +239,8 @@ export const AUDIT_VERBS = [
   'quick_log_measurement',
   'health_checkpoint_marked_done',
   // ── connectors, settings, billing ───────────────────────────────────────
+  'connector_link_minted',
+  'connector_link_signed_in',
   'integration_connected',
   'integration_revoked',
   'user_preferences_updated',
@@ -248,6 +268,8 @@ export const AUDIT_VERBS = [
   'village_intro_proposed',
   'coach_plan_message_sent',
   'coach_plan_check_in_sent',
+  'activity_followup_sent',
+  'activity_followup_shared',
   'village_intro_card_sent',
   'village_intro_accepted',
   'village_intro_declined',
@@ -259,6 +281,9 @@ export const AUDIT_VERBS = [
   'followup_intro_asked',
   'followup_activity_asked',
   'smoke_alarm_fired',
+  // ── the founder's welcome note ──────────────────────────────────────────
+  'founder_welcome_offered',
+  'founder_welcome_sent',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -372,6 +397,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   child_removed: { sentence: 'you removed a child', family: 'done' },
   family_location_updated: { sentence: 'you updated your family’s location', family: 'done' },
   family_plan_updated: { sentence: 'you changed your plan', family: 'done' },
+  family_plan_comped: {
+    sentence: 'your family got the Family plan, free for life',
+    family: 'done',
+  },
   family_intents_updated: { sentence: 'you updated what you’d like help with', family: 'done' },
   parent_name_updated: { sentence: 'you updated your name', family: 'done' },
   invite_created: { sentence: 'you invited your co-parent', family: 'done' },
@@ -424,12 +453,22 @@ const VERBS: Record<AuditVerb, Verb> = {
   sms_intake_inbound: { sentence: 'you texted Hale while getting set up', family: 'note' },
   sms_intake_outbound: { sentence: 'Hale texted you while getting set up', family: 'note' },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
+  sms_intake_contact_card: { sentence: 'Hale texted you its contact card', family: 'note' },
   voice_call_received: {
     // Hale keeps no audio and no transcript — only that a call arrived.
     sentence: 'a call came in to Hale’s number',
     family: 'note',
   },
   voice_callback_sent: { sentence: 'Hale texted you back after your call', family: 'note' },
+  voice_turn_received: { sentence: 'you asked Hale something on the phone', family: 'note' },
+  voice_turn_spoken: { sentence: 'Hale answered you on the phone', family: 'note' },
+  voice_call_completed: { sentence: 'you and Hale finished a call', family: 'done' },
+  // A second connection tried to join one of your calls with a link that had already
+  // been used, and Hale hung up on it before it could read anything of yours.
+  voice_relay_ticket_replayed: {
+    sentence: 'Hale refused a second connection to one of your calls',
+    family: 'problem',
+  },
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
   push_sent: { sentence: 'Hale sent you a notification', family: 'done' },
   email_reply_received: { sentence: 'you replied to one of Hale’s emails', family: 'note' },
@@ -481,10 +520,37 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you replaced an earlier caregiver invite',
     family: 'note',
   },
+  caregiver_invite_superseded_by_join: {
+    // Says only what the parent's own NUMBER_IN_USE refusal already says to them —
+    // never which household the number joined, which may not be theirs (rule #1).
+    sentence: 'a caregiver invite closed because that number is already set up with Hale',
+    family: 'note',
+  },
+  caregiver_invite_superseded_by_enrollment: {
+    // Same disclosure bound as the join twin above: the number set itself up with
+    // Hale as a parent, and WHOSE household that is may not be this parent's to know.
+    sentence: 'a caregiver invite closed because that number is already set up with Hale',
+    family: 'note',
+  },
   caregiver_invite_withdrawn: { sentence: 'you withdrew a caregiver invite', family: 'done' },
   caregiver_invite_refused: { sentence: 'a caregiver declined your invite', family: 'note' },
   caregiver_sms_inbound: { sentence: 'a caregiver texted Hale', family: 'note' },
   caregiver_sms_outbound: { sentence: 'Hale texted a caregiver', family: 'note' },
+  // ── the co-parent join link ─────────────────────────────────────────────
+  co_parent_join_link_minted: {
+    sentence: 'you asked for a link to add your co-parent',
+    family: 'done',
+  },
+  co_parent_join_link_revoked: {
+    sentence: 'you revoked a co-parent link before it was used',
+    family: 'done',
+  },
+  co_parent_join_accepted: {
+    sentence: 'your co-parent used your link and joined your family',
+    family: 'done',
+  },
+  join_sms_inbound: { sentence: 'a co-parent texted Hale', family: 'note' },
+  join_sms_outbound: { sentence: 'Hale texted about your co-parent', family: 'note' },
   // ── what the executor actually did ──────────────────────────────────────
   'action.routine_pinned': { sentence: 'pinned an activity to your week', family: 'done' },
   'action.routine_pinned.skipped_duplicate': {
@@ -577,6 +643,14 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'done',
   },
   // ── connectors, settings, billing ───────────────────────────────────────
+  connector_link_minted: {
+    sentence: 'you asked to connect an account, so Hale texted you a sign-in link',
+    family: 'done',
+  },
+  connector_link_signed_in: {
+    sentence: 'you signed in with a link texted to your phone',
+    family: 'done',
+  },
   integration_connected: { sentence: 'you connected an account to Hale', family: 'done' },
   integration_revoked: { sentence: 'you disconnected an account', family: 'done' },
   user_preferences_updated: { sentence: 'you updated your preferences', family: 'done' },
@@ -636,6 +710,22 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale checked in on your plan',
     family: 'note',
   },
+  // Hale coming back on an activity search it promised to finish. 'done' rather than
+  // 'note' because the row IS the promise being discharged, and it is written whether the
+  // second look found something or nothing — coming back empty-handed and saying so is
+  // keeping the promise (channel/activity/sweep.ts), so a sentence that claimed a find
+  // would be wrong half the time.
+  activity_followup_sent: {
+    sentence: 'Hale came back to you about an activity search',
+    family: 'done',
+  },
+  // The follow-up read more of a schedule than a text can hold, so the rest went on a
+  // page the parent can open (channel/activity/share-page.ts). 'done' for the reason
+  // above: the row records something Hale finished, not something it is waiting on.
+  activity_followup_shared: {
+    sentence: 'Hale put the rest of a schedule on a page for you',
+    family: 'done',
+  },
   village_intro_card_sent: { sentence: 'Hale asked you about an introduction', family: 'awaiting' },
   village_intro_accepted: { sentence: 'you said yes to an introduction', family: 'done' },
   village_intro_declined: { sentence: 'you said no to an introduction', family: 'done' },
@@ -668,6 +758,18 @@ const VERBS: Record<AuditVerb, Verb> = {
     // was texted, but they were not actually helped, and the trail should say so.
     sentence: 'Hale could not reach its model, so it sent you a fixed safety message',
     family: 'problem',
+  },
+  // Written on the FOUNDER's own trail when a family arrives from one of his posters.
+  // 'awaiting' because the note has not been sent — a word from him is what sends it.
+  founder_welcome_offered: {
+    sentence: 'Hale offered to send a new family your welcome note',
+    family: 'awaiting',
+  },
+  // And on the ARRIVING family's trail when the note lands. The sentence says a person
+  // wrote it, because that is the only thing about this message that matters.
+  founder_welcome_sent: {
+    sentence: 'the person who built Hale sent you a note',
+    family: 'done',
   },
 };
 
@@ -714,7 +816,6 @@ const TARGET_NOUNS: Record<string, string> = {
   family_invites: 'invite',
   family_memory_episodes: 'logged moment',
   village_candidates: 'village suggestion',
-  routine_proposals: 'routine',
   consent_records: 'consent',
   teen_access_grants: 'teen privacy request',
   conversations: 'Hale',

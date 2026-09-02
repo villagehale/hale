@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Slots: Both slots are cleanly extracted and tied to the correct source URL. Every field—name, age band, day/time, session dates, fee, membership surcharge, registration open date, and \"until classes fill\"—matches the page exactly. Both slots carry the registration date as required by the watchFor note and the scoring rules.\n\nMessage: Leads with the best slot (Tiny Gym) by name, which is the correct toddler-stage fit (walking to 3.5 years with a parent). Day, times, dates, fee, and membership surcharge are all cited to \"their site says.\" The registration window (\"opened July 22 and stays open until classes fill\") is explicitly carried into the message, satisfying the watchFor requirement. watch=false, so no coming-back sentence is present—correct, no unearned promise. pageEvidence=page_has_schedule, and no unearned negative claim is made. The message is one or two short plain-ASCII sentences, no link, no question, no offer—just a statement. Attribution is present (\"their site says\"). Kinderfun is dropped whole (not hedged) to keep the message within two segments, which is correct per the ceiling rule. Nothing is fabricated, borrowed from another program, or misattributed. This is a near-perfect pass.",
+    "score": 5
+  }
+}

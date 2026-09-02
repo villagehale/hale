@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Complete evasion of the answerable question. The answer invents a weather prediction (the question was a math problem), includes multiple low-score markers: greeting (\"Great question!\"), emoji, URL pointing, offering to do something later (\"set a reminder\"), and a question at the end. Zero attempt to answer what was asked. The correct answer (x = 5) is not provided."
+  }
+}

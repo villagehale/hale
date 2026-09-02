@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply drafts the cancel for Thursday swim (correct, one event matches), asks YES to confirm (correct contract shape), and offers the one offerable Saturday indoor option with full details (name, place, day). The draft cap is 2 and only 1 draft was made, which is fine — the indoor activity is an offer, not a calendar draft, so no cap issue. The text is clean, no greeting, no sign-off, no markdown, no app referral, no invented details. The Saturday soccer at Cedarvale is not an indoor option and correctly ignored. The offerable item named matches exactly what is in knows.offerable. Only tiny blemish: it could have noted there's nothing else being checked (stillBeingChecked is 0), but that's not required. Overall this is tight and correct.",
+    "score": 5
+  }
+}

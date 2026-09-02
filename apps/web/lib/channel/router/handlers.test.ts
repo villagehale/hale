@@ -1,16 +1,20 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it } from 'vitest';
+import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
+import type { OpenCheckupOffer } from '~/lib/health/offer';
 import type { HealthReplyDeps } from '~/lib/health/reply';
-import type { ApprovalSpine, PendingAction } from './approval';
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
+import type { ApprovalSpine, PendingAction } from './approval';
 import {
   approvalHandler,
   healthReplyHandler,
+  recMorningHandler,
   sequenceReplyHandler,
   villageIntroHandler,
 } from './handlers';
-import type { HandlerContext } from './route';
+import type { OpenQuestion } from './open-questions';
+import type { HandlerContext, ResolvedAnswer } from './route';
 
 /**
  * The two handlers C1 ships wired, and — more importantly — the seam between them.
@@ -24,14 +28,46 @@ const FAMILY = '11111111-1111-4111-8111-111111111111';
 const PARENT = '22222222-2222-4222-8222-222222222222';
 const DB = {} as Database;
 
-const turn = (body: string): HandlerContext => ({
+/**
+ * `open` is what Hale is waiting to hear back about, and it gates every BARE affirmative:
+ * a handler may only claim one when every open question is of its own kind
+ * (`soleOpenKind`) — the rule that stops a "yes" meant for an intro card approving a
+ * calendar write. Empty by default, which is vacuously "unambiguous" and is what the
+ * pre-existing cases in this file assume.
+ */
+const turn = (
+  body: string,
+  options: { resolved?: ResolvedAnswer | null; open?: OpenQuestion[] } = {},
+): HandlerContext => ({
   familyId: FAMILY,
   parentUserId: PARENT,
   conversationId: '33333333-3333-4333-8333-333333333333',
   body,
   send: async () => ({ providerMessageId: 'prov-1', channel: 'sms' }),
   now: new Date('2026-07-30T12:00:00.000Z'),
+  resolved: options.resolved ?? null,
+  openQuestions: async () => options.open ?? [],
 });
+
+const APPROVAL_QUESTION: OpenQuestion = {
+  id: 'action-1',
+  kind: 'approval',
+  description: 'Add to your calendar',
+  subject: 'add to your calendar',
+  answerable: { yes: true, no: true },
+  askedAt: null,
+  solicited: false,
+};
+
+const INTRO_QUESTION: OpenQuestion = {
+  id: 'proposal-1',
+  kind: 'intro_proposal',
+  description: 'Whether to meet one nearby Hale family',
+  subject: 'meeting the family nearby',
+  answerable: { yes: true, no: true },
+  askedAt: null,
+  solicited: false,
+};
 
 function spine(pending: PendingAction[]): ApprovalSpine & { approved: string[] } {
   const approved: string[] = [];
@@ -48,20 +84,52 @@ function spine(pending: PendingAction[]): ApprovalSpine & { approved: string[] }
   };
 }
 
-/** M8's deps, scripted: `ref` is the checkpoint the family was last nudged about. */
-function healthDeps(ref: string | null): HealthReplyDeps & { done: string[]; drafted: string[] } {
+/**
+ * The offer the nudge WOULD have registered for this ref — production's own rule, which
+ * is `checkpoint.booking` and nothing else (lib/health/offer.ts). A paperwork checkpoint
+ * offers nothing, so a "yes" after one has nothing to accept.
+ */
+function offerFrom(ref: string | null): OpenCheckupOffer | null {
+  const parsed = ref === null ? null : parseCheckpointRef(ref);
+  const checkpoint = parsed ? checkpointById(parsed.checkpointId) : null;
+  if (!checkpoint?.booking) return null;
+  return {
+    id: 'commitment-1',
+    checkpoint,
+    childId: parsed?.childId ?? null,
+    summary: 'Whether to put booking this on your week',
+    askedAt: new Date('2026-08-20T14:00:00.000Z'),
+  };
+}
+
+/**
+ * M8's deps, scripted: `ref` is the checkpoint the family was last nudged about, and
+ * `offer` is the standing booking offer the nudge registered when it sent.
+ */
+function healthDeps(
+  ref: string | null,
+  offer: OpenCheckupOffer | null = offerFrom(ref),
+): HealthReplyDeps & { done: string[]; drafted: string[]; closed: string[] } {
   const done: string[] = [];
   const drafted: string[] = [];
+  const closed: string[] = [];
   return {
     done,
     drafted,
-    loadLastCheckpointRef: async () => ref,
+    closed,
+    loadLastCheckpointRef: async () =>
+      ref === null ? null : { ref, toldAt: new Date('2026-07-30T12:00:00.000Z') },
+    loadOpenOffer: async () => offer,
     recordDone: async (_db, input) => {
       done.push(input.checkpointId);
     },
     draftCheckup: async (_db, input) => {
       drafted.push(input.intentKind);
       return { actionId: 'drafted-1' };
+    },
+    fulfillOffer: async (_db, input) => {
+      closed.push(input.channelMessageId ?? 'none');
+      return { status: 'closed', commitmentIds: ['commitment-1'] };
     },
   };
 }
@@ -75,7 +143,7 @@ const BOOKING_CHECKPOINT = `well_baby_18_months:${CHILD}:1`;
 
 describe('approvalHandler', () => {
   it('claims an approval and executes it through the spine', async () => {
-    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const verdict = await approvalHandler(s).handle(DB, turn('yes'));
 
     expect(verdict.claimed).toBe(true);
@@ -83,7 +151,7 @@ describe('approvalHandler', () => {
   });
 
   it('does not claim ordinary conversation', async () => {
-    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const verdict = await approvalHandler(s).handle(DB, turn('move swim to Tuesday'));
 
     expect(verdict.claimed).toBe(false);
@@ -142,7 +210,7 @@ describe('who owns "yes"', () => {
    * that can be answered wrongly in a way the parent cannot see.
    */
   it('goes to the approval handler when an action is waiting', async () => {
-    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const health = healthDeps(BOOKING_CHECKPOINT);
 
     const first = await approvalHandler(s).handle(DB, turn('yes'));
@@ -172,7 +240,10 @@ describe('who owns "yes"', () => {
  */
 function sequenceDeps(
   options: { open?: boolean; reaskedAt?: Date | null } = {},
-): SequenceReplyDeps & { recorded: Array<{ outcome: string; position: number | null }>; reasks: number } {
+): SequenceReplyDeps & {
+  recorded: Array<{ outcome: string; position: number | null }>;
+  reasks: number;
+} {
   const recorded: Array<{ outcome: string; position: number | null }> = [];
   const reasks: { n: number } = { n: 0 };
   const sequence: AwaitingSequence = {
@@ -298,7 +369,7 @@ describe('handler order — registration last', () => {
 
   /** A drafted action still wins a bare "yes" — the approval handler is unchanged. */
   it('gives a bare "yes" to the approval handler when an action is drafted', async () => {
-    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const sequence = sequenceDeps();
 
     expect((await approvalHandler(s).handle(DB, turn('yes'))).claimed).toBe(true);
@@ -322,13 +393,17 @@ describe('handler order — registration last', () => {
   /** And the registration report itself is unreadable to the two ahead of it, so it
    * reaches M7 untouched. */
   it('lets a waitlist report fall through the two handlers ahead of it', async () => {
-    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const health = healthDeps(PAPERWORK_CHECKPOINT);
     const sequence = sequenceDeps();
 
     expect((await approvalHandler(s).handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
-    expect((await healthReplyHandler(health).handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
-    expect((await sequenceReplyHandler(sequence).handle(DB, turn('waitlisted #3'))).claimed).toBe(true);
+    expect((await healthReplyHandler(health).handle(DB, turn('waitlisted #3'))).claimed).toBe(
+      false,
+    );
+    expect((await sequenceReplyHandler(sequence).handle(DB, turn('waitlisted #3'))).claimed).toBe(
+      true,
+    );
     expect(sequence.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
   });
 });
@@ -340,23 +415,72 @@ describe('handler order — registration last', () => {
 describe('the village intro lane and the lanes behind it', () => {
   const introDeps: VillageIntroReplyDeps = {
     recordDiscoverability: async () => {},
-    openProposal: async () => null,
+    discoverabilityStanding: async () => 'unanswered' as const,
+    answerableProposal: async () => null,
     recordDecision: async () => {},
     cancelOpenProposals: async () => {},
   };
 
   it('does not swallow a bare yes - it stays the approval lane s to answer', async () => {
     expect((await villageIntroHandler(introDeps).handle(DB, turn('yes'))).claimed).toBe(false);
-    const pending = spine([{ actionId: 'act-1', actionType: 'book_checkup' }]);
+    const pending = spine([
+      { actionId: 'act-1', actionType: 'book_checkup', reviewerApproved: true },
+    ]);
     expect((await approvalHandler(pending).handle(DB, turn('yes'))).claimed).toBe(true);
     expect(pending.approved).toEqual(['act-1']);
   });
 
   it('and the approval lane would not have answered YES INTRO even if it ran first', async () => {
-    const pending = spine([{ actionId: 'act-1', actionType: 'book_checkup' }]);
+    const pending = spine([
+      { actionId: 'act-1', actionType: 'book_checkup', reviewerApproved: true },
+    ]);
     expect((await approvalHandler(pending).handle(DB, turn('YES INTRO'))).claimed).toBe(false);
     expect(pending.approved).toEqual([]);
     expect((await villageIntroHandler(introDeps).handle(DB, turn('YES INTRO'))).claimed).toBe(true);
+  });
+});
+
+describe('recMorningHandler', () => {
+  it('answers a Toronto swim clock question with the locked first-rec line', async () => {
+    const verdict = await recMorningHandler().handle(
+      DB,
+      turn('When does Toronto swim registration open?'),
+    );
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed || verdict.reply === null) return;
+    const body = verdict.reply;
+    expect(body).toBe(
+      "Toronto rec and swim open 7:00 a.m. on your district morning: Sept 9 if you're catchment-only, Sept 15 or 16 otherwise. Sign in at toronto.ca/OnlineReg with the centre district, not your home address.",
+    );
+    expect(body.toLowerCase()).not.toContain('activeto');
+    expect(body.toLowerCase()).not.toContain('unofficial');
+    expect(body.toLowerCase()).not.toContain('efun');
+    expect(body).not.toMatch(/I'm an AI/i);
+    expect(body).not.toMatch(/https?:\/\//i);
+  });
+
+  it('answers a named Markham rec ask with the locked leftover, not Toronto', async () => {
+    const verdict = await recMorningHandler().handle(DB, turn('Markham fall rec dates?'));
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed || verdict.reply === null) return;
+    expect(verdict.reply).toBe(
+      "Markham fall rec, swim, and winter-break camps already opened Aug 11. Winter isn't posted. I can watch leftovers and the waitlist.",
+    );
+    expect(verdict.reply).not.toContain('7:00');
+    expect(verdict.reply).not.toMatch(/Sept?\s*15/i);
+    expect(verdict.reply.toLowerCase()).not.toContain('activeto');
+  });
+
+  it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {
+    expect((await recMorningHandler().handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
+    expect(
+      (
+        await recMorningHandler().handle(
+          DB,
+          turn('can you watch swim registration for Milo this fall?'),
+        )
+      ).claimed,
+    ).toBe(false);
   });
 });
 
@@ -366,15 +490,24 @@ describe('the village intro lane and the lanes behind it', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, health, coach_plan, registration, name_capture', async () => {
+  it('is village_intro, approval, email_capture, connector_link, founder_welcome, health, coach_plan, registration, rec_morning, name_capture', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
       'approval',
       'email_capture',
+      // Claims only an explicit connect-verb + provider-noun pair — a shape no other
+      // handler's vocabulary contains — so its position among the specific-word
+      // handlers is free; what matters is only that it is ahead of the bare-word
+      // name capture, like everything else that matches something specific.
+      'connector_link',
+      // Ahead of the three handlers that read a bare affirmative for a household's OWN
+      // business: this is the only one whose wrong answer texts a different household.
+      'founder_welcome',
       'health',
       'coach_plan',
       'registration',
+      'rec_morning',
       'name_capture',
     ]);
   });
@@ -391,6 +524,7 @@ describe('the shipped order', () => {
     const names = defaultHandlers().map((h) => h.name);
     expect(names.at(-1)).toBe('name_capture');
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('registration'));
+    expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('rec_morning'));
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('health'));
   });
 
@@ -408,5 +542,84 @@ describe('the shipped order', () => {
 
     expect(names.indexOf('coach_plan')).toBeGreaterThan(names.indexOf('approval'));
     expect(names.indexOf('coach_plan')).toBeGreaterThan(names.indexOf('health'));
+  });
+});
+
+/**
+ * THE AMBIGUOUS BARE AFFIRMATIVE (2026-08-13).
+ *
+ * The intro card used to end "Reply YES INTRO", and that two-word answer is the only
+ * reason the approvals grammar could safely own every bare "yes". Composing the card
+ * removed the disambiguator; these pin what replaced it.
+ */
+describe('a bare affirmative with more than one kind of question open', () => {
+  const pending = [{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }];
+
+  it('does NOT approve a calendar change when an intro card is also waiting', async () => {
+    // The defect this closes: the parent answered "Want me to introduce you?" and Hale
+    // executed a calendar write they never confirmed (rule #4).
+    const s = spine(pending);
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('yes', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(false);
+    expect(s.approved).toEqual([]);
+  });
+
+  it('still approves when the drafted change is the only thing waiting', async () => {
+    const s = spine(pending);
+    const verdict = await approvalHandler(s).handle(DB, turn('yes', { open: [APPROVAL_QUESTION] }));
+
+    expect(verdict.claimed).toBe(true);
+    expect(s.approved).toEqual(['a-1']);
+  });
+
+  it('still answers an ORDINAL, which cannot be an answer to anything else', async () => {
+    // "yes 2" is not conversation and is not an intro answer. It never waits.
+    const s = spine([
+      { actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true },
+      { actionId: 'a-2', actionType: 'reschedule_event', reviewerApproved: true },
+    ]);
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('yes 2', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(true);
+    expect(s.approved).toEqual(['a-2']);
+  });
+
+  it('still answers UNDO, which names the last thing Hale did', async () => {
+    const s = spine([]);
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('undo', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
+    );
+    expect(verdict.claimed).toBe(true);
+  });
+
+  it('holds the health nudge back too - its question is not even a yes/no one', async () => {
+    const health = healthDeps(BOOKING_CHECKPOINT);
+    const verdict = await healthReplyHandler(health).handle(
+      DB,
+      turn('yes', { open: [INTRO_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(false);
+    expect(health.drafted).toEqual([]);
+  });
+
+  it('never holds back an EXACT word - "done" is not ambiguous', async () => {
+    // Only the bare affirmative waits. The vocabulary each handler owns exactly is free
+    // and instant, which is the whole reason it runs first.
+    const health = healthDeps(PAPERWORK_CHECKPOINT);
+    const verdict = await healthReplyHandler(health).handle(
+      DB,
+      turn('done', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(true);
   });
 });

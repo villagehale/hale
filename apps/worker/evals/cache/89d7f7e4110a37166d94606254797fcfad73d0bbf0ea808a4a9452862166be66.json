@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply hits the draft cap of 2 correctly (Monday swim + Thursday swim), names both clearly, uses the required YES confirmation format, and tells Sam it will handle the remaining two (soccer and Wednesday appointment) next — which is exactly the right handling of overflow. The Wednesday appointment matches exactly one event (the private Wed 9:00am item), so no ambiguity question is needed there either. Soccer matches exactly one event. No app referral, no invented details, no markdown, no sign-off. The only tiny blemish is the phrasing \"take care of\" for the remainder, which is slightly loose (Hale drafts, it doesn't act unilaterally), but in context it's understood as \"draft next\" rather than a claim that changes have been made. Overall this is clean and correct.",
+    "score": 5
+  }
+}

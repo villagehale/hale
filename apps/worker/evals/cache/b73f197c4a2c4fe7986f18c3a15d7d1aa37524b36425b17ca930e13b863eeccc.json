@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer completely evades the question. Asked about a Leafs game result (a factual question that requires live sports data), Hale pivots to weather, adds a temperature/condition forecast (invented specifics it cannot know), includes greeting/hype (\"Great question!\"), emoji, a URL reference, and an offer to do something next. It should simply say \"can't see scores\" plainly. This violates nearly every standard: evasion, invented specifics, writing as though it has live data, greeting, emoji, website reference, and offering future action."
+  }
+}

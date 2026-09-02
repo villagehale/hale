@@ -4,6 +4,48 @@ import type { ActionType } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import {
+  AMBIGUOUS_CLARIFY,
+  AMBIGUOUS_CLARIFY_BY_LANGUAGE,
+  ASSENT_ACK,
+  ASSENT_ACK_BY_LANGUAGE,
+  COLD_START_ASK_BY_LANGUAGE,
+  DECLINE_ACK,
+  DECLINE_ACK_BY_LANGUAGE,
+  HELP_REPLY,
+  HELP_REPLY_BY_LANGUAGE,
+  IDENTITY_ACCOUNTABILITY_LINE,
+  IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE,
+  REGION_UNAVAILABLE_REPLY,
+  REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  SITTING_SESSION_REMINDER,
+  START_ACK,
+  START_ACK_BY_LANGUAGE,
+  STOP_ACK,
+  STOP_ACK_BY_LANGUAGE,
+  UNREADABLE_INTAKE_REPLY,
+  UNREADABLE_INTAKE_REPLY_BY_LANGUAGE,
+  WATCH_OFFER,
+  WATCH_OFFER_BY_LANGUAGE,
+  detailsBlocked,
+  followUp,
+  greeting,
+} from '~/lib/channel/intake/copy';
+import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
+import { connectorOfferReply } from '~/lib/channel/connect/copy';
+import {
+  ANSWER_UNAVAILABLE_REPLY,
+  ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  DIRECT_ACCESS_EYE_REPLY,
+  EMERGENCY_REPLY,
+  MENTAL_CRISIS_REPLY,
+  PROVIDER_ACCESS_REPLY,
+  PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
+  SAFETY_REPLY,
+  SAFETY_REPLY_BY_LANGUAGE,
+  UNPLACEABLE_PROVIDER_REPLY,
+  UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE,
+} from '~/lib/channel/off-domain/copy';
+import {
   approvedReceipt,
   declinedReceipt,
   failureReply,
@@ -11,25 +53,6 @@ import {
   whichOneReply,
 } from '~/lib/channel/router/copy';
 import { mediaUnsupportedReply } from '~/lib/channel/twilio/copy';
-import {
-  AMBIGUOUS_CLARIFY,
-  ASSENT_ACK,
-  DECLINE_ACK,
-  HELP_REPLY,
-  REGION_UNAVAILABLE_REPLY,
-  START_ACK,
-  STOP_ACK,
-  WATCH_OFFER,
-  detailsBlocked,
-  followUp,
-  greeting,
-} from '~/lib/channel/intake/copy';
-import {
-  ANSWER_UNAVAILABLE_REPLY,
-  DIRECT_ACCESS_EYE_REPLY,
-  PROVIDER_ACCESS_REPLY,
-  SAFETY_REPLY,
-} from '~/lib/channel/off-domain/copy';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
 
@@ -66,15 +89,22 @@ const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/,
 const SMS_COPY_SOURCES = [
   'lib/channel/router/copy.ts',
   'lib/channel/intake/copy.ts',
+  'lib/channel/intake/adult-learn.ts',
+  'lib/channel/intake/official-page.ts',
+  'lib/channel/intake/live-lookup.ts',
   'lib/channel/off-domain/copy.ts',
   'lib/channel/caregiver/copy.ts',
+  'lib/channel/join/copy.ts',
+  'lib/channel/connect/copy.ts',
   'lib/channel/twilio/copy.ts',
+  'lib/channel/founder/copy.ts',
   'lib/health/copy.ts',
   'lib/registration/sequence/copy.ts',
   'lib/party/copy.ts',
   'lib/party/guest-copy.ts',
   'lib/party/tally.ts',
   'lib/village/intros/copy.ts',
+  'lib/channel/rec-morning/copy.ts',
   'lib/format/labels.ts',
   // Not copy itself, but SPLICED into copy: the intake consent ask now carries the
   // privacy URL from here, so a typographic character in a policy path would ride out
@@ -145,16 +175,19 @@ describe('outbound SMS copy stays in the GSM-7 alphabet', () => {
  */
 describe('the intake script stays GSM-7 once rendered', () => {
   const RENDERED: Record<string, string> = {
-    'greeting (no venue)': greeting(null),
-    'greeting (venue)': greeting('EarlyON centre'),
+    'greeting (no venue)': greeting(null, 'en'),
+    'greeting (venue)': greeting('family centre', 'en'),
     WATCH_OFFER,
     ASSENT_ACK,
     DECLINE_ACK,
     AMBIGUOUS_CLARIFY,
     STOP_ACK,
     HELP_REPLY,
+    UNREADABLE_INTAKE_REPLY,
+    IDENTITY_ACCOUNTABILITY_LINE,
     START_ACK,
     REGION_UNAVAILABLE_REPLY,
+    SITTING_SESSION_REMINDER,
     'followUp (ages)': followUp('Maya (4) and Leo', ['ages']),
     'followUp (both)': followUp('Nora and Ben', ['ages', 'location']),
     'detailsBlocked (both)': detailsBlocked(['ages', 'location']),
@@ -174,6 +207,163 @@ describe('the intake script stays GSM-7 once rendered', () => {
 });
 
 /**
+ * The co-parent join link, rendered — the composition the file scan cannot see.
+ *
+ * The mint message is the longest deterministic body Hale sends, because 72 of its
+ * characters are a URL it did not write. That makes the segment ceiling the real gate
+ * here rather than the alphabet: a sentence added to this copy without counting is a
+ * third segment on a message every joining family pays for, and a link amputated by a
+ * split is a link that adds nobody.
+ */
+describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
+  const CODE = 'join-0123456789abcdef0123456789abcdef';
+  const RENDERED: Record<string, string> = {
+    joinInviteForward: joinInviteForward(CODE),
+    'joinWelcome (named)': joinWelcome('Ana'),
+    'joinWelcome (anonymous)': joinWelcome(null),
+    // The one part of this message Hale did not write: a name a parent typed. Toronto
+    // types accents, and one of them re-encodes the WHOLE welcome as UCS-2 and halves
+    // the budget it is already spending — so the interpolation is under the same gate
+    // as the copy around it.
+    'joinWelcome (accented name)': joinWelcome('Zoe\u0308'),
+    'joinWelcome (accented, precomposed)': joinWelcome('Zo\u00eb'),
+    'joinWelcome (a name nobody could text back)': joinWelcome('X'.repeat(120)),
+    JOIN_ACCEPTED_ACK,
+  };
+
+  it.each(Object.entries(RENDERED))('%s', (_name, body) => {
+    expect({ encoding: smsEncoding(body), overBudget: smsSegments(body) > 2 }).toEqual({
+      encoding: 'gsm7',
+      overBudget: false,
+    });
+  });
+
+  /** The link is the payload; everything else is what fits around it. Asserted whole so
+   * a trimmed or split URL fails here rather than in a stranger's inbox. */
+  // What it does INSTEAD of mangling them: a name the alphabet cannot carry is dropped
+  // for the anonymous form, the same call `affordableNames` makes in health/copy.ts.
+  // Folding it would spell somebody's name wrong on the first message they ever get.
+  it('falls back to the anonymous form rather than respelling a name', () => {
+    expect(joinWelcome('Zo\u00eb')).toBe(joinWelcome(null));
+    expect(joinWelcome('X'.repeat(120))).toBe(joinWelcome(null));
+    expect(joinWelcome('Ana')).toContain('Ana');
+  });
+
+  /** The link is the payload; everything else is what fits around it. Asserted whole so
+   * a trimmed or split URL fails here rather than in a stranger's inbox. */
+  it('carries the whole link inside the budget', () => {
+    expect(joinInviteForward(CODE)).toContain(`https://www.villagehale.com/text?s=${CODE}`);
+  });
+});
+
+/**
+ * The connector offer, rendered — the other deterministic body that carries a URL Hale
+ * did not write. The link is the payload (a single-use, 15-minute sign-in token), so the
+ * gates are the join copy's: GSM-7 once rendered, the WHOLE link present, and ONE
+ * segment — the reply answers a parent who asked for exactly one thing, and a second
+ * segment here would be pure ceremony.
+ */
+describe('the connector offer stays GSM-7 and inside one segment, twins in lockstep', () => {
+  // Representative of the real mint: 16 bytes base64url is 22 characters.
+  const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ';
+  const PROVIDERS = ['gcal', 'gmail', 'gdrive'] as const;
+  const LANGUAGES = ['en', 'fr'] as const;
+
+  it.each(
+    LANGUAGES.flatMap((language) =>
+      PROVIDERS.map((provider) => [language, provider] as const),
+    ),
+  )('%s / %s', (language, provider) => {
+    const body = connectorOfferReply(language, provider, URL);
+    expect({
+      encoding: smsEncoding(body),
+      overBudget: smsSegments(body) > 1,
+      carriesWholeLink: body.includes(URL),
+    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true });
+  });
+
+  /** The twins are twins: same link, same window, different words — so a copy edit that
+   * touches one language and forgets the other fails here rather than in a thread. */
+  it('keeps the EN and FR twins in lockstep on the facts', () => {
+    for (const provider of PROVIDERS) {
+      const en = connectorOfferReply('en', provider, URL);
+      const fr = connectorOfferReply('fr', provider, URL);
+      expect(en).not.toBe(fr);
+      expect(en).toContain('15');
+      expect(fr).toContain('15');
+    }
+  });
+});
+
+/**
+ * THE FRENCH SCRIPT, AGAINST THE SAME ALPHABET — and this is the gate the French copy was
+ * written to pass, not one it was checked against afterwards.
+ *
+ * GSM-7 carries é è à ù and refuses â ê î ô û ç, which is not a detail: ONE circumflex
+ * flips a French message to UCS-2, where a segment is 70 characters instead of 160. The
+ * greeting alone would go from two segments to four, on every French arrival, forever.
+ * So the wording works around the missing characters (see the notes at each constant),
+ * and this suite is what stops a later "improvement" putting one back.
+ *
+ * The whole-file scan above already covers these strings as SOURCE. What is added here is
+ * the thing the scan cannot see — what each one costs once rendered, in the same currency
+ * the carrier bills, and against the same ceilings the English twins are held to.
+ */
+describe('the French script stays GSM-7 and inside the English budgets', () => {
+  const RENDERED: Record<string, { body: string; maxSegments: number }> = {
+    'greeting (no venue)': { body: greeting(null, 'fr'), maxSegments: 2 },
+    COLD_START_ASK: { body: COLD_START_ASK_BY_LANGUAGE.fr, maxSegments: 1 },
+    // One segment, for the same reason the English consent ask is: it rides on the end
+    // of the radar payload, where every septet comes out of the same budget.
+    WATCH_OFFER: { body: WATCH_OFFER_BY_LANGUAGE.fr, maxSegments: 1 },
+    ASSENT_ACK: { body: ASSENT_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
+    DECLINE_ACK: { body: DECLINE_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
+    AMBIGUOUS_CLARIFY: { body: AMBIGUOUS_CLARIFY_BY_LANGUAGE.fr, maxSegments: 1 },
+    HELP_REPLY: { body: HELP_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
+    UNREADABLE_INTAKE_REPLY: { body: UNREADABLE_INTAKE_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
+    IDENTITY_ACCOUNTABILITY_LINE: {
+      body: IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE.fr,
+      maxSegments: 2,
+    },
+    START_ACK: { body: START_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
+    STOP_ACK: { body: STOP_ACK_BY_LANGUAGE.fr, maxSegments: 1 },
+    REGION_UNAVAILABLE_REPLY: { body: REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
+    ANSWER_UNAVAILABLE_REPLY: { body: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
+    SAFETY_REPLY: { body: SAFETY_REPLY_BY_LANGUAGE.fr, maxSegments: 1 },
+    PROVIDER_ACCESS_REPLY: { body: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
+    UNPLACEABLE_PROVIDER_REPLY: {
+      body: UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE.fr,
+      maxSegments: 2,
+    },
+  };
+
+  it.each(Object.entries(RENDERED))('%s', (_name, { body, maxSegments }) => {
+    expect({ encoding: smsEncoding(body), overBudget: smsSegments(body) > maxSegments }).toEqual({
+      encoding: 'gsm7',
+      overBudget: false,
+    });
+  });
+
+  /**
+   * The alphabet's refusals, named. A test that only checked `smsEncoding` would pass on
+   * the day someone "fixed" the spelling of `l'age` and could not say why the bill
+   * tripled — this one says which character did it.
+   */
+  it('names the characters French copy may not use here', () => {
+    const forbidden = [...'âêîôûçœ«»’—'];
+    const offenders = Object.entries(RENDERED).flatMap(([name, { body }]) =>
+      forbidden.filter((char) => body.includes(char)).map((char) => `${name}: ${char}`),
+    );
+
+    expect(offenders).toEqual([]);
+    // The positive control: the characters French copy MAY use are genuinely in the
+    // alphabet, so the assertion above is a real constraint and not a vacuous one.
+    expect(smsEncoding('é è à ù')).toBe('gsm7');
+    expect(smsEncoding('â ê î ô û ç')).toBe('ucs2');
+  });
+});
+
+/**
  * VIL-273 — the off-domain lane's three answers, rendered.
  *
  * The deflect is BUILT (the pending-approvals clause is appended at runtime), so a
@@ -186,19 +376,25 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
   const RENDERED: Record<string, string> = {
     ANSWER_UNAVAILABLE_REPLY,
     SAFETY_REPLY,
+    EMERGENCY_REPLY,
+    MENTAL_CRISIS_REPLY,
     PROVIDER_ACCESS_REPLY,
     DIRECT_ACCESS_EYE_REPLY,
+    UNPLACEABLE_PROVIDER_REPLY,
   };
 
   it.each(Object.entries(RENDERED))('%s', (_name, body) => {
     expect(smsEncoding(body)).toBe('gsm7');
   });
 
-  it('keeps all four fixed lines inside the two-segment ceiling', () => {
+  it('keeps all eight fixed lines inside the two-segment ceiling', () => {
     expect(smsSegments(ANSWER_UNAVAILABLE_REPLY)).toBe(1);
     expect(smsSegments(SAFETY_REPLY)).toBe(1);
+    expect(smsSegments(EMERGENCY_REPLY)).toBe(1);
+    expect(smsSegments(MENTAL_CRISIS_REPLY)).toBe(1);
     expect(smsSegments(PROVIDER_ACCESS_REPLY)).toBeLessThanOrEqual(2);
     expect(smsSegments(DIRECT_ACCESS_EYE_REPLY)).toBeLessThanOrEqual(2);
+    expect(smsSegments(UNPLACEABLE_PROVIDER_REPLY)).toBeLessThanOrEqual(2);
   });
 
   /**
@@ -253,13 +449,17 @@ describe('nothing Hale texts sends a parent to the app', () => {
     failureReply: failureReply(),
     'partialFailureReply (1)': partialFailureReply(1),
     'partialFailureReply (2)': partialFailureReply(2),
-    'whichOneReply (overflow)': whichOneReply([
-      'calendar_move',
-      'calendar_add',
-      'calendar_cancel',
-      'send_email',
-      'add_to_routine',
-    ]),
+    'whichOneReply (overflow)': whichOneReply(
+      ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email', 'add_to_routine'],
+      true,
+    ),
+    // The same sentence with no menu behind it (VIL-304 verifier): it must be GSM-7 and
+    // inside the budget too, since it is what a parent gets whenever the polarity could
+    // not be read for free.
+    'whichOneReply (unnumbered)': whichOneReply(
+      ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email'],
+      false,
+    ),
     mediaUnsupportedReply: mediaUnsupportedReply(),
     CO_PARENT_REDIRECT,
   };
@@ -276,9 +476,16 @@ describe('nothing Hale texts sends a parent to the app', () => {
   /** The overflow is disclosed either way — what changed is that the rest are reachable
    * by answering the three in front of them, rather than on another surface. */
   it('discloses the approvals it could not list, without a destination', () => {
-    const reply = whichOneReply(Array.from({ length: 8 }, () => 'calendar_move'));
+    const reply = whichOneReply(
+      Array.from({ length: 8 }, () => 'calendar_move'),
+      true,
+    );
 
-    expect(reply).toContain('+5 more');
+    expect(reply).toMatch(/5 more behind those/i);
+    // Disclosed WITHOUT a destination, and without a menu: the choices are named, the
+    // rest are reachable by answering the ones in front (2026-08-13).
+    expect(reply).not.toMatch(/\bthe app\b|https?:/i);
+    expect(reply).not.toMatch(/\bYES \d|^\d\./m);
   });
 });
 

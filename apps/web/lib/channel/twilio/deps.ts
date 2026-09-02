@@ -8,10 +8,12 @@ import {
   CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
 import { createIdentityAskVoice } from '~/lib/channel/identity/ask-voice';
+import { createIntakeAnswerComposer } from '~/lib/channel/intake/answer';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
@@ -19,8 +21,11 @@ import { db } from '~/lib/db';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
+import { createReplyTransport, selectReplyTransport } from '~/lib/channel/reply-transport';
+import type { MessageTransport } from '~/lib/channel/transport-address';
 import type { ChannelMessageReceivedJob, TwilioInboundDeps } from './inbound';
-import { createTwilioTransport } from './transport';
+import { twilioWhatsAppSender } from './config';
+import { createTwilioTransport, createTwilioWhatsAppTransport } from './transport';
 import type { TwilioVoiceDeps } from './voice';
 
 /**
@@ -41,16 +46,34 @@ function anthropicClient(): AgentClient {
 }
 
 /** M2's deps, built for real. Called only AFTER the signature passes (see inbound.ts),
- * so a forged request never constructs a model client. */
-export function buildIntakeDeps(): IntakeDeps {
+ * so a forged request never constructs a model client.
+ *
+ * `inboundTransport` (WhatsApp v1) is the pipe THIS turn arrived on: a within-turn
+ * reply is trivially inside Meta's 24h window, so the decision needs no history read —
+ * a WhatsApp turn is answered on WhatsApp while the sender is provisioned, and
+ * everything else (or an unprovisioned leg — 'not_configured', named) rides SMS.
+ * Defaults to 'sms' for the cron callers that compose intake sends outside a webhook
+ * turn; those are proactive lanes and stay on SMS by policy. */
+export function buildIntakeDeps(inboundTransport: MessageTransport = 'sms'): IntakeDeps {
   const database = db();
   const client = anthropicClient();
   return {
-    transport: createTwilioTransport(),
+    transport: createReplyTransport({
+      sms: createTwilioTransport(),
+      whatsapp: createTwilioWhatsAppTransport(),
+      decide: async () =>
+        selectReplyTransport({
+          configured: twilioWhatsAppSender() !== null,
+          lastInbound: { transport: inboundTransport, receivedAt: new Date() },
+          now: new Date(),
+        }),
+    }),
+    threadMessage: threadProactiveMessage,
     extractor: createIntakeExtractor(client),
     intentReader: createReplyIntentReader(client),
     radar: createRadarComposer({ database, weather: createOpenMeteoWeather(), client }),
     ackComposer: createIntakeAckComposer(client),
+    answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),
     limiter: new PostgresRateLimiter(database),
   };

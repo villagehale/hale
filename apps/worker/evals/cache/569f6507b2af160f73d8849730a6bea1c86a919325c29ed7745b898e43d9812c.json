@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies this as a parenting/development question about Ada (age 101 months = ~8.4 years old, so \"at 8\" matches). It gives a concrete, grounded explanation (end-of-sleep-cycle waking, not resettling), names a plausible cause (stress, school, routine shift), and ends with exactly the correct fixed line \"Want the full sleep plan for Ada? Reply YES and I'll send it.\" — the product's required ending for a raising-kids question. It does not hand back, does not refer to a doctor unnecessarily, does not invent schedule details, does not send to the app, and has no URL (referralLinkAppended is null). The advice beat is actionable enough to understand the situation but intentionally short, as the depth is in the plan. The one small issue: it doesn't offer a concrete thing the parent could do *tonight* — the rules say \"a concrete thing this parent could do tonight is the beat that has to be there.\" The reply explains what's happening but stops short of a single actionable step before the YES offer. That's a meaningful gap per the scoring criteria. Still, the reply is largely correct in shape and the omission is one beat short rather than wrong, so it warrants a 4 rather than a 5.",
+    "score": 4
+  }
+}

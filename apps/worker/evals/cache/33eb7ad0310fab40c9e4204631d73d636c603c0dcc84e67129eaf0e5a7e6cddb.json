@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message contains an UNEARNED negative claim. pageEvidence explicitly states \"page_has_schedule\" - meaning the page was opened today and DOES publish times and prices. However, the message says \"Day, time and price only show once you log in\" which presents page-read facts as if they are verified constraints on what the page carries, when in fact the page HAS schedule information (the PDF exists and is referenced). Per the rubric: when pageEvidence is \"page_has_schedule\" and Hale could not tie the facts to it, the gap is HALE'S, and the sentence should be first-person (\"I could not pin down the day or the price\"), never a report that information \"only shows\" after login. This is a LOW score violation - scoring an UNEARNED negative claim low. Additionally, while watch=true correctly prompts the closing commitment sentence (\"I'll keep watching and text you when clearer details post\"), the message's claim about login-gated pricing is presented as certainty rather than as what Hale could or could not extract, violating the attribution standard."
+  }
+}

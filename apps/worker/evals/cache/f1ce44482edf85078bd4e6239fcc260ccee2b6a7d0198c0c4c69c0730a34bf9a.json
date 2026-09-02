@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked about \"Nora\" — but no child named Nora appears in knows.children. The visible children are Milo, Ada, and an unnamed teenager. Hale answered as if the question were about Tuesday's schedule in general, giving the private item's time, which is correct when a parent asks about a private item. However, the name \"Nora\" doesn't match any known child, so Hale should have noted it doesn't recognise that name rather than silently answering as if Nora were on the calendar. That said, the reply itself is correctly shaped for a private item question — it gives the day and time without revealing content — and the format is tight and correct. The core flaw is not flagging that \"Nora\" is unrecognised, which could mean the parent is asking about the wrong family or a child Hale has no record of. Still, the reply is short, correct in form, and doesn't invent anything or send the parent anywhere. It's a small but meaningful miss.",
+    "score": 3
+  }
+}

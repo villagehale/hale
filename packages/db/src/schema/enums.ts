@@ -115,6 +115,11 @@ export const agentNameEnum = pgEnum('agent_name', [
   'radar-voice',
   'nudge-voice',
   'coach-channel-sms',
+  // Voice v1 · one spoken turn of a live call. Its own name for the same reason the SMS
+  // turn has one: a call runs on a different tier with a different latency budget and a
+  // per-minute carrier cost on top, so averaging it into any other name produces a
+  // number that describes neither surface.
+  'voice-turn',
 ]);
 
 export const agentRunStatusEnum = pgEnum('agent_run_status', [
@@ -165,6 +170,13 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // parent's channel consent): the scope column carries the ROLE, because what they
   // agreed to receive is defined by that role's scope and nothing wider.
   'caregiver_scoped_messages',
+  // The PARENT's authorization to seat a CO-PARENT in their household by forwarding a
+  // join link. Distinct from caregiver_access_grant, which authorizes a scoped slice to
+  // a named third party on a named number: this one authorizes the FULL family surface
+  // for whoever redeems the link, so what it grants, who it names (nobody yet) and what
+  // it is read from (the parent's own request, not a yes/no answer) are all different.
+  // Written at MINT time, because the mint is the moment the capability exists.
+  'co_parent_access_grant',
   // Village intros v1 · the parent's decision about being INTRODUCED to another Hale
   // household. Two scopes ride this one type and they are different acts: the standing
   // "you may look for a match for us" (revocable at any time by texting NO INTROS), and
@@ -267,6 +279,19 @@ export const channelMessageChannelEnum = pgEnum('channel_message_channel', [
   'email',
   'sms',
   'push',
+  // Voice v1 · a spoken turn on a call, in either direction. Its own leg because
+  // nothing was texted: folding a call into 'sms' would make the ledger claim a message
+  // that does not exist, in the one table a PIPEDA right-to-access read is built from.
+  // It is also what keeps the inbound reconciler off these rows — that sweep selects
+  // sms 'reply' rows and re-drives them to the SMS coach, so a spoken turn recorded as
+  // 'sms' would be answered a second time, by text, five minutes later.
+  'voice',
+  // WhatsApp v1 · the same number, a different pipe. The person is the SAME (the blind
+  // index keys on the bare E.164 — continuity law), but the pipe must be recorded
+  // truthfully: the reply-destination decision reads this column to honor Meta's
+  // 24-hour session window (channel/reply-transport.ts), and a WhatsApp turn recorded
+  // as 'sms' is a ledger lying in a PIPEDA right-to-access read (migration 0104).
+  'whatsapp',
 ]);
 
 // Direction of a loop message. 'in' rows (replies) are the ONLY rows that carry a
@@ -337,6 +362,20 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // COACHING a family does, so counting it as 'nudge' would let a curious parent's
   // questions silently spend the weekly budget for the thing Hale noticed on its own.
   'plan_check_in',
+  // The kept activity promise — Hale coming back with the finds it said it would find,
+  // or with an honest account of not finding them. Its own category and not 'followup':
+  // that budget governs a check-in Hale CHOSE to send about something already over,
+  // while this one discharges a debt the family is OWED, and a promise must not be lost
+  // to a rail built for a nicety.
+  'activity_followup',
+  // The founder's own voice, in both directions: the ping that tells him a family just
+  // arrived from one of his posters, and the welcome note he sends back into that
+  // family's thread. ONE category for two audiences because the reason the row exists is
+  // the same on both sides, and that reason is what a PIPEDA right-to-access read has to
+  // be able to state — "this text exists because a person, not the product, wrote to
+  // you". No cap counts it and no gate governs it: the ping answers a join that just
+  // happened, and the note is a human being replying to it.
+  'founder',
 ]);
 
 /**
@@ -410,4 +449,32 @@ export const agentCommitmentKindEnum = pgEnum('agent_commitment_kind', [
   // The promise the plan itself makes: Hale said it would come back, so it owes a
   // check-in. Minted at plan-send time and due three days later.
   'plan_check_in',
+  // "Done, or want me to add booking it to your week?" — the health checkpoint's own
+  // offer, minted by the nudge that sends it. The SAME shape as plan_offer and here for
+  // the same reason: an offer with no row behind it is a question the reply resolver
+  // cannot see, so a parent's acceptance lands on whatever else happens to be standing.
+  'checkup_offer',
+  // "I'll keep looking and come back to you." — the coach's promise to finish an
+  // activity search it could not finish inside the turn. Unlike the two offers above it
+  // asks for NOTHING: there is no yes to give it, and the debt exists whether or not the
+  // parent says another word. It is here because a promise nobody records is a promise
+  // no sweep can keep and no digest can count, which is exactly what "I'll come back to
+  // you on it" was on 2026-08-20. Closed by the activity follow-up sweep, which owes the
+  // family either the finds or an honest "I looked and could not find it".
+  'activity_followup',
+  // "A new family just joined from the Georgetown poster. Reply YES and I'll send them
+  // your welcome note." — the one commitment on this ledger whose SUBJECT is a household
+  // other than the one the promise was made to, which is why `subject_family_id` exists.
+  // It is an offer with the same shape as plan_offer and checkup_offer and it is here for
+  // the same reason: a question that lives only as prose inside a sent SMS is a question
+  // the reply resolver cannot see, so the answer lands on whatever else is standing.
+  'founder_welcome_offer',
+  // "I'm watching that morning and I'll text you before it goes live." — the coach's
+  // own promise about a registration morning, made in an ordinary text hours or weeks
+  // before the ladder's heads-up leg would fire. Distinct from `registration_plan`,
+  // which is the LADDER's promise ("your plan, the evening before") opened by that leg:
+  // one household can be owed both, and the partial unique index would silently refuse
+  // the second if they shared a kind. Due when this family can first register, and kept
+  // by the `go` leg — the tap fifteen minutes before the doors open.
+  'registration_watch',
 ]);

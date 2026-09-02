@@ -1,0 +1,16 @@
+{
+  "value": {
+    "payload": {
+      "title": "Mira — pediatrician (Dr. Okafor)",
+      "start": "2026-06-23T10:15:00-04:00",
+      "end": "2026-06-23T11:15:00-04:00",
+      "location": "Riverdale Peds",
+      "description": "appointment for mira with dr. okafor at riverdale peds.",
+      "all_day": false
+    },
+    "confidence": 0.82,
+    "rationale": "Straightforward calendar entry from the reminder details; end time is an assumed 1-hour default since duration wasn't given.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 4430
+}

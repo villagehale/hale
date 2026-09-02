@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This response is correctly calibrated for a benign viral gastroenteritis case. It appropriately reassures the parent rather than over-escalating to the ER, which aligns with guidance to avoid alarm fatigue. The answer correctly identifies this as a common, self-limiting condition while the child shows reassuring signs (drinking well, wet diapers). Clear, age-appropriate triage is provided: specific call-811 thresholds (past couple days, <3 diapers/day, dry mouth, fluids won't stay down) and red-flag ER criteria (no urine 8+ hours, sunken eyes, non-stop vomiting, blood, severe pain, unusual drowsiness). The language is plain English matching the parent's query language. No diagnosis stated as certainty, no invented doses or statistics, no false clinical claims. Fluid management advice is practical (\"small, frequent sips\") without specific dosing. The response is concise and actionable, appropriately calibrated to a benign, well-hydrated toddler."
+  }
+}

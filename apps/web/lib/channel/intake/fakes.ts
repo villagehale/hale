@@ -1,9 +1,12 @@
 import { type Database, schema } from '@hale/db';
+import { Column, Param, SQL, StringChunk, is } from 'drizzle-orm';
 import type {
   IdentityAskOutcome,
   IdentityAskRequest,
   IdentityAskVoice,
 } from '~/lib/channel/identity/ask-voice';
+import type { IntroAskRequest, IntroVoice, IntroVoiceOutcome } from '~/lib/village/intros/voice';
+import type { IntakeAnswerComposer, IntakeAnswerInput, IntakeAnswerOutcome } from './answer';
 import { followUp } from './copy';
 import type { IntakeCollected, IntakeExtractor } from './extract';
 import type { IntakeAck, IntakeAckComposer } from './intake-voice';
@@ -79,6 +82,34 @@ export const fakeAckComposer: IntakeAckComposer = {
 };
 
 /**
+ * An answer composer that always finds nothing to answer — the DETERMINISTIC outcome,
+ * which is the script every routing test that predates the escape is asserting against.
+ * A fake that composed a canned sentence would make every one of them assert on wording
+ * instead; what Hale actually says is the gates' job (answer.test.ts) and the eval's
+ * (rule #8).
+ */
+export const fakeSilentAnswerComposer: IntakeAnswerComposer = {
+  async compose(): Promise<IntakeAnswerOutcome> {
+    return { status: 'nothing_to_answer' };
+  },
+};
+
+/**
+ * A scripted answer composer, recording what it was HANDED — the assertion surface for
+ * rule #1: a test proves the postal code and the session state never reached the model
+ * by reading `calls`, not by reading the body.
+ */
+export class FakeAnswerComposer implements IntakeAnswerComposer {
+  readonly calls: IntakeAnswerInput[] = [];
+  constructor(private readonly outcome: IntakeAnswerOutcome) {}
+
+  async compose(input: IntakeAnswerInput): Promise<IntakeAnswerOutcome> {
+    this.calls.push(input);
+    return this.outcome;
+  }
+}
+
+/**
  * A scripted identity-ask composer. Its body is deliberately not a sentence — the machine
  * tests here assert MECHANICS (was the ask appended, was the ledger row stamped so the
  * capture can find it, does a deferral still send a whole acknowledgment), and a
@@ -93,6 +124,153 @@ export class FakeIdentityAsk implements IdentityAskVoice {
     this.calls.push(request);
     return this.outcome;
   }
+}
+
+/**
+ * The two intro asks' composer, faked. Records what it was HANDED, which is the assertion
+ * surface that matters for rule #1: a test proves the counterpart's real name, area and
+ * child never reached the model by reading `calls`, not by reading the body.
+ */
+export class FakeIntroVoice implements IntroVoice {
+  readonly calls: IntroAskRequest[] = [];
+  constructor(private readonly outcome?: IntroVoiceOutcome) {}
+
+  async compose(request: IntroAskRequest): Promise<IntroVoiceOutcome> {
+    this.calls.push(request);
+    return this.outcome ?? { status: 'composed', body: echoIntroAsk(request) };
+  }
+}
+
+/**
+ * What the fake composer "writes": the request, spelled out. Deliberately NOT the copy
+ * that used to be fixed — a fake that reproduces the real sentence would let a test pass
+ * by asserting the old string is still around.
+ *
+ * It exists so the sweep's PRIVACY tests keep testing the sweep. Whether the counterpart's
+ * name can reach a card is a question about what the sweep HANDS a composer, and echoing
+ * the request back is the most direct way to ask it: anything that shows up in the body
+ * was passed in, and anything that was not passed in cannot show up.
+ */
+export function echoIntroAsk(request: IntroAskRequest): string {
+  if (request.kind === 'optin') return 'Want introductions to other Hale families nearby?';
+  const anchor =
+    request.anchorTitle === null
+      ? ''
+      : ` They're also eyeing ${request.anchorTitle} ${request.anchorDay}.`;
+  return `A Hale family near you has a ${request.counterpartWord} around ${request.ownChildPossessive} age.${anchor} Want an intro?`;
+}
+
+/**
+ * An UPDATE's `where` clause, evaluated against a stored row.
+ *
+ * SELECT's where is still ignored (every reader post-filters what it gets, and they all
+ * do it as defense in depth against exactly that). An UPDATE has no second reader: its
+ * predicate IS the decision, and some of those predicates are CLAIMS — the co-parent
+ * link's `SET consumed_at = now WHERE consumed_at IS NULL` decides which of two
+ * simultaneous redeemers gets the seat. A fake that wrote every row would hand both of
+ * them the same one, which is the precise bug a test double must not be able to hide.
+ *
+ * Only the operators the code under test uses are modelled, and an unrecognised one
+ * THROWS: a fake that quietly matched everything it could not read would be back to
+ * updating the whole table, silently.
+ */
+type WhereToken =
+  | { kind: 'column'; key: string }
+  | { kind: 'value'; value: unknown }
+  | { kind: 'text'; text: string };
+
+/** Rows here are keyed by the drizzle PROPERTY name, so a `Column` has to be mapped back
+ * to the key it was declared under rather than to its database name. */
+function columnKey(table: unknown, column: unknown): string {
+  const entry = Object.entries(table as Record<string, unknown>).find(([, v]) => v === column);
+  if (!entry) throw new Error('fake where: column does not belong to the table being updated');
+  return entry[0];
+}
+
+function tokenize(expr: unknown, table: unknown, out: WhereToken[]): WhereToken[] {
+  if (is(expr, SQL)) {
+    for (const chunk of expr.queryChunks) tokenize(chunk, table, out);
+    return out;
+  }
+  if (is(expr, Column)) {
+    out.push({ kind: 'column', key: columnKey(table, expr) });
+    return out;
+  }
+  if (is(expr, Param)) {
+    out.push({ kind: 'value', value: expr.value });
+    return out;
+  }
+  if (is(expr, StringChunk)) {
+    const text = expr.value.join('').trim();
+    if (text !== '') out.push({ kind: 'text', text });
+    return out;
+  }
+  throw new Error('fake where: unsupported SQL fragment');
+}
+
+const sameValue = (a: unknown, b: unknown): boolean =>
+  a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b;
+
+/** Split on a boolean operator that is not inside a parenthesised group. */
+function splitTopLevel(tokens: WhereToken[], operator: 'and' | 'or'): WhereToken[][] {
+  const parts: WhereToken[][] = [];
+  let depth = 0;
+  let current: WhereToken[] = [];
+  for (const token of tokens) {
+    if (token.kind === 'text' && token.text === '(') depth += 1;
+    if (token.kind === 'text' && token.text === ')') depth -= 1;
+    if (depth === 0 && token.kind === 'text' && token.text === operator) {
+      parts.push(current);
+      current = [];
+      continue;
+    }
+    current.push(token);
+  }
+  parts.push(current);
+  return parts;
+}
+
+/** Whether `tokens` wrap the whole expression in one group, rather than opening and
+ * closing several. */
+function isWrapped(tokens: WhereToken[]): boolean {
+  const first = tokens[0];
+  if (!(first?.kind === 'text' && first.text === '(')) return false;
+  let depth = 0;
+  for (const [index, token] of tokens.entries()) {
+    if (token.kind === 'text' && token.text === '(') depth += 1;
+    if (token.kind === 'text' && token.text === ')') {
+      depth -= 1;
+      if (depth === 0) return index === tokens.length - 1;
+    }
+  }
+  return false;
+}
+
+function evaluate(tokens: WhereToken[], row: Record<string, unknown>): boolean {
+  if (isWrapped(tokens)) return evaluate(tokens.slice(1, -1), row);
+  for (const operator of ['or', 'and'] as const) {
+    const parts = splitTopLevel(tokens, operator);
+    if (parts.length > 1) {
+      return operator === 'or'
+        ? parts.some((part) => evaluate(part, row))
+        : parts.every((part) => evaluate(part, row));
+    }
+  }
+  const [left, operator, right] = tokens;
+  if (left?.kind !== 'column' || operator?.kind !== 'text') {
+    throw new Error('fake where: unsupported predicate shape');
+  }
+  const value = row[left.key];
+  if (operator.text === 'is null') return value === null || value === undefined;
+  if (operator.text === 'is not null') return value !== null && value !== undefined;
+  if (right?.kind !== 'value') throw new Error(`fake where: unsupported operator ${operator.text}`);
+  if (operator.text === '=') return sameValue(value, right.value);
+  if (operator.text === '<>') return !sameValue(value, right.value);
+  throw new Error(`fake where: unsupported operator ${operator.text}`);
+}
+
+function matchesWhere(table: unknown, expr: unknown, row: Record<string, unknown>): boolean {
+  return evaluate(tokenize(expr, table, []), row);
 }
 
 export interface RecordedWrite {
@@ -116,8 +294,13 @@ export interface FakeDb {
  *
  * It does NOT evaluate `where` clauses — it returns the whole table and lets the code
  * under test apply its own post-checks (which the real lookups already do as defense in
- * depth). The one exception is sms_intake_sessions, where "the OPEN session" is filtered
- * here, because that predicate is the machine's whole notion of an active conversation.
+ * depth). The one exception is sms_intake_sessions, whose SELECT predicate is evaluated
+ * in full here, because that predicate is the machine's whole notion of an active
+ * conversation — "the open session ON THIS NUMBER" — and its reader has no post-check to
+ * fall back on: the question is which row, and the where clause is the only thing that
+ * answers it. Returning another number's session would silently put two phones in one
+ * conversation, so every test that drives two numbers at once would be testing that
+ * fiction rather than the routing.
  */
 export function makeFakeDb(): FakeDb {
   const writes: RecordedWrite[] = [];
@@ -137,6 +320,8 @@ export function makeFakeDb(): FakeDb {
       ? {
           followUpCount: 0,
           clarifyCount: 0,
+          sittingReminderSentAt: null,
+          firstReplyRecoveredAt: null,
           sourceCode: null,
           familyId: null,
           userId: null,
@@ -154,7 +339,13 @@ export function makeFakeDb(): FakeDb {
 
   const thenable = (rows: unknown[]) => {
     const chain: Record<string, unknown> = {};
-    for (const method of ['where', 'orderBy', 'from', 'onConflictDoNothing', 'onConflictDoUpdate']) {
+    for (const method of [
+      'where',
+      'orderBy',
+      'from',
+      'onConflictDoNothing',
+      'onConflictDoUpdate',
+    ]) {
       chain[method] = () => chain;
     }
     chain.limit = () => Promise.resolve(rows);
@@ -163,6 +354,15 @@ export function makeFakeDb(): FakeDb {
     // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
     chain.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
       Promise.resolve(rows).then(res, rej);
+    return chain;
+  };
+
+  /** A SELECT's rows. See the module note for why one table's predicate is evaluated. */
+  const selectFrom = (table: unknown) => {
+    const rows = rowsFor(table);
+    if (table !== schema.smsIntakeSessions) return thenable(rows);
+    const chain = thenable(rows);
+    chain.where = (expr: unknown) => thenable(rows.filter((row) => matchesWhere(table, expr, row)));
     return chain;
   };
 
@@ -178,16 +378,19 @@ export function makeFakeDb(): FakeDb {
    *      first.
    *   3. channel_messages(dedupe_key) WHERE dedupe_key IS NOT NULL — at-most-once per
    *      logical message: the winner is the only attempt that reaches a provider.
+   *   4. parent_channels(phone_e164_hash) WHERE revoked_at IS NULL — one active channel
+   *      per number. Not a race but an INVARIANT, and modelled for the same reason: four
+   *      separate paths enrol a number (intake, re-enrol on START, a caregiver's yes, a
+   *      co-parent's link), each one guards it by a check of its own, and a fake that
+   *      accepted the second row would let a routing bug read as "two rows, both fine"
+   *      here while 500-ing the webhook in production and handing the carrier a retry.
    *
    * Faithful in BOTH directions: a conflicting insert that declared
    * `onConflictDoNothing` resolves to no rows, and one that did NOT raises the unique
    * violation real Postgres would. Otherwise a caller could drop the conflict clause
    * and still go green here while 23505-ing in production.
    */
-  const conflictingIndex = (
-    table: unknown,
-    value: Record<string, unknown>,
-  ): string | null => {
+  const conflictingIndex = (table: unknown, value: Record<string, unknown>): string | null => {
     const existing = store.get(table) ?? [];
     if (
       table === schema.channelMessages &&
@@ -207,6 +410,18 @@ export function makeFakeDb(): FakeDb {
       return 'channel_messages_dedupe_key_uniq';
     }
     if (
+      table === schema.parentChannels &&
+      typeof value.phoneE164Hash === 'string' &&
+      (value.revokedAt === null || value.revokedAt === undefined) &&
+      existing.some(
+        (row) =>
+          row.phoneE164Hash === value.phoneE164Hash &&
+          (row.revokedAt === null || row.revokedAt === undefined),
+      )
+    ) {
+      return 'parent_channels_phone_hash_active_idx';
+    }
+    if (
       table === schema.smsIntakeSessions &&
       existing.some(
         (row) =>
@@ -222,9 +437,7 @@ export function makeFakeDb(): FakeDb {
   /** A conflicting insert: `onConflictDoNothing` swallows it, any other terminal throws. */
   const conflictChain = (constraint: string) => {
     const violation = () =>
-      Promise.reject(
-        new Error(`duplicate key value violates unique constraint "${constraint}"`),
-      );
+      Promise.reject(new Error(`duplicate key value violates unique constraint "${constraint}"`));
     const chain: Record<string, unknown> = {
       onConflictDoNothing: () => thenable([]),
       returning: violation,
@@ -236,7 +449,7 @@ export function makeFakeDb(): FakeDb {
   };
 
   const handle = {
-    select: () => ({ from: (table: unknown) => thenable(rowsFor(table)) }),
+    select: () => ({ from: selectFrom }),
     insert: (table: unknown) => {
       const chain = thenable([]);
       chain.values = (payload: Record<string, unknown> | Record<string, unknown>[]) => {
@@ -268,18 +481,56 @@ export function makeFakeDb(): FakeDb {
       const chain = thenable([]);
       chain.set = (payload: Record<string, unknown>) => {
         writes.push({ op: 'update', table, payload });
-        for (const row of store.get(table) ?? []) {
-          Object.assign(row, payload);
-        }
-        return thenable(store.get(table) ?? []);
+        let predicate: unknown = null;
+        const apply = () => {
+          const matched = (store.get(table) ?? []).filter((row) =>
+            predicate === null ? true : matchesWhere(table, predicate, row),
+          );
+          for (const row of matched) {
+            Object.assign(row, payload);
+          }
+          return matched;
+        };
+        const updated: Record<string, unknown> = {
+          where: (expr: unknown) => {
+            predicate = expr;
+            return updated;
+          },
+          returning: () => Promise.resolve(apply()),
+          // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
+          then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+            Promise.resolve(apply()).then(res, rej),
+        };
+        return updated;
       };
       return chain;
     },
   };
 
+  /**
+   * A transaction that ROLLS BACK. Without it the fake commits the writes of a
+   * transaction that threw, which is the one thing a test of "these rows exist together
+   * or not at all" must not be able to conclude wrongly: a write placed inside a
+   * transaction and a write placed just outside it would look identical the moment
+   * anything failed, and the difference between them is the whole point of putting it
+   * there (rule #6 — a crash may not leave half a record behind).
+   */
   const db = {
     ...handle,
-    transaction: async (cb: (tx: typeof handle) => Promise<unknown>) => cb(handle),
+    transaction: async (cb: (tx: typeof handle) => Promise<unknown>) => {
+      const snapshot = [...store].map(
+        ([table, rows]) => [table, rows.map((row) => ({ ...row }))] as const,
+      );
+      const committed = writes.length;
+      try {
+        return await cb(handle);
+      } catch (error) {
+        store.clear();
+        for (const [table, rows] of snapshot) store.set(table, rows);
+        writes.length = committed;
+        throw error;
+      }
+    },
   } as unknown as Database;
 
   return { db, writes, rows: (table) => store.get(table) ?? [] };

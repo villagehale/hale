@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a correct EMPTY slots result. The page was opened and read (pageEvidence: page_has_schedule), and it genuinely carries nothing for toddlers—the youngest offering starts at age 8. The slots list is properly empty. The message correctly reports this specific absence (\"I couldn't pin down any toddler-age class on it\"), attributes facts to the page (\"their listings run older kids and adults\"), avoids unearned negative claims, and includes the watchFor commitment (\"I'll keep watching and text you if a younger class shows up\") which is appropriate since watch=true and a continuation promise exists. The message uses first-person attribution, makes no questions or proposals, and is plain and direct. No stretching of age bands occurred."
+  }
+}

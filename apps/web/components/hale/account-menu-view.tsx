@@ -1,10 +1,8 @@
-import Link from 'next/link';
 import type { RefObject } from 'react';
-import { ChevronsUpDown, LogOut, Settings } from 'lucide-react';
+import { ChevronsUpDown, LogOut } from 'lucide-react';
 import { PLAN_DISPLAY, type PlanTier } from '@hale/types';
 import { Avatar } from '~/components/ui/avatar';
 import { Icon } from '~/components/ui/icon';
-import { SETTINGS_NAV } from '~/components/hale/nav';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 
 /** The parent's initials for the fallback disc — first + last name initial ("Barton
@@ -23,12 +21,14 @@ export interface AccountMenuViewProps {
   parentName: string | null;
   /** The signed-in parent's photo (Google `user.image`), or null → the initials disc. */
   parentImage?: string | null;
-  /** The family's plan, shown as the chip's secondary line per the desktop handoff. */
+  /** The family's plan — the chip's secondary line when no phone is enrolled. */
   planTier: PlanTier;
+  /** The parent's MASKED SMS number (Instinct-style name + phone chip). Null when
+   * not enrolled → the plan label stands in. Never the raw number (rule #1). */
+  maskedPhone?: string | null;
   canSignOut: boolean;
   menuId: string;
   onToggle: () => void;
-  onSelect: () => void;
   /** The sign-out form action — injected by the wrapper so this presentational
    * view never imports the auth module (keeping it render-to-static testable). */
   onSignOut: () => void | Promise<void>;
@@ -39,21 +39,23 @@ export interface AccountMenuViewProps {
 /**
  * The chip + popover markup, factored out of the stateful wrapper so it renders
  * without the shell/router context (the wrapper owns open-state and dismissal).
- * The chip's secondary line is the family's plan (design handoff); per the handoff
- * the popover is Settings + Sign out only; Appearance (the theme control) rides
- * along where it has always lived, and Sign out — an account action, not a
- * destination — sits below a divider. History moved out of this menu (it stays
- * reachable from the Approvals surface).
+ * The chip's secondary line is the family's plan (design handoff).
+ *
+ * The popover holds NO destinations — only Appearance (the theme control) and, below
+ * a divider, Sign out, an account action rather than a place. Settings is a nav stop
+ * in its own right, and a second entry to it here gave the app two Settings; the
+ * chip is the account, the nav is the map. History left the same way earlier (it
+ * stays reachable from the Approvals surface).
  */
 export function AccountMenuView({
   open,
   parentName,
   parentImage = null,
   planTier,
+  maskedPhone = null,
   canSignOut,
   menuId,
   onToggle,
-  onSelect,
   onSignOut,
   rootRef,
   triggerRef,
@@ -73,10 +75,6 @@ export function AccountMenuView({
           role="dialog"
           aria-label="account"
         >
-          <Link href={SETTINGS_NAV.href} className="account-pop-item" onClick={onSelect}>
-            <Icon as={Settings} size={18} />
-            <span>settings</span>
-          </Link>
           <div className="account-pop-row">
             <span className="account-pop-row-label">appearance</span>
             <ThemeToggle />
@@ -109,7 +107,15 @@ export function AccountMenuView({
         <Avatar tone="account" src={parentImage} initials={parentInitials(parentName)} size={32} />
         <span className="account-chip-identity" data-hale-pii>
           <span className="account-chip-name">{displayName}</span>
-          <span className="account-chip-family meta">You · {planLabel}</span>
+          {/* Instinct-style name + phone; the plan label stands in until a number
+           * is enrolled. The masked value is still PII-tagged for replay masking. */}
+          {maskedPhone ? (
+            <span className="account-chip-family meta" data-hale-pii>
+              {maskedPhone}
+            </span>
+          ) : (
+            <span className="account-chip-family meta">You · {planLabel}</span>
+          )}
         </span>
         <Icon as={ChevronsUpDown} size={16} className="account-chip-caret" />
       </button>

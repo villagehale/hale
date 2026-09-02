@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply gets several things wrong. First, it says \"No park listed for your area yet\" — but Riverdale Farm IS in offerable and is described as a \"free outdoor farm, open daily,\" which is effectively a park-type venue. That opener is misleading. Second, Riverdale Farm is open daily (not just Sun Aug 9) — the reply narrows it to one day when the offerable item says \"open daily.\" Third, the reply asks whether to add it to the calendar for Milo or Ada — but Sam didn't ask to schedule anything, just asked about a nearby park. Hale is turning a simple info question into a scheduling prompt, which hands work back. Fourth, the reply ignores the other offerable item (Central Library story time) which could also be relevant. The core job was to surface verified nearby options from offerable — Hale had two and buried or misrepresented them. The question at the end is unnecessary and slightly presumptuous. On the positive side, it does name Riverdale Farm and its free/outdoor character, and doesn't send the parent to an app or invent a URL. But the false opener and the wrong day framing are meaningful errors.",
+    "score": 2
+  }
+}

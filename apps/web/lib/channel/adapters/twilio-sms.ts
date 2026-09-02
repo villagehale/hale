@@ -1,6 +1,7 @@
+import { captureAgentError } from '~/lib/analytics/server-capture';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { twilioConfig } from '~/lib/channel/twilio/config';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import { TwilioSendError, createTwilioTransport } from '~/lib/channel/twilio/transport';
 import type { Channel } from '../types';
 
 /**
@@ -17,10 +18,14 @@ import type { Channel } from '../types';
  * credentials skips cleanly rather than half-sending, and the dispatch records the
  * skip as a not_configured leg.
  *
- * A provider failure THROWS out of the transport rather than being mapped to an
- * outcome. That is the drain's documented contract for a channel error: the job fails,
- * pg-boss redelivers with backoff, and the per-channel dedupe key keeps the retry from
- * double-sending. Swallowing it here would turn a Twilio outage into a silent week.
+ * A provider failure is CLASSIFIED here, not swallowed and not blindly rethrown. A
+ * transient refusal becomes the transient error variant, which the dispatch turns back
+ * into a throw so pg-boss redelivers with backoff (the per-channel dedupe key keeps the
+ * retry from double-sending) — a Twilio outage must never become a silent week. A
+ * PERMANENT refusal — 21610 above all, the parent has opted out at the carrier — becomes
+ * the non-transient variant instead: retrying can only re-earn the same refusal, so the
+ * dispatch writes the failed row with the Twilio code and the loop stops texting a
+ * number that has told the carrier no.
  *
  * Privacy (rule #1): the phone number and the rendered body are never logged.
  */
@@ -53,8 +58,33 @@ export function createTwilioSmsChannel(deps: TwilioSmsChannelDeps): Channel {
         return { status: 'skipped', reason: 'no_address' };
       }
 
-      const { providerMessageId } = await transport.send({ to, body: rendered.text });
-      return { status: 'sent', providerMessageId };
+      try {
+        const { providerMessageId } = await transport.send({ to, body: rendered.text });
+        return { status: 'sent', providerMessageId };
+      } catch (error) {
+        if (!(error instanceof TwilioSendError)) throw error;
+        // Reported at the point the refusal is CLASSIFIED, which is the only place both
+        // halves are known: Twilio's numeric code, and whether a retry could ever help.
+        // The error's `message` is deliberately not passed — it echoes the recipient's
+        // number and the body back, and the reporter has no field it would fit in.
+        //
+        // No family: this seam is addressed by `userId`, and a user id reported in a
+        // field named for a family is a wrong grain that would silently mis-group every
+        // co-parent. The dispatch already carries the per-family view of the same
+        // failure on its ledger row (channel/dispatch.ts, loop_message_failed).
+        await captureAgentError({
+          lane: 'transport',
+          code: error.code,
+          retry: error.permanent ? 'permanent' : 'transient',
+          familyId: null,
+        });
+        return {
+          status: 'error',
+          transient: !error.permanent,
+          code: error.code,
+          message: error.message,
+        };
+      }
     },
   };
 }

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This message correctly handles a proposal match. It uses first-person singular (\"want me\"), avoids the defects of naming the speaker as subject or using \"we/us/our\". It gives a concrete reason for the introduction (the activity and day are aligned). It does not oversell, does not presume facts beyond what was provided (respects \"baby\" and \"your kid's\" as given), does not imply Hale has spoken to the other family, and does not include greeting, sign-off, exclamation marks, or pressure. It asks a genuine yes/no question without naming a specific response token. Grammar is correct throughout. It is brief and treats the offer as small, as appropriate."
+  }
+}

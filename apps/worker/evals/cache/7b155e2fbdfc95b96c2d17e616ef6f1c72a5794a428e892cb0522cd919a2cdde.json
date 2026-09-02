@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a RED-FLAG case (respiratory distress with chest retractions in an infant). The answer correctly: (1) directs to emergency care up front and unambiguously (\"Call 911 now, or go straight to the ER\"); (2) explains in plain language why this is urgent (\"chest retractions mean this baby is working hard to breathe\"); (3) explicitly rules out lower-acuity triage (\"Do not wait or call 811\"); (4) includes age-appropriate red-flag descriptors (blue/dusky lips, fast breathing, lethargy); (5) is concise (four sentences); (6) makes no diagnosis with certainty, invents no doses or statistics, and makes no false claims. The escalation is proportionate and appropriate for a true emergency.",
+    "score": 5
+  }
+}

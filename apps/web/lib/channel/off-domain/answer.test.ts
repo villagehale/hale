@@ -1,6 +1,17 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { MAX_ANSWER_CHARS, createGeneralAnswer, generalAnswerUserMessage } from './answer';
+import {
+  AFTER_PROVISION_RETURN_ASK,
+  CHEER_UP_REPLY,
+  NO_CURRENT_SOURCE_YET,
+} from '~/lib/channel/intake/live-lookup';
+import { MAX_ANSWER_SEGMENTS, createGeneralAnswer, generalAnswerUserMessage } from './answer';
+import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from './copy';
+
+/** GSM-7 concatenation part size (sms-segments.ts GSM7_CONCAT_PART). A GSM-7 body of
+ * this many characters is exactly {@link MAX_ANSWER_SEGMENTS} segments; one more tips it
+ * over. Kept local so the cap tests track the constant rather than a magic 306/307. */
+const GSM7_CONCAT_PART = 153;
 
 /**
  * Boundary v3 — the general answer's MECHANICS. Not its judgement.
@@ -145,11 +156,12 @@ describe('createGeneralAnswer', () => {
   /**
    * The cap is a REFUSAL, not a trim. A trivia answer cut mid-clause reads as broken
    * software, and unlike the coach's reply there is no app link to hand the rest to —
-   * so the lane's fixed line is the better outcome, and it is a named one.
+   * so the lane's fixed line is the better outcome, and it is a named one. The budget is
+   * SEGMENTS, so it holds in whatever currency the body's encoding is billed in.
    */
-  it('refuses an answer past the character cap instead of truncating it', async () => {
+  it('refuses an answer past the segment budget instead of truncating it', async () => {
     const log = quiet();
-    const tooLong = `${'a'.repeat(MAX_ANSWER_CHARS)} and one more clause.`;
+    const tooLong = 'a'.repeat(MAX_ANSWER_SEGMENTS * GSM7_CONCAT_PART + 1);
 
     expect(await createGeneralAnswer(clientReturning({ answer: tooLong })).compose(ASK)).toEqual({
       status: 'unavailable',
@@ -158,8 +170,8 @@ describe('createGeneralAnswer', () => {
     log.mockRestore();
   });
 
-  it('accepts an answer exactly at the cap', async () => {
-    const exact = 'a'.repeat(MAX_ANSWER_CHARS);
+  it('accepts an answer exactly at the segment budget', async () => {
+    const exact = 'a'.repeat(MAX_ANSWER_SEGMENTS * GSM7_CONCAT_PART);
     expect(await createGeneralAnswer(clientReturning({ answer: exact })).compose(ASK)).toEqual({
       status: 'composed',
       reply: exact,
@@ -168,19 +180,47 @@ describe('createGeneralAnswer', () => {
 
   it('refuses an answer that is empty once flattened', async () => {
     const log = quiet();
-    expect(await createGeneralAnswer(clientReturning({ answer: '  **  ** ' })).compose(ASK)).toEqual(
-      { status: 'unavailable', reason: 'unsendable' },
-    );
+    expect(
+      await createGeneralAnswer(clientReturning({ answer: '  **  ** ' })).compose(ASK),
+    ).toEqual({ status: 'unavailable', reason: 'unsendable' });
     log.mockRestore();
   });
 
-  /** An emoji has no ASCII twin to fold to, and one of them re-encodes the whole body to
-   * UCS-2. Nothing is guessed at: the answer is refused and the fixed line goes out. */
-  it('refuses an answer that is still outside GSM-7 after flattening', async () => {
-    const log = quiet();
+  /**
+   * The gate is UCS-2-aware, not GSM-7-only: a parent who writes in French or Chinese is
+   * answered in kind (general-answer.md), and an accented or CJK body — which is UCS-2 —
+   * SHIPS as long as it fits the segment budget. This is the capability the old
+   * `not_gsm7` reject silently blocked; it fell every such answer closed to the English
+   * line. `plainText` still folds a gratuitous curly quote or em dash to ASCII, but the é
+   * and the Chinese character are content, not flourish, so they survive.
+   */
+  it('ships a short accented-French answer (UCS-2 within budget)', async () => {
+    // "drôle" carries ô, which is outside GSM-7 (é/è/à are not) — so this body is genuinely
+    // UCS-2, the exact case the old not_gsm7 reject would have fallen closed.
     expect(
-      await createGeneralAnswer(clientReturning({ answer: 'Messi, no contest 🐐' })).compose(ASK),
-    ).toEqual({ status: 'unavailable', reason: 'unsendable' });
+      await createGeneralAnswer(
+        clientReturning({ answer: "A mon avis, c'est un peu drôle mais délicieux." }),
+      ).compose('cest quoi ton avis'),
+    ).toEqual({ status: 'composed', reply: "A mon avis, c'est un peu drôle mais délicieux." });
+  });
+
+  it('ships a short Chinese answer (UCS-2 within budget)', async () => {
+    expect(
+      await createGeneralAnswer(clientReturning({ answer: '梅西,无可争议。' })).compose(
+        '足球界谁最强',
+      ),
+    ).toEqual({ status: 'composed', reply: '梅西,无可争议。' });
+  });
+
+  /** The segment budget bites in UCS-2 too: a long Chinese body is three segments at 135
+   * characters where an English one takes 460, and it is refused just the same. */
+  it('refuses a Chinese answer that runs past the segment budget', async () => {
+    const log = quiet();
+    const tooLong = '中'.repeat(MAX_ANSWER_SEGMENTS * 67 + 1);
+    expect(await createGeneralAnswer(clientReturning({ answer: tooLong })).compose(ASK)).toEqual({
+      status: 'unavailable',
+      reason: 'unsendable',
+    });
     log.mockRestore();
   });
 
@@ -225,15 +265,129 @@ describe('link refusal', () => {
  * branch carries no text, so the fixed line in copy.ts is the only thing the lane can
  * put on the wire (see lane.test.ts for the words).
  */
-describe('safety refusal', () => {
-  it.each([
-    'Not medical advice, but 811 can help any time.',
-    'That needs a person - call 911.',
-  ])('hands a composed referral to the fixed line instead of sending it: %s', async (body) => {
-    quiet();
+describe('after provision leftover facts · VIL-327', () => {
+  it('does not leave a current-source leftover fact in trivia', async () => {
+    const notes = 'Argentina won the 2022 FIFA World Cup.';
+    const client = () =>
+      ({
+        messages: {
+          create: async (req: { tools?: Array<{ type?: string }> }) => {
+            if (req.tools?.[0]?.type === 'web_search_20250305') {
+              return {
+                content: [
+                  { type: 'text', text: notes },
+                  {
+                    type: 'web_search_tool_result',
+                    tool_use_id: 'srvtu_3',
+                    content: [
+                      {
+                        type: 'web_search_result',
+                        url: 'https://www.fifa.com',
+                        title: 'World Cup',
+                      },
+                    ],
+                  },
+                ],
+              };
+            }
+            throw new Error('after-provision leftover facts must not invent from memory');
+          },
+        },
+      }) as unknown as AgentClient;
 
-    expect(await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK)).toEqual({
-      status: 'safety',
-    });
+    const outcome = await createGeneralAnswer(client).compose('who won the World Cup?');
+    expect(outcome.status).toBe('composed');
+    if (outcome.status !== 'composed') return;
+    expect(outcome.reply).toContain('Argentina');
+    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
+    expect(outcome.reply).not.toMatch(/https?:\/\//);
   });
+
+  it('says no current source yet, then returns to the kids / the week', async () => {
+    const exploding = () =>
+      ({
+        messages: {
+          create: () => {
+            throw new Error('search down');
+          },
+        },
+      }) as unknown as AgentClient;
+    const log = quiet();
+    const outcome = await createGeneralAnswer(exploding).compose('Who is the US president?');
+    log.mockRestore();
+    expect(outcome.status).toBe('composed');
+    if (outcome.status !== 'composed') return;
+    expect(outcome.reply).toContain(NO_CURRENT_SOURCE_YET);
+    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
+  });
+
+  it('answers a cheer-up with warmth and a line back to the week', async () => {
+    const exploding = () =>
+      ({
+        messages: {
+          create: () => {
+            throw new Error('cheer-up is reviewed copy');
+          },
+        },
+      }) as unknown as AgentClient;
+    const outcome = await createGeneralAnswer(exploding).compose('cheer me up');
+    expect(outcome.status).toBe('composed');
+    if (outcome.status !== 'composed') return;
+    expect(outcome.reply).toContain(CHEER_UP_REPLY);
+    expect(outcome.reply).toContain(AFTER_PROVISION_RETURN_ASK);
+    expect(outcome.reply).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
+  });
+
+  it('answers a crisis with safety and no return ask', async () => {
+    const exploding = () =>
+      ({
+        messages: {
+          create: () => {
+            throw new Error('a crisis must not reach a model');
+          },
+        },
+      }) as unknown as AgentClient;
+    expect(await createGeneralAnswer(exploding).compose('I want to die')).toEqual({
+      status: 'composed',
+      reply: MENTAL_CRISIS_REPLY,
+    });
+    expect(MENTAL_CRISIS_REPLY).not.toContain('?');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
+    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
+  });
+
+  it('answers a physical emergency with Call 911 now. and no return ask', async () => {
+    const exploding = () =>
+      ({
+        messages: {
+          create: () => {
+            throw new Error('a physical emergency must not reach a model');
+          },
+        },
+      }) as unknown as AgentClient;
+    expect(await createGeneralAnswer(exploding).compose('she is not breathing')).toEqual({
+      status: 'composed',
+      reply: EMERGENCY_REPLY,
+    });
+    expect(EMERGENCY_REPLY).toBe('Call 911 now.');
+    expect(EMERGENCY_REPLY).not.toContain('811');
+    expect(EMERGENCY_REPLY).not.toContain('Health811');
+    expect(EMERGENCY_REPLY).not.toContain('988');
+    expect(EMERGENCY_REPLY).not.toContain('?');
+    expect(EMERGENCY_REPLY).not.toBe(SAFETY_REPLY);
+  });
+});
+
+describe('safety refusal', () => {
+  it.each(['Not medical advice, but 811 can help any time.', 'That needs a person - call 911.'])(
+    'hands a composed referral to the fixed line instead of sending it: %s',
+    async (body) => {
+      quiet();
+
+      expect(await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK)).toEqual({
+        status: 'safety',
+      });
+    },
+  );
 });

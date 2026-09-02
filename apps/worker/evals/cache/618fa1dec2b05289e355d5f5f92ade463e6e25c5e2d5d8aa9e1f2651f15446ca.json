@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands Sam the referral link (which is appended by the runtime and present in knows.referralLinkAppended) and tells them to forward it themselves — exactly right. It gives a brief, accurate description of what Hale does. The link is correct and not invented. No app redirect, no unnecessary questions, no drafted changes needed. The only small issue is a brief explanatory sentence about what Hale is (\"Hale is a text-based family chief of staff...\") that adds a little length but is actually useful context for a referral scenario where the parent needs to know what to tell their friend. This is borderline between a 4 and 5 — the extra sentence is arguably appropriate given the referral context (the parent may want to know how to describe it), so it's not truly redundant. However, the instruction says no greeting, no sign-off — there's no greeting or sign-off here. The reply is clean and functional. Very slight wordiness with the descriptive sentence but it serves the referral purpose well. I'd call this a 4 — does the job with one mildly extra clause.",
+    "score": 4
+  }
+}

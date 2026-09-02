@@ -90,35 +90,7 @@ export const familyMemoryEpisodes = pgTable(
   }),
 );
 
-/**
- * How each parent writes (for Drafter to match voice).
- */
-export const familyVoiceProfiles = pgTable(
-  'family_voice_profiles',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    familyId: uuid('family_id')
-      .notNull()
-      .references(() => families.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    voiceSamples: jsonb('voice_samples')
-      .$type<Array<{ context: string; sample: string }>>()
-      .notNull()
-      .default([]),
-    toneDescriptors: text('tone_descriptors').array().notNull().default([]),
-    signatureBlock: text('signature_block'),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    familyUserIdx: index('voice_profile_family_user_idx').on(table.familyId, table.userId),
-  }),
-);
-
 export type FamilyMemoryFact = typeof familyMemoryFacts.$inferSelect;
 export type NewFamilyMemoryFact = typeof familyMemoryFacts.$inferInsert;
 export type FamilyMemoryEpisode = typeof familyMemoryEpisodes.$inferSelect;
 export type NewFamilyMemoryEpisode = typeof familyMemoryEpisodes.$inferInsert;
-export type FamilyVoiceProfile = typeof familyVoiceProfiles.$inferSelect;
-export type NewFamilyVoiceProfile = typeof familyVoiceProfiles.$inferInsert;

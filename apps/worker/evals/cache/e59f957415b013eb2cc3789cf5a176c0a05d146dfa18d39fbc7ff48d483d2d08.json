@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply identifies the single matching event (Soccer practice, Sat 10:00am), drafts the move to 11:00am, names the venue (Cedarvale Park — recalled from the week, not invented), and ends with the required \"YES to confirm.\" format. Nothing is missing, nothing is invented, no app referral, no extra questions. Exactly the right shape.",
+    "score": 5
+  }
+}

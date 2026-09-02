@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
@@ -16,7 +16,7 @@ import {
   isResendInCooldown,
   verifyOtpCode,
 } from './otp';
-import { maskPhoneE164, normalizePhoneE164 } from './phone';
+import { isSyntheticProbeNumber, maskPhoneE164, normalizePhoneE164 } from './phone';
 
 /**
  * The SMS channel enrolment engine (VIL-212). Pure of auth/request concerns — every
@@ -449,6 +449,51 @@ export async function resolveSendablePhone(
   // the two columns that make the row sendable rather than trusting the predicate.
   if (!active?.verifiedAt || active.revokedAt !== null) return null;
   return decryptString(active.phoneE164Encrypted);
+}
+
+/**
+ * Whether ANY of this family's SMS channels sits in the operator's fictional probe
+ * range (phone.ts SYNTHETIC_PROBE_PREFIX) — THE chokepoint every human-facing signal
+ * consults before announcing a family to a person (the founder ping, the village
+ * intro sweep). It lives here because this module is where a family's channels are
+ * resolved, so a new notification path inherits the guard by asking the same module
+ * it already needs for the phone number.
+ *
+ * Revoked rows count on purpose: a probe that pressed STOP is still a probe. Two
+ * post-filtered reads rather than a join, the module's own defense-in-depth shape.
+ */
+export async function familyHasSyntheticProbeChannel(
+  database: Database,
+  familyId: string,
+): Promise<boolean> {
+  const members = await database
+    .select({ familyId: schema.familyMembers.familyId, userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, familyId));
+  const memberIds = new Set(
+    members.filter((row) => row.familyId === familyId).map((row) => row.userId),
+  );
+  if (memberIds.size === 0) return false;
+
+  const channels = await database
+    .select({
+      userId: schema.parentChannels.userId,
+      kind: schema.parentChannels.kind,
+      phoneE164Encrypted: schema.parentChannels.phoneE164Encrypted,
+    })
+    .from(schema.parentChannels)
+    .where(
+      and(
+        inArray(schema.parentChannels.userId, [...memberIds]),
+        eq(schema.parentChannels.kind, CHANNEL_KIND),
+      ),
+    );
+  return channels.some(
+    (row) =>
+      row.kind === CHANNEL_KIND &&
+      memberIds.has(row.userId) &&
+      isSyntheticProbeNumber(decryptString(row.phoneE164Encrypted)),
+  );
 }
 
 export interface ResolvedChannel {

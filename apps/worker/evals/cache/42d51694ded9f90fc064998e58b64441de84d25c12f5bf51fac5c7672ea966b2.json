@@ -1,0 +1,9 @@
+{
+  "value": {
+    "clinical_query": "ear pain, tugging at ear, night crying, possible ear infection",
+    "age_band": "toddler",
+    "duration": "overnight",
+    "language": "en"
+  },
+  "latencyMs": 1874
+}

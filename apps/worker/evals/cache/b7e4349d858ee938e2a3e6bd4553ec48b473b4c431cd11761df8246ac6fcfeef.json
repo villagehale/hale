@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.3,
+    "rationale": "This is a 14-year-old's private personal journal entry marked \"private,\" not a family logistics signal; it is sensitive teen content that should not be surfaced or acted on by the system.",
+    "payload": {
+      "source": "notes_sync",
+      "private_teen_note": true,
+      "suppress_from_digest": true
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-kai"
+  },
+  "latencyMs": 4858
+}

@@ -56,7 +56,28 @@ export type CommitmentCancelReason =
    * age gate. The promise was a PLAN, and a refusal does not keep it — so the debt is
    * voided rather than marked kept, which also stops a second yes re-refusing forever.
    */
-  | 'plan_age_gated';
+  | 'plan_age_gated'
+  /** The same supersede, for the health checkpoint's booking offer: the nudge that just
+   * went out is the offer now, and the one before it is no longer what a yes answers. */
+  | 'checkup_offer_superseded'
+  /**
+   * The same supersede again, for the coach's activity promise. A parent who asks about
+   * swimming and then about gymnastics is owed ONE follow-up: the newest promise is the
+   * one Hale just made, and two open rows would be two sweeps texting the same family in
+   * the same hour about two halves of one conversation.
+   */
+  | 'activity_promise_superseded'
+  /**
+   * The same supersede once more, for the founder's welcome offer. Two families can
+   * arrive from a poster inside one TTL, and the partial unique index permits one open
+   * offer of a kind per family — so without this the second ping would be sent and its
+   * row silently refused, leaving a YES that texts the FIRST family. The newest ping is
+   * the offer now; the one before it is voided out loud rather than mis-answered.
+   */
+  | 'founder_welcome_superseded'
+  /** The founder said no. The note was never sent, so the promise was not kept — voided,
+   * with the reason that says a person decided it rather than a clock running out. */
+  | 'founder_welcome_declined';
 
 /**
  * What became of a promise. `already_open` is deliberately NOT folded into either of the
@@ -102,6 +123,9 @@ export async function recordCommitment(
     topic?: string | null;
     /** WHOSE plan, when one child was named. Null for a household question. */
     subjectChildId?: string | null;
+    /** WHICH OTHER HOUSEHOLD the promise is about, for the one kind whose subject is not
+     * the family it is owed to (see the column's own note). Null for every other kind. */
+    subjectFamilyId?: string | null;
     dueAt: Date;
     channelMessageId: string | null;
   },
@@ -122,6 +146,7 @@ export async function recordCommitment(
         summary: input.summary,
         topic: input.topic ?? null,
         subjectChildId: input.subjectChildId ?? null,
+        subjectFamilyId: input.subjectFamilyId ?? null,
         dueAt: input.dueAt,
         createdFrom: input.channelMessageId,
       })
@@ -258,7 +283,11 @@ export async function loadOpenCommitment(
   summary: string;
   topic: string | null;
   subjectChildId: string | null;
+  subjectFamilyId: string | null;
   dueAt: Date;
+  /** When the promise was minted — which, for an offer, is when its ask went out (every
+   * writer records against the sent message). The open-question reader's recency fact. */
+  createdAt: Date;
 } | null> {
   const rows = await database
     .select({
@@ -266,7 +295,9 @@ export async function loadOpenCommitment(
       summary: schema.agentCommitments.summary,
       topic: schema.agentCommitments.topic,
       subjectChildId: schema.agentCommitments.subjectChildId,
+      subjectFamilyId: schema.agentCommitments.subjectFamilyId,
       dueAt: schema.agentCommitments.dueAt,
+      createdAt: schema.agentCommitments.createdAt,
     })
     .from(schema.agentCommitments)
     .where(
@@ -277,6 +308,39 @@ export async function loadOpenCommitment(
       ),
     );
   return rows[0] ?? null;
+}
+
+/**
+ * ONE promise, by id, and only while it is still owed.
+ *
+ * The reader a QUEUED job needs. A sweep asks "who is due?"; a job carries a pointer and
+ * has to ask "is this still mine to keep?" — and the open predicate in the WHERE clause
+ * is what makes the answer safe. A promise fulfilled between the enqueue and the run
+ * (the parent asked again, the hourly sweep got there first, the job was redelivered
+ * after its own send) comes back null, and a null is a job that drops rather than a
+ * second text about the same question.
+ *
+ * The row shape is {@link DueCommitment}'s on purpose: the job and the sweep run the same
+ * delivery over it, so they must be reading the same thing.
+ */
+export async function loadOpenCommitmentById(
+  database: Database,
+  id: string,
+): Promise<DueCommitment | null> {
+  const [row] = await database
+    .select({
+      id: schema.agentCommitments.id,
+      familyId: schema.agentCommitments.familyId,
+      topic: schema.agentCommitments.topic,
+      summary: schema.agentCommitments.summary,
+      createdFrom: schema.agentCommitments.createdFrom,
+      subjectChildId: schema.agentCommitments.subjectChildId,
+      dueAt: schema.agentCommitments.dueAt,
+    })
+    .from(schema.agentCommitments)
+    .where(and(eq(schema.agentCommitments.id, id), openPredicate()))
+    .limit(1);
+  return row ?? null;
 }
 
 /** One promise, anywhere, that has come due — the shape a sweep acts on. */
@@ -292,6 +356,10 @@ export interface DueCommitment {
    * it: the parent who was texted is the one owed the follow-up, and a household read
    * would text a co-parent about a plan they never asked for. */
   createdFrom: string;
+  /** WHOSE promise, when one child was named. The activity sweep grounds its re-run
+   * search on this child's stage, so a household promise and a promise about the
+   * three-year-old are two different searches. Null for a household one. */
+  subjectChildId: string | null;
   dueAt: Date;
 }
 
@@ -315,6 +383,7 @@ export async function loadDueCommitments(
       topic: schema.agentCommitments.topic,
       summary: schema.agentCommitments.summary,
       createdFrom: schema.agentCommitments.createdFrom,
+      subjectChildId: schema.agentCommitments.subjectChildId,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)

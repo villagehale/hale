@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the one matching event (Soccer practice, Sat 10:00am at Cedarvale Park), drafts a move, and asks for YES confirmation — exactly the contract. It names the change clearly, uses the literal word YES, and adds nothing else. A minor blemish: it could have included the venue or been slightly more explicit (\"from 10am\"), but it's clean, unambiguous, and complete. This is the product working correctly.",
+    "score": 5
+  }
+}

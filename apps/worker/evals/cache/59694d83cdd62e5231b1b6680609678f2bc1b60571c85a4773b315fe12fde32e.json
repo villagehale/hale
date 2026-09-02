@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the referral link (which is appended by the runtime and present in knows.referralLinkAppended), tells the parent to forward it themselves, and gives a brief description of what Hale does. The link matches exactly. The reply is accurate and does the job. A minor blemish: it's a touch longer than needed — the description of Hale (\"schedules, kids activities, parenting questions, all in one thread\") is slightly padding when the parent just asked how to refer, but it's not harmful and could be considered useful context. No greeting, no sign-off, no markdown, no app referral, no invented URL. Overall this is very close to ideal.",
+    "score": 4
+  }
+}

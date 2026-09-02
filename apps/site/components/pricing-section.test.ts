@@ -1,7 +1,8 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
-import { PLAN_DISPLAY } from '@hale/types';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PLAN_DISPLAY, PLAN_TIERS_ORDERED } from '@hale/types';
+import { chromeCta } from '~/lib/site/chrome-cta.js';
 import { PricingSection } from './pricing-section.js';
 
 /**
@@ -10,6 +11,13 @@ import { PricingSection } from './pricing-section.js';
  * framing. Rendered to static markup — the section is a pure server component.
  */
 const html = renderToStaticMarkup(createElement(PricingSection));
+
+/** Escape a string for use inside a RegExp — hrefs carry `+`, `?` and `.`. */
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('PricingSection (landing pricing)', () => {
   it('renders all three tiers with their display names', () => {
@@ -25,18 +33,78 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).toContain('$159 CAD/yr');
   });
 
-  it('leads with the village being free', () => {
+  it('leads with the core being free, and argues it without a metaphor to decode', () => {
     expect(html).toContain('Free');
-    expect(html).toContain('The village is free');
-    expect(html).toContain('Join free');
+    expect(html).toContain('The whole core is free');
+    // "The village" as a synonym for Hale was a third governing metaphor at the
+    // close (after chief of staff and radar) — a word the reader has to translate
+    // before learning the price. It is earned in exactly one place now: the About
+    // page's story of the village we lost. The tier FEATURE lines are a different
+    // thing — they name the shipped family-to-family Village product — so the
+    // assertion is against the band's own argument, not the feature list.
+    const argument = html
+      .replace(/<ul class="numbered-card-list">[\s\S]*?<\/ul>/g, '')
+      // Visible prose only — the brand domain lives in an href, not in the argument.
+      .replace(/<[^>]+>/g, ' ');
+    expect(argument).not.toContain('village');
   });
 
-  it('routes paid tiers to start-free — no dead waitlist, checkout, or "Coming soon"', () => {
+  it('sells the free tier as SMS, not Village or Companion', () => {
+    expect(html).toContain('Text Hale, rec dates watched, answers, and the founding rate.');
+    expect(html).not.toContain('see what families near you recommend');
+    expect(html).not.toContain('Your village feed');
+    expect(html).not.toContain('Companion:');
+  });
+
+  it('routes every tier to a LIVE action — no dead waitlist, checkout, or "Coming soon"', () => {
     expect(html).not.toContain('Coming soon');
     expect(html).not.toContain('#waitlist');
     expect(html.toLowerCase()).not.toContain('checkout');
-    // Paid tiers invite starting free now; billing/upgrade is deferred until it ships.
-    expect(html).toContain('Start free — upgrade when it ships');
+    // Free and paid alike open the one front door the site chrome offers. There is one
+    // CTA per tier, and all three carry the same destination — free vs paid differs in
+    // emphasis (btn-primary vs btn-secondary), not in where it goes.
+    const { href, label } = chromeCta();
+    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(
+      PLAN_TIERS_ORDERED.length,
+    );
+    expect([...html.matchAll(new RegExp(escapeRe(label), 'g'))]).toHaveLength(
+      PLAN_TIERS_ORDERED.length,
+    );
+  });
+
+  /**
+   * The regression this replaced a label-pin with. Every tier CTA used to hardcode the
+   * app's /onboarding wizard, which no longer exists — so the pricing page's only
+   * action 308'd the reader back to the marketing homepage. Asserted under the LIVE
+   * config, because that is what a reader actually gets.
+   */
+  it('sends a reader to the texting door under the live config — never the deleted wizard', () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
+    const live = renderToStaticMarkup(createElement(PricingSection));
+    expect(chromeCta().href).toMatch(/^sms:/);
+    expect(live).toContain('sms:+16475551234');
+    expect(live).not.toContain('/onboarding');
+  });
+
+  it('claims an annual discount the prices actually deliver', () => {
+    // It said "about two months free" while $79 vs $9x12 saves 3.2 months and
+    // $159 vs $19x12 saves 3.6 — wrong for both tiers, on the one page a reader
+    // checks the arithmetic on. Derived from PLAN_DISPLAY, so a reprice that
+    // makes the sentence untrue fails here rather than shipping.
+    const CLAIMED_MONTHS = 3;
+    const paid = PLAN_TIERS_ORDERED.filter((tier) => PLAN_DISPLAY[tier].monthlyPriceCad > 0);
+    expect(paid.length).toBeGreaterThan(0);
+    for (const tier of paid) {
+      const plan = PLAN_DISPLAY[tier];
+      const saved = (plan.monthlyPriceCad * 12 - plan.annualPriceCad) / plan.monthlyPriceCad;
+      expect(saved, `${tier} saves less than the page claims`).toBeGreaterThanOrEqual(
+        CLAIMED_MONTHS,
+      );
+      expect(saved, `${tier} saves a whole month more than the page claims`).toBeLessThan(
+        CLAIMED_MONTHS + 1,
+      );
+    }
+    expect(html).toContain('about three months free');
   });
 
   it('carries the founding-families banner with the first-100 badge promise', () => {

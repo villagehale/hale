@@ -5,6 +5,8 @@ import {
   HEALTH_CHECKPOINTS,
   MAX_LINK_URL_LENGTH,
   TEEN_STAGE_MIN_MONTHS,
+  checkpointRef,
+  refsSharingVisit,
 } from './checkpoints';
 import { HEALTH_CLOSE, HEALTH_CLOSE_BOOKING, renderHealthNudge } from './copy';
 import { HEALTH_BANNED_PHRASES, findBannedPhrases } from './framing';
@@ -343,4 +345,79 @@ describe('the checkpoint table', () => {
       );
     }
   });
+
+  /**
+   * A `visit` names the real-world APPOINTMENT a row is about, and it is what makes a
+   * parent's "we booked already" mean the thing they meant. Ontario's enhanced 18-month
+   * well-baby visit IS the visit the 18-month vaccines are given at, so the two rows
+   * that describe it are one errand — and a family who told us it is booked heard about
+   * it twice, seven days apart, because the table could not say so (2026-08-13 → 08-20).
+   */
+  it('groups only rows a parent could book in one appointment', () => {
+    const byVisit = new Map<string, string[]>();
+    for (const checkpoint of HEALTH_CHECKPOINTS) {
+      if (checkpoint.visit === null) continue;
+      byVisit.set(checkpoint.visit, [...(byVisit.get(checkpoint.visit) ?? []), checkpoint.id]);
+    }
+    // The one real collision in the shipped table, stated as the fixture it is.
+    expect(byVisit.get('well_child_18_months')?.sort()).toEqual([
+      'immunization_18_months',
+      'well_baby_18_months',
+    ]);
+
+    for (const [visit, ids] of byVisit) {
+      const members = ids.map((id) => HEALTH_CHECKPOINTS.find((c) => c.id === id));
+      for (const member of members) {
+        // A grouped row must be per-CHILD and one-time: an annual row is scoped to the
+        // household and a school year, so folding it in with a child's visit would
+        // suppress a whole household off one child's appointment.
+        expect({ visit, id: member?.id, annual: member?.annual }).toEqual({
+          visit,
+          id: member?.id,
+          annual: false,
+        });
+      }
+      // Members must actually overlap in age, or they are not one appointment.
+      const min = Math.max(...members.map((m) => m?.minMonths ?? 0));
+      const max = Math.min(...members.map((m) => m?.maxMonths ?? 0));
+      expect({ visit, overlaps: min <= max }).toEqual({ visit, overlaps: true });
+    }
+  });
+
+  it('never groups a row that is paperwork rather than an appointment', () => {
+    for (const id of ['school_records_ispa', 'dental_school_screening', 'immunization_grade_7']) {
+      const checkpoint = HEALTH_CHECKPOINTS.find((c) => c.id === id);
+      expect({ id, visit: checkpoint?.visit }).toEqual({ id, visit: null });
+    }
+  });
 });
+
+describe('refsSharingVisit', () => {
+  const refOf = (id: string, childId: string) => {
+    const checkpoint = HEALTH_CHECKPOINTS.find((c) => c.id === id);
+    if (!checkpoint) throw new Error(`fixture drift: no checkpoint '${id}'`);
+    return checkpointRef(checkpoint, childId, 0);
+  };
+
+  it('carries a handled visit across every row that names the same appointment', () => {
+    expect([...refsSharingVisit(refOf('immunization_18_months', 'child-1'))].sort()).toEqual(
+      [refOf('immunization_18_months', 'child-1'), refOf('well_baby_18_months', 'child-1')].sort(),
+    );
+  });
+
+  it('keeps the sibling scoped to the SAME child', () => {
+    const spread = refsSharingVisit(refOf('well_baby_18_months', 'child-1'));
+    expect(spread).not.toContain(refOf('well_baby_18_months', 'child-2'));
+    expect(spread).not.toContain(refOf('immunization_18_months', 'child-2'));
+  });
+
+  it('widens nothing for a paperwork row', () => {
+    const ref = refOf('school_records_ispa', '*');
+    expect(refsSharingVisit(ref)).toEqual([ref]);
+  });
+
+  it('hands back an unparseable ref untouched rather than guessing', () => {
+    expect(refsSharingVisit('not-a-ref')).toEqual(['not-a-ref']);
+  });
+});
+

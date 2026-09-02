@@ -82,7 +82,16 @@ export interface AuthenticationResults {
 
 export type SenderTrust =
   | { trusted: true; basis: 'dkim_aligned' }
-  | { trusted: false; reason: TrustFailure };
+  /** No verdict from our own MTA. Carries every authserv-id the header DID claim, in
+   * order and with duplicates kept: a mismatch tells the operator what the MTA really
+   * stamps (provisioning reads this instead of a dashboard), and our own id twice is
+   * how a sender-forged copy shows up. MTA hostnames only — never message content. */
+  | {
+      trusted: false;
+      reason: 'no_trusted_verdict';
+      observedAuthservIds: readonly string[];
+    }
+  | { trusted: false; reason: Exclude<TrustFailure, 'no_trusted_verdict'> };
 
 /** Why a sender could not be trusted. An enum, never free text: it is logged and
  * counted, so it must be safe to emit and stable to aggregate on (rule #1). */
@@ -108,6 +117,31 @@ function asVerdict(raw: string | undefined): AuthVerdict | null {
   if (!raw) return null;
   const value = raw.toLowerCase();
   return VERDICTS.has(value) ? (value as AuthVerdict) : null;
+}
+
+/**
+ * The signing domain of one DKIM clause.
+ *
+ * `header.d` is the signing domain and wins whenever it is present. But AWS SES — which
+ * is what Resend's inbound runs on, and therefore the ONLY MTA this leg ever reads —
+ * stamps its result with `header.i` (the AUID) and emits no `header.d` at all. The i=
+ * value is `[local]@domain`, and RFC 6376 requires that domain to be d= or a subdomain
+ * of it, so its domain part is a sound stand-in for the signing domain WHEN d is absent.
+ * Reading only d left every genuine SES-stamped pass domainless, hence unaligned, hence
+ * refused: the leg was inert against its own MTA (observed live 2026-08-14). The fallback
+ * fires only when d is missing, so a message carrying both is still judged on d.
+ */
+function dkimSigningDomain(clause: string): string | null {
+  const d = /header\.d\s*=\s*([^\s;]+)/i.exec(clause);
+  if (d?.[1]) return d[1].toLowerCase();
+
+  const i = /header\.i\s*=\s*([^\s;]+)/i.exec(clause);
+  const auid = i?.[1];
+  if (auid) {
+    const at = auid.lastIndexOf('@');
+    if (at !== -1 && at < auid.length - 1) return auid.slice(at + 1).toLowerCase();
+  }
+  return null;
 }
 
 /**
@@ -145,8 +179,7 @@ export function parseAuthenticationResults(header: string): AuthenticationResult
       // keeps the domain it belongs to.
       case 'dkim': {
         if (verdict === null) break;
-        const domain = /header\.d\s*=\s*([^\s;]+)/i.exec(trimmed);
-        dkim.push({ verdict, domain: domain?.[1]?.toLowerCase() ?? null });
+        dkim.push({ verdict, domain: dkimSigningDomain(trimmed) });
         break;
       }
       case 'dmarc':
@@ -198,23 +231,51 @@ function domainsAlign(signing: string, fromDomain: string): boolean {
  * duplicates: when it joins them instead, both land in one value, and picking "the first"
  * would silently depend on whether the receiving MTA prepends or appends.
  */
-function trustedResults(
-  headers: Readonly<Record<string, string>>,
-  authservId: string,
-): AuthenticationResults | null {
+/**
+ * The individual Authentication-Results values out of one header entry.
+ *
+ * A message with several of the same header — which a FORWARDED message always is, since
+ * the forwarder's MTA already stamped one before ours did — comes back from Resend not as
+ * repeated keys and not newline-joined, but as a single value that is a JSON-array-ENCODED
+ * STRING: `["<ours>","<theirs>"]` (observed live 2026-08-14). Splitting that on newlines
+ * finds none, so the whole blob parses as one clause and the authserv-id reads as
+ * `["amazonses.com` — every forwarded email refused. Decode the array when the value is
+ * one; a real authserv-id is a hostname and never begins with `[`, so the gate is exact.
+ */
+function headerValues(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((value): value is string => typeof value === 'string');
+      }
+    } catch {
+      // Not valid JSON after all — fall through and treat it as one ordinary value.
+    }
+  }
+  // Unfolding happens per-candidate inside the parser, so the split is on newlines that
+  // are NOT continuations.
+  return raw.split(/\r?\n(?![ \t])/);
+}
+
+function parsedResults(headers: Readonly<Record<string, string>>): AuthenticationResults[] {
   const raw = Object.entries(headers).find(
     ([name]) => name.toLowerCase() === 'authentication-results',
   )?.[1];
-  if (!raw) return null;
+  if (!raw) return [];
 
-  const wanted = authservId.toLowerCase();
-  // Unfolding happens per-candidate inside the parser, so the split is on newlines that
-  // are NOT continuations.
-  const ours = raw
-    .split(/\r?\n(?![ \t])/)
+  return headerValues(raw)
     .map(parseAuthenticationResults)
-    .filter((parsed) => parsed !== null && parsed.authservId.toLowerCase() === wanted);
+    .filter((parsed): parsed is AuthenticationResults => parsed !== null);
+}
 
+function trustedResults(
+  candidates: readonly AuthenticationResults[],
+  authservId: string,
+): AuthenticationResults | null {
+  const wanted = authservId.toLowerCase();
+  const ours = candidates.filter((parsed) => parsed.authservId.toLowerCase() === wanted);
   return ours.length === 1 ? (ours[0] as AuthenticationResults) : null;
 }
 
@@ -230,9 +291,14 @@ export function assessSenderTrust(input: {
   authservId: string;
   fromDomain: string;
 }): SenderTrust {
-  const results = trustedResults(input.headers, input.authservId);
+  const candidates = parsedResults(input.headers);
+  const results = trustedResults(candidates, input.authservId);
   if (!results) {
-    return { trusted: false, reason: 'no_trusted_verdict' };
+    return {
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      observedAuthservIds: candidates.map((parsed) => parsed.authservId.toLowerCase()),
+    };
   }
 
   // Only signatures that actually verified may vouch for anything. Filtering FIRST is

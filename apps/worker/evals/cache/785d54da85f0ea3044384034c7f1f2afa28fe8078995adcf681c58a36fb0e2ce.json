@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the registration window (Sep 1, 7:00 a.m. for residents) as a verified fact from `knows.registrationWindows`, correctly states that `watching` is already true and the ladder is already in place, and truthfully says it will text before it opens. It names Milo specifically, which is appropriate. No invented details, no app referral, no greeting or sign-off, no markdown. Short and exact. This is exactly the correct handling of a watching:true window — confirming the date and the watch already in place. A 5.",
+    "score": 5
+  }
+}

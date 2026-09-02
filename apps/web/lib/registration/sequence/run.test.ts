@@ -3,6 +3,7 @@ import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { GO_LEAD_MINUTES } from './schedule.js';
 import {
@@ -104,6 +105,8 @@ interface Harness {
   /** MEM-10 · promises opened, and promises closed, in call order. */
   promised: Array<{ kind: string; summary: string; dueAt: Date; channelMessageId: string | null }>;
   kept: Array<{ kind: string; channelMessageId: string | null }>;
+  /** Every leg that landed in the parent's own text thread (lib/channel/thread.ts). */
+  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
 }
 
 function harness(
@@ -116,6 +119,9 @@ function harness(
     /** A claim that loses the race returns null, exactly as ON CONFLICT DO NOTHING does. */
     claimReturnsNull?: boolean;
     draftThrows?: boolean;
+    /** What the reconciliation gate says about the wire body (VIL-293). Empty is the
+     * ordinary answer: a leg's claim is matched by the live sequence sending it. */
+    unbacked?: Awaited<ReturnType<SequenceRunDeps['refuseUnbackedSend']>>;
     enrolled?: boolean;
     consented?: boolean;
     transport?: FakeTransport;
@@ -128,9 +134,11 @@ function harness(
   const released: string[] = [];
   const promised: Harness['promised'] = [];
   const kept: Harness['kept'] = [];
+  const threaded: Harness['threaded'] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: SequenceRunDeps = {
+    refuseUnbackedSend: async () => options.unbacked ?? [],
     selectFamilies: async () => options.families ?? [family()],
     loadChildren: async () => options.children ?? CHILDREN,
     loadWindows: async () => options.windows ?? [],
@@ -154,6 +162,7 @@ function harness(
       channelEnrolled: async () => options.enrolled ?? true,
       watchConsentGranted: async () => options.consented ?? true,
       countProactiveSends: async () => 0,
+      proactiveSentSince: async () => false,
       parentTimeZone: async () => TZ,
     }),
     dedupeActive: async (_db, key) => dedupeKeys.has(key),
@@ -187,6 +196,10 @@ function harness(
       kept.push({ kind: input.kind, channelMessageId: input.channelMessageId });
       return { status: 'closed', commitmentIds: ['commitment-1'] };
     },
+    threadMessage: async (_db, input) => {
+      threaded.push(input);
+      return 'conv-1';
+    },
   };
 
   return {
@@ -199,6 +212,7 @@ function harness(
     released,
     promised,
     kept,
+    threaded,
   };
 }
 
@@ -345,6 +359,43 @@ describe('the legs', () => {
     expect(body.split(NUDGE_OPT_OUT)).toHaveLength(2);
   });
 
+  it("puts the leg in the parent's own text thread, so their reply has an antecedent", async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // The whole ladder is a conversation: the heads-up asks for a YES, the battle plan
+    // is answered the morning of. `channel_messages` stores no body (rule #1), so a leg
+    // that skips this is a question the coach can never see the parent answering.
+    const h = harness({ sequences: [live({ optIn: 'pending' })] });
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(h.threaded).toHaveLength(1);
+    expect(h.threaded[0]).toMatchObject({ familyId: 'fam-1', parentUserId: 'user-1' });
+    expect(h.threaded[0]?.body).toContain('Richmond Hill');
+    expect(h.transport.bodies()[0]).toContain(h.threaded[0]?.body ?? ' ');
+  });
+
+  it('threads the composed leg, never the CASL footer on the wire', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // The opt-out line belongs on the wire and nowhere else, or the coach re-reads
+    // "Reply STOP to opt out" as a sentence Hale addressed to this parent.
+    const h = harness({ sequences: [live({ optIn: 'pending' })] });
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    const wire = h.transport.bodies()[0] ?? '';
+    expect(wire.endsWith(NUDGE_OPT_OUT)).toBe(true);
+    expect(h.threaded[0]?.body).not.toContain(NUDGE_OPT_OUT);
+    expect(wire).toContain(h.threaded[0]?.body ?? ' ');
+  });
+
+  it('threads nothing when the leg never reached a transport', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // The positive control for the two above: a held leg is not something Hale said.
+    const h = harness({ sequences: [live({ optIn: 'pending' })], enrolled: false });
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.threaded).toEqual([]);
+  });
+
   it('writes the ledger row under its own category and its audit row (rule #6)', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ sequences: [live()] });
@@ -358,7 +409,7 @@ describe('the legs', () => {
       channel: 'sms',
       category: 'registration_sequence',
       templateKey: 'registration_sequence:heads_up',
-      status: 'sent',
+      status: 'queued',
     });
     // Never the rendered body (rule #1).
     expect(ledger[0]?.payload.body).toBeUndefined();
@@ -427,6 +478,28 @@ describe('the legs', () => {
 
     expect(h.kept).toEqual([{ kind: 'registration_plan', channelMessageId: 'msg-1' }]);
     expect(h.promised).toEqual([]);
+  });
+
+  it('closes the coach\'s registration WATCH with the go leg that kept it (VIL-293)', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()] });
+
+    await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
+
+    // The go leg is the text fifteen minutes before the doors open — the thing the coach
+    // actually promised. Not the heads-up, not the battle plan.
+    expect(h.kept).toEqual([{ kind: 'registration_watch', channelMessageId: 'msg-1' }]);
+  });
+
+  it('refuses a leg whose wire body claims a row that does not exist (VIL-293)', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()], unbacked: ['no_registration_watch'] });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
+
+    expect(result).toMatchObject({ sent: 0, refused: 1, failed: 0 });
+    expect(h.transport.sent).toEqual([]);
+    expect(h.kept).toEqual([]);
   });
 
   it('withholds the battle plan from a family that has not approved the shortlist', async () => {
@@ -586,7 +659,10 @@ describe('the legs', () => {
     // fact. What is still worth asserting is WHICH one: the REAL outbound leg, which
     // refuses by naming its missing credentials rather than silently reporting a leg
     // nobody sent.
-    const { transport } = defaultSequenceRunDeps();
+    const { transport, threadMessage } = defaultSequenceRunDeps();
+    // And WHICH threader: a port declared but wired to a stub is the same silent
+    // no-op the non-nullable type was meant to make unexpressible.
+    expect(threadMessage).toBe(threadProactiveMessage);
     vi.stubEnv('TWILIO_ACCOUNT_SID', '');
     await expect(
       transport.send({ to: '+14165550100', body: 'never leaves: no credentials' }),
@@ -605,7 +681,7 @@ describe('the legs', () => {
     expect(ledger[0]?.payload).toMatchObject({
       channel: 'sms',
       category: 'registration_sequence',
-      status: 'sent',
+      status: 'queued',
       templateKey: 'registration_sequence:heads_up',
       dedupeKey: 'registration_sequence:fam-1:w-1:heads_up',
     });

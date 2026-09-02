@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO events in the week — Monday's swim at West pool and Thursday's swim at East pool. This is genuine ambiguity (more than one candidate), so Hale must ask which before drafting. The reply correctly identifies both swims and asks which one, drafting nothing until the parent clarifies. The reply is concise, contains no invented details, no app referral, no sign-off, and ends with a single clear question. This is exactly the right shape for an ambiguous cancel request.",
+    "score": 5
+  }
+}

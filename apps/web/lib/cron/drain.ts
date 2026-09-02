@@ -1,8 +1,10 @@
 import {
   approvedActionPayloadSchema,
   type ChannelMessageReceivedPayload,
+  type DeepResearchPayload,
   channelMessageReceivedPayloadSchema,
   channelSendJobPayloadSchema,
+  deepResearchPayloadSchema,
   ingestedEventPayloadSchema,
   rerankJobPayloadSchema,
 } from '@hale/tools-contracts';
@@ -12,6 +14,12 @@ import {
   runOrchestrator,
 } from '@hale/worker/orchestrator';
 import PgBoss from 'pg-boss';
+import {
+  DEEP_RESEARCH_BATCH_SIZE,
+  DEEP_RESEARCH_BUDGET_MS,
+  DEEP_RESEARCH_EXPIRE_SECONDS,
+  DEEP_RESEARCH_QUEUE,
+} from '~/lib/channel/activity/deep-queue';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
@@ -102,6 +110,16 @@ export interface DrainHandlers {
    * the ledger, so a retry re-reads it rather than losing it. Injected so the drain
    * loop is testable without a transport, a model, or a db. */
   channelMessage: (job: ChannelMessageReceivedPayload) => Promise<void>;
+  /**
+   * Keep ONE activity promise, now — three concurrent research legs, an Opus merge and
+   * an adversarial refutation, bound to a db by the caller.
+   *
+   * IT NEVER THROWS FOR A BUSINESS OUTCOME. Every way this job can decline to send is a
+   * named outcome (deep-job.ts `DeepJobOutcome`), and a promise it did not keep is still
+   * OPEN for the hourly sweep — so a throw here means an infrastructure fault and a
+   * redelivery is the right answer to it, which is exactly what `boss.fail` buys.
+   */
+  deepResearch: (job: DeepResearchPayload) => Promise<void>;
 }
 
 export interface DrainDeps {
@@ -242,6 +260,31 @@ async function processChannelMessageJob(
 }
 
 /**
+ * Drive one question-time deep pass. Same drop-don't-throw policy for a schema-invalid
+ * payload.
+ *
+ * A handler throw propagates → boss.fail → redelivery, and that is safe for the reason
+ * the inbound turn's is: the payload carries only a POINTER. The handler re-reads the
+ * commitment and finds it closed if the promise was kept in the meantime, so a redelivery
+ * after a successful send drops rather than texting a parent twice.
+ */
+async function processDeepResearchJob(
+  deps: DrainDeps,
+  job: { id: string; data: unknown },
+): Promise<'processed' | 'dropped'> {
+  const parsed = deepResearchPayloadSchema.safeParse(job.data);
+  if (!parsed.success) {
+    deps.log.error(
+      { queue: DEEP_RESEARCH_QUEUE, jobId: job.id, issues: parsed.error.issues },
+      'drain: deep.research payload failed contract validation — dropping',
+    );
+    return 'dropped';
+  }
+  await deps.handlers.deepResearch(parsed.data);
+  return 'processed';
+}
+
+/**
  * THE CEILING — a turn that spent every retry and was never answered.
  *
  * pg-boss moves a job here itself once `retryLimit` is exhausted, by any route: the
@@ -296,9 +339,10 @@ async function drainQueue(
   ) => Promise<'processed' | 'dropped'>,
   deadlineMs: number,
   summary: DrainSummary,
+  batchSize: number = BATCH_SIZE,
 ): Promise<void> {
   while (deps.now() < deadlineMs) {
-    const jobs = await deps.boss.fetch<unknown>(queue, { batchSize: BATCH_SIZE });
+    const jobs = await deps.boss.fetch<unknown>(queue, { batchSize });
     if (jobs.length === 0) return;
 
     for (const job of jobs) {
@@ -343,10 +387,22 @@ const DRAIN_PLAN = [
   { queue: EVENTS_QUEUE, process: processIngestedJob },
   { queue: ACTIONS_QUEUE, process: processApprovedJob },
   { queue: RERANK_QUEUE, process: processRerankJob },
+  // LAST, AND ONE AT A TIME. Every queue above it holds jobs measured in seconds; this
+  // one holds a job measured in minutes, so it may only have what the tick has left. The
+  // batch size is the load-bearing half: `drainQueue` re-checks its deadline between
+  // BATCHES, so a batch of ten of these would run for the better part of an hour inside a
+  // function with an 800-second ceiling and every job would be killed and redelivered.
+  {
+    queue: DEEP_RESEARCH_QUEUE,
+    process: processDeepResearchJob,
+    budgetMs: DEEP_RESEARCH_BUDGET_MS,
+    batchSize: DEEP_RESEARCH_BATCH_SIZE,
+  },
 ] as const satisfies ReadonlyArray<{
   queue: string;
   process: (deps: DrainDeps, job: { id: string; data: unknown }) => Promise<'processed' | 'dropped'>;
   budgetMs?: number;
+  batchSize?: number;
 }>;
 
 /** Every queue a run may be asked for. A name outside this set is a caller bug, and the
@@ -399,6 +455,13 @@ export async function drainHotQueues(
     name: CHANNEL_SEND_QUEUE,
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
   });
+  // NOT the hot expiry. A deep pass runs for minutes, and 180 seconds would have pg-boss's
+  // own timeout sweep reclaim the job while it is still working — so the parent gets the
+  // text, the job is redelivered, and the whole expensive run happens again (deep-queue.ts).
+  await deps.boss.createQueue(DEEP_RESEARCH_QUEUE, {
+    name: DEEP_RESEARCH_QUEUE,
+    expireInSeconds: DEEP_RESEARCH_EXPIRE_SECONDS,
+  });
   // Before the queue that names it: pg-boss's `dead_letter` is a foreign key onto
   // `queue(name)`.
   await deps.boss.createQueue(CHANNEL_MESSAGE_RECEIVED_DLQ, { name: CHANNEL_MESSAGE_RECEIVED_DLQ });
@@ -425,11 +488,38 @@ export async function drainHotQueues(
     if (slice && !slice.includes(step.queue)) continue;
     const budgetMs = 'budgetMs' in step ? step.budgetMs : undefined;
     const stepDeadlineMs = budgetMs ? Math.min(startedMs + budgetMs, deadlineMs) : deadlineMs;
-    await drainQueue(deps, step.queue, step.process, stepDeadlineMs, summary);
+    await drainQueue(
+      deps,
+      step.queue,
+      step.process,
+      stepDeadlineMs,
+      summary,
+      'batchSize' in step ? step.batchSize : undefined,
+    );
   }
 
   deps.log.info({ ...summary, queues: slice ?? 'all' }, 'drain: run complete');
   return summary;
+}
+
+/**
+ * The database refused a new connection — Postgres `53300 too_many_connections`
+ * ("sorry, too many clients already"), or the Supabase pooler's "max clients reached".
+ *
+ * It is the one drain failure that must not be retried, so the route answers it with a
+ * 503 and the kicker turns that into a back-off (lib/cron/kick-drain.ts). Matched on the
+ * SQLSTATE where the driver gives us one and on the message where it does not — a
+ * connection refused before a client exists surfaces as a plain Error on some paths, and
+ * a miss here would put the retry amplifier straight back.
+ */
+export function isConnectionExhaustion(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  if ((err as { code?: unknown }).code === '53300') return true;
+  const message = (err as { message?: unknown }).message;
+  return (
+    typeof message === 'string' &&
+    /too many clients|too many connections|max clients reached/i.test(message)
+  );
 }
 
 /**
@@ -456,6 +546,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // The channel seam pulls the loop dispatch + adapters (and the db-backed ports);
   // scoped to the runtime entrypoint so importing a drain constant stays test-light.
   const { routeInboundChannelMessage } = await import('~/lib/channel/router/wiring');
+  const { keepPromiseNow } = await import('~/lib/channel/activity/deep-job');
   const { dispatchLoopMessage } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
@@ -492,6 +583,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
               buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
             ).then(() => undefined),
           channelMessage: (job) => routeInboundChannelMessage(db(), job),
+          deepResearch: (job) => keepPromiseNow(db(), job).then(() => undefined),
         },
         log: console,
         now: () => Date.now(),

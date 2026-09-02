@@ -1,6 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { withOptOut } from '~/lib/channel/opt-out';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { f14Enabled, f14Allowlist } from '~/lib/channel/f14';
@@ -13,7 +15,6 @@ import {
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { type DueCommitment, fulfillCommitment, loadDueCommitments } from '~/lib/commitments/ledger';
-import { appendMessage } from '~/lib/coach/conversation';
 import { type NoteComposer, createNoteComposer } from './note';
 import { isPlanTopic, weekdayIn } from './topics';
 import { playbookFor } from '@hale/types';
@@ -120,7 +121,11 @@ export interface PlanCheckInDeps {
     },
   ): Promise<string>;
   audit(database: Database, row: Record<string, unknown>): Promise<void>;
-  appendMessage: typeof appendMessage;
+  /** The parent's own text thread — REQUIRED, and RESOLVE-OR-CREATE (rule #11). Same
+   * defect the activity follow-up carried: the thread came off the plan message's
+   * `related_conversation_id`, which is null for every plan a proactive sender put out,
+   * and the null check quietly dropped the question this sweep exists to ask. */
+  threadMessage: typeof threadProactiveMessage;
   fulfillCommitment: typeof fulfillCommitment;
 }
 
@@ -234,7 +239,7 @@ async function sendOne(
     throw new Error(`coach plan check-in: no send target for parent ${recipient.parentUserId}`);
   }
 
-  const body = composed.message;
+  const body = withOptOut(composed.message, verdict.optOut);
   const { providerMessageId } = await deps.transport.send({ to, body });
   const channelMessageId = await deps.recordSend(database, {
     familyId: commitment.familyId,
@@ -256,9 +261,18 @@ async function sendOne(
   // Threaded so the parent's answer arrives as an ordinary coach turn with the question
   // in front of it. That is the whole reason there is no handler for the reply: what
   // they say next is conversation, and the coach's memory tools can keep it.
-  if (recipient.conversationId) {
-    await deps.appendMessage(recipient.conversationId, 'assistant', body, database);
-  }
+  //
+  // THE COMPOSED SENTENCE, NOT THE WIRE BODY. The CASL line belongs on the wire and
+  // nowhere else: this thread is what the parent reads back in the app and what the coach
+  // re-reads on their next turn, and a compliance footer in it is noise in both. It was
+  // only ever visible on the first message of a period; now that the line rides every
+  // proactive send (lib/channel/opt-out.ts), threading it would put one in the history
+  // every time.
+  await deps.threadMessage(database, {
+    familyId: commitment.familyId,
+    parentUserId: recipient.parentUserId,
+    body: composed.message,
+  });
   await deps.fulfillCommitment(database, {
     familyId: commitment.familyId,
     kind: 'plan_check_in',
@@ -309,7 +323,7 @@ export function defaultPlanCheckInDeps(): PlanCheckInDeps {
           templateKey: write.templateKey,
           dedupeKey: write.dedupeKey,
           providerMessageId: write.providerMessageId,
-          status: 'sent',
+          status: acceptedStatus('sms'),
           relatedConversationId: write.relatedConversationId,
           sentAt: write.sentAt,
         })
@@ -320,7 +334,7 @@ export function defaultPlanCheckInDeps(): PlanCheckInDeps {
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row as never);
     },
-    appendMessage,
+    threadMessage: threadProactiveMessage,
     fulfillCommitment,
   };
 }

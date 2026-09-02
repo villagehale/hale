@@ -18,7 +18,7 @@ describe('buildEvent privacy gate', () => {
   });
 
   it('drops every property whose key names personal or child/teen data', () => {
-    const built = buildEvent('onboarding_completed', {
+    const built = buildEvent('intake_completed', {
       name: 'Maya Ramos',
       parentName: 'Sam',
       email: 'sam@example.com',
@@ -53,7 +53,7 @@ describe('buildEvent privacy gate', () => {
   });
 
   it('keeps coarse, non-identifying primitives the call sites actually send', () => {
-    const built = buildEvent('onboarding_completed', {
+    const built = buildEvent('intake_completed', {
       kidCount: 2,
       planTier: 'plus',
       scoped: true,
@@ -65,12 +65,12 @@ describe('buildEvent privacy gate', () => {
     // The gate errs safe: any key containing "child" is dropped, so a careless
     // `childCount`/`childName` mix-up can never leak the latter. Call sites use
     // neutral keys (kidCount, scoped) to send the coarse aggregate instead.
-    const built = buildEvent('onboarding_completed', { childCount: 2 });
+    const built = buildEvent('intake_completed', { childCount: 2 });
     expect(built.properties).toEqual({});
   });
 
-  it('keeps preview_submitted coarse and drops any location-keyed free text', () => {
-    const built = buildEvent('preview_submitted', {
+  it('drops any location-keyed free text an intake event might reach for', () => {
+    const built = buildEvent('intake_started', {
       stage: 'toddler',
       hasArea: true,
       intentCount: 3,

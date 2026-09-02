@@ -1,3 +1,4 @@
+import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { capabilityReply } from './copy';
 
@@ -35,24 +36,68 @@ export interface ChannelTurn {
   conversationId: string;
   body: string;
   now: Date;
+  /**
+   * What Hale is still waiting to hear back about, as the short noun phrases HALE ITSELF
+   * would say them in ("booking that visit", "meeting the family nearby") — never a
+   * payload, never another household, never an internal label a parent has not seen.
+   *
+   * IT IS CONTEXT, NOT INSTRUCTION, and that is why it is here rather than in the skill.
+   * The coach is reached on two turns that need it and used to be blind on both:
+   *
+   *   · a parent plainly ANSWERED something and the resolver could not place which
+   *     (2026-08-20). Hale used to reply with a machine-built multiple choice; the coach
+   *     can ask the same question as a person, and can only do that if it knows what the
+   *     candidates were.
+   *   · a parent said something ordinary while a question was pending, and the coach,
+   *     knowing nothing about it, said "I don't have a draft waiting for your YES right
+   *     now" while one was (the prod failure the resolver eval's first fixture records).
+   *
+   * Empty is the ordinary case and means exactly what it says: Hale is waiting on nothing.
+   */
+  standingQuestions: readonly string[];
 }
 
 /**
- * What one turn produced: the reply, and — when the coach offered a full coaching plan
- * — the offer the router must write down once the reply has actually been sent.
+ * What one turn produced: the reply, plus anything the turn PROMISED that the router
+ * must write down once the reply has actually been sent.
  *
- * The offer rides OUT rather than being written by the tool because the ledger row is
+ * Both promises ride OUT rather than being written by their tools because a ledger row is
  * minted against the outbound message that carried it, and that message does not exist
- * until the router sends it. Null is the ordinary case and means exactly one thing:
- * this turn promised nothing.
+ * until the router sends it. Null is the ordinary case for each and means exactly one
+ * thing: this turn promised that.
  */
 export interface ChannelTurnResult {
   reply: string;
   planOffer: PlanOffer | null;
+  /**
+   * The "I'll come back to you" this turn said out loud, if it said one. The sweep owes
+   * this family an answer within the day — see channel/activity/commitment.ts for what a
+   * promise with no row behind it cost on 2026-08-20.
+   */
+  activityPromise: ActivityPromise | null;
 }
 
 export interface ChannelCoachRuntime {
-  respond(turn: ChannelTurn): Promise<ChannelTurnResult>;
+  /**
+   * `rejectedLastAttempt` is WHY THE LAST ATTEMPT WAS NOT SENDABLE — the reconciliation
+   * primitive's violations (VIL-293), in the second person the model will act on.
+   *
+   * Empty on every first attempt, which is nearly every turn. Non-empty means this turn
+   * has already run once and wrote a sentence claiming a row that does not exist: a
+   * watch nothing is watching, a follow-up nothing registered, a booking nothing holds.
+   * The reply was NOT sent, so it is a rewrite rather than a correction — the parent has
+   * heard nothing yet.
+   *
+   * A PARAMETER RATHER THAN A FIELD ON {@link ChannelTurn}, because a turn is what a
+   * parent said and this is what Hale got wrong about it. `HandlerContext` widens
+   * `ChannelTurn`, and every deterministic handler in the chain would otherwise carry a
+   * field about a model retry none of them can have.
+   *
+   * REQUIRED, not optional (rule #11): a caller that forgot it would silently get the
+   * first-attempt prompt on a retry, and the turn would compose the same false sentence
+   * forever with nothing saying why.
+   */
+  respond(turn: ChannelTurn, rejectedLastAttempt: readonly string[]): Promise<ChannelTurnResult>;
 }
 
 /**
@@ -93,7 +138,7 @@ export function draftsFromFailure(err: unknown): readonly string[] {
 export function capabilityStubRuntime(): ChannelCoachRuntime {
   return {
     async respond() {
-      return { reply: capabilityReply(), planOffer: null };
+      return { reply: capabilityReply(), planOffer: null, activityPromise: null };
     },
   };
 }

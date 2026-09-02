@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text \"cancel swim\" matches TWO swim lesson events in the week (Monday 4:30pm at West pool and Thursday 5:15pm at East pool). This is genuine ambiguity — more than one event matches. Hale correctly identifies both and asks which one, without drafting anything. The reply is clean, names both options concisely, and ends with a single question. No invented details, no app referral, no sign-off. This is exactly the right shape for an ambiguous instruction.",
+    "score": 5
+  }
+}

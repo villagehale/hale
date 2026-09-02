@@ -2,13 +2,29 @@ import { encode } from 'uqr';
 
 /**
  * The sms: URI as a scannable code, drawn inline from the module grid — no
- * network, no third-party chart endpoint, nothing for a CSP to allow. The white
- * card around it supplies the rest of the quiet zone.
+ * network, no third-party chart endpoint, nothing for a CSP to allow.
+ *
+ * It carries its OWN light plate and dark modules rather than reading the theme
+ * tokens. A QR code is not decoration: drawn in --color-spruce on the card it
+ * sits on, dark mode inverted it to cream-on-navy, which many scanners refuse.
+ * The `border: 2` quiet zone is inside the grid, so the plate covers it too.
  *
  * Shared by /text (the QR cards' landing surface) and the persona landing, so
  * both desktop paths render the identical code from the identical URI.
  */
-export function QrCode({ value, size = 168 }: { value: string; size?: number }) {
+
+/** Fixed, theme-independent: a code must be dark-on-light to be scannable. */
+const PLATE = '#ffffff';
+const MODULE = '#17294a';
+export function QrCode({
+  value,
+  size = 168,
+  label = 'QR code — scan to text Hale',
+}: {
+  value: string;
+  size?: number;
+  label?: string;
+}) {
   const { size: modules, data } = encode(value, { ecc: 'M', border: 2 });
 
   let path = '';
@@ -21,14 +37,16 @@ export function QrCode({ value, size = 168 }: { value: string; size?: number }) 
   return (
     <svg
       role="img"
-      aria-label="QR code — scan to text Hale"
+      aria-label={label}
       viewBox={`0 0 ${modules} ${modules}`}
       width={size}
       height={size}
       shapeRendering="crispEdges"
       className="shrink-0"
+      style={{ borderRadius: 6 }}
     >
-      <path d={path} fill="var(--color-spruce)" />
+      <rect width={modules} height={modules} fill={PLATE} />
+      <path d={path} fill={MODULE} />
     </svg>
   );
 }

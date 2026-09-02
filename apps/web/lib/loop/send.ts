@@ -47,7 +47,7 @@ function sendTimeMinutes(hms: string): number {
 
 /**
  * Whether `now` is inside this parent's weekly-plan SEND slot: their local send
- * weekday (VIL-216 `weeklyPlanWeekday` — Sunday for a Monday-start week) at their
+ * weekday (VIL-216 `weeklyPlanWeekday` — identity; product default Sunday) at their
  * `weekly_plan_send_time`, within a one-hour slot for the hourly cron. DST-safe via
  * `localParts`, so two parents in different zones each match at their own instant.
  * (A5's `isWeeklyPlanMoment` is exact-minute; an HOURLY cron needs the slot — this

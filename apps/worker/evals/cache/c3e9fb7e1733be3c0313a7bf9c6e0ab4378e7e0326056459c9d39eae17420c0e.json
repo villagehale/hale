@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly declines something outside Hale's capabilities — grocery ordering is genuinely not in scope. However, the reply then invites the parent to ask about other things (\"Anything on that front I can help with?\"), which is an open-ended chatty invitation to keep chatting — essentially a dangling question and an invitation to chatter. It also explains its own limits/machinery (\"I handle the family schedule, parenting questions, and finding activities\"), which is self-absorbed rather than parent-focused. The correct shape here is a short, plain line saying this is not something Hale does and stopping there — no invitation, no enumeration of capabilities. The shape is off: it's a bit of a multi-clause explanation plus a trailing question, which lands at a 3.",
+    "score": 3
+  }
+}

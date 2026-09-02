@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names the one place the parent asked about (Cartwheels Gym Centre), attributes the schedule to their site, correctly reports the term dates and multiple time slots from the picks, and handles the price gap with \"I could not pin down price or registration\" — which is the right first-person phrasing under page_has_schedule (the page was open and does carry times, but price was not extractable). The watch=true flag is honoured: \"I'll keep watching and text you once I can get at those\" is a genuine commitment already recorded. There is no question, no invented price, no vague hedging, no directory list, no wrong-town pick. The only minor observation is that the message is two sentences of plain text with proper attribution throughout. The price gap sentence is correct first-person under page_has_schedule. This is a clean, complete, well-formed response.",
+    "score": 5
+  }
+}

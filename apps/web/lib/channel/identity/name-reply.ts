@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import { IDENTITY_ASK_TEMPLATE_KEYS } from './asked';
 
@@ -218,7 +219,7 @@ async function askWasDelivered(database: Database, familyId: string): Promise<bo
       and(
         eq(schema.channelMessages.familyId, familyId),
         inArray(schema.channelMessages.templateKey, [...IDENTITY_ASK_TEMPLATE_KEYS]),
-        inArray(schema.channelMessages.status, ['sent', 'delivered']),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     )
     .limit(1);

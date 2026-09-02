@@ -1,23 +1,23 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import type { AgentClient } from '@hale/agent';
+import { replyLanguage } from '~/lib/channel/language';
 import {
   type GeneralAnswerComposer,
   type GeneralAnswerFallback,
   createGeneralAnswer,
 } from './answer';
 import {
-  ANSWER_UNAVAILABLE_REPLY,
-  DIRECT_ACCESS_EYE_REPLY,
-  PROVIDER_ACCESS_REPLY,
-  SAFETY_REPLY,
-  asksAboutEyeCare,
+  ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  EMERGENCY_REPLY,
+  MENTAL_CRISIS_REPLY,
+  SAFETY_REPLY_BY_LANGUAGE,
+  namesAMentalCrisis,
+  namesAnEmergency,
+  referralReply,
 } from './copy';
-import {
-  type InboundLaneScreen,
-  type LaneScreenFallback,
-  createInboundLaneScreen,
-} from './screen';
+import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
+import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScreen } from './screen';
 
 /**
  * VIL-273 — the off-domain capability lane, end to end minus the sending.
@@ -64,16 +64,19 @@ import {
 
 /** Whether the demand signal actually landed. `not_recorded` is a real, countable
  * outcome — the deflection still went out, and the founder's weekly count is short one
- * row that the log line accounts for. */
-export type UnmetSignalOutcome = 'recorded' | 'not_recorded';
+ * row that the log line accounts for. `not_applicable` is the medical-symptom answer
+ * lane: Hale ANSWERED it, so it was never an unmet intent and no row was written
+ * (founder-locked 2026-08-17) — named rather than faked as a failed write (rule #11). */
+export type UnmetSignalOutcome = 'recorded' | 'not_recorded' | 'not_applicable';
 
 /**
  * Where the words that went out came from. `fixed` is one of the two door lines in
- * copy.ts; `composed` is the general answer; anything else is a
- * {@link GeneralAnswerFallback} naming why the composer could not run and the deflect
- * line stood in for it (rule #11).
+ * copy.ts (or the medical lane's last-resort 811/911 line); `composed` is the general
+ * answer; `web_grounded` is the medical-symptom answer, searched and composed; anything
+ * else is a {@link GeneralAnswerFallback} naming why the composer could not run and the
+ * deflect line stood in for it (rule #11).
  */
-export type ReplySource = 'fixed' | 'composed' | GeneralAnswerFallback;
+export type ReplySource = 'fixed' | 'composed' | 'web_grounded' | GeneralAnswerFallback;
 
 export type OffDomainVerdict =
   /** Hale's job. The turn continues to the coach exactly as it did before this stage
@@ -87,6 +90,18 @@ export type OffDomainVerdict =
       category: UnmetIntentCategory;
       reply: string;
       replySource: ReplySource;
+      /**
+       * The medical lane's own outcome, for the router to stamp on the reply it sends —
+       * and null on every other branch, which is what MARKS a sent row as a medical
+       * answer at all (migration 0090).
+       *
+       * Carried explicitly rather than narrowed out of `replySource` downstream. Both
+       * fixed doors and the general answer's safety fallback also say `fixed`, so a
+       * reader deriving this from the source alone would count a provider-access door as
+       * a medical failure — in the one row of the founder scorecard that must never be
+       * wrong in that direction.
+       */
+      medicalSource: MedicalReplySource | null;
       signal: UnmetSignalOutcome;
     };
 
@@ -96,6 +111,10 @@ export interface OffDomainPorts {
    * #11): "no composer wired" is not a state this lane has — a composer that cannot run
    * says so by name and the fixed line goes out instead. */
   answer: GeneralAnswerComposer;
+  /** Answers a medical-symptom text: a web-grounded, coarse-age-aware reply with its own
+   * triage, or the fixed 811/911 line as a last resort. Non-nullable for the same reason
+   * (rule #11) — its own failure modes are named inside it, never a missing dependency. */
+  medical: MedicalComposer;
   /** Stamps the inbound row with the lane + bucket. Never throws — see
    * {@link UnmetSignalOutcome}. */
   recordUnmetIntent(input: {
@@ -117,35 +136,77 @@ export interface OffDomainLane {
 export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
   return {
     async consider(input) {
+      // VIL-328: a physical emergency token never waits on the screen or the
+      // medical composer. 811 is Telehealth and must not lead this inbound.
+      if (namesAnEmergency(input.text)) {
+        const signal = await ports.recordUnmetIntent({
+          channelMessageId: input.channelMessageId,
+          familyId: input.familyId,
+          lane: 'safety_critical',
+          category: 'emergency',
+        });
+        return {
+          status: 'deflected',
+          lane: 'safety_critical',
+          category: 'emergency',
+          reply: EMERGENCY_REPLY,
+          replySource: 'fixed',
+          medicalSource: null,
+          signal,
+        };
+      }
+
       const reading = await ports.screen.read(input.text);
       if (reading.lane === 'in_domain' || reading.category === null) {
         return { status: 'in_domain', fallback: reading.fallback };
       }
       const lane = reading.lane;
 
+      // MEDICAL SYMPTOMS ARE ANSWERED NOW (founder-locked 2026-08-17), not deflected to a
+      // fixed line. Hale composes a web-grounded, coarse-age-aware reply with its own
+      // triage (medical.ts) — every word model-generated, the 811/911 line kept only as
+      // the last-resort fallback inside the composer. It leaves by its own branch BEFORE
+      // the demand-signal write: a question Hale answered is not an unmet intent, and its
+      // `signal` says `not_applicable` rather than pretending a write was even attempted
+      // (rule #11). Every OTHER safety_critical category still gets SAFETY_REPLY below.
+      if (lane === 'safety_critical' && reading.category === 'medical-symptom') {
+        const { reply, replySource } = await ports.medical.answer(input.text);
+        return {
+          status: 'deflected',
+          lane,
+          category: reading.category,
+          reply,
+          replySource,
+          medicalSource: replySource,
+          signal: 'not_applicable',
+        };
+      }
+
       // The two doors are fixed sentences and the composer is never woken for them. Not
       // a prompt asked nicely to decline — a branch it cannot reach. Letting a model
       // anywhere near what a parent is told about their child's head injury is the
       // failure this shape makes impossible rather than merely discouraged.
       //
-      // The provider door has TWO fixed sentences behind it, chosen by a substring test
-      // rather than by the screen. Ontario's answer to "get me a doctor" depends on WHICH
-      // KIND: a family doctor or paediatrician means the Health Care Connect registry,
-      // and an optometrist means no registry at all — you book one directly, and OHIP
-      // pays. Sending the registry line to a parent asking about eyes was not a vague
-      // answer, it was a WRONG one (founder, live gate). The split is deterministic for
-      // the same reason the door itself is: this is what a parent is told about getting
-      // care, and a cheap model choosing between two of them buys nothing.
+      // The provider door is a TABLE keyed by service (copy.ts referralReply), not a
+      // model and not a default. Ontario's answer to "get me X" depends entirely on WHICH
+      // X: a family doctor or paediatrician means the Health Care Connect registry, an
+      // optometrist means no registry at all (you book one directly and OHIP pays), and a
+      // paediatric dentist, an OT, a speech therapist or an audiologist mean none of the
+      // above — Health Care Connect has never placed one. This door used to be a two-way
+      // if/else whose DEFAULT was the registry, so every one of those got a line that was
+      // not vague but WRONG (founder, live gate, 2026-08-13, on an optometrist). The
+      // table's miss branch says so instead, which is a correct answer where a guessed
+      // registry is a wasted phone call.
+      // Which LANGUAGE those fixed sentences go out in is decided the same way and for
+      // the same reason — off the words in front of it, with no model consulted.
+      const language = replyLanguage(input.text);
       const { reply, replySource } =
         lane === 'safety_critical'
-          ? { reply: SAFETY_REPLY, replySource: 'fixed' as const }
+          ? namesAMentalCrisis(input.text) || reading.category === 'mental-health'
+            ? { reply: MENTAL_CRISIS_REPLY, replySource: 'fixed' as const }
+            : { reply: SAFETY_REPLY_BY_LANGUAGE[language], replySource: 'fixed' as const }
           : lane === 'provider_access'
-            ? {
-                reply: asksAboutEyeCare(input.text)
-                  ? DIRECT_ACCESS_EYE_REPLY
-                  : PROVIDER_ACCESS_REPLY,
-                replySource: 'fixed' as const,
-              }
+            ? { reply: referralReply(input.text, language), replySource: 'fixed' as const }
             : await answerOrFallback(ports, input.text);
 
       const signal = await ports.recordUnmetIntent({
@@ -161,6 +222,10 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         category: reading.category,
         reply,
         replySource,
+        // Every branch below the medical one is a door Hale chose or an answer about the
+        // world; none of them is a medical answer, and stamping one would put a
+        // deliberate door in the safety row's fallback count.
+        medicalSource: null,
         signal,
       };
     },
@@ -182,12 +247,18 @@ async function answerOrFallback(
 ): Promise<{ reply: string; replySource: ReplySource }> {
   const composed = await ports.answer.compose(text);
   if (composed.status === 'composed') return { reply: composed.reply, replySource: 'composed' };
+  const language = replyLanguage(text);
   // A question about the world that turned out to be about a hurt child. It leaves by
   // the same door a screened symptom does, words and all, and `fixed` says so — crediting
   // the composer for a sentence it did not write would cost the founder's weekly count
   // the one distinction it is for (skill audit P0 #3).
-  if (composed.status === 'safety') return { reply: SAFETY_REPLY, replySource: 'fixed' };
-  return { reply: ANSWER_UNAVAILABLE_REPLY, replySource: composed.reason };
+  if (composed.status === 'safety') {
+    return {
+      reply: namesAnEmergency(text) ? EMERGENCY_REPLY : SAFETY_REPLY_BY_LANGUAGE[language],
+      replySource: 'fixed',
+    };
+  }
+  return { reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE[language], replySource: composed.reason };
 }
 
 /**
@@ -240,9 +311,10 @@ export function recordUnmetIntent(database: Database) {
 }
 
 /**
- * The production lane. Both model stages share ONE client resolver — they are two calls
- * on the same turn, and a screen that could reach Anthropic while the composer could not
- * is not a state worth being able to represent.
+ * The production lane. Every model stage — the screen, the general answer, and the
+ * medical composer — shares ONE client resolver: they are calls on the same turn, and a
+ * screen that could reach Anthropic while a composer could not is not a state worth being
+ * able to represent.
  *
  * It used to take a `pendingApprovals` reader as well, bound to the approvals query so
  * the count in the deflect could never disagree with the list a "YES 1" would hit. The
@@ -256,6 +328,7 @@ export function productionOffDomainLane(
   return offDomainLane({
     screen: createInboundLaneScreen(client),
     answer: createGeneralAnswer(client),
+    medical: createMedicalComposer(client),
     recordUnmetIntent: recordUnmetIntent(database),
   });
 }

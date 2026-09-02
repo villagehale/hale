@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011CebbLqczXWHGwBG7B7fNk",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EtUDCpABCBEYAipAY7xxQ329mlsiYswYcUYf9U46UdPPBAiU/7yhtMOMFLXA5UoBcU30PaXxti02oAsq0oDW7sYfIpfHE2u9net2fTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiRiMjYwM2FiYS1mMDUyLTQ4NGEtOTNjYy04OWM4ZTExMGRmMmWoAZX419QGEgzxNFnG8Lq2hiBh4C8aDPAzdw/fFXuAwOg7TiIwErCozfq8OqWgP64MADfEE4Xm6A4aaZejwNXkLvhXHK4Ay0AaOg7xe4ePfSutsDn6KvEB4AmKL43+R4uuqgavrAHdIpVH//A4VtAsSriuQA+w///702dYLyJDjLxwZRAoommhr7gyhdqLGrEeAKS3jMiKxlQEZFnfFBwHYvmIl+RgYyRYroS7FPIivvCsME0U+SBZIbdEsuj7r8IpMgmA3+d53RVvletYCcRncY5Gk9OypY9iYHxar/ttQN/w837x52/PH4i19njXBd4ZNPV9Bw1Tgki5V+vJV71ps9PZKvoSokW7CnibDWNrzWIQ07EaBzZOcwa2Ew/1H0MdvOwrJvFUD8tmNxx0c7QLXY7kSwOCYXFqolaxkHCnX87unwSORoyc2RgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01MQXSf26yWTuW9tbjD3NuWp",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_017oKpN8FQLWMiijDgSBoUwX",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "solids",
+          "childId": "kid-theo",
+          "offer": "Want the full first-foods plan for Theo? Reply YES and I'll send it."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 427,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 16608,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 283,
+      "output_tokens_details": {
+        "thinking_tokens": 78
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

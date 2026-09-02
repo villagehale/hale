@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2. Hale drafted the two swim lessons and told the parent it will line up soccer and Wednesday next — that is the correct handling of overflow. The Wednesday \"appointment\" maps to the private item at Wed 9:00am; Hale can see it and it is the only Wednesday item, so the reference is resolved (no ambiguity issue). Soccer maps unambiguously to the Saturday soccer practice. Both overflow items are real, visible events. The reply names the two drafted items with their times, ends with the required \"YES to confirm\", and correctly says it will handle the rest after — no app referral, no invented details, no extra questions. The only tiny blemish is \"line up\" is slightly informal/vague about what \"lining up\" means (another draft round), but it is clear enough and the shape is correct. This is the product working exactly as designed.",
+    "score": 5
+  }
+}

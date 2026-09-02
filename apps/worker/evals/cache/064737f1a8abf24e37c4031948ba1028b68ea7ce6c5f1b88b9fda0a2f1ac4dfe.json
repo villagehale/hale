@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly pulls the one Saturday event from the week (soccer practice, 10am, Cedarvale Park) and correctly offers the offerable activity from search_village (Central Library story time at Bloor/Gladstone branch) with its verified details. No invented details, no app referral, no sign-off, no greeting, no markdown. The web-find rule doesn't apply (webFind is null). The offerable was given whole (name, place, day). One small note: \"free, all ages\" — \"free\" is not in the offerable data provided, so this is a minor invented detail. That said, it's a small blemish rather than a serious error. Otherwise the reply is tight and useful.",
+    "score": 4
+  }
+}

@@ -1,4 +1,5 @@
 import type { Database } from '@hale/db';
+import { withOptOut } from '~/lib/channel/opt-out';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
@@ -95,6 +96,8 @@ interface Harness {
   }>;
   /** Every told-anywhere scan this run performed, as [familyId, since]. */
   scans: Array<[string, Date]>;
+  /** Every ask that landed in the parent's own text thread (lib/channel/thread.ts). */
+  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
 }
 
 /**
@@ -117,12 +120,16 @@ function harness(
     inbound?: Record<string, string[]>;
     timeZone?: string;
     voiceDefers?: ComposeDeferral | null;
+    /** What the reconciliation gate says about the wire body (VIL-293). Empty is the
+     * ordinary answer: a follow-up ASK claims nothing by design. */
+    unbacked?: Awaited<ReturnType<FollowupSweepDeps['refuseUnbackedSend']>>;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
   const recorded: Recorded[] = [];
   const audits: Harness['audits'] = [];
   const scans: Harness['scans'] = [];
+  const threaded: Harness['threaded'] = [];
   const families = overrides.families ?? [family(FAM_A), family(FAM_B)];
 
   const gate: OutboundGatePorts = {
@@ -131,10 +138,12 @@ function harness(
     // `since` is ignored: every send in a test happens at NOW, so all of them are inside
     // any window the cap asks for.
     countProactiveSends: async (familyId) => recorded.filter((r) => r.familyId === familyId).length,
+    proactiveSentSince: async () => true,
     parentTimeZone: async () => overrides.timeZone ?? AWAKE_ZONE,
   };
 
   const deps: FollowupSweepDeps = {
+    refuseUnbackedSend: async () => overrides.unbacked ?? [],
     selectFamilies: async () => families,
     loadDueIntros: async () => overrides.intros ?? [],
     discoverableUserIds: async (_db, userIds) => overrides.discoverable ?? new Set(userIds),
@@ -166,6 +175,10 @@ function harness(
       });
     },
     transport,
+    threadMessage: async (_db, input) => {
+      threaded.push(input);
+      return 'conv-1';
+    },
     voice: {
       async compose(request) {
         const defer = overrides.voiceDefers;
@@ -174,7 +187,7 @@ function harness(
     },
   };
 
-  return { deps, transport, recorded, audits, scans };
+  return { deps, transport, recorded, audits, scans, threaded };
 }
 
 beforeEach(() => {
@@ -214,6 +227,41 @@ describe('the dark-launch flag', () => {
   });
 });
 
+describe("the ask in the parent's own thread", () => {
+  it('threads every ask it sends, so the answer has an antecedent', async () => {
+    // A follow-up is a QUESTION ("how did it go?"), and the reply to it arrives as a
+    // coach turn. `channel_messages` stores no body (rule #1), so an unthreaded ask is
+    // one the coach reads the answer to with nothing above it.
+    const h = harness({ intros: [PAIR] });
+
+    await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(h.threaded).toHaveLength(2);
+    expect(h.threaded.map((t) => t.familyId)).toEqual([FAM_A, FAM_B]);
+    expect(h.threaded[0]?.body).toBe(INTRO_ASK);
+  });
+
+  it('threads the composed ask, never the CASL footer on the wire', async () => {
+    const h = harness({ intros: [PAIR] });
+
+    await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(h.transport.bodies()[0]).toBe(withOptOut(INTRO_ASK, 'short'));
+    expect(h.threaded[0]?.body).not.toMatch(/STOP/i);
+    expect(h.transport.bodies()[0]).toContain(h.threaded[0]?.body ?? ' ');
+  });
+
+  it('threads nothing when the voice deferred and no ask went out', async () => {
+    // The positive control for the two above: nothing sent, nothing said.
+    const h = harness({ intros: [PAIR], voiceDefers: 'client_unavailable' });
+
+    await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.threaded).toEqual([]);
+  });
+});
+
 describe('the intro follow-up', () => {
   it('asks both families once, claims each side, and audits each send', async () => {
     const h = harness({ intros: [PAIR] });
@@ -221,7 +269,10 @@ describe('the intro follow-up', () => {
     const result = await runFollowupSweep(DB, h.deps, NOW);
 
     expect(result.introAsked).toBe(2);
-    expect(h.transport.bodies()).toEqual([INTRO_ASK, INTRO_ASK]);
+    expect(h.transport.bodies()).toEqual([
+      withOptOut(INTRO_ASK, 'short'),
+      withOptOut(INTRO_ASK, 'short'),
+    ]);
     expect(h.recorded).toEqual([
       {
         familyId: FAM_A,
@@ -344,7 +395,9 @@ describe('the activity follow-up', () => {
     const result = await runFollowupSweep(DB, h.deps, NOW);
 
     expect(result.activityAsked).toBe(1);
-    expect(h.transport.bodies()).toEqual(['How was Swim class? No pressure to reply.']);
+    expect(h.transport.bodies()).toEqual([
+      withOptOut('How was Swim class? No pressure to reply.', 'short'),
+    ]);
     expect(h.recorded[0]).toMatchObject({
       templateKey: 'followup:activity',
       dedupeKey: 'followup:activity:event-1',
@@ -453,7 +506,10 @@ describe('the rails every follow-up rides', () => {
     expect(result.introAsked).toBe(2);
     expect(result.activityAsked).toBe(0);
     expect(result.held.frequency_cap).toBe(1);
-    expect(h.transport.bodies()).toEqual([INTRO_ASK, INTRO_ASK]);
+    expect(h.transport.bodies()).toEqual([
+      withOptOut(INTRO_ASK, 'short'),
+      withOptOut(INTRO_ASK, 'short'),
+    ]);
   });
 
   it('defers rather than texting a parent inside their quiet hours', async () => {
@@ -490,7 +546,28 @@ describe('when the voice has nothing sendable', () => {
     const retry = await runFollowupSweep(DB, composing.deps, new Date(NOW.getTime() + 3_600_000));
 
     expect(retry.activityAsked).toBe(1);
-    expect(composing.transport.bodies()).toEqual(['How was Swim class? No pressure to reply.']);
+    expect(composing.transport.bodies()).toEqual([
+      withOptOut('How was Swim class? No pressure to reply.', 'short'),
+    ]);
+  });
+
+  /**
+   * VIL-293. A deferral is the voice having nothing to say; this is the voice saying
+   * something untrue. They are counted apart because the fault is in different places —
+   * and neither may leave the claim spent.
+   */
+  it('refuses a composed ask whose wire body claims a row that does not exist', async () => {
+    const h = harness({
+      activities: { [FAM_A]: [activity()] },
+      unbacked: ['no_scheduled_row'],
+    });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result).toMatchObject({ activityAsked: 0, refusedAtSend: 1, composeDeferred: 0 });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.recorded).toEqual([]);
+    expect(h.audits).toEqual([]);
   });
 
   it.each([

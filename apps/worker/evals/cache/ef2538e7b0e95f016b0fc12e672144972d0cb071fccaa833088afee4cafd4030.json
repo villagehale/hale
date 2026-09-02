@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names a specific real place first (Kids & Me, Acton Branch), quotes the day and time from the picks, attributes it to Halton Region's site, and stays within two sentences. The EarlyON pick has null when/price, and the message correctly handles the gap - but the pageEvidence is `no_page_read`, so the honest form is \"I could not get into their page today,\" which the message uses exactly and correctly. No invented times or prices appear. No question is asked. No offer is made. Watch is false and no coming-back promise is made - correct. The message is plain text, no link, no directory-style list, two real named local things fitting the toddler/0-6 stage in Halton Hills. Only minor issue: the sentence order puts the attribution clause at the end of a long first sentence (\"Halton Region's site says\" comes after the facts), which is slightly awkward but the rubric only requires attribution to be present, not to lead. Everything checks out cleanly.",
+    "score": 5
+  }
+}

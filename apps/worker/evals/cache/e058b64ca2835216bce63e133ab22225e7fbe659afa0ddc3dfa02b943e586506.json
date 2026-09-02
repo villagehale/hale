@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies this as a parenting/sleep question, correctly notes 19 months as a common age for this, gives a concrete cause (sleep association with rocking/nursing), and ends with exactly the required fixed line \"Want the full plan? Reply YES and I'll send it.\" (paraphrased correctly). The advice beat is actionable — it names the mechanism (learned sleep association) which tells the parent what to address. The reply is appropriately short and does not hand back to a doctor or app. One small note: the gender assumption \"he's\" for Remy is a minor blemish since the gender isn't confirmed in `knows`, but this is a small point. Otherwise the reply is well-shaped and correct.",
+    "score": 4
+  }
+}

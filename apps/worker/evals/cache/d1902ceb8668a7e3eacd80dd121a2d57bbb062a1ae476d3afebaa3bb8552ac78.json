@@ -1,0 +1,12 @@
+{
+  "parsed": {
+    "payload": {
+      "to": "admissions@sunnydays-childcare.ca",
+      "subject": "Re: Spot available for September",
+      "body": "hi,\n\nthanks so much for letting us know — this is great news. we'd like to accept the spot for the september intake.\n\nplease let me know what the next steps are (paperwork, deposit, etc.) and i'll get it sorted right away.\n\nthanks again,"
+    },
+    "confidence": 0.55,
+    "rationale": "Drafted an acceptance reply since no memory context indicates otherwise, but confidence is limited without confirmation of family's actual decision.",
+    "recipient_visibility": "public"
+  }
+}

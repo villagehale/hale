@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child experienced choking with cyanosis (went blue), a life-threatening event requiring immediate emergency response"
+  },
+  "latencyMs": 1134
+}

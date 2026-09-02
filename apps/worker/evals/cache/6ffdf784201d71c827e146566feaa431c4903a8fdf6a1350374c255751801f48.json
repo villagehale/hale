@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "msg_011CeQmqqUF8ez33KBMKG3Zx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Got it, I'm on it - I'll check back on Cartwheels' fall dates and text you as soon as they're posted."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1243,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 15829,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 41,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

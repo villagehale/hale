@@ -62,6 +62,10 @@ export const agentCommitments = pgTable(
      * Deliberately NOT recovered from `created_from`: that column is provenance only
      * (see its note), and making a sweep join back through a ledger row to learn a
      * category word would give the topic two homes that can disagree.
+     *
+     * `checkup_offer` puts a `HealthCheckpoint` id in the same slot, and rule #1 holds
+     * for the same reason it holds for a `PlanTopic`: the id names a row in a reviewed
+     * table of constants, so the column carries a category rather than content.
      */
     topic: text('topic'),
     /**
@@ -75,6 +79,24 @@ export const agentCommitments = pgTable(
      * dangling id the composer would silently ground on nothing.
      */
     subjectChildId: uuid('subject_child_id').references(() => children.id, {
+      onDelete: 'set null',
+    }),
+    /**
+     * WHICH OTHER HOUSEHOLD the promise is about — the one thing `family_id` cannot say.
+     *
+     * Every other row on this ledger is owed to the family it names, so the subject and
+     * the creditor are the same household and no column is needed. `founder_welcome_offer`
+     * is the first that separates them: the offer is made to the FOUNDER, in his thread,
+     * and what accepting it does is text a note into a DIFFERENT family's thread. The
+     * target has to travel on the row, because the alternative is recovering it from
+     * `created_from` — provenance only, for the reason that column's own note gives.
+     *
+     * `set null` on delete, exactly like `subject_child_id`: a family erased between the
+     * ping and the YES leaves an offer pointing at nobody, which the reply reads as a
+     * named refusal to send. A dangling id would be an offer that resolves to a household
+     * that no longer exists.
+     */
+    subjectFamilyId: uuid('subject_family_id').references(() => families.id, {
       onDelete: 'set null',
     }),
     /** When the promise stops being kept-in-time and starts being late. */

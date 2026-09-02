@@ -104,23 +104,12 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'quick_log_health_done',
     'quick_log_booking_requested',
   ],
-  // `document_{uploaded,view_url,deleted}_${kind}` over DOC_KINDS.
-  'apps/web/lib/docs/documents.ts': [
-    'document_uploaded_health',
-    'document_uploaded_insurance',
-    'document_uploaded_other',
-    'document_view_url_health',
-    'document_view_url_insurance',
-    'document_view_url_other',
-    'document_deleted_health',
-    'document_deleted_insurance',
-    'document_deleted_other',
-  ],
   // closeInvite takes its verb as a POSITIONAL parameter and writes it as object
-  // shorthand — the four terminal states of a caregiver invite.
+  // shorthand — the terminal states of a caregiver invite.
   'apps/web/lib/channel/caregiver/invites.ts': [
     'caregiver_invite_expired',
     'caregiver_invite_superseded',
+    'caregiver_invite_superseded_by_join',
     'caregiver_invite_withdrawn',
     'caregiver_invite_refused',
   ],
@@ -130,6 +119,7 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   'apps/web/lib/channel/router/route.ts': ['sms_reply_sent', 'email_reply_sent'],
   'apps/web/lib/channel/coach/draft.ts': ['channel_sms.calendar_drafted'],
   'apps/web/lib/channel/caregiver/route.ts': ['caregiver_sms_inbound', 'caregiver_sms_outbound'],
+  'apps/web/lib/channel/join/route.ts': ['join_sms_inbound', 'join_sms_outbound'],
   'apps/web/lib/channel/intake/machine.ts': ['sms_intake_inbound', 'sms_intake_outbound'],
   'apps/web/lib/channel/intake/watch-consent.ts': [
     'proactive_watch_granted',
@@ -189,8 +179,11 @@ function scanWriteSites(): WriteSite {
           const match = line.match(/actionTaken:\s*(.+?)(,|\s*\}|$)/);
           if (!match) return;
           const expression = (match[1] ?? '').trim().replace(/[,;]$/, '');
-          // A type annotation or the column definition, not a write.
-          if (/^(string|AuditVerb|text\()/.test(expression)) return;
+          // A type annotation, the column definition, or a READ that projects the
+          // column (`actionTaken: schema.auditLog.actionTaken` in a select) — none of
+          // them write a verb, and a reader registered as an indirect write site
+          // would owe an enumeration of verbs it never produces.
+          if (/^(string|AuditVerb|text\(|schema\.)/.test(expression)) return;
           const verb = expression.match(/^'([^']*)'$/)?.[1];
           if (verb === undefined) {
             indirect.add(relative);

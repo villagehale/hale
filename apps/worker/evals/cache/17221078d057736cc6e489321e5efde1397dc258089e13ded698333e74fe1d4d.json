@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply hands over the referral link correctly — it is the runtime-appended link, not invented. It tells Sam to forward it themselves, which is exactly right. It briefly explains what Hale does to help the friend understand what they're getting, which is reasonable context for a referral message. The reply is clean, no greeting, no sign-off, no markdown, no app referral. One very minor point: the description of Hale (\"texting assistant that keeps your family's week straight - schedule, activities, parenting Qs\") is slightly more than needed but is genuinely useful framing for a referral context, not padding. Overall this does the job correctly and cleanly.",
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "other",
+    "reason": "recipe request, not a family-week planning question"
+  },
+  "latencyMs": 1039
+}

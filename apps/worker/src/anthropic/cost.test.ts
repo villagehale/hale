@@ -25,11 +25,11 @@ describe('estimateCostUsd', () => {
     expect(estimateCostUsd(HAIKU_MODEL, usage(500_000, 200_000))).toBeCloseTo(1.5, 6);
   });
 
-  it('folds cache-creation tokens into input cost', () => {
+  it('prices cache-creation tokens at 1.25x the input rate', () => {
     const u = usage(1_000_000, 0);
     u.cache_creation_input_tokens = 1_000_000;
-    // 2M input @ $3/MTok = $6.
-    expect(estimateCostUsd(SONNET_MODEL, u)).toBeCloseTo(6, 6);
+    // 1M fresh @ $3/MTok + 1M cache-write @ $3 * 1.25 = $3 + $3.75 = $6.75.
+    expect(estimateCostUsd(SONNET_MODEL, u)).toBeCloseTo(6.75, 6);
   });
 
   it('prices cache-read tokens at 0.1x the input rate', () => {

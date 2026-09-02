@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly cites Preschool A with accurate details from the page: ages 3-5, no parent in water, Saturdays 9:00-9:30am, September 12 to November 28. It properly attributes facts to \"their site says\" and includes the registration window (Tues Aug 11 at 7am for residents) without claiming verification. The price field correctly shows null since the page states fees are determined by Council and published in a separate Recreation Guide, not on this page. The watch=true condition is properly honored with \"I'll keep watching for the fee and text you\" - a first-person commitment matching an existing continuation row. The message is two sentences, plain ASCII, contains no question, makes no offer, and does not present page facts as verified. The two slots represent the two class times correctly without inventing additional offerings. The message appropriately avoids the specific fee since pageEvidence indicates page_has_schedule but the actual dollar amount is not on this particular page.",
+    "score": 5
+  }
+}

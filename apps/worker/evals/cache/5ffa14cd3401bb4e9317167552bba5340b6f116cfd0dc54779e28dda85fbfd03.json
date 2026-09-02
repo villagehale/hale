@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2 per message. Hale correctly drafted the two swim lessons and told Sam it will line up the rest — that is the exact correct handling of an overflow. The reply names both drafted items with their times, ends with \"YES to confirm these two\", and says it will handle the remaining two next — no app referral, no invented details, no markdown, no greeting or sign-off. The Wednesday item is a private calendar item; Hale gives its time (9:00am) without naming its content, which is correct. Soccer is unambiguous (one event on Saturday). The shape is clean and the contract wording is right. One minor blemish: \"I'll line up soccer and the Wed 9:00am item\" is slightly loose phrasing — it could have said \"...then I'll draft soccer and the Wed appointment\" — but it is clear and accurate. Otherwise a textbook handling of a capped overflow.",
+    "score": 5
+  }
+}

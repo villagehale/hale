@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { pickModel } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -80,7 +80,7 @@ export function createReplyIntentReader(client: AgentClient): ReplyIntentReader 
       const skill = await loadCronSkill('reply-intent');
       const { value } = await forceToolJson({
         client,
-        model: pickModel(skill.meta.task),
+        lane: pickLane(skill.meta.task),
         system: skill.instructions,
         userMessage: intentUserMessage(input),
         toolName: 'intent',

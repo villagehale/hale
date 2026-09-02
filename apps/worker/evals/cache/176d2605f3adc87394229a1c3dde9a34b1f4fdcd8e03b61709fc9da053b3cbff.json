@@ -1,0 +1,29 @@
+{
+  "parsed": {
+    "routine": [
+      {
+        "day": "tuesday",
+        "title": "Parent-and-tot swim",
+        "category": "water",
+        "stage_fit_rationale": "Matches the child's interest in water while keeping a caregiver in the pool for safety and comfort, which suits a toddler's need for close supervision and short, structured sessions.",
+        "candidate_confidence": 0.65
+      },
+      {
+        "day": "thursday",
+        "title": "Toddler music-and-movement class",
+        "category": "movement",
+        "stage_fit_rationale": "Short, repeated song-and-shaker format fits a toddler's brief attention span and love of movement, while the predictable structure builds comfort through repetition.",
+        "candidate_confidence": 0.6
+      },
+      {
+        "day": "saturday",
+        "title": "Neighbourhood park and playground",
+        "category": "outdoor play",
+        "stage_fit_rationale": "Unstructured outdoor time gives a toddler free rein for gross-motor practice like running and climbing, with no schedule pressure so it can flex around naps or mood.",
+        "candidate_confidence": 0.8
+      }
+    ],
+    "rationale": "A light three-item week spaced across Tuesday, Thursday, and Saturday balances one structured water class, one structured movement class, and one free-play outing, matching the toddler's short attention span and need for predictable rhythm without back-to-back demands.",
+    "notes": "All three candidates were included since each fits the toddler stage and the stated water/movement interests well; none were dropped, but the mid-week gap (Wed/Fri) is intentional to leave room for naps and unstructured downtime."
+  }
+}

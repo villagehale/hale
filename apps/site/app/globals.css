@@ -2,16 +2,32 @@
 
 /*
  * Hale — marketing site design system. One warm-white world, shared by the
- * homepage and every long-form subpage: Instrument Sans (display + body) with
- * Source Serif 4 for title accents and JetBrains Mono for data, a warm page
+ * homepage and every long-form subpage: Figtree (body + UI) with Fraunces for
+ * display, Source Serif 4 as the fallback display stack for locales Fraunces
+ * cannot set, and JetBrains Mono for data, a warm page
  * (#fdfcfa) carrying navy ink (#17294a) and a single amber accent family
  * (#b26b1f / #fef0c7), gently rounded clean cards, Lucide icons, and a
- * hand-built flat color-block SVG illustration kit. Light-only (the 2026-07
- * redesign removed dark mode).
+ * hand-built flat color-block SVG illustration kit.
+ *
+ * ── One theme system, whole site ─────────────────────────────────────────
+ * Every themed token is declared ONCE, as `light-dark(light, dark)`. The pair
+ * lives on the token, so a light value can never be promoted without its dark
+ * counterpart being written beside it — which is exactly how the landing came
+ * to have a navy night while eight subpages stayed light-only (#463 scoped the
+ * dark ladder to a `.v3-theme` wrapper). `color-scheme` on :root picks which
+ * half is used: `light dark` follows the OS, and `[data-theme]` (written before
+ * first paint by the layout's no-flash script) overrides it in either
+ * direction. With JavaScript off, the OS preference still wins.
+ *
+ * The dark ladder is Hale's own brand navy, not a neutral dark. Ground is a
+ * deep Prussian navy (#0C1A36) and the surfaces step UP toward the brand navy
+ * itself (#17294A, which is the card): the page reads as night navy rather than
+ * as black. Amber is FILL, glow and hairline in both themes — never body text.
+ * #B26B1F cannot carry that job on navy (4.12:1 on the ground), so dark uses
+ * the lighter #E2A75A at 8.14:1 for marks.
  *
  * The subpage token roles below keep their original names (linen/spruce/apricot)
- * so existing subpage markup + token utilities flip to the warm palette for
- * free; the homepage itself is inline-hex and untouched by these tokens.
+ * so existing subpage markup + token utilities flip with the theme for free.
  *
  * Hard rules baked in:
  *   - Three families only: warm white + navy + amber. Amber is FILL / large /
@@ -23,72 +39,91 @@
  */
 
 @theme {
-  /* ── Palette (hex + computed WCAG ratio on the warm page) ────────────── *
-   * Retuned (2026-07) so the long-form subpages read as one world with the
-   * warm-white homepage: warm page + navy ink + amber accent. Names are kept
-   * (linen/spruce/apricot) so the existing subpage markup + token utilities
-   * (text-spruce, border-rule, var(--color-slate-green)…) flip for free. */
-  --color-linen: #fdfcfa;       /* canvas — warm page (matches the homepage) */
-  --color-oat: #ffffff;         /* card surface — pure white, separated by a light border + faint shadow */
-  --color-spruce: #17294a;      /* primary ink / navy headline — 14.1:1 on page */
-  --color-slate-green: #5c6b87; /* secondary / body text — 5.24:1 */
-  --color-faded-sage: #647290;  /* tertiary / meta / disclaimers — 4.71:1 */
+  /* ── Palette — every themed role as light-dark(light, dark) ───────────── *
+   * Ratios in the comments are light-on-warm-page / dark-on-card, the card
+   * (--color-oat) being the lightest surface any dark ink lands on and so the
+   * binding constraint for the whole dark ladder. */
+  --color-linen: light-dark(#fdfcfa, #0c1a36);       /* canvas — warm page / deep Prussian navy ground */
+  --color-oat: light-dark(#ffffff, #17294a);         /* card surface — white / the brand navy itself */
+  --color-spruce: light-dark(#17294a, #f7f4ec);      /* primary ink — 14.1:1 / 13.15:1 */
+  --color-slate-green: light-dark(#5c6b87, #b7c4dc); /* secondary / body text — 5.24:1 / 8.22:1 */
+  --color-faded-sage: light-dark(#647290, #93a3c2);  /* tertiary / meta — 4.71:1 / 5.69:1 */
 
-  --color-apricot: #b26b1f;       /* amber — illustration fill, small marks */
-  --color-apricot-deep: #b26b1f;  /* amber accent — 4.08:1 (large/UI only; links use navy) */
-  --color-apricot-tint: #fef0c7;  /* amber wash panel / pill — ink 11.5:1 on it */
+  --color-apricot: light-dark(#b26b1f, #e2a75a);       /* amber — illustration fill, small marks */
+  --color-apricot-deep: light-dark(#b26b1f, #e2a75a);  /* amber accent — 4.08:1 (large/UI only; links use navy) */
+  --color-apricot-tint: light-dark(#fef0c7, rgb(226 167 90 / 0.08)); /* amber wash — see the alpha note below */
 
-  --color-sky: #c9d2e6;        /* pale navy — illustration clouds/roofs (no teal at chrome level) */
-  --color-sky-deep: #5c6b87;   /* slate — illustration limbs, kept distinct from the navy shell */
-  --color-sky-tint: #eef1f7;   /* pale navy wash — chip pills, illustration scutes */
+  --color-sky: #c9d2e6;                              /* pale navy — illustration clouds/roofs; light on either ground */
+  --color-sky-deep: light-dark(#5c6b87, #8fa3c9);    /* slate — illustration limbs/doors, lit so they clear the navy shell */
+  --color-sky-tint: light-dark(#eef1f7, #16233f);    /* pale navy wash — chip pills, illustration scutes */
 
-  --color-sea: #17294a;        /* navy — illustration figures/roofs */
+  --color-sea: light-dark(#17294a, #9fb4e0);         /* illustration figures/roofs. In dark the CARD is #17294a,
+                                                      * so a navy roof would vanish into its own house. */
 
-  --color-sage: #4a5a3c;       /* "done / handled" tone — 6.62:1 */
-  --color-sage-tint: #dde4d2;  /* done-tone pill — Spruce ink 10.33:1 */
+  --color-sage: light-dark(#4a5a3c, #9dbb87);  /* "done / handled" tone — 6.62:1 / 6.66:1 */
+  --color-sage-tint: #dde4d2;                  /* done-tone pill — Spruce ink 10.33:1 */
 
   --color-berry: #9c3b54;      /* "needs your eye" — sparing, 5.89:1 */
   --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
 
-  /* Hairlines: cool light-gray card borders (mockup's crisp #E6E8EC card outlines on white) */
-  --color-rule: #e4e7ee;
-  --color-rule-strong: #d8dbe0;
+  /* Hairlines: cool light-gray card borders in light, lifted navy in dark
+   * (--color-rule-strong is .btn-secondary's 1.5px edge — 3.40:1 on the ground). */
+  --color-rule: light-dark(#e4e7ee, #26375c);
+  --color-rule-strong: light-dark(#d8dbe0, #556da8);
 
-  /* On-dark (navy night section) text — cream, matching the homepage navy bands */
-  --color-on-spruce: #f7f4ec;
-  --color-on-spruce-soft: rgb(250 247 241 / 0.74);
-  --color-on-spruce-faint: rgb(250 247 241 / 0.50);
+  /* On-dark (navy night section) text. The pair INVERTS rather than darkening:
+   * see --color-navy / --color-cream below. */
+  --color-on-spruce: light-dark(#f7f4ec, #0c1a36);
+  --color-on-spruce-soft: light-dark(rgb(250 247 241 / 0.74), rgb(12 26 54 / 0.76));
+  --color-on-spruce-faint: light-dark(rgb(250 247 241 / 0.50), rgb(12 26 54 / 0.58));
 
-  /* ── Landing (2026-07) — warm white with navy drama ──────────────────── *
-   * The marketing homepage + shared nav/footer palette. Light-only: a warm
-   * page (#FDFCFA) carrying deep-navy statement surfaces. Distinct token
-   * names so the subpage design system above is untouched. */
-  --color-page: #fdfcfa;        /* warm page canvas */
-  --color-band: #f7f5f0;        /* warm cream band (testimonials, feature washes) */
-  --color-ink: #17294a;         /* headline ink — 12.6:1 on page */
-  --color-navy: #17294a;        /* Prussian navy — statement surfaces, CTA fill.
-                                 * Deliberately NOT the app's --color-brand (#1B2160):
-                                 * that indigo reads violet when flooded across large
-                                 * marketing bands, so the site stays on the ink hue. */
-  --color-navy-deep: #101d36;   /* navy card depth */
-  --color-cream: #f7f4ec;       /* text on navy */
-  --color-line: #e4e7ee;        /* card border */
-  --color-hair: #f0f2f6;        /* hairline */
-  --color-dim: #5c6b87;         /* body-safe muted — 5.6:1 on page */
-  --color-faint: #8b95a9;       /* small non-essential muted — 3.4:1, large/decorative only */
-  --color-amber: #b26b1f;       /* amber accent text — 4.6:1 on page */
-  --color-amber-bg: #fef0c7;
+  /* ── Landing + chrome roles ──────────────────────────────────────────── *
+   * The homepage and the shared header/footer palette. Distinct token names so
+   * the subpage design system above is untouched. */
+  --color-page: light-dark(#fdfcfa, #0c1a36);  /* page canvas */
+  --color-band: light-dark(#f7f5f0, #101f3f);  /* section band, one step off the canvas */
+  --color-ink: light-dark(#17294a, #f7f4ec);   /* headline ink — 12.6:1 on page */
+  /* --color-navy is both a FILL (.btn-primary, .cta-band, .night) and an INK
+   * (.link). On a navy page a navy fill disappears and a navy link is
+   * unreadable, so in dark cream takes the fill role and the ink that sits on
+   * it becomes the ground: every rule that pairs them inverts with no extra
+   * rules. Deliberately NOT the app's --color-brand (#1B2160): that indigo
+   * reads violet when flooded across large marketing bands. */
+  --color-navy: light-dark(#17294a, #f7f4ec);
+  --color-navy-deep: light-dark(#101d36, #ffffff); /* pressed/hover depth */
+  --color-cream: light-dark(#f7f4ec, #0c1a36);     /* text on --color-navy */
+  --color-line: light-dark(#e4e7ee, #26375c);      /* card border */
+  --color-hair: light-dark(#f0f2f6, #182a4b);      /* hairline */
+  --color-dim: light-dark(#5c6b87, #b7c4dc);       /* body-safe muted — 5.6:1 on page */
+  --color-faint: light-dark(#8b95a9, #93a3c2);     /* small non-essential muted, large/decorative only */
+  --color-amber: light-dark(#b26b1f, #e2a75a);     /* amber accent — 4.6:1 on page / 6.82:1 on the card */
+  /* The dark wash stays low-alpha rather than flattened to a hex, so it
+   * composites over whichever navy is behind it. The alpha is set by the
+   * LARGEST surface that wears it: amber and navy are near-complementary, so a
+   * wash strong enough to read on a 12px pill turns an 800px panel into warm
+   * grey (measured: 0.15 did exactly that). At 0.08 both stay blue-dominant and
+   * the amber signal is carried by --color-amber-ring below instead. */
+  --color-amber-bg: light-dark(#fef0c7, rgb(226 167 90 / 0.08));
+  /* The inset hairline that gives an amber pill or panel its edge once the wash
+   * is held down. Transparent in light, where the wash reads on its own. */
+  --color-amber-ring: light-dark(transparent, rgb(226 167 90 / 0.30));
   --color-lime: #1f8a4c;        /* green accent text — 4.0:1 on page (used on tint) */
   --color-lime-bg: #e7f6ec;
   --color-cobalt: #3b5bdb;      /* blue accent text */
   --color-cobalt-bg: #edf0fa;
 
-  /* ── Type — Instrument Sans (body/UI) + Source Serif 4 (display accents),
-   * JetBrains Mono for data. Vars injected by next/font in layout.tsx;
-   * pairing mirrors the product app. */
-  --font-sans: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+  /* ── Type — Figtree (body/UI) + Fraunces (display), with Source Serif 4 as
+   * the fallback display stack and JetBrains Mono for data. Vars injected by
+   * next/font in layout.tsx. */
+  --font-sans: "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  /* The display face (OFL, self-hosted, Latin-only, variable in opsz + wght).
+   * next/font overwrites this on <html> with the hashed family name; the literal
+   * here is what a page falls back to if that stylesheet never arrives. Bound by
+   * locale allowlist, never globally — see "the display face" block in the v4
+   * layer for why by-name and not `:not([lang='zh'])`. */
+  --font-fraunces: "Fraunces", Georgia, "Times New Roman", serif;
   --font-display: var(--font-sans);
   --font-body: var(--font-sans);
 
@@ -98,6 +133,11 @@
   /* ── Spacing & rhythm ────────────────────────────────────────────────── */
   --shell-pad-x: clamp(1.5rem, 5vw, 6rem);
   --shell-max: 1280px;
+  /* The sticky nav pill's own block height (its top margin included). Read by
+   * html's scroll-padding, so a deep link clears the bar, and by the landing
+   * hero, which runs UNDER the bar by exactly this much. One number, two
+   * readers — they cannot drift apart. */
+  --nav-h: 5.4rem;
 
   /* ── Radius — a calm card ladder, not blobs (panels read as cards) ───── */
   --r-sm: 8px;
@@ -110,6 +150,101 @@
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ── Which half of every light-dark() pair is used ───────────────────────── *
+ * `light dark` means "follow the OS", so the whole site responds to
+ * prefers-color-scheme with no JavaScript at all. The layout's pre-paint script
+ * writes data-theme ONLY for an explicit choice, and that single declaration
+ * overrides the OS in either direction — light on a dark machine included. */
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* ── Non-utility surface tokens ──────────────────────────────────────────── *
+ * Roles the design system uses through named classes rather than Tailwind
+ * utilities, so they stay out of @theme (which is the utility registry). */
+:root {
+  /* The chrome's glass: a translucent wash of the page ground, a soft blur, an
+   * inset top highlight, and a gradient hairline drawn as a masked ring
+   * (.site-glass). Light is the restrained half — a white highlight over cream
+   * is nearly invisible by design, and the navy bottom edge is what actually
+   * separates the bar from the page. Dark is where the recipe shines: the cream
+   * top edge reads as light catching the leading edge of the glass. */
+  --glass-bg: light-dark(rgb(253 252 250 / 0.72), rgb(12 26 54 / 0.72));
+  --glass-highlight: light-dark(rgb(255 255 255 / 0.80), rgb(247 244 236 / 0.10));
+  --glass-edge-top: light-dark(rgb(255 255 255 / 0.55), rgb(247 244 236 / 0.26));
+  --glass-edge-bottom: light-dark(rgb(23 41 74 / 0.10), rgb(247 244 236 / 0.05));
+
+  /* ── The landing's conversational hero kit ───────────────────────────── */
+
+  /* Hale's bubble: warm white lifted off the page by a hairline and a soft
+   * shadow, not by a card. Named separately from --color-oat because the bubble
+   * is the one surface on the page that must read as a message — which is why
+   * in dark it sits a step ABOVE the card rather than level with it. */
+  --v3-bubble-bg: light-dark(#ffffff, #1d3157);
+  --v3-bubble-border: light-dark(rgb(23 41 74 / 0.10), rgb(247 244 236 / 0.15));
+  --v3-bubble-shadow: 0 20px 48px -34px light-dark(rgb(23 41 74 / 0.55), rgb(2 6 16 / 0.85));
+
+  /* The warm bloom the thread column sits in — the page's only gradient, and
+   * the reason a lone bubble on a wide screen still has a centre of gravity. */
+  --v3-bloom-warm: light-dark(rgb(178 107 31 / 0.24), rgb(226 167 90 / 0.13));
+  --v3-bloom-cool: light-dark(rgb(23 41 74 / 0.09), rgb(120 152 224 / 0.10));
+
+  /* The suggestion strip. Unpressed reads as an offer, pressed as the message
+   * about to be sent — navy fill, so the chosen one is unmistakable. Fill and
+   * edge both lift in dark, because a navy chip on a navy ground has only its
+   * hairline to be found by. */
+  --v3-chip-bg: light-dark(rgb(23 41 74 / 0.045), rgb(247 244 236 / 0.07));
+  --v3-chip-border: light-dark(rgb(23 41 74 / 0.14), rgb(247 244 236 / 0.24));
+  --v3-chip-hover: light-dark(rgb(23 41 74 / 0.09), rgb(247 244 236 / 0.13));
+
+  --v3-caret: light-dark(#b26b1f, #e2a75a);
+
+  /* The hairline that fades toward a card's edges. */
+  --v3-edge: light-dark(rgb(23 41 74 / 0.20), rgb(247 244 236 / 0.22));
+
+  /* The closing shore band's own night, and the scrim ramped over the art. The
+   * band is night in BOTH themes — it never inverts, which is why it cannot use
+   * --color-navy. What changes is only how the night meets the page: against
+   * the warm page it is a statement card; on the navy ground it is the same
+   * navy, so the 28px corners dissolve and the art runs into the page. */
+  --v3-shore-ground: light-dark(#0c1424, #0c1a36);
+  --v3-shore-scrim: light-dark(#091226, #0c1a36);
+  --v3-shore-ink: #f7f4ec;
+
+  /* ── The subpage language (2026-08) ──────────────────────────────────── *
+   * The glass a card wears. Same recipe as the chrome's bar (--glass-*), taken
+   * from the CARD surface instead of the page ground: a panel that is a wash of
+   * the ground it sits on is invisible on that ground, which is fine for a bar
+   * fixed over scrolling content and useless for a card. */
+  --glass-panel-bg: light-dark(rgb(255 255 255 / 0.74), rgb(29 49 87 / 0.55));
+
+  /* One word of a pulled-up headline waits this long behind the one before it. */
+  --pull-stagger: 80ms;
+
+  /* Film grain over a section ground — the INK the noise is printed in, not an
+   * opacity. `light-dark()` only takes colours: as a bare number it is invalid
+   * at computed-value time, and `opacity: var(--grain-alpha)` then falls back to
+   * the initial value, which is 1. That shipped a full-strength grey noise field
+   * over the cream band (measured: #f7f5f0 rendered as rgb(217,216,213)).
+   *
+   * Printing it as a themed colour through a noise MASK also fixes what the grey
+   * was doing to the palette: the tooth now carries the ground's own hue — navy
+   * on the warm band, cream on the navy one — instead of laying grey over both.
+   * The mask averages about half coverage, so the effective texture is ~3%. */
+  --grain-ink: light-dark(rgb(23 41 74 / 0.055), rgb(247 244 236 / 0.07));
+}
+
+/* The pill gives 12.8px of block height back on a phone (see the .v4-nav
+ * overrides in the phone-density block), and the reservation the landing hero
+ * runs under has to give back EXACTLY the same or the shore stops meeting the
+ * top of the viewport. Two readers of one number, so they move together.
+ *
+ * Unlayered on purpose: --nav-h is declared in @theme, and an override inside
+ * @layer components would lose to it. */
+@media (max-width: 639.98px) {
+  :root { --nav-h: 4.6rem; }
+}
+
 /* Component + presentational classes live in @layer components so Tailwind v4
  * utilities (which sit in @layer utilities) win by layer order. UNLAYERED, these
  * rules outranked every utility — `.card{display:block}` beat `flex`, `.meta`
@@ -117,35 +252,49 @@
  * (SITE-01). Base element rules (html/body/::selection) + @keyframes stay out. */
 @layer components {
 
-/* Skip-to-content link — first focusable element on every page; hidden off-screen
- * until keyboard focus pulls it in over the sticky header, then targets <main>. */
+/* Skip-to-content — first focusable element on every page. Hidden with the
+ * standard clip/1px box (not a transform): any ancestor with transform or
+ * filter makes `position: fixed` resolve against that ancestor, so a
+ * translateY hide sat painted on the canvas. Keyboard :focus reveals it. */
 .skip-link {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.skip-link:focus {
   position: fixed;
   top: 0.75rem;
   left: 0.75rem;
   z-index: 100;
-  transform: translateY(-150%);
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0.6rem 1.1rem;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: nowrap;
   background: var(--color-navy);
   color: var(--color-cream);
-  padding: 0.6rem 1.1rem;
   border-radius: var(--r-full);
   font-family: var(--font-body);
   font-weight: 600;
   text-decoration: none;
-  transition: transform 200ms var(--ease-breathe);
-}
-.skip-link:focus {
-  transform: translateY(0);
   outline: 2px solid var(--color-cream);
   outline-offset: 2px;
 }
-@media (prefers-reduced-motion: reduce) {
-  .skip-link { transition: none; }
-}
 
-/* The night section is a dark Spruce band that inverts its text to cream — used
- * by the answer/milestone subpages. Light-only site (2026-07 warm-white
- * redesign), so there is no dark-mode override. */
+/* The night section is a statement band that inverts its text — used by the
+ * answer subpages. --color-navy / --color-on-spruce are an inverting pair, so
+ * on the navy page it becomes a cream band carrying navy ink: still the one
+ * surface on the page that is the opposite of everything around it. */
 .night {
   background: var(--color-navy);
   color: var(--color-on-spruce);
@@ -157,15 +306,14 @@
 html {
   background: var(--color-linen);
   color: var(--color-spruce);
-  color-scheme: light;
   font-family: var(--font-body);
   font-feature-settings: "kern", "liga", "calt";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   scroll-behavior: smooth;
-  /* Deep-link targets clear the sticky ~4.5rem header instead of hiding under it. */
-  scroll-padding-top: 4.75rem;
+  /* Deep-link targets clear the sticky header instead of hiding under it. */
+  scroll-padding-top: var(--nav-h);
 }
 
 body {
@@ -221,15 +369,39 @@ strong { font-weight: 700; }
 .font-mono { font-family: var(--font-mono); }
 .tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-/* Eyebrow label — Instrument Sans 600, tracked + uppercase, matching the
- * homepage's section eyebrows. */
+/* The wordmark — "Hale" beside the honu tile, in the header, the footer, the
+ * legal masthead, the landing's closing card and the QR-entry page.
+ *
+ * It is DRAWN ART now, not set type (components/wordmark.tsx), so every type
+ * declaration this rule used to carry is gone with the string it styled: no
+ * family, no weight, no synthesis guard, no tracking. What is left is the box the
+ * art fills, and the art's own aspect ratio supplies the width.
+ *
+ * The size is stated as a height rather than a font-size because that is what the
+ * mark now has. 1.32rem/21.1px lands the drawn cap at 20.1px against the 28px
+ * LogoMark — a shade over the 18.2px cap the Bellefair mark wore, which the
+ * heavier hand can carry and the lighter face could not.
+ *
+ * `block` is not cosmetic: left inline the mark sits on the text baseline and
+ * hangs 5px of descender leading under itself, which the QR-entry page shows as a
+ * gap between the mark and the headline it leads. */
+.wordmark {
+  display: block;
+  height: 1.32rem;
+  width: auto;
+}
+
+/* Eyebrow label — the body face at 600, tracked + uppercase, in amber to match the
+ * v4 hero's eyebrow (.v4-eyebrow). Amber is the site's one accent, carried here
+ * and by the single serif-italic accent word; body text stays navy for AA. Never
+ * sits on a navy ground (audited), so the fill reads on every surface it lands on. */
 .eyebrow {
   font-family: var(--font-body);
   font-size: 0.8rem;
   letter-spacing: var(--tracking-eyebrow);
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--color-slate-green);
+  color: var(--color-amber);
 }
 
 .meta {
@@ -238,14 +410,6 @@ strong { font-weight: 700; }
   font-weight: 500;
   color: var(--color-faded-sage);
   overflow-wrap: anywhere;
-}
-
-/* The single title accent word — the homepage's serif-italic device (Source
- * Serif 4), inheriting the heading's ink colour rather than tinting it. */
-.accent {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
 }
 
 /* ── Shell ─────────────────────────────────────────────────────────────── */
@@ -266,7 +430,11 @@ strong { font-weight: 700; }
   border-radius: var(--r-xl);
 }
 .panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
-.panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
+.panel-apricot-tint {
+  background: var(--color-apricot-tint);
+  border-radius: var(--r-xl);
+  box-shadow: inset 0 0 0 1px var(--color-amber-ring);
+}
 .panel-sage-tint { background: var(--color-sage-tint); border-radius: var(--r-xl); }
 .panel-berry-tint { background: var(--color-berry-tint); border-radius: var(--r-xl); }
 
@@ -296,7 +464,15 @@ strong { font-weight: 700; }
   letter-spacing: 0.04em;
 }
 
-.pill-apricot { background: var(--color-apricot-tint); color: var(--color-spruce); }
+/* The amber surfaces carry an inset hairline rather than a border, so gaining it
+ * costs no layout. It is transparent in light (where the #FEF0C7 wash reads on
+ * its own) and amber in dark, where the wash is held to 0.08 to keep the big
+ * panels navy and the hairline is what actually carries the amber. */
+.pill-apricot {
+  background: var(--color-apricot-tint);
+  color: var(--color-spruce);
+  box-shadow: inset 0 0 0 1px var(--color-amber-ring);
+}
 .pill-sky { background: var(--color-sky-tint); color: var(--color-spruce); }
 .pill-berry { background: var(--color-berry-tint); color: var(--color-spruce); }
 
@@ -637,11 +813,44 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   box-shadow: 0 0 0 3px var(--color-navy), 0 0 0 5px var(--color-cream);
 }
 
+/* The quiet action beside .btn-on-navy — same pill geometry, no fill: cream ink
+ * inside a soft cream edge, for the desktop copy-number chip that must not
+ * compete with the composer CTA it stands next to. */
+.btn-on-navy-quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.75rem;
+  background: transparent;
+  color: var(--color-cream);
+  border: 0;
+  border-radius: var(--r-full);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-cream) 45%, transparent);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 200ms var(--ease-breathe);
+}
+.btn-on-navy-quiet:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-cream) 75%, transparent);
+}
+.btn-on-navy-quiet:active { transform: translateY(0); }
+.btn-on-navy-quiet:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-navy), 0 0 0 5px var(--color-cream);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lift { transition: none; }
   .lift:hover { transform: none; }
   .btn-on-navy { transition: none; }
   .btn-on-navy:hover { transform: none; }
+  .btn-on-navy-quiet { transition: none; }
+  .btn-on-navy-quiet:hover { transform: none; }
 }
 
 /* ══ Legal long-form (2026-07, VIL-250 · M14 · B-legal) ══════════════════ *
@@ -650,9 +859,20 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * since the global h1/h2 scale is built for hero headlines and is far too large
  * for dense policy copy. Same token palette as every other subpage. */
 
-.legal-measure { max-width: 46rem; }
+/* 38rem holds the 1.05rem policy body to roughly 72 characters a line. At the
+ * 46rem this replaces, a clause ran to about 87 — past the point where the eye
+ * reliably finds the start of the next line, which is exactly the wrong failure
+ * on a document a reader is trying to be careful with. */
+.legal-measure { max-width: 38rem; }
 
-.legal-title { font-size: clamp(2.2rem, 5vw, 3rem); }
+.legal-title {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 600;
+  font-synthesis-weight: none;
+  letter-spacing: -0.01em;
+  line-height: 1.04;
+  font-size: clamp(2.2rem, 5vw, 3rem);
+}
 
 .legal-section h2 {
   font-size: clamp(1.45rem, 3vw, 1.85rem);
@@ -744,6 +964,1444 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.01em;
+  box-shadow: inset 0 0 0 1px var(--color-amber-ring);
 }
 
+}
+@layer components {
+
+/* ══ The landing — the conversational hero ════════════════════════════════ *
+ * The kit for the homepage whose hero IS the product: one centred column in
+ * which Hale types its real opening message, with the parent's likely first
+ * questions sitting under it the way a keyboard's suggestion strip sits under a
+ * thread. No card frame, no device chrome, no send-arrow — strip those away and
+ * the page itself reads as the conversation, which is the whole claim.
+ *
+ * Every class is `v3-`-prefixed, from the preview this page was auditioned as,
+ * and the prefix is load-bearing rather than historical: it is what keeps the
+ * landing's kit from colliding with the subpage design system above.
+ *
+ * Motion is CSS plus one small typewriter hook: a landing page whose argument is
+ * that Hale is faster than an app cannot ship an animation library to say so.
+ * Every rule has a prefers-reduced-motion reset at the foot of this block.
+ *
+ * ── Theme ────────────────────────────────────────────────────────────────
+ * There is no landing-only theme any more. Every token these classes read is a
+ * light-dark() pair at :root (top of this file), so the hero, the chips and the
+ * shore respond to the same switch as every subpage. The `v3-` prefix is now
+ * only what it says: a namespace, keeping the landing's kit from colliding with
+ * the subpage design system. */
+
+/* The serif accent word with its warm bloom is declared once, up in the type
+ * utilities, as `.accent, .v3-accent` — one device for the whole site. */
+
+/* ── The thread column ──────────────────────────────────────────────────── *
+ * A measure, not a container: the hero has no card, so the only thing holding
+ * the conversation together is that everything in it shares one narrow width. */
+
+.v3-thread {
+  width: 100%;
+  max-width: 37rem;
+  margin-inline: auto;
+}
+
+/* The one gradient on the page, behind the column. It bleeds DOWN past the hero
+ * so the wash has somewhere to end, but never sideways: a negative inline inset
+ * on an absolutely-positioned pseudo-element widens the document's scroll box
+ * even though no element reports as overflowing, which is a horizontal
+ * scrollbar nothing in the DOM inspector accounts for. */
+.v3-bloom { position: relative; isolation: isolate; }
+.v3-bloom::before {
+  content: "";
+  position: absolute;
+  inset: -10% 0 -26%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(46% 34% at 50% 26%, var(--v3-bloom-warm), transparent 70%),
+    radial-gradient(70% 44% at 50% 98%, var(--v3-bloom-cool), transparent 72%);
+}
+
+/* ── Hale's bubble ──────────────────────────────────────────────────────── *
+ * Tail on the bottom-left, the way an incoming message reads. Grid rather than
+ * flow so the full greeting can sit in the box as an invisible sizer while the
+ * typed slice paints on top of it: the bubble is its final size from the first
+ * frame, so nothing below it moves for seven seconds. */
+
+.v3-bubble {
+  display: grid;
+  border-radius: 22px 22px 22px 7px;
+  background: var(--v3-bubble-bg);
+  border: 1px solid var(--v3-bubble-border);
+  box-shadow: var(--v3-bubble-shadow);
+  padding: clamp(1.1rem, 3.4vw, 1.65rem) clamp(1.15rem, 3.6vw, 1.8rem);
+  color: var(--color-spruce);
+  font-size: clamp(1.02rem, 2.7vw, 1.2rem);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.v3-bubble > * { grid-area: 1 / 1; }
+
+/* The full greeting, holding the box open. aria-hidden + visibility:hidden, so
+ * it is neither announced nor painted — but it is real text in the DOM, which is
+ * what a crawler and a reader with JavaScript off get. */
+.v3-bubble-sizer { visibility: hidden; }
+
+.v3-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 0.12em;
+  vertical-align: -0.16em;
+  border-radius: 1px;
+  background: var(--v3-caret);
+  animation: v3-caret 1.05s steps(1, end) infinite;
+}
+
+@keyframes v3-caret {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* ── The suggestion strip ───────────────────────────────────────────────── *
+ * Real buttons: tapping one is an action (it writes the parent's first text),
+ * not navigation, and a screen reader is told which one is chosen via
+ * aria-pressed rather than by colour alone. */
+
+.v3-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.6rem 1.05rem;
+  border-radius: var(--r-full);
+  border: 1px solid var(--v3-chip-border);
+  background: var(--v3-chip-bg);
+  color: var(--color-spruce);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 220ms var(--ease-breathe), border-color 220ms var(--ease-breathe);
+}
+
+.v3-chip:hover { background: var(--v3-chip-hover); }
+
+.v3-chip[aria-pressed="true"] {
+  background: var(--color-navy);
+  border-color: var(--color-navy);
+  color: var(--color-cream);
+  font-weight: 600;
+}
+
+.v3-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* ── The draft line ─────────────────────────────────────────────────────── *
+ * What tapping a chip actually did, in words: the message now sitting in the
+ * composer link. Not an input — nothing here is typed and nothing is submitted
+ * from this page. The mono label says "machine state", the quoted body says
+ * "your words". */
+
+.v3-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--v3-chip-border);
+  background: var(--v3-chip-bg);
+  text-align: left;
+}
+
+.v3-draft-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-faded-sage);
+}
+
+.v3-draft-body {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-spruce);
+  line-height: 1.45;
+}
+
+/* A card whose hairline border fades out toward both edges. The XOR mask paints
+ * the 1px padding ring only, so the card's own surface is untouched. */
+.v3-edge-card {
+  position: relative;
+  border-radius: var(--r-xl);
+  background: var(--color-oat);
+  box-shadow: 0 1px 2px rgb(13 27 61 / 0.04);
+  padding: clamp(1.5rem, 2.4vw, 2.25rem);
+}
+.v3-edge-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--v3-edge) 22%,
+    var(--v3-edge) 78%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* ── The shore, closing the page ────────────────────────────────────────── *
+ * Hale is Hawaiian for home, the mark is a honu, and the support address is
+ * aloha@ — the shoreline is the brand's own world rather than decoration
+ * borrowed for atmosphere. It appears once, at the foot of the page.
+ *
+ * The band is night in BOTH themes — it never inverts, which is why it cannot
+ * use `--color-navy` (that flips to cream in dark and would put a moonlit scene
+ * behind navy-on-cream text) and why the art needs no light/dark fork. What DOES
+ * change is only how the night meets the page: against the warm-white page it is
+ * a statement card, and on the navy ground it is the same navy, so the 28px
+ * corners dissolve and the art runs straight into the page. That is the whole
+ * job of --v3-shore-ground / --v3-shore-scrim.
+ *
+ * The scrim is a vertical ramp rather than a flat wash: the moon and the sky at
+ * the top stay legible as art, and it deepens toward the foot where the cream
+ * sand would otherwise sit under the CTA. Contrast is measured, not assumed —
+ * the screenshots are sampled under each text box. */
+
+.v3-shore-band {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--v3-shore-ground);
+  color: var(--v3-shore-ink);
+}
+
+/* The scene is a 4:1 panorama composed with its copy space on the right, and a
+ * phone is not 4:1. Cropping it to fit was tried and thrown away: a fifth of a
+ * panorama at full height is abstract smudges, and the wide navy the artwork
+ * reserves for words showed no shore at all.
+ *
+ * So the frame changes shape instead of the crop. On a phone the panorama keeps
+ * its own aspect and closes the card as a horizon strip, in flow beneath the
+ * copy — no overlap to pad around, and the whole scene is legible. From lg it
+ * becomes the full-bleed ground the composition was drawn for, with the copy in
+ * the open right side. */
+.v3-shore-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 2508 / 627;
+}
+
+.v3-shore-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    var(--v3-shore-ground) 0%,
+    color-mix(in srgb, var(--v3-shore-scrim) 55%, transparent) 30%,
+    transparent 62%
+  );
+}
+
+.v3-shore-art { object-fit: cover; }
+
+@media (min-width: 1024px) {
+  .v3-shore-frame {
+    position: absolute;
+    inset: 0;
+    aspect-ratio: auto;
+  }
+  .v3-shore-art { object-position: 20% 50%; }
+  /* Copy has moved right, so the scrim ramps the same way: the shore keeps its
+   * own light on the left, and the half the words sit on goes to deep navy. */
+  .v3-shore-frame::after {
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--v3-shore-scrim) 10%, transparent) 0%,
+      color-mix(in srgb, var(--v3-shore-scrim) 20%, transparent) 32%,
+      color-mix(in srgb, var(--v3-shore-scrim) 64%, transparent) 50%,
+      color-mix(in srgb, var(--v3-shore-scrim) 82%, transparent) 68%,
+      color-mix(in srgb, var(--v3-shore-scrim) 86%, transparent) 100%
+    );
+  }
+}
+
+/* Above both the art and the scrim, which are z-index auto and so paint in tree
+ * order — the pseudo-element is the last child and would otherwise cover this. */
+.v3-shore-copy { position: relative; z-index: 1; }
+
+.v3-shore-band :is(h2, p) { color: var(--v3-shore-ink); }
+.v3-shore-sub { color: rgb(247 244 236 / 0.84); }
+
+/* The CTA on that band. Night in both themes, for the same reason the band is. */
+.v3-btn-shore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.75rem;
+  background: var(--v3-shore-ink);
+  color: #101c33;
+  border: 0;
+  border-radius: var(--r-full);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 200ms var(--ease-breathe);
+}
+.v3-btn-shore:hover { transform: translateY(-1px); }
+.v3-btn-shore:active { transform: none; }
+.v3-btn-shore:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px #101c33, 0 0 0 5px var(--v3-shore-ink);
+}
+
+/* The closing lockup: the brand tile on the navy band needs a hairline to lift
+ * its own navy ground off the band's. */
+.v3-logo-tile {
+  box-shadow: 0 0 0 1px rgb(247 244 236 / 0.22);
+}
+
+/* Reduced motion: the caret is dropped by the component (it never blinks and
+ * the greeting is whole from the first frame); this is the belt to that brace,
+ * and it stills the chip transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .v3-caret { animation: none; }
+  .v3-chip { transition: none; }
+  .v3-btn-shore { transition: none; }
+  .v3-btn-shore:hover { transform: none; }
+}
+
+}
+@layer components {
+
+/* ══ Shared chrome — one header and one footer, every page ═══════════════ *
+ * The header is glass: a translucent wash of the page ground with a short
+ * blur behind it, an inset highlight along the top inside edge, and a hairline
+ * drawn as a masked gradient RING rather than a border, so it can be bright
+ * where the light would catch it and fade to nothing where it would not. The
+ * mask trick is the same one .v3-edge-card uses — paint a 1px padding ring and
+ * XOR out the interior, leaving the card's own surface untouched.
+ *
+ * The alphas are tuned per theme in --glass-* at the top of this file: on the
+ * warm page the ring is nearly all bottom edge (a white highlight over cream is
+ * invisible, and inventing contrast for it would just draw a grey box); on the
+ * navy ground the top edge is the whole point. */
+
+.site-glass {
+  position: relative;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(4px) saturate(1.4);
+  backdrop-filter: blur(4px) saturate(1.4);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+.site-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  /* No-op on the square bar; required by the rounded surfaces (.glass-panel)
+   * that compose this same recipe. */
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--glass-edge-top), var(--glass-edge-bottom));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* A nav link in the bar: quiet until it is wanted. */
+.chrome-link {
+  border-radius: var(--r-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-slate-green);
+  text-decoration: none;
+  transition: color 200ms var(--ease-breathe);
+}
+.chrome-link:hover { color: var(--color-spruce); }
+.chrome-link:focus-visible {
+  outline: 2px solid var(--color-spruce);
+  outline-offset: 4px;
+}
+
+/* ── Theme controls ──────────────────────────────────────────────────────── *
+ * Two surfaces on the same store: an icon that cycles in the header, and the
+ * named three-way in the footer for a reader who wants to see the options.
+ *
+ * The icon pair is chosen by CSS, not by React state, so the button is already
+ * correct in the first painted frame — before hydration, and with JavaScript
+ * off. `data-theme` is only ever written for an explicit choice, so the media
+ * query below is what "system" resolves through. */
+
+.theme-icon-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-icon-light { display: none; }
+  :root:not([data-theme="light"]) .theme-icon-dark { display: block; }
+}
+:root[data-theme="light"] .theme-icon-light { display: block; }
+:root[data-theme="light"] .theme-icon-dark { display: none; }
+:root[data-theme="dark"] .theme-icon-light { display: none; }
+:root[data-theme="dark"] .theme-icon-dark { display: block; }
+
+/* The bar's icon buttons — the theme cycle and the hamburger. 44px square, the
+ * touch target, with the glyph sized well inside it. */
+.chrome-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-slate-green);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 200ms var(--ease-breathe), color 200ms var(--ease-breathe);
+}
+.chrome-icon-btn:hover { background: var(--color-hair); color: var(--color-spruce); }
+.chrome-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+/* A <fieldset>, which is what a labelled group of controls is — so its UA
+ * block/min-content sizing has to be overridden back to a pill. */
+.theme-choice {
+  display: inline-flex;
+  gap: 2px;
+  margin: 0;
+  padding: 3px;
+  min-inline-size: 0;
+  border-radius: var(--r-full);
+  border: 1px solid var(--color-rule);
+  background: var(--color-oat);
+}
+
+.theme-choice-option {
+  min-height: 34px;
+  padding: 0.25rem 0.7rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-slate-green);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 200ms var(--ease-breathe), color 200ms var(--ease-breathe);
+}
+.theme-choice-option:hover { color: var(--color-spruce); }
+.theme-choice-option[aria-pressed="true"] {
+  background: var(--color-navy);
+  color: var(--color-cream);
+}
+.theme-choice-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chrome-link,
+  .chrome-icon-btn,
+  .theme-choice-option { transition: none; }
+}
+
+}
+@layer components {
+
+/* ══ The subpage language (2026-08) ═══════════════════════════════════════ *
+ * The landing got a cinematic hero and the ten subpages behind it stayed a
+ * documentation site wearing the same tokens: eyebrow, heading, grey lede, card
+ * grid. This block is the five devices that close that gap — and it is
+ * deliberately five, not fifty. Every one of them is CSS the browser runs on its
+ * own, because a marketing site whose argument is that Hale is faster than an
+ * app cannot ship an animation library to make the argument.
+ *
+ *   1. .pull-word   — the headline arrives a word at a time.
+ *   2. .accent      — one serif-italic segment per headline, lit. (Declared up
+ *                     in the type utilities; every subpage h1 already wears it.)
+ *   3. .char-reveal — one paragraph on /about that reads itself as you scroll.
+ *   4. .glass-panel / .numbered-card — the card, given anatomy.
+ *   5. .grain       — a section ground with tooth.
+ *
+ * Each has a static fallback, and prefers-reduced-motion turns all of them off.
+ */
+
+/* ── 1 · The pulled-up headline ─────────────────────────────────────────── *
+ * Words rise into place a beat apart. The reveal IS the landing's hero-word
+ * animation (hale-hero-word) — same curve, same distance — so the subpages and
+ * the homepage share one gesture rather than two that nearly match.
+ *
+ * Load-time rather than scroll-triggered, and that is the design rather than a
+ * shortcut. Every headline wearing this is the first thing on its page, so "in
+ * view" is settled before the reader can scroll; and a CSS animation runs with
+ * no JavaScript at all, where an IntersectionObserver reveal leaves the page's
+ * <h1> at opacity 0 for a reader whose JS never arrives. The one primitive we
+ * already ship with that flaw (FadeInUp) is trusted with a CTA band, never with
+ * a heading.
+ *
+ * --w is the word's index, set inline by components/words-pull-up.tsx. */
+.pull-word {
+  display: inline-block;
+  opacity: 0;
+  animation: hale-hero-word 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--w, 0) * var(--pull-stagger));
+}
+
+/* ── 3 · The scroll-read paragraph ──────────────────────────────────────── *
+ * One paragraph on /about — the founder's own account — surfaces a character at
+ * a time as it crosses the viewport, so it reads at the speed of the scroll
+ * instead of arriving whole.
+ *
+ * Settled text is the DEFAULT here, not the fallback: a character is fully
+ * opaque unless BOTH scroll-driven animations exist and the reader has not
+ * asked for less motion. A browser without `animation-timeline` — and every
+ * crawler — sees ordinary prose. The timeline is named on the paragraph so all
+ * of its characters share one clock; each character driving its own `view()`
+ * would reveal the paragraph line by line, since every glyph on a line crosses
+ * the viewport at the same moment. */
+@keyframes char-lift {
+  from { opacity: 0.2; }
+  to   { opacity: 1; }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .char-reveal {
+      view-timeline-name: --char-reveal;
+      view-timeline-axis: block;
+    }
+    /* --c is the character's index and --n the paragraph's length, both set
+     * inline. The window is tuned against where a paragraph is actually READ,
+     * not where it fits: the last character finishes at 48% of the cover range,
+     * which puts the whole paragraph settled by the time its top sits ~40% down
+     * the viewport. The first tuning ran to 70% and measured 0.32 opacity on the
+     * closing characters at that same reading position — the reader had to keep
+     * scrolling to finish a sentence, which is the effect wearing the copy
+     * rather than carrying it. */
+    .char-reveal-char {
+      animation: char-lift linear both;
+      animation-timeline: --char-reveal;
+      animation-range:
+        cover calc(8% + (var(--c) / var(--n)) * 26%)
+        cover calc(22% + (var(--c) / var(--n)) * 26%);
+    }
+  }
+}
+
+/* ── 4 · Glass, and the card that has anatomy ───────────────────────────── *
+ * The bar's recipe at card scale: a translucent surface, a short blur, an inset
+ * highlight along the top inside edge, and a hairline drawn as a masked ring
+ * (see .site-glass). Taken from the CARD surface rather than the page ground,
+ * because a panel that is a wash of the ground it sits on is invisible on that
+ * ground — fine for a bar fixed over scrolling content, useless for a card. */
+.glass-panel {
+  position: relative;
+  border-radius: var(--r-xl);
+  background: var(--glass-panel-bg);
+  -webkit-backdrop-filter: blur(6px) saturate(1.3);
+  backdrop-filter: blur(6px) saturate(1.3);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 1px 2px rgb(13 27 61 / 0.04);
+}
+
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--glass-edge-top), var(--glass-edge-bottom));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* The one card the ladder points at. The amber wash and its ring sit ON the
+ * glass rather than replacing it: a flat tint that skips the lift reads as
+ * RECESSED against the navy ground — measured at rgb(21,36,66) beside its
+ * neighbours' rgb(26,45,82), which is the opposite of featured. */
+.glass-panel.numbered-card-marked {
+  background:
+    linear-gradient(0deg, var(--color-apricot-tint), var(--color-apricot-tint)),
+    var(--glass-panel-bg);
+  box-shadow:
+    inset 0 0 0 1px var(--color-amber-ring),
+    inset 0 1px 0 var(--glass-highlight),
+    0 1px 2px rgb(13 27 61 / 0.04);
+}
+
+/* The card, read top to bottom: what kind of thing this is, where it sits in the
+ * sequence, what it is called, what you get, and one quiet way onward.
+ *
+ * The number is only ever worn by content that IS a sequence — the pricing
+ * ladder, the three rungs of how Hale acts. It is information, not decoration:
+ * a numbered grid of unordered things is a lie told in monospace. */
+.numbered-card {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(1.5rem, 2.4vw, 2.25rem);
+}
+
+.numbered-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.numbered-card-num {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-faded-sage);
+}
+
+/* The checklist. Lucide's Check in the "handled" tone, held to the first line of
+ * its item rather than centred against the block. */
+.numbered-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+}
+
+.numbered-card-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  line-height: 1.45;
+  color: var(--color-slate-green);
+}
+
+.numbered-card-list svg {
+  flex: none;
+  margin-top: 0.28em;
+  color: var(--color-sage);
+}
+
+/* The quiet way onward — a label and an arrow that steps out on hover. Not a
+ * button: a card ending in a second button competes with the one action the
+ * page actually wants. */
+.quiet-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-slate-green);
+  text-decoration: none;
+}
+.quiet-link svg { transition: transform 220ms var(--ease-breathe); }
+.quiet-link:hover { color: var(--color-spruce); }
+.quiet-link:hover svg { transform: translate(2px, -2px); }
+.quiet-link:focus-visible {
+  outline: 2px solid var(--color-spruce);
+  outline-offset: 4px;
+  border-radius: var(--r-sm);
+}
+
+/* ── 5 · Grain ──────────────────────────────────────────────────────────── *
+ * Fractal noise over a section's ground, at a few percent. Grounds only — never
+ * a card or a text container, where it would sit between the reader and the
+ * words. The negative z-index paints it above the section's own background and
+ * below its content; `isolation` is what keeps it from falling behind the page
+ * instead (the same trick .v3-bloom uses). */
+.grain {
+  position: relative;
+  isolation: isolate;
+}
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  /* Or a rounded band gets square corners of noise. */
+  border-radius: inherit;
+  pointer-events: none;
+  /* The noise is the MASK and the ink is a themed colour, so the tooth carries
+   * the ground's own hue rather than laying grey over it (see --grain-ink). */
+  background-color: var(--grain-ink);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+/* ── Editorial measure ──────────────────────────────────────────────────── *
+ * Long-form prose wants 65–75 characters a line. At the body's 17px that is
+ * about 38rem — the answer pages and the policies were running to 46–48rem,
+ * which is a 90-character line the eye loses its place on. */
+.reading-measure { max-width: 38rem; }
+
+/* A stage or category label, said quietly: a pill in the pale-navy wash rather
+ * than a tracked uppercase eyebrow. On an editorial page the eyebrow shouts over
+ * the headline it is there to introduce. */
+.pill-quiet {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--r-full);
+  padding: 0.25rem 0.7rem;
+  background: var(--color-sky-tint);
+  color: var(--color-slate-green);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ── The FAQ disclosure ─────────────────────────────────────────────────── *
+ * A native <details>, which is the element this always was: keyboard, focus,
+ * find-in-page and the no-JavaScript reader all come with it, and the React
+ * accordion it replaces left six of seven answers unopenable when its JavaScript
+ * did not arrive. The marker is ours, so the UA triangle is turned off on both
+ * spellings. */
+.disclosure { padding-inline: clamp(1.1rem, 2vw, 1.6rem); }
+.disclosure + .disclosure { margin-top: 0.75rem; }
+
+.disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-block: clamp(1.1rem, 2vw, 1.5rem);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-display);
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  font-weight: 500;
+  letter-spacing: var(--tracking-display);
+  line-height: 1.3;
+  color: var(--color-spruce);
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary:focus-visible {
+  outline: 2px solid var(--color-spruce);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* The marker swaps by state rather than rotating: a plus becoming a minus is the
+ * clearer promise of what the click will do. Both glyphs are in the markup and
+ * CSS picks one off [open], so the marker is correct in the first painted frame
+ * — the same reasoning as the theme icon in the bar. */
+.disclosure-mark {
+  flex: none;
+  color: var(--color-slate-green);
+  transition: color 200ms var(--ease-breathe);
+}
+.disclosure[open] .disclosure-mark { color: var(--color-apricot-deep); }
+.disclosure > summary:hover .disclosure-mark { color: var(--color-spruce); }
+.disclosure-mark-open { display: none; }
+.disclosure[open] .disclosure-mark-closed { display: none; }
+.disclosure[open] .disclosure-mark-open { display: block; }
+
+.disclosure-body {
+  padding-bottom: clamp(1.1rem, 2vw, 1.5rem);
+  color: var(--color-slate-green);
+  line-height: 1.65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pull-word { animation: none; opacity: 1; }
+  .quiet-link svg,
+  .disclosure-mark { transition: none; }
+}
+
+/* Paper has no scroll and no page-load, so both reveals resolve to their settled
+ * state. Without this a printed /about carries a paragraph at 20% opacity. */
+@media print {
+  .pull-word,
+  .char-reveal-char { animation: none; opacity: 1; }
+}
+
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * v4 landing — the liquid-glass shore.  A CANDIDATE (rendered at /v4), never the
+ * live page. It extends the glass recipe the chrome already ships (#466) into a
+ * full hero: the Hawaiian shoreline the name comes from, navy-scrimmed behind
+ * frosted glass. Every colour is a themed light-dark() token, so the footer
+ * switch drives the whole page, hero included.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* The display face. Instrument Serif ships ONE master (400) — so at the 30–54px
+   * every section heading actually renders at, its hairlines under-assert and
+   * there is no heavier cut to reach for (`font-weight: 600` on it would be a
+   * browser-smeared synthetic bold). Display type is therefore Source Serif 4,
+   * variable 400–700 and already self-hosted, with the weight rising as the size
+   * falls: perceived weight drops with size, so <2.5rem takes 620, 2.5–4rem
+   * 580–600, ≥4rem 400–500. Instrument Serif is kept for exactly one thing, the
+   * landing hero at ≥1024px (see .v4-hero-h1), the one place on the site a
+   * high-contrast 400 serif renders near 100px. */
+  .v4-display {
+    font-family: var(--font-serif), Georgia, serif;
+    font-weight: 620;
+    font-synthesis-weight: none;
+    letter-spacing: -0.01em;
+    line-height: 1.04;
+  }
+  @media (min-width: 640px) {
+    .v4-display { font-weight: 600; }
+  }
+  @media (min-width: 1024px) {
+    .v4-display { font-weight: 580; }
+  }
+  /* The one accent segment per headline. It was a slant until 2026-08-19 and an
+   * amber word until 2026-08-20; display copy on this site now neither leans nor
+   * changes colour mid-sentence. Amber is left to the things a reader can act on
+   * — the CTAs, the links, the buttons, the eyebrow that labels a section.
+   *
+   * The rule survives its own colour on purpose. The span is still what segments
+   * a headline (WordsPullUp splits on it, and the landing h1 marks its last
+   * clause with it), so `inherit` both records that the divergence was removed
+   * deliberately and stops a stray utility tinting the segment back. */
+  .v4-accent { color: inherit; }
+
+  /* Liquid glass — the #466 recipe as a reusable class. The gradient ring is
+   * bright at top and bottom, gone in the middle, masked to the border only, so
+   * it reads as light on the leading edge of glass rather than a flat tint. */
+  .v4-glass {
+    position: relative;
+    overflow: hidden;
+    background: var(--glass-bg);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    box-shadow:
+      inset 0 1px 1px var(--glass-highlight),
+      0 18px 50px -34px rgb(12 26 54 / 0.55);
+  }
+  .v4-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.4px;
+    background: linear-gradient(
+      180deg,
+      var(--glass-edge-top) 0%,
+      transparent 32%,
+      transparent 68%,
+      var(--glass-edge-top) 100%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* ── Hero ─────────────────────────────────────────────────────────────── */
+  .v4-hero {
+    position: relative;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  /* The shore, and the theme-driven scrim over it. The image is one file; what
+   * the toggle changes is only how much night is poured over it — a warm daylit
+   * wash in light, deep Prussian in dark — so the same shore reads as morning or
+   * evening and the switch visibly transforms the hero. */
+  /* The landing's first hero runs UNDER the shared sticky nav pill rather than
+   * below it: pulled up by the bar's own block height and padded back by the
+   * same amount, so the shore fills the viewport from y=0 and the hero body
+   * still centres in the space beneath the glass. */
+  .v4-hero-top {
+    margin-top: calc(-1 * var(--nav-h));
+    padding-top: var(--nav-h);
+  }
+  .v4-hero-art {
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 32%;
+    filter: light-dark(saturate(1.03) brightness(1.02), saturate(0.92) brightness(0.66));
+  }
+  .v4-hero-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(
+        130% 90% at 50% 20%,
+        light-dark(rgb(253 252 250 / 0.06), rgb(12 26 54 / 0.26)) 0%,
+        light-dark(rgb(253 252 250 / 0.40), rgb(12 26 54 / 0.62)) 52%,
+        light-dark(rgb(253 252 250 / 0.74), rgb(12 26 54 / 0.90)) 100%
+      ),
+      linear-gradient(
+        180deg,
+        light-dark(rgb(253 252 250 / 0.34), rgb(12 26 54 / 0.50)) 0%,
+        transparent 28%,
+        transparent 60%,
+        var(--color-linen) 100%
+      );
+  }
+
+  /* ── Floating glass nav pill ──────────────────────────────────────────── */
+  .v4-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    max-width: 64rem;
+    margin: 1.25rem auto 0;
+    padding: 0.6rem 0.7rem 0.6rem 1.15rem;
+    border-radius: var(--r-full);
+  }
+  .v4-navlinks { display: none; }
+  @media (min-width: 768px) {
+    .v4-navlinks { display: flex; align-items: center; gap: 1.75rem; }
+  }
+  .v4-navlink {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-navy);
+    opacity: 0.78;
+    transition: opacity 160ms var(--ease-breathe);
+  }
+  .v4-navlink:hover { opacity: 1; }
+
+  /* Glass button (secondary) and the solid navy primary. */
+  .v4-btn,
+  .v4-btn-solid {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.4rem;
+    border-radius: var(--r-full);
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      transform 160ms var(--ease-breathe),
+      background 160ms var(--ease-breathe);
+  }
+  .v4-btn { color: var(--color-navy); }
+  .v4-btn-solid {
+    background: var(--color-navy);
+    color: var(--color-cream);
+  }
+  .v4-btn:hover,
+  .v4-btn-solid:hover { transform: translateY(-1px); }
+  .v4-btn-solid:hover { background: var(--color-navy-deep); }
+
+  /* ── Hero content ─────────────────────────────────────────────────────── */
+  .v4-hero-body {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.6rem;
+    padding: 3rem 1.5rem 5rem;
+    text-align: center;
+  }
+  .v4-eyebrow {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--color-amber);
+  }
+  /* The pronunciation, the one eyebrow that labels nothing — it says the name out
+   * loud above the hero rather than naming a section, so the founder asked for it
+   * 15–20% quieter than the seven that do. The whole reduction is SIZE: amber
+   * measures 4.6:1 on the page, 0.1 over the AA floor for normal text, so buying
+   * the quiet with a tint or an opacity would have bought it by making the line
+   * inaccessible. -15.3%, colour untouched. */
+  .v4-pronounce { font-size: 0.61rem; }
+  .v4-hero-h1 {
+    font-size: clamp(2.9rem, 8.5vw, 6.5rem);
+    color: var(--color-ink);
+    max-width: 15ch;
+    font-weight: 550;
+    line-height: 1.02;
+    /* The hero carried `text-shadow: light-dark(<shadow>, <shadow>)` here and on
+     * .v4-hero-sub. light-dark() is a <color> function — wrapping a whole shadow
+     * LIST in it is invalid, so all three declarations computed to `none` and the
+     * softening wash has never rendered on any browser (probed in Chromium:
+     * whole-list → "none", colour-only → applies). Removed rather than repaired:
+     * the reason they surfaced was a review asking for LESS blur behind the
+     * display type, and there is none. If a wash is ever wanted back, the only
+     * valid form is `0 1px 30px light-dark(colourA, colourB)`. */
+  }
+  @media (min-width: 640px) {
+    .v4-hero-h1 { font-weight: 500; }
+  }
+  /* ≥1024px the hero renders at 87–104px — the one scale on the site where a
+   * high-contrast 400 serif reads as display type rather than as thin. */
+  @media (min-width: 1024px) {
+    .v4-hero-h1 {
+      font-family: var(--font-serif-display), Georgia, serif;
+      font-weight: 400;
+      letter-spacing: -0.015em;
+      line-height: 0.96;
+    }
+  }
+  .v4-hero-sub {
+    max-width: 42ch;
+    font-size: clamp(1rem, 1.6vw, 1.15rem);
+    line-height: 1.6;
+    color: var(--color-navy);
+    opacity: 0.9;
+    /* Same invalid light-dark(<shadow>) shape as the h1's — never rendered. */
+  }
+  /* The terms microcopy under the hero's one CTA — same ink and opacity as the
+   * sub (the 4.5:1 floor holds on the scrim), one step smaller. */
+  .v4-hero-terms {
+    margin-top: 1rem;
+    max-width: 52ch;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--color-navy);
+    opacity: 0.9;
+  }
+
+  /* The reply-chip row — the questions parents actually send, echoing v3, as
+   * glass pills that scroll to the thread section. */
+  .v4-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    justify-content: center;
+    max-width: 40rem;
+  }
+  .v4-chip {
+    display: inline-block;
+    text-align: center;
+    padding: 0.5rem 0.95rem;
+    border-radius: var(--r-full);
+    font-size: 0.86rem;
+    font-weight: 500;
+    color: var(--color-navy);
+    cursor: pointer;
+    transition: transform 140ms var(--ease-breathe);
+  }
+  .v4-chip:hover { transform: translateY(-1px); }
+
+  /* ── Glass numbered cards (how it works) ──────────────────────────────── */
+  .v4-cardgrid {
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 768px) {
+    .v4-cardgrid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .v4-card {
+    border-radius: var(--r-lg);
+    padding: 1.75rem;
+  }
+  .v4-card-n {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    font-family: var(--font-serif-display), Georgia, serif;
+    font-size: 2.4rem;
+    line-height: 1;
+    color: var(--color-amber);
+  }
+  /* The step's WHEN, riding the empty half of the numeral's line so the
+   * first-week contract costs the card no extra height. */
+  .v4-when {
+    margin-left: auto;
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    line-height: 1;
+    text-align: right;
+    text-transform: uppercase;
+    color: var(--color-amber);
+  }
+  .v4-card h3 { margin-top: 0.9rem; font-size: 1.15rem; line-height: 1.25; }
+  .v4-card p { margin-top: 0.6rem; color: var(--color-slate-green); line-height: 1.6; }
+
+  /* ── Footer theme switch ──────────────────────────────────────────────── */
+  .v4-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+  }
+  .v4-switch-track {
+    position: relative;
+    width: 3.4rem;
+    height: 1.85rem;
+    flex: none;
+    border-radius: var(--r-full);
+    background: var(--v3-chip-bg);
+    border: 1px solid var(--v3-chip-border);
+    transition: background 220ms var(--ease-breathe);
+  }
+  .v4-switch-knob {
+    position: absolute;
+    top: 50%;
+    left: 0.22rem;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 50%;
+    background: var(--color-navy);
+    color: var(--color-cream);
+    display: grid;
+    place-items: center;
+    transform: translateY(-50%);
+    transition: left 240ms var(--ease-breathe);
+  }
+  .v4-switch[aria-checked='true'] .v4-switch-knob { left: calc(100% - 1.62rem); }
+  .v4-switch-label { font-size: 0.85rem; color: var(--color-slate-green); }
+  .v4-switch:focus-visible { outline: none; }
+  .v4-switch:focus-visible .v4-switch-track {
+    outline: 2px solid var(--color-spruce);
+    outline-offset: 2px;
+  }
+
+  /* ── Content sections (ported from v3 into the glass idiom) ───────────── */
+  /* Section heading + lede. The display face carries the heading; the amber
+   * italic is the accent, matching the hero. */
+  .v4-h2 {
+    font-size: clamp(1.9rem, 4.4vw, 3rem);
+    color: var(--color-ink);
+    max-width: 20ch;
+  }
+  /* The how-it-works headline — the one section headline that runs a scale wider
+   * than .v4-h2. It was a `text-[clamp(2rem,5vw,3.4rem)]` utility inline in the
+   * markup until #512 had to reach it from a locale rule and found that a utility
+   * outranks every layer one can sit in (probed in Chromium). The step that
+   * needed it is gone, but the class stays: an inline display size is a rung this
+   * file's gate cannot see, and the value is the utility's, unchanged. */
+  .v4-h2-wide {
+    font-size: clamp(2rem, 5vw, 3.4rem);
+    color: var(--color-ink);
+  }
+  .v4-lede {
+    margin-top: 1.4rem;
+    max-width: 46ch;
+    font-size: clamp(1.02rem, 1.5vw, 1.18rem);
+    line-height: 1.6;
+    color: var(--color-slate-green);
+  }
+
+  /* ── The display face: Fraunces ──────────────────────────────────────────
+   * Everything above this comment is the FALLBACK. This block re-sets every
+   * display surface — the hero H1, .v4-display (every section H2 and every
+   * subpage headline via WordsPullUp) and both legal titles — in the display
+   * face, for the Latin locales BY NAME.
+   *
+   * IT IS BY NAME BECAUSE THE FACE IS LATIN-ONLY. Chinese set in it renders
+   * every glyph from whatever CJK serif the reader's OS supplies, at tracking
+   * and leading tuned for a high-contrast Latin serif. So a locale added to
+   * i18n/routing.ts inherits the Source Serif rules above — the safe default —
+   * until someone adds it here on purpose. `html:not([lang='zh'])` would fail
+   * the other way round, which is exactly the failure this shape prevents.
+   *
+   * ── THE WEIGHT AXIS IS BACK, SO THE SIZE STEPS COME OUT ─────────────────
+   * #512's face shipped ONE master. With no heavier cut to reach for, the only
+   * honest compensation for a heading that measured lighter than the card h3
+   * beneath it was SIZE, and five rungs were stepped up: the subpage H1 to 3rem,
+   * the section H2s to 2.3rem, the legal title to 2.9rem, the deck to 1.32rem.
+   * All five are deleted here. Fraunces is variable 100–900, so a rung that
+   * measures light gets weight, and this block sets no font-size at all except
+   * the hero's — a size step is now a way of shipping a weight nobody measured.
+   * It also puts en/fr and zh back on ONE scale, which is a page fewer to hold
+   * in your head.
+   *
+   * The second axis, opsz, is applied automatically: `font-optical-sizing: auto`
+   * feeds the browser's rendered size in px straight into it, so a 30px section
+   * heading gets the text cut and the 84px hero gets the display cut. That is
+   * not the same outline scaled — it is a higher-contrast drawing — which is why
+   * the stem below is stated per (size, weight) and not once.
+   *
+   * ── What the measurement said ───────────────────────────────────────────
+   * Same rule as #506 and #512: a heading's stem, in rendered px, may not be
+   * thinner than the stem of the card heading beneath it. Both sides re-measured
+   * off the shipped woff2s at the exact instance each renders — Figtree is a
+   * lighter drawing than the Instrument Sans it replaces (0.1116em vs 0.1267em
+   * at 600), so carrying the old floors over would have flattered every rung.
+   * At the 450 the founder pinned the hero to:
+   *
+   *   landing hero    5.93px vs 1.93px, 8.37 vs 2.05   → 308% / 408%
+   *   subpage H1      4.65 vs 2.68,     7.92 vs 3.39   → 174% / 233%
+   *   section H2      3.60 vs 2.05,     5.49 vs 2.05   → 176% / 267%
+   *   landing H2      3.43 vs 1.93,     5.33 vs 2.05   → 178% / 260%
+   *   how-it-works    3.60 vs 1.93,     5.97 vs 2.05   → 187% / 291%
+   *   legal title     3.95 vs 2.59,     5.33 vs 3.30   → 153% / 161%
+   *
+   * Nothing demanded a step, so nothing gets one: every rung is 450. Two of
+   * those numbers are the argument for the whole change — the subpage H1 was 88%
+   * of parity at 390px on the old face and needed a size step to reach 105%, and
+   * the pricing section H2, the one rung #512 shipped UNDER parity at 83%, is at
+   * 162% here.
+   *
+   * The ch-measures above are deliberately UNTOUCHED. They are max-widths, and
+   * `text-wrap: balance` absorbs the difference in set width. */
+  html[lang='en'] .v4-display,
+  html[lang='fr'] .v4-display,
+  html[lang='en'] .legal-title,
+  html[lang='fr'] .legal-title {
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-weight: 450;
+    font-optical-sizing: auto;
+    font-synthesis-weight: none;
+    /* Bellefair ran a 0.034em hairline and had to be OPENED or its joins closed.
+     * This face carries three times that ink at 450, so display tracking is
+     * negative again — but only half of what the hero takes, because these rungs
+     * render at 30–50px where the counters are doing more work. */
+    letter-spacing: -0.02em;
+    /* Over the face's worst lowercase ink extent — 'b' 0.7388em over 'g' 0.2451em
+     * = 0.9839em at 450, measured across every rung's own opsz — by 0.056em, so
+     * no wrapped headline touches itself. */
+    line-height: 1.04;
+  }
+  html[lang='en'] .v4-hero-h1,
+  html[lang='fr'] .v4-hero-h1 {
+    font-family: var(--font-fraunces), Georgia, serif;
+    /* The founder's poster values. Stated in px rather than rem because they are
+     * a drawing decision at one specific pair of sizes, not a step on the type
+     * scale — and because the ceiling is what the display cut was chosen for. */
+    font-size: clamp(54px, 8vw, 84px);
+    font-weight: 450;
+    font-optical-sizing: auto;
+    font-synthesis-weight: none;
+    letter-spacing: -0.035em;
+    /* UNDER the face's worst lowercase extent, by 0.0339em — 2.84px at the 84px
+     * ceiling — and the one rung allowed to be. Only reachable where a descender
+     * sits over a TALL ascender, which the real stacks are nowhere near: 'y' over
+     * 't' in "The family assistant / you text." clears by 13.5px, because 't' is
+     * 0.55em where 'b' is 0.74em. A poster headline leads tighter than a page of
+     * them. */
+    line-height: 0.95;
+  }
+
+  /* The named towns the radar watches — glass pills, non-interactive. */
+  .v4-pills { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+  .v4-pill {
+    padding: 0.42rem 0.9rem;
+    border-radius: var(--r-full);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-navy);
+  }
+
+  /* Plain glass cards (radar 4-up, coaching/caregivers 2-up). Reuses .v4-card
+   * for type; these variants drop the numbered top margin since the heading is
+   * the first child. */
+  .v4-card > h3:first-child { margin-top: 0; }
+  .v4-cardgrid-4 { display: grid; gap: 1.1rem; grid-template-columns: 1fr; }
+  @media (min-width: 640px) { .v4-cardgrid-4 { grid-template-columns: repeat(2, 1fr); } }
+  @media (min-width: 1024px) { .v4-cardgrid-4 { grid-template-columns: repeat(4, 1fr); } }
+  .v4-cardgrid-2 { display: grid; gap: 1.25rem; grid-template-columns: 1fr; }
+  @media (min-width: 1024px) { .v4-cardgrid-2 { grid-template-columns: repeat(2, 1fr); } }
+
+  /* Without me / with me. Two halves of ONE glass panel rather than two cards,
+   * and deliberately not a .v4-cardgrid-* variant — those all become horizontal
+   * snap rails under 640px, and a contrast whose second half is off screen until
+   * you swipe has stopped being a contrast. One panel also costs a phone a third
+   * of the height two stacked cards do (measured: 392px -> ~200px), which is what
+   * lets the band sit under a thread that already grew. */
+  .v4-contrast { display: grid; gap: 1.1rem; grid-template-columns: 1fr; }
+  .v4-contrast h3 { font-size: 1.1rem; line-height: 1.25; }
+  .v4-contrast p { margin-top: 0.5rem; color: var(--color-slate-green); line-height: 1.6; }
+  .v4-contrast > * + * { padding-top: 1.1rem; border-top: 1px solid var(--color-hair); }
+  @media (min-width: 640px) {
+    .v4-contrast { gap: 2rem; grid-template-columns: 1fr 1fr; }
+    .v4-contrast > * + * {
+      padding-top: 0;
+      padding-left: 2rem;
+      border-top: none;
+      border-left: 1px solid var(--color-hair);
+    }
+  }
+
+  /* A rail only takes focus while it actually scrolls (ScrollRail attaches the
+   * tabindex from a measurement, never a breakpoint), so this ring needs no media
+   * query — nothing else here is focusable. Inset, unlike the site's other 2px
+   * rings: a phone rail is full-bleed, and an outside ring falls off both edges. */
+  .v4-cardgrid:focus-visible,
+  .v4-cardgrid-4:focus-visible,
+  .v4-cardgrid-2:focus-visible {
+    outline: 2px solid var(--color-spruce);
+    outline-offset: -2px;
+  }
+
+  /* Glass panel — the autonomy ladder + receipts. */
+  .v4-panel {
+    border-radius: var(--r-xl);
+    padding: clamp(1.75rem, 4vw, 2.75rem);
+  }
+
+  /* ── Texting demo — what talking to Hale actually looks like ───────────── */
+  .v4-thread {
+    max-width: 30rem;
+    margin-inline: auto;
+    border-radius: var(--r-xl);
+    padding: 1.4rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+  .v4-thread-cap {
+    align-self: center;
+    margin-bottom: 0.2rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-slate-green);
+  }
+  .v4-bubble {
+    max-width: 84%;
+    padding: 0.7rem 1rem;
+    border-radius: 1.25rem;
+    font-size: 0.95rem;
+    /* 500, not the 400 of body copy: a message is a quoted UI surface rather
+     * than prose, and the out bubble is cream on navy where 400 goes thin. */
+    font-weight: 500;
+    line-height: 1.5;
+    /* The go leg's message is mostly a municipal URL. Without this, one
+     * unbreakable token pushes the bubble past the thread and the page scrolls
+     * sideways on a phone. */
+    overflow-wrap: anywhere;
+  }
+  /* The gap between two legs of the registration sequence — a thread's own date
+   * separator, not a message, so it takes neither bubble's side. */
+  .v4-thread-time {
+    align-self: center;
+    margin-top: 0.45rem;
+    text-align: center;
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-slate-green);
+  }
+  .v4-bubble-out {
+    align-self: flex-end;
+    border-bottom-right-radius: 0.4rem;
+    background: var(--color-navy);
+    color: var(--color-cream);
+  }
+  .v4-bubble-in {
+    align-self: flex-start;
+    border-bottom-left-radius: 0.4rem;
+    background: light-dark(rgb(255 255 255 / 0.74), rgb(255 255 255 / 0.09));
+    color: var(--color-spruce);
+  }
+
+  /* The closing shore. Same body as the hero, but it sits inside a rounded card
+   * rather than a full viewport, so it carries its own (smaller) padding. */
+  .v4-hero-body.v4-closing-body { padding: 2.75rem 1.25rem; }
+  @media (min-width: 640px) {
+    .v4-hero-body.v4-closing-body { padding: 4.5rem 1.5rem; }
+  }
+
+  /* ── Phone density ────────────────────────────────────────────────────────
+   * The page ran ~10.7 phone screens, and a parent gives it far less than that.
+   * Nothing is removed: every card set becomes a snap rail with the next card
+   * peeking past the edge (the affordance), and the interior rhythm tightens.
+   * Bounded by max-width, so the desktop composition is untouched. */
+  @media (max-width: 639.98px) {
+    /* The bar is fixed over the thing a phone reader has least of, so it gives
+     * 12.8px of block height back: 4.8px from the pill's own padding and 8px
+     * from the CTA inside it, which is what actually sets the pill's height.
+     * Block only — the horizontal padding is what keeps the mark off the glass
+     * edge, and the CTA's own width is already the tap target.
+     *
+     * --nav-h drops by the same 12.8px, unlayered, at the top of this file. */
+    .v4-nav { padding-block: 0.35rem; }
+    .v4-btn,
+    .v4-btn-solid { padding-block: 0.55rem; }
+
+    .v4-cardgrid,
+    .v4-cardgrid-4,
+    .v4-cardgrid-2 {
+      grid-auto-flow: column;
+      grid-template-columns: none;
+      grid-auto-columns: 78%;
+      gap: 0.7rem;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scroll-snap-type: x mandatory;
+      /* Full-bleed the rail so the last card can reach the edge, while the
+       * first still lines up with the heading above it. */
+      margin-inline: calc(var(--shell-pad-x) * -1);
+      padding-inline: var(--shell-pad-x);
+      scroll-padding-inline: var(--shell-pad-x);
+      /* overflow-x also clips the y axis, and the glass drop shadow (offset 18,
+       * blur 50, spread -34) only ever falls BELOW the card — so give the rail
+       * room underneath and take it straight back. Bottom longhands only: the
+       * rails carry `mt-*` utilities, and a utility always outranks this layer,
+       * so a `margin-block` here would silently apply to one side. */
+      padding-bottom: 0.6rem;
+      margin-bottom: -0.6rem;
+    }
+    .v4-cardgrid > *,
+    .v4-cardgrid-4 > *,
+    .v4-cardgrid-2 > * { scroll-snap-align: start; }
+
+    .v4-card { padding: 1.3rem; }
+    .v4-card-n { font-size: 1.9rem; }
+    .v4-card h3 { margin-top: 0.55rem; font-size: 1.08rem; }
+    .v4-card p { margin-top: 0.45rem; font-size: 0.95rem; line-height: 1.55; }
+
+    /* The thread grew from five bubbles to a whole registration, so it pays for
+     * the height it added the same way #486 paid for the rest of the page:
+     * tighter interior rhythm under the phone breakpoint only. */
+    .v4-thread { padding: 1.05rem 0.9rem; gap: 0.55rem; }
+    .v4-bubble { padding: 0.6rem 0.85rem; font-size: 0.9rem; line-height: 1.45; }
+    .v4-thread-time { margin-top: 0.3rem; font-size: 0.66rem; }
+    .v4-when { font-size: 0.66rem; letter-spacing: 0.1em; }
+
+    .v4-panel { padding: 1.4rem 1.25rem; }
+    .v4-contrast { gap: 0.9rem; }
+    .v4-contrast h3 { font-size: 1.05rem; }
+    .v4-contrast p { margin-top: 0.4rem; font-size: 0.95rem; line-height: 1.55; }
+    .v4-contrast > * + * { padding-top: 0.9rem; }
+    .v4-lede { margin-top: 0.9rem; }
+    .v4-pills { gap: 0.4rem; }
+    .v4-pill { padding: 0.34rem 0.72rem; font-size: 0.8rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .v4-hero-art { filter: light-dark(none, brightness(0.66)); }
+    .v4-switch-knob,
+    .v4-btn,
+    .v4-btn-solid,
+    .v4-chip { transition: none; }
+  }
 }

@@ -12,10 +12,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const start = vi.fn();
+const constructed: Array<Record<string, unknown>> = [];
 
 vi.mock('pg-boss', () => ({
   default: class {
     start = start;
+    constructor(options: Record<string, unknown>) {
+      constructed.push(options);
+    }
   },
 }));
 
@@ -28,7 +32,26 @@ async function freshGetQueue() {
 describe('getQueue', () => {
   beforeEach(() => {
     start.mockReset();
+    constructed.length = 0;
     process.env.DATABASE_URL = 'postgres://stub/queue-test';
+  });
+
+  /**
+   * THE PRODUCER IS NOT A WORKER. pg-boss defaults both its background loops ON, so
+   * every warm web instance was running a maintenance supervisor (polling every 5s,
+   * `maintain()` every 120s, all of them contending one advisory lock with a 30s
+   * lock_timeout) and a cron scheduler — on a connection layer sized for the drain.
+   * The web app only ever calls `send`. The drain already documents the right config
+   * (`supervise: false` in lib/cron/drain.ts) and the queue-maintenance cron already
+   * owns `maintain()`; this is the producer finally getting the same treatment.
+   */
+  it('starts as a pure producer — no supervisor, no scheduler', async () => {
+    const getQueue = await freshGetQueue();
+    start.mockResolvedValue(undefined);
+
+    await getQueue();
+
+    expect(constructed[0]).toMatchObject({ supervise: false, schedule: false });
   });
 
   it('retries the start after a failed one instead of replaying the rejection forever', async () => {

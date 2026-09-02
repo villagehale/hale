@@ -44,6 +44,19 @@ export const smsIntakeSessions = pgTable(
     followUpCount: integer('follow_up_count').notNull().default(0),
     /** How many watch-offer clarifications have been asked. Hard-capped at one. */
     clarifyCount: integer('clarify_count').notNull().default(0),
+    /**
+     * VIL-324 — the next-morning sitting-session reminder. Claimed BEFORE the send
+     * (party-reminder shape), and deliberately NOT follow_up_count: that counter is
+     * the same-thread incomplete-details ask. This is a later, scheduled text.
+     */
+    sittingReminderSentAt: timestamp('sitting_reminder_sent_at', { withTimezone: true }),
+    /**
+     * VIL-332 — same-day first-hello recovery. Claimed BEFORE the send so two
+     * hourly ticks cannot double. Deliberately not sitting_reminder_sent_at: that
+     * column is the next-morning Still here line. A recovered first-hello should
+     * still be able to get that reminder if the parent never replies.
+     */
+    firstReplyRecoveredAt: timestamp('first_reply_recovered_at', { withTimezone: true }),
     /** Set at provisioning; null while the session is still pre-family. */
     familyId: uuid('family_id').references(() => families.id, { onDelete: 'cascade' }),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),

@@ -1,73 +1,105 @@
+import { LanguageSelect } from '~/components/language-select';
+import { FooterThemeSwitch } from '~/components/landing/v4/theme-switch';
 import { LogoMark } from '~/components/logo-mark';
+import { Wordmark } from '~/components/wordmark';
+import { localeHref } from '~/i18n/navigation';
+import { type Locale, routing } from '~/i18n/routing';
+import { getTranslator } from '~/i18n/server';
 import { APP_URL } from '~/lib/app-url';
-import { featuresHref } from '~/lib/site/chrome-cta';
 
 /**
- * The marketing footer: a raised white card on the warm page. Real navigation,
- * not decoration. Legal links point at this site's own Privacy and Terms pages —
- * D20 moved the policies here, and the app's old routes are permanent redirects
- * back, so linking the app would send a reader on a needless hop. No social icon
- * row — the site has no social accounts to link, so none are invented. No
- * third-party credit line.
+ * The marketing footer — ONE foot, on the homepage and on every subpage.
+ *
+ * The landing's foot said the name out loud and named the company; the subpages'
+ * carried the real navigation. This is both: the brand block on the left with
+ * the pronunciation and the Canadian company line, the two link columns beside
+ * it, and the legal pair in the bottom bar. Legal lives ONLY in that bar — a
+ * Legal column would duplicate it — and points at this site's own policy pages,
+ * since D20 moved them here and the app's old routes permanently redirect back.
+ *
+ * No "Features" column: the link pointed at the homepage. No social row: the
+ * site has no accounts to link, so none are invented.
+ *
+ * The theme switch and the language selector both live in the brand block —
+ * every page ends here, so this is where a reader changes how the site looks and
+ * what language it speaks. Every internal link carries the active locale prefix.
  */
 
-const PRODUCT = [
-  { label: 'Features', href: featuresHref() },
-  { label: 'Pricing', href: '/pricing' },
-  { label: 'FAQ', href: '/faq' },
-  { label: 'Activities', href: '/activities' },
-  { label: 'Milestones', href: '/milestones' },
-] as const;
+export function SiteFooter({ locale = routing.defaultLocale }: { locale?: Locale }) {
+  const t = getTranslator(locale, 'Footer');
+  const theme = getTranslator(locale, 'ThemeSwitch');
+  const lang = getTranslator(locale, 'LanguageSwitcher');
 
-const RESOURCES = [
-  { label: 'Parenting guides', href: '/answers' },
-  { label: 'About', href: '/about' },
-  { label: 'Contact', href: '/contact' },
-  { label: 'Sign in', href: `${APP_URL}/sign-in` },
-] as const;
+  const columns = [
+    {
+      heading: t('productHeading'),
+      links: [
+        { label: t('linkPricing'), href: localeHref(locale, '/pricing') },
+        { label: t('linkFaq'), href: localeHref(locale, '/faq') },
+        { label: t('linkActivities'), href: localeHref(locale, '/activities') },
+      ],
+    },
+    {
+      heading: t('resourcesHeading'),
+      links: [
+        { label: t('linkGuides'), href: localeHref(locale, '/answers') },
+        { label: t('linkAbout'), href: localeHref(locale, '/about') },
+        { label: t('linkContact'), href: localeHref(locale, '/contact') },
+      ],
+    },
+  ];
 
-/* Legal lives ONLY in the bottom bar — a Legal column would duplicate it. */
-const LEGAL = [
-  { label: 'Privacy policy', href: '/privacy' },
-  { label: 'Terms of service', href: '/terms' },
-] as const;
+  const legal = [
+    { label: t('linkPrivacy'), href: localeHref(locale, '/privacy') },
+    { label: t('linkTerms'), href: localeHref(locale, '/terms') },
+    // The app is the receipts surface, not the daily one — sign-in lives in the
+    // quietest spot the site has, beside the legal pair, for the parent who
+    // already has an account. It sells nothing.
+    { label: t('signIn'), href: `${APP_URL}/sign-in` },
+  ];
 
-const COLUMNS = [
-  { heading: 'Product', links: PRODUCT },
-  { heading: 'Resources', links: RESOURCES },
-] as const;
-
-export function SiteFooter() {
   return (
-    <div className="p-4 md:p-8 lg:p-12">
-      <footer className="mx-auto max-w-[1100px] rounded-[28px] border border-[#F0F2F6] bg-white px-6 py-10 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.03)] md:px-12 md:py-12 lg:px-[72px] lg:py-[56px]">
-        <div className="mb-12 flex flex-col justify-between gap-12 lg:flex-row lg:gap-8">
-          <div className="lg:w-[40%]">
-            <a href="/" className="flex items-center gap-2.5" aria-label="Hale, home">
-              <LogoMark size={30} />
-              <span className="font-serif text-[19px] font-semibold tracking-tight text-[#17294A]">
-                Hale
-              </span>
+    <footer className="border-t border-rule">
+      <div className="shell py-12 lg:py-16">
+        <div className="flex flex-col justify-between gap-12 lg:flex-row lg:gap-16">
+          <div className="lg:max-w-[22rem]">
+            <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
+              <LogoMark size={28} />
+              <Wordmark className="text-spruce" />
             </a>
-            <p className="mb-4 mt-5 max-w-[340px] text-[13px] leading-[1.6] text-[#5C6B87]">
-              Hale is the quiet helper for busy families — always prepared, never acting without
-              you.
+            <p className="mt-5 text-[13px] leading-[1.6] text-slate-green">{t('blurb')}</p>
+            {/* The name, said out loud. It carries the whole brand — Hawaiian for
+                home, a honu for a mark, aloha@ for an address. */}
+            <p className="mt-4 text-[12px] leading-[1.6] text-slate-green">
+              <span translate="no">{t('pronunciationPrefix')}</span>{' '}
+              <span className="font-mono" translate="no">
+                {t('pronunciation')}
+              </span>{' '}
+              {t('pronunciationSuffix')}
             </p>
-            <p className="text-[12px] leading-[1.6] text-[#5C6B87]">
-              Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
-            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-4">
+              <FooterThemeSwitch
+                labels={{
+                  light: theme('light'),
+                  dark: theme('dark'),
+                  toLight: theme('toLight'),
+                  toDark: theme('toDark'),
+                }}
+              />
+              <LanguageSelect locale={locale} label={lang('label')} />
+            </div>
           </div>
 
-          <nav aria-label="Footer" className="grid grid-cols-2 gap-8 md:gap-4 lg:w-[50%]">
-            {COLUMNS.map((column) => (
+          <nav aria-label="Footer" className="grid grid-cols-2 gap-8 md:gap-12 lg:w-[38%]">
+            {columns.map((column) => (
               <div key={column.heading}>
-                <h2 className="mb-5 text-[14px] font-semibold text-[#17294A]">{column.heading}</h2>
+                <h2 className="mb-5 text-[14px] font-semibold text-spruce">{column.heading}</h2>
                 <ul className="flex flex-col gap-3.5">
                   {column.links.map((item) => (
                     <li key={item.label}>
                       <a
                         href={item.href}
-                        className="text-[13px] text-[#5C6B87] transition-colors hover:text-[#17294A]"
+                        className="text-[13px] text-slate-green transition-colors hover:text-spruce"
                       >
                         {item.label}
                       </a>
@@ -79,25 +111,26 @@ export function SiteFooter() {
           </nav>
         </div>
 
-        <hr className="mb-6 border-[#F0F2F6]" />
+        <hr className="mb-6 mt-12 border-hair" />
 
         <div className="flex flex-col-reverse items-start justify-between gap-4 md:flex-row md:items-center">
-          <p className="text-[13px] text-[#5C6B87]">
-            © {new Date().getFullYear()} Hale. All rights reserved.
-          </p>
+          <div className="text-[13px] leading-[1.6] text-slate-green">
+            <p>{t('copyright', { year: String(new Date().getFullYear()) })}</p>
+            <p className="mt-1">{t('company')}</p>
+          </div>
           <div className="flex flex-wrap gap-6">
-            {LEGAL.map((item) => (
+            {legal.map((item) => (
               <a
                 key={item.label}
                 href={item.href}
-                className="text-[13px] text-[#5C6B87] underline decoration-[#E4E7EE] underline-offset-[4px] transition-colors hover:text-[#17294A] hover:decoration-[#17294A]"
+                className="text-[13px] text-slate-green underline decoration-rule underline-offset-[4px] transition-colors hover:text-spruce hover:decoration-current"
               >
                 {item.label}
               </a>
             ))}
           </div>
         </div>
-      </footer>
-    </div>
+      </div>
+    </footer>
   );
 }

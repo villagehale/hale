@@ -51,15 +51,17 @@ describe('resolveHero', () => {
  * the same drills as ever when it is off.
  */
 describe('resolveHero under the receipts-room IA', () => {
-  it('promotes the three demoted-tab drills to roots with their own hero copy', () => {
-    for (const path of ['/approvals', '/plan', '/trail']) {
+  it('promotes the re-registered surfaces to roots with their own hero copy', () => {
+    for (const path of ['/approvals', '/family', '/plan', '/trail']) {
       const res = resolveHero(path, roots, true);
       expect(res?.kind).toBe('root');
       expect((res?.hero as RootHero).subtitle.length).toBeGreaterThan(0);
     }
     expect((resolveHero('/plan', roots, true)?.hero as RootHero).title).toBe('Week');
     expect((resolveHero('/trail', roots, true)?.hero as RootHero).title).toBe('Trail');
+    // The nav's first stop reads "Home" — the approvals queue IS the landing surface.
     expect((resolveHero('/approvals', roots, true)?.hero as RootHero).title).toBe('Approvals');
+    expect((resolveHero('/family', roots, true)?.hero as RootHero).title).toBe('Family');
   });
 
   it('leaves every other resolution exactly as it was, flag on or off', () => {

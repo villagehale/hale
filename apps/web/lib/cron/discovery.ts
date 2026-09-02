@@ -1,6 +1,5 @@
 import type { Database } from '@hale/db';
 import type { RerankJobPayload } from '@hale/tools-contracts';
-import { notifyFamilyNewPicks } from '~/lib/push/callers';
 import { type BackfillResult, backfillCandidateCoords } from '~/lib/village/backfill-coords';
 import {
   type DiscoverDeps,
@@ -41,21 +40,11 @@ export interface RerankQueue {
   send(name: string, data: RerankJobPayload): Promise<string | null>;
 }
 
-/** The new-picks push notifier, injected so the cron is unit-testable without the
- * push send path. Defaults to the real caller (which re-checks each parent's pref,
- * debounces once-per-family-per-day, and audits — rules #1/#6). */
-type NewPicksNotifier = (
-  familyId: string,
-  newCount: number,
-  database: Database,
-) => Promise<unknown>;
-
 export async function runDiscoveryCron(
   database: Database,
   rerankQueue: RerankQueue,
   deps: DiscoverDeps = defaultDiscoverDeps(),
   now: Date = new Date(),
-  notifyNewPicks: NewPicksNotifier = notifyFamilyNewPicks,
 ): Promise<DiscoveryRunResult> {
   const familyIds = await selectFamiliesNeedingDiscovery(
     database,
@@ -73,14 +62,6 @@ export async function runDiscoveryCron(
       // upsert short-circuits an unchanged set (rule #7), so an enqueue is cheap.
       if (result.status === 'discovered' && result.insertedCount > 0) {
         await rerankQueue.send('village.rerank', { family_id: familyId });
-        // Tell the family's opted-in parents (coarse count + area only — rule #1),
-        // at most once per family per day; a push failure must not abort the run,
-        // so it's isolated from the discovery result.
-        try {
-          await notifyNewPicks(familyId, result.insertedCount, database);
-        } catch (err) {
-          console.error({ err, familyId }, 'new-picks push failed');
-        }
       }
     } catch (err) {
       results.push({ familyId, error: err instanceof Error ? err.message : String(err) });

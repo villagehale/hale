@@ -2,7 +2,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { withOptOut } from '~/lib/channel/opt-out';
+import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import {
   type OutboundGatePorts,
@@ -219,6 +222,9 @@ export interface FollowupSweepDeps {
    * told-anywhere screen reads. */
   loadInboundSince(database: Database, familyId: string, since: Date): Promise<string[]>;
   buildGate(database: Database): OutboundGatePorts;
+  /** The reconciliation primitive's send-boundary gate (VIL-293). REQUIRED (rule #11):
+   * a lane that could silently skip it would send exactly the claims it exists to stop. */
+  refuseUnbackedSend: typeof refuseUnbackedSend;
   dedupeActive(database: Database, dedupeKey: string): Promise<boolean>;
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
   recordSend(
@@ -240,6 +246,15 @@ export interface FollowupSweepDeps {
    * behind it (founder doctrine: no preset bodies), so a sweep without a voice does not
    * send a duller message — it sends nothing, visibly. */
   voice: FollowupVoice;
+  /**
+   * Put the sent ask in the parent's own text thread — REQUIRED, same reason as the two
+   * above (rule #11). Every message this sweep sends is a QUESTION, and the answer to it
+   * comes back as a coach turn; `channel_messages` carries no body (rule #1), so an ask
+   * that skips this is one the coach reads a reply to with nothing above it. There is no
+   * "no thread" to express: the anchor derives from the family and parent ids
+   * (lib/channel/thread.ts).
+   */
+  threadMessage: typeof threadProactiveMessage;
 }
 
 export interface FollowupSweepResult {
@@ -255,6 +270,14 @@ export interface FollowupSweepResult {
    * say" a number somebody can watch.
    */
   composeDeferred: number;
+  /**
+   * Asks whose composed body claimed a row that does not exist, refused at the send
+   * boundary (VIL-293). Its own field for the reason `composeDeferred` is one: it is
+   * neither a refusal by policy nor a model having nothing to say — it is a sentence
+   * that WAS composed, was about to go out, and asserted something untrue. A non-zero
+   * here is the voice inventing state, and that must never read as a quiet tick.
+   */
+  refusedAtSend: number;
   held: Record<ProactiveHoldReason, number>;
   skipped: Record<FollowupSkipReason, number>;
   failed: number;
@@ -266,6 +289,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
     introAsked: 0,
     activityAsked: 0,
     composeDeferred: 0,
+    refusedAtSend: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     skipped: {
       opted_out: 0,
@@ -284,7 +308,8 @@ type SendOutcome =
   | { status: 'held'; reason: ProactiveHoldReason }
   | { status: 'already_claimed' }
   | { status: 'already_discussed' }
-  | { status: 'compose_deferred'; reason: ComposeDeferral };
+  | { status: 'compose_deferred'; reason: ComposeDeferral }
+  | { status: 'refused_at_send'; reasons: readonly SendRefusalReason[] };
 
 /**
  * The ONE way this feature reaches a phone. Five preconditions, in this order, and the
@@ -347,7 +372,27 @@ async function sendFollowup(
     throw new Error(`followup asks: no send target for parent ${input.parentUserId}`);
   }
 
-  const { providerMessageId } = await deps.transport.send({ to, body: composed.body });
+  // THE GATE, ON THE STRING THAT ACTUALLY LEAVES (VIL-293) — after `withOptOut`, because
+  // everything between a gate and the transport is unchecked by construction and this
+  // lane appends a CASL line past its composer. A follow-up ASK claims nothing by design,
+  // so an empty answer is the ordinary one and costs no query; a non-empty one means the
+  // voice wrote a sentence about a row that is not there, and the claim stays unspent for
+  // the next tick rather than the sentence being trimmed.
+  const body = withOptOut(composed.body, verdict.optOut);
+  const unbacked = await deps.refuseUnbackedSend(database, {
+    familyId: input.familyId,
+    body,
+    now: input.now,
+  });
+  if (unbacked.length > 0) {
+    console.error(
+      { familyId: input.familyId, templateKey: input.templateKey, reasons: unbacked },
+      'followup asks: the wire body claims a row that does not exist - refused at the send boundary',
+    );
+    return { status: 'refused_at_send', reasons: unbacked };
+  }
+
+  const { providerMessageId } = await deps.transport.send({ to, body });
   await deps.recordSend(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -355,6 +400,14 @@ async function sendFollowup(
     dedupeKey: input.dedupeKey,
     providerMessageId,
     sentAt: input.now,
+  });
+  // THE THREAD, which is where the answer to this question will be read. AFTER the send
+  // and unconditional: a compose that never reached a transport asked nobody anything.
+  // The COMPOSED ask, never the wire body — the CASL line belongs on the wire alone.
+  await deps.threadMessage(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    body: composed.body,
   });
   return { status: 'sent' };
 }
@@ -369,6 +422,9 @@ function tally(result: FollowupSweepResult, outcome: SendOutcome): boolean {
       return false;
     case 'compose_deferred':
       result.composeDeferred += 1;
+      return false;
+    case 'refused_at_send':
+      result.refusedAtSend += 1;
       return false;
     default:
       result.skipped[outcome.status] += 1;
@@ -718,6 +774,7 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
     loadChildren: readFollowupChildren,
     loadInboundSince: inboundSince,
     buildGate: buildOutboundGatePorts,
+    refuseUnbackedSend,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),
     resolveSendablePhone,
     recordSend: async (database, write) => {
@@ -732,7 +789,7 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
           templateKey: write.templateKey,
           dedupeKey: write.dedupeKey,
           providerMessageId: write.providerMessageId,
-          status: 'sent',
+          status: acceptedStatus('sms'),
           sentAt: write.sentAt,
         })
         .returning({ id: schema.channelMessages.id });
@@ -744,5 +801,6 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
     },
     transport: createTwilioTransport(),
     voice: createFollowupVoice(followupVoiceClient),
+    threadMessage: threadProactiveMessage,
   };
 }

@@ -204,8 +204,11 @@ const JUDGE_SYSTEM = [
   'specific recall question about a family, given the reference answer. Score 1-5.',
   'A 5 states the same fact as the reference (paraphrase is fine) and adds nothing',
   'contradictory or invented. A LOW score MISSES the fact, gets it WRONG, says it',
-  "doesn't know when the reference shows it should, or fabricates a specific not in",
-  'the reference. Judge ONLY factual correctness vs the reference. Reply with the score tool.',
+  "doesn't know when the reference shows it should, or fabricates a specific found",
+  'in NEITHER the reference NOR the known family history provided alongside it.',
+  'The assistant remembers the whole family, so extra statements that match the',
+  'known history are correct recall, not fabrication — do not penalize them.',
+  'Judge ONLY factual correctness. Reply with the score tool.',
 ].join(' ');
 
 // Calibration stand-in: a memory-blind coach that never reads the slice and
@@ -254,10 +257,18 @@ async function runArm(opts) {
         guardDeps: makeGuardDeps(auditLog),
       });
       answer = run.answer ?? '';
+      // The judge's fabrication check needs the actual ground truth, not just the
+      // one-line reference: this is a MEMORY eval, so an answer drawing on other
+      // seeded facts/episodes is recall working, and only specifics found in
+      // neither the reference nor this history are inventions.
       score = (
         await judge(`${family.size}:${arm}:${q.id}`, {
           question: q.question,
           reference: q.referenceAnswer,
+          knownFamilyHistory: {
+            facts: family.facts.map((f) => ({ key: f.factKey, value: f.factValue })),
+            episodes: family.episodes.map((e) => e.summary),
+          },
           answer,
         })
       ).score;

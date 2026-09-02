@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a parenting question about an 8-year-old (Ada, 101 months). The reply correctly identifies likely causes (anxiety, schedule shift, habit loop), gives a concrete actionable beat the parent could try tonight (bedtime chat, keeping wake-ups boring/low-stimulation), and ends with the fixed plan-offer line. The advice is grounded in Ada's age, no diagnosis, no medicine, no referral. The text is cut naturally mid-sentence before the plan offer, which is the product working. One small issue: the reply cuts off mid-word (\"doesn't get...\") which is a bit abrupt before the YES line, but that is the tail-cut described in the rules rather than a flaw in the reply itself. The shape is correct: real actionable advice + the standing offer line. No greeting, no sign-off, one question (the plan offer), correct format. This is the product working well.",
+    "score": 5
+  }
+}

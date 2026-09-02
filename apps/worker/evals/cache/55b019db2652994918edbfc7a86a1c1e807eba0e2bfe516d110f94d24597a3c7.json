@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails on multiple fronts. It opens with a greeting and emoji when the tail has seventy characters to do two jobs. It names the other household (\"A family near you with a toddler\") which is explicitly LOW. It asks two questions instead of one. It includes an example address (sam@example.com), a deadline (2 days), and a link (www.example.com) - all invented specifics that pad the message and waste space needed for what matters. Most critically, it completely abandons the service clause - there is nothing here about Hale watching dates or the parent being able to text a question anytime. The word \"name\" does appear, addressing the earlier feedback, but the message has sacrificed the core function to fit it in. A message can be terse without being stiff, but this one chose hype and padding over clarity about what coverage actually means.",
+    "score": 1
+  }
+}

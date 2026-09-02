@@ -423,13 +423,13 @@ export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
     residentOpenAt: '2026-09-09T07:00:00-04:00',
     openAt: '2026-09-21T07:00:00-04:00',
     residentPriorityDays: 12,
-    waitlistResponseHours: null,
+    waitlistResponseHours: 24,
     ageMinMonths: null,
     ageMaxMonths: null,
     sourceUrl: BRAMPTON_REGISTERED,
     verifiedAt: SWEEP_VERIFIED_AT,
     notes:
-      'Aquatics and skating register on their OWN dates, 16 days after general rec: residents Wednesday September 9 at 7 a.m., non-residents Monday September 21 at 7 a.m.',
+      "Aquatics and skating register on their OWN dates, 16 days after general rec: residents Wednesday September 9 at 7 a.m., non-residents Monday September 21 at 7 a.m. Waitlist pending-confirmation is 24 hours (Brampton how-to page), not Toronto's 36.",
     publishedWeekdays: { residentOpenAt: 'Wednesday', openAt: 'Monday' },
   },
   {

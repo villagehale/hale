@@ -19,16 +19,26 @@ import type { ReplySent, ReplyTransport } from './reply-route';
  * was answered by a send that never happened.
  */
 export function createReplyTransport(deps: {
-  sms: ChannelTransport;
+  /**
+   * The phone door — BOTH pipes. In production this is the reply-routing transport
+   * (lib/channel/reply-transport.ts), which decides SMS-vs-WhatsApp per send from the
+   * parent's newest inbound row and Meta's 24h window, and names the pipe it used in
+   * the result. The sms and whatsapp arms below both hand to it: the route says which
+   * door the parent used, the phone transport owns which pipe may answer through it.
+   */
+  phone: ChannelTransport;
   /** Null when the inbound-email leg is not provisioned — see the module note. */
   email: EmailReplyDeps | null;
 }): ReplyTransport {
   return {
     async send({ route, body }): Promise<ReplySent> {
       switch (route.channel) {
-        case 'sms': {
-          const { providerMessageId } = await deps.sms.send({ to: route.to, body });
-          return { providerMessageId, channel: 'sms' };
+        case 'sms':
+        case 'whatsapp': {
+          const sent = await deps.phone.send({ to: route.to, body });
+          // Absent means a single-pipe SMS transport (intake/transport.ts) — the same
+          // convention sendReply kept before the route existed.
+          return { providerMessageId: sent.providerMessageId, channel: sent.transport ?? 'sms' };
         }
         case 'email': {
           if (!deps.email) {

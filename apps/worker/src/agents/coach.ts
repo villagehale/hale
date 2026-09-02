@@ -108,7 +108,7 @@ export async function runCoach(input: CoachRunInput): Promise<CoachRunOutput> {
 
   const { value: parsed } = await forceToolJson({
     client: anthropicClient(),
-    model: HAIKU_MODEL,
+    lane: { model: HAIKU_MODEL },
     system: instructions,
     userMessage,
     toolName: 'coaching_response',

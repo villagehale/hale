@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply does exactly what the rules require: it hands Sam the referral link (which is appended by the runtime and present in `knows.referralLinkAppended`), correctly tells the parent to forward it themselves (not Hale), notes Hale won't reach out to the friend, and gives a brief description of what Hale is. The link matches exactly. No app referral, no invention, no markdown, no sign-off. The one small blemish is that the reply is slightly longer than it needs to be — the sentence describing Hale (\"Hale is a text-based family assistant - schedule, activities, parenting questions, all over SMS\") adds words that weren't asked for and push the message toward three sentences. It's a minor redundancy but not a shape failure, so a 4 is appropriate.",
+    "score": 4
+  }
+}

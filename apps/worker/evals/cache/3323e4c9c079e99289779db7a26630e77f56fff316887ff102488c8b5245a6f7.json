@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "registration deadline/opening date is explicit in-domain work"
+  },
+  "latencyMs": 1102
+}

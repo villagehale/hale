@@ -1,22 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The callback stores tokens under the state's bound user. We stub every edge (auth,
-// db, family resolver, nonce, token exchange, store) so the test exercises the
+// db, family resolver, token exchange, store) so the test exercises the
 // consent-fixation binding (rule #1) — NOT the real infra. The token exchange +
 // saveConnection are spies: the security assertion is that a MISMATCHED completer
 // never reaches them.
 const authMock = vi.fn();
 const resolveUserIdMock = vi.fn();
-const consumeNonceMock = vi.fn();
 const exchangeMock = vi.fn();
 const saveConnectionMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/family', () => ({ resolveUserIdForUser: (...a: unknown[]) => resolveUserIdMock(...a) }));
-vi.mock('~/lib/integrations/connect-nonce', () => ({
-  consumeConnectNonce: (...a: unknown[]) => consumeNonceMock(...a),
-}));
 vi.mock('~/lib/integrations/google-oauth', async () => {
   const actual = await vi.importActual<typeof import('./google-oauth')>('./google-oauth');
   return { ...actual, exchangeCodeForTokens: (...a: unknown[]) => exchangeMock(...a) };
@@ -42,7 +38,7 @@ function location(res: Response): string {
 describe('GET /api/integrations/callback — consent-fixation binding (rule #1)', () => {
   beforeEach(() => {
     vi.resetModules();
-    for (const m of [authMock, resolveUserIdMock, consumeNonceMock, exchangeMock, saveConnectionMock]) {
+    for (const m of [authMock, resolveUserIdMock, exchangeMock, saveConnectionMock]) {
       m.mockReset();
     }
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
@@ -56,9 +52,9 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
     const { signConnectState } = await import('./connect-state');
     return signConnectState({ familyId: FAMILY, userId, provider: 'gcal' });
   }
-  async function mobileState(nonce: string) {
+  async function mobileState() {
     const { signConnectState } = await import('./connect-state');
-    return signConnectState({ familyId: FAMILY, userId: MINTER, provider: 'gcal', surface: 'mobile', nonce });
+    return signConnectState({ familyId: FAMILY, userId: MINTER, provider: 'gcal', surface: 'mobile' });
   }
 
   it('WEB: rejects when the completing session is a DIFFERENT user than the minter — no token exchange, no store', async () => {
@@ -94,48 +90,23 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
     expect(saveConnectionMock).toHaveBeenCalledTimes(1);
     expect(saveConnectionMock.mock.calls[0]?.[1]).toMatchObject({ familyId: FAMILY, userId: MINTER, provider: 'gcal' });
     expect(location(res)).toContain('connect=gcal');
-    // The web leg NEVER consults the mobile nonce.
-    expect(consumeNonceMock).not.toHaveBeenCalled();
   });
 
-  it('MOBILE: rejects (and never stores) when the single-use nonce is already spent', async () => {
-    consumeNonceMock.mockResolvedValue(false); // already used / expired / wrong family
-
-    const res = await callCallback(await mobileState('33333333-3333-4333-8333-333333333333'));
+  it('MOBILE: rejects any mobile-surface state — the native mint was retired (VIL-318), so none is bindable', async () => {
+    const res = await callCallback(await mobileState());
 
     expect(location(res)).toContain('/connected?status=invalid');
     expect(exchangeMock).not.toHaveBeenCalled();
     expect(saveConnectionMock).not.toHaveBeenCalled();
-    // No session check on the mobile leg.
+    // No session check on the mobile leg — it is rejected before any binding.
     expect(authMock).not.toHaveBeenCalled();
-  });
-
-  it('MOBILE: consumes the nonce and stores when it is fresh', async () => {
-    consumeNonceMock.mockResolvedValue(true);
-
-    const res = await callCallback(await mobileState('33333333-3333-4333-8333-333333333333'));
-
-    expect(consumeNonceMock).toHaveBeenCalledWith(expect.anything(), '33333333-3333-4333-8333-333333333333', FAMILY);
-    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
-    expect(location(res)).toContain('/connected?provider=gcal');
-  });
-
-  it('MOBILE: rejects a state with no nonce at all (never consumes / stores)', async () => {
-    const { signConnectState } = await import('./connect-state');
-    const state = signConnectState({ familyId: FAMILY, userId: MINTER, provider: 'gcal', surface: 'mobile' });
-
-    const res = await callCallback(state);
-
-    expect(location(res)).toContain('/connected?status=invalid');
-    expect(consumeNonceMock).not.toHaveBeenCalled();
-    expect(saveConnectionMock).not.toHaveBeenCalled();
   });
 });
 
 describe('GET /api/integrations/callback — granted-scope validation', () => {
   beforeEach(() => {
     vi.resetModules();
-    for (const m of [authMock, resolveUserIdMock, consumeNonceMock, exchangeMock, saveConnectionMock]) {
+    for (const m of [authMock, resolveUserIdMock, exchangeMock, saveConnectionMock]) {
       m.mockReset();
     }
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');

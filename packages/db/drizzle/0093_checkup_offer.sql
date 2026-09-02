@@ -1,0 +1,17 @@
+-- The health checkpoint's booking offer, carried on the MEM-10 open-loops ledger.
+-- Additive only (rule #9): one new enum value. Nothing existing is altered.
+--
+-- WHY IT NEEDS A ROW AT ALL. "Done, or want me to add booking it to your week?" is an
+-- offer Hale makes and then holds an answer for — the same shape as a plan offer, and
+-- until now the only one of its shape with nothing written down. The reply resolver
+-- reads open questions from ledgers; an offer that exists only as prose in a sent SMS
+-- is therefore a question a parent can answer and Hale cannot hear, which is exactly
+-- what happened in production on 2026-08-20: the parent accepted the offer, the turn
+-- fell through to two unrelated standing questions, and Hale asked them to choose
+-- between things they had not been offered.
+--
+-- `topic` carries the CHECKPOINT ID for this kind — a member of the reviewed
+-- HEALTH_CHECKPOINTS table, a closed vocabulary like PlanTopic and never free text, so
+-- the column still holds a category rather than content (rule #1). `subject_child_id`
+-- carries whose visit it is, or NULL for a household-scoped checkpoint.
+ALTER TYPE "public"."agent_commitment_kind" ADD VALUE IF NOT EXISTS 'checkup_offer';

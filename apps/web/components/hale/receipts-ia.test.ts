@@ -4,7 +4,7 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { WeekPlan } from '@hale/db';
-import type { ApprovalView } from '~/lib/dashboard/approvals';
+import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { ApprovalCard } from './approval-card';
 import { brandHref } from './nav';
@@ -41,6 +41,8 @@ function trailRow(overrides: Partial<TrailView> = {}): TrailView {
     link: '/approvals',
     childLabel: 'Maya',
     teenRedacted: false,
+    actionId: null,
+    reversalKept: false,
     ...overrides,
   };
 }
@@ -75,7 +77,7 @@ describe('approvals rows are deep-linkable receipts', () => {
   // VIL-209 W3 extracted the row into ApprovalCard, so these assert the RENDERED
   // row rather than the page's source text: the anchor an outbound message links
   // to, and the two facts a parent needs before deciding.
-  const approval: ApprovalView = {
+  const approval: PendingApprovalView = {
     id: 'act-42',
     actionType: 'reply_to_email',
     summary: 'verified by the reviewer — ready for your approval',
@@ -87,6 +89,15 @@ describe('approvals rows are deep-linkable receipts', () => {
     draftedAt: 'today at 8:04 am',
     teenRedacted: false,
     teenUnlockable: false,
+    review: {
+      note: 'The clinic is already on your recipient list.',
+      checks: [{ label: 'known recipient', ok: true, capUsd: null }],
+      steps: [
+        { key: 'drafted', label: 'drafted', at: 'today at 8:04 am', tone: 'done' },
+        { key: 'reviewed', label: 'verified', at: 'today at 8:05 am', tone: 'done' },
+        { key: 'open', label: 'waiting on your yes', at: null, tone: 'awaiting' },
+      ],
+    },
   };
   const html = renderToStaticMarkup(h(ApprovalCard, { approval }));
 
@@ -96,7 +107,10 @@ describe('approvals rows are deep-linkable receipts', () => {
 
   it('still shows WHAT was proposed and WHEN it was drafted', () => {
     expect(html).toContain('Reply to the clinic — confirm Tuesday 3pm');
-    expect(html).toContain('drafted today at 8:04 am');
+    // The drafted stamp moved onto the status rail's first rung (W5) — same fact,
+    // now with the rest of the lifecycle beside it.
+    expect(html).toContain('>drafted<');
+    expect(html).toContain('today at 8:04 am');
   });
 });
 
@@ -225,9 +239,15 @@ describe('the demoted daily feed', () => {
   );
   const page = app('(authed)/home/page.tsx');
 
-  it('forwards /home to the week view as a real 302, in the middleware', () => {
+  // The forward target moved /plan → /approvals: #455 demoted the week view out of the
+  // nav, so it could no longer be the surface a parent lands on. Approvals is the
+  // receipts room the IA is named for and the nav's first stop.
+  it('forwards /home to the receipts room as a real 302, and no longer to the week view', () => {
     expect(middleware).toContain('receiptsIaEnabled()');
-    expect(middleware).toContain("NextResponse.redirect(new URL('/plan', req.nextUrl), 302)");
+    // Positive control first: if this passes, `middleware` really is the source text,
+    // so the absence check below cannot pass vacuously on an empty/misread file.
+    expect(middleware).toContain("NextResponse.redirect(new URL('/family', req.nextUrl), 302)");
+    expect(middleware).not.toContain("new URL('/plan'");
   });
 
   it('forwards the sub-paths too, so no bookmark under /home escapes the demotion', () => {
@@ -237,6 +257,36 @@ describe('the demoted daily feed', () => {
   it('leaves the feed page itself intact — its removal is a later PR, and flag-off must still render it', () => {
     expect(page).toContain('HomeChildPanels');
     expect(page).not.toContain('receiptsIaEnabled');
+  });
+});
+
+describe('the family editor moved up a level (Instinct refresh)', () => {
+  const middleware = readFileSync(
+    fileURLToPath(new URL('../../middleware.ts', import.meta.url)),
+    'utf8',
+  );
+
+  it('forwards /family/members to /family as a real 308, sub-paths included, flag-gated', () => {
+    // Positive control: the hinge really reads the flag (same guard the /home test keeps).
+    expect(middleware).toContain('receiptsIaEnabled()');
+    expect(middleware).toContain("NextResponse.redirect(new URL('/family', req.nextUrl), 308)");
+    expect(middleware).toContain(
+      "pathname === '/family/members' || pathname.startsWith('/family/members/')",
+    );
+  });
+
+  it('the page itself permanentRedirects — defense in depth, the retired-routes pattern', () => {
+    const page = app('(authed)/family/members/page.tsx');
+    expect(page).toContain("permanentRedirect('/family')");
+  });
+
+  it('/family renders the editor content the members page used to own', () => {
+    const page = app('(authed)/family/page.tsx');
+    for (const editor of ['FamilyChildren', 'FamilyLocation', 'FamilyIntents', 'AddCoParentCard']) {
+      expect(page).toContain(editor);
+    }
+    // The hub's tiles died with the hub — /family is the people page, not a switchboard.
+    expect(page).not.toContain('FamilyHubCard');
   });
 });
 
@@ -265,8 +315,8 @@ describe('sign-in under the flag', () => {
 });
 
 describe('the brand mark follows the demotion (VIL-256)', () => {
-  it('lands on the week view under the reframe, so a logo click costs no 302 hop', () => {
-    expect(brandHref(true)).toBe('/plan');
+  it('lands on the receipts room under the reframe, so a logo click costs no 302 hop', () => {
+    expect(brandHref(true)).toBe('/family');
   });
 
   it('still lands on the daily feed with the flag off', () => {

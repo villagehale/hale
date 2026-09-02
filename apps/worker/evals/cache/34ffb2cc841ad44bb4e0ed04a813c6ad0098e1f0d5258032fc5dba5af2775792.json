@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "routine": [
+      {
+        "day": "tuesday",
+        "title": "Community pool lap or open swim",
+        "category": "swimming",
+        "stage_fit_rationale": "Teens benefit from independent, drop-in physical activity they can control the pace of; open swim lets them go solo or with friends without a rigid class structure, fitting their interest in swimming.",
+        "candidate_confidence": 0.6
+      },
+      {
+        "day": "thursday",
+        "title": "Teen volunteer or maker program",
+        "category": "maker/volunteer",
+        "stage_fit_rationale": "Self-directed maker/coding programs suit a teenager's need for autonomy and identity-building through skill-based projects, and it aligns with their coding interest.",
+        "candidate_confidence": 0.55
+      }
+    ],
+    "rationale": "A light two-item week spaced midweek, both optional and self-directed, respecting a teenager's need to own their schedule rather than have it packed by parents.",
+    "notes": "Both candidates are placed since they fit well and align with stated interests; no items were left out. Days chosen (Tue/Thu) just give spacing—parent/teen should feel free to shift or skip either since these are framed as optional per teen stage norms."
+  }
+}

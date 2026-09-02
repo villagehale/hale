@@ -1,0 +1,8 @@
+{
+  "value": {
+    "rationale": "Two tools ran green (time window, idempotency), but this action is unverified on the dimensions that matter most for it. No check_calendar_conflict was run, so the 2026-06-23 10:15 slot is unconfirmed as free. No check_vaccine_schedule / appointment-source verification was run to confirm the 18-month visit date and provider (Dr. Okafor, Riverdale Peds) actually correspond to a real, confirmed booking rather than an inferred one. No check_user_override was run. The event is internal_only and reversible, which keeps this out of reject territory, but it encodes a medical appointment that the family will rely on — a wrong date is a missed well-child visit. Under my criteria this is ambiguity, not a clean policy violation, so it flags rather than rejects.",
+    "remediation": "Before committing: (1) run check_calendar_conflict for 2026-06-23T10:15-04:00; (2) verify the appointment against the source confirmation (portal message, call log, or scheduling email) that the 18-month visit with Dr. Okafor is booked for that date/time — do not create from inference; (3) run check_user_override. If the source confirmation cannot be produced, surface to the parent as a suggested event needing confirmation instead of auto-creating it.",
+    "verdict": "flag_for_human"
+  },
+  "latencyMs": 8689
+}

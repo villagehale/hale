@@ -38,10 +38,16 @@ flips; the meaning doesn't). Pick a token by the element's *role + state*.
 ### Surfaces (elevation — step up as you nest)
 | Role | Token | Light | Dark |
 |---|---|---|---|
-| Canvas (page) | `--color-linen` | `#f6f1e7` | `#0b1626` |
-| Card (panel) | `--color-oat` | `#efe7d6` | `#13233a` |
-| Raised (lifted/interactive card) | `--color-raised` | (= oat) | `#1d3150` |
-| Chrome (app frame: sidebar/header only) | `--color-chrome` | (= oat) | `#021E4E` (logo Prussian) |
+| Canvas (page) | `--color-linen` / `--color-canvas` | `#FDFCFA` | `#0E1A2F` |
+| Card (panel) | `--color-oat` / `--color-card` | `#FFFFFF` | `#13223E` |
+| Raised (lifted/interactive card) | `--color-raised` | (= card) | `#17294A` (the brand ink itself) |
+| Chrome (app frame: sidebar/header only) | `--color-chrome` | `#F7F5F0` | `#1B2160` (logo Prussian) |
+
+**Dark mode is Prussian navy, not black.** The ladder is hue-locked to the brand ink
+`#17294A` = hsl(219 53% 19%): every ground is that hue walked down in lightness, so
+the top rung *is* the brand colour. Ink stays warm cream (`#F6F1E7`) — the warmth
+lives in the type, not the ground. The frame stays a more saturated 235° navy so it
+separates from the 219° stage by hue as well as by lightness.
 
 Rule: **canvas → card → raised → chrome** is the elevation ladder. A control that
 lifts on hover steps **one notch up** the ladder; never invent a new surface.

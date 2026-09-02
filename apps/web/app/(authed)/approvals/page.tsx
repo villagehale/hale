@@ -65,11 +65,16 @@ export default async function ApprovalsPage() {
             Want Hale to handle the routine ones on its own? Plus lets it act for you, once
             you&rsquo;ve approved the kind.
           </UpgradePrompt>
-          <Link href={HISTORY_NAV.href} className="link mt-6 inline-block">
-            view the full record →
-          </Link>
         </div>
       ) : null}
+
+      {/* The nav's Home stop; the Trail left the nav (Instinct refresh), so the full
+        * record hangs off this foot link — always, not only when something is pending. */}
+      <div className="rise rise-3 mt-8">
+        <Link href={HISTORY_NAV.href} className="link inline-block">
+          The full record →
+        </Link>
+      </div>
     </div>
   );
 }

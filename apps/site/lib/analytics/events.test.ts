@@ -30,16 +30,16 @@ describe('site buildEvent privacy gate', () => {
     });
   });
 
-  it('fires the F14 text CTA, the only conversion the chief-of-staff landing has', () => {
-    expect(buildEvent('landing_cta_text')).toEqual({
-      event: 'landing_cta_text',
-      properties: {},
+  it('fires the text CTA, the only conversion the site has, with its placement', () => {
+    expect(buildEvent('cta_text_click', { cta_placement: 'hero' })).toEqual({
+      event: 'cta_text_click',
+      properties: { cta_placement: 'hero' },
     });
   });
 
   it('never lets the phone number ride along on the text CTA', () => {
     // The CTA's own href is an sms: deep link, so the number is the one identifying
     // value sitting closest to this capture.
-    expect(buildEvent('landing_cta_text', { phone: '+16475551234' }).properties).toEqual({});
+    expect(buildEvent('cta_text_click', { phone: '+16475551234' }).properties).toEqual({});
   });
 });

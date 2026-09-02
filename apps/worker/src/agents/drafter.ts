@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ActionType, DraftedAction } from '@hale/types';
-import { anthropicClient, SONNET_MODEL } from '../anthropic/client.js';
+import { pickLane } from '@hale/agent';
+import { anthropicClient } from '../anthropic/client.js';
 import { forceToolJson } from './structured.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
 import { loadPrompt } from '../prompts/loader.js';
@@ -55,10 +56,11 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
     action_template_hint: input.actionTemplateHint ?? null,
   });
 
+  const lane = pickLane('draft');
   const startedAt = Date.now();
   const { value: parsed, usage } = await forceToolJson({
     client: anthropicClient(),
-    model: SONNET_MODEL,
+    lane,
     system: instructions,
     userMessage,
     toolName: 'draft_action',
@@ -79,6 +81,6 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
       recipientVisibility: parsed.recipient_visibility,
       draftedAt: new Date().toISOString(),
     },
-    runMetrics: metricsFromUsage('drafter', SONNET_MODEL, usage, Date.now() - startedAt),
+    runMetrics: metricsFromUsage('drafter', lane.model, usage, Date.now() - startedAt),
   };
 }

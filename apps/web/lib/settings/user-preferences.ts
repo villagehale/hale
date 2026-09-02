@@ -11,7 +11,7 @@ import { resolveUserIdForUser } from '~/lib/family';
  * Auth.js session id / Google sub), which is resolved to the internal users.id here
  * — the session never hands us the uuid — so the mobile routes that read this stay
  * DB-free (rule #1, the lib owns the resolution + the query). Returns the stored row,
- * or the column defaults ({units:'metric', weekStartDay:1}) when the user has no
+ * or the column defaults ({units:'metric', weekStartDay:0}) when the user has no
  * mirrored row yet — never a fabricated identity (rule #1).
  */
 
@@ -20,7 +20,7 @@ export interface UserPreferences {
   weekStartDay: number;
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = { units: 'metric', weekStartDay: 1 };
+const DEFAULT_PREFERENCES: UserPreferences = { units: 'metric', weekStartDay: 0 };
 
 export async function readUserPreferences(
   externalAuthId: string,

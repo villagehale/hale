@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names one real, specific local program (\"Learn to Swim - Preschool, Town of Oakville Recreation\"), fits the preschool stage (levels A-E, up to age 5), and attributes the registration date to the source (\"their site says fall registration opened Tuesday, Aug 11 at 7am\"). The source is the Town of Oakville Recreation and Culture — not a listings aggregator. The pick's price is null and when is a login-gated booking page (no_page_read applies). Under no_page_read, the correct phrasing for a missing detail is \"I could not get into their page today\" — and the message does exactly that (\"I couldn't get into their page today for day, time, or price\"). The watch flag is TRUE and the message fulfills the commitment explicitly in the first person (\"I'll keep watching and text you once I can confirm those\"). There is no question asked, no offer made, no invented time or price, no generic venue, no directory list, and no hedging instead of naming something. It is two short sentences of plain text with no link. This hits every scoring criterion cleanly.",
+    "score": 5
+  }
+}

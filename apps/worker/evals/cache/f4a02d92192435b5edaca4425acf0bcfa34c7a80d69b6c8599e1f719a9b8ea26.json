@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "This needs emergency care now - go to the ER or call 911. Trouble waking, sunken eyes, and no wet diaper in 12 hours are signs of severe dehydration in a toddler.",
+    "triage": "Do not wait - go to the ER now or call 911 immediately. This is not a call-811 situation right now given how hard she is to wake.",
+    "sources": [
+      "HealthyChildren.org (AAP)",
+      "CDC - Diarrhea and Dehydration in Children",
+      "Caring for Kids (CPS)"
+    ]
+  },
+  "latencyMs": 4226
+}

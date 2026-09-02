@@ -58,20 +58,24 @@ export const DRILL_HEROES: Record<string, DrillHero> = {
   '/plan': { crumb: 'Family', title: 'Plan', backHref: '/family' },
   '/saved': { crumb: 'Family', title: 'Saved', backHref: '/family' },
   '/trail': { crumb: 'Family', title: 'History', backHref: '/family' },
-  '/family/members': { crumb: 'Family', title: 'Family & children', backHref: '/family' },
   '/companion/logs': { crumb: 'Companion', title: 'Logs', backHref: '/companion' },
 };
 
 /**
- * VIL-244 · M9 — the three surfaces the receipts-room nav promotes out of the Family
- * tab. Under that IA they are top-level stops, so they must read as ROOTS (hero title +
- * subtitle) rather than drills with a back-to-Family breadcrumb pointing at a tab that
- * is no longer a stop. Static copy — nothing here is interpolated per request.
+ * VIL-244 · M9 — the surfaces the receipts-room nav re-registers. Under that IA
+ * /approvals is the nav's "Home", /family is the editor (the hub died with the
+ * Instinct-adapted refresh), and the demoted week/trail still render as roots rather
+ * than drills with a back-to-Family breadcrumb pointing at a tab that is no longer a
+ * stop. Static copy — nothing here is interpolated per request.
  */
 export const RECEIPTS_ROOT_HEROES: Record<string, RootHero> = {
   '/approvals': {
     title: 'Approvals',
     subtitle: 'What Hale has drafted, waiting on your yes or no.',
+  },
+  '/family': {
+    title: 'Family',
+    subtitle: 'Your people, your kids, and your area — edit them here.',
   },
   '/plan': { title: 'Week', subtitle: 'Your week ahead, gathered by Hale.' },
   '/trail': { title: 'Trail', subtitle: 'Every action, by Hale or by you, on the record.' },

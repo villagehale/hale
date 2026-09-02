@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The assistant said \"I don't have a record of Mira's first steps in her history\" and claimed nothing was \"logged specifically for first independent steps.\" However, the reference clearly states \"mira took her first independent steps about 25 months ago,\" and the known family history episodes explicitly includes \"took her first independent steps across the living room.\" The assistant fabricated a lack of information when the fact was directly available in both the reference answer and the family history provided. This is a complete failure to recall an available fact."
+  }
+}

@@ -83,7 +83,7 @@ describe('PostHog replay + exception config', () => {
  */
 describe('privacy page PostHog disclosure', () => {
   const source = readFileSync(
-    fileURLToPath(new URL('../../../site/app/privacy/page.tsx', import.meta.url)),
+    fileURLToPath(new URL('../../../site/app/[locale]/privacy/page.tsx', import.meta.url)),
     'utf8',
   );
 

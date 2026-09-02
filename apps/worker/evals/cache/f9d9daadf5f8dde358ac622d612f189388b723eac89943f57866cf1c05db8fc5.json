@@ -1,0 +1,19 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "EarlyON Child and Family Centre (Acton & Georgetown locations)",
+        "age_fit": "parents and caregivers with children aged 0-6 years",
+        "source_name": "Links2Care"
+      },
+      {
+        "name": "Kids & Me drop-in, Halton Hills Public Library - Acton Branch",
+        "age_fit": "families with babies or children up to 6 years of age",
+        "when": "Thursdays 1:00-2:30pm, follows the school calendar starting the second week of September",
+        "price": "Free",
+        "source_name": "Halton Region"
+      }
+    ]
+  },
+  "latencyMs": 2121
+}

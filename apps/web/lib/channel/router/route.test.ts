@@ -2,27 +2,49 @@ import Anthropic from '@anthropic-ai/sdk';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import { EMERGENCY_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeReplyTransport, type ReplyRoute } from './reply-route';
 import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
+import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyOutcome, TurnApology } from './apology';
-import { type ChannelTurnResult, ChannelTurnFailed } from './coach-runtime';
+import { type ChannelTurn, type ChannelTurnResult, ChannelTurnFailed } from './coach-runtime';
 import type { SmokeAlarmClaim } from './smoke-alarm';
+import type {
+  DisambiguationOption,
+  DisambiguationStore,
+  PendingDisambiguation,
+} from './disambiguation';
+import type { OpenQuestion, OpenQuestionReader } from './open-questions';
+import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
+import {
+  DISCOVERABILITY_ALREADY_ON,
+  DISCOVERABILITY_OFF,
+  DISCOVERABILITY_ON,
+} from '~/lib/village/intros/copy';
+import { villageIntroHandler } from './handlers';
+import { type ReplyReading, type ReplyResolver, toReading } from './resolve';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 import { FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
-import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
+import {
+  approvalHandler,
+  founderWelcomeHandler,
+  healthReplyHandler,
+  sequenceReplyHandler,
+} from './handlers';
 import { AGENT_TURNS_PER_HOUR } from './flood';
 import {
   type ChannelCoachRuntime,
   type ChannelRouterDeps,
   type DeterministicHandler,
   type InboundContext,
+  type RouterResult,
   TurnDeferred,
   routeChannelMessage,
 } from './route';
@@ -39,6 +61,8 @@ import {
  */
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
+/** The ledger row a recorded promise mints - the id the deep dispatch is keyed on. */
+const PROMISE_COMMITMENT_ID = '77777777-7777-4777-8777-777777777777';
 const PARENT = '22222222-2222-4222-8222-222222222222';
 const PHONE = '+14165551234';
 /** The route a text resolves to. Most of this file is about ORDER rather than delivery,
@@ -97,15 +121,32 @@ function passingHandler(name: string): DeterministicHandler & { calls: number; b
   return handler as DeterministicHandler & { calls: number; bodies: string[] };
 }
 
-function fakeCoach(reply = 'coach says hi'): ChannelCoachRuntime & { calls: number } {
+function fakeCoach(
+  reply = 'coach says hi',
+): ChannelCoachRuntime & { calls: number; standingQuestions: string[][]; rejected: string[][] } {
   const coach = {
     calls: 0,
-    async respond() {
+    /** What each turn told the coach Hale was waiting on. */
+    standingQuestions: [] as string[][],
+    /** What each attempt was told the last one got wrong (VIL-293). */
+    rejected: [] as string[][],
+    async respond(turn: ChannelTurn, rejectedLastAttempt: readonly string[]) {
       coach.calls += 1;
-      return { reply, planOffer: null };
+      coach.standingQuestions.push([...turn.standingQuestions]);
+      coach.rejected.push([...rejectedLastAttempt]);
+      return { reply, planOffer: null, activityPromise: null };
     },
   };
   return coach;
+}
+
+/** A coach that cannot run at all — the outage the canned choice sentence exists for. */
+function brokenCoach(): ChannelCoachRuntime {
+  return {
+    async respond() {
+      throw new Error('coach unavailable');
+    },
+  };
 }
 
 /**
@@ -163,11 +204,13 @@ function fakeSmokeAlarmClaim(): SmokeAlarmClaim & { fired: string[]; reads: stri
 function fakeTurnLedger(): InboundTurnLedger & {
   answered: string[];
   deferred: string[];
+  failed: { channelMessageId: string; reason: string }[];
   reads: string[];
 } {
   const ledger = {
     answered: [] as string[],
     deferred: [] as string[],
+    failed: [] as { channelMessageId: string; reason: string }[],
     reads: [] as string[],
     async stageOf({ channelMessageId }: { channelMessageId: string }): Promise<TurnStage> {
       ledger.reads.push(channelMessageId);
@@ -180,6 +223,9 @@ function fakeTurnLedger(): InboundTurnLedger & {
     },
     async recordDeferred(input: { channelMessageId: string }) {
       ledger.deferred.push(input.channelMessageId);
+    },
+    async recordFailed(input: { channelMessageId: string; reason: string }) {
+      ledger.failed.push({ channelMessageId: input.channelMessageId, reason: input.reason });
     },
   };
   return ledger;
@@ -216,6 +262,93 @@ function fakeApology(
   return apology;
 }
 
+/** What Hale is waiting on. Empty by default, which is the state that makes the natural
+ * reply stage a no-op and every pre-existing test in this file mean what it meant. */
+function fakeQuestions(questions: OpenQuestion[]): OpenQuestionReader & { calls: number } {
+  const reader = {
+    calls: 0,
+    async open() {
+      reader.calls += 1;
+      return questions;
+    },
+  };
+  return reader;
+}
+
+/**
+ * The menu Hale last offered, in memory. Injected for the same reason the turn ledger and
+ * the alarm's claim are: the fake db does not evaluate `where` clauses, so a read through
+ * it would return rows this very turn wrote and match a menu nobody was shown.
+ *
+ * It keeps the one property the real store's partial unique index keeps — AT MOST ONE
+ * live menu per parent, superseded rather than accumulated — because a fake that let two
+ * stand would pass a test the deployed code fails.
+ */
+function fakeDisambiguation(): DisambiguationStore & { minted: number } {
+  let live: (PendingDisambiguation & { parentUserId: string }) | null = null;
+  let seq = 0;
+  const store = {
+    minted: 0,
+    async pending(_db: unknown, input: { parentUserId: string }) {
+      return live && live.parentUserId === input.parentUserId ? live : null;
+    },
+    async mint(
+      _db: unknown,
+      input: {
+        parentUserId: string;
+        polarity: 'yes' | 'no';
+        numbered: boolean;
+        options: readonly DisambiguationOption[];
+      },
+    ) {
+      seq += 1;
+      store.minted += 1;
+      live = {
+        id: `menu-${seq}`,
+        parentUserId: input.parentUserId,
+        polarity: input.polarity,
+        numbered: input.numbered,
+        options: input.options,
+      };
+      return { status: 'minted' as const };
+    },
+    async consume(_db: unknown, input: { id: string }) {
+      // The real store spends by UPDATE ... WHERE consumed_at IS NULL, so a second call
+      // for the same menu matches nothing and says so (disambiguation.ts).
+      if (live?.id !== input.id) return 'already_spent' as const;
+      live = null;
+      return 'spent' as const;
+    },
+  };
+  return store as unknown as DisambiguationStore & { minted: number };
+}
+
+function fakeResolver(reading: ReplyReading): ReplyResolver & { calls: number } {
+  const resolver = {
+    calls: 0,
+    async read() {
+      resolver.calls += 1;
+      return reading;
+    },
+  };
+  return resolver;
+}
+
+/** A family Hale owes nothing and has nothing booked for — the state in which every
+ * claim is false. The default, so a test that says nothing about the ledger cannot
+ * accidentally be relying on one. */
+function emptyReconcileView(overrides: Partial<ReconcileView> = {}): ReconcileView {
+  return {
+    openKinds: new Set(),
+    pendingKinds: new Set(),
+    registrationLaddered: false,
+    mintableWindow: null,
+    scheduledTitles: [],
+    statedBookings: [],
+    ...overrides,
+  };
+}
+
 interface Harness {
   deps: ChannelRouterDeps;
   fake: FakeDb;
@@ -234,7 +367,14 @@ function harness(
     smokeAlarm?: SmokeAlarmClaim;
     turns?: ReturnType<typeof fakeTurnLedger>;
     apology?: TurnApology;
+    questions?: OpenQuestionReader;
+    replyResolver?: ReplyResolver;
     recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
+    recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
+    reconcileView?: ChannelRouterDeps['reconcileView'];
+    recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
+    recordStatedState?: ChannelRouterDeps['recordStatedState'];
+    dispatchDeepResearch?: ChannelRouterDeps['dispatchDeepResearch'];
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -265,6 +405,21 @@ function harness(
       handlers: options.handlers ?? [],
       coach: options.coach ?? fakeCoach(),
       recordPlanOffer: options.recordPlanOffer ?? (async () => ({ status: 'recorded' })),
+      recordActivityPromise:
+        options.recordActivityPromise ??
+        (async () => ({ status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID })),
+      reconcileView: options.reconcileView ?? (async () => emptyReconcileView()),
+      // VIL-294. Nothing is stated by default, so a test that says nothing about the
+      // inbound half cannot accidentally be relying on a write.
+      recordStatedState:
+        options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
+      recordRegistrationWatch:
+        options.recordRegistrationWatch ?? (async () => ({ status: 'recorded' as const })),
+      dispatchDeepResearch:
+        options.dispatchDeepResearch ?? (async () => ({ status: 'enqueued' as const })),
+      questions: options.questions ?? fakeQuestions([]),
+      replyResolver: options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+      disambiguation: fakeDisambiguation(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
@@ -412,6 +567,37 @@ describe('threading', () => {
     expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
   });
 
+  it('records the pipe the transport actually used — a WhatsApp-carried reply is a whatsapp row', async () => {
+    // WhatsApp v1: the reply-routing transport names its pipe in the send result
+    // (reply-transport.ts); the ledger row must record that, not assume 'sms'.
+    const h = harness();
+    const inner = h.deps.transport;
+    h.deps.transport = {
+      send: async (input) => ({ ...(await inner.send(input)), channel: 'whatsapp' as const }),
+    };
+    await routeChannelMessage(h.deps, job());
+
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out).toHaveLength(1);
+    // Born queued like every phone leg: WhatsApp receipts ride the same StatusCallback.
+    expect(out[0]).toMatchObject({ channel: 'whatsapp', status: 'queued' });
+  });
+
+  /**
+   * The reply is QUEUED, not sent. Twilio accepts a message and transmits it later — a
+   * segment per second from one long code — so 'sent' at accept time asserted a carrier
+   * handoff nobody observed, and made a backlog of texts waiting for airtime
+   * indistinguishable from texts already delivered. The status callback is what moves
+   * this row on (channel/twilio/status.ts).
+   */
+  it('records the outbound reply as queued, not as sent', async () => {
+    const h = harness();
+    await routeChannelMessage(h.deps, job());
+
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out[0]?.status).toBe('queued');
+  });
+
   /**
    * The reply text lives in `messages` (the thread the app renders) and nowhere else.
    * Copying it into the ledger body would put a second copy of household detail in a
@@ -513,8 +699,99 @@ describe('the off-domain lane', () => {
     category: 'weather',
     reply: "I can't see live conditions, but I do check your area's forecast for weekends.",
     replySource: 'composed',
+    medicalSource: null,
     signal: 'recorded',
   };
+
+  /** The lane's other answer: a symptom, answered rather than deflected. */
+  const medicalVerdict = (medicalSource: 'web_grounded' | 'fixed'): OffDomainVerdict => ({
+    status: 'deflected',
+    lane: 'safety_critical',
+    category: 'medical-symptom',
+    reply: medicalSource === 'fixed' ? SAFETY_REPLY : 'Fevers at this age are usually viral.',
+    replySource: medicalSource,
+    medicalSource,
+    signal: 'not_applicable',
+  });
+
+  /**
+   * The medical lane's outcome only ever existed on the way to the transport, so the
+   * founder scorecard's SAFETY row could not count how often a parent with a hurt child
+   * got the fixed 811/911 line instead of an answer. The reply's own ledger row is where
+   * that fact belongs — and the row stays bodyless, carrying a two-value enum and not one
+   * word of what was said (rule #1).
+   */
+  it.each(['web_grounded', 'fixed'] as const)(
+    'stamps a medical answer (%s) on the reply row it sends, body still null',
+    async (source) => {
+      const h = harness({
+        context: { body: 'she has had a fever for three days' },
+        offDomain: fakeLane(medicalVerdict(source)),
+      });
+
+      await routeChannelMessage(h.deps, job());
+
+      const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.medicalReplySource).toBe(source);
+      expect(sent[0]?.body).toBeNull();
+    },
+  );
+
+  /** A door Hale chose, or an answer about the world, is not a medical answer. Stamping
+   * one would put a deliberate deflection into the safety row's fallback count. */
+  it('leaves the stamp null on every reply that is not a medical answer', async () => {
+    const h = harness({ context: { body: "how's the weather" }, offDomain: fakeLane(ANSWERED) });
+
+    await routeChannelMessage(h.deps, job());
+
+    const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.medicalReplySource ?? null).toBeNull();
+  });
+
+  /**
+   * The rest of the verdict's provenance gets the same treatment (migration 0103): the
+   * lane already NAMES where the words came from — composed, a fixed door, or one of the
+   * four reasons the composer could not run — and dropping that at the send seam is what
+   * made the weekly deflection count silently mix real answers with
+   * ANSWER_UNAVAILABLE sends. The row still carries no body (rule #1).
+   */
+  it.each([
+    ['composed', ANSWERED],
+    [
+      'model_failed',
+      {
+        ...ANSWERED,
+        reply: "Couldn't get to that one - ask me again tomorrow.",
+        replySource: 'model_failed',
+      } satisfies OffDomainVerdict,
+    ],
+  ] as const)(
+    'persists the deflection reply source (%s) on the reply row it sends',
+    async (source, verdict) => {
+      const h = harness({ context: { body: "how's the weather" }, offDomain: fakeLane(verdict) });
+
+      await routeChannelMessage(h.deps, job());
+
+      const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.replySource).toBe(source);
+      expect(sent[0]?.body).toBeNull();
+    },
+  );
+
+  /** A coach turn's reply is not a deflection — no provenance stamp belongs on it. */
+  it('leaves the reply source null on a coach answer', async () => {
+    const coach = fakeCoach();
+    const h = harness({ context: { body: 'what should we do this weekend' }, coach });
+
+    await routeChannelMessage(h.deps, job());
+
+    const sent = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.replySource ?? null).toBeNull();
+  });
 
   it('answers an off-domain text without ever waking the coach', async () => {
     const lane = fakeLane(ANSWERED);
@@ -627,6 +904,7 @@ describe('the off-domain lane', () => {
         category: 'doctor-access',
         reply: 'Finding you a doctor is not something I can do.',
         replySource: 'fixed',
+        medicalSource: null,
         signal: 'recorded',
       }),
     });
@@ -791,6 +1069,7 @@ describe('an offered full plan', () => {
       async respond() {
         return {
           reply: "Most 2-year-olds wake once or twice. Want the full plan? Reply YES and I'll send it.",
+          activityPromise: null,
           planOffer: {
             topic: 'sleep',
             childId: null,
@@ -882,7 +1161,7 @@ describe('slow turns', () => {
     });
     return {
       respond: () => pending,
-      release: (reply: string) => resolve({ reply, planOffer: null }),
+      release: (reply: string) => resolve({ reply, planOffer: null, activityPromise: null }),
     };
   }
 
@@ -1305,8 +1584,10 @@ describe('the outage smoke alarm', () => {
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('smoke_alarm_fired');
-    expect(h.transport.bodies()).toEqual([SAFETY_REPLY]);
-    expect(h.transport.bodies()[0]).toBe(SAFETY_REPLY);
+    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY]);
+    expect(h.transport.bodies()[0]).toBe('Call 911 now.');
+    expect(h.transport.bodies()[0]).not.toContain('811');
+    expect(h.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
     expect(h.transport.bodies()).not.toContain(failureReply());
   });
 
@@ -1322,7 +1603,7 @@ describe('the outage smoke alarm', () => {
     expect(out).toHaveLength(1);
     expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
     const assistant = messageRows(h.fake).filter((r) => r.role === 'assistant');
-    expect(assistant.map((r) => r.content)).toEqual([SAFETY_REPLY]);
+    expect(assistant.map((r) => r.content)).toEqual([EMERGENCY_REPLY]);
   });
 
   it('records the alarm against the inbound message so a queue retry cannot re-ring it', async () => {
@@ -1340,7 +1621,7 @@ describe('the outage smoke alarm', () => {
     // line was this text's answer.
     const retry = await routeChannelMessage(h.deps, job());
     expect(retry.status).toBe('already_answered');
-    expect(h.transport.bodies()).toEqual([SAFETY_REPLY]);
+    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY]);
     expect(claim.fired).toHaveLength(1);
   });
 
@@ -1357,7 +1638,7 @@ describe('the outage smoke alarm', () => {
     );
 
     expect(second.status).toBe('smoke_alarm_fired');
-    expect(h.transport.bodies()).toEqual([SAFETY_REPLY, SAFETY_REPLY]);
+    expect(h.transport.bodies()).toEqual([EMERGENCY_REPLY, EMERGENCY_REPLY]);
   });
 
   // ── the non-triggers ───────────────────────────────────────────────────────
@@ -1431,6 +1712,7 @@ describe('the outage smoke alarm', () => {
         category: 'other',
         reply: SAFETY_REPLY,
         replySource: 'fixed',
+        medicalSource: null,
         signal: 'recorded',
       }),
       coach: outageCoach(),
@@ -1575,7 +1857,10 @@ describe('the shipped chain, end to end', () => {
       undo: async () => true,
     };
     const health = {
-      loadLastCheckpointRef: async () => `dental_school_screening:${CHILD}:1`,
+      loadLastCheckpointRef: async () => ({
+        ref: `dental_school_screening:${CHILD}:1`,
+        toldAt: new Date(0),
+      }),
       recordDone: async () => {},
       draftCheckup: async () => ({ actionId: 'drafted-1' }),
     };
@@ -1742,5 +2027,1288 @@ describe('the shipped chain, end to end', () => {
     expect(result.status).toBe('agent_replied');
     expect(result.handler).toBeNull();
     expect(coach.calls).toBe(1);
+  });
+});
+
+/**
+ * GATE 2b — natural reply resolution, through the real router.
+ *
+ * The arc's whole claim is that a parent never has to learn a keyword. What that means
+ * concretely is asserted here: the free readers still win, the stage costs nothing when
+ * Hale is waiting on nothing, and a reply the vocabularies cannot read reaches the
+ * handler that owns the question anyway — with the parent's own words intact.
+ */
+describe('natural reply resolution', () => {
+  const ACTION = 'aaaa1111-1111-4111-8111-111111111111';
+
+  function approvalQuestion(): OpenQuestion {
+    return {
+      id: ACTION,
+      kind: 'approval',
+      description: 'Reschedule on your calendar',
+      subject: 'reschedule on your calendar',
+      answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
+    };
+  }
+
+  function introQuestion(): OpenQuestion {
+    return {
+      id: 'proposal-1',
+      kind: 'intro_proposal',
+      description: 'Whether to meet one nearby Hale family',
+      subject: 'meeting the family nearby',
+      answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
+    };
+  }
+
+  /** A handler that claims only when the router hands it a resolved answer — the second
+   * pass, and nothing else. */
+  function owningHandler(kind: OpenQuestion['kind']) {
+    const seen: Array<{ body: string; resolved: unknown }> = [];
+    return {
+      seen,
+      handler: {
+        name: `owner_${kind}`,
+        resolves: new Set([kind]),
+        async handle(_db: unknown, ctx: { body: string; resolved: unknown }) {
+          seen.push({ body: ctx.body, resolved: ctx.resolved });
+          if (!ctx.resolved) return { claimed: false };
+          return { claimed: true, outcome: 'acted', reply: 'Done.' };
+        },
+      } as unknown as DeterministicHandler,
+    };
+  }
+
+  it('costs nothing at all when Hale is waiting on nothing', async () => {
+    const questions = fakeQuestions([]);
+    const resolver = fakeResolver({ status: 'unresolved', reason: 'no_target' });
+    const h = harness({ context: { body: 'yeah go ahead' }, questions, replyResolver: resolver });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(questions.calls).toBe(1);
+    // The precondition that makes this stage affordable on every inbound text.
+    expect(resolver.calls).toBe(0);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('never runs when a deterministic handler already claimed the message', async () => {
+    const questions = fakeQuestions([approvalQuestion()]);
+    const resolver = fakeResolver({ status: 'unresolved', reason: 'no_target' });
+    const claiming: DeterministicHandler = {
+      name: 'claims_everything',
+      handle: async () => ({ claimed: true, outcome: 'ok', reply: 'Filed.' }),
+    };
+    const h = harness({
+      context: { body: 'done' },
+      handlers: [claiming],
+      questions,
+      replyResolver: resolver,
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('handled');
+    // A free, exact read always wins. No keyword was removed, only stopped being printed.
+    expect(questions.calls).toBe(0);
+    expect(resolver.calls).toBe(0);
+  });
+
+  it('hands a resolved answer to the handler that owns that kind, with the parents own words', async () => {
+    const owner = owningHandler('approval');
+    const h = harness({
+      context: { body: 'yeah go ahead with the swim move' },
+      handlers: [owner.handler],
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: ACTION,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('resolved');
+    expect(result.handler).toBe('owner_approval');
+    // TWO passes: the free one, then the resolved one. The body is untouched on both, so
+    // whatever the owning module records as evidence is the sentence the parent sent.
+    expect(owner.seen).toEqual([
+      { body: 'yeah go ahead with the swim move', resolved: null },
+      {
+        body: 'yeah go ahead with the swim move',
+        resolved: {
+          kind: 'approval',
+          questionId: ACTION,
+          polarity: 'yes',
+          // Carried down to the consent ledger, not just used for the grade check.
+          confidence: 'high',
+        },
+      },
+    ]);
+    expect(h.transport.bodies()).toEqual(['Done.']);
+  });
+
+  it('runs ONLY the owning handler on the resolved pass', async () => {
+    // The registration handler writes `reasked_at` on the way past. A second full sweep
+    // of the chain would spend that stamp twice for one text.
+    const owner = owningHandler('approval');
+    let otherCalls = 0;
+    const other: DeterministicHandler = {
+      name: 'not_the_owner',
+      handle: async () => {
+        otherCalls += 1;
+        return { claimed: false };
+      },
+    };
+    const h = harness({
+      context: { body: 'go on then' },
+      handlers: [other, owner.handler],
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: ACTION,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(otherCalls).toBe(1);
+  });
+
+  /**
+   * An answer Hale cannot place goes to the COACH, with the candidates.
+   *
+   * It used to be a fixed sentence sent from the router, and on 2026-08-20 a parent got
+   * "Which one - add to your calendar, or meeting the family nearby?" in reply to an
+   * offer Hale had made them and never written down. Both halves were wrong: the list,
+   * and a machine reading its own option labels back at someone. The coach has the
+   * thread; what it was missing was what Hale was holding, and now it is handed it.
+   */
+  it('hands an unplaceable answer to the coach, with the candidates', async () => {
+    const coach = fakeCoach('which of those did you mean?');
+    const h = harness({
+      context: { body: 'sounds good' },
+      coach,
+      questions: fakeQuestions([approvalQuestion(), introQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'ambiguous' }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(coach.standingQuestions).toEqual([
+      ['reschedule on your calendar', 'meeting the family nearby'],
+    ]);
+    expect(h.transport.bodies()).toEqual(['which of those did you mean?']);
+  });
+
+  /** Every coach turn is told what Hale is waiting on, not only the unplaceable ones —
+   * the coach used to say "I don't have a draft waiting for your YES right now" while
+   * one was pending (the prod failure the resolver eval's first fixture records). */
+  it('tells the coach what is standing even on an ordinary turn', async () => {
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'what time is storytime on saturday' },
+      coach,
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.standingQuestions).toEqual([['reschedule on your calendar']]);
+  });
+
+  it('falls back to the choice sentence only when the coach cannot run', async () => {
+    const h = harness({
+      context: { body: 'sounds good' },
+      coach: brokenCoach(),
+      questions: fakeQuestions([approvalQuestion(), introQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'ambiguous' }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([
+      'Which one - 1) reschedule on your calendar, 2) meeting the family nearby? Reply 1 or 2, or just say which.',
+    ]);
+    // A number is offered and is never the only way in — the 2026-08-13 principle survives
+    // the numbers coming back (VIL-304). No keyword to recite either way.
+    expect(h.transport.bodies()[0]).toContain('or just say which');
+    expect(h.transport.bodies()[0]).not.toMatch(/\bYES\b/);
+  });
+
+  it('does not offer numbers when no menu was written down', async () => {
+    // The mint only happens when the free vocabulary could read a yes or a no off the
+    // reply; when it could not, NOTHING is recorded — and "Reply 1 or 2" would then be
+    // inviting a digit no menu is standing behind, which the approvals queue's own
+    // numbering would answer instead. The copy has to match what exists.
+    const h = harness({
+      context: { body: 'the second thing i guess' },
+      coach: brokenCoach(),
+      questions: fakeQuestions([approvalQuestion(), introQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'ambiguous' }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect((h.deps.disambiguation as unknown as { minted: number }).minted).toBe(0);
+    const sent = h.transport.bodies()[0] as string;
+    // Still asked, still by name — the sentence that went out before VIL-304.
+    expect(sent).toBe('Which one - reschedule on your calendar or meeting the family nearby?');
+    expect(sent).not.toContain('1)');
+    expect(sent).not.toMatch(/Reply 1/);
+  });
+
+  it('does not send the choice sentence for an ordinary broken turn', async () => {
+    // The apology composer owns that turn. Answering "which one did you mean?" to a
+    // parent who asked a question would be Hale inventing a decision they never made.
+    const h = harness({
+      context: { body: 'what time is storytime on saturday' },
+      coach: brokenCoach(),
+      questions: fakeQuestions([approvalQuestion(), introQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()[0]).not.toMatch(/Which one/i);
+  });
+
+  it('does not ask when only one thing is open - it just hands the turn to the coach', async () => {
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'sounds good' },
+      coach,
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'ambiguous' }),
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+  });
+
+  it('sends an ordinary message to the coach even with questions open', async () => {
+    // The failure this avoids: a parent asks "what time is storytime" while a draft is
+    // pending, and gets "which one did you mean?".
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'what time is storytime on saturday' },
+      coach,
+      questions: fakeQuestions([approvalQuestion(), introQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+    expect(h.transport.bodies()).toEqual(['coach says hi']);
+  });
+
+  it('falls through to the coach when the owning handler declines a resolution', async () => {
+    // The co-parent answered it in the app between the two reads. Never silence.
+    const coach = fakeCoach();
+    const declining: DeterministicHandler = {
+      name: 'owner_approval',
+      resolves: new Set(['approval']),
+      handle: async () => ({ claimed: false }),
+    };
+    const h = harness({
+      context: { body: 'go ahead' },
+      handlers: [declining],
+      coach,
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: ACTION,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+  });
+
+  it('falls through to the coach when no handler owns the resolved kind', async () => {
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'go ahead' },
+      handlers: [],
+      coach,
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: ACTION,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+    expect(JSON.stringify(h.logs)).toContain('no handler owns');
+  });
+
+  it('answers a resolved yes even when the parents hour is spent', async () => {
+    // It sits above flood control for the reason the handlers do: "yeah go ahead" is the
+    // same act as "yes", and a parent who is texting fast is usually stressed.
+    const owner = owningHandler('approval');
+    const h = harness({
+      context: { body: 'yeah do it' },
+      handlers: [owner.handler],
+      limiter: { check: async () => ({ allowed: false, remaining: 0 }) } as unknown as RateLimiter,
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: ACTION,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('resolved');
+    expect(h.transport.bodies()).toEqual(['Done.']);
+  });
+});
+
+/**
+ * THE 09:47 SEQUENCE, end to end through the real intro lane.
+ *
+ * From the founder's live test on 2026-08-13, and the reason this arc exists. Hale asked
+ * at 08:01; at 09:47:48 the parent replied "Yes"; at 09:47:59, having been answered about
+ * an unrelated calendar draft, they retyped "Yes intros". They got two contradictory
+ * replies eleven seconds apart.
+ *
+ * Both halves are asserted here because they fail in opposite directions: the first text
+ * must be UNDERSTOOD, and the second must NOT be treated as a new decision.
+ */
+describe('the 09:47 sequence', () => {
+  const OPT_IN: OpenQuestion = {
+    id: `intro_optin:${FAMILY}`,
+    kind: 'intro_optin',
+    description: 'Whether to be introduced to other Hale families nearby',
+    subject: 'introductions to other Hale families nearby',
+    answerable: { yes: true, no: true },
+    askedAt: null,
+    solicited: false,
+  };
+
+  /** The real lane, over spies. `standing` is what the ledger already holds. */
+  function introChain(standing: 'unanswered' | 'granted') {
+    const written: boolean[] = [];
+    const deps: VillageIntroReplyDeps = {
+      recordDiscoverability: async (_db, input) => {
+        written.push(input.granted);
+      },
+      discoverabilityStanding: async () => standing,
+      answerableProposal: async () => null,
+      recordDecision: async () => {},
+      cancelOpenProposals: async () => {},
+    };
+    return { written, handlers: [villageIntroHandler(deps)] };
+  }
+
+  it('understands the bare "Yes" - one reply, consent recorded, no coach turn', async () => {
+    const chain = introChain('unanswered');
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'Yes' },
+      handlers: chain.handlers,
+      coach,
+      questions: fakeQuestions([OPT_IN]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: OPT_IN.id,
+        kind: 'intro_optin',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('resolved');
+    expect(chain.written).toEqual([true]);
+    // ONE message. What happened live was a coach turn about a stale calendar draft.
+    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ON]);
+    expect(coach.calls).toBe(0);
+  });
+
+  it('does not answer the retyped "Yes intros" as a second decision', async () => {
+    // Eleven seconds later, the answer already recorded. A parent who texts twice because
+    // they think the first one did not land is not making a second choice.
+    const chain = introChain('granted');
+    const h = harness({
+      context: { body: 'Yes intros' },
+      handlers: chain.handlers,
+      // The question is closed now, so nothing is open and the resolver never runs.
+      questions: fakeQuestions([]),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.handler).toBe('village_intro');
+    expect(chain.written).toEqual([]);
+    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ALREADY_ON]);
+    // Not the full acknowledgement a second time.
+    expect(h.transport.bodies()[0]).not.toBe(DISCOVERABILITY_ON);
+  });
+
+  it('still honours a revocation seconds after the grant', async () => {
+    // The one thing the shortcut may never swallow.
+    const chain = introChain('granted');
+    const h = harness({
+      context: { body: 'no intros' },
+      handlers: chain.handlers,
+      questions: fakeQuestions([]),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(chain.written).toEqual([false]);
+    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_OFF]);
+  });
+});
+
+/**
+ * D3 — AN APOLOGY IS NOT AN ANSWERED TURN.
+ *
+ * 2026-08-22, 17:41 UTC. A coach turn ran for 49,889 ms, came back `status=failed`, and
+ * the parent got "I couldn't get that done for you, and nothing changed on your end."
+ * The family's whole audit trail for that text was `sms_reply_received` →
+ * `sms_turn_answered` → `sms_reply_sent`: three rows that read as a turn that worked.
+ * There was no failure action of any kind in the history, and no rate anywhere.
+ *
+ * The answered claim is CORRECT and stays — the parent has their text and a re-drive
+ * must not send a second one. What was missing is the other half.
+ */
+describe('a failed turn is recorded as a failure', () => {
+  const throwing: ChannelCoachRuntime = {
+    respond: async () => {
+      throw new Error('cannot read properties of undefined');
+    },
+  };
+
+  it('writes the typed failure BESIDE the answered claim, not instead of it', async () => {
+    const h = harness({ coach: throwing });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    // Both, and they answer different questions: one stops a second reply, one says the
+    // turn did not work.
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+    expect(h.turns.failed).toEqual([
+      { channelMessageId: job().channel_message_id, reason: 'apology_sent' },
+    ]);
+  });
+
+  it('names the drafts-receipt branch as its own failure class', async () => {
+    const h = harness({
+      coach: {
+        respond: async () => {
+          throw new ChannelTurnFailed('channel coach: agent hit maxSteps without an answer', {
+            cause: new Error('maxSteps'),
+            draftedActionIds: ['action-1', 'action-2'],
+          });
+        },
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.turns.failed).toEqual([
+      { channelMessageId: job().channel_message_id, reason: 'drafts_receipt' },
+    ]);
+  });
+
+  it('POSITIVE CONTROL - a turn that worked writes no failure row', async () => {
+    const h = harness();
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+    expect(h.turns.failed).toEqual([]);
+  });
+
+  it('POSITIVE CONTROL - a DEFERRED turn keeps its own row and writes no failure one', async () => {
+    // The deferral already has `sms_turn_deferred` and its own captured rate. A turn
+    // that said nothing is a different outcome from one that apologised, and folding
+    // them together is what this whole change is against.
+    const h = harness({
+      coach: {
+        respond: async () => {
+          throw new ChannelTurnFailed('channel coach: agent loop failed', {
+            cause: new Anthropic.APIConnectionError({ message: 'Connection error.' }),
+            draftedActionIds: [],
+          });
+        },
+      },
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+
+    expect(h.turns.deferred).toEqual([job().channel_message_id]);
+    expect(h.turns.failed).toEqual([]);
+  });
+});
+
+// ── VIL-293 · the reconciliation primitive, replayed against the audit ───────
+
+/**
+ * Every body below is a sentence Hale actually sent in the 2026-08-21/22 audit, and every
+ * assertion is the thing that did not happen. On main each of these bodies reached the
+ * transport verbatim with no row anywhere behind it.
+ */
+describe('audit replay: a claim reaches the wire only when a row backs it', () => {
+  const OPENS = new Date('2026-09-01T11:00:00.000Z');
+
+  /** A coach whose answers are scripted per attempt — the re-ask is the point. */
+  function scriptedCoach(
+    turns: readonly { reply: string; activityPromise?: ActivityPromise }[],
+  ): ChannelCoachRuntime & { rejected: string[][] } {
+    let attempt = 0;
+    const coach = {
+      rejected: [] as string[][],
+      async respond(_turn: ChannelTurn, rejectedLastAttempt: readonly string[]) {
+        coach.rejected.push([...rejectedLastAttempt]);
+        const scripted = turns[Math.min(attempt, turns.length - 1)];
+        attempt += 1;
+        return {
+          reply: scripted?.reply ?? '',
+          planOffer: null,
+          activityPromise: scripted?.activityPromise ?? null,
+        };
+      },
+    };
+    return coach;
+  }
+
+  it('(a) Aug 21 — "I\'m watching that morning" MINTS the watch against the matched window', async () => {
+    const minted: unknown[] = [];
+    const h = harness({
+      coach: fakeCoach("I'm watching that morning and I'll text you before it goes live."),
+      reconcileView: async () =>
+        emptyReconcileView({ mintableWindow: { town: 'Halton Hills', opensForFamilyAt: OPENS } }),
+      recordRegistrationWatch: async (_db, input) => {
+        minted.push(input);
+        return { status: 'recorded' as const };
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      "I'm watching that morning and I'll text you before it goes live.",
+    ]);
+    expect(minted).toHaveLength(1);
+    expect(minted[0]).toMatchObject({
+      familyId: FAMILY,
+      mint: {
+        kind: 'registration_watch',
+        summary: 'Halton Hills registration: a text before it opens.',
+        dueAt: OPENS,
+      },
+      // Against the row that CARRIED it — the MEM-10 send-time discipline.
+      channelMessageId: ledgerRows(h.fake)[0]?.id,
+    });
+  });
+
+  it('(a2) refuses the same sentence when no window matched and no ladder runs', async () => {
+    const minted: unknown[] = [];
+    const h = harness({
+      coach: scriptedCoach([
+        { reply: "I'm watching that morning and I'll text you before it goes live." },
+        { reply: 'Halton Hills has not published a fall date yet.' },
+      ]),
+      recordRegistrationWatch: async (_db, input) => {
+        minted.push(input);
+        return { status: 'recorded' as const };
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+
+    expect(minted).toEqual([]);
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      'Halton Hills has not published a fall date yet.',
+    ]);
+  });
+
+  it('(b) Aug 12 — the finds promise is re-asked, and the second attempt registers it', async () => {
+    const promises: unknown[] = [];
+    const coach = scriptedCoach([
+      { reply: "I'm checking details on 5 finds nearby - I'll text you the good ones." },
+      {
+        reply: "I'm checking details on 5 finds nearby - I'll text you the good ones.",
+        activityPromise: { subject: 'toddler classes nearby', childId: null },
+      },
+    ]);
+    const h = harness({
+      coach,
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+
+    // Asked twice: the first attempt promised with nothing registered, and the violation
+    // told the second what to do about it.
+    expect(coach.rejected).toHaveLength(2);
+    expect(coach.rejected[0]).toEqual([]);
+    expect(coach.rejected[1]?.[0]).toContain('promise_activity_followup');
+    expect(promises).toHaveLength(1);
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      "I'm checking details on 5 finds nearby - I'll text you the good ones.",
+    ]);
+  });
+
+  it('(b2) the same promise passes on the FIRST attempt when the tool was called', async () => {
+    const coach = scriptedCoach([
+      {
+        reply: "I'm checking details on 5 finds nearby - I'll text you the good ones.",
+        activityPromise: { subject: 'toddler classes nearby', childId: null },
+      },
+    ]);
+    const h = harness({ coach });
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.rejected).toEqual([[]]);
+  });
+
+  it('(c) Aug 12 — the self-referential promise is cut, and the rest goes out verbatim', async () => {
+    const coach = scriptedCoach([
+      { reply: "Swim runs Tuesdays at 4. I'll cut the one sec messages and just answer." },
+      { reply: "Swim runs Tuesdays at 4. I'll cut the one sec messages and just answer." },
+    ]);
+    const h = harness({ coach });
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(coach.rejected[1]?.[0]).toContain('promises to change how Hale itself behaves');
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['Swim runs Tuesdays at 4.']);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('(d) a booking claim with nothing on the calendar never reaches the wire', async () => {
+    const coach = scriptedCoach([
+      { reply: 'Your well-baby visit is booked.' },
+      { reply: 'Your well-baby visit is booked.' },
+    ]);
+    const h = harness({ coach, apology: fakeApology({ status: 'composed', reply: 'sorry' }) });
+    const result = await routeChannelMessage(h.deps, job());
+
+    // Nothing survived the cut, so the turn is a FAILURE with an apology — not a blank
+    // text, and not the claim.
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['sorry']);
+    expect(result.status).toBe('agent_failed');
+  });
+
+  it('(d2) the same claim is sent when the calendar actually holds it', async () => {
+    const h = harness({
+      coach: fakeCoach('Your well-baby visit is booked.'),
+      reconcileView: async () => emptyReconcileView({ scheduledTitles: ['Well-baby checkup'] }),
+    });
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['Your well-baby visit is booked.']);
+  });
+
+  it('(e) a second-person prediction is not a claim — one attempt, sent verbatim', async () => {
+    const coach = scriptedCoach([
+      { reply: "You'll want to register soon - Halton Hills opens Sep 1." },
+    ]);
+    const minted: unknown[] = [];
+    const h = harness({
+      coach,
+      recordRegistrationWatch: async (_db, input) => {
+        minted.push(input);
+        return { status: 'recorded' as const };
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.rejected).toEqual([[]]);
+    expect(minted).toEqual([]);
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      "You'll want to register soon - Halton Hills opens Sep 1.",
+    ]);
+  });
+
+  it('(e2) a quoted parent promise is not a claim', async () => {
+    const coach = scriptedCoach([
+      { reply: 'Your note said "I\'ll sign her up Monday" so I have not touched it.' },
+    ]);
+    const h = harness({ coach });
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.rejected).toEqual([[]]);
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('an ordinary reply costs one attempt and no rewrite', async () => {
+    const coach = scriptedCoach([{ reply: 'Swim runs Tuesdays at 4 at the Gellert.' }]);
+    const h = harness({ coach });
+    await routeChannelMessage(h.deps, job());
+
+    expect(coach.rejected).toEqual([[]]);
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['Swim runs Tuesdays at 4 at the Gellert.']);
+  });
+});
+
+/**
+ * VIL-294 · the inbound half's CALL SITE. What the parent settled becomes a row before
+ * anything reads state — the DB-level behaviour of that row is pinned over real Postgres
+ * in lib/__journey__/stated-fact-remembered.test.ts; what is pinned here is the ORDER,
+ * which is the whole reason the write lives in the router rather than after the reply.
+ */
+describe('what the parent stated is written before anything reads it', () => {
+  function statefulHarness(options: { handlers?: DeterministicHandler[]; body?: string } = {}) {
+    const order: string[] = [];
+    const bodies: string[] = [];
+    const coach: ChannelCoachRuntime = {
+      async respond() {
+        order.push('coach');
+        return { reply: 'noted', planOffer: null, activityPromise: null };
+      },
+    };
+    const h = harness({
+      handlers: options.handlers,
+      context: { body: options.body ?? 'Yes we booked already' },
+      coach,
+      recordStatedState: async (_db, input) => {
+        order.push('stated');
+        bodies.push(input.body);
+        return { status: 'recorded' as const, state: 'health_visit_handled' as const, ref: 'r' };
+      },
+      reconcileView: async () => {
+        order.push('view');
+        return emptyReconcileView();
+      },
+    });
+    return { h, order, bodies };
+  }
+
+  it('hands the reader the parent\u2019s own words, before the coach composes', async () => {
+    const { h, order, bodies } = statefulHarness();
+    await routeChannelMessage(h.deps, job());
+
+    expect(bodies).toEqual(['Yes we booked already']);
+    // Stated FIRST, and the position is asserted absolutely: `indexOf` returns -1 for a
+    // call that never happened, so "before the coach" alone passes when nothing ran.
+    expect(order[0]).toBe('stated');
+    expect(order).toContain('coach');
+  });
+
+  it('writes before the reconciliation view is read, so the ack can be backed', async () => {
+    const { h, order } = statefulHarness();
+    await routeChannelMessage(h.deps, job());
+
+    expect(order[0]).toBe('stated');
+    expect(order).toContain('view');
+  });
+
+  it('never runs on a turn a deterministic handler already claimed', async () => {
+    // The closed vocabulary answers itself and files its own row; a second reading of
+    // the same words would supersede a fact that was just written.
+    const claimer: DeterministicHandler = {
+      name: 'claimer',
+      handle: async () => ({ claimed: true, outcome: 'recorded_done', reply: 'Filed.' }),
+    };
+    const { h, order } = statefulHarness({ handlers: [claimer], body: 'done' });
+    await routeChannelMessage(h.deps, job());
+
+    expect(order).toEqual([]);
+  });
+
+  it('says out loud when it read a settled state and found nothing to settle', async () => {
+    const h = harness({
+      context: { body: 'Yes we booked already' },
+      recordStatedState: async () => ({
+        status: 'not_recorded' as const,
+        state: 'health_visit_handled' as const,
+        reason: 'no_open_checkpoint' as const,
+      }),
+    });
+    await routeChannelMessage(h.deps, job());
+
+    expect(JSON.stringify(h.logs)).toContain('nothing was open to settle');
+  });
+});
+
+/**
+ * THE QUESTION-TIME DISPATCH — the promise becomes a row AND a job, in the same breath.
+ *
+ * The row is #532's, unchanged: the coach's tool registers an intent, the router writes it
+ * against the message that carried it once the transport accepts. What is new is the four
+ * lines after: a promise about a NAMED PLACE or a TIMETABLE also goes on a queue the drain
+ * runs within the minute, so the parent gets the dated answer in minutes rather than in a
+ * day.
+ *
+ * THE MUTATION AT THE BOTTOM IS THE POINT OF THE WHOLE BLOCK. Delete the enqueue and
+ * nothing breaks, nothing throws and nobody is worse off than they were last week — the
+ * ledger row is still there and the hourly sweep still keeps it. That is exactly why the
+ * dispatch has to be a COUNTED outcome rather than a fire-and-forget: an enqueue that
+ * silently stopped happening is invisible from every other signal in the system.
+ */
+describe('a promise worth opening pages for is dispatched at question time', () => {
+  function promisingCoach(subject: string): ChannelCoachRuntime {
+    return {
+      async respond() {
+        return {
+          reply: `Cartwheels runs a parent and tot block. I'll go and read their fall schedule and text you.`,
+          planOffer: null,
+          activityPromise: { subject, childId: null },
+        };
+      },
+    };
+  }
+
+  it('mints the commitment AND enqueues the deep pass keyed to it', async () => {
+    const promises: unknown[] = [];
+    const dispatched: unknown[] = [];
+    const h = harness({
+      coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+      },
+      dispatchDeepResearch: async (payload) => {
+        dispatched.push(payload);
+        return { status: 'enqueued' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    // The reply went first, and the row is minted against the message that carried it.
+    expect(h.transport.sent).toHaveLength(1);
+    expect(promises).toHaveLength(1);
+    expect(promises[0]).toMatchObject({
+      familyId: FAMILY,
+      channelMessageId: ledgerRows(h.fake)[0]?.id,
+    });
+    // ONE job, keyed to the promise that was just written — never to the message, never
+    // to the family: the commitment is what the job is about and what it re-reads.
+    expect(dispatched).toEqual([
+      { commitment_id: PROMISE_COMMITMENT_ID, family_id: FAMILY },
+    ]);
+  });
+
+  it('does NOT enqueue for a subject with no place and no timetable in it', async () => {
+    const dispatched: unknown[] = [];
+    const h = harness({
+      coach: promisingCoach('something for a toddler'),
+      dispatchDeepResearch: async (payload) => {
+        dispatched.push(payload);
+        return { status: 'enqueued' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(dispatched).toEqual([]);
+    // ...and the promise is still a row, so the hourly sweep still owes them an answer.
+    expect(JSON.stringify(h.logs)).toContain('no_depth_owed');
+  });
+
+  it('does not enqueue against a promise that was never recorded', async () => {
+    const dispatched: unknown[] = [];
+    const h = harness({
+      coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
+      recordActivityPromise: async () => ({
+        status: 'not_recorded' as const,
+        reason: 'no_ledger_row' as const,
+      }),
+      dispatchDeepResearch: async (payload) => {
+        dispatched.push(payload);
+        return { status: 'enqueued' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(dispatched).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('not_recorded');
+  });
+
+  /**
+   * THE MUTATION: the queue is gone. The parent must still have been promised, the row
+   * must still exist and be open, and the failure must be VISIBLE — because the only
+   * thing that changed for the parent is that their answer now takes a day.
+   */
+  it('leaves the promise standing and COUNTS the failure when the enqueue cannot happen', async () => {
+    const promises: unknown[] = [];
+    const h = harness({
+      coach: promisingCoach('Cartwheels Gym Centre fall schedule'),
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+      },
+      dispatchDeepResearch: async () => ({
+        status: 'not_enqueued' as const,
+        reason: 'queue_unavailable' as const,
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(1);
+    // The debt exists. The sweep will keep it.
+    expect(promises).toHaveLength(1);
+    // And the lost speed is on the record rather than nowhere.
+    expect(JSON.stringify(h.logs)).toContain('queue_unavailable');
+  });
+});
+
+/**
+ * VIL-304 — THE CLARIFIER OWNS THE NEXT REPLY.
+ *
+ * On 2026-08-24 the founder answered an offer with "YES", got "Which one - add to your
+ * calendar, sending your welcome note to the new family or note in your digest?", quoted
+ * one of those options straight back, and was told Hale cannot message other families.
+ *
+ * The menu was a sentence Hale said and then forgot. Nothing anywhere recorded that
+ * three named options had just been put in front of this parent, so the next inbound was
+ * read cold against every open question at once — and a reply that names a target with
+ * no yes or no in it reads as `no_target` (resolve.ts `toReading`, pinned in both
+ * directions by resolve.test.ts), which is the coach lane, which cannot send that note.
+ *
+ * These tests drive the REAL reading (`toReading`) over the raw model output those two
+ * turns actually produced, so what they pin is the live failure rather than a stipulated
+ * fixture: turn one is genuinely ambiguous, turn two genuinely names a target with no
+ * polarity. What had to change is that turn two never gets that far.
+ */
+describe('the disambiguation a clarifier owns', () => {
+  const OFFER = 'ffff1111-1111-4111-8111-111111111111';
+  const DRAFT = 'aaaa2222-2222-4222-8222-222222222222';
+
+  /** The founder's own standing offer — the one whose YES writes into ANOTHER household,
+   * and the one the coach can never send for itself (coach-runtime.ts). */
+  const founderOffer = (): OpenQuestion => ({
+    id: OFFER,
+    kind: 'founder_welcome_offer',
+    description: 'An offer to send your welcome note to a new family from the Georgetown poster.',
+    subject: 'sending your welcome note to the new family',
+    answerable: { yes: true, no: true },
+    askedAt: null,
+    solicited: false,
+  });
+
+  const calendarDraft = (): OpenQuestion => ({
+    id: DRAFT,
+    kind: 'approval',
+    description: 'Add to your calendar',
+    subject: 'add to your calendar',
+    answerable: { yes: true, no: true },
+    askedAt: null,
+    solicited: false,
+  });
+
+  /**
+   * The resolver, driven through its REAL reading of a scripted model output. Faking the
+   * READING would let these tests assert against a decision nobody's code makes; faking
+   * the model's raw JSON and running `toReading` over it is the live transcript.
+   */
+  function replayedResolver(
+    script: Record<string, { target: string; polarity: string; confidence: string }>,
+  ): ReplyResolver & { seen: string[] } {
+    const resolver = {
+      seen: [] as string[],
+      async read({ text, questions }: { text: string; questions: readonly OpenQuestion[] }) {
+        resolver.seen.push(text);
+        const raw = script[text];
+        if (!raw) throw new Error(`replayedResolver: nothing scripted for ${JSON.stringify(text)}`);
+        return toReading(raw, questions);
+      },
+    };
+    return resolver;
+  }
+
+  /** A stand-in for the handler that owns a kind, claiming only the RESOLVED pass. Named
+   * after the real one, whose own declaration is asserted below so this cannot quietly
+   * stop mirroring it. */
+  function owner(name: string, kind: OpenQuestion['kind']) {
+    const seen: Array<Record<string, unknown>> = [];
+    return {
+      seen,
+      handler: {
+        name,
+        resolves: new Set([kind]),
+        async handle(_db: unknown, ctx: { resolved: unknown }) {
+          if (!ctx.resolved) return { claimed: false };
+          seen.push(ctx.resolved as Record<string, unknown>);
+          return { claimed: true, outcome: 'acted', reply: 'Sent - your note is in their thread.' };
+        },
+      } as unknown as DeterministicHandler,
+    };
+  }
+
+  /** Successive texts from one parent, each its own inbound message. */
+  function conversation(
+    options: Parameters<typeof harness>[0] & { bodies: string[] },
+  ): { h: Harness; run: () => Promise<RouterResult> } {
+    const { bodies, ...rest } = options;
+    const h = harness(rest);
+    let turn = 0;
+    h.deps.loadContext = async () => ({
+      body: bodies[turn - 1] as string,
+      role: 'primary_parent',
+      primaryParentName: 'Sam',
+      reply: SMS_ROUTE,
+    });
+    return {
+      h,
+      run: async () => {
+        turn += 1;
+        return routeChannelMessage(h.deps, nthJob(turn));
+      },
+    };
+  }
+
+  const NAMED_IT = 'sending your welcome note to the new family';
+
+  it('mirrors the kind the real founder handler declares', () => {
+    // The stand-ins above answer for `founder_welcome`. If production ever stopped
+    // declaring that kind, every test in this block would go on passing against nothing.
+    expect(founderWelcomeHandler({} as never).resolves).toEqual(
+      new Set(['founder_welcome_offer']),
+    );
+  });
+
+  it('resolves the option the parent quoted back, instead of handing it to the coach', async () => {
+    const founder = owner('founder_welcome', 'founder_welcome_offer');
+    const coach = brokenCoach();
+    const resolver = replayedResolver({
+      // Turn one: an answer, and which one cannot be told from the word.
+      YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+      // Turn two: the target named exactly, and no polarity in the sentence at all —
+      // which `toReading` reads as `no_target`, the coach lane, the bug.
+      [NAMED_IT]: { target: OFFER, polarity: 'unclear', confidence: 'high' },
+    });
+    const c = conversation({
+      bodies: ['YES', NAMED_IT],
+      handlers: [founder.handler],
+      // The turn that broke in production: the coach could not run, so the canned choice
+      // sentence went out. The next test drives the same arc through a coach that can.
+      coach,
+      questions: fakeQuestions([calendarDraft(), founderOffer()]),
+      replyResolver: resolver,
+    });
+
+    const asked = await c.run();
+    expect(asked.status).toBe('agent_failed');
+    expect(c.h.transport.bodies()[0]).toMatch(/Which one/i);
+
+    const answered = await c.run();
+
+    expect(answered.status).toBe('resolved');
+    expect(answered.handler).toBe('founder_welcome');
+    expect(founder.seen).toEqual([
+      {
+        kind: 'founder_welcome_offer',
+        questionId: OFFER,
+        polarity: 'yes',
+        confidence: 'high',
+      },
+    ]);
+    expect(c.h.transport.bodies()[1]).toBe('Sent - your note is in their thread.');
+    // It never cost a resolver call either: naming one of a handful of options Hale just
+    // printed is a selection, not a reading problem.
+    expect(resolver.seen).toEqual(['YES']);
+  });
+
+  it('resolves it after the COACH asked which one, in its own words', async () => {
+    const founder = owner('founder_welcome', 'founder_welcome_offer');
+    const coach = fakeCoach(
+      'Which of those did you mean - the calendar change, or the welcome note?',
+    );
+    const c = conversation({
+      bodies: ['YES', NAMED_IT],
+      handlers: [founder.handler],
+      coach,
+      questions: fakeQuestions([calendarDraft(), founderOffer()]),
+      replyResolver: replayedResolver({
+        YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+        [NAMED_IT]: { target: OFFER, polarity: 'unclear', confidence: 'high' },
+      }),
+    });
+
+    expect((await c.run()).status).toBe('agent_replied');
+    const answered = await c.run();
+
+    expect(answered.status).toBe('resolved');
+    expect(founder.seen).toHaveLength(1);
+    // One coach turn, the one that asked. The answer did not need a second.
+    expect(coach.calls).toBe(1);
+  });
+
+  it('resolves the ordinal it printed', async () => {
+    const founder = owner('founder_welcome', 'founder_welcome_offer');
+    const c = conversation({
+      bodies: ['YES', '2'],
+      handlers: [founder.handler],
+      coach: brokenCoach(),
+      questions: fakeQuestions([calendarDraft(), founderOffer()]),
+      replyResolver: replayedResolver({
+        YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+        '2': { target: 'none', polarity: 'unclear', confidence: 'low' },
+      }),
+    });
+
+    const asked = await c.run();
+    // The numbers are IN the sentence, which is the only thing that makes an ordinal an
+    // answer at all: a parent cannot pick "2" off a list they were never shown.
+    expect(c.h.transport.bodies()[0]).toContain('2)');
+    expect(asked.status).toBe('agent_failed');
+
+    expect((await c.run()).status).toBe('resolved');
+    expect(founder.seen).toEqual([
+      { kind: 'founder_welcome_offer', questionId: OFFER, polarity: 'yes', confidence: 'high' },
+    ]);
+  });
+
+  it('is spent by the next text whatever that text says', async () => {
+    const founder = owner('founder_welcome', 'founder_welcome_offer');
+    const c = conversation({
+      bodies: ['YES', 'what time is storytime on saturday', NAMED_IT],
+      handlers: [founder.handler],
+      coach: fakeCoach(),
+      questions: fakeQuestions([calendarDraft(), founderOffer()]),
+      replyResolver: replayedResolver({
+        YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+        'what time is storytime on saturday': {
+          target: 'none',
+          polarity: 'unclear',
+          confidence: 'high',
+        },
+        [NAMED_IT]: { target: OFFER, polarity: 'unclear', confidence: 'high' },
+      }),
+    });
+
+    await c.run();
+    // An ordinary question clears it and is answered as an ordinary question.
+    expect((await c.run()).status).toBe('agent_replied');
+    expect(founder.seen).toEqual([]);
+
+    // And the menu is gone: the same words that would have resolved it a turn ago are
+    // now just words, because Hale is no longer standing in front of that question. Its
+    // positive control is the first test in this block — the identical body, through the
+    // identical harness, reaching the handler — so this cannot pass by never matching.
+    expect((await c.run()).status).toBe('agent_replied');
+    expect(founder.seen).toEqual([]);
+  });
+
+  it('will not carry an answer into a question that has since closed', async () => {
+    const founder = owner('founder_welcome', 'founder_welcome_offer');
+    const open = [calendarDraft(), founderOffer()];
+    const c = conversation({
+      bodies: ['YES', NAMED_IT],
+      handlers: [founder.handler],
+      coach: fakeCoach(),
+      questions: fakeQuestions(open),
+      replyResolver: replayedResolver({
+        YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+        [NAMED_IT]: { target: OFFER, polarity: 'unclear', confidence: 'high' },
+      }),
+    });
+
+    await c.run();
+    // The offer lapsed between the question and the answer. Same positive control as
+    // above: these exact words resolve when the row is still there.
+    open.splice(1, 1);
+
+    expect((await c.run()).status).toBe('agent_replied');
+    expect(founder.seen).toEqual([]);
+  });
+
+  /** Two pending drafts, in the queue's own order — a numbering that has nothing to do
+   * with the menu Hale just printed. */
+  function approvalsQueue() {
+    const approved: string[] = [];
+    return {
+      approved,
+      spine: {
+        listPending: async () => [
+          { actionId: 'a-1', actionType: 'calendar_add' },
+          { actionId: 'a-2', actionType: 'calendar_move' },
+        ],
+        latestUndoable: async () => null,
+        approve: async (_db: unknown, args: { actionId: string }) => {
+          approved.push(args.actionId);
+          return true;
+        },
+        decline: async () => true,
+        undo: async () => true,
+      },
+    };
+  }
+
+  it('never lets the approvals queue read a digit the menu was standing for', async () => {
+    // The offer was option 2 on the menu and lapsed before the answer came back. "yes 2"
+    // then fell out of the menu and into the approval grammar, where 2 counts positions
+    // in a DIFFERENT list — and the second drafted action, which the parent was never
+    // shown and never picked, was executed (rule #4). A digit typed while a menu is
+    // standing belongs to that menu and to nothing else.
+    const queue = approvalsQueue();
+    const open = [calendarDraft(), founderOffer()];
+    const c = conversation({
+      bodies: ['YES', 'yes 2'],
+      handlers: [approvalHandler(queue.spine as never)],
+      coach: brokenCoach(),
+      questions: fakeQuestions(open),
+      replyResolver: replayedResolver({
+        YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
+        'yes 2': { target: 'none', polarity: 'unclear', confidence: 'high' },
+      }),
+    });
+
+    await c.run();
+    expect(c.h.transport.bodies()[0]).toContain('2)');
+    // Option 2 closes between the question and the answer, so the menu cannot place it.
+    open.splice(1, 1);
+
+    await c.run();
+
+    expect(queue.approved).toEqual([]);
+  });
+
+  it('reads the same digit against the approvals queue when no menu was standing', async () => {
+    // The positive control for the assertion above, through the identical handler and
+    // the identical spine: without a menu in front of them, "yes 2" is the approval
+    // grammar's own ordinal and still approves the second drafted action.
+    const queue = approvalsQueue();
+    const c = conversation({
+      bodies: ['what time is storytime on saturday', 'yes 2'],
+      handlers: [approvalHandler(queue.spine as never)],
+      coach: fakeCoach(),
+      questions: fakeQuestions([calendarDraft(), founderOffer()]),
+      replyResolver: replayedResolver({
+        'what time is storytime on saturday': {
+          target: 'none',
+          polarity: 'unclear',
+          confidence: 'high',
+        },
+      }),
+    });
+
+    await c.run();
+    expect((await c.run()).handler).toBe('approval');
+
+    expect(queue.approved).toEqual(['a-2']);
   });
 });

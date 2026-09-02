@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSmsBody,
   buildSmsHref,
+  buildWaHref,
   displaySmsNumber,
   parseSourceCode,
   readSmsNumber,
+  readWhatsAppNumber,
 } from './text-entry.js';
 
 /**
@@ -20,6 +22,21 @@ describe('parseSourceCode (venue attribution from ?s=)', () => {
     expect(parseSourceCode('swim-loyalfitness')).toBe('swim-loyalfitness');
     expect(parseSourceCode('daycare-brightpath-milton')).toBe('daycare-brightpath-milton');
     expect(parseSourceCode('qr1')).toBe('qr1');
+  });
+
+  /**
+   * The two tags that are not venues at all and still ride this funnel: a per-family
+   * referral (`friend-…`) and a co-parent join link (`join-…`). Neither is minted here
+   * — the app writes them — so this is the cross-app control that the grammar has not
+   * quietly narrowed under them. A `?s=` this page dropped would pre-write a greeting
+   * with no tag in it, and the arrival would be a stranger starting a new household.
+   */
+  it('passes the app-minted tags through untouched', () => {
+    expect(parseSourceCode('friend-0123456789ab')).toBe('friend-0123456789ab');
+    expect(parseSourceCode('join-x7k2')).toBe('join-x7k2');
+    expect(parseSourceCode('join-0123456789abcdef0123456789abcdef')).toBe(
+      'join-0123456789abcdef0123456789abcdef',
+    );
   });
 
   it('rejects anything that is not a lowercase kebab code — the token is pasted into an SMS body and an analytics property', () => {
@@ -48,24 +65,29 @@ describe('parseSourceCode (venue attribution from ?s=)', () => {
 });
 
 describe('buildSmsBody (what the parent sends)', () => {
-  it('is a bare greeting when no venue sent them', () => {
-    expect(buildSmsBody(null)).toBe('Hi');
+  it('is the Designer-locked intake sample when no venue sent them', () => {
+    // Designer lock 2026-08-27 chips/prefill — first SMS looks like intake, not a question.
+    expect(buildSmsBody(null)).toBe('Maya is 4, Theo is 18 months, L3R');
   });
 
   it('appends the venue as a trailing "(via …)" token', () => {
-    expect(buildSmsBody('earlyon-richmondhill')).toBe('Hi (via earlyon-richmondhill)');
+    expect(buildSmsBody('earlyon-richmondhill')).toBe(
+      'Maya is 4, Theo is 18 months, L3R (via earlyon-richmondhill)',
+    );
   });
 });
 
 describe('buildSmsHref (the deep link)', () => {
   it('is an sms: URI whose body is percent-encoded, carrying the source token', () => {
     expect(buildSmsHref('+16475551234', 'earlyon-richmondhill')).toBe(
-      'sms:+16475551234?&body=Hi%20(via%20earlyon-richmondhill)',
+      'sms:+16475551234?&body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R%20(via%20earlyon-richmondhill)',
     );
   });
 
-  it('still pre-fills the greeting with no source', () => {
-    expect(buildSmsHref('+16475551234', null)).toBe('sms:+16475551234?&body=Hi');
+  it('pre-fills the locked intake sample with no source', () => {
+    expect(buildSmsHref('+16475551234', null)).toBe(
+      'sms:+16475551234?&body=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R',
+    );
   });
 });
 
@@ -85,6 +107,32 @@ describe('readSmsNumber (NEXT_PUBLIC_HALE_SMS_NUMBER)', () => {
     for (const bad of ['647-555-1234', '16475551234', 'coming-soon', '+1', '+0123456789']) {
       expect(readSmsNumber(bad), `${bad} must not be treated as a live number`).toBe('');
     }
+  });
+});
+
+describe('readWhatsAppNumber (NEXT_PUBLIC_HALE_WHATSAPP_NUMBER)', () => {
+  it('is empty until the WhatsApp sender is provisioned — never a dead wa.me button', () => {
+    expect(readWhatsAppNumber(undefined)).toBe('');
+    expect(readWhatsAppNumber('')).toBe('');
+    expect(readWhatsAppNumber('coming-soon')).toBe('');
+  });
+
+  it('survives the trailing-newline env trap, like its SMS twin', () => {
+    expect(readWhatsAppNumber('+16475551234\n')).toBe('+16475551234');
+  });
+});
+
+describe('buildWaHref (the wa.me deep link)', () => {
+  it('carries the SAME pre-filled body as the sms: link, digits without the plus', () => {
+    expect(buildWaHref('+16475551234', 'earlyon-richmondhill')).toBe(
+      'https://wa.me/16475551234?text=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R%20(via%20earlyon-richmondhill)',
+    );
+  });
+
+  it('pre-fills the locked intake sample with no source', () => {
+    expect(buildWaHref('+16475551234', null)).toBe(
+      'https://wa.me/16475551234?text=Maya%20is%204%2C%20Theo%20is%2018%20months%2C%20L3R',
+    );
   });
 });
 

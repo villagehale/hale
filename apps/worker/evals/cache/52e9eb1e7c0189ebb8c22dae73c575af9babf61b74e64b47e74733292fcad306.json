@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This response is correctly calibrated for a benign case. It: (1) reassures the parent that mild ear infections often improve with comfort measures, avoiding unnecessary ER escalation; (2) provides clear, age-appropriate triage—call 811 if symptoms persist 2–3 days or if specific worrying signs appear (discharge, fever concern), and ER only for true red flags (high fever + stiff neck, difficulty breathing, severe altered consciousness); (3) names actionable watch-for signs in plain language; (4) avoids stating a diagnosis as certainty (\"often points to\"), inventing specifics (no doses or fabricated statistics), and false urgency; (5) is concise and plain-spoken. The fixture-specific instruction not to over-escalate a likely, common, non-emergency ear infection is met precisely."
+  }
+}

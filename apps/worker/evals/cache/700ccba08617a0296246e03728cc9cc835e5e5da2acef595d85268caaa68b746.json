@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads by name with the strongest pick (Town of Oakville's Learn to Swim - Preschool, Levels A-E), attributes correctly (\"their site says\"), and accurately conveys the Aug 4 browse / Aug 11 registration detail from the picks. The price is null and no page was read today (no_page_read), so the correct negative form is \"I could not get into their page today\" - and that is exactly what the message says, which is earned and correct. Watch is TRUE and the message includes a first-person continuation commitment (\"I'll keep watching and text you when that's up\"), satisfying that requirement. There is no question, no offer, no invented detail, no aggregator source, no unearned negative claim. The YMCA pick is silently dropped to keep the message to two sentences - that is permissible (dropping a whole pick to fit the best one complete is correct). The message is plain text, two short sentences, names a real municipal program, and handles every edge case correctly.",
+    "score": 5
+  }
+}

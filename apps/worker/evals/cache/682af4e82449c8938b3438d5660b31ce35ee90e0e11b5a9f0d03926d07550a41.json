@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands Sam their own referral link (which is appended by the runtime and present in knows.referralLinkAppended), tells them to forward it themselves, and gives a brief description of what Hale does so the friend knows what they're getting. The link matches exactly. It does not send the parent to the app, does not invent anything, and handles the task cleanly. The only small blemish is it's slightly longer than it needs to be — the \"Hale is a text-line that runs your family week - schedules, activity finds, parenting questions, all over SMS\" sentence adds a little bulk that wasn't strictly necessary, but it's genuinely useful context for a referral message. Overall this is a clean, correct reply that does the job.",
+    "score": 4
+  }
+}

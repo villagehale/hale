@@ -7,7 +7,6 @@ import {
   nothingPendingReply,
   nothingToUndoReply,
   outOfRangeReply,
-  whichOneReply,
 } from './copy';
 import { MAX_LISTED_APPROVALS, type FastPathCommand } from './fast-path';
 
@@ -43,6 +42,17 @@ import { MAX_LISTED_APPROVALS, type FastPathCommand } from './fast-path';
 export interface PendingAction {
   actionId: string;
   actionType: string;
+  /**
+   * Whether Hale's own reviewer has cleared it (rule #3). A draft that has not is still
+   * PENDING — it is in the app's queue and the parent may still decline it — but its YES
+   * is refused by `approveDraftedAction` whatever the parent says, so the open-question
+   * reader marks that polarity closed and the resolver stops binding acceptances to it.
+   *
+   * On the list rather than re-queried: the two readers of "is this pending" would
+   * otherwise disagree about which rows a bare ordinal points at, and a renumbered list
+   * is the one failure the oldest-first ordering exists to prevent.
+   */
+  reviewerApproved: boolean;
 }
 
 /**
@@ -108,7 +118,6 @@ export type ApprovalStatus =
   | 'approved'
   | 'declined'
   | 'undone'
-  | 'ambiguous'
   | 'out_of_range'
   | 'nothing_pending'
   | 'nothing_to_undo'
@@ -132,6 +141,18 @@ export async function resolveApproval(
     parentUserId: string;
     command: FastPathCommand;
     now: Date;
+    /**
+     * The action the router's natural-reply stage decided this message names
+     * (lib/channel/router/resolve.ts) — "yes to the swim move" instead of "YES 2".
+     *
+     * BY ID, NEVER BY POSITION, and that is the whole reason this is a separate field
+     * rather than a synthesised ordinal. The pending list is read twice on such a turn
+     * (once to describe the questions, once here to act), and a co-parent approving
+     * something in the app between those two reads shifts every ordinal by one. An id
+     * cannot shift. Decision 2 above — an ordinal is never clamped — becomes: a named
+     * action that is no longer pending is never silently swapped for its neighbour.
+     */
+    targetActionId?: string;
   },
   spine: ApprovalSpine,
 ): Promise<ApprovalOutcome> {
@@ -140,7 +161,21 @@ export async function resolveApproval(
   }
 
   const pending = await spine.listPending(database, input.familyId);
-  const target = pick(pending, input.command.index);
+  const target =
+    input.targetActionId === undefined
+      ? pick(pending, input.command.index)
+      : (pending.find((action) => action.actionId === input.targetActionId) ?? 'gone');
+
+  if (target === 'gone') {
+    // It was pending when the questions were read and is not now, so somebody answered
+    // it — overwhelmingly the co-parent, in the app. That is a real state and it has a
+    // true sentence; inventing a retry would be the failure this receipt class replaced.
+    return {
+      status: 'conflict',
+      reply: conflictReply('already_resolved'),
+      actionId: input.targetActionId ?? null,
+    };
+  }
 
   if (target === 'out_of_range') {
     // Reached only when an ordinal was given and the list is shorter (or empty).
@@ -149,11 +184,26 @@ export async function resolveApproval(
       : { status: 'out_of_range', reply: outOfRangeReply(pending.length), actionId: null };
   }
   if (target === 'ambiguous') {
-    return {
-      status: 'ambiguous',
-      reply: whichOneReply(pending.map((a) => a.actionType)),
-      actionId: null,
-    };
+    // NOT CLAIMED — the 2026-08-22 subtraction, and the same move `resolveNaturalReply`
+    // already made for the identical failure one door over (route.ts, `unplaced`).
+    //
+    // This branch used to answer "Which one - add to your calendar or note in your
+    // digest?", assembled out of action-type labels by the fastest reader in the chain.
+    // At 17:40 UTC a parent said "Yes, please" to an offer the activity sweep had made
+    // twenty minutes earlier and never written down; nothing else was open, so this
+    // function claimed the turn in 0.8 seconds — no coach turn in the trace at all — and
+    // handed them a menu of two unrelated drafted actions. Neither was the thing they
+    // were answering, and a machine reading its own option labels back at somebody
+    // cannot notice that.
+    //
+    // So the turn falls through: the resolver reads their words against every open
+    // question, and failing that the COACH takes it with the thread in front of it and
+    // can ask what they meant. The disambiguating sentence still exists, in the one
+    // place it is honest — `clarifyWhichQuestion`, for a coach that cannot run at all.
+    //
+    // Nothing is executed either way (rule #4), which is the property this branch always
+    // had and keeps.
+    return notClaimed;
   }
   if (target === null) {
     return notClaimed;
@@ -192,7 +242,7 @@ export async function resolveApproval(
 function pick(
   pending: PendingAction[],
   index: number | null,
-): PendingAction | null | 'ambiguous' | 'out_of_range' {
+): PendingAction | null | 'ambiguous' | 'out_of_range' | 'gone' {
   if (index !== null) {
     return pending[index - 1] ?? 'out_of_range';
   }

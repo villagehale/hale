@@ -57,6 +57,23 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
     }
   });
 
+  it('sells Free as SMS — the PR 549 free-card bullets, verbatim', () => {
+    // VIL-318: Free is the number you text, not Village or Companion.
+    // Casing matches apps/site PricingSection.freeFeatures (PR 549).
+    expect(PLAN_DISPLAY.free.features).toEqual([
+      'Text Hale',
+      'Rec dates watched',
+      'Answers',
+      'Founding rate',
+    ]);
+  });
+
+  it('does not sell Village or Companion as the free product', () => {
+    const features = PLAN_DISPLAY.free.features.join(' ');
+    expect(features).not.toMatch(/village/i);
+    expect(features).not.toMatch(/companion/i);
+  });
+
   it('never sells multi-child or co-parent as paid features — both are free', () => {
     // Multi-child and co-parent are NOT in PLAN_ENTITLEMENTS: the free tier already
     // delivers both. The paid tiers gate autonomy + execution integrations only, so

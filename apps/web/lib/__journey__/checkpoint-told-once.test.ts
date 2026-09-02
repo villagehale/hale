@@ -7,15 +7,19 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
+  fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
+import { WATCH_OFFER } from '~/lib/channel/intake/copy';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
 import { checkpointById, checkpointRef } from '~/lib/health/checkpoints';
 import { checkpointToldKey, checkpointToldKeyPrefix } from '~/lib/health/told';
+import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { fakeWeather } from '~/lib/weather/open-meteo';
@@ -33,6 +37,11 @@ import { fakeWeather } from '~/lib/weather/open-meteo';
  * So the two surfaces are driven here in sequence, over one store: the REAL intake
  * machine and the REAL radar composer (on `client: null`, the production deterministic
  * path — rule #8), then the REAL nudge sweep 48 hours later.
+ *
+ * 2026-08-28 (ads-week audit): the radar's third rung was REMOVED from the pre-consent
+ * first find — a vaccine flag before consent was observed live — so the contract this
+ * file pins flipped. The radar now says nothing about health; the consent-gated nudge
+ * is the one surface that tells the checkpoint, and it tells it exactly once.
  *
  * SEAM discipline is the toddler journey's (lib/__journey__/toddler-journey.test.ts):
  * the fake database does not evaluate WHERE clauses, so each loader below restates the
@@ -87,6 +96,9 @@ async function runIntakeRadar(): Promise<Intake> {
 
   const deps: IntakeDeps = {
     transport,
+    // A FakeDb has no `conversations` to resolve, and what this file pins is not the
+    // thread — the machine's own suite owns that (intake/machine.test.ts).
+    threadMessage: async () => 'conv-1',
     extractor: new FakeExtractor([{ children: [MIA], postalCode: AREA }]),
     intentReader: new FakeIntentReader([
       { intent: 'assent', verbatim: 'yes please', interpretation: 'a clear yes' },
@@ -107,6 +119,7 @@ async function runIntakeRadar(): Promise<Intake> {
     resolveCenter: async () => null,
     discoveryTrigger: () => {},
     ackComposer: createIntakeAckComposer(null),
+    answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,
@@ -118,7 +131,9 @@ async function runIntakeRadar(): Promise<Intake> {
   await text('hi');
   const provisioned = await text('Mia is 6 months, we are at L7G');
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
-  const radarBody = transport.bodies().at(-1) as string;
+  // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
+  // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
+  const radarBody = transport.bodies().findLast((b) => b.includes(WATCH_OFFER)) as string;
   await text('yes please');
 
   const childId = fake.rows(schema.children)[0]?.id as string;
@@ -134,6 +149,7 @@ const openGate = (): OutboundGatePorts => ({
   channelEnrolled: async () => true,
   watchConsentGranted: async () => true,
   countProactiveSends: async () => 0,
+  proactiveSentSince: async () => false,
   parentTimeZone: async () => TZ,
 });
 
@@ -210,6 +226,13 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     // MEM-10 · the REAL writer over the same store (this family was promised nothing,
     // so the honest outcome here is the ledger's `none_open`).
     fulfillCommitment,
+    // The REAL offer writer over the same store: a health nudge whose task is booking
+    // registers the standing question its own close makes (lib/health/offer.ts).
+    recordCheckupOffer: (database, input) =>
+      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
+    // The REAL threader over the same store: a nudge the parent can answer has to be a
+    // row in `messages`, because that is the only place their reply's antecedent lives.
+    threadMessage: threadProactiveMessage,
   };
 }
 
@@ -283,59 +306,47 @@ afterAll(() => {
   vi.unstubAllEnvs();
 });
 
-describe('the radar tells a checkpoint', () => {
-  it('says the reviewed row out loud, in the first message this family ever gets', () => {
-    expect(told.intake.radarBody).toContain('Mia');
-    expect(told.intake.radarBody).toContain(taskOf(CHECKPOINT_ID));
+describe('the radar never tells a checkpoint (pre-consent — ads-week audit, 2026-08-28)', () => {
+  it('keeps the reviewed row out of the first message this family ever gets', () => {
+    // The first find carries the WATCH OFFER — it is the pre-consent message by
+    // construction — so the health-admin line may not ride it (intake/radar.ts). This
+    // geo-empty family gets the honest empty-handed answer with the first-find promise.
+    expect(told.intake.radarBody).not.toContain(taskOf(CHECKPOINT_ID));
+    expect(told.intake.radarBody).toContain('Your first weekend find lands in a day or two.');
   });
 
-  it('marks it told once, on the ledger, and only after the message has gone', () => {
-    // The marker is the checkpoint's own identity, and it is written against the row the
-    // SEND wrote — never against a compose. A message built and dropped tells nobody.
+  it('writes no told-marker, so the checkpoint stays live for the post-consent surface', () => {
     const marker = checkpointToldKey(
       told.intake.familyId,
       refFor(CHECKPOINT_ID, told.intake.childId),
     );
-    const writes = told.intake.fake.writes;
-    const marks = writes.filter(
+    const marks = told.intake.fake.writes.filter(
       (write) =>
         write.op === 'update' &&
         write.table === schema.channelMessages &&
         write.payload.dedupeKey === marker,
     );
-    expect(marks).toHaveLength(1);
-
-    // SEAM: the fake applies no WHERE clause, so WHICH row the mark lands on is
-    // SQL-side (told.ts scopes it to the id sendAndRecord handed back). What this store
-    // can see is the ORDER, and the order is the contract: the outbound row exists,
-    // status 'sent', before anything claims this family has been told.
-    const markIndex = writes.indexOf(marks[0] as (typeof writes)[number]);
-    const carrier = writes
-      .slice(0, markIndex)
-      .filter((write) => write.op === 'insert' && write.table === schema.channelMessages)
-      .at(-1);
-    expect(carrier?.payload).toMatchObject({
-      direction: 'out',
-      category: 'intake',
-      status: 'sent',
-    });
+    expect(marks).toHaveLength(0);
   });
 });
 
-describe('the 48h nudge does not repeat it', () => {
-  it('finds nothing left worth saying, and says nothing', () => {
-    expect(told.sweep).toMatchObject({ enabled: true, evaluated: 1, sent: 0, quiet: 1 });
-    expect(told.sweepBodies).toEqual([]);
+describe('the 48h nudge is now the surface that tells it (post-consent)', () => {
+  it('sends the reviewed row once consent-gated delivery runs', () => {
+    expect(told.sweep).toMatchObject({ enabled: true, evaluated: 1, sent: 1, quiet: 0 });
+    expect(told.sweepBodies).toHaveLength(1);
+    expect(told.sweepBodies[0]).toContain(taskOf(CHECKPOINT_ID));
+    const audit = told.intake.fake
+      .rows(schema.auditLog)
+      .find((row) => row.actionTaken === 'proactive_nudge_sent');
+    expect((audit?.after as Record<string, unknown>)?.checkpointId).toBe(CHECKPOINT_ID);
   });
 
-  it('never sends the same checkpoint sentence twice', () => {
-    for (const body of told.sweepBodies) {
-      expect(body).not.toContain(taskOf(CHECKPOINT_ID));
-    }
-    const audits = told.intake.fake
-      .rows(schema.auditLog)
-      .filter((row) => row.actionTaken === 'proactive_nudge_sent');
-    expect(audits).toEqual([]);
+  it('the family hears the sentence exactly once, and never from the radar', () => {
+    const carried = [told.intake.radarBody, ...told.sweepBodies].filter((body) =>
+      body.includes(taskOf(CHECKPOINT_ID)),
+    );
+    expect(carried).toHaveLength(1);
+    expect(carried[0]).toBe(told.sweepBodies[0]);
   });
 });
 

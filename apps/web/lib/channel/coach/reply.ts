@@ -1,5 +1,5 @@
 import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 
 /**
@@ -59,6 +59,25 @@ export interface SmsReplyArgs {
    * what gives way is a clause of background the plan carries anyway.
    */
   planOffer?: string;
+  /**
+   * The forwardable line plus the family's own link, registered through
+   * `share_referral_link` and already gated by it, or absent when the turn shared
+   * nothing (referral/share.ts `referralBlock`).
+   *
+   * Protected for the same reason the offer is, and more sharply: the last thing in it
+   * is a URL, so a trim from the end does not shorten the message — it breaks the one
+   * thing the message exists to deliver.
+   */
+  referral?: string;
+  /**
+   * Called with how many SMS units went over the side when an answer had to be trimmed.
+   *
+   * A CALLBACK rather than a report from in here, so this module stays pure and
+   * synchronous: the reporting is a network call, and it belongs at the async seam that
+   * called this (coach/runtime.ts), not inside a string function. Only the COUNT is
+   * offered — the body it came from is what the parent typed back at us (rule #1).
+   */
+  onTrimmed?: (overBy: number) => void;
 }
 
 /**
@@ -92,8 +111,14 @@ export function redactTeenNames(
  * redacted, in a product whose compliance baseline is Quebec. The property-based
  * boundary holds in both directions for every alphabet: a sibling named Léana keeps her
  * name when Léa is the teen. (party/card.ts redacts host copy with the same shape.)
+ *
+ * Exported for the activity lane, which asks the OPPOSITE question of the same matcher:
+ * this file replaces a name it finds in an outbound body, and that one REFUSES a search
+ * query it finds one in (rule #1 — a name must not cross the border at all). One boundary
+ * rule rather than two, so a household whose names this file redacts is exactly the
+ * household whose names that one will not send.
  */
-function nameAnywhere(name: string): RegExp {
+export function nameAnywhere(name: string): RegExp {
   return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(name)}(?![\\p{L}\\p{N}])`, 'giu');
 }
 
@@ -139,9 +164,26 @@ export function plainText(text: string): string {
   return out.replace(/\s+/g, ' ').trim();
 }
 
-/** Sentence-ish chunks, kept WITH their terminator so re-joining them reads normally. */
+/**
+ * Sentence-ish chunks, kept WITH their terminator so re-joining them reads normally.
+ *
+ * The lookahead is what keeps "whole sentences" true. A period inside an abbreviation is
+ * not a full stop, and a naked `[.!?]` cannot tell the difference: a live probe on
+ * 2026-08-21 split "Kids & Me drop-ins Thursdays 1-2:30 p.m. at Acton Library - their
+ * site says so" at the p.m. and sent the parent the time with the venue and the source
+ * attribution cut off it. A find with no address is not a shorter answer, it is one
+ * nobody can use — and an unattributed one is a web claim wearing Hale's own voice.
+ *
+ * WHAT FOLLOWS decides it, not what precedes. A list of abbreviations was the first
+ * attempt and it was wrong in both directions: it needs a new entry for every a.m., i.e.
+ * and U.S., the failure of a missing entry is silent, and it also refused the boundary in
+ * "...1-2:30 p.m. Want me to confirm?" — which really is one — so the whole find went
+ * over the side instead of the trailing question. A lowercase word after a full stop is a
+ * continuation of the fact before it; anything else starts something new. That one
+ * property covers every abbreviation without naming any of them.
+ */
 function sentences(text: string): string[] {
-  return text.split(/(?<=[.!?])\s+/).filter((part) => part.trim().length > 0);
+  return text.split(/(?<=[.!?])\s+(?=[^\p{Ll}])/u).filter((part) => part.trim().length > 0);
 }
 
 /**
@@ -158,11 +200,31 @@ function sentences(text: string): string[] {
  * audit P0 #4). Nothing replaces it. A parent who texted is owed a text back, and the
  * sentence they get is the one carrying the answer.
  */
-function fitToBudget(body: string, max: number, suffix = ''): string {
+function fitToBudget(
+  body: string,
+  max: number,
+  suffix = '',
+  onTrimmed?: (overBy: number) => void,
+): string {
   // The suffix is measured with the body, never after it: a reviewed line appended to a
   // reply that was already at the ceiling is how the budget gets quietly exceeded.
   const withSuffix = (text: string) => (suffix === '' ? text : `${text} ${suffix}`);
-  if (smsSegments(withSuffix(body)) <= max) return body;
+  const whole = withSuffix(body);
+  if (smsSegments(whole) <= max) return body;
+
+  // Named rather than dropped in silence, like the siren below and for the same reason:
+  // what goes over the side here is work this turn already paid for. On 2026-08-21 the
+  // flagship question — "what's on Sept-Dec near me" — composed a verified Sep 1 opening
+  // plus two finds from a ~50s live web search, and the entire second paragraph was cut
+  // from a message that opened "Two things worth flagging here". Nothing downstream could
+  // tell that reply from one that fit, so it took a human reading a graded bench run to
+  // see it. A count makes the next one countable. The BODY never reaches the log — it can
+  // carry back what the parent typed (rule #1).
+  const overBy = smsUnits(whole) - smsUnitsBudget(whole, max);
+  console.warn(
+    `channel coach: model answer ran ${overBy} units past the ${max}-segment budget; sending the prefix that fits`,
+  );
+  onTrimmed?.(overBy);
 
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
@@ -205,18 +267,35 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     console.error('channel coach: model composed a safety referral; sent the fixed line');
     return SAFETY_REPLY;
   }
-  const offer = args.planOffer?.trim();
-  if (offer === undefined || offer === '') return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  // The protected tail. Both sources are model-composed and both were accepted by the
+  // tool that gated them, so both are appended after the fit rather than trimmed with
+  // the answer. They are JOINED rather than made exclusive because "which one wins" is
+  // not a judgement this function is in a position to make — and a turn that somehow
+  // registered both is a turn where the parent must see both, or be promised something
+  // that is not in the message.
+  //
+  // Redacted with the answer, not after it: the referral line is composed by the model
+  // and is the one piece of outbound text a parent forwards to somebody outside the
+  // family, so the age-derived teen floor (rule #1) has to cover it too.
+  const suffix = redactTeenNames(
+    [args.planOffer, args.referral]
+      .map((part) => part?.trim() ?? '')
+      .filter((part) => part !== '')
+      .join(' '),
+    args.children,
+    args.now,
+  );
+  if (suffix === '') return fitToBudget(redacted, MAX_REPLY_SEGMENTS, '', args.onTrimmed);
 
-  // The tool told the model to hand the offer in rather than write it into the answer;
+  // The tools told the model to hand these in rather than write them into the answer;
   // this is the backstop for when it does both, because the visible cost is the same
   // sentence arriving twice.
-  const answer = dropDuplicateOffer(redacted, offer);
-  // Nothing but the offer left: the model answered with the offer and nothing else, so
-  // the offer IS the reply. Joining an empty answer to it would send a leading space.
-  if (answer === '') return offer;
-  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, offer);
-  return `${fitted} ${offer}`;
+  const answer = dropDuplicateOffer(redacted, suffix);
+  // Nothing but the suffix left: the model answered with it and nothing else, so it IS
+  // the reply. Joining an empty answer to it would send a leading space.
+  if (answer === '') return suffix;
+  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, suffix, args.onTrimmed);
+  return `${fitted} ${suffix}`;
 }
 
 /**

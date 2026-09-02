@@ -1,6 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
-import { EMERGENCY_TOKENS, SAFETY_REPLY, namesAnEmergency } from '~/lib/channel/off-domain/copy';
+import {
+  EMERGENCY_REPLY,
+  EMERGENCY_TOKENS,
+  MENTAL_CRISIS_REPLY,
+  SAFETY_REPLY,
+  namesAnEmergency,
+} from '~/lib/channel/off-domain/copy';
 import { ChannelTurnFailed } from './coach-runtime';
 import {
   type SmokeAlarmClaim,
@@ -245,14 +251,28 @@ function alarm(
 }
 
 describe('the smoke alarm', () => {
-  it('sends the fixed safety line, verbatim, when the model is gone and the text is an emergency', async () => {
+  it('sends Call 911 now. alone when the model is gone and the text is an emergency', async () => {
     const a = alarm();
 
     expect(await a.run()).toBe('fired');
-    expect(a.sent).toEqual([SAFETY_REPLY]);
-    // Strict equality against the one definition, not a substring: the whole point of
-    // the line is that it is the reviewed sentence and not a near-miss of it.
-    expect(a.sent[0]).toBe(SAFETY_REPLY);
+    expect(a.sent).toEqual([EMERGENCY_REPLY]);
+    expect(a.sent[0]).toBe('Call 911 now.');
+    expect(a.sent[0]).not.toContain('811');
+    expect(a.sent[0]).not.toContain('Health811');
+    expect(a.sent[0]).not.toContain('988');
+    expect(a.sent[0]).not.toContain('?');
+    expect(a.sent[0]).not.toBe(SAFETY_REPLY);
+  });
+
+  it('sends the reviewed 988 line on a suicide crisis during an outage', async () => {
+    const a = alarm({ body: 'I want to die' });
+    expect(await a.run()).toBe('fired');
+    expect(a.sent).toEqual([MENTAL_CRISIS_REPLY]);
+    expect(a.sent[0]).not.toContain('?');
+    expect(a.sent[0]).not.toContain('811');
+    expect(a.sent[0]).not.toBe(SAFETY_REPLY);
+    expect(a.sent[0]).not.toBe(EMERGENCY_REPLY);
+    expect(a.sent[0]).not.toBe('Call 911 now.');
   });
 
   /** Both conditions, independently insufficient. Either one alone is an ordinary
@@ -304,7 +324,7 @@ describe('the smoke alarm', () => {
 
     const retry = alarm({ claim });
     expect(await retry.run()).toBe('fired');
-    expect(retry.sent).toEqual([SAFETY_REPLY]);
+    expect(retry.sent).toEqual([EMERGENCY_REPLY]);
   });
 
   /** The claim read is a query. It must not be spent on the overwhelmingly common

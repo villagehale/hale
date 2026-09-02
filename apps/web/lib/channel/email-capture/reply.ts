@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { parseEmailAddress } from '~/lib/channel/email/address';
 import { INTRO_IDENTITY_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
 import {
   EMAIL_ALREADY_TAKEN_REPLY,
   EMAIL_CAPTURED_FOR_INTRO_REPLY,
@@ -175,7 +176,7 @@ async function askWasDelivered(
           CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
           INTRO_IDENTITY_ASK_TEMPLATE_KEY,
         ]),
-        inArray(schema.channelMessages.status, ['sent', 'delivered']),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     )
     .orderBy(desc(schema.channelMessages.sentAt))

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGb8cQ6FsWWA8NK9yoyN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EqEGCpABCBEYAipASiA4LDh6JGhl+j1lquwDJ2EeNNCESOn51iF2zdpFgTCDopWQy6hToSMk6c1bxPwspe5x7tQt/VPvUslimi7uMzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAeqAo9QGEgxvBoIWTbJly1kF7GMaDFy0Tofhi9WvkgU0RSIw1EfaNU4vpsULx5WO9U16/txFMeIGyVWa1jhKd9sS3Nf7jGRPSWHm5xfKKFZdvg+ZKr0EJmxwG8uzoA/LAb8nLb53IYbJmw1yRb2b+dPE92R0jW10dGCW6g48FvUxTqbXBFCnZ8VtGDk8h5PUozwLeN6xwpEfpFZcC6lqxqSDbeNi46gnzdkkjLF0W8k3l8nPz0VA9rjh16pjBlYahOFd6FH2ibP3G8EL0SpIRgdiDj0zbS5oGpXKQqIVLqNZYN4cSLQu0501l1vvSd85DbhEC3NbXt9sKo1ZJ1e9vfaYzY4XcPX2IFVx/XOPfNAFItSLd0TAni4FitBl3zFhlrnF7UaOE3JaEFy4h3ErnXTmUlf1MwAy9fEucS9rSGGqlRmaMUX8YXgSDUpw/g8ZtYLaMM/LUk95kbOowKG0XpxphfuXpDvA7D/QYOWAuk1w/xMPKrSdBmkscXg3pHg7VO+09hd+iY53vXbbEYgVaMrG6YUqW3HqFVVjQglRo/gtB1WzqIHXl3g5CWuH8zibaIAy7Yx5snZqbH2sb23WjVuYWgUGUBYsLCF8mj2EKIJT6ugFhmAi01Qz28VMMOwR2WxgLNZ2DGWp3UvmuPxu8w9lnU3JOTW1AnKVsuRQBg+aWwYmWeKNAVujM5vho61aKzjgWEzpgxk+HNiCwww1pO8IK35NB6o/imNYj5uVwz5Oe/qccOzXGsxJC2bLjBA2cKPIwMB4HBcHj3dLiXVYjN4YTe2EhjspKfZpmgrQYLuOYJDVp93yrsAGzEe4pjRDG/+AS1l8e87JvRngq09rZjeEqUH/1RlrhAWaGZVXK76nTwxpGAE="
+      },
+      {
+        "type": "text",
+        "text": "Mira took her first independent steps about 7 months ago, back in November 2025. She's been building on that steadily since — pulling to stand, and now stacking blocks and adding new words at 18 months."
+      }
+    ],
+    "usage": {
+      "input_tokens": 5659,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 286,
+      "output_tokens_details": {
+        "thinking_tokens": 220
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3953,
+  "firstInputTokens": 5659
+}

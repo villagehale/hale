@@ -1,5 +1,5 @@
-import type { AgentClient } from '@hale/agent';
-import { pickModel } from '@hale/agent';
+import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType } from '@hale/types';
 import { z } from 'zod';
 import { loadClassifyEventSkill } from './skill';
@@ -7,7 +7,7 @@ import { forceToolJson } from './structured';
 
 /**
  * Classify stage — the inbound signal → structured classification, on the
- * @hale/agent harness model routing (classify → Haiku via pickModel). The prompt
+ * @hale/agent harness model routing (classify → Haiku via pickLane). The prompt
  * is the classify-event SKILL body (rule #2: never inline). Single LLM turn via
  * forced-tool JSON; the result is Zod-validated, so a hallucinated event_type /
  * routing is rejected at the boundary rather than trusted downstream.
@@ -101,7 +101,11 @@ export interface ClassifyResult {
   suggestion: ClassifierSuggestion;
   teenContent: boolean;
   concernsChildId: string | null;
-  usage: { promptTokens: number; completionTokens: number };
+  usage: AgentUsage;
+  /** The model this call RAN on. Returned rather than re-derived by the caller, so the
+   * agent_runs row and the cost priced off it can only ever name the model that was
+   * actually billed (the recorded label used to be a second, drifting copy). */
+  model: ModelId;
 }
 
 export async function classifyEvent(
@@ -114,9 +118,10 @@ export async function classifyEvent(
     family_context_slice: input.familyContextSlice ?? null,
   });
 
+  const lane = pickLane(skill.meta.task);
   const { value, usage } = await forceToolJson({
     client,
-    model: pickModel(skill.meta.task),
+    lane,
     system: skill.instructions,
     userMessage,
     toolName: 'classification',
@@ -134,9 +139,12 @@ export async function classifyEvent(
     suggestion: value.suggested_action,
     teenContent: value.teen_content,
     concernsChildId: value.concerns_child_id,
+    model: lane.model,
     usage: {
       promptTokens: usage.input_tokens + (usage.cache_creation_input_tokens ?? 0),
       completionTokens: usage.output_tokens,
+      cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+      cacheReadTokens: usage.cache_read_input_tokens ?? 0,
     },
   };
 }

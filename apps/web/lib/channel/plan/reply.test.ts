@@ -30,7 +30,11 @@ const FRESH_OFFER = {
   summary: 'Offered the full sleep plan - waiting on a yes.',
   topic: 'sleep',
   subjectChildId: 'child-1',
+  // Null on every kind but the founder's welcome offer: this promise's subject and the
+  // family it is owed to are the same household.
+  subjectFamilyId: null,
   dueAt: new Date('2026-08-14T14:00:00.000Z'),
+  createdAt: new Date('2026-08-11T14:00:00.000Z'),
 };
 const PLAN = [
   'Nights 1-3: the Ferber method - down drowsy but awake, wait 3 minutes before going in.',

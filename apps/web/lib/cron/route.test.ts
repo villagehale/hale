@@ -11,10 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const runDiscoveryCronMock = vi.fn();
 const runInferenceCronMock = vi.fn();
-const runPushRemindersCronMock = vi.fn();
 const runWeekPlanCronMock = vi.fn();
 const sweepAttachmentsMock = vi.fn();
 const runNudgeCronMock = vi.fn();
+const runSittingReminderCronMock = vi.fn();
+const runFirstReplyRecoveryCronMock = vi.fn();
 const dbMock = vi.fn();
 
 vi.mock('~/lib/db', () => ({ db: () => dbMock() }));
@@ -33,9 +34,6 @@ vi.mock('~/lib/cron/discovery', () => ({
 vi.mock('~/lib/cron/inference', () => ({
   runInferenceCron: (...a: unknown[]) => runInferenceCronMock(...a),
 }));
-vi.mock('~/lib/cron/push-reminders', () => ({
-  runPushRemindersCron: (...a: unknown[]) => runPushRemindersCronMock(...a),
-}));
 vi.mock('~/lib/loop/cron', () => ({
   runWeekPlanCron: (...a: unknown[]) => runWeekPlanCronMock(...a),
 }));
@@ -44,6 +42,12 @@ vi.mock('~/lib/coach/attachments', () => ({
 }));
 vi.mock('~/lib/channel/nudge/run', () => ({
   runNudgeCron: (...a: unknown[]) => runNudgeCronMock(...a),
+}));
+vi.mock('~/lib/channel/intake/sitting-reminder', () => ({
+  runSittingReminderCron: (...a: unknown[]) => runSittingReminderCronMock(...a),
+}));
+vi.mock('~/lib/channel/intake/first-reply-recovery', () => ({
+  runFirstReplyRecoveryCron: (...a: unknown[]) => runFirstReplyRecoveryCronMock(...a),
 }));
 
 const SECRET = 'cron-secret-xyz';
@@ -59,17 +63,17 @@ const ROUTES = [
   { name: 'discovery', path: '~/app/api/cron/discovery/route', mock: runDiscoveryCronMock },
   { name: 'inference', path: '~/app/api/cron/inference/route', mock: runInferenceCronMock },
   {
-    name: 'push-reminders',
-    path: '~/app/api/cron/push-reminders/route',
-    mock: runPushRemindersCronMock,
-  },
-  {
     name: 'attachment-sweep',
     path: '~/app/api/cron/attachment-sweep/route',
     mock: sweepAttachmentsMock,
   },
   { name: 'week-plan', path: '~/app/api/cron/week-plan/route', mock: runWeekPlanCronMock },
   { name: 'nudge', path: '~/app/api/cron/nudge/route', mock: runNudgeCronMock },
+  {
+    name: 'intake-sitting-reminder',
+    path: '~/app/api/cron/intake-sitting-reminder/route',
+    mock: runSittingReminderCronMock,
+  },
 ] as const;
 
 describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock }) => {
@@ -77,10 +81,15 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     vi.resetModules();
     runDiscoveryCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runInferenceCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
-    runPushRemindersCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runWeekPlanCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });
     runNudgeCronMock.mockReset().mockResolvedValue({ enabled: false, evaluated: 0 });
+    runSittingReminderCronMock
+      .mockReset()
+      .mockResolvedValue({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
+    runFirstReplyRecoveryCronMock
+      .mockReset()
+      .mockResolvedValue({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
     dbMock.mockReset().mockReturnValue({});
   });
 
@@ -130,5 +139,8 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
 
     expect(res.status).toBe(200);
     expect(mock).toHaveBeenCalledTimes(1);
+    if (path.includes('intake-sitting-reminder')) {
+      expect(runFirstReplyRecoveryCronMock).toHaveBeenCalledTimes(1);
+    }
   });
 });

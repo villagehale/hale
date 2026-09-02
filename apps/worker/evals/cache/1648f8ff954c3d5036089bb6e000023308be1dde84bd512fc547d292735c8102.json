@@ -1,0 +1,8 @@
+{
+  "value": {
+    "clinical_query": "sore throat fever, sibling with recent strep exposure, preschooler",
+    "age_band": "preschooler",
+    "language": "en"
+  },
+  "latencyMs": 1826
+}

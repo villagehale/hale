@@ -53,8 +53,13 @@ const NOW = new Date('2026-06-01T09:00:00.000Z');
 const CHILD = { id: 'synth-child-1', name: 'Mira', city: 'Toronto', province: 'ON', country: 'CA' };
 
 function monthsAgo(n) {
+  // UTC arithmetic only: setMonth()/getMonth() work in machine-local time, so
+  // crossing a DST boundary shifts the UTC hour and the serialized payload —
+  // and with it the content-addressed cache key — differs between a Toronto
+  // laptop and a UTC CI runner (the eval-sweep's first run caught exactly that).
+  // Keys must be a function of repo content only, never of the machine.
   const d = new Date(NOW);
-  d.setMonth(d.getMonth() - n);
+  d.setUTCMonth(d.getUTCMonth() - n);
   return d;
 }
 
@@ -75,10 +80,13 @@ function durableFacts(months) {
       establishedMonthsAgo: 1,
       probe: {
         question: "what time is mira's bedtime, and what's our wind-down routine?",
-        // Derived from factValue above, not from any model output.
-        mustRecall: ['19:30', 'bath', 'story'],
+        // Derived from factValue above, not from any model output. The stored window
+        // is 24h and a coach speaking to a parent says 12h, so the time is ONE
+        // required token in either notation and the reference states both — a
+        // reference only a clock-format could satisfy grades notation, not recall.
+        mustRecall: [['19:30', '7:30'], 'bath', 'story'],
         referenceAnswer:
-          "mira's bedtime is 19:30, with a wind-down of bath, then a story, then lights out.",
+          "mira's bedtime is 7:30pm (19:30), with a wind-down of bath, then a story, then lights out.",
       },
     },
     {
@@ -279,7 +287,7 @@ function episodicProbes(months) {
  *   child: {id:string,name:string,city:string,province:string,country:string,stage:string,ageMonths:number},
  *   facts: Array<{factType:string,factKey:string,factValue:unknown,confidence:number,establishedMonthsAgo:number}>,
  *   episodes: Array<{occurredAt:string,episodeType:string,summary:string}>,
- *   referenceQA: Array<{id:string,question:string,mustRecall:string[],referenceAnswer:string,targetsOld:boolean}>,
+ *   referenceQA: Array<{id:string,question:string,mustRecall:Array<string|string[]>,referenceAnswer:string,targetsOld:boolean}>,
  *   counts: {facts:number, episodes:number}
  * }}
  */

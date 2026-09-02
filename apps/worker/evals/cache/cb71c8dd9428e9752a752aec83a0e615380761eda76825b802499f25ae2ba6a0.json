@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names the exact venue the parent asked about (Cartwheels Gym Centre), names the specific program (Tiny Gym), gives the age fit, attributes to their site (\"their site lists it\"), and correctly handles the schedule gap. pageEvidence is page_has_schedule, which means the page was open and did publish times/prices but Hale couldn't tie them to this pick - so the correct phrasing is first-person (\"I couldn't pin down the day, time or price\") rather than \"not posted yet.\" The message uses exactly that first-person form, which is correct. watch is TRUE and the message includes a first-person continuation commitment (\"I'll keep watching and text you once those are confirmed\"), satisfying that requirement. There is no question, no offer, no invented detail, no directory list, no substituted venue. One pick, one segment, honest attribution, correct gap language for page_has_schedule, and a valid watch commitment. This is a textbook correct response.",
+    "score": 5
+  }
+}

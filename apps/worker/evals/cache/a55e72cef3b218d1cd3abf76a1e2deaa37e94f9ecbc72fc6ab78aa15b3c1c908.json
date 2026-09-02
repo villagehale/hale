@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message correctly handles a non-existent program type. It plainly states what was searched for and what was found (nothing), without inventing a venue or generic alternative. It offers to pivot to plausible alternatives (swim or craft classes) rather than withholding help or hedging apologetically. The response is honest, specific about the search scope, and gives the parent a clear path forward. An empty pick list is correct here, and this message executes it properly."
+  }
+}

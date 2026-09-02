@@ -10,12 +10,28 @@
  * leave the client. Pure + exported so the redaction is unit-tested.
  */
 
+/**
+ * RETIRED with the F14 pivot, and deleted rather than kept as dead names: nothing in
+ * apps/web fired them, so there was no call site to protect and no way to reuse one by
+ * accident. Their historical rows survive in PostHog, which is where that data lives.
+ *
+ *   sign_up, preview_submitted  — the pre-pivot marketing funnel; the site owns its own
+ *                                 catalog now (apps/site/lib/analytics/events.ts).
+ *   waitlist_signup             — same, and the app never had a waitlist form.
+ *   onboarding_completed        — the /onboarding wizard is DELETED, not flagged off
+ *                                 (lib/onboarding/onboarding-retired.test.ts pins it).
+ *                                 intake_started/intake_completed replace it.
+ *   party_invite_created        — never a capture; the string is an audit actionTaken
+ *                                 (lib/party/store.ts) and stays there.
+ *
+ * Everything from `first_activity_added` through `plan_upgrade_started` was on the same
+ * retirement list and STAYED: the app is demoted to the receipts room (D4/D20), not
+ * deleted, and every one of those events still fires from a component on a live route
+ * (/plan, /village, /coach, /settings, /family/members). An event whose surface a parent
+ * can still reach is instrumentation, not debris.
+ */
 export type AnalyticsEvent =
-  | 'waitlist_signup'
-  | 'sign_up'
-  | 'preview_submitted'
   | 'signup_completed'
-  | 'onboarding_completed'
   | 'first_activity_added'
   | 'first_ask'
   | 'first_invite'
@@ -43,14 +59,43 @@ export type AnalyticsEvent =
   // A loop-category CASL email unsubscribe landing — the beta guardrail pages the
   // founder at ANY occurrence (stop-alert.ts).
   | 'loop_stop'
-  // F14 · M10 the viral loop (VIL-245). Three coarse steps, and they are the whole
-  // funnel: a host publishes an invite, a guest answers it without an account, and a
-  // guest follows the one soft line to Hale. `party_invite_created` and
-  // `rsvp_submitted` are keyed on the INVITE, never on a guest — a party guest is a
-  // non-user who agreed to tell a host they were coming, not a person Hale identifies.
-  | 'party_invite_created'
+  // F14 · M10 the viral loop (VIL-245). Two coarse steps: a guest answers a host's
+  // invite without an account, and a guest follows the one soft line to Hale. Keyed on
+  // the INVITE, never on a guest — a party guest is a non-user who agreed to tell a
+  // host they were coming, not a person Hale identifies.
   | 'rsvp_submitted'
-  | 'rsvp_guest_cta';
+  | 'rsvp_guest_cta'
+  // F14 · the messaging-first funnel's two ends (M2 · lib/channel/intake/machine.ts).
+  // A parent who texts the number is greeted (`intake_started`) and, some texts later,
+  // has a family (`intake_completed`) — the pair that says whether the ONE way into
+  // this product actually works, now that the web wizard is deleted.
+  //
+  // Both are keyed on the INTAKE SESSION id: a random row id minted before there is an
+  // account, so the two steps join into a funnel without a phone number, a name, or a
+  // hash of either ever reaching PostHog (hard rule #1). `source_code` on the completed
+  // step is the acquisition tag the marketing site set; it is ABSENT when nobody handed
+  // out a card, which is its own bucket rather than a code that means "none".
+  | 'intake_started'
+  | 'intake_completed'
+  // The quiet failures — one per seam that can break without anybody being told. Their
+  // payloads are assembled by `captureAgentError` from a closed union, never by a call
+  // site, so a lane, an enum-valued class and a hashed family id are the only things
+  // that can ride on them (lib/analytics/server-capture.ts).
+  | 'agent_turn_failed'
+  | 'agent_send_failed'
+  | 'agent_relay_refused'
+  | 'agent_reply_trimmed'
+  | 'agent_commitment_failed'
+  // A sentence Hale wrote and was not allowed to send: it claimed a row that does not
+  // exist and could not be made to (lib/channel/reconcile). The class is the refusal
+  // reason, so the rate says WHICH claim the model keeps inventing.
+  | 'agent_claim_refused'
+  // A Twilio webhook that threw before it could answer — the anonymous 500 Twilio logs
+  // as error 11200 and a parent experiences as silence (VIL-331). Carries the route and
+  // the error class only, and is fired from a leg that never touches the database,
+  // because the failure it exists to report is usually the database being gone
+  // (lib/channel/twilio/alert.ts).
+  | 'webhook_route_failed';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

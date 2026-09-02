@@ -5,6 +5,9 @@ on:
     branches: [main, production]
   pull_request:
     branches: [main, production]
+  # Lets ci-heal.yml dispatch a fresh run after pushing a heal commit —
+  # GITHUB_TOKEN pushes never retrigger pull_request workflows on their own.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -42,6 +45,9 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Repo scripts test (ci-heal classifier)
+        run: pnpm test:scripts
 
       - name: Prompt lockfile check
         run: pnpm --filter @hale/worker prompts:check
@@ -82,11 +88,17 @@ jobs:
       - name: Intake voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake-voice
 
+      - name: Mid-signup answer composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:intake-answer
+
       - name: Off-domain capability lane eval (cached-only)
         run: pnpm --filter @hale/worker eval:inbound-lane
 
       - name: General-answer composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:general-answer
+
+      - name: Medical-symptom answer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:medical-symptom
 
       - name: Turn-apology composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:turn-apology
@@ -103,6 +115,12 @@ jobs:
       - name: Reminder voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder-voice
 
+      - name: Introduction ask composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:intro-voice
+
+      - name: Natural reply resolver eval (cached-only)
+        run: pnpm --filter @hale/worker eval:reply-resolver
+
       - name: Radar payload composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:radar
 
@@ -115,6 +133,9 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Voice turn eval (cached-only)
+        run: pnpm --filter @hale/worker eval:voice-turn
+
       - name: Coaching plan composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-plan
 
@@ -123,6 +144,14 @@ jobs:
 
       - name: Registration re-verify eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-verify
+
+      # The activity lane's two legs. Neither was wired here when they shipped, so the
+      # scripts existed and nothing ran them - which is a gate in name only.
+      - name: Activity finder eval (cached-only)
+        run: pnpm --filter @hale/worker eval:activity-finder
+
+      - name: Activity deep-pass eval (cached-only)
+        run: pnpm --filter @hale/worker eval:activity-deep
 
       - name: Build
         run: pnpm build

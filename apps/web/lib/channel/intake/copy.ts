@@ -1,3 +1,6 @@
+import { isJoinCode } from '~/lib/channel/join/code';
+import type { ReplyLanguage } from '~/lib/channel/language';
+import { isReferralCode } from '~/lib/channel/referral/code';
 import { PRIVACY_URL } from '~/lib/legal-links';
 
 /**
@@ -20,6 +23,22 @@ import { PRIVACY_URL } from '~/lib/legal-links';
  *
  * Rule #1: no message ever carries a child's health detail, a precise location, or
  * anything the parent did not just tell us in this conversation.
+ *
+ * IT NOW HAS A FRENCH HALF. Hale already replied in French wherever a MODEL wrote the
+ * words; everything in this file was English, so a francophone parent got the composed
+ * turns in their language and every promise — the introduction, the consent ask, the
+ * acknowledgment, the region boundary — in someone else's. The French twin of each fixed
+ * line sits beside it in a `Record<ReplyLanguage, string>` whose `en` half IS the
+ * exported constant, so an English copy edit cannot be half-applied, and `replyLanguage`
+ * (lib/channel/language.ts) picks between them from the message that just arrived.
+ *
+ * THE FRENCH IS GSM-7, which is a constraint on the WORDS and not a fold applied after
+ * them. The alphabet carries é è à ù and not â ê î ô û ç, so the copy below is written
+ * around the characters it cannot have — and where the language leaves no way around one
+ * (`age`, which has no accent-free synonym in this register), the circumflex is dropped
+ * to its base letter exactly as `gsmSafe` folds a family's own name. Each such word is
+ * named at its constant. The alternative is a UCS-2 message at 70 characters a segment:
+ * triple the carrier bill on Hale's first sentence to a stranger, forever.
  */
 
 export interface SourceVenue {
@@ -29,6 +48,18 @@ export interface SourceVenue {
    * not a claim about where the family lives — it seeds discovery when the parent was
    * never asked for a postal code (rule #1: coarse only, never an address). */
   areaCoarse: string;
+  /**
+   * The PLACE the poster hangs in, named the way a person would say it — "Georgetown",
+   * not an FSA and not the venue's type. Present only on the codes that are a physical
+   * poster the founder put up himself, which is exactly the set the founder-welcome ping
+   * fires for: the location is the whole content of that ping (rule #1 — no parent, no
+   * child, no number), so a code with no place name has nothing to say and is not one.
+   *
+   * The registry IS the trigger, deliberately, rather than a prefix test on the code. A
+   * prefix would match a future `earlyon-` poster nobody has named a place for and put an
+   * empty blank in a sentence sent to a person.
+   */
+  poster?: string;
 }
 
 /**
@@ -41,7 +72,301 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   REC: { name: 'rec centre', areaCoarse: 'M6K' },
   CLINIC: { name: 'clinic', areaCoarse: 'M4K' },
   SCHOOL: { name: 'school', areaCoarse: 'L7G' },
-  'earlyon-richmondhill': { name: 'EarlyON centre', areaCoarse: 'L4C' },
+  // "family centre", never the centres' program brand: "EarlyON" is a trademarked
+  // term (Ontario), so it appears in no greeting, no plate, and no new code. The
+  // earlyon-* keys that remain are printed on posters already hanging and cannot
+  // change without orphaning those QRs.
+  'earlyon-richmondhill': {
+    name: 'family centre',
+    areaCoarse: 'L4C',
+    poster: 'Richmond Hill',
+  },
+  'earlyon-georgetown': { name: 'family centre', areaCoarse: 'L7G', poster: 'Georgetown' },
+  // Per-location Halton Hills posters, so the source code says WHICH centre.
+  'earlyon-acton': { name: 'family centre', areaCoarse: 'L7J', poster: 'Acton' },
+  // Indoor board at West Neighbourhood House, 248 Ossington Ave — a venue plate,
+  // not a City column. Carries the lifetime comp (promo.ts).
+  ossington: { name: 'family centre', areaCoarse: 'M6J', poster: 'Ossington' },
+  // Indoor board at 3990 14th Ave, Markham — the first GTA board to say yes, so it
+  // carries the lifetime Family comp (promo.ts).
+  markham: { name: 'family centre', areaCoarse: 'L3R', poster: 'Markham' },
+  // Legacy spelling of the Markham code: a copy with this QR is already on the
+  // venue's board (first scan 2026-08-28). Remove once the reprint replaces it.
+  'earlyon-markham': { name: 'family centre', areaCoarse: 'L3R', poster: 'Markham' },
+  // The pitch deck's QR — so we see which investors actually texted the product.
+  'investor-deck': { name: 'the pitch deck', areaCoarse: 'M5V' },
+  // Toronto postering-column run (2026-08). One code per column — the posters are
+  // visually identical and the code rides the SMS body, so the weekly re-postering
+  // pass can prune columns that never text. City surfaces are cleared weekly, so a
+  // code going quiet means the spot, not the poster. No lifetime comp on these.
+  'poster-bayview-sheppard': {
+    name: 'Bayview & Sheppard poster',
+    areaCoarse: 'M2K',
+    poster: 'Bayview & Sheppard',
+  },
+  'poster-yonge-sheppard': {
+    name: 'Yonge & Sheppard poster',
+    areaCoarse: 'M2N',
+    poster: 'Yonge & Sheppard',
+  },
+  'poster-yonge-hollywood': {
+    name: 'Yonge & Hollywood poster',
+    areaCoarse: 'M2N',
+    poster: 'Yonge & Hollywood',
+  },
+  'poster-north-york-centre': {
+    name: 'North York Centre poster',
+    areaCoarse: 'M2N',
+    poster: 'North York Centre',
+  },
+  'poster-yonge-ellerslie': {
+    name: 'Yonge & Ellerslie poster',
+    areaCoarse: 'M2N',
+    poster: 'Yonge & Ellerslie',
+  },
+  'poster-kensington': {
+    name: 'Kensington Market poster',
+    areaCoarse: 'M5T',
+    poster: 'Kensington Market',
+  },
+  'poster-spadina-dundas': {
+    name: 'Spadina & Dundas poster',
+    areaCoarse: 'M5T',
+    poster: 'Spadina & Dundas',
+  },
+  'poster-grange-park': {
+    name: 'Grange Park poster',
+    areaCoarse: 'M5T',
+    poster: 'Grange Park',
+  },
+  'poster-queen-john': {
+    name: 'Queen & John poster',
+    areaCoarse: 'M5V',
+    poster: 'Queen & John',
+  },
+  'poster-queen-spadina': {
+    name: 'Queen & Spadina poster',
+    areaCoarse: 'M5V',
+    poster: 'Queen & Spadina',
+  },
+  'poster-queen-bathurst': {
+    name: 'Queen & Bathurst poster',
+    areaCoarse: 'M5V',
+    poster: 'Queen & Bathurst',
+  },
+  'poster-leslieville-carlaw': {
+    name: 'Queen & Carlaw poster',
+    areaCoarse: 'M4M',
+    poster: 'Leslieville - Queen & Carlaw',
+  },
+  'poster-leslieville-jones': {
+    name: 'Queen & Jones poster',
+    areaCoarse: 'M4M',
+    poster: 'Leslieville - Queen & Jones',
+  },
+  'poster-queen-coxwell': {
+    name: 'Queen & Coxwell poster',
+    areaCoarse: 'M4L',
+    poster: 'Queen & Coxwell',
+  },
+  'poster-beaches-woodbine': {
+    name: 'Queen & Woodbine poster',
+    areaCoarse: 'M4L',
+    poster: 'The Beaches - Queen & Woodbine',
+  },
+  'poster-beaches-lee': {
+    name: 'Queen & Lee poster',
+    areaCoarse: 'M4E',
+    poster: 'The Beaches - Queen & Lee',
+  },
+  'poster-high-park-humberside': {
+    name: 'High Park & Humberside poster',
+    areaCoarse: 'M6P',
+    poster: 'High Park & Humberside',
+  },
+  'poster-high-park-annette': {
+    name: 'High Park & Annette poster',
+    areaCoarse: 'M6P',
+    poster: 'High Park & Annette',
+  },
+  'poster-junction-pacific': {
+    name: 'Dundas & Pacific poster',
+    areaCoarse: 'M6P',
+    poster: 'The Junction - Dundas & Pacific',
+  },
+  'poster-junction-clendenan': {
+    name: 'Dundas & Clendenan poster',
+    areaCoarse: 'M6P',
+    poster: 'The Junction - Dundas & Clendenan',
+  },
+  'poster-leaside-laird': {
+    name: 'Eglinton & Laird poster',
+    areaCoarse: 'M4G',
+    poster: 'Leaside - Eglinton & Laird',
+  },
+  'poster-leaside-rumsey': {
+    name: 'Millwood & Rumsey poster',
+    areaCoarse: 'M4G',
+    poster: 'Leaside - Millwood & Rumsey',
+  },
+  'poster-bayview-belsize': {
+    name: 'Bayview & Belsize poster',
+    areaCoarse: 'M4S',
+    poster: 'Bayview & Belsize',
+  },
+  'poster-bayview-fleming': {
+    name: 'Bayview & Fleming poster',
+    areaCoarse: 'M4S',
+    poster: 'Bayview & Fleming',
+  },
+  // Expansion wave (2026-08): family corridors from the City structure inventory —
+  // Riverdale/Danforth, Roncesvalles, Bloor West Village, midtown Yonge, deeper
+  // Beaches and High Park, St Clair West.
+  'poster-queen-broadview': {
+    name: 'Queen & Broadview poster',
+    areaCoarse: 'M4M',
+    poster: 'Riverdale - Queen & Broadview',
+  },
+  'poster-queen-logan': {
+    name: 'Queen & Logan poster',
+    areaCoarse: 'M4M',
+    poster: 'Riverdale - Queen & Logan',
+  },
+  'poster-danforth-broadview': {
+    name: 'Danforth & Broadview poster',
+    areaCoarse: 'M4K',
+    poster: 'The Danforth - Broadview',
+  },
+  'poster-danforth-playter': {
+    name: 'Danforth & Playter poster',
+    areaCoarse: 'M4K',
+    poster: 'The Danforth - Playter Estates',
+  },
+  'poster-danforth-pape': {
+    name: 'Danforth Avenue poster',
+    areaCoarse: 'M4J',
+    poster: 'The Danforth - 975 Danforth Ave',
+  },
+  'poster-roncesvalles-marion': {
+    name: 'Roncesvalles & Marion poster',
+    areaCoarse: 'M6R',
+    poster: 'Roncesvalles - Marion',
+  },
+  'poster-roncesvalles-galley': {
+    name: 'Roncesvalles & Galley poster',
+    areaCoarse: 'M6R',
+    poster: 'Roncesvalles - Galley',
+  },
+  'poster-roncesvalles-fermanagh': {
+    name: 'Roncesvalles & Fermanagh poster',
+    areaCoarse: 'M6R',
+    poster: 'Roncesvalles - Fermanagh',
+  },
+  'poster-roncesvalles-grenadier': {
+    name: 'Roncesvalles & Grenadier poster',
+    areaCoarse: 'M6R',
+    poster: 'Roncesvalles - Grenadier',
+  },
+  'poster-roncesvalles-howard-park': {
+    name: 'Roncesvalles & Howard Park poster',
+    areaCoarse: 'M6R',
+    poster: 'Roncesvalles - Howard Park',
+  },
+  'poster-bloor-parkside': {
+    name: 'Bloor & Parkside poster',
+    areaCoarse: 'M6P',
+    poster: 'High Park - Bloor & Parkside',
+  },
+  'poster-bloor-west-glendonwynne': {
+    name: 'Bloor West Village poster',
+    areaCoarse: 'M6S',
+    poster: 'Bloor West Village - Glendonwynne',
+  },
+  'poster-bloor-west-willard': {
+    name: 'Bloor & Willard poster',
+    areaCoarse: 'M6S',
+    poster: 'Bloor West Village - Willard',
+  },
+  'poster-bloor-west-riverview': {
+    name: 'Bloor & Riverview poster',
+    areaCoarse: 'M6S',
+    poster: 'Bloor West Village - Riverview Gardens',
+  },
+  'poster-bloor-west-old-mill': {
+    name: 'Bloor & Old Mill poster',
+    areaCoarse: 'M8X',
+    poster: 'Old Mill & Swansea',
+  },
+  'poster-yonge-davisville': {
+    name: 'Yonge & Davisville poster',
+    areaCoarse: 'M4S',
+    poster: 'Davisville - Yonge & Davisville',
+  },
+  'poster-yonge-millwood': {
+    name: 'Yonge & Millwood poster',
+    areaCoarse: 'M4S',
+    poster: 'Davisville - Yonge & Millwood',
+  },
+  'poster-mt-pleasant-manor': {
+    name: 'Mount Pleasant & Manor poster',
+    areaCoarse: 'M4S',
+    poster: 'Mount Pleasant - Manor Rd',
+  },
+  'poster-yonge-eglinton': {
+    name: 'Yonge & Eglinton poster',
+    areaCoarse: 'M4R',
+    poster: 'Yonge & Eglinton',
+  },
+  'poster-yonge-lawrence-park': {
+    name: 'Lawrence Park poster',
+    areaCoarse: 'M4N',
+    poster: 'Lawrence Park - 3060 Yonge',
+  },
+  'poster-yonge-bedford-park': {
+    name: 'Yonge & Woburn poster',
+    areaCoarse: 'M4N',
+    poster: 'Bedford Park - Yonge & Woburn',
+  },
+  'poster-beaches-kew': {
+    name: 'Queen & Brookmount poster',
+    areaCoarse: 'M4E',
+    poster: 'The Beaches - Kew Gardens',
+  },
+  'poster-kingston-waverley': {
+    name: 'Kingston & Waverley poster',
+    areaCoarse: 'M4L',
+    poster: 'The Beaches - Kingston & Waverley',
+  },
+  'poster-upper-beaches': {
+    name: 'Kingston & Scarborough Rd poster',
+    areaCoarse: 'M4E',
+    poster: 'Upper Beaches',
+  },
+  'poster-high-park-glenlake': {
+    name: 'High Park & Glenlake poster',
+    areaCoarse: 'M6P',
+    poster: 'High Park - Glenlake',
+  },
+  'poster-high-park-dundas': {
+    name: 'High Park & Dundas poster',
+    areaCoarse: 'M6P',
+    poster: 'High Park - Dundas',
+  },
+  'poster-st-clair-christie': {
+    name: 'St Clair & Christie poster',
+    areaCoarse: 'M6C',
+    poster: 'St Clair West - Christie',
+  },
+  'poster-st-clair-rushton': {
+    name: 'St Clair & Rushton poster',
+    areaCoarse: 'M6C',
+    poster: 'St Clair West - Rushton',
+  },
+  'poster-st-clair-atlas': {
+    name: 'St Clair & Atlas poster',
+    areaCoarse: 'M6C',
+    poster: 'St Clair West - Atlas',
+  },
 };
 
 /**
@@ -52,18 +377,77 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
  *   2. `Hi (via <code>)` — the /text entry page's convention (VIL-240): a human first
  *      message with the tag as a trailing, visibly-disclosed suffix. Suffix-anchored so
  *      an ordinary sentence containing "(via …)" mid-message never matches.
+ *
+ * A `<code>` is either a QR VENUE (the registry below) or a per-family REFERRAL tag
+ * (`friend-…`, lib/channel/referral/code.ts) forwarded by a parent. Both ride the same
+ * `?s=` funnel and the same suffix; they differ only in what they resolve to, which is
+ * `resolveCode`'s job.
  */
 const SOURCE_TAG = /^hale[\s:-]+([a-z0-9-]{2,48})$/i;
 const SOURCE_TAG_SUFFIX = /\(via\s+([a-z0-9]+(?:-[a-z0-9]+)*)\)$/i;
 
-/** The canonical registry key for a raw tag, matched case-insensitively. */
+/**
+ * The canonical registry key for a raw tag, matched case-insensitively.
+ *
+ * A REFERRAL tag is recognised by its shape rather than by the registry. The registry
+ * exists because a venue's NAME is read back to the parent in the greeting, so an
+ * unrecognised venue would have Hale claiming to know a place it has never heard of. A
+ * referral tag is echoed nowhere and selects nothing — `venueForCode` returns null for
+ * it, so the arrival gets the ordinary no-venue greeting and is still asked for a postal
+ * code, which is correct: a friend of a Toronto family may live anywhere.
+ *
+ * A JOIN tag (`join-…`, lib/channel/join/code.ts) is recognised the same way and for the
+ * same reason, but what happens to it afterwards is the opposite: the machine DIVERTS on
+ * it before a session is ever created, because it names a household that already exists.
+ * It is passed through here rather than resolved here because the answer lives in a
+ * table and this function is pure — and because a token that buys nothing must still be
+ * recognised, so the arrival can be greeted normally rather than told it is too late.
+ */
 function resolveCode(raw: string): string | null {
+  if (isJoinCode(raw)) return raw.toLowerCase();
+  if (isReferralCode(raw)) return raw.toLowerCase();
   if (raw in SOURCE_VENUES) return raw;
   const upper = raw.toUpperCase();
   if (upper in SOURCE_VENUES) return upper;
   const lower = raw.toLowerCase();
   if (lower in SOURCE_VENUES) return lower;
   return null;
+}
+
+/**
+ * The parent's own words on a first inbound, with the QR / HALE tag stripped.
+ * "Hi (via earlyon-richmondhill)" → "Hi". "HALE LIBRARY" → "". A question with a
+ * trailing via token keeps the question.
+ */
+export function firstInboundWords(body: string): string {
+  const trimmed = body.trim();
+  if (SOURCE_TAG.test(trimmed)) return '';
+  return trimmed.replace(SOURCE_TAG_SUFFIX, '').trim();
+}
+
+const BARE_HELLO = /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)[.!,\s]*$/i;
+
+/**
+ * True when the first inbound is just a hello, empty, or a venue / HALE tag —
+ * the locked greeting path. A rec/camp question, a safety text, or anything else
+ * to answer is false so greet can hand the words to the existing answerer.
+ */
+export function isBareFirstHello(body: string): boolean {
+  const words = firstInboundWords(body);
+  return words === '' || BARE_HELLO.test(words);
+}
+
+/** "Maya is 4", "Theo is 18 months" — the site prefill and a parent who skipped hello. */
+const NAME_IS_AGE =
+  /\b[A-Za-z][A-Za-z'-]{0,30}\s+is\s+\d+(?:\s*(?:months?|years?|ans|mois))?\b/i;
+
+/**
+ * True when the first inbound looks like names / ages / postal — details, not a
+ * question. Greet runs the existing extractor / handleDetails path for these
+ * and must not call offScriptReply (the site Text Hale prefill is this shape).
+ */
+export function looksLikeIntakeDetails(body: string): boolean {
+  return NAME_IS_AGE.test(firstInboundWords(body));
 }
 
 /** The venue CODE (registry key) for a prefilled first body, or null when the body
@@ -83,20 +467,54 @@ export function venueForCode(code: string | null): SourceVenue | null {
   return SOURCE_VENUES[code] ?? null;
 }
 
+/** The PLACE a stored source code's poster hangs in, or null when the code is not one of
+ * the founder's own posters. The whole trigger for the founder-welcome ping — see
+ * {@link SourceVenue.poster}. */
+export function posterLocation(code: string | null): string | null {
+  return venueForCode(code)?.poster ?? null;
+}
+
 /**
- * The first thing a stranger ever reads from Hale.
+ * The first thing a stranger ever reads from Hale. VIL-308 locked the rec-morning
+ * voice; VIL-321 / Designer locked the English no-venue line verbatim — the ask is
+ * {@link COLD_START_ASK}. Style doctrine v1 (G6/L1, founder-gated) swapped the hook's
+ * one word-pair: "rec mornings" was house coinage two strangers misread inside 48h;
+ * "sign-up mornings" says the same thing in parent language. The ask is untouched.
+ * Never "an AI that quietly runs the family week". The privacy
+ * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where
+ * a parent is actually asked to agree to something.
  *
- * The AI disclosure is IN the introduction rather than trailing it: "an AI that quietly
- * runs the family week" is both what Hale is and what it does, so honesty costs no extra
- * sentence and cannot be skimmed past the way a closing parenthetical can. The privacy
- * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where a
- * parent is actually asked to agree to something.
+ * THE VENUE VARIANT HAS NO FRENCH TWIN, and that is a decision rather than a gap. The
+ * body that triggers it is the PREFILLED one a QR code wrote — "HALE LIBRARY", or
+ * "Hi (via earlyon-georgetown)" — which is machine-authored English carrying no evidence
+ * at all about the person holding the phone, so per-message detection can never route
+ * this branch to French. The venue names in {@link SOURCE_VENUES} are English nouns on
+ * top of that, and a French sentence cannot carry one without an article chosen per
+ * venue. A francophone who types their own first message gets the no-venue greeting,
+ * which is the one that asks for a postal code anyway.
  */
-export function greeting(venue: string | null): string {
+export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {
-    return `Hi, I'm Hale - an AI that quietly runs the family week for parents around here. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll get to work.`;
+    return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
   }
-  return `Hi, I'm Hale - an AI that quietly runs the family week. Registration dates, weekend plans, the stuff that slips. ${COLD_START_ASK}`;
+  if (language === 'fr') {
+    return `Bonjour, je suis Hale. Je surveille les matins d'inscription pour qu'ils ne vous échappent pas. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
+  }
+  return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. ${COLD_START_ASK}`;
+}
+
+/**
+ * The greeting for a stranger whose whole first text was a postal code — the second
+ * half of {@link COLD_START_ASK}, answered before it was ever asked. It borrows the
+ * venue variant's tail verbatim, because it is the same situation: the area is
+ * settled, so the only thing left to ask for is the kids.
+ *
+ * English only, for the venue variant's reason — a bare postal token carries no
+ * evidence at all about the language the person holding the phone speaks, and
+ * `replyLanguage` reads it as English whatever they speak.
+ */
+export function greetingWithArea(areaCoarse: string): string {
+  return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
 }
 
 /**
@@ -111,7 +529,30 @@ export function greeting(venue: string | null): string {
  * tuned for.
  */
 export const COLD_START_ASK =
-  "Tell me your kids' names and ages, plus your postal code - and I'll get to work.";
+  "Reply with your kids' names, ages, and postal code and I'll text back what's coming.";
+
+/**
+ * The same ask, in the language the parent just wrote in.
+ *
+ * FOLDED WORD: `l'age`. GSM-7 has no â, and French has no accent-free synonym for "âge"
+ * in this register — every alternative asks for something else (a birth date is more
+ * data than Hale needs, a birth year is a different question, and the extractor is tuned
+ * for ages). So the circumflex drops to its base letter, which is what `gsmSafe` already
+ * does to a family's own name and what every French phone keyboard does under pressure.
+ * FOUNDER REVIEW: this is the one deliberate misspelling in the French script.
+ */
+export const COLD_START_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: COLD_START_ASK,
+  fr: "Le nom et l'age de vos enfants, et votre code postal - et je verrai ce qui arrive.",
+};
+
+/**
+ * VIL-324 — Designer-locked next-morning reminder for a sitting first-hello.
+ * GSM-7 hyphens, no invented date or city clock in the line. The send clock is
+ * the existing Toronto morning window (quiet-hours end), owned by sitting-reminder.ts.
+ */
+export const SITTING_SESSION_REMINDER =
+  "Still here if you want me watching. Reply with your kids' names, ages, and postal code and I'll send what's coming.";
 
 /**
  * What intake still needs before a family can be set up. Both are hard requirements
@@ -148,6 +589,17 @@ export function followUp(summary: string, missing: readonly IntakeGap[]): string
 }
 
 /**
+ * The consent question ITSELF, without the link that rides with it.
+ *
+ * Split out because a second reader now needs it: when a parent answers this with a
+ * question of their own, the answering turn is handed the pending ask so it can get
+ * back to it in different words (answer.ts). It is handed the QUESTION and not the
+ * whole message — a privacy URL inside a model's context is a URL a model can quote,
+ * and this stage is forbidden from writing links at all.
+ */
+export const WATCH_OFFER_ASK = 'Want me to keep an eye on all of this for you?';
+
+/**
  * The consent moment, and the one message in intake that carries a link.
  *
  * The privacy URL lives HERE rather than in the greeting because this is the turn where
@@ -156,7 +608,26 @@ export function followUp(summary: string, missing: readonly IntakeGap[]): string
  * to answer it three messages too early. Built from the {@link PRIVACY_URL} constant so a
  * policy move cannot leave a stale URL inside a consent record's own question.
  */
-export const WATCH_OFFER = `Want me to keep an eye on all of this for you? (how I handle your family's info: ${PRIVACY_URL})`;
+export const WATCH_OFFER = `${WATCH_OFFER_ASK} (how I handle your family's info: ${PRIVACY_URL})`;
+
+/**
+ * The French consent moment, built the same way: the ask, then the SAME privacy
+ * constant. A second literal copy of the URL is how one language ends up pointing at a
+ * policy that moved.
+ *
+ * `un oeil` rather than `un œil`: the ligature is not in GSM-7 and the digraph is its
+ * standard ASCII spelling, so nothing is lost. `tout cela` rather than `tout ça`: the
+ * alphabet has no lowercase ç, and folding it would leave "ca", which is not a word.
+ */
+export const WATCH_OFFER_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: WATCH_OFFER_ASK,
+  fr: 'Voulez-vous que je garde un oeil sur tout cela pour vous?',
+};
+
+export const WATCH_OFFER_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: WATCH_OFFER,
+  fr: `${WATCH_OFFER_ASK_BY_LANGUAGE.fr} (comment je traite les infos de votre famille : ${PRIVACY_URL})`,
+};
 
 /**
  * The yes. Names the restraint (only when it matters) and keeps the CASL escape hatch
@@ -188,15 +659,130 @@ export const AMBIGUOUS_CLARIFY =
   "Happy either way - should I watch the registration dates at least? That one's easy to miss.";
 
 /**
- * The CASL keyword replies. STOP gets one final confirmation and then silence; HELP
- * (and anything unparseable) gets the same honest capability line, because a parent
- * who typed something we couldn't read needs to know what we CAN do, not an error.
+ * The three consent-turn answers in French.
+ *
+ * ASSENT_ACK_FR IS LENGTH-CONSTRAINED, and it is the only line here that is. The identity
+ * ask appended to it is budgeted from the ENGLISH constant
+ * (`MAX_TAIL_ASK_CHARS = MAX_ASK_CHARS - ASSENT_ACK.length - 1`, identity/ask-voice.ts),
+ * so a longer French twin would push the consent turn into two segments with nothing
+ * failing anywhere. The test in copy.test.ts holds it to one segment WITH a full-budget
+ * tail; the words below were cut to fit that, not the other way round.
+ *
+ * `tout est couvert` rather than `vous etes couvert`: GSM-7 has no ê, and the fold would
+ * be visible in the most prominent word of the most important message. It also sidesteps
+ * a gender agreement Hale has no business guessing about the parent.
+ */
+export const ASSENT_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: ASSENT_ACK,
+  fr: "C'est fait - tout est couvert. Je texte juste quand il le faut, et STOP marche toujours.",
+};
+
+export const DECLINE_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: DECLINE_ACK,
+  fr: 'Pas de problème - textez-moi quand vous voulez. Les dates et les trouvailles sont là quand vous en aurez besoin.',
+};
+
+export const AMBIGUOUS_CLARIFY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: AMBIGUOUS_CLARIFY,
+  fr: "Comme vous voulez - je surveille au moins les dates d'inscription? Celles-là sont faciles à manquer.",
+};
+
+/**
+ * The CASL keyword replies, frozen verbatim. STOP gets one final confirmation and then
+ * silence; HELP gets the honest capability line. The unparseable reply during intake no
+ * longer shares it: that moment is conversational, not compliance, and has its own
+ * words now ({@link UNREADABLE_INTAKE_REPLY} — doctrine G7/L2).
  */
 export const STOP_ACK =
   "You're unsubscribed - I won't text you again. Reply START if you ever want me back.";
 export const HELP_REPLY =
   "I'm Hale - I keep track of your family's week and text you when something needs doing. Tell me your kids' names and ages and I'll take it from there. Reply STOP to unsubscribe.";
 export const START_ACK = "You're back - I'll text you when something needs doing.";
+
+/**
+ * The French keyword replies — now the answer to a keyword rather than a line waiting
+ * for one.
+ *
+ * WHAT CANADIAN CARRIERS REQUIRE, verified against the Canadian Telecommunications
+ * Association's "Canadian Common Short Code Compliance Policies" v2.1 (January 2026,
+ * §3.1): five keywords are mandatory for every program — STOP, ARRET, HELP, AIDE, INFO —
+ * "regardless of the intended audience", and texting AIDE or ARRET "must return a French
+ * response" while a French-only program must still answer English STOP and HELP. Twilio
+ * recognises NONE of the French ones by default: its built-in set is English only
+ * (STOP/STOPALL/UNSUBSCRIBE/CANCEL/END/REVOKE/OPTOUT/QUIT, START/YES/UNSTOP, HELP/INFO),
+ * and localised keywords exist only as explicit entries on a Messaging Service with
+ * Advanced Opt-Out configured. CASL itself is silent on the language of the unsubscribe
+ * mechanism; the carrier policy is the binding requirement here, not the statute.
+ *
+ * HALE MEETS IT NOW. `matchKeyword` (keywords.ts) claims ARRET, AIDE and DEBUT with the
+ * same CASL semantics as their English twins, and hands the language along WITH the
+ * match — so an AIDE cannot be answered in English by a detector that reads the body and
+ * finds one ambiguous word. That is what unblocked the line below: #491 said "Répondez
+ * STOP" and said why (naming a keyword that does nothing is worse than not naming it),
+ * and the tail now names the two words a French parent can actually send.
+ *
+ * WHY THE HELP LINE OFFERS AIDE AT ALL, given that a parent reading it may well have
+ * just typed it: the other keyword is still news (a parent who typed AIDE learns
+ * ARRET), and the line long had a second door — an unparseable first reply during
+ * intake — which now has its own constant
+ * ({@link UNREADABLE_INTAKE_REPLY_BY_LANGUAGE}, doctrine G7/L2), so this reply
+ * answers only the keyword that asked for it.
+ *
+ * `désabonner` keeps its é (GSM-7 has it). The keyword tokens are written WITHOUT their
+ * accents — ARRET, DEBUT — because that is how a keyword is typed under pressure and
+ * because `matchKeyword` folds the accent anyway, so both spellings arrive at the same
+ * place; printing the bare form promises the easier one.
+ */
+export const HELP_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: HELP_REPLY,
+  fr: "Je suis Hale - je garde le fil de la semaine de votre famille et je vous texte quand quelque chose demande votre attention. Dites-moi le nom et l'age de vos enfants et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+};
+
+/**
+ * The unparseable-intake door, split off {@link HELP_REPLY} (doctrine G7/L2). An
+ * unreadable reply during intake used to get the frozen CASL capability line, which
+ * dragged compliance copy into a conversational moment. This one owns the moment
+ * instead: what could not be read, the reply shape in a parent's own words, and the
+ * STOP line an intake-stage message still owes. The HELP keyword keeps the frozen
+ * {@link HELP_REPLY} untouched.
+ *
+ * FOUNDER REVIEW: these words are new (SMS style doctrine v1). The French example
+ * postal is H2X so the sample reads the way that parent's own would, and the keyword
+ * tokens named are honoured ones only — the copy.test.ts scan reads them off the line.
+ */
+export const UNREADABLE_INTAKE_REPLY =
+  "I couldn't read that one. I keep the family week and kids' rec sign-ups - text me like 'Maya is 4, Theo is 1, M5V 2T6' and I'll take it from there. Reply STOP to unsubscribe.";
+
+export const UNREADABLE_INTAKE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: UNREADABLE_INTAKE_REPLY,
+  fr: "Je n'ai pas compris ce message. Je garde la semaine et les inscriptions rec - écrivez par exemple 'Maya a 4 ans, Theo a 1 an, H2X 1Y6' et je m'occupe du reste. Répondez ARRET pour vous désabonner, AIDE pour de l'aide.",
+};
+
+/**
+ * The French unsubscribe confirmation — the one twin #491 could not write, because a
+ * French STOP acknowledgment can only be reached by a French STOP keyword.
+ *
+ * FOUNDER REVIEW: these words are new, not a translation of a reviewed line.
+ *
+ * `Terminé` rather than a translation of "You're unsubscribed": every French rendering
+ * of that phrase agrees with the parent's gender (`désabonné`/`désabonnée`), and Hale
+ * guesses at neither the parent's gender nor its own anywhere in this file. It also
+ * deliberately does NOT reuse `C'est fait`, which opens the consent acknowledgment — the
+ * two events are opposites and should not share an opening.
+ *
+ * It offers DEBUT rather than START because the parent reading it just wrote French, and
+ * an escape hatch in the other language is the same broken promise the whole French half
+ * of this file exists to end. Both words work; this one is the one they will reach for.
+ */
+export const STOP_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: STOP_ACK,
+  fr: 'Terminé - je ne vous texte plus. Répondez DEBUT si vous voulez que je revienne.',
+};
+
+export const START_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: START_ACK,
+  fr: 'Vous voilà de retour - je vous texte quand quelque chose demande votre attention.',
+};
 
 /**
  * Said ONCE when the one follow-up went unanswered and something Hale cannot invent is
@@ -218,3 +804,41 @@ export function detailsBlocked(missing: readonly IntakeGap[]): string {
  * believing they are signed up. */
 export const REGION_UNAVAILABLE_REPLY =
   "I'm only set up for families in Canada right now, so I can't help yet - I haven't set anything up.";
+
+/**
+ * The same honest close in French, and the one Hale is most likely to owe a francophone:
+ * a Quebec postal code is inside the region and an out-of-country one is not, so this
+ * line is what a French-writing parent outside Canada reads.
+ *
+ * `Je fonctionne` rather than `Je suis configurée`: Hale takes no gender in French, here
+ * or anywhere else in this file, and a participle that agreed with "une IA" would be the
+ * product quietly choosing one.
+ */
+export const REGION_UNAVAILABLE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: REGION_UNAVAILABLE_REPLY,
+  fr: "Je fonctionne seulement pour les familles au Canada pour l'instant, donc je ne peux pas encore vous aider - je n'ai rien mis en place.",
+};
+
+/**
+ * The identity-challenge accountability line (doctrine G15/L3). "Who is behind this
+ * number" is a CASL-shaped identification ask and deserves a real answer, not a
+ * stonewall — but the answer is a promise, so it is a constant the shell appends after
+ * the composed concession (the same decisions-vs-rendering split as {@link WATCH_OFFER}),
+ * never a sentence a model writes. It states only what is true and verifiable: an AI,
+ * a Canadian service, where the operator is named, and that STOP is final. No question
+ * and no close — a distrust turn may never end in one (R9). Wiring is the S2/S3
+ * skill-and-shell work; the words land here first so they are reviewed as copy.
+ *
+ * Built from {@link PRIVACY_URL} so a policy move cannot strand the one line that
+ * answers "who runs this". FOUNDER REVIEW: the operator naming and the URL target
+ * (privacy page vs a contact page) are the founder's to confirm.
+ *
+ * `qui me gère` carries no participle agreeing with "une IA": Hale takes no gender in
+ * French, here as everywhere in this file.
+ */
+export const IDENTITY_ACCOUNTABILITY_LINE = `Fair to ask. I'm an AI assistant, and Hale is a Canadian service - who runs it and how to reach them: ${PRIVACY_URL}. STOP ends my texts for good.`;
+
+export const IDENTITY_ACCOUNTABILITY_LINE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: IDENTITY_ACCOUNTABILITY_LINE,
+  fr: `Bonne question. Je suis une IA - c'est Village Hale, un service canadien, qui me gère: ${PRIVACY_URL}. Répondez ARRET et je ne vous texte plus.`,
+};

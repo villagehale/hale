@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CeGazXhMLryVRZF6shcFF",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Mira's bedtime is 7:30pm, with a simple wind-down: bath, story, then lights out. That's been your steady routine, so sticking with it should keep her cues consistent.\n\nIf she's going through a growth spurt or new milestone phase (looks like she's been busy lately — pulling to stand, new words), don't be surprised if she resists the routine a bit more than usual. That's normal and usually settles back down in a week or so."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1214,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 141,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3322,
+  "firstInputTokens": 1214
+}

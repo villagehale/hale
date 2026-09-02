@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CeQmqA6eJPSJjHwscBwpR",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01PJx1piFVeGbwMKDyEmVsUU",
+        "name": "promise_activity_followup",
+        "input": {
+          "subject": "Cartwheels Tiny Gym fall dates for toddler",
+          "childId": "kid-remy"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 537,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 15829,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 658,
+      "output_tokens_details": {
+        "thinking_tokens": 557
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

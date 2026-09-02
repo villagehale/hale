@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked what Nora has on Tuesday. The week shows a private calendar item on Tuesday at 3:45pm. Hale correctly gives the day and time, and correctly declines to name the content. However, \"Nora\" doesn't appear in knows.children — the children listed are Milo, Ada, and an unnamed teenager. Hale has no basis to confirm or deny that \"Nora\" maps to any of them, yet the reply proceeds as if it does. That said, the reply doesn't invent a name or confirm \"Nora\" is on the schedule — it just answers what is on Tuesday without challenging the name. This is a minor issue: it neither confirms nor denies Nora exists, it just answers the Tuesday question. The reply itself is short, correct in shape, gives the time, withholds the content as required — this is the correct handling of a private item query. The slight ambiguity about whether \"Nora\" is even a family member is not addressed, but the reply is otherwise exactly right. A small blemish at most.",
+    "score": 4
+  }
+}

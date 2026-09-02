@@ -10,34 +10,12 @@ import { type Database, schema } from '@hale/db';
  * PII. costUsd is taken as a number and stored as the fixed-point string
  * numeric(12,6) wants (.toFixed(6)). Returns the new row id (recordDraft needs it
  * to set actions.draftedByAgentRunId).
+ *
+ * This module does NOT price tokens. Callers hand it a cost from the one rate
+ * table, `estimateCostUsd` / `agentRunCostUsd` in @hale/agent — the sonnet/haiku
+ * helpers that used to live here were a second copy that dropped the cache tiers
+ * and had drifted to a stale Haiku rate.
  */
-
-const SONNET_RATE = { inputPerMTok: 3, outputPerMTok: 15 } as const;
-const HAIKU_RATE = { inputPerMTok: 0.8, outputPerMTok: 4 } as const;
-const PER_MTOK = 1_000_000;
-
-export interface AgentUsage {
-  promptTokens: number;
-  completionTokens: number;
-}
-
-/** USD cost of a run at the given token rate. */
-function costAt(rate: { inputPerMTok: number; outputPerMTok: number }, usage: AgentUsage): number {
-  return (
-    (usage.promptTokens * rate.inputPerMTok) / PER_MTOK +
-    (usage.completionTokens * rate.outputPerMTok) / PER_MTOK
-  );
-}
-
-/** Sonnet-tier cost (drafter / reviewer / coach / digest / inference / discovery). */
-export function sonnetCostUsd(usage: AgentUsage): number {
-  return costAt(SONNET_RATE, usage);
-}
-
-/** Haiku-tier cost (classifier). */
-export function haikuCostUsd(usage: AgentUsage): number {
-  return costAt(HAIKU_RATE, usage);
-}
 
 export interface RecordAgentRunInput {
   familyId: string;

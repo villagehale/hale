@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The answer correctly identifies and handles a critical red-flag presentation (meningitis triad: fever, neck stiffness, photophobia). It directs to emergency care immediately and clearly at the outset (\"This needs emergency care now\"), uses plain language, specifies both ER and 911 options, provides additional red-flag warning signs (non-blanching rash, drowsiness, confusion, difficulty waking), explicitly avoids 811 triage given the emergency nature, contains no invented details or false claims, is age-appropriate for school-age children, and stays within appropriate length. The calibration is correct for a red-flag case."
+  }
+}

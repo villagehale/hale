@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is NULL, so scoring slots only. Both pages were refused (no_page_read). The slot correctly names \"Parent & Tot Swimming Lessons, Gellert Community Centre,\" gives an age fit grounded in the search snippet (4 months to 3 years), leaves when/price/registration all null (nothing could be extracted from unread pages), and cites the Town of Halton Hills source URL without claiming the page was opened. No negative claim is made about the schedule not being posted. This is exactly the right behavior: a snippet-grounded slot with nulls rather than fabricated data or an unearned \"not posted yet\" assertion. The slot list is honest and precise given the access failure. Full marks for the slot pass.",
+    "score": 5
+  }
+}

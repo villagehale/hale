@@ -1,6 +1,12 @@
 import type { ApprovedActionPayload, IngestedEventPayload } from '@hale/tools-contracts';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DEEP_RESEARCH_BATCH_SIZE,
+  DEEP_RESEARCH_BUDGET_MS,
+  DEEP_RESEARCH_EXPIRE_SECONDS,
+  DEEP_RESEARCH_QUEUE,
+} from '~/lib/channel/activity/deep-queue';
+import {
   CHANNEL_MESSAGE_RECEIVED_RETRY,
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
@@ -11,6 +17,7 @@ import {
   HOT_QUEUE_EXPIRE_SECONDS,
   INBOUND_TURN_QUEUES,
   drainHotQueues,
+  isConnectionExhaustion,
 } from './drain';
 
 /**
@@ -26,6 +33,7 @@ import {
 const EVENTS = 'events.ingested';
 const ACTIONS = 'actions.approved';
 const RERANK = 'village.rerank';
+const DEEP = DEEP_RESEARCH_QUEUE;
 const CHANNEL = 'channel.send';
 const INBOUND = 'channel.message.received';
 const DEAD = 'channel.message.received.dead';
@@ -90,6 +98,7 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     [CHANNEL, [...(initial[CHANNEL] ?? [])]],
     [INBOUND, [...(initial[INBOUND] ?? [])]],
     [DEAD, [...(initial[DEAD] ?? [])]],
+    [DEEP, [...(initial[DEEP] ?? [])]],
   ]);
   const completed = new Map<string, string[]>([
     [EVENTS, []],
@@ -98,6 +107,7 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     [CHANNEL, []],
     [INBOUND, []],
     [DEAD, []],
+    [DEEP, []],
   ]);
   const failed = new Map<string, string[]>([
     [EVENTS, []],
@@ -106,6 +116,7 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     [CHANNEL, []],
     [INBOUND, []],
     [DEAD, []],
+    [DEEP, []],
   ]);
   const created: QueueCall[] = [];
 
@@ -160,6 +171,7 @@ function makeDeps(boss: DrainBoss, overrides: Partial<DrainDeps['handlers']> = {
       rerank: vi.fn(async () => undefined),
       channelSend: vi.fn(async () => undefined),
       channelMessage: vi.fn(async () => undefined),
+      deepResearch: vi.fn(async () => undefined),
       ...overrides,
     },
     log: { info: vi.fn(), error: vi.fn() },
@@ -195,7 +207,7 @@ describe('drainHotQueues', () => {
     await drainHotQueues(makeDeps(boss));
 
     const order = (boss.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([name]) => name);
-    expect(order).toEqual([CHANNEL, INBOUND, DEAD, EVENTS, ACTIONS, RERANK]);
+    expect(order).toEqual([CHANNEL, INBOUND, DEAD, EVENTS, ACTIONS, RERANK, DEEP]);
   });
 
   /**
@@ -729,5 +741,133 @@ describe('drainHotQueues — queue slice', () => {
   it('names the inbound queue in the drainable set', () => {
     expect(DRAINABLE_QUEUES).toContain(INBOUND);
     expect(INBOUND_TURN_QUEUES).toEqual([INBOUND]);
+  });
+});
+
+/**
+ * The one failure the kicker must be able to tell apart from every other 5xx: the
+ * database refused the connection. A retry then is a second invocation asking for a
+ * connection that is not there, so this predicate is what turns the drain's answer into
+ * a 503 and the kicker's retry into a back-off (app/api/cron/drain/route.ts).
+ */
+describe('isConnectionExhaustion', () => {
+  it('recognises the exhaustion Postgres and the pooler actually report', () => {
+    expect(
+      isConnectionExhaustion(
+        Object.assign(new Error('sorry, too many clients already'), { code: '53300' }),
+      ),
+    ).toBe(true);
+    // The direct port answers with the message and no code on some driver paths.
+    expect(isConnectionExhaustion(new Error('sorry, too many clients already'))).toBe(true);
+    // Supabase's pooler says it differently.
+    expect(isConnectionExhaustion(new Error('max clients reached'))).toBe(true);
+  });
+
+  it('does not swallow the failures that are NOT exhaustion', () => {
+    // A drain that threw for any other reason must keep 500ing — a 503 would tell every
+    // kicker to stop kicking over a bug in one handler.
+    expect(isConnectionExhaustion(new Error('relation "pgboss.job" does not exist'))).toBe(false);
+    expect(isConnectionExhaustion(Object.assign(new Error('deadlock'), { code: '40P01' }))).toBe(
+      false,
+    );
+    expect(isConnectionExhaustion(null)).toBe(false);
+    expect(isConnectionExhaustion('too many clients already')).toBe(false);
+  });
+});
+
+/**
+ * THE QUESTION-TIME DEEP PASS on the drain — the one queue whose jobs are measured in
+ * minutes rather than in seconds.
+ *
+ * Every property here is about that difference. It is drained LAST so it cannot delay a
+ * parent's text; it is fetched ONE AT A TIME so the wall-clock deadline is honoured
+ * between jobs rather than only between batches; and its queue is declared with its own
+ * expiry, because the hot 180 seconds would have pg-boss reclaim a job that is still
+ * working and pay for the whole run twice.
+ */
+describe('deep.research', () => {
+  const COMMITMENT = '55555555-5555-4555-8555-555555555555';
+
+  function validDeep() {
+    return { commitment_id: COMMITMENT, family_id: FAMILY };
+  }
+
+  it('declares the queue with its OWN expiry, not the hot one', async () => {
+    const { boss, created } = makeFakeBoss({});
+    await drainHotQueues(makeDeps(boss));
+
+    const declared = created.find((call) => call.name === DEEP);
+    expect(declared?.expireInSeconds).toBe(DEEP_RESEARCH_EXPIRE_SECONDS);
+    expect(declared?.expireInSeconds).toBeGreaterThan(HOT_QUEUE_EXPIRE_SECONDS);
+  });
+
+  it('is drainable by name and runs the handler, then completes the job', async () => {
+    const deepResearch = vi.fn(async () => undefined);
+    const { boss, completed } = makeFakeBoss({ [DEEP]: [{ id: 'd1', data: validDeep() }] });
+
+    await drainHotQueues(makeDeps(boss, { deepResearch }));
+
+    expect(DRAINABLE_QUEUES).toContain(DEEP);
+    expect(deepResearch).toHaveBeenCalledWith(validDeep());
+    expect(completed(DEEP)).toEqual(['d1']);
+  });
+
+  it('fetches ONE job at a time, so the deadline is checked between minutes-long runs', async () => {
+    const { boss } = makeFakeBoss({});
+    await drainHotQueues(makeDeps(boss));
+
+    const deepFetch = (boss.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([name]) => name === DEEP,
+    );
+    expect(deepFetch?.[1]).toEqual({ batchSize: DEEP_RESEARCH_BATCH_SIZE });
+    expect(DEEP_RESEARCH_BATCH_SIZE).toBe(1);
+  });
+
+  it('does not START a deep job once the run is past its slice', async () => {
+    const deepResearch = vi.fn(async () => undefined);
+    const { boss } = makeFakeBoss({ [DEEP]: [{ id: 'd1', data: validDeep() }] });
+    const deps = makeDeps(boss, { deepResearch });
+    // The run STARTS at zero and the clock has moved past the slice by the time the deep
+    // step is reached - which is the real shape, since the slice is measured from the
+    // start of the tick and this queue is drained last.
+    let first = true;
+    deps.now = () => {
+      if (first) {
+        first = false;
+        return 0;
+      }
+      return DEEP_RESEARCH_BUDGET_MS + 1;
+    };
+
+    await drainHotQueues(deps);
+
+    expect(deepResearch).not.toHaveBeenCalled();
+  });
+
+  it('DROPS a schema-invalid payload (never reaches the lane)', async () => {
+    const deepResearch = vi.fn(async () => undefined);
+    const { boss, completed, failed } = makeFakeBoss({
+      [DEEP]: [{ id: 'd1', data: { commitment_id: 'not-a-uuid' } }],
+    });
+
+    const summary = await drainHotQueues(makeDeps(boss, { deepResearch }));
+
+    expect(deepResearch).not.toHaveBeenCalled();
+    expect(summary.dropped).toBe(1);
+    expect(completed(DEEP)).toEqual(['d1']);
+    expect(failed(DEEP)).toEqual([]);
+  });
+
+  it('re-queues a deep job whose handler throws - the promise is never silently lost', async () => {
+    const deepResearch = vi.fn(async () => {
+      throw new Error('provider down');
+    });
+    const { boss, completed, failed } = makeFakeBoss({ [DEEP]: [{ id: 'd1', data: validDeep() }] });
+
+    const summary = await drainHotQueues(makeDeps(boss, { deepResearch }));
+
+    expect(failed(DEEP)).toEqual(['d1']);
+    expect(completed(DEEP)).toEqual([]);
+    expect(summary.failed).toBe(1);
   });
 });

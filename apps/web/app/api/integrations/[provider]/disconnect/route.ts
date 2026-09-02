@@ -34,6 +34,11 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ provider:
   if (!familyId || !userId) {
     return NextResponse.json({ error: 'no_family' }, { status: 403 });
   }
-  await revokeConnection(database, familyId, userId, provider);
+  const revokedCount = await revokeConnection(database, familyId, userId, provider);
+  if (revokedCount === 0) {
+    // Nothing was the caller's to disconnect (e.g. a co-parent's connection) —
+    // never a false 'revoked'.
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
   return NextResponse.json({ status: 'revoked', provider });
 }

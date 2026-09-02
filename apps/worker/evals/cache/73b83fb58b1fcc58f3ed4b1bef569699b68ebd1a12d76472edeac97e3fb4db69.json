@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "立即拨打911或马上去急诊。发热伴按压不褪色的紫红色皮疹可能是严重感染的信号，不能等待。",
+    "triage": "现在就拨打911或立即送急诊，不要等待观察。如果暂时无法立刻到达医院，可先拨打811咨询，但皮疹不褪色加发热属于紧急情况，应优先叫救护车或去急诊。",
+    "sources": [
+      "NHS - Meningitis symptoms",
+      "HealthyChildren.org (AAP)",
+      "Ontario Health811"
+    ]
+  },
+  "latencyMs": 4631
+}

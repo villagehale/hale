@@ -1,0 +1,11 @@
+{
+  "value": {
+    "answer": "Call 911 now, or get to the ER immediately - these are signs of severe dehydration needing urgent fluids.",
+    "triage": "This is an emergency: go to the ER or call 911 right now given the difficulty waking, sunken eyes, and no urine in over 12 hours. Do not wait to see if it improves. If you need guidance getting there, Health811 (811) can help, but do not delay care for this call.",
+    "sources": [
+      "Caring for Kids (Canadian Paediatric Society)",
+      "HealthLinkBC/Health811 dehydration guidance"
+    ]
+  },
+  "latencyMs": 6385
+}

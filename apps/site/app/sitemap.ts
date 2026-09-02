@@ -2,16 +2,30 @@ import type { MetadataRoute } from 'next';
 import { publishedCities } from '~/lib/activities/index';
 import { publishedAnswers } from '~/lib/answers/index';
 import { SITE_URL } from '~/lib/app-url';
-import { publishedCheckpoints } from '~/lib/milestones/index';
+import { REGISTRATION_GUIDES } from '~/lib/registration/index';
 
 // Static marketing routes. Add new public pages here as they ship.
+// /milestones is NOT here: it is retired (permanent redirect to /), and a retired
+// route must never be advertised for indexing.
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
-  const staticRoutes: MetadataRoute.Sitemap = ['', '/about', '/contact', '/faq', '/pricing'].map((path) => ({
-    url: `${SITE_URL}${path}`,
-    lastModified,
-    changeFrequency: 'monthly',
-    priority: path === '' ? 1 : 0.7,
+  const staticRoutes: MetadataRoute.Sitemap = ['', '/about', '/contact', '/faq', '/pricing'].map(
+    (path) => ({
+      url: `${SITE_URL}${path}`,
+      lastModified,
+      changeFrequency: 'monthly',
+      priority: path === '' ? 1 : 0.7,
+    }),
+  );
+
+  // City-registration landings are English-first municipal calendars. They rot in
+  // about six weeks, so they carry weekly change frequency and their own
+  // dateModified rather than the sitemap-build clock.
+  const registrationRoutes: MetadataRoute.Sitemap = REGISTRATION_GUIDES.map((guide) => ({
+    url: `${SITE_URL}${guide.path}`,
+    lastModified: new Date(guide.updated),
+    changeFrequency: 'weekly' as const,
+    priority: 0.7,
   }));
 
   // Answer pages enter the sitemap only once a human reviews them and flips
@@ -31,27 +45,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
             url: `${SITE_URL}/answers/${page.slug}`,
             lastModified: new Date(page.updated),
             changeFrequency: 'weekly' as const,
-            priority: 0.6,
-          })),
-        ];
-
-  // Milestone age pages ride the same review-before-index gate: excluded until a
-  // human re-verifies an age's copy against its cited CDC URL and flips
-  // `published`. The /milestones hub enters with them.
-  const milestoneRoutes: MetadataRoute.Sitemap =
-    publishedCheckpoints.length === 0
-      ? []
-      : [
-          {
-            url: `${SITE_URL}/milestones`,
-            lastModified,
-            changeFrequency: 'monthly',
-            priority: 0.6,
-          },
-          ...publishedCheckpoints.map((checkpoint) => ({
-            url: `${SITE_URL}/milestones/${checkpoint.slug}`,
-            lastModified: new Date(checkpoint.updated),
-            changeFrequency: 'monthly' as const,
             priority: 0.6,
           })),
         ];
@@ -77,5 +70,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
           })),
         ];
 
-  return [...staticRoutes, ...answerRoutes, ...milestoneRoutes, ...activityRoutes];
+  return [...staticRoutes, ...registrationRoutes, ...answerRoutes, ...activityRoutes];
 }

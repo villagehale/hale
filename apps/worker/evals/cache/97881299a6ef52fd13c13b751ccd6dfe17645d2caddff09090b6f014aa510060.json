@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the registration window from `knows.registrationWindows`, states the exact resident-first opening date and time (Sep 1, 7:00 a.m.) as a verified fact — no hedging, no \"their site says\" — and confirms that `watching` is already true, promising to text before it opens. This is exactly the correct handling: recall, not invention, and the \"I'm already on it and will text you before it opens\" line is the whole point of the feature. No app referral, no invented details, no unnecessary machinery explained, no sign-off. Short, accurate, actionable.",
+    "score": 5
+  }
+}

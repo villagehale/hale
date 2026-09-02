@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { ChannelMessageReceivedJob } from './inbound';
 import {
@@ -118,6 +118,13 @@ describe('the age band', () => {
 describe('what the sweep may select', () => {
   let db: TestDb;
 
+  // Booted in a hook, not the test body: pglite boot + migrations routinely
+  // exceed the 5s test timeout under full parallel CI load, and hooks carry
+  // their own timeout budget.
+  beforeEach(async () => {
+    db = await createTestDb();
+  });
+
   afterEach(async () => {
     await db.close();
   });
@@ -125,7 +132,10 @@ describe('what the sweep may select', () => {
   async function seedInbound(
     family: { familyId: string; parentUserId: string },
     providerMessageId: string,
-    over: { channel?: 'sms' | 'email'; category?: 'reply' | 'intake' | 'caregiver' } = {},
+    over: {
+      channel?: 'sms' | 'whatsapp' | 'email';
+      category?: 'reply' | 'intake' | 'caregiver';
+    } = {},
   ) {
     const createdAt = new Date(NOW.getTime() - 10 * 60 * 1000);
     const [row] = await db.database
@@ -147,22 +157,25 @@ describe('what the sweep may select', () => {
     return row.id;
   }
 
-  it('selects the reply rows on both doors, and nothing another consumer owns', async () => {
-    db = await createTestDb();
+  it('selects the reply rows on all three doors, and nothing another consumer owns', async () => {
     const family = await seedFamily(db.database);
 
     const texted = await seedInbound(family, 'SM_owed');
+    // A WhatsApp reply is owed the SAME hand-off: the webhook records it with its real
+    // pipe (WhatsApp v1), and a sweep pinned to 'sms' would strand it forever.
+    const whatsapped = await seedInbound(family, 'WA_owed', { channel: 'whatsapp' });
     const emailed = await seedInbound(family, 'EM_owed', { channel: 'email' });
     await seedInbound(family, 'SM_intake', { category: 'intake' });
     await seedInbound(family, 'SM_caregiver', { category: 'caregiver' });
 
     const rows = await selectUnhandedInbound(db.database, NOW);
 
-    expect(rows.map((r) => r.id).sort()).toEqual([texted, emailed].sort());
+    expect(new Set(rows.map((r) => r.id))).toEqual(
+      new Set([texted, whatsapped, emailed]),
+    );
   });
 
   it('leaves a row alone once it has actually been handed off', async () => {
-    db = await createTestDb();
     const family = await seedFamily(db.database);
 
     const owed = await seedInbound(family, 'EM_owed', { channel: 'email' });

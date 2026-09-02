@@ -10,6 +10,34 @@ import type { ChannelKind, LoopCategory } from './types';
  * inbound rows are A3.
  */
 
+/**
+ * The status an outbound row starts at once the provider ACCEPTED it — the one place
+ * that decides what a fresh send row claims.
+ *
+ * SMS starts at 'queued'. Twilio accepts a message and transmits it later, at roughly
+ * one segment per second from a Canadian long code, so 'sent' written the moment the
+ * API answered asserted a carrier handoff nobody had observed — and it hid the only
+ * thing worth watching during a burst, because a pile of messages waiting for airtime
+ * looked exactly like a pile already delivered. The delivery receipt is what advances
+ * the row from here (channel/twilio/status.ts, which already treats 'queued' as
+ * overwritable by sent/delivered/failed alike). The intake replay has recorded its
+ * outbound rows this way since #413 for exactly these reasons; this is every other SMS
+ * writer catching up.
+ *
+ * Every other channel is terminal on accept, because none of them has a receipt wired:
+ * a row that could never leave 'queued' would be a permanent lie in the other direction.
+ *
+ * WhatsApp rides the SAME receipt loop: its sends name the same StatusCallback and
+ * Twilio's `read` maps to delivered (twilio/status.ts), so its rows are born 'queued'
+ * like every SMS row.
+ */
+export function acceptedStatus(channel: ChannelKind): AcceptedStatus {
+  return channel === 'sms' || channel === 'whatsapp' ? 'queued' : 'sent';
+}
+
+/** What {@link acceptedStatus} can answer — the type a send's own ledger write carries. */
+export type AcceptedStatus = 'queued' | 'sent';
+
 /** Insert one outbound ledger row; returns its id (the audit target). */
 export async function recordChannelMessage(
   write: LedgerWrite,
@@ -39,9 +67,22 @@ export async function recordChannelMessage(
   return inserted.id;
 }
 
+/**
+ * THE ONE LIST every "have we already sent this?" reader filters on: the send happened
+ * and nothing has come back to say it did not arrive.
+ *
+ * 'queued' belongs here because that is where an SMS row now STARTS ({@link
+ * acceptedStatus}). A reader still asking for ['sent','delivered'] would answer "no"
+ * about a message already on its way to the phone and send a second one — a doubled
+ * cap, a second identity ask, a re-asked question. The reporting readers are a
+ * different question ("did it reach the parent?") and deliberately do not use this.
+ */
+export const SENT_STATUSES = ['queued', 'sent', 'delivered'] as const;
+
 /** How many real sends (not suppressions/failures) of this category on THIS
- * channel reached the parent since `since` — the cap counts what actually landed,
- * per delivery leg so a mirror leg is not capped by the other. */
+ * channel went to the parent since `since` — the cap counts what actually left,
+ * including a row still waiting for its receipt, per delivery leg so a mirror leg is
+ * not capped by the other. */
 export async function countRecentSends(
   userId: string,
   category: LoopCategory,
@@ -58,7 +99,7 @@ export async function countRecentSends(
         eq(schema.channelMessages.category, category),
         eq(schema.channelMessages.channel, channel),
         gte(schema.channelMessages.createdAt, since),
-        inArray(schema.channelMessages.status, ['sent', 'delivered']),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     );
   return rows.length;
@@ -74,7 +115,7 @@ export async function countRecentSends(
  * un-consume idempotency: at-most-once per key is the quiet-operator contract,
  * and deliberate retries, when we build them, will mint their own keys.
  */
-export const CONSUMED_SEND_STATUSES = ['queued', 'sent', 'delivered', 'failed'] as const;
+export const CONSUMED_SEND_STATUSES = [...SENT_STATUSES, 'failed'] as const;
 
 /** Whether this dedupe key already carries an attempted send — the idempotency
  * guard that makes a re-drain a no-op. Suppressions never carry the key, so a

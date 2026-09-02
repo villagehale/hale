@@ -21,7 +21,19 @@
  * GSM-7 (VIL-265): plain hyphens, straight apostrophes, no em dashes, no emoji. Every
  * string here is scanned by lib/channel/sms-copy-encoding.test.ts and the rendered
  * results are segment-counted below it.
+ *
+ * THREE OF THEM NOW HAVE A FRENCH TWIN, picked by `replyLanguage` from the message that
+ * just arrived (lib/channel/language.ts). The safety line is the reason this could not
+ * wait: a French medical turn falls closed onto it BY CONSTRUCTION, because medical.ts
+ * refuses any composed body that is not GSM-7 and a real French answer carries accents
+ * the alphabet cannot always take. Until now that meant the parent most likely to get
+ * the fixed line was the one least able to read it.
+ *
+ * The French is written INSIDE the GSM-7 alphabet rather than folded into it afterwards —
+ * é è à ù are in it, â ê î ô û ç are not, and the wording works around them. See the
+ * same note at the top of intake/copy.ts.
  */
+import type { ReplyLanguage } from '~/lib/channel/language';
 
 /**
  * What a parent hears when the general answer could not be composed — a missing key, a
@@ -49,6 +61,13 @@
 export const ANSWER_UNAVAILABLE_REPLY =
   "Sorry - I couldn't get to that one just now. Try me again in a minute.";
 
+/** `Mes excuses` rather than `Désolé(e)`: the apology carries no gender, which is the
+ * same choice made everywhere else Hale speaks French about itself. */
+export const ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: ANSWER_UNAVAILABLE_REPLY,
+  fr: "Mes excuses - je n'ai pas réussi à répondre à celle-là. Réessayez dans une minute.",
+};
+
 /**
  * The safety answer. Fixed, never composed, never conditioned on anything in the
  * message.
@@ -66,13 +85,50 @@ export const SAFETY_REPLY =
   "That's not something I should advise on. Health811 (call 811) can help any time - and if it's an emergency, call 911.";
 
 /**
- * The tokens that make {@link SAFETY_REPLY} go out with no model in the loop at all —
+ * The safety answer in French — the single most load-bearing translation in this change,
+ * for two reasons that compound.
+ *
+ * It is the line a French medical turn falls closed onto (see the file header), so a
+ * francophone parent is MORE likely to receive it than an anglophone one. And it is the
+ * line whose job is to get someone off their phone and onto a telephone: the two numbers
+ * are the message, and everything else is there to make them act on it.
+ *
+ * FOUNDER REVIEW, on the proper noun specifically: "Santé811" is the French face of
+ * Ontario's Health811 service. It was written from the same source as the English line
+ * and NOT re-fetched in this change. The failure mode is bounded — 811 and 911 are the
+ * same digits in both languages, so a wrong service name still dials the right place —
+ * but it should be confirmed before this goes live.
+ */
+export const SAFETY_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: SAFETY_REPLY,
+  fr: "Ce n'est pas à moi de vous conseiller là-dessus. Santé811 (composez le 811) peut vous aider à toute heure - et en cas d'urgence, faites le 911.",
+};
+
+/**
+ * VIL-327 — caregiver mental crisis. Designer-locked 2026-08-28. Not
+ * {@link SAFETY_REPLY}: that line is the child-health 811 reply and must not
+ * go out for suicide / self-harm. 988 is the Canada Suicide Crisis Helpline.
+ * No return ask. No 811. No "not something I should advise on."
+ */
+export const MENTAL_CRISIS_REPLY =
+  "If you're in crisis, call 988 any time. If it's an emergency, call 911.";
+
+/**
+ * VIL-328 — physical emergency. Designer-locked 2026-08-27, Advisor override
+ * the same night. Not {@link SAFETY_REPLY}: that line is Telehealth 811 and
+ * must not lead a real emergency. Not {@link MENTAL_CRISIS_REPLY}: 988 is the
+ * mental-crisis line. This is the line alone, verbatim. No return ask. No 811.
+ */
+export const EMERGENCY_REPLY = 'Call 911 now.';
+
+/**
+ * The tokens that make {@link EMERGENCY_REPLY} go out with no model in the loop at all —
  * the outage smoke alarm's trigger (router/smoke-alarm.ts, founder-approved
  * 2026-08-12), and the ONE place Hale answers a parent without composing anything.
  *
- * THE BAR, and nothing else gets on this list: a token belongs only if sending the
- * safety line to someone who was NOT in an emergency is obviously acceptable, and
- * missing a real one is obviously not. "Fever", "rash" and "hit her head" all fail it —
+ * THE BAR, and nothing else gets on this list: a token belongs only if sending
+ * {@link EMERGENCY_REPLY} to someone who was NOT in an emergency is obviously
+ * acceptable, and missing a real one is obviously not. "Fever", "rash" and "hit her head" all fail it —
  * a parent asking about a rash during an outage is owed a composed answer once the
  * model is back, not two phone numbers now. The six below pass it: there is no ordinary
  * Tuesday sentence they turn up in.
@@ -105,15 +161,24 @@ export const EMERGENCY_TOKENS = [
  * "seizures", and losing a real emergency to a plural is precisely the miss the bar
  * above forbids. It still refuses "9110" and "0911", which are the cases that matter.
  */
-const EMERGENCY_PATTERN = new RegExp(
-  `(?<![\\w$])(?:${EMERGENCY_TOKENS.join('|')})(?!\\d)`,
-  'i',
-);
+const EMERGENCY_PATTERN = new RegExp(`(?<![\\w$])(?:${EMERGENCY_TOKENS.join('|')})(?!\\d)`, 'i');
 
 /** Whether an inbound text names an emergency unambiguously enough to answer without a
  * model. Calibrated toward the false positive on purpose — see the bar above. */
 export function namesAnEmergency(body: string): boolean {
   return EMERGENCY_PATTERN.test(body);
+}
+
+/**
+ * VIL-327 — caregiver mental crisis. Sends {@link MENTAL_CRISIS_REPLY}
+ * (988 / 911), never {@link SAFETY_REPLY}. A therapist-find or cheer-up
+ * must not match.
+ */
+const MENTAL_CRISIS_PATTERN =
+  /\b(?:suicide|suicidal|kill(?:ing)? myself|end my life|self[-\s]?harm|want to die|wanna die|not want to be alive)\b|(?<![\w$])988(?!\d)/i;
+
+export function namesAMentalCrisis(body: string): boolean {
+  return MENTAL_CRISIS_PATTERN.test(body);
 }
 
 /**
@@ -170,6 +235,24 @@ export function reachesForTheHealthLine(body: string): boolean {
  */
 export const PROVIDER_ACCESS_REPLY =
   "Finding you a doctor isn't something I can do - but Health Care Connect is Ontario's list for a family doctor or pediatrician, and you register by calling 811. That same number answers health questions any time.";
+
+/**
+ * The registry answer in French. Same two sentences, same refusals — no clinic names, no
+ * URL, no wait-time estimate — and the same Ontario-only assumption stated above.
+ *
+ * FOUNDER REVIEW, on the proper noun: "Accès Soins" is the French name of the Health Care
+ * Connect program. Like "Santé811" above it was written from the same source as the
+ * English line and not re-fetched here. It matters more than the other one, because this
+ * is the name a parent has to say on the phone — a wrong program name is a wasted call,
+ * which is exactly the discouragement this line exists to prevent.
+ *
+ * `Ce numéro répond aussi` rather than `Ce même numéro`: GSM-7 has no ê, and "aussi"
+ * carries the "that same number" sense without it.
+ */
+export const PROVIDER_ACCESS_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: PROVIDER_ACCESS_REPLY,
+  fr: "Trouver un médecin pour vous, je ne peux pas - mais Accès Soins est la liste de l'Ontario pour un médecin de famille ou un pédiatre, et on s'y inscrit en composant le 811. Ce numéro répond aussi aux questions de santé à toute heure.",
+};
 
 /**
  * The DIRECT-ACCESS answer, for the provider classes an Ontario parent does not need a
@@ -270,4 +353,111 @@ const EYE_CARE_PATTERN = new RegExp(`\\b(?:${EYE_CARE_TOKENS.join('|')})`, 'i');
  * registry answer and the direct-access one. Deterministic, and no model sees it. */
 export function asksAboutEyeCare(body: string): boolean {
   return EYE_CARE_PATTERN.test(body);
+}
+
+/**
+ * The practitioners Health Care Connect actually places, and only those.
+ *
+ * The program matches an Ontario resident to a family doctor, a nurse practitioner or a
+ * primary care team (ontario.ca "Find a family doctor or nurse practitioner"). A
+ * paediatrician is included because that is how the registry's own intake describes a
+ * child's primary care provider, and because it is the ask this line was written for.
+ *
+ * NOTHING ELSE GOES ON THIS LIST. Every addition is a promise that calling 811 gets a
+ * parent that kind of practitioner, and the whole point of the table below is that the
+ * promise is false for most of them.
+ */
+const PRIMARY_CARE_TOKENS = [
+  'family doctor',
+  'family physician',
+  'gp',
+  'general practitioner',
+  'pediatrician',
+  'paediatrician',
+  'nurse practitioner',
+  'family practice',
+  'medecin de famille',
+  'médecin de famille',
+  'pediatre',
+  'pédiatre',
+  'infirmiere praticienne',
+  'infirmière praticienne',
+] as const;
+
+const PRIMARY_CARE_PATTERN = new RegExp(`\\b(?:${PRIMARY_CARE_TOKENS.join('|')})`, 'i');
+
+/**
+ * What a parent hears when they ask Hale to place them with a practitioner it has NO
+ * verified access path for — a paediatric dentist, an OT, a speech-language pathologist,
+ * an audiologist, a physio, a child psychologist.
+ *
+ * THIS LINE IS THE POINT OF THE TABLE. Until it existed the provider door had two
+ * branches and its DEFAULT was the registry, so every one of those asks was answered
+ * with Health Care Connect — a program that has never placed any of them. That is not a
+ * vague answer, it is a wrong one, and it is the most discouraging kind: the parent makes
+ * a call that was never going to work and concludes the system has nothing for them.
+ * The eye branch fixed one ask and left the shape (founder, live gate, 2026-08-13).
+ *
+ * SO IT SAYS IT DOES NOT KNOW. Honest ignorance is a correct answer and a guessed
+ * registry is not, and the difference is a real phone call a parent does not waste.
+ *
+ * AND IT NAMES THE ADJACENT CAN, which is the capability table's rule for every refusal:
+ * once they have a date, Hale puts it on the week and reminds them. That is true, it is
+ * this thread's own next turn, and it is not a place a parent has to go — no app, no
+ * page, no directory Hale has not verified.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO. It names no registry, no directory and no clinic; it
+ * does not say "ask your family doctor for a referral", because whether a referral is
+ * even needed depends on the class (an optometrist needs none, an ophthalmologist does)
+ * and this line is the branch that fires when Hale does not know the class. It does not
+ * name 811 either: this is not a health question, and the number that answers health
+ * questions is not the number that books a speech therapist.
+ */
+export const UNPLACEABLE_PROVIDER_REPLY =
+  "I don't have a verified way to get you that one, and I'd rather say so than send you somewhere that can't help. Once you've got an appointment, tell me and I'll put it on your week.";
+
+/** The same refusal in French, with the same two halves: the honest no, then the can. */
+export const UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: UNPLACEABLE_PROVIDER_REPLY,
+  fr: "Je n'ai pas de piste vérifiée pour celui-là, et je préfère le dire que vous envoyer au mauvais endroit. Dès que vous avez un rendez-vous, dites-le moi et je l'ajoute à votre semaine.",
+};
+
+/**
+ * THE REFERRAL TABLE — which fixed answer a `provider_access` text gets, by SERVICE.
+ *
+ * Ordered, first match wins, and the order is load-bearing: "eye doctor" contains
+ * "doctor", so eye care is asked first. A MISS is a real outcome and lands on
+ * {@link UNPLACEABLE_PROVIDER_REPLY} — there is no default branch that answers an
+ * unrecognised ask with somebody else's registry, which is the whole defect this
+ * replaced.
+ *
+ * Deterministic, and no model is consulted, for the reason the door itself is
+ * deterministic: this is what a parent is told about getting care for their child, and a
+ * cheap model choosing between three reviewed sentences buys nothing.
+ */
+const REFERRAL_TABLE: ReadonlyArray<{
+  service: 'eye-care' | 'primary-care';
+  matches(body: string): boolean;
+  reply(language: ReplyLanguage): string;
+}> = [
+  {
+    service: 'eye-care',
+    matches: asksAboutEyeCare,
+    // DIRECT_ACCESS_EYE_REPLY has no French twin yet and its token list is English, so a
+    // French eye question does not match here and leaves by the registry or the
+    // unplaceable line in French rather than by this one in English.
+    reply: () => DIRECT_ACCESS_EYE_REPLY,
+  },
+  {
+    service: 'primary-care',
+    matches: (body) => PRIMARY_CARE_PATTERN.test(body),
+    reply: (language) => PROVIDER_ACCESS_REPLY_BY_LANGUAGE[language],
+  },
+];
+
+/** The fixed answer for one provider-access text: the verified path for a service Hale
+ * has one for, and an honest "I don't know" for every service it does not. */
+export function referralReply(body: string, language: ReplyLanguage): string {
+  const row = REFERRAL_TABLE.find((entry) => entry.matches(body));
+  return row ? row.reply(language) : UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE[language];
 }

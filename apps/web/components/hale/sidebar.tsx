@@ -17,7 +17,7 @@ import { useShell } from '~/components/hale/app-shell';
 import { ChildSwitcher } from '~/components/hale/child-switcher';
 import type { SwitcherChild } from '~/components/hale/child-switcher-view';
 import { LogoMark } from '~/components/hale/logo-mark';
-import { brandHref, primaryNav } from '~/components/hale/nav';
+import { brandHref, navWithAdmin, primaryNav } from '~/components/hale/nav';
 
 function NavLink({
   href,
@@ -56,8 +56,10 @@ export function Sidebar({
   parentName = null,
   parentImage = null,
   planTier = 'free',
+  maskedPhone = null,
   kids = [],
   receiptsIa = false,
+  showAdmin = false,
 }: {
   authControls?: boolean;
   signedIn?: boolean;
@@ -66,11 +68,16 @@ export function Sidebar({
   parentImage?: string | null;
   /** The family's plan, for the account chip's secondary line. */
   planTier?: PlanTier;
+  /** The parent's masked SMS number — the chip's secondary line when enrolled. */
+  maskedPhone?: string | null;
   /** The family's children, for the foot child switcher. */
   kids?: SwitcherChild[];
   /** VIL-244 · M9: the receipts-room stops. Resolved from F14_RECEIPTS_IA by the
    * authed layout — a server-read variable can't be read from this client module. */
   receiptsIa?: boolean;
+  /** The founder-only Admin stop. Resolved server-side by the authed layout's
+   * resolveAdminGate() — non-admin HTML contains no Admin entry at all. */
+  showAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const { collapsed, toggleCollapsed, closeDrawer } = useShell();
@@ -110,7 +117,7 @@ export function Sidebar({
       </div>
 
       <nav className="sidebar-nav" aria-label="primary">
-        {primaryNav(receiptsIa).map((item) => (
+        {navWithAdmin(primaryNav(receiptsIa), showAdmin).map((item) => (
           <NavLink
             key={item.href}
             href={item.href}
@@ -135,6 +142,7 @@ export function Sidebar({
               parentName={parentName}
               parentImage={parentImage}
               planTier={planTier}
+              maskedPhone={maskedPhone}
               canSignOut={authControls && signedIn}
             />
           </>

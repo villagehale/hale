@@ -2,9 +2,9 @@ import NextAuth from 'next-auth';
 import { NextResponse } from 'next/server';
 import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
-import { bridgeBearerToSessionCookie } from '~/lib/auth/bearer-bridge';
-import { isProtectedPath } from '~/lib/auth/protected-routes';
+import { ADMIN_PROBE_HEADER, isAdminPath, isProtectedPath } from '~/lib/auth/protected-routes';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
+import { RETIRED_TARGET, isRetiredPath } from '~/lib/routes/retired';
 
 // The middleware runs on the Edge runtime, so it builds `auth` from the Edge-safe
 // base config (Google + identity callbacks) — NOT from ~/auth, whose Credentials
@@ -24,44 +24,59 @@ const { auth } = NextAuth(authConfig);
 export default auth((req) => {
   const { pathname } = req.nextUrl;
 
-  // Mobile Bearer bridge (runs before any page logic): for an /api/* request that
-  // carries `Authorization: Bearer <token>` and no existing session cookie, append
-  // the Auth.js session cookie to the REQUEST headers so every downstream
-  // `await auth()` in the route sees a session — mobile authenticates through the
-  // unchanged web path. `secure` is read the SAME way the token was minted
-  // (`x-forwarded-proto`, first hop) so the cookie name matches the JWT salt. An
-  // /api request never falls into a page branch below (no /api prefix is protected
-  // and it isn't /onboarding), so a bridged request's only outcome is pass-through
-  // with the rewritten headers; an unbridged/invalid one ends as the route's own
-  // 401, not a /sign-in redirect. Browser requests (no Authorization header) get
-  // null here and take the byte-identical pre-existing path.
-  const proto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
-  const bridged = bridgeBearerToSessionCookie({
-    headers: req.headers,
-    pathname,
-    secure: proto === 'https',
-  });
-  if (bridged) {
-    const headers = new Headers(req.headers);
-    headers.set('cookie', bridged.cookieHeader);
-    return NextResponse.next({ request: { headers } });
-  }
-
   // (The beta invite gate stood here. It gated exactly one path — /onboarding — and
   // that route is deleted (F14), so the gate had nothing left to admit anyone to.
   // BETA_INVITE_ONLY / BETA_INVITE_CODE are now read by nothing.)
+
+  // Retired surfaces (receipts-room slimdown) answer with a real 308 before anything
+  // else. Ahead of the auth gate on purpose: a route that no longer exists should not
+  // cost a session lookup or a DB round trip to say so, and a signed-out visitor
+  // holding an old link deserves the same honest answer as a signed-in one. See
+  // lib/routes/retired.ts for why this cannot live in the page alone.
+  if (isRetiredPath(pathname)) {
+    return NextResponse.redirect(new URL(RETIRED_TARGET, req.nextUrl), 308);
+  }
 
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();
   }
 
   // VIL-244 · M9 (D4/D20): under the receipts-room IA the daily feed is DEMOTED and the
-  // week view is the landing surface. The forward lives HERE rather than in the page,
-  // because a page-level `redirect()` under a streaming `force-dynamic` layout resolves
-  // as a mid-stream client navigation (200 + a soft push), not a redirect the browser
-  // or a link-checker can see. The route itself is untouched — deleting it is a later PR.
+  // landing surface is APPROVALS — the receipts room itself. It used to forward to the
+  // week view, but #455 demoted `/plan` out of the nav too, so the landing was a surface
+  // the sidebar no longer lists: reachable, but incoherent as the first thing a parent
+  // sees. Approvals is the one stop that is both the nav's first entry and the room the
+  // whole IA is named for. The forward lives HERE rather than in the page, because a
+  // page-level `redirect()` under a streaming `force-dynamic` layout resolves as a
+  // mid-stream client navigation (200 + a soft push), not a redirect the browser or a
+  // link-checker can see. The route itself is untouched — deleting it is a later PR.
+  //
+  // Every post-auth target elsewhere stays `/home` on purpose: this line is the single
+  // flag-conditional hinge, so with the flag OFF `/home` remains the real daily feed and
+  // the real landing. Retargeting those call sites would break the flag-off path.
   if (receiptsIaEnabled() && (pathname === '/home' || pathname.startsWith('/home/'))) {
-    return NextResponse.redirect(new URL('/plan', req.nextUrl), 302);
+    return NextResponse.redirect(new URL('/family', req.nextUrl), 302);
+  }
+
+  // Under the same reframe the family EDITOR moved up a level: /family is the editor
+  // now, so /family/members has nothing of its own left to show. A real 308 beside the
+  // /home hinge, for the same streaming-layout reason; the page also permanentRedirects
+  // (defense in depth, the retired-routes pattern). Flag-conditional so the flag-off IA
+  // keeps its hub → editor split untouched.
+  if (
+    receiptsIaEnabled() &&
+    (pathname === '/family/members' || pathname.startsWith('/family/members/'))
+  ) {
+    return NextResponse.redirect(new URL('/family', req.nextUrl), 308);
+  }
+
+  // The founder portal answers a session-less probe with a 404, NEVER the
+  // sign-in redirect the rest of the gated app uses — a redirect would advertise
+  // that /admin exists. The rewrite target matches no route, so Next renders the
+  // not-found page with a real 404 status; an authed non-admin gets the same 404
+  // from the nested (authed)/admin layout itself.
+  if (isAdminPath(pathname) && (!authConfigured() || !req.auth)) {
+    return NextResponse.rewrite(new URL('/admin/__denied__/404', req.nextUrl));
   }
 
   if (!authConfigured()) {
@@ -75,7 +90,17 @@ export default auth((req) => {
     return NextResponse.redirect(new URL('/sign-in', req.nextUrl));
   }
 
-  return NextResponse.next();
+  // The authed /admin probe: mark the request so the (authed) layout — which
+  // sits ABOVE the group's loading.tsx Suspense boundary — can 404 a signed-in
+  // non-admin BEFORE the streaming shell flushes a 200. Every other request has
+  // any client-sent copy STRIPPED, so only the middleware can speak this header.
+  const requestHeaders = new Headers(req.headers);
+  if (isAdminPath(pathname)) {
+    requestHeaders.set(ADMIN_PROBE_HEADER, '1');
+  } else {
+    requestHeaders.delete(ADMIN_PROBE_HEADER);
+  }
+  return NextResponse.next({ request: { headers: requestHeaders } });
 });
 
 export const config = {

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the soccer practice (from the week) with its time and venue, and correctly offers the offerable story time find (name, place, day — all verified). The web find rule doesn't apply here (webFind is null, offerable is the source). No invented details, no app referral, no greeting/sign-off, no drafting needed. The only small issue is \"if you want something else\" is a slightly redundant clause — the parent asked what's on, not for a recommendation — but it's minor padding rather than a real error.",
+    "score": 4
+  }
+}

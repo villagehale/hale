@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply names one offerable (Riverdale Farm, place, day, free, outdoor) correctly. However, it drops the second offerable entirely — Central Library story time at Bloor/Gladstone, Sat Aug 8 — which is also verified and should have been offered (stillBeingChecked is 0, so there are no unverified finds to worry about, and draftCapPerMessage is 2 which is about drafting, not offering). Leaving out a confirmed, free option with zero unverified finds is a missed beat. The reply is also slightly off in framing \"Sun, Aug 9\" as if it is only open that day, when the offerable says \"open daily\" — though it does say \"open daily\" earlier in the sentence, so that is minor. The main blemish is the omission of the second offerable candidate.",
+    "score": 3
+  }
+}

@@ -49,3 +49,19 @@ export function maskPhoneE164(e164: string): string {
   const last4 = e164.slice(-4);
   return `••• ••• ${last4}`;
 }
+
+/**
+ * The operator's fictional probe range: +1 437-555-XXXX (the 555 exchange no carrier
+ * assigns, inside the Toronto overlay code the product actually texts from). Live
+ * probes join from these numbers and must behave as real families INSIDE their own
+ * thread — that is what a probe tests — while never reaching a human-facing signal:
+ * founder pings, village intros, any notification a person acts on. On 2026-08-28 a
+ * probe join pinged the founder and masked the real partner's join beside it
+ * (ads-week audit). One prefix, one predicate; the consumers are the paths that
+ * announce a family to a HUMAN, never the paths that answer the probe itself.
+ */
+export const SYNTHETIC_PROBE_PREFIX = '+1437555';
+
+export function isSyntheticProbeNumber(phoneE164: string): boolean {
+  return phoneE164.startsWith(SYNTHETIC_PROBE_PREFIX);
+}

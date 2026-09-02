@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGe3yLdqsvjYe1CfZDuu",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EoQJCpABCBEYAipAVJQthTwb9rrjDQPuZp+PwzN/SmWn32hCmrRU9b8VPF8aLTlDMJDlXDNGJSgJlsGrpWgz4cc/Rr9jC6BNgs0M6DIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAemSo9QGEgyCWs+6HLQXP3tqOEsaDPnU5VDykTfMI7KIGyIwmBTExrqliIfsWN0DE5gG9JXxXIJZle+bRg/0Vw82jJpxJHsB37iAKUBpsQOV9PexKqAH71uaXI5wy/q55HCYKGhAhKyMhc4dDIFBKrXrNBS8XUzdit6UXVdp97c/z3ec/eEdbCfalr3PEdeZ/4Hc65FHIaqzAPiM0FFEuq4A8v4WCIu3XhmCfP4F8SzA1BkTPeP+CN27ya48oBg9T4oJ6aA4QAesaeIsQ+3XGO85cDLwSKz3wZ1kTjPI1JftWZsZ94KT5qn2ZscgvTKhyW8vb3YQ2UFPd34gIT2j2fHAFgmCpecd1YJnspMSVKHFN0fRmQG39R92KP8tTUtRzVCueoxbnzyIQc81jaxahhpYTdKSfLGTpzoHExwu2o6Jb/VDe/cufG+JEXuej8bUxBYzU1uTfZuO2IQjUlTSBJlGZbBgli8K42TLx63nil1v7a3m72/nA9lPdu1ovR/TnM7fFpV7usm7odofBjc49n37Vq860+HPlW+R1wj6Zm8nrYSgzh3xf0qiHn9yS9G0hVH/Q1ffiFak9Kb6dojmthNsKGlJ6GReWGtEeP2T7Sn0kDLaB1MgkkGyR1CnLmF3rWq2SYMF8BSsRIkwD+Z5J73IsWh8VTgByO91j1GZ5Zk+SaEXUEwq8tj+vzU1z63xSPJzHh+kfNYOOCPylwzASnKcVCsizYng40r6d0hUj3hsyzuZtuJMORj9Q60yW3ven6LH86IVmUBG3eFWV8eN8+FVE1VyvzCvXzLetRyolJB1DQbI0rHqmLA8fUybBtNwSSu5/KWrfWTTVJyovpCPeT9VV6SUu41MQFdBzGee24zXniHBSYC5esVdcB4HbShBdIhkLQoFtGaKaMms7ZS9hP2us1xHdrI0hMsYhaN4vZqAsJkWGLOZ/mGJueUJaPzpNjliCs8oG2zxNAqr4JnNl1vnkOLMlL9njfj9w22Z/Cjh3S7IdbA66ofZUqR4e/Ed8L0C54YY24fz5rFqYsOKF/jWltrB8D2by4zGYMFRtwu6vHZY0pQJ6/xhmM19Ekd0+9YiVAaMDtbHOLiMO533/z3S4FkkGKkgoZe1YlVaDbmxlez/6QF3Vsgo2GGh4xTMZINeQDt59psn28FZZ7u9qyUL/qVxs92VkNTeUNx9zhPvazwY3SxH5Cz40JCfAa3raMss9wArJZw5e0UAe/frzKSk19mHyXxmQmJm9WsQysqBbXxP/hJffJ0b5dS8e/7RVEDODpjXqMyqtuwK22vCaxV53iTgvjXtfWMGWdFisk0vKagiaK8fdpkq8sCIr+NiIbCN9uCQvhgB"
+      },
+      {
+        "type": "text",
+        "text": "Yes — Mira has a confirmed mild egg allergy (hives), noted by Riverdale Pediatrics. Worth writing that down clearly for any new caregiver, along with what to do if hives show up.\n\nA couple of other details worth including on a caregiver note:\n\n- Her comfort object is the blue elephant, for naps and travel.\n- Bedtime routine: bath, story, lights out around 7:30pm.\n\nWant me to pull these into a quick one-page caregiver handoff note?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 16368,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 445,
+      "output_tokens_details": {
+        "thinking_tokens": 285
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 10243,
+  "firstInputTokens": 16368
+}

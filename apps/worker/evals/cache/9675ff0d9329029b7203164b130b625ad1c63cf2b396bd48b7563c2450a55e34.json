@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a parenting question about co-sleeping for Milo, age 63 months (5 years old). The reply gives concrete, actionable advice grounded in the child's age — the chair method is a well-known, age-appropriate sleep transition technique. It names Milo, which is correct recall. The advice is a concrete thing the parent could start tonight. The reply ends with the required fixed line \"Want the full plan? Reply YES and I'll send it.\" which is the product working correctly and must not be marked down. The text is cut mid-sentence (\"which usually takes 1...\") which is the tail being cut as the product requires — that is the shape of the product, not a failure. No invented details, no referral to a doctor (not needed here — no acute symptom), no app mention, no link (referralLinkAppended is null). The reply is tight, actionable, and correct. One small note: the cut mid-sentence is slightly abrupt but that is the product design. Overall this is a clean, correct, useful reply.",
+    "score": 5
+  }
+}

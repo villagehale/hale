@@ -12,10 +12,10 @@
  *            /^[a-z0-9]+(?:-[a-z0-9]+)*$/
  *            e.g. earlyon-richmondhill · swim-loyalfitness · daycare-brightpath-milton
  *   In SMS   appended to the pre-filled body as a trailing "(via <code>)" token:
- *              Hi (via earlyon-richmondhill)
+ *              Maya is 4, Theo is 18 months, L3R (via earlyon-richmondhill)
  *   Parsed   by the M2 intake with
  *              /\(via\s+([a-z0-9]+(?:-[a-z0-9]+)*)\)\s*$/
- *            — strip the match to recover the parent's real message ("Hi").
+ *            — strip the match to recover the parent's real message.
  *
  * Human-readable on purpose: the parent sees exactly what they are sending, so
  * the attribution is disclosed rather than smuggled (hard rule #1). Anything
@@ -29,8 +29,11 @@ const SOURCE_CODE_MAX_LENGTH = 48;
 /** The site's existing support address — the honest path while the number is unprovisioned. */
 export const CONTACT_EMAIL = 'aloha@villagehale.com';
 
-/** The greeting the QR pre-writes. The parent taps send; Hale never texts first. */
-const GREETING = 'Hi';
+/**
+ * Designer lock 2026-08-27 chips/prefill — first SMS looks like intake, not a
+ * question. The parent taps send; Hale never texts first. Verbatim.
+ */
+const INTAKE_PREFILL = 'Maya is 4, Theo is 18 months, L3R';
 
 /** A `?s=` value, or null when absent, repeated, or not a venue code. */
 export function parseSourceCode(raw: string | string[] | undefined): string | null {
@@ -39,17 +42,27 @@ export function parseSourceCode(raw: string | string[] | undefined): string | nu
   return SOURCE_CODE_PATTERN.test(raw) ? raw : null;
 }
 
-/** The pre-filled composer body — the greeting, plus the venue token when we have one. */
+/** The pre-filled composer body — the locked intake sample, plus the venue token when we have one. */
 export function buildSmsBody(source: string | null): string {
-  return source ? `${GREETING} (via ${source})` : GREETING;
+  return source ? `${INTAKE_PREFILL} (via ${source})` : INTAKE_PREFILL;
 }
 
 /**
- * The composer deep link. `?&body=` rather than `?body=` is the cross-platform
- * form: iOS wants the body as a second parameter, Android reads either.
+ * The composer deep link for a message we hand the parent verbatim. `?&body=`
+ * rather than `?body=` is the cross-platform form: iOS wants the body as a
+ * second parameter, Android reads either.
+ *
+ * Split from {@link buildSmsHref} so a caller can hand the parent a specific
+ * body. The body is still the parent's to edit or delete before they send it —
+ * Hale never texts first.
  */
+export function buildSmsHrefForBody(number: string, body: string): string {
+  return `sms:${number}?&body=${encodeURIComponent(body)}`;
+}
+
+/** The composer deep link for the QR/entry greeting, venue token included. */
 export function buildSmsHref(number: string, source: string | null): string {
-  return `sms:${number}?&body=${encodeURIComponent(buildSmsBody(source))}`;
+  return buildSmsHrefForBody(number, buildSmsBody(source));
 }
 
 /**
@@ -68,4 +81,24 @@ export function readSmsNumber(raw: string | undefined): string {
 export function displaySmsNumber(number: string): string {
   const nanp = number.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
   return nanp ? `+1 (${nanp[1]}) ${nanp[2]}-${nanp[3]}` : number;
+}
+
+/**
+ * NEXT_PUBLIC_HALE_WHATSAPP_NUMBER, with the same validation and the same honesty
+ * contract as {@link readSmsNumber}: '' until the WhatsApp sender is provisioned
+ * (Meta verification pending = the env stays unset), so the page renders no wa.me
+ * button rather than a dead one — the Connections-card law.
+ */
+export function readWhatsAppNumber(raw: string | undefined): string {
+  return readSmsNumber(raw);
+}
+
+/**
+ * The wa.me composer deep link — WhatsApp's cross-platform equivalent of
+ * {@link buildSmsHref}, carrying the SAME pre-filled body (the `(via <code>)`
+ * venue token works verbatim in a WhatsApp prefill, so QR attribution carries
+ * over). wa.me addresses the number as bare digits, no `+`.
+ */
+export function buildWaHref(number: string, source: string | null): string {
+  return `https://wa.me/${number.replace(/^\+/, '')}?text=${encodeURIComponent(buildSmsBody(source))}`;
 }

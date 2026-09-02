@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that no gymnastics class appears in the week view and asks for clarifying information (name or location) so Hale can act. This is the right move — nothing in `week`, `webFind`, `offerable`, or `standingPlace` matches a gymnastics class, and `stillBeingChecked` is 0, so there is nothing to offer or promise. The question is appropriate and targeted. The shape is clean: no greeting, no sign-off, no markdown, one question. Minor blemish: \"we've been tracking\" implies an ongoing relationship with this item that doesn't exist — slightly misleading framing, but not a factual error. Otherwise it does exactly what it should.",
+    "score": 4
+  }
+}

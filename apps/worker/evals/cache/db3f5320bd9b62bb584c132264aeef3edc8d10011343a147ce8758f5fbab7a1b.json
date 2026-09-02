@@ -1,0 +1,27 @@
+{
+  "value": {
+    "slots": [
+      {
+        "name": "Parent & Tot 1, Gellert Community Centre",
+        "age_fit": "parent and tot aquatics (Parent & Tot 1)",
+        "when": "Mondays 10:00-10:30 AM, Oct 05 to Dec 07",
+        "when_quote": "Parent & Tot 1 | Mon | 10:00-10:30 AM | Oct 05 - Dec 07 | course 108969",
+        "price": "$86.22 resident fee for nine lessons",
+        "price_quote": "Resident fee: $86.22 for nine lessons.",
+        "source_name": "Gellert Community Centre",
+        "source_url": "https://haltonhills.example/gellert/aquatics"
+      },
+      {
+        "name": "Parent & Tot 2, Gellert Community Centre",
+        "age_fit": "parent and tot aquatics (Parent & Tot 2)",
+        "when": "Wednesdays 10:00-10:30 AM, Oct 07 to Dec 09",
+        "when_quote": "Parent & Tot 2 | Wed | 10:00-10:30 AM | Oct 07 - Dec 09 | course 108970",
+        "price": "$86.22 resident fee for nine lessons",
+        "price_quote": "Resident fee: $86.22 for nine lessons.",
+        "source_name": "Gellert Community Centre",
+        "source_url": "https://haltonhills.example/gellert/aquatics"
+      }
+    ]
+  },
+  "latencyMs": 7552
+}

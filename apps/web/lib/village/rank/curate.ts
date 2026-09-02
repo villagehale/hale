@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickModel, runAgent } from '@hale/agent';
+import { type AgentClient, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
+import { recordAgentRun } from '~/lib/agent-run';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { parseOrderedIds } from './rank';
@@ -12,7 +12,6 @@ import { loadCurateSkill } from './skill';
  * The agent-driven shortlist curator. Same harness + same guarded signals as the
  * ranker, but the `curate-shortlist` skill assembles the FEW picks most worth
  * sharing to another family (best-fitting AND best-endorsed), not the full feed.
- * This is what the shareable /picks artifact draws from.
  *
  * Unlike ranking, curation is allowed to DROP candidates — a shortlist of two is
  * a fine answer. So we validate the model's chosen ids against the real candidate
@@ -111,7 +110,7 @@ export async function curateShortlist(
         modelUsed,
         promptTokens: result.usage.promptTokens,
         completionTokens: result.usage.completionTokens,
-        costUsd: sonnetCostUsd(result.usage),
+        costUsd: agentRunCostUsd(modelUsed, result.usage),
         latencyMs: Date.now() - startedAt,
         status,
         langfuseTraceId: trace.traceId,

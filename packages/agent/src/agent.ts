@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { compileToolSchema } from './json-schema.js';
-import { pickModel } from './model.js';
+import { type AgentTask, laneRequestFields, pickLane } from './model.js';
 import type { Skill } from './skill.js';
 import {
   type GuardDeps,
@@ -58,15 +58,39 @@ export interface RunAgentArgs {
    * bytes are never re-sent. Omitted/empty → the first turn is the context string alone.
    */
   attachments?: Anthropic.ContentBlockParam[];
+  /**
+   * Ship `strict: true` with every tool whose schema compiles to a grammar. Default TRUE
+   * — the saving it buys (#415) is real and every caller but one wants it.
+   *
+   * The one that does not is a phone call, and the reason is that `strict` is not free at
+   * REQUEST time. The API compiles a sampling grammar before it emits a token; the
+   * compile is keyed on schema STRUCTURE, cached per credential, and it expires. A cold
+   * compile of the six coach schemas measured 16-83 seconds, all of it BEFORE response
+   * headers — which is exactly the window the SDK's `timeout` guards, streaming or not.
+   * SMS survives that because a timed-out turn defers into the queue's backoff and the
+   * retry lands warm; a call has no queue, so the caller hears dead air and hangs up
+   * (voice v2 incident, #505).
+   *
+   * Declining the grammar costs correctness nothing: the schema still ships in full, and
+   * `invokeTool` still `.parse()`s every argument against the same Zod schema before any
+   * guard or handler sees it. What is lost is only the guess-and-retry round trip on a
+   * malformed call — about a second, against thirty of silence.
+   */
+  strictTools?: boolean;
 }
 
 export interface AgentUsage {
+  /** Every token billed at (or above) the full input rate: fresh prompt tokens
+   * plus the cache writes below, which are the slice of it that bills at 1.25x. */
   promptTokens: number;
   completionTokens: number;
   /** Tokens served from the prompt cache across the loop — zero means every turn
    * paid full price, which is the signal the cache_control breakpoint is not
    * landing (MEM-9). */
   cacheReadTokens: number;
+  /** Tokens written to the prompt cache across the loop. Carried separately from
+   * `promptTokens` because they bill at a 1.25x premium (see cost.ts). */
+  cacheCreationTokens: number;
 }
 
 export interface RunAgentResult {
@@ -76,6 +100,13 @@ export interface RunAgentResult {
   steps: number;
   /** True iff the loop stopped because it hit maxSteps rather than finishing. */
   hitMaxSteps: boolean;
+  /**
+   * How many steps had to be re-asked because the completion was truncated before it
+   * emitted any text. Zero on an ordinary turn. Named rather than absorbed into `steps`
+   * (rule #11): a turn that bought its answer twice is a different, slower, dearer event
+   * than one that did not, and a recovery nobody can see is one nobody can budget for.
+   */
+  truncatedRetries: number;
   usage: AgentUsage;
 }
 
@@ -282,8 +313,15 @@ type WireTool = Anthropic.Tool & {
  * parent is waiting on. Now each tool ships the schema it already declares, plus
  * `strict: true` wherever a grammar can be compiled from it, so a malformed call
  * is unsamplable rather than merely rejected afterwards.
+ *
+ * `strictTools` is the run's answer to whether it can afford the grammar COMPILE
+ * that buys — see {@link RunAgentArgs.strictTools}.
  */
-function toAnthropicTools(skill: Skill, tools: RegisteredTool[]): Anthropic.Tool[] {
+function toAnthropicTools(
+  skill: Skill,
+  tools: RegisteredTool[],
+  strictTools: boolean,
+): Anthropic.Tool[] {
   const byName = new Map(tools.map((t) => [t.name, t]));
   return skill.meta.tools.map((name) => {
     const tool = byName.get(name);
@@ -297,16 +335,59 @@ function toAnthropicTools(skill: Skill, tools: RegisteredTool[]): Anthropic.Tool
       name: tool.name,
       description: tool.description,
       input_schema: schema as Anthropic.Tool.InputSchema,
-      // Withheld — never defaulted on — when the schema has a node the grammar
-      // compiler cannot express, because `strict` over such a schema is a 400
-      // rather than a weaker constraint (see compileToolSchema).
-      ...(strictSafe ? { strict: true } : {}),
+      // Withheld — never defaulted on — when the run declined the compile, or when
+      // the schema has a node the grammar compiler cannot express, because `strict`
+      // over such a schema is a 400 rather than a weaker constraint (see
+      // compileToolSchema).
+      ...(strictTools && strictSafe ? { strict: true } : {}),
       ...(tool.inputExamples && tool.inputExamples.length > 0
         ? { input_examples: tool.inputExamples }
         : {}),
     };
     return wire;
   });
+}
+
+/**
+ * The lane's model + reasoning knobs, spread into a `messages.create` call.
+ *
+ * The pinned SDK (0.41.0) types `thinking` only in its pre-adaptive
+ * `{type:'enabled', budget_tokens}` shape and has no member for `output_config`
+ * at all. Both are plain top-level body fields that need no beta header, and the
+ * SDK serialises the body as given — so the return type is narrowed to the one
+ * field the SDK does know while `thinking` and `output_config` ride along at
+ * runtime. Same blocker, same tactic as {@link WireTool}.
+ *
+ * Narrowing here rather than casting the whole request object keeps every OTHER
+ * field (max_tokens, system, tools, messages) type-checked.
+ */
+type WireLaneFields = Pick<Anthropic.MessageCreateParams, 'model'>;
+
+function wireLane(task: AgentTask): WireLaneFields {
+  return laneRequestFields(pickLane(task)) as WireLaneFields;
+}
+
+/**
+ * How much bigger the one re-ask gets. Three times, because the step that triggers this
+ * spent 100% of its budget thinking: it needs room to finish the thought AND say
+ * something, and a factor that merely nudges buys a second empty completion.
+ */
+const TRUNCATED_RETRY_FACTOR = 3;
+
+/**
+ * Did this completion hit the token ceiling before producing anything usable?
+ *
+ * Text OR a tool call means the budget went where it was supposed to — a clipped
+ * sentence is still an answer the post-processor can trim, and re-asking there would pay
+ * twice for something already in hand. Only a `max_tokens` stop with neither is the case
+ * worth buying again.
+ */
+function isTruncatedBeforeSpeaking(response: Anthropic.Message): boolean {
+  return (
+    response.stop_reason === 'max_tokens' &&
+    textFrom(response.content) === null &&
+    !response.content.some((b) => b.type === 'tool_use')
+  );
 }
 
 function textFrom(content: Anthropic.ContentBlock[]): string | null {
@@ -358,6 +439,10 @@ function toolErrorMessage(err: unknown): string {
  * the assistant turn + its tool_results to `messages`. Shared by the non-streaming
  * and streaming loops so the safety rails, allowlist checks, and self-correction
  * feedback behave identically no matter the transport.
+ *
+ * Reports whether every call SUCCEEDED. A refusal fed back as a tool_result is a turn
+ * the model still owes an answer to, so `runAgent`'s registering-tool exit reads this
+ * and never ends a run on a tool that refused.
  */
 async function handleToolUses(
   args: RunAgentArgs,
@@ -366,9 +451,10 @@ async function handleToolUses(
   content: Anthropic.ContentBlock[],
   toolUses: Anthropic.ToolUseBlock[],
   hooks?: StreamingToolHooks,
-): Promise<void> {
+): Promise<{ allOk: boolean }> {
   messages.push({ role: 'assistant', content });
 
+  let allOk = true;
   const toolResults: Anthropic.ToolResultBlockParam[] = [];
   for (const block of toolUses) {
     // Unknown / not-allowlisted tool = a skill-config bug that can't happen in
@@ -410,6 +496,7 @@ async function handleToolUses(
         content: boundedToolResult(block.name, result),
       });
     } catch (err) {
+      allOk = false;
       hooks?.onToolResult?.({
         name: block.name,
         ok: false,
@@ -424,12 +511,13 @@ async function handleToolUses(
     }
   }
   messages.push({ role: 'user', content: toolResults });
+  return { allOk };
 }
 
 export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
-  const model = pickModel(args.skill.meta.task);
+  const lane = wireLane(args.skill.meta.task);
   const system = buildSystem(args.skill);
-  const tools = toAnthropicTools(args.skill, args.tools);
+  const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
   const messages: Anthropic.MessageParam[] = [
@@ -438,21 +526,62 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
   let completionTokens = 0;
   let steps = 0;
+  let truncatedRetries = 0;
+
+  const maxTokens = args.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const meter = (usage: Anthropic.Usage) => {
+    promptTokens += usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
+    completionTokens += usage.output_tokens;
+    cacheReadTokens += usage.cache_read_input_tokens ?? 0;
+    cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
+  };
 
   while (steps < args.maxSteps) {
     steps += 1;
-    const response = await args.client.messages.create({
-      model,
-      max_tokens: args.maxTokens ?? DEFAULT_MAX_TOKENS,
+    let response = await args.client.messages.create({
+      ...lane,
+      max_tokens: maxTokens,
       system,
       ...(tools.length > 0 && { tools }),
       messages,
     });
-    promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
-    completionTokens += response.usage.output_tokens;
-    cacheReadTokens += response.usage.cache_read_input_tokens ?? 0;
+    meter(response.usage);
+
+    // THE STEP THAT SAID NOTHING, ASKED AGAIN WITH ROOM.
+    //
+    // `max_tokens` is the ceiling on thinking PLUS text, and on a thinking lane the model
+    // spends it in that order. So a hard turn can hit the ceiling having produced one
+    // empty thinking block and no text and no tool call — a completion that cost a full
+    // budget and carries nothing. Until now that fell through as `answer: null`, which is
+    // the same value the loop returns for "ran out of steps": two different failures in
+    // one bucket, and downstream the SMS router turned both into "nothing was changed"
+    // (rule #11). It is prod's only failed coach-channel-sms run, 2026-08-22 17:41,
+    // 399 thinking tokens of 400 on a follow-up whose answer was sitting in the thread.
+    //
+    // RE-ASKED, not continued: the messages are byte-identical, so this is the same step
+    // with a bigger allowance rather than a new turn — the model has nothing to continue
+    // FROM, since it never said anything. Bounded to ONE escalation per step, because a
+    // parent is waiting and a budget that keeps doubling is a turn that never ends.
+    //
+    // Raising the LANE budget instead was the obvious alternative and it is the wrong
+    // trade: measured on the coach corpus, more room for every turn makes the model
+    // reason its way past its second tool (see the note on MAX_TOKENS in
+    // apps/web/lib/channel/coach/runtime.ts). The room belongs to the turn that proved
+    // it needed it.
+    if (isTruncatedBeforeSpeaking(response)) {
+      truncatedRetries += 1;
+      response = await args.client.messages.create({
+        ...lane,
+        max_tokens: maxTokens * TRUNCATED_RETRY_FACTOR,
+        system,
+        ...(tools.length > 0 && { tools }),
+        messages,
+      });
+      meter(response.usage);
+    }
 
     const toolUses = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
@@ -463,18 +592,45 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         answer: textFrom(response.content),
         steps,
         hitMaxSteps: false,
-        usage: { promptTokens, completionTokens, cacheReadTokens },
+        truncatedRetries,
+        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
 
-    await handleToolUses(args, toolByName, messages, response.content, toolUses);
+    const said = textFrom(response.content);
+    const { allOk } = await handleToolUses(args, toolByName, messages, response.content, toolUses);
+
+    // THE FINISHED ANSWER, KEPT. A turn whose every call was a `registersOnly` tool has
+    // nothing left to read: the results are `{promised:true}`-shaped acknowledgements,
+    // so the text beside them is not a preamble, it is the reply. Ending here keeps it.
+    //
+    // The alternative — feed the acknowledgements back and take another turn — is what
+    // ran until 2026-08-21, and it lost the answer twice in one probe. The model treats
+    // its own text as already said and writes a CONTINUATION: once a bare "I'll text you
+    // when the dates are up" with the finds it had just described deleted, once two
+    // tokens of whitespace that `toSmsReply` rejected into the apology template. Neither
+    // is a shape prose can fix, because from the model's side nothing went wrong.
+    //
+    // Not on a refused call. A tool that threw handed back a sentence to correct, so the
+    // model owes another turn — a run that stopped there would send an answer composed
+    // around a promise that was never registered.
+    if (said !== null && allOk && toolUses.every((b) => toolByName.get(b.name)?.registersOnly)) {
+      return {
+        answer: said,
+        steps,
+        hitMaxSteps: false,
+        truncatedRetries,
+        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+      };
+    }
   }
 
   return {
     answer: null,
     steps,
     hitMaxSteps: true,
-    usage: { promptTokens, completionTokens, cacheReadTokens },
+    truncatedRetries,
+    usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
   };
 }
 
@@ -487,9 +643,9 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
  * logic is the same shape as the non-streaming `messages.create` response.
  */
 export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<RunAgentResult> {
-  const model = pickModel(args.skill.meta.task);
+  const lane = wireLane(args.skill.meta.task);
   const system = buildSystem(args.skill);
-  const tools = toAnthropicTools(args.skill, args.tools);
+  const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
   const messages: Anthropic.MessageParam[] = [
@@ -498,6 +654,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
   let completionTokens = 0;
   let steps = 0;
 
@@ -505,7 +662,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     steps += 1;
     args.onStep?.(steps);
     const stream = args.client.messages.stream({
-      model,
+      ...lane,
       max_tokens: args.maxTokens ?? DEFAULT_MAX_TOKENS,
       system,
       ...(tools.length > 0 && { tools }),
@@ -522,6 +679,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
     completionTokens += response.usage.output_tokens;
     cacheReadTokens += response.usage.cache_read_input_tokens ?? 0;
+    cacheCreationTokens += response.usage.cache_creation_input_tokens ?? 0;
 
     const toolUses = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
@@ -532,7 +690,10 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
         answer: textFrom(response.content),
         steps,
         hitMaxSteps: false,
-        usage: { promptTokens, completionTokens, cacheReadTokens },
+        // Streaming has no re-ask: a truncated stream has already put partial text on the
+        // wire, so asking again would show the parent two answers to one question.
+        truncatedRetries: 0,
+        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
 
@@ -549,6 +710,9 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     answer: null,
     steps,
     hitMaxSteps: true,
-    usage: { promptTokens, completionTokens, cacheReadTokens },
+    // Streaming has no re-ask: a truncated stream has already put partial text on the
+    // wire, so asking again would show the parent two answers to one question.
+    truncatedRetries: 0,
+    usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
   };
 }

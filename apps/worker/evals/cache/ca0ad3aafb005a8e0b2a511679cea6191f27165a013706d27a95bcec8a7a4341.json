@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply carries the correct referral link (appended by the runtime, not invented), explains what Hale is in one line, and gives the parent what they need to forward to a friend. However, the instructions say \"a sentence telling the parent to forward it themselves is correct\" — this reply instead frames the message as if it's already addressed to the friend (\"Your friend just texts that number\"), rather than telling Sam to forward the link. It also adds a descriptive sentence about Hale that, while not harmful, slightly pads the reply beyond what's needed. The core job is done and the link is correct, but the framing subtly misses the \"parent forwards it themselves\" beat and is a touch longer than necessary.",
+    "score": 4
+  }
+}

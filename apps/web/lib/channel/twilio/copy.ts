@@ -1,4 +1,5 @@
 import { COLD_START_ASK } from '~/lib/channel/intake/copy';
+import type { ReplyLanguage } from '~/lib/channel/language';
 
 /**
  * VIL-214 · A3 — the one line A3 owns. Everything else Hale says over SMS belongs to
@@ -66,16 +67,139 @@ export const VOICE_GREETING_NO_TEXT = 'Hi, this is Hale. I work by text.';
  * phone. CASL's implied-consent-by-inquiry covers the send; the unsubscribe mechanism is
  * what makes it a message a parent can end.
  */
-export const VOICE_TEXT_OPENER = `Hi, this is Hale - you just called. I'm an AI that quietly runs the family week, and I work by text. ${COLD_START_ASK} Reply STOP to unsubscribe.`;
+export const VOICE_TEXT_OPENER = `Hi, this is Hale - you just called. I watch sign-up mornings so they don't sneak up, and I work by text. ${COLD_START_ASK} Reply STOP to unsubscribe.`;
 
 /**
- * The text an ENROLLED caller gets. It asks for nothing: Hale already knows their
- * children, their area and their week, and asking a family it has served for months to
- * re-introduce themselves is the single most damaging thing this feature could do. Their
- * reply goes to the coach through the hand-off that already exists (twilio/inbound.ts).
+ * Voice v1 — the first thing an ENROLLED caller hears, spoken by Twilio before the socket
+ * has said anything. It is the compliance disclosure and it is not optional.
  *
- * No STOP line: they are subscribed, they were told STOP always works when they signed
- * up, and repeating it on every message is the tone of a mailing list.
+ * Three facts, in the order a person needs them. That this is an AI and not a person —
+ * first, before they say anything they would only say to a human. That the conversation
+ * is WRITTEN DOWN into the thread they already have, which is the disclosure that makes
+ * the channel_messages rows honest rather than surveillance. And that the AUDIO is not
+ * kept, which is true by construction: there is no `record` attribute and no
+ * `intelligenceService` on the TwiML, so Twilio retains neither recording nor transcript
+ * (rule #1).
+ *
+ * It ends by naming the exit. A parent who did not want to talk to an AI can hang up and
+ * text, and saying so out loud costs three seconds and removes the only trap in the
+ * feature.
  */
-export const VOICE_TEXT_OPENER_KNOWN =
-  "Hi, it's Hale - you just called. I work by text, so tell me here what you need and I'll pick it up.";
+export const VOICE_RELAY_GREETING =
+  "Hi, it's Hale - I'm an AI assistant, not a person. I'll write down what we talk about so it stays with your family's thread; I don't keep a recording of your voice. You can always text me instead.";
+
+/**
+ * Spoken when a turn breaks — the model refused, timed out, or the loop threw.
+ *
+ * FIXED, not composed, and that is the whole point: the thing that speaks when the model
+ * failed cannot itself need the model. It is also the one line here that must never
+ * promise a fix, because nothing is retrying behind it.
+ */
+export const VOICE_TURN_FAILED =
+  "Sorry - I lost that one. Say it again, or text me and I'll pick it up there.";
+
+/**
+ * Spoken at the nine-minute cap, then the line goes down.
+ *
+ * A call has to end somewhere: the platform's own ceiling is a hang-up with no warning,
+ * and a parent who is mid-sentence when that happens has been dropped by Hale. This ends
+ * it while Hale is still the one talking, and points at the channel that has no cap.
+ */
+export const VOICE_CALL_WRAP_UP =
+  "I need to let you go - we've been on a while. Text me anything else and I'll pick it up there. Bye for now.";
+
+/**
+ * Voice v2 — what Hale says when the caller has said goodbye, immediately before hanging
+ * up from our side (voice-goodbye.ts).
+ *
+ * ONE CLAUSE, and it is the shortest fixed line in this file on purpose. The caller has
+ * already ended the conversation; every word after that is a person waiting to put their
+ * phone down. It offers nothing, asks nothing and points nowhere — an invitation back is
+ * the exact move the skill spends a paragraph forbidding, and it is worst here, where it
+ * would hand a turn back to someone who has just closed the call.
+ *
+ * It is FIXED rather than composed for the reason the failure line is: the thing that
+ * speaks at the end of a call must not need a model, a tool or a thread read to say four
+ * words, and a composed goodbye is a couple of seconds of silence in the one place a
+ * caller has no reason to wait through it.
+ */
+export const VOICE_GOODBYE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'Talk soon.',
+  // Not "À bientôt": this line lands in the thread as a channel_messages row, and every
+  // string in this file has to survive the GSM-7 alphabet gate (sms-copy-encoding).
+  fr: 'Au revoir.',
+};
+
+/**
+ * Voice v2 — the line that fills the pause while a tool runs.
+ *
+ * A tool turn costs a couple of seconds, and on a phone a couple of seconds of nothing is
+ * not "thinking", it is a dropped call. The skill asks the model to say something itself
+ * before it reaches for a tool, which is the version that sounds like a person; this is
+ * the GUARANTEE underneath that request — spoken only when the model reached for a tool
+ * having said nothing at all, so the caller never hears the line twice and never hears
+ * silence (voice-turn.ts).
+ *
+ * Deliberately not "one moment please": a receptionist's phrase, and the one register the
+ * skill spends a section telling the model to avoid. And not "Let me check": eleven of
+ * nineteen turns on the founder's first real call opened with "Let me X", the skill now
+ * bans the shape by name, and the backstop underneath a doctrine cannot speak the one
+ * line the doctrine forbids.
+ */
+export const VOICE_TOOL_ACK = 'Checking now.';
+
+/**
+ * Voice v2 — the SECOND holding line, spoken when a tool is still running well after the
+ * first one covered its start.
+ *
+ * {@link VOICE_TOOL_ACK} buys a couple of seconds, which is every tool this call had
+ * until the live lookup arrived. That one is allowed six (voice-lookup.ts
+ * `VOICE_LOOKUP_BUDGET_MS`), and four of them past a single "Checking now." is a caller
+ * deciding the line has dropped — the failure this whole pacing machinery exists to
+ * prevent, arriving later than it used to rather than being fixed.
+ *
+ * Three words, and it promises nothing: what comes back may be an answer or may be "I'll
+ * text you what I find", and a holding line that pre-committed to either would make one
+ * of them a contradiction the caller can hear. It is spoken at most ONCE per turn — a
+ * line that repeated on a timer would be the machine showing through, which is the exact
+ * register the skill spends a section forbidding.
+ */
+export const VOICE_STILL_LOOKING = 'Still on it.';
+
+/**
+ * The two approval receipts a CALL cannot borrow from the texting router.
+ *
+ * `nothingPendingReply` and `nothingToUndoReply` both end in an app URL, which is the
+ * right answer in a message a parent can tap and an unusable one read out loud — a
+ * spoken URL is thirty syllables of punctuation nobody can write down while driving.
+ * Everything else the approvals grammar says (approved, dropped, which one, already
+ * handled) is one plain sentence and is spoken exactly as texted, so these are the only
+ * two lines here rather than a second voice-shaped copy of the whole receipt set.
+ *
+ * They say the same FACT as their texted twins and stop where the link would start.
+ */
+export const VOICE_NOTHING_PENDING = "Nothing's waiting on your approval right now.";
+export const VOICE_NOTHING_TO_UNDO = "There's nothing from the last day I can take back.";
+
+/**
+ * A handler settled the caller's answer and answered on ANOTHER channel (the plan lane
+ * sends its texts and hands the router no body). Unreachable while a call can only settle
+ * approvals, and named rather than left as silence (rule #11): the parent said yes to
+ * something, something happened, and the line they hear has to be true of a turn whose
+ * words went somewhere else.
+ */
+export const VOICE_ANSWERED_BY_TEXT = "I've got that one - it's coming to you by text.";
+
+/**
+ * The turn broke AFTER it had already drafted changes (the VIL-260 shape, out loud).
+ *
+ * {@link VOICE_TURN_FAILED} says "I lost that one", and on a turn that minted rows that
+ * is false twice over: something did happen, and the parent who is never told about it
+ * cannot answer it — so the next unrelated yes is what finds it. This says the count and
+ * never what the drafts are (the type alone can name a teenager's action, rule #1), and
+ * it names the answer a caller can give with their voice.
+ */
+export function voiceDraftedButFailed(draftCount: number): string {
+  const noun = draftCount === 1 ? 'one change' : `${draftCount} changes`;
+  return `I couldn't finish that, but I've got ${noun} waiting on your OK. Say yes and I'll put that through.`;
+}

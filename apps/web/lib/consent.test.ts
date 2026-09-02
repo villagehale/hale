@@ -82,12 +82,12 @@ describe('recordConsent', () => {
  * actually renders. Re-dating a policy without moving its constant fails this test.
  */
 function lastUpdatedOnLivePage(page: 'terms' | 'privacy'): string {
-  const source = readFileSync(new URL(`../../site/app/${page}/page.tsx`, import.meta.url), 'utf8');
-  const match = source.match(/lastUpdated="([^"]+)"/);
+  const source = readFileSync(new URL(`../../site/app/[locale]/${page}/page.tsx`, import.meta.url), 'utf8');
+  const match = source.match(/lastUpdatedIso="([^"]+)"/);
   if (!match?.[1]) {
-    throw new Error(`no lastUpdated="…" found on the ${page} page — the drift gate cannot bind`);
+    throw new Error(`no lastUpdatedIso="…" found on the ${page} page — the drift gate cannot bind`);
   }
-  return match[1];
+  return new Date(`${match[1]}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 describe('policy versions bind to the live policy pages', () => {
@@ -108,6 +108,10 @@ describe('policy versions bind to the live policy pages', () => {
 
   it('no longer records the terms date alone — the drift this ticket fixes', () => {
     expect(POLICY_VERSION).not.toBe(TERMS_VERSION);
-    expect(PRIVACY_VERSION).not.toBe(TERMS_VERSION);
+    // `PRIVACY_VERSION !== TERMS_VERSION` used to stand in for this, and it was
+    // never the invariant: two policies revised on the same day legitimately
+    // share a date (both moved 2026-08-20). What must hold is that a consent row
+    // names BOTH policies — asserted above, and unchanged by a shared date.
+    expect(POLICY_VERSION).toBe(`Terms ${TERMS_VERSION} · Privacy ${PRIVACY_VERSION}`);
   });
 });

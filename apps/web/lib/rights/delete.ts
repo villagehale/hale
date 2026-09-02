@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm';
+import { and, eq, isNotNull, lte } from 'drizzle-orm';
 import { removeDocument } from '../docs/storage.js';
 
 /**
@@ -84,7 +84,7 @@ export async function selectFamiliesDueForDeletion(
 
 export interface DeletionSweepSummary {
   erased: number;
-  /** How many storage objects (chat attachments + child documents) had their bytes
+  /** How many storage objects (chat attachments + child avatars) had their bytes
    * purged from the private bucket across the run — the caller logs it so the
    * byte-level erasure is recorded durably (rule #6 note below). */
   purgedObjects: number;
@@ -95,18 +95,15 @@ type RemoveObject = (path: string) => Promise<void>;
 
 /**
  * Removes every storage object a family owns from the private 'family-docs' bucket,
- * across ALL THREE prefixes the family ever wrote: chat attachments (chat/{familyId}/…),
- * child documents ({familyId}/{docId}), and child avatars (avatars/{familyId}/{childId}).
- * Each row carries a direct family_id, so the scope is a single WHERE — no join. Child
- * documents are swept regardless of deleted_at: a per-doc soft-delete removes its bytes
- * only AFTER its own commit, so a crash there can strand an object a soft-deleted row
- * still points at — the family erase must reclaim it (removeObject tolerates a 404 for
- * the already-gone ones). Child avatars are the most sensitive asset class Hale holds
- * (rule #1), so a stranded child photo surviving account erasure is the gravest gap: a
- * child's avatar_path is enumerated the same way, and because the key is deterministic
- * and removeObject tolerates a 404, a re-run is safe. Returns the object count so the
- * sweep can report it. The FK cascade erases these ROWS when the family is deleted, but
- * never the BYTES — that is this function's job.
+ * across BOTH prefixes the family ever wrote: chat attachments (chat/{familyId}/…)
+ * and child avatars (avatars/{familyId}/{childId}). Each row carries a direct
+ * family_id, so the scope is a single WHERE — no join. Child avatars are the most
+ * sensitive asset class Hale holds (rule #1), so a stranded child photo surviving
+ * account erasure is the gravest gap: a child's avatar_path is enumerated the same
+ * way, and because the key is deterministic and removeObject tolerates a 404, a
+ * re-run is safe. Returns the object count so the sweep can report it. The FK
+ * cascade erases these ROWS when the family is deleted, but never the BYTES — that
+ * is this function's job.
  */
 async function purgeFamilyStorage(
   database: Database,
@@ -117,10 +114,6 @@ async function purgeFamilyStorage(
     .select({ storagePath: schema.chatAttachments.storagePath })
     .from(schema.chatAttachments)
     .where(eq(schema.chatAttachments.familyId, familyId));
-  const documents = await database
-    .select({ storagePath: schema.childDocuments.storagePath })
-    .from(schema.childDocuments)
-    .where(eq(schema.childDocuments.familyId, familyId));
   const avatars = await database
     .select({ storagePath: schema.children.avatarPath })
     .from(schema.children)
@@ -129,7 +122,7 @@ async function purgeFamilyStorage(
   // avatar_path is a nullable column; the isNotNull filter above excludes children
   // with no photo, and this narrows the remaining paths to string (never masks a real
   // path — a null here is a child that never had an avatar object).
-  const paths = [...attachments, ...documents, ...avatars]
+  const paths = [...attachments, ...avatars]
     .map((row) => row.storagePath)
     .filter((path): path is string => path !== null);
   for (const path of paths) {
@@ -171,20 +164,6 @@ export async function runDeletionSweep(
   let purgedObjects = 0;
   for (const familyId of familyIds) {
     purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
-    // Device push tokens are user-scoped (push_tokens.user_id → users.id), so the
-    // family DELETE's FK cascade never reaches them — a device address would outlive
-    // the erased account (rule #1 / PIPEDA). Drop the family's members' tokens here.
-    const memberIds = (
-      await database
-        .select({ userId: schema.familyMembers.userId })
-        .from(schema.familyMembers)
-        .where(eq(schema.familyMembers.familyId, familyId))
-    ).map((row) => row.userId);
-    if (memberIds.length > 0) {
-      await database
-        .delete(schema.pushTokens)
-        .where(inArray(schema.pushTokens.userId, memberIds));
-    }
     await database.delete(schema.families).where(eq(schema.families.id, familyId));
   }
   return { erased: familyIds.length, purgedObjects };

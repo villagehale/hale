@@ -2,17 +2,23 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { torontoPinForPostal } from '~/lib/channel/rec-morning';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
+import { voiceClient } from '~/lib/loop/voice/compose';
 import {
   matchRegistrationWindows,
   resolveMunicipalities,
 } from '~/lib/registration/match-registration-windows';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
-import { voiceClient } from '~/lib/loop/voice/compose';
 import type { ExtractedChild } from './extract';
-import { type RadarCandidate, type RadarChild, decideRadar } from './radar-decide';
+import {
+  type RadarCandidate,
+  type RadarChild,
+  type RadarDecision,
+  decideRadar,
+} from './radar-decide';
 import { composeRadarMessage, promisesFirstFind } from './radar-voice';
 
 /** Words too generic to prove the checkpoint reached the parent. */
@@ -58,9 +64,10 @@ export function checkpointSurvivedCompose(message: string, task: string): boolea
  *
  * What it is allowed to say is bounded by what the DECIDE object contains. When that
  * object is empty — discovery has not run yet, the area has no covered municipality —
- * the honest answer goes out instead ("still learning your area") and `followUpNeeded`
- * tells the caller Hale owes this family a pick later. Nothing here sends that
- * follow-up; the flag is the whole contract.
+ * a Toronto FSA still sends the VIL-320 city pin (VIL-334: leftover mapping is not
+ * the Toronto first-hello). Unpinned towns get the honest leftover and
+ * `followUpNeeded` tells the caller Hale owes this family a pick later. Nothing here
+ * sends that follow-up; the flag is the whole contract.
  */
 
 export interface RadarInput {
@@ -260,24 +267,47 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           })
         : [];
 
-      const decision = decideRadar({
-        children,
-        candidates,
-        windows,
-        weather,
-        teenChildIds: roster.teenChildIds,
-        healthChildren: roster.healthChildren,
-        areaCoarse: area,
-        suppressedCheckpointRefs,
-        now,
-        timeZone,
-      });
+      // THE FIRST FIND IS PRE-CONSENT — the watch offer rides on this very message
+      // (machine.ts appends WATCH_OFFER to it), so health-checkpoint content may not:
+      // a vaccine flag before the parent has consented to being watched is exactly what
+      // the 2026-08-28 ads-week audit observed live, twice. The rung is dropped HERE,
+      // at the one composer that serves the intake first find, AFTER the decide so the
+      // cascade's other rungs are untouched. Nothing is marked told, so the post-consent
+      // surfaces (the 48h nudge, lib/channel/nudge/run.ts — gated on watch consent)
+      // raise the same checkpoint once consent exists. The told-marker plumbing below is
+      // typed against the unfiltered decision on purpose: it is the machinery any future
+      // POST-consent radar surface re-enables, and on this path it can only ever be null.
+      const decision: RadarDecision = {
+        ...decideRadar({
+          children,
+          candidates,
+          windows,
+          weather,
+          teenChildIds: roster.teenChildIds,
+          healthChildren: roster.healthChildren,
+          areaCoarse: area,
+          suppressedCheckpointRefs,
+          now,
+          timeZone,
+        }),
+        checkpoint: null,
+      };
 
-      const message = await composeRadarMessage(decision, {
-        familyId: input.familyId,
-        database: deps.database,
-        client: deps.client,
-      });
+      // VIL-334: civic/window lookup can be empty on a brand-new Toronto family
+      // (no seeded fall rec window, no civic hit yet). Leftover mapping is the
+      // unpinned-town answer — not for M1B / every other Toronto FSA that already
+      // has a Designer-locked pin. The pin is verbatim; a model must not paraphrase it.
+      const cityPin =
+        decision.weekendPick === null && decision.registrationLine === null
+          ? torontoPinForPostal(area)
+          : null;
+      const message =
+        cityPin ??
+        (await composeRadarMessage(decision, {
+          familyId: input.familyId,
+          database: deps.database,
+          client: deps.client,
+        }));
 
       // Launch-day review P0 (2026-08-11): the decision yielding at DECIDE is not
       // enough — the composer samples at temperature 1 and CAN drop the checkpoint
@@ -301,7 +331,8 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         itemCount:
           (decision.weekendPick ? 1 : 0) +
           (decision.registrationLine ? 1 : 0) +
-          (decision.checkpoint ? 1 : 0),
+          (decision.checkpoint ? 1 : 0) +
+          (cityPin ? 1 : 0),
         followUpNeeded: decision.followUpNeeded,
         checkpointTold,
         // Earned by the SENT TEXT, exactly as the told-marker above now is: the composer

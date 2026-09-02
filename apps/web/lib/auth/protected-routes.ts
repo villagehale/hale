@@ -11,6 +11,7 @@
  * missing from the Edge gate until it is added here.
  */
 export const PROTECTED_PREFIXES = [
+  '/admin',
   '/approvals',
   '/coach',
   '/companion',
@@ -28,3 +29,23 @@ export const PROTECTED_PREFIXES = [
 export function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
+
+/**
+ * The founder-only analytics portal. Unlike every other protected prefix, an
+ * unauthenticated hit here must answer 404 — never a redirect that advertises
+ * the route exists (the nested (authed)/admin layout 404s non-admins the same way).
+ */
+export function isAdminPath(pathname: string): boolean {
+  return pathname === '/admin' || pathname.startsWith('/admin/');
+}
+
+/**
+ * Set by the middleware (and ONLY the middleware — it strips any client-sent
+ * copy) on authed /admin requests. The (authed) layout reads it to 404 a
+ * non-admin BEFORE the streaming shell flushes: the group's loading.tsx is a
+ * Suspense boundary, so a notFound() thrown below it (the nested admin layout)
+ * lands mid-stream as a 200 + client-rendered not-found. The layout sits above
+ * that boundary; its notFound() is a real HTTP 404. A spoofed header on some
+ * other path can only 404 the spoofer themselves — fail-closed either way.
+ */
+export const ADMIN_PROBE_HEADER = 'x-hale-admin-path';

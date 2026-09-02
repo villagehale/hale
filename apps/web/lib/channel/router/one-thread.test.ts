@@ -7,6 +7,8 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { loadReconcileView } from '~/lib/channel/reconcile/view';
+import { createDisambiguationStore } from './disambiguation';
 import { FakeReplyTransport } from './reply-route';
 import type { ChannelCoachRuntime, ChannelRouterDeps } from './route';
 import { routeChannelMessage } from './route';
@@ -83,7 +85,7 @@ describe('one parent, two doors, one conversation', () => {
           .where(eq(schema.messages.conversationId, turn.conversationId))
           .orderBy(asc(schema.messages.createdAt));
         transcripts.push(rows.map((row) => row.content));
-        return { reply, planOffer: null };
+        return { reply, planOffer: null, activityPromise: null };
       },
     };
   }
@@ -100,6 +102,22 @@ describe('one parent, two doors, one conversation', () => {
       turns: auditTurnLedger(db.database),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       recordPlanOffer: async () => ({ status: 'recorded' }),
+      recordActivityPromise: async () => ({
+        status: 'recorded',
+        commitmentId: '77777777-7777-4777-8777-777777777777',
+      }),
+      // The stages beside the thread: nothing is open, nothing was stated, nothing is
+      // owed — this journey is about the doors and the memory, not the ledgers. The
+      // disambiguation store is the REAL one over the same Postgres, like the context
+      // read: its pending() runs on every turn, so a stub here would skip a real query
+      // the deployed router makes.
+      questions: { open: async () => [] },
+      replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
+      disambiguation: createDisambiguationStore(),
+      reconcileView: loadReconcileView,
+      recordStatedState: async () => ({ status: 'nothing_stated' }),
+      recordRegistrationWatch: async () => ({ status: 'recorded' }),
+      dispatchDeepResearch: async () => ({ status: 'enqueued' }),
       limiter: new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
       log: { info: () => {}, error: () => {} },

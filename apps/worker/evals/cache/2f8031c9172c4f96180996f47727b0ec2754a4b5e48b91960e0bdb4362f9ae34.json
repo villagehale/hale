@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer states \"I don't have a record\" and says \"nothing tells me\" about Mira's Saturday class, when the reference clearly provides a specific answer: Mira goes to the Tumbleweeds toddler gym class on Saturdays. The assistant should have known this information but failed to provide it, instead claiming ignorance when the fact is available in the reference. This is a direct miss of the required factual answer."
+  }
+}

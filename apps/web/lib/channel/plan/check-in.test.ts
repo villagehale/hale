@@ -1,4 +1,5 @@
 import type { Database } from '@hale/db';
+import { withOptOut } from '~/lib/channel/opt-out';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
@@ -23,6 +24,7 @@ const DUE = {
   topic: 'sleep',
   summary: 'Check in on the Graduated check-ins (Ferber method) plan.',
   createdFrom: 'msg-9',
+  subjectChildId: null,
   dueAt: new Date('2026-08-15T13:00:00.000Z'),
 };
 const COMPOSED = 'How have the first few nights gone?';
@@ -64,6 +66,7 @@ function harness(
       },
       watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
       countProactiveSends: async () => (overrides.hold === 'frequency_cap' ? 99 : 0),
+      proactiveSentSince: async () => true,
       // NOW is 14:00 UTC, which is 10:00 in Toronto — inside the sendable window. The
       // hold case moves the parent to a zone where the same instant is past 21:00.
       parentTimeZone: async () =>
@@ -91,8 +94,8 @@ function harness(
     audit: async (_db, row) => {
       audits.push(row);
     },
-    appendMessage: async (_conversationId, _role, content) => {
-      threaded.push(content);
+    threadMessage: async (_db, input) => {
+      threaded.push(input.body);
       return 'thread-1';
     },
     fulfillCommitment: async (_db, input) => {
@@ -150,7 +153,9 @@ describe('a due check-in', () => {
 
     const result = await h.run();
 
-    expect(h.sent).toEqual([{ to: '+14165550100', body: COMPOSED }]);
+    // Every proactive message carries the CASL unsubscribe now, and this recipient has
+    // been texted before, so it is the compact form (lib/channel/opt-out.ts).
+    expect(h.sent).toEqual([{ to: '+14165550100', body: withOptOut(COMPOSED, 'short') }]);
     expect(h.ledger).toEqual([
       {
         dedupeKey: 'coach_plan:checkin:commitment-1',
@@ -171,6 +176,21 @@ describe('a due check-in', () => {
 
     // There is no handler for the reply on purpose: what the parent says next is
     // conversation, and it needs the question in front of it to read as one.
+    // THREADED WITHOUT the compliance line: what the parent reads back in their history is
+    // Hale's sentence, not the footer the wire needed.
+    expect(h.threaded).toEqual([COMPOSED]);
+  });
+
+  it('threads the check-in even when the plan message carried no thread of its own', async () => {
+    // Same shape as the activity follow-up's: the thread came off the plan message's
+    // `related_conversation_id`, which is null for every plan a proactive sender put
+    // out. The check-in still went, and the question it asks still needed an antecedent.
+    process.env[F14_ENABLED_ENV] = 'true';
+    const h = harness({ recipient: { parentUserId: PARENT, conversationId: null } });
+
+    await h.run();
+
+    expect(h.sent).toHaveLength(1);
     expect(h.threaded).toEqual([COMPOSED]);
   });
 

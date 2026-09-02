@@ -10,7 +10,7 @@ import { revokeShareLink } from '~/lib/village/share-revoke';
 export const runtime = 'nodejs';
 
 const bodySchema = z.object({
-  kind: z.enum(['week_plan', 'activity']),
+  kind: z.enum(['activity']),
   id: z.string().uuid(),
 });
 

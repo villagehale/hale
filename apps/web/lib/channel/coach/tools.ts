@@ -1,16 +1,22 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { type Database, schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { deriveStage } from '@hale/types';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import { z } from 'zod';
-import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
+import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import type { ActivityFinder } from '~/lib/channel/activity/lane';
+import type { BoundActivityReader } from '~/lib/channel/activity/reader';
+import { findActivitiesTool, promiseActivityFollowUpTool } from '~/lib/channel/activity/tools';
 import { type PlanOffer, offerFullPlanTool } from '~/lib/channel/plan/offer';
+import { type ReferralShare, shareReferralLinkTool } from '~/lib/channel/referral/share';
+import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
+import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
+import { WEEKDAYS, weekdayOf, weekdayViolation } from './weekday';
 
 /**
  * VIL-221 · C2 — the schedule verbs, over text.
@@ -89,6 +95,13 @@ export interface ChannelCoachToolArgs {
   /** The shared Village read (coach/tools.ts `searchVillageTool`), or null in a test
    * that is not exercising it. */
   villageTool: RegisteredTool | null;
+  /**
+   * The live web-search lane and the family facts phase 0 needs, or null in a test that
+   * is not exercising them. The two travel together on purpose: a finder with no reader
+   * could not de-identify a query, and a reader with no finder has nothing to answer —
+   * so "the web verb is wired" is one condition rather than two that can disagree.
+   */
+  activity: { reader: BoundActivityReader; finder: ActivityFinder } | null;
   /** Told about every action this turn actually minted. A draft is committed the moment
    * the tool returns, so a turn that fails LATER has still changed the family's queue —
    * and the router can only be honest about that if something counted (VIL-260). */
@@ -104,6 +117,25 @@ export interface ChannelCoachToolArgs {
    * so there is no path that can report an offer nobody is listening for.
    */
   onOffer?: (offer: PlanOffer) => void;
+  /**
+   * Told when the turn hands the parent their own referral link. Same shape and same
+   * reason as `onOffer`: the tool composes nothing that can be sent on its own, and the
+   * runtime is what appends the finished block to a reply that has been fitted around
+   * it. Absent in a test that is not exercising it; the verb is then not registered, so
+   * there is no path that promises a parent a link nobody collected (rule #11).
+   */
+  onShare?: (share: ReferralShare) => void;
+  /**
+   * Told when the turn PROMISES to come back about an activity search. Same shape and
+   * same reason as `onOffer`: the ledger row is minted against the outbound message,
+   * which is still being composed, so the promise travels out of the turn and the router
+   * writes it once the transport has taken the reply.
+   *
+   * Absent in a test that is not exercising it; the verb is then not registered at all,
+   * so there is no path on which Hale can say "I'll come back to you" with nobody
+   * collecting the promise (rule #11) — which is precisely the 2026-08-20 defect.
+   */
+  onPromise?: (promise: ActivityPromise) => void;
   now: Date;
 }
 
@@ -113,6 +145,14 @@ const dayKey = z
 const wallClock = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'time must be HH:MM on a 24-hour family-local clock');
+
+/**
+ * The weekday the model believes its `date` is — checked against the date before a row
+ * is minted (weekday.ts). REQUIRED on both dating verbs, and that is the whole mechanism:
+ * a date on its own is an unverifiable inference, and a date plus the weekday it is
+ * claimed to be is two facts that must agree.
+ */
+const weekday = z.enum(WEEKDAYS);
 
 /**
  * How far ahead a text may reach. Zero is the week the parent is standing in, one is
@@ -142,6 +182,47 @@ function localWhen(at: Date, timeZone: string): string {
     .replace(/\s/g, '')
     .toLowerCase();
   return `${weekday} ${time}`;
+}
+
+/**
+ * The same instant with the CALENDAR DATE in it: "Thu, Aug 20, 4:30pm".
+ *
+ * `localWhen` is the parent-facing label and stays as it is — a text about this week
+ * does not need the date, and every character is a septet. This one is what a DRAFT
+ * hands back to the model, because the sentence after a draft is where the date gets
+ * said out loud, and the tool result was the only place the true one could come from.
+ * On 2026-08-20 it carried no date at all and the model supplied its own: "Thursday,
+ * August twenty-second", which was a Saturday.
+ */
+function longWhen(at: Date, timeZone: string): string {
+  const day = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone,
+  }).format(at);
+  return `${day}, ${localWhen(at, timeZone).split(' ')[1]}`;
+}
+
+/**
+ * The cross-check, before anything is minted and before the draft budget is claimed
+ * (weekday.ts). Thrown rather than returned: a handler throw becomes the tool_result the
+ * model reads mid-turn, which is the re-ask seam every other refusal here uses — and a
+ * refused draft that had already spent one of the two per-turn changes would cost the
+ * parent a change they never got.
+ */
+function refuseMismatchedWeekday(
+  input: { date: string; weekday: (typeof WEEKDAYS)[number] },
+  timeZone: string,
+  tool: string,
+): void {
+  const violation = weekdayViolation({
+    date: input.date,
+    weekday: input.weekday,
+    timeZone,
+    tool,
+  });
+  if (violation) throw new Error(violation);
 }
 
 /** A private row is named only by its shape, and never by where it is (rule #1). */
@@ -189,7 +270,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const lookupWeek = defineTool({
     name: 'lookup_week',
     description:
-      "THIS family's week: the composed plan summary plus every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
+      "THIS family's week: the composed plan summary, `days` (the seven dates of that week with the weekday each one is — read your date and weekday off this, never work them out), and every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
     inputSchema: z.object({ weekOffset }),
     inputExamples: [{}, { weekOffset: 1 }],
     monetary: false,
@@ -208,6 +289,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       return {
         weekStart: window.startKey,
         timeZone,
+        // THE CALENDAR, SO NOBODY HAS TO DO CALENDAR ARITHMETIC (VIL-295). "This Thursday"
+        // has to become a date before a draft can carry it, and the model was the only
+        // thing in the loop resolving it — which is how "Thursday, August twenty-second"
+        // reached a parent out loud about a Saturday. The window already computes all
+        // seven day keys; withholding them made the model guess at something already
+        // known. `weekday` here is the same token the propose_* verbs take, so the two
+        // arguments of a draft can be READ OFF this rather than worked out.
+        days: window.dayKeys.map((date) => ({ weekday: weekdayOf(date, timeZone), date })),
         summary,
         events: events.map((event) => ({
           eventId: event.eventId,
@@ -222,14 +311,22 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const proposeMove = defineTool({
     name: 'propose_calendar_move',
     description:
-      "DRAFT a re-time of one existing event for the parent to approve — it does NOT move anything. `eventId` must come from lookup_week; `date`/`time` are the family's own wall clock. The event keeps its title, place and child.",
-    inputSchema: z.object({ eventId: z.string().min(1), date: dayKey, time: wallClock }),
-    inputExamples: [{ eventId: EXAMPLE_EVENT_ID, date: '2026-09-15', time: '17:15' }],
+      "DRAFT a re-time of one existing event for the parent to approve — it does NOT move anything. `eventId` must come from lookup_week; `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. The event keeps its title, place and child.",
+    inputSchema: z.object({
+      eventId: z.string().min(1),
+      date: dayKey,
+      time: wallClock,
+      weekday,
+    }),
+    inputExamples: [
+      { eventId: EXAMPLE_EVENT_ID, date: '2026-09-15', time: '17:15', weekday: 'tue' },
+    ],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
       const event = await requireEvent(input.eventId);
       const timeZone = await reader.timeZone(familyId);
+      refuseMismatchedWeekday(input, timeZone, 'propose_calendar_move');
       const startsAt = zonedLocalInstant(input.date, input.time, timeZone);
       claimDraftBudget();
 
@@ -250,14 +347,19 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: move to ${localWhen(startsAt, timeZone)}`,
         teenContent: event.teen,
       });
-      return { drafted: true as const, actionId, newWhen: localWhen(startsAt, timeZone) };
+      return {
+        drafted: true as const,
+        actionId,
+        newWhen: localWhen(startsAt, timeZone),
+        when: longWhen(startsAt, timeZone),
+      };
     },
   });
 
   const proposeCancel = defineTool({
     name: 'propose_calendar_cancel',
     description:
-      "DRAFT the removal of one existing event for the parent to approve — it does NOT cancel anything. `eventId` must come from lookup_week. Never call this on a reference that matched more than one event; ask which first.",
+      'DRAFT the removal of one existing event for the parent to approve — it does NOT cancel anything. `eventId` must come from lookup_week. Never call this on a reference that matched more than one event; ask which first.',
     inputSchema: z.object({ eventId: z.string().min(1) }),
     inputExamples: [{ eventId: EXAMPLE_EVENT_ID }],
     monetary: false,
@@ -291,11 +393,12 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const proposeAdd = defineTool({
     name: 'propose_calendar_add',
     description:
-      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
+      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
     inputSchema: z.object({
       title: z.string().min(1).max(120),
       date: dayKey,
       time: wallClock,
+      weekday,
       location: z.string().max(120).optional(),
       childId: z.string().min(1).optional(),
     }),
@@ -304,11 +407,12 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     // run's context, never composed (rule #1: the id here is an invented
     // placeholder, since examples are cached outside message protections).
     inputExamples: [
-      { title: 'Swim lesson', date: '2026-09-15', time: '17:15' },
+      { title: 'Swim lesson', date: '2026-09-15', time: '17:15', weekday: 'tue' },
       {
         title: 'Dentist',
         date: '2026-09-18',
         time: '09:30',
+        weekday: 'fri',
         location: 'Main Street Dental',
         childId: EXAMPLE_CHILD_ID,
       },
@@ -320,6 +424,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     touchesChildContent: true,
     handler: async (input, ctx) => {
       const timeZone = await reader.timeZone(familyId);
+      refuseMismatchedWeekday(input, timeZone, 'propose_calendar_add');
       const startsAt = zonedLocalInstant(input.date, input.time, timeZone);
       claimDraftBudget();
 
@@ -339,10 +444,37 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
-      return { drafted: true as const, actionId, when: localWhen(startsAt, timeZone) };
+      return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
     },
   });
 
+  /**
+   * WHY THERE IS NO WRITE VERB HERE, measured rather than assumed (VIL-294, 2026-08-24).
+   *
+   * The obvious way to let a texted turn keep what a parent tells it is to register the
+   * app coach's `save_memory` on this surface too. It was built, wired, skill-documented,
+   * and then declined on evidence: an eleventh verb in this allowlist costs TOOL REACH on
+   * the two fixtures that most depend on it. Three fresh samples per cell, same nonces,
+   * apps/worker/evals/run-coach-channel-eval.mjs:
+   *
+   *                                       registration-window-plus-a-find   village-…-not
+   *   as shipped                                        3/3                     3/3
+   *   + save_memory, 16-line skill section               2/3                     1/3
+   *   + save_memory, no skill prose                      3/3                     2/3
+   *   + save_memory, 6-line section at the end           2/3                     1/3
+   *
+   * That is the budget this lane already runs at (MAX_TOKENS 400, thinking and text
+   * sharing it — see runtime.ts), and a turn that stops reaching for the live web is a
+   * parent handed nothing about the fall.
+   *
+   * The gap it would have closed is smaller than it looks: a durable fact stated over
+   * text is already written by the NIGHTLY distiller, which reads every conversation this
+   * family has (lib/cron/inference-tools.ts `save_child_fact`) — a day later rather than
+   * inline. What the distiller can never write is a SUPPRESSION, because the readers that
+   * act on state pin their writer, and that is exactly the half VIL-294 shipped
+   * deterministically instead (lib/channel/stated-state.ts). Inline recall over text wants
+   * a cheaper seam than an eleventh verb — a post-send pass, off the turn's budget.
+   */
   const tools: RegisteredTool[] = [
     lookupWeek,
     proposeMove,
@@ -355,11 +487,45 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     frameworkGuidanceTool(),
   ];
   if (args.villageTool) tools.push(args.villageTool);
+  // The live web verb. Registered only where the lane and the reader are both wired,
+  // for the same reason the offer verb waits on its collector: a search tool with no
+  // way to de-identify its query is one that must not exist at all (rule #1).
+  // BOTH activity verbs need the collector now, for one reason: an inline answer that
+  // ships with a gap registers its own follow-up (activity/tools.ts), so a search verb
+  // wired without somewhere to put that promise would hand a parent half an answer and
+  // drop the debt on the floor — the exact 2026-08-20 defect, arriving through a
+  // different door. The absent collector removes the VERBS rather than discarding what
+  // they produce (rule #11). Nothing loses a verb by this: the only caller that wires
+  // `activity` is the SMS runtime, which wires the collector too; the voice relay passes
+  // `activity: null` and never had them.
+  if (args.activity && args.onPromise) {
+    const onPromise = args.onPromise;
+    tools.push(
+      findActivitiesTool({
+        reader: args.activity.reader,
+        finder: args.activity.finder,
+        onPromise,
+      }),
+    );
+  }
+  // The promise verb, registered only where something is COLLECTING the promise. An
+  // "I'll come back to you" whose registration goes nowhere is the exact sentence that
+  // produced this feature: a debt no sweep can see and no digest can count. The absent
+  // collector removes the VERB rather than discarding what it produces (rule #11) — and
+  // the skill may only say the sentence when it can call the verb.
+  if (args.onPromise && args.activity) {
+    const onPromise = args.onPromise;
+    tools.push(promiseActivityFollowUpTool({ reader: args.activity.reader, onPromise }));
+  }
   // Registered only where something is listening. An offer whose report goes nowhere is
   // an offer the parent is told about and the ledger never hears about — a YES with
   // nothing to resolve against — so the absent collector removes the VERB rather than
   // silently discarding what it produces (rule #11).
   if (args.onOffer) tools.push(offerFullPlanTool(args.onOffer));
+  // The one fact the coach holds about Hale itself. Same registration rule as the offer,
+  // and the same reason: a share the runtime is not collecting is a parent told to
+  // forward a message with no link in it.
+  if (args.onShare) tools.push(shareReferralLinkTool(familyId, args.onShare));
   return tools;
 }
 

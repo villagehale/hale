@@ -20,6 +20,14 @@ export interface IntakeFunnel {
   sessionsStarted: number;
   provisioned: number;
   watchConsented: number;
+  /**
+   * Of the sessions started, the ones that arrived carrying a QR venue code — the
+   * only field in the whole intake that says WHERE a family came from. Counted apart
+   * from `sessionsStarted` because attributed and unattributed demand are different
+   * facts: the founder scorecard grades the probe against a weekly target, and a week
+   * of walk-ins tells it nothing about which venue is working.
+   */
+  sourceCoded: number;
 }
 
 export interface TtfaStat {
@@ -244,8 +252,10 @@ export function formatFunnelScoreboard(scoreboard: FunnelScoreboard): string[] {
 
 // ── aggregation ──────────────────────────────────────────────────────────────
 
-/** Nudges that actually left — a suppressed row had no chance to be engaged with. */
-const DELIVERED_STATUSES = ['sent', 'delivered'] as const;
+/** Legs that actually left. A nudge that was suppressed had no chance to be engaged
+ * with, and a message that was suppressed reached nobody — the same question, so the
+ * founder scorecard's engagement row reads this list too rather than a second copy. */
+export const DELIVERED_STATUSES = ['sent', 'delivered'] as const;
 
 export async function aggregateFunnelScoreboard(
   database: Database,
@@ -266,6 +276,13 @@ export async function aggregateFunnelScoreboard(
     .select({ count: count() })
     .from(schema.smsIntakeSessions)
     .where(and(startedInWindow, isNotNull(schema.smsIntakeSessions.familyId)));
+
+  // The attributed slice of the same cohort — same table, same window, so the two
+  // numbers can never be counted over different weeks.
+  const [sourceCodedRow] = await database
+    .select({ count: count() })
+    .from(schema.smsIntakeSessions)
+    .where(and(startedInWindow, isNotNull(schema.smsIntakeSessions.sourceCode)));
 
   // Watch opt-in is a CONVERSION count — the families that said yes at S3 — so it
   // counts assent events. It is deliberately NOT a "is the watch consent live now?"
@@ -355,6 +372,7 @@ export async function aggregateFunnelScoreboard(
       sessionsStarted: startedRow?.count ?? 0,
       provisioned: provisionedRow?.count ?? 0,
       watchConsented: watchRow?.count ?? 0,
+      sourceCoded: sourceCodedRow?.count ?? 0,
     },
     ttfa: computeTtfa(intakeRows),
     nudges: computeNudgeEngagement(withSentAt(nudgeRows), withSentAt(replyRows), windowEnd),

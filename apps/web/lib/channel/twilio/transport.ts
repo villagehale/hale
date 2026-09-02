@@ -1,6 +1,7 @@
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { WHATSAPP_ADDRESS_PREFIX } from '~/lib/channel/transport-address';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
-import { requireTwilioConfig } from './config';
+import { type TwilioConfig, requireTwilioConfig, twilioWhatsAppSender } from './config';
 
 /**
  * VIL-214 · A3 — the real SMS leg behind M2's {@link ChannelTransport}: the ONE place
@@ -30,6 +31,58 @@ export interface TwilioTransportDeps {
   fetch?: typeof fetch;
 }
 
+/**
+ * The refusals no retry can fix: 21610 the recipient has opted out, 21408 the region is
+ * not permitted, 21211 the number is not a valid E.164, 21614 the number cannot receive
+ * SMS. Everything else — an outage, a throttle, a timeout — is transient by default, so
+ * a code Twilio adds tomorrow keeps being retried rather than silently dropped.
+ */
+const PERMANENT_TWILIO_CODES = new Set([
+  '21610',
+  '21408',
+  '21211',
+  '21614',
+  // The MEDIA refusals, permanent for the same reason: the identical request re-sent
+  // earns the identical answer. 21620 Twilio could not fetch the MediaUrl, 12300 the
+  // URL served a content type MMS cannot carry, 21617 body + media exceeded the size
+  // ceiling, 21623 too many media on one message. Left transient, a broken card would
+  // be re-fetched by every retry — and none of them can succeed.
+  '21620',
+  '12300',
+  '21617',
+  '21623',
+  // The WHATSAPP refusals (WhatsApp v1), permanent for the same reason. 63016 a
+  // free-form message outside Meta's 24h customer-service window — the reply decider
+  // (reply-transport.ts) exists to prevent this send, and when it happens anyway the
+  // identical retry meets the identical shut window. 63003 channel could not find the
+  // recipient, 63005 the message violated a channel policy, 63024 the recipient is not
+  // a valid WhatsApp user.
+  '63016',
+  '63003',
+  '63005',
+  '63024',
+]);
+
+/**
+ * A Twilio refusal, typed so a caller can act on it without parsing a string. Carries
+ * the numeric code and the HTTP status ONLY: Twilio echoes the number and the body back
+ * inside its own `message`, and this is the object that ends up in a stack trace (rule #1).
+ */
+export class TwilioSendError extends Error {
+  readonly code: string;
+  readonly httpStatus: number;
+  /** True when retrying would only earn the same refusal — the caller stops instead. */
+  readonly permanent: boolean;
+
+  constructor(code: string, httpStatus: number) {
+    super(`twilio send failed: HTTP ${httpStatus}, twilio code ${code}`);
+    this.name = 'TwilioSendError';
+    this.code = code;
+    this.httpStatus = httpStatus;
+    this.permanent = PERMANENT_TWILIO_CODES.has(code);
+  }
+}
+
 function readErrorCode(payload: unknown): string {
   if (typeof payload === 'object' && payload !== null && 'code' in payload) {
     const code = (payload as { code: unknown }).code;
@@ -38,52 +91,120 @@ function readErrorCode(payload: unknown): string {
   return 'unknown';
 }
 
+/** The one POST both transports share: auth, timeout, refusal typing, and the
+ * no-sid guard live here so the SMS and WhatsApp legs cannot drift apart. */
+async function postTwilioMessage(
+  doFetch: typeof fetch,
+  config: TwilioConfig,
+  form: URLSearchParams,
+): Promise<{ providerMessageId: string }> {
+  const credentials = Buffer.from(`${config.apiKeySid}:${config.apiKeySecret}`).toString('base64');
+
+  const response = await doFetch(
+    `${TWILIO_API_BASE}/Accounts/${config.accountSid}/Messages.json`,
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Basic ${credentials}`,
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+      signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+    },
+  );
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new TwilioSendError(readErrorCode(payload), response.status);
+  }
+
+  const payload = (await response.json()) as { sid?: unknown };
+  const sid = payload.sid;
+  if (typeof sid !== 'string' || sid.length === 0) {
+    // The ledger's idempotency and every delivery callback key off this id, so a
+    // fabricated one would quietly break both (rule #8: fail, don't paper over).
+    throw new Error('twilio send succeeded but returned no message sid');
+  }
+  return { providerMessageId: sid };
+}
+
 export function createTwilioTransport(deps: TwilioTransportDeps = {}): ChannelTransport {
   const doFetch = deps.fetch ?? globalThis.fetch;
   return {
-    async send({ to, body }) {
+    async send({ to, body, mediaUrls }) {
+      // An empty array is a caller that MEANT to attach something and has nothing —
+      // sending it as a plain SMS would be the silent drop rule #11 forbids, and the
+      // parent would get a sentence about a card that never arrived. `undefined` is the
+      // different, legitimate thing: a text with no media, which is most of them.
+      if (mediaUrls && mediaUrls.length === 0) {
+        throw new Error('twilio send: mediaUrls was empty — send without it to mean no media');
+      }
+
       const config = requireTwilioConfig();
-      const credentials = Buffer.from(`${config.apiKeySid}:${config.apiKeySecret}`).toString(
-        'base64',
-      );
 
-      const response = await doFetch(
-        `${TWILIO_API_BASE}/Accounts/${config.accountSid}/Messages.json`,
-        {
-          method: 'POST',
-          headers: {
-            authorization: `Basic ${credentials}`,
-            'content-type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            To: to,
-            From: config.fromNumber,
-            Body: body,
-            // Live-gate finding (2026-08-11): Twilio only sends delivery receipts to a
-            // StatusCallback named IN the send request — the number-level field does
-            // not apply to API-created messages, so without this the ledger's rows
-            // stop at 'sent' forever and a failed delivery is invisible.
-            StatusCallback: `${appBaseUrl()}/api/channels/twilio/status`,
-          }).toString(),
-          signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
-        },
-      );
+      const form = new URLSearchParams({
+        To: to,
+        // Via the Messaging Service when configured (Twilio-side queueing and
+        // encoding; the pool holds the same brand number, so the parent still
+        // sees the contact they saved) — direct From otherwise.
+        ...(config.messagingServiceSid
+          ? { MessagingServiceSid: config.messagingServiceSid }
+          : { From: config.fromNumber }),
+        Body: body,
+        // Live-gate finding (2026-08-11): Twilio only sends delivery receipts to a
+        // StatusCallback named IN the send request — the number-level field does
+        // not apply to API-created messages, so without this the ledger's rows
+        // stop at 'sent' forever and a failed delivery is invisible.
+        StatusCallback: `${appBaseUrl()}/api/channels/twilio/status`,
+      });
+      // MediaUrl is REPEATED, not comma-joined: Twilio reads one attachment per
+      // occurrence of the field, and a joined string is one URL it cannot fetch (21620).
+      for (const url of mediaUrls ?? []) {
+        form.append('MediaUrl', url);
+      }
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
+      return postTwilioMessage(doFetch, config, form);
+    },
+  };
+}
+
+/**
+ * The WhatsApp leg (WhatsApp v1): the identical REST call with `whatsapp:` applied to
+ * BOTH ends — and never the Messaging Service, because a WhatsApp sender is addressed
+ * by `From` alone. `StatusCallback` is shared: Twilio posts WhatsApp receipts to the
+ * same webhook, and `mapTwilioStatus` already reads its `read` as delivered.
+ *
+ * MEDIA IS REFUSED, not dropped (the OutboundMessage contract): WhatsApp delivery of
+ * the text/vcard welcome card via Twilio is unverified territory, so the routing
+ * transport (reply-transport.ts) sends media down the SMS leg to the same number —
+ * this throw is the backstop that makes a bypass loud rather than a card that never
+ * arrives.
+ */
+export function createTwilioWhatsAppTransport(deps: TwilioTransportDeps = {}): ChannelTransport {
+  const doFetch = deps.fetch ?? globalThis.fetch;
+  return {
+    async send({ to, body, mediaUrls }) {
+      if (mediaUrls) {
         throw new Error(
-          `twilio send failed: HTTP ${response.status}, twilio code ${readErrorCode(payload)}`,
+          'twilio whatsapp send: media is not supported on the WhatsApp leg — route it via SMS',
         );
       }
 
-      const payload = (await response.json()) as { sid?: unknown };
-      const sid = payload.sid;
-      if (typeof sid !== 'string' || sid.length === 0) {
-        // The ledger's idempotency and every delivery callback key off this id, so a
-        // fabricated one would quietly break both (rule #8: fail, don't paper over).
-        throw new Error('twilio send succeeded but returned no message sid');
+      const config = requireTwilioConfig();
+      const sender = twilioWhatsAppSender();
+      if (!sender) {
+        throw new Error('twilio whatsapp not configured: missing TWILIO_WHATSAPP_FROM');
       }
-      return { providerMessageId: sid };
+
+      const form = new URLSearchParams({
+        To: `${WHATSAPP_ADDRESS_PREFIX}${to}`,
+        From: `${WHATSAPP_ADDRESS_PREFIX}${sender}`,
+        Body: body,
+        StatusCallback: `${appBaseUrl()}/api/channels/twilio/status`,
+      });
+
+      const sent = await postTwilioMessage(doFetch, config, form);
+      return { ...sent, transport: 'whatsapp' };
     },
   };
 }

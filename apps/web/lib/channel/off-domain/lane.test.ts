@@ -3,16 +3,24 @@ import { describe, expect, it, vi } from 'vitest';
 import type { GeneralAnswerFallback, GeneralAnswerOutcome } from './answer';
 import {
   ANSWER_UNAVAILABLE_REPLY,
+  ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
+  EMERGENCY_REPLY,
+  MENTAL_CRISIS_REPLY,
   PROVIDER_ACCESS_REPLY,
+  PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
   SAFETY_REPLY,
+  SAFETY_REPLY_BY_LANGUAGE,
+  UNPLACEABLE_PROVIDER_REPLY,
 } from './copy';
 import {
   type OffDomainPorts,
+  type ReplySource,
   type UnmetSignalOutcome,
   offDomainLane,
   recordUnmetIntent,
 } from './lane';
+import type { MedicalReply } from './medical';
 import type { LaneReading, LaneScreenFallback } from './screen';
 
 /**
@@ -31,6 +39,8 @@ import type { LaneReading, LaneScreenFallback } from './screen';
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const MESSAGE = '33333333-3333-4333-8333-333333333333';
 const ANSWER = "Messi, for me - the closest thing to a complete player I've watched.";
+const MEDICAL_ANSWER =
+  'A fever like this is often viral at this age; fluids and rest usually help. Call 811 any time, or go to the ER / call 911 if she has trouble breathing.';
 
 function reading(overrides: Partial<LaneReading> = {}): LaneReading {
   return { lane: 'off_domain_general', category: 'weather', fallback: null, ...overrides };
@@ -44,6 +54,8 @@ interface Recorded {
 
 interface Harness extends OffDomainPorts {
   composeCalls: number;
+  medicalCalls: number;
+  medicalSeen: string[];
   recorded: Recorded[];
 }
 
@@ -52,19 +64,31 @@ function ports(
     read?: LaneReading;
     signal?: UnmetSignalOutcome;
     answer?: GeneralAnswerOutcome;
+    medical?: MedicalReply;
   } = {},
 ): Harness {
   const read = overrides.read ?? reading();
   const signal = overrides.signal ?? 'recorded';
   const answer = overrides.answer ?? ({ status: 'composed', reply: ANSWER } as const);
+  const medical =
+    overrides.medical ?? ({ reply: MEDICAL_ANSWER, replySource: 'web_grounded' } as const);
   const harness: Harness = {
     composeCalls: 0,
+    medicalCalls: 0,
+    medicalSeen: [],
     recorded: [],
     screen: { read: async () => read },
     answer: {
       compose: async () => {
         harness.composeCalls += 1;
         return answer;
+      },
+    },
+    medical: {
+      answer: async (text) => {
+        harness.medicalCalls += 1;
+        harness.medicalSeen.push(text);
+        return medical;
       },
     },
     recordUnmetIntent: async (input) => {
@@ -83,15 +107,70 @@ const consider = (p: OffDomainPorts, text = 'anything') =>
   offDomainLane(p).consider({ familyId: FAMILY, channelMessageId: MESSAGE, text });
 
 describe('what each lane says', () => {
-  it('answers a safety ask with the fixed line, exactly', async () => {
-    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+  /** Every safety_critical category EXCEPT medical-symptom still gets the fixed line,
+   * with no model between a parent and what they are told about a crisis. medical-symptom
+   * moved to its own answered lane (see the dedicated describe below). */
+  it.each(['child-safety', 'emergency'] as const)(
+    'answers a %s safety ask with the child-health 811 line, exactly',
+    async (category) => {
+      const p = ports({ read: reading({ lane: 'safety_critical', category }) });
+
+      const verdict = await consider(p);
+
+      expect(verdict).toMatchObject({
+        status: 'deflected',
+        reply: SAFETY_REPLY,
+        replySource: 'fixed',
+      });
+      expect(SAFETY_REPLY).toContain('811');
+      expect(SAFETY_REPLY).toContain('911');
+      expect(p.medicalCalls).toBe(0);
+    },
+  );
+
+  it('answers a mental-health crisis with the reviewed 988 line, never the 811 child-health line', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'mental-health' }) });
 
     const verdict = await consider(p);
 
-    expect(verdict).toMatchObject({ status: 'deflected', reply: SAFETY_REPLY });
-    expect(SAFETY_REPLY).toContain('811');
-    expect(SAFETY_REPLY).toContain('911');
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: MENTAL_CRISIS_REPLY,
+      replySource: 'fixed',
+    });
+    expect(MENTAL_CRISIS_REPLY).toContain('988');
+    expect(MENTAL_CRISIS_REPLY).toContain('911');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('811');
+    expect(MENTAL_CRISIS_REPLY).not.toContain('not something I should advise on');
+    expect(MENTAL_CRISIS_REPLY).not.toBe(EMERGENCY_REPLY);
+    expect(p.medicalCalls).toBe(0);
   });
+
+  it.each(['not breathing', 'unconscious', 'unresponsive', 'choking', 'seizure'] as const)(
+    'answers %s with Call 911 now. alone, never the 811 Telehealth line',
+    async (token) => {
+      const p = ports({
+        read: reading({ lane: 'safety_critical', category: 'medical-symptom' }),
+      });
+
+      const verdict = await consider(p, `she is ${token}`);
+
+      expect(verdict).toMatchObject({
+        status: 'deflected',
+        reply: EMERGENCY_REPLY,
+        replySource: 'fixed',
+      });
+      expect(EMERGENCY_REPLY).toBe('Call 911 now.');
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('811');
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('Health811');
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('988');
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toContain('?');
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toBe(SAFETY_REPLY);
+      expect(verdict.status === 'deflected' ? verdict.reply : '').not.toBe(MENTAL_CRISIS_REPLY);
+      expect(p.medicalCalls).toBe(0);
+      expect(p.composeCalls).toBe(0);
+    },
+  );
 
   /**
    * Skill audit P0 #3. The general terminal has a fourth outcome: the composer wrote a
@@ -114,7 +193,10 @@ describe('what each lane says', () => {
   it('answers a provider ask with the Ontario workflow, and invents nothing', async () => {
     const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
 
-    const verdict = await consider(p);
+    // The TEXT now decides which of the table's rows answers, so this fixture has to say
+    // what it is asking for. It used to read 'anything' and still get the registry —
+    // which is the defect the table replaced, sitting inside the test that guarded it.
+    const verdict = await consider(p, 'we just moved and need a family doctor');
 
     expect(verdict).toMatchObject({ status: 'deflected', reply: PROVIDER_ACCESS_REPLY });
     expect(PROVIDER_ACCESS_REPLY).toContain('Health Care Connect');
@@ -154,15 +236,23 @@ describe('what each lane says', () => {
   /**
    * An ophthalmologist is a physician specialist and IS the referral case, so the
    * direct-access line would be the same class of wrong answer in the other direction.
+   *
+   * IT IS NOT THE REGISTRY EITHER, which is what this assertion used to say. Health Care
+   * Connect places family doctors, nurse practitioners and primary care teams; it has
+   * never placed an ophthalmologist, so the old expectation was the wrong-service defect
+   * written down as the desired behaviour (VIL-295). The honest answer is that Hale does
+   * not have a verified path for this one — and it says the thing it CAN do next.
    */
-  it('does not claim direct access for an ophthalmologist', async () => {
+  it('claims neither direct access nor the registry for an ophthalmologist', async () => {
     const p = ports({
       read: reading({ lane: 'provider_access', category: 'specialist-access' }),
     });
 
     const verdict = await consider(p, 'we need an ophthalmologist for her');
 
-    expect(verdict).toMatchObject({ reply: PROVIDER_ACCESS_REPLY });
+    expect(verdict).toMatchObject({ reply: UNPLACEABLE_PROVIDER_REPLY });
+    expect(verdict).not.toMatchObject({ reply: DIRECT_ACCESS_EYE_REPLY });
+    expect(UNPLACEABLE_PROVIDER_REPLY).not.toContain('Health Care Connect');
   });
 
   /**
@@ -211,17 +301,20 @@ describe('what each lane says', () => {
     'skill_unavailable',
     'model_failed',
     'unsendable',
-  ] as GeneralAnswerFallback[])('falls back to the fixed line when the answer %s', async (reason) => {
-    const p = ports({ answer: { status: 'unavailable', reason } });
+  ] as GeneralAnswerFallback[])(
+    'falls back to the fixed line when the answer %s',
+    async (reason) => {
+      const p = ports({ answer: { status: 'unavailable', reason } });
 
-    const verdict = await consider(p);
+      const verdict = await consider(p);
 
-    expect(verdict).toMatchObject({
-      status: 'deflected',
-      reply: ANSWER_UNAVAILABLE_REPLY,
-      replySource: reason,
-    });
-  });
+      expect(verdict).toMatchObject({
+        status: 'deflected',
+        reply: ANSWER_UNAVAILABLE_REPLY,
+        replySource: reason,
+      });
+    },
+  );
 
   /** The two doors are FIXED copy, and the way to keep them that way is for the composer
    * never to be woken for them — not for a prompt to be asked nicely to decline. */
@@ -251,6 +344,111 @@ describe('what each lane says', () => {
     if (verdict.status !== 'deflected') throw new Error('x');
     expect(verdict.reply).not.toMatch(/\bthe app\b/i);
     expect(verdict.reply).not.toMatch(/waiting on your OK/i);
+  });
+});
+
+/**
+ * The medical-symptom answer lane (founder-locked 2026-08-17). A symptom is no longer
+ * deflected to a fixed line — Hale ANSWERS it with a web-grounded composer. The composer's
+ * QUALITY (does it triage correctly) is measured against real cached Claude in
+ * apps/worker/evals/run-medical-symptom-eval.mjs; its mechanics and fail-closed behaviour
+ * in medical.test.ts. What is asserted HERE is the routing: only medical-symptom reaches
+ * the composer, its answer is sent, and it is never stamped as an unmet intent.
+ */
+describe('the medical-symptom answer lane', () => {
+  it('answers a medical-symptom text with the web-grounded composer, not the fixed line', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+
+    const verdict = await consider(p, 'she has had a fever for three days');
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      lane: 'safety_critical',
+      category: 'medical-symptom',
+      reply: MEDICAL_ANSWER,
+      replySource: 'web_grounded' satisfies ReplySource,
+      // The value the router stamps on the reply it sends. Carried EXPLICITLY rather than
+      // re-derived from replySource downstream: 'fixed' is also what the two fixed doors
+      // and the general answer's safety fallback return, so a reader narrowing on it
+      // would count a provider-access door as a medical fallback.
+      medicalSource: 'web_grounded',
+    });
+    expect(p.medicalCalls).toBe(1);
+    // The general-answer composer is a different lane and is never woken here.
+    expect(p.composeCalls).toBe(0);
+  });
+
+  it('hands the composer the raw text — de-identification is the composer job, not the lane', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+
+    await consider(p, 'my son Milo, exactly 2, has a fever of 39');
+
+    expect(p.medicalSeen).toEqual(['my son Milo, exactly 2, has a fever of 39']);
+  });
+
+  /**
+   * Decision #4: a medical-symptom Hale ANSWERS is no longer an unmet intent, so the
+   * demand-signal write is skipped entirely and the outcome says `not_applicable` rather
+   * than faking a failed write (rule #11). This is the one path that answers off-domain
+   * WITHOUT a demand-signal row — deliberately, and named.
+   */
+  it('does NOT stamp an answered medical-symptom as an unmet intent', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+
+    const verdict = await consider(p);
+
+    expect(p.recorded).toEqual([]);
+    expect(verdict).toMatchObject({ signal: 'not_applicable' });
+  });
+
+  /** The composer's own last-resort fixed line rides out unchanged, and STILL is not
+   * recorded — the medical lane never writes a demand-signal row, answered or not. */
+  it('carries the composer last-resort fixed line out, still unrecorded', async () => {
+    const p = ports({
+      read: reading({ lane: 'safety_critical', category: 'medical-symptom' }),
+      medical: { reply: SAFETY_REPLY, replySource: 'fixed' },
+    });
+
+    const verdict = await consider(p);
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: SAFETY_REPLY,
+      replySource: 'fixed',
+      medicalSource: 'fixed',
+      signal: 'not_applicable',
+    });
+    expect(p.recorded).toEqual([]);
+  });
+});
+
+/**
+ * The stamp the router writes on the reply. It exists so the founder scorecard's SAFETY
+ * row can count how often a parent with a hurt child got the fixed 811/911 line instead
+ * of an answer — a number that used to live only in memory. Every other branch must leave
+ * it null, or a door Hale chose deliberately would be counted as a medical failure.
+ */
+describe('the medical stamp is set on the medical branch and nowhere else', () => {
+  it.each([
+    ['a safety-critical text that is not a symptom', 'safety_critical', 'child-safety'],
+    ['the provider-access door', 'provider_access', 'doctor-access'],
+    ['a composed general answer', 'off_domain_general', 'weather'],
+  ] as const)('leaves it null for %s', async (_label, lane, category) => {
+    const p = ports({ read: reading({ lane, category }) });
+
+    const verdict = await consider(p, 'is it going to rain tomorrow');
+
+    expect(verdict).toMatchObject({ status: 'deflected', medicalSource: null });
+  });
+
+  /** The positive control for the three above: the same field, through the same call,
+   * is non-null exactly once. */
+  it('sets it for the medical-symptom branch', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+
+    const verdict = await consider(p);
+
+    expect(verdict).toMatchObject({ medicalSource: 'web_grounded' });
   });
 });
 
@@ -306,7 +504,9 @@ describe('the demand signal', () => {
    * quietly empties it.
    */
   it('still records the demand signal when the answer was composed', async () => {
-    const p = ports({ read: reading({ lane: 'off_domain_general', category: 'general-knowledge' }) });
+    const p = ports({
+      read: reading({ lane: 'off_domain_general', category: 'general-knowledge' }),
+    });
 
     const verdict = await consider(p);
 
@@ -388,7 +588,65 @@ describe('recordUnmetIntent', () => {
 
     expect(await recordUnmetIntent(database)(input)).toBe('not_recorded');
     // Named, not swallowed: the failure class and the lane, and nothing else.
-    expect(log.mock.calls[0]?.[0]).toEqual({ err: 'deadlock detected', lane: 'off_domain_general' });
+    expect(log.mock.calls[0]?.[0]).toEqual({
+      err: 'deadlock detected',
+      lane: 'off_domain_general',
+    });
     log.mockRestore();
+  });
+});
+
+/**
+ * THE FRENCH DOORS.
+ *
+ * The choice of door is unchanged — that is the screen's job and it is measured by the
+ * eval. What is asserted here is that once a door is chosen, the words that go through it
+ * are in the language the parent used, and that the English twin still goes out for
+ * everybody else. Both halves, every time: a lane that always answered in French would
+ * pass the first assertion of each of these on its own.
+ */
+describe('the lane answers in the language the question was asked in', () => {
+  it('sends the safety line in French to a French safety ask', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'child-safety' }) });
+
+    const fr = await consider(p, 'Ma fille a avale quelque chose, je fais quoi');
+    expect(fr).toMatchObject({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
+
+    const en = await consider(p, 'my daughter swallowed something, what do I do');
+    expect(en).toMatchObject({ reply: SAFETY_REPLY, replySource: 'fixed' });
+  });
+
+  it('sends the registry line in French to a French provider ask', async () => {
+    const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
+
+    const fr = await consider(p, 'Je cherche un medecin de famille pour mes enfants');
+    expect(fr).toMatchObject({ reply: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr });
+
+    const en = await consider(p, 'we just moved and need a family doctor');
+    expect(en).toMatchObject({ reply: PROVIDER_ACCESS_REPLY });
+  });
+
+  it('says in French that the answer could not be written', async () => {
+    const p = ports({ answer: { status: 'unavailable', reason: 'model_failed' } });
+
+    const fr = await consider(p, "Quel temps fait-il demain? J'aimerais aller au parc");
+    expect(fr).toMatchObject({
+      reply: ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE.fr,
+      replySource: 'model_failed',
+    });
+
+    const en = await consider(p, "what's the weather tomorrow");
+    expect(en).toMatchObject({ reply: ANSWER_UNAVAILABLE_REPLY, replySource: 'model_failed' });
+  });
+
+  /**
+   * The composer reaching for a referral on a French question. The words are the reviewed
+   * French ones, and `fixed` still says the model did not write them.
+   */
+  it('substitutes the French safety line when the composer reached for a referral', async () => {
+    const p = ports({ answer: { status: 'safety' } });
+
+    const fr = await consider(p, 'Mon fils est tombe de la table, il pleure beaucoup');
+    expect(fr).toMatchObject({ reply: SAFETY_REPLY_BY_LANGUAGE.fr, replySource: 'fixed' });
   });
 });

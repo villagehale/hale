@@ -1,4 +1,4 @@
-import { type AgentClient, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane } from '@hale/agent';
 import { type CoachingPlaybook, type FamilyStage, goDeeperNames } from '@hale/types';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
@@ -416,7 +416,7 @@ export function createPlanComposer(client: () => AgentClient): PlanComposer {
         try {
           const result = await forceToolJson({
             client: resolved,
-            model: pickModel(skill.meta.task),
+            lane: pickLane(skill.meta.task),
             system: skill.instructions,
             userMessage: retryUserMessage(planUserMessage(grounding), violations),
             toolName: 'plan',

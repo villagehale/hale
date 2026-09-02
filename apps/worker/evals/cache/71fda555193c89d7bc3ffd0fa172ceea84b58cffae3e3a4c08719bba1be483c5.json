@@ -1,0 +1,36 @@
+{
+  "response": {
+    "id": "msg_011CeQvW5fWaGeAP8icPkzLU",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EsgFCpABCBEYAipAVNaXcMg6DF00I0WR56OqdSKt9OnTRDTrZ+qstVeZcQlDARXDY3rWPQX4TIEdRq0cSlN11Oog8lCty+g/H9Dw2DIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAZCcutQGEgwktSHHLXxSjupFsrkaDP2gAGlzSY90rQ9A9yIwBmDxqOI/nwx5YHh4Y4nL7ywbrmFtqrUgoVL907xONF5vVQSE2dt6Rw1CEnjrqwzbKuQD2insCIsm3e08IOfRHAz2fbGzg8m2kROotkew6C6rxZMDQcr0He6FboLWYTH8OC9ULIjr+LD3vm+oUFCmjK4P3QXJ4dEp7r31uFkR9tuq0Firt4Av1JINOKVwcPvljBTYDdcoWWZl0E6TAdBM3dVC/RatwOYkDC/L3QXQpwfNVo9cVxPpNQNFOmDtru0ZO0zYr1bk85EeusXzFvzTQmwYczkd8kvm7Mt0xmK+GdUzGAcYl1x9UYtoWDco7KDo2EXOgRO8gD4vxOXdNwoWuTxlWcJyc40J2cdg7+9+toziGNpEe3ej5yp6AxCE7fO8RLJSGmSd+Xz+dgYv7gXxgub0MkJR6IB5JQ7s9swul7FZdQqrFYI4VDquPnGbpTwnfvFQ59WouQ6ECh+03Q9oD9QRkSiOwf3+l+f80wLfLcDafArhcA/QrLZ6O57lSDfRDzwGYdGRi2Tp49e1T5KYVHeCV/BxBkDdhbCdT2QqQJxSUKO/qq38R/N1pThA47T/u1jup9lTqKnMju4ZwDJuqVkOAGdHZnOFPNVEIaqmQA37hw5E0Up9LD608RzsMbRJrfqQ41yjAFsaykDbg6tlB1N/Fda07sJNJic+OqpionzXgGvRSwm3C5sDsLoNlWPL1LoswkH+ZBgB"
+      },
+      {
+        "type": "text",
+        "text": "Riverdale Farm is a good outdoor spot nearby - it's free and open daily for kids to explore and play."
+      }
+    ],
+    "usage": {
+      "input_tokens": 791,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 15829,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 193,
+      "output_tokens_details": {
+        "thinking_tokens": 154
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

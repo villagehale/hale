@@ -5,13 +5,13 @@ import { eq, inArray } from 'drizzle-orm';
 /**
  * F11 · The Sunday Loop — the pure enforcement hooks over per-parent loop
  * preferences (VIL-216 · A5). A2 (the send seam) composes these; this module owns
- * the read and the deterministic rules, never the send itself. Mirrors the shape
- * of lib/push/prefs.ts: pure async loaders with the Database injected as the last
- * argument, and a documented default for the absent-row state (a parent who never
- * opened Settings still has a well-defined loop).
+ * the read and the deterministic rules, never the send itself. Pure async loaders
+ * with the Database injected as the last argument, and a documented default for
+ * the absent-row state (a parent who never opened Settings still has a
+ * well-defined loop).
  *
- * The existing notification_prefs (push booleans) and email_opt_outs (CASL digest)
- * are a SEPARATE concern and are not read here — the loop taxonomy is its own.
+ * The existing notification_prefs and email_opt_outs (CASL digest) are a SEPARATE
+ * concern and are not read here — the loop taxonomy is its own.
  *
  * Privacy (rule #1): child_name_level composes WITH the deterministic teen age
  * gate (deriveStage). It can only make a message MORE private — a 13+ child is
@@ -268,9 +268,10 @@ export function deliverableNow(
 
 /**
  * The local weekday the weekly brief is sent on: the MORNING the parent's week
- * starts (users.weekStartDay, 0=Sun/1=Mon). A Monday-start week → Monday, the
- * founder-decided default (2026-08-11: brief opens the week, action-adjacent,
- * rather than closing the weekend).
+ * starts (users.weekStartDay, 0=Sun/1=Mon — same convention as localParts /
+ * Date.getUTCDay(), never 7). Identity: a Sunday-start week → Sunday. The
+ * product default is Sunday (VIL-319 / F11 / VIL-218); a Monday-start week
+ * still sends Monday.
  */
 export function weeklyPlanWeekday(weekStartDay: number): number {
   return weekStartDay % 7;

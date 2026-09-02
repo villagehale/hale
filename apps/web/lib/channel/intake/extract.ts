@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { pickModel } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -122,7 +122,7 @@ export function createIntakeExtractor(client: AgentClient): IntakeExtractor {
       const skill = await loadCronSkill('intake-extraction');
       const { value } = await forceToolJson({
         client,
-        model: pickModel(skill.meta.task),
+        lane: pickLane(skill.meta.task),
         system: skill.instructions,
         userMessage: extractionUserMessage(input),
         toolName: 'intake',

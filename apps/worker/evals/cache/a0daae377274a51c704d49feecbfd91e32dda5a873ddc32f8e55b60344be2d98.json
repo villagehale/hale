@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message presents page-read facts as verified and makes an unearned negative claim. The page plainly carries a schedule reference (Term_1_Schedule_2026-27.pdf is linked on the Programs page), but the notes reveal this PDF \"could not be read as text (binary/image-based PDF)\". The message says \"Day, time and price only show up after logging into their Uplifter registration site\" as a definitive statement about what the page does and doesn't contain, but pageEvidence is \"page_has_schedule\" — meaning a page WAS opened TODAY and DOES publish times and prices. The gap between what the page carried (a schedule PDF link) and what the message reports (no days/times/prices) is HALE'S to own. Per the rubric, when `pageEvidence` says `page_has_schedule` and Hale could not tie these facts to it, the message should use first person and admit the shortfall: \"I could not pin down the day or the price\" — never \"only show up after logging in.\" The message does correctly carry the watch commitment (\"I'll keep watching and text you what it says\") which is properly scored as a commitment that exists, not an unverified claim, so watch=true prevents a lower score. However, the unearned negative claim about where information lives on the page is a substantial error under the stated evidence state."
+  }
+}

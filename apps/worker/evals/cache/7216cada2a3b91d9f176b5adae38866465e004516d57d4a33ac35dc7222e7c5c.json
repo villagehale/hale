@@ -1,0 +1,18 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Learn to Swim - Preschool (Levels A-E), Town of Oakville",
+        "age_fit": "Preschool levels per the Lifesaving Society Swim for Life program; children must be the age required for the level by the program start date",
+        "when": "Fall registration opens Tuesday, August 11 at 7 a.m.; program options can be browsed online starting August 4",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "Preschool Swim Lessons, YMCA of Oakville",
+        "age_fit": "3 to 5 years old",
+        "source_name": "YMCA of Oakville"
+      }
+    ]
+  },
+  "latencyMs": 2821
+}

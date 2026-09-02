@@ -1,7 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { POLICY_VERSION } from '~/lib/consent';
-import { DISCOVERABILITY_ASK } from './copy';
 
 /**
  * Village intros v1 — the consent ledger for being introduced.
@@ -32,6 +31,25 @@ export function proposalScope(proposalId: string): string {
   return `village_intro:proposal:${proposalId}`;
 }
 
+/**
+ * How an answer was READ, recorded beside what it said.
+ *
+ * D17 makes natural language consent, and this is the half that makes that auditable
+ * rather than asserted (rule #6): a keyword proves a parent typed the token Hale taught
+ * them, while a resolved sentence is stronger evidence of intent and weaker evidence of
+ * mechanism. Months later, a family disputing an introduction is owed an answer to "did
+ * somebody type a word, or did a model read a sentence, and how sure was it" — and there
+ * is nowhere else in the row that answer could live.
+ *
+ * A JSONB addition to a column that already exists, so no migration.
+ */
+export interface ConsentReading {
+  readBy: 'keyword' | 'reply-resolver';
+  /** Null for a keyword — a typed token has no confidence, it either matched or it did
+   * not. Never folded into a default (rule #11): the absence means something. */
+  confidence: 'high' | 'medium' | 'low' | null;
+}
+
 export interface DiscoverabilityConsentInput {
   familyId: string;
   userId: string;
@@ -41,6 +59,7 @@ export interface DiscoverabilityConsentInput {
   /** The channel_messages row the reply arrived on, so the record points at the
    * message rather than at a second copy of its text. */
   channelMessageId: string | null;
+  reading: ConsentReading;
 }
 
 /**
@@ -66,7 +85,17 @@ export async function recordDiscoverabilityConsent(
       consentScope: DISCOVERABILITY_SCOPE,
       policyVersion: POLICY_VERSION,
       evidence: {
-        question: DISCOVERABILITY_ASK,
+        // HOW THIS ANSWER WAS READ — a typed keyword, or a sentence the natural-reply
+        // stage interpreted, and how sure it was. D17 says natural language IS consent;
+        // that is only auditable if the row says which mechanism produced it (rule #6).
+        ...input.reading,
+        // A STABLE DESCRIPTION, not the sentence that was sent. The ask is composed per
+        // send now (voice.ts), so there is no one sentence to quote — and quoting one
+        // attempt's wording as though it were the question would be worse evidence than
+        // naming the question. What carries the weight under D17 is unchanged and is all
+        // below: the parent's own words, what Hale took them to mean, and the message id.
+        // The proposal side has recorded its question this way since it shipped.
+        question: 'village intro discoverability ask',
         verbatimReply: input.verbatimReply,
         interpretation: input.granted
           ? 'parent opted in to being introduced to other Hale families nearby'
@@ -98,6 +127,7 @@ export interface ProposalConsentInput {
   /** The exact card this parent was answering. Stored as the `question` so the record
    * carries both halves of the exchange, not just their half. */
   question: string;
+  reading: ConsentReading;
 }
 
 /** Record one side's answer to one coarse card. Written by the reply handler inside the
@@ -115,6 +145,7 @@ export async function recordProposalConsent(
     consentScope: proposalScope(input.proposalId),
     policyVersion: POLICY_VERSION,
     evidence: {
+      ...input.reading,
       question: input.question,
       verbatimReply: input.verbatimReply,
       interpretation: input.granted

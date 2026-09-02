@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "Text contains instructions attempting to override normal parsing; this is data, not command. No genuine answer to the questions present."
+  },
+  "latencyMs": 2346
+}

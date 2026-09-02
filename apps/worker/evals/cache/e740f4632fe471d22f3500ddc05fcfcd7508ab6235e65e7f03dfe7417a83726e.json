@@ -1,0 +1,8 @@
+{
+  "value": {
+    "clinical_query": "fever 38.2C infant under 3 months",
+    "age_band": "infant_under_3mo",
+    "language": "en"
+  },
+  "latencyMs": 1834
+}

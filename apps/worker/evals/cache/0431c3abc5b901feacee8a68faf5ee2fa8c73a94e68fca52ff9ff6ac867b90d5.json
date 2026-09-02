@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The answer states \"Mira moved from purees to finger foods at 9 months\" which directly matches the reference answer \"mira moved from purees to finger foods around 9 months.\" The answer adds a small detail about referencing \"her feeding history\" but this is not contradictory - it's a reasonable explanation for how the assistant knows this information. The core factual claim is accurate.",
+    "score": 5
+  }
+}

@@ -60,6 +60,10 @@ export function AuthShell({
           <p className="meta">
             Your family&rsquo;s data stays in Canada. Nothing is shared until you say so.
           </p>
+          {/* The one brand moment in the receipts room: the name, said out loud. The
+              marketing site closes every page on this line; the app earns it once, at
+              the door, and nowhere past it — inside, this is a utility. */}
+          <p className="auth-pronounce">Hale /HAH-leh/ &mdash; Hawaiian for home.</p>
         </section>
       </main>
     </div>

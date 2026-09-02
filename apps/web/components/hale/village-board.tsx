@@ -1,7 +1,6 @@
 'use client';
 
 import { ChevronRight, ExternalLink, Lock, Map as MapIcon, Search } from 'lucide-react';
-import Link from 'next/link';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { ActivityCard } from '~/components/hale/activity-card';
 import { AcceptButton } from '~/components/hale/accept-button';
@@ -240,16 +239,9 @@ export function VillageBoard({
             )}
           </RailSection>
 
-          <RailSection
-            label="saved"
-            action={
-              saved.length > 0 ? (
-                <Link href="/saved" className="link text-[0.8rem]">
-                  See all
-                </Link>
-              ) : null
-            }
-          >
+          {/* No "See all": /saved is retired. The rail's own rows stay selectable,
+            * so every saved pick is still reachable from here. */}
+          <RailSection label="saved">
             {saved.length === 0 ? (
               <p className="meta italic text-ink-2">nothing saved yet.</p>
             ) : (
@@ -342,20 +334,11 @@ function MapPanel({
 }
 
 /** A right-rail section: an eyebrow, an optional trailing action, then its rows. */
-function RailSection({
-  label,
-  action,
-  children,
-}: {
-  label: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
+function RailSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <section className="village-rail-section">
       <div className="flex items-baseline justify-between gap-3 mb-2">
         <span className="eyebrow text-ink-3">{label}</span>
-        {action}
       </div>
       {children}
     </section>

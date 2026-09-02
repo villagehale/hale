@@ -55,4 +55,11 @@ describe('AuthShell — the split-card auth frame', () => {
   it('keeps the theme toggle in the frame', () => {
     expect(html).toContain('Color theme');
   });
+
+  it('carries the brand mark and says the name out loud, once, at the door', () => {
+    // The flat brand tile (app/icon.png via LogoMark), never the 3D mascot art.
+    expect(html).toContain('auth-stage-mark');
+    expect(html).toContain('/HAH-leh/');
+    expect(html).toContain('Hawaiian for home');
+  });
 });

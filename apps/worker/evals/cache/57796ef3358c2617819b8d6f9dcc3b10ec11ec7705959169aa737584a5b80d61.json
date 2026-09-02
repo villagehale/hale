@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment/follow-up that reads like an answer to unseen context; missing the original ask it refers to"
+  },
+  "latencyMs": 1238
+}

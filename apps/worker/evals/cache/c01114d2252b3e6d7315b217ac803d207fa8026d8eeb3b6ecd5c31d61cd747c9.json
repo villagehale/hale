@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Slots: Both slots are accurate and well-formed. Tiny Gym and Kinderfun details (days, times, dates, fees, registration window) match the page exactly. The $25 membership note is correctly carried through. Registration date (July 22, runs until classes fill) is present in both slots. Source citations are correct. The toddler-age slot (Tiny Gym) is the right lead; Kinderfun at 3–5 years is a borderline fit for a toddler but is plausible and the page was read, so including it is fine.\n\nMessage: Leads with Tiny Gym by name — correct. Attributes to \"their site says\" — correct. Carries the registration window (opened July 22, runs until classes fill) — the watchFor requirement is met. Price and dates are exact matches to the page. No question asked — correct. No link — correct. Two short plain-ASCII sentences — correct. Does not present facts as personally verified — correct.\n\nwatch is FALSE and no coming-back promise appears — correct.\n\npageEvidence is page_has_schedule and no unearned negative claim is made — correct.\n\nThe only very minor issue is the attribution placement (\"their site says\" appears at the end of the first sentence rather than naturally embedded), but this is stylistic and does not constitute a factual or structural error. Everything the rubric demands is present and accurate.",
+    "score": 5
+  }
+}

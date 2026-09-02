@@ -31,7 +31,11 @@ export type IntakeState =
   /** The flow finished (watch-offer answered, or the region gate refused). */
   | 'complete'
   /** The parent sent STOP. Terminal. */
-  | 'stopped';
+  | 'stopped'
+  /** A co-parent join link arrived on this number and outranked the conversation.
+   * Terminal, and deliberately not `complete`: nothing was assembled here, and a row
+   * that claimed otherwise would read as a household that finished intake. */
+  | 'superseded';
 
 export interface TranscriptEntry {
   direction: 'in' | 'out';
@@ -186,6 +190,8 @@ export interface SessionPatch {
   userId?: string;
   lastProviderId?: string;
   closedAt?: Date;
+  /** Stamped when a first-hello is persisted — live greet or VIL-332 recovery. */
+  firstReplyRecoveredAt?: Date;
 }
 
 /** Persist a state transition. `collected`/`transcript` are re-encrypted together. */
@@ -208,6 +214,9 @@ export async function saveSession(
       ...(patch.userId ? { userId: patch.userId } : {}),
       ...(patch.lastProviderId ? { lastProviderId: patch.lastProviderId } : {}),
       ...(patch.closedAt ? { closedAt: patch.closedAt } : {}),
+      ...(patch.firstReplyRecoveredAt
+        ? { firstReplyRecoveredAt: patch.firstReplyRecoveredAt }
+        : {}),
       updatedAt: now,
     })
     .where(eq(schema.smsIntakeSessions.id, session.id));
@@ -218,4 +227,16 @@ export function appendTranscript(
   entry: TranscriptEntry,
 ): TranscriptEntry[] {
   return [...session.transcript, entry];
+}
+
+/** True when Hale has already spoken on this session — transcript outbound, not
+ * channel_messages. Pre-family sends have no ledger row they could occupy. */
+export function transcriptHasOutbound(transcript: readonly TranscriptEntry[]): boolean {
+  return transcript.some((entry) => entry.direction === 'out');
+}
+
+/** The encrypted transcript only, for recovery sweeps that have the blob and
+ * must not decrypt the phone until they have decided to send. */
+export function decodeIntakeTranscript(dataEncrypted: string): TranscriptEntry[] {
+  return decodeData(dataEncrypted).transcript;
 }

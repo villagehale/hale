@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message violates multiple core rules for the \"introduction\" moment. It contains emoji and exclamation marks (hype); it names and describes the other household as \"a family near you with a toddler\" (invented specifics about the other family); it asks more than one question (\"what is your name?\" and \"can you send your email\"); it sets a deadline (\"within 2 days\"); it includes a link (www.example.com); and it provides an example address format (sam@example.com). The only correct element is that it asks for the name. The message reads like a company collecting contact details rather than simply asking the small thing needed to make an introduction between two existing families.",
+    "score": 1
+  }
+}

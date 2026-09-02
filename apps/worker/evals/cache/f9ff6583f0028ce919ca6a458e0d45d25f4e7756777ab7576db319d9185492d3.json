@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a parenting question about a toddler's sleep. Remy is 19 months, which is correctly identified. The reply notes that two wake-ups at 19 months is common (relevant age context), gives a concrete actionable tip tonight (stretch wind-down 10-15 min, respond with brief reassurance/hand on back, no picking up, consistent pause), and ends with the fixed \"Want the full plan? Reply YES\" line. The advice is sound and actionable — a parent could try this tonight. The reply is appropriately concise. No app referral, no invented details, no diagnosis, no handing back. The one small note is \"his\" — Remy's gender isn't specified in `knows`, but this is a very minor assumption. Overall this is the product working correctly.",
+    "score": 4
+  }
+}

@@ -1,25 +1,13 @@
-import { type Database, schema } from '@hale/db';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
-import { visibleCandidates } from './visibility.js';
-
 /**
- * The PUBLIC, unauthenticated share view of a family's week plan (rule #1). This
- * module is the security-critical seam: the page and the OG image both render
- * ONLY what `toPublicWeekPlan` returns, and `loadSharedWeekPlan` selects ONLY
- * the columns below — it deliberately never joins `children`, so a child's name,
- * date_of_birth, precise age, or any teen content is structurally unreachable
- * from this path.
+ * The shared PUBLIC-projection primitives for unauthenticated share artifacts
+ * (rule #1): the closed activity allow-list every public loader projects through.
  *
  * Privacy is enforced by CONSTRUCTION, not by a teen check:
  *   - A candidate carries a nullable childId. Any child-attributed candidate
  *     (childId !== null) is DROPPED entirely — only family-wide rows are public.
- *     This makes a teen leak impossible without ever deriving a stage or joining
- *     children: there is no child linkage to leak, and no per-child text to
- *     surface.
- *   - The output allow-list is closed: weekOf, areaCoarse (coarse FSA/city), and
- *     activities of {title, kind, summary, sourceUrl, coverageNote}. No id,
- *     childId, familyId, or proposal item text ever reaches the view.
+ *   - The output allow-list is closed: activities of {title, kind, summary,
+ *     sourceUrl, coverageNote} plus an aggregate endorsement count. No id,
+ *     childId, or familyId ever reaches the view.
  */
 
 /** A candidate row as queried for the public view — safe columns only. */
@@ -37,13 +25,6 @@ export interface PublicCandidateRow {
   endorsementCount?: number;
 }
 
-/** A proposal row as queried for the public view — its jsonb items carry a
- * childId we never echo; only weekOf is surfaced. */
-export interface PublicProposalRow {
-  weekOf: string;
-  items: schema.RoutineProposal['items'];
-}
-
 /** A single public activity card — the closed allow-list (rule #1). */
 export interface PublicActivity {
   title: string;
@@ -54,20 +35,6 @@ export interface PublicActivity {
   /** Aggregate distinct-family endorsement count — drives "loved by N families"
    * social proof on the artifact. A count, never an identity (rule #1). */
   endorsementCount: number;
-}
-
-/** The public week plan — the only shape that crosses to the public page/OG. */
-export interface PublicWeekPlan {
-  weekOf: string;
-  /** Coarse area (FSA / city) or null when the family opted out. Never precise. */
-  areaCoarse: string | null;
-  activities: PublicActivity[];
-}
-
-export interface PublicWeekPlanInput {
-  proposal: PublicProposalRow;
-  areaCoarse: string | null;
-  candidates: PublicCandidateRow[];
 }
 
 /** Public-text caps: LLM/web-sourced strings are truncated before they render. */
@@ -107,108 +74,4 @@ export function toPublicActivity(candidate: PublicCandidateRow): PublicActivity 
       candidate.coverageNote === null ? null : candidate.coverageNote.slice(0, COVERAGE_MAX),
     endorsementCount: candidate.endorsementCount ?? 0,
   };
-}
-
-/**
- * Privacy mapper (rule #1). Drops every child-attributed candidate and projects
- * the survivors onto the closed activity allow-list. Untrusted (LLM/web-sourced)
- * text is length-capped and the sourceUrl is validated to an absolute http(s)
- * URL before it crosses to the public page. The proposal's own items are NOT
- * surfaced (they carry per-child stage notes); only its weekOf is used.
- */
-export function toPublicWeekPlan(input: PublicWeekPlanInput): PublicWeekPlan {
-  const activities = input.candidates
-    .filter((candidate) => candidate.childId === null)
-    .map(toPublicActivity);
-
-  return {
-    weekOf: input.proposal.weekOf,
-    areaCoarse: input.areaCoarse,
-    activities,
-  };
-}
-
-/** A share link surfaces at most this many (most-recent) candidates, so it can
- * never return the family's entire all-time candidate history. */
-const PUBLIC_CANDIDATE_LIMIT = 24;
-
-/** A correlated subquery yielding the distinct-family endorsement count for the
- * outer candidate row, cast to int. COUNT only — never any family identity. */
-function endorsementCountSubquery() {
-  return sql<number>`(
-    select count(*)::int from ${schema.villageEndorsements}
-    where ${schema.villageEndorsements.candidateId} = ${schema.villageCandidates.id}
-  )`;
-}
-
-/**
- * Resolves a share token to its public week plan, or null for an unknown token.
- * Selects ONLY privacy-safe columns and NEVER joins `children` (rule #1). The
- * proposal lookup joins `families` solely for the coarse area; the candidate
- * lookup pulls family-wide-filterable rows, newest first and bounded
- * (PUBLIC_CANDIDATE_LIMIT). The mapper does the redaction.
- */
-export async function loadSharedWeekPlan(
-  token: string,
-  database: Database,
-): Promise<PublicWeekPlan | null> {
-  const proposalRows = await database
-    .select({
-      proposalFamilyId: schema.routineProposals.familyId,
-      weekOf: schema.routineProposals.weekOf,
-      areaCoarse: schema.families.areaCoarse,
-    })
-    .from(schema.routineProposals)
-    .innerJoin(schema.families, eq(schema.families.id, schema.routineProposals.familyId))
-    .where(eq(schema.routineProposals.shareToken, token))
-    .limit(1);
-
-  const proposal = proposalRows[0];
-  if (!proposal) {
-    return null;
-  }
-
-  const candidates = await database
-    .select({
-      childId: schema.villageCandidates.childId,
-      title: schema.villageCandidates.title,
-      kind: schema.villageCandidates.kind,
-      summary: schema.villageCandidates.summary,
-      sourceUrl: schema.villageCandidates.sourceUrl,
-      coverageNote: schema.villageCandidates.coverageNote,
-      // Aggregate endorsement count via a correlated subquery — a COUNT only, no
-      // join to families/users, so no identity is reachable (rule #1).
-      endorsementCount: endorsementCountSubquery(),
-      // Visibility inputs (never surfaced by the mapper) so a shared page shows
-      // only the current, in-window run — not a superseded or already-past pick.
-      supersededAt: schema.villageCandidates.supersededAt,
-      discoveredAt: schema.villageCandidates.discoveredAt,
-      eventDate: schema.villageCandidates.eventDate,
-      cadence: schema.villageCandidates.cadence,
-      seasons: schema.villageCandidates.seasons,
-    })
-    .from(schema.villageCandidates)
-    .where(
-      and(
-        eq(schema.villageCandidates.familyId, proposal.proposalFamilyId),
-        isNull(schema.villageCandidates.supersededAt),
-      ),
-    )
-    .orderBy(desc(schema.villageCandidates.discoveredAt))
-    .limit(PUBLIC_CANDIDATE_LIMIT);
-
-  // The day-boundary/season decisions use the SHARING family's own zone, so a
-  // shared page reads "today" in their local day, not the server's (UTC).
-  const timeZone = await readFamilyTimezone(database, proposal.proposalFamilyId);
-
-  return toPublicWeekPlan({
-    // Proposal jsonb items are never fetched on the public path — they carry
-    // per-child stage notes (rule #1). The mapper surfaces only weekOf.
-    proposal: { weekOf: proposal.weekOf, items: [] },
-    areaCoarse: proposal.areaCoarse,
-    // Drop superseded / stale-run / past / out-of-season picks before the mapper —
-    // the same visibility contract the authed feed applies, so a shared page never
-    // leaks last month's pile or an event that already happened.
-    candidates: visibleCandidates(candidates, new Date(), timeZone),
-  });
 }

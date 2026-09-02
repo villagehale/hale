@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles the situation: no verified offerable activities exist (offerable is empty, two still being checked), so it doesn't pass on unconfirmed finds. It correctly surfaces the standing place (High Park) with name, area, and what's there — no invented times or specific opening hours promised. It doesn't send the parent to the app. It's clean, actionable, and accurate. Minor blemish: \"The one pick from the web is too young for Milo and Ada\" slightly exposes Hale's internal process/machinery (explaining its own limits), which is a small self-absorbed moment. The reply could have simply led with High Park without explaining what it filtered out. But it's a small issue and the core answer is solid and useful.",
+    "score": 4
+  }
+}

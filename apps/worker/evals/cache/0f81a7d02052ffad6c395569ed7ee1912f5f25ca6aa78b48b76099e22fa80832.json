@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message meets all criteria for a top score: (1) Both picks are real, specific, local venues in Halton Hills with named programs. (2) The first pick is age-appropriate (18 months-3.11 yrs), has a concrete day (Thursdays), time (9:30am-12pm), session dates (Sept 10-Dec 16), and price ($15). (3) The second pick is correctly flagged as missing price information, and the message transparently names this gap (\"it doesn't post a price\") rather than inventing or hiding it. (4) The message leads with the best pick by name and properly attributes it (\"their site says\"). (5) It offers to confirm the missing detail (\"Want me to check on that?\") rather than claiming to have verified it. (6) The message is plain text, one sentence with exactly one question, and contains no link. (7) Both picks carry session/program start dates as required by the watchFor constraint, not vague \"ongoing\" language."
+  }
+}

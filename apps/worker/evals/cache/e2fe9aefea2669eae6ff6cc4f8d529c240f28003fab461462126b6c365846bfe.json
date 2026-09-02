@@ -1,0 +1,15 @@
+{
+  "parsed": {
+    "fact_updates": [],
+    "episode_summaries": [
+      {
+        "episode_type": "calendar_event",
+        "summary": "Family scheduled a library visit.",
+        "occurred_at": "2026-06-14T10:00:00",
+        "sentiment_score": 0.2
+      }
+    ],
+    "pattern_detections": [],
+    "retire_facts": []
+  }
+}

@@ -1,0 +1,415 @@
+import { type Database, schema } from '@hale/db';
+import { and, eq, isNull } from 'drizzle-orm';
+import { maskPhoneE164 } from '~/lib/channels/phone';
+import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
+import { POLICY_VERSION } from '~/lib/consent';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
+import { joinTokenHash, mintJoinCode } from './code';
+
+/**
+ * The co-parent join link's two writes: minting the capability, and spending it.
+ *
+ * THE PARENT'S REQUEST IS THE AUTHORISATION. The caregiver flow asks a question and
+ * reads a yes, because it is about to text a stranger and the parent has to agree to
+ * that specific disclosure. Nothing is texted here, so there is nothing to confirm: the
+ * sentence "add my partner" IS the decision, and it is recorded as one
+ * (`co_parent_access_grant`, with the parent's own words as evidence) at the moment the
+ * link exists rather than at the moment somebody opens it. That ordering matters — the
+ * capability and the record of who authorised it are the same transaction.
+ *
+ * A SECOND LINK DOES NOT KILL THE FIRST. The magic-link table invalidates its
+ * predecessors because a stale sign-in link is pure risk; here the parent has usually
+ * already forwarded it, and revoking it would strand the person holding it with an
+ * ordinary greeting and a new household. What bounds the surface instead is what each
+ * token can do: one seat, one use, seven days, and no way to mint one except from an
+ * enrolled parent's own verified number (which the inbound rate limit already meters).
+ *
+ * VERIFIED BY ORIGINATION, no OTP — the same argument intake provisioning and caregiver
+ * acceptance both make: the redemption ARRIVED from the number we are about to text.
+ */
+
+/** How long a forwarded link stays good. Long enough to sit unread in a busy thread
+ * over a weekend, short enough that a link in an old text is not a live key. */
+export const JOIN_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** The CASL basis recorded on the joining co-parent's channel consent: they texted US
+ * first, exactly as an intake arrival does. */
+export const JOIN_CONSENT_SCOPE = 'sms_join_origination';
+
+/** What the parent's authorisation is scoped to. The role, because the role IS the
+ * scope (role-scope.ts) — a co_parent sees everything the inviting parent sees. */
+export const JOIN_GRANT_SCOPE = 'family_role:co_parent';
+
+export interface JoinInvite {
+  id: string;
+  familyId: string;
+  invitedByUserId: string;
+  role: 'co_parent';
+  expiresAt: Date;
+}
+
+interface JoinInviteRow {
+  id: string;
+  familyId: string;
+  invitedByUserId: string;
+  tokenHash: string;
+  role: string;
+  expiresAt: Date;
+  consumedAt: Date | null;
+}
+
+const INVITE_COLUMNS = {
+  id: schema.joinInvites.id,
+  familyId: schema.joinInvites.familyId,
+  invitedByUserId: schema.joinInvites.invitedByUserId,
+  tokenHash: schema.joinInvites.tokenHash,
+  role: schema.joinInvites.role,
+  expiresAt: schema.joinInvites.expiresAt,
+  consumedAt: schema.joinInvites.consumedAt,
+};
+
+/**
+ * Mint a link and record the authorisation behind it, in one transaction. Returns the
+ * code — the only time it exists outside the parent's phone, since the row keeps just
+ * its digest.
+ */
+export async function mintJoinInvite(
+  database: Database,
+  input: {
+    familyId: string;
+    invitedByUserId: string;
+    /** The parent's own words when the request arrived by text; NULL when it was a
+     * click in the app — a UI consent, where the click IS the evidence (the
+     * documented convention on consent_records.evidence). */
+    verbatimRequest: string | null;
+    channelMessageId: string | null;
+    now: Date;
+  },
+): Promise<{ code: string }> {
+  const code = mintJoinCode();
+  const expiresAt = new Date(input.now.getTime() + JOIN_LINK_TTL_MS);
+
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const [row] = await tx
+      .insert(schema.joinInvites)
+      .values({
+        familyId: input.familyId,
+        invitedByUserId: input.invitedByUserId,
+        tokenHash: joinTokenHash(code),
+        role: 'co_parent',
+        expiresAt,
+        // Both written explicitly rather than left to the column's default/absence: the
+        // reader below decides "is this link still good" by comparing these two against
+        // now, and a meter that depends on the clock the row was written by cannot be
+        // reasoned about (the same call `startCaregiverInvite` makes about createdAt).
+        consumedAt: null,
+        createdAt: input.now,
+      })
+      .returning({ id: schema.joinInvites.id });
+    const id = row?.id;
+    if (!id) {
+      throw new Error('mintJoinInvite: join_invites insert returned no row');
+    }
+
+    await tx.insert(schema.consentRecords).values({
+      userId: input.invitedByUserId,
+      familyId: input.familyId,
+      consentType: 'co_parent_access_grant',
+      granted: true,
+      consentScope: JOIN_GRANT_SCOPE,
+      policyVersion: POLICY_VERSION,
+      evidence:
+        input.verbatimRequest === null
+          ? null
+          : {
+              verbatimReply: input.verbatimRequest,
+              interpretation:
+                'parent asked for a co-parent join link, authorising full family access for whoever redeems it',
+              channelMessageId: input.channelMessageId,
+            },
+    });
+
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.invitedByUserId,
+      actionTaken: 'co_parent_join_link_minted',
+      targetTable: 'join_invites',
+      targetId: id,
+      after: { role: 'co_parent', expiresAt: expiresAt.toISOString() },
+    });
+  });
+
+  return { code };
+}
+
+/**
+ * The invite a forwarded code still buys, or null. Expiry and the single-use burn are
+ * applied ON READ, so a sweep that never runs cannot leave a dead link live — and null
+ * is an ORDINARY answer here, not an error: a link outlives the family that made it, a
+ * bystander gets a forward that was already spent, somebody mistypes.
+ */
+export async function loadOpenJoinInvite(
+  database: Database,
+  code: string,
+  now: Date,
+): Promise<JoinInvite | null> {
+  const hash = joinTokenHash(code);
+  const rows = (await database
+    .select(INVITE_COLUMNS)
+    .from(schema.joinInvites)
+    .where(eq(schema.joinInvites.tokenHash, hash))) as JoinInviteRow[];
+  // Post-filtered rather than trusted, the shape every other channel lookup keeps: a
+  // widened query must never resolve a spent or lapsed link.
+  const row = rows.find(
+    (r) =>
+      r.tokenHash === hash &&
+      r.consumedAt === null &&
+      new Date(r.expiresAt).getTime() > now.getTime(),
+  );
+  if (!row) return null;
+  return {
+    id: row.id,
+    familyId: row.familyId,
+    invitedByUserId: row.invitedByUserId,
+    role: 'co_parent',
+    expiresAt: new Date(row.expiresAt),
+  };
+}
+
+/** The family's open (unconsumed, unexpired) invites, newest expiry first — the same
+ * post-filtered defense loadOpenJoinInvite keeps, keyed by family instead of code. */
+async function openInvitesForFamily(
+  database: Database,
+  familyId: string,
+  now: Date,
+): Promise<JoinInviteRow[]> {
+  const rows = (await database
+    .select(INVITE_COLUMNS)
+    .from(schema.joinInvites)
+    .where(eq(schema.joinInvites.familyId, familyId))) as JoinInviteRow[];
+  return rows
+    .filter(
+      (r) =>
+        r.familyId === familyId &&
+        r.consumedAt === null &&
+        new Date(r.expiresAt).getTime() > now.getTime(),
+    )
+    .sort((a, b) => new Date(b.expiresAt).getTime() - new Date(a.expiresAt).getTime());
+}
+
+/**
+ * The family's open invite, if any — the status the web card renders. Keyed by FAMILY
+ * because only the SHA-256 digest is stored: the persistent surface can show status +
+ * expiry and never the link itself (magic-link semantics — the raw code exists once,
+ * at mint). Null is the ordinary "no link out" answer, not an error.
+ */
+export async function loadOpenJoinInviteForFamily(
+  database: Database,
+  familyId: string,
+  now: Date,
+): Promise<{ id: string; expiresAt: Date } | null> {
+  const row = (await openInvitesForFamily(database, familyId, now))[0];
+  if (!row) return null;
+  return { id: row.id, expiresAt: new Date(row.expiresAt) };
+}
+
+/**
+ * Kill every open link the family has out, now. Stamping `expires_at = now` is enough
+ * because expiry is applied ON READ by every reader (loadOpenJoinInvite and the
+ * family-keyed status above) — the forwarded code dies everywhere instantly, with no
+ * sweep and no new read logic. The `consumed_at IS NULL` guard on the write means a
+ * link redeemed between the read and this write is left alone (the seat it bought
+ * stands — there is nothing left to revoke), and only links actually killed get the
+ * audit row (rule #6).
+ */
+export async function revokeOpenJoinInvites(
+  database: Database,
+  input: { familyId: string; actorUserId: string; now: Date },
+): Promise<{ revokedIds: string[] }> {
+  const open = await openInvitesForFamily(database, input.familyId, input.now);
+  if (open.length === 0) return { revokedIds: [] };
+
+  const revokedIds: string[] = [];
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    for (const row of open) {
+      const killed = (await tx
+        .update(schema.joinInvites)
+        .set({ expiresAt: input.now })
+        .where(and(eq(schema.joinInvites.id, row.id), isNull(schema.joinInvites.consumedAt)))
+        .returning({ id: schema.joinInvites.id })) as Array<{ id: string }>;
+      if (!killed[0]) continue;
+      revokedIds.push(row.id);
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.actorUserId,
+        actionTaken: 'co_parent_join_link_revoked',
+        targetTable: 'join_invites',
+        targetId: row.id,
+        after: { revoked: true, expiresAt: input.now.toISOString() },
+      });
+    }
+  });
+  return { revokedIds };
+}
+
+/** The users row for this number, created if absent. Keyed by the SAME blind index
+ * intake and the caregiver flow use, so somebody who already knows Hale from another
+ * household is one account rather than two. */
+async function ensureJoinUser(tx: Database, externalAuthId: string): Promise<string> {
+  await tx
+    .insert(schema.users)
+    .values({ externalAuthId, email: null, name: null })
+    .onConflictDoNothing({ target: schema.users.externalAuthId });
+
+  const rows = await tx
+    .select({ id: schema.users.id, externalAuthId: schema.users.externalAuthId })
+    .from(schema.users)
+    .where(eq(schema.users.externalAuthId, externalAuthId));
+  const row = rows.find((r) => r.externalAuthId === externalAuthId);
+  if (!row) {
+    throw new Error('ensureJoinUser: no users row after upsert');
+  }
+  return row.id;
+}
+
+/**
+ * Spend the link. In ONE transaction: the partner's identity, their own CASL consent,
+ * their verified channel, their membership, the token's burn, and the audit trail. A
+ * crash anywhere leaves none of it — there is no state in which a co-parent is a member
+ * of a family without the consent row saying they agreed to be.
+ *
+ * THE BURN IS THE CLAIM, AND IT GOES FIRST. {@link loadOpenJoinInvite} read the token
+ * outside this transaction, so by the time we are here somebody else may have spent it:
+ * a forward that landed in a group thread is opened by two phones in the same second,
+ * and a burn that trusted that read would seat BOTH of them on one link. The conditional
+ * UPDATE is the only thing that decides — the row is locked, `consumed_at IS NULL` is
+ * re-tested against it, and the loser matches nothing.
+ *
+ * NULL IS THE LOSER'S ANSWER, and it is the same answer a spent link gives a bystander:
+ * nobody is seated, nothing is written, and the caller falls back to the ordinary
+ * greeting. It is returned rather than thrown because losing a race for a forwarded
+ * link is not an error — it is the single-use rule working.
+ */
+export async function redeemJoinInvite(
+  database: Database,
+  input: { invite: JoinInvite; phoneE164: string; verbatimReply: string; now: Date },
+): Promise<{ coParentUserId: string; supersededInviteId: string | null } | null> {
+  const { invite, phoneE164, now } = input;
+  const hash = phoneBlindIndex(phoneE164);
+
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    // Claimed before a single row is written for this redeemer: everything below is
+    // work that a loser must not commit, and returning from a transaction COMMITS it.
+    const burned = await tx
+      .update(schema.joinInvites)
+      .set({ consumedAt: now })
+      .where(and(eq(schema.joinInvites.id, invite.id), isNull(schema.joinInvites.consumedAt)))
+      .returning({ id: schema.joinInvites.id });
+    if (burned.length === 0) return null;
+
+    const coParentUserId = await ensureJoinUser(tx, `sms:${hash}`);
+
+    const [consent] = await tx
+      .insert(schema.consentRecords)
+      .values({
+        userId: coParentUserId,
+        familyId: invite.familyId,
+        consentType: 'sms_service_messages',
+        granted: true,
+        consentScope: JOIN_CONSENT_SCOPE,
+        policyVersion: POLICY_VERSION,
+        evidence: {
+          verbatimReply: input.verbatimReply,
+          interpretation: 'co-parent originated contact by texting their join link',
+        },
+      })
+      .returning({ id: schema.consentRecords.id });
+    const consentId = consent?.id;
+    if (!consentId) {
+      throw new Error('redeemJoinInvite: consent insert returned no row');
+    }
+
+    const [channel] = await tx
+      .insert(schema.parentChannels)
+      .values({
+        userId: coParentUserId,
+        familyId: invite.familyId,
+        kind: 'sms',
+        phoneE164Encrypted: encryptString(phoneE164),
+        phoneE164Hash: hash,
+        // Verified by origination: the redemption arrived FROM the number.
+        verifiedAt: now,
+        consentRecordId: consentId,
+      })
+      .returning({ id: schema.parentChannels.id });
+    const channelId = channel?.id;
+    if (!channelId) {
+      throw new Error('redeemJoinInvite: parent_channels insert returned no row');
+    }
+
+    await tx
+      .insert(schema.familyMembers)
+      .values({
+        familyId: invite.familyId,
+        userId: coParentUserId,
+        role: invite.role,
+        invitedByUserId: invite.invitedByUserId,
+      })
+      // Somebody who was in this household before (a caregiver who is now a parent, a
+      // co-parent who left) lands on the same PK. The role that was just consented to
+      // is the one that wins.
+      .onConflictDoUpdate({
+        target: [schema.familyMembers.familyId, schema.familyMembers.userId],
+        set: { role: invite.role, invitedByUserId: invite.invitedByUserId },
+      });
+
+    // Who spent it — the attribution, not the claim. It cannot ride on the burn above
+    // because the seat that answers "who" does not exist until the claim is won.
+    await tx
+      .update(schema.joinInvites)
+      .set({ consumedByUserId: coParentUserId })
+      .where(eq(schema.joinInvites.id, invite.id));
+
+    // A caregiver invite in flight on this same number is closed HERE, inside the
+    // transaction that seats them, because the two rows describe the same phone and
+    // only one of them can be true: an open invite outranks the channel we have just
+    // written (the intake machine reads invites first, by design), so a crash between
+    // the seat and the closure would leave a co-parent whose every message is answered
+    // with a caregiver's yes/no question — and whose "yes" tries to enrol their number
+    // a second time. See supersedeOpenInviteOnEnrollment for the invariant.
+    const supersededInviteId = await supersedeOpenInviteOnEnrollment(tx, {
+      phoneE164,
+      via: 'co_parent_join',
+      now,
+    });
+
+    await tx.insert(schema.auditLog).values([
+      {
+        familyId: invite.familyId,
+        actor: coParentUserId,
+        actionTaken: 'co_parent_join_accepted',
+        targetTable: 'family_members',
+        targetId: invite.id,
+        after: { role: invite.role, maskedPhone: maskPhoneE164(phoneE164) },
+      },
+      {
+        familyId: invite.familyId,
+        actor: coParentUserId,
+        actionTaken: 'channel_sms_enrolled',
+        targetTable: 'parent_channels',
+        targetId: channelId,
+        after: {
+          kind: 'sms',
+          maskedPhone: maskPhoneE164(phoneE164),
+          verification: 'co_parent_join_link',
+        },
+      },
+    ]);
+
+    return { coParentUserId, supersededInviteId };
+  });
+}

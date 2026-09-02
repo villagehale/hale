@@ -2,7 +2,6 @@ import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { renderReminderEmail } from './email';
 import { asReminderPayload } from './payload';
-import { renderReminderPush } from './push';
 import { renderReminderSms } from './sms';
 
 /**
@@ -20,8 +19,10 @@ export const reminderRenderer: TemplateRenderer = {
         return renderReminderEmail(payload, nameLevel, now);
       case 'sms':
         return renderReminderSms(payload, nameLevel, now);
-      case 'push':
-        return renderReminderPush(payload, nameLevel, now);
+      // A reply pipe, not a proactive one: the dispatch refuses a whatsapp leg
+      // before any render (channel/dispatch.ts), so reaching here is a routing bug.
+      case 'whatsapp':
+        throw new Error('reminder renderer: whatsapp is a reply pipe — no proactive render');
       default: {
         const exhaustive: never = channel;
         throw new Error(`reminder renderer: unsupported channel ${String(exhaustive)}`);

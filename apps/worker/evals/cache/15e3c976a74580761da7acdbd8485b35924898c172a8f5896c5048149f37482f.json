@@ -1,0 +1,55 @@
+{
+  "response": {
+    "id": "msg_011CeGWRKMJqMEaZcbfWttbU",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EtQHCpABCBEYAipA774U1HEhpqxdblh+Jlakb0s2oXFphpVYNeNzzNllyq6PmsceUeEGPnWlzJCIMLVIJXCO0eOrrlvrZorh0tJegDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAfDjotQGEgyBeKbRyMJAO0XNcL0aDKPMJjTkVfI0jnNvYiIw8euknq6K0YLehYvKVMiF1AYkxAeNFu9Zdw2dcVNwvmqyrnKMlow9uuF7hQH1hcvaKvAFEJkl8blEDeVXMZN3wtMY7VBfJv4NtoscsC2skP/miCWsOtwAx+RsbPRn2n+ABnFTIxGW99xYNhY06fRpfkXQv+4PVOejD4p9NyYGFV/gdfYgilsma4Q17z3VVCz51WsxxFAU+AEe2ZdAFQIzIRb9ann7+CEj/oUvh/GM6s2TBag9zcN8PbucjBHA4XftuCXn/Zo9t8HwnKu+EAc3tuVUTaC7fFRp2Wxs2mE/lP+U2qSo0dAEB2m2sj6svRaNPQ7kCq0qkwnAj37g+g6cy2Bm6LImG/bKtfQ/ivYmLzUKLgNBr/79sTrnF+715oceoqYKJtu4IlLX/Ekc1zaYWGaoemoe+5l0h2eH4uH64GvLnPBq4l6Gg53qlNYL848lCIi8aRwsfnaZPrgGG3JXL2DUjZWSvKu8z+er6cCWMNQk7NO1lHsrthWR5cmBGKiOxGBaXzw4IFJnAwe6lAuDeqax8vqtaEHxKrWmWeJIi4zePQ3yKppix+LYX1WTZotxGFwPFo10Q9UlY4Q8FqbmVqYWVSFa4qIpLFAhKzejas6JZ9g4GbKkoQzirP8tHmG7INcjRMqaea8OhAB+c/zXJEciYpoX/RoFCiv6TRtXk8ZQ7NCnRg8sjTkf//hfT04tSuAYLmWWPsL5PSMIzjKYG5dk1fU5ttQHTxhIs3+e6wcUbw7m0HkQAJEtZCUgsFsaJxqw2vMRpbkicZKtF6xd87ZxBWl/5hbw21nC5yQ/4B+yi1MWTM/OcRiKjCDhczuYP8uTSIvMhYAs5SFvoTjWrOapYGnbi3LjdFmVgi0acq1GA6auDlisMz/HBidMA8feo9K08Y50KtugNk2udMPjfFG/8BWRGqVpQEcSarTLyIARyvNw83EKircEDj5W2SC1Z8VzMo0k/y60CBljAi0B0o1LVdpKVbRoj1hSG2ncfBxU35emYCyeHzIF9XqKSkBiXhaxzFmJCqRRWkQqD2lxa1kc5U1dwfQm9NJYbf8NlCMk75gYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01V6qkCMgNQoogp4su2MmyBu",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 101
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01WofoFYRqqpcCD3iTyrSGUw",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 375,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 13524,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 400,
+      "output_tokens_details": {
+        "thinking_tokens": 264
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

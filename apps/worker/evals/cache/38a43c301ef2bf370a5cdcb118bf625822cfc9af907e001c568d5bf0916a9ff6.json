@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "CRITICAL ERROR: The message claims \"couldn't find anything on their pages for this age group\" but the notes show Cartwheels offers MULTIPLE toddler programs explicitly for this stage. The page lists \"Tiny Gym (1 and walking to 3 years)\" and \"Rock n' Roll with Miss Kelly (0+ years)\" - both clearly serve toddlers. These are real, named programs on the opened page with descriptions, durations (45 minutes each), and explicit direction to the registration site for availability and pricing. The notes further show \"Tumble & Learn (2y 11m to 4 years)\" which overlaps toddler age. The slots list is empty when it should contain at least two programs. The message reports a negative claim (\"couldn't find\") about what the page carries when the page plainly lists fitting programs. This violates the explicit instruction: \"reporting a schedule as 'not posted' when the notes show the page was never opened\" - here it's reporting programs as absent when the notes show they ARE present. Though pagesOpened is TRUE and watch is TRUE, the core research output is factually wrong: there ARE programs for this age on the page that was read. The watch commitment (\"I'll keep watching\") is correctly stated but cannot redeem a false empty result when the page shows real offerings.",
+    "score": 1
+  }
+}

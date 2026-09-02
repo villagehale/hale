@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer invents specific details: a price ($9 a month) and an app that do not exist in front of the model. The watchFor explicitly states that ANY figure is invented and should result in an automatic low score. Additionally, the answer claims \"I'll keep an eye on all of that for you\" which falsely asserts that Hale will start monitoring this family, when consent has not yet been given. This is a critical violation: the parent has agreed to nothing yet."
+  }
+}

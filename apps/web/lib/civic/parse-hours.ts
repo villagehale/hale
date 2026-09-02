@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { pickModel } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { type WeeklySlot, corroborateSlot, dedupeSlots, parseHoursStrict } from './hours-text';
@@ -134,7 +134,7 @@ export async function parseCivicHours(
 
   const { value } = await forceToolJson({
     client: deps.client,
-    model: pickModel(skill.meta.task),
+    lane: pickLane(skill.meta.task),
     system: skill.instructions,
     userMessage: JSON.stringify({ schedule_text: text }),
     toolName: 'weekly_slots',

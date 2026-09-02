@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child may have ingested a button battery, an immediate medical emergency requiring urgent intervention"
+  },
+  "latencyMs": 1262
+}

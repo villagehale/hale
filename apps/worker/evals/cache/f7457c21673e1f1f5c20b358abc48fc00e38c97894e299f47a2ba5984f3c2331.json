@@ -1,0 +1,23 @@
+{
+  "value": {
+    "concerns_child_id": "child-jordan",
+    "confidence": 0.72,
+    "event_type": "school_communication",
+    "rationale": "A high-school counsellor is sharing a sensitive wellbeing observation about Jordan and offering to talk, which is school correspondence touching on a teen's mental health.",
+    "payload": {
+      "sender": "counsellor@centralhs.ca",
+      "institution": "Central HS",
+      "institutionType": "school",
+      "subject": "Check-in about Jordan",
+      "topic": "student_wellbeing",
+      "summary": "Counsellor reports Jordan seemed withdrawn and overwhelmed about exams, and offers to talk.",
+      "sensitive": true,
+      "offerToTalk": true
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "teen_content": true
+  },
+  "latencyMs": 4860
+}

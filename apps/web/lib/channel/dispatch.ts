@@ -1,7 +1,10 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
+import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
+import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { CATEGORY_CAPS } from './config';
-import type { Channel, ChannelKind, LoopCategory, LoopMessage } from './types';
+import { SENT_STATUSES, acceptedStatus } from './ledger';
+import type { Channel, ChannelKind, LoopCategory, LoopMessage, RenderedContent } from './types';
 
 /**
  * F11 · The Sunday Loop — the dispatch (VIL-213 · A2). THE one place loop policy
@@ -9,17 +12,13 @@ import type { Channel, ChannelKind, LoopCategory, LoopMessage } from './types';
  * A5 per-category enables, quiet hours, caps, dedupe, the channel_messages ledger,
  * audit rows, and the email CASL dual-write all happen exactly once.
  *
- * Delivery model (founder, locked): two exchange channels, three delivery legs —
- * PUSH MIRRORS, it never substitutes. The exchange send always goes via the
- * parent's loop_channel (email today, sms when live); push is an ADDITIONAL
- * always-on leg when a live token exists. So a weekly plan lands as an email AND a
- * push, not one-or-the-other.
+ * Delivery model: the exchange send goes via the parent's loop_channel (email or
+ * sms). The Expo push mirror leg died with the mobile app (VIL-318); historical
+ * 'push' ledger rows keep their persisted enum value.
  *
  * Policy is evaluated PER LEG through this single point, and every leg writes its
- * own ledger row — a suppressed push leg alongside a delivered email leg is two
- * rows (one 'suppressed_*', one 'sent'). Dedupe + caps are per (parent, category,
- * CHANNEL) so a re-drain can't double-send EITHER leg, and the mirror's second leg
- * is never blocked by the first leg's cap.
+ * own ledger row. Dedupe + caps are per (parent, category, CHANNEL) so a re-drain
+ * can't double-send a leg.
  *
  * Pure orchestrator over injected ports so the policy is tested against Fakes with
  * no live provider.
@@ -38,7 +37,7 @@ export interface LedgerWrite {
   category: LoopCategory;
   templateKey: string;
   dedupeKey: string | null;
-  status: 'sent' | 'failed' | SuppressionStatus;
+  status: 'queued' | 'sent' | 'failed' | SuppressionStatus;
   providerMessageId?: string | null;
   errorCode?: string | null;
   relatedActionId?: string | null;
@@ -56,10 +55,8 @@ export interface DispatchPorts {
   emailOptedOut(userId: string, emailType: string): Promise<boolean>;
   /** CASL express SMS consent, live (an active verified parent_channels row). */
   smsConsentLive(userId: string): Promise<boolean>;
-  hasLivePushToken(userId: string): Promise<boolean>;
   /** Non-suppressed sends of this category on THIS channel to this parent since
-   * `since` — the cap is per delivery leg (so a mirror leg isn't capped by the
-   * other). */
+   * `since` — the cap is per delivery leg. */
   countRecent(
     userId: string,
     category: LoopCategory,
@@ -73,7 +70,11 @@ export interface DispatchPorts {
   /** X1 (VIL-227) loop taxonomy: fires the analytics event paired 1:1 with the
    * ledger row `record` just wrote — see `writeLedgerRow` below, the single point
    * both are called from. */
-  capture(event: AnalyticsEvent, distinctId: string, properties?: Record<string, unknown>): Promise<void>;
+  capture(
+    event: AnalyticsEvent,
+    distinctId: string,
+    properties?: Record<string, unknown>,
+  ): Promise<CaptureOutcome>;
   recordEmailSend(input: {
     userId: string;
     familyId: string;
@@ -89,6 +90,21 @@ export interface DispatchPorts {
     targetId: string;
     after: Record<string, unknown>;
   }): Promise<void>;
+  /**
+   * Put a delivered SMS into the parent's own text thread — REQUIRED (rule #11). This
+   * is the one seam every loop send passes through, so it is the one place the weekly
+   * plan, a reminder and an ICS invite all become things the coach can see Hale having
+   * said. `channel_messages` carries no body (rule #1), so a leg that skips this leaves
+   * the parent's reply with no antecedent.
+   *
+   * The SMS leg ONLY, and that is a decision rather than an omission: the thread is the
+   * SMS thread (coach/note-key.ts), and an email is a different surface whose
+   * unification is its own piece of work.
+   *
+   * No db handle, like every other port here: the dispatch stays a decision engine and
+   * wiring.ts binds the real writer (lib/channel/thread.ts).
+   */
+  threadMessage(input: { familyId: string; parentUserId: string; body: string }): Promise<void>;
   channels: Partial<Record<ChannelKind, Channel>>;
   renderer: {
     render: (
@@ -138,22 +154,17 @@ export async function dispatchLoopMessage(
   ports: DispatchPorts,
 ): Promise<DispatchResult> {
   const now = ports.now();
-  // Three independent per-parent reads — fetch in parallel (one round-trip instead of
-  // three serial ones on the every-minute drain hot path).
-  const [prefs, parent, hasLivePush] = await Promise.all([
+  // Two independent per-parent reads — fetch in parallel (one round-trip instead of
+  // two serial ones on the every-minute drain hot path).
+  const [prefs, parent] = await Promise.all([
     ports.loadPrefs(msg.parentUserId),
     ports.loadParent(msg.parentUserId),
-    ports.hasLivePushToken(msg.parentUserId),
   ]);
 
-  // Legs: the exchange channel + push when a live token exists (mirror, not fallback).
-  // A channel-PINNED message (msg.channel — the ICS invite) has exactly one leg: its
-  // content exists on that channel alone, so neither re-routing nor mirroring it is a
-  // delivery of the same thing. See LoopMessage.channel.
+  // One leg: the exchange channel. A channel-PINNED message (msg.channel — the ICS
+  // invite) rides that channel alone: its content exists there and nowhere else.
+  // See LoopMessage.channel.
   const legs: ChannelKind[] = [msg.channel ?? prefs.loopChannel];
-  if (hasLivePush && !msg.channel) {
-    legs.push('push');
-  }
 
   const results: LegResult[] = [];
   for (const channel of legs) {
@@ -177,6 +188,18 @@ async function dispatchLeg(
     return { channel, outcome: status };
   };
 
+  // THE META-SAFETY GATE (WhatsApp v1), before everything else: WhatsApp is a REPLY
+  // pipe — free-form messages are only lawful inside the 24h window a parent's own
+  // message opens (reply-transport.ts owns that decision). No proactive lane may ride
+  // it, whatever the prefs or the pinned channel say, so the refusal is named and
+  // ledgered rather than routed around (rule #11).
+  if (channel === 'whatsapp') {
+    await writeLedgerRow(ports, msg, channel, 'failed', {
+      errorCode: 'whatsapp_proactive_unsupported',
+    });
+    return { channel, outcome: 'failed', reason: 'whatsapp_proactive_unsupported' };
+  }
+
   if (!categoryEnabled(prefs, msg.category)) {
     return suppressed('suppressed_pref');
   }
@@ -187,7 +210,7 @@ async function dispatchLeg(
   }
 
   // Per-channel dedupe: this exact leg already sent / is in flight → no-op (a
-  // re-drain can't double-send it), while the mirror leg stays independent.
+  // re-drain can't double-send it).
   const legKey = msg.dedupeKey ? `${msg.dedupeKey}:${channel}` : null;
   if (legKey && (await ports.activeDedupe(legKey))) {
     return { channel, outcome: 'deduped' };
@@ -207,6 +230,22 @@ async function dispatchLeg(
   }
 
   const rendered = ports.renderer.render(msg, channel, prefs.childNameLevel);
+  // THE CHOKE POINT'S OWN HONESTY GATE (VIL-293), and it is the ledger-FREE half of the
+  // reconciliation primitive on purpose. This seam has no database handle by design — it
+  // is a decision engine over injected ports — so it cannot ask whether a promise has a
+  // row. What it can do without asking anything is refuse the claims no row anywhere
+  // could ever back: a promise about how Hale itself behaves. Those are false at compose
+  // time, they are false at send time, and this is the one place every loop message
+  // passes through, so refusing them here is a guarantee rather than a habit.
+  //
+  // A REFUSAL, not a rewrite. These bodies are TEMPLATES: a claim in one is a bug in the
+  // template, and trimming a sentence out of a weekly plan would ship a subtly wrong
+  // artifact instead of a loud row saying the template needs fixing.
+  const unbacked = claimsNoLedgerCanBack(claimText(rendered));
+  if (unbacked.length > 0) {
+    await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
+    return { channel, outcome: 'failed', reason: 'unbacked_claim' };
+  }
   const adapter = ports.channels[channel];
   if (!adapter) {
     await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'channel_unavailable' });
@@ -219,7 +258,12 @@ async function dispatchLeg(
   }
 
   if (result.status === 'sent') {
-    const id = await writeLedgerRow(ports, msg, channel, 'sent', {
+    // What the row CLAIMS is the channel's question, not this one's: an SMS the
+    // provider merely accepted is 'queued' until a receipt says otherwise, while a
+    // channel with no receipt wired is terminal here (channel/ledger.ts). The LEG's
+    // outcome stays 'sent' either way — the leg did hand the message over, and that is
+    // the question a caller composing legs is asking.
+    const id = await writeLedgerRow(ports, msg, channel, acceptedStatus(channel), {
       dedupeKey: legKey,
       providerMessageId: result.providerMessageId,
       sentAt: now,
@@ -241,6 +285,17 @@ async function dispatchLeg(
       targetId: id,
       after: { channel, category: msg.category },
     });
+    // THE THREAD, which is where the parent's answer will be read. AFTER the send, like
+    // every other post-send write here: a leg that a suppression or a refusal stopped is
+    // not something Hale said. `rendered.text` is byte-identical to what the adapter put
+    // on the wire — this path appends no footer, so there is no draft-vs-sent gap.
+    if (channel === 'sms' && rendered.kind === 'sms') {
+      await ports.threadMessage({
+        familyId: msg.familyId,
+        parentUserId: msg.parentUserId,
+        body: rendered.text,
+      });
+    }
     return { channel, outcome: 'sent' };
   }
 
@@ -248,6 +303,13 @@ async function dispatchLeg(
   const errorCode = result.status === 'error' ? result.code : result.reason;
   await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
   return { channel, outcome: 'failed', reason: errorCode };
+}
+
+/** The words a parent will actually read, whatever the channel renders them into. An
+ * email's HTML is not checked — its plain-text alternative carries the same sentences
+ * and is the one a regex can read honestly. */
+function claimText(rendered: RenderedContent): string {
+  return rendered.text;
 }
 
 /** The single point every terminal channel_messages write goes through: it writes
@@ -264,7 +326,11 @@ async function writeLedgerRow(
   extra: Partial<LedgerWrite> = {},
 ): Promise<string> {
   const id = await ports.record(rowFor(msg, channel, status, extra));
-  const event: AnalyticsEvent = status === 'sent' ? 'loop_message_sent' : 'loop_message_failed';
+  // A SEND, not a status match: an SMS row is born 'queued', and keying the event off
+  // 'sent' alone would report every text Hale sends as a failure.
+  const event: AnalyticsEvent = (SENT_STATUSES as readonly string[]).includes(status)
+    ? 'loop_message_sent'
+    : 'loop_message_failed';
   await ports.capture(event, msg.parentUserId, {
     channel,
     category: msg.category,

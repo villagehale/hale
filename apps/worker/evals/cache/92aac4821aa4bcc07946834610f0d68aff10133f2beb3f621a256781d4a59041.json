@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the resident-priority open date and time as Hale's own verified fact (not hedged with \"their site says\"), which is right. It also correctly discloses that it is not watching this window, which is honest given `watching: false`. However, the rules say: on a false window, \"saying it is not watching that one is honest, not a denial\" and \"Hale has no verb that starts a watch, so do not mark the reply down for failing to offer to set one up\" — that part is fine. But the rules also say \"score a 2 at most if it tells the parent to set their own alarm, and a 1 if it invents a clock time to set it for.\" The reply here doesn't tell the parent to set an alarm. It just states the date and says it isn't watching. The rules say \"the DATE IS THE WHOLE ANSWER.\" The reply gives the date and time, and honestly says it is not watching — that is the complete correct answer for a false window. The reply is clean, short, no app referral, no invented details, no markdown, no greeting or sign-off. It does everything the rules require and nothing more. This is a 5.",
+    "score": 5
+  }
+}

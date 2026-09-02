@@ -1,8 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
+import { acceptedStatus } from '~/lib/channel/ledger';
+import { type FamilyRole, isCaregiverRole, isParentRole } from '~/lib/channel/role-scope';
+import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
+import { type JoinOutcome, handleJoinRequest } from '~/lib/channel/join/route';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
+import type { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   ADD_EXAMPLE,
   ALREADY_INVITED,
@@ -56,6 +60,10 @@ import { looksLikeAddCommand, parseAddCaregiver } from './parse';
 
 export interface CaregiverDeps {
   transport: ChannelTransport;
+  /** The parent's own coach thread — REQUIRED (rule #11), and used for the parent's
+   * side ONLY. See {@link replyToParent} for which sends reach it and why the
+   * caregiver's side deliberately does not. */
+  threadMessage: typeof threadProactiveMessage;
 }
 
 export type CaregiverOutcome =
@@ -98,7 +106,7 @@ async function record(
       direction: input.direction,
       category: 'caregiver',
       providerMessageId: input.providerId,
-      status: input.direction === 'in' ? 'delivered' : 'sent',
+      status: input.direction === 'in' ? 'delivered' : acceptedStatus('sms'),
       // Verbatim for INBOUND only — the same rule the loop ledger keeps: an outbound
       // is reconstructable from copy.ts, and storing rendered household detail is a
       // liability (rule #1).
@@ -120,7 +128,15 @@ async function record(
   return id;
 }
 
-/** Send one message to a number and ledger it. */
+/**
+ * Send one message to a THIRD PARTY and ledger it against the parent who authorised it.
+ *
+ * Deliberately not threaded, and the name is the guard: what Hale says to a caregiver
+ * is not the parent's conversation. Putting it in their transcript would disclose an
+ * exchange they are not part of, and would make the transcript claim Hale said to the
+ * parent something it said to somebody else. The parent's own side goes through
+ * {@link replyToParent}.
+ */
 async function reply(
   database: Database,
   deps: CaregiverDeps,
@@ -134,6 +150,33 @@ async function reply(
     providerId: providerMessageId,
     body: input.body,
     now: input.now,
+  });
+}
+
+/**
+ * Send one message to the PARENT themselves — the same send, plus their thread.
+ *
+ * A parent who has finished intake has no open session, so every ordinary text they
+ * write arrives here first and falls through to C1 the moment this route has nothing to
+ * say (twilio/inbound.ts). That makes this module the last thing that spoke before a
+ * coach turn, and `scopeConfirm` is an open question — "Reply YES and I'll text them".
+ * Unthreaded, the coach reads the answer with nothing above it, which is the state
+ * lib/channel/thread.ts exists to end.
+ *
+ * A separate function rather than a flag on {@link reply}: which of the two a call site
+ * wants is decided by WHO is being texted, and making that a parameter is making it a
+ * thing five call sites have to remember.
+ */
+async function replyToParent(
+  database: Database,
+  deps: CaregiverDeps,
+  input: { to: string; body: string; familyId: string; parentUserId: string; now: Date },
+): Promise<void> {
+  await reply(database, deps, input);
+  await deps.threadMessage(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    body: input.body,
   });
 }
 
@@ -256,7 +299,7 @@ export async function handleKnownNumberInbound(
     now: Date;
   },
   deps: CaregiverDeps,
-): Promise<CaregiverOutcome | null> {
+): Promise<CaregiverOutcome | JoinOutcome | null> {
   const { owner, inbound, now } = args;
   const role = await memberRole(database, owner.familyId, owner.userId);
 
@@ -280,6 +323,15 @@ export async function handleKnownNumberInbound(
   }
 
   const parentPhoneE164 = args.phoneE164;
+
+  // "add my partner" — the ONE add command with no number in it, because the person
+  // being added is not somebody Hale may text. It is answered with a link the parent
+  // forwards themselves, and only ever to a PARENT: a co_parent seat is the whole family
+  // surface, so the ability to hand one out belongs to nobody else in the household.
+  if (role && isParentRole(role) && looksLikeJoinRequest(inbound.body)) {
+    return handleJoinRequest(database, { owner, phoneE164: parentPhoneE164, inbound, now }, deps);
+  }
+
   const pending = await loadPendingAssent(database, owner.userId, now);
   if (pending) {
     const answer = readAffirmative(inbound.body);
@@ -332,7 +384,7 @@ async function sendInvite(
     parentUserId: owner.userId,
     now,
   });
-  await reply(database, deps, {
+  await replyToParent(database, deps, {
     to: args.parentPhoneE164,
     body: inviteSentAck(pending.displayName),
     familyId: owner.familyId,
@@ -363,7 +415,7 @@ async function dropInvite(
     now,
   });
   await declineInvite(database, { invite: pending, by: 'parent', now });
-  await reply(database, deps, {
+  await replyToParent(database, deps, {
     to: args.parentPhoneE164,
     body: inviteDroppedAck(pending.displayName),
     familyId: owner.familyId,
@@ -403,7 +455,7 @@ async function startFromCommand(
     body: string,
     outcome: CaregiverOutcome,
   ): Promise<CaregiverOutcome> => {
-    await reply(database, deps, {
+    await replyToParent(database, deps, {
       to: args.parentPhoneE164,
       body,
       familyId: owner.familyId,

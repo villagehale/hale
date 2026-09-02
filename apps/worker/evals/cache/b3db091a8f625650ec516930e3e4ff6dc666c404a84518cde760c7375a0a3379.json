@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "to": "nurse@riverdale-peds.ca",
+      "subject": "Re: Follow-up question",
+      "body": "hi — thanks for checking in. i want to give you an accurate update before we decide on a visit, so i'll follow up shortly with how the cough has been since the weekend.\n\nif it seems worth booking, i'll reach out to schedule.\n\nthanks"
+    },
+    "confidence": 0.42,
+    "rationale": "The memory slice is empty, so there is no factual basis for reporting whether the cough improved — this is a holding reply only, and the parent should confirm or replace it with the actual symptom update.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 4157
+}

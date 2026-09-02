@@ -198,10 +198,167 @@ describe('matchFastPath — what it must NOT claim', () => {
    * carrier-recognised STOP synonym, so a NO-set that contained it would turn an
    * unsubscribe into an approval decline.
    */
-  it('never claims a CASL keyword', () => {
-    for (const word of ['stop', 'STOP', 'unsubscribe', 'end', 'quit', 'cancel', 'help', 'start']) {
-      expect(matchKeyword(word)).not.toBeNull();
+  it('never claims a CASL keyword, in either official language', () => {
+    for (const word of [
+      'stop',
+      'STOP',
+      'unsubscribe',
+      'end',
+      'quit',
+      'cancel',
+      'help',
+      'info',
+      'start',
+      // The French half the carriers mandate. Same rule, same reason: the keyword is
+      // claimed upstream, so a second reading here could only disagree with the first.
+      'ARRET',
+      'arrêt',
+      'AIDE',
+      'DEBUT',
+    ]) {
+      expect(matchKeyword(word), word).not.toBeNull();
+      expect(matchFastPath(word), word).toBeNull();
+    }
+  });
+});
+
+/**
+ * The French and Chinese half of the same vocabulary.
+ *
+ * Hale already REPLIES in both languages, and its French replies keep the literal token
+ * YES in the sentence precisely because nothing on the reading side could hear "oui".
+ * Two separate defects made that true, and a longer word list alone would have fixed
+ * neither:
+ *
+ *   CJK WAS ERASED. `normalizeReply` reduced a body to /[a-z0-9]/, so every Chinese reply
+ *   normalized to the empty string — "好" and silence were the same input. Adding 好 to the
+ *   set without widening the character class is a no-op that reads as a fix.
+ *
+ *   ACCENTS SPLIT WORDS. "bien sûr" normalized to "bien s r" and "arrête" to "arr te", so
+ *   an accented phrase could not be spelled in the set at all except by writing the
+ *   mangling down. Folding the diacritic collapses both spellings onto one entry.
+ *
+ * The two properties from affirmative.ts survive untouched, and the tail cases below are
+ * the proof: whole-string still means whole-string in a script that has no spaces.
+ */
+describe('matchFastPath — French and Chinese', () => {
+  const yeses = [
+    'oui',
+    'Oui',
+    'OUI',
+    'oui!',
+    'ouais',
+    "d'accord",
+    "D'accord.",
+    'daccord',
+    "c'est bon",
+    'parfait',
+    'Parfait!',
+    'allons-y',
+    'vas-y',
+    'absolument',
+    'certainement',
+    'bien sûr',
+    'bien sur',
+    '好',
+    '好的',
+    '好啊',
+    '好的。',
+    '可以',
+    '行',
+    '嗯',
+    '是',
+    '是的',
+    '要',
+    '确认',
+    '没问题',
+  ];
+
+  for (const body of yeses) {
+    it(`reads ${JSON.stringify(body)} as a bare yes`, () => {
+      expect(matchFastPath(body)).toEqual({ verb: 'yes', index: null });
+    });
+  }
+
+  const noes = [
+    'non',
+    'Non',
+    'Non!',
+    'pas maintenant',
+    'pas cette fois',
+    '不',
+    '不要',
+    '不用',
+    '不行',
+    '别',
+    '算了',
+  ];
+
+  for (const body of noes) {
+    it(`reads ${JSON.stringify(body)} as a bare no`, () => {
+      expect(matchFastPath(body)).toEqual({ verb: 'no', index: null });
+    });
+  }
+
+  /** The ordinal is split off the NORMALIZED string, so a Han character has to survive as
+   * a phrase on the left of it — otherwise "好 2" resolves to nothing, or to an approval
+   * of a row the parent never named. */
+  it('carries an ordinal through a French or Chinese phrase', () => {
+    expect(matchFastPath('oui 2')).toEqual({ verb: 'yes', index: 2 });
+    expect(matchFastPath('好 2')).toEqual({ verb: 'yes', index: 2 });
+    expect(matchFastPath('non 1')).toEqual({ verb: 'no', index: 1 });
+  });
+
+  /**
+   * Widening the alphabet must not widen what counts as a whole string. Chinese is
+   * written without spaces, so a sentence that merely BEGINS 好的 or CONTAINS 不要 arrives
+   * as a single token — which is exactly why it must not be claimed by a prefix. Each of
+   * these is the French or Chinese twin of a row in the English table above.
+   */
+  const sentences = [
+    // An affirmative head with a tail — the shape of "sounds good but can we do Thursday
+    // instead". The tail is a second instruction the parent is still waiting on.
+    'oui mais pas cette semaine',
+    'oui déplace la natation à mardi',
+    "d'accord pour jeudi seulement",
+    // "ça va" is as often a question as an agreement, so it is deliberately not a word.
+    'ça va?',
+    'ça va',
+    // Lukewarm is not consent, and a longer sentence is not its first two glyphs.
+    '还好',
+    '好的但是星期四可以吗',
+    '好 但是星期四',
+    '不要担心',
+    '我不要去',
+  ];
+
+  for (const body of sentences) {
+    it(`declines ${JSON.stringify(body)}`, () => {
+      expect(matchFastPath(body)).toBeNull();
+    });
+  }
+
+  /**
+   * The 'cancel' rule, in the other two languages.
+   *
+   * affirmative.ts refuses to put 'cancel' in the NO set because it is a natural refusal
+   * AND an unsubscribe, and reading it as an approval decline would answer a parent asking
+   * to be left alone with a calendar message. "annuler", "arrête" and 取消 are that same
+   * word, and the reasoning does not weaken for being written in French or Chinese — it
+   * gets stronger, because `matchKeyword` claims only the keyword the carriers mandate
+   * (ARRET), so nothing upstream would catch the mistake on these either.
+   *
+   * They stay unread, which is not silence: an unmatched body goes to the coach, which
+   * answers in the parent's language and can ask what they meant.
+   */
+  it('never reads a French or Chinese unsubscribe as an approval decline', () => {
+    for (const word of ['annule', 'annuler', 'arrête', 'arrete', '取消']) {
       expect(matchFastPath(word)).toBeNull();
     }
+    // The positive control for those nulls: real refusals in the same two languages DO
+    // resolve, through this same call, so the assertion above is about those five words
+    // and not about French and Chinese being unreadable.
+    expect(matchFastPath('non')).toEqual({ verb: 'no', index: null });
+    expect(matchFastPath('不')).toEqual({ verb: 'no', index: null });
   });
 });

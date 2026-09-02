@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "routine": [
+      {
+        "day": "tuesday",
+        "title": "Public library baby storytime",
+        "category": "library/music-books",
+        "stage_fit_rationale": "A short, lap-sit session matches a newborn's brief wakeful windows and exposes them to rhythm and sound without overstimulation; low-key format means it's easy to skip if nap or feeding timing is off.",
+        "candidate_confidence": 0.7
+      },
+      {
+        "day": "friday",
+        "title": "Parent-and-baby drop-in group",
+        "category": "community/social",
+        "stage_fit_rationale": "Newborns don't need structured social interaction yet, but this gives the parent low-pressure, come-as-you-are adult contact and gentle exposure for the baby, with no registration pressure if the week goes sideways.",
+        "candidate_confidence": 0.6
+      }
+    ],
+    "rationale": "A newborn week should stay light and flexible, so this proposes just two low-key, drop-in outings spaced apart (Tuesday and Friday) with plenty of room to skip either without disrupting feeding or nap rhythms.",
+    "notes": "Both candidates fit; nothing was left out. Kept to two items since a newborn's schedule should center on parent-led flexibility rather than commitments, and spaced them mid-week and end-of-week to avoid back-to-back outings."
+  }
+}

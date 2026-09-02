@@ -5,9 +5,9 @@ import { AccountMenuView } from './account-menu-view';
 
 /**
  * The account chip shows the signed-in parent's name over the family's plan label
- * (per the desktop handoff — "Free plan" / "Plus" / "Family"). Its menu holds the
- * destinations + appearance, with Sign out — an account action — only for a real
- * session. Rendered to static markup (the stateful wrapper owns open-state and
+ * (per the desktop handoff — "Free plan" / "Plus" / "Family"). Its menu holds NO
+ * destinations — appearance, plus Sign out (an account action) for a real session.
+ * Rendered to static markup (the stateful wrapper owns open-state and
  * dismissal; this view takes `open` as a prop, so "toggles open/closed" is testable
  * as "renders the menu only when open"). Same render-to-HTML approach as the village
  * feed test.
@@ -23,7 +23,6 @@ function render(
       canSignOut: true,
       menuId: 'acct',
       onToggle: () => {},
-      onSelect: () => {},
       onSignOut: () => {},
       ...overrides,
     }),
@@ -44,6 +43,18 @@ describe('AccountMenuView', () => {
     expect(render({ planTier: 'family' })).toContain('Family');
   });
 
+  it('shows the masked number as the secondary line once enrolled (Instinct chip: name + phone)', () => {
+    const html = render({ maskedPhone: '+1 ••• ••• 1234' });
+    expect(html).toContain('+1 ••• ••• 1234');
+    // The phone replaces the plan line — one secondary line, never both.
+    expect(html).not.toContain('Free plan');
+  });
+
+  it('falls back to the plan label while no number is enrolled', () => {
+    const html = render({ maskedPhone: null });
+    expect(html).toContain('Free plan');
+  });
+
   it('falls back to a neutral name when identity is absent (onboarding incomplete)', () => {
     const html = render({ parentName: null });
     expect(html).toContain('your account');
@@ -56,23 +67,25 @@ describe('AccountMenuView', () => {
     expect(html).not.toContain('sign out');
   });
 
-  it('opens to settings, appearance, and sign out when open (history moved out per the desktop handoff)', () => {
+  it('opens to appearance and sign out only — no destinations in the chip', () => {
     const html = render({ open: true });
     expect(html).toContain('aria-expanded="true"');
     expect(html).toContain('role="dialog"');
-    expect(html).toContain('settings');
     expect(html).toContain('appearance');
     expect(html).toContain('sign out');
-    // History is no longer in the account menu (it stays reachable from Approvals).
-    expect(html).not.toContain('history');
     // The theme control rides in the menu (its three options).
     expect(html).toContain('aria-label="Color theme"');
+    // Settings is a nav stop; a second entry here gave the app two Settings. History
+    // left the same way earlier (it stays reachable from Approvals). The two positive
+    // assertions above are the control that this render is not simply empty.
+    expect(html).not.toContain('settings');
+    expect(html).not.toContain('history');
   });
 
   it('hides sign out when the session cannot sign out (dev preview)', () => {
     const html = render({ open: true, canSignOut: false });
     expect(html).toContain('role="dialog"');
-    expect(html).toContain('settings');
+    expect(html).toContain('appearance');
     expect(html).not.toContain('sign out');
   });
 });

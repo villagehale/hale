@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam asked for four cancellations: Monday swim, Thursday swim, soccer, and the Wednesday appointment. The draft cap is 2 per message. Hale correctly drafted the two swims and says it will line up the rest — that is the exact correct handling of overflow. The reply names both drafted items clearly, ends with \"YES to confirm these two\", and says the rest is coming. No app mention, no invented details, no greeting or sign-off. The Wednesday item is a private calendar item, but Hale is drafting a cancel of \"the appointment on Wednesday\" — that private item at Wed 9:00am is the only Wednesday event visible, so the reference resolves and drafting it (in the next batch) is correct. The reply does not draft the Wednesday or soccer items yet, which is right given the cap. One tiny blemish: it could have confirmed whether the Wednesday item is the one they meant before queuing it, since it is private and Hale cannot see its content — but the parent said \"the appointment on Wednesday\" and there is exactly one Wednesday event, so the reference is resolved even if the content is hidden. Overall the reply is tight, correct, and properly shaped.",
+    "score": 5
+  }
+}

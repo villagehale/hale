@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGe6Ep7c66HhQ96nZevD",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EsMECpABCBEYAipAxu/F3Ste+eST+Qaqn6x2+kjivt20Z/y/F9IlRxxryXsMZbb8Z9P+5J7mbJ+0ZvoKI4+uCV90FdQsEGdx7EE51zIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAYOTo9QGEgy2MNAvirRyuCCvpSMaDFzTPoM4mXJ+X1K5qSIw8VkOr3cQFokbuSOZNr14LJce0yU0LdOLK8QxH25ixfCBSErexs+re8BDIQEEsIpIKt8CUaBzo7p7CTrSxVSQ0gldzdToqn8dv02zxLI/6bILmr6xrqfps6GvoEF9DoD8cD7IlrSkqUibH9S2u/BwDuCKKi++Jis2FpkdJvRcpQligWCciDl9aKYyijgxLjPGhiktl1/EK6UgtaltDxPj8n8JZ2n3ts/jZV4/MjUCX03IGGpRtwDfczjfqhshzwUTwqNp8D0JQ/619SmsSUwU85tUPkzYR/UxI033w0cl3wVK9kxm6zZ4xyZYa/MWDjda/J/9IhP2VP3kOKVsigHV+qzHEY8cqrvAnmiPR4eZ6jcQgyBTPMGHJLlrLGziVKPUcDHTPuPP4jU7TENAlvTh2fzGO6tHUjvo7Vws20XUnyOOE56HWLnOYKCbIB/05qhYUekOWdLyy8IneOsq8XSoX2pY0qwyGkAq7tMD0QYGRpQw6SSZ3li9+94l3mDBnJpRSyEFiMKWx86uXq3ALBk1DJf0GAE="
+      },
+      {
+        "type": "text",
+        "text": "Mira took her first independent steps around **25 months ago** — that milestone was logged in May 2024, and it's now June 2026.\n\nThat's right on track, too: most toddlers take their first unsupported steps somewhere between 9 and 15 months, per the Canadian toddler developmental milestones."
+      }
+    ],
+    "usage": {
+      "input_tokens": 16364,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 236,
+      "output_tokens_details": {
+        "thinking_tokens": 138
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 4649,
+  "firstInputTokens": 16364
+}

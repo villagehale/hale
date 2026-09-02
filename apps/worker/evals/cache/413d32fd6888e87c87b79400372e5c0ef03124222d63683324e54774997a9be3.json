@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The week shows exactly one Thursday event: \"Swim lesson\" at Thu 5:15pm at East pool. The parent's text names \"the thursday swim\" — one match, unambiguous. Hale correctly drafted the cancel and asks for YES confirmation. The reply names the event with its time and location so the parent can verify, then ends with the required \"YES to confirm.\" format. No greeting, no sign-off, no markdown, no app referral, no invented detail. Short and exactly right.",
+    "score": 5
+  }
+}

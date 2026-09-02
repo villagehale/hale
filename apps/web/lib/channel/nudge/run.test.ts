@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
@@ -110,6 +111,10 @@ interface Harness {
   dedupeKeys: Set<string>;
   /** MEM-10 · every open-loops promise this sweep tried to close. */
   closed: Array<{ familyId: string; kind: string; channelMessageId: string | null }>;
+  /** Every health nudge that offered to register its own standing question. */
+  offers: Array<{ ref: string; channelMessageId: string | null }>;
+  /** Every nudge that landed in the parent's own text thread (lib/channel/thread.ts). */
+  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
 }
 
 function harness(
@@ -130,6 +135,8 @@ function harness(
   const writes: Harness['writes'] = [];
   const dedupeKeys = new Set<string>();
   const closed: Harness['closed'] = [];
+  const offers: Harness['offers'] = [];
+  const threaded: Harness['threaded'] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: NudgeRunDeps = {
@@ -158,6 +165,7 @@ function harness(
       channelEnrolled: async () => options.enrolled ?? true,
       watchConsentGranted: async () => options.consented ?? true,
       countProactiveSends: async () => options.recentSends ?? 0,
+      proactiveSentSince: async () => false,
       parentTimeZone: async () => TZ,
     }),
     dedupeActive: async (_db, key) => dedupeKeys.has(key),
@@ -183,9 +191,18 @@ function harness(
       });
       return { status: 'none_open' };
     },
+    // The offer half of the same seam, recorded rather than executed for the same reason.
+    recordCheckupOffer: async (_db, input) => {
+      offers.push({ ref: input.ref, channelMessageId: input.channelMessageId });
+      return { status: 'not_an_offer' };
+    },
+    threadMessage: async (_db, input) => {
+      threaded.push(input);
+      return 'conv-1';
+    },
   };
 
-  return { deps, transport, writes, dedupeKeys, closed };
+  return { deps, transport, writes, dedupeKeys, closed, offers, threaded };
 }
 
 function db() {
@@ -285,7 +302,7 @@ describe('runNudgeCron — sending', () => {
       parentUserId: 'user-1',
       channel: 'sms',
       category: 'nudge',
-      status: 'sent',
+      status: 'queued',
     });
     expect(auditActions(h.writes)).toContain('proactive_nudge_sent');
   });
@@ -476,7 +493,10 @@ describe('runNudgeCron — the prod send path (VIL-260)', () => {
     // fact. What is still worth asserting is WHICH one: the REAL outbound leg, which
     // refuses by naming its missing credentials rather than silently reporting a send
     // nobody made.
-    const { transport } = defaultNudgeRunDeps();
+    const { transport, threadMessage } = defaultNudgeRunDeps();
+    // And WHICH threader: a port declared but wired to a stub is the same silent
+    // no-op the port exists to forbid (rule #11).
+    expect(threadMessage).toBe(threadProactiveMessage);
     vi.stubEnv('TWILIO_ACCOUNT_SID', '');
     await expect(
       transport.send({ to: '+14165550100', body: 'never leaves: no credentials' }),
@@ -495,11 +515,39 @@ describe('runNudgeCron — the prod send path (VIL-260)', () => {
     expect(ledger[0]?.payload).toMatchObject({
       channel: 'sms',
       category: 'nudge',
-      status: 'sent',
+      status: 'queued',
       templateKey: 'proactive_nudge:registration',
       dedupeKey: 'nudge:fam-1:registration:w-1',
     });
     expect(auditActions(h.writes)).toContain('proactive_nudge_sent');
+  });
+
+  it("puts the nudge in the parent's own text thread, so their reply has an antecedent", async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ windows: [win()] });
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    // A nudge the coach cannot see is a nudge the parent answers into silence: prod on
+    // 2026-08-22 had two of these, and the parent's "yes" landed on whatever else was
+    // standing. `channel_messages` stores no body (rule #1), so `messages` is the only
+    // place a reply can find what it is replying to.
+    expect(h.threaded).toHaveLength(1);
+    expect(h.threaded[0]).toMatchObject({ familyId: 'fam-1', parentUserId: 'user-1' });
+    expect(h.transport.bodies()[0]).toContain(h.threaded[0]?.body ?? '\u0000');
+  });
+
+  it('threads the composed sentence, never the CASL footer on the wire', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // A first send of the period carries the opt-out line; the thread must not, or the
+    // coach re-reads "Reply STOP to opt out" as something Hale said to the parent.
+    const h = harness({ windows: [win()] });
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    const wire = h.transport.bodies()[0] ?? '';
+    expect(wire).toMatch(/STOP/i);
+    expect(h.threaded[0]?.body).not.toMatch(/STOP/i);
+    // ...and it is still the real sentence, not an empty string that trivially passes.
+    expect(wire).toContain(h.threaded[0]?.body ?? '\u0000');
   });
 });
 

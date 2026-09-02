@@ -256,10 +256,11 @@ export async function loadUpcomingWindows(
 }
 
 /**
- * The sweep's ONLY write. `verified_at` and `updated_at` — never a date, never
- * notes. Narrow on purpose: this function is the entire surface through which a
- * re-verify run can touch the dataset, so "the sweep cannot change a date" is
- * checkable by reading one query.
+ * The sweep's only write TO THE DATASET. `verified_at` and `updated_at` — never a
+ * date, never notes. Narrow on purpose: this function is the entire surface through
+ * which a re-verify run can touch the dataset, so "the sweep cannot change a date" is
+ * checkable by reading one query. (The run's own tally lands in a separate ops table —
+ * see {@link recordVerifyRun} — which touches no registration row at all.)
  */
 export async function markWindowVerified(
   database: Database,
@@ -316,6 +317,33 @@ export async function claimVerifySweepWeek(database: Database, now: Date): Promi
 
   return claimed.length > 0;
 }
+
+/** The four numbers one finished run leaves behind. */
+export interface VerifyRunCounts {
+  checked: number;
+  confirmed: number;
+  discrepancies: number;
+  unverified: number;
+}
+
+export type RecordVerifyRun = (
+  database: Database,
+  weekStart: Date,
+  counts: VerifyRunCounts,
+) => Promise<void>;
+
+/**
+ * Persist what this run found (migration 0089).
+ *
+ * A SECOND ROW, not a second write to the claim: the claim is taken BEFORE the work and
+ * answers "who owns this week", while this is only knowable after and answers "what did
+ * the run find". The unique index on week_start means the claim's exactly-once guarantee
+ * is restated by the database — a duplicate raises rather than quietly overwriting a
+ * week's outcomes, and the caller logs it.
+ */
+export const recordVerifyRun: RecordVerifyRun = async (database, weekStart, counts) => {
+  await database.insert(schema.registrationVerifyRuns).values({ weekStart, ...counts });
+};
 
 // ── the digest ───────────────────────────────────────────────────────────────
 
@@ -466,6 +494,10 @@ export interface RegistrationVerifyDeps {
   loadWindows(database: Database, now: Date, limit: number): Promise<StoredWindow[]>;
   markVerified(database: Database, windowId: string, now: Date): Promise<void>;
   claimWeek(database: Database, now: Date): Promise<boolean>;
+  /** Writes the run's own tally. Non-nullable (rule #11): a sweep whose outcomes go
+   * nowhere is exactly the state this ledger exists to end, so its absence is a failed
+   * write that says so, never a missing dependency. */
+  recordRun: RecordVerifyRun;
   sender: ProviderAlertSender;
   preflight: typeof providerPreflight;
   discoveryTargets: readonly DiscoveryTarget[];
@@ -484,6 +516,7 @@ export function defaultRegistrationVerifyDeps(
     loadWindows: loadUpcomingWindows,
     markVerified: markWindowVerified,
     claimWeek: claimVerifySweepWeek,
+    recordRun: recordVerifyRun,
     sender: createRegistrationDigestSender(),
     preflight: providerPreflight,
     discoveryTargets: DISCOVERY_TARGETS,
@@ -647,6 +680,21 @@ export async function runRegistrationVerifySweep(
     rows,
     discoveries,
   };
+
+  // The tally, for the founder scorecard to grade the radar on. Best-effort by the same
+  // contract as the digest below: this is telemetry about a sweep that has already
+  // happened, and losing the row must not turn a completed run into a failed one. Logged
+  // rather than swallowed — a week graded "recorded no outcomes" is the visible cost.
+  try {
+    await deps.recordRun(database, verifyWeekStart(now), {
+      checked: summary.checked,
+      confirmed: summary.confirmed,
+      discrepancies: summary.discrepancies,
+      unverified: summary.unverified,
+    });
+  } catch (err) {
+    console.error({ err }, 'registration verify: outcomes not recorded');
+  }
 
   const actionable =
     summary.discrepancies > 0 || summary.unverified > 0 || discoveries.some((d) => d.published);

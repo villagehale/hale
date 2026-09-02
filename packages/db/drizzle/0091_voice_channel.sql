@@ -1,0 +1,21 @@
+-- Voice v1 — a call is now a delivery leg of its own.
+--
+-- Until now a call could only be answered by TEXT, so every row a call produced rode on
+-- the 'sms' channel and told the truth. A spoken turn does not: nothing was texted, and
+-- a ledger that says otherwise is wrong in a PIPEDA right-to-access read and wrong in
+-- every count that separates what Hale sent from what Hale said.
+--
+-- It also keeps the reconciler honest. `reconcileUnhandedInbound` sweeps unmarked
+-- inbound sms 'reply' rows into the SMS coach's queue; a spoken turn recorded as 'sms'
+-- would be swept five minutes later and answered a second time, by text (the #443 bug
+-- shape). A channel of its own puts voice outside that select by construction.
+--
+-- Additive only (rule #9): one enum value. Nothing is dropped and no existing value
+-- changes meaning. No row uses the new value in this transaction, so ADD VALUE is safe
+-- on its own (the 0072 / 0083 / 0086 precedent).
+ALTER TYPE "public"."channel_message_channel" ADD VALUE IF NOT EXISTS 'voice';--> statement-breakpoint
+-- And the agent_runs name for one spoken turn. A call runs on a different tier with a
+-- different latency budget and a per-minute carrier cost on top of the tokens, so
+-- folding it into 'coach-channel-sms' would average two surfaces into a number that
+-- describes neither (the 0075 precedent).
+ALTER TYPE "public"."agent_name" ADD VALUE IF NOT EXISTS 'voice-turn';

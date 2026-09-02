@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancel (one clear match) and asks for YES to confirm — that's right. For Saturday indoors, it offers the Central Library story time, which is a verified offerable (name, place, day) — exactly right. The second offerable (Riverdale Farm, Sunday) is correctly not offered since the parent asked for Saturday. The draft cap is 2 and only 1 was drafted (the cancel); the Saturday activity suggestion doesn't consume a draft slot as it's just information. No invented URLs, no app referral, no sign-off. The reply is tight and complete. One minor issue: the text is slightly list-like in structure (two sentences, the second introduced with \"For Saturday indoors\"), but it reads naturally and is not a bulleted list. This is close to perfect — the shape is right, the content is right, the YES prompt is there, and the activity hand-off is clean.",
+    "score": 5
+  }
+}

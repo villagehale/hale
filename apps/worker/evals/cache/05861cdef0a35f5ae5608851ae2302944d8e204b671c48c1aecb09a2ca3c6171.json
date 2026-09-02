@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies Remy as a toddler (19 months), gives concrete actionable advice (consistent brief response, hand on back, few words, no pick-up) grounded in that age stage, and appends the correct fixed offer line \"Want the full plan? Reply YES and I'll send it.\" The advice is specific enough to act on tonight. The reply is appropriately short, has no greeting or sign-off, no markdown, no referral handed back. The one small note: it uses \"she\" for Remy, which is a mild assumption, but that's a very minor point. The text trails off with \"every...\" which looks like a cut mid-sentence before the fixed line — that truncation is slightly awkward but acceptable given the 300-character constraint explanation in the rubric. Overall this is the product working correctly.",
+    "score": 5
+  }
+}

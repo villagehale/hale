@@ -59,6 +59,38 @@ describe('parseAuthenticationResults', () => {
     ]);
   });
 
+  /**
+   * THE REAL RECEIVING MTA. AWS SES — which is what Resend's inbound runs on — reports a
+   * DKIM result as `header.i` (the AUID) and emits NO `header.d`. Observed from a live
+   * Gmail message on 2026-08-14. The parser read only `header.d`, so every genuine inbound
+   * came back domainless and was rejected as `dkim_not_aligned`: the leg was inert against
+   * the only MTA it will ever see. The i= domain (the part after the last `@`) is the
+   * signing domain — RFC 6376 requires i= to be d= or a subdomain of it — so it is a sound
+   * fallback WHEN d is absent, never a replacement for it.
+   */
+  it('reads the signing domain from header.i when the MTA emits no header.d (real AWS SES)', () => {
+    const header =
+      'amazonses.com; spf=pass (spfCheck: domain of _spf.google.com designates 209.85.214.169 as permitted sender) client-ip=209.85.214.169; envelope-from=barton97daz@gmail.com; helo=mail-pl1-f169.google.com; dkim=pass header.i=@gmail.com; dmarc=pass header.from=gmail.com;';
+    expect(parseAuthenticationResults(header)).toEqual({
+      authservId: 'amazonses.com',
+      spf: 'pass',
+      dmarc: 'pass',
+      dkim: [{ verdict: 'pass', domain: 'gmail.com' }],
+    });
+  });
+
+  it('takes the domain after the @ when header.i carries a local part', () => {
+    expect(
+      parseAuthenticationResults(`${MX}; dkim=pass header.i=user@sub.example.com`)?.dkim,
+    ).toEqual([{ verdict: 'pass', domain: 'sub.example.com' }]);
+  });
+
+  it('falls closed when header.i names no domain', () => {
+    expect(parseAuthenticationResults(`${MX}; dkim=pass header.i=nobody`)?.dkim).toEqual([
+      { verdict: 'pass', domain: null },
+    ]);
+  });
+
   it('does not read header.d out of a longer parameter name', () => {
     expect(parseAuthenticationResults(`${MX}; dkim=pass header.dkim=nope.test`)?.dkim).toEqual([
       { verdict: 'pass', domain: null },
@@ -103,6 +135,20 @@ describe('parseAuthenticationResults', () => {
       { verdict: 'none', domain: null },
     ]);
   });
+
+  /**
+   * A single header value that is not JSON stays exactly as it was — the array decode is
+   * gated on a leading `[`, which a real authserv-id (a hostname) never has, so the common
+   * one-verdict case is untouched.
+   */
+  it('leaves an ordinary single header value alone', () => {
+    expect(parseAuthenticationResults(`${MX}; dkim=pass header.d=example.com`)).toEqual({
+      authservId: MX,
+      spf: null,
+      dmarc: null,
+      dkim: [{ verdict: 'pass', domain: 'example.com' }],
+    });
+  });
 });
 
 describe('assessSenderTrust', () => {
@@ -118,6 +164,79 @@ describe('assessSenderTrust', () => {
       ...trusted,
     });
     expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  /**
+   * THE END-TO-END REAL CASE. The exact Authentication-Results a live Gmail message
+   * carried through Resend/SES on 2026-08-14, from barton97daz@gmail.com. Before the
+   * header.i fallback this returned dkim_not_aligned — a real parent, refused — which is
+   * how the leg was proven inert against its own MTA. This is the regression anchor: if
+   * the fallback is ever removed, a genuine inbound stops being trusted and this flips.
+   */
+  it('trusts a genuine Gmail message stamped by AWS SES (header.i, no header.d)', () => {
+    const verdict = assessSenderTrust({
+      headers: header(
+        'amazonses.com; spf=pass (spfCheck: domain of _spf.google.com designates 209.85.214.169 as permitted sender) client-ip=209.85.214.169; envelope-from=barton97daz@gmail.com; helo=mail-pl1-f169.google.com; dkim=pass header.i=@gmail.com; dmarc=pass header.from=gmail.com;',
+      ),
+      authservId: 'amazonses.com',
+      fromDomain: 'gmail.com',
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  /** The fallback must not become a hole: an SES-stamped pass whose i= domain is NOT the
+   * From domain still fails closed, exactly as a mismatched header.d would. */
+  it('refuses a header.i pass whose domain is not the From domain', () => {
+    const verdict = assessSenderTrust({
+      headers: header('amazonses.com; dkim=pass header.i=@attacker.test'),
+      authservId: 'amazonses.com',
+      fromDomain: 'gmail.com',
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
+  });
+
+  /**
+   * THE FORWARDED MESSAGE, verbatim. This is exactly what Resend returned for a Gmail
+   * message forwarded aloha@ -> hale@mail on 2026-08-14: a message with TWO
+   * Authentication-Results (SES's own, plus Google's from when it first received the mail)
+   * comes back as a JSON-array-ENCODED STRING, `["<ses>","<google>"]`. The newline split
+   * found no newline, parsed the whole blob as one clause, and read the authserv-id as
+   * `["amazonses.com` — so every forwarded parent email, the PRIMARY production path, was
+   * refused. `observedAuthservIds: ['["amazonses.com']` in the prod log is what caught it.
+   */
+  it('trusts a real forwarded Gmail message whose two verdicts arrive JSON-array-encoded', () => {
+    const verdict = assessSenderTrust({
+      headers: header(
+        '["amazonses.com; spf=pass (spfCheck: domain of villagehale.com designates 209.85.208.50 as permitted sender) client-ip=209.85.208.50; envelope-from=barton+caf_=hale=mail.villagehale.com@villagehale.com; helo=mail-ed1-f50.google.com; dkim=pass header.i=@gmail.com; dmarc=pass header.from=gmail.com;","mx.google.com; dkim=pass header.i=@gmail.com header.s=20251104 header.b=mkuRsUWp; arc=pass (i=1); spf=pass (google.com: domain of barton97daz@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=barton97daz@gmail.com; dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com; dara=neutral header.i=@villagehale.com"]',
+      ),
+      authservId: 'amazonses.com',
+      fromDomain: 'gmail.com',
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  /**
+   * The forgery defense survives the array decode, and is now the DESIGNED behavior rather
+   * than an accident of a mangled parse: a sender who writes their own
+   * `Authentication-Results: amazonses.com; ...` produces a second copy under our
+   * authserv-id once SES adds its real one, so both land in the array and the exactly-one
+   * rule refuses it. A legitimate forward is one-ours-plus-Google, which is not two ours.
+   */
+  it('refuses a forwarded blob carrying two copies of our own authserv-id (forged duplicate)', () => {
+    const verdict = assessSenderTrust({
+      headers: header(
+        '["amazonses.com; dkim=pass header.i=@attacker.test","amazonses.com; dkim=pass header.i=@gmail.com"]',
+      ),
+      authservId: 'amazonses.com',
+      fromDomain: 'gmail.com',
+    });
+    expect(verdict).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      // Both copies are named — the decode turned the blob into two real entries, so the
+      // exactly-one rule fires by design and the log shows why.
+      observedAuthservIds: ['amazonses.com', 'amazonses.com'],
+    });
   });
 
   /**
@@ -235,7 +354,31 @@ describe('assessSenderTrust', () => {
       headers: header('attacker-controlled; dkim=pass header.d=example.com'),
       ...trusted,
     });
-    expect(verdict).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+    expect(verdict).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      observedAuthservIds: ['attacker-controlled'],
+    });
+  });
+
+  /** The refusal names every authserv-id it DID see, in header order — the operator's
+   * one clue when the configured id and the MTA's real one disagree (provisioning
+   * checklist 8a reads this instead of a dashboard). */
+  it('reports the observed authserv-ids, in order, when none of them is ours', () => {
+    const verdict = assessSenderTrust({
+      headers: {
+        'authentication-results': [
+          'first.test; dkim=pass header.d=example.com',
+          'second.test; dkim=fail header.d=example.com',
+        ].join('\n'),
+      },
+      ...trusted,
+    });
+    expect(verdict).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      observedAuthservIds: ['first.test', 'second.test'],
+    });
   });
 
   it('picks our MTA’s verdict out of a list of hops, ignoring another MTA’s', () => {
@@ -264,7 +407,13 @@ describe('assessSenderTrust', () => {
       headers: { 'authentication-results': copies.join('\n') },
       ...trusted,
     });
-    expect(verdict).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+    // Multiplicity is kept on purpose: our own id listed TWICE is how a forged
+    // duplicate shows up in the log (provisioning checklist 8c observes exactly this).
+    expect(verdict).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      observedAuthservIds: [MX, MX],
+    });
   });
 
   it('still accepts a single verdict that arrives folded across lines', () => {
@@ -279,6 +428,7 @@ describe('assessSenderTrust', () => {
     expect(assessSenderTrust({ headers: header(undefined), ...trusted })).toEqual({
       trusted: false,
       reason: 'no_trusted_verdict',
+      observedAuthservIds: [],
     });
   });
 
@@ -303,7 +453,11 @@ describe('assessSenderTrust', () => {
         headers: header(`${MX}.evil.test; dkim=pass header.d=example.com`),
         ...trusted,
       }),
-    ).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+    ).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      observedAuthservIds: [`${MX}.evil.test`],
+    });
   });
 
   /** A quoted or punctuation-trailed domain is misread rather than parsed — and a domain

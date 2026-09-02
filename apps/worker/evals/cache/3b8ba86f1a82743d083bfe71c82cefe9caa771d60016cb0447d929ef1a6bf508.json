@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2. Hale correctly drafted the two swim cancellations and told the parent it will line up soccer and Wednesday next — that is the correct handling of overflow. The Wednesday \"appointment\" matches the private item at Wed 9:00am; Hale can draft a cancel for that (it doesn't need to know the content to cancel it). Soccer is unambiguously Saturday. So the four events are all identifiable and the cap-2 handling is right. The reply names both drafted items with their times, ends with \"YES to confirm these two,\" and explicitly says it will line up the rest — exactly the contract. No app referral, no invented detail, no markdown, no sign-off. One very small blemish: the dash after \"YES to confirm these two\" and the phrase \"then I'll line up soccer and Wednesday\" is slightly informal but clear and correct. This is a clean, well-shaped reply that does the job precisely.",
+    "score": 5
+  }
+}

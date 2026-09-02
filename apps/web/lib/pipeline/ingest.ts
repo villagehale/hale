@@ -1,4 +1,4 @@
-import { type AgentClient, HAIKU_MODEL, SONNET_MODEL } from '@hale/agent';
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import {
   type ActionType,
@@ -174,8 +174,11 @@ export async function ingestEvent(
   const childNames = await loadFamilyChildNames(database, familyId);
   const redactedRawContent = JSON.stringify(redactEventPayload(payload, childNames));
 
-  // 1. Classify (Haiku skill). Traced as 'classify-event'; the mask is the rule-#1
-  // backstop over the inbound raw content the classifier sees.
+  // 1. Classify. Traced as 'classify-event'; the mask is the rule-#1 backstop over the
+  // inbound raw content the classifier sees. WHICH MODEL RAN IS THE STAGE'S TO SAY, not
+  // this caller's: the tier comes from the skill's declared task (pickModel), and a
+  // constant written here instead was a label that had already drifted a whole tier from
+  // what Anthropic billed us for.
   const { classified, classifyTraceId } = await traceAgentRun(
     { name: 'classify-event', userId: 'system', tags: ['classify-event'], metadata: { familyId } },
     async (trace) => {
@@ -183,7 +186,7 @@ export async function ingestEvent(
         { source: input.source, rawContent: redactedRawContent },
         client,
       );
-      trace.recordGeneration('classify-event-call', { model: HAIKU_MODEL, usage: result.usage });
+      trace.recordGeneration('classify-event-call', { model: result.model, usage: result.usage });
       return { classified: result, classifyTraceId: trace.traceId };
     },
   );
@@ -215,7 +218,7 @@ export async function ingestEvent(
     teenContent,
     childId,
     usage: classified.usage,
-    model: HAIKU_MODEL,
+    model: classified.model,
     langfuseTraceId: classifyTraceId,
   });
 
@@ -238,7 +241,7 @@ export async function ingestEvent(
     return { status: 'dropped', eventId, reason: 'unknown_action_type' };
   }
 
-  // 3. Draft (Sonnet skill). Traced as 'draft-action'.
+  // 3. Draft. Traced as 'draft-action'; the model is the stage's, as above.
   const { drafted, draftTraceId } = await traceAgentRun(
     { name: 'draft-action', userId: 'system', tags: ['draft-action'], metadata: { familyId } },
     async (trace) => {
@@ -250,7 +253,7 @@ export async function ingestEvent(
         },
         client,
       );
-      trace.recordGeneration('draft-action-call', { model: SONNET_MODEL, usage: result.usage });
+      trace.recordGeneration('draft-action-call', { model: result.model, usage: result.usage });
       return { drafted: result, draftTraceId: trace.traceId };
     },
   );
@@ -260,7 +263,7 @@ export async function ingestEvent(
     eventId,
     draft: drafted.draft,
     usage: drafted.usage,
-    model: SONNET_MODEL,
+    model: drafted.model,
     langfuseTraceId: draftTraceId,
   });
 
@@ -275,7 +278,7 @@ export async function ingestEvent(
         database,
         client,
       );
-      trace.recordGeneration('review-action-loop', { model: SONNET_MODEL, usage: result.usage });
+      trace.recordGeneration('review-action-loop', { model: result.model, usage: result.usage });
       return { reviewed: result, reviewTraceId: trace.traceId };
     },
   );
@@ -287,7 +290,8 @@ export async function ingestEvent(
     actionType,
     verdict: reviewed.verdict,
     usage: reviewed.usage,
-    model: SONNET_MODEL,
+    costUsd: reviewed.costUsd,
+    model: reviewed.model,
     langfuseTraceId: reviewTraceId,
   });
 

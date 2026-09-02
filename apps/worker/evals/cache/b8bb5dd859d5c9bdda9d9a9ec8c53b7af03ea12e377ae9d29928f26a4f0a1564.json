@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "msg_011CeMy5fMSahQ2jZ8cxBKWB",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Remy's 19 months, so under the 3.5 cutoff for Cartwheels - he'd be in Tiny Gym with a parent alongside him."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1340,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 13908,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 52,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

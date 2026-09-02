@@ -21,6 +21,7 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
+  fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
@@ -29,6 +30,7 @@ import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine'
 import { readCandidates, readWindows, createRadarComposer } from '~/lib/channel/intake/radar';
 import { MAX_PAYLOAD_SEGMENTS } from '~/lib/channel/intake/radar-voice';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   type NudgeFamily,
   type NudgeRunDeps,
@@ -47,6 +49,7 @@ import { draftInlineAction } from '~/lib/coach/inline-action';
 import { findBannedPhrases } from '~/lib/health/framing';
 import { checkpointToldKeyPrefix } from '~/lib/health/told';
 import { matchHealthCheckpoints } from '~/lib/health/match';
+import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
@@ -417,6 +420,9 @@ async function runToddlerJourney(): Promise<Journey> {
 
   const intakeDeps: IntakeDeps = {
     transport,
+    // A FakeDb has no `conversations` to resolve, and what this file pins is not the
+    // thread — the machine's own suite owns that (intake/machine.test.ts).
+    threadMessage: async () => 'conv-1',
     extractor: new FakeExtractor(extractions),
     intentReader: new FakeIntentReader([assent('yes please')]),
     // The REAL radar composer, on the REAL production fallback path (`client: null`
@@ -462,6 +468,7 @@ async function runToddlerJourney(): Promise<Journey> {
     // fallback path (`null` client renders the deterministic follow-up and names the
     // reason), so the journey reads the words a family actually gets when voice is off.
     ackComposer: createIntakeAckComposer(null),
+    answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,
@@ -473,7 +480,9 @@ async function runToddlerJourney(): Promise<Journey> {
   const followUp = await text('Max and Mia, we are at L3R');
   const provisioned = await text('Max is 4, Mia is 18 months');
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
-  const radarBody = transport.bodies().at(-1) as string;
+  // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
+  // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
+  const radarBody = transport.bodies().findLast((b) => b.includes(WATCH_OFFER)) as string;
   const watched = await text('yes please');
 
   const parentUser = fake.rows(schema.users)[0] as { id: string; externalAuthId: string };
@@ -532,6 +541,9 @@ async function runToddlerJourney(): Promise<Journey> {
         gateCalls.push('frequency_cap');
         return real.countProactiveSends(fid, kind, since);
       },
+      // A brand-new family: nothing proactive has reached them yet, so the nudge below is
+      // their first proactive contact ever and carries the CASL opt-out line.
+      proactiveSentSince: async () => false,
       parentTimeZone: async (id) => {
         gateCalls.push('quiet_hours');
         return real.parentTimeZone(id);
@@ -612,6 +624,13 @@ async function runToddlerJourney(): Promise<Journey> {
     // MEM-10 · the REAL writer over the same store: a nudge that lands pays off the
     // intake radar's forward promise, and the journey is where that has to be true.
     fulfillCommitment,
+    // The REAL offer writer over the same store: a health nudge whose task is booking
+    // registers the standing question its own close makes (lib/health/offer.ts).
+    recordCheckupOffer: (database, input) =>
+      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
+    // The REAL threader over the same store: a nudge the parent can answer has to be a
+    // row in `messages`, because that is the only place their reply's antecedent lives.
+    threadMessage: threadProactiveMessage,
   };
 
   vi.stubEnv('F14_ENABLED', 'true');
@@ -622,6 +641,7 @@ async function runToddlerJourney(): Promise<Journey> {
   // ── STAGE 6 · the registration sequence ───────────────────────────────────
   const claimed = new Set<string>();
   const sequenceDeps: SequenceRunDeps = {
+    refuseUnbackedSend: async () => [],
     /** SEAM: prod's selector is the same two INNER JOINs as the nudge's. */
     selectFamilies: async (): Promise<SequenceFamily[]> => {
       const family = fake.rows(schema.families)[0] as Record<string, unknown>;
@@ -734,6 +754,10 @@ async function runToddlerJourney(): Promise<Journey> {
     // plan the evening before" is a promise, and the battle plan is what keeps it.
     recordCommitment,
     fulfillCommitment,
+    // The REAL threader over the same store, for the reason the nudge's is real: the
+    // whole ladder is a conversation, and a leg the parent answers has to be a row in
+    // `messages` or the answer arrives with nothing above it.
+    threadMessage: threadProactiveMessage,
   };
 
   const propose = await runRegistrationSequenceCron(fake.db, sequenceDeps, SEQUENCE_AT);
@@ -750,7 +774,11 @@ async function runToddlerJourney(): Promise<Journey> {
       fake
         .rows(schema.actions)
         .filter((row) => row.userVisibleState === 'drafted_for_approval')
-        .map((row) => ({ actionId: row.id as string, actionType: row.actionType as string })),
+        .map((row) => ({
+          actionId: row.id as string,
+          actionType: row.actionType as string,
+          reviewerApproved: row.reviewerVerdict === 'approved',
+        })),
     latestUndoable: async () => null,
     approve: async (database, args) => {
       const result = await approveDraftedAction(database, queue, args);
@@ -768,6 +796,8 @@ async function runToddlerJourney(): Promise<Journey> {
     primaryParentName: null,
     conversationId: null,
     now: SEQUENCE_AT,
+    resolved: null,
+    openQuestions: async () => [],
   } as never);
   const approvedPayload =
     (queue.send.mock.calls[0]?.[1] as Record<string, unknown> | undefined) ?? null;
@@ -988,6 +1018,29 @@ describe('4 · the 48h nudge reaches a transport', () => {
       .filter((row) => row.category === 'nudge');
     expect(ledger).toHaveLength(1);
     expect(String(ledger[0]?.providerMessageId)).toMatch(/^fake-out-\d+$/);
+  });
+
+  it('lands in the thread, so the parent can just reply to it', () => {
+    // The ledger row above stores `body: null` by design (rule #1), which means it is
+    // not something the coach can read back. `messages` is, and until 2026-08-22 no
+    // nudge ever reached it: 11 of 71 post-account SMS outbounds in prod were invisible
+    // to the very thread their reply would arrive in, so "yes" landed on whatever else
+    // happened to be standing. The wire body carries the CASL line and this row must
+    // not — the thread is history, not a compliance surface.
+    const threaded = journey.fake.rows(schema.messages).filter((row) => row.role === 'assistant');
+    // Three proactive sends happen in this journey and all three are now sentences the
+    // coach can see: the 48h nudge, then the registration ladder's heads-up and its
+    // battle plan. The ladder matters most — it is the one Hale runs as a conversation,
+    // and its heads-up asks for the YES that stage 7 gives.
+    expect(threaded).toHaveLength(3);
+    const body = String(threaded[0]?.content);
+    expect(journey.nudgeSends[0]?.body).toContain(body);
+    expect(body).not.toContain(NUDGE_OPT_OUT);
+    // Nothing invented: every threaded sentence is one that actually went on the wire.
+    const wire = journey.transport.bodies();
+    expect(
+      threaded.every((row) => wire.some((sent) => sent.includes(String(row.content)))),
+    ).toBe(true);
   });
 });
 

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent said \"cancel swim\" and there are exactly two swim lessons in the week — Monday and Thursday. This is a genuine ambiguity (two matching events), so asking which one is the correct handling. The reply surfaces both events with their times and venues (all traceable to the week), then asks a single clear question. No drafting until clarified — correct. No app mention, no sign-off, no markdown, one question only. This is exactly right.",
+    "score": 5
+  }
+}

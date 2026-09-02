@@ -12,12 +12,13 @@ import type { ChannelMessageReceivedJob } from './inbound';
  * index and answers 'duplicate' — so something has to come back later and finish the
  * job. This is that something.
  *
- * BOTH INBOUND DOORS, one reconciler. It lives in twilio/ because SMS was the first leg
- * to have one, but the column it reads is not the SMS leg's: the email webhook writes
- * and stamps `handed_off_at` identically (email/inbound.ts), so an email whose enqueue
- * failed is owed exactly what a text is. Email was excluded here until it was — #443
- * narrowed this sweep to sms while inbound email was still recorded-and-dropped, and
- * that exclusion expires with the phase that justified it.
+ * ALL INBOUND DOORS, one reconciler. It lives in twilio/ because SMS was the first leg
+ * to have one, but the column it reads is not the SMS leg's: the WhatsApp turn arrives
+ * through the same Twilio webhook and stamps its real transport, and the email webhook
+ * writes and stamps `handed_off_at` identically (email/inbound.ts), so a message whose
+ * enqueue failed is owed exactly what a text is. Email was excluded here until it was —
+ * #443 narrowed this sweep to sms while inbound email was still recorded-and-dropped,
+ * and that exclusion expires with the phase that justified it.
  *
  * It is safe to re-drive blindly for two reasons that live elsewhere, and neither is
  * re-implemented here:
@@ -77,11 +78,13 @@ export interface UnhandedInboundRow {
 }
 
 /**
- * The doors C1 consumes. Both of them, and only them: a text and an email are one
- * queue, one router and one conversation, so a message owed a reply is owed one whichever
- * way it arrived (email/inbound.ts, router/reply-route.ts).
+ * The doors C1 consumes. All three of them, and only them: a text, a WhatsApp message
+ * and an email are one queue, one router and one conversation, so a message owed a
+ * reply is owed one whichever way it arrived (email/inbound.ts, router/reply-route.ts).
+ * Both phone pipes belong here (WhatsApp v1): the webhook stamps the real transport,
+ * and a sweep pinned to 'sms' would strand every abandoned WhatsApp turn forever.
  */
-const REDRIVEN_CHANNELS = ['sms', 'email'] as const;
+const REDRIVEN_CHANNELS = ['sms', 'whatsapp', 'email'] as const;
 
 /**
  * Inbound rows C1 was never given, oldest first — a parent's messages are re-driven in
@@ -113,7 +116,7 @@ export async function selectUnhandedInbound(
     .from(schema.channelMessages)
     .where(
       and(
-        // Exactly what the two hand-off writers record, and nothing else. Intake and
+        // Exactly what the hand-off writers record, and nothing else. Intake and
         // caregiver rows are written by handlers that consume them themselves — an
         // unmarked row there is not a message C1 is owed, and sweeping one in replays
         // something that was already answered.

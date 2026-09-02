@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import type { RenderedContent } from '../types';
 import { createTwilioSmsChannel } from './twilio-sms';
 
@@ -13,6 +14,15 @@ const SMS: Extract<RenderedContent, { kind: 'sms' }> = {
   text: 'A check-up is coming up',
 };
 const PHONE = '+14165550100';
+
+/** A transport that refuses every send with the given error. */
+function refusingTransport(error: unknown) {
+  return {
+    async send(): Promise<{ providerMessageId: string }> {
+      throw error;
+    },
+  };
+}
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -86,12 +96,54 @@ describe('createTwilioSmsChannel().send', () => {
     expect(sent).toEqual({ status: 'sent', providerMessageId: 'fake-out-1' });
   });
 
+  it('maps a permanent Twilio refusal (21610 — this parent opted out) to a NON-transient error outcome', async () => {
+    const outcome = await createTwilioSmsChannel({
+      transport: refusingTransport(new TwilioSendError('21610', 400)),
+      resolveTarget: async () => PHONE,
+      configured: true,
+    }).send({ userId: USER_ID, rendered: SMS });
+
+    // Non-transient is the whole point: the dispatch writes the failed row instead of
+    // throwing, so pg-boss stops re-earning the same refusal every backoff.
+    expect(outcome).toEqual({
+      status: 'error',
+      transient: false,
+      code: '21610',
+      message: 'twilio send failed: HTTP 400, twilio code 21610',
+    });
+  });
+
+  it('maps a provider outage to a TRANSIENT error outcome, which the dispatch turns back into a retry', async () => {
+    const outcome = await createTwilioSmsChannel({
+      transport: refusingTransport(new TwilioSendError('20500', 503)),
+      resolveTarget: async () => PHONE,
+      configured: true,
+    }).send({ userId: USER_ID, rendered: SMS });
+
+    expect(outcome).toEqual({
+      status: 'error',
+      transient: true,
+      code: '20500',
+      message: 'twilio send failed: HTTP 503, twilio code 20500',
+    });
+  });
+
+  it('lets anything that is not a Twilio refusal escape — a bug here is not a delivery outcome', async () => {
+    await expect(
+      createTwilioSmsChannel({
+        transport: refusingTransport(new TypeError('fetch is not a function')),
+        resolveTarget: async () => PHONE,
+        configured: true,
+      }).send({ userId: USER_ID, rendered: SMS }),
+    ).rejects.toThrow(/fetch is not a function/);
+  });
+
   it('refuses content that is not SMS — a wiring bug, not a runtime condition', async () => {
     await expect(
       createTwilioSmsChannel({ resolveTarget: async () => PHONE, configured: true }).send({
         userId: USER_ID,
-        rendered: { kind: 'push', title: 'x', body: 'y' },
+        rendered: { kind: 'email', subject: 'x', html: '<p>y</p>', text: 'y' },
       }),
-    ).rejects.toThrow(/received push content/);
+    ).rejects.toThrow(/received email content/);
   });
 });

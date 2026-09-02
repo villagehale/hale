@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, SONNET5_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { askHale } from './agent';
@@ -183,10 +183,10 @@ describe('askHale — multi-turn persistence + conversationId', () => {
       },
     ]);
 
-    // Metrics reflect the single round-trip (Sonnet, converse task).
+    // Metrics reflect the single round-trip (the converse lane).
     expect(result.metrics.promptTokens).toBe(100);
     expect(result.metrics.completionTokens).toBe(30);
-    expect(result.metrics.modelUsed).toBe('claude-sonnet-4-6');
+    expect(result.metrics.modelUsed).toBe(SONNET5_MODEL);
 
     // Exactly one agent_runs row, family-scoped, with real model + token counts +
     // latency, marked completed (observability gap closed).
@@ -194,11 +194,54 @@ describe('askHale — multi-turn persistence + conversationId', () => {
     const run = capture.agentRuns[0] as Record<string, unknown>;
     expect(run.familyId).toBe(FAMILY_ID);
     expect(run.agentName).toBe('ask-hale');
-    expect(run.modelUsed).toBe('claude-sonnet-4-6');
+    expect(run.modelUsed).toBe(SONNET5_MODEL);
     expect(run.promptTokens).toBe(100);
     expect(run.completionTokens).toBe(30);
     expect(typeof run.latencyMs).toBe('number');
     expect(run.status).toBe('completed');
+  });
+
+  /**
+   * The cached tiers are billed, so they are priced. Cache reads bill at 0.1x the
+   * input rate and cache writes at 1.25x; costing promptTokens + completionTokens
+   * alone books thousands of genuinely-billed tokens at $0.
+   *
+   * Derived from the Sonnet rates ($3/MTok in, $15/MTok out), not from output:
+   * 200*3 + 1024*3*1.25 + 5303*3*0.1 + 90*15 = 7380.9 → $0.0073809.
+   */
+  it('prices the cache-read and cache-write tiers into the run cost', async () => {
+    const capture: InsertCapture = { conversations: [], messages: [], agentRuns: [] };
+    const cachedClient = {
+      messages: {
+        create: vi.fn(async () => ({
+          ...textMessage('six months, roughly.'),
+          usage: {
+            input_tokens: 200,
+            output_tokens: 90,
+            cache_creation_input_tokens: 1024,
+            cache_read_input_tokens: 5303,
+            server_tool_use: null,
+          } as Anthropic.Usage,
+        })),
+      },
+    } as unknown as AgentClient;
+
+    const result = await askHale(
+      {
+        familyId: FAMILY_ID,
+        question: 'when do I start solids?',
+        intent: null,
+        conversationId: null,
+        focusedChildId: null,
+        actor: 'user-1',
+        noteKey: null,
+        sourceNote: null,
+      },
+      fakeDb(capture),
+      cachedClient,
+    );
+
+    expect(result.metrics.costUsd).toBeCloseTo(0.0073809, 9);
   });
 
   it('records a FAILED agent_runs row and rethrows when the agent returns no answer (rule #8)', async () => {

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "clinical_query": "febrile seizure, whole body stiffening and shaking, now floppy and drowsy, toddler",
+    "age_band": "toddler",
+    "duration": "seizure lasted about 1 minute"
+  },
+  "latencyMs": 3109
+}

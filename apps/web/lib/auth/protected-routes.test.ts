@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PROTECTED_PREFIXES, isProtectedPath } from './protected-routes';
+import { PROTECTED_PREFIXES, isAdminPath, isProtectedPath } from './protected-routes';
 
 /**
  * VIL-256 — the Edge gate is defense in depth for the `(authed)` route group. Its
@@ -11,11 +11,17 @@ import { PROTECTED_PREFIXES, isProtectedPath } from './protected-routes';
  * module, so a new authed route fails here the day it lands.
  */
 
-const authedRoutes = readdirSync(fileURLToPath(new URL('../../app/(authed)', import.meta.url)), {
-  withFileTypes: true,
-})
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => `/${entry.name}`);
+const routesOfGroup = (group: string) =>
+  readdirSync(fileURLToPath(new URL(`../../app/${group}`, import.meta.url)), {
+    withFileTypes: true,
+  })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `/${entry.name}`);
+
+// /admin lives inside (authed) now (the portal shell) — its own nested layout
+// additionally 404s non-admins, but a request with no session at all must
+// still never reach it, so the derived list picks it up with the rest.
+const authedRoutes = routesOfGroup('(authed)');
 
 describe('the Edge gate covers the authed route group', () => {
   it('gates every route the (authed) group renders', () => {
@@ -42,5 +48,14 @@ describe('isProtectedPath', () => {
     for (const path of ['/sign-in', '/onboarding', '/unsubscribe', '/', '/planner', '/savedish']) {
       expect(isProtectedPath(path)).toBe(false);
     }
+  });
+});
+
+describe('isAdminPath', () => {
+  it('matches /admin and its sub-paths, and nothing that merely shares the prefix', () => {
+    expect(isAdminPath('/admin')).toBe(true);
+    expect(isAdminPath('/admin/anything')).toBe(true);
+    expect(isAdminPath('/administrator')).toBe(false);
+    expect(isAdminPath('/approvals')).toBe(false);
   });
 });

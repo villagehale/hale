@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands Sam their referral link and briefly explains what Hale does (context that helps when forwarding). It tells the parent to send the link themselves, which is exactly right. The link matches `knows.referralLinkAppended` exactly — not invented. No app mention, no markdown, no greeting or sign-off. The only small issue is it opens with \"Send that line to your friend\" before the link has even appeared, which is slightly awkward ordering, and the explanation of what Hale is reads a touch more like a pitch than a one-liner — a minor redundancy — but nothing misleading or missing. A small blemish, not a real fault.",
+    "score": 4
+  }
+}

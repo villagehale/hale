@@ -1,12 +1,12 @@
 import type { AgentClient } from '@hale/agent';
-import { pickModel } from '@hale/agent';
+import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { loadTriageChildEventSkill } from './skill';
 import type { InboxEnvelope } from './types';
 
 /**
- * Triage stage — the cheap first pass (Haiku via pickModel('triage')). Envelope
+ * Triage stage — the cheap first pass (Haiku via pickLane('triage')). Envelope
  * ONLY (subject/from/snippet, no body — E1 never emits one, and this stage never
  * fetches one) → child_related bool + confidence. The prompt is the
  * triage-child-event SKILL body (rule #2: never inline). Single LLM turn via
@@ -55,7 +55,7 @@ export async function triageEmail(
 
   const { value, usage } = await forceToolJson({
     client,
-    model: pickModel(skill.meta.task),
+    lane: pickLane(skill.meta.task),
     system: skill.instructions,
     userMessage,
     toolName: 'triage',

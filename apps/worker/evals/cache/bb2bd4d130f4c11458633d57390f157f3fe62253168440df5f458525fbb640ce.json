@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the gymnastics class from the earlier assistant message in the thread (Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13), drafts it as a calendar_add (within the draftCapPerMessage of 2), names the change clearly, and ends with \"YES to confirm.\" — exactly the contract shape required. The event reference is resolved from the thread itself (Hale named it in a prior message), so acting on it rather than asking for clarification is correct. No invented details, no app referral, no sign-off, no greeting, one question only (the confirmation). Clean and complete.",
+    "score": 5
+  }
+}

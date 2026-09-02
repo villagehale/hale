@@ -90,6 +90,42 @@ export function verdictLabel(verdict: string): string {
 }
 
 /**
+ * Reviewer verification tool → what it FOUND, in a parent's words. Source of truth:
+ * REVIEWER_TOOLS (packages/tools-contracts) — the closed set the reviewer may invoke
+ * before a draft is allowed to reach this queue (rule #3).
+ *
+ * Two phrasings per tool, because a bare noun beside a tick reads as neither outcome:
+ * "spending cap ✓" could mean the cap was hit. The pass and fail sentences each say
+ * the finding outright, so the mark only confirms what the words already state.
+ *
+ * An unknown tool degrades to NEUTRAL copy rather than hiding: rule #3 makes the
+ * coverage itself the disclosure, so dropping a check a parent's draft was actually
+ * put through would under-report Hale's own work. It is never de-underscored — a
+ * raw `check_pii_leak` must not reach a parent any more than an action_type token.
+ */
+const REVIEWER_CHECK_LABELS: Record<string, { passed: string; failed: string }> = {
+  check_calendar_conflict: { passed: 'calendar clear', failed: 'calendar clash' },
+  check_vaccine_schedule: { passed: 'schedule fits', failed: 'schedule mismatch' },
+  check_spending_cap: { passed: 'inside your cap', failed: 'over your cap' },
+  check_recipient_allowlist: { passed: 'known recipient', failed: 'new recipient' },
+  check_sender_allowlist: { passed: 'known sender', failed: 'new sender' },
+  check_action_time_window: { passed: 'sensible hour', failed: 'odd hour' },
+  check_action_idempotency: { passed: 'not a repeat', failed: 'looks like a repeat' },
+  check_pii_leak: { passed: 'no private details', failed: 'private details inside' },
+  check_user_override: { passed: 'matches your rules', failed: 'against your rules' },
+};
+
+const REVIEWER_CHECK_FALLBACK = {
+  passed: 'another check passed',
+  failed: 'another check flagged',
+};
+
+export function reviewerCheckLabel(tool: string, ok: boolean): string {
+  const pair = REVIEWER_CHECK_LABELS[tool] ?? REVIEWER_CHECK_FALLBACK;
+  return ok ? pair.passed : pair.failed;
+}
+
+/**
  * Village candidate price band → human copy. Source of truth: the discovery tool's
  * priceBand enum (village discover.ts: free | low | moderate | high). An unknown /
  * absent value resolves to null so the card HIDES the chip rather than showing an

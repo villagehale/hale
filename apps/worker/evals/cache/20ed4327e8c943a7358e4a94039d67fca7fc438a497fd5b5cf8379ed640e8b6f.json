@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CeFUoLUu81HnUimdv6ppA",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "At 5 months Theo's just a few weeks away - Health Canada's window is around 6 months, and the readiness signs to watch for are sitting with minimal support, losing the tongue-thrust reflex, and showing interest in food. First foods can be iron-rich purees or soft mashed foods, introduced one at a time - confirm timing with your provider since every baby's readiness differs a little.\n\nWant the full first-foods plan for Theo? Reply YES and I'll send it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1271,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 8646,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 112,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

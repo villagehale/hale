@@ -1,0 +1,33 @@
+{
+  "value": {
+    "slots": [
+      {
+        "name": "Tiny Gym, Cartwheels Gym Centre",
+        "age_fit": "walking to 3.5 yrs, with a parent",
+        "when": "Sundays 9:30-10:15 AM, September 14 to October 26 (no class Oct 12)",
+        "when_quote": "Tiny Gym | Sun | 9:30-10:15 AM | walking to 3.5 yrs, with a parent",
+        "price": "$124.00 per 10-week block, HST included",
+        "price_quote": "Tiny Gym ................. $124.00",
+        "registration": "Registration opened Tuesday, July 22 at 7:00 a.m. and remains open while spaces last",
+        "registration_quote": "Fall registration opened Tuesday, July 22 at 7:00 a.m. and remains open while spaces last.",
+        "registration_source": "https://cartwheelsgymcentre.example/register",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://cartwheelsgymcentre.example/programs"
+      },
+      {
+        "name": "Kinderfun, Cartwheels Gym Centre",
+        "age_fit": "3.5 - 5 yrs, drop-off",
+        "when": "Saturdays 10:30-11:15 AM, September 14 to October 26 (no class Oct 12)",
+        "when_quote": "Kinderfun | Sat | 10:30-11:15 AM | 3.5 - 5 yrs, drop-off",
+        "price": "$145.00 per 10-week block, HST included",
+        "price_quote": "Kinderfun ................ $145.00",
+        "registration": "Registration opened Tuesday, July 22 at 7:00 a.m. and remains open while spaces last",
+        "registration_quote": "Fall registration opened Tuesday, July 22 at 7:00 a.m. and remains open while spaces last.",
+        "registration_source": "https://cartwheelsgymcentre.example/register",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://cartwheelsgymcentre.example/programs"
+      }
+    ]
+  },
+  "latencyMs": 8428
+}

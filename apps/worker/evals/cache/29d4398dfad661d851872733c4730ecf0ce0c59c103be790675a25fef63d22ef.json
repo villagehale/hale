@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the resident opening date and time (Sep 1, 7:00 a.m.) and the general opening date (Sep 8) — both are Hale's verified facts stated flat, which is correct. It also correctly and honestly says it is not watching that window, because `watching` is false and Hale has no verb to start a watch. However, the rules say \"on a false window the DATE IS THE WHOLE ANSWER and saying it is not watching that one is honest, not a denial\" — so stating it is not watching is fine. But the rules also say \"score a 2 at most if it tells the parent to set their own alarm\" — this reply does not do that. It just states the date and acknowledges it is not watching. That is the correct and complete answer. The reply is short, accurate, and does not send the parent anywhere or invent anything. It does not tell the parent to set an alarm. It is honest that it cannot watch. This is a clean, correct reply. Minor note: it could be slightly warmer or clearer that the parent needs to mark that date themselves, but it does not cross into telling them to set an alarm. The reply is exactly right for a `watching: false` window — state the date, say it is not watching. No inflation, no app referral, no invented detail. This is a 5.",
+    "score": 5
+  }
+}

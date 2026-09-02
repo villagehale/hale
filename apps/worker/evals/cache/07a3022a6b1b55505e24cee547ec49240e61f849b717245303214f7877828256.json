@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the standing place (High Park) with its name, area, and what's there — all drawn from standingPlace, which is exactly right when offerable is empty. It does not invent a specific opening time or promise it's open on a named day, which is correct given the loose cadence. The stillBeingChecked count means Hale should also say it's still looking and will come back with more — that forward-looking line is missing, which is a blemish. The closing \"worth checking the water play hours for Saturday before you go\" is close to turning the cadence uncertainty into a task handed back to the parent, which nudges toward a 2, but it stops short of sending them to the app or a website and doesn't invent a time. It's more of an honest caveat than a full handback. No referral link (correctly absent since referralLinkAppended is null). No sign-off, no markdown. The shape is mostly right but the missing \"still looking, will come back\" line and the slight handback on water hours keep it from a 4.",
+    "score": 3
+  }
+}

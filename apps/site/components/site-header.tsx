@@ -1,141 +1,75 @@
-'use client';
-
-import { Menu, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { LandingCta } from '~/components/landing-cta';
+import { ChooserLink } from '~/components/chooser-link';
 import { LogoMark } from '~/components/logo-mark';
+import { Wordmark } from '~/components/wordmark';
+import { localeHref } from '~/i18n/navigation';
+import { type Locale, routing } from '~/i18n/routing';
+import { getTranslator } from '~/i18n/server';
 import { APP_URL } from '~/lib/app-url';
-import { f14LandingEnabled } from '~/lib/flags/landing';
-import { chromeCta, featuresHref } from '~/lib/site/chrome-cta';
+import { CONTACT_EMAIL, readSmsNumber } from '~/lib/text-entry';
 
 /**
- * The marketing header: a sticky, responsive nav shared across the homepage and
- * every subpage. Transparent over the warm page at the top; after 20px of
- * scroll it settles into a translucent, blurred bar with a hairline. Center
- * links deep-link to the homepage sections (About goes to /about); the right
- * "Get started" pill is the funnel top (captured via LandingCta). On mobile the
- * links collapse behind a hamburger that opens a dropdown and auto-closes on tap.
+ * The marketing header — the v4 liquid-glass nav pill, on every subpage.
  *
- * Sticky (not fixed) so subpages — which have no hero top-padding — still flow
- * below the bar instead of hiding under it.
+ * One design, whole site: this is the same floating glass pill the landing wears
+ * inline over its shore hero (components/landing/v4/landing-v4.tsx), so a reader
+ * crossing from / to /pricing never changes products. The landing keeps its nav
+ * inline because it sits over the hero art; every other page renders this, sticky.
+ *
+ * The theme control does NOT live here — v4 moved it to the footer switch, which
+ * every page ends in. The bar carries the three pages that introduce the product,
+ * a quiet sign-in link for the parent who already has an account (the app is the
+ * receipts surface, so the link whispers rather than sells), and ONE primary
+ * pill: Message Hale, which opens the /text chooser — the universal target that
+ * works on every device, which is why the pill no longer forks per surface
+ * (`sms:` deep link vs scroll target vs dead laptop click; the chooser ended
+ * that three-way fork). No number provisioned → email, which works everywhere.
+ * Every internal link carries the locale prefix.
  */
 
-const LINKS = [
-  { label: 'About', href: '/about' },
-  { label: 'Features', href: featuresHref() },
-  { label: 'Pricing', href: '/pricing' },
-  { label: 'FAQ', href: '/faq' },
-  { label: 'Contact', href: '/contact' },
-] as const;
+export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale }) {
+  const t = getTranslator(locale, 'Header');
+  const common = getTranslator(locale, 'Common');
+  const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
 
-export function SiteHeader() {
-  const [scrolled, setScrolled] = useState(false);
-  const [open, setOpen] = useState(false);
-  const cta = chromeCta();
-  // Under F14 the funnel event would be a lie: the CTA no longer reaches a signup.
-  const ctaEvent = f14LandingEnabled() ? 'landing_cta_text' : 'landing_cta_signin';
+  const nav = [
+    { label: t('navPricing'), href: localeHref(locale, '/pricing') },
+    { label: t('navFaq'), href: localeHref(locale, '/faq') },
+    { label: t('navAbout'), href: localeHref(locale, '/about') },
+  ];
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  const cta = smsNumber ? (
+    <ChooserLink locale={locale} placement="header" className="v4-btn-solid">
+      {common('messageHale')}
+    </ChooserLink>
+  ) : (
+    <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid">
+      {common('emailHale')}
+    </a>
+  );
 
   return (
-    <header
-      className={`sticky top-0 z-50 transition-colors duration-300 ${
-        scrolled
-          ? 'border-b border-[#F0F2F6] bg-[#FDFCFA]/80 backdrop-blur-md'
-          : 'border-b border-transparent'
-      }`}
-    >
-      <div className="relative mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <a href="/" className="flex shrink-0 items-center gap-2.5" aria-label="Hale, home">
-          <LogoMark size={34} />
-          <span className="font-serif text-[1.35rem] font-semibold leading-none text-[#17294A]">
-            Hale
-          </span>
+    <header className="sticky top-0 z-50 px-4 sm:px-6">
+      <nav className="v4-nav v4-glass" aria-label="Primary">
+        <a href={localeHref(locale, '/')} className="flex items-center gap-2.5" aria-label="Hale, home">
+          <LogoMark size={28} />
+          <Wordmark className="text-navy" />
         </a>
-
-        <nav
-          aria-label="Primary"
-          className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-8 md:flex"
-        >
-          {LINKS.map((link) => (
-            <a
-              key={link.label}
-              href={link.href}
-              className="rounded-sm text-sm font-medium text-[#5C6B87] transition-colors hover:text-[#17294A] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#17294A]"
-            >
-              {link.label}
-            </a>
-          ))}
-        </nav>
-
-        <div className="flex items-center gap-2">
-          <a
-            href={`${APP_URL}/sign-in`}
-            className="hidden rounded-sm px-2 text-sm font-medium text-[#5C6B87] transition-colors hover:text-[#17294A] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#17294A] sm:inline-flex"
-          >
-            Sign in
-          </a>
-          <LandingCta
-            event={ctaEvent}
-            href={cta.href}
-            className="hidden rounded-full bg-[#17294A] px-5 py-2.5 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A] sm:inline-flex"
-          >
-            {cta.label}
-          </LandingCta>
-          <button
-            type="button"
-            aria-label={open ? 'Close menu' : 'Open menu'}
-            aria-expanded={open}
-            aria-controls="mobile-nav"
-            onClick={() => setOpen((v) => !v)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[#17294A] transition-colors hover:bg-[#F0F2F6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A] md:hidden"
-          >
-            {open ? <X size={22} strokeWidth={1.75} /> : <Menu size={22} strokeWidth={1.75} />}
-          </button>
-        </div>
-      </div>
-
-      <div
-        id="mobile-nav"
-        inert={!open ? true : undefined}
-        className={`grid overflow-hidden border-[#F0F2F6] bg-[#FDFCFA]/95 backdrop-blur-md transition-[grid-template-rows,opacity] duration-300 motion-reduce:transition-none md:hidden ${
-          open ? 'grid-rows-[1fr] border-b opacity-100' : 'grid-rows-[0fr] opacity-0'
-        }`}
-      >
-        <div className="min-h-0">
-          <nav aria-label="Mobile" className="mx-auto flex max-w-7xl flex-col gap-1 px-6 py-4">
-            {LINKS.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                onClick={() => setOpen(false)}
-                className="rounded-lg px-2 py-3 text-base font-medium text-[#17294A] transition-colors hover:bg-[#F0F2F6]"
-              >
-                {link.label}
+        <div className="flex items-center gap-6">
+          <div className="v4-navlinks">
+            {nav.map((item) => (
+              <a key={item.label} href={item.href} className="v4-navlink">
+                {item.label}
               </a>
             ))}
-            <LandingCta
-              event={ctaEvent}
-              href={cta.href}
-              className="mt-2 inline-flex justify-center rounded-full bg-[#17294A] px-5 py-3 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36]"
-            >
-              {cta.label}
-            </LandingCta>
-            <a
-              href={`${APP_URL}/sign-in`}
-              onClick={() => setOpen(false)}
-              className="mt-1 inline-flex justify-center rounded-lg px-2 py-3 text-sm font-medium text-[#5C6B87] transition-colors hover:bg-[#F0F2F6] hover:text-[#17294A]"
-            >
-              Sign in
+            {/* Collapses with the nav links on a phone; the footer's sign-in
+                covers small screens. */}
+            <a href={`${APP_URL}/sign-in`} className="v4-navlink">
+              {t('signIn')}
             </a>
-          </nav>
+          </div>
+          {cta}
         </div>
-      </div>
+      </nav>
     </header>
   );
 }

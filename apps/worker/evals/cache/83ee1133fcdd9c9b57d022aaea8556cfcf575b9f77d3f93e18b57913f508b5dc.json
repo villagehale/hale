@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CeTesBnbH8K88thcPV53y",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-haiku-4-5-20251001",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I need to check the week to see if that swim move has been confirmed yet."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01LCJUi6cwjc8mvQuHuEM5B5",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 581,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 6383,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 54,
+      "service_tier": "standard",
+      "inference_geo": "not_available"
+    }
+  }
+}

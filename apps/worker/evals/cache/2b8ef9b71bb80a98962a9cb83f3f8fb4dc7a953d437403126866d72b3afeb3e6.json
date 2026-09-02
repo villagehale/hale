@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "CRITICAL FAILURE: pageEvidence=\"page_has_schedule\" means the page was opened and DOES publish times and prices. The message states \"Day, time and price only show up after logging into their Uplifter registration site\" - this is presenting Hale's own vagueness (inability to access the login-only content) as if it were a fact about what the page says. Per scoring rules: \"where that sentence is wanted it is first person - 'I could not pin down the day or the price' - never 'not posted yet'.\" The message should have said \"I could not pin down the day or the price after logging in\" or similar first-person attribution of the gap, not framed as \"their site says\" the information is hidden. Additionally, while watch=true correctly justifies the \"I'll keep watching\" sentence as an existing commitment, the prior sentence containing the unearned negative claim about page content is a LOW-scoring error under pageEvidence=\"page_has_schedule\"."
+  }
+}

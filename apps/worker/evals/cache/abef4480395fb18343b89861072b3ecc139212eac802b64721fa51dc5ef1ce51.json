@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGbCoDapCSwzcWEz88BP",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvADCpABCBEYAipAuX/BanUVrMJSRBX5wkpGnElL7xbEipC5ejKUz7fV6JTPwpt2vncjKLd8WZZDfx6CaRLCPo8BFGNFT4OrgTINFTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAaSBo9QGEgznvcRR6EW/J9iHUScaDN6thDtoCrKUXuAaxSIwm/5S8MFKoshvVL6I3JyLeJDgoSO8F5LQO78ztU6Imf/z/EP8pTHyPABenS9xAoPCKowC5mC6MgMZQk3K3B5Z+xH5W/P5Yrm8Dro+hh0jfZqiUgC8+FxOBEbRRfiPixaOJEs8XGtNUtN5tM4EgZnRzI1RgSZ1TfIMghDddFd5cE7MZUDPJGCXz7+P/85f33rJf9BQVvBYJZMcif6HKIPXD6dJdvTAAKvIXVKe2upudjC3WMdQRAOFySR6YMbcdVV9QbpgLlk3lAADQ9iXqcgbRFfZiis93//aGMlew+ajXuKwEUZeyHOeChDbltCxh19GfRnqYArCd5ZvzcfOcZwIe0CHX9ea21jAN0RWQenvEgpe+3wFiNwa+vY74rG1QF7/pZLdNypp9l5MnDvwqNBnHWaS5eHVOCbOjP6F/0y+QxgB"
+      },
+      {
+        "type": "text",
+        "text": "Mira's bedtime window is 7:30 pm, and the wind-down routine you've got going is bath, then story, then lights out.\n\nOne thing worth keeping in the mix: she settles best with her blue elephant for naps and travel, so it's probably part of that lights-out step too if it isn't already."
+      }
+    ],
+    "usage": {
+      "input_tokens": 16369,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 167,
+      "output_tokens_details": {
+        "thinking_tokens": 70
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 4953,
+  "firstInputTokens": 16369
+}

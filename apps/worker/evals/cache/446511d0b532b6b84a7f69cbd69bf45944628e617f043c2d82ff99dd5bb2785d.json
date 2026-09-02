@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with a real, named local program (Town of Oakville Learn to Swim - Preschool Levels A-E), attributes to \"their site says\", gives the specific browsing and registration dates from the pick, and handles the missing price/time honestly with \"I could not get into their page today\" — which is exactly the right phrasing under `no_page_read`. The YMCA pick is dropped to keep the message tight and complete on the best find, which is correct per the rules. Watch is TRUE and the message closes with a first-person commitment (\"I'll keep watching and text you when that's up\"), satisfying that requirement. No question is asked, no link is included, no price or time is invented, no aggregator is cited, no unearned negative claim is made. The message is two short sentences of plain text. Everything checks out.",
+    "score": 5
+  }
+}

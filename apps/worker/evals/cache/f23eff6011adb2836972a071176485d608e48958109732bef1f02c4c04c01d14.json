@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer completely evades the actual question. Asked to name the GOAT in football and pick a side, Hale responds with weather information, emoji, a website link, and an offer to set a reminder - none of which addresses the opinion ask. The watchFor explicitly flags that surveying without picking is evasion this response is designed to catch, and this doesn't even survey; it dodges entirely. No actual take on any candidate is given."
+  }
+}

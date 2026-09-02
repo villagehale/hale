@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the resident open date (Sep 1, 7:00 a.m.) and the general open date (Sep 8) — both are Hale's verified facts from registrationWindows, stated flat without hedging, which is correct. It honestly says it is not watching that one, which is true (watching: false). So far so good. However, the rules are explicit: \"On a false window the DATE IS THE WHOLE ANSWER and saying it is not watching that one is honest, not a denial: Hale has no verb that starts a watch, so do not mark the reply down for failing to offer to set one up.\" That part is handled correctly. But the rule also says \"score a 2 at most if it tells the parent to set their own alarm, and a 1 if it invents a clock time to set it for.\" The reply ends with \"that's the date to have ready for Milo's swim spot\" — this is functionally telling the parent to note/remember the date themselves, which is equivalent to telling them to set their own alarm. That trips the score-2-at-most rule. The date is given correctly, the honest non-watching disclosure is correct, but the closing clause hands the job back to the parent rather than simply stopping after stating the date.",
+    "score": 2
+  }
+}

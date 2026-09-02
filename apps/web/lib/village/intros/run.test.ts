@@ -1,13 +1,11 @@
 import type { Database } from '@hale/db';
+import { withOptOut } from '~/lib/channel/opt-out';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OutboundGatePorts, ProactiveHoldReason } from '~/lib/channel/outbound-gate';
-import { FakeIdentityAsk } from '~/lib/channel/intake/fakes';
+import { FakeIdentityAsk, FakeIntroVoice, echoIntroAsk } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { IntroEmailRequest, IntroEmailResult, IntroEmailSender } from './email';
-import {
-  DISCOVERABILITY_ASK,
-  INTRO_SOFT_CLOSE,
-} from './copy';
+import { INTRO_SOFT_CLOSE } from './copy';
 import {
   VILLAGE_INTROS_ALLOWLIST_ENV,
   VILLAGE_INTROS_ENABLED_ENV,
@@ -70,9 +68,14 @@ interface Harness {
   statuses: Array<{ proposalId: string; status: string; closed: boolean }>;
   expiries: Array<{ proposalId: string; expiresAt: Date }>;
   identityAsk: FakeIdentityAsk;
+  /** Every request the two composed asks were handed. The rule-#1 surface: a card cannot
+   * name the other family if the other family was never passed to the composer. */
+  introVoice: FakeIntroVoice;
   /** Every ledger write, so a test can assert the TEMPLATE KEY an ask was stamped with —
    * the only thing that makes the reply findable by a capture handler. */
   sends: Array<{ templateKey: string; dedupeKey: string; parentUserId: string }>;
+  /** Every intro that landed in the parent's own text thread (lib/channel/thread.ts). */
+  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
 }
 
 function harness(overrides: {
@@ -82,11 +85,13 @@ function harness(overrides: {
   children?: Record<string, IntroSweepChild[]>;
   proposals?: SweepProposal[];
   pairedBefore?: Set<string>;
+  synthetic?: Set<string>;
   hold?: ProactiveHoldReason | null;
   anchor?: { id: string; title: string; startsAt: Date } | null;
   emailResult?: IntroEmailResult;
   nameLevel?: 'first_name' | 'relation' | 'generic';
   identityAsk?: FakeIdentityAsk;
+  introVoice?: FakeIntroVoice;
 } = {}): Harness {
   const transport = new FakeTransport();
   const emails: IntroEmailRequest[] = [];
@@ -97,12 +102,15 @@ function harness(overrides: {
   const statuses: Harness['statuses'] = [];
   const expiries: Harness['expiries'] = [];
   const sends: Harness['sends'] = [];
+  const threaded: Harness['threaded'] = [];
   const identityAsk = overrides.identityAsk ?? new FakeIdentityAsk();
+  const introVoice = overrides.introVoice ?? new FakeIntroVoice();
 
   const gate: OutboundGatePorts = {
     channelEnrolled: async () => overrides.hold !== 'not_enrolled',
     watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
     countProactiveSends: async () => (overrides.hold === 'frequency_cap' ? 99 : 0),
+    proactiveSentSince: async () => true,
     parentTimeZone: async () => (overrides.hold === 'quiet_hours' ? 'America/Toronto' : 'UTC'),
   };
 
@@ -115,6 +123,7 @@ function harness(overrides: {
 
   const deps: IntroSweepDeps = {
     selectFamilies: async () => overrides.families ?? [],
+    syntheticProbeFamilyIds: async () => overrides.synthetic ?? new Set(),
     discoverableUserIds: async () => overrides.discoverable ?? new Set(),
     askedUserIds: async () => overrides.alreadyAsked ?? new Set(),
     loadChildren: async (_db, familyId) => overrides.children?.[familyId] ?? [child()],
@@ -141,6 +150,7 @@ function harness(overrides: {
       expiries.push({ proposalId, expiresAt });
     },
     identityAsk,
+    introVoice,
     buildGate: () => gate,
     dedupeActive: async () => false,
     resolveSendablePhone: async (_db, userId) => `phone-${userId}`,
@@ -154,6 +164,10 @@ function harness(overrides: {
     },
     audit: async (_db, row) => {
       audits.push({ familyId: row.familyId, actionTaken: row.actionTaken, after: row.after });
+    },
+    threadMessage: async (_db, input) => {
+      threaded.push(input);
+      return 'conv-1';
     },
     transport,
     email,
@@ -170,7 +184,9 @@ function harness(overrides: {
     statuses,
     expiries,
     identityAsk,
+    introVoice,
     sends,
+    threaded,
   };
 }
 
@@ -213,6 +229,22 @@ afterEach(() => {
 });
 
 describe('the dark-launch gate', () => {
+  it('never lets a synthetic probe family into the sweep, and counts it (ads-week audit, 2026-08-28)', async () => {
+    process.env[VILLAGE_INTROS_ENABLED_ENV] = 'true';
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      synthetic: new Set([A]),
+    });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    // The probe is out BEFORE any phase runs: B is now alone in its FSA, so nobody is
+    // asked — a probe must not be the reason a real family gets a cross-household text.
+    expect(result.skippedSynthetic).toBe(1);
+    expect(result.asked).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+  });
+
   it('does nothing at all when neither the flag nor the allowlist is armed', async () => {
     process.env[VILLAGE_INTROS_ENABLED_ENV] = 'false';
     const h = harness({ families: [family({ familyId: A }), family({ familyId: B })] });
@@ -229,13 +261,61 @@ describe('the dark-launch gate', () => {
     expect((await runVillageIntroSweep(DB, h.deps, NOW)).enabled).toBe(false);
   });
 
-  it('an allowlist arms only the families it names', async () => {
-    process.env[VILLAGE_INTROS_ENABLED_ENV] = 'false';
+  it('an allowlist narrows the sweep to the families it names', async () => {
     process.env[VILLAGE_INTROS_ALLOWLIST_ENV] = `${A},${B}`;
     const h = harness({ families: [family({ familyId: A }), family({ familyId: B })] });
     const result = await runVillageIntroSweep(DB, h.deps, NOW);
     expect(result.enabled).toBe(true);
     expect(result.asked).toBe(2);
+  });
+
+  it('an allowlist does not ARM anything - the flag is still the kill switch', async () => {
+    // One job each. An allowlist that could arm the sweep on its own would mean
+    // VILLAGE_INTROS_ENABLED=false stops nothing while one is set, which is the one
+    // control a founder reaches for during an incident.
+    process.env[VILLAGE_INTROS_ENABLED_ENV] = 'false';
+    process.env[VILLAGE_INTROS_ALLOWLIST_ENV] = `${A},${B}`;
+    const h = harness({ families: [family({ familyId: A }), family({ familyId: B })] });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(result.enabled).toBe(false);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('a non-empty allowlist outranks the flag - an unlisted family is never asked', async () => {
+    // The live defect (2026-08-13): the flag was ON, an allowlist was added as a safety
+    // rail, and the rail did nothing — `allFamilies || allowlist.has(id)` short-circuits
+    // past it, so a family nobody listed was asked AND matched.
+    process.env[VILLAGE_INTROS_ENABLED_ENV] = 'true';
+    process.env[VILLAGE_INTROS_ALLOWLIST_ENV] = A;
+    const h = harness({ families: [family({ familyId: A }), family({ familyId: B })] });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(result.asked).toBe(0); // A is listed but now alone in its FSA, so nobody is asked
+    expect(bodyTo(h, B)).toBeUndefined();
+    expect(h.sends).toEqual([]);
+  });
+
+  it('never matches, cards or names an unlisted family - even when the other side is listed', async () => {
+    process.env[VILLAGE_INTROS_ENABLED_ENV] = 'true';
+    process.env[VILLAGE_INTROS_ALLOWLIST_ENV] = A;
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      discoverable: new Set([`user-${A}`, `user-${B}`]),
+      proposals: [proposal()],
+    });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(result.proposed).toBe(0);
+    expect(h.proposalsCreated).toEqual([]);
+    expect(h.asked).toEqual([]);
+    expect(h.transport.sent).toEqual([]);
+    // The rail is COUNTED, not just effective — a silent skip is the shape rule #11 exists
+    // to forbid, and this counter is the only way a run says the rail did something.
+    expect(result.notAllowlisted).toBeGreaterThan(0);
   });
 });
 
@@ -245,8 +325,27 @@ describe('phase 1 - the discoverability ask', () => {
     const result = await runVillageIntroSweep(DB, h.deps, NOW);
 
     expect(result.asked).toBe(2);
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ASK, DISCOVERABILITY_ASK]);
+    expect(h.introVoice.calls).toEqual([{ kind: 'optin' }, { kind: 'optin' }]);
+    expect(h.transport.bodies()).toEqual([
+      withOptOut(echoIntroAsk({ kind: 'optin' }), 'short'),
+      withOptOut(echoIntroAsk({ kind: 'optin' }), 'short'),
+    ]);
     expect(h.audits.filter((a) => a.actionTaken === 'village_intro_ask_sent')).toHaveLength(2);
+  });
+
+  it("puts every intro text in that parent's own thread, composed sentence only", async () => {
+    const h = harness({ families: [family({ familyId: A }), family({ familyId: B })] });
+    await runVillageIntroSweep(DB, h.deps, NOW);
+
+    // Six of prod's eleven thread-invisible SMS outbounds on 2026-08-22 were intros: the
+    // parent replies "sure" to a text Hale has no record of writing, and the coach reads
+    // a thread in which it never spoke. `sendIntroSms` is the ONE send site behind all
+    // three intro templates, so threading it here covers ask, card and soft close.
+    expect(h.threaded.map((t) => t.parentUserId)).toEqual([`user-${A}`, `user-${B}`]);
+    // The composed ask, without the CASL footer the wire carries.
+    expect(h.threaded[0]?.body).toBe(echoIntroAsk({ kind: 'optin' }));
+    expect(h.transport.bodies()[0]).toContain(h.threaded[0]?.body ?? '\u0000');
+    expect(h.threaded[0]?.body).not.toMatch(/STOP/i);
   });
 
   it('never asks a family that is alone in its FSA', async () => {
@@ -389,8 +488,17 @@ describe('phase 2 - matching and the coarse card', () => {
 
     const cardToA = bodyTo(h, A) as string;
     expect(cardToA).toBe(
-      "A Hale family near you has a toddler around Maya's age. Want an intro? Reply YES INTRO or NO INTRO.",
+      withOptOut("A Hale family near you has a toddler around Maya's age. Want an intro?", 'short'),
     );
+    // What the composer was actually HANDED for family A. A band word and their own
+    // child, and no third fact — the structural half of the privacy rule.
+    expect(h.introVoice.calls[0]).toEqual({
+      kind: 'proposal',
+      counterpartWord: 'toddler',
+      ownChildPossessive: "Maya's",
+      anchorTitle: null,
+      anchorDay: null,
+    });
     for (const secret of Object.values(SENTINELS)) {
       expect(cardToA, `family A's card must never carry "${secret}"`).not.toContain(secret);
     }
@@ -436,6 +544,10 @@ describe('phase 2 - matching and the coarse card', () => {
       ],
     });
     await runVillageIntroSweep(DB, h.deps, NOW);
+    expect(h.introVoice.calls[0]).toMatchObject({
+      anchorTitle: 'Ready for Reading (Ages 3-6)',
+      anchorDay: 'Saturday',
+    });
     expect(h.transport.bodies()[0]).toContain(
       "They're also eyeing Ready for Reading (Ages 3-6) Saturday.",
     );
@@ -596,7 +708,7 @@ describe('phase 3 - resolving a pair', () => {
     });
     await runVillageIntroSweep(DB, h.deps, NOW);
 
-    expect(h.transport.bodies()).toEqual([INTRO_SOFT_CLOSE]);
+    expect(h.transport.bodies()).toEqual([withOptOut(INTRO_SOFT_CLOSE, 'short')]);
     expect(h.transport.sent[0]?.to).toBe(`phone-user-${A}`);
     expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'declined', closed: true }]);
   });
@@ -624,9 +736,12 @@ describe('phase 3 - resolving a pair', () => {
     });
     await runVillageIntroSweep(DB, expired.deps, NOW);
 
-    expect(declined.transport.bodies()).toEqual([INTRO_SOFT_CLOSE]);
+    expect(declined.transport.bodies()).toEqual([withOptOut(INTRO_SOFT_CLOSE, 'short')]);
     // Both sides were asked and neither refused, so both are owed the same sentence.
-    expect(expired.transport.bodies()).toEqual([INTRO_SOFT_CLOSE, INTRO_SOFT_CLOSE]);
+    expect(expired.transport.bodies()).toEqual([
+      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+    ]);
     expect(expired.statuses).toEqual([{ proposalId: 'prop-1', status: 'expired', closed: true }]);
   });
 
@@ -783,7 +898,10 @@ describe('phase 3 - the identity gap-fill', () => {
     const result = await runVillageIntroSweep(DB, h.deps, NOW);
 
     // The same one sentence every dead pair gets — it never says which of the ways it died.
-    expect(h.transport.bodies()).toEqual([INTRO_SOFT_CLOSE, INTRO_SOFT_CLOSE]);
+    expect(h.transport.bodies()).toEqual([
+      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+    ]);
     expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'expired', closed: true }]);
     expect(result.closed).toBe(1);
     expect(h.identityAsk.calls).toEqual([]);

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGb93B7Y6XyMQCUmaXLV",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvAFCpABCBEYAipAYiloa5XLrJ3UtRRThf2qy8U3Gl1ZxmrzHiSIp+DZCCD6Kzw/JXQBJChkA4RTcoD0OUocUuKcuuKKlu4RpDfsGzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAfKAo9QGEgzjJXsIpyXMR5h6cW8aDCnF4Ld4n9TPq/F+oSIwUoIwhxDa35M6u/Cn0V3DiWt0jSEPGHhFT9N8huEcgmjcHgPGzpHOrjG/en6c9p64KowEq7E5Iay/PN6qh5R0pbgNuymaisW0Qfhx+BcIm+9Yay6mVyiUf3lUHH7LJNLcvveZlsD6UsZWna5/PqJ24sxaW0bQe39RtVFW4fiPpCz+4wYgU3dSsQNqMfZMsJblSSfV0nTx8TIHr9u+sQuOnZfNESjzv7W7tldZeMrpLCSIH/mJTFvMr7xSC95qSRTVkAFxDm69lsPimDsShzZhdgZLVg6l9TCXeRoiYivzeNWgKTkScEBfSp8FXM29OsZXeNCrf+IMcce0EEA0kQi6BmIdMtMXjj1PQpfY4Ec0N2ztgZLujIBAbd2U19Afjnq7uUXGESDPbejGHUihbwG7rseYbUORc8N8AoRjzJzt9ZqSdoWpjKZkIzU/GFAsHbJJDhdT6WY6RPnXqH70c60iUOWA9VQ9b1RUEG0mB2mZ4snfPvkd3yHqSuuadQwIZtfGh0nO/7GPgd/Sy38d84mJQ68DvNLqLiWeft0YOoFBEfj56zfYFfXTKZoGiXSmwyKxu6cTYSveMtfLgaM0x4LWp+IOt616leJuLDhCNdIpg1Bj1EhnqXKGo5aKZKvjCsst1mxgPLDvQX9EBmsOzF7cZ0mCgf7aaHarz+yUkOd7FssmEHWJC5usdVhsa+JgEZSniGfonalagRkshsDDaC9Z3rv1P6rjVBER52JTHQ/Jc+nKroF9mrlMPP1q9AEpvRQYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Mira's enrolled in the Tumbleweeds toddler gym class on Saturdays — she started back in March. Along with that, she's also been going to parent-and-tot swim classes and library rhyme-time, though those aren't tied to a specific day in what I've got."
+      }
+    ],
+    "usage": {
+      "input_tokens": 5656,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 251,
+      "output_tokens_details": {
+        "thinking_tokens": 163
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 5858,
+  "firstInputTokens": 5656
+}

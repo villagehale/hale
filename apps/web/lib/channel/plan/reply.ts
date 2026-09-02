@@ -3,7 +3,7 @@ import { type CoachingPlaybook, type FamilyStage, ageInMonths, deriveStage, play
 import { and, eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import type { ReplySent } from '~/lib/channel/router/reply-route';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { appendMessage, loadTranscript } from '~/lib/coach/conversation';
 import {
   cancelCommitment,
@@ -145,12 +145,19 @@ export async function handlePlanYes(
     body: string;
     send: ReplySender;
     now: Date;
+    /** The router's natural-reply stage already read this message as a yes to the open
+     * plan offer (lib/channel/router/resolve.ts). The shared vocabulary is tried first
+     * and still wins; this is what lets "go on then" accept a plan without Hale ever
+     * having told the parent to type a word. */
+    resolved?: 'yes' | null;
   },
   deps: PlanReplyDeps,
 ): Promise<PlanReplyOutcome> {
   // Checked before any query: most inbound traffic is not a bare affirmative, and an
   // ordinary message must not cost this handler a round trip.
-  if (readAffirmative(input.body) !== 'yes') return { status: 'declined_to_claim' };
+  if (readAffirmative(input.body) !== 'yes' && input.resolved !== 'yes') {
+    return { status: 'declined_to_claim' };
+  }
 
   const offer = await deps.loadOpenOffer(database, input.familyId, 'plan_offer');
   if (!offer || offer.dueAt.getTime() < input.now.getTime()) {
@@ -502,7 +509,9 @@ export async function recordPlanSend(
       templateKey: write.templateKey,
       dedupeKey: write.dedupeKey,
       providerMessageId: write.providerMessageId,
-      status: 'sent',
+      // Born at the status the CARRYING channel starts at: 'queued' for the phone
+      // pipes (the receipt loop advances it), terminal 'sent' for email.
+      status: acceptedStatus(write.channel),
       relatedConversationId: write.relatedConversationId,
       sentAt: write.sentAt,
     })

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2. Hale correctly drafted the two swim lessons and told the parent it will line up the rest — that is the exact correct handling of overflow. The reply names both drafted changes clearly, ends with \"YES to confirm these two\", and flags that soccer and the Wednesday appointment follow. No app mention, no invented details, no greeting/sign-off. The Wednesday appointment is a private item, but the parent named it so drafting its cancellation is appropriate (Hale can cancel what it can see on the schedule even if the content is redacted). The only tiny blemish is the dash before \"then I'll line up...\" reads slightly informal and the phrasing \"these two\" after \"YES to confirm\" is a small redundancy — the YES prompt is slightly wordy compared to the cleanest form (\"YES to confirm.\" then a new sentence). But this is a minor shape issue, not a wrong or misleading reply. It does the job correctly and stops.",
+    "score": 4
+  }
+}

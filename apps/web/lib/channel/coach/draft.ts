@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { type AgentClient, SONNET_MODEL } from '@hale/agent';
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, CalendarPlacementPayload } from '@hale/types';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
@@ -170,7 +170,8 @@ export async function mintChannelCalendarDraft(
     actionType: input.actionType,
     verdict: verdict.verdict,
     usage: verdict.usage,
-    model: SONNET_MODEL,
+    costUsd: verdict.costUsd,
+    model: verdict.model,
   });
 
   return { actionId };

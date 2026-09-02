@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the private calendar item on Tuesday, gives its time (3:45pm), and declines to name its content — exactly the correct handling per the rules. It is concise and direct. However, it does not address which child the item belongs to or whether it is Nora's specifically — but \"Nora\" is not listed among the known children (the children are Milo, Ada, and an unnamed teenager), so Hale has no way to confirm or deny this is Nora's item. The reply treats the private item as a match and surfaces its time, which is the correct behavior for a private item. The only issue is that \"Nora\" doesn't map to any named child in knows, but Hale has no way to clarify this and the private item is the only Tuesday entry, so answering with it is reasonable. The reply is short, correct in shape, uses no markdown, no greeting, no sign-off, and does exactly what the rules require for a private item. A very slight blemish might be that it doesn't acknowledge the ambiguity of \"Nora\" not being a known child name, but given the constraints, this is a near-perfect reply.",
+    "score": 5
+  }
+}

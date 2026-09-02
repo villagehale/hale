@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the single matching event (Thursday swim lesson), drafts the move, and asks for YES confirmation. It is clean, in the parent's language, and does exactly what was asked. The only very minor blemish: it frames the drafted change as a question (\"Je déplace…?\") which is slightly ambiguous — it could read as if Hale is asking whether to do it rather than confirming what it has drafted. A cleaner phrasing would be something like \"J'ai préparé le déplacement de la natation de jeudi à 17h45 — réponds YES pour confirmer.\" But this is a small stylistic issue; the YES trigger is present and the intent is clear. No unnecessary content, no app referral, no invented details.",
+    "score": 4
+  }
+}

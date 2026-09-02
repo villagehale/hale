@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Underwater basket weaving for toddlers does not exist as a real program anywhere, and the pick list is correctly empty. The message does not invent a venue, does not hedge vaguely, and does not ask a question. The page-access failure is reported honestly as \"I could not get into any pages today\" — which is the correct form under `no_page_read` for a negative claim about page content. The watch commitment is present in first person (\"I'll keep watching and text you when I can get through\"), satisfying the `watch:true` requirement. The message is plain text, one sentence each segment, no link, no offer, no invented detail. This is exactly correct handling of a non-existent program with a watch row in place.",
+    "score": 5
+  }
+}

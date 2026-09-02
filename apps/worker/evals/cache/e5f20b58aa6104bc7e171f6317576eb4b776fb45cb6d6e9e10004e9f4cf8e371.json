@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011CeJZkAvgk9ecjHHgv12mY",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EqUDCpABCBEYAipAmP4KAZT+dO0keEQPgZ3ZBsdapdFu51C2fyebJOuMcYuyeiJIMP40E9jTXKpiSzgdFy3M0D/DNO9lagtYgOu23jIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAa7BqNQGEgylrNSqStqC/X/QIqcaDI/yA1q21idURUfy+yIwmA7J/fK3JZ6dx6xMV91G2qGqXPQ11q01ISgZIK1cFu4GH/ibejwbr2quvnCbQnVAKsEB+BpmIqyTKF7R/vO2si4M1V1BjkLdnXOHykw3MlsPGAFxroz916s82Y2kIbtmWhw2+IwS4M8k6R9bBAWIG11e60ZsmgVWCELy5D5+AAz4vwCZYIdJlDa9Kaihh1B5CVI9FYBZnrefUPJnBDoosr/HbkzP8eBDXEfJv1pipKIhH6pt0YedUUyWewphxjc42vdkPhriqop0wiGvdSzxUM1ntETBB1pELU7pqLMAZAzAxdkCFKN6XTimqC5blWNE8O3sgBgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_016gPggqkJYvXp8JRaCsor6w",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Ps7tJ4x1dEtUDaH89hoq1w",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "solids",
+          "childId": "kid-theo",
+          "offer": "Want the full first-foods plan? Reply YES and I'll send it."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 412,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 14062,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 262,
+      "output_tokens_details": {
+        "thinking_tokens": 61
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

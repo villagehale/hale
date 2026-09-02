@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to move piano to Wednesday. Piano does not appear anywhere in the visible week. The reply correctly states it is not on the schedule. The one small blemish is the follow-up question \"Want me to check next week?\" — that is a reasonable and short extension, not a second question about ambiguity, but it does add a line that wasn't strictly necessary. The reply does not invent anything, does not send the parent to the app, and does not hedge about private items. It's clean and correct, just slightly longer than needed with the trailing question.",
+    "score": 4
+  }
+}

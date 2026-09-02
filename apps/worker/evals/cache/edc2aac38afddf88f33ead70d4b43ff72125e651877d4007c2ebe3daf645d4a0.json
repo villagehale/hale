@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGbFJgS8EVm7RhQ883Y3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EuICCpABCBEYAipAjXCet4jozjhv/3rRldR7++oOGoyJH/K8anWhIv744BJRbgLPE+JMAZOojf1PzT4X3wCcSmlYjIGWmE40ELnnIzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAcSBo9QGEgwaF2/tGTTQqXa+p6EaDFFjxFFa9EeVyCDevCIwA0Sv4gvrxL+8r7/kiQ39rWhSmkfaL/fQATqcqQrgiVCapZD5HwrDdZ8p+Q2PXoGFKn/x0d+rd4U61O4TXNKCmTLiRgyeqRMdLKR8N5OogF9fYDtYEyuAM66q64IKpcAvRjx2Ds99WEoaPkNhNR+57hfBwWhdR61fK/9vlNEbZo8C2F7qAno707dIY49uHWGWGRgUtF1f3fbPk9MGsEC40p6fLciTZhEeNnX+YBpvPSxZGAE="
+      },
+      {
+        "type": "text",
+        "text": "Mira settled best swaddled on her back as a young baby, and you dropped the swaddle at 5 months.\n\nThat timing lines up well — most babies transition out of the swaddle once they show signs of rolling, usually somewhere in that 4-6 month window, so 5 months was right on track for her."
+      }
+    ],
+    "usage": {
+      "input_tokens": 16373,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 142,
+      "output_tokens_details": {
+        "thinking_tokens": 46
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3684,
+  "firstInputTokens": 16373
+}

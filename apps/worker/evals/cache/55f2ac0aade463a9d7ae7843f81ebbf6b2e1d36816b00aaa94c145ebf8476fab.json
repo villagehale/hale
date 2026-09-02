@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names the exact place the parent asked about (Cartwheels Gym Centre), leads with its specific program name (Tiny Gym), attributes the age-fit detail to \"their site says\", correctly uses \"I could not get into their page today\" for the day/time/price gap (earned under no_page_read), and includes the first-person watching commitment (\"I'll keep watching and text you when I can confirm those\") as required because watch=true. No question is asked, no price or time is invented, no substitution of a different venue occurs, and the message fits within two segments. This is a clean, correct response on every dimension.",
+    "score": 5
+  }
+}

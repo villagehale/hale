@@ -1,0 +1,738 @@
+/*
+ * Hale /admin — "the day ledger". SITE palette law (apps/site/app/globals.css):
+ * amber #b26b1f FILL-ONLY, wash #fef0c7, ink navy #17294a, Georgia numerals.
+ * Tokens are scoped to [data-surface='admin'] and never touch the app's
+ * neutralized palette in globals.css. Light-only in v1 (one known viewer).
+ * Status vocabulary: navy = ok, amber = attention, brick = failed. No green.
+ *
+ * Every class rule lives inside @layer components (the app-wide @layer
+ * discipline — an unlayered rule would outrank Tailwind utilities).
+ * z-index scale: 10 (dial thumb) / 20 (sticky) / 50 (tooltip). Nothing else.
+ */
+@layer components {
+  [data-surface='admin'] {
+    --adm-canvas: #fdfcfa;
+    --adm-card: #ffffff;
+    --adm-border: #e4e7ee;
+    --adm-ink: #17294a;
+    --adm-ink-2: #3d4c68;
+    --adm-ink-3: #5c6b87;
+    --adm-amber: #b26b1f;
+    --adm-wash: #fef0c7;
+    --adm-fail: #a63d2f;
+    background: var(--adm-canvas);
+    color: var(--adm-ink);
+    font-variant-numeric: tabular-nums;
+    /* Inside the portal stage the ledger is a bounded surface, not a full
+     * viewport: rounded like the app's cards, light-only by design. It opts UP
+     * out of the stage's 58rem column the way the Village board does — the
+     * stage rule in globals.css carries the matching :not() arm. */
+    border-radius: 16px;
+    border: 1px solid var(--adm-border);
+    max-width: 75rem;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  [data-surface='admin'] :focus-visible {
+    outline: 2px solid var(--adm-amber);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ── the tab bar + dial row (sticky, z 20) ─────────────────────────── */
+  .adm-nav-row {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px 16px;
+    flex-wrap: wrap;
+    padding: 12px clamp(16px, 3vw, 28px);
+    background: var(--adm-canvas);
+    border-bottom: 1px solid var(--adm-border);
+    border-radius: 16px 16px 0 0;
+  }
+  .adm-tabs {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--adm-wash);
+    border: 1px solid var(--adm-border);
+    border-radius: 999px;
+    padding: 3px;
+    flex-wrap: wrap;
+  }
+  .adm-tab {
+    position: relative;
+    color: var(--adm-ink-2);
+    font-size: 13px;
+    text-decoration: none;
+    padding: 5px 14px;
+    border-radius: 999px;
+  }
+  .adm-tab[aria-current='page'] {
+    color: var(--adm-canvas);
+  }
+  .adm-tab-thumb {
+    position: absolute;
+    inset: 0;
+    background: var(--adm-amber);
+    border-radius: 999px;
+  }
+  .adm-tab-label {
+    position: relative;
+    z-index: 10;
+  }
+
+  /* ── the page column every tab shares ──────────────────────────────── */
+  .adm-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px clamp(16px, 3vw, 28px) 40px;
+  }
+
+  /* ── the attention strip (Overview): doors, not charts ─────────────── */
+  .adm-tiles {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 900px) {
+    .adm-tiles {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  .adm-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--adm-card);
+    border: 1px solid var(--adm-border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: var(--adm-ink);
+    cursor: pointer;
+  }
+  .adm-tile:hover {
+    border-color: var(--adm-amber);
+  }
+  .adm-tile .adm-stat-v {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 22px;
+    line-height: 1.1;
+  }
+  .adm-tile-fail {
+    color: var(--adm-fail);
+  }
+
+  /* ── collapsed disclosures (raw ledger, skills inventory) ──────────── */
+  .adm-details summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--adm-ink-2);
+    padding: 4px 0;
+  }
+  .adm-details[open] summary {
+    margin-bottom: 8px;
+  }
+
+  /* ── the navy band ─────────────────────────────────────────────────── */
+  .adm-band {
+    background: var(--adm-ink);
+    color: var(--adm-canvas);
+    padding: 20px clamp(16px, 4vw, 40px) 24px;
+    border-radius: 12px;
+  }
+  .adm-band-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .adm-wordmark {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 18px;
+    letter-spacing: 0.01em;
+  }
+  .adm-band-meta {
+    font-size: 12px;
+    color: rgb(253 252 250 / 0.72);
+  }
+  .adm-instrument {
+    display: flex;
+    align-items: flex-end;
+    gap: clamp(16px, 4vw, 40px);
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .adm-hero-num {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(56px, 12vw, 96px);
+    line-height: 0.9;
+    font-variant-numeric: tabular-nums;
+  }
+  .adm-hero-label {
+    font-size: 12px;
+    color: rgb(253 252 250 / 0.72);
+    margin-top: 6px;
+  }
+  .adm-ticks {
+    flex: 1 1 260px;
+    min-width: 220px;
+  }
+  .adm-ribbon {
+    display: flex;
+    gap: 8px 20px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+    font-size: 13px;
+    color: rgb(253 252 250 / 0.85);
+  }
+  .adm-ribbon strong {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-weight: 400;
+    color: var(--adm-canvas);
+  }
+  .adm-ribbon .adm-ribbon-fail strong {
+    color: #e8a894;
+  }
+
+  /* ── the window dial ───────────────────────────────────────────────── */
+  .adm-dial {
+    position: relative;
+    display: inline-flex;
+    gap: 2px;
+    background: var(--adm-wash);
+    border: 1px solid var(--adm-border);
+    border-radius: 999px;
+    padding: 3px;
+    margin: 0;
+    min-inline-size: auto;
+  }
+  .adm-dial button {
+    position: relative;
+    border: 0;
+    background: transparent;
+    color: var(--adm-ink-2);
+    font: inherit;
+    font-size: 13px;
+    padding: 4px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .adm-dial button[aria-pressed='true'] {
+    color: var(--adm-canvas);
+  }
+  .adm-dial-thumb {
+    position: absolute;
+    inset: 0;
+    background: var(--adm-amber);
+    border-radius: 999px;
+  }
+  .adm-dial-label {
+    position: relative;
+    z-index: 10;
+  }
+
+  /* ── the ledger grid + panel anatomy ───────────────────────────────── */
+  .adm-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 900px) {
+    .adm-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .adm-span2 {
+    grid-column: 1 / -1;
+  }
+  .adm-panel {
+    background: var(--adm-card);
+    border: 1px solid var(--adm-border);
+    border-radius: 12px;
+    padding: 16px 18px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+  .adm-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--adm-ink-3);
+  }
+  .adm-panel-body {
+    flex: 1;
+    min-width: 0;
+  }
+  .adm-panel-foot {
+    border-top: 1px solid var(--adm-border);
+    padding-top: 8px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .adm-panel-foot a {
+    font-size: 12px;
+    color: var(--adm-ink-2);
+    text-decoration: none;
+  }
+  .adm-panel-foot a:hover {
+    text-decoration: underline;
+  }
+  .adm-state {
+    font-size: 13px;
+    color: var(--adm-ink-3);
+    padding: 12px 0;
+  }
+  .adm-state-fail {
+    color: var(--adm-fail);
+  }
+  .adm-skeleton {
+    height: 180px;
+    border-radius: 8px;
+    background: var(--adm-wash);
+    opacity: 0.5;
+  }
+
+  /* ── numerals, stats, small print ──────────────────────────────────── */
+  .adm-num {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .adm-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+  }
+  .adm-stat-row {
+    display: flex;
+    gap: 8px 24px;
+    flex-wrap: wrap;
+  }
+  .adm-stat .adm-stat-v {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 22px;
+    line-height: 1.1;
+  }
+  .adm-stat .adm-stat-k {
+    font-size: 11px;
+    color: var(--adm-ink-3);
+  }
+
+  /* ── funnel bars ───────────────────────────────────────────────────── */
+  .adm-funnel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .adm-funnel-stage {
+    display: grid;
+    grid-template-columns: minmax(90px, 130px) 1fr auto;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .adm-funnel-track {
+    background: var(--adm-canvas);
+    border-radius: 4px;
+    height: 22px;
+    overflow: hidden;
+  }
+  .adm-funnel-fill {
+    height: 100%;
+    background: var(--adm-ink);
+    border-radius: 4px;
+    min-width: 2px;
+    transition: width 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .adm-funnel-fill {
+      transition: none;
+    }
+  }
+  .adm-funnel-fill-amber {
+    background: var(--adm-amber);
+  }
+  .adm-funnel-pct {
+    color: var(--adm-ink-3);
+    font-size: 12px;
+  }
+
+  /* ── bar lists (audit mix, agents) ─────────────────────────────────── */
+  .adm-barlist {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .adm-barlist-row {
+    display: grid;
+    grid-template-columns: minmax(110px, 180px) 1fr auto;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+  }
+  .adm-barlist-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--adm-ink-2);
+  }
+  .adm-barlist-track {
+    height: 12px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--adm-canvas);
+  }
+  .adm-barlist-fill {
+    height: 100%;
+    background: var(--adm-ink);
+    border-radius: 3px;
+    min-width: 2px;
+    transition: width 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .adm-barlist-fill {
+      transition: none;
+    }
+  }
+
+  /* ── the texting heatmap (weekday × hour, amber ramp on wash) ──────── */
+  .adm-heatmap-wrap {
+    overflow-x: auto;
+    min-width: 0;
+  }
+  .adm-heatmap {
+    display: grid;
+    grid-template-columns: 34px repeat(24, minmax(12px, 1fr));
+    gap: 3px;
+    min-width: 440px;
+    background: var(--adm-wash);
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .adm-heatmap-row {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    gap: 3px;
+  }
+  .adm-heatmap-day,
+  .adm-heatmap-hour {
+    font-size: 10px;
+    color: var(--adm-ink-3);
+    align-self: center;
+  }
+  .adm-heatmap-cell {
+    display: block;
+    height: 16px;
+    border-radius: 3px;
+    background: var(--adm-amber);
+    transition: opacity 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .adm-heatmap-cell {
+      transition: none;
+    }
+  }
+
+  /* ── failure classes (Operations landing) ──────────────────────────── */
+  .adm-class-controls {
+    display: flex;
+    gap: 8px 16px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .adm-class-sort {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--adm-wash);
+    border: 1px solid var(--adm-border);
+    border-radius: 999px;
+    padding: 2px;
+    margin: 0;
+    min-inline-size: auto;
+  }
+  .adm-class-sort button {
+    border: 0;
+    background: transparent;
+    color: var(--adm-ink-2);
+    font: inherit;
+    font-size: 12px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .adm-class-sort button[aria-pressed='true'] {
+    background: var(--adm-amber);
+    color: var(--adm-canvas);
+  }
+  .adm-class-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .adm-class summary {
+    display: grid;
+    grid-template-columns: auto auto minmax(120px, 1fr) auto minmax(90px, 180px) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 4px;
+    border-bottom: 1px dashed var(--adm-border);
+    font-size: 13px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .adm-class summary::-webkit-details-marker {
+    display: none;
+  }
+  .adm-class[open] summary {
+    border-bottom-style: solid;
+  }
+  .adm-class-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--adm-ink-2);
+  }
+  .adm-class-total {
+    font-size: 18px;
+  }
+  .adm-class-spark {
+    min-width: 90px;
+  }
+  .adm-class-nospark {
+    font-size: 11px;
+    color: var(--adm-ink-3);
+  }
+  .adm-class-last {
+    font-size: 12px;
+    color: var(--adm-ink-3);
+    white-space: nowrap;
+  }
+  .adm-class > div {
+    padding: 8px 4px 14px;
+  }
+  .adm-spark rect {
+    transition: height 200ms ease, y 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .adm-spark rect {
+      transition: none;
+    }
+  }
+  @media (max-width: 700px) {
+    .adm-class summary {
+      grid-template-columns: auto auto 1fr auto;
+    }
+    .adm-class-spark,
+    .adm-class-last {
+      display: none;
+    }
+  }
+
+  /* ── in-cell share bars (sources, agent leaderboard) ───────────────── */
+  .adm-cell-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 110px;
+  }
+  .adm-cell-bar .adm-barlist-track {
+    display: block;
+    flex: 1;
+  }
+  .adm-cell-bar .adm-barlist-fill {
+    display: block;
+    transition: width 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .adm-cell-bar .adm-barlist-fill {
+      transition: none;
+    }
+  }
+
+  /* ── the data table ────────────────────────────────────────────────── */
+  .adm-table-wrap {
+    overflow-x: auto;
+    min-width: 0;
+  }
+  .adm-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .adm-table th {
+    text-align: left;
+    padding: 0;
+    border-bottom: 1px solid var(--adm-border);
+    white-space: nowrap;
+  }
+  .adm-th-sort {
+    border: 0;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--adm-ink-3);
+    padding: 6px 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .adm-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--adm-border);
+    vertical-align: top;
+  }
+  .adm-table tbody tr:hover {
+    background: var(--adm-wash);
+  }
+  .adm-table a {
+    color: var(--adm-ink);
+    text-decoration: underline;
+  }
+  .adm-filter {
+    width: 100%;
+    max-width: 280px;
+    border: 1px solid var(--adm-border);
+    border-radius: 8px;
+    background: var(--adm-card);
+    color: var(--adm-ink);
+    font: inherit;
+    font-size: 13px;
+    padding: 5px 10px;
+  }
+  .adm-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    margin-right: 6px;
+    background: var(--adm-ink-3);
+  }
+  .adm-dot-fail {
+    background: var(--adm-fail);
+  }
+  .adm-pager {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--adm-ink-3);
+    padding-top: 8px;
+  }
+  .adm-pager button {
+    border: 1px solid var(--adm-border);
+    background: var(--adm-card);
+    color: var(--adm-ink-2);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 12px;
+    padding: 2px 10px;
+    cursor: pointer;
+  }
+  .adm-pager button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* ── the radar opening timeline ────────────────────────────────────── */
+  .adm-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .adm-timeline-row {
+    display: grid;
+    grid-template-columns: minmax(140px, 260px) 1fr auto;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .adm-timeline-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--adm-ink-2);
+  }
+  .adm-timeline-track {
+    position: relative;
+    display: block;
+    height: 14px;
+    background: var(--adm-canvas);
+    border-radius: 999px;
+    border: 1px solid var(--adm-border);
+  }
+  .adm-timeline-dot {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--adm-ink);
+  }
+  .adm-timeline-dot-resident {
+    background: var(--adm-card);
+    border: 2px solid var(--adm-ink);
+  }
+  .adm-timeline-chip {
+    font-size: 12px;
+    color: var(--adm-ink-2);
+    white-space: nowrap;
+  }
+  @media (max-width: 700px) {
+    .adm-timeline-row {
+      grid-template-columns: 1fr auto;
+    }
+    .adm-timeline-track {
+      display: none;
+    }
+  }
+
+  /* ── radar list ────────────────────────────────────────────────────── */
+  .adm-radar-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .adm-radar-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px dashed var(--adm-border);
+    padding-bottom: 6px;
+  }
+  .adm-stale {
+    background: var(--adm-wash);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+
+  /* ── chart tooltip (z 50) ──────────────────────────────────────────── */
+  .adm-tooltip {
+    z-index: 50;
+    background: var(--adm-card);
+    border: 1px solid var(--adm-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgb(23 41 74 / 0.12);
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--adm-ink);
+  }
+  .adm-tooltip .adm-tooltip-day {
+    color: var(--adm-ink-3);
+    margin-bottom: 4px;
+  }
+}

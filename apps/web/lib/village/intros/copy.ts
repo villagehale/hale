@@ -1,18 +1,26 @@
 import type { FamilyStage } from '@hale/types';
 
 /**
- * Village intros v1 — every word Hale says about an introduction.
+ * Village intros v1 — every FIXED word Hale says about an introduction.
  *
- * This file is the SPEC, not a template layer. There is no model anywhere in this
- * feature and that is the point: an intro is a cross-household DISCLOSURE, and the one
- * thing a disclosure must never be is improvised. A composed sentence would need an
- * eval to prove it never names the other family; a fixed sentence needs only a test
- * that reads it, and the test can be exhaustive.
+ * THE TWO ASKS LEFT THIS FILE ON 2026-08-13 (see voice.ts). They were the last two
+ * strings on this surface that handed a parent a keyword to recite, and reading them back
+ * to back — "Reply YES INTROS or NO INTROS." then, hours later, "Reply YES INTRO or NO
+ * INTRO." — is what made the founder call the whole feature inhuman. They are composed
+ * now, under pinned meanings and mechanical refusals, and the parent's answer is read
+ * however they phrase it.
  *
- * THE PRIVACY RULE IS STRUCTURAL, not editorial. {@link coarseCard} takes no argument
- * that could carry the other family's identity — not a name, not an age, not an area.
- * The only counterpart fact it is given is a stage WORD, and a stage word is a fact
- * about a band, not about a child. A future edit cannot leak what was never passed in.
+ * WHAT STAYED IS EVERY ACKNOWLEDGEMENT, and the original argument still holds for them:
+ * an intro is a cross-household DISCLOSURE, and the sentences that CONFIRM one — the
+ * soft close in particular, which must read identically whether the other side said no,
+ * said nothing, or ran out of time — are exactly the sentences a model must not vary.
+ * A fixed line needs only a test that reads it, and that test can be exhaustive.
+ *
+ * THE PRIVACY RULE IS STRUCTURAL WHEREVER THE WORDS COME FROM. It never lived in this
+ * file's fixedness; it lives in what the renderers are HANDED. The composed card's
+ * request type carries the same three facts `coarseCard` took — a stage WORD (a band, not
+ * a child), the recipient's OWN child through the teen gate, and a civic activity title —
+ * and there is no parameter on either side that could name the other household.
  *
  * GSM-7 throughout (plain hyphens, straight apostrophes, no emoji), enforced by
  * lib/channel/sms-copy-encoding.test.ts, which reads this file off disk.
@@ -44,65 +52,45 @@ export function stageWord(stage: FamilyStage): string {
 }
 
 /**
- * THE DISCOVERABILITY ASK — the first and only time Hale raises intros unprompted.
+ * THE DISCOVERABILITY ASK AND THE COARSE CARD ARE COMPOSED (voice.ts).
  *
- * Consent first, matching second. Hale asks whether a family wants to be findable
- * BEFORE it has looked for anyone, so a "no" costs the family nothing and reveals
- * nothing: at the moment this text is sent, Hale knows only that the family shares an
- * FSA with at least one other household, which is a fact about the postal system.
- *
- * The keywords are two words rather than a bare YES because this question can arrive
- * while other things are pending. A bare "yes" belongs to whatever Hale last asked;
- * INTROS says which question is being answered, and the router's approval grammar
- * declines it precisely because it is not a bare affirmative.
+ * Consent first, matching second, unchanged: Hale asks whether a family wants to be
+ * findable BEFORE it has looked for anyone, so a "no" costs them nothing and reveals
+ * nothing. What changed is the words. The two fixed sentences that used to live here both
+ * ended in a magic word — and the answer no longer needs one, because a reply to either
+ * question is read by the resolver in lib/channel/router/resolve.ts however the parent
+ * chose to phrase it. The keyword READS still work; nothing prints them any more.
  */
-export const DISCOVERABILITY_ASK =
-  "Something new: other Hale families are near you. Want me to introduce you when there's a great match? Reply YES INTROS or NO INTROS.";
 
 /** What a family hears when they opt in. Says what happens next and what does not:
- * nothing is shared yet, and nothing will be without a second yes. */
+ * nothing is shared yet, and nothing will be without a second yes.
+ *
+ * The off-ramp is named without naming a keyword. "Just tell me" is true — a parent who
+ * says "actually, no intros" or "turn that off" is read by the resolver — and it is the
+ * difference between an operator and an unsubscribe footer. */
 export const DISCOVERABILITY_ON =
-  "Great - I'll keep an eye out. Nothing is shared until you both say yes. Reply NO INTROS anytime to switch this off.";
+  "Great - I'll keep an eye out. Nothing is shared until you both say yes, and you can tell me to stop anytime.";
 
 /** What a family hears when they opt out, or later revoke. No persuasion, no "are you
  * sure": a revocation that gets argued with is not a revocation. */
 export const DISCOVERABILITY_OFF = "Done - no intros. I won't bring this up again.";
 
 /**
- * THE COARSE CARD — the symmetric ask both sides get at the same time.
+ * THE SECOND YES, AND THE SECOND NO.
  *
- * `ownChildPossessive` is the recipient's OWN child, already rendered through
- * `loopChildName` (so a 13+ child reads as "your kid" and a parent's child_name_level
- * dial is honoured), with an apostrophe-s applied. `counterpartStage` is a band word.
- * There is no third fact, and no parameter this function could be handed that would
- * name the other household.
+ * From the founder's live test (2026-08-13, 09:47:48 -> 09:47:59): the parent texted
+ * "Yes", got no traction, and eleven seconds later retyped "Yes intros". A parent who
+ * texts twice because they think the first one did not land is not making a second
+ * decision, and answering them with the full acknowledgement a second time is Hale failing
+ * to remember a conversation it is currently having.
  *
- * "around X's age" rather than the spec's bare "around X's": the possessive needs its
- * noun to be a sentence, and every rendering — "around Maya's age", "around your
- * son's age", "around your kid's age" — reads the same way.
+ * SHORT, and it still ANSWERS. Silence would read as the second text not landing either,
+ * which is the very thing that produced the second text. What it does not do is re-explain
+ * a thing they have already been told, or imply anything changed.
  */
-export function coarseCard(
-  counterpartStage: FamilyStage,
-  ownChildPossessive: string,
-  anchor: string | null,
-): string {
-  const opening = `A Hale family near you has a ${stageWord(counterpartStage)} around ${ownChildPossessive} age.`;
-  const question = 'Want an intro? Reply YES INTRO or NO INTRO.';
-  return anchor === null ? `${opening} ${question}` : `${opening} ${anchor} ${question}`;
-}
+export const DISCOVERABILITY_ALREADY_ON = "You're already set - I'll keep an eye out.";
 
-/**
- * The activity anchor — Hale's upgrade over a bare "someone near you".
- *
- * A purposeful intro is safer than a social one: two parents who are both going to the
- * same free storytime on Saturday have a reason to meet that neither of them had to
- * invent. `title` is passed through VERBATIM from the civic_sessions row, never
- * paraphrased — the dataset is the only thing that knows what the session is called,
- * and a reworded title is a fact Hale made up.
- */
-export function activityAnchor(title: string, day: string): string {
-  return `They're also eyeing ${title} ${day}.`;
-}
+export const DISCOVERABILITY_ALREADY_OFF = "Already off - I won't bring it up.";
 
 /** Acknowledges a yes to one intro. Deliberately says nothing about the other side:
  * at this moment their answer is unknown, and even "waiting on them" would disclose
@@ -111,6 +99,28 @@ export const INTRO_YES_ACK = "Great - if they're in too, I'll introduce you both
 
 /** Acknowledges a no to one intro. */
 export const INTRO_NO_ACK = "No problem - I'll keep looking.";
+
+/**
+ * THE SAME SECOND ANSWER, on the card instead of the opt-in (see
+ * {@link DISCOVERABILITY_ALREADY_ON}). It is one defect, so it gets one shape: short,
+ * still an answer, and it never implies anything changed.
+ *
+ * What these replaced was worse than a repeat. An already-answered side was INVISIBLE to
+ * the reader behind this lane, so a parent who texted again was told "I don't have an
+ * intro waiting for you right now" seconds after being told an introduction was coming.
+ */
+export const INTRO_ALREADY_YES = "You're already in - I'll let you know if they are too.";
+
+export const INTRO_ALREADY_NO = "Already passed on that one - I'll keep looking.";
+
+/**
+ * They said no, and now they say yes. Hale does not quietly reopen it: by the time this
+ * arrives the other family has had their soft close, and an introduction they were told
+ * was not happening cannot be un-told. The honest answer is that this one is done and
+ * Hale is still looking — which is true, and is what the next match is for.
+ */
+export const INTRO_CLOSED_AFTER_NO =
+  "That one's closed now, but I'm still looking - I'll text you at the next good match.";
 
 /**
  * What an intro keyword gets when there is no card waiting for it.
@@ -161,10 +171,10 @@ export function introEmailBody(input: {
   const lines = [
     `Hi ${both},`,
     '',
-    `You're both Hale families in the same neighbourhood, you each have a ${stageWord(input.stage)}, and you both said yes to an introduction. So: meet each other.`,
+    `You're both Hale families in the same area, you each have a ${stageWord(input.stage)}, and you both said yes to an introduction. So: meet each other.`,
   ];
   if (input.anchorTitle !== null) {
-    lines.push('', `You were also both eyeing ${input.anchorTitle} - that might be the easy first hello.`);
+    lines.push('', `There's also ${input.anchorTitle} coming up near you both - that might be the easy first hello.`);
   }
   lines.push(
     '',

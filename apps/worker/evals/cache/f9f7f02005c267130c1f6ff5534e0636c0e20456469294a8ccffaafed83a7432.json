@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancel (one event matches, so drafting is right) and ends with \"YES to confirm.\" It then offers the one verified offerable indoor Saturday activity (Central Library story time, Bloor/Gladstone, Sat Aug 8) — name, place, and day all present, stillBeingChecked is 0 so there's nothing pending. The draft cap is 2 but only one draft was needed here. No app referral, no invented URL, no sign-off, no greeting, no markdown. The only tiny blemish: the reply doesn't explicitly separate that the story time suggestion is a separate item from the confirmation ask, which could mildly confuse the parent about whether YES also triggers the story time addition — but the phrasing is clear enough that the cancel is the drafted item and the story time is an offering. This is a very clean, efficient reply that does exactly the job required.",
+    "score": 5
+  }
+}

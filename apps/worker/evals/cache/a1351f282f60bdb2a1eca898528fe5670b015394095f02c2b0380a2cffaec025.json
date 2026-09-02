@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message contains multiple critical failures. First, it claims \"I couldn't pin down which class fits a toddler age or confirm the day or price\" – but the page explicitly states \"Our youngest program starts at age 8. We do not offer preschool or toddler classes.\" This is a clear, unambiguous negative statement on the page. The correct phrasing should have been \"Their site says they don't offer toddler or preschool classes – their youngest program starts at age 8.\" This is not a hedged uncertainty; it's a definitive statement from the operator. Second, the message says \"I'll keep digging and text you what I find\" but this contradicts what the page already clearly communicates. The watch flag is true, indicating a continuation promise exists, but that promise should not obscure or soften what the page already plainly says. The correct message should lead with the fact that toddler classes don't exist at this venue, cite the site, and then note the continuation promise. The empty slots are correct, but the message misrepresents what the page carries by treating it as uncertain when it is definitive."
+  }
+}

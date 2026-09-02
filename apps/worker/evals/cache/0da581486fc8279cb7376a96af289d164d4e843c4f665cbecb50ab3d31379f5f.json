@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Perfect execution. The slot correctly identifies the program from the preschool-play page with exact day/time (\"Tuesdays and Thursdays, 9:30 - 11:00 a.m., September 8 to December 11\"), correct age band (12 months to 4 years), and properly documents the price as \"Not posted on this page\" with attribution to the page's own direction to call. The slot does not confuse the toddler class with room rental fees from the other page. The message leads with the program name, attributes facts (\"their site says\"), states plainly that fees aren't posted with the correct reason (page directs to call), and closes with the watch commitment in first person (\"I'll keep watching and text you if registration details post\") - a real commitment since watch=true. No questions asked. No links. No offers. Clean two-sentence structure on plain ASCII. The negative claim about price is earned because pageEvidence confirms the page was opened and does carry a schedule (times/dates) but explicitly does not carry pricing on that program page. Message is accurate, attributed, and makes no unearned negative claims."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly declines a task outside Hale's capabilities. However, it then explains its own internal machinery by listing what it can do (\"I handle the family schedule, parenting questions, and finding activities\"), which is self-absorbed and borders on redirecting the parent. The rubric penalises replies that \"explains its own limits or machinery.\" A clean \"Ordering groceries is past me\" would have been sufficient, but the appended list of capabilities is unnecessary internal explanation. That said, it doesn't send the parent somewhere useless, doesn't invent anything, and doesn't hand the job back in a harmful way. It's a mild machinery explanation, landing it at a 2-3 range. Given the rubric says score 2 for \"explains its own limits or machinery,\" this fits a 2.",
+    "score": 2
+  }
+}

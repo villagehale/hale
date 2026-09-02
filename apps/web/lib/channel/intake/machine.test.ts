@@ -1,31 +1,58 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  EMERGENCY_REPLY,
+  MENTAL_CRISIS_REPLY,
+  SAFETY_REPLY,
+  SAFETY_REPLY_BY_LANGUAGE,
+} from '~/lib/channel/off-domain/copy';
+import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { matchHealthCheckpoints } from '~/lib/health/match';
+import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   AMBIGUOUS_CLARIFY,
+  AMBIGUOUS_CLARIFY_BY_LANGUAGE,
   ASSENT_ACK,
+  ASSENT_ACK_BY_LANGUAGE,
+  COLD_START_ASK,
   DECLINE_ACK,
+  DECLINE_ACK_BY_LANGUAGE,
   HELP_REPLY,
+  HELP_REPLY_BY_LANGUAGE,
   REGION_UNAVAILABLE_REPLY,
+  REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
+  START_ACK_BY_LANGUAGE,
   STOP_ACK,
+  STOP_ACK_BY_LANGUAGE,
+  UNREADABLE_INTAKE_REPLY,
   WATCH_OFFER,
+  WATCH_OFFER_ASK,
   detailsBlocked,
+  followUpQuestion,
+  greeting,
 } from './copy';
+import type { IntakeCollected } from './extract';
 import {
+  FakeAnswerComposer,
+  type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  type FakeDb,
   fakeAckComposer,
   fakeRadar,
+  fakeSilentAnswerComposer,
   makeFakeDb,
 } from './fakes';
-import type { IntakeCollected } from './extract';
 import type { IntentReading } from './intent';
+import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
 import { type IntakeDeps, handleInboundSms } from './machine';
+import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 import { FakeTransport } from './transport';
+import { CONTACT_CARD_URL, WELCOME_CARD_BODY, WELCOME_CARD_TEMPLATE_KEY } from './welcome-card';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+14165551234';
@@ -61,6 +88,10 @@ function harness(options: {
   limiter?: FakeRateLimiter;
   resolveCenter?: IntakeDeps['resolveCenter'];
   identityAsk?: FakeIdentityAsk;
+  /** Defaults to the composer that finds nothing to answer — every test written before
+   * the escape existed is asserting the script, and that is the script. */
+  answerComposer?: IntakeDeps['answerComposer'];
+  capture?: IntakeDeps['capture'];
 }): {
   fake: FakeDb;
   transport: FakeTransport;
@@ -68,18 +99,26 @@ function harness(options: {
   identityAsk: FakeIdentityAsk;
   /** Every seeding/compose step, in the order the machine ran them. */
   steps: string[];
+  /** Every message that landed in the parent's own coach thread (channel/thread.ts). */
+  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
 } {
   const fake = makeFakeDb();
   const transport = new FakeTransport();
   const steps: string[] = [];
   const identityAsk = options.identityAsk ?? new FakeIdentityAsk();
+  const threaded: Array<{ familyId: string; parentUserId: string; body: string }> = [];
   return {
     fake,
     transport,
     steps,
     identityAsk,
+    threaded,
     deps: {
       transport,
+      threadMessage: async (_db, input) => {
+        threaded.push(input);
+        return 'conv-1';
+      },
       extractor: new FakeExtractor(options.extractions ?? [MAYA_AND_LEO]),
       intentReader: new FakeIntentReader(options.intents ?? [assent('yes')]),
       radar: {
@@ -89,6 +128,7 @@ function harness(options: {
         },
       },
       ackComposer: fakeAckComposer,
+      answerComposer: options.answerComposer ?? fakeSilentAnswerComposer,
       identityAsk,
       seedCivic: async (_db, familyId, areaCoarse, center) => {
         const placed = center === null ? 'unplaced' : `${center.lat},${center.lng}`;
@@ -100,7 +140,17 @@ function harness(options: {
         steps.push(`discovery:${familyId ? 'family' : 'none'}`);
       },
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
+      ...(options.capture ? { capture: options.capture } : {}),
       now: NOW,
+    },
+  };
+}
+
+/** A transport whose every send is refused — the provider leg failing, not the machine. */
+function refusingTransport(error: unknown): IntakeDeps['transport'] {
+  return {
+    async send(): Promise<{ providerMessageId: string }> {
+      throw error;
     },
   };
 }
@@ -132,7 +182,11 @@ describe('intake · happy path', () => {
     const { fake, transport, deps } = harness({ intents: [assent('yes please')] });
 
     expect(await text(fake, transport, deps, 'hi')).toEqual({ status: 'greeted' });
-    expect(transport.bodies()[0]).toContain('an AI that quietly runs the family week');
+    expect(transport.bodies()[0]).toBe(
+      "Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+    );
+    expect(transport.bodies()[0]).not.toContain('an AI that quietly runs the family week');
+    expect(transport.bodies()[0]).not.toMatch(/I'm an AI/i);
     // v2: the disclosure is IN the greeting, so the first reply is ONE paragraph and
     // spends no characters on a trailing parenthetical.
     expect(transport.bodies()[0]).not.toContain('\n\n');
@@ -163,8 +217,18 @@ describe('intake · happy path', () => {
     expect(kids).toEqual([
       // Both ages were stated in bare YEARS ("Maya is 4, Leo is 1"), so each covers a
       // 12-month band and the stored date is its midpoint: 48 + 6 and 12 + 6 back.
-      { familyId: expect.any(String), name: 'Maya', dateOfBirth: '2022-01-30', dobPrecision: 'derived' },
-      { familyId: expect.any(String), name: 'Leo', dateOfBirth: '2025-01-30', dobPrecision: 'derived' },
+      {
+        familyId: expect.any(String),
+        name: 'Maya',
+        dateOfBirth: '2022-01-30',
+        dobPrecision: 'derived',
+      },
+      {
+        familyId: expect.any(String),
+        name: 'Leo',
+        dateOfBirth: '2025-01-30',
+        dobPrecision: 'derived',
+      },
     ]);
 
     // ── the channel: verified by origination, hashed + encrypted ──
@@ -173,8 +237,9 @@ describe('intake · happy path', () => {
     expect(channel?.phoneE164Hash).toMatch(/^[0-9a-f]{64}$/);
     expect(channel?.phoneE164Encrypted).not.toContain('416');
 
-    // ── the watch offer went out ──
-    expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
+    // ── the watch offer went out, with the contact card as its postscript ──
+    expect(transport.bodies().at(-2)).toContain(WATCH_OFFER);
+    expect(transport.bodies().at(-1)).toBe(WELCOME_CARD_BODY);
 
     const answered = await text(fake, transport, deps, 'yes please');
     expect(answered).toEqual({
@@ -247,7 +312,7 @@ describe('intake · happy path', () => {
       return text(h.fake, h.transport, h.deps, 'yes please');
     }
 
-    it('asks for a name once, appended to the acknowledgment as the turn\'s one question', async () => {
+    it("asks for a name once, appended to the acknowledgment as the turn's one question", async () => {
       const h = harness({ intents: [assent('yes please')] });
 
       await consent(h);
@@ -273,7 +338,7 @@ describe('intake · happy path', () => {
         (row) => row.templateKey === 'parent_name_ask',
       );
       expect(asks).toHaveLength(1);
-      expect(asks[0]).toMatchObject({ direction: 'out', status: 'sent' });
+      expect(asks[0]).toMatchObject({ direction: 'out', status: 'queued' });
     });
 
     /**
@@ -302,7 +367,9 @@ describe('intake · happy path', () => {
     });
 
     it('never asks a parent who declined the watch - there is no turn to ask on', async () => {
-      const h = harness({ intents: [{ intent: 'decline', verbatim: 'no thanks', interpretation: 'declined' }] });
+      const h = harness({
+        intents: [{ intent: 'decline', verbatim: 'no thanks', interpretation: 'declined' }],
+      });
 
       await consent(h);
 
@@ -370,6 +437,129 @@ describe('intake · happy path', () => {
  * half-year is not a midpoint, it is an error — and an unrecoverable one, because every
  * downstream consumer re-derives the age OUT of the stored date.
  */
+describe("intake · the handoff into the parent's own thread", () => {
+  /**
+   * The seam this closes. Intake answers its own questions right up until it stops:
+   * the moment the session closes, the NEXT text is a coach turn, and the coach reads
+   * `messages` and only `messages` (`channel_messages` stores `body: null`, rule #1).
+   * So every sentence intake says AFTER provisioning — the radar, the consent ask, and
+   * the name ask it hands over on — has to be in the thread, or the coach picks up a
+   * conversation whose last five turns it cannot see.
+   */
+  it('threads every sentence it says once the family exists', async () => {
+    const { fake, transport, deps, threaded } = harness({});
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
+    await text(fake, transport, deps, 'yes please');
+
+    // The radar + watch offer, the contact card's own line, then the consent ack
+    // carrying the name ask — the exact question the parent's first coach turn answers.
+    expect(threaded.map((t) => t.body)).toEqual([
+      transport.bodies().at(-3),
+      WELCOME_CARD_BODY,
+      transport.bodies().at(-1),
+    ]);
+    expect(threaded.at(-1)?.body).toBe(`${ASSENT_ACK} ASK`);
+    expect(threaded.every((t) => t.familyId.length > 0 && t.parentUserId.length > 0)).toBe(true);
+  });
+
+  it('threads nothing before the family exists, because there is no thread to write to', async () => {
+    // Not a silent skip — a structural one. `conversations` is family-scoped, and a
+    // number that has only said "hi" has no family row yet. The pre-account transcript
+    // lives encrypted on the intake session, and provisioning replays it into
+    // channel_messages; what the coach needs is everything from the radar on, which the
+    // test above pins.
+    const { fake, transport, deps, threaded } = harness({});
+
+    await text(fake, transport, deps, 'hi');
+
+    expect(transport.bodies()).toHaveLength(1);
+    expect(threaded).toEqual([]);
+  });
+});
+
+describe('intake · the contact card', () => {
+  /**
+   * The SMS-native equivalent of sharing a profile: one MMS carrying Hale's own vCard,
+   * so the parent taps Add once and every later text arrives under a name and a face
+   * instead of a 289 number nobody recognises.
+   *
+   * ITS OWN MESSAGE, immediately after the radar — never media hung on the radar itself.
+   * Verified live against the prod messaging service: a MediaUrl Twilio cannot fetch
+   * fails the WHOLE message (error_code 11200), body included, so attaching the card
+   * would put the one message a stranger is guaranteed to read — and the consent ask
+   * carrying the privacy link — behind the availability of a static file.
+   */
+  it('follows the first radar with one MMS carrying its own vCard', async () => {
+    const { fake, transport, deps } = harness({});
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
+
+    const [greeting, radar, card] = transport.sent;
+    expect(greeting?.mediaUrls).toBeUndefined();
+    expect(radar?.body).toContain(WATCH_OFFER);
+    expect(radar?.mediaUrls).toBeUndefined();
+    expect(card).toEqual({
+      to: PHONE,
+      body: WELCOME_CARD_BODY,
+      mediaUrls: [CONTACT_CARD_URL],
+    });
+  });
+
+  it('carries the card exactly once across the whole conversation', async () => {
+    const { fake, transport, deps } = harness({ intents: [assent('yes please')] });
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
+    await text(fake, transport, deps, 'yes please');
+
+    expect(transport.media()).toEqual([[CONTACT_CARD_URL]]);
+    const cardRows = inserts(fake, schema.channelMessages).filter(
+      (r) => r.templateKey === WELCOME_CARD_TEMPLATE_KEY,
+    );
+    expect(cardRows).toHaveLength(1);
+  });
+
+  /**
+   * The reason the card is a separate send, stated as a test: the radar is already on
+   * the parent's phone as plain text before the card is attempted, so a provider that
+   * refuses the MMS costs the card and nothing else. The refusal is counted — the
+   * claimed ledger row flips to `failed` with the code — never silently dropped.
+   */
+  it('loses only the card when the provider refuses media, and writes down why', async () => {
+    const errors: unknown[] = [];
+    vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => errors.push(...args));
+    const { fake, transport, deps } = harness({});
+    const mediaRefusing: IntakeDeps['transport'] = {
+      async send(input) {
+        if (input.mediaUrls) throw new TwilioSendError('21620', 400);
+        return transport.send(input);
+      },
+    };
+
+    await text(fake, transport, deps, 'hi', { ...deps, transport: mediaRefusing });
+    const provisioned = await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V', {
+      ...deps,
+      transport: mediaRefusing,
+    });
+
+    // The intake completed and the radar landed as plain text.
+    expect(provisioned.status).toBe('provisioned');
+    expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
+    expect(transport.media()).toEqual([]);
+    // Counted, not dropped: the row that claimed the send says the provider refused it.
+    expect(
+      fake.writes
+        .filter((w) => w.op === 'update' && w.table === schema.channelMessages)
+        .map((w) => w.payload),
+    ).toContainEqual({ status: 'failed', errorCode: '21620' });
+    expect(JSON.stringify(errors)).toContain('21620');
+    vi.restoreAllMocks();
+  });
+});
+
 describe('intake · the age the parent stated', () => {
   /** Read a child row back the way production does: age out of the stored date. */
   function storedAge(fake: FakeDb, index = 0): number {
@@ -499,8 +689,18 @@ describe('intake · a child with no age', () => {
 
     expect(provisioned.status).toBe('provisioned');
     expect(inserts(fake, schema.children)).toEqual([
-      { familyId: expect.any(String), name: 'Nora', dateOfBirth: '2022-01-30', dobPrecision: 'derived' },
-      { familyId: expect.any(String), name: 'Ben', dateOfBirth: '2025-01-30', dobPrecision: 'derived' },
+      {
+        familyId: expect.any(String),
+        name: 'Nora',
+        dateOfBirth: '2022-01-30',
+        dobPrecision: 'derived',
+      },
+      {
+        familyId: expect.any(String),
+        name: 'Ben',
+        dateOfBirth: '2025-01-30',
+        dobPrecision: 'derived',
+      },
     ]);
   });
 
@@ -607,7 +807,7 @@ describe('intake · seeding the first radar', () => {
     });
 
     expect(result.status).toBe('provisioned');
-    expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
+    expect(transport.bodies().at(-2)).toContain(WATCH_OFFER);
   });
 
   it('does not seed anything for a conversation that never provisioned', async () => {
@@ -722,6 +922,412 @@ describe('intake · ambiguity', () => {
   });
 });
 
+describe('intake · a question mid-signup gets an answer', () => {
+  /**
+   * THE LIVE INCIDENT (founder's test, 2026-08-12). Three texts in, consent outstanding,
+   * the parent asked "Does Sebastian needs eye exam?" and Hale replied with its own
+   * question again. Nobody answered them.
+   *
+   * The composed body is deliberately not a plausible sentence: what Hale SAYS is the
+   * gates' job (answer.test.ts) and the eval's (rule #8). What this file owns is that the
+   * turn is ANSWERED, that Hale's question comes back with it, and that the step holds.
+   */
+  const ANSWER = 'ANSWER';
+  const RETURN = 'RETURN?';
+
+  it('answers the question, returns to the ask, and does not move the step', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({
+      intents: [ambiguous('Does Sebastian needs eye exam?')],
+      answerComposer: composer,
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const answered = await text(fake, transport, deps, 'Does Sebastian needs eye exam?');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+
+    // BOTH halves in the one text: their answer, and Hale's question back — and never
+    // the sentence the machine would have re-asked with.
+    const reply = transport.bodies().at(-1) as string;
+    expect(reply).toContain(ANSWER);
+    expect(reply).toContain(RETURN);
+    expect(reply).not.toBe(AMBIGUOUS_CLARIFY);
+
+    // The composer saw the parent's words, Hale's own ask, and the postal already
+    // collected (rec-morning routing). No session state or family id (rule #1).
+    // The model context still omits the postal — see intakeAnswerContext.
+    expect(composer.calls).toEqual([
+      {
+        parentWords: 'Does Sebastian needs eye exam?',
+        pendingAsk: WATCH_OFFER_ASK,
+        children: MAYA_AND_LEO.children,
+        postalCode: MAYA_AND_LEO.postalCode,
+      },
+    ]);
+
+    // THE STEP HELD: still awaiting the watch reply, no clarification spent, and not one
+    // consent row written out of a question.
+    const [session] = fake.rows(schema.smsIntakeSessions);
+    expect(session).toMatchObject({ state: 'awaiting_watch_reply', clarifyCount: 0 });
+    expect(
+      inserts(fake, schema.consentRecords).filter((c) => c.consentType === 'proactive_watch'),
+    ).toHaveLength(0);
+  });
+
+  it('still clarifies once when the reply is a wobble rather than a question', async () => {
+    // Same seam, composer finding nothing to answer: the pre-existing behaviour, intact.
+    const { fake, transport, deps } = harness({ intents: [ambiguous('hmm, maybe')] });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    expect(await text(fake, transport, deps, 'hmm, maybe')).toEqual({ status: 'clarified' });
+    expect(transport.bodies().at(-1)).toBe(AMBIGUOUS_CLARIFY);
+  });
+
+  it('answers a question asked before the family exists, keeping the follow-up unspent', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }, MAYA_AND_LEO],
+      answerComposer: composer,
+    });
+    await text(fake, transport, deps, 'hi');
+
+    const answered = await text(fake, transport, deps, 'who is this exactly?');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
+    expect(composer.calls[0]?.pendingAsk).toBe(COLD_START_ASK);
+
+    // Nothing was consumed by answering: the ask is still open and still provisions.
+    const [session] = fake.rows(schema.smsIntakeSessions);
+    expect(session).toMatchObject({ state: 'awaiting_details', followUpCount: 0 });
+    expect((await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6')).status).toBe(
+      'provisioned',
+    );
+  });
+
+  it('sends the fixed safety line alone - no signup question after it', async () => {
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    const { fake, transport, deps } = harness({
+      intents: [ambiguous("she's not breathing")],
+      answerComposer: composer,
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const answered = await text(fake, transport, deps, "she's not breathing");
+    expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(transport.bodies().at(-1)).toBe(EMERGENCY_REPLY);
+    expect(transport.bodies().at(-1)).toBe('Call 911 now.');
+    expect(transport.bodies().at(-1)).not.toContain('811');
+    expect(transport.bodies().at(-1)).not.toContain('Health811');
+    expect(transport.bodies().at(-1)).not.toContain('988');
+    expect(transport.bodies().at(-1)).not.toContain('?');
+    expect(transport.bodies().at(-1)).not.toBe(SAFETY_REPLY);
+    expect(transport.bodies().at(-1)).not.toBe(MENTAL_CRISIS_REPLY);
+  });
+
+  it('never sends HELP_REPLY alone when a mid-signup rec question is declined', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }],
+    });
+    await text(fake, transport, deps, 'hi');
+    const answered = await text(fake, transport, deps, 'When do winter-break camps open?');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
+    expect(transport.bodies().at(-1)).toContain(NOT_POSTED_YET);
+    expect(transport.bodies().at(-1)).not.toContain(COLD_START_ASK);
+  });
+
+  it('never sends HELP_REPLY alone when a mid-signup raising-kids question is declined', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }],
+    });
+    await text(fake, transport, deps, 'hi');
+    const answered = await text(fake, transport, deps, 'How do I potty train?');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
+    expect(transport.bodies().at(-1)).toContain(NO_CURRENT_SOURCE_YET);
+    expect(transport.bodies().at(-1)).not.toContain(COLD_START_ASK);
+  });
+});
+
+/**
+ * VIL-322 · the greet hole. A first inbound that is a question used to open a
+ * session and send greeting() only — the words were ignored. Off-script answer
+ * already existed on turn 2. Site chips send the question as turn 1.
+ */
+describe('intake · a first-text question is answered', () => {
+  const ANSWER = 'ANSWER';
+  const RETURN = 'RETURN?';
+
+  function recorder() {
+    const calls: Array<{ event: string }> = [];
+    const capture: IntakeDeps['capture'] = async (event) => {
+      calls.push({ event });
+      return 'sent';
+    };
+    return { calls, capture };
+  }
+
+  it('answers a rec/camp first inbound instead of the bare greeting-only path', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ answerComposer: composer, capture });
+
+    const answered = await text(fake, transport, deps, 'When does swim registration open near me?');
+
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(transport.bodies()).toEqual([`${ANSWER} ${RETURN}`]);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(composer.calls).toEqual([
+      {
+        parentWords: 'When does swim registration open near me?',
+        pendingAsk: COLD_START_ASK,
+        children: [],
+        postalCode: null,
+      },
+    ]);
+
+    const [session] = fake.rows(schema.smsIntakeSessions);
+    expect(session).toMatchObject({ state: 'awaiting_details', followUpCount: 0 });
+    expect(calls.map((c) => c.event)).toEqual(['intake_started']);
+  });
+
+  it("still sends greeting() for a first inbound 'hi'", async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+
+    expect(await text(fake, transport, deps, 'hi')).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
+    expect(composer.calls).toHaveLength(0);
+  });
+
+  it('still sends the venue greeting for a QR / HALE tag', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `${ANSWER} ${RETURN}`,
+    });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+
+    expect(await text(fake, transport, deps, 'HALE LIBRARY')).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting('library', 'en')]);
+    expect(composer.calls).toHaveLength(0);
+
+    const via = harness({ answerComposer: composer });
+    expect(await text(via.fake, via.transport, via.deps, 'Hi (via earlyon-richmondhill)')).toEqual({
+      status: 'greeted',
+    });
+    expect(via.transport.bodies()).toEqual([greeting('family centre', 'en')]);
+    expect(composer.calls).toHaveLength(0);
+  });
+
+  it('sends the safety line alone on a first inbound - no signup ask stacked after it', async () => {
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    const { fake, transport, deps } = harness({ answerComposer: composer });
+
+    const answered = await text(fake, transport, deps, "she's not breathing");
+    expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(transport.bodies()).toEqual([EMERGENCY_REPLY]);
+    expect(transport.bodies()[0]).toBe('Call 911 now.');
+    expect(transport.bodies()[0]).not.toContain('811');
+    expect(transport.bodies()[0]).not.toContain('Health811');
+    expect(transport.bodies()[0]).not.toContain('988');
+    expect(transport.bodies()[0]).not.toContain('?');
+    expect(transport.bodies()[0]).not.toContain(COLD_START_ASK);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(transport.bodies()[0]).not.toBe(SAFETY_REPLY);
+  });
+
+  it('never sends greeting() alone when a first-text rec question is declined or unavailable', async () => {
+    // VIL-326: the leak. Composer finds nothing / is unusable → greet used to
+    // send the locked greeting and ignore the question.
+    const silent = harness({});
+    const declined = await text(
+      silent.fake,
+      silent.transport,
+      silent.deps,
+      'When does swim registration open near me?',
+    );
+    expect(declined).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).toContain(NOT_POSTED_YET);
+    expect(silent.transport.bodies()[0]).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+
+    const composer = new FakeAnswerComposer({ status: 'unavailable', reason: 'unusable' });
+    const unusable = harness({ answerComposer: composer });
+    const answered = await text(
+      unusable.fake,
+      unusable.transport,
+      unusable.deps,
+      'When do winter-break camps open?',
+    );
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(unusable.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(unusable.transport.bodies()[0]).toContain(NOT_POSTED_YET);
+    expect(unusable.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+
+  it('never sends greeting() alone when a first-text raising-kids question is declined', async () => {
+    const silent = harness({});
+    const declined = await text(
+      silent.fake,
+      silent.transport,
+      silent.deps,
+      'How do I get him to nap?',
+    );
+    expect(declined).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).toContain(NO_CURRENT_SOURCE_YET);
+    expect(silent.transport.bodies()[0]).toContain(OFFICIAL_PAGE_RETURN_ASK);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+
+  it('never sends greeting() alone when a first-text leftover fact is declined', async () => {
+    const silent = harness({});
+    const declined = await text(
+      silent.fake,
+      silent.transport,
+      silent.deps,
+      'Who is the US president?',
+    );
+    expect(declined).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).toContain(NO_CURRENT_SOURCE_YET);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+
+  it('sends the reviewed 988 line alone on a first-text crisis - no return ask', async () => {
+    const silent = harness({});
+    const answered = await text(silent.fake, silent.transport, silent.deps, 'I want to die');
+    expect(answered).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(silent.transport.bodies()).toEqual([MENTAL_CRISIS_REPLY]);
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+    expect(silent.transport.bodies()[0]).not.toContain('?');
+    expect(silent.transport.bodies()[0]).not.toContain('811');
+    expect(silent.transport.bodies()[0]).not.toContain('not something I should advise on');
+    expect(silent.transport.bodies()[0]).not.toBe(SAFETY_REPLY);
+    expect(silent.transport.bodies()[0]).not.toBe(EMERGENCY_REPLY);
+    expect(silent.transport.bodies()[0]).not.toBe('Call 911 now.');
+  });
+
+  it('answers a first-text cheer-up with warmth, not the bare greeting', async () => {
+    const silent = harness({});
+    const answered = await text(silent.fake, silent.transport, silent.deps, 'cheer me up');
+    expect(answered).toEqual({ status: 'question_answered', source: 'composed' });
+    expect(silent.transport.bodies()[0]).toContain(CHEER_UP_REPLY);
+    expect(silent.transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(silent.transport.bodies()[0]).not.toContain(COLD_START_ASK);
+  });
+});
+
+/**
+ * Site Text Hale prefills the first SMS as names / ages / postal. After VIL-322,
+ * greet() treated anything that was not a bare hello as a question — so this
+ * send got an answer + COLD_START_ASK instead of extraction. One send should
+ * run intake.
+ */
+describe('intake · a first-text details prefill is extracted', () => {
+  const SITE_PREFILL = 'Maya is 4, Theo is 18 months, L3R';
+  const MAYA_AND_THEO: IntakeCollected = {
+    children: [
+      { name: 'Maya', ageMonths: 48, agePrecision: 'years' },
+      { name: 'Theo', ageMonths: 18, agePrecision: 'months' },
+    ],
+    postalCode: 'L3R',
+  };
+
+  it('extracts kids + postal on first inbound and does not greet or answer as a question', async () => {
+    const composer = new FakeAnswerComposer({
+      status: 'answered',
+      body: `ANSWER ${COLD_START_ASK}`,
+    });
+    const { fake, transport, deps } = harness({
+      extractions: [MAYA_AND_THEO],
+      answerComposer: composer,
+    });
+
+    const result = await text(fake, transport, deps, SITE_PREFILL);
+
+    expect(result.status).toBe('provisioned');
+    expect(composer.calls).toHaveLength(0);
+    expect(transport.bodies()[0]).not.toBe(greeting(null, 'en'));
+    expect(transport.bodies()[0]).not.toContain('ANSWER');
+    expect(transport.bodies().some((b) => b.includes(COLD_START_ASK))).toBe(false);
+
+    const kids = inserts(fake, schema.children);
+    expect(kids.map((k) => k.name)).toEqual(['Maya', 'Theo']);
+    expect(inserts(fake, schema.families)[0]).toMatchObject({
+      country: 'Canada',
+      postalCode: null,
+      areaCoarse: 'L3R',
+    });
+  });
+});
+
+/**
+ * A first text that is nothing but a postal code — live, 2026-08-28, a brand-new
+ * number whose whole first message was "M4B 2B1". It is not a hello and not a
+ * question: it is half the cold-start ask, already answered. It used to be read for
+ * NOTHING — greet sent the cold ask back, and the one follow-up then asked for the
+ * postal code the parent had already sent.
+ */
+describe('intake · a first text that is only a postal code', () => {
+  const MAYA_AND_LEO_IN_M4B: IntakeCollected = {
+    children: MAYA_AND_LEO.children,
+    postalCode: 'M4B 2B1',
+  };
+
+  it('keeps the postal from the first text and asks only for names and ages', async () => {
+    const { fake, transport, deps } = harness({});
+    const extractor = new FakeExtractor([MAYA_AND_LEO_IN_M4B]);
+    const withExtractor: IntakeDeps = { ...deps, extractor };
+
+    expect(await text(fake, transport, withExtractor, 'M4B 2B1')).toEqual({ status: 'greeted' });
+
+    const greeted = transport.bodies()[0] as string;
+    expect(greeted).toContain('M4B');
+    expect(greeted).toContain("Kids' names and ages");
+    expect(greeted).not.toContain(COLD_START_ASK);
+    expect(greeted).not.toMatch(/postal/i);
+
+    // The second turn is what proves the postal was STORED rather than echoed: it
+    // comes back out of the session as what the extractor is told is already known.
+    const provisioned = await text(fake, transport, withExtractor, 'Maya is 4 and Leo is 1');
+    expect(provisioned.status).toBe('provisioned');
+    expect(extractor.calls.map((c) => c.alreadyKnown.postalCode)).toEqual(['M4B 2B1']);
+    expect(transport.bodies().some((b) => b.includes(followUpQuestion(['location'])))).toBe(false);
+    expect(inserts(fake, schema.families)[0]).toMatchObject({
+      country: 'Canada',
+      postalCode: 'M4B 2B1',
+      areaCoarse: 'M4B',
+    });
+  });
+
+  it('still asks for the postal code alone when the first text is names and ages', async () => {
+    const { fake, transport, deps } = harness({ extractions: [NO_POSTAL] });
+
+    const asked = await text(fake, transport, deps, 'Maya is 4 and Leo is 1');
+
+    expect(asked).toEqual({ status: 'follow_up_asked' });
+    expect(transport.bodies().at(-1)).toContain(followUpQuestion(['location']));
+    expect(transport.bodies().at(-1)).not.toContain('how old are they');
+  });
+});
+
 describe('intake · CASL keywords', () => {
   it('STOP before provisioning acks and provisions nothing', async () => {
     const { fake, transport, deps } = harness({});
@@ -751,6 +1357,52 @@ describe('intake · CASL keywords', () => {
     expect(withdrawal).toBeDefined();
   });
 
+  it('records the STOP even when Twilio permanently refuses the ack (21610 — the carrier already told them)', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const result = await text(fake, transport, deps, 'STOP', {
+      ...deps,
+      transport: refusingTransport(new TwilioSendError('21610', 400)),
+    });
+
+    // The unsubscribe is the thing that must survive: an undeliverable courtesy line is
+    // not a reason to leave a parent subscribed and the conversation open.
+    expect(result).toEqual({ status: 'stopped' });
+    const closed = fake.writes.find(
+      (w) =>
+        w.op === 'update' && w.table === schema.smsIntakeSessions && w.payload.state === 'stopped',
+    );
+    expect(closed).toBeDefined();
+    const revoke = fake.writes.find(
+      (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
+    );
+    expect(revoke).toBeDefined();
+  });
+
+  it('positive control: a provider OUTAGE on the same ack still fails the turn — only a permanent refusal counts as delivered', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    await expect(
+      text(fake, transport, deps, 'STOP', {
+        ...deps,
+        transport: refusingTransport(new TwilioSendError('20500', 503)),
+      }),
+    ).rejects.toBeInstanceOf(TwilioSendError);
+    // Still recorded first — the STOP does not wait on the ack to become durable.
+    expect(
+      fake.writes.some(
+        (w) =>
+          w.op === 'update' &&
+          w.table === schema.smsIntakeSessions &&
+          w.payload.state === 'stopped',
+      ),
+    ).toBe(true);
+  });
+
   it('never routes a keyword through the model', async () => {
     const extractor = new FakeExtractor([MAYA_AND_LEO]);
     const intentReader = new FakeIntentReader([assent('yes')]);
@@ -758,10 +1410,12 @@ describe('intake · CASL keywords', () => {
     const transport = new FakeTransport();
     const deps: IntakeDeps = {
       transport,
+      threadMessage: async () => 'conv-1',
       extractor,
       intentReader,
       radar: fakeRadar,
       ackComposer: fakeAckComposer,
+      answerComposer: fakeSilentAnswerComposer,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => NOW.getTime()),
       now: NOW,
@@ -779,6 +1433,23 @@ describe('intake · CASL keywords', () => {
     const helped = await text(fake, transport, deps, 'HELP');
     expect(helped).toEqual({ status: 'helped' });
     expect(transport.bodies().at(-1)).toBe(HELP_REPLY);
+
+    // Still mid-intake: the next real answer still provisions.
+    const provisioned = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    expect(provisioned.status).toBe('provisioned');
+  });
+
+  it('answers an unreadable details reply with its own door, never the frozen HELP line', async () => {
+    // Doctrine G7/L2: the HELP keyword's reply is CASL-frozen; the conversational
+    // "couldn't read that" moment split off it and owns its own words.
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }, MAYA_AND_LEO],
+    });
+    await text(fake, transport, deps, 'hi');
+    const helped = await text(fake, transport, deps, 'qwerty asdf');
+    expect(helped).toEqual({ status: 'helped' });
+    expect(transport.bodies().at(-1)).toBe(UNREADABLE_INTAKE_REPLY);
+    expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
 
     // Still mid-intake: the next real answer still provisions.
     const provisioned = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
@@ -826,6 +1497,34 @@ describe('intake · guards', () => {
     expect(fake.writes).toHaveLength(0);
   });
 
+  it('still unsubscribes a rate-limited ARRET — a CASL keyword is never throttled away', async () => {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    const { fake, transport, deps } = harness({ limiter });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const hash = phoneBlindIndex(PHONE);
+    for (let i = 0; i < RATE_LIMITS['sms-inbound'].limit; i += 1) {
+      await limiter.check(hash, 'sms-inbound', RATE_LIMITS['sms-inbound']);
+    }
+
+    // The control: ordinary traffic through the SAME exhausted limiter is still silenced,
+    // so the assertion below is about the keyword and not about a limiter that stopped
+    // limiting.
+    expect(await text(fake, transport, deps, 'what about swimming lessons?')).toEqual({
+      status: 'rate_limited',
+    });
+
+    const result = await text(fake, transport, deps, 'ARRET');
+
+    expect(result).toEqual({ status: 'stopped' });
+    expect(transport.bodies().at(-1)).toBe(STOP_ACK_BY_LANGUAGE.fr);
+    const revoke = fake.writes.find(
+      (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
+    );
+    expect(revoke).toBeDefined();
+  });
+
   it('treats a carrier retry of the same provider id as a no-op', async () => {
     const { fake, transport, deps } = harness({});
     const first = transport.inbound(PHONE, 'hi');
@@ -844,5 +1543,346 @@ describe('intake · guards', () => {
     const result = await handleInboundSms(fake.db, transport.inbound('12345', 'hi'), deps);
     expect(result).toEqual({ status: 'ignored', reason: 'invalid_number' });
     expect(transport.sent).toHaveLength(0);
+  });
+});
+
+/**
+ * THE FRENCH ROUTING, proven through the machine rather than through the table.
+ *
+ * copy.test.ts pins the words; this pins that a parent who wrote French actually
+ * RECEIVES them — the detector is read at the send site, off the body that just arrived.
+ * Every assertion has its English twin beside it, because a table that always returned
+ * French would pass the first half of each of these on its own.
+ */
+describe('intake · answers in the language the parent wrote in', () => {
+  it('greets a French first message in French, and an English one in English', async () => {
+    const fr = harness({});
+    expect(await text(fr.fake, fr.transport, fr.deps, 'Bonjour')).toEqual({ status: 'greeted' });
+    expect(fr.transport.bodies()[0]).toBe(greeting(null, 'fr'));
+
+    const en = harness({});
+    await text(en.fake, en.transport, en.deps, 'hi');
+    expect(en.transport.bodies()[0]).toBe(greeting(null, 'en'));
+  });
+
+  it('refuses an out-of-region French family in French, and provisions nothing', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: MAYA_AND_LEO.children, postalCode: '75008' }],
+    });
+    await text(fake, transport, deps, 'Bonjour');
+    const result = await text(fake, transport, deps, 'Mes enfants ont 4 ans et 1 an, 75008');
+
+    expect(result).toEqual({ status: 'region_unavailable' });
+    expect(transport.bodies().at(-1)).toBe(REGION_UNAVAILABLE_REPLY_BY_LANGUAGE.fr);
+    expect(inserts(fake, schema.families)).toHaveLength(0);
+  });
+
+  it('clarifies a wobbly French answer in French', async () => {
+    const { fake, transport, deps } = harness({
+      intents: [ambiguous('vous surveillez quoi au juste?')],
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const clarified = await text(fake, transport, deps, 'vous surveillez quoi au juste?');
+    expect(clarified).toEqual({ status: 'clarified' });
+    expect(transport.bodies().at(-1)).toBe(AMBIGUOUS_CLARIFY_BY_LANGUAGE.fr);
+  });
+
+  it('takes a French no in French and an English no in English', async () => {
+    const fr = harness({ intents: [decline('non merci')] });
+    await text(fr.fake, fr.transport, fr.deps, 'hi');
+    await text(fr.fake, fr.transport, fr.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    await text(fr.fake, fr.transport, fr.deps, 'non merci');
+    expect(fr.transport.bodies().at(-1)).toBe(DECLINE_ACK_BY_LANGUAGE.fr);
+
+    const en = harness({ intents: [decline('no thanks')] });
+    await text(en.fake, en.transport, en.deps, 'hi');
+    await text(en.fake, en.transport, en.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    await text(en.fake, en.transport, en.deps, 'no thanks');
+    expect(en.transport.bodies().at(-1)).toBe(DECLINE_ACK);
+  });
+
+  /**
+   * The consent acknowledgment, and the one place the French turn deliberately gives
+   * something up. `identityAsk` composes in English and is handed no way to know what the
+   * parent wrote, so the French ack goes out WHOLE and unasked rather than with an English
+   * question stapled to it. `nameAsked: false` is the same outcome a deferred compose
+   * produces, and the intros sweep asks again later if it ever actually needs a name.
+   */
+  it('confirms a French yes in French, and sends no English tail with it', async () => {
+    const fr = harness({ intents: [assent('oui')] });
+    await text(fr.fake, fr.transport, fr.deps, 'hi');
+    await text(fr.fake, fr.transport, fr.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    const recorded = await text(fr.fake, fr.transport, fr.deps, 'oui');
+
+    expect(recorded).toMatchObject({ status: 'watch_recorded', granted: true, nameAsked: false });
+    expect(fr.transport.bodies().at(-1)).toBe(ASSENT_ACK_BY_LANGUAGE.fr);
+    expect(fr.transport.bodies().at(-1)).not.toContain('ASK');
+
+    // The English twin still gets its tail, so the assertion above is about French and not
+    // about the name ask having quietly stopped working for everybody.
+    const en = harness({ intents: [assent('yes')] });
+    await text(en.fake, en.transport, en.deps, 'hi');
+    await text(en.fake, en.transport, en.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    const enRecorded = await text(en.fake, en.transport, en.deps, 'yes');
+
+    expect(enRecorded).toMatchObject({ nameAsked: true });
+    expect(en.transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
+  });
+
+  /**
+   * The safety line, on the intake path that reaches it: a mid-intake question the
+   * composer reads as being about a hurt child. This is the message where the language
+   * matters most, and both numbers have to survive the translation.
+   */
+  it('sends the safety line in French when the French question is about a hurt child', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: [], postalCode: null }],
+      answerComposer: new FakeAnswerComposer({ status: 'safety' }),
+    });
+    await text(fake, transport, deps, 'hi');
+    const out = await text(fake, transport, deps, 'Mon fils est tombé, je ne sais pas quoi faire');
+
+    expect(out).toEqual({ status: 'question_answered', source: 'safety' });
+    expect(transport.bodies().at(-1)).toBe(SAFETY_REPLY_BY_LANGUAGE.fr);
+    expect(transport.bodies().at(-1)).toContain('811');
+    expect(transport.bodies().at(-1)).toContain('911');
+  });
+});
+
+/**
+ * THE FRENCH CARRIER KEYWORDS, end to end — the CTA v2.1 §3.1 obligation proven as
+ * behaviour rather than as a table entry.
+ *
+ * These are the turns `replyLanguage` structurally could not get right: the body IS the
+ * token, so AIDE and DEBUT carry no sentence to read French out of. Each assertion is
+ * therefore about the KEYWORD's language reaching the send site, and each has its
+ * English twin beside it so a table that always answered French would fail.
+ */
+describe('intake · the French CASL keywords', () => {
+  it('unsubscribes on ARRET exactly as on STOP, and confirms in French', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const result = await text(fake, transport, deps, 'ARRÊT');
+
+    expect(result).toEqual({ status: 'stopped' });
+    expect(transport.bodies().at(-1)).toBe(STOP_ACK_BY_LANGUAGE.fr);
+    // The legal half: the same revocation and the same withdrawal record an English STOP
+    // writes. A French unsubscribe that only answered politely would be the CASL failure.
+    const revoke = fake.writes.find(
+      (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
+    );
+    expect(revoke).toBeDefined();
+    const withdrawal = inserts(fake, schema.consentRecords).find(
+      (c) => c.consentType === 'sms_service_messages' && c.granted === false,
+    );
+    expect(withdrawal).toBeDefined();
+  });
+
+  it('answers AIDE with the French capability line and HELP with the English one', async () => {
+    const fr = harness({});
+    await text(fr.fake, fr.transport, fr.deps, 'hi');
+    expect(await text(fr.fake, fr.transport, fr.deps, 'AIDE')).toEqual({ status: 'helped' });
+    expect(fr.transport.bodies().at(-1)).toBe(HELP_REPLY_BY_LANGUAGE.fr);
+
+    const en = harness({});
+    await text(en.fake, en.transport, en.deps, 'hi');
+    await text(en.fake, en.transport, en.deps, 'HELP');
+    expect(en.transport.bodies().at(-1)).toBe(HELP_REPLY);
+  });
+
+  it('re-enrols on DEBUT after an ARRET, and welcomes the parent back in French', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    await text(fake, transport, deps, 'ARRET');
+
+    const restarted = await text(fake, transport, deps, 'DEBUT');
+
+    expect(restarted).toEqual({ status: 'restarted' });
+    expect(transport.bodies().at(-1)).toBe(START_ACK_BY_LANGUAGE.fr);
+    // Re-consent is the keyword itself, and the record has to hold what was actually sent.
+    const consents = inserts(fake, schema.consentRecords).filter(
+      (c) => c.consentType === 'sms_service_messages' && c.granted === true,
+    );
+    expect(consents.at(-1)?.evidence).toMatchObject({ verbatimReply: 'DEBUT' });
+  });
+});
+
+/**
+ * THE F14 FUNNEL. Texting the number is the only way into this product, so the pair
+ * below is the conversion the whole business turns on — and it is measured on a surface
+ * where the identifier closest to hand is a phone number (hard rule #1).
+ */
+describe('intake · the funnel milestones', () => {
+  function recorder() {
+    const calls: Array<{
+      event: string;
+      distinctId: string;
+      properties: Record<string, unknown>;
+    }> = [];
+    const capture: IntakeDeps['capture'] = async (event, distinctId, properties = {}) => {
+      calls.push({ event, distinctId, properties });
+      return 'sent';
+    };
+    return { calls, capture };
+  }
+
+  it('records the greeting as intake_started and the family as intake_completed', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'hi');
+    expect(calls.map((c) => c.event)).toEqual(['intake_started']);
+
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    expect(calls.map((c) => c.event)).toEqual(['intake_started', 'intake_completed']);
+  });
+
+  it('keys both ends on the same intake session, so they join into one funnel', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const [started, completed] = calls;
+    expect(started?.distinctId).toBe(completed?.distinctId);
+    expect(started?.distinctId).toBeTruthy();
+  });
+
+  it('never keys the funnel on the phone number, or names a child in it', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    const serialized = JSON.stringify(calls);
+    expect(serialized).not.toContain(PHONE);
+    expect(serialized).not.toContain('6475551234');
+    expect(serialized).not.toContain('Maya');
+    expect(serialized).not.toContain('M5V');
+  });
+
+  it('attributes the completed intake to the card that produced it', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    // The `(via …)` token the QR card pre-writes into the parent's first message.
+    await text(fake, transport, deps, 'Hi (via earlyon-richmondhill)');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    expect(calls.at(-1)?.properties).toEqual({ source_code: 'earlyon-richmondhill' });
+  });
+
+  it('leaves source_code ABSENT when nobody handed out a card', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    // Null, not the string 'direct': a bucket meaning "no card" must not be able to
+    // look like a card that exists. buildEvent drops it on the way out.
+    expect(calls.at(-1)?.properties).toEqual({ source_code: null });
+  });
+
+  it('does not lose the parent their reply when analytics is down', async () => {
+    const { fake, transport, deps } = harness({
+      capture: async () => {
+        throw new Error('posthog unreachable');
+      },
+    });
+
+    await expect(text(fake, transport, deps, 'hi')).resolves.toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toHaveLength(1);
+  });
+});
+
+/**
+ * VIL-332 — createSession commits before send. A crash or a refused first
+ * send must not leave an open awaiting_details row that swallows the retry
+ * as details / a duplicate and never greets.
+ */
+describe('intake · VIL-332 first-hello cannot die after createSession', () => {
+  function seedOpenSession(
+    fake: FakeDb,
+    over: {
+      lastProviderId?: string | null;
+      transcript?: Array<{
+        direction: 'in' | 'out';
+        body: string;
+        providerId: string | null;
+        at: string;
+      }>;
+    } = {},
+  ): void {
+    fake.db.insert(schema.smsIntakeSessions).values({
+      phoneHash: phoneBlindIndex(PHONE),
+      phoneEncrypted: encryptString(PHONE),
+      state: 'awaiting_details',
+      dataEncrypted: encryptString(
+        JSON.stringify({
+          collected: { children: [], postalCode: null },
+          transcript: over.transcript ?? [],
+        }),
+      ),
+      lastProviderId: over.lastProviderId === undefined ? 'SMin' : over.lastProviderId,
+    });
+  }
+
+  it('closes the new session when the first send fails, so a retry can greet', async () => {
+    const { fake, deps } = harness({});
+    await expect(
+      handleInboundSms(
+        fake.db,
+        { from: PHONE, body: 'hi', providerId: 'SM-first', receivedAt: NOW },
+        { ...deps, transport: refusingTransport(new Error('provider down')) },
+      ),
+    ).rejects.toThrow('provider down');
+
+    expect(fake.rows(schema.smsIntakeSessions)[0]).toMatchObject({
+      closedAt: NOW,
+      state: 'awaiting_details',
+    });
+
+    const { transport } = harness({});
+    const retry = await handleInboundSms(
+      fake.db,
+      { from: PHONE, body: 'hi', providerId: 'SM-retry', receivedAt: NOW },
+      { ...deps, transport },
+    );
+    expect(retry).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
+  });
+
+  it('sends the locked first-hello for an open session that has a SID and no outbound', async () => {
+    const { fake, transport, deps } = harness({});
+    seedOpenSession(fake, { lastProviderId: 'SMprior' });
+
+    const result = await handleInboundSms(
+      fake.db,
+      { from: PHONE, body: 'hi', providerId: 'SMnext', receivedAt: NOW },
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'greeted' });
+    expect(transport.bodies()).toEqual([greeting(null, 'en')]);
+    expect(transport.bodies()[0]).toContain(COLD_START_ASK);
+  });
+
+  it('still treats a carrier retry as a no-op once outbound exists', async () => {
+    const { fake, transport, deps } = harness({});
+    const first = transport.inbound(PHONE, 'hi');
+    await handleInboundSms(fake.db, first, deps);
+    const sentAfterFirst = transport.sent.length;
+
+    const retry = await handleInboundSms(fake.db, { ...first }, deps);
+    expect(retry).toEqual({ status: 'duplicate' });
+    expect(transport.sent).toHaveLength(sentAfterFirst);
   });
 });

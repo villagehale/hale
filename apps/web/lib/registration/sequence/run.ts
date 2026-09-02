@@ -4,16 +4,18 @@ import { and, eq, isNull, or } from 'drizzle-orm';
 import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
-import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
+import { withOptOut } from '~/lib/channel/opt-out';
+import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { localParts } from '~/lib/loop/prefs';
@@ -134,7 +136,7 @@ export interface SequenceLedgerWrite {
   category: 'registration_sequence';
   templateKey: string;
   dedupeKey: string;
-  status: 'sent';
+  status: AcceptedStatus;
   providerMessageId: string;
   sentAt: Date;
 }
@@ -179,6 +181,9 @@ export interface SequenceRunDeps {
   releaseClaim(database: Database, sequenceId: string): Promise<void>;
   loadLiveSequences(database: Database, now: Date): Promise<LiveSequence[]>;
   buildGate(database: Database): OutboundGatePorts;
+  /** The reconciliation primitive's send-boundary gate (VIL-293). REQUIRED (rule #11):
+   * a lane that could silently skip it would send exactly the claims it exists to stop. */
+  refuseUnbackedSend: typeof refuseUnbackedSend;
   dedupeActive(database: Database, dedupeKey: string): Promise<boolean>;
   /** The ONE send-side reader (sms-consent-core). It carries the verified +
    * non-revoked predicate itself, so a channel that may not be texted resolves to no
@@ -204,6 +209,17 @@ export interface SequenceRunDeps {
    * behind an explicit, result-visible flag, never behind an absent dependency.
    */
   transport: ChannelTransport;
+  /**
+   * Put the sent leg in the parent's own text thread — REQUIRED, same reason as the
+   * three above (rule #11). This ladder is the one Hale runs as a CONVERSATION: the
+   * heads-up asks for a YES, the battle plan is answered the morning of, and the
+   * check-in asks how it went. `channel_messages` carries no body (rule #1), so a leg
+   * that skips this leaves the parent's answer with no antecedent the coach can read —
+   * and it answers a question Hale cannot see itself having asked. There is no "no
+   * thread" to express: the anchor is derived from the family and parent ids
+   * (lib/channel/thread.ts).
+   */
+  threadMessage: typeof threadProactiveMessage;
 }
 
 export interface SequenceRunResult {
@@ -217,6 +233,13 @@ export interface SequenceRunResult {
   /** Live sequences with no leg due — the common outcome on most ticks. */
   quiet: number;
   deduped: number;
+  /**
+   * Legs whose wire body claimed a row that does not exist, refused at the send boundary
+   * (VIL-293). Its own count and not folded into `failed`: nothing broke, and a non-zero
+   * here means a TEMPLATE in copy.ts is asserting something this family's ledger does not
+   * hold — a bug in the sentence rather than in the run (rule #11).
+   */
+  refused: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
 }
@@ -229,6 +252,7 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     sent: 0,
     quiet: 0,
     deduped: 0,
+    refused: 0,
     failed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
   };
@@ -345,6 +369,7 @@ type LegOutcome =
   | { kind: 'held'; reason: ProactiveHoldReason }
   | { kind: 'quiet' }
   | { kind: 'deduped' }
+  | { kind: 'refused' }
   | { kind: 'sent' };
 
 async function runLegForSequence(
@@ -422,10 +447,28 @@ async function runLegForSequence(
     throw new Error(`runRegistrationSequenceCron: no send target for ${sequence.parentUserId}`);
   }
 
-  const { providerMessageId } = await deps.transport.send({
-    to,
-    body: `${body}\n\n${NUDGE_OPT_OUT}`,
+  // THE GATE, ON THE STRING THAT ACTUALLY LEAVES (VIL-293) — after `withOptOut`, because
+  // everything between a gate and the transport is unchecked by construction. The ladder's
+  // own legs are the one template set that DOES claim a registration watch, and they are
+  // true because a live sequence is what is sending them: the reconcile matches on that
+  // row rather than on the sentence. What it stops is a leg rendered for a household whose
+  // sequence has gone (a claim nothing backs) and any future copy change that asserts a
+  // booking or a promise about Hale itself.
+  const wireBody = withOptOut(body, verdict.optOut);
+  const unbacked = await deps.refuseUnbackedSend(database, {
+    familyId: sequence.familyId,
+    body: wireBody,
+    now,
   });
+  if (unbacked.length > 0) {
+    console.error(
+      { sequenceId: sequence.sequenceId, leg, reasons: unbacked },
+      'registration sequence: the wire body claims a row that does not exist - leg refused',
+    );
+    return { kind: 'refused' };
+  }
+
+  const { providerMessageId } = await deps.transport.send({ to, body: wireBody });
   const messageId = await deps.recordSend(database, {
     familyId: sequence.familyId,
     parentUserId: sequence.parentUserId,
@@ -433,7 +476,7 @@ async function runLegForSequence(
     category: 'registration_sequence',
     templateKey: `registration_sequence:${leg}`,
     dedupeKey,
-    status: 'sent',
+    status: acceptedStatus('sms'),
     providerMessageId,
     sentAt: now,
   });
@@ -454,6 +497,15 @@ async function runLegForSequence(
   });
 
   await recordLegPromise(database, { sequence, shortlist, leg, messageId, opensForFamilyAt }, deps, now);
+  // THE THREAD, which is where the parent's answer will be read. Unconditional and
+  // AFTER the send, like the promise write above: a leg that never reached a transport
+  // is not something Hale said. The COMPOSED leg, never the wire body — the CASL line
+  // belongs on the wire and nowhere else.
+  await deps.threadMessage(database, {
+    familyId: sequence.familyId,
+    parentUserId: sequence.parentUserId,
+    body,
+  });
   return { kind: 'sent' };
 }
 
@@ -504,6 +556,19 @@ async function recordLegPromise(
     await deps.fulfillCommitment(database, {
       familyId: sequence.familyId,
       kind: 'registration_plan',
+      channelMessageId: messageId,
+      now,
+    });
+  }
+  // THE COACH'S OWN WATCH, KEPT (VIL-293). A parent who asked Hale to watch a registration
+  // morning was promised a text before the doors open, and this is that text. It is the
+  // `go` leg and nothing earlier: the heads-up warns a week out and the battle plan hands
+  // over a plan the evening before, and closing on either would file the promise as kept
+  // while the parent is still waiting for the thing they were actually promised.
+  if (leg === 'go') {
+    await deps.fulfillCommitment(database, {
+      familyId: sequence.familyId,
+      kind: 'registration_watch',
       channelMessageId: messageId,
       now,
     });
@@ -745,6 +810,7 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     },
     loadLiveSequences: (database) => loadLiveSequences(database),
     buildGate: buildOutboundGatePorts,
+    refuseUnbackedSend,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),
     resolveSendablePhone,
     recordSend: async (database, write) => {
@@ -763,5 +829,6 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     transport: createTwilioTransport(),
     recordCommitment,
     fulfillCommitment,
+    threadMessage: threadProactiveMessage,
   };
 }

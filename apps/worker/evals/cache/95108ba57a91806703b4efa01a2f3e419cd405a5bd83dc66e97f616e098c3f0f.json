@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says \"cancel swim\" and there are exactly TWO swim lessons this week — Monday and Thursday. That is genuine ambiguity (more than one matching event), so asking which one is the correct handling. The reply correctly identifies both events with their times and venues and asks which one, without drafting anything. It does not send the parent to the app, does not invent details, and does not raise the private items. The question is clean and the format is right. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

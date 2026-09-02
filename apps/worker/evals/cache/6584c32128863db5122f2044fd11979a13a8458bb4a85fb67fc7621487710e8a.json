@@ -1,0 +1,11 @@
+{
+  "value": {
+    "answer": "This needs emergency care now - go to the ER or call 911. Fever with a stiff neck, bad headache, and pain from light can be signs of meningitis, which needs urgent treatment.",
+    "triage": "Do not wait or call 811 for this - go to the ER immediately or call 911, especially if you also see a rash that does not fade when pressed, drowsiness, confusion, or vomiting. Get seen right away.",
+    "sources": [
+      "HealthyChildren.org (AAP)",
+      "Caring for Kids (Canadian Paediatric Society)"
+    ]
+  },
+  "latencyMs": 5035
+}

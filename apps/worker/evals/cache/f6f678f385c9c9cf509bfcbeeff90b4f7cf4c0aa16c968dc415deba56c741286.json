@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message violates multiple core constraints for the \"introduction\" moment. It opens with a greeting and emoji (\"Hi there! 😊\"), describes the other household by mentioning they have \"a toddler\" - explicitly forbidden in the watchFor notes. It asks two separate questions instead of one, includes a deadline (\"within 2 days\"), provides an invented specific example address (sam@example.com), points at an app/link (www.example.com), and adds padding throughout. The message reads like a company collecting contact details rather than simply asking what is needed to make an introduction. It does request both name and email as required, but the execution is polluted with pressure, unnecessary detail, and re-introduction language that belongs to the start of life, not to a parent already months into the relationship.",
+    "score": 1
+  }
+}

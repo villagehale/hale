@@ -2,10 +2,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+// The milestones/[age] card went with its page in the receipts-room slimdown: the
+// route is a permanent redirect now, so there is nothing left for it to be the card of.
 const CARD_SOURCES = [
-  './opengraph-image.tsx',
-  './answers/[slug]/opengraph-image.tsx',
-  './milestones/[age]/opengraph-image.tsx',
+  './[locale]/opengraph-image.tsx',
+  './[locale]/answers/[slug]/opengraph-image.tsx',
 ].map((path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8'));
 const BRAND_SOURCE = readFileSync(
   fileURLToPath(new URL('../components/social-card-brand.tsx', import.meta.url)),

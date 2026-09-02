@@ -83,8 +83,10 @@ export interface Shortlist {
 }
 
 /** How each M1 program domain reads to a parent. Reviewed copy, not a prettified
- * enum: "rec_program" is our word for it, "recreation programs" is theirs. */
-const PROGRAM_DOMAIN_LABEL: Record<ProgramDomain, string> = {
+ * enum: "rec_program" is our word for it, "recreation programs" is theirs. Exported
+ * for the coach's registration context, which names the same cycles in a texted answer
+ * — one wording for one thing, across the sweep and the reply. */
+export const PROGRAM_DOMAIN_LABEL: Record<ProgramDomain, string> = {
   rec_program: 'recreation programs',
   camp: 'camps',
   swim: 'swim lessons',

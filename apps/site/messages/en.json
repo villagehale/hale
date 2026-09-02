@@ -1,0 +1,542 @@
+{
+  "Common": {
+    "textHale": "Text Hale",
+    "emailHale": "Email Hale",
+    "skipToContent": "Skip to content",
+    "messageHale": "Message Hale"
+  },
+  "HomeMeta": {
+    "title": "Hale · the family assistant you text",
+    "description": "Hale is a family assistant you text — no app, no account. It watches registration day across the GTA — city swim, camps, after-school care — preps everything the night before, and nudges you the minute a window opens. Nothing sent without your say-so. Your data stays in Canada.",
+    "ogDescription": "The family assistant you text. It watches GTA registration day — swim, camps, after-school care — preps everything the night before, and nudges you the minute a window opens. Nothing sent without your say-so. Your data stays in Canada.",
+    "twitterDescription": "The family assistant you text. Registration day watched, everything prepped the night before, nothing sent without your say-so. Your data stays in Canada."
+  },
+  "Header": {
+    "navPricing": "Pricing",
+    "navFaq": "FAQ",
+    "navAbout": "About",
+    "signIn": "Sign in"
+  },
+  "Footer": {
+    "blurb": "Hale is the family assistant you text — always prepared, never acting without you.",
+    "pronunciationPrefix": "Hale",
+    "pronunciation": "/HAH-leh/",
+    "pronunciationSuffix": "— Hawaiian for home.",
+    "productHeading": "Product",
+    "resourcesHeading": "Resources",
+    "linkPricing": "Pricing",
+    "linkFaq": "FAQ",
+    "linkActivities": "Activities",
+    "linkGuides": "Parenting guides",
+    "linkAbout": "About",
+    "linkContact": "Contact",
+    "linkPrivacy": "Privacy policy",
+    "linkTerms": "Terms of service",
+    "copyright": "© {year} Hale. All rights reserved.",
+    "company": "Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada.",
+    "signIn": "Sign in"
+  },
+  "LanguageSwitcher": {
+    "label": "Language"
+  },
+  "ThemeSwitch": {
+    "light": "Light",
+    "dark": "Dark",
+    "toLight": "Switch to light mode",
+    "toDark": "Switch to dark mode"
+  },
+  "CopyNumber": {
+    "label": "Copy number",
+    "copied": "copied — text me from your phone",
+    "aria": "Copy Hale's phone number to your clipboard"
+  },
+  "EmailCta": {
+    "emailMe": "Email me",
+    "copy": "Copy {email}",
+    "copied": "Copied ✓"
+  },
+  "Landing": {
+    "eyebrow": "Hale · /HAH-leh/ · Hawaiian for home",
+    "heroH1a": "The family assistant",
+    "heroH1b": "you",
+    "heroH1Accent": "message.",
+    "heroSub": "Take the family admin off your plate — swim, camps and registration day, caught before they fill. No app; Hale is a contact in your phone.",
+    "threadEyebrow": "Texting Hale looks like this",
+    "threadH2a": "Text me like you’d text",
+    "threadH2Accent": "a friend.",
+    "threadLede": "No app, no menus — and nothing sent without your say-so.",
+    "threadCap": "Your thread with Hale",
+    "threadBubbles": [
+      {
+        "dir": "time",
+        "text": "A week before · Tue 10:04 a.m."
+      },
+      {
+        "dir": "in",
+        "text": "Halton Hills fall recreation programs registration opens Tuesday at 7:00 a.m. for Mia. Your postal code gets the residents-first date. Reply YES and I’ll run the morning with you."
+      },
+      {
+        "dir": "out",
+        "text": "YES"
+      },
+      {
+        "dir": "time",
+        "text": "The evening before · Mon 7:04 p.m."
+      },
+      {
+        "dir": "in",
+        "text": "Tomorrow: Halton Hills fall recreation programs opens 7:00 a.m. for Mia. Sign in tonight and have this open: haltonhills.ca/Play/Recreation/Programs"
+      },
+      {
+        "dir": "time",
+        "text": "Fifteen minutes before · Tue 6:45 a.m."
+      },
+      {
+        "dir": "in",
+        "text": "Halton Hills fall recreation programs opens 7:00 a.m. Your link: haltonhills.ca/Play/Recreation/Programs"
+      },
+      {
+        "dir": "time",
+        "text": "Four hours later · Tue 11:02 a.m."
+      },
+      {
+        "dir": "in",
+        "text": "How did Halton Hills fall recreation programs go? Reply “got in”, “waitlisted #12” or “missed it”."
+      },
+      {
+        "dir": "out",
+        "text": "got in 🙌"
+      },
+      {
+        "dir": "in",
+        "text": "That’s a spot. Noted: Halton Hills fall recreation programs registered."
+      }
+    ],
+    "howEyebrow": "How Hale works",
+    "howH2a": "Three texts, then",
+    "howH2Accent": "quiet.",
+    "steps": [
+      {
+        "when": "Right now",
+        "step": "You text names, ages, and a postal code",
+        "body": "One text. No app, no account."
+      },
+      {
+        "when": "In the same thread",
+        "step": "I text back your week",
+        "body": "Names, ages, a postal code — and I reply with every registration date I’m now watching for you."
+      },
+      {
+        "when": "Then every week",
+        "step": "I keep watch",
+        "body": "A brief on Sunday, the plan the night before, a nudge as it opens."
+      }
+    ],
+    "howRail": "How Hale works, in three steps",
+    "consentLine": "I suggest, I prepare — and with your ok, I handle it. Receipts for everything: a yes becomes a real calendar invite.",
+    "watchEyebrow": "What I watch",
+    "watchH2Count": "{count} municipalities,",
+    "watchH2Accent": "by name.",
+    "watchLede": "I watch all {count} calendars so nobody has to.",
+    "contrast": [
+      {
+        "title": "Without me",
+        "body": "You set an alarm for 6:55 and open the tabs. Spots open at 7:00 a.m., and the good ones are gone by 7:02. Lose the $54 city session and private runs about twelve times that — and some towns give residents a head start of four days to two weeks."
+      },
+      {
+        "title": "With me",
+        "body": "You reply YES once. I run the morning with you, and your link is in your hand before it opens."
+      }
+    ],
+    "watched": [
+      {
+        "title": "Swim lessons",
+        "body": "Fill in minutes — some towns register them on their own date."
+      },
+      {
+        "title": "Camps",
+        "body": "The winter-break camps quietly open back in August."
+      },
+      {
+        "title": "After-school care",
+        "body": "Some cities book it apart, on its own morning."
+      },
+      {
+        "title": "Waitlist clocks",
+        "body": "A day to accept in some towns, two in others."
+      }
+    ],
+    "watchRail": "What I watch",
+    "coachingEyebrow": "When you ask me something",
+    "coachingH2a": "Sleep, solids, potty —",
+    "coachingH2Accent": "answered, then planned.",
+    "coachingLede": "Registration day is why families text me first. The 3 a.m. question is why the thread stays open.",
+    "coaching": [
+      {
+        "step": "You ask",
+        "body": "Two sentences back, pitched at your child’s actual age — and the thing to try tonight."
+      },
+      {
+        "step": "I offer the whole plan",
+        "body": "The real method, by name — Ferber’s check-in tables, the three-day potty protocol, Health Canada’s allergen introduction."
+      },
+      {
+        "step": "A few days later, I ask how it went",
+        "body": "I name the day in the plan and set that reminder myself."
+      }
+    ],
+    "coachingRail": "What happens when you ask",
+    "coachingStopTitle": "Where I stop",
+    "coachingStopBody": "I don’t diagnose and I never name a dose — and a plan names the one situation worth raising with your doctor.",
+    "helpersEyebrow": "Your helpers",
+    "helpersH2a": "Your helpers,",
+    "helpersH2Accent": "only what they need.",
+    "caregivers": [
+      {
+        "title": "Grandparents and the nanny",
+        "body": "They get just the schedule — who’s where, when to be there."
+      },
+      {
+        "title": "Your co-parent",
+        "body": "Always free. The same radar and reminders, on their own number."
+      }
+    ],
+    "helpersRail": "Your helpers",
+    "privacyEyebrow": "Privacy",
+    "privacyH2a": "Privacy, the",
+    "privacyH2Accent": "Canadian way.",
+    "privacyBody1": "Your family’s data stays in Canada, and a child’s information is sensitive by default. Every permission is granted in a text and withdrawn in a text.",
+    "privacyLink": "How I handle your data",
+    "closingH2a": "Founding families join",
+    "closingH2Accent": "free.",
+    "closingSub": "Free while I’m new — and families who start now keep their founding rate for good. No countdown, just the number.",
+    "heroTerms": "Free to start. You message first; standard message rates apply, reply STOP any time. Your data stays in Canada —",
+    "heroTermsLink": "privacy policy"
+  },
+  "About": {
+    "metaTitle": "About · Hale",
+    "metaDescription": "Hale is a number your family texts — the family assistant for the dates, the forms, and the small things that slip. Built by Anzhe Dong at Village Hale Technologies Inc. in Georgetown, Ontario.",
+    "eyebrow": "About Hale",
+    "headline": [
+      {
+        "text": "Why Hale is"
+      },
+      {
+        "text": "a number,",
+        "accent": true
+      },
+      {
+        "text": "not another app."
+      }
+    ],
+    "lede": "Once, a family had a village — elders who knew which class was worth it, neighbors who carried the small things, a grandmother who said this is normal, you are doing fine. That knowing hasn’t disappeared. It just has nowhere to live now except one parent’s memory — and no app fixes a memory problem by asking for more of your attention. So Hale is a number you text.",
+    "missionEyebrow": "Our mission",
+    "mission": "Every parent deserves a family assistant — someone who holds the dates, the forms, and the small things that slip, and hands back the evening. Across every stage of childhood, from the first months to almost grown.",
+    "howEyebrow": "How Hale works",
+    "howHeadline": [
+      {
+        "text": "It earns"
+      },
+      {
+        "text": "each rung.",
+        "accent": true
+      }
+    ],
+    "howLede": "Hale starts by telling you things and only ever does things with your say-so. The ladder is the whole product: it climbs one rung at a time, and only when you let it.",
+    "ladder": [
+      {
+        "tag": "Recommend",
+        "title": "Hale suggests",
+        "line": "The thing worth knowing this week, and why it matters now.",
+        "checks": [
+          "A brief on Sunday",
+          "A heads-up the week a registration opens",
+          "Quiet in between"
+        ],
+        "linkLabel": "Parenting guides"
+      },
+      {
+        "tag": "Prepare",
+        "title": "Hale gets it ready",
+        "line": "The shortlist, the links, the times — before the window opens, not after.",
+        "checks": [
+          "The plan the evening before",
+          "A nudge as it goes live",
+          "The links and the times"
+        ],
+        "linkLabel": "What it costs"
+      },
+      {
+        "tag": "Execute",
+        "title": "With your ok, Hale handles it",
+        "line": "Nothing reaches the outside world until you say so.",
+        "checks": [
+          "A calendar invite for a date you say yes to",
+          "Every message names exactly what was done",
+          "Consent you grant in a text and withdraw in a text"
+        ],
+        "linkLabel": "How your data is handled"
+      }
+    ],
+    "founderEyebrow": "The founder",
+    "founderHeadline": [
+      {
+        "text": "Built by a parent, far from"
+      },
+      {
+        "text": "his village.",
+        "accent": true
+      }
+    ],
+    "founderStory": "Hale is built by Anzhe Dong — a father, husband, and founder who spent years shipping production agentic systems. He started it raising a kid far from the village his own parents had: no elders down the street, no one who just knew which class was worth it. The trust was still out there, in what other parents told each other; it just couldn’t reach him. So he built the thing he kept wishing someone would text him.",
+    "cta": "It starts with names, ages, and a postal code. No app, no account."
+  },
+  "Pricing": {
+    "metaTitle": "Pricing · Hale",
+    "metaDescription": "Free while Hale is new — every stage, every child. Plus and Family add more automation and booking on your approval as integrations ship. Your data stays in Canada.",
+    "eyebrow": "Pricing",
+    "headline": [
+      {
+        "text": "Free while Hale is"
+      },
+      {
+        "text": "new.",
+        "accent": true
+      }
+    ],
+    "lede": "The whole core — every stage, every child — is free. Plus and Family add more of the work Hale does for you, on your approval, as each integration ships.",
+    "cta": "Start free today — and let Hale grow into the rest when you’re ready."
+  },
+  "PricingSection": {
+    "eyebrow": "Three sizes of help",
+    "headline": "The whole core is free. Paid plans are for the doing, never the watching.",
+    "lede": "Everything Hale does today — the watching, the plans, the answers — is free, for every stage and every child. Paid plans open only when Hale can do more of the work itself. Families who start now keep their founding rate for good. A co-parent is always free.",
+    "foundingTitle": "Founding families join free.",
+    "foundingNote": "The first 100 families get a permanent founding badge — and first access when Plus and Family open.",
+    "annualNote": "billed yearly — about three months free",
+    "footnote": "Hale is free to start. Plus and Family open as their integrations ship.",
+    "tierLines": {
+      "free": "Text Hale, rec dates watched, answers, and the founding rate.",
+      "plus": "For when you want Hale to do more: once it has earned your trust, it acts on your approval — reminders, drafts, and your calendar, every child, as integrations roll out.",
+      "family": "For when you want Hale to handle it: full autonomy on your approval, commerce and booking as they roll out, concierge and priority support."
+    },
+    "freeFeatures": ["Text Hale", "Rec dates watched", "Answers", "Founding rate"]
+  },
+  "Contact": {
+    "metaTitle": "Contact · Hale",
+    "metaDescription": "Reach the team behind Hale. Email aloha@villagehale.com for anything; privacy@villagehale.com for privacy and data requests.",
+    "eyebrow": "Contact",
+    "headline": [
+      {
+        "text": "Say"
+      },
+      {
+        "text": "hello.",
+        "accent": true
+      }
+    ],
+    "lede": "We’re small, parent-built, and early — so a real person reads what you send. The fastest way to reach us is email.",
+    "emailButton": "Email aloha@villagehale.com",
+    "channels": {
+      "general": {
+        "eyebrow": "Anything at all",
+        "line": "Questions, feedback, a class your village should know about — we read every note."
+      },
+      "privacy": {
+        "eyebrow": "Privacy & your data",
+        "line": "Access, correction, or deletion requests, and anything about how we handle your family’s data."
+      }
+    },
+    "note": "Hale is built by Village Hale Technologies Inc., Georgetown, Ontario, Canada."
+  },
+  "Faq": {
+    "metaTitle": "Is Hale free, private, and right for your family? · Hale",
+    "metaDescription": "Straight answers about Hale for parents: it’s free to start, your family’s data stays in Canada, it works for every age 0–18, and it never acts without your consent.",
+    "eyebrow": "Questions, answered",
+    "headline": [
+      {
+        "text": "Is Hale right for"
+      },
+      {
+        "text": "your family?",
+        "accent": true
+      }
+    ],
+    "lede": "The honest answers parents ask us most — about cost, privacy, and how Hale actually works.",
+    "ctaHeading": "Still wondering? Just ask me.",
+    "ctaSub": "Free to start. Your data stays in Canada.",
+    "items": [
+      {
+        "question": "What is Hale?",
+        "answer": "A phone number your family texts. Hale watches the registration dates and programs where you live, plans the week, answers the parenting questions, and does the admin once you say yes — all in one text thread. There is no app to install and no account to create."
+      },
+      {
+        "question": "How do I start?",
+        "answer": "You text the number and say hi. Hale asks for your kids’ names and ages and your postal code, and that is the whole setup — everything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first."
+      },
+      {
+        "question": "Does Hale do anything without asking?",
+        "answer": "No. Hale drafts and you confirm — nothing reaches the outside world until you reply yes to that specific thing. Every message names exactly what was done, and Hale keeps the full record of who, what and when."
+      },
+      {
+        "question": "Is my family’s data private?",
+        "answer": "Your data is stored in Canada and never leaves it, in line with PIPEDA and Quebec’s Law 25, and Hale never sells it. Every permission is granular and revocable in a text. Text messaging itself is not sealed the way an app is — a message crosses your carrier and Hale’s messaging provider — so Hale writes to that reality and names the task, never the diagnosis. A teenager’s content is redacted from parents by default."
+      },
+      {
+        "question": "Is this a bot? Who actually reads my texts?",
+        "answer": "Hale is an AI assistant, and it never pretends otherwise. It is built and run by Village Hale Technologies Inc., a small parent-founded company in Georgetown, Ontario — and a real person reads anything you send to aloha@villagehale.com. Hale never texts a number that hasn’t texted it first, never asks you to text back a password, a card number or a code, and STOP ends the conversation at any time."
+      },
+      {
+        "question": "What does Hale actually watch?",
+        "answer": "Municipal registration across 15 GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others."
+      },
+      {
+        "question": "How often will Hale text me?",
+        "answer": "A brief on Sunday, and then only when something needs you: a heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. It is quiet in between, and STOP works at any time."
+      },
+      {
+        "question": "Can Hale answer parenting questions, or only scheduling ones?",
+        "answer": "Both. Ask about sleep, starting solids, potty training, picky eating, tantrums, screen time or routines and you get an answer pitched at your child’s age, plus the offer of the whole plan — two or three texts you can start tonight. Three days later Hale asks how it went. It never diagnoses and never names a dose."
+      },
+      {
+        "question": "Is Hale free?",
+        "answer": "Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same radar and reminders on their own number, never a second household to pay for."
+      },
+      {
+        "question": "Do I need to use the website?",
+        "answer": "No. Everything happens in the text thread, and Hale will never send you to a website to finish a job you texted it to do. The full record of what Hale has done is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there."
+      },
+      {
+        "question": "Is Hale available outside Canada?",
+        "answer": "Not yet. Hale is Canada-first because keeping your family’s data on Canadian soil is a core promise rather than a setting, and the registration data it watches is GTA municipal data. Other regions are on the roadmap."
+      }
+    ]
+  },
+  "Activities": {
+    "metaTitle": "Things to do with kids, by city · Hale",
+    "metaDescription": "Free and low-cost activities for babies, toddlers, and young kids in Canadian cities — library story-times, drop-in play, parent-and-tot swim, parks, and local family programs.",
+    "eyebrow": "Near you",
+    "headline": [
+      {
+        "text": "Things to do with your kids,"
+      },
+      {
+        "text": "by city.",
+        "accent": true
+      }
+    ],
+    "lede": "The free and low-cost outings families actually use — story-times, drop-in play, parent-and-tot swim, parks, and local programs. Pick your city to start.",
+    "registrationLead": "Fall rec registration, by city — not this weekend’s outings:",
+    "linkTorontoFall": "Toronto fall rec",
+    "linkTorontoSwim": "Toronto swim",
+    "linkBramptonSwim": "Brampton swim (Sept 9)",
+    "ctaHeading": "Ask Hale what’s worth doing this weekend",
+    "ctaSub": "Text Hale a question about your week and get an answer pitched at your kids’ ages. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
+  },
+  "ActivityCity": {
+    "metaTitle": "Things to do with kids in {city} · Hale",
+    "metaDescription": "Free and low-cost activities for babies and toddlers in {city}: library story-times, drop-in play, parent-and-tot swim, parks, and {provinceCode} family programs.",
+    "breadcrumb": "Activities",
+    "headlineLead": "Things to do with your kids in",
+    "commonQuestions": "Common questions about {city}",
+    "disclaimer": "Programs and locations change — treat this as a starting point and confirm details with your city or the program directly. Last reviewed {date, date, long}.",
+    "ctaHeading": "Ask Hale what’s worth doing this weekend in {city}",
+    "ctaSub": "Text Hale a question about your week and get an answer pitched at your kids’ ages. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
+  },
+  "Answers": {
+    "metaTitle": "Parenting guides · Hale",
+    "metaDescription": "Calm, cited parenting guides for the questions families search for — general guidance grounded in trusted frameworks, never a substitute for your provider.",
+    "eyebrow": "Parenting guides",
+    "headline": [
+      {
+        "text": "Calm, cited guidance for"
+      },
+      {
+        "text": "every stage.",
+        "accent": true
+      }
+    ],
+    "lede": "Practical guides for the questions parents actually search — each one grounded in trusted parenting-health frameworks and honest about its limits. General guidance, never a replacement for your provider.",
+    "empty": "Our first parenting guides are in review. In the meantime, the fastest way to get guidance for your own child — with their age and your family in mind — is to ask Hale.",
+    "ctaHeading": "Have a question about your own child?",
+    "ctaSub": "Ask Hale — with your child’s age and your family in mind. Free to start, and your data stays in Canada.",
+    "stageLabels": {
+      "newborn": "Newborn · 0–11 months",
+      "toddler": "Toddler · 1–3 years",
+      "child": "School age · 4–12 years",
+      "teenager": "Teenager · 13+ years"
+    }
+  },
+  "AnswerArticle": {
+    "breadcrumb": "Parenting guides",
+    "guidanceNote": "General guidance, last reviewed {date, date, long} — not medical advice.",
+    "keyTakeaways": "Key takeaways",
+    "parentsAlsoAsk": "Parents also ask",
+    "sources": "Sources",
+    "sourcesLede": "Every claim on this page is attributed to one of the parenting-health frameworks Hale draws from. Follow a source to its publisher; the books are named rather than linked.",
+    "inSummary": "In summary: ",
+    "disclaimerEyebrow": "Please read",
+    "disclaimerHeading": "This is general guidance, not medical advice.",
+    "disclaimerBody": "Hale summarizes widely recommended, cited parenting-health guidance. It cannot see your child, and it does not diagnose, prescribe, or interpret symptoms. For anything about your child’s health — including diagnosis, dosing, or symptoms — talk to your pediatrician or health provider. In an emergency, contact your local emergency services.",
+    "askCta": "Have a question about your own child? Hale answers with your child’s age and your family in mind.",
+    "relatedGuides": "Related guides"
+  },
+  "Legal": {
+    "eyebrow": "Legal",
+    "lastUpdated": "Last updated {date, date, long}",
+    "disclaimer": "This document is provided in good faith but is not legal advice. Hale should have it reviewed by a qualified lawyer before relying on it.",
+    "onThisPage": "On this page",
+    "seeAlsoPre": "See also our"
+  },
+  "Text": {
+    "metaTitle": "Text Hale",
+    "metaDescription": "Start a conversation with Hale — the family assistant you text. It watches registration day where you live.",
+    "headline": "Change the names to yours and send.",
+    "lede": "I text back the rec dates for that postal. No app.",
+    "saveContact": "Save Hale to your contacts",
+    "prefilledWithSource": "Your message is already written — “{body}”. The tag just tells me where you came from.",
+    "prefilledNoSource": "Your message is already written. You send it; I never text first.",
+    "onLaptop": "On a laptop?",
+    "scanHint": "Scan the code with your phone’s camera, or copy the number and text it from your phone. Standard message rates apply; reply STOP any time.",
+    "numberComing": "The number’s coming — this page isn’t announced yet.",
+    "footerPre": "Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada —",
+    "privacyLink": "privacy policy",
+    "qrAria": "QR code — scan to text Hale",
+    "chooserHeadline": "Welcome. Pick where we talk.",
+    "chooserLede": "Your first message is already written — you send it, I reply. I never message first.",
+    "continueMessages": "Continue in Messages",
+    "continueWhatsapp": "Continue on WhatsApp",
+    "orMessages": "Or use Messages",
+    "orWhatsapp": "Or use WhatsApp",
+    "termsLine": "Standard message rates apply; reply STOP any time."
+  },
+  "Registration": {
+    "updated": "Updated {date, date, long}",
+    "when": "When",
+    "what": "What opens",
+    "questionsEyebrow": "Questions parents type",
+    "questionsHeadline": [
+      {
+        "text": "The questions that"
+      },
+      {
+        "text": "show up at 6:58 a.m.",
+        "accent": true
+      }
+    ],
+    "officialEyebrow": "Official register",
+    "officialHeadline": [
+      {
+        "text": "Confirm on the"
+      },
+      {
+        "text": "official page",
+        "accent": true
+      }
+    ]
+  },
+  "Jsonld": {
+    "orgDescription": "Hale is the family assistant you text — it watches city registration windows, plans the week, and handles the admin with your say-so. Every family’s data stays in Canada.",
+    "appDescription": "A number your family texts: Hale watches registration dates across the GTA, plans the week, and executes with your approval — receipts for everything, and your family’s data never leaves Canada."
+  }
+}

@@ -52,7 +52,19 @@ export function failureReply(): string {
  */
 const CONFLICT_REPLIES: Record<SpineRefusal, string> = {
   already_resolved: 'Already handled - nothing waiting on you.',
-  not_reviewer_approved: "That one hasn't cleared my own checks, so I can't put it through yet.",
+  /**
+   * REVIEWER STATE, IN PARENT LANGUAGE. It used to read "That one hasn't cleared my own
+   * checks, so I can't put it through yet", which is Hale describing its own internals to
+   * someone who asked for a thing to happen — the reviewer, the verdict and the gate are
+   * all Hale's business and none of them are the parent's. It also, in the one production
+   * sighting (2026-08-20), answered a parent who had just accepted a completely different
+   * offer, which made a sentence about internal checks the second wrong thing in one text.
+   *
+   * What is TRUE and sayable: Hale is still looking at it, the parent has nothing to do,
+   * and it will come back to them. No timeframe is promised, because a flagged draft waits
+   * on a person and "in a minute" would be a clock Hale does not own.
+   */
+  not_reviewer_approved: "I'm still double-checking that one myself - nothing for you to do yet, I'll come back to you on it.",
   undo_window_expired: "That one's past its undo window.",
   not_reversible: "That one isn't something I can take back.",
   // The genuine breakage: the row vanished mid-turn or came back belonging to another
@@ -201,30 +213,123 @@ export function nothingToUndoReply(): string {
 }
 
 /** An ordinal past the end of the list. Says the real count rather than guessing which
- * row was meant — approving a neighbouring action is the failure this avoids. */
+ * row was meant — approving a neighbouring action is the failure this avoids.
+ *
+ * It no longer answers with another ordinal. The parent counted rows and came up short,
+ * and handing them the corrected number to retype is a form to fill in twice; saying what
+ * is actually waiting lets them answer it in words (the resolver reads them). */
 export function outOfRangeReply(pendingCount: number): string {
-  const noun = pendingCount === 1 ? 'one' : `${pendingCount}`;
-  return `I've only got ${noun} waiting on you - reply YES 1 for the first.`;
+  return pendingCount === 1
+    ? "I've only got one thing waiting on you - tell me if you want it and I'll put it through."
+    : `I've only got ${pendingCount} things waiting on you - tell me which one you mean.`;
 }
 
 /**
- * The disambiguation. This is the ONLY place an ordinal is ever printed, so the list
- * order here IS the order `resolveApproval` resolves against; they are built from the
- * same array in the same call, which is what keeps "YES 2" pointing at the row the
- * parent actually read.
+ * The disambiguation — the choices NAMED, and a number beside each one.
  *
- * The overflow is disclosed and points nowhere (skill audit P0 #4). "In the app" was
- * the wrong destination twice over: the grammar refuses an ordinal past
- * {@link MAX_LISTED_APPROVALS} (fast-path.ts), so those rows are unreachable by text —
- * but the list is re-read every turn, so answering the three in front of them is what
- * brings the next three up. The thread does get there; it just gets there in order.
+ * IT PRINTED NUMBERS, THEN IT STOPPED, AND NOW IT PRINTS THEM AGAIN — with the one thing
+ * that was missing both times. The original "1. … 2. … - reply YES 1 or NO 1." was a form
+ * to fill in, and dropping it (2026-08-13) was right: a parent should be able to say "the
+ * swim one" and be understood. What went with it, unnoticed, was the only cheap answer a
+ * tired parent has at 22:00 — and the words that replaced it were not actually read,
+ * because nothing recorded that these options had been offered at all. A parent quoted one
+ * back verbatim on 2026-08-24 and reached the general coach (VIL-304).
+ *
+ * So both readings exist now and neither is a keyword: the ordinal, and the parent's own
+ * words, resolved against the menu this sentence is minted alongside
+ * (router/disambiguation.ts). "Reply 1 or 2, or just say which" is that offer stated
+ * plainly — the number is the shortcut, never the grammar, and the sentence says so.
+ *
+ * THE ORDER IS THE MINT'S ORDER. The row written when this goes out stores the options in
+ * exactly the sequence printed here, which is what makes an ordinal point at the option a
+ * parent actually read rather than at a position that has since moved.
+ *
+ * `numbered` IS NOT A STYLE CHOICE — it is whether a menu is going to exist. The row is
+ * only minted when the polarity the parent already gave could be read for free, and a
+ * sentence that says "Reply 1 or 2" while nothing was written down invites a digit that
+ * no menu is standing behind: the approvals queue's own ordering would answer it, off a
+ * list this parent never saw (verifier, 2026-08-26; rule #4). So when there is no mint
+ * the sentence goes back to the words it used before VIL-304 — still asking, still by
+ * name, promising nothing that does not exist.
+ *
+ * Labels come in already rendered (`actionTypeLabel`), which keeps this function unable to
+ * see an action's payload at all (rule #1).
+ *
+ * The overflow is disclosed and points nowhere (skill audit P0 #4): the list is re-read
+ * every turn, so answering the ones in front is what brings the next ones up.
  */
-export function whichOneReply(actionTypes: string[]): string {
-  const shown = actionTypes.slice(0, MAX_LISTED_APPROVALS);
-  const lines = shown.map((type, i) => `${i + 1}. ${actionTypeLabel(type)}`);
-  const overflow = actionTypes.length - shown.length;
-  const tail = overflow > 0 ? ` (+${overflow} more after these)` : '';
-  return `Which one? ${lines.join(' ')} - reply YES 1 or NO 1.${tail}`;
+export function whichOneReply(subjects: readonly string[], numbered: boolean): string {
+  const shown = subjects.slice(0, MAX_LISTED_APPROVALS);
+  if (shown.length === 0) {
+    // Both callers ask only when they are holding at least two, so this is unreachable —
+    // and it THROWS rather than casting the hole away, because the alternative is texting
+    // a parent "Which one - undefined?". A thrown turn is re-driven by the drain; a
+    // nonsense one is read by a person.
+    throw new Error('whichOneReply: nothing to choose between');
+  }
+  const overflow = subjects.length - shown.length;
+  const tail = overflow > 0 ? ` (${overflow} more behind those.)` : '';
+  if (!numbered) {
+    const head = shown.slice(0, -1);
+    const last = shown.at(-1) as string;
+    const named = head.length === 0 ? last : `${head.join(', ')} or ${last}`;
+    return `Which one - ${named}?${tail}`;
+  }
+  const list = shown.map((subject, i) => `${i + 1}) ${subject}`).join(', ');
+  return `Which one - ${list}? Reply ${orJoinNumbers(shown.length)}, or just say which.${tail}`;
+}
+
+/** "1, 2 or 3" — the numbers on offer, serial-comma joined like every other Hale list. */
+function orJoinNumbers(count: number): string {
+  if (count === 1) return '1';
+  const head = Array.from({ length: count - 1 }, (_, i) => String(i + 1));
+  return `${head.join(', ')} or ${count}`;
+}
+
+/**
+ * The parent said something Hale could tell was an answer and could not tell WHICH answer,
+ * with more than one question open (lib/channel/router/resolve.ts).
+ *
+ * The same SENTENCE as {@link whichOneReply}, built from a different list. It cannot just
+ * be that function: the approvals list is homogeneous and its overflow tail ("3 more
+ * behind those") is true because answering the ones in front brings the next ones up.
+ * Here the list is heterogeneous, so slicing it by position would offer a parent three
+ * calendar adds and silently drop the introduction they were actually answering — and
+ * then tell them the introduction was "behind those", which is false. Nothing is behind a
+ * drafted action except more drafted actions.
+ *
+ * So it takes ONE per kind, newest kind last, and never prints an overflow. A parent
+ * choosing between "a calendar change" and "meeting the family nearby" can then say which,
+ * and the next turn resolves the specific one.
+ *
+ * IT HANDS BACK WHAT IT PRINTED, not just the sentence. The caller mints those options
+ * against the message that carries them (router/disambiguation.ts), and the two must be
+ * the same list in the same order or an ordinal points at something the parent never read
+ * — so there is one call and one array rather than a rule the two sides both implement.
+ */
+export function clarifyWhichQuestion<T extends { kind: string; subject: string }>(
+  questions: readonly T[],
+  numbered: boolean,
+): { reply: string; shown: readonly T[] } {
+  // EVERY KIND FIRST, then fill the remaining slots in order. Taking one per kind and
+  // stopping would drop the second of two drafted changes, which is the case the numbered
+  // menu handled best; taking the first three in order buries a lone introduction behind a
+  // crowded approvals queue. This does neither.
+  const seen = new Set<string>();
+  const firstOfEachKind = questions.filter((question) => {
+    if (seen.has(question.kind)) return false;
+    seen.add(question.kind);
+    return true;
+  });
+  const ordered = [...firstOfEachKind, ...questions.filter((q) => !firstOfEachKind.includes(q))];
+  const shown = ordered.slice(0, MAX_LISTED_APPROVALS);
+  const dropped = ordered.length - shown.length;
+  const list = whichOneReply(shown.map((question) => question.subject), numbered);
+  // Honest and destination-free. NOT "behind those": nothing queues behind an
+  // introduction, so the approvals list's own tail would be a false promise here.
+  const reply =
+    dropped === 0 ? list : `${list} (and ${dropped} other${dropped === 1 ? '' : 's'}.)`;
+  return { reply, shown };
 }
 
 /**

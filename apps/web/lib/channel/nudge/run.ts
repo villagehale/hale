@@ -9,7 +9,8 @@ import {
 } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import {
@@ -20,6 +21,11 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import type { HealthChild } from '~/lib/health/match';
+import {
+  type CheckupOfferRecordOutcome,
+  defaultCheckupOfferPorts,
+  recordCheckupOffer,
+} from '~/lib/health/offer';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { checkpointToldKey } from '~/lib/health/told';
 import { localParts } from '~/lib/loop/prefs';
@@ -30,7 +36,8 @@ import { matchRegistrationWindows } from '~/lib/registration/match-registration-
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type Nudge, decideNudge } from './nudge-decide';
-import { NUDGE_OPT_OUT, composeNudgeMessage } from './nudge-voice';
+import { withOptOut } from '~/lib/channel/opt-out';
+import { composeNudgeMessage } from './nudge-voice';
 
 /**
  * VIL-239 · M4 — the 48-hour proactive nudge, swept hourly.
@@ -123,7 +130,7 @@ export interface NudgeLedgerWrite {
   category: 'nudge';
   templateKey: string;
   dedupeKey: string;
-  status: 'sent';
+  status: AcceptedStatus;
   providerMessageId: string;
   sentAt: Date;
 }
@@ -167,6 +174,19 @@ export interface NudgeRunDeps {
    */
   fulfillCommitment: typeof fulfillCommitment;
   /**
+   * Register the standing question a health nudge's own close makes ("want me to add
+   * booking it to your week?"). REQUIRED for the same reason the two around it are
+   * (rule #11): a sweep that could be assembled without it would text a parent an offer
+   * and leave nothing for their acceptance to resolve against — which is the defect this
+   * dependency exists to make unexpressible. Every health nudge calls it, and the module
+   * answers `not_an_offer` for the paperwork checkpoints, so the send site holds no
+   * second copy of the rule that decides which close went out.
+   */
+  recordCheckupOffer(
+    database: Database,
+    input: { familyId: string; ref: string; channelMessageId: string | null; now: Date },
+  ): Promise<CheckupOfferRecordOutcome>;
+  /**
    * The outbound SMS leg — REQUIRED, and that is the point (VIL-262). It was nullable
    * so a caller could decide + compose without sending, and the three P0s this sweep
    * shipped with were all the same shape: a message composed perfectly and dropped on
@@ -175,6 +195,15 @@ export interface NudgeRunDeps {
    * behind an explicit, result-visible flag, never behind an absent dependency.
    */
   transport: ChannelTransport;
+  /**
+   * Put the sent nudge in the parent's own text thread — REQUIRED, same reason as the
+   * three above (rule #11). `channel_messages` carries no body, so a sweep that could be
+   * assembled without this would text a parent something and leave their reply with no
+   * antecedent the coach can read; that is the state two prod health nudges were in on
+   * 2026-08-22. There is no "no thread" to express: the anchor is derived from the
+   * family and parent ids (lib/channel/thread.ts).
+   */
+  threadMessage: typeof threadProactiveMessage;
   client: AgentClient | null;
 }
 
@@ -383,7 +412,7 @@ async function runForFamily(
 
   const { providerMessageId } = await deps.transport.send({
     to,
-    body: `${message}\n\n${NUDGE_OPT_OUT}`,
+    body: withOptOut(message, verdict.optOut),
   });
 
   const messageId = await deps.recordSend(database, {
@@ -393,7 +422,7 @@ async function runForFamily(
     category: 'nudge',
     templateKey: `proactive_nudge:${nudge.kind}`,
     dedupeKey,
-    status: 'sent',
+    status: acceptedStatus('sms'),
     providerMessageId,
     sentAt: now,
   });
@@ -413,6 +442,23 @@ async function runForFamily(
     },
   });
 
+  // THE OFFER IS A PROPOSAL. A health checkpoint whose task is booking closes by ASKING
+  // ("want me to add booking it to your week?"), and an ask with no row behind it is a
+  // question the reply resolver cannot see — so the parent's acceptance lands on whatever
+  // else happens to be standing (the 2026-08-20 incident; see lib/health/offer.ts).
+  // Registered AFTER the send, against the row that carried it, exactly like the
+  // told-marker and the promise below: a compose that never reached a transport offered
+  // nobody anything. Not branched on — the parent already has the text — and never
+  // silent: a lost row is logged as "a YES will not resolve to it" (rule #11).
+  if (nudge.kind === 'health_checkpoint') {
+    await deps.recordCheckupOffer(database, {
+      familyId: family.familyId,
+      ref: nudge.ref,
+      channelMessageId: messageId,
+      now,
+    });
+  }
+
   // MEM-10 · this sweep is what makes the intake radar's forward beat true, so a send —
   // ANY send — is what pays that promise off. Not narrowed to the weekend class on
   // purpose: what the beat promised a geo-empty family is that Hale would come back with
@@ -424,6 +470,15 @@ async function runForFamily(
     kind: 'first_find',
     channelMessageId: messageId,
     now,
+  });
+  // THE THREAD, which is where the parent's answer will be read. Unconditional and
+  // AFTER the send, like every other post-send write here: a compose that never reached
+  // a transport is not something Hale said. The COMPOSED sentence, never the wire body —
+  // the CASL line belongs on the wire and nowhere else.
+  await deps.threadMessage(database, {
+    familyId: family.familyId,
+    parentUserId: family.parentUserId,
+    body: message,
   });
   return { kind: 'sent' };
 }
@@ -551,5 +606,8 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     transport: createTwilioTransport(),
     client: voiceClient(),
     fulfillCommitment,
+    recordCheckupOffer: (database, input) =>
+      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
+    threadMessage: threadProactiveMessage,
   };
 }

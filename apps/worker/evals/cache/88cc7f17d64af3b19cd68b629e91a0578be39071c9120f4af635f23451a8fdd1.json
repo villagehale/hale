@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The answer names Justin Trudeau with an explicit as-of hedge (\"last I knew\") in the same sentence, and adds a practical note about verifying it. This directly meets the watchFor requirement: the office changes hands, the model cannot see past its cutoff, and the answer handles this by naming the person while clearly flagging the knowledge limitation. No invented details, no future-tense false hedge, no evasion. Brief and useful first."
+  }
+}

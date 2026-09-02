@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asking about the schedule — what time pickup is on Thursday"
+  },
+  "latencyMs": 1035
+}

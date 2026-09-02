@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply handles both parts of the text correctly. It drafts the Thursday swim cancel (the one event that matches \"Thursday swim\" — East pool at 5:15pm) and presents it in the required YES-to-confirm format. For the Saturday indoor activity, it offers the one verified offerable candidate (Central Library story time at Bloor/Gladstone, Sat Aug 8) cleanly, with name, place, and day — no hedging, no unverified details. The draft cap is 2, but only one cancel was needed; the activity offer is not a draft. No app mention, no invented URL, no redundant clauses. The reply is tight and complete. The only very minor issue is \"free drop-in, all ages\" — \"all ages\" is not in the offerable data, so that is a small invented detail. Otherwise this is a near-perfect execution.",
+    "score": 4
+  }
+}

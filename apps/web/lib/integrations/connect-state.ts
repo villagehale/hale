@@ -13,23 +13,18 @@ export interface ConnectState {
   familyId: string;
   userId: string;
   provider: ConnectorProvider;
-  /** 'mobile' when the flow started from the native app (via
-   * /api/mobile/integrations/connect-url) — the callback then redirects to the
-   * public /connected page instead of web /settings. Absent for the web flow. */
+  /** 'mobile' when the flow started from the retired native app's mint route
+   * (deleted in VIL-318). Nothing mints these any more; the callback rejects them
+   * (its nonce binding went with the mint), and the field stays only so a stale
+   * state still parses to a typed rejection instead of a decode error. */
   surface?: 'mobile';
-  /** Single-use nonce id (a connector_connect_nonces row) for the mobile flow only.
-   * The callback has no session to bind mobile consent to the minting user, so it
-   * consumes this nonce instead — a captured mobile consent url is dead after one
-   * use (rule #1). Absent for the web flow (which uses the session check). */
-  nonce?: string;
 }
 
 interface SignedPayload extends ConnectState {
   exp: number;
 }
 
-/** Default connect-state lifetime. The mobile nonce is minted with the same window
- * so an expired state and its (unconsumable) nonce lapse together. */
+/** Default connect-state lifetime. */
 export const CONNECT_STATE_TTL_SECONDS = 600;
 
 function secret(): string {

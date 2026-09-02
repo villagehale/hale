@@ -603,6 +603,125 @@
       "when": 1781468520000,
       "tag": "0088_coach_plan_commitments",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1781468580000,
+      "tag": "0089_registration_verify_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1781468640000,
+      "tag": "0090_medical_reply_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1781468700000,
+      "tag": "0091_voice_channel",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1781468760000,
+      "tag": "0092_voice_relay_claim",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1781468820000,
+      "tag": "0093_checkup_offer",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1781468880000,
+      "tag": "0094_activity_followup",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1781468940000,
+      "tag": "0095_founder_welcome",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1781469000000,
+      "tag": "0096_registration_watch",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1781469060000,
+      "tag": "0097_pending_disambiguation",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1781469120000,
+      "tag": "0098_coparent_join_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1781469180000,
+      "tag": "0099_sunday_weekly_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1781469240000,
+      "tag": "0100_sitting_session_reminder",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1781469300000,
+      "tag": "0101_first_reply_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1781469360000,
+      "tag": "0102_legacy_table_drops",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1781469420000,
+      "tag": "0103_reply_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1781469480000,
+      "tag": "0104_whatsapp_channel",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1781469540000,
+      "tag": "0105_channel_signin_token",
+      "breakpoints": true
     }
   ]
 }

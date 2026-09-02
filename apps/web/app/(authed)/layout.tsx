@@ -1,4 +1,5 @@
-import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
+import { notFound, redirect } from 'next/navigation';
 import { after } from 'next/server';
 import { auth } from '~/auth';
 import { AppShell } from '~/components/hale/app-shell';
@@ -8,8 +9,11 @@ import { PageHero } from '~/components/hale/page-hero';
 import { ScrollReset } from '~/components/hale/scroll-reset';
 import { Sidebar } from '~/components/hale/sidebar';
 import { TopHeader } from '~/components/hale/top-header';
+import { resolveAdminGate } from '~/lib/admin/gate';
 import { IdentifyUser } from '~/lib/analytics/posthog-provider';
 import { authConfigured } from '~/lib/auth-config';
+import { ADMIN_PROBE_HEADER } from '~/lib/auth/protected-routes';
+import { loadSmsChannel } from '~/lib/channels/sms-consent';
 import { loadNotifications } from '~/lib/dashboard/notifications';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
@@ -57,12 +61,31 @@ export default async function AuthedLayout({ children }: { children: React.React
   // The foot child switcher + top-bar hero/bell/location read the same family-scoped
   // queries the authed pages use; every one degrades to an empty/absent state (no fake
   // child, no fake city, no fabricated notification) when there is no resolved family.
-  const [basics, notifications, areaData, viewerName] = await Promise.all([
+  const [basics, notifications, areaData, viewerName, smsChannel, adminGate] = await Promise.all([
     loadFamilyBasics(),
     loadNotifications(),
     loadAreaSwitcher(),
     loadViewerName(),
+    loadSmsChannel(),
+    // Fails fast when ADMIN_PHONES is unset, so non-configured deploys pay ~nothing.
+    resolveAdminGate(),
   ]);
+
+  // The /admin 404 for a signed-in non-admin must fire HERE, above the group's
+  // loading.tsx Suspense boundary: below it (the nested admin layout) the shell
+  // has already streamed a 200 and notFound() only swaps UI mid-stream. The
+  // middleware is the only writer of this header (it strips client copies), and
+  // the nested admin layout keeps its own gate as defense in depth.
+  const requestHeaders = await headers();
+  if (requestHeaders.get(ADMIN_PROBE_HEADER) === '1' && adminGate.status !== 'admin') {
+    notFound();
+  }
+  // The account chip's secondary line (Instinct-style name + phone): the parent's
+  // MASKED number when their SMS channel is enrolled, else null → the plan label.
+  const maskedPhone =
+    smsChannel.status === 'ready' && smsChannel.channel.enrolled
+      ? smsChannel.channel.maskedPhone
+      : null;
   const kids = basics.children.map((child) => ({
     id: child.id,
     name: child.name,
@@ -101,8 +124,10 @@ export default async function AuthedLayout({ children }: { children: React.React
             parentName={session?.user?.name ?? null}
             parentImage={session?.user?.image ?? null}
             planTier={basics.planTier}
+            maskedPhone={maskedPhone}
             kids={kids}
             receiptsIa={receiptsIa}
+            showAdmin={adminGate.status === 'admin'}
           />
         }
         header={

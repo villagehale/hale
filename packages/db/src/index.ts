@@ -1,6 +1,5 @@
 export * from './client.js';
 export * as schema from './schema/index.js';
-export type { DigestPerChildBreakdown } from './schema/daily-digests.js';
 export type {
   WeekPlan,
   WeekPlanItem,
@@ -12,6 +11,8 @@ export type {
 export type { FamilyEvent, NewFamilyEvent } from './schema/family-events.js';
 export type { ContentProvenance } from './schema/events.js';
 export type {
+  MedicalReplySourceValue,
+  ReplySourceValue,
   UnmetIntentCategory,
   UnmetIntentLane,
 } from './schema/channel-messages.js';

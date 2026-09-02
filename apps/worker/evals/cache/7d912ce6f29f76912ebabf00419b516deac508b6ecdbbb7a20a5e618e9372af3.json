@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and correctly identifies the supply shortage condition: with 6 diapers on hand and daily use of 7, only 1 day of supply remains. This directly matches the signal content and the event type of \"supply_low_signal,\" providing a specific, actionable reason for the alert."
+  }
+}

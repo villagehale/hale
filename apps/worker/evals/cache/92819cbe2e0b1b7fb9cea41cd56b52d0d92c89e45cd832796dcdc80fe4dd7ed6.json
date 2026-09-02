@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message names a real, specific local venue (EarlyON Child and Family Centre with two named locations in Halton Hills) that fits the toddler stage perfectly (0-6 years). It leads with the best pick, attributes it to a source (\"I couldn't get into their schedule page\"), and uses proper first-person language about the gap (\"I could not get into their schedule page today for days or times\"). The watch flag is TRUE and the message includes the required continuation commitment in first person: \"I'll keep looking and text you what it says.\" This is exactly the form `pageEvidence: no_page_read` earns. The message is two sentences of plain text with no link and no question - it makes a statement, not an offer. No prices or times are invented. The message is correct and complete."
+  }
+}

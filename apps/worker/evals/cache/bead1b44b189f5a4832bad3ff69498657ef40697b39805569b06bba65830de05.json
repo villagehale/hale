@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "msg_011CeJZoyRFYJ2LVxWpDcAgZ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Sorry Sam, that's not something I can advise on. Call 811 to talk to a nurse now, or 911 if it turns severe."
+      }
+    ],
+    "usage": {
+      "input_tokens": 371,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 14062,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 46,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

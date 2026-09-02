@@ -14,7 +14,7 @@ import { DEVELOPMENT_DOMAINS } from '~/lib/companion/development-snapshot';
  * How it stays honest without false-positiving on Tailwind: globals.css is hand-authored
  * CSS (Tailwind utilities are generated at build, never written here), so the set of
  * bespoke namespaces IS exactly the set of first-hyphen segments of the classes it
- * defines — e.g. `comp-`, `village-`, `home-`, `apppromo-`. Two of those segments collide
+ * defines — e.g. `comp-`, `village-`, `home-`. Two of those segments collide
  * with Tailwind utility names (`font-medium`, `pb-4`), so they're denied; every other
  * derived prefix is a real component namespace. A used class whose prefix is in that set
  * must resolve to a definition in globals.css.
@@ -108,7 +108,8 @@ describe('globals.css coverage — every bespoke class the authed surface uses i
     expect(usedBespoke.size).toBeGreaterThanOrEqual(120);
     expect(BESPOKE_PREFIXES.size).toBeGreaterThanOrEqual(40);
     // Anchors from distinct namespaces prove the scan reached each surface.
-    for (const anchor of ['comp-hub', 'care-chip', 'village-3col', 'home-col', 'apppromo-sheet']) {
+    // (comp-hub / care-chip left with the retired companion-tabs component.)
+    for (const anchor of ['panel-oat', 'btn-secondary', 'village-3col', 'home-col']) {
       expect(usedBespoke).toContain(anchor);
     }
   });

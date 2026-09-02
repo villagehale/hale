@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is about the one named place the parent asked about (Cartwheels Gym Centre), not a substitution. It leads with the venue name and program name (Tiny Gym). The age fit is attributed to the source (\"their site says\"). Since pageEvidence is \"no_page_read\", the message correctly says \"I could not get into their page today\" rather than \"not posted yet\" — that phrasing is exactly right for this evidence state. The watch flag is TRUE and the message fulfils the commitment in first person (\"I'll keep watching and text you when I can confirm those\"). There is no invented day, time, or price. There is no question, no offer, no directory list, no vague hedge. It is two short sentences of plain text. The pick is a real named program at the named venue, plausibly fitting the toddler stage. Everything checks out.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a parenting question about a 19-month-old toddler's sleep. The reply correctly identifies that two night wakings at 19 months is common, gives a concrete actionable beat (put him down drowsy but awake at bedtime and hold the same response), and ends with the correct fixed product line offering the full plan on YES. The advice is grounded in the child's age and stage. The reply appears to be cut mid-sentence (\"every time he...\") which suggests it hit the ~300 character limit naturally and the tail was cut — that is the product working as designed, not a flaw in the reply itself. No referral to a doctor for something that doesn't warrant it, no handback, no app mention, no invented details. The one thing to note is the pronoun \"him\" — the child's gender is not stated in `knows`, so \"him\" is a slight invention. That is a small blemish worth a minor deduction. Otherwise the shape is exactly right: concrete action, age-appropriate framing, the YES offer at the end.",
+    "score": 4
+  }
+}

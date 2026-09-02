@@ -33,7 +33,6 @@ function fakeGather(): WeekPlanDeps['gather'] {
     window,
     children: [],
     health: [],
-    routines: [],
     villageDated: [{ id: 'v1', title: 'Storytime', eventDate: window.startKey, location: null }],
     suggestion: null,
     familyEvents: [],
@@ -195,11 +194,12 @@ const prefs = (over: Partial<LoopPrefsView> = {}): LoopPrefsView => ({ ...DEFAUL
 const TZ = 'America/Toronto';
 
 /**
- * The composer runs the evening BEFORE the parent's VIL-216 send moment. For a
- * Monday-start week the send weekday is Sunday (weeklyPlanWeekday(1)=0), so compose
- * runs SATURDAY at the parent's weekly_plan_send_time (default 19:30), within a
- * one-hour slot — asserted from first principles across DST + offset zones + the
- * per-parent send time, never read back from the function.
+ * The composer runs the day BEFORE the parent's VIL-216 send moment.
+ * weeklyPlanWeekday is identity (0=Sun…6=Sat, never 7). A Monday-start week
+ * sends Monday, so compose runs SUNDAY; a Sunday-start week (the product
+ * default) sends Sunday, so compose runs Saturday. Slot is one hour at the
+ * parent's weekly_plan_send_time — asserted from first principles across DST
+ * + offset zones + the per-parent send time, never read back from the function.
  */
 describe('isComposeMoment — the family-local compose slot (day before the send moment)', () => {
   it('matches Sunday from the send time through <60 min later (Monday-start week)', () => {

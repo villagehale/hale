@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that the parent just needs to forward the link, provides the referral link (which is appended and legitimate), and gives a brief description of what Hale does so the friend knows what they're getting. The link is present and correct. The reply does the job. However, it has a couple of small blemishes: it doesn't address Sam by name (minor), and the description of Hale (\"a texting assistant that keeps track of your family's week - schedules, activities, parenting questions\") while accurate, adds a bit of extra length that wasn't strictly necessary. There's also no greeting or sign-off, which is correct. The core instruction — forward this link, friend texts in themselves, nothing for Sam to set up — is clear and complete. This is a solid 4: does the job with a slightly redundant elaboration on what Hale is, but nothing misleading or missing.",
+    "score": 4
+  }
+}

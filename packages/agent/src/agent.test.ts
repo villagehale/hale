@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { describe, expect, it, vi } from 'vitest';
+import { type Mock, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
   type AgentClient,
@@ -57,6 +57,28 @@ function toolUseMessage(
     stop_reason: 'tool_use',
     stop_sequence: null,
     content: [{ type: 'tool_use', id, name, input } as Anthropic.ToolUseBlock],
+    usage: u,
+  };
+}
+
+function textAndToolUseMessage(
+  text: string,
+  id: string,
+  name: string,
+  input: unknown,
+  u: Anthropic.Usage,
+): Anthropic.Message {
+  return {
+    id: 'msg-text-tool',
+    type: 'message',
+    role: 'assistant',
+    model: 'claude-sonnet-4-6',
+    stop_reason: 'tool_use',
+    stop_sequence: null,
+    content: [
+      { type: 'text', text, citations: null } as Anthropic.TextBlock,
+      { type: 'tool_use', id, name, input } as Anthropic.ToolUseBlock,
+    ],
     usage: u,
   };
 }
@@ -127,7 +149,12 @@ describe('runAgent loop mechanics', () => {
     expect(result.steps).toBe(2);
     expect(result.hitMaxSteps).toBe(false);
     // Usage is summed across both round-trips.
-    expect(result.usage).toEqual({ promptTokens: 220, completionTokens: 50, cacheReadTokens: 0 });
+    expect(result.usage).toEqual({
+      promptTokens: 220,
+      completionTokens: 50,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
     // The tool went through the guarded invoker → an audit row was written (rule #6).
     expect(audits).toEqual([
       {
@@ -250,6 +277,255 @@ describe('runAgent loop mechanics', () => {
 });
 
 /**
+ * THE FINISHED ANSWER RIDING A REGISTERING TOOL CALL (2026-08-21 answer-quality probe).
+ *
+ * The model writes text in the same assistant turn as a tool call in two very different
+ * situations, and the loop has to tell them apart because only one of them is a reply:
+ * before a tool it will READ, the text is scratch ("let me check the schedule"); before
+ * a `registersOnly` tool it is the whole message, because the acknowledgement coming
+ * back changes nothing. Discarding the second cost a real parent every fact in the
+ * answer — twice in one probe run.
+ */
+/**
+ * A completion that hit `max_tokens` before emitting a single token of text.
+ *
+ * Not hypothetical and not rare: `converse` is `{thinking:'adaptive', effort:'high'}`, and
+ * `max_tokens` is the ceiling on thinking PLUS text with the model spending it in that
+ * order. The SMS coach's 400 was set as a reply ceiling before the lane had thinking at
+ * all, so a hard turn spends the whole budget reasoning and returns a message with one
+ * empty thinking block and no text — 399 thinking tokens of 400, `stop_reason:
+ * 'max_tokens'`. That is prod's single failed coach-channel-sms run (2026-08-22 17:41),
+ * and the parent got the router's "nothing was changed" apology on a turn where nothing
+ * had gone wrong.
+ */
+function truncatedThinkingMessage(u: Anthropic.Usage): Anthropic.Message {
+  return {
+    id: 'msg-truncated',
+    type: 'message',
+    role: 'assistant',
+    model: 'claude-sonnet-4-6',
+    stop_reason: 'max_tokens',
+    stop_sequence: null,
+    content: [{ type: 'thinking', thinking: '', signature: 'sig' } as Anthropic.ContentBlock],
+    usage: u,
+  };
+}
+
+describe('runAgent when a step is truncated before it says anything', () => {
+  function capturing(script: Anthropic.Message[]) {
+    const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
+    let calls = 0;
+    const client = {
+      messages: {
+        create: vi.fn(async (params: Anthropic.MessageCreateParamsNonStreaming) => {
+          requests.push(params);
+          const msg = script[calls];
+          calls += 1;
+          if (!msg) throw new Error('capturing: script exhausted');
+          return msg;
+        }),
+      },
+    } as unknown as AgentClient;
+    return { client, requests };
+  }
+
+  const args = (client: AgentClient) => ({
+    skill,
+    context: { q: 'when does he need shoes' },
+    tools: [profileTool],
+    client,
+    maxSteps: 6,
+    maxTokens: 400,
+    toolContext: { familyId: 'fam-1', actor: 'user-1' },
+    guardDeps: guardDeps().deps,
+  });
+
+  it('asks again with room instead of handing back an empty answer', async () => {
+    const { client, requests } = capturing([
+      truncatedThinkingMessage(usage(1_000, 400)),
+      textMessage('Around 18 months, once he is walking outside.', usage(1_000, 40)),
+    ]);
+
+    const result = await runAgent(args(client));
+
+    // The recovery, not the symptom: the parent gets the answer the model was in the
+    // middle of composing, not the apology template.
+    expect(result.answer).toBe('Around 18 months, once he is walking outside.');
+    // ONE retry, at a budget big enough that a turn which already spent 400 on thinking
+    // can both finish and speak. Same messages — this is a re-ask, not a next step.
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.max_tokens).toBeGreaterThan(400);
+    expect(requests[1]?.messages).toEqual(requests[0]?.messages);
+    // NAMED, not folded into the step count: a turn that had to buy its answer twice is
+    // a different event from one that did not, and telemetry must be able to see it
+    // (rule #11 — never a silent recovery).
+    expect(result.truncatedRetries).toBe(1);
+    // The retry's tokens are counted. A recovery that under-reports what it spent turns
+    // the cost dashboards into fiction.
+    expect(result.usage.completionTokens).toBe(440);
+  });
+
+  it('does not retry a step that was truncated AFTER it had started speaking', async () => {
+    // Text present means the budget was spent on the answer, not swallowed by thinking.
+    // Re-asking there would pay twice for a reply the post-processor can already trim.
+    const clipped: Anthropic.Message = {
+      id: 'msg-clipped',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'max_tokens',
+      stop_sequence: null,
+      content: [{ type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock],
+      usage: usage(1_000, 400),
+    };
+    const { client, requests } = capturing([clipped]);
+
+    const result = await runAgent(args(client));
+
+    expect(requests).toHaveLength(1);
+    expect(result.answer).toBe('Around 18 months, once he');
+    expect(result.truncatedRetries).toBe(0);
+  });
+
+  it('gives up after one retry rather than escalating forever', async () => {
+    const { client, requests } = capturing([
+      truncatedThinkingMessage(usage(1_000, 400)),
+      truncatedThinkingMessage(usage(1_000, 1_200)),
+    ]);
+
+    const result = await runAgent(args(client));
+
+    // Two calls total, then the honest empty answer — an unbounded escalation on a turn
+    // a parent is waiting on is worse than saying nothing.
+    expect(requests).toHaveLength(2);
+    expect(result.answer).toBeNull();
+    expect(result.truncatedRetries).toBe(1);
+  });
+});
+
+describe('runAgent keeps the answer written beside a registering tool call', () => {
+  const promiseSkill: Skill = {
+    ...skill,
+    meta: { ...skill.meta, tools: ['get_child_profile', 'promise_followup'] },
+  };
+
+  function promiseTool(calls: string[]) {
+    return defineTool({
+      name: 'promise_followup',
+      description: 'Register that Hale is coming back about this.',
+      monetary: false,
+      touchesChildContent: false,
+      registersOnly: true,
+      inputSchema: z.object({ subject: z.string() }),
+      handler: async (input: { subject: string }) => {
+        calls.push(input.subject);
+        return { promised: true };
+      },
+    });
+  }
+
+  it('ends the run on that turn, with the text as the answer and the effect registered', async () => {
+    const client = fakeClient([
+      textAndToolUseMessage(
+        "Cartwheels lists a Tiny Gym class that fits - their site says. No fall dates up yet, so I'll text you when they are.",
+        'tu-1',
+        'promise_followup',
+        { subject: 'cartwheels tiny gym fall' },
+        usage(100, 40),
+      ),
+      textMessage("I'll text you when the dates are up.", usage(120, 10)),
+    ]);
+    const { deps } = guardDeps();
+    const promised: string[] = [];
+
+    const result = await runAgent({
+      skill: promiseSkill,
+      context: {},
+      tools: [profileTool, promiseTool(promised)],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+    });
+
+    expect(result.answer).toBe(
+      "Cartwheels lists a Tiny Gym class that fits - their site says. No fall dates up yet, so I'll text you when they are.",
+    );
+    // The promise is a row the sweep owes an answer for — ending early must not skip it.
+    expect(promised).toEqual(['cartwheels tiny gym fall']);
+    // One round trip, not two: the second scripted message was never asked for.
+    expect(result.steps).toBe(1);
+    expect(client.messages.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes another turn when the registering tool REFUSED, so the fix reaches the parent', async () => {
+    const client = fakeClient([
+      textAndToolUseMessage(
+        "I'll come back to you on this.",
+        'tu-1',
+        'promise_followup',
+        { subject: 'x' },
+        usage(100, 40),
+      ),
+      textMessage('Nothing is up for the fall yet.', usage(120, 10)),
+    ]);
+    const { deps } = guardDeps();
+    const refusing = defineTool({
+      name: 'promise_followup',
+      description: 'Register that Hale is coming back about this.',
+      monetary: false,
+      touchesChildContent: false,
+      registersOnly: true,
+      inputSchema: z.object({ subject: z.string() }),
+      handler: async () => {
+        throw new Error('That subject names a child. Call again without it.');
+      },
+    });
+
+    const result = await runAgent({
+      skill: promiseSkill,
+      context: {},
+      tools: [profileTool, refusing],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+    });
+
+    // A promise that was never registered must not be the sentence Hale sends.
+    expect(result.answer).toBe('Nothing is up for the fall yet.');
+    expect(result.steps).toBe(2);
+  });
+
+  it('still discards the preamble written before a tool it is about to READ', async () => {
+    const client = fakeClient([
+      textAndToolUseMessage(
+        "Let me pull up the profile and check.",
+        'tu-1',
+        'get_child_profile',
+        { childId: 'kid-1' },
+        usage(100, 40),
+      ),
+      textMessage('Your 5-month-old is right on track.', usage(120, 10)),
+    ]);
+    const { deps } = guardDeps();
+
+    const result = await runAgent({
+      skill: promiseSkill,
+      context: {},
+      tools: [profileTool, promiseTool([])],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+    });
+
+    expect(result.answer).toBe('Your 5-month-old is right on track.');
+    expect(result.answer).not.toContain('Let me pull up');
+  });
+});
+
+/**
  * A fake MessageStream: yields one text_delta event per supplied chunk (the SDK's
  * `content_block_delta`), then resolves `finalMessage()` with the assembled
  * Message. Tool turns carry no text chunks — only the tool_use in finalMessage.
@@ -320,7 +596,12 @@ describe('runAgentStreaming', () => {
     expect(result.answer).toBe('around six months.');
     expect(result.steps).toBe(1);
     expect(result.hitMaxSteps).toBe(false);
-    expect(result.usage).toEqual({ promptTokens: 80, completionTokens: 12, cacheReadTokens: 0 });
+    expect(result.usage).toEqual({
+      promptTokens: 80,
+      completionTokens: 12,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
     // The single answer turn never reset.
     expect(resets).toBe(0);
   });
@@ -361,7 +642,12 @@ describe('runAgentStreaming', () => {
     expect(result.answer).toBe('right on track.');
     expect(result.steps).toBe(2);
     // Usage summed across both round-trips.
-    expect(result.usage).toEqual({ promptTokens: 220, completionTokens: 50, cacheReadTokens: 0 });
+    expect(result.usage).toEqual({
+      promptTokens: 220,
+      completionTokens: 50,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    });
     // The tool went through the guarded invoker → an audit row (rule #6).
     expect(audits).toEqual([
       {
@@ -777,6 +1063,50 @@ describe('tool definitions on the wire', () => {
     expect(wireTool(requests, 'propose_calendar_move').strict).toBe(true);
   });
 
+  it('WITHHOLDS strict from a run that asks for no grammar, and ships it to the same tool otherwise', async () => {
+    // `strict` is not free at REQUEST time: the API compiles a sampling grammar keyed on
+    // the schema's structure, per credential, before it emits a token — cold, that
+    // measured 16-83s and it lands inside the window the SDK's `timeout` guards. A
+    // caller that cannot absorb it (a live phone call) must be able to decline it. Both
+    // directions on the same tool, so neither assertion can pass by accident.
+    const streamed = async (strictTools?: boolean) => {
+      const client = fakeStreamingClient([
+        { chunks: ['ok.'], final: textMessage('ok.', usage(1, 1)) },
+      ]);
+      await runAgentStreaming({
+        skill: scheduleSkill,
+        context: {},
+        tools: [scheduleTool],
+        client,
+        maxSteps: 2,
+        toolContext: { familyId: 'fam-1', actor: 'run-1' },
+        guardDeps: guardDeps().deps,
+        onTextDelta: () => {},
+        onTurnReset: () => {},
+        ...(strictTools === undefined ? {} : { strictTools }),
+      });
+      const call = (client.messages.stream as unknown as Mock).mock.calls[0]?.[0] as
+        | Anthropic.MessageCreateParamsStreaming
+        | undefined;
+      const tools = (call?.tools ?? []) as unknown as Array<Record<string, unknown>>;
+      const move = tools.find((t) => t.name === 'propose_calendar_move');
+      if (!move) throw new Error('no propose_calendar_move on the wire');
+      return move;
+    };
+
+    expect(await streamed(undefined)).toHaveProperty('strict', true);
+
+    const declined = await streamed(false);
+    expect(declined).not.toHaveProperty('strict');
+    // The schema still ships in full — declining the grammar must not turn the tool back
+    // into the argument-guessing placeholder #415 replaced.
+    expect((declined.input_schema as Record<string, unknown>).required).toEqual([
+      'eventId',
+      'date',
+      'time',
+    ]);
+  });
+
   it('WITHHOLDS strict for a tool whose schema has no grammar, and still sends the schema', async () => {
     // z.unknown() is "any JSON" — no grammar can be compiled, and sending
     // `strict` anyway is a 400. The properties must still reach the model.
@@ -1021,5 +1351,47 @@ describe('prompt cache prefix', () => {
       },
     ]);
     expect(JSON.stringify(systemsFrom(client)[0])).not.toContain(FAMILY_SECRET);
+  });
+});
+
+describe('lane fields on the wire', () => {
+  /** The request body the loop actually handed the SDK on its first turn. */
+  function firstRequest(client: AgentClient): Record<string, unknown> {
+    const create = client.messages.create as unknown as Mock;
+    const first = create.mock.calls[0];
+    if (!first) throw new Error('the loop made no request');
+    return first[0] as Record<string, unknown>;
+  }
+
+  async function runWithTask(task: Skill['meta']['task']): Promise<Record<string, unknown>> {
+    const client = fakeClient([textMessage('ok.', usage(10, 5))]);
+    await runAgent({
+      skill: { ...skill, meta: { ...skill.meta, task, tools: [] } },
+      context: {},
+      tools: [],
+      client,
+      maxSteps: 1,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: guardDeps().deps,
+    });
+    return firstRequest(client);
+  }
+
+  it('sends the reasoning lane its thinking mode and effort', async () => {
+    // Without this the `...lane` spread could silently collapse to {model} and
+    // every other test here would still pass — the effort would just never ship.
+    const req = await runWithTask('converse');
+    expect(req.model).toBe('claude-sonnet-5');
+    expect(req.thinking).toEqual({ type: 'adaptive' });
+    expect(req.output_config).toEqual({ effort: 'high' });
+  });
+
+  it('sends the phone-call lane no reasoning knobs', async () => {
+    // Haiku 4.5 rejects both knobs with a 400 (verified live). On `speak` that
+    // 400 is dead air on an open call, so their absence is load-bearing.
+    const req = await runWithTask('speak');
+    expect(req.model).toBe('claude-haiku-4-5');
+    expect(req).not.toHaveProperty('thinking');
+    expect(req).not.toHaveProperty('output_config');
   });
 });

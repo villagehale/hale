@@ -20,6 +20,16 @@
 export type ReplyRoute =
   | { channel: 'sms'; to: string }
   /**
+   * A message that arrived on the WhatsApp pipe (WhatsApp v1). The `to` is the SAME
+   * verified number an SMS route carries — whatsapp:+1416… and +1416… are one person —
+   * and the pipe that finally carries the answer is decided at send time by the
+   * reply-routing phone transport (lib/channel/reply-transport.ts): WhatsApp inside
+   * Meta's 24h customer-service window, SMS with a named fallback outside it. The route
+   * names the door the parent used; the transport owns Meta's rules about answering
+   * through it.
+   */
+  | { channel: 'whatsapp'; to: string }
+  /**
    * `inReplyTo` is the inbound email's own Message-ID, carried so the answer lands
    * INSIDE the parent's thread. Nullable because a ledger row is not required to hold a
    * provider id — an answer with no reference is still an answer, it simply starts a new

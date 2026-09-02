@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a physical symptom; asks whether it is clinically normal"
+  },
+  "latencyMs": 1213
+}

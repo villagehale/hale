@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not on this week's calendar. However, it ends with a question (\"Want me to check next week?\") that is unnecessary — the parent asked to move piano to Wednesday, and Hale correctly found no match this week, so the plain answer is just that it is not on the schedule. The trailing question adds a small but unnecessary invitation to continue the conversation. That said, it is not a serious error — the core answer is right, it does not invent anything, does not send the parent to the app, and does not raise the private items as possibilities. The question is a minor blemish but does make the reply slightly off-shape.",
+    "score": 4
+  }
+}

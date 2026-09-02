@@ -14,9 +14,15 @@ import { describe, expect, it } from 'vitest';
 
 const webRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
-/** Parent-facing surfaces this sweep governs. Paths are from apps/web root. */
+/**
+ * Parent-facing surfaces this sweep governs. Paths are from apps/web root.
+ *
+ * The receipts-room slimdown dropped two: `app/preview/intake.tsx` (deleted with the
+ * /preview QA harness) and `app/(authed)/companion/page.tsx` (retired to a permanent
+ * redirect — a page that renders no copy has none to govern, and scanning it would be
+ * a passing assertion over an empty string).
+ */
 const SURFACES = [
-  'app/(authed)/companion/page.tsx',
   'app/(authed)/trail/page.tsx',
   'app/(authed)/village/page.tsx',
   'app/(authed)/plan/page.tsx',
@@ -24,7 +30,6 @@ const SURFACES = [
   'app/(authed)/approvals/page.tsx',
   'app/sign-in/page.tsx',
   'app/sign-up/page.tsx',
-  'app/preview/intake.tsx',
   'components/hale/village-feed-section.tsx',
   'components/hale/approvals-header.tsx',
   'components/hale/ask-hale-thread.tsx',
@@ -82,17 +87,14 @@ describe('one-voice copy scan', () => {
 
 describe('empty states point somewhere', () => {
   // An empty state is not a dead end: each carries a next step a parent can take.
-  it('companion no-children sends a parent to add a child (/family)', () => {
-    const companion = sources.get('app/(authed)/companion/page.tsx') ?? '';
-    expect(companion).toContain('no children added yet');
-    expect(companion).toContain('add a child');
-    expect(companion).toContain('href="/family"');
-  });
-
-  it('trail empty sends a parent to connect a source (/settings)', () => {
+  // (The companion's no-children state was governed here until that surface was
+  // retired to a permanent redirect — it has no empty state left to point anywhere.)
+  it('trail empty sends a parent to their thread — Hale is a number you text, not a connect flow', () => {
     const trail = sources.get('app/(authed)/trail/page.tsx') ?? '';
     expect(trail).toContain('nothing on the record yet');
-    expect(trail).toContain('connect a source');
-    expect(trail).toContain('href="/settings"');
+    // the scan lowercases sources, so the copy is asserted lowercased
+    expect(trail).toContain('text hale');
+    // The pre-pivot CTA pointed at a settings connect flow; that dead end is gone.
+    expect(trail).not.toContain('connect a source');
   });
 });

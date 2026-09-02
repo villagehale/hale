@@ -1,0 +1,18 @@
+{
+  "value": {
+    "payload": {
+      "item": "size 4 diapers",
+      "vendor": "DiaperCo",
+      "quantity": 1,
+      "unit_price": "42.99",
+      "estimated_total": "42.99",
+      "urgency": "high",
+      "reason": "about 1 day of supply left",
+      "note_to_parent": "size 4 diapers are down to about a day left. ordering one pack from DiaperCo at $42.99."
+    },
+    "confidence": 0.62,
+    "rationale": "Reorder is clearly warranted with one day of supply left, but memory slice is null so quantity, payment method, and past order history are all guesses.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 5385
+}

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CeGe2zuNAtT7Xf2DBekQH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EqoHCpABCBEYAipADtcWxaO0xV246zhiLJRP5CNJRKw9HHxV39nG6LGrHsdsx7VOOS3mOLZYvb04/kR1PnQF9ZWvAOr/fDtqIkf6HjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAdiSo9QGEgxLfn1ThFetXWO352AaDNVuEanimocpxbgr+CIwqNEXzqMmoDDy7X8gx9ouLzHZOqFheeexvPhPhO1iBLs6X3Q9OdQ70r88iWkWJcv5KsYFXfSVh00HRXB971IbZTl8lvy/VMDbCyI5acDTC7HKoDTkq6sfS/qW+t4Gei80VhPiR8b4p/lAoXu4fPpqBDZh7ise2eMB8Ah+dgIMbkZty/0tQ6MKHOupOh2JPoi/EEL2nl8RRk1TiZ0tg0PfKjCVzBFtG3RYqZE4RewAOQuOvYOR1sYAETM+FEBgCLwWkfm7jhKxH+XuuE+0EBja+QMO6VkBRyG87wcmD0hogy+KHlAwkWvMTAiKnHQnP5c7eyowZwDZyZ+qgPo7QPWXyvE8SapX0XW93oQntWbRCaeBFWLzd4ukP5j5FJnAtC7qx9D8GBJFxopJgYkIvBwjZkQe06D5iBYOuUXXckIrEmh/j/8HjQnmEz0VUJQlf7Wvk+jRtfCulMECF6oHneHCAz2c6f2eJda0DNnKwOezBhwH/Y0/0T4QfVciN/7OC10gdckjQn+hjvSeSV0DpTPwioYRO4BFsl5IiF8xNLwl4eFkyY+Ff2OrIqc2GUAKhoS/1+8O/yQFn9q7IjtKK8+mRYNjyo/O6AgzaReeeXkUZanrgmith4GqKMoaYzdL7ubX3QqvunGLbo7ZUgDfy1j4B1/jcDlQ6xqNKAAJ+7xDAW36SbcmoPTX1UzZctWlPC1JWH3z+OUAoB+YkJkZwJcBuFBdy1g0vobweziRZNndi/9rgHSXAYCr2uNRjLDf3MIXALmSiqvMtPQh/CeloutjDMQq6UfBntaOmdqQFTse8Y7wALZUr3+ohhAIbjpU2M6HFq+gBc5Vwjifr6ebhq/SM49HMPjoIIljuWQl2GBKBFoflqR8lLJSAZSqSsbQdkq2UWF/IKwmLfwE/NTPurdp5OsNWdc3+yxR3c1EeESlMP9JEwo7vxMQrPTBqr0UpRFLG8P/oUodjqeO+IIrRV7tt4Se33l/Hz/3xad8Zo4e3ZkK1rgYaCqW1mcYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Mira's bedtime window is 7:30 pm, with a simple three-step wind-down: bath, story, then lights out.\n\nIf she's got her blue elephant for the story/lights-out part, that's worth keeping in the mix since it's her go-to comfort object for settling. Sticking to the same order each night is what makes it work so well for her at this age."
+      }
+    ],
+    "usage": {
+      "input_tokens": 16369,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 323,
+      "output_tokens_details": {
+        "thinking_tokens": 210
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 5686,
+  "firstInputTokens": 16369
+}

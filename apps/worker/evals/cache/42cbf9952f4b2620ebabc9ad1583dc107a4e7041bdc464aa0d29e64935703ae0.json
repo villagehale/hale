@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the one visible Saturday event (soccer practice, Cedarvale Park, 10am) and then offers the one verified offerable activity (Central Library story time, Bloor/Gladstone, Sat Aug 8, free, no sign-up). Both details are traceable — soccer from the week, story time from `offerable`. There is still one activity being checked (`stillBeingChecked: 1`), but the rules say Hale should not surface unverified finds, and it doesn't — it just mentions the one confirmed one. No app referral, no invented URL, no greeting or sign-off, no markdown. The reply is tight and fully correct. A minor point: it could have noted that one more option is still being checked and Hale will follow up, which would be slightly more complete for Sam — but the rules only require mentioning unverified ones by saying what Hale is doing, and omitting that is a small gap rather than a clear failure. The shape is clean and the answer is actionable.",
+    "score": 4
+  }
+}

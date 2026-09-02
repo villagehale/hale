@@ -12,9 +12,10 @@
  * A warm, calm world: the Shore warm-white canvas (#FDFCFA) behind pure-white
  * cards, a warm sidebar (#F7F5F0) as the desktop frame, brand navy (#1B2160) for
  * anything active or primary, and Shore ink (#17294A) for text. Display type is
- * Source Serif 4 (hero H1s, page titles, the "Hale" wordmark ONLY); everything
- * else is Instrument Sans — including numbers and dates, since Shore retires the
- * old JetBrains Mono role (the `mono` slot now maps to Instrument Sans).
+ * Fraunces (hero H1s, page titles, the "Hale" wordmark ONLY); everything else is
+ * Figtree — including numbers and dates, since Shore retires the old JetBrains
+ * Mono role (the `mono` slot maps to the body face). Both faces are the site's:
+ * see display-type.test.ts for why the two surfaces are pinned to one identity.
  *
  * ── Shore ↔ legacy token names (VIL-209 W1) ──────────────────────────────────
  * apps/web predates the shared vocabulary, so every Shore role that already
@@ -57,10 +58,10 @@
  *   berry*   = the terracotta accent (#C2543F / #FDEBE8) — needs-you / danger
  *   lavender/purple = the purple accent (#7A6FB3 / #F1EEFA) — insight / AI
  *
- * Dark mode is DERIVED (the handoff is light-only) and BRAND-ANCHORED, not
- * brand-flooded: the content canvas is a calm desaturated deep warm charcoal-navy
- * (easy for long/night reading), the app frame (sidebar) keeps a brand-navy
- * anchor, and surfaces climb a clear elevation ladder (canvas → card → raised).
+ * Dark mode is DERIVED (the handoff is light-only) and BRAND-GROUNDED: the content
+ * canvas is a deep Prussian navy hue-locked to the brand ink #17294A, the app frame
+ * (sidebar) keeps a more saturated brand-navy anchor, and surfaces climb a clear
+ * elevation ladder (canvas → card → raised) that lands ON #17294A at the top.
  * Every dark text/surface pair is re-derived to meet the SAME WCAG bar its light
  * counterpart holds — the ratios in the comments are computed, not guessed.
  *
@@ -209,15 +210,17 @@
   /* Hale tip gradient (design handoff) */
   --tip-gradient: linear-gradient(180deg, #FFF9F1, #FBEDDC);
 
-  /* ── Type — Instrument Sans (body/UI) + Source Serif 4 (display) ──────── *
-   * Shore is a TWO-family system: Source Serif 4 for display/title only, and
-   * Instrument Sans for everything else — numbers, dates and payloads included.
+  /* ── Type — Figtree (body/UI) + Fraunces (display) ────────────────────── *
+   * Shore is a TWO-family system: Fraunces for display/title only, and Figtree
+   * for everything else — numbers, dates and payloads included. These are the
+   * site's faces; the app used to run Instrument Sans + Source Serif 4 and
+   * changed identity under a reader crossing from a marketing CTA to /sign-in.
    * The old JetBrains Mono "mono" role is retired, so `--font-mono` (and the
-   * `.tabular` / `font-mono` handles that read it) now resolve to Instrument
-   * Sans; `font-variant-numeric: tabular-nums` still does the column-aligning
-   * that role actually needed. The next/font load was dropped with it. */
-  --font-sans: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
-  --font-serif: "Source Serif 4", ui-serif, Georgia, "Times New Roman", serif;
+   * `.tabular` / `font-mono` handles that read it) resolve to the body face;
+   * `font-variant-numeric: tabular-nums` still does the column-aligning that
+   * role actually needed. The next/font load was dropped with it. */
+  --font-sans: "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
   --font-mono: var(--font-sans);
   --font-display: var(--font-serif);
   --font-body: var(--font-sans);
@@ -268,142 +271,172 @@
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Dark mode = Hale Shore's derived dark (VIL-209 W2) ──────────────────── *
- * Converged onto apps/mobile/src/global.css: the canvas is Shore's warm-dark
- * near-black #14120E (surfaces climb canvas → card → raised), ink inverts to
- * cream, and the navy brand LIGHTENS to the periwinkle #9AA6E6 so it still reads
- * as the one committed accent against dark — with --color-on-ink inverting to
- * ink navy #17294A for the label on that fill. The app FRAME (sidebar + sticky
- * header) keeps the brand-navy anchor, which on dark is Shore's own #1B2160
- * (see --color-chrome and the .dark .sidebar/.runninghead rules below), so the
- * identity is unmistakable while the content stage stays warm and neutral.
+/* ── Dark mode = Prussian navy, derived from the brand ink #17294A ───────── *
+ * Founder directive: dark mode is the navy Prussian-blue palette, NOT just black.
+ * The ground is therefore hue-locked to the brand: #17294A is hsl(219 53% 19%),
+ * and the whole surface ladder is that same 219° hue walked down in lightness —
+ * so the app reads as one deep navy field rather than a neutral dark chrome that
+ * happens to have a blue logo in it. It replaces the warm near-black #14120E
+ * ladder (VIL-209 W2), which converged on apps/mobile but read as plain black.
  *
- * We re-point the same token *roles*, so every existing component flips for
- * free: --color-spruce is "ink" (now cream) and --color-linen is "canvas" (now
- * the warm near-black), so .btn-primary (brand fill / on-ink label) becomes a
- * periwinkle fill with navy text, and focus rings (inner ring = canvas) stay
- * matched to the surface.
+ * The ladder climbs canvas → card → raised and LANDS ON THE BRAND: `raised` is
+ * #17294A exactly, so "surfaces step toward the brand ink" is literal, not a
+ * metaphor. Each rung holds the 1.10:1 notch the warm ladder held, so every
+ * elevation reads the same as before — only the hue moved.
  *
- * EVERY ratio below was recomputed against THIS ground — none was carried over
- * from the charcoal-navy palette this replaces. Tokens that exist in Shore take
- * Shore's dark value verbatim; the roles apps/web owns alone (tile, alt-surface,
- * apricot-tint, brand-hover, the chrome lifts) are re-derived to reproduce the
- * step they held before, on the new warm ground. */
+ * Ink stays WARM cream (#F6F1E7) against the cool ground: the warmth that used to
+ * live in the canvas now lives entirely in the type, which is what kept the old
+ * palette feeling like Hale. The navy brand still LIGHTENS to periwinkle #9AA6E6
+ * (a navy accent on a navy ground would vanish), with --color-on-ink inverting to
+ * ink navy #17294A for the label on that fill. NOTE: --color-on-ink and
+ * --color-raised now share the value #17294A. That is a coincidence of the
+ * derivation, not a hazard — every --color-on-spruce consumer sits on a `spruce`
+ * (cream) or `brand` (periwinkle) fill, never on `raised`.
+ *
+ * The app FRAME (sidebar + sticky header) is a RUNG OF THAT LADDER, not a second
+ * blue: chrome is `raised` #17294A exactly, so the frame is the content navy one
+ * tonal step up (1.20:1 on the canvas) at the stage's own 219° / 53%. It used to
+ * wear Shore's 235° / 56% indigo #1B2160, which beside a 219° stage read as a
+ * different palette rather than a step of this one. Light mode's own frame step is
+ * 1.06:1, so 1.20 is comfortably the stronger of the two.
+ *
+ * EVERY ratio below is computed against THIS ground, not carried over. The new
+ * navy card (#13223E) is LIGHTER than the warm card it replaces (#1E1B15), so
+ * every dark tint that sits ON the card compressed — some to 1.00:1, i.e. gone.
+ * Each one is re-lifted to hold its LIGHT-mode step (chips 1.12–1.16, cream 1.07,
+ * washes 1.22), which is the system's own standard rather than the unusually
+ * generous separation a near-black card gave away for free. */
 .dark {
-  /* Surfaces — Shore's warm-dark ladder, canvas → card → raised. */
-  --color-canvas: #14120E;       /* CANVAS — Shore warm-dark near-black */
-  --color-card: #1E1B15;         /* CARD surface — one notch above canvas (1.09:1) */
-  --color-linen: #14120E;        /* legacy name for `canvas` */
-  --color-oat: #1E1B15;          /* legacy name for `card` */
-  --color-raised: #282318;       /* RAISED — two notches up (1.10:1 on card) */
-  --color-tile: #241F17;         /* inner tile — subtle lift on card (1.05:1); web-only role */
-  --color-chrome: #1B2160;       /* CHROME ANCHOR — Shore brand navy, sidebar frame only */
-  --color-alt-surface: #1E2740;  /* selected row — cool lift on the warm card (1.16:1) */
+  /* Surfaces — the brand-hue navy ladder, canvas → card → raised → #17294A. */
+  --color-canvas: #0E1A2F;       /* CANVAS — deep Prussian navy ground, hsl(218 54% 12%) */
+  --color-card: #13223E;         /* CARD surface — one notch above canvas (1.10:1) */
+  --color-linen: #0E1A2F;        /* legacy name for `canvas` */
+  --color-oat: #13223E;          /* legacy name for `card` */
+  --color-raised: #17294A;       /* RAISED — the BRAND ink navy itself (1.10:1 on card) */
+  --color-tile: #152541;         /* inner tile — subtle lift on card (1.04:1); web-only role */
+  --color-chrome: #17294A;       /* CHROME ANCHOR — the ladder's own `raised` rung, sidebar frame only (1.20:1 on canvas) */
+  --color-alt-surface: #192D52;  /* selected row — lift on the card (1.16:1) */
 
-  /* Ink + text ladder — Shore's cream/blue-gray ladder, re-measured on #14120E. */
-  --color-ink: #F6F1E7;          /* PRIMARY INK — cream — 16.62:1 on canvas, 15.26:1 on card */
-  --color-ink-2: #C7D3E6;        /* secondary text — 12.37:1 on canvas */
-  --color-ink-3: #9BB0D0;        /* tertiary / meta / nav-inactive / .eyebrow — 8.48:1 on canvas */
-  --color-caption: #8B93A1;      /* Shore caption gray — 6.04:1 on canvas (still the decorative-only role) */
+  /* Ink + text ladder — the SAME warm cream/blue-gray hexes, re-measured on the
+   * navy ground. The navy canvas is lighter than the near-black it replaces, so
+   * every ratio drops ~7% and every one still clears its bar by a wide margin. */
+  --color-ink: #F6F1E7;          /* PRIMARY INK — warm cream — 15.45:1 on canvas, 14.07:1 on card */
+  --color-ink-2: #C7D3E6;        /* secondary text — 11.50:1 on canvas, 9.56:1 on raised */
+  --color-ink-3: #9BB0D0;        /* tertiary / meta / nav-inactive / .eyebrow — 7.88:1 on canvas, 6.55:1 on raised */
+  --color-caption: #8B93A1;      /* Shore caption gray — 5.62:1 on canvas, 4.67:1 on raised (clears AA on every surface) */
   --color-on-ink: #17294A;       /* Shore — the label ON an ink / brand fill inverts to ink navy */
   --color-spruce: #F6F1E7;       /* legacy name for `ink` */
   --color-slate-green: #C7D3E6;  /* legacy name for `ink-2` */
   --color-faded-sage: #9BB0D0;   /* legacy name for `ink-3` */
   --color-muted: #8B93A1;        /* legacy name for `caption` */
-  --color-faint: #79879E;        /* Skip / placeholders / chevrons — 5.14:1 on canvas, decorative */
-  --color-mist: #6C7A92;         /* dropdown labels / timestamps — 4.31:1 on canvas, decorative */
+  --color-faint: #79879E;        /* Skip / placeholders / chevrons — 4.78:1 on canvas, decorative */
+  --color-mist: #6C7A92;         /* dropdown labels / timestamps — 4.01:1 on canvas, decorative
+                                  * (light mode's counterpart is 1.95:1, so dark stays the safer mode) */
 
   /* Brand — Shore lightens the navy to periwinkle so it stays the one committed
    * accent on dark (a cream brand would collapse into the ink it sits beside). */
-  --color-brand: #9AA6E6;        /* 7.99:1 on canvas · on-ink label on it 6.18:1 */
+  --color-brand: #9AA6E6;        /* 7.43:1 on canvas · on-ink label on it 6.18:1 */
   --color-brand-hover: #B3BCEE;  /* +1 step lighter, mirroring light's navy→lighter-navy hover */
 
   /* Accent (apricot*) — follows INK, not brand: the light palette re-points it to
    * ink navy, so dark inverts it to cream. Small content accents + focus rings
-   * (ring on canvas 16.62:1 · on card 15.26:1 · on chrome 13.02:1). */
+   * (ring on canvas 15.45:1 · on card 14.07:1 · on chrome 13.02:1). */
   --color-apricot: #F6F1E7;
-  --color-apricot-deep: #F6F1E7;     /* 16.62:1 on canvas */
-  --color-apricot-tint: #302B21;     /* warm-neutral wash — avatars / chips / "You" pill;
-                                      * 1.22:1 on card, matching light's #ECE8DE-on-white step */
+  --color-apricot-deep: #F6F1E7;     /* 15.45:1 on canvas */
+  --color-apricot-tint: #273145;     /* the neutral wash — avatars / chips / "You" pill. Light's
+                                      * #ECE8DE is a WARM-neutral wash on warm white; on a navy
+                                      * ground the analogous wash is the ground's own hue,
+                                      * desaturated (hsl 221 28%) — 1.22:1 on card, exactly light's
+                                      * step. Brand on it 5.57:1 (.avatar-child), ink 11.58:1. */
 
   /* Decorative illustration blue — dark variant, kept for the illo kit only. */
   --color-illustration: #8AA2F2;
-  --color-illustration-tint: #1B2748;
+  --color-illustration-tint: #1E2B4E;  /* re-lifted 1.08 → 1.14:1 on the navy card */
 
   /* Teal accent (sky*) — coach / calm. */
   --color-sky: #56B9AE;
-  --color-sky-deep: #56B9AE;     /* 7.97:1 on canvas · 5.87:1 on sky-tint */
-  --color-sky-tint: #123230;
+  --color-sky-deep: #56B9AE;     /* 7.41:1 on canvas · 5.87:1 on sky-tint */
+  --color-sky-tint: #123230;     /* already 1.15:1 on the navy card — unchanged */
 
   --color-sea: #9AA6E6;          /* follows `brand`, exactly as it does in light */
 
   /* Green accent (sage/success) — done / health. */
-  --color-sage: #6FCB8F;         /* 9.46:1 on canvas · 7.19:1 on sage-tint */
-  --color-sage-tint: #16301F;
+  --color-sage: #6FCB8F;         /* 8.79:1 on canvas · 7.19:1 on sage-tint */
+  --color-sage-tint: #16301F;    /* already 1.11:1 on the navy card — unchanged */
   --color-success: #6FCB8F;
 
-  /* Amber accent — awaiting / tip. */
-  --color-amber: #E0A44E;        /* 8.54:1 on canvas · 6.73:1 on amber-tint */
-  --color-amber-tint: #33260F;   /* ink on it 13.09:1 (.pill-amber) */
+  /* Amber accent — awaiting / tip. The amber TONE is a pre-existing semantic
+   * (like sage / berry / sky); it is not part of the app's brand palette, which
+   * stays navy + warm-neutral. Only its wash moved, to hold its step. */
+  --color-amber: #E0A44E;        /* 7.94:1 on canvas · 6.45:1 on amber-tint */
+  --color-amber-tint: #372910;   /* re-lifted 1.07 → 1.12:1 on card; ink on it 12.54:1 (.pill-amber) */
 
   /* Purple accent (lavender) — insight / AI. */
-  --color-lavender: #241F3A;
-  --color-purple: #B3A6E6;       /* 8.47:1 on canvas · 7.14:1 on lavender */
+  --color-lavender: #2B2546;     /* re-lifted 1.00 → 1.10:1 on card (it VANISHED on the navy card) */
+  --color-purple: #B3A6E6;       /* 7.88:1 on canvas · 6.54:1 on lavender */
 
   /* Terracotta accent (berry*) — needs-you / danger / sign-out. */
-  --color-berry: #E58C78;        /* 7.44:1 on canvas · 6.01:1 on berry-tint */
-  --color-berry-tint: #3A1F1A;
+  --color-berry: #E58C78;        /* 6.92:1 on canvas · 5.60:1 on berry-tint */
+  --color-berry-tint: #42231E;   /* re-lifted 1.05 → 1.12:1 on card */
 
   /* Accent inks on their dark tint — the already-light accent reads high-contrast
    * on the deep tint, so no separate darkening is needed (unlike light mode). */
-  --color-amber-ink: #E0A44E;    /* on dark amber-tint #33260F */
-  --color-berry-ink: #E58C78;    /* on dark berry-tint #3A1F1A */
-  --color-sage-ink: #6FCB8F;     /* on dark sage-tint #16301F */
+  --color-amber-ink: #E0A44E;    /* on dark amber-tint #372910 — 6.45:1 */
+  --color-berry-ink: #E58C78;    /* on dark berry-tint #42231E — 5.60:1 */
+  --color-sage-ink: #6FCB8F;     /* on dark sage-tint #16301F — 7.19:1 */
 
   /* Sleep mini-chart bar — periwinkle, lightened to read on the dark card. */
-  --color-sleep-bar: #7981C9;
+  --color-sleep-bar: #7981C9;    /* 4.80:1 on canvas — decorative data mark, not text */
 
-  /* ── Hale Shore roles apps/web had no name for — dark ────────────────────── *
-   * Shore's own hand-tuned dark pairs from apps/mobile/src/global.css, verbatim. */
-  --color-accent: #FB923C;       /* text-safe apricot — 8.27:1 on canvas · 6.75:1 on accent-tint */
+  /* ── Hale Shore roles apps/web had no name for — dark ────────────────────── */
+  --color-accent: #FB923C;       /* text-safe apricot — 7.68:1 on canvas · 6.37:1 on accent-tint */
   --color-accent-fill: #F97316;
-  --color-accent-tint: #2F2318;
+  --color-accent-tint: #35271B;  /* re-lifted 1.04 → 1.10:1 on the navy card */
 
   --color-badge: #EF9350;
   --color-destructive: #E58C78;  /* Shore name for `berry` */
 
-  --color-cream: #2A2114;        /* ink on it 14.07:1 · 1.18:1 vs canvas */
-  --color-cream-border: #3C3020; /* 1.23:1 on cream — edge, non-text */
-  --color-cream-accent: #E0A44E; /* Shore name for `amber` — 7.23:1 on the dark cream */
+  /* Cream highlight card — Shore's "great news" tile (.village-rec). It stays the
+   * one WARM surface in the app, which is the whole point of it: against a navy
+   * field a warm tile is unmistakably "good news". At the old #2A2114 it measured
+   * 1.00:1 on the navy card — identical luminance, so it disappeared entirely and
+   * only its hue survived. Re-lifted to 1.10:1 on card / 1.21:1 on canvas. */
+  --color-cream: #332819;        /* ink on it 12.79:1 · ink-2 9.52:1 */
+  --color-cream-border: #3F3222; /* 1.16:1 on cream — matches light's border step exactly */
+  --color-cream-accent: #E0A44E; /* Shore name for `amber` — 6.58:1 on the dark cream */
 
-  /* Tint chips — Shore's dark pairs. Measured icon-on-chip contrast: blue 7.65:1 ·
-   * green 7.04:1 · yellow 6.83:1 · red 6.89:1 · teal 6.10:1 · gray 6.45:1. Every
-   * pair clears the 3:1 non-text floor for the icon it carries with room to spare
-   * (dark deepens the ground and lightens the icon, so dark is the easier mode) —
-   * but the light-mode rule still stands: a chip tone is never small-text colour. */
-  --color-chip-blue: #1B2440;
+  /* Tint chips — the warm-hued grounds (blue/yellow/red) compressed to 1.04–1.07:1
+   * on the navy card and are re-lifted to their LIGHT-mode steps; green / teal /
+   * gray already cleared 1.10:1 and are unchanged. Measured icon-on-chip contrast:
+   * blue 6.95:1 · green 7.04:1 · yellow 6.37:1 · red 6.37:1 · teal 6.10:1 ·
+   * gray 6.45:1 — every pair clears the 3:1 non-text floor for the icon it carries
+   * with room to spare, but the light-mode rule still stands: a chip tone is never
+   * small-text colour. */
+  --color-chip-blue: #202B4C;    /* 1.14:1 on card (was 1.04) */
   --color-chip-blue-icon: #A3B6F0;
-  --color-chip-green: #16301F;
+  --color-chip-green: #16301F;   /* 1.11:1 — unchanged */
   --color-chip-green-icon: #78C795;
-  --color-chip-yellow: #2E2614;
+  --color-chip-yellow: #342B17;  /* 1.13:1 on card (was 1.06) */
   --color-chip-yellow-icon: #DBA64F;
-  --color-chip-red: #3A211D;
+  --color-chip-red: #422621;     /* 1.15:1 on card (was 1.07) */
   --color-chip-red-icon: #E79F8E;
-  --color-chip-teal: #12302D;
+  --color-chip-teal: #12302D;    /* 1.12:1 — unchanged */
   --color-chip-teal-icon: #57BAB1;
-  --color-chip-gray: #262A31;
+  --color-chip-gray: #262A31;    /* 1.10:1 — unchanged */
   --color-chip-gray-icon: #A6AEBD;
 
-  /* Hairlines — Shore's cream alphas. Composited on the card these render
-   * #38352E (rule, 1.40:1) and #2F2C26 (hairline, 1.23:1): the same quiet edge
-   * light mode draws with #E4E7EE on white (1.24:1), not a stronger one.
-   * `rule-strong` takes Shore's 0.24 (was 0.20) — composited #4A4842, 2.05:1 on
-   * canvas, up from 1.78:1. It is still short of the 3:1 WCAG 1.4.11 floor for
-   * an input boundary, and light mode is further short at 1.32:1 (#D9DEE8 on
-   * #FDFCFA) — a PRE-EXISTING, mode-symmetric gap this phase improves but does
-   * not close, because `.field` is filled with the canvas and so is identified by
-   * its border alone. Closing it means re-toning every input, composer, segmented
-   * control and scrollbar in BOTH modes — a surface phase, not a token swap. */
+  /* Hairlines — the same cream alphas, which is why they need no new values: an
+   * alpha edge re-composites against whatever ground it lands on, so the navy
+   * ladder carries them for free. On the navy card they render #2E3B52 (rule,
+   * 1.41:1) and #25334C (hairline, 1.25:1) — the same quiet edge light mode draws
+   * with #E4E7EE on white (1.24:1), and within 0.02 of what they measured on the
+   * warm ground. `rule-strong` composites to #495467, 2.07:1 on canvas. It is
+   * still short of the 3:1 WCAG 1.4.11 floor for an input boundary, and light mode
+   * is further short at 1.32:1 (#D9DEE8 on #FDFCFA) — a PRE-EXISTING,
+   * mode-symmetric gap this change carries forward unaltered, because `.field` is
+   * filled with the canvas and so is identified by its border alone. Closing it
+   * means re-toning every input, composer, segmented control and scrollbar in BOTH
+   * modes — a surface phase, not a token swap. */
   --color-rule: rgb(246 241 231 / 0.12);
   --color-rule-strong: rgb(246 241 231 / 0.24);
   --color-warm-border: rgb(246 241 231 / 0.12);  /* on chrome → #353A70, 1.39:1 — sidebar edge */
@@ -416,7 +449,7 @@
 
   /* Shore drops the card shadow on dark — "surfaces separate by lightness and
    * shadows don't render" (apps/mobile/src/components/ui/card.tsx). The elevation
-   * ladder above does that work here; a 4%-ink shadow on a near-black ground is
+   * ladder above does that work here; a 4%-ink shadow on a deep navy ground is
    * invisible anyway, and the light-mode lift would be pure noise. The HOVER lift
    * goes with it: `.dark .card-interactive:hover` already climbs card → raised,
    * which this file calls "the tangible dark-mode equivalent of the light-mode
@@ -429,7 +462,11 @@
 
 /* ── Chrome anchor (dark only) ───────────────────────────────────────────── *
  * The app frame — sidebar + sticky mobile header + the off-canvas drawer — wears
- * brand navy so the identity is unmistakable while the content canvas stays calm.
+ * the ladder's `raised` rung, so it separates from the content canvas purely by
+ * LIGHTNESS (1.20:1) at the stage's own hue. The frame used to wear a 235° / 56%
+ * indigo against the 219° / 53% stage: on a phone, where the drawer and the sticky
+ * header sit right against the content, that read as a SECOND blue rather than a
+ * step of the one palette.
  * We paint the frame with --color-chrome and locally re-point the "surface" tokens
  * nested controls lift onto (canvas / card), so a nav hover or theme-toggle thumb
  * steps UP from the navy frame instead of dropping back to the calm canvas —
@@ -441,15 +478,14 @@
 .dark .runninghead {
   background: var(--color-chrome);
   /* Lift surfaces, relative to the navy frame, for nested hover/active states.
-   * Shore's chrome #1B2160 is LIGHTER than the #151A44 these lifts were cut
-   * against, so the old hexes compressed to 1.03–1.21 against it (the toggle
-   * track all but vanished). Re-derived to reproduce the steps they held —
-   * hover 1.25 · track 1.17 · active-pill 1.38 — on the new frame. */
-  --color-canvas: #2D336D;       /* nav-item hover / theme-toggle thumb — 1.25:1 on chrome */
-  --color-card: #282D69;         /* theme-toggle track / menu hover — 1.17:1; brand label on it 5.37:1 */
-  --color-linen: #2D336D;
-  --color-oat: #282D69;
-  --color-alt-surface: #343971;  /* active-nav pill — 1.38:1 on chrome; brand label on it 4.55:1 */
+   * Cut on the ladder's OWN hue (219° / 53%), so no lift can reintroduce the indigo
+   * the frame just shed — each holds the step it has always held on the chrome:
+   * hover 1.25 · track 1.17 · active-pill 1.38. */
+  --color-canvas: #1F3866;       /* nav-item hover / theme-toggle thumb — 1.25:1 on chrome */
+  --color-card: #1D345E;         /* theme-toggle track / active-nav pill — 1.17:1; brand label on it 5.26:1 */
+  --color-linen: #1F3866;
+  --color-oat: #1D345E;
+  --color-alt-surface: #233E72;  /* selected switcher row — 1.38:1 on chrome; ink on it 9.31:1 */
 }
 
 html {
@@ -480,8 +516,17 @@ body {
   html { scroll-behavior: auto; }
 }
 
-/* Headlines: Inter, tight tracking, semibold display weight.
- * Sentence-case, never all-caps.
+/* Headlines: Fraunces, tight tracking, sentence-case, never all-caps.
+ *
+ * The weight is a LADDER, not a constant, and it runs the opposite way to the size.
+ * Fraunces is a display cut with an optical-size axis: at the 76px hero ceiling the
+ * 450 the founder pinned carries plenty of stem, but the authed stage tops out at
+ * 34px and its H2 at 22px, where the same 450 goes thin against the Figtree-600
+ * labels sitting under it. So the rungs below 32px step up to 500. `font-optical-
+ * sizing: auto` is what makes that ladder mean anything — it tracks `opsz` to the
+ * rendered size, so a 22px heading gets the text drawing and the hero gets the
+ * display one. `font-synthesis-weight: none` forbids the browser inventing a cut the
+ * axis could have given it. See display-type.test.ts for the ordering invariant.
  *
  * This type ladder lives in `@layer base` so a Tailwind utility (which lives in
  * the `utilities` layer) wins whenever a heading carries one — an unlayered
@@ -494,8 +539,9 @@ body {
   h1, h2, h3, h4 {
     font-family: var(--font-display);
     font-optical-sizing: auto;
+    font-synthesis-weight: none;
     letter-spacing: var(--tracking-display);
-    font-weight: 600;
+    font-weight: 450;
     line-height: 1.04;
     color: var(--color-ink);
     font-style: normal;
@@ -504,14 +550,14 @@ body {
 
   h1 { font-size: clamp(2.6rem, 6vw, 4.75rem); }
   h2 { font-size: clamp(2rem, 4vw, 3.1rem); }
-  h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
+  h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; font-weight: 500; }
 
   /* Inside the authed main-stage the headings are the design system's, not the
    * marketing hero's: Shore sizes `display` at 34/40 (600, -0.02em) and `title`
    * at 22/28 (500), so the stage H1 tops out at 34px and the H2 at 22px. They
    * still scale down on a narrow column — a fixed 34px is fine on a phone (it is
    * what the mobile app ships) but the clamp keeps long titles from crowding. */
-  .main-stage h1 { font-size: clamp(1.75rem, 2.4vw, 2.125rem); line-height: 1.18; }
+  .main-stage h1 { font-size: clamp(1.75rem, 2.4vw, 2.125rem); line-height: 1.18; font-weight: 500; }
   .main-stage h2 { font-size: clamp(1.25rem, 1.8vw, 1.375rem); line-height: 1.28; font-weight: 500; }
 
   em { font-style: italic; }
@@ -1236,7 +1282,7 @@ body {
  * its own full-height surface); the Village board opts UP to a wider column
  * (.village-wide) so its 330|1fr|300 map board keeps a real centrepiece map (§4.5),
  * the same "wide surface opts out" pattern the coach chat uses. */
-.main-stage > *:not(.coach-surface):not(.dev-preview-banner):not(.village-wide) {
+.main-stage > *:not(.coach-surface):not(.dev-preview-banner):not(.village-wide):not([data-surface='admin']) {
   max-width: 58rem;
   margin-inline: auto;
 }
@@ -1244,6 +1290,9 @@ body {
   max-width: 72rem;
   margin-inline: auto;
 }
+/* The admin ledger opts UP the same way the Village board does (75rem); its
+ * width rule lives in admin.css, inside @layer components — the :not() arm
+ * above is what keeps this unlayered column cap off the admin surface. */
 
 /* Ask Hale is a contained chat: the transcript scrolls inside its own region while
  * the composer stays pinned to the surface foot. So the STAGE itself must not
@@ -1322,7 +1371,11 @@ body {
 .panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
 .panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
 
-/* ── Buttons — depress 1px + warm fill on press, no scale-bounce ───────── */
+/* ── Buttons — depress 1px + warm fill on press, no scale-bounce ───────── *
+ * The label weight is 600, the top of Figtree's interactive band, not the 700 these
+ * carried in Instrument Sans. Same band as the site's buttons, which is the point:
+ * the CTA a reader presses on the site and the one they press here are one control
+ * in two places, and they used to be set in different faces at different weights. */
 
 .btn-primary {
   display: inline-flex;
@@ -1336,7 +1389,7 @@ body {
   border-radius: var(--r-md);
   font-family: var(--font-body);
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
@@ -1362,7 +1415,7 @@ body {
   border-radius: var(--r-md);
   font-family: var(--font-body);
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
@@ -1388,7 +1441,7 @@ body {
   border: 0;
   font-family: var(--font-body);
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
@@ -1601,6 +1654,22 @@ input[type="checkbox"] {
 }
 
 textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-radius: var(--r-md); }
+
+/* A time / date / number control carries its own intrinsic content width — a
+ * segmented clock, a picker, a spinner — so `.field`'s text-field `width: 100%`
+ * stretches it into a mostly empty box. Where two sit side by side (quiet hours)
+ * flex already sizes them to content and it never shows; a LONE one fills its
+ * column and reads oversized beside them, which is the settings "Weekly plan
+ * arrives" row. Asking for the control's OWN width is what makes the lone one match
+ * the pair exactly (both 160px) with no width to keep in sync — and it is a
+ * max-width, so `width: 100%` still bounds it inside a narrower column. It lives on
+ * the type, not the call site, so the next lone control is born sized.
+ * datetime-local is deliberately absent: it needs the full column. */
+@layer components {
+  input[type="time"].field,
+  input[type="date"].field,
+  input[type="number"].field { max-width: max-content; }
+}
 
 /* ── Ask Hale chat (the /coach transcript + composer) ──────────────────── *
  * The conversation is the hero: the parent's turns ride right in a navy bubble
@@ -2907,12 +2976,14 @@ html, body, .sidebar, .panel, .card, .field {
 }
 .hale-tip-dismiss:hover { opacity: 1; }
 
-/* ── Home §4.2 Row 1 — the row-of-4 grid (1.05fr 1fr 1fr 1.15fr), and a dedicated
- * "from your village" 4th column. Collapses 4 → 2 → 1 at lg / md / sm so nothing
- * overflows below 1024px. Columns are TOP-aligned at their natural content height
- * (align-items: start): a sparse card — an empty village pick, a caught-up "up
- * next" — sizes to its content instead of being force-stretched to the tallest
- * column, which left tall empty voids and pushed the Hale tip to the column foot. */
+/* ── Home §4.2 Row 1 — the row-of-3 grid (1.05fr 1fr 1.15fr), ending in a dedicated
+ * "from your village" column. (The 4th column was the quick-links + Hale-tip stack;
+ * every one of its links pointed at the retired /companion and /coach surfaces, so it
+ * went with them in the receipts-room slimdown.) Collapses 3 → 2 → 1 at lg / md / sm
+ * so nothing overflows below 1024px. Columns are TOP-aligned at their natural content
+ * height (align-items: start): a sparse card — an empty village pick, a caught-up "up
+ * next" — sizes to its content instead of being force-stretched to the tallest column,
+ * which left tall empty voids. */
 .home-row1 {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2923,7 +2994,7 @@ html, body, .sidebar, .panel, .card, .field {
   .home-row1 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 1024px) {
-  .home-row1 { grid-template-columns: 1.05fr 1fr 1fr 1.15fr; }
+  .home-row1 { grid-template-columns: 1.05fr 1fr 1.15fr; }
 }
 /* A column is a flex stack sized to its content (no forced full-column height): the
  * eyebrow sits on top and the card sits below at its natural height. The two-card
@@ -3134,7 +3205,7 @@ html, body, .sidebar, .panel, .card, .field {
    * used to carry the village block's ONLY colour literal — a hardcoded cream
    * gradient plus a `.dark` override to keep it from glaring. Both are gone; the
    * card now derives in each mode from the role token, like everything else.
-   * ink on cream 14.07 light / 14.07 dark, ink-2 8.05 / 10.49, border 1.16 / 1.23. */
+   * ink on cream 14.07 light / 12.79 dark, ink-2 8.05 / 9.52, border 1.16 / 1.16. */
   .village-rec {
     padding: 1.1rem 1.15rem 1.2rem;
     border-radius: var(--r-xl);
@@ -3142,7 +3213,7 @@ html, body, .sidebar, .panel, .card, .field {
     border: 1px solid var(--color-cream-border);
   }
   /* The tip INK, not the base accent: `cream-accent` (#B26B1F) is only 3.6–4.0:1
-   * on cream, so the eyebrow keeps the darker ink at 5.89:1 light / 7.23:1 dark —
+   * on cream, so the eyebrow keeps the darker ink at 5.89:1 light / 6.58:1 dark —
    * the same pair `.hale-tip-eyebrow` uses. */
   .village-rec-eyebrow { display: block; margin-bottom: 0.4rem; color: var(--color-amber-ink); }
   /* Shore's title role (22/28, 500) — a recommendation is a card confirmation, the
@@ -3157,7 +3228,7 @@ html, body, .sidebar, .panel, .card, .field {
     border: 0;
     background: transparent;
     /* Brand on the warm card: navy in light (13.55:1 on cream), periwinkle in dark
-     * (6.75:1) — AA in both modes, unlike the sub-4.5 accent-on-cream a body link
+     * (6.15:1) — AA in both modes, unlike the sub-4.5 accent-on-cream a body link
      * would be. */
     color: var(--color-brand);
     font-family: var(--font-body);
@@ -3249,74 +3320,11 @@ html, body, .sidebar, .panel, .card, .field {
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * W2b — Settings hub + centered modals (desktop design handoff §4.7 & §4.8)
- * Additive only. Every color goes through a role token, so light↔dark flips
- * automatically; nothing here overflows the page below 1024px (the hub stacks
- * and its sub-nav scrolls horizontally; the modal is desktop-only).
+ * W2b — Settings link rows + centered modals (desktop design handoff §4.7 & §4.8)
+ * (The 216px sub-nav hub these once framed was replaced by the one-column
+ * Instinct refresh — see the `.settings-col` block in @layer components below.)
+ * Every color goes through a role token, so light↔dark flips automatically.
  * ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Settings hub: 216px left sub-nav + panel (§4.7) ─────────────────────── */
-.settings-hub {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-@media (min-width: 1024px) {
-  .settings-hub {
-    display: grid;
-    grid-template-columns: 216px minmax(0, 1fr);
-    gap: 3rem;
-    align-items: start;
-  }
-}
-
-.settings-subnav {
-  display: flex;
-  gap: 0.25rem;
-  overflow-x: auto;
-  margin-inline: -0.25rem;
-  padding-inline: 0.25rem;
-}
-
-@media (min-width: 1024px) {
-  .settings-subnav {
-    position: sticky;
-    top: 1.5rem;
-    flex-direction: column;
-    overflow: visible;
-    margin-inline: 0;
-    padding-inline: 0;
-  }
-}
-
-.settings-subnav-item {
-  flex-shrink: 0;
-  white-space: nowrap;
-  text-align: left;
-  padding: 0.55rem 0.85rem;
-  border: 0;
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--color-faded-sage);
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
-}
-.settings-subnav-item:hover { color: var(--color-spruce); background: var(--color-chrome); }
-.settings-subnav-item[aria-current="page"] {
-  background: var(--color-warm-hover);
-  color: var(--color-spruce);
-  font-weight: 700;
-}
-.settings-subnav-item:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
-}
-
-.settings-panel { min-width: 0; }
 
 .settings-link-row {
   display: flex;
@@ -3493,7 +3501,7 @@ html, body, .sidebar, .panel, .card, .field {
 /* Amber "worth a look" pill — the honest neutral caution for a WHO 'review' band.
  * Mirrors the existing .pill-* pattern (tint ground + spruce ink): contrast-safe in
  * both themes because BOTH tokens re-point in .dark (light #FEF0C7/#1F3A34 ≈ 9.9:1;
- * dark #33260F/ink ≈ 11:1). */
+ * dark #372910/ink ≈ 12.5:1). */
 .pill-amber { background: var(--color-amber-tint); color: var(--color-spruce); }
 
 /* ── Child-hub header (.comp-hub): identity + up-to-three WHO percentile stats ── */
@@ -3648,144 +3656,6 @@ html, body, .sidebar, .panel, .card, .field {
   }
 }
 
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * WEB — <768px "better in the app" hand-off (design handoff §5)
- * Flag-gated + session-scoped (see app-promo.tsx). Everything here is
- * position:fixed and only mounts on a phone viewport, so it adds ZERO layout
- * shift at ≥768px. The sheet card + its text adapt via role tokens; the slim
- * banner is fixed brand-navy in BOTH themes — a branded chrome bar (like the
- * LogoMark's own self-contained Prussian ground), with white text at 14.65:1.
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-.apppromo-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  background: rgba(20, 28, 60, 0.4);
-}
-
-.apppromo-sheet {
-  padding: 1.6rem 1.5rem 1.9rem;
-  border-radius: 28px 28px 0 0;
-  background: var(--color-oat);
-  text-align: center;
-  animation: apppromo-rise 0.35s var(--ease-breathe);
-}
-@keyframes apppromo-rise {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .apppromo-sheet { animation: none; }
-}
-
-.apppromo-logo {
-  margin: 0 auto 0.9rem;
-  box-shadow: 0 10px 26px rgba(27, 33, 96, 0.22);
-}
-.apppromo-title {
-  font-family: var(--font-display);
-  font-size: 1.375rem;
-  font-weight: 600;
-  color: var(--color-spruce);
-}
-.apppromo-sub {
-  margin: 0.4rem auto 1.25rem;
-  max-width: 19rem;
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  line-height: 1.55;
-  color: var(--color-slate-green);
-}
-.apppromo-primary {
-  display: block;
-  width: 100%;
-  padding: 0.85rem 1.5rem;
-  border-radius: var(--r-md);
-  background: var(--color-brand);
-  color: var(--color-on-spruce);
-  font-family: var(--font-body);
-  font-size: 0.95rem;
-  font-weight: 700;
-  text-decoration: none;
-}
-.apppromo-secondary {
-  display: block;
-  width: 100%;
-  margin-top: 0.65rem;
-  padding: 0.6rem;
-  border: 0;
-  background: transparent;
-  color: var(--color-faded-sage);
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.apppromo-primary:focus-visible,
-.apppromo-secondary:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--color-oat), 0 0 0 5px var(--color-apricot-deep);
-}
-
-/* ── Slim navy banner (after "Continue in browser") ─────────────────────── */
-.apppromo-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 110;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0.85rem;
-  background: #1B2160;
-  color: #FFFFFF;
-}
-.apppromo-banner-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-.apppromo-banner-open {
-  flex-shrink: 0;
-  padding: 0.35rem 0.9rem;
-  border-radius: var(--r-full);
-  background: #FFFFFF;
-  color: #1B2160;
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-decoration: none;
-}
-.apppromo-banner-dismiss {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem;
-  border: 0;
-  border-radius: var(--r-full);
-  background: transparent;
-  color: #FFFFFF;
-  cursor: pointer;
-  opacity: 0.8;
-}
-.apppromo-banner-dismiss:hover { opacity: 1; }
-.apppromo-banner-open:focus-visible,
-.apppromo-banner-dismiss:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px #1B2160, 0 0 0 4px #FFFFFF;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Auth surface — /sign-in + /sign-up split card on a Prussian-navy immersive
@@ -3945,6 +3815,25 @@ html, body, .sidebar, .panel, .card, .field {
   color: var(--color-slate-green);
   font-size: 1rem;
   line-height: 1.55;
+}
+
+/* The name, said out loud — the auth card's closing line. A hairline lifts it off the
+ * trust copy above so it reads as a signature rather than more fine print. Ink-3 holds
+ * AA on every surface this panel can take (7.88:1 canvas · 7.18:1 card).
+ *
+ * Layered, unlike its unlayered `.auth-*` siblings above: globals-layer.test.ts is a
+ * ratchet on that pre-existing debt, and new classes go inside `@layer components` so a
+ * utility can still win. Re-opening the layer here keeps the rule beside the surface it
+ * belongs to instead of exiling it to the layered block further down. */
+@layer components {
+  .auth-pronounce {
+    margin-top: 0.25rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-hairline);
+    color: var(--color-faded-sage);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
 }
 
 /* Full-width "Continue with Google" — on the card surface with the brand G. */
@@ -4251,5 +4140,180 @@ html, body, .sidebar, .panel, .card, .field {
   .note-composer-send:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WEB PHASE W5 — the audit TRACE on /trail. Several audit rows about one action
+ * are one thing that happened, so the timeline folds them into a native
+ * <details> whose summary is the row it already rendered and whose body is the
+ * lifecycle underneath.
+ *
+ * Three rules made this three classes rather than a component library: the
+ * summary reuses the timeline's own 12-column row verbatim (so a folded and an
+ * unfolded entry sit on the same grid), the steps are a plain indented list
+ * hung off one hairline, and the only thing a disclosure needs that the
+ * timeline did not already have is a focus ring on <summary>.
+ *
+ * Inside `@layer components`, which is the rule for new CSS in this file
+ * (globals-layer.test.ts ratchets the unlayered debt DOWN). Every value is a
+ * role token, so both themes derive with no new colour.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* The row's own vertical rhythm, moved onto <summary> so the closed trace is
+   * exactly as tall as the standalone <article> beside it. */
+  .trace-summary {
+    cursor: pointer;
+    padding-block: 2rem;
+    /* The native marker renders OUTSIDE the summary's box, which would place it
+     * outside the focus ring and off the timeline's 12-column grid. It is replaced
+     * by `.trace-caret`, which rides the time column instead. */
+    list-style: none;
+  }
+  .trace-summary::-webkit-details-marker { display: none; }
+  @media (min-width: 1024px) {
+    .trace-summary { padding-block: 2.5rem; }
+  }
+  .trace-summary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
+    border-radius: var(--r-sm);
+  }
+
+  .trace-caret {
+    flex: none;
+    color: var(--color-ink-3);
+    transition: transform 260ms var(--ease-breathe);
+  }
+  details[open] > .trace-summary .trace-caret { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) {
+    .trace-caret { transition: none; }
+  }
+
+  /* The lifecycle, hung off one hairline so the steps read as belonging to the
+   * summary above rather than as more timeline rows. Aligned under the summary's
+   * text column at the same breakpoint the grid uses. */
+  .trace-steps {
+    margin: 0 0 2rem;
+    padding: 0 0 0 1rem;
+    border-left: 1px solid var(--color-rule);
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  @media (min-width: 768px) {
+    .trace-steps { margin-left: calc((100% / 12) * 2); }
+  }
+
+  /* Time · actor · what happened. Stacks on a phone, columns from md — the same
+   * shape as the row above it, one scale down. */
+  .trace-step {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.25rem 1rem;
+  }
+  @media (min-width: 768px) {
+    .trace-step { grid-template-columns: 4.5rem 6.5rem 1fr; align-items: baseline; }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Settings, one centered lane (Instinct-adapted refresh). A single scrolling
+ * column of flat cards replaces the 216px sub-nav hub; each card is rows of
+ * icon · bold label · grey value · right-aligned action, stacking below 480px
+ * (the masked phone must never truncate). Inside `@layer components` — the rule
+ * for new CSS in this file — and every value is a role token, so both themes
+ * derive with no new colour.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  .settings-col {
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+    max-width: 42rem;
+    margin-inline: auto;
+  }
+
+  .settings-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-card);
+    padding: 0.25rem 1.5rem;
+  }
+  /* Row dividers fall out of adjacency, so reveal wrappers and blocks divide too. */
+  .settings-card > * + * { border-top: 1px solid var(--color-rule); }
+
+  .settings-flat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-block: 1rem;
+  }
+  .settings-flat-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+  .settings-flat-icon {
+    flex: none;
+    margin-top: 0.15rem;
+    color: var(--color-faded-sage);
+  }
+  .settings-flat-text { min-width: 0; }
+  .settings-flat-label {
+    display: block;
+    font-weight: 600;
+    color: var(--color-spruce);
+  }
+  .settings-flat-value {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--color-slate-green);
+    overflow-wrap: anywhere;
+  }
+  .settings-flat-action { flex: none; }
+  /* The revealed edit machinery hangs under its row, aligned past the icon gutter. */
+  .settings-flat-panel { padding: 0 0 1.25rem 2.4rem; }
+
+  /* Consent ledger: a native details whose summary IS the row (keyboard for free). */
+  .settings-flat-details > .settings-flat-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-block: 1rem;
+    cursor: pointer;
+    list-style: none;
+  }
+  .settings-flat-summary::-webkit-details-marker { display: none; }
+  .settings-flat-summary:focus-visible {
+    outline: none;
+    border-radius: var(--r-sm);
+    box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+  }
+  .settings-flat-summary > .settings-flat-text { flex: 1; min-width: 0; }
+  .settings-flat-cue { flex: none; }
+
+  @media (max-width: 479px) {
+    .settings-flat-row,
+    .settings-flat-details > .settings-flat-summary {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .settings-flat-action { width: 100%; }
+    .settings-flat-action > a,
+    .settings-flat-action > button,
+    .settings-flat-cue {
+      width: 100%;
+      justify-content: center;
+      display: inline-flex;
+    }
+    .settings-flat-panel { padding-left: 0; }
   }
 }

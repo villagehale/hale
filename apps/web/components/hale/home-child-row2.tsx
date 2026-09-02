@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { Mascot } from '~/components/hale/mascot';
 import { formatDurationMinutes } from '~/lib/format/datetime';
 import type { HomeChildDays } from '~/lib/home/child-days';
@@ -126,13 +125,7 @@ function MealsCard({ day }: { day: HomeChildDays }) {
             </ul>
           </>
         ) : (
-          <p className="text-spruce leading-relaxed">
-            no meals logged today —{' '}
-            <Link href="/companion" className="link">
-              log a feed
-            </Link>{' '}
-            to track the day.
-          </p>
+          <p className="text-spruce leading-relaxed">no meals logged today.</p>
         )}
       </div>
     </div>

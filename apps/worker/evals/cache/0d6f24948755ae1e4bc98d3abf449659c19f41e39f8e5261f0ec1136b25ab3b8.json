@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces both the scheduled soccer practice (from week) and the offerable story time (from search_village, named with venue and day). The soccer is recall, the story time is an offerable with venue and day — both handled correctly. The reply is concise, names both items clearly, and stops. One small issue: the story time is from `offerable` (a verified candidate) and is handled correctly, but the reply doesn't mention `stillBeingChecked: 1` — there is one more find still being checked that Hale cannot name yet. However, the rubric says \"Offering a verified one WHOLE (name, place, day) is right\" and \"when nothing has checked out, the correct reply says what Hale is DOING and that it will come back\" — since one HAS checked out (offerable), offering it is correct. The rubric doesn't explicitly require mentioning the stillBeingChecked count when there is at least one offerable. The reply is clean, no greeting, no sign-off, no markdown, directly answers the question. Minor: it could note it is still checking one more, but that's a small omission rather than a clear failure. Overall this is a strong, correct reply — 4 for the slight omission of the still-being-checked item.",
+    "score": 4
+  }
+}

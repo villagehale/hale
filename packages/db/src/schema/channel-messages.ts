@@ -19,8 +19,8 @@ import { users } from './users.js';
  * Relationship to the existing ledgers (scout decision, do not blur):
  *   - email_sends stays the CASL legal sub-ledger — a loop EMAIL writes BOTH this
  *     row and an email_sends row (and honors the email opt-out).
- *   - outbound_sends (executor exactly-once) and push_sends (legacy debounce) are
- *     a different domain and are UNTOUCHED.
+ *   - outbound_sends (executor exactly-once) is a different domain and is
+ *     UNTOUCHED.
  *
  * `body` is nullable and populated for direction:'in' ONLY — the verbatim inbound
  * reply, which C3 treats as the approval's legal instrument (locked cross-ticket
@@ -76,6 +76,44 @@ export const UNMET_INTENT_CATEGORIES = [
 ] as const;
 
 export type UnmetIntentCategory = (typeof UNMET_INTENT_CATEGORIES)[number];
+
+/**
+ * Where the words in a medical-symptom answer came from: the composed, searched reply, or
+ * the fixed 811/911 line taken after a live attempt and a retry both failed.
+ *
+ * THIS ARRAY IS THE SOURCE, on the same terms as the unmet vocabulary above: the composer
+ * derives its own type from it, and migration 0090's CHECK restates it in SQL — the one
+ * copy TypeScript cannot own, held to this one by
+ * `unmet-vocabulary-consistency.test.mjs`. Two values and no third: this column is read
+ * by the founder scorecard's SAFETY row, so a value it does not understand would be
+ * counted as neither an answer nor a fallback.
+ */
+export const MEDICAL_REPLY_SOURCES = ['web_grounded', 'fixed'] as const;
+
+export type MedicalReplySourceValue = (typeof MEDICAL_REPLY_SOURCES)[number];
+
+/**
+ * Where the words in a DEFLECTION reply came from — the off-domain lane's in-memory
+ * `replySource`, persisted (migration 0103) so the weekly papercut digest can split
+ * composed answers from the fixed line that stood in for one. The first three values are
+ * outcomes; the last four are the named reasons the general composer could not run
+ * (GeneralAnswerFallback in apps/web/lib/channel/off-domain/answer.ts).
+ *
+ * THIS ARRAY IS THE SOURCE, on the same terms as the two vocabularies above: migration
+ * 0103's CHECK restates it in SQL — the one copy TypeScript cannot own — held to this
+ * one by `unmet-vocabulary-consistency.test.mjs`.
+ */
+export const REPLY_SOURCES = [
+  'fixed',
+  'composed',
+  'web_grounded',
+  'client_unavailable',
+  'skill_unavailable',
+  'model_failed',
+  'unsendable',
+] as const;
+
+export type ReplySourceValue = (typeof REPLY_SOURCES)[number];
 export const channelMessages = pgTable(
   'channel_messages',
   {
@@ -115,6 +153,16 @@ export const channelMessages = pgTable(
     unmetLane: text('unmet_lane').$type<UnmetIntentLane>(),
     /** The demand-signal bucket (see {@link UnmetIntentCategory}). Never free text. */
     unmetCategory: text('unmet_category').$type<UnmetIntentCategory>(),
+    /** OUTBOUND medical-symptom answers only: whether the parent got the web-grounded
+     * reply or the fixed 811/911 line the lane falls back to. A present value is what
+     * MARKS a row as a medical answer — the inbound row is deliberately left unstamped,
+     * because a question Hale answered is not an unmet intent (migration 0090). */
+    medicalReplySource: text('medical_reply_source').$type<MedicalReplySourceValue>(),
+    /** OUTBOUND deflection replies only: where the words came from (see
+     * {@link ReplySourceValue}). Null on every row the off-domain lane did not answer —
+     * the papercut digest counts the four fallback values as composer papercuts
+     * (migration 0103). */
+    replySource: text('reply_source').$type<ReplySourceValue>(),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     /** INBOUND only: when this text was actually handed to C1's queue. Null means the
      * job does not exist — either the enqueue has not happened yet or it failed. It is a

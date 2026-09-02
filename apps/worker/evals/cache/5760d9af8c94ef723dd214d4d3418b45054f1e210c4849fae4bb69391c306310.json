@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message leads with the strongest pick (Kindergym at Halton Hills Gymnastics Centre) by name, correctly attributes it to their site, and names the specific fall start date (September 12). The attribution is properly qualified: \"their site says, though I couldn't get into the page today to confirm price or registration\" — this is the correct form under no_page_read for acknowledging a detail the message cannot verify. The commitment sentence \"I'll keep checking and text you those details\" correctly honors the watch=true flag with first-person future tense. The message is plain text, one logical unit, contains no link and no question. The first pick is real and specific (Kindergym, age 18 months-3.11 yrs, program start date given). The second pick (EarlyON) is real and local but carries no when/session detail (\"ongoing\" is not a valid fall program anchor per the watchFor note). Deduction: the message would have scored a 5 if it had either dropped the second pick entirely to stay within the \"best one complete\" standard, or if the second pick carried a concrete fall session start. The message's handling of the price gap is correct — it does not invent one, and correctly attributes what it cannot verify to page access. The follow-through promise is earned and correctly stated."
+  }
+}

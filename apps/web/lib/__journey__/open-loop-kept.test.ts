@@ -6,8 +6,10 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
+  fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
+import { WATCH_OFFER } from '~/lib/channel/intake/copy';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
 import {
@@ -15,8 +17,10 @@ import {
   FIRST_FIND_DUE_HOURS,
 } from '~/lib/channel/intake/radar-voice';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { aggregateCommitmentDebt, fulfillCommitment, loadOpenCommitments } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { fakeWeather } from '~/lib/weather/open-meteo';
@@ -87,6 +91,9 @@ async function runIntakeRadar(): Promise<Intake> {
 
   const deps: IntakeDeps = {
     transport,
+    // A FakeDb has no `conversations` to resolve, and what this file pins is not the
+    // thread — the machine's own suite owns that (intake/machine.test.ts).
+    threadMessage: async () => 'conv-1',
     extractor: new FakeExtractor([{ children: [NORA], postalCode: AREA }]),
     intentReader: new FakeIntentReader([
       { intent: 'assent', verbatim: 'yes please', interpretation: 'a clear yes' },
@@ -106,6 +113,7 @@ async function runIntakeRadar(): Promise<Intake> {
     resolveCenter: async () => null,
     discoveryTrigger: () => {},
     ackComposer: createIntakeAckComposer(null),
+    answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,
@@ -117,7 +125,9 @@ async function runIntakeRadar(): Promise<Intake> {
   await text('hi');
   const provisioned = await text('Nora is 30 months, we are at L7G');
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
-  const radarBody = transport.bodies().at(-1) as string;
+  // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
+  // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
+  const radarBody = transport.bodies().findLast((b) => b.includes(WATCH_OFFER)) as string;
   await text('yes please');
 
   return { fake, transport, familyId, radarBody };
@@ -132,6 +142,7 @@ const openGate = (): OutboundGatePorts => ({
   channelEnrolled: async () => true,
   watchConsentGranted: async () => true,
   countProactiveSends: async () => 0,
+  proactiveSentSince: async () => false,
   parentTimeZone: async () => TZ,
 });
 
@@ -204,6 +215,13 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     client: null,
     // The REAL ledger writer over the same store.
     fulfillCommitment,
+    // The REAL offer writer over the same store: a health nudge whose task is booking
+    // registers the standing question its own close makes (lib/health/offer.ts).
+    recordCheckupOffer: (database, input) =>
+      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
+    // The REAL threader over the same store: a nudge the parent can answer has to be a
+    // row in `messages`, because that is the only place their reply's antecedent lives.
+    threadMessage: threadProactiveMessage,
   };
 }
 
@@ -274,7 +292,7 @@ describe('the radar makes a promise', () => {
     const carrier = journey.intake.fake
       .rows(schema.channelMessages)
       .find((row) => row.id === journey.promised.createdFrom);
-    expect(carrier).toMatchObject({ direction: 'out', status: 'sent' });
+    expect(carrier).toMatchObject({ direction: 'out', status: 'queued' });
   });
 });
 
@@ -318,6 +336,6 @@ describe('the sweep pays it off', () => {
     const closer = journey.intake.fake
       .rows(schema.channelMessages)
       .find((message) => message.id === row?.fulfilledBy);
-    expect(closer).toMatchObject({ category: 'nudge', direction: 'out', status: 'sent' });
+    expect(closer).toMatchObject({ category: 'nudge', direction: 'out', status: 'queued' });
   });
 });

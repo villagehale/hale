@@ -126,6 +126,38 @@ describe('toSmsReply', () => {
     expect(out).not.toMatch(/\w\.\.\.\s/);
   });
 
+  /**
+   * "1-2:30 p.m." is not the end of a sentence, and treating it as one is how a trim
+   * lands INSIDE a fact.
+   *
+   * Live probe, 2026-08-21: the coach composed "Kids & Me drop-in runs free Thursdays
+   * 1-2:30 p.m. at Acton Library - both from their own sites, not yet confirmed" and the
+   * parent received it cut at the "p.m." — a find stripped of its venue and of the source
+   * attribution the skill requires of every web find, which reads as a fact Hale stands
+   * behind rather than one somebody's site claims. The trim's whole promise is that it
+   * drops WHOLE sentences, and an abbreviation it mistakes for a full stop makes that
+   * promise false.
+   *
+   * So the find below does not fit, and the right outcome is that it does not go: a
+   * drop-in with no address is not a shorter answer, it is an unusable one.
+   */
+  it('drops a find whole rather than cutting it at an abbreviated time', () => {
+    const schedule =
+      'Swim is on Tuesday at four thirty and Thursday at five fifteen this week, and the ' +
+      'Thursday one is at the east pool rather than the usual west pool, so give yourself ' +
+      'a few extra minutes to get across town before the lesson starts.';
+    const find =
+      'Kids and Me drop-in runs free Thursdays 1-2:30 p.m. at Acton Library - their site ' +
+      'says so.';
+
+    const out = toSmsReply(`${schedule} ${find}`, { children: [], now: NOW });
+
+    expect(smsSegments(`${schedule} ${find}`)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
+    expect(out).toBe(schedule);
+    // The specific mutilation: the time without the place it is at.
+    expect(out).not.toContain('1-2:30 p.m.');
+  });
+
   it('trims a single unbroken over-budget sentence on a word boundary', () => {
     const raw = `${'swim '.repeat(80)}now`;
 
@@ -146,6 +178,82 @@ describe('toSmsReply', () => {
 
   it('refuses to emit an empty body', () => {
     expect(() => toSmsReply('   \n  ', { children: [], now: NOW })).toThrow(/empty/i);
+  });
+});
+
+/**
+ * WHAT A TRIM COSTS, on the turn Hale is built around — the 2026-08-21 answer-quality
+ * bench, seq 5. A Halton Hills family asked what was on for their toddler Sept-Dec; the
+ * turn spent ~50s on a live web search, came back holding a hand-verified Sep 1 opening
+ * AND two grounded finds, and composed 548 units against a 306-unit budget.
+ *
+ * Both tests below run the SAME two facts through the SAME function. The only difference
+ * is how they were composed, which is the whole finding: the trim is not what is broken.
+ * It drops from the end, whole sentences, exactly as designed — and no policy it could
+ * adopt would fit 548 units into 306 without cutting a price or a date in half and
+ * putting a fact on the wire that is not true. What has to change is the writing, so the
+ * skill now states the ceiling in the unit this function enforces (skill-parity.test.ts)
+ * and asks for the date as one clause rather than a paragraph of its own.
+ *
+ * What this function owes in the meantime is to stop doing it in silence: nothing
+ * downstream could tell an answer that fit from one amputated to fit, which is why the
+ * defect had to be found by a human reading a graded bench run.
+ */
+describe('an over-budget composition', () => {
+  /** Verbatim from bench-calls-adv-verify.json seq 5. Do not reflow: its length IS the
+   * fixture. */
+  const BENCH_SEQ5 =
+    'Two things worth flagging here. Fall 2026 recreation registration opens Sep 1 at ' +
+    "7:00 a.m. for Halton Hills residents (Sep 8 for everyone else) - I'm already " +
+    "watching it and I'll text you the week before and again just before it opens." +
+    '\n\nIn the meantime, the Town of Halton Hills lists Toddler Dance for ages 2-6, ' +
+    "though their site doesn't have fall dates or pricing up yet. The Acton EarlyON on " +
+    'Wallace St is free for under-sixes with drop-in play most weekday mornings - their ' +
+    'site says to check the Links2Care seasonal schedule for current times.';
+
+  /** The same turn's facts, composed to the ceiling the skill now states: the verified
+   * date as ONE CLAUSE, then the find. Nothing is dropped because nothing has to be. */
+  const COMPOSED_TO_BUDGET =
+    "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents and I'm on it - " +
+    'meanwhile the Acton EarlyON on Wallace St is free drop-in for under-sixes, their ' +
+    'site says to check the seasonal schedule.';
+
+  it('says out loud that it dropped a paragraph, so the loss is countable', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const out = toSmsReply(BENCH_SEQ5, { children: [], now: NOW });
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(`past the ${MAX_REPLY_SEGMENTS}-segment budget`),
+    );
+    // The body itself never reaches the log — it can carry back what the parent typed
+    // (rule #1). Only how far over the line it ran.
+    expect(warn.mock.calls[0]?.[0]).not.toContain('Halton Hills');
+    expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    // The cost, asserted rather than described: the registration lead survives and BOTH
+    // web finds are gone, on a message that opened by promising two things.
+    expect(out).toContain('Sep 1');
+    expect(out).not.toContain('EarlyON');
+    expect(out).not.toContain('Toddler Dance');
+
+    warn.mockRestore();
+  });
+
+  it('carries the same two facts whole when they were written to fit', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const out = toSmsReply(COMPOSED_TO_BUDGET, { children: [], now: NOW });
+
+    // The positive control for the two absences above: the same path, the same budget,
+    // the find intact. Without it "does not contain EarlyON" would also pass on a
+    // function that dropped everything.
+    expect(out).toBe(COMPOSED_TO_BUDGET);
+    expect(out).toContain('Sep 1');
+    expect(out).toContain('Acton EarlyON');
+    expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
   });
 });
 
@@ -260,5 +368,57 @@ describe('the plan offer line', () => {
     });
 
     expect(reply).toBe(OFFER_LINE);
+  });
+});
+
+describe('the referral block', () => {
+  const child = { name: 'Milo', gender: 'boy', dateOfBirth: '2021-05-01' };
+  const teen = { name: 'Nora', gender: 'girl', dateOfBirth: '2010-03-04' };
+  const now = new Date('2026-08-12T12:00:00.000Z');
+  // What share_referral_link registered: the model's forwardable line, then the link the
+  // RUNTIME assembled. The model never composed the URL.
+  const BLOCK =
+    "It's a text line that keeps the family week straight. https://www.villagehale.com/text?s=friend-0123456789ab";
+
+  it('is appended after the answer, with the link last', () => {
+    const reply = toSmsReply('Forward this to them - when they text me, that is their yes.', {
+      children: [child],
+      now,
+      referral: BLOCK,
+    });
+
+    expect(reply).toBe(
+      `Forward this to them - when they text me, that is their yes. ${BLOCK}`,
+    );
+  });
+
+  it('trims the ANSWER, never the link — a truncated URL is a broken referral', () => {
+    // Sharper than the offer case: the trim takes from the END, and the last thing in
+    // this block is the only part of the message that does any work.
+    const long = `${'Happy to pass this along whenever you like. '.repeat(8)}One trailing clause.`;
+
+    const reply = toSmsReply(long, { children: [child], now, referral: BLOCK });
+
+    expect(reply.endsWith('https://www.villagehale.com/text?s=friend-0123456789ab')).toBe(true);
+    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+  });
+
+  it('redacts a teen name inside the forwarded line (rule #1 — a parent sends this OUT)', () => {
+    // The one piece of outbound text that leaves the family. The teen floor is
+    // age-derived, so it has to cover the suffix and not just the answer.
+    const reply = toSmsReply('Forward this to them.', {
+      children: [teen],
+      now,
+      referral: "Nora's family uses it to keep the week straight. https://www.villagehale.com/text?s=friend-0123456789ab",
+    });
+
+    expect(reply).not.toContain('Nora');
+    expect(reply).toContain('https://www.villagehale.com/text?s=friend-0123456789ab');
+  });
+
+  it('does not append when the turn shared nothing', () => {
+    expect(toSmsReply('Cancel Thursday swim? YES to confirm.', { children: [child], now })).toBe(
+      'Cancel Thursday swim? YES to confirm.',
+    );
   });
 });

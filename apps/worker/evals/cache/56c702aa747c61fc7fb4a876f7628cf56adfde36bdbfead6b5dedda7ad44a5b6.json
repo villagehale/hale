@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply carries the correct referral link (which is appended by the runtime and present in knows.referralLinkAppended), tells the parent to forward it themselves, and explains what the friend gets. That is all correct. However, the reply opens with \"Just send that line to a friend\" before the link has even appeared — \"that line\" is unclear since no line has been quoted yet — and then adds a product description sentence (\"Hale is a text-based family chief of staff...\") that the parent didn't ask for and that eats into the character budget. The core job is done: link present, parent told to forward it. The extra sentence is a redundant detail/slightly long, putting this at a 4.",
+    "score": 4
+  }
+}

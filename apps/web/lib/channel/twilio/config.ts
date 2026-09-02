@@ -26,6 +26,11 @@ export interface TwilioConfig {
   readonly apiKeySecret: string;
   /** The Hale number parents text, E.164. Reuses A2's existing env name. */
   readonly fromNumber: string;
+  /** When set, sends go out via the Messaging Service (queueing, smart encoding,
+   * sender-pool scaling) instead of the bare number. Optional at this boundary:
+   * absent means the pre-service behavior — a direct From send — which still
+   * sends; it is a valid mode, not a silent no-op. */
+  readonly messagingServiceSid: string | null;
 }
 
 /** The config, or null when the Twilio leg is not provisioned. Values are returned,
@@ -36,10 +41,28 @@ export function twilioConfig(): TwilioConfig | null {
   const apiKeySid = process.env.TWILIO_API_KEY_SID;
   const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
   const fromNumber = process.env.TWILIO_FROM_NUMBER;
+  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID ?? null;
   if (!accountSid || !authToken || !apiKeySid || !apiKeySecret || !fromNumber) {
     return null;
   }
-  return { accountSid, authToken, apiKeySid, apiKeySecret, fromNumber };
+  return { accountSid, authToken, apiKeySid, apiKeySecret, fromNumber, messagingServiceSid };
+}
+
+/**
+ * The WhatsApp-enabled sender (WhatsApp v1), E.164 WITHOUT the `whatsapp:` prefix —
+ * the transport applies it. Null while the leg is not provisioned (no Meta-verified
+ * sender yet): every WhatsApp path must then degrade to a NAMED outcome — the reply
+ * decider answers `not_configured` and rides SMS (reply-transport.ts) — never a
+ * silent no-op (rule #11). Requires the base Twilio config too: a WhatsApp number
+ * with no account credentials could accept nothing and send nothing.
+ *
+ * Whitespace-stripped before the check — `vercel env add` stores a trailing newline
+ * (the flags-silently-OFF landmine), and that must read as "configured", not dark.
+ */
+export function twilioWhatsAppSender(): string | null {
+  const sender = (process.env.TWILIO_WHATSAPP_FROM ?? '').trim();
+  if (!sender || !twilioConfig()) return null;
+  return sender;
 }
 
 /** The config for a path that cannot proceed without it (an outbound send). Throws

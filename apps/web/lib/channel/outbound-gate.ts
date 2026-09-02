@@ -1,8 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
+import { type OptOutForm, optOutPeriodStart } from './opt-out';
 
 /**
  * F14 · THE OUTBOUND CHOKEPOINT (VIL-239 · M4 opens it).
@@ -53,7 +55,8 @@ export type ProactiveSendKind =
   | 'registration_sequence'
   | 'village_intro'
   | 'followup'
-  | 'plan_check_in';
+  | 'plan_check_in'
+  | 'activity_followup';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -63,7 +66,26 @@ export type ProactiveHoldReason =
   | 'frequency_cap'
   | 'quiet_hours';
 
-export type ProactiveSendVerdict = { allowed: true } | { allowed: false; reason: ProactiveHoldReason };
+/**
+ * `optOut` is the SECOND thing this gate decides, and it lives here for the same reason the
+ * first one does: there is one place that knows an unprompted message is about to leave the
+ * building, so there is one place that can answer a CASL question about it. Five callers
+ * each answering it privately is five copies of the rule, and the three classes that once
+ * appended nothing at all (village_intro, followup, plan_check_in) are what that looks like
+ * when it goes wrong — an intro card can be the first proactive text a family ever gets.
+ *
+ * THERE IS NO "OMIT" VARIANT, deliberately (2026-08-14, after counsel). CASL wants the
+ * unsubscribe in EVERY commercial electronic message; the only decision left is which FORM,
+ * and typing it as a two-value union rather than a boolean is what stops a future edit
+ * reintroducing an absent one. See lib/channel/opt-out.ts.
+ *
+ * It is DECIDED here and CLAIMED nowhere — the period is a fixed grid, so a send that is
+ * composed and then discarded by a dedupe key has spent nothing and the next attempt
+ * re-derives the same answer.
+ */
+export type ProactiveSendVerdict =
+  | { allowed: true; optOut: OptOutForm }
+  | { allowed: false; reason: ProactiveHoldReason };
 
 /**
  * The volume budget per class, per FAMILY — or `null` where the class is bounded by
@@ -112,6 +134,14 @@ export const PROACTIVE_CAP: Record<
   // not get four unprompted follow-ups. Two is the rail: enough that two live plans can
   // both be followed up, few enough that a bug in the sweep stops after a nuisance.
   plan_check_in: { max: 2, windowHours: 24 * 7 },
+  // Hale keeping a promise it made in a coach turn. The BOUND IS THE LEDGER, not a
+  // counter: the partial unique index on agent_commitments permits one open
+  // activity_followup per family, so a household can owe at most one of these at a
+  // time and the sweep cannot produce a second until the first is discharged. `null`
+  // says that out loud, the way the registration ladder's does — and a counter here
+  // would be strictly worse than the index, because the one thing it could do is drop
+  // a promise the family is owed on the floor.
+  activity_followup: null,
 };
 
 /**
@@ -140,6 +170,9 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // also the message most likely to be composed at a bad hour, since a plan sent at 9pm
   // comes due at 9pm — so the quiet-hours floor is doing real work here.
   plan_check_in: false,
+  // A find is not worth less at 08:00 than at 22:00, and the parent asked about
+  // September. Nothing on this path is time-critical, so the quiet-hours floor stands.
+  activity_followup: false,
 };
 
 /**
@@ -150,17 +183,37 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
  */
 export const PROACTIVE_QUIET_HOURS = { start: '21:00', end: '08:00' } as const;
 
+/**
+ * The same window, as a bare check for the intake-adjacent PROACTIVE EXTRAS that cannot
+ * route through {@link assertProactiveSendAllowed} — they run seconds after provisioning,
+ * before watch consent can exist, so the full gate would refuse them always. The direct
+ * reply to a parent's own inbound is exempt by design (a person texting at 23:00 gets
+ * their answer); what consults this is the extra beside it: the welcome contact card and
+ * the co-parent join's inviter ack, both observed leaving at 22:36 local around the gate
+ * in the 2026-08-28 ads-week audit. One window, one reader — a second literal would
+ * drift.
+ */
+export function inProactiveQuietHours(now: Date, timeZone: string): boolean {
+  return isWithinQuietHours(now, timeZone, PROACTIVE_QUIET_HOURS.start, PROACTIVE_QUIET_HOURS.end);
+}
+
 /** The `channel_messages.category` each proactive class is counted under. A class of
  * its own per kind, so one class's volume can never consume another's budget. */
 const PROACTIVE_CATEGORY: Record<
   ProactiveSendKind,
-  'nudge' | 'registration_sequence' | 'village_intro' | 'followup' | 'plan_check_in'
+  | 'nudge'
+  | 'registration_sequence'
+  | 'village_intro'
+  | 'followup'
+  | 'plan_check_in'
+  | 'activity_followup'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
   village_intro: 'village_intro',
   followup: 'followup',
   plan_check_in: 'plan_check_in',
+  activity_followup: 'activity_followup',
 };
 
 export interface OutboundGatePorts {
@@ -170,6 +223,17 @@ export interface OutboundGatePorts {
   watchConsentGranted(parentUserId: string): Promise<boolean>;
   /** Proactive sends of this class that actually reached the FAMILY since `since`. */
   countProactiveSends(familyId: string, kind: ProactiveSendKind, since: Date): Promise<number>;
+  /**
+   * Whether ANY proactive class has reached THIS PARENT since `since`.
+   *
+   * Kind-blind, because the form is not a message class's. Per PARENT and NOT per family,
+   * because the thing being tracked is a RECIPIENT'S first contact — and the five classes
+   * text different people: a nudge goes to the primary parent, a registration leg to
+   * whoever approved that shortlist, a plan check-in to whoever was coaching. Scoped per
+   * family, a co-parent whose household was already contacted would never once get the
+   * full line.
+   */
+  proactiveSentSince(parentUserId: string, since: Date): Promise<boolean>;
   parentTimeZone(parentUserId: string): Promise<string>;
 }
 
@@ -214,7 +278,9 @@ export async function assertProactiveSendAllowed(
   // An uncapped class does not read the ledger at all, and an urgent leg does not read
   // the clock: in both cases the answer could not change the verdict, and the gate's
   // standing discipline is to look at nothing it is not entitled to act on.
-  if (request.urgent === true && URGENCY_ALLOWED[request.kind]) return { allowed: true };
+  if (request.urgent === true && URGENCY_ALLOWED[request.kind]) {
+    return { allowed: true, optOut: await optOutForm(ports, request) };
+  }
 
   const timeZone = await ports.parentTimeZone(request.parentUserId);
   if (
@@ -228,7 +294,42 @@ export async function assertProactiveSendAllowed(
     return { allowed: false, reason: 'quiet_hours' };
   }
 
-  return { allowed: true };
+  return { allowed: true, optOut: await optOutForm(ports, request) };
+}
+
+/**
+ * WHICH FORM of the unsubscribe this message carries — never whether.
+ *
+ * FULL on the first proactive send of the current period, which for a recipient who has
+ * never been texted first at all is their first proactive message ever. SHORT on everything
+ * after it.
+ *
+ * IT FAILS TOWARD THE FULL LINE. A ledger read that throws resolves to `full`, because the
+ * short form is the optimisation and the long one is the obligation: the worst case of
+ * guessing wrong in this direction is a longer sentence, and in the other it is a
+ * compliance gap nobody would see. Logged rather than swallowed, and never with the
+ * recipient's id in the message.
+ *
+ * Read only after the four holds have passed — a held message is not a send, and the gate
+ * looks at nothing it is not entitled to act on.
+ */
+async function optOutForm(
+  ports: OutboundGatePorts,
+  request: ProactiveSendRequest,
+): Promise<OptOutForm> {
+  try {
+    const contacted = await ports.proactiveSentSince(
+      request.parentUserId,
+      optOutPeriodStart(request.now),
+    );
+    return contacted ? 'short' : 'full';
+  } catch (err) {
+    console.error(
+      { err: err instanceof Error ? err.constructor.name : 'unknown' },
+      'outbound gate: opt-out ledger read failed - falling back to the full line',
+    );
+    return 'full';
+  }
 }
 
 /**
@@ -258,9 +359,10 @@ async function readWatchConsent(database: Database, parentUserId: string): Promi
   return latest?.granted === true && latest.revokedAt === null;
 }
 
-/** Proactive sends of this class that actually LANDED for the family in the window.
- * Suppressions and failures do not consume a family's budget — only a message a
- * parent could have read. */
+/** Proactive sends of this class that actually WENT OUT for the family in the window.
+ * Suppressions and failures do not consume a family's budget — only a message the
+ * parent is going to read (a row still waiting for its receipt counts: it is already
+ * on its way, and not counting it spends the budget twice). */
 async function countFamilyProactiveSends(
   database: Database,
   familyId: string,
@@ -276,10 +378,36 @@ async function countFamilyProactiveSends(
         eq(schema.channelMessages.category, PROACTIVE_CATEGORY[kind]),
         eq(schema.channelMessages.direction, 'out'),
         gte(schema.channelMessages.createdAt, since),
-        inArray(schema.channelMessages.status, ['sent', 'delivered']),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     );
   return rows.length;
+}
+
+/**
+ * Has ANY proactive class landed for THIS PARENT since `since`? Same ledger and the same
+ * "a message a parent could have read" rule as the per-class count, widened to every
+ * proactive category and narrowed to one recipient — see the port's note on why.
+ */
+async function parentProactiveSentSince(
+  database: Database,
+  parentUserId: string,
+  since: Date,
+): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, parentUserId),
+        inArray(schema.channelMessages.category, Object.values(PROACTIVE_CATEGORY)),
+        eq(schema.channelMessages.direction, 'out'),
+        gte(schema.channelMessages.createdAt, since),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }
 
 /** The prod wiring: the gate stays a pure decision function, and this is the only
@@ -291,6 +419,8 @@ export function buildOutboundGatePorts(database: Database): OutboundGatePorts {
     watchConsentGranted: (parentUserId) => readWatchConsent(database, parentUserId),
     countProactiveSends: (familyId, kind, since) =>
       countFamilyProactiveSends(database, familyId, kind, since),
+    proactiveSentSince: (parentUserId, since) =>
+      parentProactiveSentSince(database, parentUserId, since),
     parentTimeZone: async (parentUserId) => {
       const [row] = await database
         .select({ timezone: schema.users.timezone })

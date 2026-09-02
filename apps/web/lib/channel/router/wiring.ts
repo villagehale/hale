@@ -8,29 +8,53 @@ import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { resolveSendableEmail } from '~/lib/channel/email/sendable';
 import { productionEmailReply } from '~/lib/channel/email/reply-send';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
-import type { ChannelKind } from '~/lib/channel/types';
+import {
+  createOwnerReplyDecider,
+  createReplyTransport as createPhoneReplyTransport,
+} from '~/lib/channel/reply-transport';
+import { createTwilioTransport, createTwilioWhatsAppTransport } from '~/lib/channel/twilio/transport';
 import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/reverse-calendar';
 import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
 import type { FamilyRole } from '~/lib/channel/role-scope';
+import { loadOpenCheckupOffer } from '~/lib/health/offer';
 import { defaultHealthReplyDeps } from '~/lib/health/reply';
+import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
+import { loadOpenCommitment } from '~/lib/commitments/ledger';
+import { discoverabilityAsked } from '~/lib/village/intros/consent';
+import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
+import { loadReconcileView } from '~/lib/channel/reconcile/view';
+import { recordStatedState } from '~/lib/channel/stated-state';
+import { recordRegistrationWatch } from '~/lib/registration/watch';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
+import {
+  type DeepResearchQueue,
+  dispatchDeepResearch,
+} from '~/lib/channel/activity/deep-queue';
+import {
+  defaultActivityPromisePorts,
+  loadOpenActivityPromise,
+  recordActivityPromise,
+} from '~/lib/channel/activity/commitment';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
+import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import {
   approvalHandler,
+  connectorLinkHandler,
   emailCaptureHandler,
+  founderWelcomeHandler,
   healthReplyHandler,
   nameCaptureHandler,
   planReplyHandler,
+  recMorningHandler,
   sequenceReplyHandler,
   villageIntroHandler,
 } from './handlers';
@@ -42,6 +66,9 @@ import {
 } from './route';
 import type { ReplyRoute } from './reply-route';
 import { createReplyTransport } from './reply-transport';
+import { createDisambiguationStore } from './disambiguation';
+import { createOpenQuestionReader, type OpenQuestionReader } from './open-questions';
+import { createReplyResolver } from './resolve';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import { createTurnApology } from './apology';
 import type { InboundTurnLedger } from './turn-ledger';
@@ -103,18 +130,26 @@ export async function loadInboundContext(
  *
  * `push` is not a door a parent can arrive through: nothing writes an inbound push row
  * and there is no way to answer one, so it resolves to no route and the router says
- * `unreachable` rather than guessing at a channel the message did not come from.
+ * `unreachable` rather than guessing at a channel the message did not come from. A
+ * `voice` row is a spoken turn the call already answered (twilio/voice-answer.ts), so
+ * it too resolves to no route here.
  */
 async function resolveReplyRoute(
   database: Database,
   parentUserId: string,
-  channel: ChannelKind,
+  channel: typeof schema.channelMessages.$inferSelect.channel,
   providerMessageId: string | null,
 ): Promise<ReplyRoute | null> {
   switch (channel) {
-    case 'sms': {
+    // Both phone pipes resolve through the SAME live consent check: whatsapp:+1416…
+    // and +1416… are one person (the transport-address continuity law), so a STOP on
+    // the number silences both. The route keeps the door the parent used; the phone
+    // transport decides at send time which pipe may answer through it (Meta's 24h
+    // window, reply-transport.ts).
+    case 'sms':
+    case 'whatsapp': {
       const phoneE164 = await resolveSendablePhone(database, parentUserId);
-      return phoneE164 ? { channel: 'sms', to: phoneE164 } : null;
+      return phoneE164 ? { channel, to: phoneE164 } : null;
     }
     case 'email': {
       const address = await resolveSendableEmail(database, parentUserId);
@@ -182,7 +217,11 @@ export function defaultApprovalSpine(): ApprovalSpine {
      */
     listPending: async (database, familyId): Promise<PendingAction[]> => {
       const rows = await database
-        .select({ id: schema.actions.id, actionType: schema.actions.actionType })
+        .select({
+          id: schema.actions.id,
+          actionType: schema.actions.actionType,
+          reviewerVerdict: schema.actions.reviewerVerdict,
+        })
         .from(schema.actions)
         .where(
           and(
@@ -192,7 +231,16 @@ export function defaultApprovalSpine(): ApprovalSpine {
         )
         .orderBy(asc(schema.actions.draftedAt))
         .limit(50);
-      return rows.map((row) => ({ actionId: row.id, actionType: row.actionType }));
+      // The reviewer verdict rides along rather than filtering the list, and the
+      // difference is the whole point: a flagged draft is still something the parent can
+      // decline, so removing it would take away an answer they have. What it cannot be is
+      // approved — `approveDraftedAction` refuses it (rule #3) — so it is listed as
+      // no-only, and the resolver stops binding a yes to a row it knows will refuse one.
+      return rows.map((row) => ({
+        actionId: row.id,
+        actionType: row.actionType,
+        reviewerApproved: row.reviewerVerdict === 'approved',
+      }));
     },
 
     /**
@@ -215,7 +263,11 @@ export function defaultApprovalSpine(): ApprovalSpine {
         )
         .orderBy(desc(schema.actions.executedAt))
         .limit(1);
-      return row ? { actionId: row.id, actionType: row.actionType } : null;
+      // Already executed, so the reviewer gate is behind it — `reviewerApproved` is what
+      // an UNDO would be blocked by, and nothing blocks one on this state.
+      return row
+        ? { actionId: row.id, actionType: row.actionType, reviewerApproved: true }
+        : null;
     },
 
     approve: async (database, args) => {
@@ -265,9 +317,12 @@ export function defaultHandlers(): DeterministicHandler[] {
     villageIntroHandler(defaultVillageIntroReplyDeps()),
     approvalHandler(defaultApprovalSpine()),
     emailCaptureHandler(defaultEmailCaptureDeps()),
+    connectorLinkHandler(),
+    founderWelcomeHandler(defaultFounderReplyDeps()),
     healthReplyHandler(defaultHealthReplyDeps()),
     planReplyHandler(defaultPlanReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps()),
+    recMorningHandler(),
     nameCaptureHandler(defaultNameCaptureDeps()),
   ];
 }
@@ -352,6 +407,14 @@ export function auditSmokeAlarmClaim(database: Database): SmokeAlarmClaim {
 export const TURN_ANSWERED_ACTION = 'sms_turn_answered';
 export const TURN_DEFERRED_ACTION = 'sms_turn_deferred';
 
+/**
+ * The third one, and the one whose absence made the 2026-08-22 turn unreadable. A DATA
+ * value like the two above. The re-drive gate does NOT read it: a failed turn that
+ * apologised is still answered, and answering twice is the thing the ledger exists to
+ * prevent.
+ */
+export const TURN_FAILED_ACTION = 'sms_turn_failed';
+
 /** The table both rows point at, named ONCE. The reader's predicate and the writers'
  * values are the same three strings; a fourth copy of any of them is how a gate stops
  * matching the rows it is supposed to find. */
@@ -418,6 +481,19 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
     },
     recordAnswered: write(TURN_ANSWERED_ACTION),
     recordDeferred: write(TURN_DEFERRED_ACTION),
+    recordFailed: async (input) => {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: TURN_FAILED_ACTION,
+        targetTable: TURN_LEDGER_TARGET,
+        targetId: input.channelMessageId,
+        // The lane and the failure class, and nothing else: this row is rendered by a
+        // right-to-access export, so it names what broke and never what was asked
+        // (rule #1). Both are closed vocabularies (turn-ledger.ts).
+        after: { lane: 'coach', reason: input.reason },
+      });
+    },
   };
 }
 
@@ -426,13 +502,31 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     database,
     loadContext: loadInboundContext,
     transport: createReplyTransport({
-      sms: createTwilioTransport(),
+      // The phone door, both pipes (WhatsApp v1): the router's sends are ANSWERS to a
+      // parent's own message, minutes later via the queue — so the pipe is decided per
+      // send from their newest inbound row (WhatsApp inside its 24h window, SMS with a
+      // named fallback otherwise), and the result carries which pipe was used so
+      // sendReply's ledger row records what happened.
+      phone: createPhoneReplyTransport({
+        sms: createTwilioTransport(),
+        whatsapp: createTwilioWhatsAppTransport(),
+        decide: createOwnerReplyDecider(database),
+      }),
       // Null until the inbound-email leg is provisioned, which is the same condition
       // that makes an email route impossible to reach — dark by construction, and named
       // rather than silent if it is ever reached anyway (reply-transport.ts).
       email: productionEmailReply(),
     }),
     handlers: defaultHandlers(),
+    // What Hale is still waiting to hear back about, and the stage that reads a parent's
+    // own words against it. On the same lazy client as the screen and the apology: one
+    // key, one failure story, and a missing key never stops an approval.
+    questions: defaultOpenQuestionReader(),
+    replyResolver: createReplyResolver(screenClient),
+    // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
+    // spent by the next inbound. No model and no client: picking one of a handful of
+    // options Hale itself printed is a string comparison.
+    disambiguation: createDisambiguationStore(),
     offDomain: defaultOffDomainLane(database),
     smokeAlarm: auditSmokeAlarmClaim(database),
     turns: auditTurnLedger(database),
@@ -446,6 +540,21 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // runtime because the row is minted against the SENT message, and the router is the
     // only thing that knows which row that was.
     recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
+    recordActivityPromise: (db, input) =>
+      recordActivityPromise(db, input, defaultActivityPromisePorts()),
+    // The question-time deep pass. The producer only ENQUEUES — the drain's every-minute
+    // tick is the consumer — so the reply is never waiting on research.
+    dispatchDeepResearch: (payload) =>
+      dispatchDeepResearch(async () => (await getQueue()) as unknown as DeepResearchQueue, payload),
+    // VIL-294 · the inbound half. Bound to the ONE writer that files a checkpoint as
+    // handled (health/reply.ts), so a natural statement and the word "done" land on the
+    // same row through the same audited transaction.
+    recordStatedState: (db, input) => recordStatedState(db, input, defaultHealthReplyDeps()),
+    // VIL-293. The view is read beside the model call, and the mint is bound here for
+    // the same reason the two writers above it are: the row is minted against the SENT
+    // message, and the router is the only thing that knows which row that was.
+    reconcileView: loadReconcileView,
+    recordRegistrationWatch,
     limiter: new PostgresRateLimiter(database),
     now: () => new Date(),
     log: console,
@@ -458,4 +567,93 @@ export async function routeInboundChannelMessage(
   job: ChannelMessageReceivedPayload,
 ): Promise<void> {
   await routeChannelMessage(channelRouterDeps(database), job);
+}
+
+/**
+ * The open-question reader, bound to the function each OWNING module already exports.
+ *
+ * Every source here is the same reader the handler for that question uses when a keyword
+ * arrives — the spine's own pending list, the intro lane's own `openProposal`, the
+ * commitments ledger's own `loadOpenCommitment`. That is the invariant: one reader per
+ * question, so "is this open" cannot get two answers on the same turn.
+ */
+export function defaultOpenQuestionReader(): OpenQuestionReader {
+  const spine = defaultApprovalSpine();
+  const intros = defaultVillageIntroReplyDeps();
+  return createOpenQuestionReader({
+    pendingApprovals: (database, familyId) => spine.listPending(database, familyId),
+    introOptInOpen: async (database, { familyId, parentUserId }) => {
+      // ASKED AND UNANSWERED, read from two different places because they are two
+      // different facts: the ask is an outbound ledger row (so a card that was composed
+      // and never sent is not a question), and the answer is a consent row of EITHER
+      // polarity (a decline is an answer, and re-asking a family that said no would be
+      // the worst version of this feature).
+      //
+      // ASKED THIS PARENT, not this family. The dedupe key is family-scoped because the
+      // question is asked once per household, but only the parent it was TEXTED to has it
+      // open — otherwise a co-parent who never saw it could answer it, and Hale would
+      // write a consent row in their name for a question it never put to them.
+      const [askedParentUserId, answered] = await Promise.all([
+        introAskRecipient(database, familyId),
+        discoverabilityAsked(database, parentUserId),
+      ]);
+      return askedParentUserId === parentUserId && !answered;
+    },
+    introProposal: async (database, familyId, now) => {
+      // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
+      // returns cards this family has already answered (so a repeat can be told from a
+      // card that never existed), and offering one of those to the resolver would invite
+      // it to resolve a question that is already closed.
+      const proposal = await intros.answerableProposal(database, familyId, now);
+      return proposal?.standing === 'unanswered' ? { id: proposal.id } : null;
+    },
+    planOffer: async (database, familyId, now) => {
+      const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
+      // The TTL lives at the caller in plan/reply.ts too, and for the same reason: an
+      // expired offer is still an open ledger row, it has simply stopped being
+      // answerable. Reporting one as a question would let a parent accept a plan the
+      // handler behind it is about to decline.
+      if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
+      return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
+    },
+    // The health nudge's booking offer. Its TTL is applied inside the reader, so an
+    // offer past its week can never be listed, named in a clarifying sentence, or
+    // resolved — the same discipline the plan offer keeps one line above.
+    checkupOffer: async (database, familyId, now) => {
+      const offer = await loadOpenCheckupOffer(database, familyId, now);
+      return offer && { id: offer.id, summary: offer.summary, askedAt: offer.askedAt };
+    },
+    // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
+    // offers above keep: an expired offer is still an open ledger row, it has simply
+    // stopped being answerable — and listing one would let a YES two days later text a
+    // family "thank you for being one of our first" about a week they have already had.
+    founderWelcomeOffer: async (database, familyId, now) => {
+      const offer = await loadOpenCommitment(database, familyId, 'founder_welcome_offer');
+      if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
+      return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
+    },
+    // The coach's "I'll come back to you". NO TTL, unlike the two offers above: a promise
+    // does not stop being owed by getting late (commitment.ts), so it is listed until the
+    // sweep keeps it or a cancellation voids it.
+    activityPromise: async (database, familyId) => {
+      const promise = await loadOpenActivityPromise(database, familyId);
+      return promise && { id: promise.id, summary: promise.summary, askedAt: promise.askedAt };
+    },
+  });
+}
+
+/** Who the one discoverability ask actually went to, or null if it never went. The
+ * dedupe key is unique across `channel_messages`, so this is a single-row lookup. */
+async function introAskRecipient(database: Database, familyId: string): Promise<string | null> {
+  const [row] = await database
+    .select({ parentUserId: schema.channelMessages.parentUserId })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.dedupeKey, introAskDedupeKey(familyId)),
+        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
+      ),
+    )
+    .limit(1);
+  return row?.parentUserId ?? null;
 }

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "Allez a l'urgence maintenant, ou appelez le 911 - une premiere crise convulsive doit etre verifiee tout de suite, surtout si elle reste molle et somnolente.",
+    "triage": "Appelez le 911 immediatement si elle respire mal, si ses levres bleuissent, si la crise reprend, ou si elle ne se reveille pas normalement. Sinon, allez a l'urgence maintenant. Apres, le 811 peut repondre a vos questions.",
+    "sources": [
+      "HealthyChildren.org (AAP)",
+      "Nemours KidsHealth",
+      "Cleveland Clinic"
+    ]
+  },
+  "latencyMs": 4403
+}

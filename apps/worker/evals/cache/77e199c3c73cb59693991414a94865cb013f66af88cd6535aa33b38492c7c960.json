@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to order groceries. This is outside everything Hale can do — it is not a calendar action, a parenting question, an activity search, or any other listed capability. The reply \"Ordering groceries is past me.\" is short, honest, and correct. It does not send the parent to the app, does not invent a capability, does not refer elsewhere unnecessarily. The only question is whether Hale could have offered something useful in the same breath (it cannot — there is nothing in `knows` that relates to groceries), so a plain, single-sentence decline is exactly right. The shape is perfect for a capability boundary.",
+    "score": 5
+  }
+}
