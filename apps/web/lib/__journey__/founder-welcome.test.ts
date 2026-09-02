@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import {
   FakeIdentityAsk,
   FakeExtractor,
@@ -304,7 +305,9 @@ describe("the founder's welcome note", () => {
           ? founderWelcomeHandler({ ...defaultFounderReplyDeps(), transport })
           : handler,
       ),
-      transport,
+      // The production adapter over the fake pipe: the router hands it a resolved sms
+      // route, the fake records the send — the same recorder the founder lane writes to.
+      transport: createReplyTransport({ phone: transport, email: null }),
       replyResolver: resolver,
       coach: silentCoach,
       offDomain: { consider: async () => ({ status: 'in_domain' as const, fallback: null }) },

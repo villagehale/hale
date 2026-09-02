@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { FakeContentReader, type InboundContentReader } from './content';
 import {
   type EmailInboundDeps,
@@ -97,6 +98,8 @@ interface Harness {
   fake: FakeDb;
   content: FakeContentReader;
   built: number;
+  /** Every job handed to C1 — the assertion surface for "was this actually passed on". */
+  queued: ChannelMessageReceivedJob[];
 }
 
 function harness(
@@ -105,9 +108,11 @@ function harness(
     headers: { 'authentication-results': authPass() },
   }),
   limiter: RateLimiter = new FakeRateLimiter(),
+  enqueueFails = false,
 ): Harness {
   const fake = makeFakeDb();
   const state = { built: 0 };
+  const queued: ChannelMessageReceivedJob[] = [];
   const deps: EmailInboundDeps = {
     database: fake.db,
     content: (): InboundContentReader => {
@@ -115,6 +120,10 @@ function harness(
       return contentReader;
     },
     limiter,
+    enqueue: async (job) => {
+      if (enqueueFails) throw new Error('queue refused');
+      queued.push(job);
+    },
     now: () => NOW,
     log: { info: () => {}, error: () => {} },
   };
@@ -122,6 +131,7 @@ function harness(
     deps,
     fake,
     content: contentReader,
+    queued,
     get built() {
       return state.built;
     },
@@ -201,7 +211,7 @@ describe('routeEmailInbound · the order of the gates', () => {
     seedParent(h.fake);
 
     expect(await outcomeOf(await handleEmailInboundRequest(request(body()), h.deps))).toBe(
-      'recorded',
+      'handed_off',
     );
 
     const messages = h.fake.rows(schema.channelMessages);
@@ -270,7 +280,7 @@ describe('routeEmailInbound · the order of the gates', () => {
     seedParent(h.fake);
 
     expect(await outcomeOf(await handleEmailInboundRequest(request(body()), h.deps))).toBe(
-      'recorded',
+      'handed_off',
     );
     expect(h.content.requested).toEqual(['email-1']);
 
@@ -393,7 +403,7 @@ describe('routeEmailInbound · trust gates identity', () => {
     seedParent(h.fake);
 
     expect(await outcomeOf(await handleEmailInboundRequest(request(body()), h.deps))).toBe(
-      'recorded',
+      'handed_off',
     );
   });
 });
@@ -434,7 +444,7 @@ describe('routeEmailInbound · who is talking', () => {
     const h = harness();
     seedParent(h.fake, 'co_parent');
     expect(await outcomeOf(await handleEmailInboundRequest(request(body()), h.deps))).toBe(
-      'recorded',
+      'handed_off',
     );
   });
 });
@@ -565,7 +575,7 @@ describe('routeEmailInbound · CASL', () => {
     seedParent(h.fake);
 
     expect(await outcomeOf(await handleEmailInboundRequest(request(body()), h.deps))).toBe(
-      'recorded',
+      'handed_off',
     );
     expect(h.fake.rows(schema.emailOptOuts)).toHaveLength(0);
     expect(h.fake.rows(schema.channelMessages)[0]).toMatchObject({

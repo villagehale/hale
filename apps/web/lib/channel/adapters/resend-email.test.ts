@@ -142,3 +142,53 @@ describe('attachments', () => {
     expect(calls[0]?.attachments).toBeUndefined();
   });
 });
+
+/**
+ * EMAIL PHASE 2 — closing the loop. Hitting reply on a weekly plan is the most natural
+ * way a parent will ever start a conversation with Hale, and it only reaches the inbound
+ * webhook if these messages say where to send it.
+ *
+ * Both directions matter. Advertising the address before the MX records exist would drop
+ * a parent's answer into a void, so the header appears only once the inbound leg is
+ * genuinely provisioned — which is also what keeps this change a no-op in production
+ * until DNS lands.
+ */
+describe('the reply address', () => {
+  function provision(): void {
+    vi.stubEnv('RESEND_API_KEY', 're_test');
+    vi.stubEnv('RESEND_INBOUND_WEBHOOK_SECRET', 'whsec_test');
+    vi.stubEnv('HALE_INBOUND_EMAIL_DOMAIN', 'mail.villagehale.com');
+    vi.stubEnv('HALE_INBOUND_AUTHSERV_ID', 'mx.resend.com');
+  }
+
+  it('points replies at the inbound domain once the leg is provisioned', async () => {
+    provision();
+    const { transport, calls } = fakeTransport({ id: 'prov-1', error: null });
+
+    await createResendEmailChannel({ transport, resolveEmail: async () => 'p@x.com' }).send({
+      userId: USER_ID,
+      rendered: EMAIL,
+    });
+
+    expect(calls[0]?.replyTo).toBe('hale@mail.villagehale.com');
+  });
+
+  it('carries no reply address at all while the inbound leg is dark', async () => {
+    vi.stubEnv('RESEND_API_KEY', 're_test');
+    vi.stubEnv('HALE_INBOUND_EMAIL_DOMAIN', '');
+    vi.stubEnv('RESEND_INBOUND_WEBHOOK_SECRET', '');
+    vi.stubEnv('HALE_INBOUND_AUTHSERV_ID', '');
+    const { transport, calls } = fakeTransport({ id: 'prov-1', error: null });
+
+    await createResendEmailChannel({ transport, resolveEmail: async () => 'p@x.com' }).send({
+      userId: USER_ID,
+      rendered: EMAIL,
+    });
+
+    // Absent, not empty: an empty Reply-To is a header a provider may still honour.
+    expect(calls[0]).not.toHaveProperty('replyTo');
+    // The positive control — the send really happened, so the absence above is about
+    // the header rather than about nothing being sent.
+    expect(calls[0]?.subject).toBe('Your Sunday plan');
+  });
+});

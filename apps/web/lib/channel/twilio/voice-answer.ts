@@ -73,10 +73,10 @@ export interface SpokenAnswerDeps {
   questions: OpenQuestionReader;
   replyResolver: ReplyResolver;
   /**
-   * The caller's active verified number. Part of the handler contract (a handler may
-   * answer for itself by text), never read by the approvals handler — and non-nullable in
-   * that contract, so a call that cannot resolve one settles nothing and says why
-   * (rule #11) rather than passing a placeholder into the router's chain.
+   * The caller's active verified number — the enrollment gate. The chain only runs for
+   * a caller who still has a live channel (the same live-consent read the router's
+   * route resolution makes), so a call that cannot resolve one settles nothing and says
+   * why (rule #11) rather than letting a stopped caller consent to anything.
    */
   sendablePhone(parentUserId: string): Promise<string | null>;
   log: Pick<Console, 'info' | 'error'>;
@@ -148,7 +148,16 @@ export async function answerSpokenReply(
     parentUserId: turn.parentUserId,
     conversationId: turn.conversationId,
     body: turn.utterance,
-    phoneE164,
+    // A call has no reply transport of its own: every spoken-capable kind
+    // (SPOKEN_QUESTION_KINDS) is owned by a handler that answers through its verdict,
+    // never by sending. If a self-sending handler is ever admitted to that set, this
+    // throws by name (rule #11) instead of a caller's yes producing silent nothing —
+    // wiring a spoken receipt for it is the product decision named at the constant.
+    send: async () => {
+      throw new Error(
+        'voice: a spoken turn cannot send — self-sending question kinds are excluded from SPOKEN_QUESTION_KINDS',
+      );
+    },
     now: turn.now,
     resolved: null,
     openQuestions: readOpenQuestions,

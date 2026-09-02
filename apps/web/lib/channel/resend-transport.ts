@@ -24,6 +24,13 @@ export interface ResendTransport {
      * a private thread with Hale instead of one with each other. */
     cc?: string | string[];
     bcc?: string;
+    /** Where a reply should go when that is not the from-identity. The inbound-email
+     * leg needs it: Hale sends under the loop's from-address but must be answered at
+     * the domain whose MX points at the receiving webhook. */
+    replyTo?: string;
+    /** Raw RFC 5322 headers. `In-Reply-To`/`References` are what put a reply inside the
+     * parent's existing mail thread rather than beside it. */
+    headers?: Record<string, string>;
     attachments?: ResendAttachment[];
   }): Promise<{ id: string | null; error: { name: string; message: string } | null }>;
 }

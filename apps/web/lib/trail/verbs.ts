@@ -163,6 +163,7 @@ export const AUDIT_VERBS = [
   'channel_sent',
   'push_sent',
   'email_reply_received',
+  'email_reply_sent',
   'email_unsubscribe_received',
   'parent_email_captured',
   'parent_name_captured',
@@ -471,6 +472,7 @@ const VERBS: Record<AuditVerb, Verb> = {
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
   push_sent: { sentence: 'Hale sent you a notification', family: 'done' },
   email_reply_received: { sentence: 'you replied to one of Hale’s emails', family: 'note' },
+  email_reply_sent: { sentence: 'Hale emailed you back', family: 'note' },
   // VIL-249: the parent texted an address back, and Hale saved it as the one it
   // emails calendar invites to. 'done' because it is a write to their account, not
   // a message — the trail should show it beside the other things that changed.

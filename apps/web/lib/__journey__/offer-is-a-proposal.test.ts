@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
@@ -284,7 +285,9 @@ describe('the offer is a proposal', () => {
           ? healthReplyHandler({ ...defaultHealthReplyDeps(), draftCheckup })
           : handler,
       ),
-      transport,
+      // The production adapter over the fake pipe: the router hands it a resolved sms
+      // route, the fake records the send — one recorder for the whole journey.
+      transport: createReplyTransport({ phone: transport, email: null }),
       replyResolver: resolver,
       coach,
       // The off-domain screen is a model call this journey never needs to make: every

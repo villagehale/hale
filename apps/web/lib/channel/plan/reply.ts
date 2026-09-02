@@ -2,9 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { type CoachingPlaybook, type FamilyStage, ageInMonths, deriveStage, playbookFor } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { ReplySent } from '~/lib/channel/router/reply-route';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { appendMessage, loadTranscript } from '~/lib/coach/conversation';
 import {
   cancelCommitment,
@@ -86,10 +85,21 @@ export class PlanDeferred extends Error {
   }
 }
 
+/**
+ * The turn's way out, bound by the router to the channel this parent actually wrote in
+ * on (router/reply-route.ts). A plan is the one answer Hale sends as several messages,
+ * so this handler needs a sender rather than a body slot — but it gets the SENDER and
+ * never a destination, which is what stops a plan being texted to someone who emailed.
+ */
+export type ReplySender = (body: string) => Promise<ReplySent>;
+
 /** One outbound plan message, as the ledger needs it. */
 export interface PlanSendWrite {
   familyId: string;
   parentUserId: string;
+  /** Reported by the send that just happened, never assumed — a plan delivered by email
+   * must not be filed as a text. */
+  channel: ReplySent['channel'];
   templateKey: string;
   dedupeKey: string;
   providerMessageId: string;
@@ -114,10 +124,6 @@ export interface PlanReplyDeps {
   composer: PlanComposer;
   /** The one-line notes: the age-gate refusal here, the check-in in the sweep. */
   noteComposer: NoteComposer;
-  /** REQUIRED (rule #11). A handler that can compose a plan and quietly fail to send it
-   * is the worst version of this feature: the offer closes, the check-in is minted, and
-   * the parent who said yes never hears anything. */
-  transport: ChannelTransport;
   dedupeActive: typeof dedupeActive;
   /** Insert the outbound row and hand back its id. Its own writer rather than the
    * loop's `recordChannelMessage`, whose `LoopCategory` deliberately excludes 'reply' —
@@ -137,7 +143,7 @@ export async function handlePlanYes(
     parentUserId: string;
     conversationId: string;
     body: string;
-    phoneE164: string;
+    send: ReplySender;
     now: Date;
     /** The router's natural-reply stage already read this message as a yes to the open
      * plan offer (lib/channel/router/resolve.ts). The shared vocabulary is tried first
@@ -186,7 +192,7 @@ export async function handlePlanYes(
       familyId: input.familyId,
       parentUserId: input.parentUserId,
       conversationId: input.conversationId,
-      phoneE164: input.phoneE164,
+      send: input.send,
       commitmentId: offer.id,
       topic,
       playbook,
@@ -226,7 +232,7 @@ export async function handlePlanYes(
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     conversationId: input.conversationId,
-    phoneE164: input.phoneE164,
+    send: input.send,
     commitmentId: offer.id,
     topic,
     messages: composed.messages,
@@ -297,7 +303,7 @@ async function sendAgeGateRefusal(
     familyId: string;
     parentUserId: string;
     conversationId: string;
-    phoneE164: string;
+    send: ReplySender;
     commitmentId: string;
     topic: PlanTopic;
     playbook: CoachingPlaybook;
@@ -322,7 +328,7 @@ async function sendAgeGateRefusal(
     familyId: args.familyId,
     parentUserId: args.parentUserId,
     conversationId: args.conversationId,
-    phoneE164: args.phoneE164,
+    send: args.send,
     commitmentId: args.commitmentId,
     topic: args.topic,
     messages: [composed.message],
@@ -376,7 +382,7 @@ async function sendInOrder(
     familyId: string;
     parentUserId: string;
     conversationId: string;
-    phoneE164: string;
+    send: ReplySender;
     commitmentId: string;
     topic: PlanTopic;
     messages: readonly string[];
@@ -388,10 +394,11 @@ async function sendInOrder(
     const dedupeKey = `coach_plan:${args.commitmentId}:${index}`;
     if (await deps.dedupeActive(dedupeKey, database)) continue;
 
-    const { providerMessageId } = await deps.transport.send({ to: args.phoneE164, body });
+    const { providerMessageId, channel } = await args.send(body);
     const channelMessageId = await deps.recordSend(database, {
       familyId: args.familyId,
       parentUserId: args.parentUserId,
+      channel,
       templateKey: `coach_plan:${args.topic}`,
       dedupeKey,
       providerMessageId,
@@ -496,13 +503,15 @@ export async function recordPlanSend(
     .values({
       familyId: write.familyId,
       parentUserId: write.parentUserId,
-      channel: 'sms',
+      channel: write.channel,
       direction: 'out',
       category: 'reply',
       templateKey: write.templateKey,
       dedupeKey: write.dedupeKey,
       providerMessageId: write.providerMessageId,
-      status: acceptedStatus('sms'),
+      // Born at the status the CARRYING channel starts at: 'queued' for the phone
+      // pipes (the receipt loop advances it), terminal 'sent' for email.
+      status: acceptedStatus(write.channel),
       relatedConversationId: write.relatedConversationId,
       sentAt: write.sentAt,
     })
@@ -523,7 +532,6 @@ export function defaultPlanReplyDeps(): PlanReplyDeps {
     // `client_unavailable` outcome instead of a route that dies at wiring time.
     composer: createPlanComposer(pipelineClient),
     noteComposer: createNoteComposer(pipelineClient),
-    transport: createTwilioTransport(),
     dedupeActive,
     recordSend: recordPlanSend,
     audit: async (database, row) => {

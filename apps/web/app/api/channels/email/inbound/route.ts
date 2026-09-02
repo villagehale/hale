@@ -1,5 +1,8 @@
+import { after } from 'next/server';
 import { emailInboundDeps } from '~/lib/channel/email/deps';
 import { handleEmailInboundRequest } from '~/lib/channel/email/inbound';
+import { INBOUND_TURN_QUEUES } from '~/lib/cron/drain';
+import { kickDrain } from '~/lib/cron/kick-drain';
 
 // Node runtime: the handler reaches node:crypto HMAC, the Resend SDK, and Postgres
 // (raw pg + prepared statements) — none of which run on the edge runtime.
@@ -13,11 +16,22 @@ export const runtime = 'nodejs';
  * lib/**, not app/**), and so the only thing that can differ between the tested path and
  * the deployed one is which dependencies are injected.
  *
- * No drain kick, unlike the SMS twin: this phase enqueues nothing. The inbound router
- * C1 owns can only reply by SMS today, so an email is recorded and named rather than
- * handed to it (see the module note in inbound.ts). When the router learns to answer on
- * the channel a message arrived on, the kick belongs here alongside the enqueue.
+ * The drain kick is composed around `enqueue`, exactly as the SMS twin composes it:
+ * every outcome that queues nothing — a forged request, an unsubscribe, an auto-reply,
+ * a stranger — therefore cannot provoke a drain, because the kick is reachable only
+ * through the one call that put a job on the queue.
  */
 export async function POST(req: Request): Promise<Response> {
-  return handleEmailInboundRequest(req, emailInboundDeps());
+  const deps = emailInboundDeps();
+  const origin = process.env.APP_URL ?? new URL(req.url).origin;
+  return handleEmailInboundRequest(req, {
+    ...deps,
+    // RETURNED, not fired: after() keeps this instance alive only while the callback is
+    // pending, and a callback that returns nothing can be frozen with the kick's request
+    // still unsent (kick-drain.ts).
+    enqueue: async (job) => {
+      await deps.enqueue(job);
+      after(() => kickDrain(origin, INBOUND_TURN_QUEUES));
+    },
+  });
 }

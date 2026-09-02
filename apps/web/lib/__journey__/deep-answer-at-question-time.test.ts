@@ -19,6 +19,7 @@ import {
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
@@ -568,7 +569,9 @@ describe('the deep answer arrives at question time', () => {
   ): ChannelRouterDeps {
     return {
       ...channelRouterDeps(database),
-      transport,
+      // The production adapter over the fake pipe: the router hands it a resolved sms
+      // route, the fake records the send — one recorder shared with the deep job.
+      transport: createReplyTransport({ phone: transport, email: null }),
       coach,
       replyResolver: resolver,
       offDomain: { consider: async () => ({ status: 'in_domain' as const, fallback: null }) },

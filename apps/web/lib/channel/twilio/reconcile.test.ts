@@ -1,4 +1,5 @@
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { ChannelMessageReceivedJob } from './inbound';
@@ -99,13 +100,20 @@ describe('the age band', () => {
 
 /**
  * The selection is the whole safety of this module, and it must pick out exactly the
- * rows `handOffToConversation` records — channel 'sms', category 'reply' — because
- * those are the only unmarked rows that mean "C1 never got it". Every other recorder
- * of inbound rows is its own consumer: the intake machine answers in-request, the
- * caregiver route answers in-request, and the email leg files rows the router cannot
- * yet speak for. Sweeping any of those into C1's queue replays a text that was already
- * answered — which is precisely what happened to a family's onboarding turns, answered
- * once by intake and then again, minutes later and out of context, by the coach.
+ * rows a hand-off path records — category 'reply' on a channel C1 can answer through —
+ * because those are the only unmarked rows that mean "C1 never got it". Every other
+ * recorder of inbound rows is its own consumer: the intake machine answers in-request
+ * and the caregiver route answers in-request. Sweeping either into C1's queue replays a
+ * text that was already answered — which is precisely what happened to a family's
+ * onboarding turns, answered once by intake and then again, minutes later and out of
+ * context, by the coach.
+ *
+ * EMAIL MOVED SIDES, deliberately. It was excluded here because the leg filed rows the
+ * router could not speak for; now the email webhook enqueues onto the same queue and
+ * stamps the same column (email/inbound.ts), so an email whose enqueue failed is a
+ * parent owed a reply in exactly the way a text is. The exclusion expired with the
+ * phase that justified it — leaving it would have made email the one door with no way
+ * back from a failed hand-off.
  */
 describe('what the sweep may select', () => {
   let db: TestDb;
@@ -149,20 +157,37 @@ describe('what the sweep may select', () => {
     return row.id;
   }
 
-  it('selects only sms and whatsapp reply rows — never intake, caregiver, or email rows', async () => {
+  it('selects the reply rows on all three doors, and nothing another consumer owns', async () => {
     const family = await seedFamily(db.database);
 
-    const owed = await seedInbound(family, 'SM_owed');
+    const texted = await seedInbound(family, 'SM_owed');
     // A WhatsApp reply is owed the SAME hand-off: the webhook records it with its real
     // pipe (WhatsApp v1), and a sweep pinned to 'sms' would strand it forever.
-    const owedWhatsApp = await seedInbound(family, 'WA_owed', { channel: 'whatsapp' });
+    const whatsapped = await seedInbound(family, 'WA_owed', { channel: 'whatsapp' });
+    const emailed = await seedInbound(family, 'EM_owed', { channel: 'email' });
     await seedInbound(family, 'SM_intake', { category: 'intake' });
     await seedInbound(family, 'SM_caregiver', { category: 'caregiver' });
-    await seedInbound(family, 'EM_reply', { channel: 'email' });
 
     const rows = await selectUnhandedInbound(db.database, NOW);
 
-    expect(new Set(rows.map((r) => r.id))).toEqual(new Set([owed, owedWhatsApp]));
+    expect(new Set(rows.map((r) => r.id))).toEqual(
+      new Set([texted, whatsapped, emailed]),
+    );
+  });
+
+  it('leaves a row alone once it has actually been handed off', async () => {
+    const family = await seedFamily(db.database);
+
+    const owed = await seedInbound(family, 'EM_owed', { channel: 'email' });
+    const done = await seedInbound(family, 'EM_done', { channel: 'email' });
+    await db.database
+      .update(schema.channelMessages)
+      .set({ handedOffAt: NOW })
+      .where(eq(schema.channelMessages.id, done));
+
+    const rows = await selectUnhandedInbound(db.database, NOW);
+
+    expect(rows.map((r) => r.id)).toEqual([owed]);
   });
 });
 

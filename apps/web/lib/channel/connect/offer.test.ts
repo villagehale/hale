@@ -153,7 +153,10 @@ describe('connectorLinkHandler', () => {
       parentUserId,
       conversationId: 'conv-1',
       body,
-      phoneE164: PHONE,
+      // This handler answers through its verdict; a self-send here would be a bug.
+      send: async () => {
+        throw new Error('connector handler must not send for itself');
+      },
       now: NOW,
       resolved: null,
       openQuestions: async () => [],

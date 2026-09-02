@@ -16,6 +16,7 @@ import {
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { conflictReply } from '~/lib/channel/router/copy';
 import type { ChannelRouterDeps } from '~/lib/channel/router/route';
@@ -536,7 +537,9 @@ describe('the activity question is answered', () => {
   ): ChannelRouterDeps {
     return {
       ...channelRouterDeps(database),
-      transport,
+      // The production adapter over the fake pipe: the router hands it a resolved sms
+      // route, the fake records the send — one recorder for the whole journey.
+      transport: createReplyTransport({ phone: transport, email: null }),
       coach,
       replyResolver: recordedResolver({
         target: 'ambiguous',

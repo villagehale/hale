@@ -2,7 +2,6 @@ import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
-import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import type { OffDomainLane, ReplySource } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
@@ -45,6 +44,7 @@ import {
   matchDisambiguation,
   readsAsOrdinal,
 } from './disambiguation';
+import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
@@ -90,6 +90,16 @@ import type { InboundTurnLedger, TurnFailureReason } from './turn-ledger';
  * every message either way is a `messages` row, every outbound is a ledger row plus an
  * immutable audit row (rule #6), and nothing that fails does so silently.
  *
+ * ONE THREAD, WHICHEVER DOOR. This router consumes inbound TEXTS and inbound EMAIL, and
+ * the only thing it knows about the difference is the route it answers on
+ * (reply-route.ts). Everything above is shared on purpose, and the thread is the reason:
+ * a parent's messages resolve to ONE conversation whatever channel carried them, so the
+ * coach reads a single history and the answer to an email can refer to this morning's
+ * text. Channel-specific behaviour lives entirely below the route — in the transport
+ * that knows about subjects and threading headers — and there is no branch on channel
+ * anywhere in the ordering above, which is what stops the two doors drifting into two
+ * products.
+ *
  * PRIVACY. Bodies are never logged, in any branch — not the parent's message, not
  * Hale's reply, not the number. The log line carries ids and an outcome enum, which is
  * everything X1 needs to count and nothing a log aggregator should not hold (rule #1).
@@ -101,32 +111,52 @@ import type { InboundTurnLedger, TurnFailureReason } from './turn-ledger';
 const PARENT_ROLES: ReadonlySet<string> = new Set(['primary_parent', 'co_parent']);
 
 /**
- * Who texted, what they said, and where a reply can go — resolved in ONE read so the
- * router has no queries of its own. `phoneE164` is null unless there is an ACTIVE,
- * verified, non-revoked channel, which is what makes texting a stopped number
- * structurally impossible rather than merely unlikely (CASL, rule #1).
+ * The audit action each outbound reply is recorded under (rule #6). DATA values, per
+ * channel: `sms_reply_sent` is what a PIPEDA access request already renders for every
+ * text Hale has ever sent, so it is never widened to cover email — a second channel gets
+ * a second name, and the trail stays readable about which door an answer went out of.
+ * WhatsApp stays under the phone verb it has always audited as (WhatsApp v1): both
+ * pipes answer the same verified number, and the ledger row beside the audit row is
+ * what records which pipe carried it.
+ */
+const REPLY_SENT_ACTION: Record<ReplySent['channel'], string> = {
+  sms: 'sms_reply_sent',
+  whatsapp: 'sms_reply_sent',
+  email: 'email_reply_sent',
+};
+
+/**
+ * Who wrote in, what they said, and where a reply can go — resolved in ONE read so the
+ * router has no queries of its own. `reply` is null unless there is a live address on
+ * the channel the message arrived on: an ACTIVE, verified, non-revoked SMS channel, or
+ * an email address the parent has not asked us to stop using. That is what makes
+ * answering a stopped parent structurally impossible rather than merely unlikely (CASL,
+ * rule #1) — and it is one question with one answer, rather than a phone number the
+ * email half would have had to leave empty.
  */
 export interface InboundContext {
   body: string;
   role: FamilyRole | null;
   /** Who a caregiver is pointed at (M6's copy), null when it cannot be resolved. */
   primaryParentName: string | null;
-  phoneE164: string | null;
+  reply: ReplyRoute | null;
 }
 
 /**
  * One turn as a deterministic handler sees it — the same shape the coach gets, plus the
  * one thing a handler needs and the agent does not.
  *
- * `phoneE164` is here because a handler is allowed to answer for itself (`reply: null`),
- * and the full-plan handler is the first one that does: a plan is two or three ordered
- * messages, which the router's one-body `reply` contract cannot express. Handing the
- * number down is what stops that handler re-running `resolveSendablePhone` and reaching
- * a DIFFERENT answer than the gate the router already passed one function up. Non-null
- * by construction — the router does not reach the handlers without one.
+ * `send` is here because a handler is allowed to answer for itself (`reply: null`), and
+ * the full-plan handler is the first one that does: a plan is two or three ordered
+ * messages, which the router's one-body `reply` contract cannot express. It is a BOUND
+ * SENDER rather than an address, which is what stops a handler resolving a destination
+ * of its own and reaching a different answer than the gate the router already passed one
+ * function up — and, since the binding carries the channel, what stops a handler
+ * answering an email by text. Non-null by construction: the router does not reach the
+ * handlers without a route.
  */
 export interface HandlerContext extends Omit<ChannelTurn, 'standingQuestions'> {
-  phoneE164: string;
+  send(body: string): Promise<ReplySent>;
   /**
    * A decision the natural-reply stage already made about this message (resolve.ts), or
    * null on the ordinary first pass.
@@ -216,7 +246,9 @@ export interface ChannelRouterDeps {
     database: Database,
     job: ChannelMessageReceivedJob,
   ): Promise<InboundContext | null>;
-  transport: ChannelTransport;
+  /** The one way out. Channel-agnostic by construction (reply-route.ts): the router
+   * hands it a resolved route and a body, and never learns which provider took it. */
+  transport: ReplyTransport;
   handlers: readonly DeterministicHandler[];
   /**
    * What Hale is still waiting to hear back about, and the stage that reads a parent's own
@@ -462,12 +494,12 @@ export async function routeChannelMessage(
   // GATE 1 — who is talking. Before the thread is opened, so a non-parent's message can
   // never appear in the parents' Ask history.
   if (context.role === null || !PARENT_ROLES.has(context.role)) {
-    if (context.phoneE164 && isOutsiderWeMayAnswer(context.role)) {
+    if (context.reply && isOutsiderWeMayAnswer(context.role)) {
       // Ledgered and audited like every other outbound (rule #6) — but with NO
       // conversation, because a caregiver's exchange must never appear in the parents'
       // Ask history. That is the one difference between this send and a parent's.
       await sendReply(deps, {
-        to: context.phoneE164,
+        route: context.reply,
         body: scopedReply(context.primaryParentName),
         job,
         conversationId: null,
@@ -482,7 +514,7 @@ export async function routeChannelMessage(
     });
   }
 
-  if (!context.phoneE164) {
+  if (!context.reply) {
     return done(deps, job, {
       status: 'unreachable',
       handler: null,
@@ -490,7 +522,7 @@ export async function routeChannelMessage(
       lane: null,
     });
   }
-  const phoneE164 = context.phoneE164;
+  const route = context.reply;
 
   // THREAD. One long-lived conversation per parent, resolved through the note anchor's
   // partial unique index so two texts arriving together cannot fork it.
@@ -522,7 +554,9 @@ export async function routeChannelMessage(
     parentUserId: job.parent_user_id,
     conversationId,
     body: context.body,
-    phoneE164,
+    // A handler that answers for itself sends on the SAME route this turn resolved, and
+    // has no way to reach any other one.
+    send: (body: string) => deps.transport.send({ route, body }),
     now,
     resolved: null,
     openQuestions: readOpenQuestions,
@@ -541,7 +575,7 @@ export async function routeChannelMessage(
     replySource: ReplySource | null = null,
   ) =>
     sendReply(deps, {
-      to: phoneE164,
+      route,
       body,
       job,
       conversationId,
@@ -1443,7 +1477,7 @@ async function disposeOfFailedTurn(
 async function sendReply(
   deps: ChannelRouterDeps,
   args: {
-    to: string;
+    route: ReplyRoute;
     body: string;
     job: ChannelMessageReceivedJob;
     conversationId: string | null;
@@ -1462,13 +1496,14 @@ async function sendReply(
     replySource?: ReplySource | null;
   },
 ): Promise<string> {
-  const sent = await deps.transport.send({ to: args.to, body: args.body });
+  const sent = await deps.transport.send({ route: args.route, body: args.body });
   if (args.claim) await args.claim();
 
-  // The pipe that CARRIED it (WhatsApp v1): the reply-routing transport names its
-  // choice in the result; absent means a single-pipe SMS transport. The row records
-  // what happened, and the reply decider reads these rows back for the 24h window.
-  const carriedBy = sent.transport ?? 'sms';
+  // The channel that CARRIED it, reported by the send rather than assumed from the
+  // route (WhatsApp v1): a whatsapp route degrades to SMS outside Meta's 24h window,
+  // and the row records what happened — the reply decider reads these rows back for
+  // the window, and a PIPEDA export renders the door that was actually used.
+  const carriedBy = sent.channel;
   const [row] = await deps.database
     .insert(schema.channelMessages)
     .values({
@@ -1496,7 +1531,7 @@ async function sendReply(
   await deps.database.insert(schema.auditLog).values({
     familyId: args.job.family_id,
     actor: args.job.parent_user_id,
-    actionTaken: 'sms_reply_sent',
+    actionTaken: REPLY_SENT_ACTION[carriedBy],
     targetTable: 'channel_messages',
     targetId: channelMessageId,
   });

@@ -497,7 +497,7 @@ export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
           parentUserId: ctx.parentUserId,
           conversationId: ctx.conversationId,
           body: ctx.body,
-          phoneE164: ctx.phoneE164,
+          send: ctx.send,
           now: ctx.now,
           resolved: resolved ? 'yes' : null,
         },
