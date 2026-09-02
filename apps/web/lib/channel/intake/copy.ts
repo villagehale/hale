@@ -425,11 +425,12 @@ export function firstInboundWords(body: string): string {
   return trimmed.replace(SOURCE_TAG_SUFFIX, '').trim();
 }
 
-const BARE_HELLO = /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)[.!,\s]*$/i;
+const BARE_HELLO = /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)(?:[,!]?\s+hale)?[.!,\s]*$/i;
 
 /**
- * True when the first inbound is just a hello, empty, or a venue / HALE tag —
- * the locked greeting path. A rec/camp question, a safety text, or anything else
+ * True when the first inbound is just a hello — with or without Hale's own name,
+ * since the /text page prefills "Hi Hale" — empty, or a venue / HALE tag: the
+ * locked greeting path. A rec/camp question, a safety text, or anything else
  * to answer is false so greet can hand the words to the existing answerer.
  */
 export function isBareFirstHello(body: string): boolean {
@@ -437,14 +438,15 @@ export function isBareFirstHello(body: string): boolean {
   return words === '' || BARE_HELLO.test(words);
 }
 
-/** "Maya is 4", "Theo is 18 months" — the site prefill and a parent who skipped hello. */
+/** "Maya is 4", "Theo is 18 months" — a parent who skipped hello and led with
+ * details (the /text page prefill is now the bare "Hi Hale", handled above). */
 const NAME_IS_AGE =
   /\b[A-Za-z][A-Za-z'-]{0,30}\s+is\s+\d+(?:\s*(?:months?|years?|ans|mois))?\b/i;
 
 /**
  * True when the first inbound looks like names / ages / postal — details, not a
  * question. Greet runs the existing extractor / handleDetails path for these
- * and must not call offScriptReply (the site Text Hale prefill is this shape).
+ * and must not call offScriptReply.
  */
 export function looksLikeIntakeDetails(body: string): boolean {
   return NAME_IS_AGE.test(firstInboundWords(body));

@@ -100,6 +100,15 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(isBareFirstHello('Hi (via earlyon-richmondhill)')).toBe(true);
   });
 
+  it('treats a greeting addressed to Hale by name as still bare (the /text page prefill)', () => {
+    expect(isBareFirstHello('Hi Hale')).toBe(true);
+    expect(isBareFirstHello('hi, hale!')).toBe(true);
+    expect(isBareFirstHello('Bonjour Hale')).toBe(true);
+    expect(isBareFirstHello('Hi Hale (via markham)')).toBe(true);
+    expect(isBareFirstHello('hi')).toBe(true);
+    expect(isBareFirstHello('Hi Hale can you help with sleep')).toBe(false);
+  });
+
   it('does not treat a first-text question as a bare hello', () => {
     expect(isBareFirstHello('When does swim registration open near me?')).toBe(false);
     expect(isBareFirstHello('When do winter-break camps open?')).toBe(false);
