@@ -1403,6 +1403,97 @@ describe('intake · CASL keywords', () => {
     ).toBe(true);
   });
 
+  it('STOP after provisioning ledgers the ack it sends (rule #6)', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    const channel = inserts(fake, schema.parentChannels)[0];
+    if (!channel) throw new Error('provisioning wrote no parent channel');
+
+    const before = fake.rows(schema.channelMessages).length;
+    await text(fake, transport, deps, 'STOP');
+
+    // Positive control: the ack actually left.
+    expect(transport.bodies().at(-1)).toBe(STOP_ACK);
+    const added = fake.rows(schema.channelMessages).slice(before);
+    const ack = added.find((r) => r.direction === 'out' && r.category === 'intake');
+    expect(ack).toMatchObject({
+      familyId: channel.familyId,
+      parentUserId: channel.userId,
+      channel: 'sms',
+      status: 'queued',
+      body: null,
+    });
+    expect(ack?.providerMessageId).toMatch(/^fake-out-/);
+  });
+
+  it('START after a STOP ledgers the re-enrol ack against the re-enrolled owner (rule #6)', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    await text(fake, transport, deps, 'STOP');
+    const channel = inserts(fake, schema.parentChannels)[0];
+    if (!channel) throw new Error('provisioning wrote no parent channel');
+
+    const before = fake.rows(schema.channelMessages).length;
+    await text(fake, transport, deps, 'START');
+
+    // Positive control: the ack actually left.
+    expect(transport.bodies().at(-1)).toBe(START_ACK_BY_LANGUAGE.en);
+    const added = fake.rows(schema.channelMessages).slice(before);
+    const ack = added.find((r) => r.direction === 'out' && r.category === 'intake');
+    expect(ack).toMatchObject({
+      familyId: channel.familyId,
+      parentUserId: channel.userId,
+      channel: 'sms',
+      status: 'queued',
+      body: null,
+    });
+    expect(ack?.providerMessageId).toMatch(/^fake-out-/);
+  });
+
+  it('HELP with no open conversation still ledgers the reply when the number is an enrolled parent (rule #6)', async () => {
+    const { fake, transport, deps } = harness({});
+    // An enrolled household whose intake session is long gone: the no-session HELP
+    // branch used to answer with no ledger row at all.
+    const familyId = '00000000-0000-4000-8000-0000000000f1';
+    const userId = '00000000-0000-4000-8000-0000000000u1';
+    await fake.db.insert(schema.parentChannels).values({
+      userId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      verifiedAt: NOW,
+    } as never);
+
+    const result = await text(fake, transport, deps, 'HELP');
+
+    expect(result).toEqual({ status: 'helped' });
+    expect(transport.bodies().at(-1)).toBe(HELP_REPLY);
+    const ack = fake.rows(schema.channelMessages).find((r) => r.direction === 'out');
+    expect(ack).toMatchObject({
+      familyId,
+      parentUserId: userId,
+      channel: 'sms',
+      category: 'intake',
+      status: 'queued',
+      body: null,
+    });
+    expect(ack?.providerMessageId).toMatch(/^fake-out-/);
+  });
+
+  it("HELP from an unknown number stays unledgered — channel_messages has no family row to hold it", async () => {
+    const { fake, transport, deps } = harness({});
+
+    const result = await text(fake, transport, deps, 'HELP');
+
+    // Positive control: the reply itself still goes out.
+    expect(result).toEqual({ status: 'helped' });
+    expect(transport.bodies().at(-1)).toBe(HELP_REPLY);
+    expect(fake.rows(schema.channelMessages)).toHaveLength(0);
+  });
+
   it('never routes a keyword through the model', async () => {
     const extractor = new FakeExtractor([MAYA_AND_LEO]);
     const intentReader = new FakeIntentReader([assent('yes')]);
