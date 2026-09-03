@@ -37,6 +37,7 @@ export * from './civic.js';
 export * from './registration-windows.js';
 export * from './registration-sequences.js';
 export * from './registration-verify-runs.js';
+export * from './cron-heartbeats.js';
 export * from './agent-commitments.js';
 export * from './conversations.js';
 export * from './chat-attachments.js';

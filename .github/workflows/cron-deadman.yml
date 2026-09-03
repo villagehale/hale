@@ -1,0 +1,83 @@
+# CRON DEAD-MAN SWITCH (audit P1-8).
+#
+# WHY GITHUB: every watchdog Hale has — the drain, the Twilio triage, the
+# delivery sweep, the spend alert, the digests — runs on the same Vercel cron
+# substrate it monitors. If Vercel crons stop, the alarm that would say so
+# stops with them. This workflow is the one check that lives in a DIFFERENT
+# failure domain: GitHub Actions' scheduler, GitHub's runners, GitHub's
+# network. It shares nothing with Vercel but the public internet. If GitHub
+# and Vercel are down at once nothing here fires — that residual risk is
+# accepted and documented here rather than papered over.
+#
+# Residual risks, named:
+#   - GitHub disables scheduled workflows after 60 days without repo activity.
+#     This repo commits near-daily; if it ever goes quiet, re-enable by hand.
+#   - `schedule:` is best-effort and can lag minutes at busy times. The health
+#     endpoint's thresholds already carry 2×period + 15 min of grace, so
+#     scheduler lag cannot produce a false page.
+#
+# WHAT IT DOES: every 30 minutes, probe /api/health/crons (cron names + ages
+# only — the endpoint is deliberately unrevealing) and, if the endpoint is
+# unreachable, unparseable, empty, or reports ANY stale cron, text the founder
+# via Twilio's REST API. An unreachable endpoint pages exactly like a stale
+# cron: a refusal is not evidence of health.
+#
+# SECRETS (Actions repo secrets, same names as the app's own env vars):
+#   TWILIO_ACCOUNT_SID   — Twilio REST credential
+#   TWILIO_AUTH_TOKEN    — Twilio REST credential
+#   FOUNDER_ALERT_PHONE  — E.164 destination for the page
+# If any is missing while crons are stale, the SMS step FAILS LOUDLY naming
+# the missing secret — it never silently no-ops (rule #11).
+
+name: Cron dead-man
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Probe cron liveness from off-Vercel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe /api/health/crons
+        id: probe
+        continue-on-error: true
+        run: node .github/scripts/cron-deadman-check.mjs "https://app.villagehale.com/api/health/crons"
+
+      - name: Page the founder (Twilio REST)
+        if: steps.probe.outcome == 'failure'
+        env:
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          FOUNDER_ALERT_PHONE: ${{ secrets.FOUNDER_ALERT_PHONE }}
+          SUMMARY: ${{ steps.probe.outputs.summary }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          missing=""
+          for name in TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN FOUNDER_ALERT_PHONE; do
+            if [ -z "${!name:-}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::cron-deadman ALARM (${SUMMARY:-no summary}) but the founder SMS cannot send — missing Actions secret(s):$missing. Add them under repo Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          # From = Hale's own brand number (ALERT_FROM_NUMBER in
+          # apps/web/lib/channel/twilio/alert.ts) — committed there, not a secret.
+          curl -sS --fail-with-body --max-time 15 \
+            -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json" \
+            -u "${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}" \
+            --data-urlencode "To=${FOUNDER_ALERT_PHONE}" \
+            --data-urlencode "From=+12892172279" \
+            --data-urlencode "Body=Hale DEADMAN: ${SUMMARY:-cron health check failed}. Vercel cron substrate may be down. ${RUN_URL}"
+
+      - name: Fail the run when the probe alarmed
+        if: steps.probe.outcome == 'failure'
+        run: exit 1

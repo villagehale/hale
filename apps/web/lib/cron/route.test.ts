@@ -19,6 +19,9 @@ const runFirstReplyRecoveryCronMock = vi.fn();
 const dbMock = vi.fn();
 
 vi.mock('~/lib/db', () => ({ db: () => dbMock() }));
+// The cronRoute wrapper stamps the dead-man ledger after the handler; stub it
+// so the gate tests stay about the gate (the stamp is covered by deadman.test.ts).
+vi.mock('~/lib/cron/heartbeat', () => ({ stampCronHeartbeat: vi.fn() }));
 // The discovery route enqueues a village.rerank + kicks the drain inside after();
 // stub the queue + kick so the gate test never touches a real pg-boss or network,
 // and run after() inline (the real one throws outside a Next request scope).

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { runFirstReplyRecoveryCron } from '~/lib/channel/intake/first-reply-recovery';
 import { runSittingReminderCron } from '~/lib/channel/intake/sitting-reminder';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 
 // Node runtime: the sweep reaches the session store and the Twilio send, neither of
@@ -22,12 +22,9 @@ export const maxDuration = 60;
  * Cron-secret gated: a request without `Authorization: Bearer <CRON_SECRET>`
  * gets 401 and NOTHING runs.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('intake-sitting-reminder', async () => {
   const database = db();
   const firstReply = await runFirstReplyRecoveryCron(database);
   const sitting = await runSittingReminderCron(database);
   return NextResponse.json({ ok: true, ...sitting, firstReply }, { status: 200 });
-}
+});

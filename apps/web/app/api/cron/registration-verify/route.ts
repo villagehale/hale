@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import {
   defaultRegistrationVerifyDeps,
@@ -26,10 +26,7 @@ export const maxDuration = 300;
  * spend more to learn the same thing, and every source here is a public body whose
  * page we are a guest on.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('registration-verify', async () => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   const client = apiKey ? new Anthropic({ apiKey }) : null;
 
@@ -44,4 +41,4 @@ export async function GET(req: Request) {
   } finally {
     await flushTelemetry();
   }
-}
+});

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { runLoopHealthDigestCron } from '~/lib/loop/health-digest';
 
@@ -16,10 +16,7 @@ export const runtime = 'nodejs';
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('loop-health-digest', async () => {
   const result = await runLoopHealthDigestCron(db());
   return NextResponse.json({ ok: true, sent: result.sent }, { status: 200 });
-}
+});

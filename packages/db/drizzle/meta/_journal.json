@@ -722,6 +722,13 @@
       "when": 1781469540000,
       "tag": "0105_channel_signin_token",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1788134400000,
+      "tag": "0106_cron_heartbeats",
+      "breakpoints": true
     }
   ]
 }
