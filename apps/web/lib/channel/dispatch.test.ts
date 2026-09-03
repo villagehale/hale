@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { createTwilioSmsChannel } from '~/lib/channel/adapters/twilio-sms';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
+import { SEND_RETRIES_EXHAUSTED } from './config';
 import {
   ChannelRetryableError,
   type DispatchPorts,
   type LedgerWrite,
   dispatchLoopMessage,
+  recordAbandonedDispatch,
 } from './dispatch';
 import { fakeChannel, fakeRenderer } from './fakes';
 import type { LoopMessage } from './types';
@@ -462,4 +464,53 @@ describe('a rendered body that claims something no row can back never reaches a 
     expect(sms.calls).toHaveLength(1);
   });
 
+});
+
+/**
+ * SMS reliability audit P0-3, the rule-#11 half: a `channel.send` job that spends every
+ * retry (transient provider errors all the way down the backoff arc) previously vanished
+ * into pg-boss's failed state with NO ledger row — the drain's dead-letter consumer now
+ * records the abandonment here, so it is a countable `failed` row, not three log lines.
+ */
+describe('recordAbandonedDispatch — the channel.send dead-letter outcome', () => {
+  it('writes a failed ledger row named send_retries_exhausted on the exchange channel', async () => {
+    const { ports, ledger } = makePorts({ prefs: { loopChannel: 'sms' } });
+
+    const result = await recordAbandonedDispatch(message(), ports);
+
+    expect(result.legs).toEqual([
+      { channel: 'sms', outcome: 'failed', reason: SEND_RETRIES_EXHAUSTED },
+    ]);
+    expect(ledger).toEqual([
+      expect.objectContaining({
+        status: 'failed',
+        channel: 'sms',
+        errorCode: SEND_RETRIES_EXHAUSTED,
+        dedupeKey: null,
+      }),
+    ]);
+  });
+
+  it('records on the PINNED channel when the message rides one', async () => {
+    const { ports, ledger } = makePorts({ prefs: { loopChannel: 'sms' } });
+
+    await recordAbandonedDispatch(message({ channel: 'email' }), ports);
+
+    expect(ledger[0]?.channel).toBe('email');
+  });
+
+  it('fires the paired loop_message_failed analytics event and touches no adapter', async () => {
+    const sms = fakeChannel('sms');
+    const { ports, captures } = makePorts({ prefs: { loopChannel: 'sms' }, channels: { sms } });
+
+    await recordAbandonedDispatch(message(), ports);
+
+    expect(sms.calls).toEqual([]);
+    expect(captures).toEqual([
+      expect.objectContaining({
+        event: 'loop_message_failed',
+        properties: expect.objectContaining({ reason: 'failed' }),
+      }),
+    ]);
+  });
 });

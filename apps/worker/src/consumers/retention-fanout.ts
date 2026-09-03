@@ -1,6 +1,7 @@
 import type PgBoss from 'pg-boss';
 import { ne } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
+import { createQueueWithPolicy } from '@hale/tools-contracts';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 
@@ -111,12 +112,36 @@ export async function handleDiscoveryFanout(deps: FanoutDeps): Promise<void> {
 const ALL_QUEUES = [DISCOVERY_FANOUT_QUEUE, 'village.discovery.due'] as const;
 
 /**
+ * Explicit retry (queue-policy invariant, audit P0-3 — no queue rides pg-boss
+ * defaults): pg-boss's attempt count kept, the default zero seconds between attempts
+ * replaced with a backoff so one transient blip cannot burn every attempt. A discovery
+ * job that spends them all dead-letters into `<queue>.dead`, consumed below.
+ */
+const DISCOVERY_RETRY = { retryLimit: 2, retryDelay: 15, retryBackoff: true } as const;
+
+/** The log outcome for a discovery job that spent every retry. A DATA value. */
+export const DISCOVERY_RETRIES_EXHAUSTED = 'job_retries_exhausted';
+
+/**
  * Create the retention queues, register the fan-out consumers, and upsert the
- * cron schedules. Idempotent: createQueue and schedule both upsert by name.
+ * cron schedules. Idempotent: the queue declarations and schedule all upsert by name.
  */
 export async function registerRetentionSchedules(boss: PgBoss): Promise<void> {
   for (const queue of ALL_QUEUES) {
-    await boss.createQueue(queue);
+    await createQueueWithPolicy(boss, queue, {
+      retry: DISCOVERY_RETRY,
+      deadLetter: `${queue}.dead`,
+    });
+    // The consumed half of the invariant (rule #11): a fan-out or per-family discovery
+    // job that ran out of retries is a named, counted outcome — the next weekly cron
+    // fire covers the family either way, so a log line is the whole obligation.
+    await boss.work(`${queue}.dead`, async ([job]) => {
+      if (!job) return;
+      logger.error(
+        { queue: `${queue}.dead`, jobId: job.id, outcome: DISCOVERY_RETRIES_EXHAUSTED },
+        'retention: job ran out of retries — dead-lettered',
+      );
+    });
   }
 
   await boss.work(DISCOVERY_FANOUT_QUEUE, async ([job]) => {
