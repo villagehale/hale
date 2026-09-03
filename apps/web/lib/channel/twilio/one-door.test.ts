@@ -69,6 +69,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'RESIDUE BY DESIGN: the founder webhook-failure alert is database-independent on purpose — it fires when the DB is down (2026-08-28), so a ledger write is structurally impossible. Founder-directed, digit-scrubbed, rate-limited.',
   'apps/web/lib/monitoring/twilio-triage.ts':
     'RESIDUE BY DESIGN: founder diagnosis SMS for Twilio Monitor alerts — same ops class as alert.ts, founder-directed, not family traffic.',
+  'apps/web/lib/channel/twilio/delivery-sweep.ts':
+    'READER, not a sender: one Messages GET by sid per stuck row (the P0-1 delivery-truth sweep). It puts no bytes on any phone — it UPDATES channel_messages.status, which is the ledger keeping its own promise.',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no Twilio

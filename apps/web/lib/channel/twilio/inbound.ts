@@ -65,8 +65,15 @@ export interface TwilioInboundDeps {
   intake: (inboundTransport: MessageTransport) => IntakeDeps;
   enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
   /** Required, not optional: the one thing that must never happen quietly here is a
-   * text Hale accepted and never queued (rule #11). */
-  log: Pick<Console, 'error'>;
+   * text Hale accepted and never queued (rule #11). `info` carries the one routed-
+   * outcome line every authentic request ends with — ids and enums, never a body. */
+  log: Pick<Console, 'info' | 'error'>;
+  /** Count one authentic request's FINAL outcome (PostHog, no PII — see
+   * captureInboundRouted). Required (rule #11): the silence outcomes — rate_limited,
+   * ignored, not_a_parent, malformed — are only distinguishable from "nobody texts
+   * us" if every one of them is written down as a rate. Wired to a counter that
+   * never throws; a refused count must not take the webhook down. */
+  countOutcome: (outcome: TwilioInboundOutcome) => Promise<void>;
   now?: () => Date;
 }
 
@@ -373,10 +380,18 @@ export async function handleTwilioInboundRequest(
   const { transport, address } = parseTransportAddress(params.From ?? '');
   const providerId = params.MessageSid ?? params.SmsSid ?? '';
   if (!address || !providerId) {
+    // Signature-valid but carrying no sender or no message id: if this ever fires, a
+    // real message just vanished — so it is the one outcome logged at error level.
+    // Field PRESENCE only, never the values (From is a phone number, rule #1).
+    deps.log.error(
+      { hasFrom: Boolean(address), hasProviderId: Boolean(providerId) },
+      'twilio inbound: malformed — authentic POST with no sender or no message id, nothing to act on',
+    );
+    await deps.countOutcome('malformed');
     return emptyTwiml();
   }
 
-  await routeTwilioInbound(
+  const outcome = await routeTwilioInbound(
     deps,
     {
       from: address,
@@ -387,5 +402,10 @@ export async function handleTwilioInboundRequest(
     },
     mediaCount(params),
   );
+  // The one line every authentic text ends with, and its counter twin. The provider
+  // message id is Twilio's envelope handle, already the id every other log line here
+  // carries — never the number, never the body (rule #1).
+  deps.log.info({ outcome, providerMessageId: providerId }, 'twilio inbound: routed');
+  await deps.countOutcome(outcome);
   return emptyTwiml();
 }

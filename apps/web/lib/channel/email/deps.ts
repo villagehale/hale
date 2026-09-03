@@ -1,4 +1,5 @@
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
+import { captureInboundRouted } from '~/lib/analytics/server-capture';
 import { db as defaultDb } from '~/lib/db';
 import { enqueueChannelMessageReceived } from '~/lib/channel/twilio/deps';
 import { requireEmailInboundConfig } from './config';
@@ -30,5 +31,8 @@ export function emailInboundDeps(): EmailInboundDeps {
     enqueue: enqueueChannelMessageReceived,
     now: () => new Date(),
     log: console,
+    countOutcome: async (outcome) => {
+      await captureInboundRouted('email', outcome);
+    },
   };
 }

@@ -18,7 +18,10 @@ import {
  * Runs still `in_progress` are excluded from BOTH counts. At the moment this reads,
  * some runs legitimately have not finished; scoring them as failures would page on
  * every busy window, and scoring them as successes would hide a real one. The honest
- * denominator is the runs that reached an outcome.
+ * denominator is the runs that reached an outcome — EVERY terminal state, not just
+ * `failed`: a window of nothing but `timed_out` runs (the known 120s-wall shape) or
+ * `killed_cost` runs is a total outage, and a monitor that counted only `failed`
+ * would read it as an empty window and never page (2026-09-03 audit).
  */
 
 /** The trailing window read on each sweep. One hour: the sweep runs hourly, so this is
@@ -39,8 +42,17 @@ export interface RunStatusCount {
   count: number;
 }
 
+/** The terminal states that mean the run did NOT serve its family — the one failure
+ * vocabulary the admin errors table and the pulse band already use
+ * (lib/admin/queries/errors.ts). Everything terminal that is not `completed`. */
+const TERMINAL_FAILURE_STATUSES: ReadonlySet<string> = new Set([
+  'failed',
+  'timed_out',
+  'killed_cost',
+]);
+
 export interface RunFailureSummary {
-  /** Runs that reached an outcome (completed or failed) in the window. */
+  /** Runs that reached a terminal outcome (completed or any failure state) in the window. */
   total: number;
   failed: number;
   windowStart: Date;
@@ -57,7 +69,7 @@ export function summarizeRunFailures(
   let failed = 0;
   let completed = 0;
   for (const row of rows) {
-    if (row.status === 'failed') failed += row.count;
+    if (TERMINAL_FAILURE_STATUSES.has(row.status)) failed += row.count;
     else if (row.status === 'completed') completed += row.count;
   }
   const total = failed + completed;

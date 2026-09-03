@@ -21,5 +21,5 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   const result = await runLoopHealthDigestCron(db());
-  return NextResponse.json({ ok: true, sent: result.sent }, { status: 200 });
+  return NextResponse.json({ ok: true, outcome: result.outcome }, { status: 200 });
 }

@@ -53,6 +53,34 @@ describe('summarizeRunFailures', () => {
     expect(summarize([{ status: 'failed', count: RUN_SPIKE_MIN_RUNS }]).spiked).toBe(true);
   });
 
+  it('a window of nothing but timeouts is a total outage and MUST spike (the 120s-wall shape)', () => {
+    const summary = summarize([{ status: 'timed_out', count: 10 }]);
+
+    expect(summary).toEqual({
+      total: 10,
+      failed: 10,
+      windowStart: START,
+      windowEnd: END,
+      spiked: true,
+    });
+  });
+
+  it('counts killed_cost in the numerator AND the denominator', () => {
+    const summary = summarize([
+      { status: 'killed_cost', count: 3 },
+      { status: 'timed_out', count: 2 },
+      { status: 'completed', count: 3 },
+    ]);
+
+    expect(summary).toEqual({
+      total: 8,
+      failed: 5,
+      windowStart: START,
+      windowEnd: END,
+      spiked: true,
+    });
+  });
+
   it('ignores runs still in progress — a ratio over unfinished work is a guess', () => {
     const summary = summarize([
       { status: 'failed', count: 5 },

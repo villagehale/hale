@@ -215,23 +215,32 @@ describe('loadPulse — failuresToday uses the one failure vocabulary (seeded, e
       .insert(schema.agentRuns)
       .values([run('completed'), run('failed'), run('timed_out'), run('killed_cost')]);
 
-    const message = (direction: 'in' | 'out') => ({
+    const message = (
+      direction: 'in' | 'out',
+      status: 'failed' | 'suppressed_quiet_hours' = 'failed',
+    ) => ({
       familyId: fam.familyId,
       parentUserId: fam.parentUserId,
       channel: 'sms' as const,
       direction,
       category: 'reply' as const,
-      status: 'failed' as const,
+      status,
       createdAt: new Date(),
     });
 
     // The outbound failure counts; the inbound failed row must never — same
-    // structural guard as texting's msgsFailed (#594).
-    await db.database.insert(schema.channelMessages).values([message('out'), message('in')]);
+    // structural guard as texting's msgsFailed (#594). The suppression is a row
+    // where no provider was contacted, so it is not outbound traffic either.
+    await db.database
+      .insert(schema.channelMessages)
+      .values([message('out'), message('in'), message('out', 'suppressed_quiet_hours')]);
 
     const pulse = await loadPulse(db.database);
     // 3 failed runs + 1 outbound failed send.
     expect(pulse.failuresToday).toBe(4);
+    // Hand-recomputed: the one failed send is the only row that reached the
+    // provider today — the suppression must not inflate the founder's out count.
+    expect(pulse.msgsOutToday).toBe(1);
   });
 });
 

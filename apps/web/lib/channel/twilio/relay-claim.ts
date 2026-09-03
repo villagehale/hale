@@ -59,6 +59,10 @@ export async function claimRelayCall(
     familyId: ticket.familyId,
     actor: 'system',
     actionTaken: 'voice_relay_ticket_replayed',
+    // The claim row that refused this replay. Its table keys on call sid, so the sid
+    // IS the row's identity — a traceability query can walk straight to the winner.
+    targetTable: 'voice_relay_claims',
+    targetId: ticket.callSid,
     after: { callSid: ticket.callSid, ticketParentUserId: ticket.parentUserId },
     occurredAt: at,
   });
