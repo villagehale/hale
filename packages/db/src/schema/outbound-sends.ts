@@ -19,6 +19,11 @@ export const outboundSends = pgTable(
     claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     providerMessageId: text('provider_message_id'),
+    /** Stamped by the claim sweep when a claim stayed unconfirmed past its age
+     * threshold — the sweep's own once-only claim on REPORTING the residue (a
+     * crash between claim and send leaves sent_at null forever, and the redelivery
+     * reads the row as "already sent"). Never read by the executor. */
+    sweptAt: timestamp('swept_at', { withTimezone: true }),
   },
   (table) => ({
     actionIdx: uniqueIndex('outbound_sends_action_idx').on(table.actionId),

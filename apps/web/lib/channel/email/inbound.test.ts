@@ -291,13 +291,27 @@ describe('routeEmailInbound · the order of the gates', () => {
     expect(h.fake.rows(schema.channelMessages)).toHaveLength(1);
   });
 
-  it('names a failed content fetch rather than treating it as an empty message', async () => {
-    const h = harness(FakeContentReader.failing('provider_error'));
+  /** The refusal is TYPED (PR #497): svix retries on any non-2xx and on nothing else,
+   * so a transient provider blip answered 200 is a permanently dropped email. */
+  it('answers a TRANSIENT content-fetch failure with a 5xx so the provider redelivers', async () => {
+    const h = harness(FakeContentReader.failing('provider_error', true));
     seedParent(h.fake);
 
-    expect(await outcomeOf(await handleEmailInboundRequest(request(body()), h.deps))).toBe(
-      'content_unavailable',
-    );
+    const res = await handleEmailInboundRequest(request(body()), h.deps);
+    expect(res.status).toBe(503);
+    expect(await outcomeOf(res)).toBe('content_fetch_transient');
+    expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
+  });
+
+  it('names a PERMANENT content-fetch failure terminal rather than treating it as empty', async () => {
+    const h = harness(FakeContentReader.failing('not_found', false));
+    seedParent(h.fake);
+
+    const res = await handleEmailInboundRequest(request(body()), h.deps);
+    // 200 on purpose: no retry can ever fetch this email, so redelivery would only
+    // re-reach this same terminal outcome once per svix backoff step.
+    expect(res.status).toBe(200);
+    expect(await outcomeOf(res)).toBe('content_unavailable');
     expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
   });
 

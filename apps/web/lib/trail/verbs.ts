@@ -163,6 +163,8 @@ export const AUDIT_VERBS = [
   'channel_sent',
   // The delivery-truth sweep asserting a terminal state no receipt ever confirmed.
   'delivery_status_forced',
+  // The claim sweep naming an executor send claim nothing ever confirmed.
+  'outbound_send_unconfirmed',
   'push_sent',
   'email_reply_received',
   'email_reply_sent',
@@ -476,6 +478,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   // reached the phone, and the trail must say so rather than imply it arrived.
   delivery_status_forced: {
     sentence: 'a message Hale sent could not be confirmed as delivered',
+    family: 'problem',
+  },
+  // The claim exists but no provider confirmation ever arrived: the email may never
+  // have been sent, and the trail must say so rather than imply it went out.
+  outbound_send_unconfirmed: {
+    sentence: 'an email Hale set out to send could not be confirmed as sent',
     family: 'problem',
   },
   push_sent: { sentence: 'Hale sent you a notification', family: 'done' },

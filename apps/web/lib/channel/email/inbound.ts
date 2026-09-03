@@ -96,8 +96,14 @@ export type EmailInboundOutcome =
   | 'rate_limited'
   /** Already recorded under this Message-ID — a retry, not a second email. */
   | 'duplicate'
-  /** The body could not be fetched. Named, never treated as an empty message. */
+  /** The body can NEVER be fetched (the provider no longer has it). Named, never
+   * treated as an empty message — and terminal, so it is acknowledged with a 200. */
   | 'content_unavailable'
+  /** The body could not be fetched THIS TIME (rate limit, 5xx, unreachable provider).
+   * Answered 5xx so svix redelivers — folding this into `content_unavailable` was a
+   * 30-second provider blip permanently dropping a parent's email (PR #497 shape:
+   * transient and permanent refusals are different types, not one string). */
+  | 'content_fetch_transient'
   /** An auto-reply, a bounce, or our own address. Nothing is answered (loop guard). */
   | 'automated'
   /** The sender could not be authenticated, so it may not become an identity. */
@@ -146,8 +152,9 @@ export async function routeEmailInbound(
     deps.log.error('inbound email: content unavailable', {
       emailId: event.emailId,
       reason: fetched.reason,
+      transient: fetched.transient,
     });
-    return 'content_unavailable';
+    return fetched.transient ? 'content_fetch_transient' : 'content_unavailable';
   }
   const { headers, text } = fetched.content;
 
@@ -368,8 +375,11 @@ async function record(
  *   503 — the leg is not provisioned. Nothing is parsed, nothing is fetched, nothing is
  *         written. Dark by construction rather than by a flag.
  *   403 — the signature does not verify. Same: zero side effects.
- * Everything authentic answers 200 whatever the outcome, because a 4xx/5xx would make
- * the provider retry a message we have already handled.
+ * Everything authentic answers 200 whatever the outcome — a 4xx/5xx would make the
+ * provider retry a message we have already handled — with ONE exception:
+ *   503 — the content fetch failed transiently, so the message was NOT handled and no
+ *         row exists for the reconciler. svix retries on any non-2xx and on nothing
+ *         else; this is the only path where a retry is the recovery.
  */
 export async function handleEmailInboundRequest(
   req: Request,
@@ -401,5 +411,8 @@ export async function handleEmailInboundRequest(
   }
 
   const outcome = await routeEmailInbound(deps, config, event);
+  if (outcome === 'content_fetch_transient') {
+    return Response.json({ outcome }, { status: 503 });
+  }
   return Response.json({ outcome });
 }
