@@ -336,6 +336,41 @@ describe('routing', () => {
     expect(h.jobs).toHaveLength(0);
   });
 
+  it('ledgers the attachment line it texts an enrolled number (rule #6)', async () => {
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake);
+
+    const outcome = await routeTwilioInbound(h.deps, inbound({ body: '' }), 1);
+
+    expect(outcome).toBe('media_unsupported');
+    const row = h.fake.rows(schema.channelMessages).find((r) => r.direction === 'out');
+    expect(row).toMatchObject({
+      familyId,
+      parentUserId: userId,
+      channel: 'sms',
+      category: 'reply',
+      status: 'queued',
+      replySource: 'fixed',
+      body: null,
+    });
+    expect(row?.providerMessageId).toMatch(/^fake-out-/);
+    const audit = h.fake
+      .rows(schema.auditLog)
+      .find((a) => a.actionTaken === 'sms_reply_sent' && a.targetId === row?.id);
+    expect(audit).toBeDefined();
+  });
+
+  it("answers a stranger's MMS without a ledger row — no family exists to hold one", async () => {
+    const h = harness();
+
+    const outcome = await routeTwilioInbound(h.deps, inbound({ body: '' }), 1);
+
+    // Positive control: the attachment line itself still goes out.
+    expect(outcome).toBe('media_unsupported');
+    expect(h.transport.sent).toHaveLength(1);
+    expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
+  });
+
   it('shares ONE rate-limit budget between the media path and the machine', async () => {
     const h = harness();
     const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;

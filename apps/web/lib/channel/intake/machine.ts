@@ -436,7 +436,13 @@ async function sendAndRecord(
     at: ctx.now.toISOString(),
   };
   if (ctx.session.familyId && ctx.session.userId) {
-    const id = await writeChannelMessage(database, ctx.session, entry, ctx.now, templateKey);
+    const id = await writeChannelMessage(
+      database,
+      { familyId: ctx.session.familyId, parentUserId: ctx.session.userId },
+      entry,
+      ctx.now,
+      templateKey,
+    );
     // What the parent reads back, and what the coach re-reads next turn. The body as
     // SENT: intake appends no CASL footer, so the wire and the thread are one string.
     await deps.threadMessage(database, {
@@ -465,22 +471,28 @@ async function recordInbound(
     at: inbound.receivedAt.toISOString(),
   };
   if (ctx.session.familyId && ctx.session.userId) {
-    const id = await writeChannelMessage(database, ctx.session, entry, ctx.now);
+    const id = await writeChannelMessage(
+      database,
+      { familyId: ctx.session.familyId, parentUserId: ctx.session.userId },
+      entry,
+      ctx.now,
+    );
     return { transcript, channelMessageId: id };
   }
   return { transcript: [...transcript, entry], channelMessageId: null };
 }
 
-/** One channel_messages row + its audit row (rule #6: no message without a trail). */
+/** One channel_messages row + its audit row (rule #6: no message without a trail).
+ * Keyed on the OWNER rather than the session: the keyword acks (STOP/START/HELP)
+ * can know who a number belongs to without holding an open session. */
 async function writeChannelMessage(
   database: Database,
-  session: IntakeSession,
+  owner: { familyId: string; parentUserId: string },
   entry: TranscriptEntry,
   now: Date,
   templateKey?: string,
 ): Promise<string> {
-  const familyId = session.familyId as string;
-  const parentUserId = session.userId as string;
+  const { familyId, parentUserId } = owner;
   const [row] = await database
     .insert(schema.channelMessages)
     .values({
@@ -1260,9 +1272,28 @@ async function handleKeyword(
 
   if (keyword === 'help') {
     if (!session) {
-      // No conversation to record against (channel_messages needs a family, and the
-      // session is what holds a pre-family transcript). Answer and stop there.
-      await deps.transport.send({ to: phoneE164, body: HELP_REPLY_BY_LANGUAGE[language] });
+      const { providerMessageId } = await deps.transport.send({
+        to: phoneE164,
+        body: HELP_REPLY_BY_LANGUAGE[language],
+      });
+      // No session to transcribe against, but the number may still be an ENROLLED
+      // parent's (intake long over) — their ledger must show this send (rule #6). A
+      // stranger's HELP stays unrecorded by structural necessity, not omission:
+      // channel_messages.family_id is NOT NULL, so there is no row it could occupy.
+      const enrolled = await resolveVerifiedChannelByPhone(database, phoneE164);
+      if (enrolled) {
+        await writeChannelMessage(
+          database,
+          { familyId: enrolled.familyId, parentUserId: enrolled.userId },
+          {
+            direction: 'out',
+            body: HELP_REPLY_BY_LANGUAGE[language],
+            providerId: providerMessageId,
+            at: now.toISOString(),
+          },
+          now,
+        );
+      }
       return { status: 'helped' };
     }
     const ctx: SendContext = { session, phoneE164, now };
@@ -1283,7 +1314,22 @@ async function handleKeyword(
   const owner = await findRevokedChannelOwner(database, phoneE164);
   if (owner) {
     await reenrolOnStart(database, { ...owner, phoneE164, verbatimReply: inbound.body }, now);
-    await deps.transport.send({ to: phoneE164, body: START_ACK_BY_LANGUAGE[language] });
+    const { providerMessageId } = await deps.transport.send({
+      to: phoneE164,
+      body: START_ACK_BY_LANGUAGE[language],
+    });
+    // The re-enrolment ack is a real outbound to a known family: ledger it (rule #6).
+    await writeChannelMessage(
+      database,
+      { familyId: owner.familyId, parentUserId: owner.userId },
+      {
+        direction: 'out',
+        body: START_ACK_BY_LANGUAGE[language],
+        providerId: providerMessageId,
+        at: now.toISOString(),
+      },
+      now,
+    );
     return { status: 'restarted' };
   }
   if (session) {
@@ -1343,7 +1389,27 @@ async function handleStop(
 
   // The one final confirmation carriers expect, and then silence.
   try {
-    await deps.transport.send({ to: phoneE164, body: STOP_ACK_BY_LANGUAGE[language] });
+    const { providerMessageId } = await deps.transport.send({
+      to: phoneE164,
+      body: STOP_ACK_BY_LANGUAGE[language],
+    });
+    // The ack is the last outbound this family will get, and it must be on the record
+    // like every other (rule #6). Only when an OWNER exists: a guest's or invitee's
+    // STOP has no family row to ledger against (channel_messages.family_id NOT NULL),
+    // and their consent lives on the RSVP/invite rows handled above.
+    if (owner) {
+      await writeChannelMessage(
+        database,
+        { familyId: owner.familyId, parentUserId: owner.userId },
+        {
+          direction: 'out',
+          body: STOP_ACK_BY_LANGUAGE[language],
+          providerId: providerMessageId,
+          at: now.toISOString(),
+        },
+        now,
+      );
+    }
   } catch (error) {
     // A PERMANENT refusal means there is no ack to retry. 21610 above all: Twilio
     // refusing to text a number that has opted out AT THE CARRIER — the exact number a

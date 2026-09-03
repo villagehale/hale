@@ -8,6 +8,7 @@ import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import { type MessageTransport, parseTransportAddress } from '~/lib/channel/transport-address';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { twilioConfig } from './config';
@@ -154,7 +155,46 @@ async function replyMediaUnsupported(
   );
   if (!decision.allowed) return 'rate_limited';
 
-  await intake.transport.send({ to: phoneE164, body: mediaUnsupportedReply() });
+  const { providerMessageId } = await intake.transport.send({
+    to: phoneE164,
+    body: mediaUnsupportedReply(),
+  });
+  // The line just sent is a real outbound: when the number belongs to an enrolled
+  // household member, their ledger must show it (rule #6). A stranger's MMS stays
+  // unrecorded by structural necessity, not omission — channel_messages.family_id is
+  // NOT NULL, so there is no row it could occupy before a family exists.
+  const owner = await resolveVerifiedChannelByPhone(database, phoneE164);
+  if (owner) {
+    const now = intake.now ?? inbound.receivedAt;
+    const [row] = await database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: owner.familyId,
+        parentUserId: owner.userId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        providerMessageId,
+        status: acceptedStatus('sms'),
+        body: null,
+        // A fixed line that answered instead of the coach — the same vocabulary the
+        // router's deflection replies persist (migration 0103).
+        replySource: 'fixed',
+        sentAt: now,
+      })
+      .returning({ id: schema.channelMessages.id });
+    const channelMessageId = row?.id;
+    if (!channelMessageId) {
+      throw new Error('twilio inbound: channel_messages insert returned no row');
+    }
+    await database.insert(schema.auditLog).values({
+      familyId: owner.familyId,
+      actor: owner.userId,
+      actionTaken: 'sms_reply_sent',
+      targetTable: 'channel_messages',
+      targetId: channelMessageId,
+    });
+  }
   return 'media_unsupported';
 }
 
