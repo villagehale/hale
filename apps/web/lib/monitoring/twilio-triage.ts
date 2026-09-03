@@ -362,8 +362,10 @@ export async function claimTriageDigestWindow(database: Database, now: Date): Pr
 // ── default deps ─────────────────────────────────────────────────────────────
 
 /** The SMS leg mirrors lib/channel/twilio/alert.ts: raw Messages.json POST from the
- * brand number, env-only config, timeout, named refusal. */
-async function sendTriageSms(
+ * brand number, env-only config, timeout, named refusal. Exported as the shared
+ * founder ops-SMS sender — delivery-health pages through this same leg rather than
+ * growing a third copy. */
+export async function sendFounderOpsSms(
   body: string,
   fetchImpl: typeof fetch,
 ): Promise<'sent' | 'failed' | 'skipped_not_configured'> {
@@ -388,12 +390,12 @@ async function sendTriageSms(
       },
     );
     if (!response.ok) {
-      console.error('twilio triage: SMS refused', { status: response.status });
+      console.error('founder ops SMS refused', { status: response.status });
       return 'failed';
     }
     return 'sent';
   } catch (err) {
-    console.error('twilio triage: SMS threw', {
+    console.error('founder ops SMS threw', {
       err: err instanceof Error ? err.name : 'unknown',
     });
     return 'failed';
@@ -471,6 +473,6 @@ export function defaultTwilioTriageDeps(fetchImpl: typeof fetch = fetch): Twilio
         );
       return rows[0]?.n ?? 0;
     },
-    sendSms: (body) => sendTriageSms(body, fetchImpl),
+    sendSms: (body) => sendFounderOpsSms(body, fetchImpl),
   };
 }
