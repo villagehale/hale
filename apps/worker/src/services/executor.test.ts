@@ -566,6 +566,31 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
     expect(result.detail).toMatchObject({ kind: 'calendar_placed', invites: TWO_PARENTS });
   });
 
+  it('does NOT re-invite a lost placement claim — the winning pass owns the invite', async () => {
+    // audit P1-4: the write came back already_written (another delivery placed the
+    // row). Re-sending here is exactly how a raced calendar_add doubled a parent's
+    // invite email; the skip is a named report value, never a silent absence.
+    const { deps } = makeClaimStore();
+    deps.addToCalendar = vi.fn(async () => ({
+      outcome: 'already_written' as const,
+      familyEventId: 'fe-77',
+    }));
+    const { requests, sender } = inviteSender(TWO_PARENTS);
+    deps.sendCalendarInvites = sender;
+
+    const result = await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_add', ADD) },
+      deps,
+    );
+
+    expect(requests).toEqual([]);
+    expect(result.detail).toMatchObject({
+      kind: 'calendar_placed',
+      outcome: 'already_written',
+      invites: { status: 'skipped_already_written' },
+    });
+  });
+
   it('re-invites on calendar_move (a REQUEST at a higher revision supersedes in place)', async () => {
     const { deps } = makeClaimStore();
     deps.moveCalendarEvent = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-9' }));

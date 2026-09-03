@@ -1,4 +1,5 @@
-import { boolean, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { children } from './children.js';
 import { familyEventSourceEnum } from './enums.js';
 import { families } from './families.js';
@@ -55,11 +56,22 @@ export const familyEvents = pgTable(
      * composer's listFamilyEventsInWindow, the ICS feed, the reviewer conflict check —
      * filters `deleted_at IS NULL`. Null = a live placement/occasion. */
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    /** The calendar_add action that placed this row, or null for every row no action
+     * placed (parent-authored, email-sourced). The INSERT carrying it is the executor's
+     * idempotency claim — the partial unique index below makes a concurrent or
+     * redelivered placement of the same action conflict instead of double-placing
+     * (migration 0106; the outbound_sends idiom on this table). Deliberately no FK:
+     * the stamp is a claim key, and both tables already cascade on family deletion. */
+    placedByActionId: uuid('placed_by_action_id'),
   },
   (table) => ({
     // The composer's read is WHERE family_id = ? AND starts_at IN [window] — index
     // the pair so a family's in-window scan is cheap.
     familyStartsIdx: index('family_events_family_starts_idx').on(table.familyId, table.startsAt),
+    // One placement per action — the claim's arbiter (migration 0106).
+    placedByActionUniq: uniqueIndex('family_events_placed_by_action_uniq')
+      .on(table.placedByActionId)
+      .where(sql`${table.placedByActionId} IS NOT NULL`),
   }),
 );
 

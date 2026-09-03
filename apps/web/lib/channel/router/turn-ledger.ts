@@ -63,6 +63,15 @@ export type TurnFailureReason =
    * went out with no model in the loop (smoke-alarm.ts). */
   | 'smoke_alarm';
 
+/**
+ * What became of an ANSWERED claim. 'already_answered' means another attempt's claim
+ * was in the database first — under at-least-once delivery that is a concurrent or
+ * crashed-and-redelivered consumer of the same turn, and the send THIS attempt just
+ * made was a duplicate reply. It is a named outcome (rule #11), never a silent one:
+ * the caller logs it, and the audit trail holds exactly one answered row either way.
+ */
+export type AnswerClaimOutcome = 'claimed' | 'already_answered';
+
 export interface InboundTurnLedger {
   stageOf(input: { familyId: string; channelMessageId: string }): Promise<TurnStage>;
   /**
@@ -72,12 +81,19 @@ export interface InboundTurnLedger {
    * never gets, because the re-drive would read the claim and stay quiet. Written as
    * early after the send as possible for the mirror-image reason — every write between
    * the transport accepting and the claim landing is a window where a crash re-answers.
+   *
+   * The write is itself a CLAIM (audit P1-4): a unique index (migration 0106) lets
+   * exactly one attempt record the answer, so a concurrent consumer — two drain runs
+   * holding the same expiry-redelivered job — cannot both write clean history. It
+   * cannot un-send the loser's duplicate text (send-then-claim makes that structural);
+   * what it does is make the duplicate a fact with a name instead of a second
+   * 'answered' row that reads as one turn behaving.
    */
   recordAnswered(input: {
     familyId: string;
     parentUserId: string;
     channelMessageId: string;
-  }): Promise<void>;
+  }): Promise<AnswerClaimOutcome>;
   /** Called before the turn is thrown back to the queue, so the re-drive knows the two
    * consuming steps are already paid for. */
   recordDeferred(input: {

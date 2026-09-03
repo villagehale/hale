@@ -295,7 +295,7 @@ describe('the offer is a proposal', () => {
       offDomain: { consider: async () => ({ status: 'in_domain' as const, fallback: null }) },
       limiter: new FakeRateLimiter(),
       now: () => now,
-      log: { info: () => {}, error: () => {} },
+      log: { info: () => {}, warn: () => {}, error: () => {} },
     };
   }
 

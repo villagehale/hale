@@ -265,20 +265,21 @@ function placementSkippedAudit(familyId: string, actionId: string, auditAction: 
  * calendar_add — insert a Hale-authored placement into family_events. Returns the
  * new row id (the reversal handle). Idempotent + audited; a re-drain recovers the
  * original id rather than inserting a duplicate.
+ *
+ * THE INSERT IS THE CLAIM (audit P1-4): the row carries `placed_by_action_id` and the
+ * partial unique index from migration 0106 decides, atomically, which of two
+ * concurrent deliveries places it — the old SELECT of audit_log was two statements
+ * with a race between them (relay-claim.ts's exact words), and this was the one
+ * executor path that skipped the outbound_sends idiom. The loser reads back the
+ * winner's row so the reversal handle it reports is the row that exists. Move/cancel
+ * below keep the audit read: their target row is already unique (the reversalHandle),
+ * so a doubled UPDATE cannot double anything a parent sees.
  */
 export function addToCalendar(
   input: CalendarPlacementInput,
   database: Database = db(),
 ): Promise<CalendarWriteResult> {
   return recordTransition<CalendarWriteResult>(async (tx) => {
-    const prior = await priorPlacementEventId(tx, input.actionId, CALENDAR_PLACED_ACTION);
-    if (prior) {
-      return {
-        value: { outcome: 'already_written' as const, familyEventId: prior },
-        audit: placementSkippedAudit(input.familyId, input.actionId, CALENDAR_PLACED_ACTION),
-      };
-    }
-
     const inserted = await tx
       .insert(schema.familyEvents)
       .values({
@@ -290,11 +291,39 @@ export function addToCalendar(
         location: input.location,
         source: 'placement',
         sensitive: input.sensitive,
+        placedByActionId: input.actionId,
+      })
+      .onConflictDoNothing({
+        target: schema.familyEvents.placedByActionId,
+        where: sql`${schema.familyEvents.placedByActionId} IS NOT NULL`,
       })
       .returning({ id: schema.familyEvents.id });
     const familyEventId = inserted[0]?.id;
     if (!familyEventId) {
-      throw new Error('addToCalendar: family_events insert returned no row');
+      const prior = await tx
+        .select({ id: schema.familyEvents.id })
+        .from(schema.familyEvents)
+        .where(
+          and(
+            eq(schema.familyEvents.familyId, input.familyId),
+            eq(schema.familyEvents.placedByActionId, input.actionId),
+          ),
+        )
+        .limit(1);
+      const priorId = prior[0]?.id;
+      if (!priorId) {
+        // The claim was lost yet no row carries the action — only reachable if the
+        // winner's transaction rolled back after ours read the conflict. Throw so the
+        // delivery re-queues and the next pass settles it (rule #8: never a silent
+        // half-outcome).
+        throw new Error(
+          `addToCalendar: lost the placement claim for action ${input.actionId} but no row carries it`,
+        );
+      }
+      return {
+        value: { outcome: 'already_written' as const, familyEventId: priorId },
+        audit: placementSkippedAudit(input.familyId, input.actionId, CALENDAR_PLACED_ACTION),
+      };
     }
 
     return {

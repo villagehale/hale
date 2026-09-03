@@ -84,9 +84,27 @@ const HOT_QUEUE_RETRY = { retryLimit: 2, retryDelay: 15, retryBackoff: true } as
  * {@link SEND_RETRIES_EXHAUSTED}). A DATA value: telemetry counts it. */
 export const JOB_RETRIES_EXHAUSTED = 'job_retries_exhausted';
 
-/** Per-job expiry: a killed pipeline re-queues in ~3min, not the 15min default
- * (recipe #6). Set on queue creation AND mirrored on the producer send. */
-export const HOT_QUEUE_EXPIRE_SECONDS = 180;
+/**
+ * Per-job expiry, ABOVE the longest a fetched job can legitimately still be running
+ * (audit P1-4). Set on queue creation AND mirrored on the producer send.
+ *
+ * The old 180s was justified as "a killed pipeline re-queues in ~3min" — but pg-boss
+ * expiry cannot tell killed from slow, and 180s is INSIDE a live turn's real
+ * wall-time: prod coach-channel-sms p95 was 73.2s with a known 120s+ server-tool
+ * tail, and a drain run marks a whole batch (up to {@link BATCH_SIZE}) active at
+ * fetch then works it sequentially, so a job's active-but-unstarted wait alone can
+ * approach the run's 700s budget. An expiry inside that envelope had pg-boss
+ * re-offering turns that were STILL RUNNING — the amplifier behind every double-reply
+ * seam in the P1-4 audit.
+ *
+ * 900s is just past the one hard ceiling the platform enforces: a drain invocation
+ * dies at maxDuration 800s, and every job is fetched after the invocation starts, so
+ * no job can be live past 800s of active time. Above that line, an expiry redelivery
+ * can only ever be a KILLED job. The price is killed-crash recovery in up to ~15min
+ * (expiry + the queue-maintenance tick) instead of ~3 — the founder's standing trade:
+ * a duplicate reply to a live parent is worse than a slow retry of a dead one.
+ */
+export const HOT_QUEUE_EXPIRE_SECONDS = 900;
 
 /** Bound a single drain run so it stays well under maxDuration 800 and can never
  * block the next tick. Each batch is fetched, processed, then the budget is
@@ -561,9 +579,10 @@ export async function drainHotQueues(
     retry: CHANNEL_SEND_RETRY,
     deadLetter: CHANNEL_SEND_DLQ,
   });
-  // NOT the hot expiry. A deep pass runs for minutes, and 180 seconds would have pg-boss's
-  // own timeout sweep reclaim the job while it is still working — so the parent gets the
-  // text, the job is redelivered, and the whole expensive run happens again (deep-queue.ts).
+  // Its OWN expiry, not the hot constant. The two are equal today — P1-4 raised the hot
+  // expiry to the same platform-wall ceiling that already priced this one — but a deep
+  // pass's number answers to its own minutes-long budget (deep-queue.ts) and must not
+  // silently follow future hot-lane tuning.
   await createQueueWithPolicy(deps.boss, DEEP_RESEARCH_QUEUE, {
     expireInSeconds: DEEP_RESEARCH_EXPIRE_SECONDS,
     retry: DEEP_RESEARCH_RETRY,
