@@ -161,6 +161,8 @@ export const AUDIT_VERBS = [
   'voice_call_completed',
   'voice_relay_ticket_replayed',
   'channel_sent',
+  // The delivery-truth sweep asserting a terminal state no receipt ever confirmed.
+  'delivery_status_forced',
   'push_sent',
   'email_reply_received',
   'email_reply_sent',
@@ -470,6 +472,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
+  // The sweep gave up waiting for a delivery receipt: the message may never have
+  // reached the phone, and the trail must say so rather than imply it arrived.
+  delivery_status_forced: {
+    sentence: 'a message Hale sent could not be confirmed as delivered',
+    family: 'problem',
+  },
   push_sent: { sentence: 'Hale sent you a notification', family: 'done' },
   email_reply_received: { sentence: 'you replied to one of Hale’s emails', family: 'note' },
   email_reply_sent: { sentence: 'Hale emailed you back', family: 'note' },

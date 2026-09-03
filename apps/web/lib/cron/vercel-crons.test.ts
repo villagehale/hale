@@ -35,12 +35,21 @@ function minuteField(schedule: string): string {
   return field;
 }
 
-/** The minutes of the hour a `*​/N` (or `*`) minute field fires at. */
+/** A minute field that fires more than once an hour: `*`, `*​/N`, or the
+ * offset-stepped `A-59/N` the staggered ten-minute sweeps use. */
+function isRecurring(field: string): boolean {
+  return field.includes('*') || field.includes('/');
+}
+
+/** The minutes of the hour a recurring minute field fires at. */
 function sweepMinutes(field: string): number[] {
   if (field === '*') return Array.from({ length: 60 }, (_, minute) => minute);
-  const step = Number(field.slice(2));
+  const stepped = /^(?:\*|(\d+)-59)\/(\d+)$/.exec(field);
+  if (!stepped) throw new Error(`unrecognized recurring minute field: ${field}`);
+  const start = Number(stepped[1] ?? 0);
+  const step = Number(stepped[2]);
   const minutes: number[] = [];
-  for (let minute = 0; minute < 60; minute += step) minutes.push(minute);
+  for (let minute = start; minute < 60; minute += step) minutes.push(minute);
   return minutes;
 }
 
@@ -56,7 +65,7 @@ describe('vercel cron schedule', () => {
     const byMinute = new Map<number, string[]>();
     for (const cron of crons()) {
       const field = minuteField(cron.schedule);
-      if (field.startsWith('*')) continue;
+      if (isRecurring(field)) continue;
       const minute = Number(field);
       byMinute.set(minute, [...(byMinute.get(minute) ?? []), cron.path]);
     }
@@ -69,7 +78,7 @@ describe('vercel cron schedule', () => {
     const all = crons();
     const occupied = new Set(
       all
-        .filter((cron) => cron.path !== EVERY_MINUTE && minuteField(cron.schedule).startsWith('*'))
+        .filter((cron) => cron.path !== EVERY_MINUTE && isRecurring(minuteField(cron.schedule)))
         .flatMap((cron) => sweepMinutes(minuteField(cron.schedule))),
     );
     // A positive control on the set itself: if this were empty the test would pass on
@@ -77,7 +86,7 @@ describe('vercel cron schedule', () => {
     expect(occupied.size).toBeGreaterThan(0);
 
     const collisions = all
-      .filter((cron) => !minuteField(cron.schedule).startsWith('*'))
+      .filter((cron) => !isRecurring(minuteField(cron.schedule)))
       .filter((cron) => occupied.has(Number(minuteField(cron.schedule))))
       .map((cron) => `${cron.path} @ ${cron.schedule}`);
     expect(collisions).toEqual([]);
