@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
+import { type QueueCreateOptions, createQueueWithPolicy } from '@hale/tools-contracts';
 import { HOT_SMS_CLIENT_OPTIONS } from '~/lib/pipeline/client';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
@@ -79,20 +80,12 @@ export function buildIntakeDeps(inboundTransport: MessageTransport = 'sms'): Int
   };
 }
 
+/** The wire shape queue declarations ride — the contract package's, re-exported so the
+ * producer's tests can type their recorded calls. */
+export type QueueOptions = QueueCreateOptions;
+
 /** The slice of pg-boss the producer uses, injected so the key and the policy are
  * assertable without a live queue (the ApproveQueue pattern). */
-export interface QueueOptions {
-  name?: string;
-  expireInSeconds?: number;
-  policy?: string;
-  /** The defer arc's ceiling, declared on the QUEUE so it converges on an environment
-   * where the queue already exists (see the pair below). */
-  retryLimit?: number;
-  retryDelay?: number;
-  retryBackoff?: boolean;
-  deadLetter?: string;
-}
-
 export interface MessageQueue {
   createQueue(name: string, options?: QueueOptions): Promise<void>;
   updateQueue(name: string, options?: QueueOptions): Promise<void>;
@@ -170,33 +163,26 @@ async function sendAndConfirm(
  * the key needs, the retry ceiling the defer arc runs on, and somewhere to put a turn
  * that runs out of both.
  *
- * Both statements are required, and `updateQueue` is the one that is easy to miss.
- * pg-boss's `create_queue` ends in ON CONFLICT DO NOTHING, so it cannot change anything
- * about a queue that already exists — and A3 already shipped this queue, which means
- * production holds a row with the wrong policy AND pg-boss's default retry (two
- * attempts, no delay, three seconds of "waiting out" an outage). `updateQueue` converges
- * it, and is a no-op UPDATE when the row is absent, so the pair is correct from either
- * starting state.
- *
- * The dead-letter queue is created FIRST because `job.dead_letter` is a foreign key onto
- * `queue(name)`: naming a queue that does not exist yet is a constraint violation, not a
- * warning.
+ * The declaration rides `createQueueWithPolicy` — dead letter first (`job.dead_letter`
+ * is a foreign key onto `queue(name)`), then createQueue AND updateQueue with the same
+ * options. The update half is the one that is easy to miss, and this queue is where the
+ * landmine was first stepped on: pg-boss's `create_queue` ends in ON CONFLICT DO
+ * NOTHING, so on any environment where A3 already shipped the queue, create alone would
+ * leave the wrong policy and pg-boss's default retry (two attempts, no delay, three
+ * seconds of "waiting out" an outage) in place forever. The helper's pair is correct
+ * from either starting state — and the queue-policy guard test is what keeps this path
+ * from ever quietly reverting to a bare create.
  */
 export async function sendChannelMessageReceived(
   queue: MessageQueue,
   job: ChannelMessageReceivedJob,
 ): Promise<void> {
-  await queue.createQueue(CHANNEL_MESSAGE_RECEIVED_DLQ, { name: CHANNEL_MESSAGE_RECEIVED_DLQ });
-
-  const options: QueueOptions = {
-    name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+  await createQueueWithPolicy(queue, CHANNEL_MESSAGE_RECEIVED_QUEUE, {
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
     policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
-    ...CHANNEL_MESSAGE_RECEIVED_RETRY,
+    retry: CHANNEL_MESSAGE_RECEIVED_RETRY,
     deadLetter: CHANNEL_MESSAGE_RECEIVED_DLQ,
-  };
-  await queue.createQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, options);
-  await queue.updateQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, options);
+  });
   await sendAndConfirm(queue, job);
 }
 

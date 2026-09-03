@@ -2,7 +2,7 @@ import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
-import { CATEGORY_CAPS } from './config';
+import { CATEGORY_CAPS, SEND_RETRIES_EXHAUSTED } from './config';
 import { SENT_STATUSES, acceptedStatus } from './ledger';
 import type { Channel, ChannelKind, LoopCategory, LoopMessage, RenderedContent } from './types';
 
@@ -171,6 +171,30 @@ export async function dispatchLoopMessage(
     results.push(await dispatchLeg(msg, channel, prefs, parent, now, ports));
   }
   return { legs: results };
+}
+
+/**
+ * The terminal record for a `channel.send` job that spent every retry (audit P0-3).
+ *
+ * Every attempt threw {@link ChannelRetryableError}, which by contract writes no ledger
+ * row — correct while retries remain, a silent grave once none do. The drain's
+ * dead-letter consumer calls this so the abandonment becomes a `failed` row named
+ * {@link SEND_RETRIES_EXHAUSTED} plus its paired analytics event (rule #11): the parent
+ * did not get the message, and now something says so.
+ *
+ * The leg is resolved the way dispatchLoopMessage would have resolved it — the pinned
+ * channel or the parent's exchange channel — so the row lands where the send would
+ * have. No adapter is touched and no dedupe key is consumed: if a caller ever re-drives
+ * the message, a real send must not find its key already spent by a failure.
+ */
+export async function recordAbandonedDispatch(
+  msg: LoopMessage,
+  ports: DispatchPorts,
+): Promise<DispatchResult> {
+  const prefs = await ports.loadPrefs(msg.parentUserId);
+  const channel = msg.channel ?? prefs.loopChannel;
+  await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: SEND_RETRIES_EXHAUSTED });
+  return { legs: [{ channel, outcome: 'failed', reason: SEND_RETRIES_EXHAUSTED }] };
 }
 
 async function dispatchLeg(

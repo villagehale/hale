@@ -37,6 +37,14 @@ const DEEP = DEEP_RESEARCH_QUEUE;
 const CHANNEL = 'channel.send';
 const INBOUND = 'channel.message.received';
 const DEAD = 'channel.message.received.dead';
+// The queue-policy invariant (audit P0-3): every work queue dead-letters somewhere
+// CONSUMED. Literals, not imports — these are data values in production's queue table.
+const CHANNEL_DEAD = 'channel.send.dead';
+const EVENTS_DEAD = 'events.ingested.dead';
+const ACTIONS_DEAD = 'actions.approved.dead';
+const RERANK_DEAD = 'village.rerank.dead';
+const DEEP_DEAD = 'deep.research.dead';
+const WORK_QUEUES = [EVENTS, ACTIONS, RERANK, CHANNEL, INBOUND, DEEP] as const;
 const FAMILY = '11111111-1111-1111-1111-111111111111';
 const PARENT = '22222222-2222-2222-2222-222222222222';
 
@@ -90,35 +98,27 @@ type QueueCall = {
   deadLetter?: string;
 };
 
+const ALL_QUEUES = [
+  EVENTS,
+  ACTIONS,
+  RERANK,
+  CHANNEL,
+  INBOUND,
+  DEAD,
+  DEEP,
+  CHANNEL_DEAD,
+  EVENTS_DEAD,
+  ACTIONS_DEAD,
+  RERANK_DEAD,
+  DEEP_DEAD,
+] as const;
+
 function makeFakeBoss(initial: Record<string, Pending>) {
-  const pending = new Map<string, Pending>([
-    [EVENTS, [...(initial[EVENTS] ?? [])]],
-    [ACTIONS, [...(initial[ACTIONS] ?? [])]],
-    [RERANK, [...(initial[RERANK] ?? [])]],
-    [CHANNEL, [...(initial[CHANNEL] ?? [])]],
-    [INBOUND, [...(initial[INBOUND] ?? [])]],
-    [DEAD, [...(initial[DEAD] ?? [])]],
-    [DEEP, [...(initial[DEEP] ?? [])]],
-  ]);
-  const completed = new Map<string, string[]>([
-    [EVENTS, []],
-    [ACTIONS, []],
-    [RERANK, []],
-    [CHANNEL, []],
-    [INBOUND, []],
-    [DEAD, []],
-    [DEEP, []],
-  ]);
-  const failed = new Map<string, string[]>([
-    [EVENTS, []],
-    [ACTIONS, []],
-    [RERANK, []],
-    [CHANNEL, []],
-    [INBOUND, []],
-    [DEAD, []],
-    [DEEP, []],
-  ]);
+  const pending = new Map<string, Pending>(ALL_QUEUES.map((q) => [q, [...(initial[q] ?? [])]]));
+  const completed = new Map<string, string[]>(ALL_QUEUES.map((q) => [q, []]));
+  const failed = new Map<string, string[]>(ALL_QUEUES.map((q) => [q, []]));
   const created: QueueCall[] = [];
+  const updated: QueueCall[] = [];
 
   const fetch = vi.fn(async (name: string, options: { batchSize: number }) => {
     const queue = pending.get(name) ?? [];
@@ -145,6 +145,9 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     createQueue: vi.fn(async (name: string, options?: Omit<QueueCall, 'name'> & { name?: string }) => {
       created.push({ ...options, name: options?.name ?? name });
     }),
+    updateQueue: vi.fn(async (name: string, options?: Omit<QueueCall, 'name'> & { name?: string }) => {
+      updated.push({ ...options, name: options?.name ?? name });
+    }),
     fetch,
     complete: vi.fn(async (name: string, id: string) => {
       completed.get(name)?.push(id);
@@ -159,6 +162,7 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     completed: (q: string) => completed.get(q) ?? [],
     failed: (q: string) => failed.get(q) ?? [],
     created,
+    updated,
   };
 }
 
@@ -170,6 +174,7 @@ function makeDeps(boss: DrainBoss, overrides: Partial<DrainDeps['handlers']> = {
       executeApprovedAction: vi.fn(async () => undefined),
       rerank: vi.fn(async () => undefined),
       channelSend: vi.fn(async () => undefined),
+      channelSendDead: vi.fn(async () => undefined),
       channelMessage: vi.fn(async () => undefined),
       deepResearch: vi.fn(async () => undefined),
       ...overrides,
@@ -207,7 +212,20 @@ describe('drainHotQueues', () => {
     await drainHotQueues(makeDeps(boss));
 
     const order = (boss.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([name]) => name);
-    expect(order).toEqual([CHANNEL, INBOUND, DEAD, EVENTS, ACTIONS, RERANK, DEEP]);
+    expect(order).toEqual([
+      CHANNEL,
+      CHANNEL_DEAD,
+      INBOUND,
+      DEAD,
+      EVENTS,
+      EVENTS_DEAD,
+      ACTIONS,
+      ACTIONS_DEAD,
+      RERANK,
+      RERANK_DEAD,
+      DEEP_DEAD,
+      DEEP,
+    ]);
   });
 
   /**
@@ -437,21 +455,22 @@ describe('drainHotQueues', () => {
       name === EVENTS ? fullBatch.map((j) => ({ ...j })) : [],
     );
 
-    // now() call 0 seeds the deadlines (= 0 + budget); calls 1-3 are the send, inbound
-    // and dead-letter queues' while checks (all fetch nothing and return); call 4 is the
-    // events queue's first check, under the deadline → one batch is fetched + processed;
-    // call 5 jumps past the deadline → the loop stops, and every later queue's first
-    // check is past it too, so nothing else is fetched.
+    // now() call 0 seeds the deadlines (= 0 + budget); calls 1-4 are the send queue, its
+    // dead letter, the inbound queue and ITS dead letter's while checks (all fetch
+    // nothing and return); call 5 is the events queue's first check, under the deadline
+    // → one batch is fetched + processed; call 6 jumps past the deadline → the loop
+    // stops, and every later queue's first check is past it too, so nothing else is
+    // fetched.
     let calls = 0;
     const deps: DrainDeps = {
       ...makeDeps(boss),
-      now: () => (calls++ < 5 ? 0 : 1_000_000_000),
+      now: () => (calls++ < 6 ? 0 : 1_000_000_000),
     };
 
     const summary = await drainHotQueues(deps);
 
-    expect(boss.fetch).toHaveBeenCalledTimes(4);
-    expect(boss.fetch).toHaveBeenNthCalledWith(4, EVENTS, { batchSize: 10 });
+    expect(boss.fetch).toHaveBeenCalledTimes(5);
+    expect(boss.fetch).toHaveBeenNthCalledWith(5, EVENTS, { batchSize: 10 });
     expect(summary.processed).toBe(10);
   });
 
@@ -722,9 +741,7 @@ describe('drainHotQueues — queue slice', () => {
 
     await drainHotQueues(makeDeps(boss), { queues: INBOUND_TURN_QUEUES });
 
-    expect(created.map((call) => call.name)).toEqual(
-      expect.arrayContaining([EVENTS, ACTIONS, RERANK, CHANNEL, INBOUND, DEAD]),
-    );
+    expect(created.map((call) => call.name)).toEqual(expect.arrayContaining([...ALL_QUEUES]));
   });
 
   it('drains every queue when no slice is given', async () => {
@@ -868,6 +885,133 @@ describe('deep.research', () => {
 
     expect(failed(DEEP)).toEqual(['d1']);
     expect(completed(DEEP)).toEqual([]);
+    expect(summary.failed).toBe(1);
+  });
+});
+
+/**
+ * THE QUEUE-POLICY INVARIANT (SMS reliability audit P0-3). `channel.send` rode pg-boss's
+ * defaults — two retries zero seconds apart, no dead letter — so a transient Twilio blip
+ * during a weekly-brief burst burned all three attempts inside the same blip and the
+ * composed message stopped existing with no ledger row and no trace. The inbound turn
+ * queue was cured of exactly this class (retryLimit 8 + backoff + a consumed DLQ); these
+ * tests pin that NO work queue can ride defaults again.
+ */
+describe('every work queue declares an explicit retry policy and a dead letter', () => {
+  it('declares retryLimit, retryDelay, retryBackoff and deadLetter on every work queue', async () => {
+    const { boss, created } = makeFakeBoss({});
+    await drainHotQueues(makeDeps(boss));
+
+    for (const queue of WORK_QUEUES) {
+      const call = created.find((c) => c.name === queue);
+      expect(call, `${queue} was never declared`).toBeTruthy();
+      expect(call?.retryLimit, `${queue} rides the default retry limit`).toBeGreaterThan(0);
+      expect(call?.retryDelay, `${queue} rides the default zero retry delay`).toBeGreaterThan(0);
+      expect(call?.retryBackoff, `${queue} retries with no backoff`).toBe(true);
+      expect(call?.deadLetter, `${queue} has nowhere to dead-letter`).toMatch(/\.dead$/);
+    }
+  });
+
+  /** The cure, applied: the same arc the inbound turn queue survives outages on —
+   * roughly one to two hours of backoff with the first attempts inside the first
+   * minutes, which is where provider blips overwhelmingly end. */
+  it("gives channel.send the inbound cure's retry arc and its own dead letter", async () => {
+    const { boss, created } = makeFakeBoss({});
+    await drainHotQueues(makeDeps(boss));
+
+    expect(created).toContainEqual(
+      expect.objectContaining({
+        name: CHANNEL,
+        retryLimit: 8,
+        retryDelay: 15,
+        retryBackoff: true,
+        deadLetter: CHANNEL_DEAD,
+      }),
+    );
+    // "Matching the inbound cure" is a relation, not a coincidence of two literals.
+    expect(CHANNEL_MESSAGE_RECEIVED_RETRY).toEqual({
+      retryLimit: 8,
+      retryDelay: 15,
+      retryBackoff: true,
+    });
+  });
+
+  /** pg-boss's `dead_letter` is a foreign key onto `queue(name)` — every pair, not just
+   * the inbound one, must land dead-letter-first. */
+  it('creates every dead letter before the queue that names it', async () => {
+    const { boss, created } = makeFakeBoss({});
+    await drainHotQueues(makeDeps(boss));
+
+    const names = created.map((c) => c.name);
+    for (const queue of WORK_QUEUES) {
+      const dlq = created.find((c) => c.name === queue)?.deadLetter;
+      expect(dlq, `${queue} has no dead letter`).toBeTruthy();
+      expect(names.indexOf(String(dlq)), `${dlq} created after ${queue}`).toBeLessThan(
+        names.indexOf(queue),
+      );
+    }
+  });
+
+  /** The landmine the inbound queue already stepped on: create_queue ends in ON
+   * CONFLICT DO NOTHING, so production queues that already exist keep pg-boss defaults
+   * unless updateQueue converges them with the SAME options. */
+  it('CONVERGES every existing work queue: updateQueue mirrors createQueue', async () => {
+    const { boss, created, updated } = makeFakeBoss({});
+    await drainHotQueues(makeDeps(boss));
+
+    for (const queue of WORK_QUEUES) {
+      const declared = created.find((c) => c.name === queue);
+      expect(updated, `${queue} is never converged`).toContainEqual(declared);
+    }
+  });
+});
+
+/**
+ * The consumed half of the invariant for the queue P0-3 was about: a `channel.send` job
+ * that spent every retry is handed to the ledger writer, so the abandonment is a
+ * `failed` channel_messages row (rule #11) — never a log-only grave, never a job that
+ * quietly stops existing.
+ */
+describe('channel.send.dead', () => {
+  it('hands a dead send to the channelSendDead handler and counts it dropped', async () => {
+    const channelSendDead = vi.fn(async () => undefined);
+    const { boss, completed } = makeFakeBoss({
+      [CHANNEL_DEAD]: [{ id: 'x1', data: validChannelSend() }],
+    });
+
+    const summary = await drainHotQueues(makeDeps(boss, { channelSendDead }));
+
+    expect(channelSendDead).toHaveBeenCalledWith(
+      expect.objectContaining({ templateKey: 'weekly-plan-v1', familyId: FAMILY }),
+    );
+    expect(completed(CHANNEL_DEAD)).toEqual(['x1']);
+    expect(summary.dropped).toBe(1);
+  });
+
+  it('DROPS a schema-invalid dead payload without calling the handler', async () => {
+    const channelSendDead = vi.fn(async () => undefined);
+    const { boss, completed } = makeFakeBoss({
+      [CHANNEL_DEAD]: [{ id: 'bad', data: { not: 'a send' } }],
+    });
+
+    const summary = await drainHotQueues(makeDeps(boss, { channelSendDead }));
+
+    expect(channelSendDead).not.toHaveBeenCalled();
+    expect(completed(CHANNEL_DEAD)).toEqual(['bad']);
+    expect(summary.dropped).toBe(1);
+  });
+
+  it('re-queues when the ledger write itself throws — the abandonment row is never silently lost', async () => {
+    const channelSendDead = vi.fn(async () => {
+      throw new Error('db down');
+    });
+    const { boss, failed } = makeFakeBoss({
+      [CHANNEL_DEAD]: [{ id: 'x1', data: validChannelSend() }],
+    });
+
+    const summary = await drainHotQueues(makeDeps(boss, { channelSendDead }));
+
+    expect(failed(CHANNEL_DEAD)).toEqual(['x1']);
     expect(summary.failed).toBe(1);
   });
 });

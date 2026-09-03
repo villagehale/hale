@@ -93,3 +93,32 @@ export const CHANNEL_MESSAGE_RECEIVED_DLQ = 'channel.message.received.dead';
 /** The log outcome for a turn that ran out of retries. A DATA value: it is what
  * telemetry counts, so it is never renamed with the code. */
 export const TURN_EXPIRED_UNANSWERED = 'turn_expired_unanswered';
+
+/**
+ * SMS reliability audit P0-3 — the OUTBOUND ceiling, cut from the same cloth as
+ * {@link CHANNEL_MESSAGE_RECEIVED_RETRY}. `channel.send` used to ride pg-boss's
+ * defaults (two retries zero seconds apart, no dead letter), so a transient Twilio
+ * blip during a weekly-brief burst burned all three attempts inside the same blip and
+ * the composed message stopped existing with no ledger row and no trace.
+ *
+ * Same arc as the inbound cure — 15s doubling to ~an hour, first attempts inside the
+ * first minutes where provider blips overwhelmingly end — but the trade past the
+ * ceiling is the opposite one: a weekly brief or a reminder arriving an hour late is
+ * still worth having (nobody is holding a phone waiting on it), so the arc leans on
+ * the later, longer waits rather than giving up early. Past the ceiling the job
+ * dead-letters into {@link CHANNEL_SEND_DLQ}, whose drain consumer writes a terminal
+ * `failed` channel_messages row — a countable outcome, never a log-only grave.
+ */
+export const CHANNEL_SEND_RETRY = {
+  retryLimit: 8,
+  retryDelay: 15,
+  retryBackoff: true,
+} as const;
+
+/** Where a channel.send job that spent every retry lands. Consumed by lib/cron/drain,
+ * which records the abandonment on the ledger (dispatch.ts recordAbandonedDispatch). */
+export const CHANNEL_SEND_DLQ = 'channel.send.dead';
+
+/** The ledger `error_code` for a send that ran out of retries. A DATA value: it is
+ * what the founder digest and telemetry count, so it is never renamed with the code. */
+export const SEND_RETRIES_EXHAUSTED = 'send_retries_exhausted';

@@ -2,8 +2,10 @@ import {
   approvedActionPayloadSchema,
   type ChannelMessageReceivedPayload,
   type DeepResearchPayload,
+  type QueueCreateOptions,
   channelMessageReceivedPayloadSchema,
   channelSendJobPayloadSchema,
+  createQueueWithPolicy,
   deepResearchPayloadSchema,
   ingestedEventPayloadSchema,
   rerankJobPayloadSchema,
@@ -17,15 +19,20 @@ import PgBoss from 'pg-boss';
 import {
   DEEP_RESEARCH_BATCH_SIZE,
   DEEP_RESEARCH_BUDGET_MS,
+  DEEP_RESEARCH_DLQ,
   DEEP_RESEARCH_EXPIRE_SECONDS,
   DEEP_RESEARCH_QUEUE,
+  DEEP_RESEARCH_RETRY,
 } from '~/lib/channel/activity/deep-queue';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
+  CHANNEL_SEND_DLQ,
   CHANNEL_SEND_QUEUE,
+  CHANNEL_SEND_RETRY,
+  SEND_RETRIES_EXHAUSTED,
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
 import type { LoopMessage } from '~/lib/channel/types';
@@ -53,6 +60,30 @@ const ACTIONS_QUEUE = 'actions.approved';
  * village_feed_rank, so the home feed read is a pure DB lookup. */
 const RERANK_QUEUE = 'village.rerank';
 
+/**
+ * The queue-policy invariant (audit P0-3): NO queue rides pg-boss defaults, so each of
+ * the drain's queues dead-letters somewhere this plan CONSUMES. Data values, like the
+ * queue names above them.
+ */
+const EVENTS_DLQ = 'events.ingested.dead';
+const ACTIONS_DLQ = 'actions.approved.dead';
+const RERANK_DLQ = 'village.rerank.dead';
+
+/**
+ * Explicit retry for the three orchestrator-bound queues. pg-boss's ATTEMPT COUNT (two
+ * retries) is kept on purpose — these handlers' idempotency is checkpoint-based
+ * (dedup-hash / approvable-state / unchanged-candidate short-circuits), and more
+ * at-least-once deliveries is not what any of them wants — but the default ZERO SECONDS
+ * between attempts is the audit's bug shape: all three attempts burned inside the same
+ * transient blip. Fifteen seconds doubling once spaces them across drain ticks instead.
+ */
+const HOT_QUEUE_RETRY = { retryLimit: 2, retryDelay: 15, retryBackoff: true } as const;
+
+/** The log outcome for a job that spent every retry on a queue whose dead letter owes
+ * nothing more than a count (the ledger-owing one is channel.send — see
+ * {@link SEND_RETRIES_EXHAUSTED}). A DATA value: telemetry counts it. */
+export const JOB_RETRIES_EXHAUSTED = 'job_retries_exhausted';
+
 /** Per-job expiry: a killed pipeline re-queues in ~3min, not the 15min default
  * (recipe #6). Set on queue creation AND mirrored on the producer send. */
 export const HOT_QUEUE_EXPIRE_SECONDS = 180;
@@ -77,18 +108,10 @@ const CHANNEL_SEND_BUDGET_MS = 120_000;
  * fetch/complete/fail/expiry control flow is unit-testable without a live
  * pg-boss (rule #8: this fakes the QUEUE, never the LLM). */
 export interface DrainBoss {
-  createQueue(
-    name: string,
-    options?: {
-      name: string;
-      expireInSeconds?: number;
-      policy?: string;
-      retryLimit?: number;
-      retryDelay?: number;
-      retryBackoff?: boolean;
-      deadLetter?: string;
-    },
-  ): Promise<void>;
+  createQueue(name: string, options?: QueueCreateOptions): Promise<void>;
+  /** The convergence half of the queue-policy pair — create_queue is ON CONFLICT DO
+   * NOTHING, so update is what moves a queue that already exists off pg-boss defaults. */
+  updateQueue(name: string, options?: QueueCreateOptions): Promise<void>;
   fetch<T>(name: string, options: { batchSize: number }): Promise<Array<{ id: string; data: T }>>;
   complete(name: string, id: string): Promise<void>;
   fail(name: string, id: string, data: object): Promise<void>;
@@ -105,6 +128,12 @@ export interface DrainHandlers {
    * error throws so the job re-queues; a permanent one records a failed row and
    * completes. Injected so the drain loop is testable without a live provider. */
   channelSend: (message: LoopMessage) => Promise<void>;
+  /** Record the abandonment of a channel.send job that spent every retry: a terminal
+   * `failed` channel_messages row named send_retries_exhausted plus its paired
+   * analytics event (dispatch.ts recordAbandonedDispatch) — a ledger row, never a
+   * log-only grave (rule #11). Bound to a db by the caller; a throw re-queues the
+   * dead-letter job, so a DB blip cannot lose the abandonment record either. */
+  channelSendDead: (message: LoopMessage) => Promise<void>;
   /** Route one inbound text through C1 (VIL-220), bound to a db + the real ports by
    * the caller. A throw re-queues the job; the parent's message is already durably on
    * the ledger, so a retry re-reads it rather than losing it. Injected so the drain
@@ -319,6 +348,62 @@ async function processExpiredTurnJob(
 }
 
 /**
+ * THE OUTBOUND CEILING (audit P0-3) — a composed message that spent every retry and was
+ * never sent. Every attempt threw ChannelRetryableError, which writes no ledger row by
+ * contract, so WITHOUT this consumer the weekly brief a parent never got would exist
+ * nowhere but three log lines. The handler writes the terminal `failed` row named
+ * send_retries_exhausted (rule #11: a ledger row, never a log-only grave); a throw from
+ * it propagates so the dead-letter job re-queues and the record is eventually written.
+ * Counted as `dropped` — the send did not happen.
+ */
+async function processDeadSendJob(
+  deps: DrainDeps,
+  job: { id: string; data: unknown },
+): Promise<'processed' | 'dropped'> {
+  const parsed = channelSendJobPayloadSchema.safeParse(job.data);
+  if (!parsed.success) {
+    deps.log.error(
+      { queue: CHANNEL_SEND_DLQ, jobId: job.id, issues: parsed.error.issues },
+      'drain: channel.send dead-letter payload failed contract validation — dropping',
+    );
+    return 'dropped';
+  }
+  deps.log.error(
+    {
+      queue: CHANNEL_SEND_DLQ,
+      jobId: job.id,
+      familyId: parsed.data.familyId,
+      templateKey: parsed.data.templateKey,
+      category: parsed.data.category,
+      outcome: SEND_RETRIES_EXHAUSTED,
+    },
+    'drain: channel.send ran out of retries — recording the abandoned message on the ledger',
+  );
+  await deps.handlers.channelSendDead(parsed.data);
+  return 'dropped';
+}
+
+/**
+ * The dead letters that owe a COUNT and nothing more: an orchestrator or rerank job
+ * that spent every retry has its own durable residue (the event row, the action row,
+ * the open promise the hourly sweep re-selects), so the named outcome here is the
+ * whole obligation (rule #11) — what must never happen is the pg-boss default, a job
+ * that quietly stops existing. Ids only, never a payload (rule #1).
+ */
+function processDeadJobFor(queue: string) {
+  return async (
+    deps: DrainDeps,
+    job: { id: string; data: unknown },
+  ): Promise<'processed' | 'dropped'> => {
+    deps.log.error(
+      { queue, jobId: job.id, outcome: JOB_RETRIES_EXHAUSTED },
+      'drain: job ran out of retries — dead-lettered',
+    );
+    return 'dropped';
+  };
+}
+
+/**
  * Fetch + process a single queue until it drains or the wall-clock budget expires.
  * Each job: complete() on a clean run / drop, fail() on a handler throw — a failed job
  * is NEVER silently completed (recipe #1), so a transient crash re-queues rather than
@@ -382,11 +467,20 @@ async function drainQueue(
  */
 const DRAIN_PLAN = [
   { queue: CHANNEL_SEND_QUEUE, process: processChannelSendJob, budgetMs: CHANNEL_SEND_BUDGET_MS },
+  // Each dead letter drains right behind its queue — an unread DLQ is a silent drop
+  // with extra steps (rule #11). All are near-empty near-free reads on a healthy tick.
+  { queue: CHANNEL_SEND_DLQ, process: processDeadSendJob },
   { queue: CHANNEL_MESSAGE_RECEIVED_QUEUE, process: processChannelMessageJob },
   { queue: CHANNEL_MESSAGE_RECEIVED_DLQ, process: processExpiredTurnJob },
   { queue: EVENTS_QUEUE, process: processIngestedJob },
+  { queue: EVENTS_DLQ, process: processDeadJobFor(EVENTS_DLQ) },
   { queue: ACTIONS_QUEUE, process: processApprovedJob },
+  { queue: ACTIONS_DLQ, process: processDeadJobFor(ACTIONS_DLQ) },
   { queue: RERANK_QUEUE, process: processRerankJob },
+  { queue: RERANK_DLQ, process: processDeadJobFor(RERANK_DLQ) },
+  // BEFORE the queue it belongs to, unlike every pair above: the deep queue eats
+  // whatever the tick has left, so a dead letter drained after it could starve forever.
+  { queue: DEEP_RESEARCH_DLQ, process: processDeadJobFor(DEEP_RESEARCH_DLQ) },
   // LAST, AND ONE AT A TIME. Every queue above it holds jobs measured in seconds; this
   // one holds a job measured in minutes, so it may only have what the tick has left. The
   // batch size is the load-bearing half: `drainQueue` re-checks its deadline between
@@ -431,51 +525,58 @@ export interface DrainOptions {
  * tests; the route calls runDrainCron, which builds the real pg-boss deps.
  *
  * Every queue is DECLARED on every run even when only a slice is drained — the
- * declarations are idempotent (`ON CONFLICT DO NOTHING`) and the dead-letter target is a
- * foreign key onto the queue table, so a partial declaration is the one way to leave the
- * inbound queue unable to be created at all.
+ * declarations are idempotent (`ON CONFLICT DO NOTHING` + a converging update) and the
+ * dead-letter target is a foreign key onto the queue table, so a partial declaration is
+ * the one way to leave the inbound queue unable to be created at all.
+ *
+ * Every declaration goes through `createQueueWithPolicy` (audit P0-3): an explicit
+ * retry policy and a consumed dead letter are the price of a queue existing, and the
+ * create+update pair inside the helper is what moves the queues that ALREADY exist on
+ * production off pg-boss's defaults.
  */
 export async function drainHotQueues(
   deps: DrainDeps,
   options: DrainOptions = {},
 ): Promise<DrainSummary> {
-  await deps.boss.createQueue(EVENTS_QUEUE, {
-    name: EVENTS_QUEUE,
+  await createQueueWithPolicy(deps.boss, EVENTS_QUEUE, {
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    retry: HOT_QUEUE_RETRY,
+    deadLetter: EVENTS_DLQ,
   });
-  await deps.boss.createQueue(ACTIONS_QUEUE, {
-    name: ACTIONS_QUEUE,
+  await createQueueWithPolicy(deps.boss, ACTIONS_QUEUE, {
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    retry: HOT_QUEUE_RETRY,
+    deadLetter: ACTIONS_DLQ,
   });
-  await deps.boss.createQueue(RERANK_QUEUE, {
-    name: RERANK_QUEUE,
+  await createQueueWithPolicy(deps.boss, RERANK_QUEUE, {
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    retry: HOT_QUEUE_RETRY,
+    deadLetter: RERANK_DLQ,
   });
-  await deps.boss.createQueue(CHANNEL_SEND_QUEUE, {
-    name: CHANNEL_SEND_QUEUE,
+  // The audit's P0-3 queue itself: the inbound cure's retry arc, because a transient
+  // provider blip must never again out-live two zero-second retries and kill a composed
+  // brief — and a dead letter whose consumer writes the failed ledger row.
+  await createQueueWithPolicy(deps.boss, CHANNEL_SEND_QUEUE, {
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    retry: CHANNEL_SEND_RETRY,
+    deadLetter: CHANNEL_SEND_DLQ,
   });
   // NOT the hot expiry. A deep pass runs for minutes, and 180 seconds would have pg-boss's
   // own timeout sweep reclaim the job while it is still working — so the parent gets the
   // text, the job is redelivered, and the whole expensive run happens again (deep-queue.ts).
-  await deps.boss.createQueue(DEEP_RESEARCH_QUEUE, {
-    name: DEEP_RESEARCH_QUEUE,
+  await createQueueWithPolicy(deps.boss, DEEP_RESEARCH_QUEUE, {
     expireInSeconds: DEEP_RESEARCH_EXPIRE_SECONDS,
+    retry: DEEP_RESEARCH_RETRY,
+    deadLetter: DEEP_RESEARCH_DLQ,
   });
-  // Before the queue that names it: pg-boss's `dead_letter` is a foreign key onto
-  // `queue(name)`.
-  await deps.boss.createQueue(CHANNEL_MESSAGE_RECEIVED_DLQ, { name: CHANNEL_MESSAGE_RECEIVED_DLQ });
-  // The one queue with a POLICY, and now with a retry ceiling as well. Both are
-  // properties of the queue rather than of this loop: pg-boss only enforces a singleton
-  // key where the policy says to, and only re-drives a deferred turn as far as the
-  // retry columns allow. Created here as well as by the producer so a cold start in
-  // either order lands the same queue — but note that create alone cannot CHANGE an
-  // existing queue, so the producer's create+update pair is what converges production.
-  await deps.boss.createQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, {
-    name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+  // The one queue with a POLICY. It is a property of the queue rather than of this
+  // loop: pg-boss only enforces a singleton key where the policy says to. Declared here
+  // as well as by the producer (channel/twilio/deps.ts) so a cold start in either order
+  // lands the same queue.
+  await createQueueWithPolicy(deps.boss, CHANNEL_MESSAGE_RECEIVED_QUEUE, {
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
     policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
-    ...CHANNEL_MESSAGE_RECEIVED_RETRY,
+    retry: CHANNEL_MESSAGE_RECEIVED_RETRY,
     deadLetter: CHANNEL_MESSAGE_RECEIVED_DLQ,
   });
 
@@ -547,7 +648,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // scoped to the runtime entrypoint so importing a drain constant stays test-light.
   const { routeInboundChannelMessage } = await import('~/lib/channel/router/wiring');
   const { keepPromiseNow } = await import('~/lib/channel/activity/deep-job');
-  const { dispatchLoopMessage } = await import('~/lib/channel/dispatch');
+  const { dispatchLoopMessage, recordAbandonedDispatch } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
   const { productionChannels } = await import('~/lib/channel/adapters/production');
@@ -579,6 +680,11 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
           rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
           channelSend: (message) =>
             dispatchLoopMessage(
+              message,
+              buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
+            ).then(() => undefined),
+          channelSendDead: (message) =>
+            recordAbandonedDispatch(
               message,
               buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
             ).then(() => undefined),

@@ -8,6 +8,14 @@
 import type { ActionType } from '@hale/types';
 import { z } from 'zod';
 
+export {
+  type PolicyQueueCreator,
+  type QueueCreateOptions,
+  type QueuePolicySpec,
+  type QueueRetryPolicy,
+  createQueueWithPolicy,
+} from './queue-policy';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // events.ingested — the pg-boss payload contract between apps/web (producer)
 // and apps/worker (consumer). Defined once here so a field rename on either

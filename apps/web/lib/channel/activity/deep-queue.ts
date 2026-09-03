@@ -1,4 +1,8 @@
-import type { DeepResearchPayload } from '@hale/tools-contracts';
+import {
+  type DeepResearchPayload,
+  type QueueCreateOptions,
+  createQueueWithPolicy,
+} from '@hale/tools-contracts';
 import type { ActivityPromiseRecordOutcome } from './commitment';
 import { owesDepth } from './evidence';
 
@@ -86,6 +90,25 @@ export const DEEP_RESEARCH_BATCH_SIZE = 1;
 export const DEEP_RESEARCH_BUDGET_MS = 300_000;
 
 /**
+ * The retry arc (queue-policy invariant, audit P0-3 — no queue rides pg-boss defaults).
+ * TWO retries, kept at pg-boss's own count on purpose: a deep job is minutes of wall
+ * clock and dollars of tokens, so more attempts multiply spend, and a promise the queue
+ * abandons is still OPEN on the ledger for the hourly sweep — the system this queue
+ * accelerated works without it. Sixty seconds' backoff, because a retry seconds after an
+ * infrastructure fault lands on the same fault.
+ */
+export const DEEP_RESEARCH_RETRY = {
+  retryLimit: 2,
+  retryDelay: 60,
+  retryBackoff: true,
+} as const;
+
+/** Where a deep job that spent every retry lands. Consumed by lib/cron/drain (a named
+ * log outcome — the promise itself stays open for the hourly sweep, so nothing is owed
+ * a ledger write here). */
+export const DEEP_RESEARCH_DLQ = 'deep.research.dead';
+
+/**
  * ONE JOB PER PROMISE, FOREVER — and it is the job ID that guarantees it, not the key.
  *
  * pg-boss's insert ends in `ON CONFLICT DO NOTHING`, so a second send under the same id
@@ -114,7 +137,8 @@ export function deepResearchJobOptions(payload: DeepResearchPayload): {
 /** The minimal pg-boss surface the producer uses, injected so the id, the key and the
  * expiry are assertable without a live queue (the `MessageQueue` pattern). */
 export interface DeepResearchQueue {
-  createQueue(name: string, options?: { name: string; expireInSeconds?: number }): Promise<void>;
+  createQueue(name: string, options?: QueueCreateOptions): Promise<void>;
+  updateQueue(name: string, options?: QueueCreateOptions): Promise<void>;
   send(
     name: string,
     data: DeepResearchPayload,
@@ -154,9 +178,10 @@ export async function dispatchDeepResearch(
 ): Promise<DeepDispatchOutcome> {
   try {
     const queue = await resolve();
-    await queue.createQueue(DEEP_RESEARCH_QUEUE, {
-      name: DEEP_RESEARCH_QUEUE,
+    await createQueueWithPolicy(queue, DEEP_RESEARCH_QUEUE, {
       expireInSeconds: DEEP_RESEARCH_EXPIRE_SECONDS,
+      retry: DEEP_RESEARCH_RETRY,
+      deadLetter: DEEP_RESEARCH_DLQ,
     });
     const created = await queue.send(
       DEEP_RESEARCH_QUEUE,
