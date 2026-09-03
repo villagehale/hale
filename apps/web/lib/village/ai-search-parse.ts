@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { recordAgentRun } from '~/lib/agent-run';
@@ -45,12 +46,14 @@ const MAX_TOKENS = 512;
 
 let defaultClient: Anthropic | undefined;
 
+/** A parent is at the search bar and this is one small JSON round trip (MAX_TOKENS
+ * 512, no tools): 10s is generous for it, and one retry still lands inside the
+ * action's patience. Bare construction rode the SDK's 600s default and a stall
+ * pinned the server action until the platform killed it (audit P1-7). */
+const PARSE_CLIENT_OPTIONS = { timeout: 10_000, maxRetries: 1 } as const;
+
 function anthropicClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  defaultClient ??= new Anthropic({ apiKey });
+  defaultClient ??= budgetedAnthropic(PARSE_CLIENT_OPTIONS);
   return defaultClient;
 }
 

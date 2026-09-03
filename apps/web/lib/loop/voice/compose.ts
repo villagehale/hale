@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, type Skill, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { type RecordAgentRunInput, recordAgentRun } from '~/lib/agent-run';
@@ -62,7 +63,9 @@ let defaultClient: Anthropic | undefined;
 export function voiceClient(): AgentClient | null {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || process.env.VOICE_DISABLED === 'true') return null;
-  defaultClient ??= new Anthropic({ apiKey });
+  // Callers span crons AND the intake radar inside an inbound text turn — the
+  // tightest host governs, so this is the SMS-lane budget (audit P1-7).
+  defaultClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
   return defaultClient;
 }
 

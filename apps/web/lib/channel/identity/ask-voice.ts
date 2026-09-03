@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
@@ -280,9 +281,8 @@ let cached: Anthropic | undefined;
  * named `client_unavailable` deferral instead of a crash at wiring time.
  */
 export function identityAskClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set');
-  cached ??= new Anthropic({ apiKey });
+  // Composes inside an inbound text turn — the SMS-lane budget governs (P1-7).
+  cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
   return cached;
 }
 

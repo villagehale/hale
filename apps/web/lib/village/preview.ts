@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { budgetedAnthropic } from '~/lib/pipeline/client';
 import type { FamilyStage } from '@hale/types';
 import { loadCoachModel } from '~/lib/coach/model';
 import {
@@ -144,6 +145,11 @@ export async function discoverPreview(
 
 let anthropicClient: Anthropic | undefined;
 
+/** The one model call an OPEN, pre-auth endpoint pays for: 30s bounds the visitor's
+ * wait, and NO retry — a second helping doubles anonymous spend on a rate-limited
+ * endpoint whose visitor has long since scrolled on (audit P1-7). */
+const PREVIEW_CLIENT_OPTIONS = { timeout: 30_000, maxRetries: 0 } as const;
+
 /**
  * Production deps: the shared Anthropic client + the worker-sourced prompt/model
  * loaders (the same single sources `discoverForFamily` uses). The Route Handler
@@ -152,11 +158,7 @@ let anthropicClient: Anthropic | undefined;
  * test asserts the no-DB orchestration + privacy boundary).
  */
 export function defaultPreviewDeps(): PreviewDeps {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  anthropicClient ??= new Anthropic({ apiKey });
+  anthropicClient ??= budgetedAnthropic(PREVIEW_CLIENT_OPTIONS);
   return {
     client: anthropicClient,
     loadPrompt: loadDiscoveryPrompt,

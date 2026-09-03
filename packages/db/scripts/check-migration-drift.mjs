@@ -72,7 +72,17 @@ async function readWatermark(sql) {
   };
 }
 
-const sql = postgres(dbUrl, { max: 1, idle_timeout: 5, prepare: false });
+// CI gate: one SELECT against the DIRECT url (which honors statement_timeout as a
+// startup parameter). Bounded so a slow-not-down DB fails this job in seconds
+// instead of hanging it to the runner's wall (audit P1-9); 30s statement / 10s
+// connect is roomy for a gate, tighter than nothing, and never user-facing.
+const sql = postgres(dbUrl, {
+  max: 1,
+  idle_timeout: 5,
+  prepare: false,
+  connect_timeout: 10,
+  connection: { statement_timeout: 30_000 },
+});
 
 try {
   const journal = readJournal(drizzleDir);
