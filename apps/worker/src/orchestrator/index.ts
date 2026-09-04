@@ -902,11 +902,38 @@ export async function executeApprovedAction(
   const approved = mintApprovedAction(draft, action.verdict, coverageSatisfiedWithResults);
 
   // Record WHO approved (PIPEDA right-to-access) and advance to the resumable
-  // pre-executor checkpoint atomically, then execute.
-  await deps.recordApproval({ familyId, eventId: action.eventId, actionId, approvedBy });
-  deps.log.info(
-    { familyId, actionId, approvedBy, actionType: action.actionType },
-    'actions.approved: human-approved action driving into execution',
-  );
+  // pre-executor checkpoint atomically. The record is a CLAIM (audit P1-4): the
+  // conditional UPDATE inside recordHumanApproval admits exactly one delivery, so a
+  // duplicate cannot write a second "the parent approved this" audit row or regress a
+  // finished event back to the checkpoint. Both refused worlds are named outcomes:
+  //  - the event sits AT the checkpoint → a prior attempt claimed it and died before
+  //    finishing (or is mid-flight) — re-drive the executor, exactly as the autonomous
+  //    path's resume does; the true double-send guards are the executor's own
+  //    effect-level claims (outbound_sends, the calendar placement claim).
+  //  - any other status → execution already finished — dropping is the only honest act.
+  const approval = await deps.recordApproval({
+    familyId,
+    eventId: action.eventId,
+    actionId,
+    approvedBy,
+  });
+  if (!approval.claimed) {
+    if (approval.eventStatus !== 'approved_pending_execute') {
+      deps.log.warn(
+        { familyId, actionId, eventStatus: approval.eventStatus },
+        'actions.approved: approval already recorded and execution finished — dropping duplicate delivery',
+      );
+      return;
+    }
+    deps.log.warn(
+      { familyId, actionId, eventStatus: approval.eventStatus },
+      'actions.approved: approval already claimed at the pre-executor checkpoint — resuming into executor',
+    );
+  } else {
+    deps.log.info(
+      { familyId, actionId, approvedBy, actionType: action.actionType },
+      'actions.approved: human-approved action driving into execution',
+    );
+  }
   await deps.execute(familyId, action.eventId, actionId, approved, deps.calendarInvites);
 }

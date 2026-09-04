@@ -220,6 +220,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
     },
     async recordAnswered(input: { channelMessageId: string }) {
       ledger.answered.push(input.channelMessageId);
+      return 'claimed' as const;
     },
     async recordDeferred(input: { channelMessageId: string }) {
       ledger.deferred.push(input.channelMessageId);
@@ -428,8 +429,9 @@ function harness(
       now: () => NOW,
       log: {
         info: (...args: unknown[]) => logs.push(args),
+        warn: (...args: unknown[]) => logs.push(args),
         error: (...args: unknown[]) => logs.push(args),
-      } as unknown as Pick<Console, 'info' | 'error'>,
+      } as unknown as Pick<Console, 'info' | 'warn' | 'error'>,
     },
   };
 }

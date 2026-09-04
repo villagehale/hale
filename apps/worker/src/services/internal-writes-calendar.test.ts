@@ -23,11 +23,18 @@ interface InsertRecord {
  * Captures every insert + the update's `set` so a test can assert the placement row,
  * the audit row, and the soft-delete landed in the SAME transaction.
  */
-function fakeDb(opts: { priorTargetId?: string | null; updateReturns?: Array<{ id: string }> }) {
+function fakeDb(opts: {
+  priorTargetId?: string | null;
+  updateReturns?: Array<{ id: string }>;
+  /** What the family_events claim-insert returns. Empty = the claim was LOST (the
+   * 0106 unique index refused the row); the loser then selects the winner's row. */
+  feInsertReturns?: Array<{ id: string }>;
+}) {
   const inserts: InsertRecord[] = [];
   const updateSets: Record<string, unknown>[] = [];
   const priorTargetId = opts.priorTargetId ?? null;
   const updateReturns = opts.updateReturns ?? [{ id: HANDLE }];
+  const feInsertReturns = opts.feInsertReturns ?? [{ id: NEW_EVENT_ID }];
 
   const tx = {
     select: vi.fn(() => ({
@@ -37,19 +44,23 @@ function fakeDb(opts: { priorTargetId?: string | null; updateReturns?: Array<{ i
             if (table === schema.auditLog) {
               return priorTargetId ? [{ targetId: priorTargetId }] : [];
             }
+            if (table === schema.familyEvents) {
+              return priorTargetId ? [{ id: priorTargetId }] : [];
+            }
             return [];
           },
         }),
       }),
     })),
-    insert: vi.fn((table: unknown) => ({
-      values: (values: Record<string, unknown>) => {
-        inserts.push({ table, values });
-        return {
-          returning: async () => (table === schema.familyEvents ? [{ id: NEW_EVENT_ID }] : []),
-        };
-      },
-    })),
+    insert: vi.fn((table: unknown) => {
+      const returning = async () => (table === schema.familyEvents ? feInsertReturns : []);
+      return {
+        values: (values: Record<string, unknown>) => {
+          inserts.push({ table, values });
+          return { returning, onConflictDoNothing: () => ({ returning }) };
+        },
+      };
+    }),
     update: vi.fn((_table: unknown) => ({
       set: (values: Record<string, unknown>) => {
         updateSets.push(values);
@@ -96,12 +107,16 @@ describe('addToCalendar', () => {
     });
   });
 
-  it('on a re-drain recovers the SAME id and inserts NO second placement', async () => {
-    const { database, inserts } = fakeDb({ priorTargetId: NEW_EVENT_ID });
+  it('on a lost claim recovers the WINNER\'S id and audits the suppressed duplicate', async () => {
+    // The 0106 unique index refused the insert (empty returning) — the concurrent or
+    // redelivered world. The loser reads the winner's row back and says what happened.
+    const { database, inserts } = fakeDb({ feInsertReturns: [], priorTargetId: NEW_EVENT_ID });
     const result = await addToCalendar(ADD_INPUT, database);
 
     expect(result).toEqual({ outcome: 'already_written', familyEventId: NEW_EVENT_ID });
-    expect(inserts.some((i) => i.table === schema.familyEvents)).toBe(false);
+    expect(inserts.find((i) => i.table === schema.auditLog)?.values).toMatchObject({
+      actionTaken: 'action.calendar_placed.skipped_duplicate',
+    });
   });
 });
 

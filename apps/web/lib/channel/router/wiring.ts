@@ -2,7 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, asc, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -459,6 +459,41 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
   };
 
   return {
+    // THE INSERT IS THE CLAIM (relay-claim.ts's rule, applied here by audit P1-4). The
+    // arbiter is channel_turn_answer_claims (migration 0106), NOT an index over the
+    // audit rows themselves: audit_log is append-only, so duplicates the race already
+    // wrote could never be deleted to let a unique index build there. Claim row and
+    // audit row commit in ONE transaction — the ledger's answered row can never exist
+    // without the lock that made it the only one (rule #6's pairing, relay-claim's
+    // atomicity). The loser writes nothing anywhere and the caller logs the named
+    // outcome. Retention rides the claim (the relay idiom): rows past the ledger's own
+    // lookback arbitrate nothing — stageOf's read has long since gated any re-drive.
+    recordAnswered: async (input) =>
+      database.transaction(async (tx) => {
+        await tx
+          .delete(schema.channelTurnAnswerClaims)
+          .where(
+            lt(
+              schema.channelTurnAnswerClaims.claimedAt,
+              new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS),
+            ),
+          );
+        const claimed = await tx
+          .insert(schema.channelTurnAnswerClaims)
+          .values({ channelMessageId: input.channelMessageId })
+          .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId })
+          .returning({ id: schema.channelTurnAnswerClaims.id });
+        if (claimed.length === 0) return 'already_answered';
+
+        await tx.insert(schema.auditLog).values({
+          familyId: input.familyId,
+          actor: input.parentUserId,
+          actionTaken: TURN_ANSWERED_ACTION,
+          targetTable: TURN_LEDGER_TARGET,
+          targetId: input.channelMessageId,
+        });
+        return 'claimed';
+      }),
     stageOf: async ({ familyId, channelMessageId }) => {
       const rows = await database
         .select({ actionTaken: schema.auditLog.actionTaken })
@@ -475,7 +510,6 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
       if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
       return rows.length > 0 ? 'deferred' : 'fresh';
     },
-    recordAnswered: write(TURN_ANSWERED_ACTION),
     recordDeferred: write(TURN_DEFERRED_ACTION),
     recordFailed: async (input) => {
       await database.insert(schema.auditLog).values({
