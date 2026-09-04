@@ -14,6 +14,38 @@ import { families } from './families.js';
 import { users } from './users.js';
 
 /**
+ * The three closed vocabularies behind this table's `text` columns, held against
+ * migration 0109's CHECK constraints by
+ * packages/db/scripts/watched-spots-vocabulary-consistency.test.mjs — the only gate that
+ * reads the .sql against this file.
+ */
+
+/** What a TRUSTWORTHY read left behind. `unreadable` and `not_registrable` are readings,
+ * never states: a page nobody could open says nothing about the class. */
+export const WATCHED_SPOT_STATES = ['full', 'waitlist_full', 'open'] as const;
+export type WatchedSpotState = (typeof WATCHED_SPOT_STATES)[number];
+
+/** The two openings worth a text. A reopened waitlist is news of its own because it rests
+ * in the same state ('full') as the class it opened on. */
+export const WATCHED_SPOT_PENDING_KINDS = ['seat_opened', 'waitlist_reopened'] as const;
+export type WatchedSpotPendingKind = (typeof WATCHED_SPOT_PENDING_KINDS)[number];
+
+/** Every way a watch can end. Each one has a writer in the sweep, and each says something
+ * different to a parent who asks why Hale stopped: `notified` kept it, `delivery_failed`
+ * and `send_unconfirmed` did not. */
+export const WATCHED_SPOT_RELEASE_REASONS = [
+  'notified',
+  'expired',
+  'parent_stopped',
+  'consent_withdrawn',
+  'unreadable_streak',
+  'registration_closed',
+  'delivery_failed',
+  'send_unconfirmed',
+] as const;
+export type WatchedSpotReleaseReason = (typeof WATCHED_SPOT_RELEASE_REASONS)[number];
+
+/**
  * VIL-337 · WATCHED SPOTS — the course pages a family asked Hale to re-read for a way in.
  *
  * A parent pastes the link to a full class and asks to be told if a spot opens. That
@@ -75,14 +107,14 @@ export const watchedSpots = pgTable(
      * `consecutiveFailures` and changes nothing, because a page you could not open is not
      * a page that says the class is full.
      */
-    lastState: text('last_state').notNull().default('full'),
+    lastState: text('last_state').$type<WatchedSpotState>().notNull().default('full'),
     /**
      * The observation Hale is holding and has not yet been allowed to say. Written by the
      * transition claim, cleared by a delivery receipt or by the page changing its mind
      * before the send. Explicit rather than derived, because a reopened waitlist rests in
      * the same state as a full class and could not be told apart otherwise.
      */
-    pendingKind: text('pending_kind'),
+    pendingKind: text('pending_kind').$type<WatchedSpotPendingKind>(),
     pendingSince: timestamp('pending_since', { withTimezone: true }),
     consecutiveFailures: integer('consecutive_failures').notNull().default(0),
     /**
@@ -109,7 +141,7 @@ export const watchedSpots = pgTable(
     /** A watch stops being watched. Set at arming time; the sweep releases past it. */
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     releasedAt: timestamp('released_at', { withTimezone: true }),
-    releasedReason: text('released_reason'),
+    releasedReason: text('released_reason').$type<WatchedSpotReleaseReason>(),
     /** The `channel_messages` id of the outbound that carried the arming sentence — the
      * same send-time discipline as the open-loops ledger: a watch nobody was told about
      * is not a watch. Provenance only. */
@@ -159,35 +191,3 @@ export const watchedSpots = pgTable(
 
 export type WatchedSpot = typeof watchedSpots.$inferSelect;
 export type NewWatchedSpot = typeof watchedSpots.$inferInsert;
-
-/**
- * The three closed vocabularies behind this table's `text` columns, held against
- * migration 0109's CHECK constraints by
- * packages/db/scripts/watched-spots-vocabulary-consistency.test.mjs — the only gate that
- * reads the .sql against this file.
- */
-
-/** What a TRUSTWORTHY read left behind. `unreadable` and `not_registrable` are readings,
- * never states: a page nobody could open says nothing about the class. */
-export const WATCHED_SPOT_STATES = ['full', 'waitlist_full', 'open'] as const;
-export type WatchedSpotState = (typeof WATCHED_SPOT_STATES)[number];
-
-/** The two openings worth a text. A reopened waitlist is news of its own because it rests
- * in the same state ('full') as the class it opened on. */
-export const WATCHED_SPOT_PENDING_KINDS = ['seat_opened', 'waitlist_reopened'] as const;
-export type WatchedSpotPendingKind = (typeof WATCHED_SPOT_PENDING_KINDS)[number];
-
-/** Every way a watch can end. Each one has a writer in the sweep, and each says something
- * different to a parent who asks why Hale stopped: `notified` kept it, `delivery_failed`
- * and `send_unconfirmed` did not. */
-export const WATCHED_SPOT_RELEASE_REASONS = [
-  'notified',
-  'expired',
-  'parent_stopped',
-  'consent_withdrawn',
-  'unreadable_streak',
-  'registration_closed',
-  'delivery_failed',
-  'send_unconfirmed',
-] as const;
-export type WatchedSpotReleaseReason = (typeof WATCHED_SPOT_RELEASE_REASONS)[number];
