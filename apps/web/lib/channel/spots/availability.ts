@@ -11,18 +11,18 @@ import { z } from 'zod';
  *
  *     var eventInfo = $.extend(true, {}, { BackAction: {...} }, {"ParentEventId":null,...})
  *
- * The second argument is strict JSON — 168 keys, parsed on all three saved tenants —
- * of typed booleans and integers. A model reading that would only add a way to be
- * wrong, so this file is a brace-scan, a JSON.parse and a Zod parse.
+ * The second argument is strict JSON — 168 keys, parsed on all six saved pages across
+ * four tenants — of typed booleans and integers. A model reading that would only add a
+ * way to be wrong, so this file is a brace-scan, a JSON.parse and a Zod parse.
  *
- * THE COUNTERS DECIDE; THE BOOLEANS ARE CROSS-CHECKS THAT FAIL CLOSED. All three
- * pages that could be captured are registration-CLOSED, so the boolean semantics
- * during an open window are UNOBSERVED — does `IsWaitListHasSpots` track
- * `WaitListSpotsLeft > 0` only while a class is bookable? Nobody knows yet. The
- * classifier therefore rests on `IsRegistrationClosed`/`IsFutureRegistration` plus the
- * two integer counters, precisely so that a boolean whose meaning shifts cannot flip a
- * state on its own; where a boolean disagrees with a counter, the reading is
- * `unreadable`, never a state.
+ * THE COUNTERS DECIDE; THE BOOLEANS ARE CROSS-CHECKS THAT FAIL CLOSED. Two of the six
+ * pages were caught with their registration window OPEN, and they are why the waitlist
+ * booleans stay out of the classifier: `IsWaitListHasSpots` is true on the full page
+ * (WaitListSpotsLeft 100) and false on the open one (WaitListSpotsLeft 100 as well), so
+ * it does not track the counter it looks like it tracks. The classifier therefore rests
+ * on `IsRegistrationClosed`/`IsFutureRegistration` plus the two integer counters,
+ * precisely so that a boolean whose meaning shifts cannot flip a state on its own;
+ * where a boolean disagrees with a counter, the reading is `unreadable`, never a state.
  *
  * UNREADABLE IS NEVER A STATE, and that is the whole safety property. A missing model
  * (the HTTP-200 "not found" page PerfectMind serves for an unknown courseId), a Zod
@@ -32,26 +32,32 @@ import { z } from 'zod';
  *
  * EVERY VALUE THE OUTBOUND SENTENCE PRINTS CARRIES ITS BYTES WITH IT. `evidence` holds
  * the literal serialised fragments the classification rested on (`"SpotsLeft":0`), each
- * asserted to be a substring of the page as fetched. A fragment that is not literally
- * in the bytes makes the reading `inconsistent` — so a number in a text to a parent is
- * always a run of characters a human can find on the page it came from.
+ * asserted to be a substring of the page as fetched, PLUS the page's own serialisation
+ * of the schedule the sentence may print in its parenthetical. A classification
+ * fragment that is not literally in the bytes makes the reading `inconsistent`; a
+ * schedule fragment that is not simply goes unrecorded, because the parenthetical is
+ * decoration and losing a whole reading over it would silence the watch. Either way a
+ * value in a text to a parent is a run of characters a human can find on the page it
+ * came from — copy.ts prints nothing that is not in this array.
  */
 
-/** Fifteen fields out of 168. The rest pass through unread — this is a runtime parse
+/** Twelve fields out of 168. The rest pass through unread — this is a runtime parse
  * of somebody else's payload, not a tool schema, so unknown keys are data rather than
- * a contract breach. */
+ * a contract breach. The counters are NON-NEGATIVE: a roster of -1 is not an
+ * overbooked class the flags forgot to mark full, it is a payload this reader has no
+ * business classifying, and `bad_model` says so. */
 const bookMe4ModelSchema = z
   .object({
     EventId: z.string(),
     IsFull: z.boolean(),
-    SpotsLeft: z.number().int(),
-    MaximumCapacity: z.number().int(),
+    SpotsLeft: z.number().int().nonnegative(),
+    MaximumCapacity: z.number().int().nonnegative(),
     IsRegistrationClosed: z.boolean(),
     IsFutureRegistration: z.boolean(),
     OnlineRegistration: z.boolean(),
     CanNotBook: z.boolean(),
     IsWaitListAvailable: z.boolean(),
-    WaitListSpotsLeft: z.number().int(),
+    WaitListSpotsLeft: z.number().int().nonnegative(),
     /** Absent on a tenant that does not publish a schedule; the outbound sentence drops
      * its parenthetical rather than the reader dropping the page. */
     StartDay: z.string().nullish(),
@@ -121,13 +127,30 @@ function extractEventInfo(rawHtml: string): string | null {
   return null;
 }
 
-/** A field as the page serialised it. `JSON.stringify` of the value is exactly what
- * the portal emitted, because the portal emitted JSON. */
-function fragment(key: string, value: string | number | boolean): string {
+/**
+ * A field as the page serialised it. `JSON.stringify` of the value is exactly what the
+ * portal emitted, because the portal emitted JSON. Exported because copy.ts checks the
+ * claims it is about to print against this same serialisation: two spellings of one
+ * fragment would be a gate that passes a sentence the bytes do not back.
+ */
+export function fragment(key: string, value: string | number | boolean): string {
   return `"${key}":${JSON.stringify(value)}`;
 }
 
-function classify(model: BookMe4Model): SpotReading {
+/**
+ * The schedule as the page serialised it, when the page serialised it that way. This
+ * backs the outbound parenthetical rather than the classification, so a value that does
+ * not round-trip is simply absent here and copy.ts drops the parenthetical — the seat
+ * is still worth the text.
+ */
+function scheduleEvidence(model: BookMe4Model, rawHtml: string): string[] {
+  const fragments: string[] = [];
+  if (model.StartDay) fragments.push(fragment('StartDay', model.StartDay));
+  if (model.StartTime) fragments.push(fragment('StartTime', model.StartTime));
+  return fragments.filter((candidate) => rawHtml.includes(candidate));
+}
+
+function classify(model: BookMe4Model, rawHtml: string): SpotReading {
   // Bookability is asked FIRST and off the flags the vendor uses to render its own
   // button. A reader that ranked the counters first would call a closed class with an
   // empty roster "full" and offer to watch a page nobody can book from.
@@ -165,6 +188,7 @@ function classify(model: BookMe4Model): SpotReading {
         fragment('IsFull', model.IsFull),
         fragment('SpotsLeft', model.SpotsLeft),
         fragment('CanNotBook', model.CanNotBook),
+        ...scheduleEvidence(model, rawHtml),
       ],
     };
   }
@@ -183,6 +207,7 @@ function classify(model: BookMe4Model): SpotReading {
       fragment('SpotsLeft', model.SpotsLeft),
       fragment('IsWaitListAvailable', model.IsWaitListAvailable),
       fragment('WaitListSpotsLeft', model.WaitListSpotsLeft),
+      ...scheduleEvidence(model, rawHtml),
     ],
   };
 }
@@ -211,7 +236,7 @@ export function readSpot(rawHtml: string, courseId: string): SpotReading {
     return { state: 'unreadable', reason: 'wrong_course' };
   }
 
-  const reading = classify(model.data);
+  const reading = classify(model.data, rawHtml);
   if (reading.state === 'unreadable') return reading;
   for (const evidence of reading.evidence) {
     if (!rawHtml.includes(evidence)) return { state: 'unreadable', reason: 'inconsistent' };

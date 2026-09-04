@@ -22,6 +22,12 @@ import { type SpotReading, readSpot, transitionKind } from './availability';
  * course that is not bookable online) are tested as single-field variants of that real
  * open model, so only the named override is ever hypothetical.
  *
+ * THE EVIDENCE CARRIES THE SCHEDULE TOO, because copy.ts prints a parenthetical from
+ * it and may print nothing this array does not hold. It is the one part of the array
+ * that is filtered rather than asserted: a schedule the page did not serialise the way
+ * it is re-serialised here costs the parenthetical, where letting it fail the whole
+ * reading would silence the watch over a decoration.
+ *
  * THE OPEN-FULL PAGE CARRIES `CanNotBook: true`. It is bookable — onto the waitlist —
  * and its registration window is open, so a reader that took `CanNotBook` for "this
  * page is not registrable" would refuse to watch precisely the classes VIL-337 exists
@@ -140,6 +146,8 @@ describe('readSpot — the real pages', () => {
       '"SpotsLeft":0',
       '"IsWaitListAvailable":true',
       '"WaitListSpotsLeft":100',
+      '"StartDay":"Monday"',
+      '"StartTime":"05:00 PM"',
     ]);
   });
 
@@ -158,6 +166,8 @@ describe('readSpot — the real pages', () => {
       '"IsFull":false',
       '"SpotsLeft":2',
       '"CanNotBook":false',
+      '"StartDay":"Sunday"',
+      '"StartTime":"10:15 AM"',
     ]);
   });
 });
@@ -182,6 +192,18 @@ describe('readSpot — what it refuses to call a state', () => {
     expect(readSpot(withModel, OPEN_FULL_COURSE).state).toBe('full');
   });
 
+  it("matches the course id however the parent's browser capitalised it", () => {
+    // PerfectMind serves the same page for either casing and the sanitizer lower-cases
+    // what it stores, but a link that reached the watch by another route must not read
+    // as a different class. A case-sensitive compare here is silent: every watch on an
+    // upper-case link would go wrong_course forever, which looks exactly like a portal
+    // that stopped publishing.
+    expect(readSpot(fixture('markham-course'), MARKHAM_COURSE.toUpperCase())).toMatchObject({
+      state: 'not_registrable',
+      reason: 'closed',
+    });
+  });
+
   it('refuses a model that names a different course', () => {
     expect(readSpot(fixture('markham-course'), NEWMARKET_COURSE)).toEqual({
       state: 'unreadable',
@@ -201,6 +223,30 @@ describe('readSpot — what it refuses to call a state', () => {
       state: 'unreadable',
       reason: 'inconsistent',
     });
+  });
+
+  it.each([
+    ['a roster of minus one that does not call itself full', { IsFull: false, SpotsLeft: -1 }],
+    ['a waitlist counted below zero', { WaitListSpotsLeft: -1 }],
+  ])('refuses %s outright, rather than cross-checking it', (_why, model) => {
+    // The flags-vs-counters cross-check would call the first of these `full` — IsFull
+    // false, SpotsLeft not 0 — and arm a watch on an overbooked roster the portal never
+    // marked full. A counter below zero is not a state to reconcile, it is a payload
+    // this reader has no business classifying.
+    expect(readSpot(variant(model), OPEN_FULL_COURSE)).toEqual({
+      state: 'unreadable',
+      reason: 'bad_model',
+    });
+  });
+
+  it('reads a model whose strings carry unbalanced braces', () => {
+    // The brace scan is string-aware for this: RegistrationInfo is free text on every
+    // tenant, and one stray brace inside it would end the slice early, turn the page
+    // into `bad_model`, and silence the watch with no error anywhere.
+    const html = variant({ RegistrationInfo: 'Ends 11/10 } see section {2' });
+
+    expect(html).toContain('Ends 11/10 } see section {2');
+    expect(readSpot(html, OPEN_FULL_COURSE).state).toBe('full');
   });
 
   it('refuses a model too large to be one course, and one that will not parse', () => {
@@ -257,6 +303,21 @@ describe('readSpot — evidence is quoted from the bytes', () => {
     for (const fragment of reading.evidence) {
       expect(html).toContain(fragment);
     }
+  });
+
+  it('drops a schedule fragment the bytes escaped, and keeps the reading', () => {
+    // The asymmetry that keeps a watch alive. .NET serialisers escape characters this
+    // one does not, so a StartTime the page wrote as an escape parses to the same
+    // string and re-serialises to a fragment that is nowhere in the bytes. Failing the
+    // whole page there would lose a full-to-open transition over a parenthetical.
+    const escaped = variant().replace('"StartTime":"05:00 PM"', '"StartTime":"05:00 \\u0050M"');
+    const reading = readSpot(escaped, OPEN_FULL_COURSE);
+
+    expect(escaped).not.toContain('"StartTime":"05:00 PM"');
+    expect(readable(reading).state).toBe('full');
+    expect(readable(reading).model.StartTime).toBe('05:00 PM');
+    expect(readable(reading).evidence).toContain('"StartDay":"Monday"');
+    expect(readable(reading).evidence).not.toContain('"StartTime":"05:00 PM"');
   });
 
   it('will not call a page a state when its own serialisation moved', () => {

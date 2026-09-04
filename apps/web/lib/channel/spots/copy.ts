@@ -1,7 +1,7 @@
 import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
-import type { BookMe4Model, SpotTransitionKind } from './availability';
+import { type BookMe4Model, type SpotTransitionKind, fragment } from './availability';
 
 /**
  * VIL-337 · the two sentences a watched spot may send, rendered deterministically.
@@ -18,11 +18,15 @@ import type { BookMe4Model, SpotTransitionKind } from './availability';
  *     from the host registry (url.ts), never derived from the URL. A parent who cannot
  *     check the page in the next minute can still see who said it.
  *
- *   THE COUNT IS QUOTED, NOT COMPUTED. The only digits outside the URL are `SpotsLeft`
- *     exactly as the page serialised it, and `renderSpotOpen` THROWS if the digits it
- *     would print are not literally inside a `"SpotsLeft":N` fragment the reader took
- *     from this tick's bytes. "3 spots left" against a page that says 1 costs somebody
- *     a morning, and an interpolation bug makes that error silently.
+ *   EVERY CLAIM IS QUOTED, NOT COMPUTED. The body says three things a parent will act
+ *     on — a count, a schedule, and (for a waitlist) that there is room — and each one
+ *     is checked against the fragment the reader took from THIS tick's bytes before it
+ *     can be printed. "3 spots left" against a page that says 1 costs somebody a
+ *     morning, and an interpolation bug makes that error silently; "room on the
+ *     waitlist" against a queue that is full carries no digits at all, which is why it
+ *     needs a gate of its own rather than the digit rule. `renderSpotOpen` THROWS on an
+ *     unbacked count or an unbacked waitlist, and DROPS an unbacked parenthetical — the
+ *     schedule is decoration, the seat is the message.
  *
  *   THERE IS NO WAITLIST HEADCOUNT. The model carries `WaitListCapacity` 99 and
  *     `WaitListSpotsLeft` 94, so "5 people ahead of you" is arithmetic over two fields
@@ -62,24 +66,32 @@ export interface SpotOpenInput {
 
 export interface SpotOpenContext {
   url: string;
+  /** THIS tick's evidence fragments — the page's own serialisation of every field a
+   * body is allowed to rest on. */
   evidence: readonly string[];
   kind: SpotTransitionKind;
   /** The number the body prints, or null when it prints none. */
   count: number | null;
   /** The schedule phrase the body prints verbatim from the model, or null. */
   when: string | null;
+  /** THIS tick's parsed model. The claims above are the body's; this and `evidence`
+   * are what they are checked against. */
+  model: BookMe4Model;
 }
 
 /**
- * The schedule the page publishes, or nothing. The whitelist is deliberately narrow:
- * a StartTime carrying a character that would break GSM-7 or close the parenthetical
- * early costs the parenthetical, never the send.
+ * The schedule the page publishes, or nothing. Two ways to get nothing, and both cost
+ * the parenthetical rather than the send: bytes that do not carry the model's own
+ * schedule fields, and a StartTime carrying a character that would break GSM-7 or close
+ * the parenthetical early.
  */
-function schedulePhrase(model: BookMe4Model): string | null {
-  const day = model.StartDay?.trim();
-  const time = model.StartTime?.trim();
+function schedulePhrase(model: BookMe4Model, evidence: readonly string[]): string | null {
+  const day = model.StartDay;
+  const time = model.StartTime;
   if (!day || !time) return null;
-  const phrase = asciiSpaces(`${day} ${time}`);
+  if (!evidence.includes(fragment('StartDay', day))) return null;
+  if (!evidence.includes(fragment('StartTime', time))) return null;
+  const phrase = asciiSpaces(`${day.trim()} ${time.trim()}`);
   return /^[A-Za-z0-9 :]+$/.test(phrase) ? phrase : null;
 }
 
@@ -100,11 +112,24 @@ export function spotOpenViolations(body: string, context: SpotOpenContext): stri
   const violations: string[] = [];
 
   if (!body.includes(context.url)) violations.push('url_missing');
-  if (context.count !== null && !context.evidence.includes(`"SpotsLeft":${context.count}`)) {
+  if (context.count !== null && !context.evidence.includes(fragment('SpotsLeft', context.count))) {
     violations.push('unbacked_count');
   }
-  if (context.kind === 'waitlist_reopened' && /spots?\s+left/i.test(body)) {
-    violations.push('counts_a_waitlist');
+  if (context.kind === 'seat_opened' && (context.count === null || context.count < 1)) {
+    violations.push('no_seat');
+  }
+  if (context.kind === 'waitlist_reopened') {
+    if (/spots?\s+left/i.test(body)) violations.push('counts_a_waitlist');
+    if (
+      !context.evidence.includes(fragment('IsWaitListAvailable', true)) ||
+      context.model.WaitListSpotsLeft < 1 ||
+      !context.evidence.includes(fragment('WaitListSpotsLeft', context.model.WaitListSpotsLeft))
+    ) {
+      violations.push('unbacked_waitlist');
+    }
+  }
+  if (context.when !== null && context.when !== schedulePhrase(context.model, context.evidence)) {
+    violations.push('unbacked_when');
   }
 
   const rest = without(without(body, context.url), context.when);
@@ -128,7 +153,7 @@ export function spotOpenViolations(body: string, context: SpotOpenContext): stri
  */
 export function renderSpotOpen(input: SpotOpenInput): string {
   const count = input.kind === 'seat_opened' ? input.model.SpotsLeft : null;
-  const when = schedulePhrase(input.model);
+  const when = schedulePhrase(input.model, input.evidence);
   const what =
     count === null
       ? `room on the waitlist for ${input.label}`
@@ -141,6 +166,7 @@ export function renderSpotOpen(input: SpotOpenInput): string {
     kind: input.kind,
     count,
     when,
+    model: input.model,
   });
   if (violations.length > 0) {
     throw new Error(`spot-open copy refused: ${violations.join(', ')}`);

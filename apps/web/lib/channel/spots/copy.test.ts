@@ -69,10 +69,42 @@ describe('renderSpotOpen — a seat', () => {
       label: 'Tue swim',
       url: URL,
       model: model({ SpotsLeft: 2, StartDay: 'Saturday', StartTime: '09:30 AM' }),
-      evidence: ['"SpotsLeft":2'],
+      evidence: ['"SpotsLeft":2', '"StartDay":"Saturday"', '"StartTime":"09:30 AM"'],
     });
 
     expect(body).toBe(`${PORTAL} now shows 2 spots left for Tue swim (Saturday 09:30 AM). ${URL}`);
+  });
+
+  it("drops the parenthetical when this tick's bytes do not carry the schedule", () => {
+    // The stored-reading defect in its quietest form: a model whose schedule fields the
+    // page did not serialise the way they are re-serialised here. The parenthetical is
+    // decoration, so it is what gets dropped -- the seat is still worth the text.
+    const body = renderSpotOpen({
+      kind: 'seat_opened',
+      portalLabel: PORTAL,
+      label: 'Tue swim',
+      url: URL,
+      model: model({ SpotsLeft: 2, StartDay: 'Saturday', StartTime: '09:30 AM' }),
+      evidence: ['"SpotsLeft":2'],
+    });
+
+    expect(body).toBe(`${PORTAL} now shows 2 spots left for Tue swim. ${URL}`);
+  });
+
+  it('THROWS rather than announce a seat the counter does not show', () => {
+    // `transitionKind` only says seat_opened off a reading with SpotsLeft > 0, so a zero
+    // here means the composer was handed a kind and a model from different ticks. "0
+    // spots left" is a text that sends a parent to a full page.
+    expect(() =>
+      renderSpotOpen({
+        kind: 'seat_opened',
+        portalLabel: PORTAL,
+        label: 'Tue swim',
+        url: URL,
+        model: model({ SpotsLeft: 0 }),
+        evidence: ['"SpotsLeft":0'],
+      }),
+    ).toThrow(/no_seat/);
   });
 
   it('THROWS on a count the evidence does not carry', () => {
@@ -110,6 +142,37 @@ describe('renderSpotOpen — a waitlist', () => {
     expect(body).not.toMatch(/spots?\s+left/i);
     expect(outsideTheUrl(body)).not.toMatch(/\d/);
   });
+
+  it.each([
+    [
+      'a waitlist with nobody able to join it',
+      model({ WaitListSpotsLeft: 0 }),
+      ['"IsWaitListAvailable":true', '"WaitListSpotsLeft":0'],
+    ],
+    [
+      'a page whose bytes never said there was room',
+      model({ WaitListSpotsLeft: 94 }),
+      ['"SpotsLeft":0'],
+    ],
+    [
+      'a tenant that offers no waitlist at all',
+      model({ IsWaitListAvailable: false, WaitListSpotsLeft: 94 }),
+      ['"IsWaitListAvailable":false', '"WaitListSpotsLeft":94'],
+    ],
+  ])('THROWS on %s', (_why, published, evidence) => {
+    // "room on the waitlist" carries no digits, which is exactly why it needs a gate of
+    // its own: an unbacked count is caught by the digits, an unbacked CLAIM is not.
+    expect(() =>
+      renderSpotOpen({
+        kind: 'waitlist_reopened',
+        portalLabel: PORTAL,
+        label: 'Tue swim',
+        url: URL,
+        model: published,
+        evidence,
+      }),
+    ).toThrow(/unbacked_waitlist/);
+  });
 });
 
 describe('renderSpotOpen — what every body must satisfy', () => {
@@ -119,7 +182,7 @@ describe('renderSpotOpen — what every body must satisfy', () => {
     label: 'Tue swim',
     url: URL,
     model: model({ SpotsLeft: 2, StartDay: 'Saturday', StartTime: '09:30 AM' }),
-    evidence: ['"SpotsLeft":2'],
+    evidence: ['"SpotsLeft":2', '"StartDay":"Saturday"', '"StartTime":"09:30 AM"'],
   });
 
   it('leads with the source and carries the link verbatim', () => {
@@ -147,7 +210,7 @@ describe('renderSpotOpen — what every body must satisfy', () => {
       label: 'Wednesday preschool swim at the rec centre',
       url: longUrl,
       model: model({ SpotsLeft: 100, StartDay: 'Wednesday', StartTime: '12:30 PM' }),
-      evidence: ['"SpotsLeft":100'],
+      evidence: ['"SpotsLeft":100', '"StartDay":"Wednesday"', '"StartTime":"12:30 PM"'],
     });
 
     expect(isGsm7(worst)).toBe(true);
@@ -162,6 +225,7 @@ describe('spotOpenViolations', () => {
     kind: 'seat_opened' as const,
     count: 2,
     when: null,
+    model: model({ SpotsLeft: 2 }),
   };
   const good = `${PORTAL} now shows 2 spots left for Tue swim. ${URL}`;
 
@@ -176,6 +240,24 @@ describe('spotOpenViolations', () => {
     ['not_gsm7', good.replace('Tue swim', 'Tue swim — the 4pm one')],
   ])('names %s', (violation, body) => {
     expect(spotOpenViolations(body, context)).toContain(violation);
+  });
+
+  it("names unbacked_when for a parenthetical this tick's bytes do not carry", () => {
+    // The gate is what a caller composing its own body runs into: the composer drops an
+    // unbacked schedule, so this violation can only be reached from outside it.
+    const body = `${PORTAL} now shows 2 spots left for Tue swim (Saturday 09:30 AM). ${URL}`;
+
+    expect(spotOpenViolations(body, { ...context, when: 'Saturday 09:30 AM' })).toContain(
+      'unbacked_when',
+    );
+    expect(
+      spotOpenViolations(body, {
+        ...context,
+        when: 'Saturday 09:30 AM',
+        model: model({ SpotsLeft: 2, StartDay: 'Saturday', StartTime: '09:30 AM' }),
+        evidence: ['"SpotsLeft":2', '"StartDay":"Saturday"', '"StartTime":"09:30 AM"'],
+      }),
+    ).toEqual([]);
   });
 
   it('refuses a headcount on a waitlist sentence', () => {
