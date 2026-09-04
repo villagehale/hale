@@ -52,6 +52,7 @@ import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
 import { FakeTransport } from './transport';
+import { claimIntakeTurn } from './turn-claim';
 import { CONTACT_CARD_URL, WELCOME_CARD_BODY, WELCOME_CARD_TEMPLATE_KEY } from './welcome-card';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -1974,6 +1975,64 @@ describe('intake · VIL-332 first-hello cannot die after createSession', () => {
 
     const retry = await handleInboundSms(fake.db, { ...first }, deps);
     expect(retry).toEqual({ status: 'duplicate' });
+    expect(transport.sent).toHaveLength(sentAfterFirst);
+  });
+});
+
+/**
+ * P1-4 — the turn CLAIM. `lastProviderId` is saved only at the END of a turn, so the
+ * old duplicate check could not see a resend racing a turn still running (Twilio
+ * resends at 15s while a model-bound turn is mid-flight — the race migration 0085's
+ * comment records firing in production), and it remembered only the LAST id, so a
+ * delayed redelivery of an older message re-ran an already-answered turn. The claim
+ * (turn-claim.ts) is inserted at step 4, before anything acts; the fake models its
+ * unique index for the same reason it models the other four (a fake that let both
+ * racers in would pass a test the deployed code fails), and the real DDL is proven in
+ * turn-claim.pglite.test.ts.
+ *
+ * Mutation proof: disable the claimIntakeTurn gate inside claimedTurn (the pre-fix
+ * shape) and both tests fail — the resend greets a second time.
+ */
+describe('intake · P1-4 the turn claim', () => {
+  it('refuses a resend racing a turn that is STILL RUNNING (nothing saved to read)', async () => {
+    const { fake, transport, deps } = harness({});
+    // The first delivery is mid-turn: it holds the claim, and the session write that
+    // the old check read — lastProviderId — does not exist yet.
+    expect(await claimIntakeTurn(fake.db, 'SM-racing', NOW)).toBe(true);
+
+    const resend = await handleInboundSms(
+      fake.db,
+      { from: PHONE, body: 'hi', providerId: 'SM-racing', receivedAt: NOW },
+      deps,
+    );
+
+    expect(resend).toEqual({ status: 'duplicate' });
+    // The resend spent nothing: no greeting, no session, no model-bound turn.
+    expect(transport.sent).toHaveLength(0);
+    expect(fake.rows(schema.smsIntakeSessions)).toHaveLength(0);
+  });
+
+  it('refuses an out-of-order redelivery of an OLDER message after a newer turn moved on', async () => {
+    const { fake, transport, deps } = harness({});
+    await handleInboundSms(
+      fake.db,
+      { from: PHONE, body: 'hi', providerId: 'SM-a', receivedAt: NOW },
+      deps,
+    );
+    const sentAfterFirst = transport.sent.length;
+    // A later turn completed since: the session's one-id memory now names SM-b, which
+    // is exactly the world where the old check waved a delayed SM-a copy through.
+    const session = fake.rows(schema.smsIntakeSessions)[0];
+    if (!session) throw new Error('test seed: expected an open session');
+    session.lastProviderId = 'SM-b';
+
+    const redelivered = await handleInboundSms(
+      fake.db,
+      { from: PHONE, body: 'hi', providerId: 'SM-a', receivedAt: NOW },
+      deps,
+    );
+
+    expect(redelivered).toEqual({ status: 'duplicate' });
     expect(transport.sent).toHaveLength(sentAfterFirst);
   });
 });

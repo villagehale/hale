@@ -101,6 +101,7 @@ describe('the inbound-email hand-off (real Postgres)', () => {
           errors.push(args);
         },
       },
+      countOutcome: async () => {},
     };
   }
 

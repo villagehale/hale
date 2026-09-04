@@ -42,6 +42,8 @@ const PROVIDER_TOKENS = [
  * ledger row today, kept deliberately visible here rather than scattered. */
 const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/twilio/transport.ts': 'the door itself — the one module that speaks Twilio REST',
+  'apps/web/lib/channel/twilio/delivery-sweep.ts':
+    'read-only status poller (P0-1): fetches Message status by SID, sends nothing — its writes are ledger status updates, never provider sends',
   'apps/web/lib/channel/twilio/deps.ts':
     'intake + voice wiring; intake sends record via machine.ts writeChannelMessage or the session transcript, voice via textStranger transcript',
   'apps/web/lib/channel/router/wiring.ts':

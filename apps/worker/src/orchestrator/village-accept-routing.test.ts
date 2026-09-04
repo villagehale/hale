@@ -168,7 +168,7 @@ describe('runOrchestrator — accepted village item routes to add_to_routine', (
         verdict: ADD_TO_ROUTINE_VERDICT,
       })),
       loadConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
-      recordApproval: vi.fn(async () => {}),
+      recordApproval: vi.fn(async () => ({ claimed: true as const })),
       recordGate: vi.fn(async () => {}),
       execute,
       log: { info: vi.fn(), warn: vi.fn() },

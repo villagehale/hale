@@ -1165,8 +1165,29 @@ export async function loadActionApprovalHistory(
 }
 
 /**
+ * What became of an approval-record attempt. `claimed: false` carries the event's
+ * CURRENT status so the caller can tell the two unclaimed worlds apart:
+ * 'approved_pending_execute' is a prior attempt's checkpoint (crash residue or a
+ * concurrent delivery — resumable, the executor's own effect-level claims dedupe the
+ * sends), and any terminal status means execution already finished (drop). A named
+ * outcome either way, never a silent one (rule #11).
+ */
+export type HumanApprovalClaim =
+  | { claimed: true }
+  | { claimed: false; eventStatus: string | null };
+
+/**
  * Records a human's explicit approval of a drafted action and advances the event
  * to the resumable 'approved_pending_execute' checkpoint in ONE transaction.
+ *
+ * THE UPDATE IS THE CLAIM (audit P1-4): it advances the event only FROM 'reviewed' —
+ * the one status every producer of an approvable action parks the event at (the
+ * orchestrator's non-execute outcomes, the web pipeline's recordVerdict, the inline
+ * drafts) — and reads its own row count. Two deliveries of one approval cannot both
+ * record it: the loser's UPDATE matches nothing, writes nothing (no second audit row
+ * claiming the parent approved twice), and can never regress a terminal 'actioned'
+ * event back to the checkpoint. Hand-rolled transaction rather than recordTransition
+ * because the refused path must write NO audit row — there is no transition to record.
  *
  * The audit row's actor is the approving parent (not 'system'), so PIPEDA
  * right-to-access answers "which parent approved this" (the reason the
@@ -1177,25 +1198,33 @@ export async function loadActionApprovalHistory(
 export async function recordHumanApproval(
   input: { familyId: string; eventId: string; actionId: string; approvedBy: string },
   database: Database = db(),
-): Promise<void> {
-  await recordTransition(async (tx) => {
-    await tx
+): Promise<HumanApprovalClaim> {
+  return database.transaction(async (tx) => {
+    const claimed = await tx
       .update(schema.events)
       .set({ status: 'approved_pending_execute', updatedAt: new Date() })
-      .where(eq(schema.events.id, input.eventId));
+      .where(and(eq(schema.events.id, input.eventId), eq(schema.events.status, 'reviewed')))
+      .returning({ id: schema.events.id });
 
-    return {
-      value: undefined,
-      audit: {
-        familyId: input.familyId,
-        actor: input.approvedBy,
-        actionTaken: 'action.approved_by_human',
-        targetTable: 'actions',
-        targetId: input.actionId,
-        after: { approvedBy: input.approvedBy },
-      },
-    };
-  }, database);
+    if (claimed.length === 0) {
+      const rows = await tx
+        .select({ status: schema.events.status })
+        .from(schema.events)
+        .where(eq(schema.events.id, input.eventId))
+        .limit(1);
+      return { claimed: false, eventStatus: rows[0]?.status ?? null };
+    }
+
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.approvedBy,
+      actionTaken: 'action.approved_by_human',
+      targetTable: 'actions',
+      targetId: input.actionId,
+      after: { approvedBy: input.approvedBy },
+    });
+    return { claimed: true };
+  });
 }
 
 /**

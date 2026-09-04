@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
@@ -757,11 +758,8 @@ let followupAnthropic: Anthropic | undefined;
  * honest `client_unavailable` deferral.
  */
 function followupVoiceClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  followupAnthropic ??= new Anthropic({ apiKey });
+  // Sweep composer under the nudge cron's maxDuration 300 (audit P1-7).
+  followupAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return followupAnthropic;
 }
 

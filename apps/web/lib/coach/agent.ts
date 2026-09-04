@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   type AgentClient,
   agentRunCostUsd,
@@ -103,11 +104,10 @@ export interface AskHaleStreamHooks {
 let defaultClient: Anthropic | undefined;
 
 function anthropicClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  defaultClient ??= new Anthropic({ apiKey });
+  // A parent is waiting in the app chat — the SMS-lane budget (30s to headers,
+  // one retry). Streaming clears the SDK's abort timer at headers, so a long
+  // streamed answer is never cut off by it; only a stalled request is (P1-7).
+  defaultClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
   return defaultClient;
 }
 

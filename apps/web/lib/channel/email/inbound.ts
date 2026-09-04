@@ -86,6 +86,12 @@ export interface EmailInboundDeps {
   /** Required, mirroring C1's router: every outcome this leg reaches without sending
    * anything is only visible if it is written down (rule #11). */
   log: Pick<Console, 'info' | 'error'>;
+  /** Count one authentic request's FINAL outcome (PostHog, no PII — see
+   * captureInboundRouted). Required (rule #11), the SMS door's exact twin: the
+   * silence outcomes — rate_limited, unknown_sender, not_a_parent, automated — are
+   * only distinguishable from "nobody emails us" if every one is written down as a
+   * rate. Wired to a counter that never throws. */
+  countOutcome: (outcome: EmailInboundOutcome) => Promise<void>;
 }
 
 export type EmailInboundOutcome =
@@ -397,9 +403,17 @@ export async function handleEmailInboundRequest(
 
   const event = parseInboundEmailEvent(rawBody);
   if (!event) {
+    deps.log.info('inbound email: routed', { outcome: 'ignored_event' });
+    await deps.countOutcome('ignored_event');
     return Response.json({ outcome: 'ignored_event' satisfies EmailInboundOutcome });
   }
 
   const outcome = await routeEmailInbound(deps, config, event);
+  // The one line every authentic request ends with, and its counter twin — the
+  // outcome JSON below goes back to svix, which discards it, so this is the only
+  // place the silence outcomes become visible (rule #11). The email id is the
+  // provider's envelope handle, never the sender or a word of the message (rule #1).
+  deps.log.info('inbound email: routed', { outcome, emailId: event.emailId });
+  await deps.countOutcome(outcome);
   return Response.json({ outcome });
 }

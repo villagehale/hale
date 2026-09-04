@@ -18,5 +18,5 @@ export const runtime = 'nodejs';
  */
 export const GET = cronRoute('loop-health-digest', async () => {
   const result = await runLoopHealthDigestCron(db());
-  return NextResponse.json({ ok: true, sent: result.sent }, { status: 200 });
+  return NextResponse.json({ ok: true, outcome: result.outcome }, { status: 200 });
 });

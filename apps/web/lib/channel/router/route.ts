@@ -370,7 +370,7 @@ export interface ChannelRouterDeps {
   ): Promise<unknown>;
   limiter: RateLimiter;
   now(): Date;
-  log: Pick<Console, 'info' | 'error'>;
+  log: Pick<Console, 'info' | 'warn' | 'error'>;
 }
 
 /** Why a turn went back to the queue instead of answering. `model_unreachable` is the
@@ -484,11 +484,23 @@ export async function routeChannelMessage(
   let answered = false;
   const claimAnswer = async () => {
     answered = true;
-    await deps.turns.recordAnswered({
+    const claim = await deps.turns.recordAnswered({
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
       channelMessageId: job.channel_message_id,
     });
+    if (claim === 'already_answered') {
+      // The DB refused the claim: another attempt at this same turn answered first, so
+      // the send THIS attempt just made was a duplicate reply. Send-then-claim makes
+      // that structurally unpreventable at this seam (turn-ledger.ts); what the claim
+      // buys is that it is a NAMED fact (rule #11) instead of a second clean 'answered'
+      // row — and the queue-side cure (expiry above max turn wall-time, drain.ts) is
+      // what makes this line rare.
+      deps.log.warn(
+        { channelMessageId: job.channel_message_id, familyId: job.family_id },
+        'channel router: answer already claimed by a concurrent attempt — this send was a duplicate reply',
+      );
+    }
   };
 
   // GATE 1 — who is talking. Before the thread is opened, so a non-parent's message can

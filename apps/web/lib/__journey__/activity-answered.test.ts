@@ -551,7 +551,7 @@ describe('the activity question is answered', () => {
       offDomain: { consider: async () => ({ status: 'in_domain' as const, fallback: null }) },
       limiter: new FakeRateLimiter(),
       now: () => now,
-      log: { info: () => {}, error: () => {} },
+      log: { info: () => {}, warn: () => {}, error: () => {} },
       ...overrides,
     };
   }

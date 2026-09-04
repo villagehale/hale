@@ -1,7 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   defaultRegistrationVerifyDeps,
   runRegistrationVerifySweep,
@@ -27,8 +27,11 @@ export const maxDuration = 300;
  * page we are a guest on.
  */
 export const GET = cronRoute('registration-verify', async () => {
+  // Budgeted, not bare (audit P1-7): this sweep spends its weekly claim BEFORE
+  // working, and an SDK-default 600s stall inside maxDuration 300 burned the
+  // whole claimed week silently. 60s×2 worst-case per call sits inside the wall.
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const client = apiKey ? new Anthropic({ apiKey }) : null;
+  const client = apiKey ? budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS) : null;
 
   try {
     const summary = await runRegistrationVerifySweep(db(), defaultRegistrationVerifyDeps(client));

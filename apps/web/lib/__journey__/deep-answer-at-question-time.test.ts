@@ -584,7 +584,7 @@ describe('the deep answer arrives at question time', () => {
         return { status: 'enqueued' as const };
       },
       now: () => TURN_AT,
-      log: { info: () => {}, error: () => {} },
+      log: { info: () => {}, warn: () => {}, error: () => {} },
     };
   }
 

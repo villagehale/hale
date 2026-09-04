@@ -73,7 +73,7 @@ function makeDeps(
     loadConsent: vi.fn(
       async () => overrides.consent ?? { hasCoParent: false, coParentConsentGranted: false },
     ),
-    recordApproval: vi.fn(async () => {}),
+    recordApproval: vi.fn(async () => ({ claimed: true as const })),
     recordGate: vi.fn(async () => {}),
     execute: vi.fn(async () => {}),
     log: { info: vi.fn(), warn: vi.fn() },

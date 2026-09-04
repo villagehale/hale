@@ -11,6 +11,7 @@ import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   type ChannelMessageReceivedJob,
   type TwilioInboundDeps,
+  type TwilioInboundOutcome,
   handleTwilioInboundRequest,
   routeTwilioInbound,
 } from './inbound';
@@ -80,6 +81,10 @@ interface Harness {
   jobs: ChannelMessageReceivedJob[];
   /** Every operator line the webhook wrote, as its argument arrays. */
   errors: unknown[][];
+  /** The routed-outcome lines — the shell's one info line per authentic request. */
+  infos: unknown[][];
+  /** Every outcome the shell counted, in order (rule #11's rate). */
+  counted: TwilioInboundOutcome[];
   deps: TwilioInboundDeps;
   intakeBuilds: number;
   /** The transport each intake build was told the message arrived on. */
@@ -91,6 +96,8 @@ function harness(): Harness {
   const transport = new FakeTransport();
   const jobs: ChannelMessageReceivedJob[] = [];
   const errors: unknown[][] = [];
+  const infos: unknown[][] = [];
+  const counted: TwilioInboundOutcome[] = [];
   const state = { intakeBuilds: 0 };
   const intake: IntakeDeps = {
     transport,
@@ -113,14 +120,22 @@ function harness(): Harness {
     transport,
     jobs,
     errors,
+    infos,
+    counted,
     intakeBuilds: 0,
     intakeTransports: [],
     deps: {
       database: fake.db,
       log: {
+        info: (...args: unknown[]) => {
+          infos.push(args);
+        },
         error: (...args: unknown[]) => {
           errors.push(args);
         },
+      },
+      countOutcome: async (outcome) => {
+        counted.push(outcome);
       },
       intake: (inboundTransport?: string) => {
         state.intakeBuilds += 1;
@@ -677,6 +692,72 @@ describe('handoff to C1', () => {
       (w) => w.table === schema.auditLog && w.payload.actionTaken === 'sms_reply_received',
     );
     expect(replyAudits).toHaveLength(1);
+  });
+});
+
+describe('routing outcomes are logged and counted (rule #11)', () => {
+  it('names an authentic POST missing its MessageSid `malformed` — logged, counted, zero side effects', async () => {
+    const h = harness();
+    const { MessageSid: _omitted, ...params } = twilioParams();
+
+    const res = await handleTwilioInboundRequest(twilioRequest(params), h.deps);
+
+    expect(res.status).toBe(200);
+    expect(h.counted).toEqual(['malformed']);
+    expect(h.errors).toHaveLength(1);
+    expect(h.errors[0]?.[0]).toEqual({ hasFrom: true, hasProviderId: false });
+    expect(h.fake.writes).toHaveLength(0);
+    expect(h.jobs).toHaveLength(0);
+  });
+
+  it('counts a silence outcome — a non-parent role leaves `not_a_parent`, not nothing', async () => {
+    const h = harness();
+    enrol(h.fake, 'extended');
+    closeIntake(h.fake);
+
+    await handleTwilioInboundRequest(twilioRequest(twilioParams()), h.deps);
+
+    expect(h.counted).toEqual(['not_a_parent']);
+    expect(h.infos).toEqual([
+      [
+        { outcome: 'not_a_parent', providerMessageId: 'SM11111111111111111111111111111111' },
+        'twilio inbound: routed',
+      ],
+    ]);
+  });
+
+  it('counts the handoff too — the counter is a denominator, not an error log', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    await handleTwilioInboundRequest(twilioRequest(twilioParams()), h.deps);
+
+    expect(h.counted).toEqual(['handed_off']);
+  });
+
+  it('counts NOTHING for a refused request — forged traffic must not pollute the rates', async () => {
+    const h = harness();
+
+    await handleTwilioInboundRequest(twilioRequest(twilioParams(), { signature: 'forged' }), h.deps);
+
+    expect(h.counted).toEqual([]);
+    expect(h.infos).toEqual([]);
+  });
+
+  it('never puts the number or the body in the routed line or the malformed line (rule #1)', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+    const secret = 'Maya has an appointment at 4';
+    await handleTwilioInboundRequest(twilioRequest(twilioParams({ Body: secret })), h.deps);
+
+    const { MessageSid: _omitted, ...malformed } = twilioParams({ Body: secret });
+    await handleTwilioInboundRequest(twilioRequest(malformed), h.deps);
+
+    const written = JSON.stringify([h.infos, h.errors]);
+    expect(written).not.toContain(secret);
+    expect(written).not.toContain(PHONE);
   });
 });
 

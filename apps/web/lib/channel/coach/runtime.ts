@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { HOT_SMS_CLIENT_OPTIONS, activityClient } from '~/lib/pipeline/client';
+import type Anthropic from '@anthropic-ai/sdk';
+import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   type AgentClient,
   type GuardDeps,
@@ -354,11 +354,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
 let defaultClient: Anthropic | undefined;
 
 function anthropicClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  defaultClient ??= new Anthropic({ apiKey, ...HOT_SMS_CLIENT_OPTIONS });
+  defaultClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
   return defaultClient;
 }
 
