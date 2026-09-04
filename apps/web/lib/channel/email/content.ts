@@ -33,8 +33,13 @@ export interface ReceivedEmailContent {
 export type ContentFetch =
   | { status: 'ok'; content: ReceivedEmailContent }
   /** Named, never folded into an empty body: a message we could not read must not be
-   * answered as if the parent had sent nothing. */
-  | { status: 'failed'; reason: 'not_found' | 'provider_error' };
+   * answered as if the parent had sent nothing. The refusal is TYPED (the PR #497
+   * shape): `transient` says whether retrying can ever help, and the webhook's answer
+   * hangs on it — svix redelivers on a 5xx and on nothing else, so a transient blip
+   * acknowledged with a 200 is a permanently dropped email. Permanent is ENUMERATED
+   * (not_found: the email itself is gone) and everything else is transient, so a
+   * misclassification fails toward the retry — the direction that cannot lose mail. */
+  | { status: 'failed'; reason: 'not_found' | 'provider_error'; transient: boolean };
 
 export interface InboundContentReader {
   fetch(emailId: string): Promise<ContentFetch>;
@@ -60,8 +65,18 @@ export function createResendContentReader(opts: {
   return {
     async fetch(emailId) {
       const { data, error } = await client.receiving.get(emailId);
-      if (error || !data) {
-        return { status: 'failed', reason: error ? 'provider_error' : 'not_found' };
+      if (error) {
+        // Only a 404 can never resolve: the emailId came out of a signed webhook, so
+        // "not found" means the resource is gone, not that we asked wrong. A rate
+        // limit, a 5xx, or an unreachable provider (the SDK reports statusCode null
+        // for a failed fetch) all deserve svix's redelivery.
+        if (error.name === 'not_found' || error.statusCode === 404) {
+          return { status: 'failed', reason: 'not_found', transient: false };
+        }
+        return { status: 'failed', reason: 'provider_error', transient: true };
+      }
+      if (!data) {
+        return { status: 'failed', reason: 'not_found', transient: false };
       }
       return {
         status: 'ok',
@@ -84,8 +99,8 @@ export class FakeContentReader implements InboundContentReader {
     });
   }
 
-  static failing(reason: 'not_found' | 'provider_error'): FakeContentReader {
-    return new FakeContentReader({ status: 'failed', reason });
+  static failing(reason: 'not_found' | 'provider_error', transient: boolean): FakeContentReader {
+    return new FakeContentReader({ status: 'failed', reason, transient });
   }
 
   async fetch(emailId: string): Promise<ContentFetch> {

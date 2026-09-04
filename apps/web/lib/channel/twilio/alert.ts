@@ -30,8 +30,12 @@ import { buildEvent } from '~/lib/analytics/events';
  */
 
 /** The webhooks that can 500 anonymously. One token per route, snake_case so it reads
- * the same in an SMS, a log line and a PostHog property. */
-export type TwilioWebhookRoute = 'twilio_inbound' | 'twilio_voice' | 'twilio_status';
+ * the same in an SMS, a log line and a PostHog property. The union is EVERY inbound
+ * provider door, not just Twilio's: the boundary belongs to the seam type (a webhook
+ * that can throw before its first ledger write), and a door this type cannot name is
+ * a door the invariant cannot cover — which is exactly how the email route shipped
+ * without it (audit P1-5a; webhook-boundary.test.ts holds the inventory). */
+export type WebhookRoute = 'twilio_inbound' | 'twilio_voice' | 'twilio_status' | 'email_inbound';
 
 export type SmsAlertOutcome =
   | 'sent'
@@ -84,7 +88,7 @@ function errorClass(error: unknown): string {
 }
 
 async function sendFounderSms(
-  route: TwilioWebhookRoute,
+  route: WebhookRoute,
   error: unknown,
   doFetch: typeof fetch,
 ): Promise<SmsAlertOutcome> {
@@ -150,7 +154,7 @@ async function sendFounderSms(
 }
 
 async function captureFailure(
-  route: TwilioWebhookRoute,
+  route: WebhookRoute,
   error: unknown,
   doFetch: typeof fetch,
 ): Promise<AnalyticsAlertOutcome> {
@@ -205,7 +209,7 @@ async function captureFailure(
  * each reports what it did.
  */
 export async function webhookFailureAlert(
-  input: { route: TwilioWebhookRoute; error: unknown },
+  input: { route: WebhookRoute; error: unknown },
   deps: WebhookAlertDeps = {},
 ): Promise<WebhookAlertOutcome> {
   const doFetch = deps.fetch ?? globalThis.fetch;
@@ -217,24 +221,26 @@ export async function webhookFailureAlert(
 }
 
 /**
- * The route boundary for every Twilio webhook — the one layer allowed to catch (rule
- * #8), and the reason it lives here rather than being copied into three route shells.
+ * The route boundary for every inbound provider webhook — the one layer allowed to
+ * catch (rule #8), and the reason it lives here rather than being copied into the
+ * route shells.
  *
  * The answer STAYS a 500. Twilio's SmsFallbackUrl retries on a 5xx and on nothing else,
- * so softening this into a 200 would trade a visible failure for a permanently lost
- * message — exactly the leads the incident cost. The alert is AWAITED rather than
- * deferred to after(): the response is already a failure, and a serverless instance that
- * freezes the moment it responds would drop the only signal anyone gets.
+ * and svix (the email door) retries on any non-2xx — so softening this into a 200 would
+ * trade a visible failure for a permanently lost message on either door, exactly the
+ * leads the incident cost. The alert is AWAITED rather than deferred to after(): the
+ * response is already a failure, and a serverless instance that freezes the moment it
+ * responds would drop the only signal anyone gets.
  */
 export async function withWebhookFailureAlert(
-  route: TwilioWebhookRoute,
+  route: WebhookRoute,
   handle: () => Promise<Response>,
   deps: WebhookAlertDeps = {},
 ): Promise<Response> {
   try {
     return await handle();
   } catch (err) {
-    console.error('twilio webhook threw', { route, err });
+    console.error('channel webhook threw', { route, err });
     await webhookFailureAlert({ route, error: err }, deps);
     return new Response('webhook failed', { status: 500 });
   }

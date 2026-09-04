@@ -1,6 +1,7 @@
 import { after } from 'next/server';
 import { emailInboundDeps } from '~/lib/channel/email/deps';
 import { handleEmailInboundRequest } from '~/lib/channel/email/inbound';
+import { withWebhookFailureAlert } from '~/lib/channel/twilio/alert';
 import { INBOUND_TURN_QUEUES } from '~/lib/cron/drain';
 import { kickDrain } from '~/lib/cron/kick-drain';
 
@@ -22,16 +23,22 @@ export const runtime = 'nodejs';
  * through the one call that put a job on the queue.
  */
 export async function POST(req: Request): Promise<Response> {
-  const deps = emailInboundDeps();
-  const origin = process.env.APP_URL ?? new URL(req.url).origin;
-  return handleEmailInboundRequest(req, {
-    ...deps,
-    // RETURNED, not fired: after() keeps this instance alive only while the callback is
-    // pending, and a callback that returns nothing can be frozen with the kick's request
-    // still unsent (kick-drain.ts).
-    enqueue: async (job) => {
-      await deps.enqueue(job);
-      after(() => kickDrain(origin, INBOUND_TURN_QUEUES));
-    },
+  // The whole body — dependency construction included — is inside the failure boundary
+  // (VIL-331), exactly like the Twilio doors: the 2026-08-28 incident threw from the
+  // first DB touch, before any handler logic ran. A svix retry on the 500 is welcome —
+  // it redelivers a message we never recorded.
+  return withWebhookFailureAlert('email_inbound', async () => {
+    const deps = emailInboundDeps();
+    const origin = process.env.APP_URL ?? new URL(req.url).origin;
+    return handleEmailInboundRequest(req, {
+      ...deps,
+      // RETURNED, not fired: after() keeps this instance alive only while the callback is
+      // pending, and a callback that returns nothing can be frozen with the kick's request
+      // still unsent (kick-drain.ts).
+      enqueue: async (job) => {
+        await deps.enqueue(job);
+        after(() => kickDrain(origin, INBOUND_TURN_QUEUES));
+      },
+    });
   });
 }

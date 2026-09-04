@@ -111,6 +111,28 @@ describe('webhookFailureAlert', () => {
     });
   });
 
+  /** The boundary is the SEAM'S, not Twilio's: the email door alerts through the same
+   * two legs under its own route token (audit P1-5a). */
+  it('names the email door with its own route token', async () => {
+    configure();
+    const { calls, fetch } = recorder();
+
+    const outcome = await webhookFailureAlert(
+      { route: 'email_inbound', error: new TypeError('fetch failed: db.supabase.co') },
+      { fetch },
+    );
+
+    expect(outcome).toEqual({ sms: 'sent', analytics: 'sent' });
+    const form = new URLSearchParams(only(twilioCall(calls), 'twilio').body);
+    expect(form.get('Body')).toBe(
+      'Hale ALERT: email_inbound threw - TypeError. Details in logs + PostHog.',
+    );
+    expect(JSON.parse(only(posthogCall(calls), 'posthog').body)).toMatchObject({
+      distinct_id: 'route:email_inbound',
+      properties: { route: 'email_inbound', error_class: 'TypeError' },
+    });
+  });
+
   it('sends no parent phone number and no message body to either leg', async () => {
     configure();
     const { calls, fetch } = recorder();
