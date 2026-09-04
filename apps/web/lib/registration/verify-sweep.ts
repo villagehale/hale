@@ -118,7 +118,18 @@ function stripHtml(html: string): string {
  */
 const PAGE_FETCH_HEADERS = { Accept: 'text/html,application/xhtml+xml' } as const;
 
-export function createFetchPage(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
+/**
+ * The bytes as the server sent them — the timeout, the status throw and the 4 MB
+ * refusal, and nothing else.
+ *
+ * IT IS THE PRIMITIVE BECAUSE THE STRIP IS NOT UNIVERSAL (VIL-337). A PerfectMind
+ * course page says nothing readable about availability — its visible text strips to
+ * ~500 characters of "Course Dates ... Load more..." — and carries the whole record as
+ * a JSON object literal inside a `<script>` block, which `stripHtml` deletes. A watcher
+ * built on `createFetchPage` could therefore never see a spot open. Both callers must
+ * still inherit the refusals, so they live down here rather than beside the strip.
+ */
+export function createFetchBody(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
   return async (url: string) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -133,13 +144,20 @@ export function createFetchPage(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
           `registration verify fetch ${url} → ${body.length} chars exceeds the ${MAX_PAGE_BYTES} page ceiling`,
         );
       }
-      // Strip FIRST, then bound. Bounding the markup throws away the dates it was
-      // wrapped in; bounding the text bounds what the model actually reads.
-      const text = stripHtml(body);
-      return text.length > MAX_PAGE_TEXT_CHARS ? text.slice(0, MAX_PAGE_TEXT_CHARS) : text;
+      return body;
     } finally {
       clearTimeout(timer);
     }
+  };
+}
+
+export function createFetchPage(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
+  const fetchBody = createFetchBody(timeoutMs);
+  return async (url: string) => {
+    // Strip FIRST, then bound. Bounding the markup throws away the dates it was
+    // wrapped in; bounding the text bounds what the model actually reads.
+    const text = stripHtml(await fetchBody(url));
+    return text.length > MAX_PAGE_TEXT_CHARS ? text.slice(0, MAX_PAGE_TEXT_CHARS) : text;
   };
 }
 
@@ -530,7 +548,7 @@ function errorText(err: unknown): string {
 /** Fetch each distinct page ONCE per run, failures included. Four Burlington rows
  * share one table; re-reading it four times would spend four times as long and
  * lean four times as hard on a public body's server for the same bytes. */
-function pageCache(fetchPage: FetchPage) {
+export function pageCache(fetchPage: FetchPage) {
   const cache = new Map<string, Promise<string>>();
   return (url: string): Promise<string> => {
     const existing = cache.get(url);

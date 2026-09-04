@@ -6,6 +6,7 @@ import {
   MAX_PAGE_TEXT_CHARS,
   MAX_WINDOWS_PER_RUN,
   type RegistrationVerifyDeps,
+  createFetchBody,
   createFetchPage,
   formatRegistrationVerifyDigest,
   runRegistrationVerifySweep,
@@ -562,7 +563,7 @@ describe('formatRegistrationVerifyDigest', () => {
   });
 });
 
-// ── createFetchPage ──────────────────────────────────────────────────────────
+// ── createFetchBody / createFetchPage ────────────────────────────────────────
 
 /**
  * VIL-261. The first live sweep recorded Vaughan as `fetch_failed`, and behind that
@@ -576,7 +577,7 @@ describe('formatRegistrationVerifyDigest', () => {
  * So the cap moved to where it belongs (the text the model reads, which is 44 K even
  * for Vaughan) and anything too large to be a page is REFUSED rather than trimmed.
  */
-describe('createFetchPage', () => {
+describe('createFetchBody / createFetchPage', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -644,5 +645,32 @@ describe('createFetchPage', () => {
       string
     >;
     expect(Object.keys(headers).map((k) => k.toLowerCase())).not.toContain('user-agent');
+  });
+
+  it('returns the raw body, and createFetchPage is the strip over it', async () => {
+    // VIL-337. A PerfectMind course page publishes nothing readable about availability
+    // and carries the whole record as a JSON object literal inside a <script> block —
+    // which `stripHtml` deletes outright. So the two callers cannot share one function:
+    // the verify sweep reads a page's words, the spot watcher reads a page's model.
+    const html =
+      '<html><body><script>var eventInfo = {"SpotsLeft":11};</script><p>Course Dates</p></body></html>';
+    stubFetch(html);
+
+    const body = await createFetchBody()('https://cityofmarkham.perfectmind.com/course');
+    const text = await createFetchPage()('https://cityofmarkham.perfectmind.com/course');
+
+    expect(body).toBe(html);
+    expect(body).toContain('"SpotsLeft":11');
+    expect(text).toBe('Course Dates');
+  });
+
+  it('refuses below the strip, so both callers inherit the ceiling and the status throw', async () => {
+    stubFetch('x'.repeat(MAX_PAGE_BYTES + 1));
+    await expect(createFetchBody()('https://example.ca/video.mp4')).rejects.toThrow(
+      /exceeds the .* ceiling/,
+    );
+
+    stubFetch('<p>nope</p>', { status: 404 });
+    await expect(createFetchBody()('https://example.ca/gone')).rejects.toThrow(/HTTP 404/);
   });
 });
