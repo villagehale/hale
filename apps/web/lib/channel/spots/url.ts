@@ -47,9 +47,10 @@ export const COURSE_PAGE_PATH = /^\/(?:Clients|Contacts)\/BookMe4LandingPages\/C
 /**
  * The ceiling on the SANITIZED url — the string that goes into `source_url` and, more
  * to the point, into an SMS whose segment budget copy.ts computes against a 200-char
- * link. The path and the two GUIDs are fixed by the vendor, so the only thing that can
- * breach this is a new registry entry with a very long host; url.test.ts checks every
- * shipped host against it.
+ * link. It is checked in url.test.ts and NOT at runtime, because the sanitized length
+ * is `https://` + host + a vendor-fixed path + two 36-char GUIDs: nothing a parent can
+ * paste moves it, and the only thing that can breach it is a new registry entry with a
+ * very long host — which is a code change, so a test is where it gets caught.
  */
 export const MAX_URL_CHARS = 200;
 
@@ -100,8 +101,18 @@ export function sanitizeSpotUrl(raw: string): SpotUrlResult {
   if (widgetId === null || !GUID.test(widgetId)) return { ok: false, reason: 'not_a_course_page' };
   if (courseId === null || !GUID.test(courseId)) return { ok: false, reason: 'not_a_course_page' };
 
-  const url = `https://${parsed.hostname}${parsed.pathname}?widgetId=${widgetId}&courseId=${courseId}`;
-  if (url.length > MAX_URL_CHARS) return { ok: false, reason: 'too_long' };
+  // Lower-cased because (family_id, source_url) is the watch's identity and the portal
+  // does not care: the same course pasted from an upper-case link would otherwise be a
+  // second watch on one page, texting one parent twice.
+  const widget = widgetId.toLowerCase();
+  const course = courseId.toLowerCase();
+  const url = `https://${parsed.hostname}${parsed.pathname}?widgetId=${widget}&courseId=${course}`;
 
-  return { ok: true, url, host: parsed.hostname, portalLabel: portal.portalLabel, courseId };
+  return {
+    ok: true,
+    url,
+    host: parsed.hostname,
+    portalLabel: portal.portalLabel,
+    courseId: course,
+  };
 }

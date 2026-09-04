@@ -52,6 +52,23 @@ describe('sanitizeSpotUrl — what it accepts', () => {
     expect(result.ok && result.url).toBe(CLEAN);
   });
 
+  it('lower-cases the GUIDs, so one course is one watch however it was copied', () => {
+    // (family_id, source_url) is the watch's identity and `readSpot` compares EventId
+    // case-insensitively, so an upper-case paste that sanitized to its own string would
+    // be a SECOND watch polling the same page and texting the same parent twice.
+    const result = sanitizeSpotUrl(
+      `${COURSE_PAGE}?widgetId=${WIDGET.toUpperCase()}&courseId=${COURSE.toUpperCase()}`,
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      url: CLEAN,
+      host: 'cityofmarkham.perfectmind.com',
+      portalLabel: "Markham's portal",
+      courseId: COURSE,
+    });
+  });
+
   it("sanitizes Oakville's real /Contacts/ address to its own label", () => {
     // The exact link oakville-course.html was fetched from, with the embed flag a
     // parent's address bar carries. Oakville serves these routes under /Contacts/
