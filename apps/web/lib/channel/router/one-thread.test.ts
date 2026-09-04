@@ -120,7 +120,7 @@ describe('one parent, two doors, one conversation', () => {
       dispatchDeepResearch: async () => ({ status: 'enqueued' }),
       limiter: new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
-      log: { info: () => {}, error: () => {} },
+      log: { info: () => {}, warn: () => {}, error: () => {} },
     };
   }
 

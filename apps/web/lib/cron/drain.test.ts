@@ -198,7 +198,10 @@ describe('drainHotQueues', () => {
     expect(created).toContainEqual(
       expect.objectContaining({ name: RERANK, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS }),
     );
-    expect(HOT_QUEUE_EXPIRE_SECONDS).toBe(180);
+    // Above the platform's maxDuration=800 wall (audit P1-4): no job fetched by a live
+    // invocation can still be running when it expires, so an expiry redelivery is
+    // always a KILLED job, never a concurrent double of a slow one.
+    expect(HOT_QUEUE_EXPIRE_SECONDS).toBe(900);
   });
 
   /**
@@ -815,7 +818,12 @@ describe('deep.research', () => {
 
     const declared = created.find((call) => call.name === DEEP);
     expect(declared?.expireInSeconds).toBe(DEEP_RESEARCH_EXPIRE_SECONDS);
-    expect(declared?.expireInSeconds).toBeGreaterThan(HOT_QUEUE_EXPIRE_SECONDS);
+    // The hot expiry rose to the same platform-wall ceiling (P1-4), so the property
+    // pinned here is the one that always mattered: a deep pass's expiry covers its own
+    // minutes-long budget with slack — it does not merely ride the hot lane's number.
+    expect((declared?.expireInSeconds ?? 0) * 1000).toBeGreaterThanOrEqual(
+      3 * DEEP_RESEARCH_BUDGET_MS,
+    );
   });
 
   it('is drainable by name and runs the handler, then completes the job', async () => {

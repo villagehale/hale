@@ -117,6 +117,10 @@ export type CalendarInviteReport =
   | { status: 'not_configured' }
   /** The sender threw. The placement stands; the invite is the named residue. */
   | { status: 'errored'; message: string }
+  /** The calendar write came back `already_written`: another pass owns this write and
+   * its invite (audit P1-4) — sending again here would double the parent's email. A
+   * named skip (rule #11), recorded in the execution detail like every other leg. */
+  | { status: 'skipped_already_written' }
   | {
       status: 'reported';
       parents: CalendarInviteParentOutcome[];
@@ -436,7 +440,7 @@ async function calendarPlacement(
       actionId: input.approved.id,
       reversalHandle: requirePayloadString(payload.reversalHandle, 'reversalHandle', actionType),
     });
-    const invites = await inviteFor(input, deps, result.familyEventId, 'CANCEL');
+    const invites = await inviteUnlessAlreadyWritten(input, deps, result, 'CANCEL');
     return {
       ok: true,
       executedAt,
@@ -465,7 +469,7 @@ async function calendarPlacement(
       endsAt,
       location,
     });
-    const invites = await inviteFor(input, deps, result.familyEventId, 'REQUEST');
+    const invites = await inviteUnlessAlreadyWritten(input, deps, result, 'REQUEST');
     return {
       ok: true,
       executedAt,
@@ -491,7 +495,7 @@ async function calendarPlacement(
     childId: typeof payload.childId === 'string' ? payload.childId : null,
     sensitive: payload.privacySensitive === true,
   });
-  const invites = await inviteFor(input, deps, result.familyEventId, 'REQUEST');
+  const invites = await inviteUnlessAlreadyWritten(input, deps, result, 'REQUEST');
   return {
     ok: true,
     executedAt,
@@ -503,6 +507,23 @@ async function calendarPlacement(
     },
     reversible: true,
   };
+}
+
+/**
+ * The invite an OWNED write earns. `already_written` means another pass — a prior
+ * attempt whose claim this delivery lost (audit P1-4) — performed the write and owes
+ * the invite with it; sending again here is how a raced calendar_add doubled a
+ * parent's invite email. The skip is a named report value in the execution detail,
+ * never a silent absence (rule #11).
+ */
+async function inviteUnlessAlreadyWritten(
+  input: ExecutorRunInput,
+  deps: ExecutorDeps,
+  result: CalendarWriteResult,
+  method: CalendarInviteMethod,
+): Promise<CalendarInviteReport> {
+  if (result.outcome === 'already_written') return { status: 'skipped_already_written' };
+  return inviteFor(input, deps, result.familyEventId, method);
 }
 
 /**

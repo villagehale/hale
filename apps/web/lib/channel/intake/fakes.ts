@@ -431,6 +431,15 @@ export function makeFakeDb(): FakeDb {
     ) {
       return 'sms_intake_sessions_phone_open_idx';
     }
+    if (
+      table === schema.smsIntakeTurnClaims &&
+      typeof value.providerMessageId === 'string' &&
+      existing.some((row) => row.providerMessageId === value.providerMessageId)
+    ) {
+      // 5. sms_intake_turn_claims(provider_message_id) — one turn per inbound text:
+      //    the winner is the delivery that runs the machine (turn-claim.ts, P1-4).
+      return 'sms_intake_turn_claims_provider_msg_uniq';
+    }
     return null;
   };
 
@@ -450,6 +459,10 @@ export function makeFakeDb(): FakeDb {
 
   const handle = {
     select: () => ({ from: selectFrom }),
+    // Retention housekeeping only (turn-claim.ts): rows are kept here — the claim's
+    // exactly-once property is the unique index's (modelled above), never the sweep's,
+    // and the sweep itself is proven against real DDL in the pglite suite.
+    delete: (_table: unknown) => ({ where: () => thenable([]) }),
     insert: (table: unknown) => {
       const chain = thenable([]);
       chain.values = (payload: Record<string, unknown> | Record<string, unknown>[]) => {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { type ApproveQueue, approveDraftedAction } from './approve.js';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
@@ -55,11 +56,37 @@ describe('approveDraftedAction', () => {
         approved_by: APPROVER,
         approved_at: expect.any(String),
       }),
-      { expireInSeconds: 180 },
+      // The job ID is the action id (audit P1-4): pg-boss's ON CONFLICT DO NOTHING on
+      // it is what makes a double-tap, or the SMS "YES" arc racing the web button, one
+      // job instead of two deliveries racing the executor's gate.
+      { expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS, id: ACTION_ID },
     );
     const payload = queue.send.mock.calls[0]?.[1];
     expect(payload).toBeDefined();
     expect(Number.isNaN(Date.parse(payload?.approved_at ?? ''))).toBe(false);
+  });
+
+  it('answers 202 when the job already exists (send → null): the approval is already on its way', async () => {
+    const db = fakeDb([
+      {
+        id: ACTION_ID,
+        familyId: FAMILY_ID,
+        userVisibleState: 'drafted_for_approval',
+        reviewerVerdict: 'approved',
+      },
+    ]);
+    const queue: ApproveQueue & { send: ReturnType<typeof vi.fn> } = {
+      send: vi.fn().mockResolvedValue(null),
+    };
+
+    const result = await approveDraftedAction(db, queue, {
+      actionId: ACTION_ID,
+      familyId: FAMILY_ID,
+      approvedBy: APPROVER,
+    });
+
+    expect(result.status).toBe(202);
+    expect(queue.send).toHaveBeenCalledTimes(1);
   });
 
   it('returns 409 and does NOT enqueue when the action is not awaiting approval', async () => {

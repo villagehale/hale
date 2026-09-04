@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import {
   type AcceptQueue,
   acceptVillageCandidate,
@@ -74,7 +75,7 @@ describe('acceptVillageCandidate', () => {
           coverage_note: 'serves your area',
         }),
       }),
-      { expireInSeconds: 180 },
+      { expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS },
     );
     const payload = queue.send.mock.calls[0]?.[1];
     expect(Number.isNaN(Date.parse(payload?.received_at ?? ''))).toBe(false);
