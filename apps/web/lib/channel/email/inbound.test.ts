@@ -100,6 +100,10 @@ interface Harness {
   built: number;
   /** Every job handed to C1 — the assertion surface for "was this actually passed on". */
   queued: ChannelMessageReceivedJob[];
+  /** The routed-outcome lines — the shell's one info line per authentic request. */
+  infos: unknown[][];
+  /** Every outcome the shell counted, in order (rule #11's rate). */
+  counted: EmailInboundOutcome[];
 }
 
 function harness(
@@ -113,6 +117,8 @@ function harness(
   const fake = makeFakeDb();
   const state = { built: 0 };
   const queued: ChannelMessageReceivedJob[] = [];
+  const infos: unknown[][] = [];
+  const counted: EmailInboundOutcome[] = [];
   const deps: EmailInboundDeps = {
     database: fake.db,
     content: (): InboundContentReader => {
@@ -125,13 +131,23 @@ function harness(
       queued.push(job);
     },
     now: () => NOW,
-    log: { info: () => {}, error: () => {} },
+    log: {
+      info: (...args: unknown[]) => {
+        infos.push(args);
+      },
+      error: () => {},
+    },
+    countOutcome: async (outcome) => {
+      counted.push(outcome);
+    },
   };
   return {
     deps,
     fake,
     content: contentReader,
     queued,
+    infos,
+    counted,
     get built() {
       return state.built;
     },
@@ -202,6 +218,40 @@ describe('handleEmailInboundRequest · the two refusals', () => {
     const h = harness();
     const res = await handleEmailInboundRequest(request(body()), h.deps);
     expect(res.status).toBe(200);
+  });
+});
+
+describe('every authentic outcome is logged and counted (rule #11)', () => {
+  it('counts the silence outcomes — an unknown sender leaves a rate, not nothing', async () => {
+    const h = harness();
+
+    expect(await outcomeOf(await handleEmailInboundRequest(request(body()), h.deps))).toBe(
+      'unknown_sender',
+    );
+
+    expect(h.counted).toEqual(['unknown_sender']);
+    expect(h.infos).toEqual([
+      ['inbound email: routed', { outcome: 'unknown_sender', emailId: 'email-1' }],
+    ]);
+  });
+
+  it('counts ignored_event and handed_off alike — the counter is a denominator, not an error log', async () => {
+    const h = harness();
+    seedParent(h.fake);
+
+    await handleEmailInboundRequest(request(body({}, 'email.delivered')), h.deps);
+    await handleEmailInboundRequest(request(body()), h.deps);
+
+    expect(h.counted).toEqual(['ignored_event', 'handed_off']);
+  });
+
+  it('counts NOTHING for a refused request — forged traffic must not pollute the rates', async () => {
+    const h = harness();
+
+    await handleEmailInboundRequest(request(body(), { 'svix-signature': null }), h.deps);
+
+    expect(h.counted).toEqual([]);
+    expect(h.infos).toEqual([]);
   });
 });
 

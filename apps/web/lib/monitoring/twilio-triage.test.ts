@@ -66,6 +66,7 @@ function deps(overrides: DepsOverrides = {}): TwilioTriageDeps {
     claimWindow: vi.fn(async () => true),
     outboundSentCount: vi.fn(async () => 3),
     sendSms: vi.fn(async () => 'sent' as const),
+    escalateDigestFailure: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -168,11 +169,21 @@ describe('runTwilioTriage', () => {
     expect(d.sendSms).toHaveBeenCalledTimes(1);
   });
 
-  it('a refused SMS is digest_send_failed, and the cursor stays for a retry next window', async () => {
+  it('a refused SMS is digest_send_failed, escalated over the other transport, cursor stays for a retry', async () => {
     const d = deps({ sendSms: vi.fn(async () => 'failed' as const) });
     const result = await runTwilioTriage(database, d, NOW);
     expect(result).toMatchObject({ outcome: 'digest_send_failed', alerts: 2, class: 'crash_5xx' });
     expect(d.advanceCursor).not.toHaveBeenCalled();
+    // The page said webhooks are failing; the page's own failure must not end as a
+    // console line — it goes through the provider-health seam (founder email).
+    expect(d.escalateDigestFailure).toHaveBeenCalledWith(database, 'provider_error', NOW);
+  });
+
+  it('a not-configured SMS leg is a named skip, never escalated as an incident', async () => {
+    const d = deps({ sendSms: vi.fn(async () => 'skipped_not_configured' as const) });
+    const result = await runTwilioTriage(database, d, NOW);
+    expect(result).toMatchObject({ outcome: 'skipped_not_configured' });
+    expect(d.escalateDigestFailure).not.toHaveBeenCalled();
   });
 
   it('non-webhook alerts are counted, skipped, and the cursor moves past them', async () => {

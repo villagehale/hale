@@ -152,6 +152,10 @@ export function voiceCallRecorder(database: Database): VoiceCallRecorder {
         familyId: record.ticket.familyId,
         actor: record.ticket.parentUserId,
         actionTaken: 'voice_call_completed',
+        // The call's one DB anchor: the relay claim row, whose key IS the call sid
+        // (relay-claim.ts). The turns are channel_messages rows of their own.
+        targetTable: 'voice_relay_claims',
+        targetId: record.ticket.callSid,
         after: {
           callSid: record.ticket.callSid,
           outcome: record.outcome,

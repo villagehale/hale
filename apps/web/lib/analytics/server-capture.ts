@@ -181,6 +181,66 @@ export function buildAgentErrorPayload(error: AgentError): {
   };
 }
 
+// ── Inbound routing outcomes ─────────────────────────────────────────────────
+
+/** The two doors a parent's message can arrive through. */
+export type InboundDoor = 'sms' | 'email';
+
+/** Inside the Twilio webhook's 15s budget, so a hung PostHog endpoint must fail fast
+ * — the same bound the webhook boundary alert puts on its own capture leg
+ * (lib/channel/twilio/alert.ts). captureServerEvent's unbounded fetch is fine on a
+ * server action; it is not fine here. */
+const INBOUND_CAPTURE_TIMEOUT_MS = 4_000;
+
+/**
+ * Count one routed inbound message. Both doors call this with their FINAL outcome —
+ * every named refusal included — because a refusal that is never counted is
+ * indistinguishable from silence (rule #11; the 2026-09-03 audit found 84 Twilio
+ * inbound against 19 ledger rows with nothing saying where the other 65 went).
+ *
+ * The payload is the door and the outcome enum, nothing else — no sender, no provider
+ * id, no body (rule #1). The outcome is backstopped by the same enum-token gate the
+ * agent-error payloads use, so a call site that someday reaches for a free string
+ * ships 'unclassified' instead of content. Never throws: a counter must not be able
+ * to take the webhook down.
+ */
+export async function captureInboundRouted(
+  door: InboundDoor,
+  outcome: string,
+): Promise<CaptureOutcome> {
+  const key = keyOrNull();
+  if (!key) {
+    return 'not_configured';
+  }
+  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com';
+  const { event, properties } = buildEvent('inbound_routed', {
+    door,
+    outcome: ENUM_TOKEN.test(outcome) ? outcome : 'unclassified',
+  });
+  try {
+    await fetch(`${host}/i/v0/e/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: key,
+        event,
+        // The door itself, mirroring `lane:` — an inbound refusal often has no
+        // resolved person, and the ones that do must not be joined back to one.
+        distinct_id: `door:${door}`,
+        properties,
+      }),
+      signal: AbortSignal.timeout(INBOUND_CAPTURE_TIMEOUT_MS),
+    });
+    return 'sent';
+  } catch (err) {
+    console.warn('analytics: inbound routing count failed to send', {
+      door,
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+    return 'provider_error';
+  }
+}
+
 /**
  * Report a typed agent failure. Fire-and-forget by construction: it NEVER throws, so a
  * call site sitting inside a `catch` mid-send cannot be made worse by reporting. The

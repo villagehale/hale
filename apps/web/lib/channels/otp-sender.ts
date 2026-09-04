@@ -22,6 +22,34 @@ export interface SmsTransport {
   sendSms(to: string, body: string): Promise<void>;
 }
 
+/** Inside a sign-in request, so bounded like the main transport's 10s: a hung CPaaS
+ * must fail fast, never pin a parent on "sending your code" until the platform kills
+ * the function (lib/channel/twilio/transport.ts's exact budget). */
+const OTP_SEND_TIMEOUT_MS = 10_000;
+
+/**
+ * A CPaaS refusal, typed so a caller can act on it without parsing a string — the
+ * TwilioSendError convention on the one SMS leg that predates it. Provider-neutral,
+ * so the split is on the HTTP status alone: a 4xx (bar 408/429) is the provider
+ * saying the request itself is wrong, and the identical request re-sent earns the
+ * identical answer; everything else — throttle, timeout, outage — is transient.
+ * Carries the status ONLY: a CPaaS error body echoes the number back, and this is
+ * the object that ends up in a stack trace (rule #1).
+ */
+export class OtpSendError extends Error {
+  readonly httpStatus: number;
+  /** True when retrying would only earn the same refusal — the caller stops instead. */
+  readonly permanent: boolean;
+
+  constructor(httpStatus: number) {
+    super(`SMS OTP send failed (${httpStatus})`);
+    this.name = 'OtpSendError';
+    this.httpStatus = httpStatus;
+    this.permanent =
+      httpStatus >= 400 && httpStatus < 500 && httpStatus !== 408 && httpStatus !== 429;
+  }
+}
+
 /** The verification text. Carries the code only — never the parent's name (rule #1). */
 export function otpMessage(code: string): string {
   return `Your Hale verification code is ${code}. It expires in 10 minutes.`;
@@ -65,9 +93,10 @@ function transportFromEnv(): SmsTransport | null {
           'content-type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({ To: to, From: from, Body: body }).toString(),
+        signal: AbortSignal.timeout(OTP_SEND_TIMEOUT_MS),
       });
       if (!res.ok) {
-        throw new Error(`SMS OTP send failed (${res.status})`);
+        throw new OtpSendError(res.status);
       }
     },
   };

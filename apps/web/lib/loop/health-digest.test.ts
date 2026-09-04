@@ -280,18 +280,31 @@ describe('createLoopHealthDigestSender', () => {
 
     const sent = await createLoopHealthDigestSender(client).send('the digest body');
 
-    expect(sent).toBe(true);
+    expect(sent).toEqual({ sent: true });
     const payload = sendOf(client).mock.calls[0]?.[0];
     expect(payload?.to).toBe('founder@villagehale.com');
     expect(payload?.text).toBe('the digest body');
   });
 
-  it('does NOT send when no founder address is configured', async () => {
+  it('does NOT send when no founder address is configured, and names the absence', async () => {
     vi.stubEnv('FOUNDER_ALERT_EMAIL', '');
     const client = fakeResend();
 
-    expect(await createLoopHealthDigestSender(client).send('body')).toBe(false);
+    expect(await createLoopHealthDigestSender(client).send('body')).toEqual({
+      sent: false,
+      reason: 'not_configured',
+    });
     expect(sendOf(client)).not.toHaveBeenCalled();
+  });
+
+  it('names a provider refusal apart from a missing config', async () => {
+    const client = fakeResend();
+    sendOf(client).mockResolvedValueOnce({ data: null, error: { message: 'refused' } });
+
+    expect(await createLoopHealthDigestSender(client).send('body')).toEqual({
+      sent: false,
+      reason: 'provider_error',
+    });
   });
 });
 
@@ -321,22 +334,49 @@ describe('runLoopHealthDigestCron', () => {
       expect(windowStart).toEqual(new Date('2026-07-13T14:00:00Z'));
       return summary;
     });
-    const send = vi.fn(async () => true);
+    const send = vi.fn(async () => ({ sent: true }) as const);
+    const escalate = vi.fn(async () => {});
 
-    const result = await runLoopHealthDigestCron({} as never, { aggregate, sender: { send } }, NOW);
+    const result = await runLoopHealthDigestCron(
+      {} as never,
+      { aggregate, sender: { send }, escalate },
+      NOW,
+    );
 
     expect(aggregate).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith(formatLoopHealthDigest(summary));
-    expect(result).toEqual({ sent: true, summary });
+    expect(result).toEqual({ outcome: 'sent', summary });
+    expect(escalate).not.toHaveBeenCalled();
   });
 
-  it('reports sent: false when the sender skips (no founder address configured)', async () => {
+  it('names the sender skip (no founder address configured) without escalating', async () => {
     const aggregate = vi.fn(async () => summary);
-    const send = vi.fn(async () => false);
+    const send = vi.fn(async () => ({ sent: false, reason: 'not_configured' }) as const);
+    const escalate = vi.fn(async () => {});
 
-    const result = await runLoopHealthDigestCron({} as never, { aggregate, sender: { send } }, NOW);
+    const result = await runLoopHealthDigestCron(
+      {} as never,
+      { aggregate, sender: { send }, escalate },
+      NOW,
+    );
 
-    expect(result.sent).toBe(false);
+    expect(result.outcome).toBe('send_skipped_not_configured');
+    expect(escalate).not.toHaveBeenCalled();
+  });
+
+  it('names a provider refusal AND escalates it through the ops seam — a dead digest must never read as a quiet week', async () => {
+    const aggregate = vi.fn(async () => summary);
+    const send = vi.fn(async () => ({ sent: false, reason: 'provider_error' }) as const);
+    const escalate = vi.fn(async () => {});
+
+    const result = await runLoopHealthDigestCron(
+      {} as never,
+      { aggregate, sender: { send }, escalate },
+      NOW,
+    );
+
+    expect(result.outcome).toBe('send_failed');
+    expect(escalate).toHaveBeenCalledWith({}, 'provider_error');
   });
 });
 

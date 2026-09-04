@@ -132,9 +132,17 @@ export async function probeProviderHealth(client: AgentClient): Promise<Provider
 
 // ── incidents ────────────────────────────────────────────────────────────────
 
+/** The founder digests whose SEND can fail — each one a surface whose silence would
+ * otherwise read as a clean week ("a refusal is not evidence", in ledger form). */
+export type FounderDigest = 'papercut' | 'loop_health' | 'twilio_triage';
+
 export type ProviderIncident =
   | { kind: 'preflight'; window: SendWindow; failure: ProviderFailureClass; detail: string }
-  | { kind: 'run_spike'; failed: number; total: number; windowStart: Date; windowEnd: Date };
+  | { kind: 'run_spike'; failed: number; total: number; windowStart: Date; windowEnd: Date }
+  /** A founder digest composed but its send failed (2026-09-03 audit): the named
+   * outcome its cron already returns, escalated through this seam instead of dying
+   * as a console line in a JSON response nobody reads. */
+  | { kind: 'digest_send_failed'; digest: FounderDigest; reason: string };
 
 /**
  * An incident's identity. Keyed on the CAUSE, not the window — one empty balance is one
@@ -142,9 +150,14 @@ export type ProviderIncident =
  * so the founder gets one email rather than one per cron.
  */
 export function providerIncidentKey(incident: ProviderIncident): string {
-  return incident.kind === 'preflight'
-    ? `provider_health:${incident.failure}`
-    : 'provider_health:run_spike';
+  switch (incident.kind) {
+    case 'preflight':
+      return `provider_health:${incident.failure}`;
+    case 'run_spike':
+      return 'provider_health:run_spike';
+    case 'digest_send_failed':
+      return `provider_health:digest_send_failed:${incident.digest}`;
+  }
 }
 
 /**
@@ -243,12 +256,40 @@ const FAILURE_REMEDY: Record<ProviderFailureClass, string> = {
   transient: 'no action — the next window retries.',
 };
 
+const DIGEST_LABEL: Record<FounderDigest, string> = {
+  papercut: 'weekly papercut',
+  loop_health: 'weekly loop-health',
+  twilio_triage: 'Twilio triage',
+};
+
 /** The alert body. Pure, so the wording is tested directly. Quiet-operator order: what
  * did not happen, why, what Hale did about it, what you do next. */
 export function formatProviderAlert(
   incident: ProviderIncident,
   at: Date,
 ): { subject: string; text: string } {
+  if (incident.kind === 'digest_send_failed') {
+    const remedy =
+      incident.digest === 'twilio_triage'
+        ? 'check FOUNDER_ALERT_PHONE and the Twilio console, then re-run /api/cron/twilio-triage.'
+        : 'check RESEND_API_KEY / FOUNDER_ALERT_EMAIL and the Resend dashboard, then re-run the digest cron.';
+    return {
+      subject: `Hale ops: the ${DIGEST_LABEL[incident.digest]} digest failed to send`,
+      text: [
+        `the ${DIGEST_LABEL[incident.digest]} digest composed, but its send failed (${incident.reason}).`,
+        '',
+        'what this means',
+        '  that founder surface is dark — treat its silence as unknown, never as a',
+        '  clean week. the numbers it would have carried are still in the database.',
+        '',
+        'what to do',
+        `  ${remedy}`,
+        '',
+        `raised ${at.toISOString()}. one email per digest per ${PROVIDER_INCIDENT_WINDOW_HOURS}h.`,
+      ].join('\n'),
+    };
+  }
+
   if (incident.kind === 'run_spike') {
     return {
       subject: `Hale ops: ${incident.failed} of ${incident.total} agent runs failed in the last hour`,
@@ -383,6 +424,28 @@ export async function raiseProviderIncident(
 
 function logAlertFailure(what: string, err: unknown): void {
   console.error(what, { message: err instanceof Error ? err.message : 'unknown error' });
+}
+
+/**
+ * The one call a digest cron makes when its send failed — a thin name over
+ * {@link raiseProviderIncident} so all three digests escalate identically and none
+ * grows a private alert path. Best-effort like everything on this seam: the incident
+ * is always console-logged in full by raiseProviderIncident, the claim dedupes to one
+ * email per digest per window, and nothing here can throw into the failing cron.
+ *
+ * Honest limit: for the two email digests the escalation email rides the same Resend
+ * the digest just failed on, so when Resend itself is down this leg degrades to the
+ * logged incident + the claim row; the cross-transport backstop for that case is the
+ * dead-man switch (audit P1-8), not a fourth alert pathway here.
+ */
+export async function escalateDigestSendFailure(
+  database: Database,
+  digest: FounderDigest,
+  reason: string,
+  deps: ProviderHealthDeps = defaultProviderHealthDeps(),
+  now: Date = new Date(),
+): Promise<ProviderAlertOutcome> {
+  return raiseProviderIncident(database, { kind: 'digest_send_failed', digest, reason }, deps, now);
 }
 
 /** Why a window was cancelled — the shape each cron reports back in its own result, so

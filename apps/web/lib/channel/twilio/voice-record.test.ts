@@ -165,6 +165,9 @@ describe('voiceCallRecorder', () => {
     expect(entries[0]).toMatchObject({
       actionTaken: 'voice_call_completed',
       actor: ticket.parentUserId,
+      // The call's one DB anchor: the relay claim row, keyed by the call sid.
+      targetTable: 'voice_relay_claims',
+      targetId: ticket.callSid,
     });
     expect(entries[0]?.after).toEqual({
       callSid: ticket.callSid,

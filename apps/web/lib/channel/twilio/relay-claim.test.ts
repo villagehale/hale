@@ -60,6 +60,10 @@ describe('claimRelayCall', () => {
     expect(rows[0]).toMatchObject({
       actor: 'system',
       actionTaken: 'voice_relay_ticket_replayed',
+      // The row that refused the replay — the claims table's key IS the call sid,
+      // so a PIPEDA traceability query can walk from this row to the winning claim.
+      targetTable: 'voice_relay_claims',
+      targetId: ticket.callSid,
       after: { callSid: ticket.callSid, ticketParentUserId: ticket.parentUserId },
     });
   });

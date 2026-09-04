@@ -173,6 +173,27 @@ describe('providerIncidentKey', () => {
     expect(billing).toBe(billingFromWeekly);
     expect(new Set([billing, auth, spike]).size).toBe(3);
   });
+
+  it('keys a failed digest send per DIGEST — one dead surface must not silence another', () => {
+    const papercut = providerIncidentKey({
+      kind: 'digest_send_failed',
+      digest: 'papercut',
+      reason: 'provider_error',
+    });
+    const loopHealth = providerIncidentKey({
+      kind: 'digest_send_failed',
+      digest: 'loop_health',
+      reason: 'provider_error',
+    });
+    const triage = providerIncidentKey({
+      kind: 'digest_send_failed',
+      digest: 'twilio_triage',
+      reason: 'provider_error',
+    });
+
+    expect(papercut).toBe('provider_health:digest_send_failed:papercut');
+    expect(new Set([papercut, loopHealth, triage]).size).toBe(3);
+  });
 });
 
 describe('formatProviderAlert', () => {
@@ -216,6 +237,25 @@ describe('formatProviderAlert', () => {
     expect(text).toContain('7 of 8');
     expect(text).toContain('2026-08-01T12:00:00.000Z');
     expect(text).toContain('2026-08-01T13:00:00.000Z');
+  });
+
+  it('says which digest went dark and warns that its silence is not a clean week', () => {
+    const { subject, text } = formatProviderAlert(
+      { kind: 'digest_send_failed', digest: 'papercut', reason: 'provider_error' },
+      AT,
+    );
+
+    expect(subject).toBe('Hale ops: the weekly papercut digest failed to send');
+    expect(text).toContain('provider_error');
+    expect(text).toContain('never as a');
+    expect(text).toContain('RESEND_API_KEY');
+
+    const triage = formatProviderAlert(
+      { kind: 'digest_send_failed', digest: 'twilio_triage', reason: 'provider_error' },
+      AT,
+    );
+    // The triage digest is a founder SMS, so its remedy points at the SMS leg.
+    expect(triage.text).toContain('FOUNDER_ALERT_PHONE');
   });
 });
 
