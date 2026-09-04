@@ -136,12 +136,12 @@ export function createFetchBody(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
     try {
       const res = await fetch(url, { headers: PAGE_FETCH_HEADERS, signal: controller.signal });
       if (!res.ok) {
-        throw new Error(`registration verify fetch ${url} → HTTP ${res.status}`);
+        throw new Error(`page fetch ${url} → HTTP ${res.status}`);
       }
       const body = await res.text();
       if (body.length > MAX_PAGE_BYTES) {
         throw new Error(
-          `registration verify fetch ${url} → ${body.length} chars exceeds the ${MAX_PAGE_BYTES} page ceiling`,
+          `page fetch ${url} → ${body.length} chars exceeds the ${MAX_PAGE_BYTES} page ceiling`,
         );
       }
       return body;

@@ -673,4 +673,15 @@ describe('createFetchBody / createFetchPage', () => {
     stubFetch('<p>nope</p>', { status: 404 });
     await expect(createFetchBody()('https://example.ca/gone')).rejects.toThrow(/HTTP 404/);
   });
+
+  it('names the fetch, not the sweep that used to own it', async () => {
+    // The spot watcher (VIL-337) fetches through this primitive too, and its refusals
+    // are logged. A message that says "registration verify" would send whoever reads
+    // that log to the wrong sweep.
+    stubFetch('<p>nope</p>', { status: 404 });
+
+    await expect(createFetchBody()('https://example.ca/gone')).rejects.toThrow(
+      /^page fetch https:\/\/example\.ca\/gone/,
+    );
+  });
 });
