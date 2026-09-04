@@ -4,6 +4,7 @@ import type { Resend } from 'resend';
 import { founderAddress } from '~/lib/auth/founder-signal';
 import { TURN_FAILED_ACTION } from '~/lib/channel/router/wiring';
 import { createResendTransport } from '~/lib/channel/resend-transport';
+import { escalateDigestSendFailure } from '~/lib/monitoring/provider-health';
 
 /**
  * PAPERCUT RECORDER v1 — the weekly ledger of every moment Hale degraded and a row was
@@ -306,10 +307,20 @@ const DIGEST_WINDOW_DAYS = 7;
 export interface PapercutDigestDeps {
   aggregate: typeof aggregatePapercuts;
   sender: PapercutDigestSender;
+  /** Escalate a refused send through the ops seam (provider-health incident, deduped
+   * per digest per window). Required (rule #11): a digest whose failure only reaches
+   * a cron JSON response has failed absent — the 2026-09-03 audit's exact finding. */
+  escalate: (database: Database, reason: string) => Promise<void>;
 }
 
 export function defaultPapercutDigestDeps(): PapercutDigestDeps {
-  return { aggregate: aggregatePapercuts, sender: createPapercutDigestSender() };
+  return {
+    aggregate: aggregatePapercuts,
+    sender: createPapercutDigestSender(),
+    escalate: async (database, reason) => {
+      await escalateDigestSendFailure(database, 'papercut', reason);
+    },
+  };
 }
 
 /**
@@ -354,5 +365,8 @@ export async function runPapercutDigestCron(
     return { outcome: 'send_skipped_not_configured', summary };
   }
   console.error('papercut digest: provider refused the send');
+  // Escalated, not just returned: a refused digest send would otherwise be a console
+  // line in a response nobody reads, and a missing Monday email reads as a quiet week.
+  await deps.escalate(database, send.reason);
   return { outcome: 'send_failed', summary };
 }

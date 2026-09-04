@@ -22,6 +22,7 @@ import { type CommitmentDebt, aggregateCommitmentDebt } from '~/lib/commitments/
 import { LOOP_EMAIL_TYPES } from '~/lib/cron/email-compliance';
 import {
   PROVIDER_INCIDENT_ROUTE,
+  escalateDigestSendFailure,
   providerIncidentKind,
 } from '~/lib/monitoring/provider-health';
 import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
@@ -658,21 +659,24 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
 
 const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
 
+/** Whether the provider took the send — and when it did not, WHY, by name (rule #11,
+ * the papercut sender's exact shape): a digest with nowhere to go is a different fact
+ * from a provider that refused one, and only the refusal is worth escalating. */
+export type LoopHealthSendOutcome =
+  | { sent: true }
+  | { sent: false; reason: 'not_configured' | 'provider_error' };
+
 export interface LoopHealthDigestSender {
-  /** Returns true when the provider accepted the send. */
-  send(body: string): Promise<boolean>;
+  send(body: string): Promise<LoopHealthSendOutcome>;
 }
 
 export function createLoopHealthDigestSender(client?: Resend): LoopHealthDigestSender {
   return {
     async send(body) {
       const to = founderAddress();
-      if (!to) {
-        return false;
-      }
       const apiKey = process.env.RESEND_API_KEY;
-      if (!apiKey && !client) {
-        return false;
+      if (!to || (!apiKey && !client)) {
+        return { sent: false, reason: 'not_configured' };
       }
       const transport = createResendTransport({ apiKey, client });
       const from = process.env.WELCOME_FROM ?? DEFAULT_FROM;
@@ -682,7 +686,7 @@ export function createLoopHealthDigestSender(client?: Resend): LoopHealthDigestS
         subject: 'Hale · weekly loop health',
         text: body,
       });
-      return !error;
+      return error ? { sent: false, reason: 'provider_error' } : { sent: true };
     },
   };
 }
@@ -695,22 +699,37 @@ const DIGEST_WINDOW_DAYS = 7;
 export interface LoopHealthDigestDeps {
   aggregate: typeof aggregateLoopHealth;
   sender: LoopHealthDigestSender;
+  /** Escalate a refused send through the ops seam (provider-health incident, deduped
+   * per digest per window). Required (rule #11): this digest is a founder surface
+   * whose silent death reads as a quiet week — the 2026-09-03 audit's exact finding. */
+  escalate: (database: Database, reason: string) => Promise<void>;
 }
 
 export function defaultLoopHealthDigestDeps(): LoopHealthDigestDeps {
-  return { aggregate: aggregateLoopHealth, sender: createLoopHealthDigestSender() };
+  return {
+    aggregate: aggregateLoopHealth,
+    sender: createLoopHealthDigestSender(),
+    escalate: async (database, reason) => {
+      await escalateDigestSendFailure(database, 'loop_health', reason);
+    },
+  };
 }
 
+/** Every way the weekly run can end, named (rule #11) — the papercut digest's exact
+ * vocabulary, so the two founder digests cannot drift apart. */
+export type LoopHealthDigestOutcome = 'sent' | 'send_skipped_not_configured' | 'send_failed';
+
 export interface LoopHealthDigestResult {
-  sent: boolean;
+  outcome: LoopHealthDigestOutcome;
   summary: LoopHealthSummary;
 }
 
 /** The weekly cron entry point: aggregate the trailing week and email the founder.
  * Un-gated by a feature flag (like founder-signal's notifySignup) — it degrades to
- * a clean no-op via the sender's own guards (no founder address / no Resend key)
+ * a NAMED no-op via the sender's own guards (no founder address / no Resend key)
  * rather than a separate send-enabled switch, since this never reaches a real
- * family. */
+ * family. A provider refusal is escalated through the ops seam: the digest failing
+ * to send must never be indistinguishable from a clean week. */
 export async function runLoopHealthDigestCron(
   database: Database,
   deps: LoopHealthDigestDeps = defaultLoopHealthDigestDeps(),
@@ -719,6 +738,13 @@ export async function runLoopHealthDigestCron(
   const windowEnd = now;
   const windowStart = new Date(now.getTime() - DIGEST_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const summary = await deps.aggregate(database, windowStart, windowEnd);
-  const sent = await deps.sender.send(formatLoopHealthDigest(summary));
-  return { sent, summary };
+  const send = await deps.sender.send(formatLoopHealthDigest(summary));
+  if (send.sent) return { outcome: 'sent', summary };
+  if (send.reason === 'not_configured') {
+    console.error('loop health digest: no founder address/Resend key - digest composed, not sent');
+    return { outcome: 'send_skipped_not_configured', summary };
+  }
+  console.error('loop health digest: provider refused the send');
+  await deps.escalate(database, send.reason);
+  return { outcome: 'send_failed', summary };
 }

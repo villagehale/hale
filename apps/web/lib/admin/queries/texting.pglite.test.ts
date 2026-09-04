@@ -25,7 +25,7 @@ function msg(
   parentUserId: string,
   direction: 'in' | 'out',
   createdAt: string,
-  status: 'delivered' | 'failed' = 'delivered',
+  status: 'queued' | 'delivered' | 'failed' | 'suppressed_quiet_hours' | 'suppressed_cap' = 'delivered',
 ) {
   return {
     familyId,
@@ -54,11 +54,19 @@ describe('loadTextingTrends', () => {
       msg(a.familyId, a.parentUserId, 'in', '2026-08-10T16:00:00.000Z'),
       // Parent B's 03:00Z message belongs to Toronto Aug 9, not Aug 10.
       msg(b.familyId, b.parentUserId, 'in', day9late),
-      // THREE outbound on Aug 10, ONE failed — msgsOut counts all three sends,
-      // msgsFailed counts the failure (the delivery-health numerator).
+      // FOUR outbound sends on Aug 10 that reached the provider (queued counts —
+      // that is where an accepted SMS row starts), ONE of them failed — msgsOut
+      // counts all four, msgsFailed counts the failure (the delivery-health
+      // numerator over the delivery-health denominator).
       msg(a.familyId, a.parentUserId, 'out', day10),
       msg(a.familyId, a.parentUserId, 'out', '2026-08-10T17:00:00.000Z'),
       msg(a.familyId, a.parentUserId, 'out', '2026-08-10T18:00:00.000Z', 'failed'),
+      msg(a.familyId, a.parentUserId, 'out', '2026-08-10T18:30:00.000Z', 'queued'),
+      // TWO suppressions — rows where Hale CHOSE not to send and no provider was
+      // ever contacted. They must never count as outbound traffic: hand-recomputed,
+      // msgsOut stays 4, or 1 failure of 4 real sends would read as 1 of 6.
+      msg(a.familyId, a.parentUserId, 'out', '2026-08-10T20:00:00.000Z', 'suppressed_quiet_hours'),
+      msg(a.familyId, a.parentUserId, 'out', '2026-08-10T21:00:00.000Z', 'suppressed_cap'),
       // An INBOUND failed row must never count toward msgsFailed — it is a
       // delivery-health numerator for sends, not a convention on inbound writers.
       msg(a.familyId, a.parentUserId, 'in', '2026-08-10T19:00:00.000Z', 'failed'),
@@ -69,6 +77,6 @@ describe('loadTextingTrends', () => {
     const aug10 = rows.find((r) => r.day === '2026-08-10');
 
     expect(aug9).toEqual({ day: '2026-08-09', senders: 1, msgsIn: 1, msgsOut: 0, msgsFailed: 0 });
-    expect(aug10).toEqual({ day: '2026-08-10', senders: 1, msgsIn: 3, msgsOut: 3, msgsFailed: 1 });
+    expect(aug10).toEqual({ day: '2026-08-10', senders: 1, msgsIn: 3, msgsOut: 4, msgsFailed: 1 });
   });
 });

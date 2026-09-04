@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { credentials } from '~/lib/admin/services/twilio';
 import { sweepUnconfirmedClaims } from '~/lib/channel/claim-sweep';
-import { fetchTwilioMessageState, runDeliverySweep } from '~/lib/channel/twilio/delivery-sweep';
-import { requireCronSecret } from '~/lib/cron/auth';
+import {
+  fetchTwilioMessageState,
+  runDeliverySweep,
+} from '~/lib/channel/twilio/delivery-sweep';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import {
   checkDeliveryHealth,
@@ -28,9 +31,7 @@ export const maxDuration = 300;
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
+export const GET = cronRoute('delivery-sweep', async () => {
 
   try {
     const database = db();
@@ -69,4 +70,4 @@ export async function GET(req: Request) {
     console.error({ err }, 'cron/delivery-sweep failed');
     throw err;
   }
-}
+});

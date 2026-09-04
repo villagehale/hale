@@ -14,6 +14,7 @@ import {
   composeTriageDigest,
   triageAlerts,
 } from '~/lib/channel/twilio/triage';
+import { escalateDigestSendFailure } from './provider-health';
 
 /**
  * VIL-331 · the alert-triage cron: poll Twilio's Monitor Alerts log every ten
@@ -117,6 +118,11 @@ export interface TwilioTriageDeps {
   claimWindow(database: Database, now: Date): Promise<boolean>;
   outboundSentCount(database: Database, since: Date): Promise<number>;
   sendSms(body: string): Promise<'sent' | 'failed' | 'skipped_not_configured'>;
+  /** Escalate a failed digest SMS through the ops seam (provider-health incident →
+   * founder EMAIL — deliberately the other transport, since the thing that just
+   * failed is a founder SMS). Required (rule #11): a page that died as a console
+   * line is the 2026-09-03 audit's exact finding. */
+  escalateDigestFailure(database: Database, reason: string, now: Date): Promise<void>;
 }
 
 /** The per-instance brake for the day the claim store is down — same shape as the
@@ -274,6 +280,10 @@ export async function runTwilioTriage(
     if (sms === 'skipped_not_configured') {
       return { outcome: 'skipped_not_configured', missing: ['FOUNDER_ALERT_PHONE'] };
     }
+    // Escalated over the OTHER transport (founder email via the provider-health
+    // seam): the failed page said webhooks are failing, and the failure of the page
+    // itself must not end as a console line in a response nobody reads.
+    await deps.escalateDigestFailure(database, 'provider_error', now);
     return { outcome: 'digest_send_failed', alerts: summary.total, class: summary.dominant.class };
   }
 
@@ -474,5 +484,8 @@ export function defaultTwilioTriageDeps(fetchImpl: typeof fetch = fetch): Twilio
       return rows[0]?.n ?? 0;
     },
     sendSms: (body) => sendFounderOpsSms(body, fetchImpl),
+    escalateDigestFailure: async (database, reason, now) => {
+      await escalateDigestSendFailure(database, 'twilio_triage', reason, undefined, now);
+    },
   };
 }

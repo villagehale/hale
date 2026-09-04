@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { runPapercutDigestCron } from '~/lib/loop/papercut-digest';
 
@@ -18,10 +18,7 @@ export const runtime = 'nodejs';
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('papercut-digest', async () => {
   const result = await runPapercutDigestCron(db());
   return NextResponse.json({ ok: true, outcome: result.outcome }, { status: 200 });
-}
+});

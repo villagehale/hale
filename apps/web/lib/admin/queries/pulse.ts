@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { db as defaultDb } from '~/lib/db';
 import { torontoTodayStart } from './day';
 
@@ -22,6 +23,13 @@ export interface PulseData {
 
 const todayStart = torontoTodayStart();
 
+/** The statuses that mean "the provider was contacted" (ledger.ts) — a suppression
+ * is a message Hale chose NOT to send and must not read as outbound traffic. */
+const REAL_SEND_STATUSES = sql.join(
+  CONSUMED_SEND_STATUSES.map((status) => sql`${status}`),
+  sql`, `,
+);
+
 export async function loadPulse(database: Database = defaultDb()): Promise<PulseData> {
   const m = schema.channelMessages;
 
@@ -29,7 +37,7 @@ export async function loadPulse(database: Database = defaultDb()): Promise<Pulse
     .select({
       familiesToday: sql<number>`count(distinct ${m.parentUserId}) filter (where ${m.direction} = 'in')::int`,
       msgsInToday: sql<number>`count(*) filter (where ${m.direction} = 'in')::int`,
-      msgsOutToday: sql<number>`count(*) filter (where ${m.direction} = 'out')::int`,
+      msgsOutToday: sql<number>`count(*) filter (where ${m.direction} = 'out' and ${m.status} in (${REAL_SEND_STATUSES}))::int`,
       failedToday: sql<number>`count(*) filter (where ${m.direction} = 'out' and ${m.status} = 'failed')::int`,
     })
     .from(m)

@@ -266,14 +266,24 @@ function fakeSender(outcome: PapercutSendOutcome = { sent: true }): PapercutDige
   return sender;
 }
 
+/** Records every escalation the run raised — the ops-seam assertion surface. */
+function fakeEscalate() {
+  const calls: string[] = [];
+  const escalate = async (_database: unknown, reason: string) => {
+    calls.push(reason);
+  };
+  return { calls, escalate };
+}
+
 describe('runPapercutDigestCron — named outcomes, never an empty email', () => {
   it('aggregates the trailing week and sends one digest through the sender', async () => {
     await seedInboundUnmet('weather', IN_WINDOW);
     const sender = fakeSender();
+    const ops = fakeEscalate();
 
     const result = await runPapercutDigestCron(
       db.database,
-      { aggregate: aggregatePapercuts, sender },
+      { aggregate: aggregatePapercuts, sender, escalate: ops.escalate },
       WINDOW_END,
     );
 
@@ -281,44 +291,53 @@ describe('runPapercutDigestCron — named outcomes, never an empty email', () =>
     expect(sender.bodies).toHaveLength(1);
     expect(sender.bodies[0]).toContain('papercuts');
     expect(sender.bodies[0]).toContain('off_domain_general · weather: 1');
+    expect(ops.calls).toEqual([]);
   });
 
   it('skips an empty week by name and never wakes the sender', async () => {
     const sender = fakeSender();
+    const ops = fakeEscalate();
 
     const result = await runPapercutDigestCron(
       db.database,
-      { aggregate: aggregatePapercuts, sender },
+      { aggregate: aggregatePapercuts, sender, escalate: ops.escalate },
       WINDOW_END,
     );
 
     expect(result.outcome).toBe('digest_skipped_empty');
     expect(sender.bodies).toHaveLength(0);
+    expect(ops.calls).toEqual([]);
   });
 
   it('names a sender with nowhere to send (rule #11), rather than folding it into failure', async () => {
     await seedInboundUnmet('weather', IN_WINDOW);
     const sender = fakeSender({ sent: false, reason: 'not_configured' });
+    const ops = fakeEscalate();
 
     const result = await runPapercutDigestCron(
       db.database,
-      { aggregate: aggregatePapercuts, sender },
+      { aggregate: aggregatePapercuts, sender, escalate: ops.escalate },
       WINDOW_END,
     );
 
     expect(result.outcome).toBe('send_skipped_not_configured');
+    // An unconfigured sender is a named absence, not an incident — the escalation
+    // email would ride the same missing config anyway.
+    expect(ops.calls).toEqual([]);
   });
 
-  it('names a provider refusal as a failed send', async () => {
+  it('names a provider refusal as a failed send AND escalates it through the ops seam', async () => {
     await seedInboundUnmet('weather', IN_WINDOW);
     const sender = fakeSender({ sent: false, reason: 'provider_error' });
+    const ops = fakeEscalate();
 
     const result = await runPapercutDigestCron(
       db.database,
-      { aggregate: aggregatePapercuts, sender },
+      { aggregate: aggregatePapercuts, sender, escalate: ops.escalate },
       WINDOW_END,
     );
 
     expect(result.outcome).toBe('send_failed');
+    expect(ops.calls).toEqual(['provider_error']);
   });
 });

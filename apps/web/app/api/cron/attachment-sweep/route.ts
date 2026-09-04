@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sweepUnlinkedAttachments } from '~/lib/coach/attachments';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 
 // Node runtime: the sweep deletes bucket objects via the storage adapter + the
@@ -18,10 +18,7 @@ export const runtime = 'nodejs';
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING — no DB read, no
  * storage delete.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('attachment-sweep', async () => {
   const summary = await sweepUnlinkedAttachments(db());
   if (summary.swept > 0) {
     console.info(
@@ -30,4 +27,4 @@ export async function GET(req: Request) {
     );
   }
   return NextResponse.json({ ok: true, ...summary }, { status: 200 });
-}
+});

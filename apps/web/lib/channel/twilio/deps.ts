@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type QueueCreateOptions, createQueueWithPolicy } from '@hale/tools-contracts';
+import { captureInboundRouted } from '~/lib/analytics/server-capture';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
@@ -202,6 +203,9 @@ export function twilioInboundDeps(): TwilioInboundDeps {
     intake: buildIntakeDeps,
     enqueue: enqueueChannelMessageReceived,
     log: console,
+    countOutcome: async (outcome) => {
+      await captureInboundRouted('sms', outcome);
+    },
   };
 }
 

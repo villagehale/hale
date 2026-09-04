@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { runSundaySendCron } from '~/lib/loop/send';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
@@ -20,14 +20,11 @@ export const maxDuration = 300;
  * gets 401 and NOTHING runs. The SEND itself is additionally gated by
  * LOOP_SEND_ENABLED (default off) — compose-not-send until the founder flips it.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('sunday-send', async () => {
   try {
     const summary = await runSundaySendCron(db());
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } finally {
     await flushTelemetry();
   }
-}
+});

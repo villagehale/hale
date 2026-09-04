@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { enqueueChannelMessageReceived } from '~/lib/channel/twilio/deps';
 import { reconcileUnhandedInbound } from '~/lib/channel/twilio/reconcile';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { runQueueMaintenanceCron } from '~/lib/cron/queue-maintenance';
 import { db } from '~/lib/db';
 
@@ -24,10 +24,7 @@ export const maxDuration = 120;
  * whatever broke pg-boss maintenance is the thing to fix, and re-driving texts into a
  * queue that is itself unwell would only add failures to the pile.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('queue-maintenance', async () => {
   try {
     await runQueueMaintenanceCron();
     const inbound = await reconcileUnhandedInbound({
@@ -42,4 +39,4 @@ export async function GET(req: Request) {
     console.error({ err }, 'cron/queue-maintenance failed');
     throw err;
   }
-}
+});

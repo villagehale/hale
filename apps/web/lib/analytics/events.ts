@@ -95,7 +95,14 @@ export type AnalyticsEvent =
   // the error class only, and is fired from a leg that never touches the database,
   // because the failure it exists to report is usually the database being gone
   // (lib/channel/twilio/alert.ts).
-  | 'webhook_route_failed';
+  | 'webhook_route_failed'
+  // One per authentic inbound message, whatever became of it — the counter that makes
+  // the SILENCE outcomes (rate_limited, unknown_sender, not_a_parent, ignored,
+  // malformed…) visible as rates, so an operator can tell "nobody texts us" from "we
+  // refuse everyone" (2026-09-03 audit; rule #11). Carries the door and the outcome
+  // enum only, assembled by `captureInboundRouted` — never a sender, an id, or a word
+  // of the message.
+  | 'inbound_routed';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '~/lib/db';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { runInferenceCron } from '~/lib/cron/inference';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
@@ -20,10 +20,7 @@ export const maxDuration = 300;
  * ceiling); every save_memory write is guarded (audited — rule #6) and held to
  * the 0.7 confidence floor; reads/writes are family-scoped (rule #1).
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('inference', async () => {
   try {
     const summary = await runInferenceCron(db());
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
@@ -31,4 +28,4 @@ export async function GET(req: Request) {
     // Serverless flush: send buffered spans before the function returns (rule #8).
     await flushTelemetry();
   }
-}
+});
