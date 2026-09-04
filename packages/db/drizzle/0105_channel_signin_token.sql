@@ -22,9 +22,19 @@ CREATE TABLE IF NOT EXISTS "channel_signin_tokens" (
 );--> statement-breakpoint
 
 -- One row per issued token, and the lookup the redemption resolves on.
-ALTER TABLE "channel_signin_tokens" ADD CONSTRAINT "channel_signin_tokens_token_hash_unique" UNIQUE("token_hash");--> statement-breakpoint
+-- Guarded like 0103's check: applied to prod by hand before the deploy leg ran it, and a
+-- bare ADD CONSTRAINT throws on the second pass (see 0098).
+DO $$ BEGIN
+  ALTER TABLE "channel_signin_tokens" ADD CONSTRAINT "channel_signin_tokens_token_hash_unique" UNIQUE("token_hash");
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
-ALTER TABLE "channel_signin_tokens" ADD CONSTRAINT "channel_signin_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "channel_signin_tokens" ADD CONSTRAINT "channel_signin_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
 -- The invalidate-prior-on-mint UPDATE reads by user.
 CREATE INDEX IF NOT EXISTS "channel_signin_tokens_user_idx" ON "channel_signin_tokens" ("user_id");--> statement-breakpoint

@@ -35,13 +35,32 @@ CREATE TABLE IF NOT EXISTS "join_invites" (
 );--> statement-breakpoint
 
 -- One row per issued token, and the lookup the redemption resolves on.
-ALTER TABLE "join_invites" ADD CONSTRAINT "join_invites_token_hash_unique" UNIQUE("token_hash");--> statement-breakpoint
+-- Guarded like 0103's check: this file was applied to prod by hand before the deploy
+-- leg ever ran it, and a bare ADD CONSTRAINT is the one statement here that throws on
+-- a second pass (2026-09-04 — four red Deploy runs, 0099 silently never applied).
+DO $$ BEGIN
+  ALTER TABLE "join_invites" ADD CONSTRAINT "join_invites_token_hash_unique" UNIQUE("token_hash");
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
-ALTER TABLE "join_invites" ADD CONSTRAINT "join_invites_family_id_families_id_fk" FOREIGN KEY ("family_id") REFERENCES "public"."families"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "join_invites" ADD CONSTRAINT "join_invites_invited_by_user_id_users_id_fk" FOREIGN KEY ("invited_by_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "join_invites" ADD CONSTRAINT "join_invites_family_id_families_id_fk" FOREIGN KEY ("family_id") REFERENCES "public"."families"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "join_invites" ADD CONSTRAINT "join_invites_invited_by_user_id_users_id_fk" FOREIGN KEY ("invited_by_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 -- SET NULL rather than cascade: a co-parent erased later must not take the record of
 -- the invitation with them — what was granted, by whom, and when is the PIPEDA answer.
-ALTER TABLE "join_invites" ADD CONSTRAINT "join_invites_consumed_by_user_id_users_id_fk" FOREIGN KEY ("consumed_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "join_invites" ADD CONSTRAINT "join_invites_consumed_by_user_id_users_id_fk" FOREIGN KEY ("consumed_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS "join_invites_family_idx" ON "join_invites" ("family_id");--> statement-breakpoint
 
