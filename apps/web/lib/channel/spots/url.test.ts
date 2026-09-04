@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  COURSE_PAGE_PATH,
-  MAX_URL_CHARS,
-  SPOT_PORTAL_HOSTS,
-  sanitizeSpotUrl,
-} from './url';
+import { COURSE_PAGE_PATH, MAX_URL_CHARS, SPOT_PORTAL_HOSTS, sanitizeSpotUrl } from './url';
 
 /**
  * VIL-337 · the gate every watched link passes through.
@@ -67,7 +62,11 @@ describe('sanitizeSpotUrl — what it accepts', () => {
 
 describe('sanitizeSpotUrl — what it refuses', () => {
   it.each([
-    ['http, so a watched link cannot be read in transit', CLEAN.replace('https:', 'http:'), 'not_https'],
+    [
+      'http, so a watched link cannot be read in transit',
+      CLEAN.replace('https:', 'http:'),
+      'not_https',
+    ],
     [
       'embedded credentials, which would be re-sent every ten minutes',
       `https://parent:hunter2@cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=${WIDGET}&courseId=${COURSE}`,
@@ -78,8 +77,16 @@ describe('sanitizeSpotUrl — what it refuses', () => {
       `https://anytown.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=${WIDGET}&courseId=${COURSE}`,
       'host_not_allowed',
     ],
-    ['the widget shell rather than a course page', `${MARKHAM}/Clients/BookMe4?widgetId=${WIDGET}`, 'not_a_course_page'],
-    ['a course id that is not a GUID', `${COURSE_PAGE}?widgetId=${WIDGET}&courseId=283993`, 'not_a_course_page'],
+    [
+      'the widget shell rather than a course page',
+      `${MARKHAM}/Clients/BookMe4?widgetId=${WIDGET}`,
+      'not_a_course_page',
+    ],
+    [
+      'a course id that is not a GUID',
+      `${COURSE_PAGE}?widgetId=${WIDGET}&courseId=283993`,
+      'not_a_course_page',
+    ],
     ['no widget id at all', `${COURSE_PAGE}?courseId=${COURSE}`, 'not_a_course_page'],
     ['something that is not a link', 'the swim one on markham dot ca', 'not_a_course_page'],
     ['600 characters of paste', `${CLEAN}&${'junk=1&'.repeat(80)}`, 'too_long'],
@@ -96,7 +103,13 @@ describe('SPOT_PORTAL_HOSTS', () => {
     for (const [host, entry] of Object.entries(SPOT_PORTAL_HOSTS)) {
       const url = `https://${host}/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=${WIDGET}&courseId=${COURSE}`;
       const result = sanitizeSpotUrl(url);
-      expect(result).toEqual({ ok: true, url, host, portalLabel: entry.portalLabel, courseId: COURSE });
+      expect(result).toEqual({
+        ok: true,
+        url,
+        host,
+        portalLabel: entry.portalLabel,
+        courseId: COURSE,
+      });
       expect(url.length).toBeLessThanOrEqual(MAX_URL_CHARS);
     }
     expect(Object.keys(SPOT_PORTAL_HOSTS).length).toBeGreaterThan(0);

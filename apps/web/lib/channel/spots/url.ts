@@ -86,7 +86,9 @@ export function sanitizeSpotUrl(raw: string): SpotUrlResult {
   }
 
   if (parsed.protocol !== 'https:') return { ok: false, reason: 'not_https' };
-  if (parsed.username !== '' || parsed.password !== '') return { ok: false, reason: 'has_credentials' };
+  if (parsed.username !== '' || parsed.password !== '') {
+    return { ok: false, reason: 'has_credentials' };
+  }
 
   const portal = SPOT_PORTAL_HOSTS[parsed.hostname];
   if (portal === undefined) return { ok: false, reason: 'host_not_allowed' };

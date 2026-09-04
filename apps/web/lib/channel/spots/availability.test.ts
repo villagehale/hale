@@ -94,7 +94,10 @@ describe('readSpot — what it refuses to call a state', () => {
     const errorPage = fixture('markham-course-not-found');
 
     expect(errorPage).toContain('was not found');
-    expect(readSpot(errorPage, MARKHAM_COURSE)).toEqual({ state: 'unreadable', reason: 'no_model' });
+    expect(readSpot(errorPage, MARKHAM_COURSE)).toEqual({
+      state: 'unreadable',
+      reason: 'no_model',
+    });
   });
 
   it('parses the same error page once a model is spliced into it (positive control)', () => {
@@ -113,7 +116,10 @@ describe('readSpot — what it refuses to call a state', () => {
 
   it.each([
     ['a full class with three spots left', { IsFull: true, SpotsLeft: 3 }],
-    ['spots left in a class that cannot be booked', { IsFull: false, SpotsLeft: 2, CanNotBook: true }],
+    [
+      'spots left in a class that cannot be booked',
+      { IsFull: false, SpotsLeft: 2, CanNotBook: true },
+    ],
     ['an empty class that does not call itself full', { IsFull: false, SpotsLeft: 0 }],
   ])('refuses %s — the counters and the flags must agree (ASSUMPTION fixture)', (_why, model) => {
     expect(readSpot(assumed(model), MARKHAM_COURSE)).toEqual({
@@ -127,7 +133,10 @@ describe('readSpot — what it refuses to call a state', () => {
     expect(readSpot(huge, MARKHAM_COURSE)).toEqual({ state: 'unreadable', reason: 'bad_model' });
 
     const truncated = `${assumed().slice(0, 400)}`;
-    expect(readSpot(truncated, MARKHAM_COURSE)).toEqual({ state: 'unreadable', reason: 'bad_model' });
+    expect(readSpot(truncated, MARKHAM_COURSE)).toEqual({
+      state: 'unreadable',
+      reason: 'bad_model',
+    });
   });
 });
 
@@ -178,12 +187,16 @@ describe('readSpot — evidence is quoted from the bytes', () => {
 
     expect(readable(intact).model.SpotsLeft).toBe(0);
     expect(readable(intact).evidence).toContain('"SpotsLeft":0');
-    expect(readSpot(moved, MARKHAM_COURSE)).toEqual({ state: 'unreadable', reason: 'inconsistent' });
+    expect(readSpot(moved, MARKHAM_COURSE)).toEqual({
+      state: 'unreadable',
+      reason: 'inconsistent',
+    });
   });
 });
 
 describe('transitionKind', () => {
-  const reading = (overrides: Record<string, unknown>) => readSpot(assumed(overrides), MARKHAM_COURSE);
+  const reading = (overrides: Record<string, unknown>) =>
+    readSpot(assumed(overrides), MARKHAM_COURSE);
   const open = reading({ IsFull: false, SpotsLeft: 2, CanNotBook: false });
   const fullWithWaitlistRoom = reading({});
   const fullNoWaitlist = reading({ IsWaitListAvailable: false });

@@ -169,7 +169,8 @@ function classify(model: BookMe4Model): SpotReading {
     };
   }
 
-  if (model.IsFull !== (model.SpotsLeft === 0)) return { state: 'unreadable', reason: 'inconsistent' };
+  if (model.IsFull !== (model.SpotsLeft === 0))
+    return { state: 'unreadable', reason: 'inconsistent' };
 
   // A waitlist with room and no waitlist at all are the same thing to a parent: wait
   // for a seat. Only a waitlist that has filled up is a different sentence.
@@ -191,7 +192,10 @@ export function readSpot(rawHtml: string, courseId: string): SpotReading {
   if (blob === null) {
     // An unknown courseId is answered with HTTP 200 and a BookMe4 error page, so the
     // status throw never fires and this is the only signal that the page is not a class.
-    return { state: 'unreadable', reason: rawHtml.includes(MODEL_MARKER) ? 'bad_model' : 'no_model' };
+    return {
+      state: 'unreadable',
+      reason: rawHtml.includes(MODEL_MARKER) ? 'bad_model' : 'no_model',
+    };
   }
 
   let parsed: unknown;
