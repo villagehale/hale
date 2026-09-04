@@ -7,10 +7,13 @@ import {
   claimOpenTransition,
   claimSendAttempt,
   closeBeforeSend,
+  findLedgerRowByDedupeKey,
   loadDueSpots,
-  loadSpotById,
+  readLedgerStatus,
+  recordPoll,
   releaseWatchedSpot,
   type SpotWatchIntent,
+  type WatchedSpotArmOutcome,
 } from './store';
 
 /**
@@ -59,6 +62,24 @@ async function arm(
     channelMessageId,
     now: NOW,
   });
+}
+
+/** The lifecycle columns of one watch, read STRAIGHT off the table: every assertion below
+ * is about what a writer moved, and a reader with its own WHERE clause could hide half of
+ * that behind a row it declined to return. */
+async function readSpot(spotId: string) {
+  const [row] = await db.database
+    .select({
+      lastState: schema.watchedSpots.lastState,
+      pendingKind: schema.watchedSpots.pendingKind,
+      pendingSince: schema.watchedSpots.pendingSince,
+      openTransitions: schema.watchedSpots.openTransitions,
+      releasedAt: schema.watchedSpots.releasedAt,
+      releasedReason: schema.watchedSpots.releasedReason,
+    })
+    .from(schema.watchedSpots)
+    .where(eq(schema.watchedSpots.id, spotId));
+  return row ?? null;
 }
 
 describe('armWatchedSpot', () => {
@@ -140,11 +161,35 @@ describe('armWatchedSpot', () => {
       host: 'cityofmarkham.perfectmind.com',
     });
   });
+
+  /** Once the insert lands the watch EXISTS: it will be polled and it can text, and no
+   * later write can unmake it. So a bookkeeping failure after it must not come back as
+   * `not_armed` — the Radar's failed-arm count would then be counting a phone that is
+   * about to be texted, which is exactly the number rule #11 exists to keep honest.
+   * Catches a try that wraps the trail write together with the claim. */
+  it('stays armed when the trail write fails, and does not report a watch that exists as not armed', async () => {
+    const family = await seedFamily(db.database, 'Trail Outage Family');
+
+    await db.exec('ALTER TABLE audit_log RENAME TO audit_log_unavailable');
+    let outcome: WatchedSpotArmOutcome;
+    try {
+      outcome = await arm(family.familyId, family.parentUserId);
+    } finally {
+      await db.exec('ALTER TABLE audit_log_unavailable RENAME TO audit_log');
+    }
+
+    expect(outcome).toEqual({ status: 'armed', spotId: expect.any(String) });
+    const live = await db.database
+      .select({ id: schema.watchedSpots.id })
+      .from(schema.watchedSpots)
+      .where(eq(schema.watchedSpots.familyId, family.familyId));
+    expect(live).toHaveLength(1);
+  });
 });
 
 describe('claimOpenTransition', () => {
-  /** Catches dropping `AND pending_kind IS NULL AND last_state = $prev` from the guarded
-   * UPDATE: the second claim would then return 2, and one opening would be two texts. */
+  /** The double tick, which both halves of the guard reject together: the second claim
+   * would return 2, and one opening would be two texts. */
   it('claims a transition exactly once under a double tick', async () => {
     const family = await seedFamily(db.database, 'Transition Family');
     const armed = await arm(family.familyId, family.parentUserId);
@@ -154,11 +199,79 @@ describe('claimOpenTransition', () => {
     expect(await claimOpenTransition(db.database, { ...claim, now: NOW })).toBe(1);
     expect(await claimOpenTransition(db.database, { ...claim, now: NOW })).toBeNull();
 
-    const spot = await loadSpotById(db.database, armed.spotId);
+    const spot = await readSpot(armed.spotId);
     expect(spot?.openTransitions).toBe(1);
     expect(spot?.pendingKind).toBe('seat_opened');
     expect(spot?.pendingSince).toEqual(NOW);
     expect(spot?.lastState).toBe('open');
+  });
+
+  /** The half of the guard the double tick does not test on its own. Hale is holding a
+   * reopened waitlist it has not been allowed to say yet, and the page then opens a seat:
+   * the second observation is a TRUE reading of the current state, so `last_state = $prev`
+   * admits it — only `pending_kind IS NULL` refuses. Without it the held observation would
+   * be overwritten and the parent would hear about the seat and never about the waitlist.
+   * Catches dropping `AND pending_kind IS NULL`. */
+  it('refuses a claim while an observation is still held, even from the current state', async () => {
+    const family = await seedFamily(db.database, 'Held Observation Family');
+    const armed = await arm(family.familyId, family.parentUserId, { lastState: 'waitlist_full' });
+    if (armed.status !== 'armed') throw new Error('unreachable: the arm was refused');
+
+    expect(
+      await claimOpenTransition(db.database, {
+        spotId: armed.spotId,
+        from: 'waitlist_full',
+        to: 'full',
+        kind: 'waitlist_reopened',
+        now: NOW,
+      }),
+    ).toBe(1);
+    expect(
+      await claimOpenTransition(db.database, {
+        spotId: armed.spotId,
+        from: 'full',
+        to: 'open',
+        kind: 'seat_opened',
+        now: NOW,
+      }),
+    ).toBeNull();
+
+    const spot = await readSpot(armed.spotId);
+    expect(spot?.pendingKind).toBe('waitlist_reopened');
+    expect(spot?.openTransitions).toBe(1);
+  });
+
+  /** The other half. Nothing is held — the observation was dropped when the page filled
+   * again — but the tick that arrives is carrying a belief the row has already moved past,
+   * so its `from` is stale. Only `last_state = $prev` refuses it; a claim admitted here
+   * would text a parent about a seat on the strength of a reading two ticks old.
+   * Catches dropping `AND last_state = $prev`. */
+  it('refuses a claim carrying a stale belief, with nothing held', async () => {
+    const family = await seedFamily(db.database, 'Stale Belief Family');
+    const armed = await arm(family.familyId, family.parentUserId, { lastState: 'waitlist_full' });
+    if (armed.status !== 'armed') throw new Error('unreachable: the arm was refused');
+
+    await recordPoll(db.database, {
+      spotId: armed.spotId,
+      lastState: 'full',
+      consecutiveFailures: 0,
+      nextPollAt: null,
+      now: NOW,
+    });
+    expect(
+      await claimOpenTransition(db.database, {
+        spotId: armed.spotId,
+        from: 'waitlist_full',
+        to: 'open',
+        kind: 'seat_opened',
+        now: NOW,
+      }),
+    ).toBeNull();
+
+    const spot = await readSpot(armed.spotId);
+    expect(spot?.pendingKind).toBeNull();
+    expect(spot?.openTransitions).toBe(0);
+    expect(spot?.lastState).toBe('full');
   });
 });
 
@@ -234,6 +347,13 @@ describe('loadDueSpots', () => {
       url: 'https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=11111111-1111-1111-1111-111111111111&courseId=released',
     });
     if (released.status !== 'armed') throw new Error('unreachable: the arm was refused');
+    // Due by the clock, so `released_at IS NULL` is the ONLY thing that can exclude it. A
+    // released spot left on its default next_poll_at would be excluded by the time
+    // predicate instead, and the control would prove nothing.
+    await db.database
+      .update(schema.watchedSpots)
+      .set({ nextPollAt: new Date(NOW.getTime() - 60_000) })
+      .where(eq(schema.watchedSpots.id, released.spotId));
     await releaseWatchedSpot(db.database, {
       spotId: released.spotId,
       reason: 'parent_stopped',
@@ -247,6 +367,42 @@ describe('loadDueSpots', () => {
 
     const bounded = await loadDueSpots(db.database, NOW, 2);
     expect(bounded.map((spot) => spot.id)).toEqual([due30, due20]);
+  });
+});
+
+describe('the ledger readers', () => {
+  /** The two reads the release decision rests on: a text is confirmed by the ROW's status
+   * and never by the carrier's accept, and an attempt whose post-send write was lost is
+   * recoverable only because the dedupe key is derived. Catches either read keyed on the
+   * wrong column, and a status read that answers from anything but the row as it stands
+   * now. */
+  it('finds an attempt by the key it was sent under, and reads that row back as the receipt rewrites it', async () => {
+    const family = await seedFamily(db.database, 'Receipt Family');
+    const dedupeKey = 'spot_open:11111111-1111-1111-1111-111111111111:1:1';
+    const [sent] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        channel: 'sms',
+        category: 'spot_open',
+        templateKey: 'spot_open:seat_opened',
+        dedupeKey,
+        status: 'queued',
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (!sent) throw new Error('unreachable: the channel_messages insert returned no row');
+
+    expect(await findLedgerRowByDedupeKey(db.database, dedupeKey)).toEqual({ id: sent.id });
+    expect(await findLedgerRowByDedupeKey(db.database, `${dedupeKey.slice(0, -1)}2`)).toBeNull();
+
+    expect(await readLedgerStatus(db.database, sent.id)).toBe('queued');
+    await db.database
+      .update(schema.channelMessages)
+      .set({ status: 'failed' })
+      .where(eq(schema.channelMessages.id, sent.id));
+    expect(await readLedgerStatus(db.database, sent.id)).toBe('failed');
+    expect(await readLedgerStatus(db.database, '99999999-9999-9999-9999-999999999999')).toBeNull();
   });
 });
 
@@ -283,8 +439,9 @@ describe('the constraints themselves', () => {
     await db.exec(
       `UPDATE watched_spots SET notified_transitions = open_transitions, released_at = now(), released_reason = 'notified' WHERE id = '${id}'`,
     );
-    const spot = await loadSpotById(db.database, id);
-    expect(spot).toBeNull();
+    const spot = await readSpot(id);
+    expect(spot?.releasedReason).toBe('notified');
+    expect(spot?.releasedAt).not.toBeNull();
   });
 
   /** Rule #1: erasure is the FK cascade and nothing else — runDeletionSweep issues one

@@ -1,4 +1,5 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import {
   type CommitmentCancelReason,
   type CommitmentRecordOutcome,
@@ -6,7 +7,6 @@ import {
   fulfillCommitment,
   recordCommitment,
 } from '~/lib/commitments/ledger';
-import { soonestLiveWatch } from './store';
 
 /**
  * VIL-337 · "I'M WATCHING THAT CLASS" IS A ROW — the spot watch on the MEM-10 open-loops
@@ -117,4 +117,29 @@ export async function resettleSpotWatchPromise(
       'spot watch: the promise survived its own closure - it is due at an ended watch',
     );
   }
+}
+
+/**
+ * The live watch that ends soonest — the one a re-recorded promise is due at, so the
+ * overdue query stays true while a household is still being watched, on time.
+ *
+ * It lives HERE rather than in the store because settling the promise is the only thing
+ * that ever asks: keeping it next to `store.ts`'s only caller is also what keeps the two
+ * modules pointing one way (store → promise), so a later writer cannot land a change that
+ * only works because both bindings happen to be read inside function bodies.
+ */
+async function soonestLiveWatch(
+  database: Database,
+  familyId: string,
+): Promise<{ createdFrom: string; expiresAt: Date } | null> {
+  const [row] = await database
+    .select({
+      createdFrom: schema.watchedSpots.createdFrom,
+      expiresAt: schema.watchedSpots.expiresAt,
+    })
+    .from(schema.watchedSpots)
+    .where(and(eq(schema.watchedSpots.familyId, familyId), isNull(schema.watchedSpots.releasedAt)))
+    .orderBy(asc(schema.watchedSpots.expiresAt))
+    .limit(1);
+  return row ?? null;
 }

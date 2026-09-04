@@ -5,7 +5,7 @@ import {
   type WatchedSpotState,
   schema,
 } from '@hale/db';
-import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { recordSpotWatchPromise } from './promise';
 
 /**
@@ -139,8 +139,9 @@ export async function armWatchedSpot(
   if (input.channelMessageId === null) {
     return armFailed(database, input, 'no_ledger_row');
   }
+  let claimed: { id: string; expiresAt: Date } | undefined;
   try {
-    const [row] = await database
+    [claimed] = await database
       .insert(schema.watchedSpots)
       .values({
         familyId: input.familyId,
@@ -159,27 +160,6 @@ export async function armWatchedSpot(
         where: sql`${schema.watchedSpots.releasedAt} IS NULL`,
       })
       .returning({ id: schema.watchedSpots.id, expiresAt: schema.watchedSpots.expiresAt });
-    if (!row) return { status: 'already_watching' };
-
-    // `already_open` from the ledger is expected on the second and later watches: one
-    // household is owed ONE "I'm watching" promise however many pages it is watching.
-    await recordSpotWatchPromise(database, {
-      familyId: input.familyId,
-      channelMessageId: input.channelMessageId,
-      expiresAt: row.expiresAt,
-    });
-    await database.insert(schema.auditLog).values({
-      familyId: input.familyId,
-      actor: 'system',
-      actionTaken: 'watched_spot_armed',
-      targetTable: 'watched_spots',
-      targetId: row.id,
-      // Provenance, never content: the host says which portal, `instant` is the parent's
-      // own quiet-hours opt-in and this row is its receipt. The label and the page stay in
-      // the table (rule #1).
-      after: { watchedSpotId: row.id, host: input.intent.host, instant: input.intent.instant },
-    });
-    return { status: 'armed', spotId: row.id };
   } catch (err) {
     console.error(
       { err, familyId: input.familyId, host: input.intent.host },
@@ -187,6 +167,39 @@ export async function armWatchedSpot(
     );
     return armFailed(database, input, 'write_failed');
   }
+  if (!claimed) return { status: 'already_watching' };
+
+  // THE WATCH EXISTS FROM HERE ON, and nothing below can unmake it: the row will be
+  // polled and it can text. So the try above stops at the claim — a bookkeeping failure
+  // reported as `not_armed` would put a phone that is about to be texted into the Radar's
+  // failed-arm count, which is the number rule #11 exists to keep honest. The books are
+  // loud instead.
+  try {
+    // `already_open` from the ledger is expected on the second and later watches: one
+    // household is owed ONE "I'm watching" promise however many pages it is watching.
+    await recordSpotWatchPromise(database, {
+      familyId: input.familyId,
+      channelMessageId: input.channelMessageId,
+      expiresAt: claimed.expiresAt,
+    });
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'watched_spot_armed',
+      targetTable: 'watched_spots',
+      targetId: claimed.id,
+      // Provenance, never content: the host says which portal, `instant` is the parent's
+      // own quiet-hours opt-in and this row is its receipt. The label and the page stay in
+      // the table (rule #1).
+      after: { watchedSpotId: claimed.id, host: input.intent.host, instant: input.intent.instant },
+    });
+  } catch (err) {
+    console.error(
+      { err, familyId: input.familyId, host: input.intent.host, spotId: claimed.id },
+      'watched spots: the watch is armed but its promise and its trail are not - this one is being watched off the books',
+    );
+  }
+  return { status: 'armed', spotId: claimed.id };
 }
 
 /** The failed arm, on the trail. The audit write is itself best-effort: it runs on a path
@@ -238,21 +251,6 @@ export async function loadDueSpots(
     )
     .orderBy(asc(schema.watchedSpots.nextPollAt), asc(schema.watchedSpots.createdAt))
     .limit(limit);
-}
-
-/** ONE watch, by id, and only while it is still live — the reader a caller holding a
- * pointer needs. A watch released between the load and the act comes back null, which is
- * a spot that drops rather than a second text about a seat somebody already heard about. */
-export async function loadSpotById(
-  database: Database,
-  spotId: string,
-): Promise<LiveWatchedSpot | null> {
-  const [row] = await database
-    .select(LIVE_SPOT_COLUMNS)
-    .from(schema.watchedSpots)
-    .where(and(eq(schema.watchedSpots.id, spotId), isNull(schema.watchedSpots.releasedAt)))
-    .limit(1);
-  return row ?? null;
 }
 
 /**
@@ -352,7 +350,7 @@ export async function claimSendAttempt(
       and(
         eq(schema.watchedSpots.id, input.spotId),
         isNull(schema.watchedSpots.releasedAt),
-        sql`${schema.watchedSpots.pendingKind} IS NOT NULL`,
+        isNotNull(schema.watchedSpots.pendingKind),
         isNull(schema.watchedSpots.notifiedMessageId),
         sql`${schema.watchedSpots.sendAttempts} < ${MAX_SEND_ATTEMPTS}`,
       ),
@@ -448,44 +446,6 @@ export async function releaseWatchedSpot(
     .update(schema.watchedSpots)
     .set({ releasedAt: input.now, releasedReason: input.reason, updatedAt: input.now })
     .where(and(eq(schema.watchedSpots.id, input.spotId), isNull(schema.watchedSpots.releasedAt)));
-}
-
-/** How many pages this household is still having watched — what tells a release whether
- * the promise is over or has merely moved to another page. */
-export async function countLiveWatches(database: Database, familyId: string): Promise<number> {
-  const rows = await database
-    .select({ id: schema.watchedSpots.id })
-    .from(schema.watchedSpots)
-    .where(
-      and(
-        eq(schema.watchedSpots.familyId, familyId),
-        isNull(schema.watchedSpots.releasedAt),
-      ),
-    );
-  return rows.length;
-}
-
-/** The live watch that ends soonest — the one a re-recorded promise is due at, so the
- * ledger's overdue query stays true while a household is still being watched on time. */
-export async function soonestLiveWatch(
-  database: Database,
-  familyId: string,
-): Promise<{ createdFrom: string; expiresAt: Date } | null> {
-  const [row] = await database
-    .select({
-      createdFrom: schema.watchedSpots.createdFrom,
-      expiresAt: schema.watchedSpots.expiresAt,
-    })
-    .from(schema.watchedSpots)
-    .where(
-      and(
-        eq(schema.watchedSpots.familyId, familyId),
-        isNull(schema.watchedSpots.releasedAt),
-      ),
-    )
-    .orderBy(asc(schema.watchedSpots.expiresAt))
-    .limit(1);
-  return row ?? null;
 }
 
 /**

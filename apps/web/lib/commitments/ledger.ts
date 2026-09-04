@@ -212,11 +212,11 @@ export async function fulfillCommitment(
  * a debt that disappears without an account of why is the one closure a ledger must not
  * be able to express.
  *
- * NO PRODUCTION CALLER YET, deliberately. The two candidate triggers — a household
- * losing its last sendable channel, and a parent revoking the approval a registration
- * plan rested on — are send-policy calls, the same boundary that keeps the overdue sweep
- * from texting anyone in v1. The writer exists so that closing a promise as VOIDED is a
- * supported move rather than a schema column nothing may legally write.
+ * ONE PRODUCTION CALLER: the spot watch (channel/spots/promise.ts), which voids its
+ * promise when the last page a household was having watched stops being watched without
+ * the text it promised ever arriving. The other candidate trigger — a parent revoking the
+ * approval a registration plan rested on — is still a send-policy call, the same boundary
+ * that keeps the overdue sweep from texting anyone in v1.
  */
 export async function cancelCommitment(
   database: Database,
