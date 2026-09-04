@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { DRAINABLE_QUEUES, isConnectionExhaustion, runDrainCron } from '~/lib/cron/drain';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
@@ -30,10 +30,7 @@ export const maxDuration = 800;
  * An unrecognised queue name is a 400 rather than a run that drains nothing and reports
  * success: a typo in a caller's slice would otherwise look exactly like an empty queue.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('drain', async (req: Request) => {
   const requested = new URL(req.url).searchParams.get('queues');
   const queues = requested ? requested.split(',') : undefined;
   const unknown = queues?.filter((queue) => !DRAINABLE_QUEUES.includes(queue));
@@ -62,4 +59,4 @@ export async function GET(req: Request) {
     // Serverless flush: send buffered agent spans before the function returns.
     await flushTelemetry();
   }
-}
+});

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { runDeletionSweep } from '~/lib/rights/delete';
 
@@ -19,10 +19,7 @@ export const runtime = 'nodejs';
  * storage bytes) is recorded durably, outside the rows the cascade removes (rule #6
  * note in runDeletionSweep).
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('delete-sweep', async () => {
   const summary = await runDeletionSweep(db());
   if (summary.erased > 0) {
     console.info(
@@ -31,4 +28,4 @@ export async function GET(req: Request) {
     );
   }
   return NextResponse.json({ ok: true, ...summary }, { status: 200 });
-}
+});

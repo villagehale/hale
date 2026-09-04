@@ -1,5 +1,5 @@
 import { NextResponse, after } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { runDiscoveryCron } from '~/lib/cron/discovery';
 import { kickDrain } from '~/lib/cron/kick-drain';
 import { db } from '~/lib/db';
@@ -23,10 +23,7 @@ export const maxDuration = 300;
  * source (rule #1), and self-audited in the same transaction as its writes
  * (rule #6).
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('discovery', async (req: Request) => {
   try {
     const queue = await getQueue();
     const summary = await runDiscoveryCron(db(), queue);
@@ -44,4 +41,4 @@ export async function GET(req: Request) {
     // Serverless flush: send buffered spans before the function returns (rule #8).
     await flushTelemetry();
   }
-}
+});

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { checkRunFailureSpike } from '~/lib/monitoring/run-failure-spike';
 import { checkMonthlySpend } from '~/lib/monitoring/spend';
@@ -23,12 +23,9 @@ export const runtime = 'nodejs';
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('spend-alert', async () => {
   const database = db();
   const spend = await checkMonthlySpend(database);
   const runs = await checkRunFailureSpike(database);
   return NextResponse.json({ ok: true, ...spend, runs }, { status: 200 });
-}
+});

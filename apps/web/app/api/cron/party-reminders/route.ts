@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { runPartyReminderCron } from '~/lib/party/reminders';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
@@ -23,14 +23,11 @@ export const maxDuration = 300;
  * <CRON_SECRET>` → 401 and nothing runs. F14_ENABLED / F14_FAMILY_ALLOWLIST is the D21
  * dark-launch gate, applied per family inside the sweep.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('party-reminders', async () => {
   try {
     const summary = await runPartyReminderCron(db());
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } finally {
     await flushTelemetry();
   }
-}
+});

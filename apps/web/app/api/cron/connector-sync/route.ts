@@ -1,5 +1,5 @@
 import { NextResponse, after } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { connectorSyncDeps, runConnectorSync } from '~/lib/cron/connector-sync';
 import { kickDrain } from '~/lib/cron/kick-drain';
 import { db } from '~/lib/db';
@@ -19,10 +19,7 @@ export const maxDuration = 300;
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and the sweep does NOTHING (no DB
  * read, no Google call).
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('connector-sync', async (req: Request) => {
   const queue = await getQueue();
   const summary = await runConnectorSync(connectorSyncDeps(db(), queue));
 
@@ -32,4 +29,4 @@ export async function GET(req: Request) {
   after(() => kickDrain(origin));
 
   return NextResponse.json({ ok: true, ...summary }, { status: 200 });
-}
+});

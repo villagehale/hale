@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
@@ -30,14 +30,11 @@ export const maxDuration = 300;
  * F14_FAMILY_ALLOWLIST is the D21 dark-launch gate: unarmed, the sweep does not even
  * select a family.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('registration-sequence', async () => {
   try {
     const summary = await runRegistrationSequenceCron(db());
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } finally {
     await flushTelemetry();
   }
-}
+});

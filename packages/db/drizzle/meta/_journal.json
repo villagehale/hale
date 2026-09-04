@@ -729,6 +729,13 @@
       "when": 1781469600000,
       "tag": "0106_insert_as_claim_seams",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1781469601000,
+      "tag": "0107_cron_heartbeats",
+      "breakpoints": true
     }
   ]
 }

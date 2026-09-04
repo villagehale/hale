@@ -4,7 +4,7 @@ import {
   fetchTwilioMessageState,
   runDeliverySweep,
 } from '~/lib/channel/twilio/delivery-sweep';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import {
   checkDeliveryHealth,
@@ -29,10 +29,7 @@ export const maxDuration = 300;
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('delivery-sweep', async () => {
   if (!credentials()) {
     // Twilio dark = nothing to poll AND nothing was sent that could fail. Named,
     // logged, not an error: the leg is unprovisioned, not broken (rule #11).
@@ -63,4 +60,4 @@ export async function GET(req: Request) {
     console.error({ err }, 'cron/delivery-sweep failed');
     throw err;
   }
-}
+});

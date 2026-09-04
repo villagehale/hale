@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
@@ -26,10 +26,7 @@ export const maxDuration = 300;
  * spend more to learn the same thing, and every source here is a public body whose
  * page we are a guest on.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('registration-verify', async () => {
   // Budgeted, not bare (audit P1-7): this sweep spends its weekly claim BEFORE
   // working, and an SDK-default 600s stall inside maxDuration 300 burned the
   // whole claimed week silently. 60s×2 worst-case per call sits inside the wall.
@@ -47,4 +44,4 @@ export async function GET(req: Request) {
   } finally {
     await flushTelemetry();
   }
-}
+});

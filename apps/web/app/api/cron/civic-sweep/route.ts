@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { runCivicSweepCron } from '~/lib/cron/civic-sweep';
 import { db } from '~/lib/db';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
@@ -22,10 +22,7 @@ export const maxDuration = 300;
  * hours. Sweeping harder would spend more to learn the same thing, and every
  * source here is a public body whose feed we are a guest on.
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('civic-sweep', async () => {
   try {
     const summary = await runCivicSweepCron(db());
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
@@ -37,4 +34,4 @@ export async function GET(req: Request) {
   } finally {
     await flushTelemetry();
   }
-}
+});

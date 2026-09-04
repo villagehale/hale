@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { runFollowupSweep } from '~/lib/channel/followup/run';
 import { runNudgeCron } from '~/lib/channel/nudge/run';
-import { requireCronSecret } from '~/lib/cron/auth';
+import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
@@ -49,10 +49,7 @@ export const maxDuration = 300;
  * household that has just been handed a nudge or an intro card is not also asked how
  * last week went. It carries its own dark-launch flag (FOLLOWUP_ASKS_ENABLED).
  */
-export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
-  if (denied) return denied;
-
+export const GET = cronRoute('nudge', async () => {
   try {
     const summary = await runNudgeCron(db());
     const villageIntros = await runVillageIntroSweep(db());
@@ -66,4 +63,4 @@ export async function GET(req: Request) {
   } finally {
     await flushTelemetry();
   }
-}
+});
