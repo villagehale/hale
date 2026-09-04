@@ -376,6 +376,13 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // you". No cap counts it and no gate governs it: the ping answers a join that just
   // happened, and the note is a human being replying to it.
   'founder',
+  // The seat that came free — the text a family gets because a course page they asked
+  // Hale to watch stopped saying it was full. Its own category for the reason every class
+  // above has one: the gate COUNTS a category, and folding this into 'nudge' would let
+  // one opening spend a household's weekly nudge budget on somebody else's cancellation.
+  // BOTH proactive kinds count here, the held one and the instant one, so a family that
+  // opted into being told at 2 a.m. bought timing rather than volume.
+  'spot_open',
 ]);
 
 /**
@@ -477,4 +484,13 @@ export const agentCommitmentKindEnum = pgEnum('agent_commitment_kind', [
   // the second if they shared a kind. Due when this family can first register, and kept
   // by the `go` leg — the tap fifteen minutes before the doors open.
   'registration_watch',
+  // "I'm watching that class and I'll text you when a spot opens." — one promise per
+  // family however many course pages it is watching, because that is what the partial
+  // unique index permits and it is also what the parent was told: Hale is watching.
+  // Distinct from `registration_watch`, which is about a municipal MORNING that has not
+  // happened yet; this one is about a class that is full RIGHT NOW, and one household can
+  // be owed both. Due when the watch expires, opened against the arming ack, kept by a
+  // spot-opened text whose delivery receipt landed — and voided with a named reason when
+  // the last live watch ends without one.
+  'spot_watch',
 ]);
