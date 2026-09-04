@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
-import type { BookMe4Model } from './availability';
+import { type BookMe4Model, readSpot } from './availability';
 import { MAX_SPOT_OPEN_SEGMENTS, renderSpotOpen, spotOpenViolations } from './copy';
 
 /**
@@ -22,9 +22,18 @@ const URL =
   'https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=4241ad2f-9b67-464f-9f19-ad5f46d4a92d';
 const PORTAL = "Markham's portal";
 
-const baseModel = JSON.parse(
-  readFileSync(join(__dirname, 'fixtures', 'open-full.assumption.json'), 'utf8'),
-) as BookMe4Model;
+/** The model Markham published for a real class whose registration window was open
+ * and whose roster was full — the state a seat_opened text is composed against. Taken
+ * through the reader rather than from a saved copy, so the composer's base is the same
+ * object the sweep would hand it. */
+const baseReading = readSpot(
+  readFileSync(join(__dirname, 'fixtures', 'open-window-markham.html'), 'utf8'),
+  '85770d4d-bce9-4e53-b969-cf7e88775180',
+);
+if (baseReading.state === 'unreadable') {
+  throw new Error(`open-window-markham.html is unreadable/${baseReading.reason}`);
+}
+const baseModel: BookMe4Model = baseReading.model;
 
 function model(overrides: Partial<BookMe4Model>): BookMe4Model {
   return { ...baseModel, StartDay: null, StartTime: null, ...overrides };

@@ -38,6 +38,7 @@ export interface SpotPortal {
  */
 export const SPOT_PORTAL_HOSTS: Record<string, SpotPortal> = {
   'cityofmarkham.perfectmind.com': { portalLabel: "Markham's portal" },
+  'townofoakville.perfectmind.com': { portalLabel: "Oakville's portal" },
 };
 
 /** The one server-rendered BookMe4 route that carries a course's availability. */

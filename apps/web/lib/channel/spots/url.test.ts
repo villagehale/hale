@@ -18,6 +18,11 @@ const COURSE = '4241ad2f-9b67-464f-9f19-ad5f46d4a92d';
 const MARKHAM = 'https://cityofmarkham.perfectmind.com';
 const COURSE_PAGE = `${MARKHAM}/Clients/BookMe4LandingPages/CoursesLandingPage`;
 const CLEAN = `${COURSE_PAGE}?widgetId=${WIDGET}&courseId=${COURSE}`;
+/** The address the saved oakville-course.html was fetched from, verbatim. */
+const OAKVILLE_WIDGET = '15f6af07-39c5-473e-b053-96653f77a406';
+const OAKVILLE_COURSE = '16765c8e-835f-4ba6-9803-bbc84bd5ff8f';
+const OAKVILLE_PAGE =
+  'https://townofoakville.perfectmind.com/Contacts/BookMe4LandingPages/CoursesLandingPage';
 
 describe('sanitizeSpotUrl — what it accepts', () => {
   it('rebuilds the query from the two GUIDs and drops everything else', () => {
@@ -47,10 +52,26 @@ describe('sanitizeSpotUrl — what it accepts', () => {
     expect(result.ok && result.url).toBe(CLEAN);
   });
 
-  it("accepts the vendor's other prefix, /Contacts/, on the same route", () => {
-    // Oakville's tenant serves these routes under /Contacts/ rather than /Clients/
-    // (measured on townofoakville.perfectmind.com). The path is a vendor rule, not a
-    // per-host one, so it is accepted on any registry host.
+  it("sanitizes Oakville's real /Contacts/ address to its own label", () => {
+    // The exact link oakville-course.html was fetched from, with the embed flag a
+    // parent's address bar carries. Oakville serves these routes under /Contacts/
+    // rather than /Clients/, and its label is Oakville's, never the first entry's.
+    const result = sanitizeSpotUrl(
+      `${OAKVILLE_PAGE}?widgetId=${OAKVILLE_WIDGET}&redirectedFromEmbededMode=False&courseId=${OAKVILLE_COURSE}`,
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      url: `${OAKVILLE_PAGE}?widgetId=${OAKVILLE_WIDGET}&courseId=${OAKVILLE_COURSE}`,
+      host: 'townofoakville.perfectmind.com',
+      portalLabel: "Oakville's portal",
+      courseId: OAKVILLE_COURSE,
+    });
+  });
+
+  it('takes /Contacts/ as a vendor rule rather than a per-host one', () => {
+    // The prefix is tenant configuration, not something the registry records, so the
+    // path check must not be keyed to the host it was first measured on.
     const result = sanitizeSpotUrl(
       `${MARKHAM}/Contacts/BookMe4LandingPages/CoursesLandingPage?widgetId=${WIDGET}&courseId=${COURSE}`,
     );
