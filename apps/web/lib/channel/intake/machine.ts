@@ -85,6 +85,7 @@ import {
   transcriptHasOutbound,
 } from './session';
 import type { ChannelTransport } from './transport';
+import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { recordWatchConsent } from './watch-consent';
 import { sendWelcomeContactCard } from './welcome-card';
 
@@ -251,11 +252,22 @@ export async function handleInboundSms(
 
   // 4. The carrier retried. The provider id is the same, so this is not a parent
   // texting twice — replying again would double every message in the conversation.
+  // This in-row check is the CHEAP layer and only sees a retry of the LAST completed
+  // turn; the branches below that intake itself ACTS on each take a durable CLAIM
+  // (turn-claim.ts, audit P1-4) covering what this never could — a resend racing a
+  // turn still running (lastProviderId is written only at the end), the pre-session
+  // greet (no row to remember anything), and an out-of-order redelivery of an older
+  // message. The fall-through paths to C1 (ignored/no_open_conversation) deliberately
+  // claim NOTHING: that seam has its own 0085 claim, and an intake-side refusal there
+  // would swallow the retry that heals a crash before the hand-off row existed.
   if (session && session.lastProviderId === inbound.providerId) {
     return { status: 'duplicate' };
   }
 
-  // 5. The keyword read in step 2, acted on.
+  // 5. The keyword read in step 2, acted on. Deliberately UNCLAIMED: STOP is a legal
+  // instruction, its handling is deterministic-fast and idempotent, and a claim here
+  // would refuse the resend that re-runs a STOP whose first attempt crashed —
+  // trading a rare double courtesy-ack for a CASL instruction that cannot be lost.
   if (match) {
     return handleKeyword(database, { match, phoneE164, inbound, session, now }, deps);
   }
@@ -310,26 +322,56 @@ export async function handleInboundSms(
       );
       return outcome ?? { status: 'ignored', reason: 'no_open_conversation' };
     }
-    return greet(database, { phoneE164, inbound, now, joinTag }, deps);
+    // The pre-session greet is the double-welcome bug's home: no session exists, so
+    // nothing remembered the sid at all and a >15s first turn greeted twice.
+    return claimedTurn(database, inbound, now, () =>
+      greet(database, { phoneE164, inbound, now, joinTag }, deps),
+    );
   }
 
   if (session.state === 'awaiting_watch_reply' || session.state === 'awaiting_clarify') {
-    return handleWatchReply(database, { session, phoneE164, inbound, now }, deps);
+    return claimedTurn(database, inbound, now, () =>
+      handleWatchReply(database, { session, phoneE164, inbound, now }, deps),
+    );
   }
 
   // VIL-332: createSession commits before send. A leftover awaiting_details
   // row with no outbound is not details — it is a first-hello that never
   // left. handleDetails would extract / HELP / provision and skip greeting().
   if (session.state === 'awaiting_details' && !transcriptHasOutbound(session.transcript)) {
-    return deliverFirstHello(
-      database,
-      { session, phoneE164, inbound, now },
-      deps,
-      session.sourceCode,
+    return claimedTurn(database, inbound, now, () =>
+      deliverFirstHello(database, { session, phoneE164, inbound, now }, deps, session.sourceCode),
     );
   }
 
-  return handleDetails(database, { session, phoneE164, inbound, now }, deps);
+  return claimedTurn(database, inbound, now, () =>
+    handleDetails(database, { session, phoneE164, inbound, now }, deps),
+  );
+}
+
+/**
+ * Run one intake turn under the P1-4 provider-id claim (turn-claim.ts): the first
+ * delivery to claim the sid runs; every later one — including a Twilio resend racing
+ * this very turn — is the same named 'duplicate' step 4 has always produced. Wraps
+ * ONLY the branches where intake itself acts (greet, the model-bound session turns):
+ * keywords stay unclaimed (a STOP resend must always be honoured), token-redeeming
+ * turns ride their own consume-once claims, and the C1 fall-through claims nothing so
+ * the hand-off's 0085 arbitration and its crash-heal retry stay untouched.
+ */
+async function claimedTurn(
+  database: Database,
+  inbound: Inbound,
+  now: Date,
+  run: () => Promise<IntakeOutcome>,
+): Promise<IntakeOutcome> {
+  if (!(await claimIntakeTurn(database, inbound.providerId, now))) {
+    return { status: 'duplicate' };
+  }
+  const outcome = await run();
+  // Stamped only on a turn that returned: a claim whose completed_at stays NULL is
+  // the named crash residue (rule #11), visible to an operator, never a silence.
+  await completeIntakeTurn(database, inbound.providerId, now);
+  return outcome;
 }
 
 /**

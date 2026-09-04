@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
@@ -84,7 +85,8 @@ let anthropicClient: Anthropic | undefined;
 function agentClient(): AgentClient | null {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
-  anthropicClient ??= new Anthropic({ apiKey });
+  // Week-plan composer under its cron's maxDuration 300 (audit P1-7).
+  anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return anthropicClient;
 }
 

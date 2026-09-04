@@ -1,8 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type QueueCreateOptions, createQueueWithPolicy } from '@hale/tools-contracts';
 import { captureInboundRouted } from '~/lib/analytics/server-capture';
-import { HOT_SMS_CLIENT_OPTIONS } from '~/lib/pipeline/client';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
@@ -39,11 +39,7 @@ import type { TwilioVoiceDeps } from './voice';
 let cachedClient: Anthropic | undefined;
 
 function anthropicClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  cachedClient ??= new Anthropic({ apiKey, ...HOT_SMS_CLIENT_OPTIONS });
+  cachedClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
   return cachedClient;
 }
 

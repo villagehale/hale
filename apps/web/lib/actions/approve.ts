@@ -14,7 +14,7 @@ export interface ApproveQueue {
   send(
     name: string,
     data: ApprovedActionPayload,
-    options?: { expireInSeconds: number },
+    options?: { expireInSeconds: number; id: string },
   ): Promise<string | null>;
 }
 
@@ -74,8 +74,24 @@ export async function approveDraftedAction(
     approved_at: new Date().toISOString(),
   });
 
-  // expireInSeconds (recipe #6): a killed execution re-queues in ~3min, not the
-  // 15min default — set per-job so it applies regardless of the queue default.
-  await queue.send('actions.approved', payload, { expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
+  // The job ID is the action id — one action is one execution is one job, the identity
+  // the inbound leg already rides (channel/twilio/deps.ts sendOptions): pg-boss's
+  // insert ends in ON CONFLICT DO NOTHING, so a double-tapped Approve, or the SMS
+  // "YES" arc racing the web button, creates ONE job instead of two deliveries that
+  // both pass the executor's gate (audit P1-4). expireInSeconds is set per-job so it
+  // applies regardless of the queue default.
+  const jobId = await queue.send('actions.approved', payload, {
+    expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    id: action.id,
+  });
+  if (!jobId) {
+    // Null means a job with this id already exists: the approval is already on its
+    // way, exactly once. Named rather than silent (rule #11); still a 202, because
+    // "your approval is being executed" is true either way.
+    console.info(
+      { actionId: action.id },
+      'approve: actions.approved job already exists for this action — nothing new enqueued',
+    );
+  }
   return { status: 202, payload };
 }

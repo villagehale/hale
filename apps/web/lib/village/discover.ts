@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type ModelId, estimateCostUsd } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { FAMILY_STAGES, type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
@@ -440,11 +441,10 @@ export async function discoverForFamily(
 let anthropicClient: Anthropic | undefined;
 
 export function defaultDiscoverDeps(): DiscoverDeps {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  anthropicClient ??= new Anthropic({ apiKey });
+  // Hosted by the /village Server Action and the weekly discovery cron
+  // (maxDuration 300): the sweep budget keeps one stalled request from
+  // outliving either wall (audit P1-7).
+  anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return {
     client: anthropicClient,
     loadPrompt: loadDiscoveryPrompt,

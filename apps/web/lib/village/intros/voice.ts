@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
@@ -315,9 +316,8 @@ let cached: Anthropic | undefined;
  * every tick including the ones that reach no model, so a missing key must not break
  * construction — it must produce the named `client_unavailable` deferral. */
 export function introVoiceClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set');
-  cached ??= new Anthropic({ apiKey });
+  // Sweep composer under the nudge cron's maxDuration 300 (audit P1-7).
+  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return cached;
 }
 
