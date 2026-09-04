@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { recordAgentRun } from '~/lib/agent-run';
@@ -36,11 +37,9 @@ export interface CurateResult {
 let defaultClient: Anthropic | undefined;
 
 function anthropicClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  defaultClient ??= new Anthropic({ apiKey });
+  // Drained batch leg (shortlist-curate under the drain's 700s wall budget): the sweep
+  // budget keeps one stalled request from eating the whole slice (audit P1-7).
+  defaultClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return defaultClient;
 }
 

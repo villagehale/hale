@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { smsEncoding } from '~/lib/channel/sms-segments';
@@ -324,8 +325,8 @@ let cached: Anthropic | undefined;
  * is what buys the composer's single named `client_unavailable` defer.
  */
 export function calendarVoiceClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set');
-  cached ??= new Anthropic({ apiKey });
+  // Built by the router and the drain per text/placement — some of those turns
+  // have a parent waiting, so the SMS-lane budget governs (audit P1-7).
+  cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
   return cached;
 }

@@ -41,8 +41,9 @@ const PROVIDER_TOKENS = [
  * pre-family row cannot legally exist earlier). RESIDUE entries are sends with no
  * ledger row today, kept deliberately visible here rather than scattered. */
 const ONE_DOOR_ALLOWLIST: Record<string, string> = {
-  'apps/web/lib/channel/twilio/transport.ts':
-    'the door itself — the one module that speaks Twilio REST',
+  'apps/web/lib/channel/twilio/transport.ts': 'the door itself — the one module that speaks Twilio REST',
+  'apps/web/lib/channel/twilio/delivery-sweep.ts':
+    'read-only status poller (P0-1): fetches Message status by SID, sends nothing — its writes are ledger status updates, never provider sends',
   'apps/web/lib/channel/twilio/deps.ts':
     'intake + voice wiring; intake sends record via machine.ts writeChannelMessage or the session transcript, voice via textStranger transcript',
   'apps/web/lib/channel/router/wiring.ts':
@@ -70,8 +71,6 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'RESIDUE BY DESIGN: the founder webhook-failure alert is database-independent on purpose — it fires when the DB is down (2026-08-28), so a ledger write is structurally impossible. Founder-directed, digit-scrubbed, rate-limited.',
   'apps/web/lib/monitoring/twilio-triage.ts':
     'RESIDUE BY DESIGN: founder diagnosis SMS for Twilio Monitor alerts — same ops class as alert.ts, founder-directed, not family traffic.',
-  'apps/web/lib/channel/twilio/delivery-sweep.ts':
-    'sends nothing — a read-only Messages GET per stale row, whose answer is written back to channel_messages through applyTwilioStatus (the sweep exists to make the ledger truer, not to bypass it).',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no Twilio

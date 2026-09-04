@@ -69,28 +69,57 @@ export const ACTIVITY_CLIENT_OPTIONS = { timeout: 50_000, maxRetries: 0 } as con
  */
 export const VOICE_LOOKUP_CLIENT_OPTIONS = { timeout: 10_000, maxRetries: 0 } as const;
 
+/**
+ * Options for a model call inside a CRON-HOSTED SWEEP or drained batch job — the
+ * weekly registration-verify, discovery, inference, week-plan, rank/curate, the
+ * followup and intros composers. Nobody is holding a phone, but the hosting
+ * function's wall is real: every cron route here runs at maxDuration 300 (drain
+ * at 800 with its own 700s budget), while the SDK's silent defaults are 600s +
+ * 2 retries — one stalled call may legally outlive the whole window (2026-09-03
+ * audit P1-7: registration-verify claims its week BEFORE working, so that stall
+ * burned the claim and the sweep silently skipped to next Monday). 60s bounds
+ * one request; with one retry the worst case is ~2min, inside 300s with room
+ * for the rest of the sweep and the finally-flush.
+ */
+export const CRON_SWEEP_CLIENT_OPTIONS = { timeout: 60_000, maxRetries: 1 } as const;
+
+/** Every client budget: time-to-headers bound (ms) + SDK retry count, both
+ * mandatory — the whole point is that neither can silently ride an SDK default. */
+export interface AnthropicBudget {
+  timeout: number;
+  maxRetries: number;
+}
+
+/**
+ * The ONE place `new Anthropic` may be written in apps/web — enforced by
+ * no-raw-anthropic.test.ts (audit P1-7). Constructing here forces every client
+ * to state its budget explicitly, because the SDK's silent defaults (600s,
+ * 2 retries) are bigger than every serverless window this app runs in. Throws
+ * on a missing key (rule #8 — a silent no-op client is not a client); callers
+ * that legitimately run keyless check the env themselves first.
+ */
+export function budgetedAnthropic(budget: AnthropicBudget): Anthropic {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set');
+  }
+  return new Anthropic({ apiKey, ...budget });
+}
+
 let cached: Anthropic | undefined;
 let cachedVoice: Anthropic | undefined;
 let cachedVoiceLookup: Anthropic | undefined;
 let cachedActivity: Anthropic | undefined;
 
 export function pipelineClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  cached ??= new Anthropic({ apiKey, ...HOT_SMS_CLIENT_OPTIONS });
+  cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
   return cached;
 }
 
 /** The client for {@link ACTIVITY_CLIENT_OPTIONS}, process-cached for the same reason
  * the others are. */
 export function activityClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  cachedActivity ??= new Anthropic({ apiKey, ...ACTIVITY_CLIENT_OPTIONS });
+  cachedActivity ??= budgetedAnthropic(ACTIVITY_CLIENT_OPTIONS);
   return cachedActivity;
 }
 
@@ -99,11 +128,7 @@ export function activityClient(): AgentClient {
  * only in the one thing that matters here, how long an abandoned search may keep
  * spending. */
 export function voiceLookupClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  cachedVoiceLookup ??= new Anthropic({ apiKey, ...VOICE_LOOKUP_CLIENT_OPTIONS });
+  cachedVoiceLookup ??= budgetedAnthropic(VOICE_LOOKUP_CLIENT_OPTIONS);
   return cachedVoiceLookup;
 }
 
@@ -111,10 +136,6 @@ export function voiceLookupClient(): AgentClient {
  * other hot path, because a fresh HTTPS pool per phone call spends the budget it exists
  * to protect on a handshake. */
 export function voiceClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  cachedVoice ??= new Anthropic({ apiKey, ...VOICE_CLIENT_OPTIONS });
+  cachedVoice ??= budgetedAnthropic(VOICE_CLIENT_OPTIONS);
   return cachedVoice;
 }
