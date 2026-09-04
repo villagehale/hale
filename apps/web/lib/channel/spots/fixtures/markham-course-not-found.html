@@ -1,0 +1,236 @@
+
+
+<!DOCTYPE html>
+<html class="bm-full-page" xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" data-rootUrl="/">
+    <head><link rel="icon" href="/Content/Images/Rocket_ICON.ico" /><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        
+        <!--Required scripts needed for menus-->
+       <script type="text/javascript">
+           if (!window.jQuery) {
+               document.write('<script crossorigin="anonymous" src="/Scripts/jQueryCore/jQueryCoreMin.js?08250811">\x3C/script>');
+               document.write('<script crossorigin="anonymous" src="/Scripts/jQueryCore/jquery-migrate-3.3.2.min.js?08250811">\x3C/script>');
+           }
+       </script>
+        <script crossorigin="anonymous" src="/Scripts/Kendo/kendo.all.min.js?08250811" type="text/javascript"></script>
+        <script crossorigin="anonymous" src="/Scripts/Kendo/kendo.aspnetmvc.min.js?08250811" type="text/javascript"></script>
+
+        
+    <title>BookMe4 Error Page</title>
+
+    <style type="text/css">/*TODO: move to CSS file*/
+        #startpage-denied-title {
+            margin: 0 auto;
+            text-align: center;
+        }
+    </style>    
+    
+
+<link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-Theme.css?08250811" type="text/css" />
+<link href="/Content/jQueryUI/ui-lightness/jquery-ui.css?08250811" type="text/css" rel="stylesheet" />
+
+<link href="/Content/Kendo/kendo.common.min.css?08250811" rel="stylesheet" type="text/css" />
+<link href="/Content/Kendo/kendo.bootstrap.min.css?08250811" rel="stylesheet" type="text/css" />
+<link href="/Content/Fonts/BookMe/styles.css?08250811" rel="stylesheet" type="text/css" />
+<link href="/Content/Fonts/FontAwesome/css/font-awesome.min.css?08250811" rel="stylesheet" type="text/css" />
+<link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-Embed.css?08250811" type="text/css" />
+<link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-CoursesClasses.css?08250811" type="text/css" />
+<link rel="stylesheet" href="/Content/lightbox.css?08250811" type="text/css" />
+<link rel="stylesheet" href="/Scripts/malihuScrollbar/jquery.mCustomScrollbar.css?08250811" type="text/css" />
+
+
+<script crossorigin="anonymous" src="/Scripts/BookMe4/Resources/Resources.en-CA.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/Resources/Resources.en-CA.js?08250811" type="text/javascript"></script>
+
+<!--For logged-in users we use BookMe4Authentificated master page where these scripts are already included. Duplicating these scripts caused KendoDropDown list issue on Android devices (for Android version 9 and higher).-->
+
+
+<script crossorigin="anonymous" src="/Scripts/jQueryUi/jQueryUi.min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/MicrosoftAjax.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/MicrosoftMvcAjax.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/MicrosoftMvcValidation.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/perfectMind/PMCommonHeadLoadingFull.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/perfectMind/PMCommonFull.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/kendo.all.min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/kendo.aspnetmvc.min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/utils/json2min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/perfectMind/ByPassLinkManager.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/malihuScrollbar/jquery.mCustomScrollbar.concat.min.js?08250811" type="text/javascript"></script>
+
+<script type="text/javascript">
+    var require =
+    {
+        baseUrl: '/Scripts/perfectMind',
+        paths: {
+            "linq": "../linq.min",
+            "knockout": "../knockout-3.5.1",
+            "timepicker": "../jquery.timepicker.min",
+            "kendo-all": "../Kendo/kendo.all.min",
+            "kendo.timezones.min": "../Kendo/kendo.timezones.min",
+            "PlannerUtility": "planner/PlannerUtility",
+            "CommonBindings": "planner/CommonBindings",
+            "PlannerFilter": "planner/PlannerFilter",
+            "PlannerEvent": "planner/PlannerEvent",
+            "PlannerAttendance": "planner/PlannerAttendance",
+            "PerfectScanAutoComplete": "../Attendance/PerfectScanAutoComplete",
+            "ItemDiscountEditViewUI": "discount/ItemDiscountEditViewUI",
+            "ItemDiscountDetailViewUI": "discount/ItemDiscountDetailViewUI",
+            "DiscountEditViewUI": "discount/DiscountEditViewUI",
+            "DiscountDetailViewUI": "discount/DiscountDetailViewUI",
+            "managePickList": "managePickList",
+            "classPage": "../Attendance/ClassPage",
+            'activitySearch': '../BookMe4/activity.search',
+            'courses-booking': '../BookMe4/Controllers/CourseBookingController',
+            'startpage': '../BookMe4/Controllers/StartPageController',
+            'searchPage': '../BookMe4/Controllers/BookMe4SearchController',
+            'BookMeConstants': '../BookMe4/constants',
+            'FacilityList': '../Bookme4/Controllers/FacilityListController',
+            'FacilityLandingPageController': '../BookMe4/Controllers/FacilityLandingPageController',
+            'FacilityResponsivenessHelper': '../BookMe4/FacilityResponsivenessHelper',
+            'ScrollableMainMenu': '../BookMe4/ScrollableMainMenu',
+            'FacilityMap': '../BookMe4/Controllers/FacilityMapController',
+            'custom-booking-online': '../BookMe4/Controllers/CustomBookingController',
+            'custom-booking-online-service': '../BookMe4/Services/CustomBookingService',
+            'custom-booking-online-models': '../BookMe4/Models/CustomBookingModels',
+            'BookMe4SearchHelper': '../BookMe4/BookMe4SearchHelper',
+            'BookMe4AttendanceHeader': '../BookMe4/BookMe4AttendanceHeader',
+            'SingleLocationOnlineShoppingCartPopup': '../BookMe4/SingleLocationOnlineShoppingCartPopup',
+            'BookMe4CartV2Controller': '../BookMe4/Controllers/BookMe4CartV2Controller',
+            'BookMe4CartService': '../BookMe4/Services/BookMe4CartService',
+            'CartItemHelper': '../BookMe4/Helpers/CartItemHelper',
+            'DateTimeHelper': '../BookMe4/Helpers/DateTimeHelper',
+            'BreadcrumbsController': '../BookMe4/Controllers/BreadcrumbsController',
+            'StartPageV2Controller': '../BookMe4/Controllers/StartPageV2Controller',
+            'ClassBookingV2Controller': '../BookMe4/Controllers/ClassBookingV2Controller',
+            'CourseBookingV2Controller': '../BookMe4/Controllers/CourseBookingV2Controller',
+            'text': '../requireModules/text',
+            'Masonry': '/Scripts/masonry.pkgd.min.js?08250811',
+            'FilterViewModelBase': '../BookMe4/Components/FilterViewModelBase',
+            'EmptyFilter': '../BookMe4/Components/EmptyFilter',
+            'MultiSelectFilter': '../BookMe4/Components/MultiSelectFilter',
+            'LocationMultiSelectFilter': '../BookMe4/Components/LocationMultiSelectFilter',
+            'FilterSelector': '../BookMe4/Components/FilterSelector',
+            'FilterManager': '../BookMe4/Components/FilterManager',
+            'FiltersCommunicationManager': '../BookMe4/Components/FiltersCommunicationManager',
+            'SearchByKeywordFilter': '../BookMe4/Components/SearchByKeywordFilter',
+            'DaysOfWeekFilter': '../BookMe4/Components/DaysOfWeekFilter',
+            'DateRangeFilter': '../BookMe4/Components/DateRangeFilter',
+            'TimeRangeFilter': '../BookMe4/Components/TimeRangeFilter',
+            'AgeFilter': '../BookMe4/Components/AgeFilter',
+            'CourseEvent': '../BookMe4/Components/CourseEvent',
+            'CourseService': '../BookMe4/Components/CourseService',
+            'CourseOccurrence': '../BookMe4/Components/CourseOccurrence',
+            'CourseDate': '../BookMe4/Components/CourseDate',
+            'CourseBookingPageSeriesViewComponent': '../BookMe4/Components/CourseBookingPageSeriesViewComponent',
+            'CourseBookingPageSessionsViewComponent': '../BookMe4/Components/CourseBookingPageSessionsViewComponent',
+            'CourseBookingPageSeriesViewVM': '../BookMe4/ViewModels/CourseBookingPageSeriesViewVM',
+            'CourseBookingPageSessionsViewVM': '../BookMe4/ViewModels/CourseBookingPageSessionsViewVM',
+            'CourseBookingPageServiceVM': '../BookMe4/ViewModels/CourseBookingPageServiceVM',
+            'CourseBookingPageEventVM': '../BookMe4/ViewModels/CourseBookingPageEventVM',
+            'BookingPageService': '../BookMe4/Services/BookingPageService',
+            'CourseBookingPageHelper': '../BookMe4/Helpers/CourseBookingPageHelper',
+            'ApplicationMenuMobile': 'ApplicationMenuMobile',
+            'ApplicationMenuItem': 'Controls/Shared/ApplicationMenuItem',
+            'ApplicationMenuItemTemplate': '/Content/HtmlTemplate/Controls/Shared/ApplicationMenuItem.html',
+            'ApplicationChildMenuTemplate': '/Content/HtmlTemplate/Controls/Shared/ApplicationChildMenu.html',
+            'ApplicationChildMenu': 'Controls/Shared/ApplicationChildMenu',
+            'FadeIn': 'Shared/Extensions/FadeIn',
+            'SlideIn': 'Shared/Extensions/SlideIn',
+            'ImageCarousel': 'Controls/ImageCarousel',
+            'ImageCarouselPopup': 'Controls/Popup/ImageCarouselPopup',
+            'PopupWrapper': 'Controls/Popup/PopupWrapper',
+            //"culture": '../kendo/cultures/kendo.culture.en-CA.min'
+        },
+        urlArgs: "v=08250811"
+    };
+</script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/cultures/kendo.culture.en-CA.min.js" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/require.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/LazyLoader.js?08250811" type="text/javascript"></script>
+
+<script>
+    kendo.culture("en-CA");
+</script>
+
+
+        <link href="/Content/sitebase1.css?08250811" rel="stylesheet" type="text/css" />
+        <link rel="stylesheet" type="text/css" href="/Content/Planner2/PlannerAddin.css?08250811" />
+    </head>
+    <body>
+        <input type="hidden" id="siteAnchor" value="/" />
+        
+<form action="/Clients/BookMe4LandingPages/CoursesLandingPage" id="AjaxAntiForgeryForm" method="post" style="display: none;"><input name="__RequestVerificationToken" type="hidden" value="aEFslEXDbxZI_B40BZelmg6Eb3wiole5Q3-6IcIPoZZpL98xgVrRpQTJMUCIsyor9ginQMF-KkMIU_2Bi7IXb7dptJLt3ZI1MHxk0COqEMBM8v2o0" /></form>
+<script type="text/javascript" crossorigin="anonymous" src="/Scripts/perfectMind/AjaxAntiForgeryPost.js?08250811"></script>
+        <div id="temp_wrapper" style="position: fixed;top:0px;left:0px;height: 100%;width:100%;background-color: white;z-index: 100000"></div>
+        <ul id="bypass-link-list">
+            <li class="bypass-link-item">
+                <a id="main-content-link" class="bypass-link" href="#main-content" tabindex="1">
+                    <div class="link-content">Skip to main content</div>
+                </a>
+            </li>
+        </ul>
+
+      
+
+<link rel="stylesheet" href="/Content/NewHeaderStyles.css?08250811" type="text/css" />
+
+
+
+<div class="bm-org-header public-header" role="heading" aria-level="1">
+    <img class="" src="//content.perfectmind.com/a99974b35d3c4078b8de347eab91319f/logo/Markham+Logo+-+CMYK.png" alt="PerfectMind Logo" aria-hidden="true" />
+    <div class="org-details">
+        <div class="bm-org-name">
+            <div>City of Markham</div>        
+        </div>
+        <div class="org-phone-number">
+            <div>(905) 477-5530</div>        
+        </div>
+    </div>
+    <div class="header-for-member">
+        <div id="topNav">
+            <div class="log-in-button-container" style="position: absolute; right: 60px; top: 0px; margin-top: 26px;">
+                 <a class="pm-button pm-login-button" title="Log in to portal" href="/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3a%2f%2fcityofmarkham.perfectmind.com%2fClients%2fBookMe4LandingPages%2fCoursesLandingPage%3fwidgetId%3dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3d00000000-0000-0000-0000-000000000001">
+                    <span>Login</span>
+                 </a>
+            </div>
+            <div id="google_translate_element" style="position: absolute; right: 185px; top: 0px;"></div>
+        </div>
+    </div>
+</div>
+
+
+    <div id="startpage-denied-title">
+        <h2>This widget has been disabled or not set up properly</h2>
+        <p>Requested Event with identity &#39;00000000-0000-0000-0000-000000000001&#39; was not found.</p>
+    </div>
+
+        <script>
+            $(document).ready(function () {
+                $("#temp_wrapper").fadeOut();
+            });
+        </script>
+        
+        <script crossorigin="anonymous" src="/Scripts/perfectMind/Planner/PlannerAttendanceHeader.js?08250811"></script>
+        <script crossorigin="anonymous" src="/Scripts/BookMe4/BookMe4AttendanceHeader.js?08250811"></script>
+        <script crossorigin="anonymous" src="/Scripts/jQueryPlugin/lightbox.js?08250811"></script>
+        <div id="tempInfoForScreenReaders" class="hidden-label" aria-live="polite"></div>
+    <script src="/Scripts/jQueryPlugin/jQueryHoverIntentFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryValidateFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryTimePickerFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryThreeDotsFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryContextMenuFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryFloatingBoxFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryPlaceholderFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jquery.elastic.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryBbqFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryPmDialog.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryPmEnhancedSelect.js?08250811"></script>
+<script src="/Scripts/Kendo/kendo.pmPreferenceRankingGrid.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryDateTimeAutocompleteFull.js?08250811"></script>
+<script src="/Scripts/swfobject/swfObjectFull.js?08250811"></script>
+<script src="/Scripts/perfectMind/Controls/FlyOutTooltip.js?08250811"></script>
+<script src="/Scripts/perfectMind/core.js?08250811"></script>
+<script src="/Scripts/perfectMind/common.js?08250811"></script>
+<script src="/Scripts/customControl/ajaxLink.js?08250811"></script>
+
+    </body>
+</html>
