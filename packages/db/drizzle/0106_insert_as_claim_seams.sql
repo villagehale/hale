@@ -36,6 +36,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS "channel_turn_answer_claims_message_uniq"
   ON "public"."channel_turn_answer_claims" ("channel_message_id");
 --> statement-breakpoint
 
+-- Deny-by-default for the PostgREST Data API roles, same posture as every table. The
+-- app connects as postgres (BYPASSRLS) and reads these server-side. Rule #1.
+ALTER TABLE "channel_turn_answer_claims" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+
 -- ── 2. A calendar placement claims its action ────────────────────────────────────────
 --
 -- addToCalendar's idempotency was a SELECT of audit_log (priorPlacementEventId) with no
@@ -112,3 +117,8 @@ CREATE TABLE IF NOT EXISTS "sms_intake_turn_claims" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS "sms_intake_turn_claims_provider_msg_uniq"
   ON "public"."sms_intake_turn_claims" ("provider_message_id");
+--> statement-breakpoint
+
+-- Deny-by-default for the PostgREST Data API roles, same posture as every table. The
+-- app connects as postgres (BYPASSRLS) and reads these server-side. Rule #1.
+ALTER TABLE "sms_intake_turn_claims" ENABLE ROW LEVEL SECURITY;
