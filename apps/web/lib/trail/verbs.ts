@@ -258,6 +258,9 @@ export const AUDIT_VERBS = [
   'registration_shortlist_drafted',
   'registration_sequence_leg_sent',
   'registration_outcome_recorded',
+  // ── watched spots (VIL-337) ─────────────────────────────────────────────
+  'watched_spot_armed',
+  'watched_spot_arm_failed',
   // ── village areas, saves, civic sweep ───────────────────────────────────
   'village_area_added',
   'village_area_activated',
@@ -689,6 +692,15 @@ const VERBS: Record<AuditVerb, Verb> = {
   registration_outcome_recorded: {
     sentence: 'you told Hale how a registration went',
     family: 'done',
+  },
+  // ── watched spots (VIL-337) ─────────────────────────────────────────────
+  watched_spot_armed: {
+    sentence: 'Hale started watching a full class for you',
+    family: 'done',
+  },
+  watched_spot_arm_failed: {
+    sentence: 'Hale could not start watching a class it said it would',
+    family: 'problem',
   },
   // ── village areas, saves, civic sweep ───────────────────────────────────
   village_area_added: { sentence: 'you added a place for Hale to look in', family: 'done' },
