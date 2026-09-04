@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, agentRunCostUsd, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { recordAgentRun } from '~/lib/agent-run';
@@ -38,11 +39,9 @@ export interface InferenceResult {
 let anthropicClient: Anthropic | undefined;
 
 export function defaultInferenceDeps(): InferenceDeps {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  anthropicClient ??= new Anthropic({ apiKey });
+  // Daily inference cron, maxDuration 300, multi-step loop per family: the sweep
+  // budget bounds each request so one stall cannot eat the window (audit P1-7).
+  anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return { client: anthropicClient };
 }
 

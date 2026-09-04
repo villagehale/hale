@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { HOT_SMS_CLIENT_OPTIONS } from '~/lib/pipeline/client';
+import type Anthropic from '@anthropic-ai/sdk';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
@@ -337,11 +337,7 @@ let screenAnthropic: Anthropic | undefined;
  * honest `client_unavailable` reading instead of a thrown route.
  */
 function screenClient(): AgentClient {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
-  }
-  screenAnthropic ??= new Anthropic({ apiKey, ...HOT_SMS_CLIENT_OPTIONS });
+  screenAnthropic ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
   return screenAnthropic;
 }
 
