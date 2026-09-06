@@ -81,7 +81,14 @@ export type SpotState = 'open' | 'full' | 'waitlist_full';
  * the ladder re-implementing a second parse of the same bytes.
  */
 export type CourseModelReading =
-  | { ok: true; model: BookMe4Model }
+  | {
+      ok: true;
+      model: BookMe4Model;
+      /** The bytes this model was parsed out of. A caller checking a value against the
+       * page it came from has to search THESE bytes and not the whole body: the blob is
+       * known-valid JSON, the rest of a portal page is other people's inline script. */
+      blob: string;
+    }
   | { ok: false; reason: 'no_model' | 'bad_model' | 'wrong_course' };
 
 export type SpotReading =
@@ -247,7 +254,7 @@ export function readCourseModel(rawHtml: string, courseId: string): CourseModelR
     return { ok: false, reason: 'wrong_course' };
   }
 
-  return { ok: true, model: model.data };
+  return { ok: true, model: model.data, blob };
 }
 
 export function readSpot(rawHtml: string, courseId: string): SpotReading {

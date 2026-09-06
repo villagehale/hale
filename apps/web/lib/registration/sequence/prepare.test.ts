@@ -4,9 +4,15 @@ import { describe, expect, it } from 'vitest';
 import { fragment, readCourseModel, readSpot } from '~/lib/channel/spots/availability';
 import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import {
+  ASSUMED_MAX_AGE_MONTHS_COMPONENT,
+  BIND_FETCH_TIMEOUT_MS,
   type CourseFacts,
+  GO_FETCH_TIMEOUT_MS,
+  MAX_BIND_DRIFT_DAYS,
   type PrepChild,
   type PrepContext,
+  READ_WALL_BUDGET_MS,
+  WINDOW_DRIFT_TOLERANCE_MINUTES,
   ageEligibility,
   applicableClock,
   courseClocks,
@@ -63,14 +69,25 @@ const MODEL_PAGES = [
   ['markham-course', MARKHAM],
 ] as const;
 
-function modelOf(name: string, courseId: string) {
+function readingOf(name: string, courseId: string) {
   const read = readCourseModel(fixture(name), courseId);
   if (!read.ok) throw new Error(`${name}: expected a model, got ${read.reason}`);
-  return read.model;
+  return read;
+}
+
+function modelOf(name: string, courseId: string) {
+  return readingOf(name, courseId).model;
+}
+
+/** The bytes the model was parsed out of — what `readCourseFacts` checks against, and
+ * what the tampering cases below edit, because the page is not what it reads. */
+function blobOf(name: string, courseId: string): string {
+  return readingOf(name, courseId).blob;
 }
 
 function factsOf(name: string, courseId: string): CourseFacts {
-  return readCourseFacts(modelOf(name, courseId), fixture(name)).facts;
+  const read = readingOf(name, courseId);
+  return readCourseFacts(read.model, read.blob).facts;
 }
 
 /** The variant harness. The PAGE shape is the real one; the model is a real model with
@@ -116,6 +133,29 @@ function ctx(overrides: Partial<PrepContext> = {}): PrepContext {
     ...overrides,
   };
 }
+
+/**
+ * The six numbers the brief fixes. Four of them are read only by later workstreams (the
+ * bind's drift refusal, the two fetch budgets, the sweep's wall budget), so without this
+ * they can be edited to anything and every test in this file still passes.
+ */
+it('pins the budgets and tolerances the ladder is specified in', () => {
+  expect({
+    WINDOW_DRIFT_TOLERANCE_MINUTES,
+    MAX_BIND_DRIFT_DAYS,
+    BIND_FETCH_TIMEOUT_MS,
+    GO_FETCH_TIMEOUT_MS,
+    READ_WALL_BUDGET_MS,
+    ASSUMED_MAX_AGE_MONTHS_COMPONENT,
+  }).toEqual({
+    WINDOW_DRIFT_TOLERANCE_MINUTES: 15,
+    MAX_BIND_DRIFT_DAYS: 7,
+    BIND_FETCH_TIMEOUT_MS: 6_000,
+    GO_FETCH_TIMEOUT_MS: 6_000,
+    READ_WALL_BUDGET_MS: 60_000,
+    ASSUMED_MAX_AGE_MONTHS_COMPONENT: 11,
+  });
+});
 
 describe('the applicable clock', () => {
   /**
@@ -229,7 +269,7 @@ describe('the applicable clock', () => {
 
 describe('byte-backing', () => {
   /**
-   * PerfectMind serialises `&` as the JSON escape `&` (measured on a saved
+   * PerfectMind serialises `&` as the JSON escape `\u0026` (measured on a saved
    * PerfectMind showcase page whose EventName is "... (Parks & Rec, ...)"), so
    * JSON.stringify of the PARSED value is not findable in the bytes it came from and
    * 337's `fragment` would refuse a name the page really carries. The raw token is.
@@ -247,14 +287,14 @@ describe('byte-backing', () => {
     expect(escaped.includes(fragment('EventName', 'Parent & Tot'))).toBe(false);
     expect(rawStringValue(escaped, 'EventName')).toBe('Parent & Tot');
 
-    const facts = readCourseFacts(read.model, escaped);
+    const facts = readCourseFacts(read.model, read.blob);
 
     expect(facts.facts.EventName).toBe('Parent & Tot');
     expect(facts.backed).toContain('Parent & Tot');
   });
 
   it('drops a string the bytes do not carry, and never lists it as backed', () => {
-    const tampered = fixture('open-window-open-markham').replace(
+    const tampered = blobOf('open-window-open-markham', LEGO).replace(
       '"EventName":"LEGO: Preschool"',
       '"EventName":"LEGO: Preschool "',
     );
@@ -265,7 +305,7 @@ describe('byte-backing', () => {
     expect(read.facts.EventName).toBeNull();
     expect(read.backed).not.toContain('LEGO: Preschool');
     // Positive control on the untampered bytes.
-    const clean = readCourseFacts(model, fixture('open-window-open-markham'));
+    const clean = readCourseFacts(model, blobOf('open-window-open-markham', LEGO));
     expect(clean.facts.EventName).toBe('LEGO: Preschool');
     expect(clean.backed).toContain('LEGO: Preschool');
   });
@@ -273,7 +313,7 @@ describe('byte-backing', () => {
   it('lists exactly the page strings a sentence may print', () => {
     const read = readCourseFacts(
       modelOf('open-window-open-markham', LEGO),
-      fixture('open-window-open-markham'),
+      blobOf('open-window-open-markham', LEGO),
     );
 
     expect([...read.backed].sort()).toEqual(
@@ -325,13 +365,12 @@ describe('byte-backing', () => {
   });
 
   it('drops a price row whose bytes are not on the page, and keeps the ones that are', () => {
-    const raw = fixture('open-window-open-markham');
     const model = modelOf('open-window-open-markham', LEGO) as Record<string, unknown>;
     const prices = model.Prices as { Name: string; DisplayAmount: string }[];
 
     const read = readCourseFacts(
       { ...model, Prices: [...prices, { Name: 'Invented Fee', DisplayAmount: '$1.00' }] } as never,
-      raw,
+      blobOf('open-window-open-markham', LEGO),
     );
 
     expect(read.facts.Prices?.map((row) => row.DisplayAmount)).toEqual(['$139.36', '$121.16']);
@@ -381,11 +420,11 @@ describe('the age band', () => {
     const at = { now: new Date('2026-03-01T12:00:00Z'), timeZone: TZ };
 
     expect(facts.AgeRestrictions).toBe('13 to 16 y 11m');
-    // 190 months on 2026-03-01, 203 on 2026-12-31: inside at all three instants.
+    // 190 months on 2026-03-01, 199 on 2026-12-31: inside at all three instants.
     expect(ageEligibility(facts, child('2010-05-01'), at)).toBe('in_band');
     // 204 months on 2026-03-01 and later: outside at all three.
     expect(ageEligibility(facts, child('2009-03-01'), at)).toBe('outside_band');
-    // 155 months on 2026-12-31: outside at all three.
+    // 154 months on 2026-12-31: outside at all three.
     expect(ageEligibility(facts, child('2014-02-01'), at)).toBe('outside_band');
   });
 
@@ -409,7 +448,7 @@ describe('the age band', () => {
 
     expect(facts.AgeRestrictions).toBe('4 to 6');
     expect(facts.StartDateValue).toBe('2026-09-27T10:15:00');
-    // 83 months (6y11m) on 2026-08-11, 84 on 2026-09-27.
+    // 82 months (6y10m) on 2026-08-11, 84 on 2026-09-27.
     expect(ageEligibility(facts, child('2019-09-15'), at)).toBe('unknown');
   });
 
@@ -443,6 +482,19 @@ describe('the age band', () => {
     expect(ageEligibility(nvrc, child('2015-01-01'), at)).toBe('outside_band');
   });
 
+  /** A date the reader cannot read is not a child outside the band. NaN months compares
+   * false against every bound, so an unguarded evaluator calls all three instants
+   * "outside" and the ladder sends a family the one sentence it has no basis for. */
+  it('is unknown for a date of birth it cannot read, never outside the band', () => {
+    const facts = factsOf('open-window-open-markham', LEGO);
+    const at = { now: new Date('2026-08-11T10:15:00Z'), timeZone: TZ };
+
+    expect(ageEligibility(facts, child('not-a-date'), at)).toBe('unknown');
+    expect(ageEligibility(facts, child(''), at)).toBe('unknown');
+    // Positive control: a readable date on the same facts still decides.
+    expect(ageEligibility(facts, child('2021-08-01'), at)).toBe('in_band');
+  });
+
   it('is unknown when the page publishes no start date to evaluate against', () => {
     const facts = { ...factsOf('open-window-open-markham', LEGO), StartDateValue: null };
     const at = { now: new Date('2026-08-11T10:15:00Z'), timeZone: TZ };
@@ -465,15 +517,40 @@ describe('the price clause', () => {
     expect(priceClause(factsOf('nvrc-course', NVRC).Prices)).toBe('the page lists $51.21');
   });
 
-  it('omits a page whose rows are not a resident pair', () => {
-    const four = [
-      { Name: 'Member', DisplayAmount: '$10.00' },
-      { Name: 'Non-Member', DisplayAmount: '$20.00' },
-      { Name: 'Member Drop-in', DisplayAmount: '$4.00' },
-      { Name: 'Non-Member Drop-in', DisplayAmount: '$8.00' },
+  /**
+   * THE REAL FOUR-ROW PAGE. Markham's "ART: Paint and Play P.A. Day" publishes member
+   * and non-member rates for both residencies, transcribed here from the saved probe
+   * body in the order the page serialises them. Its FIRST TWO rows are a clean
+   * non-resident/resident pair, so a clause that classifies two rows and ignores the
+   * rest prints the MEMBER rates — $74.70 to a household this page charges $83.00.
+   * Four rows is a price question one clause cannot answer, so it answers nothing.
+   */
+  it('omits the real four-row page rather than printing its first two rows', () => {
+    const gallery = '25/26 Culture: Gallery Children/Teen/Pre-teen Program';
+    const paintAndPlay = [
+      { Name: `${gallery} - Member Non Resident`, DisplayAmount: '$85.91' },
+      { Name: `${gallery} - Member Resident`, DisplayAmount: '$74.70' },
+      { Name: `${gallery} - Non Resident`, DisplayAmount: '$95.45' },
+      { Name: `${gallery} - Resident`, DisplayAmount: '$83.00' },
     ];
 
-    expect(priceClause(four as never)).toBeNull();
+    expect(priceClause(paintAndPlay as never)).toBeNull();
+  });
+
+  /** The count is the check, not the order: three rows whose first two ARE a pair are
+   * still three rows, and the pair alone still prints. */
+  it('omits a third row instead of dropping it', () => {
+    const three = [
+      { Name: 'Resident', DisplayAmount: '$10.00' },
+      { Name: 'Non-Resident', DisplayAmount: '$20.00' },
+      { Name: 'Senior', DisplayAmount: '$5.00' },
+    ];
+
+    expect(priceClause(three as never)).toBeNull();
+    expect(priceClause(three.slice(0, 2) as never)).toBe('$10.00 / $20.00 non-resident');
+  });
+
+  it('omits a page whose two rows are not a resident pair', () => {
     expect(priceClause([] as never)).toBeNull();
     expect(priceClause(null)).toBeNull();
     expect(
@@ -510,6 +587,36 @@ describe('the sign-in deep link', () => {
     expect(built).toContain('/Contacts/MemberRegistration/MemberSignIn?returnUrl=');
     expect(built).toBe(`https://townofoakville.perfectmind.com${anchor}`);
     expect(new URL(built).searchParams.get('returnUrl')).toBe(sanitized.url);
+  });
+
+  /**
+   * The refusals happen BEFORE the link is built. `courseSignInUrl`'s contract is a
+   * sanitized URL, and sanitizeSpotUrl is what makes one: a returnUrl aimed at another
+   * host and any second parameter are dropped by the rebuild, http:// and a tampered
+   * course id never get that far. Without this, "rebuilt, never echoed" rests on a
+   * contract nothing in this suite exercises.
+   */
+  it('never carries a pasted returnUrl, a second parameter, http:// or a bad course id', () => {
+    const smuggled = sanitizeSpotUrl(
+      `${legoUrl}&returnUrl=https%3A%2F%2Fevil.example%2Fsteal&sessionId=abc`,
+    );
+    if (!smuggled.ok) throw new Error(`expected a sanitized url, got ${smuggled.reason}`);
+
+    const built = courseSignInUrl(smuggled.url);
+
+    expect([...new URL(built).searchParams.keys()]).toEqual(['returnUrl']);
+    expect(new URL(built).searchParams.get('returnUrl')).toBe(legoUrl);
+    expect(built).not.toContain('evil.example');
+    expect(built).not.toContain('sessionId');
+
+    expect(sanitizeSpotUrl(legoUrl.replace('https://', 'http://'))).toEqual({
+      ok: false,
+      reason: 'not_https',
+    });
+    expect(sanitizeSpotUrl(legoUrl.replace(LEGO, '../../etc/passwd'))).toEqual({
+      ok: false,
+      reason: 'not_a_course_page',
+    });
   });
 });
 
@@ -665,6 +772,46 @@ describe('readCoursePrep — the seven questions, in order', () => {
     });
   });
 
+  /**
+   * THE ORDER WHERE THE LADDER RESTS ON IT. Four conditions on one page — the closed
+   * flag, a clock already past, an anchor thirty minutes later than that clock, and a
+   * household with no child in the band — then peeled one at a time. The battle plan
+   * refreshes `course_opens_at` only on window_moved / late_by_drift, so an age verdict
+   * that outranked the drift would leave the stale instant in place and fire the go leg
+   * on the wrong minute; a drift verdict that outranked the closed flag would promise a
+   * morning on a course nobody can register for.
+   */
+  it('answers closed before drift, and drift before the age band', () => {
+    const pastClock = { ResidentsRegistrationDateValue: '2026-08-11T06:00:00' };
+    const closed = variantOf('open-window-open-markham', LEGO, {
+      ...pastClock,
+      IsRegistrationClosed: true,
+    });
+    const open = variantOf('open-window-open-markham', LEGO, pastClock);
+    const stacked = {
+      now: new Date('2026-08-11T11:00:00Z'),
+      anchor: new Date('2026-08-11T10:30:00Z'),
+      children: [child('2010-01-01', 'exact', 'out')],
+    };
+
+    expect(readCoursePrep({ ok: true, raw: closed }, ctx(stacked))).toMatchObject({
+      kind: 'registration_closed',
+      anchorDriftMinutes: -30,
+      age: { fit: 'outside_band' },
+    });
+    expect(readCoursePrep({ ok: true, raw: open }, ctx(stacked))).toMatchObject({
+      kind: 'late_by_drift',
+      anchorDriftMinutes: -30,
+      age: { fit: 'outside_band' },
+    });
+    expect(
+      readCoursePrep(
+        { ok: true, raw: open },
+        ctx({ ...stacked, anchor: new Date('2026-08-11T10:00:00Z') }),
+      ),
+    ).toMatchObject({ kind: 'age_ineligible', anchorDriftMinutes: 0 });
+  });
+
   it('is age_ineligible only when every matched child is outside the page’s band', () => {
     const raw = fixture('open-window-open-markham');
     const inBand = child('2021-08-01', 'exact', 'in');
@@ -715,6 +862,27 @@ describe('readCoursePrep — the seven questions, in order', () => {
       '18d27cc3-1e98-4bce-aebc-a5c6d78a80f9',
     );
     expect(factsOf('open-window-open-markham', LEGO).RegFormId).toBeNull();
+  });
+
+  /**
+   * THE TOTALITY CONTRACT. The token search reads the MODEL's own bytes, so an earlier
+   * `"EventName":"` in some other inline script — here with `\'`, which is not a JSON
+   * escape — is neither parsed nor allowed to answer for the model. Before the search
+   * was scoped, that byte sequence reached JSON.parse and threw, and a throw inside the
+   * leg costs the family the whole tick this module exists to protect.
+   */
+  it('answers a page whose first token occurrence is outside the model, and never throws', () => {
+    const decoy = `<script>var other = {"EventName":"it\\'s"};</script>`;
+    const raw = `${decoy}${fixture('open-window-open-markham')}`;
+
+    const verdict = readCoursePrep({ ok: true, raw }, ctx());
+
+    expect(rawStringValue(decoy, 'EventName')).toBeNull();
+    expect(verdict).toMatchObject({ kind: 'prepared' });
+    if (verdict.kind !== 'prepared') throw new Error('expected prepared');
+    // The model's own name still backs itself: the decoy answered for nothing.
+    expect(verdict.facts.EventName).toBe('LEGO: Preschool');
+    expect(verdict.backed).toContain('LEGO: Preschool');
   });
 
   it('still answers when the page publishes no clock at all', () => {

@@ -84,7 +84,7 @@ const priceRowSchema = z
   .passthrough();
 
 /**
- * The seventeen keys of somebody else's 168-key payload that this ladder reads. Every
+ * The eighteen keys of somebody else's 168-key payload that this ladder reads. Every
  * field is nullish AND `.catch(null)`: a tenant that ships `MinAge` as a string has not
  * broken the page, it has withheld a band, and the sentence that band would have
  * produced is simply absent. `readCourseModel` has already validated the twelve fields
@@ -147,20 +147,24 @@ const PRINTABLE_STRING_KEYS = new Set<string>([
 ]);
 
 /**
- * The value the page's own bytes carry for `key`, or null when the key is absent or the
- * token does not parse. The token IS the bytes: located at `"key":"`, taken to its
- * closing unescaped quote and parsed as the JSON string it is — which is why a
- * `\u0026` in the body proves a `&` in the value instead of refusing it.
+ * The value `modelBytes` carries for `key`, or null when the key is absent or the token
+ * does not parse. The token IS the bytes: located at `"key":"`, taken to its closing
+ * unescaped quote and parsed as the JSON string it is — which is why a `\u0026` in the
+ * body proves a `&` in the value instead of refusing it.
+ *
+ * TOTAL, both ways. It is handed the model's own blob rather than the page, so the one
+ * occurrence it finds is the model's; and the parse is a boundary, so a caller that
+ * hands it some other bytes gets null instead of a SyntaxError thrown through a leg.
  */
-export function rawStringValue(rawHtml: string, key: string): string | null {
+export function rawStringValue(modelBytes: string, key: string): string | null {
   const marker = `"${key}":"`;
-  const at = rawHtml.indexOf(marker);
+  const at = modelBytes.indexOf(marker);
   if (at < 0) return null;
 
   const start = at + marker.length - 1;
   let escaped = false;
-  for (let cursor = start + 1; cursor < rawHtml.length; cursor += 1) {
-    const char = rawHtml[cursor];
+  for (let cursor = start + 1; cursor < modelBytes.length; cursor += 1) {
+    const char = modelBytes[cursor];
     if (escaped) {
       escaped = false;
       continue;
@@ -170,7 +174,12 @@ export function rawStringValue(rawHtml: string, key: string): string | null {
       continue;
     }
     if (char !== '"') continue;
-    const parsed: unknown = JSON.parse(rawHtml.slice(start, cursor + 1));
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(modelBytes.slice(start, cursor + 1));
+    } catch {
+      return null;
+    }
     return typeof parsed === 'string' ? parsed : null;
   }
   return null;
@@ -194,11 +203,15 @@ export interface CourseFactsReading {
 }
 
 /**
- * The facts, with every printable string dropped unless the page's own token backs it.
+ * The facts, with every printable string dropped unless the model's own token backs it.
  * A dropped value is not an error: the sentence that would have printed it is simply
  * not composed, which is the whole point.
+ *
+ * `modelBytes` is `readCourseModel`'s blob — the serialisation these facts were parsed
+ * out of — and never the whole page. A page carries other people's inline script, so a
+ * whole-body search answers about whichever `"EventName":"` comes first.
  */
-export function readCourseFacts(model: BookMe4Model, rawHtml: string): CourseFactsReading {
+export function readCourseFacts(model: BookMe4Model, modelBytes: string): CourseFactsReading {
   // Total by construction: every field is `.catch(null)`, so a tenant that ships
   // `MinAge` as a string withholds a band rather than breaking the read.
   const facts = courseFactsSchema.parse(model);
@@ -207,7 +220,7 @@ export function readCourseFacts(model: BookMe4Model, rawHtml: string): CourseFac
   for (const key of BACKED_STRING_KEYS) {
     const value = facts[key];
     if (typeof value !== 'string') continue;
-    if (rawStringValue(rawHtml, key) === value) {
+    if (rawStringValue(modelBytes, key) === value) {
       if (PRINTABLE_STRING_KEYS.has(key)) backed.push(value);
       continue;
     }
@@ -222,8 +235,8 @@ export function readCourseFacts(model: BookMe4Model, rawHtml: string): CourseFac
       (row) =>
         typeof row.Name === 'string' &&
         typeof row.DisplayAmount === 'string' &&
-        rawHtml.includes(fragment('Name', row.Name)) &&
-        rawHtml.includes(fragment('DisplayAmount', row.DisplayAmount)),
+        modelBytes.includes(fragment('Name', row.Name)) &&
+        modelBytes.includes(fragment('DisplayAmount', row.DisplayAmount)),
     );
     for (const row of facts.Prices) {
       if (typeof row.DisplayAmount === 'string') backed.push(row.DisplayAmount);
@@ -357,10 +370,13 @@ export function ageEligibility(
   if (startDay === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(startDay)) return 'unknown';
 
   const days = [dayKeyIn(ctx.now, ctx.timeZone), startDay, `${startDay.slice(0, 4)}-12-31`];
-  const verdicts = days.map((day) => {
-    const months = ageInMonths(child.dateOfBirth, calendarNoon(day));
-    return (lower === null || months >= lower) && (upper === null || months <= upper);
-  });
+  const months = days.map((day) => ageInMonths(child.dateOfBirth, calendarNoon(day)));
+  // NaN compares false against both bounds, so a date this reader cannot read would
+  // otherwise be unanimously "outside" — the one verdict there is no basis for.
+  if (months.some((value) => Number.isNaN(value))) return 'unknown';
+  const verdicts = months.map(
+    (value) => (lower === null || value >= lower) && (upper === null || value <= upper),
+  );
 
   if (verdicts.every((inside) => inside)) return 'in_band';
   if (verdicts.every((inside) => !inside)) return 'outside_band';
@@ -413,7 +429,10 @@ export function priceClause(prices: CourseFacts['Prices']): string | null {
   const [first, second] = rows;
   if (first === undefined) return null;
   if (rows.length === 1) return `the page lists ${first.DisplayAmount}`;
-  if (second === undefined) return null;
+  // The COUNT is the check. Markham's four-row paint-and-play page opens with a member
+  // non-resident/resident pair, so a clause that classified the first two rows and let
+  // the rest go would quote the member rate to a household the page charges $83.
+  if (rows.length !== 2 || second === undefined) return null;
 
   const pair = [first, second];
   const nonResident = pair.find((row) => NON_RESIDENT.test(row.Name));
@@ -482,6 +501,9 @@ export interface PrepContext {
   now: Date;
   /** The sanitized URL's courseId, so a page served for another class is refused. */
   courseId: string;
+  /** The portal's own zone (`SpotPortal.timeZone`), which is what the page's naive
+   * datetimes are published in. The registry entry itself is not needed here — a
+   * verdict is about clocks and a band, and the label belongs to the composer. */
   timeZone: string;
   isResidentWindow: boolean;
   /** `course_opens_at` — the page's own instant, stored at bind. */
@@ -503,7 +525,7 @@ export function readCoursePrep(input: PrepInput, ctx: PrepContext): PrepVerdict 
     return { kind: 'page_unreadable', reason: read.reason };
   }
 
-  const { facts, backed } = readCourseFacts(read.model, input.raw);
+  const { facts, backed } = readCourseFacts(read.model, read.blob);
   const clocks = courseClocks(facts, ctx.timeZone);
   const clock = applicableClock(clocks, ctx.isResidentWindow);
   const page: CoursePage = {
