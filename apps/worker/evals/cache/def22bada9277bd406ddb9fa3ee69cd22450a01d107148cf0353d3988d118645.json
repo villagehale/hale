@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that the referral link is Sam's to forward, gives the right link (the one appended by the runtime, not invented), and briefly explains what Hale is so the friend knows what they're getting. The rules say \"a sentence telling the parent to forward it themselves is correct\" and the link should be carried. This reply does exactly that. There's a very slight inefficiency in the middle clause (\"Hale is a text line that keeps track of your family's week - classes, deadlines, the stuff that slips\") which is a bit more than strictly needed but is genuinely useful context for a referral message, not padding. No greeting, no sign-off, no markdown, no app redirect. Clean and correct.",
+    "score": 5
+  }
+}

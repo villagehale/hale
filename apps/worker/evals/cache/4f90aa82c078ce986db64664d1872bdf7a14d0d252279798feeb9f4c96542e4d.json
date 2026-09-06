@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not visible on the current week's schedule — there is no piano event in `week`. It does not speculate about the private items (correct per the rules). Offering to check next week is a reasonable forward step, not a handback. This is clean and accurate. Minor quibble: it could have been slightly more direct (\"I don't see piano this week — want me to check next week?\" is essentially what it says), but the shape is right. No invented details, no app referral, no markdown. A solid, correct reply.",
+    "score": 5
+  }
+}

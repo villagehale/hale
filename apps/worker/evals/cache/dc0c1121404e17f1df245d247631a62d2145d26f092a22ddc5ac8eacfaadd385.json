@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly draws from `offerable` — Riverdale Farm is a verified find with venue and day — and offers it as a free outdoor outing, which is a reasonable match for \"any park nearby.\" It names the place, the date, and the cost, and ends with a draft offer (\"Want me to add it to the calendar?\") rather than just making the change unilaterally, which is the correct contract shape. It doesn't send Sam to the app, doesn't invent anything, and doesn't raise the stillBeingChecked count (which is 0 anyway). The only small issue: \"No park listed yet\" is slightly odd phrasing — the offerable results ARE the search results, so framing it as \"no park listed yet\" before pivoting to Riverdale Farm is a mild internal-machinery leak (suggesting the search is still ongoing when it isn't). Also, the reply skips the Library story time option entirely, which is also in `offerable` — though with two options, naming both would have been better service. Still, one verified find offered whole is acceptable. The draft-offer question at the end is correct shape. Minor blemishes but the core job is done.",
+    "score": 4
+  }
+}

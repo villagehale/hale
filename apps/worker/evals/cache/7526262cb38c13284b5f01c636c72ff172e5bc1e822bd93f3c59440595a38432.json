@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply has a significant problem: it says \"no park find in what's confirmed\" but `offerable` contains Riverdale Farm — which it then names anyway, contradicting the opener. More importantly, Riverdale Farm IS a park-adjacent outdoor free venue that was already surfaced as offerable (with venue and day verified), so the self-deprecating opener is inaccurate and muddying. The reply then ends with a question asking if Hale should check the live web — but `stillBeingChecked` is 0, meaning the search is already done and there is nothing further to check. That closing question is therefore an empty offer that hands uncertainty back to the parent. The core useful content (Riverdale Farm, free, open daily) is present and correctly attributed, but the framing is confused and the closing question is unfounded given the state.",
+    "score": 3
+  }
+}

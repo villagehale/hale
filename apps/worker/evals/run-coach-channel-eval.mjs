@@ -1887,8 +1887,12 @@ async function main() {
   console.log('--- turns ---');
   for (const result of results) {
     const ok = result.failures.length === 0;
+    // TOOL REACH, on every line. What an eleventh verb costs is measured per fixture
+    // (VIL-294), and a run whose reach cannot be read off its own output is one nobody
+    // can compare against the run before it.
+    const reached = [...new Set(result.calls.map((call) => call.tool))].join('+') || 'none';
     console.log(
-      `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}`}`,
+      `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}`}  tools=${reached}`,
     );
     for (const failure of result.failures) console.log(`        - ${failure}`);
     if (!ok && result.reason) console.log(`        ? judge: ${result.reason}`);

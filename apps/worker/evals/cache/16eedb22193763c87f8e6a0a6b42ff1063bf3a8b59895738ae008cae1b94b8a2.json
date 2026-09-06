@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CenXaMfStGa3obtC8rhdJ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_017vizab98ULV3XsX1gomK3u",
+        "name": "promise_activity_followup",
+        "input": {
+          "subject": "toddler gym fall dates",
+          "childId": "kid-remy"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 537,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17841,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 1045,
+      "output_tokens_details": {
+        "thinking_tokens": 956
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

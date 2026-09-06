@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles the Google Calendar connection ask. It doesn't write out a URL (correct — the link is sent by the deterministic branch, not composed by Hale), it tells Sam exactly what words to text to trigger it, and it notes the 15-minute window. This is precisely the described correct shape: the link is a text away and the parent is handed the plain words that send it. No greeting, no sign-off, no markdown, no app referral, no invented URL. Short and complete.",
+    "score": 5
+  }
+}

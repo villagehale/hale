@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link in their message, which is exactly the condition required for `watch_for_opening` to be usable. The reply correctly activates a watch on that link and promises to text when a spot opens — that is the feature working as designed. The reply is short, names what it is watching, and stops. No invented details, no app referral, no machinery explained. A clean, correct answer.",
+    "score": 5
+  }
+}
