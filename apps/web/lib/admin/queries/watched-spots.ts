@@ -10,6 +10,9 @@ const ARM_FAILURE_WINDOW_HOURS = 24;
  * observation is `pending_kind IS NOT NULL`, a text awaiting its receipt is
  * `notified_message_id IS NOT NULL` — so every number here is a predicate over those
  * three, never a stored state that could disagree with them.
+ *
+ * Aggregates only: no label, URL, family or child ever leaves this loader (rule #1),
+ * and there is deliberately no per-spot row to drill into.
  */
 export interface WatchedSpotsData {
   /** Watches still being read. */
