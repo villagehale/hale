@@ -261,6 +261,8 @@ export const AUDIT_VERBS = [
   // ── watched spots (VIL-337) ─────────────────────────────────────────────
   'watched_spot_armed',
   'watched_spot_arm_failed',
+  'watched_spot_opened_sent',
+  'watched_spot_released',
   // ── village areas, saves, civic sweep ───────────────────────────────────
   'village_area_added',
   'village_area_activated',
@@ -701,6 +703,17 @@ const VERBS: Record<AuditVerb, Verb> = {
   watched_spot_arm_failed: {
     sentence: 'Hale could not start watching a class it said it would',
     family: 'problem',
+  },
+  watched_spot_opened_sent: {
+    sentence: 'Hale texted you that a spot opened in a class you were watching',
+    family: 'done',
+  },
+  // ONE verb for eight endings, with the reason on the row: the trail sentence a parent
+  // reads is the same either way ("Hale stopped watching"), and eight near-identical
+  // sentences would be eight places for one wording change to go half-done.
+  watched_spot_released: {
+    sentence: 'Hale stopped watching a class for you',
+    family: 'note',
   },
   // ── village areas, saves, civic sweep ───────────────────────────────────
   village_area_added: { sentence: 'you added a place for Hale to look in', family: 'done' },
