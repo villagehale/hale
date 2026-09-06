@@ -99,10 +99,10 @@ function readingRefusal(reading: SpotReading, portalLabel: string): string | nul
   }
   if (reading.state === 'not_registrable') {
     if (reading.reason === 'future') {
-      return `Registration for that class is not open yet, so there is no spot to watch for. Tell the parent the doors are not open on it at all.`;
+      return 'Registration for that class is not open yet, so there is no spot to watch for. Tell the parent the doors are not open on it at all.';
     }
     if (reading.reason === 'offline') {
-      return `That class is not bookable online, so watching the page would tell the parent nothing. Tell them they have to take that one up with the city.`;
+      return 'That class is not bookable online, so watching the page would tell the parent nothing. Tell them they have to take that one up with the city.';
     }
     return `Registration for that class is not open - ${portalLabel} shows it closed. Tell the parent that, and do not offer to watch it.`;
   }
