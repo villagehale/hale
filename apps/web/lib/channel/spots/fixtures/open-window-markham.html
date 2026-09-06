@@ -1,0 +1,873 @@
+
+
+<!DOCTYPE html>
+<html class="bm-full-page" xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" data-rootUrl="/">
+    <head><link rel="icon" href="/Content/Images/Rocket_ICON.ico" /><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        
+        <!--Required scripts needed for menus-->
+       <script type="text/javascript">
+           if (!window.jQuery) {
+               document.write('<script crossorigin="anonymous" src="/Scripts/jQueryCore/jQueryCoreMin.js?08250811">\x3C/script>');
+               document.write('<script crossorigin="anonymous" src="/Scripts/jQueryCore/jquery-migrate-3.3.2.min.js?08250811">\x3C/script>');
+           }
+       </script>
+        <script crossorigin="anonymous" src="/Scripts/Kendo/kendo.all.min.js?08250811" type="text/javascript"></script>
+        <script crossorigin="anonymous" src="/Scripts/Kendo/kendo.aspnetmvc.min.js?08250811" type="text/javascript"></script>
+
+        
+    <title>Chess: Preschool</title>
+
+    <meta property="og:title" content="Chess: Preschool" />
+    
+
+<link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-Theme.css?08250811" type="text/css" />
+<link href="/Content/jQueryUI/ui-lightness/jquery-ui.css?08250811" type="text/css" rel="stylesheet" />
+
+<link href="/Content/Kendo/kendo.common.min.css?08250811" rel="stylesheet" type="text/css" />
+<link href="/Content/Kendo/kendo.bootstrap.min.css?08250811" rel="stylesheet" type="text/css" />
+<link href="/Content/Fonts/BookMe/styles.css?08250811" rel="stylesheet" type="text/css" />
+<link href="/Content/Fonts/FontAwesome/css/font-awesome.min.css?08250811" rel="stylesheet" type="text/css" />
+<link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-Embed.css?08250811" type="text/css" />
+<link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-CoursesClasses.css?08250811" type="text/css" />
+<link rel="stylesheet" href="/Content/lightbox.css?08250811" type="text/css" />
+<link rel="stylesheet" href="/Scripts/malihuScrollbar/jquery.mCustomScrollbar.css?08250811" type="text/css" />
+
+
+<script crossorigin="anonymous" src="/Scripts/BookMe4/Resources/Resources.en-CA.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/Resources/Resources.en-CA.js?08250811" type="text/javascript"></script>
+
+<!--For logged-in users we use BookMe4Authentificated master page where these scripts are already included. Duplicating these scripts caused KendoDropDown list issue on Android devices (for Android version 9 and higher).-->
+
+
+<script crossorigin="anonymous" src="/Scripts/jQueryUi/jQueryUi.min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/MicrosoftAjax.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/MicrosoftMvcAjax.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/MicrosoftMvcValidation.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/perfectMind/PMCommonHeadLoadingFull.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/perfectMind/PMCommonFull.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/kendo.all.min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/kendo.aspnetmvc.min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/utils/json2min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/perfectMind/ByPassLinkManager.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/malihuScrollbar/jquery.mCustomScrollbar.concat.min.js?08250811" type="text/javascript"></script>
+
+<script type="text/javascript">
+    var require =
+    {
+        baseUrl: '/Scripts/perfectMind',
+        paths: {
+            "linq": "../linq.min",
+            "knockout": "../knockout-3.5.1",
+            "timepicker": "../jquery.timepicker.min",
+            "kendo-all": "../Kendo/kendo.all.min",
+            "kendo.timezones.min": "../Kendo/kendo.timezones.min",
+            "PlannerUtility": "planner/PlannerUtility",
+            "CommonBindings": "planner/CommonBindings",
+            "PlannerFilter": "planner/PlannerFilter",
+            "PlannerEvent": "planner/PlannerEvent",
+            "PlannerAttendance": "planner/PlannerAttendance",
+            "PerfectScanAutoComplete": "../Attendance/PerfectScanAutoComplete",
+            "ItemDiscountEditViewUI": "discount/ItemDiscountEditViewUI",
+            "ItemDiscountDetailViewUI": "discount/ItemDiscountDetailViewUI",
+            "DiscountEditViewUI": "discount/DiscountEditViewUI",
+            "DiscountDetailViewUI": "discount/DiscountDetailViewUI",
+            "managePickList": "managePickList",
+            "classPage": "../Attendance/ClassPage",
+            'activitySearch': '../BookMe4/activity.search',
+            'courses-booking': '../BookMe4/Controllers/CourseBookingController',
+            'startpage': '../BookMe4/Controllers/StartPageController',
+            'searchPage': '../BookMe4/Controllers/BookMe4SearchController',
+            'BookMeConstants': '../BookMe4/constants',
+            'FacilityList': '../Bookme4/Controllers/FacilityListController',
+            'FacilityLandingPageController': '../BookMe4/Controllers/FacilityLandingPageController',
+            'FacilityResponsivenessHelper': '../BookMe4/FacilityResponsivenessHelper',
+            'ScrollableMainMenu': '../BookMe4/ScrollableMainMenu',
+            'FacilityMap': '../BookMe4/Controllers/FacilityMapController',
+            'custom-booking-online': '../BookMe4/Controllers/CustomBookingController',
+            'custom-booking-online-service': '../BookMe4/Services/CustomBookingService',
+            'custom-booking-online-models': '../BookMe4/Models/CustomBookingModels',
+            'BookMe4SearchHelper': '../BookMe4/BookMe4SearchHelper',
+            'BookMe4AttendanceHeader': '../BookMe4/BookMe4AttendanceHeader',
+            'SingleLocationOnlineShoppingCartPopup': '../BookMe4/SingleLocationOnlineShoppingCartPopup',
+            'BookMe4CartV2Controller': '../BookMe4/Controllers/BookMe4CartV2Controller',
+            'BookMe4CartService': '../BookMe4/Services/BookMe4CartService',
+            'CartItemHelper': '../BookMe4/Helpers/CartItemHelper',
+            'DateTimeHelper': '../BookMe4/Helpers/DateTimeHelper',
+            'BreadcrumbsController': '../BookMe4/Controllers/BreadcrumbsController',
+            'StartPageV2Controller': '../BookMe4/Controllers/StartPageV2Controller',
+            'ClassBookingV2Controller': '../BookMe4/Controllers/ClassBookingV2Controller',
+            'CourseBookingV2Controller': '../BookMe4/Controllers/CourseBookingV2Controller',
+            'text': '../requireModules/text',
+            'Masonry': '/Scripts/masonry.pkgd.min.js?08250811',
+            'FilterViewModelBase': '../BookMe4/Components/FilterViewModelBase',
+            'EmptyFilter': '../BookMe4/Components/EmptyFilter',
+            'MultiSelectFilter': '../BookMe4/Components/MultiSelectFilter',
+            'LocationMultiSelectFilter': '../BookMe4/Components/LocationMultiSelectFilter',
+            'FilterSelector': '../BookMe4/Components/FilterSelector',
+            'FilterManager': '../BookMe4/Components/FilterManager',
+            'FiltersCommunicationManager': '../BookMe4/Components/FiltersCommunicationManager',
+            'SearchByKeywordFilter': '../BookMe4/Components/SearchByKeywordFilter',
+            'DaysOfWeekFilter': '../BookMe4/Components/DaysOfWeekFilter',
+            'DateRangeFilter': '../BookMe4/Components/DateRangeFilter',
+            'TimeRangeFilter': '../BookMe4/Components/TimeRangeFilter',
+            'AgeFilter': '../BookMe4/Components/AgeFilter',
+            'CourseEvent': '../BookMe4/Components/CourseEvent',
+            'CourseService': '../BookMe4/Components/CourseService',
+            'CourseOccurrence': '../BookMe4/Components/CourseOccurrence',
+            'CourseDate': '../BookMe4/Components/CourseDate',
+            'CourseBookingPageSeriesViewComponent': '../BookMe4/Components/CourseBookingPageSeriesViewComponent',
+            'CourseBookingPageSessionsViewComponent': '../BookMe4/Components/CourseBookingPageSessionsViewComponent',
+            'CourseBookingPageSeriesViewVM': '../BookMe4/ViewModels/CourseBookingPageSeriesViewVM',
+            'CourseBookingPageSessionsViewVM': '../BookMe4/ViewModels/CourseBookingPageSessionsViewVM',
+            'CourseBookingPageServiceVM': '../BookMe4/ViewModels/CourseBookingPageServiceVM',
+            'CourseBookingPageEventVM': '../BookMe4/ViewModels/CourseBookingPageEventVM',
+            'BookingPageService': '../BookMe4/Services/BookingPageService',
+            'CourseBookingPageHelper': '../BookMe4/Helpers/CourseBookingPageHelper',
+            'ApplicationMenuMobile': 'ApplicationMenuMobile',
+            'ApplicationMenuItem': 'Controls/Shared/ApplicationMenuItem',
+            'ApplicationMenuItemTemplate': '/Content/HtmlTemplate/Controls/Shared/ApplicationMenuItem.html',
+            'ApplicationChildMenuTemplate': '/Content/HtmlTemplate/Controls/Shared/ApplicationChildMenu.html',
+            'ApplicationChildMenu': 'Controls/Shared/ApplicationChildMenu',
+            'FadeIn': 'Shared/Extensions/FadeIn',
+            'SlideIn': 'Shared/Extensions/SlideIn',
+            'ImageCarousel': 'Controls/ImageCarousel',
+            'ImageCarouselPopup': 'Controls/Popup/ImageCarouselPopup',
+            'PopupWrapper': 'Controls/Popup/PopupWrapper',
+            //"culture": '../kendo/cultures/kendo.culture.en-CA.min'
+        },
+        urlArgs: "v=08250811"
+    };
+</script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/cultures/kendo.culture.en-CA.min.js" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/require.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/LazyLoader.js?08250811" type="text/javascript"></script>
+
+<script>
+    kendo.culture("en-CA");
+</script>
+
+
+    <style type="text/css">
+        .similar-row {
+            display: none;
+        }
+
+        #load-more {
+            float: right;
+            text-decoration: underline;
+        }
+    </style>
+    <link rel="stylesheet" href="/Content/compass/css/base.css?08250811" type="text/css" />
+    <link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-System.css?08250811" type="text/css" />
+    <link rel="stylesheet" href="/Content/compass/css/BookMe/SingleLocationOnlineShoppingCartPopup.css?08250811" type="text/css" />
+
+    <!--This style needs to be placed here for proper Google Maps rendering.-->
+    <style type="text/css">
+        #map-canvas img {
+            min-width: 0;
+            max-width: none;
+            max-height: none;
+        }
+    </style>
+
+
+        <link href="/Content/sitebase1.css?08250811" rel="stylesheet" type="text/css" />
+        <link rel="stylesheet" type="text/css" href="/Content/Planner2/PlannerAddin.css?08250811" />
+    </head>
+    <body>
+        <input type="hidden" id="siteAnchor" value="/" />
+        
+<form action="/Clients/BookMe4LandingPages/CoursesLandingPage" id="AjaxAntiForgeryForm" method="post" style="display: none;"><input name="__RequestVerificationToken" type="hidden" value="" /></form>
+<script type="text/javascript" crossorigin="anonymous" src="/Scripts/perfectMind/AjaxAntiForgeryPost.js?08250811"></script>
+        <div id="temp_wrapper" style="position: fixed;top:0px;left:0px;height: 100%;width:100%;background-color: white;z-index: 100000"></div>
+        <ul id="bypass-link-list">
+            <li class="bypass-link-item">
+                <a id="main-content-link" class="bypass-link" href="#main-content" tabindex="1">
+                    <div class="link-content">Skip to main content</div>
+                </a>
+            </li>
+        </ul>
+
+      
+
+<link rel="stylesheet" href="/Content/NewHeaderStyles.css?08250811" type="text/css" />
+
+
+
+<div class="bm-org-header public-header" role="heading" aria-level="1">
+    <img class="" src="//content.perfectmind.com/a99974b35d3c4078b8de347eab91319f/logo/Markham+Logo+-+CMYK.png" alt="PerfectMind Logo" aria-hidden="true" />
+    <div class="org-details">
+        <div class="bm-org-name">
+            <div>City of Markham</div>        
+        </div>
+        <div class="org-phone-number">
+            <div>(905) 477-5530</div>        
+        </div>
+    </div>
+    <div class="header-for-member">
+        <div id="topNav">
+            <div class="log-in-button-container" style="position: absolute; right: 60px; top: 0px; margin-top: 26px;">
+                 <a class="pm-button pm-login-button" title="Log in to portal" href="/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3a%2f%2fcityofmarkham.perfectmind.com%2fClients%2fBookMe4LandingPages%2fCoursesLandingPage%3fwidgetId%3dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3d85770d4d-bce9-4e53-b969-cf7e88775180">
+                    <span>Login</span>
+                 </a>
+            </div>
+            <div id="google_translate_element" style="position: absolute; right: 185px; top: 0px;"></div>
+        </div>
+    </div>
+</div>
+
+
+<script type="text/javascript" src="//s7.addthis.com/js/300/addthis_widget.js#pubid=ra-4e2a0b2a5d3a81b9" async="async"></script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/kendo.PmDialog.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/alerts.js"></script>
+<script type="kendo-template" id="book-button">
+
+    <a id="bookButton" class="bm-button bm-book-button" href="/Clients/BookMe4EventParticipants?eventId=85770d4d-bce9-4e53-b969-cf7e88775180&amp;widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&amp;locationId=57cc2739-7141-4f95-8007-1ce0e58200e8&amp;waitListMode=True" aria-label="Add to Chess: Preschool waitlist" tabindex="0">
+    Waitlist
+    </a>
+    <div id="registrationRestrictionAlertPopup">
+        <span class="close-button"><em class="fa fa-times" aria-hidden="true"></em></span>
+    </div>
+
+</script>
+
+<div class="bm-content-wrapper bm-course-page bm-landing-page">
+    
+    <div class="bm-course-details">
+         <section>
+             
+    <div class="bm-course-prices" tabindex="0">
+        <em class="" aria-hidden="true"></em>
+        <h3 class="fees-header">Fees</h3>
+        
+        <div class="table">
+            
+                <div class="row">
+                    <div class="column first-column" aria-label="Fee name: REC: Programs - Specialty 1 - Non-Resident">REC: Programs - Specialty 1 - Non-Resident</div>
+                    <div class="column second-column">
+                        <div class="bm-price-tag" aria-label="Fee price: $175.32">$175.32</div>
+                        
+                        <div class="bm-taxable-state-tag">No Tax</div>
+                        
+                    </div> 
+                </div>               
+            
+                <div class="row">
+                    <div class="column first-column" aria-label="Fee name: REC: Programs - Specialty 1 - Resident">REC: Programs - Specialty 1 - Resident</div>
+                    <div class="column second-column">
+                        <div class="bm-price-tag" aria-label="Fee price: $152.40">$152.40</div>
+                        
+                        <div class="bm-taxable-state-tag">No Tax</div>
+                        
+                    </div> 
+                </div>               
+            
+        </div>
+    </div>
+   
+             <div class="bm-course-days" tabindex="0">
+                <em class=""></em>
+                  
+                      <h3>Course Dates</h3> 
+                  
+                <div class="table">
+                    <div class="row">
+                        <div class="column first-column">12 sessions </div> 
+                        <div class="column second-column">Every Mon</div>
+                    </div>
+                </div>
+                <div class="k-widget k-grid" id="SimilarEventsGrid"><table><colgroup><col /><col /><col /><col /></colgroup><thead class="k-grid-header"><tr><th class="k-header" data-field="DayOfWeekShort" data-index="0" data-title="Day" id="18297de4-db0b-4461-9380-284ad0dd83e2" scope="col"><span class="k-link">Day</span></th><th class="k-header" data-field="UserDate" data-index="1" data-title="Date" id="ed8fb7a6-7f4c-4c1e-a0d9-022d0f17b479" scope="col"><span class="k-link">Date</span></th><th class="k-header" data-field="StartAndEndTime" data-index="2" data-title="Duration" id="9ec7d896-a0b6-499c-bf98-c1d4924051b3" scope="col"><span class="k-link">Duration</span></th><th class="k-header" data-field="Facility" data-index="3" data-title="Facility" id="d2626a15-2e4d-44d2-99fd-e8ba617f886f" scope="col"><span class="k-link">Facility</span></th></tr></thead><tbody><tr class="similar-row k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="9-21-2026">21/09/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-alt k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="9-28-2026">28/09/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="10-05-2026">05/10/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-alt k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="10-19-2026">19/10/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="10-26-2026">26/10/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-alt k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="11-02-2026">02/11/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="11-09-2026">09/11/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-alt k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="11-16-2026">16/11/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="11-23-2026">23/11/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-alt k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="11-30-2026">30/11/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="12-07-2026">07/12/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr><tr class="similar-row k-alt k-master-row"><td aria-label="Day Mon">Mon</td><td aria-label="12-14-2026">14/12/2026</td><td>05:00 PM - 05:45 PM</td><td aria-label="Location Meeting Room A">Meeting Room A</td></tr></tbody></table></div><script>
+	kendo.syncReady(function(){jQuery("#SimilarEventsGrid").kendoGrid({"columns":[{"title":"Day","headerAttributes":{"data-field":"DayOfWeekShort","data-title":"Day"},"field":"DayOfWeekShort","encoded":true},{"title":"Date","headerAttributes":{"data-field":"UserDate","data-title":"Date"},"field":"UserDate","encoded":true},{"title":"Duration","headerAttributes":{"data-field":"StartAndEndTime","data-title":"Duration"},"field":"StartAndEndTime","encoded":true},{"title":"Facility","headerAttributes":{"data-field":"Facility","data-title":"Facility"},"field":"Facility","encoded":true}],"scrollable":false,"autoBind":false,"dataSource":{"type":(function(){if(kendo.data.transports['aspnetmvc-server']){return 'aspnetmvc-server';} else{throw new Error('The kendo.aspnetmvc.min.js script is not included.');}})(),"transport":{"read":{"url":""},"prefix":""},"serverPaging":true,"serverSorting":true,"serverFiltering":true,"serverGrouping":true,"serverAggregates":true,"filter":[],"schema":{"data":"Data","total":"Total","errors":"Errors","model":{"fields":{"UserDate":{"editable":false,"type":"string"},"UserTime":{"editable":false,"type":"string"},"UserEndDate":{"editable":false,"type":"string"},"UserEndTime":{"editable":false,"type":"string"},"DayOfWeek":{"editable":false,"type":"string"},"DayOfWeekShort":{"editable":false,"type":"string"},"DurationInMinutes":{"type":"number"},"AllDayEvent":{"type":"boolean"},"StartAndEndTime":{"editable":false,"type":"string"},"Location":{"type":"string"},"Facility":{"type":"string"},"LocationAndFacility":{"editable":false,"type":"string"},"Date":{"editable":false,"type":"date"}}}}}});});
+</script>
+
+                       <a href="javascript:void(0);" id="load-more" class="bm-box-title" aria-label="To load more sessions press enter button.">Load more...</a>
+                  
+             </div>           
+        </section>
+        <section class="bm-course-about">
+            <em class=""></em>
+            <div tabindex="0">
+                <h3>About this Course</h3>
+            
+            <p class="bm-course-about-descr">Chess is an excellent avenue for learning both logical and intuitive thinking skills as well as increasing a child&#39;s attention span. The game develops good sportsmanship for handling wins and defeats and it&#39;s fun. Participants learn starting positions, moves, captures, checks, checkmate, stalemate and pawn promotion. Parents do not participate.</p>
+            </div>            
+            <div class="table" tabindex="0">
+                <div class="row bm-location-map"></div>
+
+                
+                <div class="row">
+                    <div class="column first-column">Course ID</div>
+                    <div class="column second-column">348424</div> 
+                </div>
+                 
+            </div>
+            
+            
+            <div class="bm-course-restrictions" tabindex="0">
+                <em class=""></em>
+                <h3>Restrictions</h3>
+                <div class="table">
+                    
+                    <div class="row">
+                        <div class="column first-column">Age Restriction</div>
+                        <div class="column second-column">4 to 6</div> 
+                    </div>
+                    
+                </div>
+            </div>
+            
+        </section>
+    </div>
+    <div class="addthis_sharing_toolbox"></div>
+    <div style="display: none">
+        
+    </div>
+</div>
+
+
+<script src="//maps.googleapis.com/maps/api/js?key=AIzaREDACTED" type="text/javascript"></script>
+
+<script type="text/javascript">
+    function renderAdress(location, address, hasAlternativeLocation, alternativeLocation) {
+        var obj = $.extend(true, {}, { Location: location, HasAlternativeLocation: hasAlternativeLocation, AlternativeLocation: alternativeLocation }, address);
+        return kendo.Template.compile($('#booking-event-address').html())(obj);
+    }
+    function renderRestriction(label, data) {
+        return kendo.Template.compile($('#booking-event-restriction').html())({ Label: label, data: data });
+    }
+</script>
+
+<script type="kendo-template" id="booking-event-info">
+<div class="bm-course-primary-content">
+    #if (BackAction.Url != "") {#
+        <a class="bm-button bm-back-button" role="link" href=" #: BackAction.Url # ">
+        <em class="bmf-left-open" aria-hidden="true"></em><span>Back</span></a>
+    # } #
+    <div class="bm-course-primary-inner">
+        
+        <section class="event-info-column">
+            <h1 class="bm-course-primary-event-name bm-event-name-h1" title="#: EventTitle #" tabindex="0">#: EventTitle #</h1>
+                # if (BookingType == 4 ) { # 
+                    <span class="bm-facility-program-name">#: ProgramName #</span> 
+                # } #
+            # if(CalendarOvernightReservations && ProgramUseCheckInOut ) { #
+                <label>
+                    <em class="bmf-calendar" aria-label="Event range,  #: StartDate # #: StartTime # until #: EndDate # #: EndTime #"></em>
+                    <span>#: StartDate # #: StartTime # until #: EndDate # #: EndTime #</span>
+                </label>
+            # } else { # 
+            # if (BookingType != 6 || IsSingleOccurrence) { #
+            <label><em class="bmf-calendar" aria-hidden="true"></em><span aria-label="Event date - #: FormattedFullStartDate ##if (StartDate != EndDate) {# until #: FormattedFullEndDate ##}# ">#: StartDate ##if (StartDate != EndDate) {# - #: EndDate ##}#</span></label>
+            # } #
+            # if(!CalendarOvernightReservations || ProgramUseCheckInOut || StartDate == EndDate) { #
+                <label><em class="bmf-clock" aria-hidden="true"></em><span aria-label="Event time - #: EventTimeWordDescription #">#: EventTimeDescription #</span></label>
+                # } #            
+            # } #
+            # if(Spots) { #
+                <label class="spots"><em class="bmf-user" aria-hidden="true"></em><span>#: Spots #</span></label>
+            # } #
+        </section>
+    
+       <section class="bm-booking-info bm-restrictions">
+            # var displayAtLeastOneRestriction = ((!DisplaySettings || DisplaySettings.DisplayGenderRestrictions) && GenderRestrictions) ||
+                                                 ((!DisplaySettings || DisplaySettings.DisplayAgeRestrictions) && AgeRestrictions) ||
+                                                 ((!DisplaySettings || DisplaySettings.DisplayRankRestrictions) && RankRestrictions) ||
+                                                 PrerequisiteEvents;  
+            if(displayAtLeastOneRestriction) { # 
+            <div class="common-restrictions">
+                    <div class="registration-info-header">Restrictions</div>
+                 # if ((!DisplaySettings || DisplaySettings.DisplayGenderRestrictions) && GenderRestrictions) { # 
+                    <div class="registration-info-text">Gender: #: GenderRestrictions #</div>
+                 # } # 
+
+                 # if ((!DisplaySettings || DisplaySettings.DisplayAgeRestrictions) && AgeRestrictions) { #
+                    <div class="registration-info-text">Age: #= AgeRestrictions #</div>
+                 # } #
+
+                 # if ((!DisplaySettings || DisplaySettings.DisplayRankRestrictions) && RankRestrictions) { #
+                    <div class="registration-info-text">Rank: #: RankRestrictions #</div>
+                 # } #
+                # if (PrerequisiteEvents) { #
+                        <div id="displayPrerequisiteEvents" class="registration-info-text" role="button">Prerequisite Events: <span class="underlinePointer" aria-haspopup="dialog" role="button">
+                        Prerequisite Event(s)</span></div>                                        
+                # } #              
+            </div>
+            # } #
+
+        # if (IsLotterySettingsEnabled) { # 
+    
+            <div class="registration-common-info" aria-label="#: LotteryInfo #">
+                <div >#: LotteryInfo #</div>
+            </div>
+
+        # } else if (DisplayRegistrationDatesSection) { # 
+
+            <div class="registration-restrictions">
+                <div class="registration-info-header">Registration Dates</div>
+            
+                # if (MembersRegistrationDate) { # 
+                     <div class="registration-info-text" aria-label="For members #: FormattedMembersRegistrationDate #">Members: #: MembersRegistrationDate #</div>
+                # } #
+                # if (ResidentsRegistrationDate) { #
+                     <div class="registration-info-text" aria-label="For residents #: FormattedResidentsRegistrationDate #">Residents: #: ResidentsRegistrationDate #</div>
+                # } #
+                # if (PublicRegistrationStartDate) { #
+                     <div class="registration-info-text" aria-label="For public #: FormattedPublicRegistrationStartDate #">Public: #: PublicRegistrationStartDate #</div>
+                # } #  
+    
+            <div>
+
+        # } else { #
+
+            <br/>
+            <br/>
+            <br/>
+
+            <div class="registration-common-info" aria-label="#: FormattedRegistrationInfo #">
+                <div >#: RegistrationInfo #</div>
+            </div>
+        # } # 
+        <section>
+    </div>
+</div>
+</script>
+<script type="kendo-template" id="booking-appointment-info">
+<div class="bm-course-primary-content booking-appointment">
+    <img class="landing-page-bg" src="/Content/Images/landing-page-bg.jpg" alt="Header photo" />
+    <div class="booking-appointment-details">
+        #if (BackAction.Url != "") {#
+            <a class="bm-button bm-back-button" href=" #: BackAction.Url # ">
+            <em class="bmf-left-open" aria-hidden="true"></em><span>Back to Event</span></a>
+        # } #
+
+        <div class="bm-course-primary-inner">
+            <section class="event-info-column">
+                <h1 class="bm-course-primary-event-name" title="#: ProgramName #">#: ProgramName #</h1>
+            </section>
+
+            <section class="bm-booking-info">            
+                <div class="common-restrictions">
+                    #= renderRestriction('Gender', GenderRestrictions) #
+                    #= renderRestriction('Age', AgeRestrictions) #
+                    #= renderRestriction('Rank', RankRestrictions) #
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+</script>
+
+<script id="facility-landing-page-event-template" type="text/x-kendo-template">
+        # var infoAndAvailabilty = onlineOption == onlineOptions.ShowFacilityInfoAndAvailability; 
+        var cssClasses = "k-event-template facility-booking-slot";
+        if (isPlaceholder) cssClasses += " placeholder-event";
+        if (isDisabled || infoAndAvailabilty) cssClasses += " disabled-event";
+        if (isAllDay) cssClasses += " all-day";
+        #
+        <div class="#: cssClasses #">
+            <div>
+                <span title="#: timeText #">#: title #</span>
+            </div> 
+        </div>        
+</script>
+
+<script type="kendo-template" id="booking-event-location">
+    #= renderAdress(Location, Address, HasAlternativeLocation, AlternativeLocation) #
+</script>
+<script type="kendo-template" id="booking-event-restriction">
+    # if(data){ #
+        <div>#: Label #: #: data #</div>
+    # } #
+</script>
+<script type="kendo-template" id="booking-event-logo">
+<div class="bm-org-header">
+    <img src="#: OrgLogo #" alt="PerfectMind Logo" aria-hidden="true"/>
+    <div class="bm-org-name">   
+        # if(!OrgIsSingleLocation){ #           
+            <h4># if(BookingType == 4){ # #: OrgName # # } else { # #: Location # #}#</h4>
+        # } else { #
+            <h4>#: OrgLegalName #</h4>            
+        # } #
+    </div>
+    <div id="google_translate_element" style="position:absolute; right: 400px;"></div>
+</div>
+</script>
+<script type="kendo-template" id="booking-event-logo-address">
+    # if(!!Address) { #
+        <div id="bm-org-address" >
+            # if(Address.Street != ""){ #
+                    <span>#: Address.Street #,</span>
+            # } #
+                # if(Address.City != ""){ #
+                    <span>#: Address.City #,</span>
+            # } #
+            # if(Address.Country != ""){ #
+                    <span>#: Address.Country #,</span>
+            # } #
+            # if(Address.PostalCode != ""){ #
+                    <span>#: Address.PostalCode #</span>
+            # } #
+        </div>
+    # } #
+</script>
+
+<script type="kendo-template" id="booking-event-address">
+    # var addressDescription = HasAlternativeLocation ? AlternativeLocation : (AddressTag != null ? AddressTag : Location);
+        if(!HasAlternativeLocation){
+            if (!!Street) addressDescription += ", street " + Street;
+            if (!!City) addressDescription += ", city " + City;
+            if (!!Country) addressDescription += ", country " + Country;
+            if (!!PostalCode) addressDescription += ", postalCode " + PostalCode;
+        }        
+    #
+    <div class="column first-column" style='width: 75%;' aria-label="Event location">#= HasAlternativeLocation ? "Event location: " + AlternativeLocation : (AddressTag != null ? AddressTag : Location) #</div>
+    <div class="column second-column" style='vertical-align:top;'>
+            <span id="show-location-popover" class="bm-popover-link" tabindex="0" role="button" aria-haspopup="dialog">Show Map</span>
+        <div id="location-popover-container" class="bm-popover-container" role="dialog" tabindex="-1" aria-modal="false">
+            <em class="bmf-cross" aria-hidden="true" role="button"></em>
+            <div id="map-canvas" class="bm-map-canvas"></div>
+            <div class="bm-map-address">#= HasAlternativeLocation ? AlternativeLocation : (AddressTag != null ? AddressTag : Location) #</div>
+            # if(!HasAlternativeLocation){ #
+                <div>#: Street #</div>
+                <div>#: City #, #: Country #, #: PostalCode #</div>
+            # } #
+
+            <div class="bm-map-address">Get Direction From:</div>
+            <div class="bm-location-popover-dest">
+                <label for="directionDestination" class="hidden-label">Enter the direction from</label>
+                <input id="directionDestination" name="directionDestination" class="pm-text-input" type="text" />
+                <span id="calculateDirectionButton" class="bm-button" aria-label="Calculate direction" role="button" tabindex="0">Calculate</span>
+            </div>
+        </div>
+    </div>
+
+</script>
+<script type="text/template" id="facility-list-filterblock-template">
+    <a class="clear-filter-block" href="javascript:;" data-bind="click: resetCallback, visible: resetVisible, attr: { 'aria-label': 'Clear selected ' + filterBlockName + ' filter' }, event: { keydown: resetCallbackOnKeyPress }" role="button">Clear</a>
+    <ul class="padding-bottom" data-bind="foreach: itemsToShow">
+        <li data-bind="visible: isVisible">
+            <input class="pm-checkbox-blue" type="checkbox" role="checkbox"
+                data-bind="attr: { 'data-value': ID, 'id': $parent.filterBlockName + $index(), 'data-text': Name, value: ID, name: $parent.inputName },
+                event: { change: $parent.filterChangeCallback }"/>
+            <label data-bind="attr: { 'for': $parent.filterBlockName + $index() }, text: Name"></label>
+        </li>
+    </ul>
+    <a href="javascript:;" class="show-more-toggle" data-bind="click: onShowMoreClick, text: showMoreText, visible: showMoreVisible, attr: { 'aria-expanded': showAll() ? 'true' : 'false' }, event: { keydown: onShowMoreKeyPress }" role="button"></a>
+</script>
+<script type="text/x-kendo-template" id="facilityTemplate">
+    #
+    var linkText = (OnlineOption == bookMeConstants.OnlineOption.ShowFacilityInfo.Id) ? 'Information' : 'Choose';
+    #
+	<div class="facility-item" data-facilityId="#: ID #" tabindex="0">
+        <div class="desktop-details-wrapper">
+            #if (showAvailabilityIndicator){ #
+                <div class="desktop-details-availability">                
+                    <span class="img #:bookMeConstants.FacilityAvailability.Items[Availability].CssClass#">#:bookMeConstants.FacilityAvailability.Items[Availability].Description#</span>
+                </div>
+            # } #
+            #if (IsFacilityMap) { #
+                <a onclick="onChooseClick(this, #: IsFacilityMap #); return false;" data-facilityId="#: ID #" 
+                    class="pm-confirm-button desktop-details" role="link" aria-label="Choose \\#: Name \\# facility map" tabindex="0" href="javascript:void(0);">Choose</a>            
+            # } else { #
+                <a onclick='onChooseClick(this, #: IsFacilityMap #); return false;' data-facilityId="#: ID #" 
+                    class="pm-confirm-button desktop-details" role="link" aria-label="\\#: linkText + &\\#39; &\\#39; + Name \\# facility" tabindex="0" href="#: onClickActionGoToLandingPage(ID) #">#: linkText #</a>            
+            # } #
+        </div>
+        #if(!Image) { 
+            Image = "/Content/Images/ControlIcons/noimage.png";
+        } #
+        <img class="facility-image" src="#: Image #" alt="#: Name # facility photo"/>
+		<div class="facility-details">				
+			<h2>#: Name # #if (IsFacilityMap) { # (#: MapFacilitiesCount # Facilities) # } #</h2>		
+			<div id="facilityDescriptionUniqueId-#: uid #" class="facility-description truncated">#: Description #</div>
+            <a href="javascript:void(0);" class="read-more-toggle" aria-controls="facilityDescriptionUniqueId-#: uid #" aria-expanded="false" role="button">Read more</a>
+    
+            <span class="facility-location" data-bind="visible: !isSingleLocationOrganization()"><span style="font-weight: 600;">Location: </span>#: LocationName #</span>
+            # if (Amenities.length > 0) { #
+                <span class="facility-amenities"><span style="font-weight: 600;">Amenities: </span>#: joinedAmenities #</span>
+            # } #	
+        </div>
+	    <div class="tablet-details-wrapper">
+            #if (showAvailabilityIndicator){ #
+                <div class="tablet-details-availability">                
+                    <span class="img #:bookMeConstants.FacilityAvailability.Items[Availability].CssClass#">#:bookMeConstants.FacilityAvailability.Items[Availability].Description#</span>                
+                </div>
+            # } #
+            #if (IsFacilityMap) { #
+                <a onclick="onChooseClick(this, #: IsFacilityMap #); return false;" data-facilityId="#: ID #"
+                    class="pm-confirm-button tablet-details" href="javascript:void(0);" tabindex="0">Choose</a>            
+            # } else { #
+                <a onclick='onChooseClick(this, #: IsFacilityMap #); return false;' data-facilityId="#: ID #" 
+                    class="pm-confirm-button tablet-details" href="#: onClickActionGoToLandingPage(ID) #" tabindex="0">#: linkText #</a>            
+               
+            # } #
+        </div>
+        <div class="facility-detail-pills">
+            # if (FacilityType && !IsFacilityMap){ #
+                <span class="detail-pill grey">#: FacilityType #</span>
+            # } #
+            # if (OnlineOption == bookMeConstants.OnlineOption.AllowReservationWithApproval.Id) { #
+                <span class="detail-pill yellow">Requires Approval</span>
+            # } #
+            # if (ExternalLabel && ExternalLink) { #
+                <a class="detail-pill purple" tabindex="0" target="_blank" href="#: ExternalLink #">#: ExternalLabel #</span>
+            # } #
+        </div>
+	</div>
+</script>
+<script type="text/x-kendo-template" id="successfulAlertTemplate">        
+    <div class="popup-first-user-login-alert-message"> 
+        <i class="fa fa-times fa-lg" aria-hidden="true"></i>                   
+        <p>#: message #</p>
+    </div>            
+</script>
+<script type="text/x-kendo-template" id="notificationTemplate">        
+    <div class="notification-message" role="dialog">
+            #: message #
+    </div>            
+</script>
+<script type="text/x-kendo-template" id="facilityMapPinToolTipTemplate">        
+    <div class="facility-texts-block">
+        <div class="facility-head">
+            <img class="facility-image" src="#: Image #" alt="#: Name # facility photo" aria-hidden="true"/>
+            <div class="name-wrapper">
+                <div class="facility-name ellipsis">#: Name #</div>
+                # if (!!FacilityType) { #
+                    <div class="facility-type ellipsis">#: FacilityType #</div>
+                # } #
+                # if (!!Address) { #
+                    <div>#: Address.Street + ',' + Address.City + ',' + Address.PostalCode #</div>
+                # } #
+            </div>
+        </div>
+        # if (!!Description) { #
+            <div class="description-info">
+                <div class="facility-description truncated">#: Description #</div>
+                <a href="javascript:;" class="read-more-toggle" aria-expanded="false" role="button">Read more</a>
+            </div>
+        # } #
+        # if (Amenities.length > 0) { #
+            <span class="facility-amenities">Amenities: <span style="font-weight: 600;">#: joinedAmenities #</span></span>
+        # } #
+        # for (var i in OptionalDetails) { #
+            <div style="display: block" class="detail-wrapper">#: i #: <span style="font-weight: 600;">#: OptionalDetails[i] #</div></span>
+        # } #
+        # if (!!CheckInTime) { #
+            <div style="display: block" class="detail-wrapper">Check in:  <span style="font-weight: 600;">#: CheckInTime #</div></span>
+        # } #
+        # if (!!CheckOutTime) { #    
+            <div style="display: block" class="detail-wrapper">Check out:  <span style="font-weight: 600;">#: CheckOutTime #</div></span>
+        # } #
+        # if (!!PriceDetails) { # 
+            <div style="display: block" class="detail-wrapper">#: PriceDetails #</div>
+        # } #
+        <div>
+            #if (showAvailabilityIndicator){ #
+                <div class="availability">                
+                    <span class="img #:bookMeConstants.FacilityAvailability.Items[Availability].CssClass#">#:bookMeConstants.FacilityAvailability.Items[Availability].Description#</span>                
+                </div>
+            # } #
+            <a class="pm-confirm-button" onclick='onChooseClick(this); return false;' data-facilityId="#: FacilityId #"
+                href="#: onClickActionGoToLandingPage(FacilityId) #" role="link" tabindex="0">Choose</a>
+        </div>
+    </div>              
+</script>
+<script id="notQualifiedMemberNotificationTemplate" type="text/x-kendo-template">
+    <div class="not-qualified-member-notification notification-element" role="alert">
+        <span class="exclamation-mark-icon"></span>
+        <div class="text">
+            <h3>#: title #</h3>
+            <p>#: message #</p>
+        </div>
+    </div>
+</script>
+<script id="selectAttendeeNotificationTemplate" type="text/x-kendo-template">
+    <div class="select-attendee-notification notification-element" role="alert">
+        <span class="exclamation-mark-icon"></span>
+        <h3>#: message #</h3>
+    </div>
+</script>
+
+
+    <script type="text/javascript">
+        function decodeEncodedValue(value) {
+            var decodedValue = $('<div></div>').html(value).text();
+            return decodedValue;
+        }
+
+        $(window).on("holdsTrackerPopupVisibilityChanged", function () {
+            $('.bm-booking-info.bm-restrictions').toggleClass("bm-holds-tracker");
+        });
+
+        function showMore(skip) {
+            var items = $('#SimilarEventsGrid').find('tbody tr').not(".k-no-data").slice(skip, skip + 10);
+
+            itemsLoaded += items.length;
+
+            if (allItemsCount - itemsLoaded == 0) {
+                $('#load-more').hide();
+            }
+
+            $(items).each(function (index, item) { $(item).removeClass('similar-row'); });
+            $(items).each(function (index, item) { $(item).removeClass('similar-row'); });
+        }
+
+        var eventInfo = $.extend(true, {}, {
+            BackAction: {
+                Url: '/Clients/BookMe4BookingPages/BookingCoursesPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003\u0026calendarId=c3ff81c9-08cf-44fc-9de4-354833ba2640\u0026singleCalendarWidget=False',
+                Name: 'Back'
+            }
+        }, {"ParentEventId":null,"LotterySettings":null,"IsLotterySettingsEnabled":false,"IsLotteryRegistrationEnabled":false,"IsAdminSession":false,"FakeEventId":null,"LotteryInfo":"","RecordName":"478822","CalendarId":"c3ff81c9-08cf-44fc-9de4-354833ba2640","CalendarOvernightReservations":false,"ServiceDurationId":null,"WidgetId":"bfd08479-60d6-43d9-b586-5b4c8305a003","RegFormId":null,"ImageUrl":"","ProgramId":"35a19a96-1d59-4604-a69c-958a3939cd08","ProgramDescription":"Chess is an excellent avenue for learning both logical and intuitive thinking skills as well as increasing a child\u0027s attention span. The game develops good sportsmanship for handling wins and defeats and it\u0027s fun. Participants learn starting positions, moves, captures, checks, checkmate, stalemate and pawn promotion. Parents do not participate.","ProgramName":"Chess: Preschool","ProgramImageUrl":"//content.perfectmind.com/a99974b35d3c4078b8de347eab91319f/images/218/449e9846a0dd4e4d8afa28f057a6f3c7.png","ProgramUseCheckInOut":false,"EventTimeWordDescription":"5 o\u0027clock PM to 5 o\u0027clock PM and 45 minutes","SessionName":"","StartDate":"21/09/2026","StartDateWithOffset":"2026-09-21T17:00:00-04:00","PublicRegistrationStartDate":null,"FormattedPublicRegistrationStartDate":null,"PublicRegistrationStartDateValue":"2026-08-12T06:30:00","PublicRegistrationStartDateWithOffset":null,"ResidentsRegistrationDate":"","FormattedResidentsRegistrationDate":null,"ResidentsRegistrationDateWithOffset":null,"ResidentsRegistrationDateValue":"2026-08-11T06:30:00","MembersRegistrationDate":"","FormattedMembersRegistrationDate":null,"MembersRegistrationDateWithOffset":null,"MembersRegistrationDateValue":"2026-08-12T06:30:00","PublicRegistrationEndDateValue":"2026-10-11T23:59:00","ResidentsRegistrationEndDateValue":null,"MembersRegistrationEndDateValue":null,"AllowLateBooking":false,"FormattedFullStartDate":"September 21st, 2026","StartTime":"05:00 PM","StartDay":"Monday","EndDate":"14/12/2026","EndDateWithOffset":"2026-12-14T17:45:00-05:00","FormattedFullEndDate":"December 14th, 2026","EndTime":"05:45 PM","AppointmentStartDateTimeTicks":0,"ActualLocation":"Angus Glen Community Centre","Latitude":null,"Longitude":null,"LocationId":"57cc2739-7141-4f95-8007-1ce0e58200e8","AgeRule":1,"AgeRuleSpecificDate":"2021-07-09T00:00:00","Restrictions":"Gender - Co-ed; Age - 4 to 6; Rank -  Prerequisite Events - False","DisplayableRestrictions":"4 to 6","SpotsLeft":0,"RegistrationInfo":"Registration ends on 11/10/2026 at 11:59 PM","FormattedRegistrationInfo":"Registration ends on October 11th, 2026 at 11:59 PM","IsRegistrationClosed":false,"IsFutureRegistration":false,"AnyRegistrationDateInFuture":false,"RegistrationEndDateInEventTimeZone":"2026-10-11T23:59:00","RegistrationEndDateUtc":"2026-10-12T03:59:00Z","FormattedRegistrationEndDate":"11/10/2026 at 11:59 PM","IsWaitListAvailable":true,"IsWaitListFull":false,"IsWaitListHasSpots":true,"RestrictWaitlist":false,"IsFull":true,"Token":null,"Color":15354274,"FacilityId":"e3f99405-1476-4b7f-9b0d-aacabc96c7ca","FacilityContractId":null,"FacilityOnlineOption":1,"FacilitySupervisorEmails":"northinquiries@markham.ca","Assistants":[],"MaximumCapacity":7,"WaitListCapacity":100,"WaitListSpotsLeft":100,"CanNotBook":true,"Prices":[{"Id":"100ff232-c48d-4877-bb32-7fe8b1ac537c","ObjectId":"6a293c5d-5ea0-d5b9-2ae2-f91bc2069f1b","ItemId":"85770d4d-bce9-4e53-b969-cf7e88775180","Amount":175.32,"PriceTypeId":"0bb64e23-4157-41a7-97eb-599313ba43e5","Name":"REC: Programs - Specialty 1 - Non-Resident","IsSelected":false,"IsOriginalPrice":false,"CanSelect":false,"ShowOnline":null,"DisplayAmount":"$175.32","DisplayProratedAmount":"No fee","DisplayAmountOrAsFree":"$175.32","WasProrated":false,"ProratedAmount":0.0,"AdjustedStartDate":null,"TaxableStateDesc":"No Tax","AnyTaxesAssigned":false,"IncludeTaxFlagEnabled":false,"WasCalculatedUsingMultipleSlotsLogic":false,"ItemOccurrences":null,"MakeUpClass":false,"DropinFee":false},{"Id":"aeb106bf-f578-45d7-a133-d29f12d9e0a9","ObjectId":"6a293c5d-5ea0-d5b9-2ae2-f91bc2069f1b","ItemId":"85770d4d-bce9-4e53-b969-cf7e88775180","Amount":152.40,"PriceTypeId":"2a51385c-214a-4ab8-b623-d0ef63c63575","Name":"REC: Programs - Specialty 1 - Resident","IsSelected":false,"IsOriginalPrice":false,"CanSelect":false,"ShowOnline":null,"DisplayAmount":"$152.40","DisplayProratedAmount":"No fee","DisplayAmountOrAsFree":"$152.40","WasProrated":false,"ProratedAmount":0.0,"AdjustedStartDate":null,"TaxableStateDesc":"No Tax","AnyTaxesAssigned":false,"IncludeTaxFlagEnabled":false,"WasCalculatedUsingMultipleSlotsLogic":false,"ItemOccurrences":null,"MakeUpClass":false,"DropinFee":false}],"Extras":[],"PaymentPlan":null,"HasExtras":false,"HasRequiredExtras":false,"HasRestrictions":true,"OwnerId":"c123c30e-3ab1-40f2-9202-7325275b4c30","SupervisorId":null,"RecurrenceId":"fc5f0141-b0a3-4413-8496-4f4a0025e3b1","PaddingBefore":null,"PaddingAfter":null,"OnlineRegistration":true,"UseServiceFee":false,"AdminProrateInfo":{"AutoApplyProrate":true,"ProratedInfoText":"","NotProratedInfoText":"","ProrateAfterSessionsNumber":1,"AllowProrateLateRegistation":true,"ProrateSessionsBasedOnDurationEnabled":false,"TodayDate":"0001-01-01T00:00:00+00:00"},"OnlineProrateInfo":{"ProrateAfterSessionsNumber":1,"AllowProrateLateRegistation":false,"ProrateSessionsBasedOnDurationEnabled":false,"TodayDate":"2026-09-04T00:00:00-04:00"},"ProrateCoursePermission":false,"IgnoreEventCapacity":false,"EnforceRegistrationsDatesRestrictions":false,"BookOverCapacity":false,"AddAnywayPrerequisites":false,"EnforceNQFeeConflict":false,"EventGroupId":null,"EventDates":"Sep 21, 2026 - Dec 14, 2026","CapacityCalculationStrategy":{},"AnyHoldsForCurrentUser":false,"ValidateMembershipOnFee":false,"AllowUndoProratedFeeMembership":false,"ProrateSessionsBasedOnDuration":false,"BookingTypeInfo":{"BookingType":3,"IsSchoolProgram":false,"IsCustomBookingOnline":false,"IsCustomBookingAdmin":false,"IsCustomBooking":false},"DisplayRegistrationDatesSection":false,"IsSingleOccurrence":false,"HasValidFee":true,"EventTitle":"Chess: Preschool","CreatedDate":"2026-07-06T17:46:28.37","EventId":"85770d4d-bce9-4e53-b969-cf7e88775180","CourseId":"348424","CourseIdTrimmed":"348424","EventName":"Chess: Preschool","Details":"Chess is an excellent avenue for learning both logical and intuitive thinking skills as well as increasing a child\u0027s attention span. The game develops good sportsmanship for handling wins and defeats and it\u0027s fun. Participants learn starting positions, moves, captures, checks, checkmate, stalemate and pawn promotion. Parents do not participate.","Spots":"FULL - Waitlist Available","OccurrenceDate":null,"BookButtonText":"Waitlist","BookButtonDescription":"Add to Chess: Preschool waitlist","ClosedButtonName":"Registration Closed","Instructor":{"Id":null,"FullName":"","Type":"","Description":"","Image":"","Email":""},"Facility":"Meeting Room A","DisplaySettings":{"DisplayInstructorsName":true,"DisplayPrices":true,"DisplaySpotsLeft":true,"DisplayRegistrationDate":true,"DisplayNumberOfSessions":true,"DisplayCourseId":true,"DisplayAgeRestrictions":true,"DisplayRankRestrictions":false,"DisplayGenderRestrictions":false,"ButtonName":"Register","UseBookMe5UiWidgetVersion":false,"WidgetUIVersion":0},"PriceRange":null,"AllDayEvent":false,"AnyTimeBrokenOccurrences":false,"StartDateValue":"2026-09-21T17:00:00","FormattedStartDate":"Mon, Sep 21st, 2026","FormattedStartTime":"05:00 PM","EndDateValue":"2026-12-14T17:45:00","FirstOccurrenceEndDate":"2026-09-21T17:45:00","FormattedEndDate":"Dec 14th","FormattedEndTime":"05:45 PM","FirstOccurrenceFormattedEndTime":"05:45 PM","EventTimeDescription":"05:00 pm - 05:45 pm","AlternativeLocation":null,"HasAlternativeLocation":false,"OccurrenceDescription":"Every Mon","Occurrences":[{"StartDateWithOffset":"2026-09-21T17:00:00-04:00","StartDate":"2026-09-21T00:00:00","EndDateWithOffset":"2026-09-21T17:45:00-04:00","EndDate":"2026-09-21T00:00:00","OccurrenceOrderNumber":0,"DurationInMinutes":45},{"StartDateWithOffset":"2026-09-28T17:00:00-04:00","StartDate":"2026-09-28T00:00:00","EndDateWithOffset":"2026-09-28T17:45:00-04:00","EndDate":"2026-09-28T00:00:00","OccurrenceOrderNumber":1,"DurationInMinutes":45},{"StartDateWithOffset":"2026-10-05T17:00:00-04:00","StartDate":"2026-10-05T00:00:00","EndDateWithOffset":"2026-10-05T17:45:00-04:00","EndDate":"2026-10-05T00:00:00","OccurrenceOrderNumber":2,"DurationInMinutes":45},{"StartDateWithOffset":"2026-10-19T17:00:00-04:00","StartDate":"2026-10-19T00:00:00","EndDateWithOffset":"2026-10-19T17:45:00-04:00","EndDate":"2026-10-19T00:00:00","OccurrenceOrderNumber":3,"DurationInMinutes":45},{"StartDateWithOffset":"2026-10-26T17:00:00-04:00","StartDate":"2026-10-26T00:00:00","EndDateWithOffset":"2026-10-26T17:45:00-04:00","EndDate":"2026-10-26T00:00:00","OccurrenceOrderNumber":4,"DurationInMinutes":45},{"StartDateWithOffset":"2026-11-02T17:00:00-05:00","StartDate":"2026-11-02T00:00:00","EndDateWithOffset":"2026-11-02T17:45:00-05:00","EndDate":"2026-11-02T00:00:00","OccurrenceOrderNumber":5,"DurationInMinutes":45},{"StartDateWithOffset":"2026-11-09T17:00:00-05:00","StartDate":"2026-11-09T00:00:00","EndDateWithOffset":"2026-11-09T17:45:00-05:00","EndDate":"2026-11-09T00:00:00","OccurrenceOrderNumber":6,"DurationInMinutes":45},{"StartDateWithOffset":"2026-11-16T17:00:00-05:00","StartDate":"2026-11-16T00:00:00","EndDateWithOffset":"2026-11-16T17:45:00-05:00","EndDate":"2026-11-16T00:00:00","OccurrenceOrderNumber":7,"DurationInMinutes":45},{"StartDateWithOffset":"2026-11-23T17:00:00-05:00","StartDate":"2026-11-23T00:00:00","EndDateWithOffset":"2026-11-23T17:45:00-05:00","EndDate":"2026-11-23T00:00:00","OccurrenceOrderNumber":8,"DurationInMinutes":45},{"StartDateWithOffset":"2026-11-30T17:00:00-05:00","StartDate":"2026-11-30T00:00:00","EndDateWithOffset":"2026-11-30T17:45:00-05:00","EndDate":"2026-11-30T00:00:00","OccurrenceOrderNumber":9,"DurationInMinutes":45},{"StartDateWithOffset":"2026-12-07T17:00:00-05:00","StartDate":"2026-12-07T00:00:00","EndDateWithOffset":"2026-12-07T17:45:00-05:00","EndDate":"2026-12-07T00:00:00","OccurrenceOrderNumber":10,"DurationInMinutes":45},{"StartDateWithOffset":"2026-12-14T17:00:00-05:00","StartDate":"2026-12-14T00:00:00","EndDateWithOffset":"2026-12-14T17:45:00-05:00","EndDate":"2026-12-14T00:00:00","OccurrenceOrderNumber":11,"DurationInMinutes":45}],"NumberOfSessions":12,"PrerequisiteEvents":false,"DisplayablePrerequisiteEventsRestrictionsForCourses":"","DisplayableRestrictionsForCourses":"Age: 4 to 6","MinAge":4,"MinAgeMonths":null,"MaxAge":6,"MaxAgeMonths":null,"NoAgeRestriction":false,"AgeRestrictions":"4 to 6","GenderRestrictions":"Co-ed","RankRestrictions":"","FromRank":null,"ToRank":null,"StartingRankId":null,"EndingRankId":null,"DurationInMinutes":121005,"FeeFrequency":null,"OrgLogo":"//content.perfectmind.com/a99974b35d3c4078b8de347eab91319f/logo/Markham+Logo+-+CMYK.png","OrgIsSingleLocation":false,"OrgLegalName":"City of Markham","OrgName":"City of Markham","Address":{"AddressTag":"Angus Glen Community Centre","Street":"3990 Major Mackenzie Drive","City":"Markham","PostalCode":"L6C 1P8","CountryId":0,"Country":"","StateProvinceId":0,"AnyFieldMissing":true,"Latitude":43.895354,"Longitude":-79.336539,"Id":"2edca341-54cb-4da4-ae92-6603435570d4"},"Location":"Angus Glen Community Centre","BookingType":3});
+
+        var itemsLoaded = 0;
+        var allItemsCount = 12;
+        var isAdmin = false;
+        AlertManager.setUrl("/Clients/Alert/GetAlerts");
+        $(document).ready(function () {
+            var singleLocationOnlineShoppingCartPopup;
+            require(["SingleLocationOnlineShoppingCartPopup"], function (preventCartWithMultipleCartItemLocations) {
+                singleLocationOnlineShoppingCartPopup = preventCartWithMultipleCartItemLocations;
+            });
+            require(["BookMe4AttendanceHeader", "BookMe4SearchHelper", "PlannerUtility"], function (header, BookMe4SearchHelper, plannerUtility) {                
+                header.header();
+                var eventId = "85770d4d-bce9-4e53-b969-cf7e88775180";
+                $('#prerequisiteEvents,#prerequisiteServices').click(function () {
+                    var prerequisiteEventsUrl = '/Clients/BookMe4/PrerequisiteEventsView';
+                    plannerUtility.showPrerequisiteEvents(eventId, prerequisiteEventsUrl);
+                });
+             
+                var orgLogoAddressTemplate = kendo.template($('#booking-event-logo-address').html());              
+
+                var btnTemplate = kendo.template($('#book-button').html());
+                var commonRestrictionsSection = $('.common-restrictions');
+                var mainBookingRestrictionsSection = $('.bm-booking-info.bm-restrictions');
+                if (commonRestrictionsSection.length > 0) {
+                    commonRestrictionsSection.before(btnTemplate(eventInfo));
+                } else {
+                    mainBookingRestrictionsSection.prepend(btnTemplate(eventInfo));
+                }
+
+                var showRegistrationRestrictionPopUp = function (registrationEndDateLabel) {
+                    var message = $('<span role="alert"></span>').text("The Registration ended on " + registrationEndDateLabel);
+                    $("#registrationRestrictionAlertPopup").append(message);
+                    $("#registrationRestrictionAlertPopup").show();
+                };
+
+                $('.bm-booking-info .bm-book-button').click(function () {
+                    var registrationEndDate = kendo.timezone.convert(kendo.parseDate(eventInfo.RegistrationEndDateUtc, "s"), 0, new Date().getTimezoneOffset());
+
+                    // After clicking on Book button we should check if registration end date is not reached.
+                    // Otherwise we should disable "Book" button and then generate alert with appropriate message.
+                    if (registrationEndDate < new Date()) {
+                        showRegistrationRestrictionPopUp(eventInfo.FormattedRegistrationEndDate);
+                        $('.bm-book-button').attr("disabled", "disabled").addClass("disabled");
+                        $('.bm-booking-info .reg-info').text('Registration is closed. ');
+
+                        // Returning here false we prevent normal click action for this link - redirect to next page (either Login or Attendee page).
+                        return false;
+                    }
+                });
+
+                $("#registrationRestrictionAlertPopup").click(function () {
+                    $("#registrationRestrictionAlertPopup").hide();
+                });
+
+                if (eventInfo.IsRegistrationClosed && !eventInfo.IsLotteryRegistrationEnabled) {
+                    $('.bm-book-button').attr("disabled", "disabled").addClass("disabled");
+                }
+
+                var locationTemplate = kendo.template($('#booking-event-location').html());
+                $('.bm-course-about .bm-location-map').append(locationTemplate(eventInfo));
+
+                // Initialize google maps actually
+                var coordinates = {
+                    lat: eventInfo.HasAlternativeLocation ? eventInfo.Latitude : eventInfo.Address.Latitude,
+                    lng: eventInfo.HasAlternativeLocation ? eventInfo.Longitude : eventInfo.Address.Longitude
+                };
+                var addressForMap = eventInfo.HasAlternativeLocation ? eventInfo.AlternativeLocation : $(orgLogoAddressTemplate(eventInfo)).text();
+                initializeMapping(addressForMap, coordinates);
+
+                $('#load-more').click(function () {
+                    showMore(itemsLoaded);
+                });
+
+                $('#load-more').keydown(function (event) {
+                    if (event.keyCode == 13) {
+                        $('#load-more').click();
+                        $('#SimilarEventsGrid tbody').focus();
+                    }
+                });
+
+                showMore(itemsLoaded);
+
+                var searchQuery = decodeEncodedValue('');
+
+                if (searchQuery) {
+                    var searchHelper = new BookMe4SearchHelper({
+                        url: '/Clients/BookMe4Search',
+                        widgetId: 'bfd08479-60d6-43d9-b586-5b4c8305a003'
+                    });
+
+                    var backButton = $('.bm-course-primary-content .bm-back-button');
+                    backButton.removeAttr('href');
+                    backButton.click(function () {
+                        searchHelper.postSearchForm(searchQuery, false, true);
+                    });
+                }
+            });
+
+            if (typeof addthis !== 'undefined' && addthis && addthis.addEventListener && typeof addthis.addEventListener === 'function'){
+                addthis.addEventListener('addthis.ready', function(){
+                    setTimeout(function(){
+                        $('#at4-thankyou #at4-palogo').replaceWith('<div id="at4-palogo">' + $('target').html() +'</div>');
+                        $('#service-icons-0').appendTo($('head'));
+                        $('#at-share-dock a svg').removeAttr('title').removeAttr('alt');
+                    }, 1000);                    
+                });
+            }
+
+            $('body').on('click', '#bookButton', function (event) {
+                var locationName = '';
+                var showPopup = 'False';
+                var cartUrl = '';
+                if (showPopup === 'True') {
+                    event.preventDefault();
+                    singleLocationOnlineShoppingCartPopup.showPopup(locationName, cartUrl);
+                }
+                
+            });
+        });
+    </script>
+    <script type="text/javascript" crossorigin="anonymous" src="/Scripts/BookMe4/google.maps.js?08250811"></script>
+
+        <script>
+            $(document).ready(function () {
+                $("#temp_wrapper").fadeOut();
+            });
+        </script>
+        
+        <script crossorigin="anonymous" src="/Scripts/perfectMind/Planner/PlannerAttendanceHeader.js?08250811"></script>
+        <script crossorigin="anonymous" src="/Scripts/BookMe4/BookMe4AttendanceHeader.js?08250811"></script>
+        <script crossorigin="anonymous" src="/Scripts/jQueryPlugin/lightbox.js?08250811"></script>
+        <div id="tempInfoForScreenReaders" class="hidden-label" aria-live="polite"></div>
+    <script src="/Scripts/jQueryPlugin/jQueryHoverIntentFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryValidateFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryTimePickerFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryThreeDotsFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryContextMenuFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryFloatingBoxFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryPlaceholderFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jquery.elastic.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryBbqFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryPmDialog.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryPmEnhancedSelect.js?08250811"></script>
+<script src="/Scripts/Kendo/kendo.pmPreferenceRankingGrid.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryDateTimeAutocompleteFull.js?08250811"></script>
+<script src="/Scripts/swfobject/swfObjectFull.js?08250811"></script>
+<script src="/Scripts/perfectMind/Controls/FlyOutTooltip.js?08250811"></script>
+<script src="/Scripts/perfectMind/core.js?08250811"></script>
+<script src="/Scripts/perfectMind/common.js?08250811"></script>
+<script src="/Scripts/customControl/ajaxLink.js?08250811"></script>
+
+    </body>
+</html>
