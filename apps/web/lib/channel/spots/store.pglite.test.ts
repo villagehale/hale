@@ -521,7 +521,10 @@ describe('the ledger readers', () => {
       .returning({ id: schema.channelMessages.id });
     if (!sent) throw new Error('unreachable: the channel_messages insert returned no row');
 
-    expect(await findLedgerRowByDedupeKey(db.database, dedupeKey)).toEqual({ id: sent.id });
+    expect(await findLedgerRowByDedupeKey(db.database, dedupeKey)).toEqual({
+      id: sent.id,
+      status: 'queued',
+    });
     expect(await findLedgerRowByDedupeKey(db.database, `${dedupeKey.slice(0, -1)}2`)).toBeNull();
 
     expect(await readLedgerStatus(db.database, sent.id)).toBe('queued');
@@ -530,6 +533,12 @@ describe('the ledger readers', () => {
       .set({ status: 'failed' })
       .where(eq(schema.channelMessages.id, sent.id));
     expect(await readLedgerStatus(db.database, sent.id)).toBe('failed');
+    // The status rides WITH the row because the sweep's heal decision turns on it: a
+    // key can be spent by an attempt the carrier already threw away.
+    expect(await findLedgerRowByDedupeKey(db.database, dedupeKey)).toEqual({
+      id: sent.id,
+      status: 'failed',
+    });
     expect(await readLedgerStatus(db.database, '99999999-9999-9999-9999-999999999999')).toBeNull();
   });
 });

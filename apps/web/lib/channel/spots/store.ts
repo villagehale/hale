@@ -478,19 +478,25 @@ export async function releaseWatchedSpot(
 }
 
 /**
- * The ledger row an attempt left behind, found by the key it was sent under.
+ * The ledger row an attempt left behind, found by the key it was sent under — WITH the
+ * status the carrier has since written on it.
  *
  * The healing read: an attempt whose counter moved but whose `notified_message_id` never
  * landed is a text that WENT OUT and a watch that does not know it. The dedupe key is
  * derived, so the row can always be found again — which is the difference between one
  * duplicate and a watch that re-sends every ten minutes.
+ *
+ * The status is not decoration. `dedupeActive` answers true for a 'failed' row on
+ * purpose (CONSUMED_SEND_STATUSES), so "the key is spent" and "a text may still arrive"
+ * are different questions, and a heal that asks the first one re-attaches the watch to a
+ * message the carrier threw away. Only this reader can tell them apart.
  */
 export async function findLedgerRowByDedupeKey(
   database: Database,
   dedupeKey: string,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; status: LedgerStatus } | null> {
   const [row] = await database
-    .select({ id: schema.channelMessages.id })
+    .select({ id: schema.channelMessages.id, status: schema.channelMessages.status })
     .from(schema.channelMessages)
     .where(eq(schema.channelMessages.dedupeKey, dedupeKey))
     .limit(1);

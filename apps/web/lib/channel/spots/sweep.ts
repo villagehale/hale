@@ -2,7 +2,7 @@ import { type Database, type WatchedSpotReleaseReason, schema } from '@hale/db';
 import { and, eq, lt } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { type AcceptedStatus, acceptedStatus } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -234,7 +234,6 @@ export interface WatchedSpotsSweepDeps {
   /** The send-boundary gate (VIL-293), on the string that actually leaves. REQUIRED: a
    * lane that could skip it would send exactly the claims it exists to stop. */
   refuseUnbackedSend: typeof refuseUnbackedSend;
-  dedupeActive(database: Database, dedupeKey: string): Promise<boolean>;
   /** The ONE send-side reader (sms-consent-core), which carries the verified +
    * non-revoked predicate itself. */
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
@@ -257,7 +256,6 @@ export function defaultWatchedSpotsSweepDeps(): WatchedSpotsSweepDeps {
     claimSlot: claimWatchedSpotsSlot,
     buildGate: buildOutboundGatePorts,
     refuseUnbackedSend,
-    dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),
     resolveSendablePhone,
     transport: createTwilioTransport(),
     recordSend: async (database, write) => {
@@ -315,7 +313,8 @@ export interface WatchedSpotsSweepSummary {
   /** Another tick claimed the same opening first. Not an error. */
   raced: number;
   /** A text that went out on an earlier tick whose bookkeeping write was lost, found
-   * again by its dedupe key. */
+   * again by its dedupe key and STILL LIVE — a row the carrier has already failed is a
+   * retry, never a heal, or this number would count texts nobody received. */
   healed: number;
   /** A held observation the page contradicted before Hale was allowed to speak. */
   closedBeforeSend: number;
@@ -612,35 +611,42 @@ async function sweepSpot(
   if (spot.pendingKind !== null) {
     await stampRead(database, spot.id, now);
     // A previous attempt spent its counter and left no pointer AT THE START OF THIS TICK.
-    // Either its ledger row exists (the post-send write was lost — the text WENT OUT, so
-    // find it and let the receipt path judge it next tick) or it does not (the row write
-    // itself was lost — fall through and spend the second attempt).
+    // Its row is looked up by the derived key, and only its STATUS says which of three
+    // things happened:
+    //
+    //   a live row (queued, or already sent/delivered) — the text WENT OUT and the
+    //     post-send write was lost. Heal the pointer and let the receipt path judge it.
+    //   a 'failed' row — the carrier has already judged this attempt and nobody heard.
+    //     There is nothing to heal onto: retry under a new key, or say `delivery_failed`.
+    //     Asking `dedupeActive` here instead would answer yes for exactly this row
+    //     (CONSUMED_SEND_STATUSES includes 'failed') and re-attach the watch to a dead
+    //     message, which the receipt path then clears again — heal, clear, heal, all
+    //     night, while the parent is never told.
+    //   no row at all — the row write itself was lost. Spend the second attempt, or say
+    //     `send_unconfirmed`: the texts, if they left, cannot be accounted for.
     //
     // Read off `spot`, never the local: a pointer this tick just cleared because the
-    // carrier FAILED the message is a judged attempt, and re-attaching it would heal the
-    // watch back onto a text nobody received and then release it as delivered.
+    // carrier FAILED the message is that same judged attempt one tick earlier.
     if (spot.notifiedMessageId === null && spot.sendAttempts > 0) {
       const priorKey = spotOpenKey(spot.id, spot.openTransitions, spot.sendAttempts);
-      if (await deps.dedupeActive(database, priorKey)) {
-        const row = await findLedgerRowByDedupeKey(database, priorKey);
-        if (row === null) {
-          console.error(
-            { spotId: spot.id },
-            'watched spots: a key reads as spent but its row cannot be found',
-          );
-          return { kind: 'failed' };
-        }
+      const prior = await findLedgerRowByDedupeKey(database, priorKey);
+      if (prior !== null && prior.status !== 'failed') {
         await setNotifiedMessage(database, {
           spotId: spot.id,
-          channelMessageId: row.id,
+          channelMessageId: prior.id,
           now,
         });
         return { kind: 'healed' };
       }
       if (spot.sendAttempts >= MAX_SEND_ATTEMPTS) {
-        return releaseSpot(database, context, spot, 'send_unconfirmed', link.host, {
-          attempts: spot.sendAttempts,
-        });
+        return releaseSpot(
+          database,
+          context,
+          spot,
+          prior === null ? 'send_unconfirmed' : 'delivery_failed',
+          link.host,
+          { attempts: spot.sendAttempts },
+        );
       }
     }
 

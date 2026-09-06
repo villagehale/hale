@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { dedupeActive } from '~/lib/channel/ledger';
 import type { SendRefusalReason } from '~/lib/channel/reconcile/gate';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -160,7 +159,6 @@ function harness(overrides: Partial<Pick<Harness, 'randomValue' | 'msPerFetch'>>
     claimSlot: claimWatchedSpotsSlot,
     buildGate: () => ports,
     refuseUnbackedSend: async () => state.refusals,
-    dedupeActive: (database, key) => dedupeActive(key, database),
     resolveSendablePhone: async () => state.phone,
     transport: {
       async send(input) {
@@ -436,6 +434,85 @@ describe('runWatchedSpotsSweep — one text per opening', () => {
     expect((await readWatch(spotId)).notifiedMessageId).toBe(orphan?.id);
   });
 
+  it('retries past a prior attempt the carrier already judged FAILED, and never heals onto it', async () => {
+    // THE HEAL TRAP. `dedupeActive` consumes the key on 'failed' too, so asking it
+    // "was this key spent?" answers yes for a text nobody received — and the mutation
+    // this kills (healing on key-spent rather than on the ROW's status) re-attaches the
+    // watch to a dead row, counts it as `healed`, and then clears it again next tick:
+    // heal/clear every ten minutes all night, a fictional Radar count, and the retry
+    // arriving a tick late.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, {
+      lastState: 'open',
+      pendingKind: 'seat_opened',
+      openTransitions: 1,
+      sendAttempts: 1,
+    });
+    const [dead] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'spot_open',
+        templateKey: 'spot_open:seat_opened',
+        dedupeKey: spotOpenKey(spotId, 1, 1),
+        status: 'failed',
+        providerMessageId: 'SM-dead',
+      })
+      .returning({ id: schema.channelMessages.id });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.sent).toBe(1);
+    expect(summary.healed).toBe(0);
+    expect(test.sent).toHaveLength(1);
+    const keys = await db.database
+      .select({ key: schema.channelMessages.dedupeKey })
+      .from(schema.channelMessages)
+      .orderBy(asc(schema.channelMessages.createdAt));
+    expect(keys.map((k) => k.key)).toEqual([spotOpenKey(spotId, 1, 1), spotOpenKey(spotId, 1, 2)]);
+    const row = await readWatch(spotId);
+    expect(row.sendAttempts).toBe(2);
+    expect(row.notifiedMessageId).not.toBe(dead?.id);
+  });
+
+  it('ends the watch as delivery_failed when the last attempt left a failed row behind', async () => {
+    // The exhausted half of the same seam, and the mutation it kills is folding it into
+    // `send_unconfirmed`: a text the carrier explicitly threw away is not a text whose
+    // fate is unknown, and the two are different things to tell a founder.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, {
+      lastState: 'open',
+      pendingKind: 'seat_opened',
+      openTransitions: 1,
+      sendAttempts: 2,
+    });
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'spot_open',
+      templateKey: 'spot_open:seat_opened',
+      dedupeKey: spotOpenKey(spotId, 1, 2),
+      status: 'failed',
+      providerMessageId: 'SM-dead-2',
+    });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.released.delivery_failed).toBe(1);
+    expect(summary.healed).toBe(0);
+    expect(test.sent).toHaveLength(0);
+    expect((await readWatch(spotId)).releasedReason).toBe('delivery_failed');
+  });
+
   it('spends the second attempt when the ledger row itself was lost, then ends the watch', async () => {
     // recordSend threw after a successful transport.send: the attempt moved, no row
     // exists under any key. Bounded at two texts per opening, then a NAMED release —
@@ -455,6 +532,44 @@ describe('runWatchedSpotsSweep — one text per opening', () => {
     expect(summary.released.send_unconfirmed).toBe(1);
     expect(test.sent).toHaveLength(0);
     expect((await readWatch(spotId)).releasedReason).toBe('send_unconfirmed');
+  });
+
+  it('spends the attempt on the transport call, not on the bookkeeping that follows it', async () => {
+    // WHERE the attempt is claimed is the whole bound. `recordSend` throws here AFTER
+    // the text has left, which is the real failure the ordering exists for — the
+    // mutation this kills (claiming the attempt after `recordSend`) leaves the counter
+    // at zero for a text that went out and re-texts the household every ten minutes
+    // forever, with every other test in this file still green.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    test.deps.recordSend = async () => {
+      throw new Error('the ledger write was lost');
+    };
+    const spotId = await seedWatch(db.database, family, { lastState: 'full' });
+
+    const first = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+    expect(first).toMatchObject({ transitions: 1, sent: 0, failed: 1 });
+    expect((await readWatch(spotId)).sendAttempts).toBe(1);
+
+    const second = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
+    expect(second.failed).toBe(1);
+    expect((await readWatch(spotId)).sendAttempts).toBe(2);
+
+    const third = await runWatchedSpotsSweep(
+      db.database,
+      test.deps,
+      later(MIDDAY, 2 * TEN_MINUTES),
+    );
+    expect(third.released.send_unconfirmed).toBe(1);
+
+    const fourth = await runWatchedSpotsSweep(
+      db.database,
+      test.deps,
+      later(MIDDAY, 3 * TEN_MINUTES),
+    );
+    expect(fourth.polled).toBe(0);
+    expect(test.sent).toHaveLength(2);
   });
 });
 
@@ -484,6 +599,30 @@ describe('runWatchedSpotsSweep — a held observation is re-derived, never repla
     row = await readWatch(spotId);
     expect(row.sendAttempts).toBe(1);
     expect(test.sent[0]?.body).toContain('2 spots left');
+  });
+
+  it('wakes the household that asked to be woken, at 2 a.m.', async () => {
+    // The control is the test above: same page, same hour, `instant` false and held.
+    // The mutation this kills is the sweep never selecting the instant class (sending
+    // every watch as plain `spot_open`), which turns a parent's explicit opt-in into a
+    // quiet-hours hold — the opt-in folded into a bucket that means the opposite.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, {
+      lastState: 'full',
+      instant: true,
+      now: TWO_AM,
+    });
+
+    const night = await runWatchedSpotsSweep(db.database, test.deps, TWO_AM);
+
+    expect(night.sent).toBe(1);
+    expect(night.held.quiet_hours).toBe(0);
+    expect(test.sent).toHaveLength(1);
+    expect((await readWatch(spotId)).sendAttempts).toBe(1);
+    const [trail] = await auditVerbs(family.familyId);
+    expect(trail?.after).toMatchObject({ instant: true });
   });
 
   it('drops the held opening when the page refilled overnight, and says nothing', async () => {
@@ -991,6 +1130,45 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
     });
     expect(JSON.stringify(trail?.after)).not.toContain('Milliken');
     expect(JSON.stringify(trail?.after)).not.toContain('spots left');
+  });
+
+  it('logs enum-shaped facts only, never the class, the page or the portal record', async () => {
+    // Rule #1 on the log line, which nothing else in this lane enforces: the mutation
+    // this kills is one `console.info({ model: reading.model })` after the read — the
+    // whole portal payload, for one identifiable family's class, in Vercel's log drain.
+    const broken = await seedFamily(db.database, 'Broken');
+    const reading = await seedFamily(db.database, 'Reading');
+    const test = harness();
+    const brokenUrl = URL_FOR('00000000-0000-4000-8000-000000000001');
+    test.pages.set(brokenUrl, new Error(`fetch failed: ${brokenUrl}`));
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const brokenId = await seedWatch(db.database, broken, {
+      sourceUrl: brokenUrl,
+      nextPollAt: later(MIDDAY, -2 * TEN_MINUTES),
+    });
+    await seedWatch(db.database, reading, { lastState: 'full', label: 'Milliken swim' });
+
+    const logged: unknown[] = [];
+    const capture = (...args: unknown[]) => {
+      logged.push(...args);
+    };
+    const spies = (['info', 'warn', 'error'] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation(capture),
+    );
+    try {
+      await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+
+    const text = JSON.stringify(logged);
+    // Positive control: the spy caught the lines that DO fire, and they name a host.
+    expect(text).toContain(brokenId);
+    expect(text).toContain(HOST);
+    expect(text).not.toContain('Milliken swim');
+    expect(text).not.toContain('SpotsLeft');
+    expect(text).not.toContain(COURSE_ID);
+    expect(text).not.toContain(brokenUrl);
   });
 
   it('names the summary shape so a new fate cannot hide in an existing bucket', async () => {
