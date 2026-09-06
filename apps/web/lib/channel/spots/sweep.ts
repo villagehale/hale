@@ -902,7 +902,9 @@ async function readBody(
   spot: LiveWatchedSpot,
   url: string,
   host: string,
-): Promise<{ status: 'ok'; body: string } | { status: 'host_budget' | 'fetch_failed' }> {
+): Promise<
+  { status: 'ok'; body: string } | { status: 'host_budget' } | { status: 'fetch_failed' }
+> {
   const { deps } = context;
   let pending = context.pages.get(url);
   if (!pending) {

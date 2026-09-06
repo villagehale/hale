@@ -4,6 +4,7 @@ import { type Database, schema } from '@hale/db';
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dedupeActive } from '~/lib/channel/ledger';
+import type { SendRefusalReason } from '~/lib/channel/reconcile/gate';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { recordSpotWatchPromise } from './promise';
@@ -105,7 +106,7 @@ interface Harness {
   threaded: string[];
   pages: Map<string, string | Error>;
   gate: { enrolled: boolean; consented: boolean; recentSends: number };
-  refusals: string[];
+  refusals: SendRefusalReason[];
   phone: string | null;
   /** Milliseconds the fake wall clock advances per fetch — the run's own budget. */
   msPerFetch: number;
