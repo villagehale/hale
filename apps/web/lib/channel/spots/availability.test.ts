@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { type SpotReading, readSpot, transitionKind } from './availability';
+import { type SpotReading, readCourseModel, readSpot, transitionKind } from './availability';
 
 /**
  * VIL-337 · the reader, against the real bytes six PerfectMind course pages served.
@@ -361,5 +361,163 @@ describe('transitionKind', () => {
     ['open', open, null],
   ] as const)('%s -> the new reading', (prev, next, kind) => {
     expect(transitionKind(prev, next)).toBe(kind);
+  });
+});
+
+/**
+ * VIL-338 · the model without the verdict.
+ *
+ * The pre-open ladder asks a course page a different question than the watch does.
+ * The watch asks "can a parent book this right now"; the ladder asks "what class is
+ * this, when does its window open, and is this child in its band" — days BEFORE the
+ * window opens, on a page whose `IsFutureRegistration` and `CanNotBook` make it
+ * unreadable to the classifier by design. The single most plausible pre-open shape,
+ * seats with `CanNotBook: true`, is exactly the one `classify` throws the model away
+ * on (availability.ts, the seats branch), so 338 reads the model directly and never
+ * routes through a three-state verdict it has no use for.
+ *
+ * The split must cost 337 nothing, so the last test here is the composition itself.
+ */
+
+const OPEN_SEATS_MODEL_FIXTURES = [
+  ['markham-course', MARKHAM_COURSE],
+  ['newmarket-course', NEWMARKET_COURSE],
+  ['nvrc-course', NVRC_COURSE],
+  ['oakville-course', OAKVILLE_COURSE],
+  ['open-window-markham', OPEN_FULL_COURSE],
+  ['open-window-open-markham', OPEN_SEATS_COURSE],
+] as const;
+
+describe('readCourseModel', () => {
+  it.each(OPEN_SEATS_MODEL_FIXTURES)('hands back %s own model', (name, courseId) => {
+    const read = readCourseModel(fixture(name), courseId);
+
+    // Kills a reader that returns a re-serialised or partially-copied object: EventId
+    // is the page's own identity and the caller is about to bind a family's morning
+    // to this record.
+    expect(read).toMatchObject({ ok: true });
+    expect(read.ok && read.model.EventId.toLowerCase()).toBe(courseId);
+  });
+
+  it('hands back the model of a page classify calls inconsistent (ASSUMPTION model: seats with CanNotBook)', () => {
+    // THE SHAPE 338 EXISTS FOR, and no saved page shows it: every captured page with
+    // CanNotBook true is also full. Hand-edited from the real open-window model, so
+    // only the two named overrides are hypothetical. A course whose window has not
+    // opened plausibly publishes seats it will not yet let you book — and 337's
+    // classifier answers that page `unreadable/inconsistent`, WITHOUT the model, which
+    // would leave the ladder with no name, no clock and no age band for a class the
+    // parent already asked about.
+    const html = variant({ IsFull: false, SpotsLeft: 2, CanNotBook: true });
+
+    expect(readSpot(html, OPEN_FULL_COURSE)).toEqual({
+      state: 'unreadable',
+      reason: 'inconsistent',
+    });
+    const read = readCourseModel(html, OPEN_FULL_COURSE);
+    expect(read).toMatchObject({ ok: true });
+    expect(read.ok && read.model).toMatchObject({ SpotsLeft: 2, CanNotBook: true });
+  });
+
+  it.each([
+    [
+      'the HTTP-200 error page PerfectMind serves an unknown course',
+      () => fixture('markham-course-not-found'),
+      MARKHAM_COURSE,
+      'no_model',
+    ],
+    [
+      'a page whose script blocks were stripped',
+      () => fixture('markham-course').replace(/<script[\s\S]*?<\/script>/gi, ' '),
+      MARKHAM_COURSE,
+      'no_model',
+    ],
+    [
+      'a model that names a different course',
+      () => fixture('markham-course'),
+      NEWMARKET_COURSE,
+      'wrong_course',
+    ],
+    [
+      'a roster counted below zero',
+      () => variant({ IsFull: false, SpotsLeft: -1 }),
+      OPEN_FULL_COURSE,
+      'bad_model',
+    ],
+    ['a model cut off mid-object', () => variant().slice(0, 400), OPEN_FULL_COURSE, 'bad_model'],
+  ])('refuses %s', (_why, html, courseId, reason) => {
+    // Kills a reader that collapses the three refusals into one: 338's verdict order
+    // treats no_model as "this course is gone" only when the error-page signature is
+    // there, and bad_model / wrong_course as "unreadable" always. A reason that does
+    // not survive the split sends the wrong sentence on the wrong morning.
+    expect(readCourseModel(html(), courseId)).toEqual({ ok: false, reason });
+  });
+
+  it('is what readSpot reads, on every page this suite has', () => {
+    // THE COMPOSITION. readSpot must be `classify` over this function and nothing
+    // else, or 337's watch and 338's ladder are reading the same bytes two ways.
+    // Kills: a second parse in readSpot, a re-mapped refusal (wrong_course reported as
+    // bad_model), and a classify-only reason leaking out of readCourseModel.
+    const corpus: [string, string, string][] = [
+      ...OPEN_SEATS_MODEL_FIXTURES.map(
+        ([name, id]) => [name, fixture(name), id] as [string, string, string],
+      ),
+      ['not-found', fixture('markham-course-not-found'), MARKHAM_COURSE],
+      ['wrong course', fixture('markham-course'), NEWMARKET_COURSE],
+      [
+        'seats with CanNotBook',
+        variant({ IsFull: false, SpotsLeft: 2, CanNotBook: true }),
+        OPEN_FULL_COURSE,
+      ],
+      ['full with three spots left', variant({ IsFull: true, SpotsLeft: 3 }), OPEN_FULL_COURSE],
+      ['a negative roster', variant({ IsFull: false, SpotsLeft: -1 }), OPEN_FULL_COURSE],
+      [
+        'a moved serialisation',
+        variant().replace('"SpotsLeft":0', '"SpotsLeft": 0'),
+        OPEN_FULL_COURSE,
+      ],
+      [
+        'an escaped schedule',
+        variant().replace('"StartTime":"05:00 PM"', '"StartTime":"05:00 \\u0050M"'),
+        OPEN_FULL_COURSE,
+      ],
+      ['registration closed', variant({ IsRegistrationClosed: true }), OPEN_FULL_COURSE],
+      ['not yet open', variant({ IsFutureRegistration: true }), OPEN_FULL_COURSE],
+      ['a waitlist with none left', variant({ WaitListSpotsLeft: 0 }), OPEN_FULL_COURSE],
+      ['a truncated model', variant().slice(0, 400), OPEN_FULL_COURSE],
+    ];
+    const seen = new Set<string>();
+
+    for (const [label, html, courseId] of corpus) {
+      const read = readCourseModel(html, courseId);
+      const reading = readSpot(html, courseId);
+      if (!read.ok) {
+        seen.add(read.reason);
+        expect({ label, reading }).toEqual({
+          label,
+          reading: { state: 'unreadable', reason: read.reason },
+        });
+        continue;
+      }
+      if (reading.state === 'unreadable') {
+        seen.add(`classify:${reading.reason}`);
+        expect({ label, reason: reading.reason }).toEqual({ label, reason: 'inconsistent' });
+        continue;
+      }
+      seen.add(`state:${reading.state}`);
+      expect({ label, model: reading.model }).toEqual({ label, model: read.model });
+    }
+
+    // The positive control: an empty or one-shaped corpus would pass the loop above
+    // saying nothing. Every arm of the split has to appear.
+    expect([...seen].sort()).toEqual([
+      'bad_model',
+      'classify:inconsistent',
+      'no_model',
+      'state:full',
+      'state:not_registrable',
+      'state:open',
+      'state:waitlist_full',
+      'wrong_course',
+    ]);
   });
 });
