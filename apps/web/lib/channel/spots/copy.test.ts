@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 import { type BookMe4Model, readSpot } from './availability';
 import { MAX_SPOT_OPEN_SEGMENTS, renderSpotOpen, spotOpenViolations } from './copy';
@@ -91,6 +90,23 @@ describe('renderSpotOpen — a seat', () => {
     expect(body).toBe(`${PORTAL} now shows 2 spots left for Tue swim. ${URL}`);
   });
 
+  it("prints a parent's own course name whatever digits are in it", () => {
+    // Real course names on these portals carry digits -- Markham publishes "Swimmer 3"
+    // and "Ages 4 to 7". The label is declared by the caller at arming, never invented
+    // by the composer, so it is context the digit rule reads past rather than a place
+    // an unbacked count could hide. Scanning it made every such watch throw forever.
+    const body = renderSpotOpen({
+      kind: 'seat_opened',
+      portalLabel: PORTAL,
+      label: 'Tue 4:30 swim',
+      url: URL,
+      model: model({ SpotsLeft: 2 }),
+      evidence: ['"SpotsLeft":2'],
+    });
+
+    expect(body).toBe(`${PORTAL} now shows 2 spots left for Tue 4:30 swim. ${URL}`);
+  });
+
   it('THROWS rather than announce a seat the counter does not show', () => {
     // `transitionKind` only says seat_opened off a reading with SpotsLeft > 0, so a zero
     // here means the composer was handed a kind and a model from different ticks. "0
@@ -143,6 +159,23 @@ describe('renderSpotOpen — a waitlist', () => {
     expect(outsideTheUrl(body)).not.toMatch(/\d/);
   });
 
+  it('says there is room behind a label that carries digits of its own', () => {
+    // The count is null on this path, so the digit rule's other arm ("no count backs
+    // any digit") is the one that used to refuse "Ages 4 to 7" -- a course name, not a
+    // headcount. The headcount ban still has to hold over it.
+    const body = renderSpotOpen({
+      kind: 'waitlist_reopened',
+      portalLabel: PORTAL,
+      label: 'Ages 4 to 7 lego',
+      url: URL,
+      model: model({ WaitListSpotsLeft: 94 }),
+      evidence: ['"IsWaitListAvailable":true', '"WaitListSpotsLeft":94'],
+    });
+
+    expect(body).toBe(`${PORTAL} now shows room on the waitlist for Ages 4 to 7 lego. ${URL}`);
+    expect(body).not.toMatch(/spots?\s+left/i);
+  });
+
   it.each([
     [
       'a waitlist with nobody able to join it',
@@ -192,11 +225,17 @@ describe('renderSpotOpen — what every body must satisfy', () => {
     expect(body).toContain(URL);
   });
 
-  it('asks nothing, and claims nothing a ledger would have to back', () => {
+  it('asks nothing', () => {
     // The ticket's own draft ended "Want the link?" — a question with no row behind it
     // is the 2026-08-22 defect, and the link is already in the text.
+    //
+    // There was an `extractStateClaims(body)).toEqual([])` here too. It was deleted
+    // rather than given a positive control: the extractor only names a sentence whose
+    // first-person future verb ALSO carries a registration subject, so it returns []
+    // for "I'll text you again if it changes" — the edit the assertion was meant to
+    // catch — and an assertion that passes on the defect is not a gate. The real rail
+    // is `refuseUnbackedSend`, which the sweep runs on the wire string.
     expect(outsideTheUrl(body)).not.toContain('?');
-    expect(extractStateClaims(body)).toEqual([]);
   });
 
   it('fits three segments in its worst case, in GSM-7', () => {
@@ -225,6 +264,7 @@ describe('spotOpenViolations', () => {
     kind: 'seat_opened' as const,
     count: 2,
     when: null,
+    label: 'Tue swim',
     model: model({ SpotsLeft: 2 }),
   };
   const good = `${PORTAL} now shows 2 spots left for Tue swim. ${URL}`;

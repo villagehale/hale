@@ -28,6 +28,15 @@ import { type BookMe4Model, type SpotTransitionKind, fragment } from './availabi
  *     unbacked count or an unbacked waitlist, and DROPS an unbacked parenthetical — the
  *     schedule is decoration, the seat is the message.
  *
+ *   THE GATE BINDS WHAT THE COMPOSER INVENTED, WHICH IS TWO THINGS. Only `count` and
+ *     `when` come from the model, so only those are what the leftover-text scans exist
+ *     to catch. `url` and `label` are DECLARED — the sanitizer wrote one, the parent
+ *     wrote the other at arming — so both are subtracted before the scans run. Reading
+ *     the label was not a stricter gate, it was a broken one: Markham publishes courses
+ *     called "Swimmer 3" and "Ages 4 to 7", and a watch on one of them threw
+ *     `unbacked_digit` on every tick, forever, while looking exactly like a watch that
+ *     had nothing to report.
+ *
  *   THERE IS NO WAITLIST HEADCOUNT. The model carries `WaitListCapacity` 99 and
  *     `WaitListSpotsLeft` 94, so "5 people ahead of you" is arithmetic over two fields
  *     — a derived number, which is the one thing the evidence rule forbids. The
@@ -74,6 +83,9 @@ export interface SpotOpenContext {
   count: number | null;
   /** The schedule phrase the body prints verbatim from the model, or null. */
   when: string | null;
+  /** What the parent called the class. Declared, not invented — subtracted with the
+   * url before the leftover-text scans, so its digits are its own. */
+  label: string;
   /** THIS tick's parsed model. The claims above are the body's; this and `evidence`
    * are what they are checked against. */
   model: BookMe4Model;
@@ -132,7 +144,7 @@ export function spotOpenViolations(body: string, context: SpotOpenContext): stri
     violations.push('unbacked_when');
   }
 
-  const rest = without(without(body, context.url), context.when);
+  const rest = without(without(without(body, context.url), context.when), context.label);
   if (rest.includes('?')) violations.push('asks_a_question');
   const digits = rest.match(/\d+/g) ?? [];
   if (digits.some((run) => context.count === null || run !== String(context.count))) {
@@ -166,6 +178,7 @@ export function renderSpotOpen(input: SpotOpenInput): string {
     kind: input.kind,
     count,
     when,
+    label: input.label,
     model: input.model,
   });
   if (violations.length > 0) {
