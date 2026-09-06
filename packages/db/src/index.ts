@@ -33,3 +33,15 @@ export type {
   CivicVenueKind,
 } from './schema/civic.js';
 export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';
+export type {
+  WatchedSpot,
+  NewWatchedSpot,
+  WatchedSpotPendingKind,
+  WatchedSpotReleaseReason,
+  WatchedSpotState,
+} from './schema/watched-spots.js';
+export {
+  WATCHED_SPOT_PENDING_KINDS,
+  WATCHED_SPOT_RELEASE_REASONS,
+  WATCHED_SPOT_STATES,
+} from './schema/watched-spots.js';

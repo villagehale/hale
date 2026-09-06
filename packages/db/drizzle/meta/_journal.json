@@ -743,6 +743,13 @@
       "when": 1781469602000,
       "tag": "0108_outbound_send_swept_at",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1781469603000,
+      "tag": "0109_watched_spots",
+      "breakpoints": true
     }
   ]
 }
