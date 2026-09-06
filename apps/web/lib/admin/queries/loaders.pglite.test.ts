@@ -236,10 +236,13 @@ describe('loadWatchedSpots — live counts and the arm-failure window (seeded, e
         notifiedMessageId: 'CM-sent',
         lastPolledAt: new Date('2026-08-30T09:00:00.000Z'),
       }),
-      // Released, holding the newest poll and a failure streak: a loader that
-      // forgot `released_at is null` would show all three of those.
+      // Released, holding the newest poll, a failure streak AND an un-texted pending
+      // observation: a loader that forgot `released_at is null` on any of the four
+      // counters would show it here.
       spot('d', {
         consecutiveFailures: 3,
+        pendingKind: 'seat_opened',
+        pendingSince: new Date('2026-09-01T07:00:00.000Z'),
         lastPolledAt: new Date('2026-09-01T08:00:00.000Z'),
         releasedAt: new Date('2026-09-01T08:00:00.000Z'),
         releasedReason: 'notified',
@@ -259,8 +262,11 @@ describe('loadWatchedSpots — live counts and the arm-failure window (seeded, e
     });
     await db.database.insert(schema.auditLog).values([
       audit('watched_spot_arm_failed', new Date()),
-      // Same verb outside the window, and the successful verb inside it.
-      audit('watched_spot_arm_failed', new Date(Date.now() - 3 * 86_400_000)),
+      // The same verb one hour past the window — a window widened to 48h would count
+      // it — and TWO successes inside it, so a loader counting the sibling verb by
+      // mistake reads 2, never the 1 it happens to share.
+      audit('watched_spot_arm_failed', new Date(Date.now() - 25 * 3_600_000)),
+      audit('watched_spot_armed', new Date()),
       audit('watched_spot_armed', new Date()),
     ]);
 
