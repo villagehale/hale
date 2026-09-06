@@ -1,9 +1,9 @@
 import nextDynamic from 'next/dynamic';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
 import { RadarTimeline } from '~/components/admin/radar-timeline';
-import { cachedRadar } from '~/lib/admin/cached';
+import { cachedRadar, cachedWatchedSpots } from '~/lib/admin/cached';
 import { supabaseTableUrl } from '~/lib/admin/links';
-import { STALE_VERIFY_DAYS } from '~/lib/admin/panel-state';
+import { minutesAgo, STALE_POLL_MINUTES, STALE_VERIFY_DAYS } from '~/lib/admin/panel-state';
 
 const DataTable = nextDynamic(() =>
   import('~/components/admin/data-table').then((m) => m.DataTable),
@@ -57,6 +57,52 @@ async function FreshnessBody() {
         ) : null}
       </div>
       {!radar.lastVerifyRun ? <p className="adm-state">No verify sweep has run yet.</p> : null}
+    </div>
+  );
+}
+
+async function WatchedSpotsBody() {
+  const watched = await cachedWatchedSpots();
+  const polledMinutesAgo = watched.lastPolledAt
+    ? minutesAgo(watched.lastPolledAt, new Date())
+    : null;
+  return (
+    <div>
+      <div className="adm-stat-row">
+        <div className="adm-stat">
+          <div className="adm-stat-v">{watched.live}</div>
+          <div className="adm-stat-k">watched</div>
+        </div>
+        <div className="adm-stat">
+          <div className="adm-stat-v">{watched.pending}</div>
+          <div className="adm-stat-k">openings held</div>
+        </div>
+        <div className="adm-stat">
+          <div className="adm-stat-v">{watched.unreadable}</div>
+          <div className="adm-stat-k">unreadable</div>
+        </div>
+        <div className="adm-stat">
+          <div className="adm-stat-v">
+            {polledMinutesAgo === null ? (
+              <span className="adm-tile-fail">never</span>
+            ) : polledMinutesAgo > STALE_POLL_MINUTES ? (
+              <span className="adm-stale">{polledMinutesAgo}m ago</span>
+            ) : (
+              `${polledMinutesAgo}m ago`
+            )}
+          </div>
+          <div className="adm-stat-k">
+            {polledMinutesAgo === null ? 'never polled' : 'last poll'}
+          </div>
+        </div>
+        <div className="adm-stat">
+          <div className={`adm-stat-v${watched.armFailures24h > 0 ? ' adm-tile-fail' : ''}`}>
+            {watched.armFailures24h}
+          </div>
+          <div className="adm-stat-k">arm failures 24h</div>
+        </div>
+      </div>
+      {watched.live === 0 ? <p className="adm-state">No spots are being watched.</p> : null}
     </div>
   );
 }
@@ -131,6 +177,11 @@ export default function AdminRadarPage() {
       eyebrow: 'Outcomes',
       links: [{ label: 'Open in Supabase', href: supabaseTableUrl('registration_sequences') }],
       body: <OutcomesBody />,
+    },
+    {
+      eyebrow: 'Watched spots',
+      links: [{ label: 'Open in Supabase', href: supabaseTableUrl('watched_spots') }],
+      body: <WatchedSpotsBody />,
     },
     {
       eyebrow: 'Upcoming windows',
