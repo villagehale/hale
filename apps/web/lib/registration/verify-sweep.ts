@@ -119,8 +119,8 @@ function stripHtml(html: string): string {
 const PAGE_FETCH_HEADERS = { Accept: 'text/html,application/xhtml+xml' } as const;
 
 /**
- * The bytes as the server sent them — the timeout, the status throw and the 4 MB
- * refusal, and nothing else.
+ * The bytes as the server sent them — the timeout, the status throw, the 4 MB refusal
+ * and the redirect refusal, and nothing else.
  *
  * IT IS THE PRIMITIVE BECAUSE THE STRIP IS NOT UNIVERSAL (VIL-337). A PerfectMind
  * course page says nothing readable about availability — its visible text strips to
@@ -128,13 +128,24 @@ const PAGE_FETCH_HEADERS = { Accept: 'text/html,application/xhtml+xml' } as cons
  * a JSON object literal inside a `<script>` block, which `stripHtml` deletes. A watcher
  * built on `createFetchPage` could therefore never see a spot open. Both callers must
  * still inherit the refusals, so they live down here rather than beside the strip.
+ *
+ * A REDIRECT IS A FAILURE, NOT A HOP. The caller checked one host against a registry
+ * before it ever got here — the spot watcher's sanitizer (channel/spots/url.ts) is the
+ * strict case — and then polls that one URL every ten minutes for sixty days. Following
+ * a 302 would keep answering 200 from an origin nobody approved, so the standing poll
+ * would move hosts and go on looking healthy. `redirect: 'error'` makes that a named
+ * fetch failure the sweep already knows how to report.
  */
 export function createFetchBody(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
   return async (url: string) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { headers: PAGE_FETCH_HEADERS, signal: controller.signal });
+      const res = await fetch(url, {
+        headers: PAGE_FETCH_HEADERS,
+        redirect: 'error',
+        signal: controller.signal,
+      });
       if (!res.ok) {
         throw new Error(`page fetch ${url} → HTTP ${res.status}`);
       }

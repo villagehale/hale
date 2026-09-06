@@ -94,6 +94,11 @@ export function sanitizeSpotUrl(raw: string): SpotUrlResult {
 
   const portal = SPOT_PORTAL_HOSTS[parsed.hostname];
   if (portal === undefined) return { ok: false, reason: 'host_not_allowed' };
+  // The rebuild below is written from `hostname`, so a pasted `:8443` would be dropped
+  // rather than honoured: Hale would store and poll a DIFFERENT address than the one
+  // the parent checked. Refuse it instead. WHATWG has already dropped `:443`, which is
+  // the address the registry approved, so this only ever sees a real second port.
+  if (parsed.port !== '') return { ok: false, reason: 'not_a_course_page' };
   if (!COURSE_PAGE_PATH.test(parsed.pathname)) return { ok: false, reason: 'not_a_course_page' };
 
   const widgetId = parsed.searchParams.get('widgetId');

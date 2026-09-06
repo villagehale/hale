@@ -128,8 +128,23 @@ describe('sanitizeSpotUrl — what it refuses', () => {
     ['no widget id at all', `${COURSE_PAGE}?courseId=${COURSE}`, 'not_a_course_page'],
     ['something that is not a link', 'the swim one on markham dot ca', 'not_a_course_page'],
     ['600 characters of paste', `${CLEAN}&${'junk=1&'.repeat(80)}`, 'too_long'],
+    [
+      'an explicit port, which the rebuild would have silently dropped',
+      `https://cityofmarkham.perfectmind.com:8443/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=${WIDGET}&courseId=${COURSE}`,
+      'not_a_course_page',
+    ],
   ])('refuses %s', (_why, raw, reason) => {
     expect(sanitizeSpotUrl(raw)).toEqual({ ok: false, reason });
+  });
+
+  it('still takes the canonical port written out in full', () => {
+    // The positive control for the row above: :443 IS the address the registry
+    // approved, and WHATWG drops it at parse, so refusing every written port would
+    // refuse a link that is already the one we would have rebuilt.
+    expect(sanitizeSpotUrl(CLEAN.replace(MARKHAM, `${MARKHAM}:443`))).toMatchObject({
+      ok: true,
+      url: CLEAN,
+    });
   });
 });
 
