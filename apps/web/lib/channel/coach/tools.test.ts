@@ -113,6 +113,7 @@ function harness(
     draftPort: port,
     villageTool: null,
     activity: null,
+    spots: null,
     onDraft: (actionId) => minted.push(actionId),
     now: NOW,
   });

@@ -29,6 +29,7 @@ import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { recordStatedState } from '~/lib/channel/stated-state';
+import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import {
@@ -585,6 +586,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // message, and the router is the only thing that knows which row that was.
     reconcileView: loadReconcileView,
     recordRegistrationWatch,
+    armWatchedSpot,
     limiter: new PostgresRateLimiter(database),
     now: () => new Date(),
     log: console,

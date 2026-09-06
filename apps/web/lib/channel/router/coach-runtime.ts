@@ -1,5 +1,6 @@
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
+import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { capabilityReply } from './copy';
 
 /**
@@ -75,6 +76,13 @@ export interface ChannelTurnResult {
    * promise with no row behind it cost on 2026-08-20.
    */
   activityPromise: ActivityPromise | null;
+  /**
+   * The course page this turn started watching, if it started one. Rides out for the
+   * reason the two above it do, and with one extra edge: `watched_spots.created_from`
+   * is the outbound row that carried the arming sentence, so a turn that composed
+   * "I'm watching that" and never reached a transport arms nothing at all.
+   */
+  spotWatch: SpotWatchIntent | null;
 }
 
 export interface ChannelCoachRuntime {
@@ -138,7 +146,7 @@ export function draftsFromFailure(err: unknown): readonly string[] {
 export function capabilityStubRuntime(): ChannelCoachRuntime {
   return {
     async respond() {
-      return { reply: capabilityReply(), planOffer: null, activityPromise: null };
+      return { reply: capabilityReply(), planOffer: null, activityPromise: null, spotWatch: null };
     },
   };
 }

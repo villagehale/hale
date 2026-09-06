@@ -28,6 +28,7 @@ import {
   reconcileViolations,
   withoutRefusedClaims,
 } from '~/lib/channel/reconcile/reconcile';
+import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
@@ -368,6 +369,23 @@ export interface ChannelRouterDeps {
       now: Date;
     },
   ): Promise<unknown>;
+  /**
+   * Arm the course-page watch the coach just started, against the message that carried
+   * the arming sentence. Non-nullable (rule #11) for the same reason its two neighbours
+   * are, plus one of its own: the parent has been told a third party is being polled on
+   * their behalf, and a router with no writer wired would say so every time and watch
+   * nothing. Its own failures are audit rows rather than throws — see armWatchedSpot.
+   */
+  armWatchedSpot(
+    database: Database,
+    input: {
+      familyId: string;
+      parentUserId: string;
+      intent: SpotWatchIntent;
+      channelMessageId: string | null;
+      now: Date;
+    },
+  ): Promise<WatchedSpotArmOutcome>;
   limiter: RateLimiter;
   now(): Date;
   log: Pick<Console, 'info' | 'warn' | 'error'>;
@@ -1053,7 +1071,7 @@ async function runAgentTurn(
       familyId: args.turn.familyId,
       now: args.turn.now,
     });
-    const { reply, planOffer, activityPromise, mints } = await composeReconciledReply(
+    const { reply, planOffer, activityPromise, spotWatch, mints } = await composeReconciledReply(
       deps,
       args,
       view,
@@ -1124,6 +1142,25 @@ async function runAgentTurn(
         channelMessageId,
         now: args.turn.now,
       });
+    }
+    // THE COURSE PAGE THIS TURN STARTED WATCHING (VIL-337). Same send-time discipline
+    // and same never-throws contract: the row is armed against the outbound message
+    // that carried "I'm watching that", and a turn that composed the sentence without
+    // reaching a transport promised nobody anything. What it CAN report is a failed
+    // arm, which it writes to the trail rather than raising — the parent already has
+    // the text, and an exception here would buy a carrier retry and a second copy of it.
+    if (spotWatch) {
+      const armed = await deps.armWatchedSpot(deps.database, {
+        familyId: args.turn.familyId,
+        parentUserId: args.turn.parentUserId,
+        intent: spotWatch,
+        channelMessageId,
+        now: args.turn.now,
+      });
+      deps.log.info(
+        { arm: armed.status, host: spotWatch.host },
+        'channel router: watched spot armed after the send',
+      );
     }
     return done(deps, args.job, {
       status: 'agent_replied',
@@ -1251,7 +1288,15 @@ async function composeReconciledReply(
       // What THIS turn's tools already registered. A promise the router is about to write
       // is a promise: the sentence and the row go out together, so the model calling
       // `promise_activity_followup` is what makes "I'll come back to you" true.
-      pendingKinds: new Set(result.activityPromise ? ['activity_followup' as const] : []),
+      pendingKinds: new Set(
+        [
+          result.activityPromise ? ('activity_followup' as const) : null,
+          // The watch the arming verb just registered. Without this the first honest
+          // "I'm watching that class" is refused as an unbacked registration claim and
+          // rewritten away, while the row it names is one send from existing.
+          result.spotWatch ? ('spot_watch' as const) : null,
+        ].filter((kind) => kind !== null),
+      ),
     });
     if (verdict.refused.length === 0) {
       return { ...result, mints: verdict.mints };

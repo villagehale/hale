@@ -9,6 +9,7 @@ import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/l
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -134,7 +135,7 @@ function fakeCoach(
       coach.calls += 1;
       coach.standingQuestions.push([...turn.standingQuestions]);
       coach.rejected.push([...rejectedLastAttempt]);
-      return { reply, planOffer: null, activityPromise: null };
+      return { reply, planOffer: null, activityPromise: null, spotWatch: null };
     },
   };
   return coach;
@@ -374,6 +375,7 @@ function harness(
     recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
     reconcileView?: ChannelRouterDeps['reconcileView'];
     recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
+    armWatchedSpot?: ChannelRouterDeps['armWatchedSpot'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
     dispatchDeepResearch?: ChannelRouterDeps['dispatchDeepResearch'];
   } = {},
@@ -416,6 +418,8 @@ function harness(
         options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
       recordRegistrationWatch:
         options.recordRegistrationWatch ?? (async () => ({ status: 'recorded' as const })),
+      armWatchedSpot:
+        options.armWatchedSpot ?? (async () => ({ status: 'armed' as const, spotId: 'spot-1' })),
       dispatchDeepResearch:
         options.dispatchDeepResearch ?? (async () => ({ status: 'enqueued' as const })),
       questions: options.questions ?? fakeQuestions([]),
@@ -1072,6 +1076,7 @@ describe('an offered full plan', () => {
         return {
           reply: "Most 2-year-olds wake once or twice. Want the full plan? Reply YES and I'll send it.",
           activityPromise: null,
+          spotWatch: null,
           planOffer: {
             topic: 'sleep',
             childId: null,
@@ -1163,7 +1168,8 @@ describe('slow turns', () => {
     });
     return {
       respond: () => pending,
-      release: (reply: string) => resolve({ reply, planOffer: null, activityPromise: null }),
+      release: (reply: string) =>
+        resolve({ reply, planOffer: null, activityPromise: null, spotWatch: null }),
     };
   }
 
@@ -2583,7 +2589,7 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
 
   /** A coach whose answers are scripted per attempt — the re-ask is the point. */
   function scriptedCoach(
-    turns: readonly { reply: string; activityPromise?: ActivityPromise }[],
+    turns: readonly { reply: string; activityPromise?: ActivityPromise; spotWatch?: SpotWatchIntent }[],
   ): ChannelCoachRuntime & { rejected: string[][] } {
     let attempt = 0;
     const coach = {
@@ -2596,6 +2602,7 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
           reply: scripted?.reply ?? '',
           planOffer: null,
           activityPromise: scripted?.activityPromise ?? null,
+          spotWatch: scripted?.spotWatch ?? null,
         };
       },
     };
@@ -2629,6 +2636,45 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
       // Against the row that CARRIED it — the MEM-10 send-time discipline.
       channelMessageId: ledgerRows(h.fake)[0]?.id,
     });
+  });
+
+  it('(a3) VIL-337 — the watch verb backs its own sentence, and the row is armed after the send', async () => {
+    const armed: unknown[] = [];
+    const intent = {
+      url: 'https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=15f6af07-39c5-473e-b053-96653f77a406&courseId=85770d4d-bce9-4e53-b969-cf7e88775180',
+      host: 'cityofmarkham.perfectmind.com',
+      portalLabel: "Markham's portal",
+      label: 'Tuesday preschool swim',
+      instant: false,
+      lastState: 'full' as const,
+    };
+    const h = harness({
+      coach: scriptedCoach([
+        { reply: "I'm watching that class and I'll text you when a spot opens.", spotWatch: intent },
+      ]),
+      armWatchedSpot: async (_db, input) => {
+        armed.push(input);
+        return { status: 'armed' as const, spotId: 'spot-1' };
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+
+    // The sentence goes out AS WRITTEN. Without the `spot_watch` widening in the
+    // reconcile view this is an unbacked registration claim, re-asked once and then cut.
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      "I'm watching that class and I'll text you when a spot opens.",
+    ]);
+    expect(armed).toEqual([
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        intent,
+        // Against the row that CARRIED it: a compose that never reached a transport
+        // must not leave a household being watched without having been told.
+        channelMessageId: ledgerRows(h.fake)[0]?.id,
+        now: NOW,
+      },
+    ]);
   });
 
   it('(a2) refuses the same sentence when no window matched and no ladder runs', async () => {
@@ -2785,7 +2831,7 @@ describe('what the parent stated is written before anything reads it', () => {
     const coach: ChannelCoachRuntime = {
       async respond() {
         order.push('coach');
-        return { reply: 'noted', planOffer: null, activityPromise: null };
+        return { reply: 'noted', planOffer: null, activityPromise: null, spotWatch: null };
       },
     };
     const h = harness({
@@ -2875,6 +2921,7 @@ describe('a promise worth opening pages for is dispatched at question time', () 
           reply: `Cartwheels runs a parent and tot block. I'll go and read their fall schedule and text you.`,
           planOffer: null,
           activityPromise: { subject, childId: null },
+          spotWatch: null,
         };
       },
     };

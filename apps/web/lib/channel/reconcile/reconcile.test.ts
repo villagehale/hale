@@ -70,6 +70,51 @@ describe('reconcile — the registration watch', () => {
   });
 });
 
+/**
+ * VIL-337 · a watched course page backs the watch sentence too.
+ *
+ * The ack a parent gets after `watch_for_opening` — "I'm watching that class and I'll
+ * text you when a spot opens" — is classified `registration_watch` by kindOf, and before
+ * this it was refused twice and rewritten away while the row it names was one send from
+ * existing. The widening is two membership checks; the negative control below is what
+ * keeps it from becoming "any open commitment backs any watch sentence".
+ */
+describe('reconcile — the spot watch', () => {
+  const body = "I'm watching that class and I'll text you when a spot opens.";
+
+  it('MATCHES the watch this very send is about to arm', () => {
+    const verdict = verdictFor(body, view({ pendingKinds: new Set(['spot_watch']) }));
+    expect(verdict.refused).toEqual([]);
+    expect(verdict.mints).toEqual([]);
+    expect(verdict.resolutions[0]).toMatchObject({
+      status: 'matched',
+      matchedBy: 'pending_commitment',
+    });
+  });
+
+  it('MATCHES a watch this family already has open', () => {
+    const verdict = verdictFor(body, view({ openKinds: new Set(['spot_watch']) }));
+    expect(verdict.refused).toEqual([]);
+    expect(verdict.resolutions[0]).toMatchObject({
+      status: 'matched',
+      matchedBy: 'open_commitment',
+    });
+  });
+
+  it('REFUSES the same sentence with no watch, no window and no ladder', () => {
+    // THE NEGATIVE CONTROL. Without it the two tests above pass on a branch that
+    // matches every registration claim regardless of what is in the view.
+    const verdict = verdictFor(body, view());
+    expect(verdict.mints).toEqual([]);
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+
+  it('does not let an unrelated open commitment back it', () => {
+    const verdict = verdictFor(body, view({ openKinds: new Set(['activity_followup']) }));
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+});
+
 describe('reconcile — the activity follow-up', () => {
   const body = "I'm checking details on 5 finds nearby - I'll text you the good ones.";
 

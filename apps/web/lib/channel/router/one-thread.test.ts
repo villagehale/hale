@@ -85,7 +85,7 @@ describe('one parent, two doors, one conversation', () => {
           .where(eq(schema.messages.conversationId, turn.conversationId))
           .orderBy(asc(schema.messages.createdAt));
         transcripts.push(rows.map((row) => row.content));
-        return { reply, planOffer: null, activityPromise: null };
+        return { reply, planOffer: null, activityPromise: null, spotWatch: null };
       },
     };
   }
@@ -117,6 +117,7 @@ describe('one parent, two doors, one conversation', () => {
       reconcileView: loadReconcileView,
       recordStatedState: async () => ({ status: 'nothing_stated' }),
       recordRegistrationWatch: async () => ({ status: 'recorded' }),
+      armWatchedSpot: async () => ({ status: 'armed', spotId: 'spot-1' }),
       dispatchDeepResearch: async () => ({ status: 'enqueued' }),
       limiter: new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,

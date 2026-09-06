@@ -29,9 +29,14 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
       // So parity has to be checked against the set the LIVE path actually builds, not
       // against the smallest one this function can produce.
       activity: { reader: {} as never, finder: {} as never },
+      // Production wires the watch verb's three ports too (see productionChannelCoach),
+      // and the frontmatter names it — a parity set built without them would report a
+      // skill listing a tool nobody registers, which is a mid-turn throw in prod.
+      spots: { fetchBody: {} as never, reader: {} as never, watchConsentGranted: {} as never },
       onOffer: () => {},
       onShare: () => {},
       onPromise: () => {},
+      onWatch: () => {},
       now: new Date(),
     }).map((t) => t.name);
 

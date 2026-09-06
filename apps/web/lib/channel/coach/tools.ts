@@ -10,6 +10,8 @@ import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { findActivitiesTool, promiseActivityFollowUpTool } from '~/lib/channel/activity/tools';
 import { type PlanOffer, offerFullPlanTool } from '~/lib/channel/plan/offer';
 import { type ReferralShare, shareReferralLinkTool } from '~/lib/channel/referral/share';
+import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import { type SpotWatchPorts, watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
@@ -136,6 +138,23 @@ export interface ChannelCoachToolArgs {
    * collecting the promise (rule #11) — which is precisely the 2026-08-20 defect.
    */
   onPromise?: (promise: ActivityPromise) => void;
+  /**
+   * The three ports the watch verb needs, or null in a test that is not exercising it.
+   * They travel together for the reason `activity`'s two do: a reader with no consent
+   * port could arm a watch for a household the outbound gate would then refuse to text,
+   * and a fetch with no reader could not gate the label it is about to store (rule #1).
+   */
+  spots: SpotWatchPorts | null;
+  /**
+   * Told when the turn starts watching a course page. Same shape and same reason as
+   * `onOffer`: `watched_spots.created_from` is NOT NULL against the outbound row that
+   * carried the arming sentence, and at tool-call time nothing has been sent.
+   *
+   * Absent in a test that is not exercising it; the verb is then not registered at all,
+   * so there is no path on which Hale says it is watching with nobody collecting the
+   * watch (rule #11).
+   */
+  onWatch?: (watch: SpotWatchIntent) => void;
   now: Date;
 }
 
@@ -526,6 +545,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   // and the same reason: a share the runtime is not collecting is a parent told to
   // forward a message with no link in it.
   if (args.onShare) tools.push(shareReferralLinkTool(familyId, args.onShare));
+  // The watch verb, on the same registration rule and for the sharpest version of the
+  // reason: an "I'm watching that page" whose intent nobody collects is a parent who has
+  // been told Hale is polling a portal for them when nothing is (rule #11). The dark
+  // flag does NOT decide this — the frontmatter names the verb, and `toAnthropicTools`
+  // throws on a name nobody registered, so the feature's darkness lives in the sweep.
+  if (args.spots && args.onWatch) {
+    tools.push(watchForOpeningTool({ ...args.spots, onWatch: args.onWatch }));
+  }
   return tools;
 }
 

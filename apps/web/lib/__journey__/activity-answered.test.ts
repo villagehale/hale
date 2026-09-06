@@ -461,6 +461,7 @@ describe('the activity question is answered', () => {
             reader: bindActivityReader(database, productionActivityFamilyReader()),
             finder: createActivityFinder(client),
           },
+          spots: null,
           onDraft,
           onOffer,
           onShare,

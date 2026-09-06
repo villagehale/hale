@@ -151,6 +151,15 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
     if (view.openKinds.has('registration_watch')) {
       return { claim, status: 'matched', matchedBy: 'open_commitment' };
     }
+    // A WATCHED COURSE PAGE IS A WATCH (VIL-337). `kindOf` reads "I'll text you when a
+    // spot opens" as a registration claim, which it is: the row is in watched_spots
+    // rather than on the ladder, and the promise behind it is the same one.
+    if (view.pendingKinds.has('spot_watch')) {
+      return { claim, status: 'matched', matchedBy: 'pending_commitment' };
+    }
+    if (view.openKinds.has('spot_watch')) {
+      return { claim, status: 'matched', matchedBy: 'open_commitment' };
+    }
     if (view.registrationLaddered) {
       return { claim, status: 'matched', matchedBy: 'live_sequence' };
     }

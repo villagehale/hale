@@ -109,6 +109,9 @@ export function voiceRelayDeps(socket: RelaySocket, token: string | null): Relay
             ),
           },
           onPromise: promises.collect,
+          // No watch verb on the spoken line: a caller cannot paste a course page, and
+          // a URL read out over the phone is not a link anyone can sanitize.
+          spots: null,
           villageTool: searchVillageTool(database),
           onDraft,
           now: turn.now,

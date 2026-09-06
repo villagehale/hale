@@ -36,7 +36,7 @@ import { SPOT_PORTAL_HOSTS, type SpotUrlRefusal, sanitizeSpotUrl } from './url';
  */
 export const MINT_FETCH_TIMEOUT_MS = 6_000;
 
-export interface SpotWatchToolArgs {
+export interface SpotWatchPorts {
   /** The RAW body, not the stripped page: a BookMe4 course carries its availability in
    * a <script> block that `createFetchPage`'s strip deletes (verify-sweep.ts). */
   fetchBody: FetchPage;
@@ -47,6 +47,9 @@ export interface SpotWatchToolArgs {
    * gate itself uses, so a watch cannot be armed for a household the gate would then
    * silently refuse to text (outbound-gate.ts). */
   watchConsentGranted: (parentUserId: string) => Promise<boolean>;
+}
+
+export interface SpotWatchToolArgs extends SpotWatchPorts {
   onWatch: (watch: SpotWatchIntent) => void;
 }
 
