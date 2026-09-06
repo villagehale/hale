@@ -97,7 +97,7 @@ function pageOwnSignInPath(name: string, segment: string): string {
   );
   const path = match?.[1];
   if (path === undefined) throw new Error(`${name}: no sign-in anchor on the saved page`);
-  return path.replace(/%[0-9a-f]{2}/g, (escape) => escape.toUpperCase());
+  return path.replace(/%[0-9a-f]{2}/g, (hex) => hex.toUpperCase());
 }
 
 function child(dateOfBirth: string, dobPrecision = 'exact', id = 'c1'): PrepChild {
