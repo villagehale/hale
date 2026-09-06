@@ -58,9 +58,13 @@ const COACH_PATHS: ReadonlyArray<{ row: string; paths: readonly CoachPath[] }> =
       { tool: 'propose_calendar_add' },
     ],
   },
-  // No verb: the radar's own dates arrive in the prompt already checked, and the skill
-  // section that spends them is what makes the row true.
-  { row: 'waitlists', paths: [{ clause: '`registrationWindows`' }] },
+  // The radar's own dates arrive in the prompt already checked, and the skill section
+  // that spends them is what makes that half of the row true. The other half is a verb:
+  // a full class page the parent sends is watched by `watch_for_opening` (VIL-337).
+  {
+    row: 'waitlists',
+    paths: [{ clause: '`registrationWindows`' }, { tool: 'watch_for_opening' }],
+  },
   {
     row: 'playgrounds',
     paths: [
