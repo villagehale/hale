@@ -610,6 +610,7 @@ async function sweepSpot(
   }
 
   if (spot.pendingKind !== null) {
+    await stampRead(database, spot.id, now);
     // A previous attempt spent its counter and left no pointer AT THE START OF THIS TICK.
     // Either its ledger row exists (the post-send write was lost — the text WENT OUT, so
     // find it and let the receipt path judge it next tick) or it does not (the row write
@@ -664,6 +665,7 @@ async function sweepSpot(
     return { kind: 'quiet' };
   }
 
+  await stampRead(database, spot.id, now);
   const openTransitions = await claimOpenTransition(database, {
     spotId: spot.id,
     from: spot.lastState,
@@ -683,6 +685,28 @@ async function sweepSpot(
     reading,
     kind,
   );
+}
+
+/**
+ * A successful read is a REACH, whatever else this tick decides about it.
+ *
+ * `cron_heartbeats` says the sweep fired; `max(last_polled_at)` says a spot was actually
+ * looked at, which is what the Radar reads as freshness — so the ticks that transition
+ * and send must stamp it too, or the signal goes stale exactly when the sweep is doing
+ * the thing it exists for. The failure streak ends here for the same reason.
+ *
+ * `last_state` is deliberately NOT written: the transition claim's WHERE clause carries
+ * the state this tick BELIEVED, so moving it first would make every claim lose to itself.
+ * The quiet path writes it in one call of its own instead.
+ */
+function stampRead(database: Database, spotId: string, now: Date): Promise<void> {
+  return recordPoll(database, {
+    spotId,
+    lastState: null,
+    consecutiveFailures: 0,
+    nextPollAt: null,
+    now,
+  });
 }
 
 /**
@@ -920,8 +944,12 @@ async function readBody(
   try {
     return { status: 'ok', body: await pending };
   } catch (err) {
+    // The fetch primitive names the url it failed on, and that url is one family's
+    // course page — beside a spot id it is a household and a class in a log line
+    // (rule #1). The host is what may be named, so the page is replaced by it and the
+    // status the municipality answered survives.
     console.warn(
-      { spotId: spot.id, host, detail: errorText(err) },
+      { spotId: spot.id, host, detail: errorText(err).replaceAll(url, host) },
       'watched spots: the page could not be fetched',
     );
     return { status: 'fetch_failed' };

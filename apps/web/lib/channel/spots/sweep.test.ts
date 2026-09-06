@@ -774,6 +774,37 @@ describe('runWatchedSpotsSweep — bounded, spaced and source-respectful', () =>
     expect(test.slept).toEqual([expected]);
   });
 
+  it('stamps last_polled_at on EVERY read, including the tick that sends', async () => {
+    // `cron_heartbeats` says the sweep fired; `max(last_polled_at)` says a spot was
+    // REACHED, and that is what the Radar reads as freshness. Kills the version where
+    // only the quiet path stamps — the freshness signal would then go stale precisely
+    // on the ticks where the sweep is doing the thing it exists for.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, { lastState: 'full' });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.sent).toBe(1);
+    expect((await readWatch(spotId)).lastPolledAt).toEqual(MIDDAY);
+  });
+
+  it('clears the failure streak the moment a page reads again', async () => {
+    // Kills a streak that only ever grows: five flaky ticks followed by weeks of healthy
+    // reads would release the watch as `unreadable_streak` on the sixth bad day.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, FULL_PAGE);
+    const spotId = await seedWatch(db.database, family, { consecutiveFailures: 5 });
+
+    await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    const row = await readWatch(spotId);
+    expect(row.consecutiveFailures).toBe(0);
+    expect(row.releasedAt).toBeNull();
+  });
+
   it('leaves next_poll_at alone on a healthy read, so a late tick still reads everything', async () => {
     // Kills `next_poll_at = now + 540_000` on a healthy read: a tick that fires two
     // minutes late would then find the spot not yet due and halve its own cadence.
