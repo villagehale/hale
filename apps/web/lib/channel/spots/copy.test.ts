@@ -107,6 +107,26 @@ describe('renderSpotOpen — a seat', () => {
     expect(body).toBe(`${PORTAL} now shows 2 spots left for Tue 4:30 swim. ${URL}`);
   });
 
+  it('keeps the schedule when the label repeats it — the label is subtracted at its own slot', () => {
+    // The digit gate subtracts each interpolation by its FIRST occurrence. A label that
+    // carries the schedule phrase sits earlier in the body than the parenthetical, so
+    // subtracting `when` first ate the copy inside the label and left the real one to
+    // read as an invented digit. Template order — label, then when, then url — is what
+    // lands each removal on its own slot.
+    const body = renderSpotOpen({
+      kind: 'seat_opened',
+      portalLabel: PORTAL,
+      label: 'Saturday 09:30 AM chess',
+      url: URL,
+      model: model({ SpotsLeft: 2, StartDay: 'Saturday', StartTime: '09:30 AM' }),
+      evidence: ['"SpotsLeft":2', '"StartDay":"Saturday"', '"StartTime":"09:30 AM"'],
+    });
+
+    expect(body).toBe(
+      `${PORTAL} now shows 2 spots left for Saturday 09:30 AM chess (Saturday 09:30 AM). ${URL}`,
+    );
+  });
+
   it('THROWS rather than announce a seat the counter does not show', () => {
     // `transitionKind` only says seat_opened off a reading with SpotsLeft > 0, so a zero
     // here means the composer was handed a kind and a model from different ticks. "0

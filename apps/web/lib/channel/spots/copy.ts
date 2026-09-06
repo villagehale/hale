@@ -144,7 +144,11 @@ export function spotOpenViolations(body: string, context: SpotOpenContext): stri
     violations.push('unbacked_when');
   }
 
-  const rest = without(without(without(body, context.url), context.when), context.label);
+  // Template order — label, then when, then url — because each subtraction removes the
+  // FIRST occurrence: a label that repeats the schedule phrase sits earlier in the body
+  // than the parenthetical, and subtracting `when` first would eat the label's copy and
+  // leave the real one to read as an invented digit.
+  const rest = without(without(without(body, context.label), context.when), context.url);
   if (rest.includes('?')) violations.push('asks_a_question');
   const digits = rest.match(/\d+/g) ?? [];
   if (digits.some((run) => context.count === null || run !== String(context.count))) {
