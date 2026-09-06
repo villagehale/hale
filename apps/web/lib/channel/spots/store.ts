@@ -29,6 +29,30 @@ import { recordSpotWatchPromise } from './promise';
  * released watch cannot be polled, claimed, sent for, or released twice.
  */
 
+/**
+ * What a driver error is allowed to say in a log line here.
+ *
+ * The raw error is NOT loggable in this module: postgres.js and pglite both hang the
+ * failing statement and its parameters on it, and a constraint violation's `detail` is
+ * "Failing row contains (…)" — every column, so the label the parent typed and the page
+ * they pasted (rule #1). What identifies the fault is its code, the constraint it broke
+ * and the primary message, none of which carry the row. `constraint` is pglite's spelling
+ * and `constraint_name` is postgres.js's; both drivers run this module.
+ */
+function faultOf(err: unknown): {
+  code: string | null;
+  constraint: string | null;
+  message: string;
+} {
+  const fields = err as { code?: unknown; constraint?: unknown; constraint_name?: unknown };
+  const constraint = fields.constraint ?? fields.constraint_name;
+  return {
+    code: typeof fields.code === 'string' ? fields.code : null,
+    constraint: typeof constraint === 'string' ? constraint : null,
+    message: err instanceof Error ? err.message : String(err),
+  };
+}
+
 /** How long a watch stands before it is released as `expired`. A season, not a year: past
  * this the class the parent asked about is a different class. */
 export const WATCH_TTL_DAYS = 60;
@@ -162,7 +186,7 @@ export async function armWatchedSpot(
       .returning({ id: schema.watchedSpots.id, expiresAt: schema.watchedSpots.expiresAt });
   } catch (err) {
     console.error(
-      { err, familyId: input.familyId, host: input.intent.host },
+      { fault: faultOf(err), familyId: input.familyId, host: input.intent.host },
       'watched spots: the arm failed after the parent was told - nothing is being watched',
     );
     return armFailed(database, input, 'write_failed');
@@ -195,7 +219,12 @@ export async function armWatchedSpot(
     });
   } catch (err) {
     console.error(
-      { err, familyId: input.familyId, host: input.intent.host, spotId: claimed.id },
+      {
+        fault: faultOf(err),
+        familyId: input.familyId,
+        host: input.intent.host,
+        spotId: claimed.id,
+      },
       'watched spots: the watch is armed but its promise and its trail are not - this one is being watched off the books',
     );
   }
@@ -220,7 +249,7 @@ async function armFailed(
     });
   } catch (err) {
     console.error(
-      { err, familyId: input.familyId, reason },
+      { fault: faultOf(err), familyId: input.familyId, reason },
       'watched spots: the failed arm could not be recorded either - this one is invisible',
     );
   }

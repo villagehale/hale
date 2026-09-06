@@ -1,17 +1,20 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestDb, seedFamily, type TestDb } from '~/lib/testing/pglite';
 import {
   armWatchedSpot,
   claimOpenTransition,
   claimSendAttempt,
+  clearFailedAttempt,
   closeBeforeSend,
   findLedgerRowByDedupeKey,
   loadDueSpots,
+  markNotifiedAndRelease,
   readLedgerStatus,
   recordPoll,
   releaseWatchedSpot,
+  setNotifiedMessage,
   type SpotWatchIntent,
   type WatchedSpotArmOutcome,
 } from './store';
@@ -74,6 +77,8 @@ async function readSpot(spotId: string) {
       pendingKind: schema.watchedSpots.pendingKind,
       pendingSince: schema.watchedSpots.pendingSince,
       openTransitions: schema.watchedSpots.openTransitions,
+      notifiedTransitions: schema.watchedSpots.notifiedTransitions,
+      nextPollAt: schema.watchedSpots.nextPollAt,
       releasedAt: schema.watchedSpots.releasedAt,
       releasedReason: schema.watchedSpots.releasedReason,
     })
@@ -101,6 +106,19 @@ describe('armWatchedSpot', () => {
 
     if (first.status !== 'armed') throw new Error('unreachable: the first arm was refused');
     await releaseWatchedSpot(db.database, { spotId: first.spotId, reason: 'expired', now: NOW });
+
+    // The ending is written ONCE. A later sweep step arriving at an already-released watch
+    // must not re-file why it ended — a 'notified' rewritten as a later 'expired' is the
+    // misreported ending the release CHECK exists to forbid. Catches dropping
+    // `AND released_at IS NULL` from releaseWatchedSpot.
+    await releaseWatchedSpot(db.database, {
+      spotId: first.spotId,
+      reason: 'parent_stopped',
+      now: new Date(NOW.getTime() + 60_000),
+    });
+    const releasedOnce = await readSpot(first.spotId);
+    expect(releasedOnce?.releasedReason).toBe('expired');
+    expect(releasedOnce?.releasedAt).toEqual(NOW);
 
     const rearmed = await arm(family.familyId, family.parentUserId);
     expect(rearmed.status).toBe('armed');
@@ -184,6 +202,41 @@ describe('armWatchedSpot', () => {
       .from(schema.watchedSpots)
       .where(eq(schema.watchedSpots.familyId, family.familyId));
     expect(live).toHaveLength(1);
+  });
+
+  /** Rule #1 reaches the log line too. A driver error carries the failing statement, its
+   * parameters and — on a constraint violation — a `detail` reading "Failing row contains
+   * (…)", so logging the raw error on this path puts the label a parent typed and the page
+   * they pasted into the console. Catches `console.error({ err, … })`. */
+  it('names the fault and never the row when the claim itself fails', async () => {
+    const family = await seedFamily(db.database, 'Write Failure Family');
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await db.exec('ALTER TABLE watched_spots RENAME TO watched_spots_unavailable');
+    let outcome: WatchedSpotArmOutcome;
+    try {
+      outcome = await arm(family.familyId, family.parentUserId);
+    } finally {
+      await db.exec('ALTER TABLE watched_spots_unavailable RENAME TO watched_spots');
+    }
+
+    expect(outcome).toEqual({ status: 'not_armed', reason: 'write_failed' });
+    const payload = logged.mock.calls[0]?.[0];
+    logged.mockRestore();
+
+    // The whole object, so an added field cannot smuggle the row back in, and a real
+    // Postgres code so the two absences below are read off a payload that exists.
+    expect(payload).toEqual({
+      fault: {
+        code: '42P01',
+        constraint: null,
+        message: expect.stringContaining('does not exist'),
+      },
+      familyId: family.familyId,
+      host: 'cityofmarkham.perfectmind.com',
+    });
+    expect(JSON.stringify(payload)).not.toContain('Milliken preschool swim');
+    expect(JSON.stringify(payload)).not.toContain('CoursesLandingPage');
   });
 });
 
@@ -275,11 +328,46 @@ describe('claimOpenTransition', () => {
   });
 });
 
+describe('recordPoll', () => {
+  /** `next_poll_at` carries BACKOFF and nothing else. A healthy read that also pushed the
+   * column would let every successful tick move its own next due time forward by however
+   * long the last one took, so a sweep that fires two minutes late would quietly halve its
+   * cadence and a seat could sit unannounced. Catches a writer that always sets
+   * `next_poll_at`, whatever the caller passed. */
+  it('leaves next_poll_at alone on a healthy read, and moves it on a backoff', async () => {
+    const family = await seedFamily(db.database, 'Cadence Family');
+    const armed = await arm(family.familyId, family.parentUserId);
+    if (armed.status !== 'armed') throw new Error('unreachable: the arm was refused');
+
+    const before = await readSpot(armed.spotId);
+    await recordPoll(db.database, {
+      spotId: armed.spotId,
+      lastState: 'full',
+      consecutiveFailures: 0,
+      nextPollAt: null,
+      now: NOW,
+    });
+    expect((await readSpot(armed.spotId))?.nextPollAt).toEqual(before?.nextPollAt);
+
+    const backoff = new Date(NOW.getTime() + 40 * 60_000);
+    await recordPoll(db.database, {
+      spotId: armed.spotId,
+      lastState: null,
+      consecutiveFailures: 1,
+      nextPollAt: backoff,
+      now: NOW,
+    });
+    expect((await readSpot(armed.spotId))?.nextPollAt).toEqual(backoff);
+  });
+});
+
 describe('claimSendAttempt', () => {
   /** Catches an unbounded counter (a page that keeps failing to deliver would text
-   * forever) and a counter the transition claim forgets to reset (a second opening would
-   * be unsendable). */
-  it('spends at most two send attempts per transition, and a new transition buys two more', async () => {
+   * forever), a counter the transition claim forgets to reset (a second opening would be
+   * unsendable), and a claim that ignores a text already awaiting its receipt — the last
+   * of which is the one that would put two texts about one seat on one phone while the
+   * first is still in flight. */
+  it('spends at most two send attempts per transition, never while a text is awaiting its receipt, and a new transition buys two more', async () => {
     const family = await seedFamily(db.database, 'Attempt Family');
     const armed = await arm(family.familyId, family.parentUserId);
     if (armed.status !== 'armed') throw new Error('unreachable: the arm was refused');
@@ -293,6 +381,15 @@ describe('claimSendAttempt', () => {
       now: NOW,
     });
     expect(await claimSendAttempt(db.database, { spotId, now: NOW })).toBe(1);
+
+    // The text is out and the row that will say whether it arrived is on the watch. Until
+    // that receipt reads one way or the other there is nothing to retry.
+    await setNotifiedMessage(db.database, { spotId, channelMessageId: 'CM-open-1', now: NOW });
+    expect(await claimSendAttempt(db.database, { spotId, now: NOW })).toBeNull();
+
+    // It came back failed and an attempt is left: the pointer to the dead message goes and
+    // the held observation stays, so the second attempt is claimable.
+    await clearFailedAttempt(db.database, { spotId, now: NOW });
     expect(await claimSendAttempt(db.database, { spotId, now: NOW })).toBe(2);
     expect(await claimSendAttempt(db.database, { spotId, now: NOW })).toBeNull();
 
@@ -311,6 +408,37 @@ describe('claimSendAttempt', () => {
       }),
     ).toBe(2);
     expect(await claimSendAttempt(db.database, { spotId, now: NOW })).toBe(1);
+  });
+});
+
+describe('markNotifiedAndRelease', () => {
+  /** The ending the whole watch is for, and the only one that may be filed as 'notified'.
+   * The second opening is what makes the counter assignment observable: the first was
+   * dropped before it could be said, so an implementation that INCREMENTS
+   * `notified_transitions` would leave it at 1 against 2 openings and the Radar would
+   * report a household still owed a text it has had. Catches the reason written as
+   * anything else, a held observation left behind on a closed watch, and the two counters
+   * drifting apart. */
+  it('files the ending as notified, drops the held observation, and squares the counters', async () => {
+    const family = await seedFamily(db.database, 'Notified Family');
+    const armed = await arm(family.familyId, family.parentUserId);
+    if (armed.status !== 'armed') throw new Error('unreachable: the arm was refused');
+    const spotId = armed.spotId;
+    const claim = { spotId, from: 'full', to: 'open', kind: 'seat_opened' } as const;
+
+    expect(await claimOpenTransition(db.database, { ...claim, now: NOW })).toBe(1);
+    await closeBeforeSend(db.database, { spotId, lastState: 'full', now: NOW });
+    expect(await claimOpenTransition(db.database, { ...claim, now: NOW })).toBe(2);
+
+    await markNotifiedAndRelease(db.database, { spotId, now: NOW });
+
+    const spot = await readSpot(spotId);
+    expect(spot?.releasedReason).toBe('notified');
+    expect(spot?.releasedAt).toEqual(NOW);
+    expect(spot?.pendingKind).toBeNull();
+    expect(spot?.pendingSince).toBeNull();
+    expect(spot?.notifiedTransitions).toBe(2);
+    expect(spot?.notifiedTransitions).toBe(spot?.openTransitions);
   });
 });
 
