@@ -2,6 +2,7 @@ import { type RegisteredTool, defineTool } from '@hale/agent';
 import { z } from 'zod';
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
+import { isGsm7 } from '~/lib/channel/sms-segments';
 import type { FetchPage } from '~/lib/registration/verify-sweep';
 import { type SpotReading, readSpot } from './availability';
 import type { SpotWatchIntent } from './store';
@@ -85,7 +86,9 @@ function urlRefusal(reason: SpotUrlRefusal): string {
 const LABEL_REFUSAL = {
   names_a_person: `That label names somebody in the family, and a name never goes into a message Hale sends unprompted. Call watch_for_opening again with the class alone - "Tuesday preschool swim", no names.`,
   rewritten:
-    'That label carries an age or a number I will not store. Call watch_for_opening again with the class in a few words, without ages.',
+    'That label carries something I will not store - a name, a school, an address, a date or an age. Call watch_for_opening again with the class in a few words, in plain terms.',
+  not_gsm7:
+    'That label has a character a text message cannot carry - a curly quote, a long dash or an emoji. Call watch_for_opening again with plain punctuation.',
   question:
     'That label has a question mark in it, and the opening text may not ask a parent anything. Call watch_for_opening again with the class as a plain phrase.',
   empty:
@@ -192,14 +195,25 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
       // The opening text carries this label and may hold no '?' outside the URL — a
       // proactive text that asks a question is one the parent cannot answer (copy.ts).
       if (collapsed.includes('?')) throw new Error(LABEL_REFUSAL.question);
+      // ONE CHARACTER OUTSIDE GSM-7 AND THE OPENING TEXT IS REFUSED - every opening,
+      // months from now, by a composer no parent is watching (copy.ts not_gsm7). iOS
+      // types a curly apostrophe by default, so a label that arms here and can never be
+      // sent is the ordinary case rather than the exotic one.
+      if (!isGsm7(collapsed)) throw new Error(LABEL_REFUSAL.not_gsm7);
 
       let body: string;
       try {
         body = await args.fetchBody(link.url);
       } catch {
         // The portal, not Hale, and the model needs to say so rather than promise a
-        // watch. Nothing about the failure is logged here: the error carries the URL,
-        // and the sweep is where an unreadable page becomes a counted outcome.
+        // watch. The breadcrumb carries the HOST and nothing else: the error itself
+        // holds the parent's url and the turn holds their label (rule #1), and a portal
+        // that has stopped answering every arming turn must be visible as more than one
+        // sentence to one parent (rule #11).
+        console.warn(
+          { host: link.host, outcome: 'mint_fetch_failed' },
+          'watched spots: the arming read failed',
+        );
         throw new Error(
           `I could not reach ${link.portalLabel} just now, so I have not started watching anything. Tell the parent that and ask them to send it again in a bit.`,
         );

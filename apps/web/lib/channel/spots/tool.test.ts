@@ -86,6 +86,18 @@ describe('watch_for_opening — arms only on a full course page, for a consentin
     await expect(
       tool.handler({ url: `https://${MARKHAM}/Clients/BookMe4?widgetId=${WIDGET}`, label: 'x' }, CTX),
     ).rejects.toThrow(/course page/i);
+    // A COURSE-SHAPED PATH ON A FOREIGN HOST. Both links above fail the path check
+    // first, so neither one reaches the registry: without this third call the host
+    // allowlist could be deleted and every test here would still pass.
+    await expect(
+      tool.handler(
+        {
+          url: `https://example.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=${WIDGET}&courseId=${FULL_COURSE}`,
+          label: 'Preschool swim',
+        },
+        CTX,
+      ),
+    ).rejects.toThrow(/not a portal I can read/);
     expect(fetchBody).not.toHaveBeenCalled();
   });
 
@@ -183,7 +195,13 @@ describe('watch_for_opening — the label is stored, so the label is gated', () 
     // would text the parent about their "Preschool swim [redacted]" class months later.
     await expect(
       tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim 3 years' }, CTX),
-    ).rejects.toThrow(/without ages/i);
+    ).rejects.toThrow(/a name, a school, an address, a date or an age/);
+    // THE SAME BRANCH, A DIFFERENT PATTERN: the scrub rewrites named schools, streets
+    // and dates too, so a refusal that only says "ages" sends a parent who typed a
+    // school looking for an age that was never there.
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Pineview Montessori swim' }, CTX),
+    ).rejects.toThrow(/a name, a school, an address, a date or an age/);
     expect(armed).toEqual([]);
 
     await tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX);
@@ -203,12 +221,74 @@ describe('watch_for_opening — the label is stored, so the label is gated', () 
     expect(armed).toEqual([]);
   });
 
+  it('refuses a label a text message cannot carry, and takes the same label in plain punctuation', async () => {
+    const { tool, armed } = ports();
+
+    // iOS substitutes a curly apostrophe for a straight one as you type, so this is the
+    // ordinary paste. One such character flips the whole body to UCS-2 and the
+    // deterministic opening copy REFUSES it (copy.ts not_gsm7) — every opening, months
+    // later, silently. A watch that can never text is worse than one never armed.
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Tuesday\u2019s preschool swim' }, CTX),
+    ).rejects.toThrow(/plain punctuation/);
+    expect(armed).toEqual([]);
+
+    // POSITIVE CONTROL: the same words with a straight apostrophe arm. Without it this
+    // passes on a gate that refuses every label with an apostrophe in it.
+    await tool.handler({ url: courseUrl(FULL_COURSE), label: "Tuesday's preschool swim" }, CTX);
+    expect(armed).toHaveLength(1);
+  });
+
   it('refuses a label that is nothing but whitespace', async () => {
     const { tool } = ports();
 
     await expect(
       tool.handler({ url: courseUrl(FULL_COURSE), label: '   ' }, CTX),
     ).rejects.toThrow(/few words/i);
+  });
+});
+
+describe('watch_for_opening — when the portal will not answer', () => {
+  it('tells the model the portal is down and leaves a breadcrumb naming only the host', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { tool, armed } = ports({
+        fetchBody: async () => {
+          throw new Error(`socket hang up ${courseUrl(FULL_COURSE)}`);
+        },
+      });
+
+      await expect(
+        tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+      ).rejects.toThrow(/could not reach/i);
+      expect(armed).toEqual([]);
+
+      // A read that failed is an outcome, not a silence (rule #11): without this the
+      // only trace of a portal that stopped answering every arming turn is the model's
+      // own sentence to one parent.
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toEqual({ host: MARKHAM, outcome: 'mint_fetch_failed' });
+      // AND NOTHING ELSE. The thrown error carries the full url and the turn carries
+      // the label; neither may reach a log line (rule #1).
+      const logged = JSON.stringify(warn.mock.calls);
+      expect(logged).not.toContain(FULL_COURSE);
+      expect(logged).not.toContain('Preschool swim');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('leaves no breadcrumb on the turn that arms', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { tool } = ports();
+
+      await tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX);
+
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 
