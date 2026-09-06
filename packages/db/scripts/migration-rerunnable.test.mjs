@@ -26,7 +26,7 @@ const LAST_LEDGERED_TAG = '0097_pending_disambiguation';
 
 /** Statement shapes that raise on a second run, with the re-runnable form they must take. */
 const NOT_RERUNNABLE = [
-  { shape: /^ALTER TABLE\b[^;]*\bADD CONSTRAINT\b/i, use: 'DO $$ BEGIN ALTER TABLE … ADD CONSTRAINT …; EXCEPTION WHEN duplicate_object THEN null; END $$ (the 0103 shape)' },
+  { shape: /^ALTER TABLE\b[^;]*\bADD CONSTRAINT\b/i, use: 'DO $$ BEGIN ALTER TABLE … ADD CONSTRAINT …; EXCEPTION WHEN duplicate_object OR duplicate_table THEN null; END $$ (UNIQUE raises duplicate_table; the pglite double-apply test is the real gate)' },
   { shape: /^CREATE TABLE (?!IF NOT EXISTS)/i, use: 'CREATE TABLE IF NOT EXISTS' },
   { shape: /^CREATE (?:UNIQUE )?INDEX (?!IF NOT EXISTS)/i, use: 'CREATE [UNIQUE] INDEX IF NOT EXISTS' },
   { shape: /^ALTER TABLE\b[^;]*\bADD COLUMN (?!IF NOT EXISTS)/i, use: 'ADD COLUMN IF NOT EXISTS' },

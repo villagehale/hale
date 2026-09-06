@@ -27,13 +27,13 @@ CREATE TABLE IF NOT EXISTS "channel_signin_tokens" (
 DO $$ BEGIN
   ALTER TABLE "channel_signin_tokens" ADD CONSTRAINT "channel_signin_tokens_token_hash_unique" UNIQUE("token_hash");
 EXCEPTION
-  WHEN duplicate_object THEN null;
+  WHEN duplicate_object OR duplicate_table THEN null;
 END $$;--> statement-breakpoint
 
 DO $$ BEGIN
   ALTER TABLE "channel_signin_tokens" ADD CONSTRAINT "channel_signin_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
-  WHEN duplicate_object THEN null;
+  WHEN duplicate_object OR duplicate_table THEN null;
 END $$;--> statement-breakpoint
 
 -- The invalidate-prior-on-mint UPDATE reads by user.
