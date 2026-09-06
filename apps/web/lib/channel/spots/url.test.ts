@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { COURSE_PAGE_PATH, MAX_URL_CHARS, SPOT_PORTAL_HOSTS, sanitizeSpotUrl } from './url';
+import {
+  COURSE_PAGE_PATH,
+  MAX_URL_CHARS,
+  SPOT_PORTAL_HOSTS,
+  portalForMunicipality,
+  sanitizeSpotUrl,
+} from './url';
 
 /**
  * VIL-337 · the gate every watched link passes through.
@@ -173,5 +179,98 @@ describe('SPOT_PORTAL_HOSTS', () => {
     expect(COURSE_PAGE_PATH.test('/Contacts/BookMe4LandingPages/CoursesLandingPage')).toBe(true);
     expect(COURSE_PAGE_PATH.test('/Clients/BookMe4LandingPages/CoursesLandingPageX')).toBe(false);
     expect(COURSE_PAGE_PATH.test('/Other/BookMe4LandingPages/CoursesLandingPage')).toBe(false);
+  });
+});
+
+/**
+ * VIL-338 · the three fields a registry entry gained, and the lookup that runs the
+ * other way.
+ *
+ * A registration sequence knows a MUNICIPALITY (the M1 window it was proposed from);
+ * it does not know a host until a parent pastes one. Everything the pre-open ladder
+ * says about a portal — the account a parent needs before 6:30 a.m., and the zone the
+ * course page's naive `2026-08-11T06:30` is read in — is therefore reached from the
+ * municipality, and every value is hand-written beside the label for the same reason
+ * the label is: none of it can be derived from a hostname, and all of it is in a text.
+ */
+
+/** Transcribed from the design, not from the module: these are the four things Hale
+ * asserts about a portal in a parent's inbox. */
+const EXPECTED_PORTALS = {
+  'cityofmarkham.perfectmind.com': {
+    portalLabel: "Markham's portal",
+    municipality: 'markham',
+    timeZone: 'America/Toronto',
+    accountLabel: 'a Markham portal account',
+  },
+  'townofoakville.perfectmind.com': {
+    portalLabel: "Oakville's portal",
+    municipality: 'oakville',
+    timeZone: 'America/Toronto',
+    accountLabel: 'a ServiceOakville account',
+  },
+} as const;
+
+describe('SPOT_PORTAL_HOSTS — every entry carries all four hand-written fields', () => {
+  it('holds exactly the hosts transcribed above', () => {
+    // Kills the mutation that adds a host with a label and leaves the other three to
+    // be inferred later: an entry missing its zone would read a 6:30 a.m. course clock
+    // in whatever zone the runtime happens to be in, and the compiler cannot see the
+    // difference between a wrong zone and a right one.
+    expect(Object.keys(SPOT_PORTAL_HOSTS).sort()).toEqual(Object.keys(EXPECTED_PORTALS).sort());
+  });
+
+  it.each(Object.entries(EXPECTED_PORTALS))('%s carries its four values', (host, expected) => {
+    // Kills the mutation that copies one entry's account sentence onto the other:
+    // Oakville's sign-in is the Town's ServiceOakville SSO, not a PerfectMind account,
+    // and telling an Oakville parent to make "a Markham portal account" is the kind of
+    // wrong that only a parent at 6:29 a.m. would discover.
+    const entry = SPOT_PORTAL_HOSTS[host];
+    if (entry === undefined) throw new Error(`${host} left the registry`);
+    expect(entry).toEqual(expected);
+    // Kills a zone string the platform cannot resolve ('Amercia/Toronto', 'EDT'),
+    // which would throw inside the clock arithmetic rather than at the registry.
+    expect(() => new Intl.DateTimeFormat('en-CA', { timeZone: entry.timeZone })).not.toThrow();
+  });
+
+  it('names each municipality once, so the reverse lookup has one answer', () => {
+    // Kills a second host on the same municipality, which would make
+    // portalForMunicipality's answer depend on key order.
+    const municipalities = Object.values(SPOT_PORTAL_HOSTS).map((entry) => entry.municipality);
+
+    expect(new Set(municipalities).size).toBe(municipalities.length);
+  });
+});
+
+describe('portalForMunicipality', () => {
+  it('answers markham with the Markham entry', () => {
+    expect(portalForMunicipality('markham')).toEqual(
+      EXPECTED_PORTALS['cityofmarkham.perfectmind.com'],
+    );
+  });
+
+  it("answers oakville with Oakville's entry, never the first one in the registry", () => {
+    // Kills `Object.values(SPOT_PORTAL_HOSTS)[0]` and any lookup that stops at the
+    // first entry — the same failure the sanitizer's Oakville test exists for.
+    expect(portalForMunicipality('oakville')).toEqual(
+      EXPECTED_PORTALS['townofoakville.perfectmind.com'],
+    );
+  });
+
+  it('answers a covered municipality with no portal with null', () => {
+    // Toronto is a real M1 municipality with real registration windows and NO portal
+    // Hale has learned to read. Kills a lookup that returns `undefined` (which reads
+    // as "not asked" at a call site testing `=== null`) or a default entry, either of
+    // which would point a Toronto family at Markham's portal.
+    expect(portalForMunicipality('toronto')).toBeNull();
+  });
+
+  it('round-trips every registry entry through its own municipality', () => {
+    // Kills a hand-written switch that drifts from the registry it is written beside:
+    // a new host whose municipality nobody added to the lookup would be watchable by
+    // paste and invisible to the ladder that offers to watch it.
+    for (const entry of Object.values(SPOT_PORTAL_HOSTS)) {
+      expect(portalForMunicipality(entry.municipality)).toEqual(entry);
+    }
   });
 });
