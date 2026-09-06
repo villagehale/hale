@@ -90,6 +90,7 @@
 // on every fixture, with fabrications on all of them, the ambiguity gate, the chit-chat
 // gate, the two-draft cap, the rule-#4 tense check and the app-pointing gate.
 
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // The stage primitives are IMPORTED, never replicated: the coaching fixtures make a
@@ -104,6 +105,7 @@ import {
   COACH_CHANNEL_FIXTURES,
   REFUSAL_MARKERS,
   FIXTURE_CHILDREN,
+  FIXTURE_COURSE_ID,
   FIXTURE_EVENTS,
   FIXTURE_NOW,
   FIXTURE_TIMEZONE,
@@ -139,6 +141,16 @@ const FRAMEWORK_TOOL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'frame
  * under the tsx loader because context.ts reaches for no `~/` alias. */
 const CONTEXT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-sms.md');
+/**
+ * The REAL sanitizer and the REAL page reader behind `watch_for_opening` (VIL-337).
+ * Imported rather than replicated for the reason the framework tool is: neither file
+ * reaches for a `~/` alias, and a hand-rolled copy would let the fixture accept a link
+ * — or call a page full — on friendlier terms than the tool that ships. The TOOL itself
+ * cannot be imported; it pulls the activity lane's de-identifier behind the alias.
+ */
+const SPOTS_URL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'url.ts');
+const SPOTS_READ_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'availability.ts');
+const SPOTS_FIXTURES = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots', 'fixtures');
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
@@ -444,6 +456,22 @@ const FIXTURE_WEB_PICK = {
   price: null,
 };
 
+/**
+ * THE COURSE PAGE THE WATCH FIXTURES PASTE, and the two saved pages behind it.
+ *
+ * A REAL Markham course, caught with its registration window open and its roster full —
+ * the one state `watch_for_opening` arms on. It is the same byte-for-byte fixture the
+ * unit tests read, so a page shape that stops parsing turns this eval red too rather
+ * than only the suite one directory over.
+ *
+ * The not-found shell is what every other courseId resolves to here: PerfectMind answers
+ * an unknown course with HTTP 200 and an error page, so a model that invents a link gets
+ * the refusal production would give it rather than a friendly stub.
+ *
+ * The id itself lives with the fixture that pastes it (coach-channel-fixtures.mjs).
+ */
+const spotPage = (name) => readFileSync(join(SPOTS_FIXTURES, `${name}.html`), 'utf8');
+
 function toSmsReply(raw, children, planOffer, referral) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
@@ -547,7 +575,7 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   );
 }
 
-function buildFixtureTools(agent, calls, village) {
+function buildFixtureTools(agent, calls, village, spots) {
   let draftsThisTurn = 0;
 
   const claimDraftBudget = () => {
@@ -782,6 +810,57 @@ function buildFixtureTools(agent, calls, village) {
     },
   });
 
+  // Replicated from apps/web/lib/channel/spots/tool.ts `watchForOpeningTool` — the tool
+  // sits behind the `~/` alias (it pulls the activity lane's de-identifier), so only the
+  // definition is copied. The description and the schema are copied VERBATIM, because
+  // they are what the model reads when it decides whether this turn needs a link. What
+  // is NOT replicated is the sanitizer and the reader: those are the real modules, run
+  // over the real saved page, so an invented link is refused here exactly as in prod.
+  const watchForOpening = agent.defineTool({
+    name: 'watch_for_opening',
+    description:
+      "Start watching a FULL class for a spot to open, on a course page the parent has sent you. `url` is that page's address, exactly as they pasted it - never one you composed, and never a search or listing page: it has to be the page for the one class. `label` is how the parent will recognise the class months later, in a few words and in their own terms ('Tuesday preschool swim'): no name, no age, no question mark. Pass `instant: true` only when they say they want it even in the middle of the night; the default holds an overnight opening until the morning. This reads the page RIGHT NOW and only arms if it is genuinely full with registration open - anything else throws a sentence telling you what is true instead, and you say that. Once armed, Hale re-reads the page about every ten minutes and texts them itself when a spot shows up, so say you are watching it and stop. Do not call this without a link from the parent: ask them for the link from the course page.",
+    inputSchema: z.object({
+      url: z.string().min(1).max(512),
+      label: z.string().min(1).max(40),
+      childId: z.string().min(1).optional(),
+      instant: z.boolean().optional(),
+    }),
+    inputExamples: [
+      {
+        url: 'https://cityofexample.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=00000000-1111-2222-3333-444444444444&courseId=55555555-6666-7777-8888-999999999999',
+        label: 'Tuesday preschool swim',
+      },
+      {
+        url: 'https://cityofexample.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=00000000-1111-2222-3333-444444444444&courseId=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        label: 'Saturday skating',
+        instant: true,
+      },
+    ],
+    monetary: false,
+    touchesChildContent: true,
+    registersOnly: true,
+    handler: async (input) => {
+      const link = spots.sanitizeSpotUrl(input.url);
+      if (!link.ok) {
+        throw new Error(
+          "That is not a course page I can read. I can only watch Markham's portal and Oakville's portal course pages - ask the parent for the link from the course itself, not from the search results.",
+        );
+      }
+      const reading = spots.readSpot(
+        link.courseId === FIXTURE_COURSE_ID ? spots.fullPage : spots.notFoundPage,
+        link.courseId,
+      );
+      if (reading.state !== 'full' && reading.state !== 'waitlist_full') {
+        throw new Error(
+          `I cannot read that page - it does not carry a class ${link.portalLabel} publishes. Ask the parent to send the link from the course page itself.`,
+        );
+      }
+      record('watch_for_opening', { label: input.label });
+      return { watching: true };
+    },
+  });
+
   return [
     lookupWeek,
     proposeMove,
@@ -792,6 +871,7 @@ function buildFixtureTools(agent, calls, village) {
     promiseActivityFollowup,
     offerFullPlan,
     shareReferralLink,
+    watchForOpening,
   ];
 }
 
@@ -1110,6 +1190,12 @@ function checkFixture(fixture, reply, calls, auditLog, composed) {
   for (const tool of expect.mustCall ?? []) {
     if (!toolNames.has(tool)) failures.push(`never called ${tool}`);
   }
+  // The other direction, and the one a verb that reads a third-party page needs: a tool
+  // called on a turn that had nothing to call it WITH is not a near miss, it is a link
+  // the model composed.
+  for (const tool of expect.mustNotCall ?? []) {
+    if (toolNames.has(tool)) failures.push(`called ${tool} with nothing to call it on`);
+  }
 
   if (expect.mustNotDraft && drafts.length > 0) {
     failures.push(
@@ -1157,10 +1243,15 @@ function checkFixture(fixture, reply, calls, auditLog, composed) {
   // already claiming that window and already scheduled to send. The ledger is different;
   // the debt is just as real. `watching: false` backs nothing, which is what keeps this a
   // gate rather than an exemption for one word.
+  // A WATCHED COURSE PAGE is the third thing that backs one (VIL-337). `watch_for_opening`
+  // arms a row that re-reads the page every ten minutes and texts this family itself, so
+  // "I'll text you when a spot opens" on a turn that called it is a debt something is
+  // holding — the same reason a watched municipal window backs the sentence above.
   const watchedWindow = (fixture.registrationWindows ?? []).some((w) => w.watching);
   if (
     /\bi'?ll (be back|come back|keep an eye|text you|let you know|check back)\b/.test(lower) &&
     !toolNames.has('promise_activity_followup') &&
+    !toolNames.has('watch_for_opening') &&
     !watchedWindow
   ) {
     failures.push('unbacked come-back promise (no promise_activity_followup call)');
@@ -1539,6 +1630,14 @@ async function main() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
   const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
+  const { sanitizeSpotUrl } = await tsImport(SPOTS_URL_SRC, import.meta.url);
+  const { readSpot } = await tsImport(SPOTS_READ_SRC, import.meta.url);
+  const spots = {
+    sanitizeSpotUrl,
+    readSpot,
+    fullPage: spotPage('open-window-markham'),
+    notFoundPage: spotPage('markham-course-not-found'),
+  };
   const compact = contextInternal.compactTranscript;
   const getClient = lazyAnthropic();
   const cost = makeCost();
@@ -1596,7 +1695,7 @@ async function main() {
       reply = toSmsReply(stand.reply, children);
     } else {
       const tools = [
-        ...buildFixtureTools(agent, calls, villageFor(fixture)),
+        ...buildFixtureTools(agent, calls, villageFor(fixture), spots),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
       ];
       const client = makeCachedAgentClient(
@@ -1750,7 +1849,8 @@ async function main() {
                   'search what is on nearby',
                   'coach a parenting question from curated child-development guidance',
                   "hand the parent their own link for telling a friend about Hale — the parent forwards it themselves; Hale never texts the friend",
-                  'WATCH a municipal registration window listed in `knows.registrationWindows` with `watching: true` — the sweep already claims it and already texts a week out, the evening before, and fifteen minutes before it opens. There is NO verb that starts a watch: `watching` is a fact about this family, not a switch Hale can flip mid-reply, so on a `watching: false` window Hale genuinely cannot begin one',
+                  'WATCH a municipal registration window listed in `knows.registrationWindows` with `watching: true` — the sweep already claims it and already texts a week out, the evening before, and fifteen minutes before it opens. There is NO verb that starts a MUNICIPAL watch: `watching` is a fact about this family, not a switch Hale can flip mid-reply, so on a `watching: false` window Hale genuinely cannot begin one',
+                  'watch ONE FULL CLASS for a spot, with `watch_for_opening`, and only on a course-page link the parent pasted in their own message — Hale re-reads that page itself and texts them within about ten minutes of a spot showing. With no link there is nothing to watch, and asking for the link is the right answer rather than a stall',
                 ],
                 draftCapPerMessage: MAX_DRAFTS_PER_TURN,
               },
