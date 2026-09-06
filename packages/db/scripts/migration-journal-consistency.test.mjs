@@ -26,4 +26,24 @@ describe('migration journal ↔ file consistency', () => {
 
     expect(journalTags).toEqual(fileTags);
   });
+
+  it('gives every entry a `when` strictly greater than the one before it', () => {
+    // The other half of the same 2026-06-14 shape, and the one hand-assigned `when`
+    // gets wrong: drizzle applies an entry only where `when` > the greatest applied
+    // `created_at`, and computeDrift calls an entry pending on the same comparison. So
+    // a `when` equal to or below the tail's is applied by nobody AND reported pending
+    // by nobody — the migration silently never exists in prod, exactly as a missing
+    // journal entry does. Sibling branches assign `when` by hand, so the ordering the
+    // tail depends on is a thing a merge can quietly break.
+    const journal = readJournal(drizzleDir);
+    const outOfOrder = journal
+      .map((entry, i) => ({ entry, previous: journal[i - 1] }))
+      .filter(({ entry, previous }) => previous !== undefined && entry.when <= previous.when)
+      .map(
+        ({ entry, previous }) =>
+          `${entry.tag} (${entry.when}) <= ${previous.tag} (${previous.when})`,
+      );
+
+    expect(outOfOrder).toEqual([]);
+  });
 });

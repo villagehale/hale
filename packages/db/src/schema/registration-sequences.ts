@@ -36,7 +36,13 @@ import { users } from './users.js';
  *     channel_messages dedupe key, exactly as it is for M4.
  *
  * What IS here is the state nothing else can derive: what the parent told us happened
- * after the window opened, and the waitlist clock that answer started.
+ * after the window opened, the waitlist clock that answer started, and — VIL-338 — the
+ * course page the parent pasted, the instant that page says it opens for THIS family,
+ * and the parent's own word about their portal setup. No lookup reproduces those three:
+ * a paste has no other home, the anchor is the municipality's own system of record and
+ * the sweep runs 288 times a day, and readiness is something only the parent knows. None
+ * of them is a status — how far along the ladder is stays a pure function of the window's
+ * live clock, for the same reason the status column above is absent.
  */
 export const registrationSequences = pgTable(
   'registration_sequences',

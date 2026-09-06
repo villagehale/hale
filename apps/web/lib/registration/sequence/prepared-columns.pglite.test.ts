@@ -106,12 +106,40 @@ describe('registration_sequences · the prepared-registration columns', () => {
     );
   });
 
-  it('accepts the unbound row and the fully bound row', async () => {
+  it('accepts the unbound row, and round-trips a bound one through the Drizzle columns', async () => {
     // The positive control the pair of refusals above needs: the CHECK must not be
     // refusing everything. Kills a CHECK written as `IS NOT NULL AND IS NOT NULL`,
     // which would make today's unbound sequences uninsertable.
     await expect(insertSequence(null, null)).resolves.toBeDefined();
-    await expect(insertSequence(COURSE_URL, '2026-08-12T10:30:00Z')).resolves.toBeDefined();
+
+    // The bound row goes in through the table object rather than raw SQL, because the
+    // .sql and the Drizzle table are two spellings of one table and only a write that
+    // names the column OBJECTS can catch them disagreeing. Kills renaming, mistyping or
+    // deleting any of the three columns on the TypeScript side while 0110 ships as it
+    // is — a schema that names a column production does not have, which every other
+    // gate in the repo (tsc, the drift check, the ratchet, a chain fake) reads as green.
+    const windowId = await seedWindow();
+    const [bound] = await db.database
+      .insert(schema.registrationSequences)
+      .values({
+        familyId,
+        windowId,
+        parentUserId,
+        courseUrl: COURSE_URL,
+        courseOpensAt: new Date('2026-08-12T10:30:00.000Z'),
+        readinessReady: true,
+      })
+      .returning({
+        courseUrl: schema.registrationSequences.courseUrl,
+        courseOpensAt: schema.registrationSequences.courseOpensAt,
+        readinessReady: schema.registrationSequences.readinessReady,
+      });
+
+    expect(bound).toEqual({
+      courseUrl: COURSE_URL,
+      courseOpensAt: new Date('2026-08-12T10:30:00.000Z'),
+      readinessReady: true,
+    });
   });
 
   it('has row level security on', async () => {
