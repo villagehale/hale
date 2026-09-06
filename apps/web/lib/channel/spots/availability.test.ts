@@ -353,6 +353,12 @@ describe('transitionKind', () => {
     ['full', waitlistFull, null],
     ['open', fullWithWaitlistRoom, null],
     ['full', reading({ IsRegistrationClosed: true }), null],
+    // THE TWO ROWS WHERE NOTHING CHANGED, which are the two the watch spends almost
+    // every tick in. Without them a `prev` precondition can be dropped from either
+    // branch and the whole suite still passes, while the sweep texts a parent about a
+    // full class with a waitlist, or an open class, every ten minutes.
+    ['full', fullWithWaitlistRoom, null],
+    ['open', open, null],
   ] as const)('%s -> the new reading', (prev, next, kind) => {
     expect(transitionKind(prev, next)).toBe(kind);
   });
