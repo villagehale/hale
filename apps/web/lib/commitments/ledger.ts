@@ -77,7 +77,16 @@ export type CommitmentCancelReason =
   | 'founder_welcome_superseded'
   /** The founder said no. The note was never sent, so the promise was not kept — voided,
    * with the reason that says a person decided it rather than a clock running out. */
-  | 'founder_welcome_declined';
+  | 'founder_welcome_declined'
+  /**
+   * The last course page this family was having watched stopped being watched without an
+   * opening ever being delivered — it expired, the season closed, the page became
+   * unreadable, or the text Hale sent could not be confirmed. The promise was "I'll text
+   * you when a spot opens", and none of those endings is that text arriving, so the debt
+   * is voided out loud rather than filed as kept. ('channel_revoked' covers the household
+   * that left instead: the reason is the leaving, not the watch.)
+   */
+  | 'spot_watch_ended';
 
 /**
  * What became of a promise. `already_open` is deliberately NOT folded into either of the
@@ -203,11 +212,11 @@ export async function fulfillCommitment(
  * a debt that disappears without an account of why is the one closure a ledger must not
  * be able to express.
  *
- * NO PRODUCTION CALLER YET, deliberately. The two candidate triggers — a household
- * losing its last sendable channel, and a parent revoking the approval a registration
- * plan rested on — are send-policy calls, the same boundary that keeps the overdue sweep
- * from texting anyone in v1. The writer exists so that closing a promise as VOIDED is a
- * supported move rather than a schema column nothing may legally write.
+ * ONE PRODUCTION CALLER: the spot watch (channel/spots/promise.ts), which voids its
+ * promise when the last page a household was having watched stops being watched without
+ * the text it promised ever arriving. The other candidate trigger — a parent revoking the
+ * approval a registration plan rested on — is still a send-policy call, the same boundary
+ * that keeps the overdue sweep from texting anyone in v1.
  */
 export async function cancelCommitment(
   database: Database,

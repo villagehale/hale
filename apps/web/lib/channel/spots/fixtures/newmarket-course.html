@@ -1,0 +1,874 @@
+
+
+<!DOCTYPE html>
+<html class="bm-full-page" xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" data-rootUrl="/">
+    <head><link rel="icon" href="/Content/Images/Rocket_ICON.ico" /><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        
+        <!--Required scripts needed for menus-->
+       <script type="text/javascript">
+           if (!window.jQuery) {
+               document.write('<script crossorigin="anonymous" src="/Scripts/jQueryCore/jQueryCoreMin.js?08250811">\x3C/script>');
+               document.write('<script crossorigin="anonymous" src="/Scripts/jQueryCore/jquery-migrate-3.3.2.min.js?08250811">\x3C/script>');
+           }
+       </script>
+        <script crossorigin="anonymous" src="/Scripts/Kendo/kendo.all.min.js?08250811" type="text/javascript"></script>
+        <script crossorigin="anonymous" src="/Scripts/Kendo/kendo.aspnetmvc.min.js?08250811" type="text/javascript"></script>
+
+        
+    <title>Counsellor in Training Course</title>
+
+    <meta property="og:title" content="Counsellor in Training Course" />
+    
+
+<link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-Theme.css?08250811" type="text/css" />
+<link href="/Content/jQueryUI/ui-lightness/jquery-ui.css?08250811" type="text/css" rel="stylesheet" />
+
+<link href="/Content/Kendo/kendo.common.min.css?08250811" rel="stylesheet" type="text/css" />
+<link href="/Content/Kendo/kendo.bootstrap.min.css?08250811" rel="stylesheet" type="text/css" />
+<link href="/Content/Fonts/BookMe/styles.css?08250811" rel="stylesheet" type="text/css" />
+<link href="/Content/Fonts/FontAwesome/css/font-awesome.min.css?08250811" rel="stylesheet" type="text/css" />
+<link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-Embed.css?08250811" type="text/css" />
+<link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-CoursesClasses.css?08250811" type="text/css" />
+<link rel="stylesheet" href="/Content/lightbox.css?08250811" type="text/css" />
+<link rel="stylesheet" href="/Scripts/malihuScrollbar/jquery.mCustomScrollbar.css?08250811" type="text/css" />
+
+
+<script crossorigin="anonymous" src="/Scripts/BookMe4/Resources/Resources.en-CA.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/Resources/Resources.en-CA.js?08250811" type="text/javascript"></script>
+
+<!--For logged-in users we use BookMe4Authentificated master page where these scripts are already included. Duplicating these scripts caused KendoDropDown list issue on Android devices (for Android version 9 and higher).-->
+
+
+<script crossorigin="anonymous" src="/Scripts/jQueryUi/jQueryUi.min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/MicrosoftAjax.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/MicrosoftMvcAjax.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/MicrosoftMvcValidation.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/perfectMind/PMCommonHeadLoadingFull.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/perfectMind/PMCommonFull.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/kendo.all.min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/kendo.aspnetmvc.min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/utils/json2min.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/perfectMind/ByPassLinkManager.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/malihuScrollbar/jquery.mCustomScrollbar.concat.min.js?08250811" type="text/javascript"></script>
+
+<script type="text/javascript">
+    var require =
+    {
+        baseUrl: '/Scripts/perfectMind',
+        paths: {
+            "linq": "../linq.min",
+            "knockout": "../knockout-3.5.1",
+            "timepicker": "../jquery.timepicker.min",
+            "kendo-all": "../Kendo/kendo.all.min",
+            "kendo.timezones.min": "../Kendo/kendo.timezones.min",
+            "PlannerUtility": "planner/PlannerUtility",
+            "CommonBindings": "planner/CommonBindings",
+            "PlannerFilter": "planner/PlannerFilter",
+            "PlannerEvent": "planner/PlannerEvent",
+            "PlannerAttendance": "planner/PlannerAttendance",
+            "PerfectScanAutoComplete": "../Attendance/PerfectScanAutoComplete",
+            "ItemDiscountEditViewUI": "discount/ItemDiscountEditViewUI",
+            "ItemDiscountDetailViewUI": "discount/ItemDiscountDetailViewUI",
+            "DiscountEditViewUI": "discount/DiscountEditViewUI",
+            "DiscountDetailViewUI": "discount/DiscountDetailViewUI",
+            "managePickList": "managePickList",
+            "classPage": "../Attendance/ClassPage",
+            'activitySearch': '../BookMe4/activity.search',
+            'courses-booking': '../BookMe4/Controllers/CourseBookingController',
+            'startpage': '../BookMe4/Controllers/StartPageController',
+            'searchPage': '../BookMe4/Controllers/BookMe4SearchController',
+            'BookMeConstants': '../BookMe4/constants',
+            'FacilityList': '../Bookme4/Controllers/FacilityListController',
+            'FacilityLandingPageController': '../BookMe4/Controllers/FacilityLandingPageController',
+            'FacilityResponsivenessHelper': '../BookMe4/FacilityResponsivenessHelper',
+            'ScrollableMainMenu': '../BookMe4/ScrollableMainMenu',
+            'FacilityMap': '../BookMe4/Controllers/FacilityMapController',
+            'custom-booking-online': '../BookMe4/Controllers/CustomBookingController',
+            'custom-booking-online-service': '../BookMe4/Services/CustomBookingService',
+            'custom-booking-online-models': '../BookMe4/Models/CustomBookingModels',
+            'BookMe4SearchHelper': '../BookMe4/BookMe4SearchHelper',
+            'BookMe4AttendanceHeader': '../BookMe4/BookMe4AttendanceHeader',
+            'SingleLocationOnlineShoppingCartPopup': '../BookMe4/SingleLocationOnlineShoppingCartPopup',
+            'BookMe4CartV2Controller': '../BookMe4/Controllers/BookMe4CartV2Controller',
+            'BookMe4CartService': '../BookMe4/Services/BookMe4CartService',
+            'CartItemHelper': '../BookMe4/Helpers/CartItemHelper',
+            'DateTimeHelper': '../BookMe4/Helpers/DateTimeHelper',
+            'BreadcrumbsController': '../BookMe4/Controllers/BreadcrumbsController',
+            'StartPageV2Controller': '../BookMe4/Controllers/StartPageV2Controller',
+            'ClassBookingV2Controller': '../BookMe4/Controllers/ClassBookingV2Controller',
+            'CourseBookingV2Controller': '../BookMe4/Controllers/CourseBookingV2Controller',
+            'text': '../requireModules/text',
+            'Masonry': '/Scripts/masonry.pkgd.min.js?08250811',
+            'FilterViewModelBase': '../BookMe4/Components/FilterViewModelBase',
+            'EmptyFilter': '../BookMe4/Components/EmptyFilter',
+            'MultiSelectFilter': '../BookMe4/Components/MultiSelectFilter',
+            'LocationMultiSelectFilter': '../BookMe4/Components/LocationMultiSelectFilter',
+            'FilterSelector': '../BookMe4/Components/FilterSelector',
+            'FilterManager': '../BookMe4/Components/FilterManager',
+            'FiltersCommunicationManager': '../BookMe4/Components/FiltersCommunicationManager',
+            'SearchByKeywordFilter': '../BookMe4/Components/SearchByKeywordFilter',
+            'DaysOfWeekFilter': '../BookMe4/Components/DaysOfWeekFilter',
+            'DateRangeFilter': '../BookMe4/Components/DateRangeFilter',
+            'TimeRangeFilter': '../BookMe4/Components/TimeRangeFilter',
+            'AgeFilter': '../BookMe4/Components/AgeFilter',
+            'CourseEvent': '../BookMe4/Components/CourseEvent',
+            'CourseService': '../BookMe4/Components/CourseService',
+            'CourseOccurrence': '../BookMe4/Components/CourseOccurrence',
+            'CourseDate': '../BookMe4/Components/CourseDate',
+            'CourseBookingPageSeriesViewComponent': '../BookMe4/Components/CourseBookingPageSeriesViewComponent',
+            'CourseBookingPageSessionsViewComponent': '../BookMe4/Components/CourseBookingPageSessionsViewComponent',
+            'CourseBookingPageSeriesViewVM': '../BookMe4/ViewModels/CourseBookingPageSeriesViewVM',
+            'CourseBookingPageSessionsViewVM': '../BookMe4/ViewModels/CourseBookingPageSessionsViewVM',
+            'CourseBookingPageServiceVM': '../BookMe4/ViewModels/CourseBookingPageServiceVM',
+            'CourseBookingPageEventVM': '../BookMe4/ViewModels/CourseBookingPageEventVM',
+            'BookingPageService': '../BookMe4/Services/BookingPageService',
+            'CourseBookingPageHelper': '../BookMe4/Helpers/CourseBookingPageHelper',
+            'ApplicationMenuMobile': 'ApplicationMenuMobile',
+            'ApplicationMenuItem': 'Controls/Shared/ApplicationMenuItem',
+            'ApplicationMenuItemTemplate': '/Content/HtmlTemplate/Controls/Shared/ApplicationMenuItem.html',
+            'ApplicationChildMenuTemplate': '/Content/HtmlTemplate/Controls/Shared/ApplicationChildMenu.html',
+            'ApplicationChildMenu': 'Controls/Shared/ApplicationChildMenu',
+            'FadeIn': 'Shared/Extensions/FadeIn',
+            'SlideIn': 'Shared/Extensions/SlideIn',
+            'ImageCarousel': 'Controls/ImageCarousel',
+            'ImageCarouselPopup': 'Controls/Popup/ImageCarouselPopup',
+            'PopupWrapper': 'Controls/Popup/PopupWrapper',
+            //"culture": '../kendo/cultures/kendo.culture.en-CA.min'
+        },
+        urlArgs: "v=08250811"
+    };
+</script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/cultures/kendo.culture.en-CA.min.js" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/require.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/LazyLoader.js?08250811" type="text/javascript"></script>
+
+<script>
+    kendo.culture("en-CA");
+</script>
+
+<div id="email-alert" style="max-width: 800px; margin: 30px auto; border: 2px solid #007BFF; background-color: #e6f0ff; color: #004085; padding: 15px 20px; border-radius: 8px; font-family: Arial, sans-serif;">
+  <strong>Fall Programs Are Here!</strong>
+	<div style="margin-top: 5px;">
+	Registration is now open for a variety of recreation programs designed to keep you active, engaged, and connected this season.
+  </div>
+</div>
+
+
+
+    <style type="text/css">
+        .similar-row {
+            display: none;
+        }
+
+        #load-more {
+            float: right;
+            text-decoration: underline;
+        }
+    </style>
+    <link rel="stylesheet" href="/Content/compass/css/base.css?08250811" type="text/css" />
+    <link rel="stylesheet" href="/Content/compass/css/BookMe/BookMe4-System.css?08250811" type="text/css" />
+    <link rel="stylesheet" href="/Content/compass/css/BookMe/SingleLocationOnlineShoppingCartPopup.css?08250811" type="text/css" />
+
+    <!--This style needs to be placed here for proper Google Maps rendering.-->
+    <style type="text/css">
+        #map-canvas img {
+            min-width: 0;
+            max-width: none;
+            max-height: none;
+        }
+    </style>
+
+
+        <link href="/Content/sitebase1.css?08250811" rel="stylesheet" type="text/css" />
+        <link rel="stylesheet" type="text/css" href="/Content/Planner2/PlannerAddin.css?08250811" />
+    </head>
+    <body>
+        <input type="hidden" id="siteAnchor" value="/" />
+        
+<form action="/Clients/BookMe4LandingPages/CoursesLandingPage" id="AjaxAntiForgeryForm" method="post" style="display: none;"><input name="__RequestVerificationToken" type="hidden" value="" /></form>
+<script type="text/javascript" crossorigin="anonymous" src="/Scripts/perfectMind/AjaxAntiForgeryPost.js?08250811"></script>
+        <div id="temp_wrapper" style="position: fixed;top:0px;left:0px;height: 100%;width:100%;background-color: white;z-index: 100000"></div>
+        <ul id="bypass-link-list">
+            <li class="bypass-link-item">
+                <a id="main-content-link" class="bypass-link" href="#main-content" tabindex="1">
+                    <div class="link-content">Skip to main content</div>
+                </a>
+            </li>
+        </ul>
+
+      
+
+<link rel="stylesheet" href="/Content/NewHeaderStyles.css?08250811" type="text/css" />
+
+
+
+<div class="bm-org-header public-header" role="heading" aria-level="1">
+    <img class="" src="//pmcontent.blob.core.windows.net/83509110b3bb4f9785f5b5a640e86560/logo/Newmarket_RGB.png?220111084957" alt="PerfectMind Logo" aria-hidden="true" />
+    <div class="org-details">
+        <div class="bm-org-name">
+            <div>Town of Newmarket</div>        
+        </div>
+        <div class="org-phone-number">
+            <div>(905) 895-5193</div>        
+        </div>
+    </div>
+    <div class="header-for-member">
+        <div id="topNav">
+            <div class="log-in-button-container" style="position: absolute; right: 60px; top: 0px; margin-top: 26px;">
+                 <a class="pm-button pm-login-button" title="Log in to portal" href="/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3a%2f%2fnewmarket.perfectmind.com%2fClients%2fBookMe4LandingPages%2fCoursesLandingPage%3fwidgetId%3d15f6af07-39c5-473e-b053-96653f77a406%26redirectedFromEmbededMode%3dFalse%26courseId%3d5f397fce-9475-4fcf-96d5-8769645f06b3">
+                    <span>Login</span>
+                 </a>
+            </div>
+            <div id="google_translate_element" style="position: absolute; right: 185px; top: 0px;"></div>
+        </div>
+    </div>
+</div>
+
+
+<script type="text/javascript" src="//s7.addthis.com/js/300/addthis_widget.js#pubid=ra-4e2a0b2a5d3a81b9" async="async"></script>
+<script crossorigin="anonymous" src="/Scripts/Kendo/kendo.PmDialog.js?08250811" type="text/javascript"></script>
+<script crossorigin="anonymous" src="/Scripts/alerts.js"></script>
+<script type="kendo-template" id="book-button">
+
+</script>
+
+<div class="bm-content-wrapper bm-course-page bm-landing-page">
+    
+    <div class="bm-course-details">
+         <section>
+             
+    <div class="bm-course-prices" tabindex="0">
+        <em class="" aria-hidden="true"></em>
+        <h3 class="fees-header">Fees</h3>
+        
+        <div class="table">
+            
+                <div class="row">
+                    <div class="column first-column" aria-label="Fee name: General Program: Non-Resident">General Program: Non-Resident</div>
+                    <div class="column second-column">
+                        <div class="bm-price-tag" aria-label="Fee price: $435.65">$435.65</div>
+                        
+                        <div class="bm-taxable-state-tag">Plus Tax</div>
+                        
+                    </div> 
+                </div>               
+            
+                <div class="row">
+                    <div class="column first-column" aria-label="Fee name: General Program: Resident">General Program: Resident</div>
+                    <div class="column second-column">
+                        <div class="bm-price-tag" aria-label="Fee price: $336.27">$336.27</div>
+                        
+                        <div class="bm-taxable-state-tag">Plus Tax</div>
+                        
+                    </div> 
+                </div>               
+            
+        </div>
+    </div>
+   
+             <div class="bm-course-days" tabindex="0">
+                <em class=""></em>
+                  
+                      <h3>Course Dates</h3> 
+                  
+                <div class="table">
+                    <div class="row">
+                        <div class="column first-column">0 sessions </div> 
+                        <div class="column second-column">Apr 01, 08, 15, 22, 29/ May 06, 13, 20, 23...</div>
+                    </div>
+                </div>
+                <div class="k-widget k-grid" id="SimilarEventsGrid"><table><colgroup><col /><col /><col /><col /></colgroup><thead class="k-grid-header"><tr><th class="k-header" data-field="DayOfWeekShort" data-index="0" data-title="Day" id="3bba208f-7faf-414f-a104-0ecb65681c91" scope="col"><span class="k-link">Day</span></th><th class="k-header" data-field="UserDate" data-index="1" data-title="Date" id="1f5e15d6-c9e5-42c3-9cff-9db00a7c0545" scope="col"><span class="k-link">Date</span></th><th class="k-header" data-field="StartAndEndTime" data-index="2" data-title="Duration" id="969b1e56-fdd3-42d8-9d8d-7cea3fc65b05" scope="col"><span class="k-link">Duration</span></th><th class="k-header" data-field="Facility" data-index="3" data-title="Facility" id="8d4b484a-0218-4350-8b99-0a02b4576201" scope="col"><span class="k-link">Facility</span></th></tr></thead><tbody><tr class="k-no-data"><td colspan="4"></td></tr></tbody></table></div><script>
+	kendo.syncReady(function(){jQuery("#SimilarEventsGrid").kendoGrid({"columns":[{"title":"Day","headerAttributes":{"data-field":"DayOfWeekShort","data-title":"Day"},"field":"DayOfWeekShort","encoded":true},{"title":"Date","headerAttributes":{"data-field":"UserDate","data-title":"Date"},"field":"UserDate","encoded":true},{"title":"Duration","headerAttributes":{"data-field":"StartAndEndTime","data-title":"Duration"},"field":"StartAndEndTime","encoded":true},{"title":"Facility","headerAttributes":{"data-field":"Facility","data-title":"Facility"},"field":"Facility","encoded":true}],"scrollable":false,"autoBind":false,"dataSource":{"type":(function(){if(kendo.data.transports['aspnetmvc-server']){return 'aspnetmvc-server';} else{throw new Error('The kendo.aspnetmvc.min.js script is not included.');}})(),"transport":{"read":{"url":""},"prefix":""},"serverPaging":true,"serverSorting":true,"serverFiltering":true,"serverGrouping":true,"serverAggregates":true,"filter":[],"schema":{"data":"Data","total":"Total","errors":"Errors","model":{"fields":{"UserDate":{"editable":false,"type":"string"},"UserTime":{"editable":false,"type":"string"},"UserEndDate":{"editable":false,"type":"string"},"UserEndTime":{"editable":false,"type":"string"},"DayOfWeek":{"editable":false,"type":"string"},"DayOfWeekShort":{"editable":false,"type":"string"},"DurationInMinutes":{"type":"number"},"AllDayEvent":{"type":"boolean"},"StartAndEndTime":{"editable":false,"type":"string"},"Location":{"type":"string"},"Facility":{"type":"string"},"LocationAndFacility":{"editable":false,"type":"string"},"Date":{"editable":false,"type":"date"}}}}}});});
+</script>
+
+                       <a href="javascript:void(0);" id="load-more" class="bm-box-title" aria-label="To load more sessions press enter button.">Load more...</a>
+                  
+             </div>           
+        </section>
+        <section class="bm-course-about">
+            <em class=""></em>
+            <div tabindex="0">
+                <h3>About this Course</h3>
+            
+            <p class="bm-course-about-descr">Are you interested in preparing to become a successful camp counsellor? In this course you will learn program planning, games and resources, behaviour management strategies and more. Standard First Aid and CPR-C, as well as Safeguard certification included, upon receiving a passing grade. This course includes an 8 week in class portion, plus a weekend for Standard First Aid and CPR-C (May 23/24 from 8:30 a.m. – 5:00 p.m. at the Magna Centre), followed by a volunteer placement, for successful candidates, at a Town of Newmarket Summer Camp. Safeguard will take place on May 6th from 5:00 – 8:30 p.m. Placements will be coordinated on site with the Program Instructor. Note: there are no prerequisites for this course.</p>
+            </div>            
+            <div class="table" tabindex="0">
+                <div class="row bm-location-map"></div>
+
+                
+                <div class="row">
+                    <div class="column first-column">Course ID</div>
+                    <div class="column second-column">00082652</div> 
+                </div>
+                 
+            </div>
+            
+            
+            <div class="bm-course-restrictions" tabindex="0">
+                <em class=""></em>
+                <h3>Restrictions</h3>
+                <div class="table">
+                    
+                    <div class="row">
+                        <div class="column first-column">Age Restriction</div>
+                        <div class="column second-column">13 to 16 y 11m</div> 
+                    </div>
+                    
+                </div>
+            </div>
+            
+        </section>
+    </div>
+    <div class="addthis_sharing_toolbox"></div>
+    <div style="display: none">
+        
+    </div>
+</div>
+
+
+<script src="//maps.googleapis.com/maps/api/js?key=AIzaREDACTED" type="text/javascript"></script>
+
+<script type="text/javascript">
+    function renderAdress(location, address, hasAlternativeLocation, alternativeLocation) {
+        var obj = $.extend(true, {}, { Location: location, HasAlternativeLocation: hasAlternativeLocation, AlternativeLocation: alternativeLocation }, address);
+        return kendo.Template.compile($('#booking-event-address').html())(obj);
+    }
+    function renderRestriction(label, data) {
+        return kendo.Template.compile($('#booking-event-restriction').html())({ Label: label, data: data });
+    }
+</script>
+
+<script type="kendo-template" id="booking-event-info">
+<div class="bm-course-primary-content">
+    #if (BackAction.Url != "") {#
+        <a class="bm-button bm-back-button" role="link" href=" #: BackAction.Url # ">
+        <em class="bmf-left-open" aria-hidden="true"></em><span>Back</span></a>
+    # } #
+    <div class="bm-course-primary-inner">
+        
+        <section class="event-info-column">
+            <h1 class="bm-course-primary-event-name bm-event-name-h1" title="#: EventTitle #" tabindex="0">#: EventTitle #</h1>
+                # if (BookingType == 4 ) { # 
+                    <span class="bm-facility-program-name">#: ProgramName #</span> 
+                # } #
+            # if(CalendarOvernightReservations && ProgramUseCheckInOut ) { #
+                <label>
+                    <em class="bmf-calendar" aria-label="Event range,  #: StartDate # #: StartTime # until #: EndDate # #: EndTime #"></em>
+                    <span>#: StartDate # #: StartTime # until #: EndDate # #: EndTime #</span>
+                </label>
+            # } else { # 
+            # if (BookingType != 6 || IsSingleOccurrence) { #
+            <label><em class="bmf-calendar" aria-hidden="true"></em><span aria-label="Event date - #: FormattedFullStartDate ##if (StartDate != EndDate) {# until #: FormattedFullEndDate ##}# ">#: StartDate ##if (StartDate != EndDate) {# - #: EndDate ##}#</span></label>
+            # } #
+            # if(!CalendarOvernightReservations || ProgramUseCheckInOut || StartDate == EndDate) { #
+                <label><em class="bmf-clock" aria-hidden="true"></em><span aria-label="Event time - #: EventTimeWordDescription #">#: EventTimeDescription #</span></label>
+                # } #            
+            # } #
+            # if(Spots) { #
+                <label class="spots"><em class="bmf-user" aria-hidden="true"></em><span>#: Spots #</span></label>
+            # } #
+        </section>
+    
+       <section class="bm-booking-info bm-restrictions">
+            # var displayAtLeastOneRestriction = ((!DisplaySettings || DisplaySettings.DisplayGenderRestrictions) && GenderRestrictions) ||
+                                                 ((!DisplaySettings || DisplaySettings.DisplayAgeRestrictions) && AgeRestrictions) ||
+                                                 ((!DisplaySettings || DisplaySettings.DisplayRankRestrictions) && RankRestrictions) ||
+                                                 PrerequisiteEvents;  
+            if(displayAtLeastOneRestriction) { # 
+            <div class="common-restrictions">
+                    <div class="registration-info-header">Restrictions</div>
+                 # if ((!DisplaySettings || DisplaySettings.DisplayGenderRestrictions) && GenderRestrictions) { # 
+                    <div class="registration-info-text">Gender: #: GenderRestrictions #</div>
+                 # } # 
+
+                 # if ((!DisplaySettings || DisplaySettings.DisplayAgeRestrictions) && AgeRestrictions) { #
+                    <div class="registration-info-text">Age: #= AgeRestrictions #</div>
+                 # } #
+
+                 # if ((!DisplaySettings || DisplaySettings.DisplayRankRestrictions) && RankRestrictions) { #
+                    <div class="registration-info-text">Rank: #: RankRestrictions #</div>
+                 # } #
+                # if (PrerequisiteEvents) { #
+                        <div id="displayPrerequisiteEvents" class="registration-info-text" role="button">Prerequisite Events: <span class="underlinePointer" aria-haspopup="dialog" role="button">
+                        Prerequisite Event(s)</span></div>                                        
+                # } #              
+            </div>
+            # } #
+
+        # if (IsLotterySettingsEnabled) { # 
+    
+            <div class="registration-common-info" aria-label="#: LotteryInfo #">
+                <div >#: LotteryInfo #</div>
+            </div>
+
+        # } else if (DisplayRegistrationDatesSection) { # 
+
+            <div class="registration-restrictions">
+                <div class="registration-info-header">Registration Dates</div>
+            
+                # if (MembersRegistrationDate) { # 
+                     <div class="registration-info-text" aria-label="For members #: FormattedMembersRegistrationDate #">Members: #: MembersRegistrationDate #</div>
+                # } #
+                # if (ResidentsRegistrationDate) { #
+                     <div class="registration-info-text" aria-label="For residents #: FormattedResidentsRegistrationDate #">Residents: #: ResidentsRegistrationDate #</div>
+                # } #
+                # if (PublicRegistrationStartDate) { #
+                     <div class="registration-info-text" aria-label="For public #: FormattedPublicRegistrationStartDate #">Public: #: PublicRegistrationStartDate #</div>
+                # } #  
+    
+            <div>
+
+        # } else { #
+
+            <br/>
+            <br/>
+            <br/>
+
+            <div class="registration-common-info" aria-label="#: FormattedRegistrationInfo #">
+                <div >#: RegistrationInfo #</div>
+            </div>
+        # } # 
+        <section>
+    </div>
+</div>
+</script>
+<script type="kendo-template" id="booking-appointment-info">
+<div class="bm-course-primary-content booking-appointment">
+    <img class="landing-page-bg" src="/Content/Images/landing-page-bg.jpg" alt="Header photo" />
+    <div class="booking-appointment-details">
+        #if (BackAction.Url != "") {#
+            <a class="bm-button bm-back-button" href=" #: BackAction.Url # ">
+            <em class="bmf-left-open" aria-hidden="true"></em><span>Back to Event</span></a>
+        # } #
+
+        <div class="bm-course-primary-inner">
+            <section class="event-info-column">
+                <h1 class="bm-course-primary-event-name" title="#: ProgramName #">#: ProgramName #</h1>
+            </section>
+
+            <section class="bm-booking-info">            
+                <div class="common-restrictions">
+                    #= renderRestriction('Gender', GenderRestrictions) #
+                    #= renderRestriction('Age', AgeRestrictions) #
+                    #= renderRestriction('Rank', RankRestrictions) #
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+</script>
+
+<script id="facility-landing-page-event-template" type="text/x-kendo-template">
+        # var infoAndAvailabilty = onlineOption == onlineOptions.ShowFacilityInfoAndAvailability; 
+        var cssClasses = "k-event-template facility-booking-slot";
+        if (isPlaceholder) cssClasses += " placeholder-event";
+        if (isDisabled || infoAndAvailabilty) cssClasses += " disabled-event";
+        if (isAllDay) cssClasses += " all-day";
+        #
+        <div class="#: cssClasses #">
+            <div>
+                <span title="#: timeText #">#: title #</span>
+            </div> 
+        </div>        
+</script>
+
+<script type="kendo-template" id="booking-event-location">
+    #= renderAdress(Location, Address, HasAlternativeLocation, AlternativeLocation) #
+</script>
+<script type="kendo-template" id="booking-event-restriction">
+    # if(data){ #
+        <div>#: Label #: #: data #</div>
+    # } #
+</script>
+<script type="kendo-template" id="booking-event-logo">
+<div class="bm-org-header">
+    <img src="#: OrgLogo #" alt="PerfectMind Logo" aria-hidden="true"/>
+    <div class="bm-org-name">   
+        # if(!OrgIsSingleLocation){ #           
+            <h4># if(BookingType == 4){ # #: OrgName # # } else { # #: Location # #}#</h4>
+        # } else { #
+            <h4>#: OrgLegalName #</h4>            
+        # } #
+    </div>
+    <div id="google_translate_element" style="position:absolute; right: 400px;"></div>
+</div>
+</script>
+<script type="kendo-template" id="booking-event-logo-address">
+    # if(!!Address) { #
+        <div id="bm-org-address" >
+            # if(Address.Street != ""){ #
+                    <span>#: Address.Street #,</span>
+            # } #
+                # if(Address.City != ""){ #
+                    <span>#: Address.City #,</span>
+            # } #
+            # if(Address.Country != ""){ #
+                    <span>#: Address.Country #,</span>
+            # } #
+            # if(Address.PostalCode != ""){ #
+                    <span>#: Address.PostalCode #</span>
+            # } #
+        </div>
+    # } #
+</script>
+
+<script type="kendo-template" id="booking-event-address">
+    # var addressDescription = HasAlternativeLocation ? AlternativeLocation : (AddressTag != null ? AddressTag : Location);
+        if(!HasAlternativeLocation){
+            if (!!Street) addressDescription += ", street " + Street;
+            if (!!City) addressDescription += ", city " + City;
+            if (!!Country) addressDescription += ", country " + Country;
+            if (!!PostalCode) addressDescription += ", postalCode " + PostalCode;
+        }        
+    #
+    <div class="column first-column" style='width: 75%;' aria-label="Event location">#= HasAlternativeLocation ? "Event location: " + AlternativeLocation : (AddressTag != null ? AddressTag : Location) #</div>
+    <div class="column second-column" style='vertical-align:top;'>
+            <span id="show-location-popover" class="bm-popover-link" tabindex="0" role="button" aria-haspopup="dialog">Show Map</span>
+        <div id="location-popover-container" class="bm-popover-container" role="dialog" tabindex="-1" aria-modal="false">
+            <em class="bmf-cross" aria-hidden="true" role="button"></em>
+            <div id="map-canvas" class="bm-map-canvas"></div>
+            <div class="bm-map-address">#= HasAlternativeLocation ? AlternativeLocation : (AddressTag != null ? AddressTag : Location) #</div>
+            # if(!HasAlternativeLocation){ #
+                <div>#: Street #</div>
+                <div>#: City #, #: Country #, #: PostalCode #</div>
+            # } #
+
+            <div class="bm-map-address">Get Direction From:</div>
+            <div class="bm-location-popover-dest">
+                <label for="directionDestination" class="hidden-label">Enter the direction from</label>
+                <input id="directionDestination" name="directionDestination" class="pm-text-input" type="text" />
+                <span id="calculateDirectionButton" class="bm-button" aria-label="Calculate direction" role="button" tabindex="0">Calculate</span>
+            </div>
+        </div>
+    </div>
+
+</script>
+<script type="text/template" id="facility-list-filterblock-template">
+    <a class="clear-filter-block" href="javascript:;" data-bind="click: resetCallback, visible: resetVisible, attr: { 'aria-label': 'Clear selected ' + filterBlockName + ' filter' }, event: { keydown: resetCallbackOnKeyPress }" role="button">Clear</a>
+    <ul class="padding-bottom" data-bind="foreach: itemsToShow">
+        <li data-bind="visible: isVisible">
+            <input class="pm-checkbox-blue" type="checkbox" role="checkbox"
+                data-bind="attr: { 'data-value': ID, 'id': $parent.filterBlockName + $index(), 'data-text': Name, value: ID, name: $parent.inputName },
+                event: { change: $parent.filterChangeCallback }"/>
+            <label data-bind="attr: { 'for': $parent.filterBlockName + $index() }, text: Name"></label>
+        </li>
+    </ul>
+    <a href="javascript:;" class="show-more-toggle" data-bind="click: onShowMoreClick, text: showMoreText, visible: showMoreVisible, attr: { 'aria-expanded': showAll() ? 'true' : 'false' }, event: { keydown: onShowMoreKeyPress }" role="button"></a>
+</script>
+<script type="text/x-kendo-template" id="facilityTemplate">
+    #
+    var linkText = (OnlineOption == bookMeConstants.OnlineOption.ShowFacilityInfo.Id) ? 'Information' : 'Choose';
+    #
+	<div class="facility-item" data-facilityId="#: ID #" tabindex="0">
+        <div class="desktop-details-wrapper">
+            #if (showAvailabilityIndicator){ #
+                <div class="desktop-details-availability">                
+                    <span class="img #:bookMeConstants.FacilityAvailability.Items[Availability].CssClass#">#:bookMeConstants.FacilityAvailability.Items[Availability].Description#</span>
+                </div>
+            # } #
+            #if (IsFacilityMap) { #
+                <a onclick="onChooseClick(this, #: IsFacilityMap #); return false;" data-facilityId="#: ID #" 
+                    class="pm-confirm-button desktop-details" role="link" aria-label="Choose \\#: Name \\# facility map" tabindex="0" href="javascript:void(0);">Choose</a>            
+            # } else { #
+                <a onclick='onChooseClick(this, #: IsFacilityMap #); return false;' data-facilityId="#: ID #" 
+                    class="pm-confirm-button desktop-details" role="link" aria-label="\\#: linkText + &\\#39; &\\#39; + Name \\# facility" tabindex="0" href="#: onClickActionGoToLandingPage(ID) #">#: linkText #</a>            
+            # } #
+        </div>
+        #if(!Image) { 
+            Image = "/Content/Images/ControlIcons/noimage.png";
+        } #
+        <img class="facility-image" src="#: Image #" alt="#: Name # facility photo"/>
+		<div class="facility-details">				
+			<h2>#: Name # #if (IsFacilityMap) { # (#: MapFacilitiesCount # Facilities) # } #</h2>		
+			<div id="facilityDescriptionUniqueId-#: uid #" class="facility-description truncated">#: Description #</div>
+            <a href="javascript:void(0);" class="read-more-toggle" aria-controls="facilityDescriptionUniqueId-#: uid #" aria-expanded="false" role="button">Read more</a>
+    
+            <span class="facility-location" data-bind="visible: !isSingleLocationOrganization()"><span style="font-weight: 600;">Location: </span>#: LocationName #</span>
+            # if (Amenities.length > 0) { #
+                <span class="facility-amenities"><span style="font-weight: 600;">Amenities: </span>#: joinedAmenities #</span>
+            # } #	
+        </div>
+	    <div class="tablet-details-wrapper">
+            #if (showAvailabilityIndicator){ #
+                <div class="tablet-details-availability">                
+                    <span class="img #:bookMeConstants.FacilityAvailability.Items[Availability].CssClass#">#:bookMeConstants.FacilityAvailability.Items[Availability].Description#</span>                
+                </div>
+            # } #
+            #if (IsFacilityMap) { #
+                <a onclick="onChooseClick(this, #: IsFacilityMap #); return false;" data-facilityId="#: ID #"
+                    class="pm-confirm-button tablet-details" href="javascript:void(0);" tabindex="0">Choose</a>            
+            # } else { #
+                <a onclick='onChooseClick(this, #: IsFacilityMap #); return false;' data-facilityId="#: ID #" 
+                    class="pm-confirm-button tablet-details" href="#: onClickActionGoToLandingPage(ID) #" tabindex="0">#: linkText #</a>            
+               
+            # } #
+        </div>
+        <div class="facility-detail-pills">
+            # if (FacilityType && !IsFacilityMap){ #
+                <span class="detail-pill grey">#: FacilityType #</span>
+            # } #
+            # if (OnlineOption == bookMeConstants.OnlineOption.AllowReservationWithApproval.Id) { #
+                <span class="detail-pill yellow">Requires Approval</span>
+            # } #
+            # if (ExternalLabel && ExternalLink) { #
+                <a class="detail-pill purple" tabindex="0" target="_blank" href="#: ExternalLink #">#: ExternalLabel #</span>
+            # } #
+        </div>
+	</div>
+</script>
+<script type="text/x-kendo-template" id="successfulAlertTemplate">        
+    <div class="popup-first-user-login-alert-message"> 
+        <i class="fa fa-times fa-lg" aria-hidden="true"></i>                   
+        <p>#: message #</p>
+    </div>            
+</script>
+<script type="text/x-kendo-template" id="notificationTemplate">        
+    <div class="notification-message" role="dialog">
+            #: message #
+    </div>            
+</script>
+<script type="text/x-kendo-template" id="facilityMapPinToolTipTemplate">        
+    <div class="facility-texts-block">
+        <div class="facility-head">
+            <img class="facility-image" src="#: Image #" alt="#: Name # facility photo" aria-hidden="true"/>
+            <div class="name-wrapper">
+                <div class="facility-name ellipsis">#: Name #</div>
+                # if (!!FacilityType) { #
+                    <div class="facility-type ellipsis">#: FacilityType #</div>
+                # } #
+                # if (!!Address) { #
+                    <div>#: Address.Street + ',' + Address.City + ',' + Address.PostalCode #</div>
+                # } #
+            </div>
+        </div>
+        # if (!!Description) { #
+            <div class="description-info">
+                <div class="facility-description truncated">#: Description #</div>
+                <a href="javascript:;" class="read-more-toggle" aria-expanded="false" role="button">Read more</a>
+            </div>
+        # } #
+        # if (Amenities.length > 0) { #
+            <span class="facility-amenities">Amenities: <span style="font-weight: 600;">#: joinedAmenities #</span></span>
+        # } #
+        # for (var i in OptionalDetails) { #
+            <div style="display: block" class="detail-wrapper">#: i #: <span style="font-weight: 600;">#: OptionalDetails[i] #</div></span>
+        # } #
+        # if (!!CheckInTime) { #
+            <div style="display: block" class="detail-wrapper">Check in:  <span style="font-weight: 600;">#: CheckInTime #</div></span>
+        # } #
+        # if (!!CheckOutTime) { #    
+            <div style="display: block" class="detail-wrapper">Check out:  <span style="font-weight: 600;">#: CheckOutTime #</div></span>
+        # } #
+        # if (!!PriceDetails) { # 
+            <div style="display: block" class="detail-wrapper">#: PriceDetails #</div>
+        # } #
+        <div>
+            #if (showAvailabilityIndicator){ #
+                <div class="availability">                
+                    <span class="img #:bookMeConstants.FacilityAvailability.Items[Availability].CssClass#">#:bookMeConstants.FacilityAvailability.Items[Availability].Description#</span>                
+                </div>
+            # } #
+            <a class="pm-confirm-button" onclick='onChooseClick(this); return false;' data-facilityId="#: FacilityId #"
+                href="#: onClickActionGoToLandingPage(FacilityId) #" role="link" tabindex="0">Choose</a>
+        </div>
+    </div>              
+</script>
+<script id="notQualifiedMemberNotificationTemplate" type="text/x-kendo-template">
+    <div class="not-qualified-member-notification notification-element" role="alert">
+        <span class="exclamation-mark-icon"></span>
+        <div class="text">
+            <h3>#: title #</h3>
+            <p>#: message #</p>
+        </div>
+    </div>
+</script>
+<script id="selectAttendeeNotificationTemplate" type="text/x-kendo-template">
+    <div class="select-attendee-notification notification-element" role="alert">
+        <span class="exclamation-mark-icon"></span>
+        <h3>#: message #</h3>
+    </div>
+</script>
+
+
+    <script type="text/javascript">
+        function decodeEncodedValue(value) {
+            var decodedValue = $('<div></div>').html(value).text();
+            return decodedValue;
+        }
+
+        $(window).on("holdsTrackerPopupVisibilityChanged", function () {
+            $('.bm-booking-info.bm-restrictions').toggleClass("bm-holds-tracker");
+        });
+
+        function showMore(skip) {
+            var items = $('#SimilarEventsGrid').find('tbody tr').not(".k-no-data").slice(skip, skip + 10);
+
+            itemsLoaded += items.length;
+
+            if (allItemsCount - itemsLoaded == 0) {
+                $('#load-more').hide();
+            }
+
+            $(items).each(function (index, item) { $(item).removeClass('similar-row'); });
+            $(items).each(function (index, item) { $(item).removeClass('similar-row'); });
+        }
+
+        var eventInfo = $.extend(true, {}, {
+            BackAction: {
+                Url: '/Clients/BookMe4BookingPages/BookingCoursesPage?widgetId=15f6af07-39c5-473e-b053-96653f77a406\u0026calendarId=1e02dd01-799a-4a02-8679-e983de8b5303\u0026singleCalendarWidget=False',
+                Name: 'Back'
+            }
+        }, {"ParentEventId":null,"LotterySettings":null,"IsLotterySettingsEnabled":false,"IsLotteryRegistrationEnabled":false,"IsAdminSession":false,"FakeEventId":null,"LotteryInfo":"","RecordName":"95066","CalendarId":"1e02dd01-799a-4a02-8679-e983de8b5303","CalendarOvernightReservations":false,"ServiceDurationId":null,"WidgetId":"15f6af07-39c5-473e-b053-96653f77a406","RegFormId":"18d27cc3-1e98-4bce-aebc-a5c6d78a80f9","ImageUrl":"","ProgramId":"631b0b25-1b80-43a4-8646-a9272422ad54","ProgramDescription":"","ProgramName":"Youth: Leadership Courses","ProgramImageUrl":"//content.perfectmind.com/83509110b3bb4f9785f5b5a640e86560/images/218/4c9f1a61726b4c33859ced2ca1b48873.png","ProgramUseCheckInOut":false,"EventTimeWordDescription":"Various times","SessionName":"","StartDate":"01/04/2026","StartDateWithOffset":"2026-04-01T17:30:00-04:00","PublicRegistrationStartDate":null,"FormattedPublicRegistrationStartDate":null,"PublicRegistrationStartDateValue":"2026-03-05T08:00:00","PublicRegistrationStartDateWithOffset":null,"ResidentsRegistrationDate":"","FormattedResidentsRegistrationDate":null,"ResidentsRegistrationDateWithOffset":null,"ResidentsRegistrationDateValue":"2026-02-26T08:00:00","MembersRegistrationDate":"","FormattedMembersRegistrationDate":null,"MembersRegistrationDateWithOffset":null,"MembersRegistrationDateValue":"2026-03-05T08:00:00","PublicRegistrationEndDateValue":"2026-03-31T23:59:00","ResidentsRegistrationEndDateValue":null,"MembersRegistrationEndDateValue":null,"AllowLateBooking":false,"FormattedFullStartDate":"April 1st, 2026","StartTime":"05:30 PM","StartDay":"Wednesday","EndDate":"24/05/2026","EndDateWithOffset":"2026-05-24T20:30:00-04:00","FormattedFullEndDate":"May 24th, 2026","EndTime":"08:30 PM","AppointmentStartDateTimeTicks":0,"ActualLocation":"Recreation Youth Centre \u0026 telMAX Indoor Skate Park","Latitude":null,"Longitude":null,"LocationId":"1e34bfa9-c712-4d4f-b156-830898cbe5a5","AgeRule":1,"AgeRuleSpecificDate":"2021-11-23T00:00:00","Restrictions":"Gender - Co-ed; Age - 13 to 16 y 11m; Rank -  Prerequisite Events - False","DisplayableRestrictions":"13 to 16 y 11m","SpotsLeft":0,"RegistrationInfo":"Registration is closed.","FormattedRegistrationInfo":"Registration is closed.","IsRegistrationClosed":true,"IsFutureRegistration":false,"AnyRegistrationDateInFuture":false,"RegistrationEndDateInEventTimeZone":"2026-03-31T23:59:00","RegistrationEndDateUtc":"2026-04-01T03:59:00Z","FormattedRegistrationEndDate":null,"IsWaitListAvailable":false,"IsWaitListFull":false,"IsWaitListHasSpots":false,"RestrictWaitlist":false,"IsFull":true,"Token":null,"Color":15354274,"FacilityId":"5882285d-7954-4759-860f-abb53e286bed","FacilityContractId":null,"FacilityOnlineOption":2,"FacilitySupervisorEmails":"youthcentre@newmarket.ca","Assistants":[],"MaximumCapacity":12,"WaitListCapacity":99,"WaitListSpotsLeft":94,"CanNotBook":true,"Prices":[{"Id":"a556bbf1-759d-4fa4-80b1-5d0c8d4068a7","ObjectId":"6a293c5d-5ea0-d5b9-2ae2-f91bc2069f1b","ItemId":"5f397fce-9475-4fcf-96d5-8769645f06b3","Amount":435.65,"PriceTypeId":"24b11540-0959-4be4-a7a9-c17347f5cecb","Name":"General Program: Non-Resident","IsSelected":false,"IsOriginalPrice":false,"CanSelect":false,"ShowOnline":null,"DisplayAmount":"$435.65","DisplayProratedAmount":"No fee","DisplayAmountOrAsFree":"$435.65","WasProrated":false,"ProratedAmount":0.0,"AdjustedStartDate":null,"TaxableStateDesc":"Plus Tax","AnyTaxesAssigned":true,"IncludeTaxFlagEnabled":false,"WasCalculatedUsingMultipleSlotsLogic":false,"ItemOccurrences":null,"MakeUpClass":false,"DropinFee":false},{"Id":"3421d003-84aa-45fe-8b6f-5d135c4e55d1","ObjectId":"6a293c5d-5ea0-d5b9-2ae2-f91bc2069f1b","ItemId":"5f397fce-9475-4fcf-96d5-8769645f06b3","Amount":336.27,"PriceTypeId":"cc73fb7f-b0b8-438f-8c3a-41b5b91955f5","Name":"General Program: Resident","IsSelected":false,"IsOriginalPrice":false,"CanSelect":false,"ShowOnline":null,"DisplayAmount":"$336.27","DisplayProratedAmount":"No fee","DisplayAmountOrAsFree":"$336.27","WasProrated":false,"ProratedAmount":0.0,"AdjustedStartDate":null,"TaxableStateDesc":"Plus Tax","AnyTaxesAssigned":true,"IncludeTaxFlagEnabled":false,"WasCalculatedUsingMultipleSlotsLogic":false,"ItemOccurrences":null,"MakeUpClass":false,"DropinFee":false}],"Extras":[],"PaymentPlan":null,"HasExtras":false,"HasRequiredExtras":false,"HasRestrictions":true,"OwnerId":"c003934a-86f6-47c7-a4fe-f4f126bc51c0","SupervisorId":null,"RecurrenceId":"d9c95cb9-5544-42c9-a022-5bbfde402e9b","PaddingBefore":null,"PaddingAfter":null,"OnlineRegistration":true,"UseServiceFee":false,"AdminProrateInfo":{"AutoApplyProrate":false,"ProratedInfoText":null,"NotProratedInfoText":null,"ProrateAfterSessionsNumber":1,"AllowProrateLateRegistation":false,"ProrateSessionsBasedOnDurationEnabled":false,"TodayDate":"0001-01-01T00:00:00+00:00"},"OnlineProrateInfo":{"ProrateAfterSessionsNumber":1,"AllowProrateLateRegistation":false,"ProrateSessionsBasedOnDurationEnabled":false,"TodayDate":"2026-09-04T00:00:00-04:00"},"ProrateCoursePermission":false,"IgnoreEventCapacity":false,"EnforceRegistrationsDatesRestrictions":false,"BookOverCapacity":false,"AddAnywayPrerequisites":false,"EnforceNQFeeConflict":false,"EventGroupId":null,"EventDates":"Apr 01, 2026 - May 24, 2026","CapacityCalculationStrategy":{},"AnyHoldsForCurrentUser":false,"ValidateMembershipOnFee":false,"AllowUndoProratedFeeMembership":false,"ProrateSessionsBasedOnDuration":false,"BookingTypeInfo":{"BookingType":3,"IsSchoolProgram":false,"IsCustomBookingOnline":false,"IsCustomBookingAdmin":false,"IsCustomBooking":false},"DisplayRegistrationDatesSection":false,"IsSingleOccurrence":false,"HasValidFee":true,"EventTitle":"Counsellor in Training Course","CreatedDate":"2026-01-12T18:50:08.35","EventId":"5f397fce-9475-4fcf-96d5-8769645f06b3","CourseId":"00082652","CourseIdTrimmed":"82652","EventName":"Counsellor in Training Course","Details":"Are you interested in preparing to become a successful camp counsellor? In this course you will learn program planning, games and resources, behaviour management strategies and more. Standard First Aid and CPR-C, as well as Safeguard certification included, upon receiving a passing grade. This course includes an 8 week in class portion, plus a weekend for Standard First Aid and CPR-C (May 23/24 from 8:30 a.m. – 5:00 p.m. at the Magna Centre), followed by a volunteer placement, for successful candidates, at a Town of Newmarket Summer Camp. Safeguard will take place on May 6th from 5:00 – 8:30 p.m. Placements will be coordinated on site with the Program Instructor. Note: there are no prerequisites for this course.","Spots":"","OccurrenceDate":null,"BookButtonText":"Closed","BookButtonDescription":"Add to Counsellor in Training Course waitlist","ClosedButtonName":"Closed","Instructor":{"Id":null,"FullName":"","Type":"","Description":"","Image":"","Email":""},"Facility":"Multipurpose Room 2","DisplaySettings":{"DisplayInstructorsName":false,"DisplayPrices":true,"DisplaySpotsLeft":true,"DisplayRegistrationDate":true,"DisplayNumberOfSessions":true,"DisplayCourseId":true,"DisplayAgeRestrictions":true,"DisplayRankRestrictions":false,"DisplayGenderRestrictions":false,"ButtonName":"Register","UseBookMe5UiWidgetVersion":false,"WidgetUIVersion":0},"PriceRange":null,"AllDayEvent":false,"AnyTimeBrokenOccurrences":true,"StartDateValue":"2026-04-01T17:30:00","FormattedStartDate":"Wed, Apr 1st, 2026","FormattedStartTime":"05:30 PM","EndDateValue":"2026-05-24T20:30:00","FirstOccurrenceEndDate":"2026-04-01T20:30:00","FormattedEndDate":"May 24th","FormattedEndTime":"08:30 PM","FirstOccurrenceFormattedEndTime":"08:30 PM","EventTimeDescription":"Various times","AlternativeLocation":null,"HasAlternativeLocation":false,"OccurrenceDescription":"Apr 01, 08, 15, 22, 29/ May 06, 13, 20, 23...","Occurrences":[{"StartDateWithOffset":"2026-04-01T17:30:00-04:00","StartDate":"2026-04-01T00:00:00","EndDateWithOffset":"2026-04-01T20:30:00-04:00","EndDate":"2026-04-01T00:00:00","OccurrenceOrderNumber":0,"DurationInMinutes":180},{"StartDateWithOffset":"2026-04-08T17:30:00-04:00","StartDate":"2026-04-08T00:00:00","EndDateWithOffset":"2026-04-08T20:30:00-04:00","EndDate":"2026-04-08T00:00:00","OccurrenceOrderNumber":1,"DurationInMinutes":180},{"StartDateWithOffset":"2026-04-15T17:30:00-04:00","StartDate":"2026-04-15T00:00:00","EndDateWithOffset":"2026-04-15T20:30:00-04:00","EndDate":"2026-04-15T00:00:00","OccurrenceOrderNumber":2,"DurationInMinutes":180},{"StartDateWithOffset":"2026-04-22T17:30:00-04:00","StartDate":"2026-04-22T00:00:00","EndDateWithOffset":"2026-04-22T20:30:00-04:00","EndDate":"2026-04-22T00:00:00","OccurrenceOrderNumber":3,"DurationInMinutes":180},{"StartDateWithOffset":"2026-04-29T17:30:00-04:00","StartDate":"2026-04-29T00:00:00","EndDateWithOffset":"2026-04-29T20:30:00-04:00","EndDate":"2026-04-29T00:00:00","OccurrenceOrderNumber":4,"DurationInMinutes":180},{"StartDateWithOffset":"2026-05-06T17:00:00-04:00","StartDate":"2026-05-06T00:00:00","EndDateWithOffset":"2026-05-06T20:30:00-04:00","EndDate":"2026-05-06T00:00:00","OccurrenceOrderNumber":5,"DurationInMinutes":210},{"StartDateWithOffset":"2026-05-13T17:30:00-04:00","StartDate":"2026-05-13T00:00:00","EndDateWithOffset":"2026-05-13T20:30:00-04:00","EndDate":"2026-05-13T00:00:00","OccurrenceOrderNumber":6,"DurationInMinutes":180},{"StartDateWithOffset":"2026-05-20T17:30:00-04:00","StartDate":"2026-05-20T00:00:00","EndDateWithOffset":"2026-05-20T20:30:00-04:00","EndDate":"2026-05-20T00:00:00","OccurrenceOrderNumber":7,"DurationInMinutes":180},{"StartDateWithOffset":"2026-05-23T17:30:00-04:00","StartDate":"2026-05-23T00:00:00","EndDateWithOffset":"2026-05-23T20:30:00-04:00","EndDate":"2026-05-23T00:00:00","OccurrenceOrderNumber":8,"DurationInMinutes":180},{"StartDateWithOffset":"2026-05-24T17:30:00-04:00","StartDate":"2026-05-24T00:00:00","EndDateWithOffset":"2026-05-24T20:30:00-04:00","EndDate":"2026-05-24T00:00:00","OccurrenceOrderNumber":9,"DurationInMinutes":180}],"NumberOfSessions":10,"PrerequisiteEvents":false,"DisplayablePrerequisiteEventsRestrictionsForCourses":"","DisplayableRestrictionsForCourses":"Age: 13 to 16 y 11m","MinAge":13,"MinAgeMonths":null,"MaxAge":16,"MaxAgeMonths":11,"NoAgeRestriction":false,"AgeRestrictions":"13 to 16 y 11m","GenderRestrictions":"Co-ed","RankRestrictions":"","FromRank":null,"ToRank":null,"StartingRankId":null,"EndingRankId":null,"DurationInMinutes":76500,"FeeFrequency":null,"OrgLogo":"//pmcontent.blob.core.windows.net/83509110b3bb4f9785f5b5a640e86560/logo/Newmarket_RGB.png?220111084957","OrgIsSingleLocation":false,"OrgLegalName":"Town of Newmarket","OrgName":"Town of Newmarket","Address":{"AddressTag":"Recreation Youth Centre \u0026 telMAX Indoor Skate Park","Street":"56 Charles St.","City":"Newmarket","PostalCode":"L3Y 3V8","CountryId":0,"Country":"","StateProvinceId":0,"AnyFieldMissing":true,"Latitude":44.058542,"Longitude":-79.457116,"Id":"4622672d-a9de-4f9a-a10f-a6c8eceb35fb"},"Location":"Recreation Youth Centre \u0026 telMAX Indoor Skate Park","BookingType":3});
+
+        var itemsLoaded = 0;
+        var allItemsCount = 0;
+        var isAdmin = false;
+        AlertManager.setUrl("/Clients/Alert/GetAlerts");
+        $(document).ready(function () {
+            var singleLocationOnlineShoppingCartPopup;
+            require(["SingleLocationOnlineShoppingCartPopup"], function (preventCartWithMultipleCartItemLocations) {
+                singleLocationOnlineShoppingCartPopup = preventCartWithMultipleCartItemLocations;
+            });
+            require(["BookMe4AttendanceHeader", "BookMe4SearchHelper", "PlannerUtility"], function (header, BookMe4SearchHelper, plannerUtility) {                
+                header.header();
+                var eventId = "5f397fce-9475-4fcf-96d5-8769645f06b3";
+                $('#prerequisiteEvents,#prerequisiteServices').click(function () {
+                    var prerequisiteEventsUrl = '/Clients/BookMe4/PrerequisiteEventsView';
+                    plannerUtility.showPrerequisiteEvents(eventId, prerequisiteEventsUrl);
+                });
+             
+                var orgLogoAddressTemplate = kendo.template($('#booking-event-logo-address').html());              
+
+                var btnTemplate = kendo.template($('#book-button').html());
+                var commonRestrictionsSection = $('.common-restrictions');
+                var mainBookingRestrictionsSection = $('.bm-booking-info.bm-restrictions');
+                if (commonRestrictionsSection.length > 0) {
+                    commonRestrictionsSection.before(btnTemplate(eventInfo));
+                } else {
+                    mainBookingRestrictionsSection.prepend(btnTemplate(eventInfo));
+                }
+
+                var showRegistrationRestrictionPopUp = function (registrationEndDateLabel) {
+                    var message = $('<span role="alert"></span>').text("The Registration ended on " + registrationEndDateLabel);
+                    $("#registrationRestrictionAlertPopup").append(message);
+                    $("#registrationRestrictionAlertPopup").show();
+                };
+
+                $('.bm-booking-info .bm-book-button').click(function () {
+                    var registrationEndDate = kendo.timezone.convert(kendo.parseDate(eventInfo.RegistrationEndDateUtc, "s"), 0, new Date().getTimezoneOffset());
+
+                    // After clicking on Book button we should check if registration end date is not reached.
+                    // Otherwise we should disable "Book" button and then generate alert with appropriate message.
+                    if (registrationEndDate < new Date()) {
+                        showRegistrationRestrictionPopUp(eventInfo.FormattedRegistrationEndDate);
+                        $('.bm-book-button').attr("disabled", "disabled").addClass("disabled");
+                        $('.bm-booking-info .reg-info').text('Registration is closed. ');
+
+                        // Returning here false we prevent normal click action for this link - redirect to next page (either Login or Attendee page).
+                        return false;
+                    }
+                });
+
+                $("#registrationRestrictionAlertPopup").click(function () {
+                    $("#registrationRestrictionAlertPopup").hide();
+                });
+
+                if (eventInfo.IsRegistrationClosed && !eventInfo.IsLotteryRegistrationEnabled) {
+                    $('.bm-book-button').attr("disabled", "disabled").addClass("disabled");
+                }
+
+                var locationTemplate = kendo.template($('#booking-event-location').html());
+                $('.bm-course-about .bm-location-map').append(locationTemplate(eventInfo));
+
+                // Initialize google maps actually
+                var coordinates = {
+                    lat: eventInfo.HasAlternativeLocation ? eventInfo.Latitude : eventInfo.Address.Latitude,
+                    lng: eventInfo.HasAlternativeLocation ? eventInfo.Longitude : eventInfo.Address.Longitude
+                };
+                var addressForMap = eventInfo.HasAlternativeLocation ? eventInfo.AlternativeLocation : $(orgLogoAddressTemplate(eventInfo)).text();
+                initializeMapping(addressForMap, coordinates);
+
+                $('#load-more').click(function () {
+                    showMore(itemsLoaded);
+                });
+
+                $('#load-more').keydown(function (event) {
+                    if (event.keyCode == 13) {
+                        $('#load-more').click();
+                        $('#SimilarEventsGrid tbody').focus();
+                    }
+                });
+
+                showMore(itemsLoaded);
+
+                var searchQuery = decodeEncodedValue('');
+
+                if (searchQuery) {
+                    var searchHelper = new BookMe4SearchHelper({
+                        url: '/Clients/BookMe4Search',
+                        widgetId: '15f6af07-39c5-473e-b053-96653f77a406'
+                    });
+
+                    var backButton = $('.bm-course-primary-content .bm-back-button');
+                    backButton.removeAttr('href');
+                    backButton.click(function () {
+                        searchHelper.postSearchForm(searchQuery, false, true);
+                    });
+                }
+            });
+
+            if (typeof addthis !== 'undefined' && addthis && addthis.addEventListener && typeof addthis.addEventListener === 'function'){
+                addthis.addEventListener('addthis.ready', function(){
+                    setTimeout(function(){
+                        $('#at4-thankyou #at4-palogo').replaceWith('<div id="at4-palogo">' + $('target').html() +'</div>');
+                        $('#service-icons-0').appendTo($('head'));
+                        $('#at-share-dock a svg').removeAttr('title').removeAttr('alt');
+                    }, 1000);                    
+                });
+            }
+
+            $('body').on('click', '#bookButton', function (event) {
+                var locationName = '';
+                var showPopup = 'False';
+                var cartUrl = '';
+                if (showPopup === 'True') {
+                    event.preventDefault();
+                    singleLocationOnlineShoppingCartPopup.showPopup(locationName, cartUrl);
+                }
+                
+            });
+        });
+    </script>
+    <script type="text/javascript" crossorigin="anonymous" src="/Scripts/BookMe4/google.maps.js?08250811"></script>
+
+        <script>
+            $(document).ready(function () {
+                $("#temp_wrapper").fadeOut();
+            });
+        </script>
+        
+        <script crossorigin="anonymous" src="/Scripts/perfectMind/Planner/PlannerAttendanceHeader.js?08250811"></script>
+        <script crossorigin="anonymous" src="/Scripts/BookMe4/BookMe4AttendanceHeader.js?08250811"></script>
+        <script crossorigin="anonymous" src="/Scripts/jQueryPlugin/lightbox.js?08250811"></script>
+        <div id="tempInfoForScreenReaders" class="hidden-label" aria-live="polite"></div>
+    <script src="/Scripts/jQueryPlugin/jQueryHoverIntentFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryValidateFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryTimePickerFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryThreeDotsFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryContextMenuFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryFloatingBoxFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryPlaceholderFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jquery.elastic.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryBbqFull.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryPmDialog.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryPmEnhancedSelect.js?08250811"></script>
+<script src="/Scripts/Kendo/kendo.pmPreferenceRankingGrid.js?08250811"></script>
+<script src="/Scripts/jQueryPlugin/jQueryDateTimeAutocompleteFull.js?08250811"></script>
+<script src="/Scripts/swfobject/swfObjectFull.js?08250811"></script>
+<script src="/Scripts/perfectMind/Controls/FlyOutTooltip.js?08250811"></script>
+<script src="/Scripts/perfectMind/core.js?08250811"></script>
+<script src="/Scripts/perfectMind/common.js?08250811"></script>
+<script src="/Scripts/customControl/ajaxLink.js?08250811"></script>
+
+    </body>
+</html>

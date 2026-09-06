@@ -1,3 +1,5 @@
+import { type Server, createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CycleIdentity, ExtractedWindow, StoredWindow } from './verify-window';
 import {
@@ -6,6 +8,7 @@ import {
   MAX_PAGE_TEXT_CHARS,
   MAX_WINDOWS_PER_RUN,
   type RegistrationVerifyDeps,
+  createFetchBody,
   createFetchPage,
   formatRegistrationVerifyDigest,
   runRegistrationVerifySweep,
@@ -562,7 +565,7 @@ describe('formatRegistrationVerifyDigest', () => {
   });
 });
 
-// ── createFetchPage ──────────────────────────────────────────────────────────
+// ── createFetchBody / createFetchPage ────────────────────────────────────────
 
 /**
  * VIL-261. The first live sweep recorded Vaughan as `fetch_failed`, and behind that
@@ -576,7 +579,31 @@ describe('formatRegistrationVerifyDigest', () => {
  * So the cap moved to where it belongs (the text the model reads, which is 44 K even
  * for Vaughan) and anything too large to be a page is REFUSED rather than trimmed.
  */
-describe('createFetchPage', () => {
+interface TestOrigin {
+  url: string;
+  redirectTo: string | null;
+  close: () => Promise<void>;
+}
+
+/** A real origin on localhost, so `fetch` is the one under test rather than a spy. */
+async function listen(bodies: Record<string, string>): Promise<TestOrigin> {
+  const origin: TestOrigin = { url: '', redirectTo: null, close: () => Promise.resolve() };
+  const server: Server = createServer((req, res) => {
+    if (origin.redirectTo !== null) {
+      res.writeHead(302, { location: origin.redirectTo });
+      res.end();
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(bodies[req.url ?? ''] ?? '<p>?</p>');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  origin.url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  origin.close = () => new Promise<void>((resolve) => server.close(() => resolve()));
+  return origin;
+}
+
+describe('createFetchBody / createFetchPage', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -644,5 +671,66 @@ describe('createFetchPage', () => {
       string
     >;
     expect(Object.keys(headers).map((k) => k.toLowerCase())).not.toContain('user-agent');
+  });
+
+  it('returns the raw body, and createFetchPage is the strip over it', async () => {
+    // VIL-337. A PerfectMind course page publishes nothing readable about availability
+    // and carries the whole record as a JSON object literal inside a <script> block —
+    // which `stripHtml` deletes outright. So the two callers cannot share one function:
+    // the verify sweep reads a page's words, the spot watcher reads a page's model.
+    const html =
+      '<html><body><script>var eventInfo = {"SpotsLeft":11};</script><p>Course Dates</p></body></html>';
+    stubFetch(html);
+
+    const body = await createFetchBody()('https://cityofmarkham.perfectmind.com/course');
+    const text = await createFetchPage()('https://cityofmarkham.perfectmind.com/course');
+
+    expect(body).toBe(html);
+    expect(body).toContain('"SpotsLeft":11');
+    expect(text).toBe('Course Dates');
+  });
+
+  it('refuses below the strip, so both callers inherit the ceiling and the status throw', async () => {
+    stubFetch('x'.repeat(MAX_PAGE_BYTES + 1));
+    await expect(createFetchBody()('https://example.ca/video.mp4')).rejects.toThrow(
+      /exceeds the .* ceiling/,
+    );
+
+    stubFetch('<p>nope</p>', { status: 404 });
+    await expect(createFetchBody()('https://example.ca/gone')).rejects.toThrow(/HTTP 404/);
+  });
+
+  it('refuses a redirect rather than poll a host nobody approved', async () => {
+    // NOT STUBBED, because the flag is not the property: only the real fetch can show
+    // that a 302 becomes a failure. The spot watcher polls one sanitized, allowlisted
+    // course URL every ten minutes for sixty days (VIL-337); an SSO bounce, a CDN
+    // challenge or a tenant migration that silently moves the poll to another origin
+    // would keep returning 200s from a page the host registry never approved, and the
+    // watch would look healthy the whole time.
+    const bodies = { '/course': '<p>the real course page</p>', '/moved': '<p>somewhere else</p>' };
+    const [origin, elsewhere] = await Promise.all([listen(bodies), listen(bodies)]);
+    try {
+      await expect(createFetchBody()(`${origin.url}/course`)).resolves.toContain('real course');
+
+      origin.redirectTo = `${elsewhere.url}/moved`;
+
+      const followed = await createFetchBody()(`${origin.url}/course`).catch((err) => err);
+
+      expect(followed).toBeInstanceOf(Error);
+      expect(String(followed)).not.toContain('somewhere else');
+    } finally {
+      await Promise.all([origin.close(), elsewhere.close()]);
+    }
+  });
+
+  it('names the fetch, not the sweep that used to own it', async () => {
+    // The spot watcher (VIL-337) fetches through this primitive too, and its refusals
+    // are logged. A message that says "registration verify" would send whoever reads
+    // that log to the wrong sweep.
+    stubFetch('<p>nope</p>', { status: 404 });
+
+    await expect(createFetchBody()('https://example.ca/gone')).rejects.toThrow(
+      /^page fetch https:\/\/example\.ca\/gone/,
+    );
   });
 });
