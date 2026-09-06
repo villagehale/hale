@@ -3,7 +3,12 @@ import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
 import { RadarTimeline } from '~/components/admin/radar-timeline';
 import { cachedRadar, cachedWatchedSpots } from '~/lib/admin/cached';
 import { supabaseTableUrl } from '~/lib/admin/links';
-import { minutesAgo, STALE_POLL_MINUTES, STALE_VERIFY_DAYS } from '~/lib/admin/panel-state';
+import {
+  freshnessTone,
+  minutesAgo,
+  STALE_POLL_MINUTES,
+  STALE_VERIFY_DAYS,
+} from '~/lib/admin/panel-state';
 
 const DataTable = nextDynamic(() =>
   import('~/components/admin/data-table').then((m) => m.DataTable),
@@ -66,6 +71,7 @@ async function WatchedSpotsBody() {
   const polledMinutesAgo = watched.lastPolledAt
     ? minutesAgo(watched.lastPolledAt, new Date())
     : null;
+  const pollTone = freshnessTone(polledMinutesAgo, STALE_POLL_MINUTES);
   return (
     <div>
       <div className="adm-stat-row">
@@ -83,17 +89,15 @@ async function WatchedSpotsBody() {
         </div>
         <div className="adm-stat">
           <div className="adm-stat-v">
-            {polledMinutesAgo === null ? (
+            {pollTone === 'never' ? (
               <span className="adm-tile-fail">never</span>
-            ) : polledMinutesAgo > STALE_POLL_MINUTES ? (
+            ) : pollTone === 'stale' ? (
               <span className="adm-stale">{polledMinutesAgo}m ago</span>
             ) : (
               `${polledMinutesAgo}m ago`
             )}
           </div>
-          <div className="adm-stat-k">
-            {polledMinutesAgo === null ? 'never polled' : 'last poll'}
-          </div>
+          <div className="adm-stat-k">{pollTone === 'never' ? 'never polled' : 'last poll'}</div>
         </div>
         <div className="adm-stat">
           <div className={`adm-stat-v${watched.armFailures24h > 0 ? ' adm-tile-fail' : ''}`}>

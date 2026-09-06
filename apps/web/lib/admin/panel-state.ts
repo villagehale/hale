@@ -32,3 +32,15 @@ export const STALE_POLL_MINUTES = 30;
 export function minutesAgo(iso: string, now: Date): number {
   return Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000));
 }
+
+export type FreshnessTone = 'never' | 'stale' | 'fresh';
+
+/** The freshness tile's three-way read, out of the JSX where nothing can reach it:
+ * an age nobody has ever recorded is `never`, not a fresh 0. `staleAbove` is a
+ * ceiling the healthy case is allowed to touch — one full interval late is late. */
+export function freshnessTone(age: number | null, staleAbove: number): FreshnessTone {
+  if (age === null) {
+    return 'never';
+  }
+  return age > staleAbove ? 'stale' : 'fresh';
+}

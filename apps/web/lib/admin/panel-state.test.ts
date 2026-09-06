@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { minutesAgo, serviceStateLine, STALE_POLL_MINUTES } from './panel-state';
+import {
+  freshnessTone,
+  minutesAgo,
+  serviceStateLine,
+  STALE_POLL_MINUTES,
+} from './panel-state';
 
 describe('serviceStateLine', () => {
   it('names the missing env var for a not_configured outcome', () => {
@@ -38,5 +43,16 @@ describe('minutesAgo', () => {
     expect(minutesAgo(polled, new Date('2026-09-04T14:31:00.000Z'))).toBeGreaterThan(
       STALE_POLL_MINUTES,
     );
+  });
+});
+
+describe('freshnessTone', () => {
+  it('reads an absent age as never rather than as a fresh zero', () => {
+    expect(freshnessTone(null, STALE_POLL_MINUTES)).toBe('never');
+  });
+
+  it('holds fresh exactly AT the threshold and turns stale only past it', () => {
+    expect(freshnessTone(STALE_POLL_MINUTES, STALE_POLL_MINUTES)).toBe('fresh');
+    expect(freshnessTone(STALE_POLL_MINUTES + 1, STALE_POLL_MINUTES)).toBe('stale');
   });
 });
