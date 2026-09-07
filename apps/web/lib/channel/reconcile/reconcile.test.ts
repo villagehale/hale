@@ -205,6 +205,27 @@ describe('reconcile — the spot watch', () => {
     }
   });
 
+  it('still backs a class named after a season, a morning, or a reason to register', () => {
+    // THE POSITIVE CONTROL for the season check itself. A class is one class whatever it
+    // is called: "fall soccer", "summer camp", "the Saturday morning swim" are pages, and
+    // "so you can register" is why the parent wants the text, not a town's morning. The
+    // check that refuses "Markham fall registration" must read the OBJECT being watched,
+    // not any season word or the verb "register" anywhere in the sentence.
+    for (const sentence of [
+      "I'm watching that class and I'll text you when a spot opens so you can register.",
+      "I'm watching the Saturday morning swim page and I'll text you when a spot opens.",
+      "I'm watching that summer camp page and I'll text you the moment a spot opens.",
+      "I'm watching the fall soccer class and I'll text you when a seat opens.",
+    ]) {
+      const verdict = verdictFor(sentence, view({ openKinds: new Set(['spot_watch']) }));
+      expect(verdict.refused, sentence).toEqual([]);
+      expect(verdict.resolutions[0], sentence).toMatchObject({
+        status: 'matched',
+        matchedBy: 'open_commitment',
+      });
+    }
+  });
+
   /**
    * THE BAND THE NARROWING OPENED. An arming ack that says "when it opens up" instead of
    * a spot word is refused — correctly, the widening is only as wide as the sentence —

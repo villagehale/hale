@@ -1,5 +1,5 @@
 import type { CommitmentKind } from '~/lib/commitments/ledger';
-import { type ClaimKind, REGISTRATION_NAMED, type StateClaim } from './claims';
+import type { ClaimKind, StateClaim } from './claims';
 
 /**
  * VIL-293 · THE RECONCILIATION PRIMITIVE, half two — is the claim TRUE?
@@ -148,9 +148,16 @@ const VIOLATION: Record<RefusalReason, string> = {
  * arming sentence uses for it, and the only ones an open spot watch may back. */
 const SPOT_SHAPED = /\b(?:spot|seat|space|waitlist)s?\b/i;
 
-/** The slice of the calendar a town names its cycle after — the other half of the
- * season, beside `REGISTRATION_NAMED`, which is the claim extractor's own list. */
-const SEASON_SHAPED = /\b(?:season|fall|winter|spring|summer|morning)\b/i;
+/**
+ * A town's cycle NAMED AS THE THING BEING WATCHED: a season's registration, the
+ * registration morning, sign-ups opening, doors opening. The object, never the
+ * vocabulary — "fall soccer", "summer camp" and "the Saturday morning swim" are one
+ * class each, and "so you can register" is why the parent wants the text, not what Hale
+ * is watching. Reading any season word or a bare "register" as the season refused every
+ * one of those arming acks and steered the model off the watch it had just armed.
+ */
+const MUNICIPAL_OBJECT =
+  /\b(?:(?:fall|winter|spring|summer)\s+(?:programs?\s+)?(?:registration|sign[-\s]?ups?)|registration\s+(?:morning|window|day|date|opens?|opening|goes?\s+live)|sign[-\s]?ups?\s+(?:open|opening|start|go\s+live)|watch(?:ing)?\s+(?:\w+\s+){0,2}?(?:registration|sign[-\s]?ups?)|(?:that|the|this)\s+morning|goes?\s+live|doors\s+open)\b/i;
 
 /**
  * The sentence is about a TOWN'S CYCLE rather than one class, and no course page backs
@@ -164,7 +171,7 @@ const SEASON_SHAPED = /\b(?:season|fall|winter|spring|summer|morning)\b/i;
  * the edit a model makes to a morning, and asking for it here would teach the bypass.
  */
 function aboutTheSeason(sentence: string): boolean {
-  return REGISTRATION_NAMED.test(sentence) || SEASON_SHAPED.test(sentence);
+  return MUNICIPAL_OBJECT.test(sentence);
 }
 
 function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {

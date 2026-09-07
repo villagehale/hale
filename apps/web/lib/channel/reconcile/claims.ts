@@ -108,11 +108,10 @@ const NOTIFY_VERB =
  * ladder's own check-in reply says "I'll flag the next Halton Hills window early", and
  * that sentence is about a cycle nobody has published yet.
  *
- * EXPORTED because reconcile.ts decides on the same words. A sentence carrying one of
- * these is about a town's cycle, which is the one thing a watched course page can never
- * back — and the two files reading one list is what keeps that fact from drifting into
- * two answers (VIL-337). */
-export const REGISTRATION_NAMED =
+ * This is the CLAIM'S kind, not what a course page may back: reconcile.ts reads the
+ * watched OBJECT ("fall registration", "the registration morning") on its own, because
+ * "so you can register" on a one-class ack is a purpose, not a season (VIL-337). */
+const REGISTRATION_NAMED =
   /\b(?:registration|register|registering|sign[-\s]?ups?|signing\s+up)\b/i;
 /** ...or named by what it is about to do, which is the half a class page shares. */
 const REGISTRATION_OPENING = /\b(?:opens?|opening|goes?\s+live|go\s+live|doors\s+open)\b/i;
