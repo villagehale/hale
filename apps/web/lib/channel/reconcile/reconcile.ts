@@ -139,6 +139,10 @@ const VIOLATION: Record<RefusalReason, string> = {
     'The message says something is booked or on the calendar. Nothing on this family\'s calendar matches and the parent has not told you it is booked, so that is a claim about a row that does not exist. Say what would need to happen instead.',
 };
 
+/** What a `watched_spots` row is a row ABOUT: one place in one class. The words the
+ * arming sentence uses for it, and the only ones an open spot watch may back. */
+const SPOT_SHAPED = /\b(?:spot|seat|space|waitlist)s?\b/i;
+
 function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
   const kind: ClaimKind = claim.kind;
   if (kind === 'self_referential') {
@@ -151,14 +155,19 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
     if (view.openKinds.has('registration_watch')) {
       return { claim, status: 'matched', matchedBy: 'open_commitment' };
     }
-    // A WATCHED COURSE PAGE IS A WATCH (VIL-337). `kindOf` reads "I'll text you when a
-    // spot opens" as a registration claim, which it is: the row is in watched_spots
-    // rather than on the ladder, and the promise behind it is the same one.
-    if (view.pendingKinds.has('spot_watch')) {
-      return { claim, status: 'matched', matchedBy: 'pending_commitment' };
-    }
-    if (view.openKinds.has('spot_watch')) {
-      return { claim, status: 'matched', matchedBy: 'open_commitment' };
+    // A WATCHED COURSE PAGE IS A WATCH (VIL-337), but only of the sentence it is
+    // actually about. `kindOf` reads every "I'll text you before X opens" as
+    // `registration_watch`, so the town's whole season and one full class arrive here as
+    // the same kind — and a page in Markham says nothing about when Markham's fall
+    // registration goes live. Matching on the kind alone would have handed a 60-day
+    // spot row to the municipal-morning promise that started this primitive.
+    if (SPOT_SHAPED.test(claim.sentence)) {
+      if (view.pendingKinds.has('spot_watch')) {
+        return { claim, status: 'matched', matchedBy: 'pending_commitment' };
+      }
+      if (view.openKinds.has('spot_watch')) {
+        return { claim, status: 'matched', matchedBy: 'open_commitment' };
+      }
     }
     if (view.registrationLaddered) {
       return { claim, status: 'matched', matchedBy: 'live_sequence' };

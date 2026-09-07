@@ -113,6 +113,44 @@ describe('reconcile — the spot watch', () => {
     const verdict = verdictFor(body, view({ openKinds: new Set(['activity_followup']) }));
     expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
   });
+
+  /**
+   * THE WIDENING IS ONLY AS WIDE AS THE SENTENCE. `kindOf` reads every "I'll text you
+   * before X opens" as `registration_watch`, so a MUNICIPAL-MORNING promise and a
+   * one-class spot promise arrive here as the same kind — and a watched course page
+   * cannot back the morning. The town's season is the ladder's job; one page in Markham
+   * says nothing about when Markham's fall registration goes live.
+   */
+  it('REFUSES a municipal-morning promise that only a watched course page could back', () => {
+    const morning = "I'll text you before Markham fall registration opens.";
+
+    const verdict = verdictFor(morning, view({ openKinds: new Set(['spot_watch']) }));
+
+    expect(verdict.mints).toEqual([]);
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+
+  it('REFUSES the same morning promise against a spot watch this send is about to arm', () => {
+    const morning = "I'm watching that morning and I'll text you before it goes live.";
+
+    const verdict = verdictFor(morning, view({ pendingKinds: new Set(['spot_watch']) }));
+
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+
+  it('backs the spot-shaped words a watch can actually be about', () => {
+    // THE POSITIVE CONTROL for the two refusals above: the narrowing must not collapse
+    // into "a spot watch backs nothing". Each of these is a sentence the arming turn
+    // really writes, and each names the thing the row is a row about.
+    for (const sentence of [
+      "I'm watching that class and I'll text you when a seat opens.",
+      "I'll text you the moment a space opens up in that one.",
+      "I'm watching the waitlist and I'll let you know.",
+    ]) {
+      const verdict = verdictFor(sentence, view({ openKinds: new Set(['spot_watch']) }));
+      expect(verdict.refused, sentence).toEqual([]);
+    }
+  });
 });
 
 describe('reconcile — the activity follow-up', () => {
