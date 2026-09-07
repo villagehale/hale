@@ -513,6 +513,46 @@ describe('runWatchedSpotsSweep — one text per opening', () => {
     expect((await readWatch(spotId)).releasedReason).toBe('delivery_failed');
   });
 
+  it('heals only onto a row a text can still arrive under, not merely onto a row that is not FAILED', async () => {
+    // 'failed' is one of FIVE statuses that mean nobody was texted; the other four are
+    // the suppressions. The mutation this kills is spelling the guard as the denylist
+    // `status !== 'failed'` instead of the allowlist SENT_STATUSES — a denylist that
+    // heals onto every suppression today and onto whatever status the enum gains next,
+    // silently re-opening the trap the test above closes. The watch would read
+    // `notified` on the strength of a row that says, in terms, "this was not sent".
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, {
+      lastState: 'open',
+      pendingKind: 'seat_opened',
+      openTransitions: 1,
+      sendAttempts: 1,
+    });
+    const [suppressed] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'spot_open',
+        templateKey: 'spot_open:seat_opened',
+        dedupeKey: spotOpenKey(spotId, 1, 1),
+        status: 'suppressed_consent',
+      })
+      .returning({ id: schema.channelMessages.id });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.healed).toBe(0);
+    expect(summary.sent).toBe(1);
+    expect(test.sent).toHaveLength(1);
+    const row = await readWatch(spotId);
+    expect(row.sendAttempts).toBe(2);
+    expect(row.notifiedMessageId).not.toBe(suppressed?.id);
+  });
+
   it('spends the second attempt when the ledger row itself was lost, then ends the watch', async () => {
     // recordSend threw after a successful transport.send: the attempt moved, no row
     // exists under any key. Bounded at two texts per opening, then a NAMED release —

@@ -2,7 +2,7 @@ import { type Database, type WatchedSpotReleaseReason, schema } from '@hale/db';
 import { and, eq, lt } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { type AcceptedStatus, acceptedStatus } from '~/lib/channel/ledger';
+import { type AcceptedStatus, SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -93,6 +93,18 @@ export const SLOT_MS = 600_000;
 /** Claims are housekeeping. A week is long enough to read a history off and short
  * enough that the table stays a handful of rows at six claims an hour. */
 const CLAIM_RETENTION_DAYS = 7;
+
+/**
+ * The statuses a heal may attach a watch to — SENT_STATUSES, the ledger's own name for
+ * "the send happened and nothing has come back to say it did not arrive".
+ *
+ * An ALLOWLIST because the complement is five statuses, not one: 'failed' plus the four
+ * suppressions, every one of them a row that says in terms that this parent was not
+ * texted. Spelling the guard as `!== 'failed'` would heal onto the other four, and onto
+ * whatever the enum gains next — the trap re-opening itself on a schema edit nobody
+ * connects to this file.
+ */
+const HEALABLE_STATUSES: ReadonlySet<string> = new Set(SENT_STATUSES);
 
 /**
  * How many live watches one run may READ. Sized against the route's 300 s ceiling and
@@ -614,14 +626,14 @@ async function sweepSpot(
     // Its row is looked up by the derived key, and only its STATUS says which of three
     // things happened:
     //
-    //   a live row (queued, or already sent/delivered) — the text WENT OUT and the
+    //   a HEALABLE row (queued, or already sent/delivered) — the text WENT OUT and the
     //     post-send write was lost. Heal the pointer and let the receipt path judge it.
-    //   a 'failed' row — the carrier has already judged this attempt and nobody heard.
-    //     There is nothing to heal onto: retry under a new key, or say `delivery_failed`.
-    //     Asking `dedupeActive` here instead would answer yes for exactly this row
-    //     (CONSUMED_SEND_STATUSES includes 'failed') and re-attach the watch to a dead
-    //     message, which the receipt path then clears again — heal, clear, heal, all
-    //     night, while the parent is never told.
+    //   a row in any other status — 'failed', or one of the four suppressions. Nobody
+    //     was texted, so there is nothing to heal onto: retry under a new key, or say
+    //     `delivery_failed`. Asking `dedupeActive` here instead would answer yes for a
+    //     failed row (CONSUMED_SEND_STATUSES includes 'failed') and re-attach the watch
+    //     to a dead message, which the receipt path then clears again — heal, clear,
+    //     heal, all night, while the parent is never told.
     //   no row at all — the row write itself was lost. Spend the second attempt, or say
     //     `send_unconfirmed`: the texts, if they left, cannot be accounted for.
     //
@@ -630,7 +642,7 @@ async function sweepSpot(
     if (spot.notifiedMessageId === null && spot.sendAttempts > 0) {
       const priorKey = spotOpenKey(spot.id, spot.openTransitions, spot.sendAttempts);
       const prior = await findLedgerRowByDedupeKey(database, priorKey);
-      if (prior !== null && prior.status !== 'failed') {
+      if (prior !== null && HEALABLE_STATUSES.has(prior.status)) {
         await setNotifiedMessage(database, {
           spotId: spot.id,
           channelMessageId: prior.id,
