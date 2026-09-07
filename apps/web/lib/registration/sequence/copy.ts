@@ -542,7 +542,12 @@ function goPrepared(input: LegCopyInput, prep: PrepCopyInput, portal: SpotPortal
       // withheld because Hale had a bad fetch.
       return `I could not read ${label} just now, so I cannot tell you what it says. It opens ${at} Sign in, then Register: ${link}`;
     case 'course_gone':
-      return `${label} is not showing the course you sent me. Registration still opens ${at} Check the page yourself: ${prep.courseUrl}`;
+      // "I had" rather than "Registration still opens": the anchor this sentence names
+      // was read off the page the verdict has just said is gone, so asserting that
+      // registration still opens is a claim about a page nobody can see any more. What
+      // survives is whose record the morning is on, which is the same attribution the
+      // window_moved branch uses one case down.
+      return `${label} is not showing the course you sent me. I had ${at} for it. Check the page yourself: ${prep.courseUrl}`;
     case 'registration_closed':
       return `${label} shows that course as closed to online registration. Nothing changed on my side - check the page: ${prep.courseUrl}`;
     case 'age_ineligible':

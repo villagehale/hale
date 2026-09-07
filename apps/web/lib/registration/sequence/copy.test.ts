@@ -396,6 +396,12 @@ const TIME_AT_CAP = 't'.repeat(12);
 const PRICE_AT_CAP = `$${'1'.repeat(15)}`;
 const PRICE_AT_CAP_2 = `$${'2'.repeat(15)}`;
 
+/** A course name that is BACKED and inside every cap the reader enforces — and still
+ * unprintable, because a name ending in a question mark turns Hale's sentence into an
+ * ask it never made. `readCourseFacts` has no rule against it: `?` is GSM-7, the string
+ * is 30 characters, and it is neither link-shaped nor a carrier keyword. */
+const NAME_WITH_QUESTION = 'Parent and Tot: Ready to Swim?';
+
 /** Three long names — the family this ladder is hardest for. */
 const THREE_KIDS: FitNote[] = [
   { childId: 'c1', name: 'Sebastian', fit: 'in_band' },
@@ -418,6 +424,10 @@ const MARKHAM_SHORTLIST = shortlist({
 const ANCHOR = new Date('2026-09-15T14:30:00.000Z');
 const MOVED_LATER = new Date('2026-09-15T15:30:00.000Z');
 const MOVED_NEXT_DAY = new Date('2026-09-16T14:30:00.000Z');
+/** Ten minutes past the anchor — inside WINDOW_DRIFT_TOLERANCE_MINUTES, which is what
+ * makes the verdict `prepared` rather than `window_moved`. The ladder is scheduled off
+ * the anchor, so this instant is a minute no leg of it ever fires on. */
+const DRIFTED_INSIDE_TOLERANCE = new Date('2026-09-15T14:40:00.000Z');
 
 function courseFacts(over: Partial<CourseFacts> = {}): CourseFacts {
   return {
@@ -532,6 +542,11 @@ function everyPortalBody(): Record<string, string> {
     );
   }
   const failures: [string, PrepVerdict][] = [
+    // A clean read whose own clock is NOT the anchor, and a clean read whose own name
+    // the sentence cannot carry. Both are `prepared` — the two shapes where the
+    // composer has something true in hand and must still not print it.
+    ['prepared_drifted', PREPARED({ ...capsPage, clock: DRIFTED_INSIDE_TOLERANCE })],
+    ['prepared_asks', PREPARED({ facts: { EventName: NAME_WITH_QUESTION } })],
     ['page_unreadable', { kind: 'page_unreadable', reason: 'fetch_failed' }],
     ['course_gone', { kind: 'course_gone' }],
     ['registration_closed', { kind: 'registration_closed', ...coursePage(capsPage) }],
@@ -629,6 +644,9 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
       'readiness/null',
       'battle_plan unbound/null',
       'battle_plan prepared/null',
+      'battle_plan prepared_drifted',
+      'battle_plan prepared_asks',
+      'go prepared_drifted',
       'battle_plan prepared_unnamed/null',
       'battle_plan unreadable/null',
       'battle_plan course_gone',
@@ -644,6 +662,20 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
       (name) => !(bodies[name] as string).includes(ANCHOR_TIME),
     );
     expect(missing).toEqual([]);
+  });
+
+  it('prints the anchor even where this read’s clock drifted inside the tolerance', () => {
+    // The distinguishing case: `prepared` is the verdict for a page that AGREES with
+    // the anchor to within fifteen minutes, so it still carries a clock of its own, and
+    // a composer reaching for it would name a minute the ladder does not fire on. Every
+    // other prepared fixture has a page clock EQUAL to the anchor, which is exactly the
+    // shape that cannot tell the two apart.
+    const bodies = everyPortalBody();
+    const DRIFTED_TIME = '10:40 a.m.';
+    for (const name of ['battle_plan prepared_drifted', 'go prepared_drifted']) {
+      expect(bodies[name]).toContain(ANCHOR_TIME);
+      expect(bodies[name]).not.toContain(DRIFTED_TIME);
+    }
   });
 
   it('names both instants only where the page itself moved the morning', () => {
@@ -688,6 +720,22 @@ describe('VIL-338 · the forbidden sentence is unsayable', () => {
       if (found.length > 0) offenders.push([`readiness ack/${ready}`, found]);
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('pins each of the four claims INDIVIDUALLY, not the regex as a whole', () => {
+    // A sweep that only ever feeds "filled in" leaves three of the four removable from
+    // the runtime gate with no test moving. Each phrase is here because a parent could
+    // only discover it was false at 6:31 a.m. with the seat gone, so each gets its own
+    // assertion.
+    const claims = [
+      "Everything's filled in.",
+      'Your forms are staged.',
+      'A spot is held for you.',
+      'It is all ready to go.',
+    ];
+    for (const claim of claims) {
+      expect(gateViolations(`${claim} ${COURSE_URL}`)).toContain('forbidden_claim');
+    }
   });
 
   it('catches a claim spliced into a body the composer never gates — the positive control', () => {
@@ -750,6 +798,22 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
     );
   });
 
+  it('carries at most ONE reply-able ask per leg, and none at all on the go — D14', () => {
+    // The `asks_a_question` rule only catches interrogatives, so a SECOND ask written
+    // as an imperative ("Reply HELP if stuck.") passes the composer's own gate. This is
+    // the count, over every body a real send can carry: two asks in one text is two
+    // answers Hale cannot tell apart, and the go leg's fifteen minutes are not the
+    // moment to ask a parent anything at all.
+    const offenders: [string, number][] = [];
+    for (const [name, body] of Object.entries(everyPortalBody())) {
+      const asks = (body.match(/\bReply\b/g) ?? []).length;
+      if (asks > (name.startsWith('go ') ? 0 : 1)) offenders.push([name, asks]);
+    }
+    expect(offenders).toEqual([]);
+    // The positive control: the ask this rule is counting really is there to be found.
+    expect(everyPortalBody()['readiness/null']).toContain('Reply YES');
+  });
+
   it('carries the clause itself on every portal leg that has one', () => {
     // Only the deep link and the segment count were pinned on the go bodies, so a
     // template that dropped `${clause}` altogether sent a flagship text that said
@@ -774,6 +838,22 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
       }
     }
     expect(missing).toEqual([]);
+  });
+
+  it('renders the flagship text byte for byte, both tails', () => {
+    // The two go bodies whole, because the difference between them is one clause and
+    // three words and neither is reachable by a contains-check: a parent who has told
+    // Hale nothing has just been told to sign in, so repeating it in the tail is noise;
+    // a parent who has told Hale they are set has NOT been told to sign in anywhere
+    // else in the message, and this is the one text where the tap has to be spelled out.
+    const bodies = everyPortalBody();
+    expect(bodies['go prepared/true']).toBe(
+      `Oakville's portal opens 10:30 a.m. You told me the setup is done. Sign in, then Register: ${DEEP_LINK}`,
+    );
+    expect(bodies['go prepared/false']).toBe(
+      `Oakville's portal opens 10:30 a.m. You have not told me the setup is done - sign in now and check it. Then Register: ${DEEP_LINK}`,
+    );
+    expect(bodies['go prepared/null']).toBe(bodies['go prepared/false']);
   });
 });
 
@@ -827,6 +907,25 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
     expect(bodies['go registration_closed']).toContain('closed to online registration');
     expect(bodies['go registration_closed']).toContain('Nothing changed on my side');
     expect(bodies['battle_plan registration_closed']).toContain('shows registration closed');
+  });
+
+  it('never says a course opens on the leg that just said it is gone or closed', () => {
+    // The morning is only ever an assertion about a page Hale can still read. Where the
+    // verdict is that the course is gone or that its registration is closed, "opens"
+    // states something that read did not carry — and the parent it is being told to is
+    // fifteen minutes from a phone. Hale's own record is still sayable, because it is
+    // attributed to Hale rather than to the portal.
+    for (const name of ['go course_gone', 'go registration_closed']) {
+      expect(bodies[name]).not.toMatch(/opens/);
+    }
+    expect(bodies['go course_gone']).toContain('I had 10:30 a.m. for it');
+    // The evening plan degrades to the MUNICIPAL window and its general link, which is
+    // a different claim about a different page — and never to the course's own sign-in
+    // link, which is the one tap this verdict has no course to offer.
+    for (const name of ['battle_plan course_gone', 'battle_plan registration_closed']) {
+      expect(bodies[name]).toContain(LONGEST_URL);
+      expect(bodies[name]).not.toContain('Sign in, then Register');
+    }
   });
 
   it('says only that it could not read the page — never anything about the course', () => {
@@ -913,6 +1012,29 @@ describe('VIL-338 · preparedCopyViolations, the composer’s own self-gate', ()
     expect(preparedCopyViolations(`${'a'.repeat(300)} ${COURSE_URL}`, base)).toContain(
       'too_many_segments',
     );
+  });
+
+  it('drops a page value the SENTENCE cannot carry, not only one the bytes did not back', () => {
+    // Two different refusals, one fallback. The bytes-did-not-back half is `printable`;
+    // this half is the gate the composer runs on the sentence it just wrote, and only a
+    // value that passes `printable` can reach it. Without it a course really named
+    // "Parent and Tot: Ready to Swim?" would put a question mark in a leg whose whole
+    // D14 budget is spent on the readiness ask.
+    const bodies = everyPortalBody();
+    const asked = bodies['battle_plan prepared_asks'] as string;
+    expect(asked).not.toContain(NAME_WITH_QUESTION);
+    expect(asked).not.toContain('Swim');
+    expect(asked).toContain("Tomorrow: Oakville's portal opens");
+    // The positive control, so the absence above cannot pass on a composer that names
+    // no course at all: a clean name IS printed on the same template.
+    expect(bodies['battle_plan prepared/null']).toContain(`Tomorrow: ${NAME_AT_CAP} at`);
+    // And the bytes-did-not-back half, at the leg rather than only in the bind ack.
+    const unbacked = renderSequenceLeg(
+      'battle_plan',
+      bound(PREPARED({ facts: { EventName: 'Preschool Sports' }, backed: [] })),
+    );
+    expect(unbacked).not.toContain('Preschool Sports');
+    expect(unbacked).toContain("Tomorrow: Oakville's portal opens");
   });
 
   it('measures a solicited reply without a CASL footer it will never carry', () => {
