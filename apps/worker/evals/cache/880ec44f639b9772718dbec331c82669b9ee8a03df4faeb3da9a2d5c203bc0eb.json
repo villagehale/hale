@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the cancel for Thursday swim (one of two cap slots) and names the exact event with time and venue from the week. It then offers the one verified offerable Saturday indoor option (Central Library story time, Bloor/Gladstone, Sat Aug 8) — correct recall, correctly surfaced. The draft confirmation follows the YES-to-confirm contract. The second offerable (Riverdale Farm, Sunday, outdoor) is correctly omitted as it's neither Saturday nor indoor. stillBeingChecked is 0 so no \"still looking\" needed. No greeting, no sign-off, no markdown, no app referral, no invented detail. The only tiny blemish: it doesn't draft a new calendar item for the Saturday activity (it could have used the second draft slot to do so), but the parent didn't ask Hale to add it — they asked to \"find something,\" which Hale did. That's fine. One very minor structural note: the reply could be read as not explicitly asking for a YES on the Saturday suggestion, but that's not a change being drafted so no YES is needed. Clean and correct overall. A 5.",
+    "score": 5
+  }
+}

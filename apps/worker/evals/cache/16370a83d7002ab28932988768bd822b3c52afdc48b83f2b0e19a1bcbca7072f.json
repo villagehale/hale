@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting Google Calendar is a real feature triggered by a specific phrase, and hands Sam the exact words to text to trigger the one-tap link. It does not invent a URL, does not send the parent to the app, and does not refuse the request. It is concise, no greeting, no sign-off, one clear instruction. This is exactly the correct shape for a connecting ask that the deterministic branch did not catch.",
+    "score": 5
+  }
+}

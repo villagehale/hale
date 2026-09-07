@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly uses the offerable item (Riverdale Farm) as a verified outdoor option and says it's free and open daily, which is accurate. It does not invent anything or send the parent to the app. However, it misses that soccer practice is already at Cedarvale Park — a park right in the family's week that is directly relevant to a question about a nearby park to play. That's a concrete, already-known answer that was skipped. Additionally, the reply ignores the other offerable (Central Library story time), though that's indoors and less relevant to \"park to play,\" so that's minor. The bigger miss is Cedarvale Park being on the schedule already — a direct, verified answer the reply didn't use. The reply isn't wrong, but it skips the most obvious answer sitting in `week`.",
+    "score": 3
+  }
+}

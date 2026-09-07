@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior Hale message naming the gymnastics class: \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" The parent now asks to get it on the calendar. There is exactly one gymnastics event in the thread — no ambiguity. Hale correctly drafts a calendar_add and asks for YES confirmation. The reply names the event, day, date, and time drawn from Hale's own earlier message (recall, not invention), and ends with the correct \"YES to confirm.\" format. No greeting, no sign-off, no markdown, no app referral, no extra questions. This is the product working exactly as specified.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked which of the two programs Remy would be in, referring back to Hale's earlier message about Tiny Gym (under 3.5s, with a parent) and Mini Gym (3.5+, solo). Remy is 19 months, so Tiny Gym is correct. The reply correctly identifies Tiny Gym, states the reason (under 3.5s, parent alongside), and stops. It's short, accurate, grounded in `knows.children`, and directly answers the question without inventing anything or asking an unnecessary question. No greeting, no sign-off, no markdown. This is the product working correctly.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to add the gymnastics class to the calendar. The thread contains an earlier Hale message naming \"Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13\" — so this is recall from the thread, not invention. There is exactly one gymnastics class in play, the reference is resolved, and drafting it is the correct handling. `drafted` is non-empty (calendar_add), the reply names the change and ends \"YES to confirm.\" — exactly the contract shape. No greeting, no sign-off, no markdown, no app referral. Clean and complete.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting Google Calendar is a real capability, explains that a deterministic branch handles it when the exact words are used, quotes the short phrase verbatim so Sam's next text will trigger it, and mentions the 15-minute validity of the link. This is exactly the correct shape: recall of a real feature, the plain words that send it, no URL invented, no refusal, no app referral, no internal machinery exposed. It is concise, one question at most (none here), no greeting or sign-off. This is the product working correctly.",
+    "score": 5
+  }
+}

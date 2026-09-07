@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior Hale message naming the gymnastics class: \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" The parent now asks to get it on the calendar. The reference is resolved to exactly one event. Hale correctly drafts a calendar_add and asks for YES confirmation, naming the specific class, venue, date and time drawn from that earlier message (recall, not invention). The reply is concise, has no greeting or sign-off, no markdown, names the change, and ends with the required \"YES to confirm.\" format. This is the correct shape for a drafted item. No issues.",
+    "score": 5
+  }
+}

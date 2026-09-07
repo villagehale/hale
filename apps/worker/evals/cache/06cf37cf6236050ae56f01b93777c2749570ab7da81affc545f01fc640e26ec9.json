@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly handles both pieces of information available. The registration window is stated flatly as Hale's own verified fact (correct), and `watching: true` means Hale is already on it — saying so is accurate and the whole point of the feature. The webFind (Tiny Tumblers) is handed over with attribution to the venue's own program page and an honest note that price isn't posted yet — exactly what the webFind rule requires. No URL is written out, no app is mentioned, no greeting or sign-off. The reply is short, concrete, and fully grounded in `knows`. The only minor imprecision is \"Their own program page lists\" — the webFind source note says \"source: web, NOT verified by Hale\", so saying \"Their own program page lists\" is correct attribution per the webFind rule. Everything checks out cleanly.",
+    "score": 5
+  }
+}

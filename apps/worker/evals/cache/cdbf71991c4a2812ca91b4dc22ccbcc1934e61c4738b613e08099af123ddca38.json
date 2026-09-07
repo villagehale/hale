@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that Hale needs the course-page link from the parent in order to use `watch_for_opening` — that is the exact shape the rules describe: \"asking for the link is the right answer rather than a stall.\" The reply names what it will do once it has the link, keeps it short, and asks exactly one question. No invented details, no app referral, no markdown. This is the correct and complete handling of the situation.",
+    "score": 5
+  }
+}

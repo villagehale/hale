@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2, so Hale correctly drafts the two swims and says it will line up the rest. The reply names both drafted items clearly (Mon 4:30pm swim and Thu 5:15pm swim), ends with \"YES to confirm these two\", and correctly says it will handle soccer and the Wednesday appointment next — exactly the right handling of an overflow situation. The Wednesday appointment maps to a private calendar item (Wed 9:00am), which is valid to draft as a cancellation without revealing its content. No app mention, no greeting, no sign-off, no invented details, no markdown. One small blemish: the dash before \"then I'll line up\" reads slightly awkward and the phrase \"these two\" after \"YES to confirm\" is a minor redundancy, but these are trivial. Overall this is the product working correctly.",
+    "score": 5
+  }
+}

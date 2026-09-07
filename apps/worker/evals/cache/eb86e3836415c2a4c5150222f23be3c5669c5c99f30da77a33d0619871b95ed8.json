@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior Hale message: \"Update on the gymnastics: Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" That is a venue Hale itself named in an earlier message, so recalling it here is correct — not invention. The parent's text names exactly one gymnastics class (the one Hale already surfaced), so the reference is resolved. Hale correctly drafts the calendar add (within the draftCapPerMessage of 2), names the change clearly, and ends with \"YES to confirm.\" — the exact contract shape required. No greeting, no sign-off, no markdown, no app referral, no extra questions. This is the product working correctly.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior Hale message naming the class: \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" The parent is now asking to add that to the calendar. Hale has drafted (drafted is non-empty with two calendar_add entries) and the reply names the event and ends with \"YES to confirm.\" — exactly the contract. The venue, day, and time all come from Hale's own earlier message in the thread, so this is recall, not invention. The reply is short, correct, and carries no greeting, sign-off, or extra machinery. A clean 5.",
+    "score": 5
+  }
+}

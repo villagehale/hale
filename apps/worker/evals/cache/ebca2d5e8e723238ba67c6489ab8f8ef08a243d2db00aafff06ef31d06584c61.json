@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior Hale message naming the gymnastics class: \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" So when Sam asks to put it on the calendar, there is exactly one event to draft — no ambiguity. Hale correctly drafts it (drafted: calendar_add) and asks for YES confirmation. The reply names the event, day, date, and time from that prior message (which is recall, not invention), and ends with \"YES to confirm.\" — the exact contract shape. No greeting, no sign-off, no app referral, no extra questions. This is the product working correctly.",
+    "score": 5
+  }
+}

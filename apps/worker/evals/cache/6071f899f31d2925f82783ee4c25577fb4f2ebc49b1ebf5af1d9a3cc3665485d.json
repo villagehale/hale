@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale previously surfaced \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" The parent now asks to get that gymnastics class on the calendar. There is exactly one gymnastics item in context (from Hale's own earlier message), so the reference is resolved. Hale correctly drafts a calendar_add and asks for YES to confirm. The reply names the event fully (Tiny Gym at Cartwheels, Sun Sept 13, 9:30am) and ends with the required \"YES to confirm.\" It's concise, no greeting, no sign-off, no markdown, no app referral, no invented details. This is exactly the correct shape.",
+    "score": 5
+  }
+}

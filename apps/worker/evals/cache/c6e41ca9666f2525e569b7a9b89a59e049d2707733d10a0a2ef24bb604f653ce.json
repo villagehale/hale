@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names High Park and its features (Jamie Bell playground, free animal display, splash pads) — all drawn from `knows.standingPlace`, so that's good recall. However, two issues bring it down: 1) The reply says \"Worth checking their site for current hours before you head out.\" — this tells the parent to go check a website, which is the job handed back. A standing place has no specific time given, and the correct move is to surface it as a reliable free drop-in without directing the parent elsewhere; \"park daily year-round; water play and train seasonal\" is what Hale has. Sending the parent to a site is scoring-rule-relevant (not quite the same as \"check the app,\" but it is handing the parent a task Hale cannot do better). 2) The reply also says \"Nothing verified for Saturday specifically\" — but `stillBeingChecked` is 2, meaning Hale is actively checking finds. The correct shape when nothing has checked out yet is to say what Hale is DOING and that it will come back, rather than a soft denial. The reply doesn't mention the ongoing search at all. These two issues together — failing to mention the still-being-checked search and sending the parent to a website — pull the score to a 3.",
+    "score": 3
+  }
+}

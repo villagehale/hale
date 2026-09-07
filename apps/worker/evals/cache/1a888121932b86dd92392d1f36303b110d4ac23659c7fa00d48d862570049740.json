@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the confirmed calendar event (soccer at Cedarvale Park, 10am Saturday) and the offerable find (Central Library story time at Bloor/Gladstone, verified and ready to name). Both are traceable — one to `week`, one to `offerable`. No invented details, no greeting or sign-off, no markdown, no mention of the still-being-checked item (correctly withheld since it has no name). The one small blemish: \"if you want something else on top\" is a slightly loose closing clause that adds nothing — the parent can decide that without being invited to consider it. Minor enough for a 4.",
+    "score": 4
+  }
+}

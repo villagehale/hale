@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply has two problems. First, Riverdale Farm is in `offerable` as a verified, checked find — the reply handles that correctly by naming it. But the second sentence asks a dangling question (\"Want me to keep looking for an actual park?\") when `stillBeingChecked` is 0, meaning the search is complete. There is nothing left to check, so that question is an empty offer that implies ongoing work that isn't happening. Second, the opening \"No park in what I've got verified\" is a mild machinery-exposure phrase, and the reply ends with an invitation to chatter. The farm offer is the right beat, but the trailing question misrepresents what Hale can do (the search is done, nothing is still being checked), and the shape is off — one unnecessary question too many.",
+    "score": 2
+  }
+}
