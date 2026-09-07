@@ -1,9 +1,14 @@
 import nextDynamic from 'next/dynamic';
 import { PanelGrid, type PanelSpec } from '~/components/admin/panel-grid';
 import { RadarTimeline } from '~/components/admin/radar-timeline';
-import { cachedRadar } from '~/lib/admin/cached';
+import { cachedRadar, cachedWatchedSpots } from '~/lib/admin/cached';
 import { supabaseTableUrl } from '~/lib/admin/links';
-import { STALE_VERIFY_DAYS } from '~/lib/admin/panel-state';
+import {
+  freshnessTone,
+  minutesAgo,
+  STALE_POLL_MINUTES,
+  STALE_VERIFY_DAYS,
+} from '~/lib/admin/panel-state';
 
 const DataTable = nextDynamic(() =>
   import('~/components/admin/data-table').then((m) => m.DataTable),
@@ -19,24 +24,23 @@ async function TimelineBody() {
 async function FreshnessBody() {
   const radar = await cachedRadar();
   const freshest = radar.freshestVerifiedAt ? new Date(radar.freshestVerifiedAt) : null;
-  const staleDays = freshest
-    ? Math.floor((Date.now() - freshest.getTime()) / 86_400_000)
-    : null;
+  const staleDays = freshest ? Math.floor((Date.now() - freshest.getTime()) / 86_400_000) : null;
+  const verifyTone = freshnessTone(staleDays, STALE_VERIFY_DAYS);
   return (
     <div>
       <div className="adm-stat-row">
         <div className="adm-stat">
           <div className="adm-stat-v">
-            {staleDays === null ? (
+            {verifyTone === 'never' ? (
               <span className="adm-tile-fail">never</span>
-            ) : staleDays > STALE_VERIFY_DAYS ? (
+            ) : verifyTone === 'stale' ? (
               <span className="adm-stale">{staleDays}d ago</span>
             ) : (
               `${staleDays}d ago`
             )}
           </div>
           <div className="adm-stat-k">
-            {staleDays === null ? 'never verified' : 'freshest verify'}
+            {verifyTone === 'never' ? 'never verified' : 'freshest verify'}
           </div>
         </div>
         {radar.lastVerifyRun ? (
@@ -57,6 +61,51 @@ async function FreshnessBody() {
         ) : null}
       </div>
       {!radar.lastVerifyRun ? <p className="adm-state">No verify sweep has run yet.</p> : null}
+    </div>
+  );
+}
+
+async function WatchedSpotsBody() {
+  const watched = await cachedWatchedSpots();
+  const polledMinutesAgo = watched.lastPolledAt
+    ? minutesAgo(watched.lastPolledAt, new Date())
+    : null;
+  const pollTone = freshnessTone(polledMinutesAgo, STALE_POLL_MINUTES);
+  return (
+    <div>
+      <div className="adm-stat-row">
+        <div className="adm-stat">
+          <div className="adm-stat-v">{watched.live}</div>
+          <div className="adm-stat-k">watched</div>
+        </div>
+        <div className="adm-stat">
+          <div className="adm-stat-v">{watched.pending}</div>
+          <div className="adm-stat-k">openings held</div>
+        </div>
+        <div className="adm-stat">
+          <div className="adm-stat-v">{watched.unreadable}</div>
+          <div className="adm-stat-k">unreadable</div>
+        </div>
+        <div className="adm-stat">
+          <div className="adm-stat-v">
+            {pollTone === 'never' ? (
+              <span className="adm-tile-fail">never</span>
+            ) : pollTone === 'stale' ? (
+              <span className="adm-stale">{polledMinutesAgo}m ago</span>
+            ) : (
+              `${polledMinutesAgo}m ago`
+            )}
+          </div>
+          <div className="adm-stat-k">{pollTone === 'never' ? 'never polled' : 'last poll'}</div>
+        </div>
+        <div className="adm-stat">
+          <div className={`adm-stat-v${watched.armFailures24h > 0 ? ' adm-tile-fail' : ''}`}>
+            {watched.armFailures24h}
+          </div>
+          <div className="adm-stat-k">arm failures 24h</div>
+        </div>
+      </div>
+      {watched.live === 0 ? <p className="adm-state">No spots are being watched.</p> : null}
     </div>
   );
 }
@@ -131,6 +180,11 @@ export default function AdminRadarPage() {
       eyebrow: 'Outcomes',
       links: [{ label: 'Open in Supabase', href: supabaseTableUrl('registration_sequences') }],
       body: <OutcomesBody />,
+    },
+    {
+      eyebrow: 'Watched spots',
+      links: [{ label: 'Open in Supabase', href: supabaseTableUrl('watched_spots') }],
+      body: <WatchedSpotsBody />,
     },
     {
       eyebrow: 'Upcoming windows',
