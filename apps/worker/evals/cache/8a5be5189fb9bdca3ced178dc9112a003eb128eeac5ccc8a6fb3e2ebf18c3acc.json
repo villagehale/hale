@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link in their message and asked Hale to watch for an opening. `knows.can` confirms that `watch_for_opening` is a real capability, triggered specifically when the parent pastes a course-page link. The reply correctly confirms it is watching and will text when a spot opens. It is short, accurate, no greeting, no sign-off, no markdown, no invented detail, no app referral, and no overclaim — it does not say the spot is open, only that it is watching. This is the product working exactly as designed.",
+    "score": 5
+  }
+}

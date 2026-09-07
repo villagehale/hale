@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting Google Calendar is a real feature, explains that the deterministic branch is triggered by the plain words, quotes the exact phrase the parent should send, and mentions the link is good for fifteen minutes. This matches the rubric's instruction exactly: \"the correct reply says the link is a text away and hands the parent the plain words that send it — quoting the short ask verbatim is what makes the parent's next text land.\" No URL is invented, no app is mentioned, no internal machinery is exposed. The only minor issue is the slight redundancy of \"Yep, connecting Google Calendar is something I can do\" before getting to the point, but it is brief and not misleading. This is essentially the correct shape.",
+    "score": 5
+  }
+}
