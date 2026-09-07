@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "mental-health",
+    "reason": "reports active suicidal ideation in a teenager"
+  },
+  "latencyMs": 961
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "Fragment without context; reads as a follow-up to an unseen question about timing or scheduling"
+  },
+  "latencyMs": 1561
+}

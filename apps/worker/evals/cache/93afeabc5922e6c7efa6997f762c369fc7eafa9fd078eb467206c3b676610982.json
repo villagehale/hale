@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "message reads as a reply to or about Hale itself; unclear without prior context but defaults to in_domain"
+  },
+  "latencyMs": 1513
+}

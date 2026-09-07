@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "routine health admin — whether a form was sent in"
+  },
+  "latencyMs": 1045
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment reading as a reply to something Hale said; missing context that makes it obvious"
+  },
+  "latencyMs": 1528
+}

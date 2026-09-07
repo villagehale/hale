@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a symptom (rash) in a child right now; symptom state takes priority over the provider-access half"
+  },
+  "latencyMs": 1598
+}

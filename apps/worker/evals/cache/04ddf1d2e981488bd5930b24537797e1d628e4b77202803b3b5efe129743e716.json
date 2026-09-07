@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child is having difficulty breathing after eating peanuts, suggesting possible anaphylaxis or severe allergic reaction requiring immediate emergency response"
+  },
+  "latencyMs": 1153
+}
