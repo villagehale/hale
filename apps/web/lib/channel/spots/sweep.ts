@@ -27,6 +27,7 @@ import {
   closeBeforeSend,
   findLedgerRowByDedupeKey,
   loadDueSpots,
+  loadExpiredSpots,
   markNotifiedAndRelease,
   readLedgerStatus,
   recordPoll,
@@ -113,6 +114,15 @@ const HEALABLE_STATUSES: ReadonlySet<string> = new Set(SENT_STATUSES);
  * to the next one. Today's registry has two hosts, so the real ceiling is eight GETs.
  */
 export const MAX_SPOTS_PER_RUN = 20;
+
+/**
+ * How many watches one run may END on the expiry clock. Bounded like everything else
+ * here, and generously: an expiry is three small writes and no request to anybody, so
+ * fifty is well inside the route's ceiling while a season change across the product is
+ * still drained in a handful of ticks. The overflow is not lost — see the expiry check
+ * that opens {@link sweepSpot}.
+ */
+export const MAX_EXPIRED_SPOTS_PER_RUN = 50;
 
 /** How many due rows are loaded before the F14 filter and the slice. Bounded in SQL
  * (`loadDueSpots` LIMITs on the partial due index) rather than by loading the product's
@@ -449,32 +459,49 @@ export async function runWatchedSpotsSweep(
   now: Date = new Date(),
 ): Promise<WatchedSpotsSweepSummary> {
   const summary = emptySummary(watchedSpotsEnabled());
-  if (!summary.enabled) return summary;
 
-  const due = await loadDueSpots(database, now, MAX_DUE_SPOTS_SCANNED);
+  // THE EXPIRY PASS IS NOT GATED ON EITHER FLAG, and it runs before the F14 filter: a
+  // season that ran out ended whether or not this sweep is polling and whether or not
+  // this household is armed. It spends no fetch — that is what makes it free to run in
+  // the dark — and the rows it ends are the ones nobody would otherwise look at again,
+  // holding a label and a course page past the sixty days the parent agreed to (rule #1).
+  const expired = await loadExpiredSpots(database, now, MAX_EXPIRED_SPOTS_PER_RUN);
+  const expiredIds = new Set(expired.map((spot) => spot.id));
 
   // The F14 filter sits BEFORE the slice so a dark household cannot consume an armed
   // one's place in the run. The watch is NOT released: re-arming the family resumes it,
   // and it expires on its own clock meanwhile.
   const armed: LiveWatchedSpot[] = [];
-  for (const spot of due) {
-    if (!f14EnabledFor(spot.familyId)) {
-      summary.skipped.f14Dark += 1;
-      console.info({ spotId: spot.id }, 'watched spots: family is dark, spot not polled');
-      continue;
+  if (summary.enabled) {
+    for (const spot of await loadDueSpots(database, now, MAX_DUE_SPOTS_SCANNED)) {
+      // Ended below, and counted there. Polling it would be a second release, a second
+      // trail row and a second promise settlement for one ending.
+      if (expiredIds.has(spot.id)) continue;
+      if (!f14EnabledFor(spot.familyId)) {
+        summary.skipped.f14Dark += 1;
+        console.info({ spotId: spot.id }, 'watched spots: family is dark, spot not polled');
+        continue;
+      }
+      armed.push(spot);
     }
-    armed.push(spot);
   }
 
   const working = armed.slice(0, MAX_SPOTS_PER_RUN);
-  // Nothing due: no claim, so a quiet hour does not spend the slot a real tick would
-  // have wanted, and the claim table stays a record of runs that had work.
-  if (working.length === 0) return summary;
+  // Nothing to do at all: no claim, so a quiet hour does not spend the slot a real tick
+  // would have wanted, and the claim table stays a record of runs that had work.
+  if (expired.length === 0 && working.length === 0) return summary;
 
   if (!(await deps.claimSlot(database, now))) {
     summary.skipped.slotClaimed = true;
     return summary;
   }
+
+  // Under the slot claim like every other write: two fires inside one ten-minute slot
+  // must not both settle the same promise and write the same ending to the trail twice.
+  for (const spot of expired) {
+    tally(summary, await releaseSpot(database, deps, now, spot, 'expired', null, {}));
+  }
+  if (working.length === 0) return summary;
 
   const context: RunContext = {
     deps,
@@ -517,8 +544,11 @@ async function sweepSpot(
 ): Promise<SpotFate> {
   const { deps, now, summary } = context;
 
+  // The expiry pass at the top of the run has already ended every watch it had room for;
+  // this is where the ones over that bound land. Still first, so an expired watch never
+  // costs a municipality a request.
   if (spot.expiresAt.getTime() <= now.getTime()) {
-    return releaseSpot(database, context, spot, 'expired', null, {});
+    return releaseSpot(database, deps, now, spot, 'expired', null, {});
   }
 
   // BEFORE ANY FETCH. A household that pressed STOP or withdrew watch consent can never
@@ -526,7 +556,7 @@ async function sweepSpot(
   // from the gate AFTER the read would spend one every ten minutes for sixty days.
   const verdict = await prechecked(context, spot.parentUserId);
   if (verdict !== 'ok') {
-    return releaseSpot(database, context, spot, verdict, null, {});
+    return releaseSpot(database, deps, now, spot, verdict, null, {});
   }
 
   // The stored url is what `sanitizeSpotUrl` REBUILT, so re-reading it is idempotent —
@@ -569,7 +599,7 @@ async function sweepSpot(
     }
     if (status === 'failed') {
       if (spot.sendAttempts >= MAX_SEND_ATTEMPTS) {
-        return releaseSpot(database, context, spot, 'delivery_failed', link.host, {
+        return releaseSpot(database, deps, now, spot, 'delivery_failed', link.host, {
           attempts: spot.sendAttempts,
         });
       }
@@ -605,7 +635,7 @@ async function sweepSpot(
       now,
     });
     if (failures >= MAX_CONSECUTIVE_FAILURES) {
-      return releaseSpot(database, context, spot, 'unreadable_streak', link.host, {
+      return releaseSpot(database, deps, now, spot, 'unreadable_streak', link.host, {
         readingReason: reading.reason,
       });
     }
@@ -617,7 +647,7 @@ async function sweepSpot(
   }
 
   if (reading.state === 'not_registrable') {
-    return releaseSpot(database, context, spot, 'registration_closed', link.host, {
+    return releaseSpot(database, deps, now, spot, 'registration_closed', link.host, {
       readingReason: reading.reason,
     });
   }
@@ -653,7 +683,8 @@ async function sweepSpot(
       if (spot.sendAttempts >= MAX_SEND_ATTEMPTS) {
         return releaseSpot(
           database,
-          context,
+          deps,
+          now,
           spot,
           prior === null ? 'send_unconfirmed' : 'delivery_failed',
           link.host,
@@ -853,7 +884,7 @@ async function sendSpotOpen(
     // Both attempts are gone and no ledger row was ever found under either key: the
     // texts, if they left at all, cannot be accounted for. Ending the watch is the only
     // honest thing left — the delivery sweep's own vocabulary for it.
-    return releaseSpot(database, context, spot, 'send_unconfirmed', link.host, {
+    return releaseSpot(database, deps, now, spot, 'send_unconfirmed', link.host, {
       attempts: spot.sendAttempts,
     });
   }
@@ -925,13 +956,13 @@ function releaseAudit(
  */
 async function releaseSpot(
   database: Database,
-  context: RunContext,
+  deps: WatchedSpotsSweepDeps,
+  now: Date,
   spot: LiveWatchedSpot,
   reason: Exclude<WatchedSpotReleaseReason, 'notified'>,
   host: string | null,
   extra: Record<string, unknown>,
 ): Promise<SpotFate> {
-  const { deps, now } = context;
   await releaseWatchedSpot(database, { spotId: spot.id, reason, now });
   await resettleSpotWatchPromise(database, {
     familyId: spot.familyId,

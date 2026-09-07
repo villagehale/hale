@@ -283,6 +283,33 @@ export async function loadDueSpots(
 }
 
 /**
+ * The watches whose season has run out — the expiry pass's working set.
+ *
+ * SEPARATE FROM {@link loadDueSpots} because expiry is not a poll. A row under backoff,
+ * and a row belonging to a household the F14 flag no longer arms, is never due — and
+ * those are precisely the rows whose label and course page would otherwise outlive the
+ * sixty days the parent agreed to (rule #1). Ending them costs no request to anybody's
+ * server, so it is not gated on any of the things a fetch is gated on.
+ */
+export async function loadExpiredSpots(
+  database: Database,
+  now: Date,
+  limit: number,
+): Promise<LiveWatchedSpot[]> {
+  return database
+    .select(LIVE_SPOT_COLUMNS)
+    .from(schema.watchedSpots)
+    .where(
+      and(
+        isNull(schema.watchedSpots.releasedAt),
+        lte(schema.watchedSpots.expiresAt, now),
+      ),
+    )
+    .orderBy(asc(schema.watchedSpots.expiresAt))
+    .limit(limit);
+}
+
+/**
  * What a read cost and what it found.
  *
  * `lastState` is null when the page could not be READ — an unreadable page is counted in

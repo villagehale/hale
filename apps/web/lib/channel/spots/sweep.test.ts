@@ -8,6 +8,7 @@ import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { recordSpotWatchPromise } from './promise';
 import {
+  MAX_EXPIRED_SPOTS_PER_RUN,
   type WatchedSpotsSweepDeps,
   type WatchedSpotsSweepSummary,
   claimWatchedSpotsSlot,
@@ -949,6 +950,93 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     // Rule #1: the trail names the portal, never the page or the parent's own label.
     expect(JSON.stringify(trail?.after)).not.toContain('Milliken');
     expect(JSON.stringify(trail?.after)).not.toContain('courseId');
+  });
+
+  it('ends a season that ran out while the sweep was dark, and spends no fetch', async () => {
+    // The mutation this kills: gating the expiry release on WATCHED_SPOTS_ENABLED (or
+    // putting it after the F14 filter). Expiry is not a poll — it costs no request to
+    // anybody's server — and a watch nobody is polling is exactly the row whose label and
+    // course page would otherwise sit in the table past the sixty days the parent agreed
+    // to (rule #1).
+    vi.stubEnv('WATCHED_SPOTS_ENABLED', 'true\n');
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, { expiresAt: later(MIDDAY, -1000) });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.enabled).toBe(false);
+    expect(summary.released.expired).toBe(1);
+    expect(test.fetched).toEqual([]);
+    const row = await readWatch(spotId);
+    expect(row.releasedReason).toBe('expired');
+    expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
+    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb)).toEqual([
+      'watched_spot_released',
+    ]);
+
+    // A released row is not released twice: the next tick finds nothing to end.
+    const again = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
+
+    expect(again.released.expired).toBe(0);
+    expect((await auditVerbs(family.familyId)).length).toBe(1);
+  });
+
+  it('positive control: a live watch is untouched while the sweep is dark', async () => {
+    vi.stubEnv('WATCHED_SPOTS_ENABLED', 'true\n');
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family);
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.released.expired).toBe(0);
+    expect(test.fetched).toEqual([]);
+    const row = await readWatch(spotId);
+    expect(row.releasedAt).toBeNull();
+    expect(row.releasedReason).toBeNull();
+    expect(await auditVerbs(family.familyId)).toEqual([]);
+  });
+
+  it('ends more seasons than one pass may hold, without polling the overflow', async () => {
+    // The bound has to be a bound and not a leak: the spots past it are still expired,
+    // and the check that opens sweepSpot is where they land — before any fetch, so the
+    // overflow never costs a municipality a request either.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    const seeded = MAX_EXPIRED_SPOTS_PER_RUN + 1;
+    for (let index = 0; index < seeded; index += 1) {
+      const url = URL_FOR(`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`);
+      test.pages.set(url, OPEN_PAGE);
+      await seedWatch(db.database, family, {
+        sourceUrl: url,
+        expiresAt: later(MIDDAY, -1000 - index),
+      });
+    }
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.released.expired).toBe(seeded);
+    expect(test.fetched).toEqual([]);
+  });
+
+  it('ends the season of a household F14 no longer arms', async () => {
+    // The same rule one gate further in: a dark family is skipped before it is read, so
+    // without an expiry pass ahead of that filter its watch never ends at all.
+    vi.stubEnv('F14_ENABLED', 'false');
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, { expiresAt: later(MIDDAY, -1000) });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.released.expired).toBe(1);
+    expect(summary.skipped.f14Dark).toBe(0);
+    expect(test.fetched).toEqual([]);
+    expect((await readWatch(spotId)).releasedReason).toBe('expired');
   });
 
   it('releases a watch whose season outlived it', async () => {
