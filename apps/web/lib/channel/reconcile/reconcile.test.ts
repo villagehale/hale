@@ -127,7 +127,7 @@ describe('reconcile — the spot watch', () => {
     const verdict = verdictFor(morning, view({ openKinds: new Set(['spot_watch']) }));
 
     expect(verdict.mints).toEqual([]);
-    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['spot_watch_unshaped']);
   });
 
   it('REFUSES the same morning promise against a spot watch this send is about to arm', () => {
@@ -135,7 +135,7 @@ describe('reconcile — the spot watch', () => {
 
     const verdict = verdictFor(morning, view({ pendingKinds: new Set(['spot_watch']) }));
 
-    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['spot_watch_unshaped']);
   });
 
   it('backs the spot-shaped words a watch can actually be about', () => {
@@ -150,6 +150,51 @@ describe('reconcile — the spot watch', () => {
       const verdict = verdictFor(sentence, view({ openKinds: new Set(['spot_watch']) }));
       expect(verdict.refused, sentence).toEqual([]);
     }
+  });
+
+  /**
+   * THE BAND THE NARROWING OPENED. An arming ack that says "when it opens up" instead of
+   * a spot word is refused — correctly, the widening is only as wide as the sentence —
+   * but under `no_registration_watch` the re-ask told the model to "say nothing about
+   * watching", steering it off the watch it had legitimately just armed. The refusal a
+   * spot watch produces is its own, and it names the word the sentence is missing.
+   */
+  it('tells a model with a spot watch WHICH word its ack is missing', () => {
+    const vague = "I'm watching that class and I'll text you when it opens up.";
+
+    const verdict = verdictFor(vague, view({ pendingKinds: new Set(['spot_watch']) }));
+
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['spot_watch_unshaped']);
+    const [violation] = reconcileViolations(verdict);
+    expect(violation).toContain('spot');
+    expect(violation).toContain('waitlist');
+    expect(violation).not.toContain('say nothing about watching');
+  });
+
+  it('keeps the plain refusal for a family with no spot watch at all', () => {
+    // THE OTHER WAY. The spot-specific reason is a fact about the ledger, not about the
+    // sentence: the same vague ack from a family watching nothing is still the ordinary
+    // unbacked-watch refusal, and its re-ask still says to stop claiming a watch.
+    const vague = "I'm watching that class and I'll text you when it opens up.";
+
+    const verdict = verdictFor(vague, view());
+
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+    expect(reconcileViolations(verdict)[0]).toContain('say nothing about watching');
+  });
+
+  it('lets a running municipal ladder back the morning even while a spot watch is open', () => {
+    // The spot refusal is the LAST word, not the first: a family that has both a watched
+    // course page and a live registration ladder is telling the truth about the morning.
+    const morning = "I'm watching that morning and I'll text you before it goes live.";
+
+    const verdict = verdictFor(
+      morning,
+      view({ openKinds: new Set(['spot_watch']), registrationLaddered: true }),
+    );
+
+    expect(verdict.refused).toEqual([]);
+    expect(verdict.resolutions[0]).toMatchObject({ status: 'matched', matchedBy: 'live_sequence' });
   });
 });
 

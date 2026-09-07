@@ -98,6 +98,9 @@ export type RefusalReason =
   | 'self_referential'
   /** A watch promise with no live ladder and no window to arm one against. */
   | 'no_registration_watch'
+  /** A watch sentence from a family whose only watch is one course page, in words that
+   * page cannot back — the ack said "when it opens up" and never said what opens. */
+  | 'spot_watch_unshaped'
   /** "I'll come back with what I find" and the promise tool was never called. */
   | 'no_activity_promise'
   /** A booking claim with nothing on the calendar it could be about. */
@@ -133,6 +136,8 @@ const VIOLATION: Record<RefusalReason, string> = {
     'The message promises to change how Hale itself behaves. Nothing in the system can record or keep that promise, so it would be false the moment it was sent. Answer the question and say nothing about your own messages.',
   no_registration_watch:
     'The message says Hale is watching a registration or will text before one opens. No registration window is being watched for this family, and no ladder is running. Either say what the published date is, or say nothing about watching.',
+  spot_watch_unshaped:
+    'The message says Hale is watching and will text when it opens, and what Hale is actually watching is ONE class page for one place in it — not a registration window and not a season. Say a spot, a seat, a space or the waitlist is what you will text them about.',
   no_activity_promise:
     'The message promises to come back with activities or finds, and no such promise was registered. Call promise_activity_followup so a sweep actually comes back, or hand over what you already have and stop.',
   no_scheduled_row:
@@ -184,7 +189,18 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
         },
       };
     }
-    return { claim, status: 'refused', reason: 'no_registration_watch' };
+    // WHICH REFUSAL, and it decides what the model is told to do next. A family whose
+    // only watch is a course page wrote a true sentence in the wrong words, and the
+    // registration re-ask ("say nothing about watching") would steer it off the watch
+    // this very turn armed. The narrowing above is kept — this is still a refusal — but
+    // it asks for the missing word instead of the missing window.
+    const watchingOneClass =
+      view.pendingKinds.has('spot_watch') || view.openKinds.has('spot_watch');
+    return {
+      claim,
+      status: 'refused',
+      reason: watchingOneClass ? 'spot_watch_unshaped' : 'no_registration_watch',
+    };
   }
   if (kind === 'activity_followup') {
     if (view.pendingKinds.has('activity_followup')) {
