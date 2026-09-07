@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces Riverdale Farm from `offerable` as a verified outdoor spot (name, place, day all present) and names both children, which is good. However, there are two issues: 1) It ignores the second offerable item — the Central Library story time at Bloor/Gladstone — which is also a valid nearby option that should have been mentioned. 2) It ends with \"Want me to add it to the calendar for Sunday?\" — this is a soft question that neither drafts the item nor follows the contract of \"YES to confirm.\" Hale should have either drafted the addition (naming it and ending with \"YES to confirm\") or presented both options. The question as written is a dangling invitation that doesn't drive toward a confirmation, and it buries the second verified find entirely. That said, it does not send the parent to the app, does not invent anything, and the core answer is directionally correct. The shape is off enough to land at a 3.",
+    "score": 3
+  }
+}

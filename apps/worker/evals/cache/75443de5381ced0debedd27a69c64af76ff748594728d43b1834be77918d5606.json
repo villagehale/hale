@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011Ceo7B7AddLdYE1Zs2t4p3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EpsFCpABCBEYAipAo6FcrEm4SOwoJfvGsgPVElHtYe3qXBtmk+aGdBCzfIYKJKJIDmOgtaUzTPoWBsmoemyq/z8wZpO2JVAZStY2ajIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiRiMjYwM2FiYS1mMDUyLTQ4NGEtOTNjYy04OWM4ZTExMGRmMmWoAa+B+NQGEgyuOlfPElVRyV+7kbAaDFz6kVlTREFmdozPwCIwIVeTdLgvjyFxsf6oXCOXTWZ275r8fyttH+Ey63hNshokIDTag15KH6JSDEDGdM0pKrcD2Q7PmX4/SQ9u1ZCj1vUDNRog6L3JJVvnonjb/PEoStCQNwgolDi//R7ivTLixPtAdBd93jI1Y7qU2HMJ77ISUZmLd6go9E2lugdycqK08AD6ABMIuV3R0JXNPHU+N7ftXCT+aY17CxiSjOE4+2BsXbeNnXCbew3blZ2yVtf3klZaVw7grazwra+ca9uiMMkt1P/8demq9xtMo6E3HXjoteDfSCHlhbKDopiH3zyCClBL2L0EQi9Q792m+KpbVUxEIEMHBPuA/xTYub+jsHHFOKkRRNEmCqRm2svtubPlwYjVc4yxEA0Xn9hwVSGcrlS7ev9CVbnqo4vOpUV5bX8tsL7SdJqZIAgCPf+3IWVa7XFaLXxBDuid1y4UG0cyoO7T8VdyJYkKCLHH3NuY0WT2bwAoOuPufkhftDFgnY/8gIVEaHlYDc24+WNeqyk3Sc3nbBjpsRN1QTF89trpdS+tT5ILtzvzf8T5qsYQRuiNXMYs//mkRlFQkanvsfu5zvzr2n2Bs8aUG9h0hkHLVtuuC+FIoCbPbW1MQq6kIhk5SUtVk3TsQGafvKH+59hVfn5T1aWNaZ0K7xgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Ks7toRsDX3iyHior3AdEbF",
+        "name": "find_activities",
+        "input": {
+          "subject": "fall activities for kids",
+          "window": "this fall"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 663,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17893,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 205,
+      "output_tokens_details": {
+        "thinking_tokens": 125
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

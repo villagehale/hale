@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the verified registration window (Sep 1, 7:00 a.m. for residents), accurately states that watching is already active (`watching: true`), and correctly promises to text before it opens — which is exactly what the ladder does. It does not hedge with \"their site says\", does not invent a clock time, does not send the parent to the app, and does not overclaim by inventing a watch it is starting. It is concise, grounded entirely in `knows.registrationWindows`, and stops cleanly. The only tiny blemish is the dash before \"I'll text you\" which is a minor stylistic choice, and the reply could arguably name Milo to make it feel more personal, but neither is a real flaw. This is the product working exactly as designed.",
+    "score": 5
+  }
+}
