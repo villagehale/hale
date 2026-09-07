@@ -70,6 +70,27 @@ export type BookMe4Model = z.infer<typeof bookMe4ModelSchema>;
 /** The three states a watch can sit in or move between. */
 export type SpotState = 'open' | 'full' | 'waitlist_full';
 
+/**
+ * VIL-338 · the model with no verdict attached.
+ *
+ * The pre-open ladder needs what the page SAYS about itself — the class name, the
+ * published clocks, the age band — days before anyone can book it, and on that page
+ * `classify` is entitled to answer `unreadable` and throw the model away (seats plus
+ * `CanNotBook` is the shape it refuses, and it is the plausible pre-open one). So the
+ * parse is a function of its own and the classifier is composed over it, rather than
+ * the ladder re-implementing a second parse of the same bytes.
+ */
+export type CourseModelReading =
+  | {
+      ok: true;
+      model: BookMe4Model;
+      /** The bytes this model was parsed out of. A caller checking a value against the
+       * page it came from has to search THESE bytes and not the whole body: the blob is
+       * known-valid JSON, the rest of a portal page is other people's inline script. */
+      blob: string;
+    }
+  | { ok: false; reason: 'no_model' | 'bad_model' | 'wrong_course' };
+
 export type SpotReading =
   | { state: SpotState; model: BookMe4Model; evidence: readonly string[] }
   | {
@@ -212,31 +233,35 @@ function classify(model: BookMe4Model, rawHtml: string): SpotReading {
   };
 }
 
-export function readSpot(rawHtml: string, courseId: string): SpotReading {
+export function readCourseModel(rawHtml: string, courseId: string): CourseModelReading {
   const blob = extractEventInfo(rawHtml);
   if (blob === null) {
     // An unknown courseId is answered with HTTP 200 and a BookMe4 error page, so the
     // status throw never fires and this is the only signal that the page is not a class.
-    return {
-      state: 'unreadable',
-      reason: rawHtml.includes(MODEL_MARKER) ? 'bad_model' : 'no_model',
-    };
+    return { ok: false, reason: rawHtml.includes(MODEL_MARKER) ? 'bad_model' : 'no_model' };
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(blob);
   } catch {
-    return { state: 'unreadable', reason: 'bad_model' };
+    return { ok: false, reason: 'bad_model' };
   }
 
   const model = bookMe4ModelSchema.safeParse(parsed);
-  if (!model.success) return { state: 'unreadable', reason: 'bad_model' };
+  if (!model.success) return { ok: false, reason: 'bad_model' };
   if (model.data.EventId.toLowerCase() !== courseId.toLowerCase()) {
-    return { state: 'unreadable', reason: 'wrong_course' };
+    return { ok: false, reason: 'wrong_course' };
   }
 
-  const reading = classify(model.data, rawHtml);
+  return { ok: true, model: model.data, blob };
+}
+
+export function readSpot(rawHtml: string, courseId: string): SpotReading {
+  const read = readCourseModel(rawHtml, courseId);
+  if (!read.ok) return { state: 'unreadable', reason: read.reason };
+
+  const reading = classify(read.model, rawHtml);
   if (reading.state === 'unreadable') return reading;
   for (const evidence of reading.evidence) {
     if (!rawHtml.includes(evidence)) return { state: 'unreadable', reason: 'inconsistent' };

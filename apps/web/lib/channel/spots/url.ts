@@ -23,12 +23,33 @@
  *
  * The path is a VENDOR rule rather than a per-host one: PerfectMind BookMe4 serves
  * the same routes under `/Clients/` for most tenants and `/Contacts/` for others
- * (Oakville), so the registry carries hosts and labels and nothing else.
+ * (Oakville), so the registry carries hosts and the hand-written facts below and
+ * nothing else.
+ *
+ * VIL-338 · THE REGISTRY IS ALSO READ BACKWARDS. A registration sequence knows the
+ * municipality of the M1 window it was proposed from and does not know a host until a
+ * parent pastes one, so the pre-open ladder reaches a portal through
+ * `portalForMunicipality`. The three fields that lookup exists to deliver are
+ * hand-written for the same reason `portalLabel` is: the zone a course page's naive
+ * `2026-08-11T06:30` is read in, and the account a parent has to already have at 6:29
+ * a.m., are things a hostname cannot tell you and a text is going to assert.
  */
+
+import type { Municipality } from '@hale/db';
 
 export interface SpotPortal {
   /** How the outbound text names the source. Hand-written, never derived. */
   portalLabel: string;
+  /** The M1 municipality this portal registers for, so a sequence proposed from a
+   * window can find its portal and a pasted host can be checked against one. */
+  municipality: Municipality;
+  /** The IANA zone the portal's own naive datetimes (`StartDateValue`,
+   * `PublicRegistrationStartDateValue`) are published in. */
+  timeZone: string;
+  /** What the parent needs to already have when the window opens, as the text says
+   * it. Oakville's MemberSignIn answers 302 into the Town's Salesforce SAML SSO, so
+   * this is NOT "a PerfectMind account" on every host. */
+  accountLabel: string;
 }
 
 /**
@@ -37,9 +58,30 @@ export interface SpotPortal {
  * an entry here is a promise that Hale can tell "full" from "open" on that site.
  */
 export const SPOT_PORTAL_HOSTS: Record<string, SpotPortal> = {
-  'cityofmarkham.perfectmind.com': { portalLabel: "Markham's portal" },
-  'townofoakville.perfectmind.com': { portalLabel: "Oakville's portal" },
+  'cityofmarkham.perfectmind.com': {
+    portalLabel: "Markham's portal",
+    municipality: 'markham',
+    timeZone: 'America/Toronto',
+    accountLabel: 'a Markham portal account',
+  },
+  'townofoakville.perfectmind.com': {
+    portalLabel: "Oakville's portal",
+    municipality: 'oakville',
+    timeZone: 'America/Toronto',
+    accountLabel: 'a ServiceOakville account',
+  },
 };
+
+/**
+ * The portal that registers for a municipality, or null where Hale has not learned to
+ * read one. Written over the registry rather than as a second hand-written map, so a
+ * host added above is reachable from its municipality without a second edit.
+ */
+export function portalForMunicipality(municipality: Municipality): SpotPortal | null {
+  return (
+    Object.values(SPOT_PORTAL_HOSTS).find((portal) => portal.municipality === municipality) ?? null
+  );
+}
 
 /** The one server-rendered BookMe4 route that carries a course's availability. */
 export const COURSE_PAGE_PATH = /^\/(?:Clients|Contacts)\/BookMe4LandingPages\/CoursesLandingPage$/;
