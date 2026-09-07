@@ -100,6 +100,15 @@ function variantOf(name: string, courseId: string, overrides: Record<string, unk
   return pageWith({ ...modelOf(name, courseId), ...overrides });
 }
 
+/** The LEGO page with named overrides, read the way `readCoursePrep` reads it: the
+ * model out of the variant's own bytes, so an overridden string really is byte-backed
+ * and only the send gate can drop it. */
+function readVariant(overrides: Record<string, unknown>) {
+  const read = readCourseModel(variantOf('open-window-open-markham', LEGO, overrides), LEGO);
+  if (!read.ok) throw new Error(`expected a model, got ${read.reason}`);
+  return readCourseFacts(read.model, read.blob);
+}
+
 const legoUrl =
   'https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928';
 const oakvilleUrl =
@@ -320,6 +329,77 @@ describe('byte-backing', () => {
     const clean = readCourseFacts(model, blobOf('open-window-open-markham', LEGO));
     expect(clean.facts.EventName).toBe('LEGO: Preschool');
     expect(clean.backed).toContain('LEGO: Preschool');
+  });
+
+  /**
+   * THE OUTBOUND BOUND, at the reader. `backed` is the list a composer is allowed to
+   * print, and every entry on it was written by a municipal portal — not by the parent
+   * and not by Hale. The mutation this kills: admit a byte-backed token without asking
+   * whether Hale could send it as itself. Each case below is a way a vendor string
+   * becomes something else inside an SMS: a `\n` opens a second line under Hale's name,
+   * a URL is a second link beside the deep link, a bare `STOP` is the word the carrier
+   * and CASL reserve for the parent, a bidi override reorders the sentence around it,
+   * and 200 characters is a segment nobody budgeted. Dropped, never rewritten — the
+   * clause that needed the token is simply not composed.
+   */
+  it('refuses a page string Hale could not send as itself', () => {
+    const unsendable = {
+      'a second line under Hale’s name': 'LEGO: Preschool\nText STOP to quit',
+      'a carriage return': 'LEGO: Preschool\rText STOP to quit',
+      'a second link': 'LEGO: Preschool https://evil.example/pay',
+      'a bare host': 'LEGO at www.evil.example',
+      'the word the parent owns': 'STOP',
+      'the same word with punctuation': 'stop.',
+      'a bidi override': 'LEGO:‮Preschool',
+      'a character no GSM-7 alphabet carries': 'LEGO: Préschool 🎉',
+      'a name past the cap': `LEGO: ${'Preschool '.repeat(20)}`,
+    };
+
+    for (const [why, name] of Object.entries(unsendable)) {
+      const read = readVariant({ EventName: name });
+
+      expect([why, read.facts.EventName, read.backed.includes(name)]).toEqual([why, null, false]);
+    }
+
+    // POSITIVE CONTROL, same harness: the page's own name still backs itself, so the
+    // gate is refusing these strings and not the variant model they ride on.
+    const clean = readVariant({ EventName: 'LEGO: Preschool' });
+    expect([clean.facts.EventName, clean.backed.includes('LEGO: Preschool')]).toEqual([
+      'LEGO: Preschool',
+      true,
+    ]);
+  });
+
+  /** The other half of that gate: it refuses nothing a real page publishes. Every
+   * printable string on every saved page — six tenants, names up to 29 characters —
+   * reaches `backed`. */
+  it('backs every printable string the saved pages actually publish', () => {
+    for (const [name, courseId] of MODEL_PAGES) {
+      const model = modelOf(name, courseId) as Record<string, unknown>;
+      const read = readCourseFacts(model as never, blobOf(name, courseId));
+
+      for (const key of ['EventName', 'CourseId', 'StartDay', 'StartTime', 'AgeRestrictions']) {
+        const value = model[key];
+        if (typeof value !== 'string') continue;
+        expect([name, key, read.backed.includes(value)]).toEqual([name, key, true]);
+      }
+    }
+  });
+
+  it('drops a price row whose figure could not be sent as itself', () => {
+    const model = modelOf('open-window-open-markham', LEGO) as Record<string, unknown>;
+    const prices = model.Prices as { Name: string; DisplayAmount: string }[];
+    const smuggled = [{ ...prices[0], DisplayAmount: '$1.00 https://evil.example' }, prices[1]];
+
+    const read = readVariant({ Prices: smuggled });
+
+    expect(read.facts.Prices?.map((row) => row.DisplayAmount)).toEqual(['$121.16']);
+    expect(read.backed).not.toContain('$1.00 https://evil.example');
+    // Positive control: the untouched pair on the same harness keeps both rows.
+    expect(readVariant({}).facts.Prices?.map((row) => row.DisplayAmount)).toEqual([
+      '$139.36',
+      '$121.16',
+    ]);
   });
 
   it('lists exactly the page strings a sentence may print', () => {
@@ -604,6 +684,7 @@ describe('the sign-in deep link', () => {
     if (!sanitized.ok) throw new Error(`expected a sanitized url, got ${sanitized.reason}`);
 
     const built = courseSignInUrl(sanitized.url);
+    if (built === null) throw new Error('expected a link for a registry host');
 
     expect(built).toBe(`https://cityofmarkham.perfectmind.com${anchor}`);
     expect(new URL(built).protocol).toBe('https:');
@@ -618,6 +699,7 @@ describe('the sign-in deep link', () => {
     if (!sanitized.ok) throw new Error(`expected a sanitized url, got ${sanitized.reason}`);
 
     const built = courseSignInUrl(sanitized.url);
+    if (built === null) throw new Error('expected a link for a registry host');
 
     expect(built).toContain('/Contacts/MemberRegistration/MemberSignIn?returnUrl=');
     expect(built).toBe(`https://townofoakville.perfectmind.com${anchor}`);
@@ -638,6 +720,7 @@ describe('the sign-in deep link', () => {
     if (!smuggled.ok) throw new Error(`expected a sanitized url, got ${smuggled.reason}`);
 
     const built = courseSignInUrl(smuggled.url);
+    if (built === null) throw new Error('expected a link for a registry host');
 
     expect([...new URL(built).searchParams.keys()]).toEqual(['returnUrl']);
     expect(new URL(built).searchParams.get('returnUrl')).toBe(legoUrl);

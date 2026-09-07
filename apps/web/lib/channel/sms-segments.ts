@@ -55,6 +55,24 @@ export function isGsm7(text: string): boolean {
   return smsEncoding(text) === 'gsm7';
 }
 
+/**
+ * Whether every character is a PRINTABLE character of the basic alphabet — a stricter
+ * question than {@link isGsm7}, and the one to ask about text Hale did not write.
+ *
+ * The basic alphabet contains LF and CR, so "GSM-7" is true of a string that opens a
+ * second line under Hale's name in the recipient's phone; the extension table costs two
+ * septets and carries the escape byte. A vendor string being folded into an outbound
+ * body has to be a run of visible characters and nothing else, so both are refused
+ * here. (VIL-338: a municipal course page's own EventName is the first such string.)
+ */
+export function isPrintableGsm7Basic(text: string): boolean {
+  for (const char of text) {
+    if (char === '\n' || char === '\r') return false;
+    if (!GSM7_BASIC.has(char)) return false;
+  }
+  return true;
+}
+
 /** Billable units in this body: septets under GSM-7 (extension characters count two),
  * UTF-16 code units under UCS-2 (which is what actually goes on the wire, so an astral
  * character costs two). */

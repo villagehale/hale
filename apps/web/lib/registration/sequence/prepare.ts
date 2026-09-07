@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { type BookMe4Model, fragment, readCourseModel } from '~/lib/channel/spots/availability';
 import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
@@ -139,16 +141,57 @@ const BACKED_STRING_KEYS = [
   'MembersRegistrationDateValue',
 ] as const satisfies readonly (keyof CourseFacts)[];
 
-/** The subset of those a sentence prints as itself, so a composer can check what it is
- * about to say against the read that produced it. A rendered instant is checked against
- * the clock, not against this list. */
-const PRINTABLE_STRING_KEYS = new Set<string>([
-  'EventName',
-  'CourseId',
-  'StartDay',
-  'StartTime',
-  'AgeRestrictions',
-]);
+/**
+ * The subset of those a sentence prints as itself, with the most characters of each one
+ * Hale will carry. A rendered instant is checked against the clock, not against this
+ * list, and the two clock strings and `RegFormId` are absent because no sentence ever
+ * prints them.
+ *
+ * THE CAPS ARE HEADROOM OVER WHAT PORTALS ACTUALLY PUBLISH, roughly double the longest
+ * value measured across the six saved models (EventName 29 — "Counsellor in Training
+ * Course"; CourseId 8; StartDay 9 — "Wednesday"; StartTime 8; AgeRestrictions 14 —
+ * "13 to 16 y 11m"). They are a bound on a stranger's string inside a segment budget,
+ * not a guess at how a municipality names a class: past the cap the clause is omitted,
+ * so a cap set too low costs a sentence and a cap set too high costs a parent an
+ * unreadable text.
+ */
+const PRINTABLE_STRING_CAPS: Readonly<Record<string, number>> = {
+  EventName: 60,
+  CourseId: 20,
+  StartDay: 12,
+  StartTime: 12,
+  AgeRestrictions: 40,
+};
+
+/** The most characters of a price figure a clause will carry. Every saved page prints
+ * one of at most seven ("$435.65"). */
+const PRICE_FIGURE_CAP = 16;
+
+/** Anything that would read as a link in a phone's message list. Checked as a substring
+ * rather than parsed: the question is not "is this a URL" but "will a handset make one
+ * of it", and every handset linkifies more eagerly than any parser. */
+const LINK_SHAPED = /:\/\/|http|www\./i;
+
+/**
+ * Whether Hale can put this vendor string into an outbound body AS ITSELF.
+ *
+ * Every value this guards was written by a municipal portal, so the composer's segment
+ * budget and CASL footer are promises about text Hale does not control. A `\n` opens a
+ * second line under Hale's name; a URL is a second link beside the one deep link the
+ * message is allowed to carry; a bare `STOP` is the word the carrier and CASL reserve
+ * for the parent, and quoting it back is how a program gets flagged; a bidi override
+ * reorders the sentence around it; and an unbounded name is a segment nobody budgeted.
+ *
+ * A refusal DROPS the token — the clause that would have printed it is not composed —
+ * and never rewrites it: a truncated or stripped course name is Hale asserting
+ * something the page does not say, which is the one thing this module forbids.
+ */
+function sendableAsItself(value: string, maxChars: number): boolean {
+  if (value.length > maxChars) return false;
+  if (!isPrintableGsm7Basic(value)) return false;
+  if (LINK_SHAPED.test(value)) return false;
+  return matchKeyword(value) === null;
+}
 
 /**
  * The value `modelBytes` carries for `key`, or null when the key is absent or the token
@@ -207,9 +250,16 @@ export interface CourseFactsReading {
 }
 
 /**
- * The facts, with every printable string dropped unless the model's own token backs it.
- * A dropped value is not an error: the sentence that would have printed it is simply
- * not composed, which is the whole point.
+ * The facts, with every printable string dropped unless the model's own token backs it
+ * AND Hale could send that token as itself. A dropped value is not an error: the
+ * sentence that would have printed it is simply not composed, which is the whole point.
+ *
+ * BOTH GATES LIVE HERE, in the reader, rather than in the composer that eventually
+ * prints a sentence. `backed` is the list a composer is allowed to print from, so a
+ * composer is the wrong place to decide what belongs on it: there will be more than one
+ * of them, and the first one to forget is a municipal portal's string arriving in a
+ * parent's SMS with Hale's name on it. Safe by construction means the unsafe value
+ * never leaves this function.
  *
  * `modelBytes` is `readCourseModel`'s blob — the serialisation these facts were parsed
  * out of — and never the whole page. A page carries other people's inline script, so a
@@ -224,23 +274,33 @@ export function readCourseFacts(model: BookMe4Model, modelBytes: string): Course
   for (const key of BACKED_STRING_KEYS) {
     const value = facts[key];
     if (typeof value !== 'string') continue;
-    if (rawStringValue(modelBytes, key) === value) {
-      if (PRINTABLE_STRING_KEYS.has(key)) backed.push(value);
+    if (rawStringValue(modelBytes, key) !== value) {
+      facts[key] = null;
       continue;
     }
-    facts[key] = null;
+    const cap = PRINTABLE_STRING_CAPS[key];
+    // Read but never printed as itself (the clocks, the questionnaire id): the send gate
+    // has nothing to say about a value no sentence carries.
+    if (cap === undefined) continue;
+    if (!sendableAsItself(value, cap)) {
+      facts[key] = null;
+      continue;
+    }
+    backed.push(value);
   }
 
   if (facts.Prices != null) {
     // A price key repeats once per row, so these are checked as fragments — "is this
     // pair of bytes on the page" — rather than by first-occurrence lookup, which would
-    // answer about the wrong row.
+    // answer about the wrong row. A figure Hale could not send drops its whole ROW, so
+    // `priceClause` cannot pair it with the row beside it.
     facts.Prices = facts.Prices.filter(
       (row) =>
         typeof row.Name === 'string' &&
         typeof row.DisplayAmount === 'string' &&
         modelBytes.includes(fragment('Name', row.Name)) &&
-        modelBytes.includes(fragment('DisplayAmount', row.DisplayAmount)),
+        modelBytes.includes(fragment('DisplayAmount', row.DisplayAmount)) &&
+        sendableAsItself(row.DisplayAmount, PRICE_FIGURE_CAP),
     );
     for (const row of facts.Prices) {
       if (typeof row.DisplayAmount === 'string') backed.push(row.DisplayAmount);
