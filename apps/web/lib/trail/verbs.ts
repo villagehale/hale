@@ -258,6 +258,8 @@ export const AUDIT_VERBS = [
   'registration_shortlist_drafted',
   'registration_sequence_leg_sent',
   'registration_outcome_recorded',
+  'registration_course_bound',
+  'registration_readiness_stated',
   // ── watched spots (VIL-337) ─────────────────────────────────────────────
   'watched_spot_armed',
   'watched_spot_arm_failed',
@@ -693,6 +695,17 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   registration_outcome_recorded: {
     sentence: 'you told Hale how a registration went',
+    family: 'done',
+  },
+  // Both of these are FACTS THE PARENT STATED, and both sentences say so. Hale never
+  // opened the portal, never checked the account and never registered — a trail line
+  // reading "Hale set up your account" would be the one lie this feature could tell.
+  registration_course_bound: {
+    sentence: 'you sent Hale the course page for a registration morning',
+    family: 'done',
+  },
+  registration_readiness_stated: {
+    sentence: 'you told Hale whether your portal setup was done',
     family: 'done',
   },
   // ── watched spots (VIL-337) ─────────────────────────────────────────────
