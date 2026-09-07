@@ -1329,7 +1329,31 @@ async function composeReconciledReply(
     { cut: refusedVerdict.refused.length },
     'channel router: sending the reply with the unbacked sentences cut out',
   );
-  return { ...composed, reply, mints: refusedVerdict.mints };
+  // THE WATCH GOES OUT WITH ITS SENTENCE, OR NOT AT ALL. `armWatchedSpot` writes a row
+  // that re-reads a page every ten minutes for sixty days, and what makes that a promise
+  // rather than something done behind a parent is their having been TOLD. The cut is a
+  // subtraction, so an arming ack that was refused twice is simply gone from what they
+  // read — and arming against a sentence nobody received is the 2026-08-20 defect with
+  // the halves swapped: a poll running with no promise, instead of a promise with no
+  // poll. So the intent is dropped here, and the drop is named and counted rather than
+  // being a quiet nothing (rule #11).
+  const armingAck = composed.spotWatch;
+  const ackSurvived =
+    armingAck === null ||
+    extractStateClaims(reply).some((claim) => claim.kind === 'registration_watch');
+  if (!ackSurvived) {
+    deps.log.error(
+      { reason: 'ack_cut', host: armingAck?.host },
+      'channel router: the watch ack did not survive the cut - the spot is not armed',
+    );
+    await captureAgentError({ lane: 'reconcile', reason: 'ack_cut', familyId: args.turn.familyId });
+  }
+  return {
+    ...composed,
+    reply,
+    spotWatch: ackSurvived ? armingAck : null,
+    mints: refusedVerdict.mints,
+  };
 }
 
 /**
