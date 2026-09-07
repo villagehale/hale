@@ -115,11 +115,16 @@ describe('openLegWindows', () => {
   });
 
   it('holds the readiness 10:00 local slot across the autumn DST change', () => {
-    // Thursday 5 Nov 2026, 06:30 EST. Three days earlier is 2 Nov, already EST, but the
-    // heads-up seven days out is EDT — a slot computed as `openAt - 3 * 86_400_000`
-    // lands at 06:30, inside quiet hours, on a leg that is deliberately NOT urgent.
-    const windows = openLegWindows(new Date('2026-11-05T11:30:00.000Z'), TZ);
-    expect(local(windows.readiness.from)).toBe('2026-11-02, 10:00');
+    // The change has to fall INSIDE the three-day span or the test proves nothing: the
+    // clocks go back on Sunday 1 Nov 2026, so the open is Tuesday 3 Nov 06:30 EST and
+    // the slot three days earlier is Saturday 31 Oct, still EDT. Two mutants die here
+    // and only here — `openAt - 3 * 86_400_000` lands at 07:30, inside quiet hours on a
+    // leg that is deliberately NOT urgent, and a slot built at 10:00 on the OPEN day and
+    // then walked back three days in milliseconds carries EST's offset into EDT and
+    // lands at 11:00.
+    const windows = openLegWindows(new Date('2026-11-03T11:30:00.000Z'), TZ);
+    expect(local(windows.readiness.from)).toBe('2026-10-31, 10:00');
+    expect(windows.readiness.from.toISOString()).toBe('2026-10-31T14:00:00.000Z');
   });
 
   it('derives every interval from the ONE anchor it is handed', () => {

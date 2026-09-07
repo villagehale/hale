@@ -519,6 +519,13 @@ function everyPortalBody(): Record<string, string> {
       'battle_plan',
       bound(PREPARED(capsPage), { readinessReady: ready }),
     );
+    // A page that reads clean but publishes no name Hale can print takes the OTHER
+    // branch of `plannedCourse`, which is a whole sentence no sweep reached while the
+    // fixture page always carried a name.
+    bodies[`battle_plan prepared_unnamed/${ready}`] = renderSequenceLeg(
+      'battle_plan',
+      bound(PREPARED(), { readinessReady: ready }),
+    );
     bodies[`battle_plan unreadable/${ready}`] = renderSequenceLeg(
       'battle_plan',
       bound({ kind: 'page_unreadable', reason: 'fetch_failed' }, { readinessReady: ready }),
@@ -551,6 +558,19 @@ function everyPortalBody(): Record<string, string> {
     bodies[`battle_plan ${name}`] = renderSequenceLeg('battle_plan', bound(verdict));
   }
   return bodies;
+}
+
+/** The one link a body carries, read back OUT of it so the sweep below needs no
+ * hand-kept table of which template links where — the failure mode the gate exists to
+ * catch is a template nobody has listed yet. It makes `url_missing` and
+ * `unexpected_link` vacuous in that sweep on purpose; both have their own tests. */
+function linkIn(body: string): string | null {
+  return /https?:\/\/\S+/.exec(body)?.[0] ?? null;
+}
+
+/** Every body the ladder can send, measured against the composer's own gate. */
+function gateViolations(body: string, optOut: 'full' | null = 'full'): string[] {
+  return preparedCopyViolations(body, { url: linkIn(body), printed: [], backed: [], optOut });
 }
 
 describe('VIL-338 · every portal variant fits three segments at the reader’s caps', () => {
@@ -587,6 +607,56 @@ describe('VIL-338 · every portal variant fits three segments at the reader’s 
   });
 });
 
+describe('VIL-338 · a bound ladder names ONE morning', () => {
+  /** `portalInput()` is the shipped Oakville non-resident shape: the M1 row is a
+   * placeholder (6:30 a.m. here) and the course page carries the clock this family
+   * actually opens on (10:30 a.m.). Every leg on a bound ladder is scheduled off the
+   * anchor, so a sentence that reached back for the row's instant would put a parent at
+   * their phone four hours early — and on the real Oakville row, the evening before. */
+  const ROW_TIME = '6:30 a.m.';
+  const ANCHOR_TIME = '10:30 a.m.';
+
+  it('never prints the M1 row’s time on a leg the anchor scheduled', () => {
+    const offenders = Object.entries(everyPortalBody())
+      .filter(([, body]) => body.includes(ROW_TIME))
+      .map(([name]) => name);
+    expect(offenders).toEqual([]);
+  });
+
+  it('prints the anchor’s own time on every variant that names the morning', () => {
+    const bodies = everyPortalBody();
+    const namesTheMorning = [
+      'readiness/null',
+      'battle_plan unbound/null',
+      'battle_plan prepared/null',
+      'battle_plan prepared_unnamed/null',
+      'battle_plan unreadable/null',
+      'battle_plan course_gone',
+      'battle_plan registration_closed',
+      'battle_plan age_ineligible',
+      'go unbound/null',
+      'go prepared/null',
+      'go page_unreadable',
+      'go course_gone',
+      'go age_ineligible',
+    ];
+    const missing = namesTheMorning.filter(
+      (name) => !(bodies[name] as string).includes(ANCHOR_TIME),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it('names both instants only where the page itself moved the morning', () => {
+    // The two branches whose whole content is the disagreement are allowed a second
+    // instant, and they say which is which; nothing else may carry two times.
+    const bodies = everyPortalBody();
+    expect(bodies['go window_moved']).toContain('I had 10:30 a.m. for this');
+    expect(bodies['go window_moved']).toContain('11:30 a.m.');
+    expect(bodies['battle_plan window_moved']).toContain('11:30 a.m.');
+    expect(bodies['battle_plan window_moved']).not.toContain(ANCHOR_TIME);
+  });
+});
+
 describe('VIL-338 · the forbidden sentence is unsayable', () => {
   const FORBIDDEN = /filled in|staged|held for you|ready to go/i;
 
@@ -600,16 +670,33 @@ describe('VIL-338 · the forbidden sentence is unsayable', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('is absent from every rendered output', () => {
+  it('is absent from every rendered output — and so is every other violation', () => {
+    // A grep for the forbidden regex alone left the nine no-value failure templates
+    // ungated: `UNATTRIBUTED_READINESS` lives inside `preparedCopyViolations`, which the
+    // composer runs only on the bodies that print a page value, so "You are all set."
+    // could be spliced into the go leg's unreadable-page sentence and no test would
+    // move. The sweep now runs the gate itself, which is the same one the composer
+    // uses, over every body a real send can carry.
+    const offenders: [string, string[]][] = [];
     for (const [name, body] of Object.entries(everyPortalBody())) {
-      expect([name, FORBIDDEN.test(body)]).toEqual([name, false]);
+      const found = gateViolations(body);
+      if (found.length > 0) offenders.push([name, found]);
     }
-    expect(
-      FORBIDDEN.test(renderReadinessAck({ portal: OAKVILLE, ready: true, fitNotes: THREE_KIDS })),
-    ).toBe(false);
-    expect(
-      FORBIDDEN.test(renderReadinessAck({ portal: OAKVILLE, ready: false, fitNotes: THREE_KIDS })),
-    ).toBe(false);
+    for (const ready of [true, false]) {
+      const ack = renderReadinessAck({ portal: OAKVILLE, ready, fitNotes: THREE_KIDS });
+      const found = gateViolations(ack, null);
+      if (found.length > 0) offenders.push([`readiness ack/${ready}`, found]);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('catches a claim spliced into a body the composer never gates — the positive control', () => {
+    // The exact mutation that survived: an unattributed state asserted inside a failure
+    // template, which prints no page value and therefore never reached the gate.
+    const spliced = `${everyPortalBody()['go page_unreadable']} You are all set.`;
+    expect(gateViolations(spliced)).toContain('unattributed_readiness');
+    const claimed = `${everyPortalBody()['battle_plan course_gone']} Everything is filled in.`;
+    expect(gateViolations(claimed)).toContain('forbidden_claim');
   });
 });
 
@@ -661,6 +748,32 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
     expect(renderSequenceLeg('battle_plan', portalInput({ readinessReady: true }))).not.toContain(
       'Reply YES',
     );
+  });
+
+  it('carries the clause itself on every portal leg that has one', () => {
+    // Only the deep link and the segment count were pinned on the go bodies, so a
+    // template that dropped `${clause}` altogether sent a flagship text that said
+    // nothing about the parent's own setup and no test moved. The clause IS the leg's
+    // content for a household that has answered nothing.
+    const bodies = everyPortalBody();
+    const missing: string[] = [];
+    const expected = (leg: string, ready: string) =>
+      ready === 'true'
+        ? 'You told me the setup is done.'
+        : leg === 'go'
+          ? 'You have not told me the setup is done - sign in now and check it.'
+          : 'You have not told me the setup is done - tonight is the time. Reply YES when it is.';
+    for (const leg of ['go', 'battle_plan']) {
+      for (const shape of leg === 'go'
+        ? ['prepared', 'unbound']
+        : ['prepared', 'prepared_unnamed', 'unbound']) {
+        for (const ready of ['true', 'false', 'null']) {
+          const name = `${leg} ${shape}/${ready}`;
+          if (!(bodies[name] as string).includes(expected(leg, ready))) missing.push(name);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });
 
@@ -940,6 +1053,74 @@ describe('VIL-338 · the course bind ack', () => {
     expect(body).toContain('leave time');
     expect(body).not.toContain(BARCODE_AT_CAP);
     expect(body).not.toContain(PRICE_AT_CAP);
+  });
+
+  it('agrees its verb with the number of birthdays it holds', () => {
+    const banded = (fit: 'in_band' | 'outside_band', fitNotes: readonly FitNote[]) =>
+      renderCourseBindAck(
+        ackInput({
+          page: {
+            ...coursePage({ facts: { AgeRestrictions: '3 to 5' } }),
+            age: { fit, outsideBandChildIds: [] },
+          },
+          fitNotes,
+        }),
+      );
+    const one = [{ childId: 'c1', name: 'Maya', fit: 'in_band' as const }];
+    expect(banded('in_band', one)).toContain('Maya fits on the birthday I hold');
+    expect(banded('outside_band', one)).toContain('Maya is outside that on the birthday I hold');
+    expect(banded('in_band', THREE_KIDS)).toContain(
+      'Sebastian, Genevieve and Maximilian fit on the birthdays I hold',
+    );
+    expect(banded('outside_band', THREE_KIDS)).toContain(
+      'Sebastian, Genevieve and Maximilian are outside that on the birthdays I hold',
+    );
+  });
+
+  it('keeps the trimmed form honest even where it cannot keep it short', () => {
+    // The trimmed ack is returned UNGATED — it is the last form there is, and a fourth
+    // segment on a solicited reply is a cost rather than a lie. The bound is measured
+    // here rather than assumed: at every cap, five named children and both warnings,
+    // the only thing the gate may still object to is the length.
+    const body = renderCourseBindAck(
+      ackInput({
+        replaced: true,
+        opensForFamilyAt: new Date('2026-09-14T14:30:00.000Z'),
+        page: {
+          ...coursePage({
+            facts: {
+              EventName: NAME_AT_CAP,
+              CourseId: BARCODE_AT_CAP,
+              StartDay: DAY_AT_CAP,
+              StartTime: TIME_AT_CAP,
+              AgeRestrictions: BAND_AT_CAP,
+              RegFormId: 'f',
+              PrerequisiteEvents: true,
+              Prices: [
+                { Name: 'Fee', DisplayAmount: PRICE_AT_CAP },
+                { Name: 'Fee Non-Resident', DisplayAmount: PRICE_AT_CAP_2 },
+              ],
+            },
+          }),
+          age: { fit: 'outside_band', outsideBandChildIds: [] },
+          // A household on the public clock in a town that publishes a residents-first
+          // date gets the one extra sub-clause the ack can carry.
+          clocks: {
+            residents: new Date('2026-09-08T14:30:00.000Z'),
+            members: null,
+            public: ANCHOR,
+            start: null,
+          },
+        },
+        fitNotes: [
+          ...THREE_KIDS,
+          { childId: 'c4', name: 'Alexandria', fit: 'in_band' },
+          { childId: 'c5', name: 'Bartholomew', fit: 'in_band' },
+        ],
+      }),
+    );
+    expect(gateViolations(body, null).filter((v) => v !== 'too_many_segments')).toEqual([]);
+    expect(smsSegments(body)).toBe(4);
   });
 });
 

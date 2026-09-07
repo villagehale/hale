@@ -80,7 +80,10 @@ export interface LegCopyInput {
    * The instant this ladder is running on — the course page's own clock
    * (`course_opens_at`) where a course is bound, the M1 row's family open otherwise.
    * The SAME instant `openLegWindows` derived this leg's interval from, so the sentence
-   * and the schedule can never name two different mornings.
+   * and the schedule can never name two different mornings. Every battle-plan and go
+   * sentence that names a morning names THIS one; the two exceptions are the branches
+   * whose whole content is that the page now shows another (`window_moved`,
+   * `late_by_drift`), and they say so in both instants.
    */
   anchor: Date;
   /** The registry portal for this window's municipality, or null for the thirteen Hale
@@ -228,13 +231,17 @@ export function readinessClause(ready: boolean | null, at: 'evening' | 'morning'
  * last word, and "was there an ask" is answered from the dedupe keys of the legs this
  * predicate names.
  *
- * KNOWN IMPRECISION, bounded on purpose: a battle plan that degraded to a failure
- * sentence (the course gone, the page closed, the clock moved to another day) has no
- * room for the ask and prints none, while this still returns true for its key. The
- * source that reads it also requires `readiness_ready IS DISTINCT FROM true` and the
- * last-word rule, so the cost of the overstatement is one bare YES filed against a
- * question the parent did not quite see — an answer that is still attributed, on a leg
- * whose own sentence told them something went wrong.
+ * KNOWN IMPRECISION, bounded on purpose, and it has TWO causes rather than one. A
+ * battle plan that degraded to a failure sentence (the course gone, the page closed,
+ * the clock moved to another day) has no room for the ask and prints none; and a battle
+ * plan for a parent who already answered YES prints `READINESS_TOLD`, which carries no
+ * imperative either. Both still return true for that leg's key, which is why the source
+ * that reads this predicate must ALSO require `readiness_ready IS DISTINCT FROM true`
+ * and the last-word rule — dropping either of those on the strength of this function
+ * alone would open a question against a text that asked nothing. What the overstatement
+ * costs where it survives both filters is one bare YES filed against a question the
+ * parent did not quite see: an answer that is still attributed, on a leg whose own
+ * sentence told them something went wrong.
  */
 export function printsReadinessAsk(leg: SequenceLeg, portal: SpotPortal | null): boolean {
   return portal !== null && (leg === 'readiness' || leg === 'battle_plan');
@@ -357,7 +364,13 @@ function battlePlan(input: LegCopyInput): string {
   // the sentence that shipped, which is inert, rather than composing one about a portal
   // nobody looked up.
   const portal = input.portal ?? null;
-  const municipal = `Tomorrow: ${windowPhrase(shortlist)} opens ${timeOfDay(shortlist.opensForFamilyAt, input.timeZone)} for ${whoPhrase(shortlist.fitNotes)}. Sign in tonight and have this open: ${shortlist.sourceUrl}`;
+  // THE ANCHOR, never the M1 row. For an unbound ladder the two are the same instant by
+  // construction, so this is byte-identical for the thirteen municipalities and for
+  // every household that has pasted nothing; for a bound one the row is a hand-read of
+  // an info page (Markham's carries only the resident clock, Oakville's non-resident
+  // open is a midnight placeholder) and reaching for it here would schedule the leg on
+  // one morning and name another.
+  const municipal = `Tomorrow: ${windowPhrase(shortlist)} opens ${timeOfDay(input.anchor, input.timeZone)} for ${whoPhrase(shortlist.fitNotes)}. Sign in tonight and have this open: ${shortlist.sourceUrl}`;
   if (portal === null) return municipal;
   const prepared =
     input.prep === null ? null : battlePlanPrepared(input, input.prep, portal, municipal);
@@ -405,7 +418,9 @@ function battlePlanPrepared(
         input,
         label,
         prep.courseUrl,
-        `Sign in and check: ${prep.courseUrl}`,
+        // The evening-before leg says when the morning is on every other branch, and a
+        // parent whose child may be out of band still has to decide by that clock.
+        `Opens ${openAt(input.anchor)} Sign in and check: ${prep.courseUrl}`,
         'Tomorrow: ',
       );
     case 'window_moved': {
@@ -430,7 +445,12 @@ function battlePlanPrepared(
       return plannedCourse(verdict, prep, label, openAt(clock.at), clause);
     }
     case 'prepared':
-      return plannedCourse(verdict, prep, label, openAt(verdict.clock?.at ?? input.anchor), clause);
+      // The ANCHOR, not this read's clock. `prepared` is the verdict for a page that
+      // AGREES with the anchor within WINDOW_DRIFT_TOLERANCE_MINUTES, so printing the
+      // page's own instant here would put up to fifteen minutes between this sentence
+      // and the go leg's on the same course, for no gain — a page that really moved
+      // returns `window_moved`, which refreshes the anchor and prints the new time.
+      return plannedCourse(verdict, prep, label, openAt(input.anchor), clause);
   }
 }
 
@@ -484,7 +504,9 @@ function ageSentence(
 function go(input: LegCopyInput): string {
   const { shortlist } = input;
   const portal = input.portal ?? null;
-  const municipal = `${windowPhrase(shortlist)} opens ${timeOfDay(shortlist.opensForFamilyAt, input.timeZone)}. Your link: ${shortlist.sourceUrl}`;
+  // The anchor, for the same reason the battle plan uses it — and byte-identical for
+  // every unbound ladder, which is the only kind the non-portal municipalities have.
+  const municipal = `${windowPhrase(shortlist)} opens ${timeOfDay(input.anchor, input.timeZone)}. Your link: ${shortlist.sourceUrl}`;
   if (portal === null) return municipal;
   const prepared = input.prep === null ? null : goPrepared(input, input.prep, portal);
   return prepared ?? `${municipal} ${readinessClause(input.readinessReady, 'morning')}`;
@@ -642,6 +664,14 @@ export interface CourseBindAckInput {
  * a parent can read off the page for themselves — the price and the barcode — come out
  * together, and what survives is what they cannot get any other way: what it is, when
  * it opens, that Hale's own dates disagreed, and the two things it cannot pre-do.
+ *
+ * THE TRIMMED FORM IS RETURNED UNGATED, and that is the decision rather than an
+ * oversight: it is the last form there is, and re-gating it would only leave the
+ * function with nothing to return. Every clause left in it scales with nothing except
+ * the number of children, so a five-child household at every cap with both warnings
+ * measures a FOURTH segment (pinned in copy.test.ts). On a solicited reply that carries
+ * no CASL footer and no dedupe key that is a cost, not a lie — the module's own
+ * distinction — and every other rule the gate enforces still holds on it.
  */
 export function renderCourseBindAck(input: CourseBindAckInput): string {
   const full = bindAck(input, true);
@@ -739,8 +769,11 @@ function bindAck(input: CourseBindAckInput, decorated: boolean): string {
  * nothing where the three instants disagreed or the DOB was derived. */
 function fitPhrase(page: CoursePage, fitNotes: readonly FitNote[]): string | null {
   const who = whoPhrase(fitNotes);
-  if (page.age.fit === 'in_band') return `${who} fits on the birthday I hold`;
-  if (page.age.fit === 'outside_band') return `${who} is outside that on the birthday I hold`;
+  const many = fitNotes.length > 1;
+  const held = many ? 'the birthdays I hold' : 'the birthday I hold';
+  if (page.age.fit === 'in_band') return `${who} ${many ? 'fit' : 'fits'} on ${held}`;
+  if (page.age.fit === 'outside_band')
+    return `${who} ${many ? 'are' : 'is'} outside that on ${held}`;
   return null;
 }
 

@@ -326,7 +326,13 @@ async function proposeForFamily(
         // shortlist may cover two siblings at once.
         childId: null,
         intentKind: 'registration_shortlist',
-        rationale: renderShortlistRationale(shortlist, family.timeZone, now),
+        // NULL, and it is the same null every leg below is handed: nothing in this
+        // module yet reads `course_url`, `course_opens_at` or `readiness_ready` off the
+        // row, so no household is on the portal ladder and the card must not enumerate
+        // a fourth text nobody will send. The registry lookup lands with the loader
+        // that reads those three columns, in one change — the sentence a parent
+        // consents to and the legs they then receive have to move together.
+        rationale: renderShortlistRationale(shortlist, family.timeZone, now, null),
         // The card's own copy. Without these the approvals surface showed the generic
         // "Note in your daily digest" over the raw payload keys, so the municipality,
         // the date, the link and the "I never register for you" line — the things the
@@ -393,6 +399,11 @@ async function runLegForSequence(
       outcome: sequence.outcome,
       waitlistStartedAt: sequence.waitlistStartedAt,
       waitlistResponseHours: sequence.window.waitlistResponseHours,
+      // NULL until the loader reads the bound course and the parent's answer. The
+      // readiness leg's whole content is a question, and a question Hale cannot yet
+      // file an answer to is worse than no question — so the ladder stays the four-leg
+      // one that shipped, and `dueLeg` keeps returning `heads_up` across the old tail.
+      portal: null,
     },
     now,
   );
@@ -431,6 +442,14 @@ async function runLegForSequence(
     timeZone: sequence.timeZone,
     now,
     optIn: sequence.optIn,
+    // The four VIL-338 inputs, every one of them the ABSENCE of the thing rather than a
+    // placeholder for it (rule #11), and every absence renders the sentence that
+    // shipped. `anchor` is the M1 row's own instant because an unbound ladder has no
+    // other — `course_opens_at` is what would replace it, and nothing here reads it yet.
+    anchor: opensForFamilyAt,
+    portal: null,
+    readinessReady: null,
+    prep: null,
     waitlist: {
       position: sequence.waitlistPosition,
       deadlineAt:
