@@ -9,6 +9,7 @@ import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { recordSpotWatchPromise } from './promise';
 import {
   MAX_EXPIRED_SPOTS_PER_RUN,
+  SLOT_MS,
   type WatchedSpotsSweepDeps,
   type WatchedSpotsSweepSummary,
   claimWatchedSpotsSlot,
@@ -1028,6 +1029,45 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
 
     expect(again.released.expired).toBe(0);
     expect((await auditVerbs(family.familyId)).length).toBe(1);
+  });
+
+  it('leaves an expired watch to the fire that holds the slot, and ends it exactly once', async () => {
+    // The mutation this kills: releasing the expired rows BEFORE the slot claim. Ending a
+    // season is three writes and only the FIRST is guarded by `released_at IS NULL` — the
+    // promise settlement and the trail row are not — so two fires inside one ten-minute
+    // slot (a Vercel retry, a manual re-trigger), both of which loaded the row before
+    // either wrote, would settle one household's one open promise twice and file the
+    // ending twice. The slot claim is what makes that unreachable, and `released_at IS
+    // NULL` alone does not: it only speaks after somebody has already written.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, FULL_PAGE);
+    // Live at the first fire and out of season by the second — both inside one slot.
+    const spotId = await seedWatch(db.database, family, { expiresAt: later(MIDDAY, 60_000) });
+
+    const first = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(first.released.expired).toBe(0);
+    expect(first.quiet).toBe(1);
+
+    const second = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, 2 * 60_000));
+
+    expect(second.skipped.slotClaimed).toBe(true);
+    expect(second.released.expired).toBe(0);
+    expect((await readWatch(spotId)).releasedAt).toBeNull();
+    expect((await commitment(family.familyId))?.cancelledReason).toBeNull();
+    expect(await auditVerbs(family.familyId)).toEqual([]);
+
+    // Deferred, not lost: the next slot ends it, and the household's promise is settled
+    // once and by one ending.
+    const third = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, SLOT_MS));
+
+    expect(third.released.expired).toBe(1);
+    expect((await readWatch(spotId)).releasedReason).toBe('expired');
+    expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
+    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb)).toEqual([
+      'watched_spot_released',
+    ]);
   });
 
   it('positive control: a live watch is untouched while the sweep is dark', async () => {
