@@ -1,3 +1,4 @@
+import type { SpotPortal } from '~/lib/channel/spots/url';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 
 /**
@@ -23,10 +24,25 @@ import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
  * next leg's `from`), so at most one leg is ever due and there is no priority order to
  * get wrong. Idempotency is NOT this file's job: the caller dedupes on
  * (family, window, leg) at the ledger, exactly as M4 does.
+ *
+ * VIL-338 · A LEG IS SPLIT OUT, NEVER APPENDED. The readiness checklist is carved from
+ * the TAIL of the heads-up's interval rather than added beside it, because the property
+ * above is the one that makes this scheduler safe: append a fifth interval over the
+ * same hours and two legs are due at once, and the priority order this file exists not
+ * to have comes back. The carve is invisible to the thirteen municipalities whose
+ * portal Hale cannot read and to any household that has not approved — `dueLeg` returns
+ * 'heads_up' throughout the old interval for both, so their dedupe key is already spent
+ * and every tick in the tail stays `deduped`, exactly as it is today.
+ *
+ * VIL-338 · THE ANCHOR IS WHATEVER THE CALLER HANDS IN. `openAt` is the course page's
+ * own clock (`course_opens_at`) once a course is bound and the M1 row's family-open
+ * instant otherwise; every interval below is derived from that ONE instant, so a bind
+ * that moves the morning moves the whole ladder with it.
  */
 
 export type SequenceLeg =
   | 'heads_up'
+  | 'readiness'
   | 'battle_plan'
   | 'go'
   | 'check_in'
@@ -41,6 +57,18 @@ export const HEADS_UP_LEAD_DAYS = 7;
  * M4's nudge uses (NUDGE_SEND_HOUR_LOCAL) — Hale's unprompted messages should not
  * arrive at three different times of day depending on which surface produced them. */
 export const HEADS_UP_MINUTE_LOCAL = 10 * 60;
+
+/** How far ahead the readiness checklist opens. Three days is the shortest lead that
+ * still leaves a weekend evening for the one job it asks for — making an account on a
+ * municipal portal, which is a temporary password in an email inbox away — and it keeps
+ * the ask off the same day as the battle plan, which has its own. */
+export const READINESS_LEAD_DAYS = 3;
+
+/** The family-local slot the readiness checklist may first land in. The same
+ * mid-morning slot the heads-up uses, deliberately: they are the same KIND of message
+ * (news a parent acts on this week), and Hale's unprompted texts should not arrive at
+ * two different times of day depending on which rung of one ladder produced them. */
+export const READINESS_MINUTE_LOCAL = HEADS_UP_MINUTE_LOCAL;
 
 /** The family-local evening the battle plan may first land in. The evening before is
  * when a parent can actually act on it — bookmark the link, set an alarm, agree who
@@ -70,7 +98,10 @@ export interface LegWindow {
   until: Date;
 }
 
-export type OpenLegWindows = Record<'heads_up' | 'battle_plan' | 'go' | 'check_in', LegWindow>;
+export type OpenLegWindows = Record<
+  'heads_up' | 'readiness' | 'battle_plan' | 'go' | 'check_in',
+  LegWindow
+>;
 export type WaitlistLegWindows = {
   /** Null when the response window is too short for two distinct guards. */
   waitlist_half: LegWindow | null;
@@ -85,7 +116,9 @@ export type SequenceOptIn = 'pending' | 'opted_in' | 'declined' | 'missing';
 export type RegistrationOutcome = 'registered' | 'waitlisted' | 'missed';
 
 export interface SequenceState {
-  /** When THIS family can first register (the resident date where they have one). */
+  /** When THIS family can first register: the course page's own clock where a course is
+   * bound (`course_opens_at`), and the M1 row's family-open instant otherwise. The
+   * caller resolves that one instant; every interval is derived from it. */
   openAt: Date;
   timeZone: string;
   optIn: SequenceOptIn;
@@ -97,6 +130,12 @@ export interface SequenceState {
   /** The municipality's published response window (Toronto 36h, Markham 48h), or
    * null where none is published and no clock may be claimed. */
   waitlistResponseHours: number | null;
+  /** The registry portal that registers for this window's municipality, or null for
+   * the thirteen Hale has not learned to read. Required-but-nullable rather than
+   * optional (rule #11): a checklist naming a portal Hale cannot read is a checklist
+   * about nothing, and a caller that simply forgot to look one up would silently
+   * withhold the leg from every household that should get it. */
+  portal: SpotPortal | null;
 }
 
 /** The zone's UTC offset (ms) at `instant` — the machine's own zone cancels out of the
@@ -120,7 +159,7 @@ function zonedInstant(dayKey: string, minuteOfDay: number, timeZone: string): Da
 }
 
 /**
- * The four pre- and post-open legs, as contiguous intervals in the family's own zone.
+ * The five pre- and post-open legs, as contiguous intervals in the family's own zone.
  *
  * The slots are anchored on the open's LOCAL DAY, never on `openAt` minus a fixed
  * number of milliseconds: seven days before a 6:30 a.m. open is 6:30 a.m., which is
@@ -134,6 +173,11 @@ export function openLegWindows(openAt: Date, timeZone: string): OpenLegWindows {
     HEADS_UP_MINUTE_LOCAL,
     timeZone,
   );
+  const readinessFrom = zonedInstant(
+    addDaysToKey(openDay, -READINESS_LEAD_DAYS),
+    READINESS_MINUTE_LOCAL,
+    timeZone,
+  );
   const battlePlanFrom = zonedInstant(
     addDaysToKey(openDay, -1),
     BATTLE_PLAN_MINUTE_LOCAL,
@@ -142,7 +186,8 @@ export function openLegWindows(openAt: Date, timeZone: string): OpenLegWindows {
   const goFrom = new Date(openAt.getTime() - GO_LEAD_MINUTES * 60_000);
   const checkInFrom = new Date(openAt.getTime() + CHECK_IN_LEAD_HOURS * 3_600_000);
   return {
-    heads_up: { from: headsUpFrom, until: battlePlanFrom },
+    heads_up: { from: headsUpFrom, until: readinessFrom },
+    readiness: { from: readinessFrom, until: battlePlanFrom },
     battle_plan: { from: battlePlanFrom, until: goFrom },
     go: { from: goFrom, until: openAt },
     check_in: {
@@ -183,6 +228,20 @@ export function waitlistLegWindows(
   };
 }
 
+/**
+ * Whether this sequence has a portal Hale has learned to read.
+ *
+ * NULLISH rather than `!== null`, and only in this direction. `portal` is a required
+ * member, so a caller that has not been taught to look one up is a compile error — but
+ * between the type and the wiring there is a JavaScript gap, and the two ways to fall
+ * into it are not symmetric. Reading an absent portal as "no portal" keeps today's
+ * ladder, which is inert. Reading it as "portal" would send a leg that caller never
+ * wired, to a household whose town Hale may not be able to read at all.
+ */
+function hasReadablePortal(state: SequenceState): boolean {
+  return state.portal != null;
+}
+
 function inWindow(window: LegWindow, now: Date): boolean {
   return now.getTime() >= window.from.getTime() && now.getTime() < window.until.getTime();
 }
@@ -214,9 +273,16 @@ export function dueLeg(state: SequenceState, now: Date): SequenceLeg | null {
   if (state.optIn === 'declined' || state.optIn === 'missing') return null;
 
   const windows = openLegWindows(state.openAt, state.timeZone);
-  for (const leg of ['heads_up', 'battle_plan', 'go', 'check_in'] as const) {
+  for (const leg of ['heads_up', 'readiness', 'battle_plan', 'go', 'check_in'] as const) {
     if (!inWindow(windows[leg], now)) continue;
     if (leg === 'heads_up') return leg;
+    // The checklist FALLS BACK to the heads-up rather than to nothing, which is what
+    // keeps the split invisible: for a pending household and for a town with no
+    // readable portal these hours are still the heads-up's, so its interval is
+    // unchanged in effect and nobody loses a leg to a feature they cannot use.
+    if (leg === 'readiness') {
+      return state.optIn === 'opted_in' && hasReadablePortal(state) ? leg : 'heads_up';
+    }
     return state.optIn === 'opted_in' ? leg : null;
   }
   return null;
@@ -227,8 +293,11 @@ export function dueLeg(state: SequenceState, now: Date): SequenceLeg | null {
  *
  * Only the two legs a parent explicitly signed up for, and only because they are
  * WORTHLESS late: a battle plan that waits until 08:00 arrives after a 06:30 open, and
- * a go leg that waits at all never fires. The check-in and both waitlist guards have
- * hours of slack, so they defer politely like everything else.
+ * a go leg that waits at all never fires. The check-in, the readiness checklist and
+ * both waitlist guards have hours of slack, so they defer politely like everything
+ * else — a checklist with a ~57-hour interval loses nothing by waiting for 08:00, and
+ * spending the exemption on it would spend a privilege the parent granted for the two
+ * messages that cannot survive a delay.
  */
 export function legIsUrgent(leg: SequenceLeg): boolean {
   return leg === 'battle_plan' || leg === 'go';

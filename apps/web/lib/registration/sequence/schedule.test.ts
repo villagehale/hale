@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { portalForMunicipality } from '~/lib/channel/spots/url';
 import {
   CHECK_IN_LEAD_HOURS,
   CHECK_IN_REPLY_WINDOW_HOURS,
+  READINESS_LEAD_DAYS,
   type SequenceState,
   awaitingOutcome,
   dueLeg,
@@ -32,6 +34,14 @@ const TZ = 'America/Toronto';
 /** Tuesday 15 Sept 2026, 06:30 America/Toronto (EDT, UTC-4). */
 const OPEN_AT = new Date('2026-09-15T10:30:00.000Z');
 
+/** A portal municipality, read from the registry rather than hand-built: the readiness
+ * leg exists only where Hale can actually read the portal, so a test that invented one
+ * would pass against a registry that had lost the entry.
+ *
+ * The DEFAULT state carries no portal, so every assertion written before VIL-338 is
+ * still an assertion about the ladder those thirteen municipalities run today. */
+const MARKHAM = portalForMunicipality('markham');
+
 function state(overrides: Partial<SequenceState> = {}): SequenceState {
   return {
     openAt: OPEN_AT,
@@ -40,6 +50,7 @@ function state(overrides: Partial<SequenceState> = {}): SequenceState {
     outcome: null,
     waitlistStartedAt: null,
     waitlistResponseHours: null,
+    portal: null,
     ...overrides,
   };
 }
@@ -85,11 +96,48 @@ describe('openLegWindows', () => {
     );
   });
 
-  it('leaves no gap and no overlap between the three pre-open legs', () => {
+  it('leaves no gap and no overlap between the FOUR pre-open legs', () => {
+    // VIL-338 split the readiness leg out of the heads-up's tail. A leg APPENDED after
+    // the heads-up rather than carved out of it would leave the old interval intact and
+    // two legs due at once; a carve on the wrong side would leave a gap in which nothing
+    // is due and a dropped tick could not self-heal.
     const windows = openLegWindows(OPEN_AT, TZ);
-    expect(windows.heads_up.until.getTime()).toBe(windows.battle_plan.from.getTime());
+    expect(windows.heads_up.until.getTime()).toBe(windows.readiness.from.getTime());
+    expect(windows.readiness.until.getTime()).toBe(windows.battle_plan.from.getTime());
     expect(windows.battle_plan.until.getTime()).toBe(windows.go.from.getTime());
-    expect(windows.heads_up.from.getTime()).toBeLessThan(windows.battle_plan.from.getTime());
+    expect(windows.heads_up.from.getTime()).toBeLessThan(windows.readiness.from.getTime());
+  });
+
+  it('anchors the readiness checklist three days out at 10:00 in the family morning', () => {
+    const windows = openLegWindows(OPEN_AT, TZ);
+    expect(READINESS_LEAD_DAYS).toBe(3);
+    expect(local(windows.readiness.from)).toBe('2026-09-12, 10:00');
+  });
+
+  it('holds the readiness 10:00 local slot across the autumn DST change', () => {
+    // The change has to fall INSIDE the three-day span or the test proves nothing: the
+    // clocks go back on Sunday 1 Nov 2026, so the open is Tuesday 3 Nov 06:30 EST and
+    // the slot three days earlier is Saturday 31 Oct, still EDT. Two mutants die here
+    // and only here — `openAt - 3 * 86_400_000` lands at 07:30, inside quiet hours on a
+    // leg that is deliberately NOT urgent, and a slot built at 10:00 on the OPEN day and
+    // then walked back three days in milliseconds carries EST's offset into EDT and
+    // lands at 11:00.
+    const windows = openLegWindows(new Date('2026-11-03T11:30:00.000Z'), TZ);
+    expect(local(windows.readiness.from)).toBe('2026-10-31, 10:00');
+    expect(windows.readiness.from.toISOString()).toBe('2026-10-31T14:00:00.000Z');
+  });
+
+  it('derives every interval from the ONE anchor it is handed', () => {
+    // The bound ladder's anchor is `course_opens_at` — the course page's own clock —
+    // and the M1 row's instant is a day earlier for a Thornhill household. A leg that
+    // read a second stored instant would keep its old slot while the rest moved.
+    const bound = new Date(OPEN_AT.getTime() + 86_400_000);
+    const windows = openLegWindows(bound, TZ);
+    expect(local(windows.heads_up.from)).toBe('2026-09-09, 10:00');
+    expect(local(windows.readiness.from)).toBe('2026-09-13, 10:00');
+    expect(local(windows.battle_plan.from)).toBe('2026-09-15, 19:00');
+    expect(windows.go.from.getTime()).toBe(bound.getTime() - 15 * 60_000);
+    expect(windows.go.until.getTime()).toBe(bound.getTime());
   });
 
   it('holds the 10:00 local slot across the autumn DST change, not a fixed offset', () => {
@@ -166,6 +214,55 @@ describe('dueLeg', () => {
     expect(dueLeg(state(), new Date('2026-09-15T14:30:00.000Z'))).toBe('check_in');
     expect(dueLeg(state(), new Date('2026-09-18T14:29:00.000Z'))).toBe('check_in');
     expect(dueLeg(state(), new Date('2026-09-18T14:31:00.000Z'))).toBeNull();
+  });
+
+  it('fires the readiness checklist only for an opted-in family with a readable portal', () => {
+    // Three days out is where the heads-up used to self-heal for a late-matched family.
+    // It still does: the checklist opens with the same news (what opens, when, for
+    // whom) and adds the four things only the parent can do.
+    const at = new Date('2026-09-12T14:00:00.000Z');
+    expect(dueLeg(state({ portal: MARKHAM }), at)).toBe('readiness');
+    // A household that never approved gets the heads-up's self-heal through the whole
+    // old interval, exactly as before the split.
+    expect(dueLeg(state({ portal: MARKHAM, optIn: 'pending' }), at)).toBe('heads_up');
+    // Thirteen of the fifteen municipalities have no portal Hale can read, so there is
+    // no checklist to give: their ladder is the one that shipped.
+    expect(dueLeg(state(), at)).toBe('heads_up');
+  });
+
+  it('is still the heads-up one millisecond before the readiness slot opens', () => {
+    const before = new Date(new Date('2026-09-12T14:00:00.000Z').getTime() - 1);
+    for (const overrides of [
+      { portal: MARKHAM },
+      { portal: MARKHAM, optIn: 'pending' as const },
+      {},
+    ]) {
+      expect(dueLeg(state(overrides), before)).toBe('heads_up');
+    }
+  });
+
+  it('leaves a non-portal ladder byte-identical across the whole old heads-up tail', () => {
+    // The inertness proof. Every instant that returned 'heads_up' before the split
+    // still returns it for a town Hale cannot read, so those families' dedupe keys are
+    // already spent and every tick in the tail stays `deduped` — no new send.
+    for (const at of [
+      '2026-09-08T14:00:00.000Z',
+      '2026-09-12T13:59:00.000Z',
+      '2026-09-12T14:00:00.000Z',
+      '2026-09-14T22:59:00.000Z',
+    ]) {
+      expect(dueLeg(state(), new Date(at))).toBe('heads_up');
+    }
+    expect(dueLeg(state(), new Date('2026-09-14T23:00:00.000Z'))).toBe('battle_plan');
+  });
+
+  it('keeps today’s ladder for a caller that has not wired a portal yet', () => {
+    // The JavaScript gap between a required field and the wiring that fills it. The two
+    // ways to fall into it are not symmetric: reading an absent portal as "portal"
+    // would send an unwired household a leg nobody composed for their town.
+    const unwired = { ...state(), portal: undefined } as unknown as SequenceState;
+    expect(dueLeg(unwired, new Date('2026-09-12T14:00:00.000Z'))).toBe('heads_up');
+    expect(dueLeg(unwired, new Date('2026-09-14T23:00:00.000Z'))).toBe('battle_plan');
   });
 
   it('stops asking once an outcome is on file', () => {
@@ -248,6 +345,10 @@ describe('legIsUrgent', () => {
     expect(legIsUrgent('go')).toBe(true);
     expect(legIsUrgent('heads_up')).toBe(false);
     expect(legIsUrgent('check_in')).toBe(false);
+    // The checklist has a ~57-hour interval, so a 4 a.m. tick defers to 08:00 and
+    // costs nothing. Marking it urgent would spend the quiet-hours exemption a parent
+    // granted for the two legs that are worthless late on the one that is not.
+    expect(legIsUrgent('readiness')).toBe(false);
     // A waitlist guard defers out of quiet hours: it has hours of slack by design,
     // and a 4 a.m. "your waitlist expires" is the annoyance this engine avoids.
     expect(legIsUrgent('waitlist_half')).toBe(false);

@@ -1167,9 +1167,15 @@ describe('6 · the registration sequence claims the window and prepares the morn
     expect(windowPhrase(shortlist as never)).not.toContain('Aquatic Leadership');
     // Both children are squarely inside 12–60 months, so nothing is hedged.
     expect(shortlist?.fitNotes.map((note) => note.fit)).toEqual(['in_band', 'in_band']);
-    expect(renderShortlistRationale(shortlist as never, TZ, SEQUENCE_AT)).toContain(
-      'I never register for you',
-    );
+    // The fourth argument is the portal the LEGS will run on, and it is null for the
+    // same reason `runLegForSequence` passes null: nothing reads the bound course off
+    // the row yet. The card and the ladder have to enumerate the same messages — a
+    // household promised a checklist it will not receive has consented to one thing and
+    // been sent another — so this asserts the promise this family's ladder can keep.
+    const rationale = renderShortlistRationale(shortlist as never, TZ, SEQUENCE_AT, null);
+    expect(rationale).toContain('I never register for you');
+    expect(rationale).toContain('a week ahead, the evening before, and 15 minutes before it opens');
+    expect(rationale).not.toContain('a checklist a few days out');
   });
 });
 

@@ -56,6 +56,7 @@ function state(overrides: Partial<SequenceState> = {}): SequenceState {
     outcome: null,
     waitlistStartedAt: null,
     waitlistResponseHours: 36,
+    portal: null,
     ...overrides,
   };
 }

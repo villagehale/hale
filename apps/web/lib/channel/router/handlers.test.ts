@@ -257,6 +257,7 @@ function sequenceDeps(
       outcome: null,
       waitlistStartedAt: null,
       waitlistResponseHours: 36,
+      portal: null,
     },
     shortlist: {
       windowRef: {
