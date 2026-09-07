@@ -423,6 +423,29 @@ describe('the age band', () => {
   });
 
   /**
+   * The mutation this kills: put `.passthrough()` back on `courseFactsSchema` (or on
+   * `priceRowSchema`). The pick above is only about the SHAPE unless the runtime object
+   * matches it: with passthrough, `facts` was the vendor's whole 168-key model —
+   * AgeRule and its stale rule date included — riding on every verdict handed to the
+   * leg runner and the audit writer, where one `after: { ...facts }` publishes a page
+   * Hale never read. It also made the pick decorative: dropping `RegFormId` from the
+   * schema changed nothing, because the raw value passed through anyway.
+   */
+  it('carries only the picked keys into the verdict, and no vendor field beside them', () => {
+    const verdict = readCoursePrep({ ok: true, raw: fixture('open-window-open-markham') }, ctx());
+    if (verdict.kind !== 'prepared') throw new Error(`expected prepared, got ${verdict.kind}`);
+
+    expect(Object.keys(verdict.facts).sort()).toEqual(Object.keys(courseFactsSchema.shape).sort());
+    expect(Object.keys(verdict.facts)).not.toContain('AgeRule');
+    expect(verdict.facts.Prices?.map((row) => Object.keys(row).sort())).toEqual([
+      ['DisplayAmount', 'Name'],
+      ['DisplayAmount', 'Name'],
+    ]);
+    // Positive control: the model this was parsed from really does carry the rest.
+    expect(Object.keys(modelOf('open-window-open-markham', LEGO)).length).toBeGreaterThan(100);
+  });
+
+  /**
    * Newmarket publishes "13 to 16 y 11m" as MaxAge 16 + MaxAgeMonths 11 — a months
    * COMPONENT of the year, so the band is 156..203 months. A total-months reading
    * (11, or 16*12 ignoring the component) puts every teen outside it.
@@ -629,6 +652,30 @@ describe('the sign-in deep link', () => {
       ok: false,
       reason: 'not_a_course_page',
     });
+  });
+
+  /**
+   * The mutation this kills: build the link from the caller's string without asking
+   * `sanitizeSpotUrl` again. "Sanitized" was a comment, not a type — the function took
+   * any string and would happily mint `https://evil.example/Clients/…MemberSignIn` for
+   * a host the registry never approved, with the caller's URL as the returnUrl. A
+   * sign-in link is the one thing in this ladder a parent is asked to CLICK, so the
+   * host has to be re-earned at the point the link is built, not asserted upstream.
+   */
+  it('refuses to mint a sign-in link for a host the registry never approved', () => {
+    const unregistered = legoUrl.replace(
+      'cityofmarkham.perfectmind.com',
+      'cityofmarkham.perfectmind.com.evil.example',
+    );
+
+    expect(sanitizeSpotUrl(unregistered)).toEqual({ ok: false, reason: 'host_not_allowed' });
+    expect(courseSignInUrl(unregistered)).toBeNull();
+    expect(courseSignInUrl('https://cityofmarkham.perfectmind.com/Clients/Anything')).toBeNull();
+    expect(courseSignInUrl('not a url at all')).toBeNull();
+    // Positive control: the sanitized form of the same course still builds its link.
+    expect(courseSignInUrl(legoUrl)).toBe(
+      `https://cityofmarkham.perfectmind.com${pageOwnSignInPath('open-window-open-markham', 'Clients')}`,
+    );
   });
 });
 

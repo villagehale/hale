@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type BookMe4Model, fragment, readCourseModel } from '~/lib/channel/spots/availability';
+import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import { ageInMonths } from '@hale/types';
 
@@ -76,12 +77,10 @@ export const READ_WALL_BUDGET_MS = 60_000;
  */
 export const ASSUMED_MAX_AGE_MONTHS_COMPONENT = 11;
 
-const priceRowSchema = z
-  .object({
-    Name: z.string().nullish().catch(null),
-    DisplayAmount: z.string().nullish().catch(null),
-  })
-  .passthrough();
+const priceRowSchema = z.object({
+  Name: z.string().nullish().catch(null),
+  DisplayAmount: z.string().nullish().catch(null),
+});
 
 /**
  * The eighteen keys of somebody else's 168-key payload that this ladder reads. Every
@@ -89,33 +88,38 @@ const priceRowSchema = z
  * broken the page, it has withheld a band, and the sentence that band would have
  * produced is simply absent. `readCourseModel` has already validated the twelve fields
  * a reading rests on.
+ *
+ * THE OTHER 150 KEYS ARE STRIPPED, not merely unread. Zod's default is to strip, and
+ * that default is the point: `facts` travels on every verdict into the leg runner and
+ * the audit writer, so anything this schema admits is something Hale might one day
+ * persist or log about a vendor page it never read. AgeRule and its stale rule date are
+ * the named example (see {@link ageEligibility}) — unrepresentable here rather than
+ * present-and-ignored.
  */
-export const courseFactsSchema = z
-  .object({
-    EventName: z.string().nullish().catch(null),
-    /** The human barcode a phone-registration lane asks for ("344301"), NOT the GUID
-     * `EventId` the URL carries. */
-    CourseId: z.string().nullish().catch(null),
-    StartDay: z.string().nullish().catch(null),
-    StartTime: z.string().nullish().catch(null),
-    StartDateValue: z.string().nullish().catch(null),
-    MinAge: z.number().nullish().catch(null),
-    MaxAge: z.number().nullish().catch(null),
-    MinAgeMonths: z.number().nullish().catch(null),
-    MaxAgeMonths: z.number().nullish().catch(null),
-    AgeRestrictions: z.string().nullish().catch(null),
-    /** Non-null when the portal will demand a questionnaire Hale has never seen and
-     * holds no source for — a warning on the bind ack, never something Hale fills. */
-    RegFormId: z.string().nullish().catch(null),
-    PrerequisiteEvents: z.boolean().nullish().catch(null),
-    Prices: z.array(priceRowSchema).nullish().catch(null),
-    PublicRegistrationStartDateValue: z.string().nullish().catch(null),
-    ResidentsRegistrationDateValue: z.string().nullish().catch(null),
-    MembersRegistrationDateValue: z.string().nullish().catch(null),
-    IsRegistrationClosed: z.boolean().nullish().catch(null),
-    OnlineRegistration: z.boolean().nullish().catch(null),
-  })
-  .passthrough();
+export const courseFactsSchema = z.object({
+  EventName: z.string().nullish().catch(null),
+  /** The human barcode a phone-registration lane asks for ("344301"), NOT the GUID
+   * `EventId` the URL carries. */
+  CourseId: z.string().nullish().catch(null),
+  StartDay: z.string().nullish().catch(null),
+  StartTime: z.string().nullish().catch(null),
+  StartDateValue: z.string().nullish().catch(null),
+  MinAge: z.number().nullish().catch(null),
+  MaxAge: z.number().nullish().catch(null),
+  MinAgeMonths: z.number().nullish().catch(null),
+  MaxAgeMonths: z.number().nullish().catch(null),
+  AgeRestrictions: z.string().nullish().catch(null),
+  /** Non-null when the portal will demand a questionnaire Hale has never seen and
+   * holds no source for — a warning on the bind ack, never something Hale fills. */
+  RegFormId: z.string().nullish().catch(null),
+  PrerequisiteEvents: z.boolean().nullish().catch(null),
+  Prices: z.array(priceRowSchema).nullish().catch(null),
+  PublicRegistrationStartDateValue: z.string().nullish().catch(null),
+  ResidentsRegistrationDateValue: z.string().nullish().catch(null),
+  MembersRegistrationDateValue: z.string().nullish().catch(null),
+  IsRegistrationClosed: z.boolean().nullish().catch(null),
+  OnlineRegistration: z.boolean().nullish().catch(null),
+});
 
 export type CourseFacts = z.infer<typeof courseFactsSchema>;
 
@@ -453,11 +457,20 @@ export function priceClause(prices: CourseFacts['Prices']): string | null {
  * rather than echoed from the page's markup — so a session id a parent once pasted, or
  * a returnUrl a compromised page swapped, cannot ride back out in a Hale text. The path
  * is the vendor's, under the tenant's own first segment (/Clients, /Contacts).
+ *
+ * IT SANITIZES ITS OWN INPUT, and null is the answer for anything that fails. This is
+ * the one artifact of the ladder a parent is asked to CLICK, so "the caller passed a
+ * sanitized URL" is a promise that has to be re-earned here rather than asserted
+ * upstream: `sanitizeSpotUrl` is what makes a host approved, and a link Hale mints for
+ * a host it never approved is a phishing link with Hale's name on it.
  */
-export function courseSignInUrl(sanitizedUrl: string): string {
-  const parsed = new URL(sanitizedUrl);
+export function courseSignInUrl(url: string): string | null {
+  const sanitized = sanitizeSpotUrl(url);
+  if (!sanitized.ok) return null;
+
+  const parsed = new URL(sanitized.url);
   const segment = parsed.pathname.split('/')[1];
-  const returnUrl = encodeURIComponent(sanitizedUrl);
+  const returnUrl = encodeURIComponent(sanitized.url);
   return `https://${parsed.hostname}/${segment}/MemberRegistration/MemberSignIn?returnUrl=${returnUrl}`;
 }
 
