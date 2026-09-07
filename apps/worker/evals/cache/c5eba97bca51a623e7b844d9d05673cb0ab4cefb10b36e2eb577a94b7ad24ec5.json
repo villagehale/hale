@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event (\"soccer\") and one target time (\"11 on sat\"), which resolves unambiguously to the single soccer practice on Saturday at 10:00am at Cedarvale Park. Hale correctly drafted the move and presented it in the standard confirmation shape: names the change clearly and ends with \"YES to confirm.\" No greeting, no sign-off, no extra questions, no app referral, no invented details. The draft cap is 1 move which is within the 2-per-message limit. This is the product working exactly as intended.",
+    "score": 5
+  }
+}

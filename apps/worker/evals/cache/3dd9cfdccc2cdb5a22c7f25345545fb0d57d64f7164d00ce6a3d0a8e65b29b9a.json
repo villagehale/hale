@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asking for activity planning around weather constraint, not weather itself"
+  },
+  "latencyMs": 1460
+}

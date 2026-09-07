@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draftCapPerMessage is 2, so Hale correctly drafts the two swims and says it will line up the rest — that is the correct handling of overflow. The reply names both drafted cancellations clearly (Mon 4:30pm swim, Thu 5:15pm swim), ends with \"YES to confirm these two\", and promises to queue soccer and Wednesday's appointment after. Wednesday's appointment is a private calendar item (Wed 9:00am) — Hale refers to it as \"Wednesday's appointment\" which is fine since the parent themselves named it that way. Soccer is visible (Sat 10:00am). No app mention, no invented details, no greeting/sign-off, no markdown. The shape is exactly right: drafts the cap, names both, asks for YES, says it will handle the rest itself. A very clean execution.",
+    "score": 5
+  }
+}

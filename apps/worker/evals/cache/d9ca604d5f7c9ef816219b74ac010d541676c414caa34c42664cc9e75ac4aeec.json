@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011Ceo73u5Qs1qEFZrPgoQLZ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvwCCpABCBEYAipA5TQ+OqIA9e/lbQD9ZLXsaS3SWiSgIBCI9zrq+JrDgbyOcqKiI6MjQo/VpiPETST6L2K9/YPuyglL4TCBLXb2aTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiRiMjYwM2FiYS1mMDUyLTQ4NGEtOTNjYy04OWM4ZTExMGRmMmWoAcyA+NQGEgxyjVHRYCnRzNUbqhwaDLre5rqMjWazsooVzCIwRcZ/kyx1HNYmje/hboIiPEv8TzJRflj5GDiHzkkxu8M79H527R8FtpTk6VXX8ir6KpgBxRro0t2G4v7IZG0NPyOlkTdb03W8BZ6ycCBBUipg22pezuXYqkP08m+FEw4sZDTa4VkrA46kr0H6E9iiGBwMZAbOKoNiWRJUdwEWRF404F4nLpqOCzkdVAcdcNptpWntt9Miare+vJY8rx+nQtSVFlMRA4CgNwHA5aPDGH3okBZ0o/Qo11W9zM2/B5zgsJ6BpUNYYNcGNSAYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01QmDS4L6FC4fDSaXLVN47p6",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_014EVTBWsP3J5aRbpHHcuWUr",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-milo",
+          "offer": "Want the full plan to move him to his own bed? Reply YES and I'll send it."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 384,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17893,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 257,
+      "output_tokens_details": {
+        "thinking_tokens": 53
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

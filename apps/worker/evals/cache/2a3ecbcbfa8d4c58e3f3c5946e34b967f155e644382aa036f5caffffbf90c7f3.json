@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2, so Hale correctly drafts the two swim cancellations and says it will line up the remaining two (soccer and Wednesday appointment) next — that is the required handling of overflow. The reply names both drafted items clearly, ends with \"YES to confirm these two,\" which is the exact confirmation mechanic required, and correctly does not itemise or draft the leftovers. The Wednesday appointment is a private calendar item, but Hale is not cancelling it yet — it's just noting it's next, which is fine. No app referral, no invented details, no greeting or sign-off, no markdown. One small blemish: the dash before \"I'll line up\" is slightly awkward punctuation, and the phrasing \"YES to confirm these two\" is slightly wordy compared to the cleanest form, but it is functionally correct and the word YES is present and unambiguous. This is very close to a 5 — the shape is right, the cap is handled correctly, the confirmation word is there. I'll give it a 5 as it does the job in exactly the right shape.",
+    "score": 5
+  }
+}

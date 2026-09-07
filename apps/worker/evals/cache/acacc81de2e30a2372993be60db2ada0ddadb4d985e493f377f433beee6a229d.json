@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a symptom (rash) and asks clinical assessment (is it normal)"
+  },
+  "latencyMs": 1446
+}

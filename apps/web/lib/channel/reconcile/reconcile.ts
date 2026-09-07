@@ -98,6 +98,9 @@ export type RefusalReason =
   | 'self_referential'
   /** A watch promise with no live ladder and no window to arm one against. */
   | 'no_registration_watch'
+  /** A watch sentence from a family whose only watch is one course page, in words that
+   * page cannot back — the ack said "when it opens up" and never said what opens. */
+  | 'spot_watch_unshaped'
   /** "I'll come back with what I find" and the promise tool was never called. */
   | 'no_activity_promise'
   /** A booking claim with nothing on the calendar it could be about. */
@@ -133,11 +136,43 @@ const VIOLATION: Record<RefusalReason, string> = {
     'The message promises to change how Hale itself behaves. Nothing in the system can record or keep that promise, so it would be false the moment it was sent. Answer the question and say nothing about your own messages.',
   no_registration_watch:
     'The message says Hale is watching a registration or will text before one opens. No registration window is being watched for this family, and no ladder is running. Either say what the published date is, or say nothing about watching.',
+  spot_watch_unshaped:
+    'The message says Hale is watching and will text when it opens, and what Hale is actually watching is ONE class page for one place in it — not a registration window and not a season. Say you are watching ONE class page for a spot, a seat, a space or the waitlist — not a registration morning.',
   no_activity_promise:
     'The message promises to come back with activities or finds, and no such promise was registered. Call promise_activity_followup so a sweep actually comes back, or hand over what you already have and stop.',
   no_scheduled_row:
     'The message says something is booked or on the calendar. Nothing on this family\'s calendar matches and the parent has not told you it is booked, so that is a claim about a row that does not exist. Say what would need to happen instead.',
 };
+
+/** What a `watched_spots` row is a row ABOUT: one place in one class. The words the
+ * arming sentence uses for it, and the only ones an open spot watch may back. */
+const SPOT_SHAPED = /\b(?:spot|seat|space|waitlist)s?\b/i;
+
+/**
+ * A town's cycle NAMED AS THE THING BEING WATCHED: a season's registration, the
+ * registration morning, sign-ups opening, doors opening. The object, never the
+ * vocabulary — "fall soccer", "summer camp" and "the Saturday morning swim" are one
+ * class each, and "so you can register" is why the parent wants the text, not what Hale
+ * is watching. Reading any season word or a bare "register" as the season refused every
+ * one of those arming acks and steered the model off the watch it had just armed.
+ */
+const MUNICIPAL_OBJECT =
+  /\b(?:(?:fall|winter|spring|summer)\s+(?:programs?\s+)?(?:registration|sign[-\s]?ups?)|registration\s+(?:morning|window|day|date|opens?|opening|goes?\s+live)|sign[-\s]?ups?\s+(?:open|opening|start|go\s+live)|watch(?:ing)?\s+(?:\w+\s+){0,2}?(?:registration|sign[-\s]?ups?)|(?:that|the|this)\s+morning|goes?\s+live|doors\s+open)\b/i;
+
+/**
+ * The sentence is about a TOWN'S CYCLE rather than one class, and no course page backs
+ * one of those however it is worded.
+ *
+ * IT IS CHECKED BEFORE THE SPOT WORDS, because the spot words are borrowable: "I'm
+ * watching Markham fall registration and I'll text you before a spot opens" carries the
+ * whole municipal promise and one word from a class page, and matching it on that word
+ * hands a season a 60-day row for one course. It is checked before the spot REFUSAL for
+ * the same reason from the other side — the re-ask that asks for a spot word is exactly
+ * the edit a model makes to a morning, and asking for it here would teach the bypass.
+ */
+function aboutTheSeason(sentence: string): boolean {
+  return MUNICIPAL_OBJECT.test(sentence);
+}
 
 function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
   const kind: ClaimKind = claim.kind;
@@ -150,6 +185,21 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
     }
     if (view.openKinds.has('registration_watch')) {
       return { claim, status: 'matched', matchedBy: 'open_commitment' };
+    }
+    // A WATCHED COURSE PAGE IS A WATCH (VIL-337), but only of the sentence it is
+    // actually about. `kindOf` reads every "I'll text you before X opens" as
+    // `registration_watch`, so the town's whole season and one full class arrive here as
+    // the same kind — and a page in Markham says nothing about when Markham's fall
+    // registration goes live. Matching on the kind alone would have handed a 60-day
+    // spot row to the municipal-morning promise that started this primitive.
+    const season = aboutTheSeason(claim.sentence);
+    if (!season && SPOT_SHAPED.test(claim.sentence)) {
+      if (view.pendingKinds.has('spot_watch')) {
+        return { claim, status: 'matched', matchedBy: 'pending_commitment' };
+      }
+      if (view.openKinds.has('spot_watch')) {
+        return { claim, status: 'matched', matchedBy: 'open_commitment' };
+      }
     }
     if (view.registrationLaddered) {
       return { claim, status: 'matched', matchedBy: 'live_sequence' };
@@ -166,7 +216,20 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
         },
       };
     }
-    return { claim, status: 'refused', reason: 'no_registration_watch' };
+    // WHICH REFUSAL, and it decides what the model is told to do next. A family whose
+    // only watch is a course page wrote a true sentence in the wrong words, and the
+    // registration re-ask ("say nothing about watching") would steer it off the watch
+    // this very turn armed. The narrowing above is kept — this is still a refusal — but
+    // it asks for the missing word instead of the missing window. A SENTENCE ABOUT THE
+    // SEASON gets the other one back: there is no word to add to a morning, so the only
+    // honest re-ask is the one that sends the model off it.
+    const watchingOneClass =
+      !season && (view.pendingKinds.has('spot_watch') || view.openKinds.has('spot_watch'));
+    return {
+      claim,
+      status: 'refused',
+      reason: watchingOneClass ? 'spot_watch_unshaped' : 'no_registration_watch',
+    };
   }
   if (kind === 'activity_followup') {
     if (view.pendingKinds.has('activity_followup')) {

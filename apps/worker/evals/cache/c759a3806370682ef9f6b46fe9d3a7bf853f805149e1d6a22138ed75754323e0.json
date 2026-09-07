@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply has two problems. First, it dismisses parks when `offerable` contains no parks — that part is honest — but then it ends with a question asking if Hale should look for parks nearby. `stillBeingChecked` is 0, meaning the search is complete and there is nothing more to find; asking to \"look specifically for parks\" implies a capability that has already been exhausted, which is misleading. Second, the Riverdale Farm offer is correct and well-formed (name, place, day), but the Soccer practice on Sat is at Cedarvale Park — a real park already on the family's calendar this week — which is a natural, fully verified hook Hale missed entirely. Mentioning it would have been the strongest and most grounded answer. The closing question is the main failure: it suggests further searching when the search is done, handing the parent a promise Hale cannot keep.",
+    "score": 2
+  }
+}

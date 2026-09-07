@@ -9,6 +9,7 @@ import { loadPulse } from './queries/pulse';
 import { loadRadar } from './queries/radar';
 import { loadTextingTrends } from './queries/texting';
 import { loadTextingByHour } from './queries/texting-hours';
+import { loadWatchedSpots } from './queries/watched-spots';
 import { fetchLangfuseDaily } from './services/langfuse';
 import { fetchReplays, fetchSiteFunnel } from './services/posthog';
 import { fetchTwilioAlerts } from './services/twilio';
@@ -31,6 +32,9 @@ export const cachedTextingByHour = cached('admin-texting-hours', () => loadTexti
 export const cachedGrowth = cached('admin-growth', () => loadGrowth());
 export const cachedIntakeFunnel = cached('admin-intake-funnel', () => loadIntakeFunnel());
 export const cachedRadar = cached('admin-radar', () => loadRadar());
+// Its own key rather than a field on RadarData: a stale cached object of the old
+// shape would render `undefined` in prod with every test green.
+export const cachedWatchedSpots = cached('admin-watched-spots', () => loadWatchedSpots());
 export const cachedAuditMix = cached('admin-audit-mix', () => loadAuditMix());
 export const cachedAgentSpend = cached('admin-agent-spend', () => loadAgentSpend());
 export const cachedDbErrors = cached('admin-db-errors', () => loadDbErrors());

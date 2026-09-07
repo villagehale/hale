@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a persistent physical symptom (fever for three days) in a child"
+  },
+  "latencyMs": 1317
+}

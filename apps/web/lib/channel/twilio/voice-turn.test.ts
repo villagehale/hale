@@ -605,6 +605,7 @@ describe('the wire a spoken turn builds', () => {
       onPromise: () => {},
       villageTool: searchVillageTool({} as never),
       onDraft: () => {},
+      spots: null,
       now: NOW,
     });
 

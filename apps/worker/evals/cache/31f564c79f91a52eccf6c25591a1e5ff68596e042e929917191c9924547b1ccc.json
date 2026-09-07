@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale previously surfaced the gymnastics class (Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13) in an earlier assistant message — that is recall, not invention. The parent is now asking to add it to the calendar. There is exactly one gymnastics class mentioned, so the reference is resolved. Hale has drafted the add (drafted is non-empty with calendar_add) and correctly ends with \"YES to confirm.\" The reply names the event, place, day, and time drawn from the prior thread message, and uses the exact confirmation word. It is concise, no greeting, no sign-off, no markdown, no app referral. This is the contract working exactly as it should.",
+    "score": 5
+  }
+}

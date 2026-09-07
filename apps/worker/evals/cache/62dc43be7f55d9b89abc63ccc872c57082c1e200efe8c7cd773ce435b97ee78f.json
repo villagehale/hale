@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancel (one event, unambiguous) and asks for YES confirmation — exactly right. It also surfaces the one offerable Saturday indoor option (Central Library story time, verified venue and day) from the search results. Both actions fit within the draftCapPerMessage of 2 (only 1 draft used). The reply is concise, names the specifics (5:15pm, East pool, Bloor/Gladstone, Sat Aug 8), no greeting, no sign-off, no markdown, no app reference, no invented detail. The only tiny blemish: it doesn't note that Riverdale Farm is outdoor/Sunday and therefore not a Saturday indoor option — but it correctly omits it, which is right. One very minor issue: the reply doesn't acknowledge that Saturday already has Soccer practice at Cedarvale Park at 10am, which might be relevant context for the indoor activity suggestion (though the parent asked to \"find something indoors for Saturday,\" implying they want an additional or alternative option — not necessarily replacing soccer). This is a very small omission and doesn't materially harm the reply. Overall this is clean, correct, and complete.",
+    "score": 5
+  }
+}

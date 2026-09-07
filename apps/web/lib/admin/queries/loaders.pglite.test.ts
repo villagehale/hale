@@ -9,6 +9,7 @@ import { loadIntakeFunnel } from './intake-funnel';
 import { loadPulse } from './pulse';
 import { loadRadar } from './radar';
 import { loadTextingTrends } from './texting';
+import { loadWatchedSpots } from './watched-spots';
 
 /**
  * Every admin loader runs against REAL Postgres (the migrated pglite schema).
@@ -67,6 +68,16 @@ describe('admin loaders execute against real Postgres', () => {
       freshestVerifiedAt: null,
       lastVerifyRun: null,
       outcomes: [],
+    });
+  });
+
+  it('loadWatchedSpots: nothing is being watched', async () => {
+    expect(await loadWatchedSpots(db.database)).toEqual({
+      live: 0,
+      pending: 0,
+      unreadable: 0,
+      lastPolledAt: null,
+      armFailures24h: 0,
     });
   });
 
@@ -194,6 +205,78 @@ describe('loadIntakeFunnel — day-grain sources (seeded, exact)', () => {
       { day: '2026-08-10', code: 'direct', started: 1, provisioned: 0 },
       { day: '2026-08-10', code: 'earlyon', started: 2, provisioned: 1 },
     ]);
+  });
+});
+
+describe('loadWatchedSpots — live counts and the arm-failure window (seeded, exact)', () => {
+  it('counts live rows only, holds pending back once texted, and dates the last live poll', async () => {
+    const fam = await seedFamily(db.database, 'Watched Family');
+    const spot = (suffix: string, row: Partial<typeof schema.watchedSpots.$inferInsert>) => ({
+      familyId: fam.familyId,
+      parentUserId: fam.parentUserId,
+      sourceUrl: `https://cityofmarkham.perfectmind.com/course/${suffix}`,
+      label: 'a full class',
+      expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+      createdFrom: `CM-${suffix}`,
+      ...row,
+    });
+
+    await db.database.insert(schema.watchedSpots).values([
+      spot('a', { lastPolledAt: new Date('2026-08-30T10:00:00.000Z') }),
+      spot('b', {
+        pendingKind: 'seat_opened',
+        pendingSince: new Date('2026-08-30T11:00:00.000Z'),
+        lastPolledAt: new Date('2026-08-30T11:00:00.000Z'),
+      }),
+      // An opening already carried to a phone: live, but no longer one Hale is
+      // holding back — it must not inflate the number that matters at 07:00.
+      spot('c', {
+        pendingKind: 'waitlist_reopened',
+        pendingSince: new Date('2026-08-30T09:00:00.000Z'),
+        notifiedMessageId: 'CM-sent',
+        lastPolledAt: new Date('2026-08-30T09:00:00.000Z'),
+      }),
+      // Released, holding the newest poll, a failure streak AND an un-texted pending
+      // observation: a loader that forgot `released_at is null` on any of the four
+      // counters would show it here.
+      spot('d', {
+        consecutiveFailures: 3,
+        pendingKind: 'seat_opened',
+        pendingSince: new Date('2026-09-01T07:00:00.000Z'),
+        lastPolledAt: new Date('2026-09-01T08:00:00.000Z'),
+        releasedAt: new Date('2026-09-01T08:00:00.000Z'),
+        releasedReason: 'notified',
+      }),
+      spot('e', {
+        consecutiveFailures: 2,
+        lastPolledAt: new Date('2026-08-30T12:34:56.000Z'),
+      }),
+    ]);
+
+    const audit = (actionTaken: string, occurredAt: Date) => ({
+      familyId: fam.familyId,
+      actor: 'system',
+      actionTaken,
+      targetTable: 'watched_spots',
+      occurredAt,
+    });
+    await db.database.insert(schema.auditLog).values([
+      audit('watched_spot_arm_failed', new Date()),
+      // The same verb one hour past the window — a window widened to 48h would count
+      // it — and TWO successes inside it, so a loader counting the sibling verb by
+      // mistake reads 2, never the 1 it happens to share.
+      audit('watched_spot_arm_failed', new Date(Date.now() - 25 * 3_600_000)),
+      audit('watched_spot_armed', new Date()),
+      audit('watched_spot_armed', new Date()),
+    ]);
+
+    expect(await loadWatchedSpots(db.database)).toEqual({
+      live: 4,
+      pending: 1,
+      unreadable: 1,
+      lastPolledAt: '2026-08-30T12:34:56Z',
+      armFailures24h: 1,
+    });
   });
 });
 

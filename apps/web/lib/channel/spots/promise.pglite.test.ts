@@ -123,7 +123,11 @@ describe('resettleSpotWatchPromise', () => {
     const family = await seedFamily(db.database, 'Kept Promise Family');
     const only = await armCourse(family, 'course-only', T0, 'CM-ONLY');
 
-    await markNotifiedAndRelease(db.database, { spotId: only.spotId, now: RELEASED_AT });
+    await markNotifiedAndRelease(db.database, {
+      spotId: only.spotId,
+      lastState: 'open',
+      now: RELEASED_AT,
+    });
     await resettleSpotWatchPromise(db.database, {
       familyId: family.familyId,
       keptBy: 'CM-OPEN',

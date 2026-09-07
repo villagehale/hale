@@ -108,6 +108,18 @@ export type SpotReading =
 export type SpotTransitionKind = 'seat_opened' | 'waitlist_reopened';
 
 /**
+ * What a text of each kind told the parent the page was — the reading side of
+ * {@link transitionKind}, held apart from it because it is needed on a LATER tick than
+ * the one that read the page: the receipt that confirms the text arrived is what finally
+ * moves `last_state`, and by then the reading is long gone. Total by type, so a third
+ * kind cannot be added without answering this question for it.
+ */
+export const STATE_TOLD: Record<SpotTransitionKind, SpotState> = {
+  seat_opened: 'open',
+  waitlist_reopened: 'full',
+};
+
+/**
  * One course's record is ~10 KB on every tenant measured. This ceiling is an order of
  * magnitude above that and exists so an unbalanced brace cannot walk a 4 MB body.
  */

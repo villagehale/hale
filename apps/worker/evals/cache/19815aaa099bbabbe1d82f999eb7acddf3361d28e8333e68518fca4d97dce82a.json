@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the Saturday soccer practice from the week (Cedarvale Park, 10am) and then offers the one verified offerable activity (Central Library story time at Bloor/Gladstone branch). Both pieces of information are grounded in `week` and `offerable` respectively. The reply is concise, names no invented details, and doesn't send the parent to the app. The `stillBeingChecked:1` item is not named (correctly, since Hale has no name for it). No drafts were needed, no questions were needed. The reply does the job cleanly. A minor note: it could have mentioned that one more activity is still being checked, but that's a very minor omission and not a requirement — the verified one was the right thing to lead with. Overall this is a clean, correct, appropriately short reply.",
+    "score": 5
+  }
+}

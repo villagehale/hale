@@ -28,6 +28,7 @@ describe('voice-turn tools ↔ skill allowlist (live path)', () => {
       onDraft: () => {},
       activity: { reader: {} as never, finder: {} as never },
       onPromise: () => {},
+      spots: null,
       now: new Date(),
     }).map((tool) => tool.name);
 
@@ -75,6 +76,7 @@ describe('voice-turn tools ↔ skill allowlist (live path)', () => {
       onOffer: () => {},
       onShare: () => {},
       activity: null,
+      spots: null,
       now: new Date(),
     }).map((tool) => tool.name);
     expect(withCollectors).toContain('offer_full_plan');
@@ -115,6 +117,7 @@ describe('voice-turn tools ↔ skill allowlist (live path)', () => {
       villageTool: null,
       activity: null,
       onPromise: () => {},
+      spots: null,
       now: new Date(),
     }).map((tool) => tool.name);
     expect(withoutLane).not.toContain('find_activities');
@@ -126,6 +129,7 @@ describe('voice-turn tools ↔ skill allowlist (live path)', () => {
       draftPort: {} as never,
       villageTool: null,
       activity: { reader: {} as never, finder: {} as never },
+      spots: null,
       now: new Date(),
     }).map((tool) => tool.name);
     expect(withoutCollector).not.toContain('find_activities');

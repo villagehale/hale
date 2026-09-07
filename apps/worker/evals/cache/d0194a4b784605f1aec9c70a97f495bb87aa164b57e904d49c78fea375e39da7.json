@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent is asking for something to do with their child this weekend; weather is mentioned as context for the activity plan, not as the ask itself"
+  },
+  "latencyMs": 1885
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment or follow-up to unseen context; reads as a cancellation or schedule change"
+  },
+  "latencyMs": 1403
+}

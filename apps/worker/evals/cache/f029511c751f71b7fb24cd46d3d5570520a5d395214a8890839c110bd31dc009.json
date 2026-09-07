@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "nearby-places",
+    "reason": "asking for a local venue recommendation for adult use, not family activity planning"
+  },
+  "latencyMs": 1532
+}

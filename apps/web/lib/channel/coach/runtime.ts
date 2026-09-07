@@ -26,13 +26,17 @@ import {
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { type ReferralShare, referralBlock } from '~/lib/channel/referral/share';
+import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import { MINT_FETCH_TIMEOUT_MS } from '~/lib/channel/spots/tool';
 import { type AgentContext, type LoadAgentContextInput, loadAgentContext } from '~/lib/coach/context';
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { createFetchBody } from '~/lib/registration/verify-sweep';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { productionChannelDraftPort } from './draft';
 import {
@@ -149,6 +153,7 @@ export interface ChannelCoachPorts {
     onOffer: (offer: PlanOffer) => void,
     onShare: (share: ReferralShare) => void,
     onPromise: (promise: ActivityPromise) => void,
+    onWatch: (watch: SpotWatchIntent) => void,
   ): RegisteredTool[];
   guardDeps: GuardDeps;
   /**
@@ -191,6 +196,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // family, so a turn that registered two changed its mind mid-compose and the one
       // the parent can read is the one in the sentence it ended up writing.
       let activityPromise: ActivityPromise | null = null;
+      // The course page this turn started watching, if it started one. LAST CALL WINS
+      // like the two above: one arming sentence can be written per message, so a second
+      // call is a model that changed its mind mid-compose, and the page the parent can
+      // read about is the one in the sentence it ended up writing.
+      let spotWatch: SpotWatchIntent | null = null;
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -272,6 +282,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             (promise) => {
               activityPromise = promise;
             },
+            (watch) => {
+              spotWatch = watch;
+            },
           );
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
@@ -344,7 +357,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             });
           }
           await ports.recordRun(record('completed'));
-          return { reply, planOffer, activityPromise };
+          return { reply, planOffer, activityPromise, spotWatch };
         },
       );
     },
@@ -378,7 +391,7 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
         DEFAULT_TIMEZONE,
         now,
       ),
-    buildTools: (turn, onDraft, onOffer, onShare, onPromise) =>
+    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch) =>
       buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database),
@@ -395,10 +408,21 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
           // had its own go (see ACTIVITY_CLIENT_OPTIONS).
           finder: createActivityFinder(activityClient),
         },
+        // The watch verb's three ports. `fetchBody` rather than `fetchPage`: a BookMe4
+        // course keeps its availability in a <script> block the strip deletes, so a
+        // watch armed off the stripped page could never see a spot open. The consent
+        // port is the outbound gate's own, so a watch cannot be armed for a household
+        // the gate would then refuse to text.
+        spots: {
+          fetchBody: createFetchBody(MINT_FETCH_TIMEOUT_MS),
+          reader: bindActivityReader(database, productionActivityFamilyReader()),
+          watchConsentGranted: buildOutboundGatePorts(database).watchConsentGranted,
+        },
         onDraft,
         onOffer,
         onShare,
         onPromise,
+        onWatch,
         now: turn.now,
       }),
     guardDeps: buildGuardDeps(database),

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "reports a child who may have swallowed a button battery, which is a medical emergency requiring immediate help"
+  },
+  "latencyMs": 1317
+}

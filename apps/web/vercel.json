@@ -20,6 +20,7 @@
     { "path": "/api/cron/registration-verify", "schedule": "3 16 * * 1" },
     { "path": "/api/cron/twilio-triage", "schedule": "4-59/10 * * * *" },
     { "path": "/api/cron/delivery-sweep", "schedule": "6-59/10 * * * *" },
+    { "path": "/api/cron/watched-spots", "schedule": "1-59/10 * * * *" },
     { "path": "/api/cron/papercut-digest", "schedule": "13 16 * * 1" },
     { "path": "/api/cron/drain", "schedule": "* * * * *" },
     { "path": "/api/cron/queue-maintenance", "schedule": "*/10 * * * *" },

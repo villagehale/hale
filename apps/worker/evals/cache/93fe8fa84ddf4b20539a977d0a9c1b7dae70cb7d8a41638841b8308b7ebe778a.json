@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to cancel four items. The draft cap is 2, so Hale correctly drafted the two swims and said it will line up the rest — that is the correct handling of overflow. The reply names both drafted cancellations clearly, ends with \"YES to confirm,\" and explicitly states it will follow up with soccer and the Wednesday appointment. No invented details, no app referral, no sign-off, no greeting, no markdown. The Wednesday appointment is a private calendar item (Wed 9:00am) — Hale does not name its content, which is correct. Soccer is on Saturday, not named as a day mismatch. The reply is tight and correct. One very minor point: \"YES to confirm these two\" is slightly verbose versus \"YES to confirm.\" but it is not wrong and arguably adds clarity about what the YES covers. This is essentially a perfect response for the cap situation.",
+    "score": 5
+  }
+}

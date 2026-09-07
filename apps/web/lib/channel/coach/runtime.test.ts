@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { RegisteredTool, Skill } from '@hale/agent';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { MAX_REPLY_SEGMENTS } from './reply';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
@@ -311,5 +314,94 @@ describe('productionChannelCoach', () => {
     } finally {
       if (previous !== undefined) process.env.ANTHROPIC_API_KEY = previous;
     }
+  });
+});
+
+/**
+ * VIL-337 · THE SEAM THAT MAKES THE VERB LIVE.
+ *
+ * `watch_for_opening` writes nothing: the row is minted by the router against the
+ * outbound message that carried "I'm watching that page", so the intent has to survive
+ * the trip from the tool's own closure, through the sixth `buildTools` callback, to
+ * `ChannelTurnResult.spotWatch`. Everything else about the feature was tested at one end
+ * or the other, and both ends stayed green while that trip was cut.
+ *
+ * THE REAL VERB, not a stand-in, and the real page it reads: a fake tool here could only
+ * prove the runtime forwards what a fake tool produced, which is the one thing nobody
+ * doubted.
+ */
+describe('the watch a turn started', () => {
+  const MARKHAM = 'cityofmarkham.perfectmind.com';
+  const FULL_COURSE = '85770d4d-bce9-4e53-b969-cf7e88775180';
+  const COURSE_URL = `https://${MARKHAM}/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=15f6af07-39c5-473e-b053-96653f77a406&courseId=${FULL_COURSE}`;
+  const fullPage = readFileSync(
+    join(__dirname, '..', 'spots', 'fixtures', 'open-window-markham.html'),
+    'utf8',
+  );
+
+  /** The verb, wired to whatever collector the runtime hands its tool builder. */
+  function watchTools(onWatch: (watch: never) => void): RegisteredTool[] {
+    return [
+      watchForOpeningTool({
+        fetchBody: async () => fullPage,
+        reader: { householdNames: async () => [] },
+        watchConsentGranted: async () => true,
+        onWatch: onWatch as never,
+      }),
+    ];
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('carries the intent the verb collected out of the turn, last call winning', async () => {
+    vi.stubEnv('WATCHED_SPOTS_ENABLED', 'true');
+    vi.stubEnv('F14_ENABLED', 'true');
+    const p = ports({
+      buildTools: (_turn, _onDraft, _onOffer, _onShare, _onPromise, onWatch) =>
+        watchTools(onWatch as never),
+      runAgent: async (args) => {
+        const verb = args.tools.find((tool) => tool.name === 'watch_for_opening');
+        if (!verb) throw new Error('the runtime built no watch verb');
+        // TWO CALLS, because the runtime's local is documented last-call-wins: one arming
+        // sentence goes out, and it is the one the model ended up writing.
+        await verb.handler(
+          { url: COURSE_URL, label: 'Tuesday preschool swim' },
+          { familyId: FAMILY, actor: PARENT },
+        );
+        await verb.handler(
+          { url: COURSE_URL, label: 'Saturday skating' },
+          { familyId: FAMILY, actor: PARENT },
+        );
+        return answering("I'm watching that one and I'll text you when a spot opens.")(args);
+      },
+    });
+
+    const result = await channelCoachRuntime(p).respond(turn('watch this class'), []);
+
+    expect(result.spotWatch).toEqual({
+      url: COURSE_URL,
+      host: MARKHAM,
+      portalLabel: "Markham's portal",
+      label: 'Saturday skating',
+      instant: false,
+      lastState: 'full',
+    });
+  });
+
+  it('carries null off a turn that never called it', async () => {
+    // THE NEGATIVE CONTROL: without it a runtime that returned a constant intent would
+    // pass the test above.
+    vi.stubEnv('WATCHED_SPOTS_ENABLED', 'true');
+    vi.stubEnv('F14_ENABLED', 'true');
+    const p = ports({
+      buildTools: (_turn, _onDraft, _onOffer, _onShare, _onPromise, onWatch) =>
+        watchTools(onWatch as never),
+    });
+
+    const result = await channelCoachRuntime(p).respond(turn('what is on thursday'), []);
+
+    expect(result.spotWatch).toBeNull();
   });
 });

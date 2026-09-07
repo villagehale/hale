@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "child-safety",
+    "reason": "missing child reported"
+  },
+  "latencyMs": 1164
+}

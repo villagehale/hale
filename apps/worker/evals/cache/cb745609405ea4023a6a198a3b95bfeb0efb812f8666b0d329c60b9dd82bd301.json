@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting Google Calendar triggers a deterministic branch, explains that the parent needs to send the plain trigger phrase, and quotes it verbatim so the next text will land. It does not write out a URL, does not refuse, does not explain internal machinery, and does not send the parent to the app. It is short, actionable, and exactly the right shape for this feature. A 5.",
+    "score": 5
+  }
+}

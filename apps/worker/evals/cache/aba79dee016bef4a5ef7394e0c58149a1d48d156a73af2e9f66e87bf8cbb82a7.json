@@ -1,0 +1,41 @@
+{
+  "response": {
+    "id": "msg_011CeoJipBMCy9pepdUFbQ2k",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EpwCCpABCBEYAipAQPf12zTHe9p9jQs4semyzFIN7nrN2OskCPZvb7YqB6gCX+dlwSom4YhdVAEFXCwS18ak/5J0wFZy72wFEkiTPDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAarI+NQGEgxmHCwOOgYg1P8gyPMaDNXDarBdTrerU/ogFyIwvbm0plxhqk3zJhRUJeECTgmSB6RL5b8IKWgye1p5BEz4lSRxdS4bs7F9Li0Sty3AKjkZS4AC/JOiFp91ogG0dmJF+S4HatXT+RsC4YVMYnPoSU9hc+0o7h9uAEqS4KcExpsBDtHVD2FDZCgYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01DpQsGv1keXW2NJuksQ8D66",
+        "name": "search_village",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 377,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18182,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 41,
+      "output_tokens_details": {
+        "thinking_tokens": 13
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

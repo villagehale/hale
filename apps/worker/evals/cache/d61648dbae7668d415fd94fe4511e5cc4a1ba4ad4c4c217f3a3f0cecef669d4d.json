@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link in their message, and `can` explicitly lists `watch_for_opening` as a real capability Hale has when a course-page link is provided. The reply correctly claims to be watching for a spot and promises to text when one opens — that is exactly the right shape. It is short, does not send the parent anywhere, does not ask a clarifying question, does not invent any detail, and does not explain internal machinery. One very minor issue: it says \"Tuesday preschool swim\" which restates the parent's own framing rather than adding anything, but that is harmless context, not a flaw. Overall this is a clean, correct, complete reply.",
+    "score": 5
+  }
+}

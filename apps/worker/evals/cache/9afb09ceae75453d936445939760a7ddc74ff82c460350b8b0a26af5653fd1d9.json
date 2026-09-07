@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior assistant message naming \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" — that is the gymnastics class Hale itself surfaced, so it is recall, not invention. The parent's text asks to add it to the calendar. There is exactly one gymnastics class in context, so the reference is resolved. Hale drafted the add (drafted: [\"calendar_add\"]), named the event clearly, and ended with \"YES to confirm.\" — exactly the contract shape required. Short, no greeting, no sign-off, no markdown, one draft within the cap of 2. Correct and complete.",
+    "score": 5
+  }
+}

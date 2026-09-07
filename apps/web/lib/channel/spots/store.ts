@@ -27,29 +27,47 @@ import { recordSpotWatchPromise } from './promise';
  *
  * WHAT LIVE MEANS, everywhere: `released_at IS NULL`. Every write here says so, so a
  * released watch cannot be polled, claimed, sent for, or released twice.
+ *
+ * WHAT `last_state` MEANS: the last state the PARENT'S KNOWLEDGE is consistent with —
+ * NOT the last state a read saw. Three writers may move it and each one is the moment
+ * that becomes true: {@link recordPoll} on a read that was not news, {@link
+ * closeBeforeSend} when a held observation is dropped and the page's own state stands
+ * again, and {@link markNotifiedAndRelease} when the parent has actually been told.
+ * {@link claimOpenTransition} deliberately does NOT: noticing is not telling, and a
+ * claim that wrote the state it claimed would erase the state the next tick has to
+ * judge a page that moved AGAIN while the observation was held — a seat claimed from a
+ * full waitlist, retaken overnight, with the queue reopened by morning, would ask
+ * `open → full-with-room`, which is nothing, and the parent would hear nothing.
  */
 
 /**
- * What a driver error is allowed to say in a log line here.
+ * What a failure is allowed to say in a log line in this lane — its CLASS, never its
+ * content. The sweep's own catch-all uses this too, which is why it lives here.
  *
- * The raw error is NOT loggable in this module: postgres.js and pglite both hang the
- * failing statement and its parameters on it, and a constraint violation's `detail` is
- * "Failing row contains (…)" — every column, so the label the parent typed and the page
- * they pasted (rule #1). What identifies the fault is its code, the constraint it broke
- * and the primary message, none of which carry the row. `constraint` is pglite's spelling
+ * The raw error is not loggable: postgres.js and pglite both hang the failing statement
+ * and its parameters on it, and a constraint violation's `detail` is "Failing row
+ * contains (…)" — every column, so the label the parent typed and the page they pasted
+ * (rule #1). The MESSAGE is dropped for the same reason and not only the detail: it is
+ * the field a driver fills with the statement's parameters (drizzle ≥0.41 does), and in
+ * this lane those parameters are a course page, a label and a composed text.
+ *
+ * What is left identifies the fault without ever carrying a row: the error's class, the
+ * SQLSTATE code and the constraint it broke. The cost is real and taken deliberately — a
+ * plain bug here reads as `TypeError` and a spot id, and its message is read off the
+ * pglite suite rather than off a production log line. `constraint` is pglite's spelling
  * and `constraint_name` is postgres.js's; both drivers run this module.
  */
-function faultOf(err: unknown): {
+export function faultOf(err: unknown): {
+  name: string;
   code: string | null;
   constraint: string | null;
-  message: string;
 } {
   const fields = err as { code?: unknown; constraint?: unknown; constraint_name?: unknown };
   const constraint = fields.constraint ?? fields.constraint_name;
   return {
+    name: err instanceof Error ? err.name : typeof err,
     code: typeof fields.code === 'string' ? fields.code : null,
     constraint: typeof constraint === 'string' ? constraint : null,
-    message: err instanceof Error ? err.message : String(err),
   };
 }
 
@@ -283,6 +301,33 @@ export async function loadDueSpots(
 }
 
 /**
+ * The watches whose season has run out — the expiry pass's working set.
+ *
+ * SEPARATE FROM {@link loadDueSpots} because expiry is not a poll. A row under backoff,
+ * and a row belonging to a household the F14 flag no longer arms, is never due — and
+ * those are precisely the rows whose label and course page would otherwise outlive the
+ * sixty days the parent agreed to (rule #1). Ending them costs no request to anybody's
+ * server, so it is not gated on any of the things a fetch is gated on.
+ */
+export async function loadExpiredSpots(
+  database: Database,
+  now: Date,
+  limit: number,
+): Promise<LiveWatchedSpot[]> {
+  return database
+    .select(LIVE_SPOT_COLUMNS)
+    .from(schema.watchedSpots)
+    .where(
+      and(
+        isNull(schema.watchedSpots.releasedAt),
+        lte(schema.watchedSpots.expiresAt, now),
+      ),
+    )
+    .orderBy(asc(schema.watchedSpots.expiresAt))
+    .limit(limit);
+}
+
+/**
  * What a read cost and what it found.
  *
  * `lastState` is null when the page could not be READ — an unreadable page is counted in
@@ -325,13 +370,17 @@ export async function recordPoll(
  *
  * `sendAttempts` resets here and `notifiedMessageId` clears here for the same reason: the
  * two attempts are per OPENING, not per watch.
+ *
+ * `last_state` IS NOT WRITTEN, and there is no `to` to write: what the page says now is
+ * carried by `pending_kind`, which is also what guards the double claim, and the column
+ * stays on the state the parent knows until they are told (see the module note). Only
+ * `from` matters here, in the WHERE clause.
  */
 export async function claimOpenTransition(
   database: Database,
   input: {
     spotId: string;
     from: WatchedSpotState;
-    to: WatchedSpotState;
     kind: WatchedSpotPendingKind;
     now: Date;
   },
@@ -339,7 +388,6 @@ export async function claimOpenTransition(
   const [row] = await database
     .update(schema.watchedSpots)
     .set({
-      lastState: input.to,
       pendingKind: input.kind,
       pendingSince: input.now,
       openTransitions: sql`${schema.watchedSpots.openTransitions} + 1`,
@@ -414,23 +462,27 @@ export async function clearFailedAttempt(
 }
 
 /**
- * The page changed its mind before Hale was allowed to speak — the held observation is
- * dropped and the reading that overtook it becomes the state.
+ * Drop the held observation — the page moved off it before Hale was allowed to speak.
  *
- * The only honest thing that can happen to a stale observation. A 2 a.m. opening held
- * through quiet hours and gone by 8 a.m. is not news; sending it anyway would be Hale
- * telling a parent about a seat that closed six hours ago.
+ * Usually that is the page taking the opening back: a 2 a.m. seat gone by 8 a.m. is not
+ * news, sending it anyway would be Hale telling a parent about a seat that closed six
+ * hours ago, and the reading that overtook it becomes the state.
+ *
+ * `lastState` is NULL when the page moved to a DIFFERENT opening rather than away from
+ * one (a held seat that is a reopened queue by morning). Nothing about what the parent
+ * knows changed there — only the claim is dropped, so the caller can make the true one
+ * against the same `from` — and writing this tick's state would take that `from` away.
  */
 export async function closeBeforeSend(
   database: Database,
-  input: { spotId: string; lastState: WatchedSpotState; now: Date },
+  input: { spotId: string; lastState: WatchedSpotState | null; now: Date },
 ): Promise<void> {
   await database
     .update(schema.watchedSpots)
     .set({
       pendingKind: null,
       pendingSince: null,
-      lastState: input.lastState,
+      ...(input.lastState === null ? {} : { lastState: input.lastState }),
       updatedAt: input.now,
     })
     .where(and(eq(schema.watchedSpots.id, input.spotId), isNull(schema.watchedSpots.releasedAt)));
@@ -442,15 +494,22 @@ export async function closeBeforeSend(
  * `notifiedTransitions` is set to `openTransitions` rather than incremented so the two
  * counters cannot drift, and the CHECK that forbids notified > open is then unbreakable
  * by this writer.
+ *
+ * THIS is where `last_state` finally moves, to the state the text told the parent about:
+ * their knowledge is what the column tracks, and this is the one write in the lane that
+ * changes it. Null writes nothing rather than inventing a state — unreachable (a
+ * confirmed message implies the observation it was sent for), and an ending that quietly
+ * filed a made-up state would be worse than one that left the last true one standing.
  */
 export async function markNotifiedAndRelease(
   database: Database,
-  input: { spotId: string; now: Date },
+  input: { spotId: string; lastState: WatchedSpotState | null; now: Date },
 ): Promise<void> {
   await database
     .update(schema.watchedSpots)
     .set({
       notifiedTransitions: sql`${schema.watchedSpots.openTransitions}`,
+      ...(input.lastState === null ? {} : { lastState: input.lastState }),
       pendingKind: null,
       pendingSince: null,
       releasedAt: input.now,
@@ -478,19 +537,25 @@ export async function releaseWatchedSpot(
 }
 
 /**
- * The ledger row an attempt left behind, found by the key it was sent under.
+ * The ledger row an attempt left behind, found by the key it was sent under — WITH the
+ * status the carrier has since written on it.
  *
  * The healing read: an attempt whose counter moved but whose `notified_message_id` never
  * landed is a text that WENT OUT and a watch that does not know it. The dedupe key is
  * derived, so the row can always be found again — which is the difference between one
  * duplicate and a watch that re-sends every ten minutes.
+ *
+ * The status is not decoration. `dedupeActive` answers true for a 'failed' row on
+ * purpose (CONSUMED_SEND_STATUSES), so "the key is spent" and "a text may still arrive"
+ * are different questions, and a heal that asks the first one re-attaches the watch to a
+ * message the carrier threw away. Only this reader can tell them apart.
  */
 export async function findLedgerRowByDedupeKey(
   database: Database,
   dedupeKey: string,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; status: LedgerStatus } | null> {
   const [row] = await database
-    .select({ id: schema.channelMessages.id })
+    .select({ id: schema.channelMessages.id, status: schema.channelMessages.status })
     .from(schema.channelMessages)
     .where(eq(schema.channelMessages.dedupeKey, dedupeKey))
     .limit(1);

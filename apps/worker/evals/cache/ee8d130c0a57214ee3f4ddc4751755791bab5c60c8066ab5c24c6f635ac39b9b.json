@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that 2am recurring wakings at age 8 are not typical, gives a concrete actionable beat (name it at bedtime rather than in the middle of the night), mentions common causes (stress, schedule shift), and ends with the fixed plan-offer line. It does not hand the parent back to a doctor or refuse the question. It is concise, no greeting or sign-off, no markdown. The advice is grounded in Ada's age (101 months ≈ 8.4 years, matching the parent's \"8\"). The one small blemish is that \"aren't typical\" could be slightly more affirming (\"common but not permanent\") but this is very minor — the reply does the job cleanly and the plan-offer line is exactly right.",
+    "score": 5
+  }
+}

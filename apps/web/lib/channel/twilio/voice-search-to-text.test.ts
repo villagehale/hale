@@ -161,6 +161,7 @@ async function callAndAsk(options: {
           },
           onPromise: promises.collect,
           onDraft,
+          spots: null,
           now: turn.now,
         }),
       client: () => ({ messages: {} }) as never,

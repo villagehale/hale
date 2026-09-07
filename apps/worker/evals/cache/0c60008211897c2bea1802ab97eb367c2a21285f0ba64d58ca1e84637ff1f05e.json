@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces High Park as the standingPlace — that's exactly right. It names the playground, animal display, and splash pads, all from the standingPlace data. However, two problems: (1) It tells Sam to check \"their site for current hours\" — High Park is a standing place with no website to check, and the cadence note already covers seasonality. Writing out a website referral is penalised (score 2 at most for writing out a website for a standingPlace). (2) \"Worth checking their site\" is also dangerously close to sending the parent somewhere to do their own legwork, which is handing the job back. The offerable is empty and stillBeingChecked is 2, so the correct shape was: name the standingPlace fully, and say Hale is still checking two things and will come back. The reply skips the forward-looking line entirely. The website nudge is the disqualifying error here — the standingPlace rule says score 2 at most for writing out a website.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event — the Thursday swim lesson — and asks to move it to Friday 5:15. That is unambiguous. The week shows \"Swim lesson, Thu 5:15pm, East pool\" as the only Thursday swim, so the reference is fully resolved. Hale correctly drafted the move and presents it for confirmation with \"YES to confirm.\" The reply names the change clearly, keeps the venue (East pool), and ends with the required confirmation prompt. It is concise, correct, and in exactly the right shape. The draftCapPerMessage is 2 and only one draft was needed here, so no overflow issue. No greeting, no sign-off, no extra questions, no invented details. A clean, complete reply.",
+    "score": 5
+  }
+}

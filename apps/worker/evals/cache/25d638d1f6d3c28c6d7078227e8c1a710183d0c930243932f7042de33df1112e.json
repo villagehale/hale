@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains an earlier Hale message naming \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" That is a venue Hale itself named in the thread, so recalling it here is correct. The parent's text asks to add the gymnastics class to the calendar — one clear instruction, one event referenced. Hale drafted the calendar_add (within the cap of 2) and asks for YES to confirm, which is exactly the contract. The reply names the event, day, time, and asks for YES. It is short, correct, and complete.",
+    "score": 5
+  }
+}

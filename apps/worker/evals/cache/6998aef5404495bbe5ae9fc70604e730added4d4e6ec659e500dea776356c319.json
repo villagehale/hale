@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly draws on `offerable` to surface Riverdale Farm as a verified outdoor option. However, it drops the Central Library story time entirely without reason — both items are in `offerable` and both are verified, so both should be offered. The reply also misframes the situation: the parent asked about a nearby park, and Riverdale Farm IS effectively a park-adjacent outdoor venue, so saying \"no park in what I've got verified\" while simultaneously naming Riverdale Farm is slightly contradictory. More importantly, the Saturday story time at Bloor/Gladstone is also a verified offerable and was omitted with no explanation. Leaving out a verified result from `offerable` when `stillBeingChecked` is 0 (nothing pending) is a real gap — the parent asked what's nearby and Hale had two answers and gave one. That said, the reply is short, does not send the parent to the app, does not hedge, and does name the find correctly with day and \"open daily.\" The omission of the second offerable is the main flaw, bringing it below a 4.",
+    "score": 3
+  }
+}

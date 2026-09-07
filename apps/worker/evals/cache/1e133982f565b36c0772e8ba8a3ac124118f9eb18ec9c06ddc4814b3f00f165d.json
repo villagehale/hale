@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the referral link (which is set in `knows.referralLinkAppended`) and tells Sam to forward it themselves — exactly the right shape. It gives a brief, accurate description of what Hale is. The link is the runtime-appended one, not invented. No greeting, no sign-off, no markdown. The only small issue is that it's slightly more than it needs to be — the description of Hale (\"a text line that keeps track of your family's week - schedules, activities, the stuff that slips\") adds a clause that wasn't strictly necessary when the parent just asked how to refer others, but it's genuinely useful context for forwarding and doesn't cross into a blemish that warrants a 4. It's clean, correct, and complete.",
+    "score": 5
+  }
+}

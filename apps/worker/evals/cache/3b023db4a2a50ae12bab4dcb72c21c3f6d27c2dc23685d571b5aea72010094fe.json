@@ -1,0 +1,41 @@
+{
+  "response": {
+    "id": "msg_011CeoJTe7CvN2t7p7v3JnXC",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01SZUTjGKfbPMLwMpHwqoZQm",
+        "name": "propose_calendar_add",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1319,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18182,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 1200,
+      "output_tokens_details": {
+        "thinking_tokens": 1169
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

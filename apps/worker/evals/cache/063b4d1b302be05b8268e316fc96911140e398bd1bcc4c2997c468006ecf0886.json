@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent said \"cancel swim\" and the week shows exactly TWO swim lessons (Mon 4:30 West pool, Thu 5:15 East pool). With more than one matching event, Hale must ask which one — drafting nothing until the parent clarifies. The reply correctly identifies both swims and asks which to cancel. This is the right handling for a genuinely ambiguous reference (two events match). The reply is clean, names both events with their times and venues, and asks exactly one question. No greeting, no sign-off, no markdown, no app referral. This is the product working correctly.",
+    "score": 5
+  }
+}

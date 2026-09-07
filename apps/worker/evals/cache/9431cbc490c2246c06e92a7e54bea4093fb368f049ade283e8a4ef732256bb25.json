@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale previously surfaced \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" — that is a named venue and time already in the conversation, so it is recall, not invention. The parent's text names exactly one gymnastics class (the one Hale mentioned), so the reference is resolved. The reply correctly drafts it (drafted is non-empty) and ends with \"YES to confirm.\" — exactly the contract shape. It names the child (Remy, a toddler, plausible for gymnastics), the venue, day, time, and start date. Draft cap is 2 and only one item is drafted, which is correct for a single add. No greeting, no sign-off, no markdown, one clean sentence. This is the product working perfectly.",
+    "score": 5
+  }
+}

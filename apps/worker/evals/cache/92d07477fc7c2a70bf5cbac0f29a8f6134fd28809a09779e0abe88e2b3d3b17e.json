@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011Ceo6rjkmtHiRTuPj9zRxS",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErYCCpABCBEYAipA6U1V8I+lbdBP7prTLo1KGC6/p6t+gmbL5vzgYkJCjDjdL8ByoLxoMaXpH8q5NkmksG6rj+7/BCSVaSvz+Bb4vjIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiRiMjYwM2FiYS1mMDUyLTQ4NGEtOTNjYy04OWM4ZTExMGRmMmWoAbT/99QGEgwxLH4pWBna5FkMQuwaDDO9EJ75EH61tpUkfyIwvUCR+7Hn/rgQu3yrIkGhstA21/6tBBChsEEExUhs5+kJiZlgC7oQHKwncCLdmcA2KlMZhXpst4ypgyg8NgAjZMdssVUDA9NnFbo2tTfM199dPpkltCxmPrTnomTxL9TpoF+Kj8BiJT6Uj1kY2YY2mdpaLHV87IsXnW/4cbbYKBxShW26ghgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01HDA2CStTW2zRHLgvT1ARLs",
+        "name": "propose_calendar_move",
+        "input": {
+          "eventId": "evt-swim-thu",
+          "date": "2026-08-07",
+          "time": "17:15",
+          "weekday": "fri"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 929,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17893,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 178,
+      "output_tokens_details": {
+        "thinking_tokens": 43
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "response": {
+    "id": "msg_011CeoBQBURFHGSNrrdsUXCD",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErMCCpABCBEYAipAQgfnxWRvFFZAdySIoTCB3RybDlTm8k4naAmMR/f0XMJkfAaL96vl2SKWFZzOJPBiVX1YJTqwRXT3io0v8NnXnTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAaqb+NQGEgxHf2nE0mXgozOFAjcaDOBU16YGdK4m0vqBZSIw4/9V9SGGRdHcyGstM3KrkS9+Pi44TwtxDjDlSLvq2cd39VKw1HzAGHopM0flSnNGKlAib6KCmnbDcEFnLZp789i+sgiHttVVV6r0POmhPb2oSaTgCoNqcD4N8a8n5x262bdEBN2Cls07YoVmmJ3JqzCYg5L2w2FrzqqZ1ixXjsFQERgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01SZ8AtpxtScWQRVGLTqTE9x",
+        "name": "share_referral_link",
+        "input": {
+          "forward": "Hale is a text assistant that tracks your family's week - schedules, registrations, and activity ideas."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 376,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17936,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 106,
+      "output_tokens_details": {
+        "thinking_tokens": 22
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

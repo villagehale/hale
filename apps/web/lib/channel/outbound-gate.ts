@@ -56,7 +56,18 @@ export type ProactiveSendKind =
   | 'village_intro'
   | 'followup'
   | 'plan_check_in'
-  | 'activity_followup';
+  | 'activity_followup'
+  /**
+   * VIL-337 · a course page a family asked Hale to watch stopped saying it was full.
+   *
+   * TWO CLASSES FOR ONE MESSAGE, and the split is the design. Whether an opening may
+   * cross quiet hours is a decision the PARENT makes once, per watch, at arming time —
+   * so it is a stored column that picks a class here, never an `urgent` flag a sweep
+   * sets. {@link URGENCY_ALLOWED} is read per class precisely so a call site cannot
+   * widen it, and `spot_open` is what a parent who said nothing gets.
+   */
+  | 'spot_open'
+  | 'spot_open_instant';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -142,6 +153,16 @@ export const PROACTIVE_CAP: Record<
   // would be strictly worse than the index, because the one thing it could do is drop
   // a promise the family is owed on the floor.
   activity_followup: null,
+  // The seat that came free. A REAL counter, unlike the two nulls above, because the
+  // bound those rely on does not exist here: a household may hold several watches at
+  // once, and a portal that flaps 0/1 seats can produce an opening every ten minutes.
+  // Four a day is enough for a family watching four classes to hear about each of them
+  // and few enough that a flapping page is a nuisance rather than a campaign.
+  spot_open: { max: 4, windowHours: 24 },
+  // The SAME budget, deliberately: the instant opt-in bought a family timing, not
+  // volume. Both kinds also count under one category (see PROACTIVE_CATEGORY), so the
+  // two entries are one budget rather than two.
+  spot_open_instant: { max: 4, windowHours: 24 },
 };
 
 /**
@@ -173,6 +194,15 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // A find is not worth less at 08:00 than at 22:00, and the parent asked about
   // September. Nothing on this path is time-critical, so the quiet-hours floor stands.
   activity_followup: false,
+  // The default watch. A seat that opened at 02:14 is still open at 08:01 far more
+  // often than not, and the sweep re-reads the page before it composes — so the held
+  // observation costs a few hours of a race the parent was never going to win in their
+  // sleep, and buys them not being woken.
+  spot_open: false,
+  // The parent asked, per watch, to be told the moment it happens. This is the class
+  // that opt-in selects, and it is the only reason the exemption exists — a sweep
+  // cannot reach it by setting a flag.
+  spot_open_instant: true,
 };
 
 /**
@@ -197,9 +227,18 @@ export function inProactiveQuietHours(now: Date, timeZone: string): boolean {
   return isWithinQuietHours(now, timeZone, PROACTIVE_QUIET_HOURS.start, PROACTIVE_QUIET_HOURS.end);
 }
 
-/** The `channel_messages.category` each proactive class is counted under. A class of
- * its own per kind, so one class's volume can never consume another's budget. */
-const PROACTIVE_CATEGORY: Record<
+/**
+ * The `channel_messages.category` each proactive class is counted under. A class of
+ * its own per kind, so one class's volume can never consume another's budget — with
+ * ONE deliberate exception: the two watched-spot kinds share `spot_open`, because they
+ * are the same message to the same family about the same event and only differ in
+ * whether the parent asked to hear it at 2 a.m. Two categories there would be two
+ * budgets, and the opt-in would silently double a household's volume.
+ *
+ * Exported for outbound-gate.test.ts: the mapping is the whole of "one budget, two
+ * classes", and a gate that only the gate can read is a gate nobody can test.
+ */
+export const PROACTIVE_CATEGORY: Record<
   ProactiveSendKind,
   | 'nudge'
   | 'registration_sequence'
@@ -207,6 +246,7 @@ const PROACTIVE_CATEGORY: Record<
   | 'followup'
   | 'plan_check_in'
   | 'activity_followup'
+  | 'spot_open'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
@@ -214,6 +254,8 @@ const PROACTIVE_CATEGORY: Record<
   followup: 'followup',
   plan_check_in: 'plan_check_in',
   activity_followup: 'activity_followup',
+  spot_open: 'spot_open',
+  spot_open_instant: 'spot_open',
 };
 
 export interface OutboundGatePorts {

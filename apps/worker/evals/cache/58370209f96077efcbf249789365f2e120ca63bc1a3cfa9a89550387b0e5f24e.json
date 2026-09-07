@@ -1,0 +1,31 @@
+{
+  "response": {
+    "id": "msg_011Ceo7G6BytRedUEessiieb",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "This is common at 5 and usually about feeling secure at the boundary, not the bed itself. Try a consistent \"bedtime pass\": walk him back to his own bed calmly every time, same brief phrase, no negotiating, and set up a small reward for mornings he stayed. Want the full plan to get him sleeping solo? Reply YES and I'll send it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1188,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17893,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 117,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

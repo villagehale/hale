@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "parent is looking for a named specialist (optometrist)"
+  },
+  "latencyMs": 1434
+}

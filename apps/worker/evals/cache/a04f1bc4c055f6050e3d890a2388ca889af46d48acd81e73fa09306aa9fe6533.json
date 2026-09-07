@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to add the gymnastics class to the calendar. The thread shows Hale previously named \"Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13\" — so this is a single resolved event from Hale's own earlier message (recall, not invention). The reply drafts it correctly (drafted is non-empty with calendar_add), names the change with full detail, and ends with \"YES to confirm.\" — exactly the contract shape. One small issue: \"Sun, Sept 13\" is a specific date that wasn't explicitly in the thread message (which said \"starting September 13\"), but since Hale named it itself in a prior message, it is recall. The reply is concise, correct, no greeting, no sign-off, no extra questions, no app referral. This is the job done correctly.",
+    "score": 5
+  }
+}

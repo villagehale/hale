@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that ordering groceries is outside Hale's capabilities. The `knows.can` list does not include grocery ordering, so declining is the right call. The reply is honest and direct. However, it reads slightly like a handback (\"past me\") without offering anything useful in exchange — but there is genuinely nothing Hale can pivot to here, since grocery ordering is simply not a feature. The reply is short and accurate. The phrasing \"past me\" is the standard Hale deflection, but the scoring rules say \"past me\" is a handback penalty only for parenting questions, not for out-of-scope requests like grocery ordering. For a capability Hale simply does not have, saying so plainly is correct. The reply does the job without inventing a workaround, sending the parent to the app, or promising something false. It's a touch terse and could name what Hale CAN do instead, but that's a minor gap, not a failure. A score of 4 is appropriate — correct, honest, no invented detail, but slightly blunt with no soft redirect to what Hale can actually help with.",
+    "score": 4
+  }
+}

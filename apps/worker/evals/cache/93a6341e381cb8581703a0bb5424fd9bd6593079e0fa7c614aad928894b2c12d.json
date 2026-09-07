@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link and asked Hale to watch for an opening. `knows.can` explicitly lists `watch_for_opening` as a real capability, triggered only when the parent pastes the link themselves — which they did. The reply correctly confirms it is watching and will text when a spot opens. No invented details, no app referral, no URL written out, no machinery explained. Short, direct, exactly right. The one small note is \"Got it\" as a soft opener, but that is a single throwaway word, not a greeting or sign-off, and it does not meaningfully inflate the reply. This is the product working cleanly.",
+    "score": 5
+  }
+}

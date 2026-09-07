@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type OutboundGatePorts,
   PROACTIVE_CAP,
+  PROACTIVE_CATEGORY,
   PROACTIVE_QUIET_HOURS,
   assertProactiveSendAllowed,
 } from './outbound-gate.js';
@@ -405,5 +406,74 @@ describe('the opt-out line', () => {
     const { calls, verdict } = callGate(MIDDAY, { enrolled: false, contactedThisPeriod: false });
     await verdict;
     expect(calls).not.toContain('opt_out');
+  });
+});
+
+/**
+ * VIL-337 · the watched-spot classes. Two kinds, one category, and the difference
+ * between them is a stored per-watch opt-in rather than anything a caller may assert.
+ */
+describe('the watched-spot proactive classes', () => {
+  /** 02:00 in Toronto (EDT) — the middle of the proactive quiet window. */
+  const TWO_AM = new Date('2026-07-15T06:00:00.000Z');
+
+  it('holds spot_open at 02:00 even when the caller claims urgency', async () => {
+    // Kills the "instant is a call-site flag" mutation: URGENCY_ALLOWED.spot_open = true
+    // would let any sweep tick text a household at 2 a.m. by passing urgent: true.
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'spot_open', now: TWO_AM, urgent: true },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('lets spot_open_instant through at 02:00 — that is the whole of what the parent opted into', async () => {
+    // Kills URGENCY_ALLOWED.spot_open_instant = false, which would silently turn the
+    // per-watch opt-in into nothing at all.
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'spot_open_instant',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+  });
+
+  it('still holds spot_open_instant when it does not claim urgency', async () => {
+    // The class is an ALLOWANCE, not a bypass: a send that did not ask to cross quiet
+    // hours does not cross them.
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'spot_open_instant', now: TWO_AM },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('counts both kinds under ONE ledger category, on ONE budget', () => {
+    // Kills the mutation that gives spot_open_instant its own category: a household
+    // holding several watches would then get 4 held + 4 instant openings in a day, and
+    // the cap the two classes exist to share would read as half spent.
+    expect(PROACTIVE_CATEGORY.spot_open).toBe('spot_open');
+    expect(PROACTIVE_CATEGORY.spot_open_instant).toBe('spot_open');
+    expect(PROACTIVE_CAP.spot_open).toEqual({ max: 4, windowHours: 24 });
+    expect(PROACTIVE_CAP.spot_open_instant).toEqual({ max: 4, windowHours: 24 });
+  });
+
+  it('holds the fifth opening in a day', async () => {
+    // Kills `PROACTIVE_CAP.spot_open = null`, which the registration ladder's entry makes
+    // an easy copy: a flapping portal would then be an unbounded text campaign.
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'spot_open', now: MIDDAY },
+        ports({ recentSends: 4 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
   });
 });
