@@ -307,11 +307,12 @@ const DIAGNOSIS_AND_DOSING = [
  *
  * A REAL Markham course, caught with its window open and its roster full — the one
  * state `watch_for_opening` arms on — and the same byte-for-byte page the unit tests
- * read. The pasted form carries the tracking parameter a browser actually appends, so
- * the fixture exercises the sanitizer's rebuild rather than a link already tidy.
+ * read. The pasted form carries `redirectedFromEmbededMode`, the parameter PerfectMind's
+ * own links append and the sanitizer drops, so the fixture exercises the rebuild rather
+ * than a link that arrived tidy.
  */
 export const FIXTURE_COURSE_ID = '85770d4d-bce9-4e53-b969-cf7e88775180';
-export const FIXTURE_COURSE_URL = `https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=${FIXTURE_COURSE_ID}`;
+export const FIXTURE_COURSE_URL = `https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&redirectedFromEmbededMode=False&courseId=${FIXTURE_COURSE_ID}`;
 
 /**
  * The corpus.
