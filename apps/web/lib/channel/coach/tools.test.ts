@@ -3,6 +3,7 @@ import { invokeTool } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
+  type ChannelCoachToolArgs,
   type ChannelScheduleReader,
   MAX_DRAFTS_PER_TURN,
   type ScheduleEvent,
@@ -467,5 +468,46 @@ describe('get_framework_guidance — the coaching tool the skill instructs (audi
     expect(result.stage).toBe('toddler');
     expect(result.whatsNow.length).toBeGreaterThan(0);
     expect(result.confirmWithProvider.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * VIL-337 · the watch verb is registered by its WIRING, and by both halves of it.
+ *
+ * Rule #11 in its sharpest form: "I'm watching that page" whose intent nobody collects
+ * is a parent told Hale is polling a portal when nothing is — and, unlike a dropped
+ * draft, the sentence has already gone out by the time anyone could notice. So the
+ * absent collector removes the VERB rather than silently discarding what it produced,
+ * and that is asserted here rather than left to the `onWatch?:` optional marker.
+ */
+describe('watch_for_opening — registered only when the whole wiring is there', () => {
+  const build = (extra: Partial<ChannelCoachToolArgs>) =>
+    buildChannelCoachTools({
+      familyId: FAMILY,
+      reader: {} as never,
+      draftPort: {} as never,
+      villageTool: null,
+      activity: null,
+      spots: null,
+      now: NOW,
+      ...extra,
+    }).map((tool) => tool.name);
+
+  const spots = {
+    fetchBody: {} as never,
+    reader: {} as never,
+    watchConsentGranted: {} as never,
+  };
+
+  it('is registered when the ports and the collector are both wired', () => {
+    expect(build({ spots, onWatch: () => {} })).toContain('watch_for_opening');
+  });
+
+  it('is DROPPED when the ports are there and nobody is collecting the watch', () => {
+    expect(build({ spots })).not.toContain('watch_for_opening');
+  });
+
+  it('is DROPPED when there is a collector and no ports to read a page with', () => {
+    expect(build({ onWatch: () => {} })).not.toContain('watch_for_opening');
   });
 });
