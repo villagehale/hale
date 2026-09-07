@@ -160,6 +160,7 @@ describe('connectorLinkHandler', () => {
       now: NOW,
       resolved: null,
       openQuestions: async () => [],
+      inboundChannelMessageId: 'channel-message-1',
     };
   }
 

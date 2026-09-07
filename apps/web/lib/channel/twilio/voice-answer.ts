@@ -161,6 +161,10 @@ export async function answerSpokenReply(
     now: turn.now,
     resolved: null,
     openQuestions: readOpenQuestions,
+    // A call has no inbound `channel_messages` row: what Twilio heard is a
+    // transcription, not a message the parent sent. Null is the honest answer, and the
+    // handlers that need one to attribute a write refuse rather than invent provenance.
+    inboundChannelMessageId: null,
   };
 
   // PASS 1 — the exact words, free, and the same grammar a text is read with.

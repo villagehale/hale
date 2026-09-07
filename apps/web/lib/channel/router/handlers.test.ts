@@ -27,6 +27,9 @@ import type { HandlerContext, ResolvedAnswer } from './route';
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const PARENT = '22222222-2222-4222-8222-222222222222';
 const DB = {} as Database;
+/** The inbound `channel_messages` row this turn arrived on — what a handler writing a
+ * parent-stated fact points its audit row at. */
+const INBOUND_MESSAGE_ID = '44444444-4444-4444-8444-444444444444';
 
 /**
  * `open` is what Hale is waiting to hear back about, and it gates every BARE affirmative:
@@ -47,6 +50,7 @@ const turn = (
   now: new Date('2026-07-30T12:00:00.000Z'),
   resolved: options.resolved ?? null,
   openQuestions: async () => options.open ?? [],
+  inboundChannelMessageId: INBOUND_MESSAGE_ID,
 });
 
 const APPROVAL_QUESTION: OpenQuestion = {
