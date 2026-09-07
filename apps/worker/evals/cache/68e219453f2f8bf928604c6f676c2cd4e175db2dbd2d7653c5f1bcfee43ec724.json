@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly draws on the offerable find (Riverdale Farm, verified venue and day) and offers it clearly. However, it also has Central Library story time in the offerable list and ignores it, which is fine — cherry-picking one is acceptable. The bigger issue is the closing question: \"Want me to add that to the calendar?\" This is asking a clarifying/permission question rather than drafting and asking for YES to confirm, which is the contract. Hale has draftCapPerMessage of 2 and a clear, unambiguous request to find something nearby — drafting the event and ending \"...? YES to confirm.\" would be the correct shape. Not drafting and instead asking an open question is a mild shape failure. The reply is also slightly wordy (\"No park in what I've got\" is a hedge about its own state rather than a clean answer). It does not send the parent to the app, does not invent anything, and correctly surfaces the offerable item with venue and day. The trailing open question rather than a draft+YES ask is the main blemish, putting this at a 3-4. Since drafting was the right move and was skipped, but the reply is otherwise clean and useful, a 3 is appropriate.",
+    "score": 3
+  }
+}
