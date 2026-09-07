@@ -251,6 +251,15 @@ describe('dueLeg', () => {
     expect(dueLeg(state(), new Date('2026-09-14T23:00:00.000Z'))).toBe('battle_plan');
   });
 
+  it('keeps today’s ladder for a caller that has not wired a portal yet', () => {
+    // The JavaScript gap between a required field and the wiring that fills it. The two
+    // ways to fall into it are not symmetric: reading an absent portal as "portal"
+    // would send an unwired household a leg nobody composed for their town.
+    const unwired = { ...state(), portal: undefined } as unknown as SequenceState;
+    expect(dueLeg(unwired, new Date('2026-09-12T14:00:00.000Z'))).toBe('heads_up');
+    expect(dueLeg(unwired, new Date('2026-09-14T23:00:00.000Z'))).toBe('battle_plan');
+  });
+
   it('stops asking once an outcome is on file', () => {
     expect(
       dueLeg(state({ outcome: 'registered' }), new Date('2026-09-15T14:30:00.000Z')),

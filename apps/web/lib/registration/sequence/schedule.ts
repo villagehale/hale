@@ -228,6 +228,20 @@ export function waitlistLegWindows(
   };
 }
 
+/**
+ * Whether this sequence has a portal Hale has learned to read.
+ *
+ * NULLISH rather than `!== null`, and only in this direction. `portal` is a required
+ * member, so a caller that has not been taught to look one up is a compile error — but
+ * between the type and the wiring there is a JavaScript gap, and the two ways to fall
+ * into it are not symmetric. Reading an absent portal as "no portal" keeps today's
+ * ladder, which is inert. Reading it as "portal" would send a leg that caller never
+ * wired, to a household whose town Hale may not be able to read at all.
+ */
+function hasReadablePortal(state: SequenceState): boolean {
+  return state.portal != null;
+}
+
 function inWindow(window: LegWindow, now: Date): boolean {
   return now.getTime() >= window.from.getTime() && now.getTime() < window.until.getTime();
 }
@@ -267,7 +281,7 @@ export function dueLeg(state: SequenceState, now: Date): SequenceLeg | null {
     // readable portal these hours are still the heads-up's, so its interval is
     // unchanged in effect and nobody loses a leg to a feature they cannot use.
     if (leg === 'readiness') {
-      return state.optIn === 'opted_in' && state.portal !== null ? leg : 'heads_up';
+      return state.optIn === 'opted_in' && hasReadablePortal(state) ? leg : 'heads_up';
     }
     return state.optIn === 'opted_in' ? leg : null;
   }

@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNull } from 'drizzle-orm';
 import { normalizeKeyword } from '~/lib/channel/intake/keywords';
+import { portalForMunicipality } from '~/lib/channel/spots/url';
 import { writeFact } from '~/lib/memory/facts';
 import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
 import { renderCheckInReply } from './copy.js';
@@ -392,6 +393,10 @@ export async function loadAwaitingSequence(
       outcome: null,
       waitlistStartedAt: null,
       waitlistResponseHours: row.window.waitlistResponseHours,
+      // Read from the registry rather than passed as null: this state answers
+      // `awaitingOutcome` today, which never looks at it, and a placeholder here would
+      // be the wrong answer the first time somebody asks it which leg is due.
+      portal: portalForMunicipality(row.window.municipality),
     },
   };
 }
