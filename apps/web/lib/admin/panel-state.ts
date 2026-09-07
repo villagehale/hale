@@ -35,9 +35,9 @@ export function minutesAgo(iso: string, now: Date): number {
 
 export type FreshnessTone = 'never' | 'stale' | 'fresh';
 
-/** The freshness tile's three-way read, out of the JSX where nothing can reach it:
- * an age nobody has ever recorded is `never`, not a fresh 0. `staleAbove` is a
- * ceiling the healthy case is allowed to touch — one full interval late is late. */
+/** The three-way read both freshness tiles make, out of the JSX where no test can
+ * reach it: an age nobody has ever recorded is `never`, not a fresh 0, and
+ * `staleAbove` is a ceiling the healthy case may touch — stale starts one unit past it. */
 export function freshnessTone(age: number | null, staleAbove: number): FreshnessTone {
   if (age === null) {
     return 'never';

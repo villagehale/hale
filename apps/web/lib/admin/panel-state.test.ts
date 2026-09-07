@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  freshnessTone,
-  minutesAgo,
-  serviceStateLine,
-  STALE_POLL_MINUTES,
-} from './panel-state';
+import { freshnessTone, minutesAgo, serviceStateLine, STALE_POLL_MINUTES } from './panel-state';
 
 describe('serviceStateLine', () => {
   it('names the missing env var for a not_configured outcome', () => {

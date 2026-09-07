@@ -24,24 +24,23 @@ async function TimelineBody() {
 async function FreshnessBody() {
   const radar = await cachedRadar();
   const freshest = radar.freshestVerifiedAt ? new Date(radar.freshestVerifiedAt) : null;
-  const staleDays = freshest
-    ? Math.floor((Date.now() - freshest.getTime()) / 86_400_000)
-    : null;
+  const staleDays = freshest ? Math.floor((Date.now() - freshest.getTime()) / 86_400_000) : null;
+  const verifyTone = freshnessTone(staleDays, STALE_VERIFY_DAYS);
   return (
     <div>
       <div className="adm-stat-row">
         <div className="adm-stat">
           <div className="adm-stat-v">
-            {staleDays === null ? (
+            {verifyTone === 'never' ? (
               <span className="adm-tile-fail">never</span>
-            ) : staleDays > STALE_VERIFY_DAYS ? (
+            ) : verifyTone === 'stale' ? (
               <span className="adm-stale">{staleDays}d ago</span>
             ) : (
               `${staleDays}d ago`
             )}
           </div>
           <div className="adm-stat-k">
-            {staleDays === null ? 'never verified' : 'freshest verify'}
+            {verifyTone === 'never' ? 'never verified' : 'freshest verify'}
           </div>
         </div>
         {radar.lastVerifyRun ? (
