@@ -72,7 +72,16 @@ export type OpenQuestionKind =
    * DIFFERENT household than the one answering, which is why it is graded the way it is
    * below.
    */
-  | 'founder_welcome_offer';
+  | 'founder_welcome_offer'
+  /**
+   * "Reply YES when that is done, or NO if not." — the registration ladder's readiness
+   * checklist and the battle plan's single re-ask (VIL-338, registration/sequence/
+   * copy.ts). The only question on this list whose openness is derived from the MESSAGE
+   * LEDGER rather than from a row of its own: it is open while its ask is Hale's last
+   * outbound word to that parent and closed the moment anything else goes out (see
+   * `OpenQuestionSources.registrationReadiness`).
+   */
+  | 'registration_readiness';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -104,6 +113,13 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // nothing is executed, but a wrong reading is still an unsolicited message to a stranger
   // sent in a person's name — the same class of cost as an introduction, so the same grade.
   founder_welcome_offer: 'consequential',
+  // Records what the parent said about their own portal setup, on their own account.
+  // Nothing is disclosed, nothing is executed, and every sentence downstream attributes
+  // it back to them ('You told me ...'), so a wrong reading costs one clause that still
+  // names its source. `ordinary` is also what lets a hedged "yeah I think so" be
+  // recorded at medium confidence instead of costing a clarifying round trip on the
+  // three days when the parent is actually doing the work.
+  registration_readiness: 'ordinary',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
@@ -137,6 +153,11 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // (lib/channel/founder/reply.ts). An offer whose no went nowhere would be one the
   // founder could only get rid of by ignoring it for two days.
   founder_welcome_offer: { yes: true, no: true },
+  // BOTH polarities, because a NO is a FACT this feature records rather than an offer
+  // lapsing: it writes `readiness_ready = false`, and the evening-before plan carries
+  // "You have not told me the setup is done" because of it. A no-answerable readiness
+  // question would drop the one answer the parent is most likely to have to give.
+  registration_readiness: { yes: true, no: true },
 };
 
 export interface Answerable {
@@ -216,6 +237,9 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   checkup_offer: false,
   activity_followup: false,
   founder_welcome_offer: true,
+  // The readiness leg and the battle plan both print 'Reply YES when that is done, or
+  // NO if not.' verbatim (registration/sequence/copy.ts).
+  registration_readiness: true,
 };
 
 /**
@@ -257,6 +281,7 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval'>, string> = {
   checkup_offer: 'booking that visit',
   activity_followup: 'what I said I would come back to you about',
   founder_welcome_offer: 'sending your welcome note to the new family',
+  registration_readiness: 'getting set up for the registration morning',
 };
 
 /**
@@ -364,6 +389,26 @@ export interface OpenQuestionSources {
     database: Database,
     familyId: string,
   ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  /**
+   * The registration ladder's readiness checklist, while its ask is still Hale's LAST
+   * WORD to this parent — or null.
+   *
+   * NO ROW AND NO COLUMN BEHIND IT, unlike every source above, and the reason is the
+   * one this module's own header states: openness is already implied by state somebody
+   * owns, and here that state is the message ledger. The reader (registration/sequence/
+   * prepare-reply.ts) asks two questions of it — when did the ask last go out, and has
+   * anything gone out since — and a question that stayed open for its own three-day
+   * interval would have claimed the "yes" a parent said to the coach's own prose
+   * question in the middle of it.
+   *
+   * `askedAt` is the NEWEST ask, so the battle plan's re-ask the evening before
+   * outranks an older solicited question rather than losing to it.
+   */
+  registrationReadiness(
+    database: Database,
+    familyId: string,
+    now: Date,
+  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
 }
 
 /**
@@ -382,18 +427,20 @@ export interface OpenQuestionSources {
 export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQuestionReader {
   return {
     async open(database, input) {
-      const [approvals, optIn, proposal, offer, checkup, promise, welcome] = await Promise.all([
-        sources.pendingApprovals(database, input.familyId),
-        sources.introOptInOpen(database, {
-          familyId: input.familyId,
-          parentUserId: input.parentUserId,
-        }),
-        sources.introProposal(database, input.familyId, input.now),
-        sources.planOffer(database, input.familyId, input.now),
-        sources.checkupOffer(database, input.familyId, input.now),
-        sources.activityPromise(database, input.familyId),
-        sources.founderWelcomeOffer(database, input.familyId, input.now),
-      ]);
+      const [approvals, optIn, proposal, offer, checkup, promise, welcome, readiness] =
+        await Promise.all([
+          sources.pendingApprovals(database, input.familyId),
+          sources.introOptInOpen(database, {
+            familyId: input.familyId,
+            parentUserId: input.parentUserId,
+          }),
+          sources.introProposal(database, input.familyId, input.now),
+          sources.planOffer(database, input.familyId, input.now),
+          sources.checkupOffer(database, input.familyId, input.now),
+          sources.activityPromise(database, input.familyId),
+          sources.founderWelcomeOffer(database, input.familyId, input.now),
+          sources.registrationReadiness(database, input.familyId, input.now),
+        ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(
         0,
@@ -462,6 +509,19 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.founder_welcome_offer,
           askedAt: welcome.askedAt,
           solicited: SOLICITED.founder_welcome_offer,
+        });
+      }
+      if (readiness) {
+        // The source's own one-line summary: Hale's words from its own ask, naming the
+        // portal and nothing about the child (rule #1).
+        questions.push({
+          id: readiness.id,
+          kind: 'registration_readiness',
+          description: readiness.summary,
+          subject: SUBJECT.registration_readiness,
+          answerable: KIND_ANSWERABLE.registration_readiness,
+          askedAt: readiness.askedAt,
+          solicited: SOLICITED.registration_readiness,
         });
       }
       if (promise) {

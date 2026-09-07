@@ -40,14 +40,22 @@ import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
  * that moves the morning moves the whole ladder with it.
  */
 
-export type SequenceLeg =
-  | 'heads_up'
-  | 'readiness'
-  | 'battle_plan'
-  | 'go'
-  | 'check_in'
-  | 'waitlist_half'
-  | 'waitlist_final';
+/**
+ * Every leg, as a value rather than only a type — so a reader that has to ask "which
+ * legs print X" (the readiness ask's open-question source) can enumerate them and be
+ * broken by a new leg, instead of hand-listing two and silently missing the third.
+ */
+export const SEQUENCE_LEGS = [
+  'heads_up',
+  'readiness',
+  'battle_plan',
+  'go',
+  'check_in',
+  'waitlist_half',
+  'waitlist_final',
+] as const;
+
+export type SequenceLeg = (typeof SEQUENCE_LEGS)[number];
 
 /** How far ahead the heads-up leg opens. Matches M4's registration horizon: a date a
  * week out arrives while it still matters and does not need repeating. */
