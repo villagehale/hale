@@ -1,0 +1,41 @@
+{
+  "response": {
+    "id": "msg_011CeoB8zQVWvj3mARVWypMX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EpoCCpABCBEYAipATttVhZ+VaUkFAp6JAdvgqPLCidsdtA/blZnVJ+DN7MqtrXK/Zb84Ikb15Sir0KUuaLDICpun22yynaI8IfdOADIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAdyZ+NQGEgyVF4AcDNEGS9aOePsaDFK9NmTLOzBZH19kdCIw+KbsgzQo/AzlzJTHXnau5ARjJWxErcCTB262+Nj3WH1oXjKy+esg8fp6cX+580oLKjf0C2tcCwI7FIjptqFOvO1vU8mVKw9NByCoMMMwuUbRKr9VX9yxt4cX0Lc6wBtxDaG6+6rWOU0bGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01MSiqSvMkdfUAyVssbZcZrf",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 377,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17936,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 43,
+      "output_tokens_details": {
+        "thinking_tokens": 13
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

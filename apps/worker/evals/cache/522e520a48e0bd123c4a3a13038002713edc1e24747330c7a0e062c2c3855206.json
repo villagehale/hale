@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011Ceo7FomGNqdGKT1Jhbu2D",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EqADCpABCBEYAipAg4kSfb4l5oYoyixGcOSxaujnv+/h4UGZPN/E+hdytJz6XnqGMoV61OdAjQcgnGyfZJwcBF3PFgMGK8iAEfEmMDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiRiMjYwM2FiYS1mMDUyLTQ4NGEtOTNjYy04OWM4ZTExMGRmMmWoAe6B+NQGEgz+IUrZ8lXcD40HcWgaDNi4hnOw07EdBZf4biIwztXuCd4CltiV8aMYU3RlfYaJYhGfu4klJwn9N7Wm1pLqVm+Pcp9HHvISccfQxWKqKrwBEtMuiMAURBPBMxTgRa1wkbC631wruJl4WhTwvGJVZeLPNlEFZ+lgA1MQj4nPuxF+hJ2dgZJFVxBDJHEl41Ex2flj3GQlUDhbCn0GDgdBs/UrqKuiTs+dovDZvQyuGT2VlAIjZlD5wj8VYsfZM5fRhQMUosfxssbWq+Ddbx+tq0kUUYOQOhE9DKxvV83P98j7TN+NSOEJ6qy8jV+uVE2DsKaJICzWBOKf8uebaa8cwAZxxG7BekGxlRePXeEYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01XkgkUo7GvXNniqXym99Myu",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_018LU6AXkEvshW61snS5Gzay",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-milo",
+          "offer": "Want the full plan to get him sleeping solo? Reply YES and I'll send it."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 388,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17893,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 272,
+      "output_tokens_details": {
+        "thinking_tokens": 66
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

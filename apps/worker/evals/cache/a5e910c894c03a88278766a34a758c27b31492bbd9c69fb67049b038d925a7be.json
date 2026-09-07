@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains an earlier Hale message naming \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" — that is recall from a prior webFind/offerable surfacing, not invention. The parent's new text asks to add the gymnastics class to the calendar. There is exactly one gymnastics class named in the thread, so the reference is resolved. Hale correctly drafts a calendar_add and asks for YES to confirm. The reply names the venue, day, date, and time clearly, and ends with \"YES to confirm.\" — exactly the contract shape required. No greeting, no sign-off, no markdown, no app referral, one clean sentence. This is the product working correctly.",
+    "score": 5
+  }
+}

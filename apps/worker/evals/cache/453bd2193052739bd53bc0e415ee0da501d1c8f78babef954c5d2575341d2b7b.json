@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply drafts the gymnastics class (Tiny Gym at Cartwheels, Sun 9:30am, Sept 13) — a venue Hale itself named in an earlier thread message, so this is recall not invention. The parent asked to add it to the calendar, there is exactly one gymnastics item in the thread, no ambiguity. Hale drafted it (drafted contains calendar_add) and correctly asks for YES to confirm. The reply names the child (Remy is a toddler, fits a gymnastics class), the day/time, and the start date. It stays within the draft cap of 2. It does not send the parent to the app, does not invent a URL, does not over-explain. Short, exact, correct shape with the YES confirmation line. This is the product working.",
+    "score": 5
+  }
+}

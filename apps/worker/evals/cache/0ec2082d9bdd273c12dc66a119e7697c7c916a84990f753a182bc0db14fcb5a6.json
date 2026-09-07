@@ -1,0 +1,36 @@
+{
+  "response": {
+    "id": "msg_011CeoC1wK98vMQzNNCaFgGE",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EtIJCpABCBEYAipAT1736SbDY0uLmINpJ68om63GM5MjhvUFUSK1YdF3NtmeIS50oBf990Ag5FsE+YL+l9u+Qe1akIiz82xh1t+BMzIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAZKf+NQGEgwppniQvYXNJMi7OJYaDOgqL6mv7dDxbS3WYiIw7Cegaw5dB8xW2pdrZWwVjmlP8XcoF9HZYPPIJxeSAG12qpNZhHHfXIm9lJa0W723Ku4HBTS02XB3Csnqn4r3Zyd815kB8zTVVPH4+DfSX5MLUTWD7DiWJgqq2IUUi2aM3g/hJjQkxeowSl6ARsLi4bD54AawQ9MxCRiGOHG4x/m+9+1ap7IGtJQ4vOdRiNxkpPa2NRXopHae56S0G+SjT1FrxDnntmQ0z03hH5APP92wyF1lDvLGCHVD3laTkR6hAiSf1o8qJV1m7AYfExj7ZR/wlEg0zc/0sYrGZSum/ZxHnu+7bb9yJK8yyYGPaiisKy7H1fjce7vq2xpZSjwiTRkvD1zetKhXxa0Vc7DnIXtCtC6oR4jvRt3vfOk5JlrTWOCQ9LgQKKqs9oQJVmmekqdGs4Hpoe94i7H4bE+vJYIK11KO/DS28gQDx5nNX/1tax8sH+rMSuLp+ZHDZR5K1rbkGmKLMlLwlBPeEE0YyzLrAOp7AfSvFKuEDCGAciDd17ihFnu7W7zMsUcVzgnVjJJMpZZ9TH19WbMxHsSsrT7GePwyFonHCm2MUFZJF+kgqU+RxPMtjHuy8X5CjFZI/KGc6wwvF28OZ1ajmG0pf0d8sz8x4L+XT6UGK/LGuud0BqUYj0Z2DHXdrrsW0urGjm/qYWAVil5qUJ3H0ztrqlTXQGXNcbW6p0dA6g5b9ue5y44nnrki5doxPVvb9Gml6I6JOMLxF19cyIp/sFGSn2dx/Xwu8DXj1j1nxCPZZ/+1FB1T0vU2XF/w3CMYsUcrYOvijM2oZdPZ8jGesprAHSlreOKFErbG5SqwWI/7R36YMMvdm9Xjhas4xuQ5Jd56fhn1w7K4H8E/PLobe7HfSbxz1UTKPprusJpUHpLjbRNlStaQKlhSMDrazXNRgiPgKWaWQvPa6Jz+M0f0BVIUZAwEOKfFXCDtLHjksYJEMeUawoGyepbYQdjW1IGXjffh9i6RLsZydNwD1G7ZGFF3H1+fUJPRelEs/CmzTKbkc0jepGQx7PI4gNmMcPtCdgYRguENNfo86JqyF8mDVJ9N0aKaFSFrDxj/AYxXasufI/S4kTRx2RA9+q2TWknFxsuCcFyEMfnGCSipwYSLXTNNvpzmP6Qt2ffkLXMTqMDxXnCLYsyCesldcwO/ZxltbSeY2tbCDGJYO2dXFHmYyoZ+jxaFKs8eFbH9OIgXvDhVbBfobKEuPk6Kvj/lwSENHD8+A3uCj/WXTLY64GKdCVNoJgAkokMHHH4B67v0QVbHM4BW0AsE3SHVdzk13pzEbn0N+d7+fHK34eJvSrVFZgFz31J4YF7uHr+Ig8Q+NYESsKdLyksUNRsl2U9MqYDFrSg+ryttUBjOy82fVLoccZIy7RIeWnG4OJb521pMcj7vIXlQhxgB"
+      },
+      {
+        "type": "text",
+        "text": "Riverdale Farm is a good bet - free outdoor visit, open daily, and it's already checked out on our end for Sun, Aug 9."
+      }
+    ],
+    "usage": {
+      "input_tokens": 849,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17936,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 371,
+      "output_tokens_details": {
+        "thinking_tokens": 322
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

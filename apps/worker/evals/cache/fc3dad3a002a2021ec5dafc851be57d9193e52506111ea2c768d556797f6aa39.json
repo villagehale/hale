@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text names exactly one event (\"thursday swim\") and one target (\"friday 5:15\"), so the reference is fully resolved. The draft cap is 2 and only one move is needed, so drafting it is correct. The reply names the change clearly (Thursday swim → Fri 5:15pm at East pool), carries the required YES confirmation trigger, and does nothing else. It is short, exact, and correct — the product working as designed.",
+    "score": 5
+  }
+}

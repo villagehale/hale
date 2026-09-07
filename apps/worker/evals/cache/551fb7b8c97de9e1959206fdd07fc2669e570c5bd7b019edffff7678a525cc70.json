@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale previously surfaced \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" — that is a venue Hale itself named in an earlier message, so using it now is recall, not invention. The parent's text names exactly one gymnastics class (the one from that prior message), so the reference is resolved. Hale drafted the calendar add (within the draftCapPerMessage of 2), named the event with full details, and ended with \"YES to confirm.\" — exactly the contract shape. No greeting, no sign-off, no markdown, one question, all details traceable. This is the product working correctly.",
+    "score": 5
+  }
+}

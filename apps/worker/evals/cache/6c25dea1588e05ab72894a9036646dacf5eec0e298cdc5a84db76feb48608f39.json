@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that connecting Google Calendar is a real feature handled by a deterministic branch, and gives Sam the exact words to text to trigger it — \"connect my Google Calendar\" — which is the correct handling per the rubric. It does not write out a URL, does not refuse, does not send the parent to the app, and does not invent anything. The instruction to quote the short ask verbatim so the next text lands is followed precisely. It is clean, accurate, and stops. A near-perfect reply; the only very minor quibble is \"Yep\" as an opener could be seen as a tiny filler, but that is negligible and not a scoring criterion.",
+    "score": 5
+  }
+}

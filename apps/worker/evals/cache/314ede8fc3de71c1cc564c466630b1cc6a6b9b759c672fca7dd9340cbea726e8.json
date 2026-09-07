@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls that `watching` is already true for Halton Hills fall recreation, states the resident-first open date and time (Sep 1, 7:00 a.m.) as a flat verified fact with no hedging, and confirms the texting cadence (\"I'll text you before it opens\") — which matches the rule that a watching:true window means Hale already texts a week out, the evening before, and fifteen minutes before. No invented detail, no app referral, no markdown, no greeting or sign-off. The one small shortfall is that it promises to text \"before it opens\" without naming the three touchpoints (a week out, evening before, fifteen minutes before), but the rules do not require that granularity. It is a short, exact, correct reply that does the job and stops.",
+    "score": 5
+  }
+}

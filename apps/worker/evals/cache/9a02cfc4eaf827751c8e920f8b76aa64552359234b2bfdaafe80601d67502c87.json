@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly pulls the one visible Saturday event (soccer at Cedarvale Park, 10am) from the week and pairs it with the one offerable activity (Central Library story time at Bloor/Gladstone). Both are grounded — one in `week`, one in `offerable`. No greeting, no sign-off, no markdown, no invented details, no app referral, no unnecessary questions. The phrasing \"if you want something else on top\" is a touch more than needed but is a single short clause, not a full extra sentence, and does not distort the answer. Very clean reply with a minor softness at the tail.",
+    "score": 4
+  }
+}

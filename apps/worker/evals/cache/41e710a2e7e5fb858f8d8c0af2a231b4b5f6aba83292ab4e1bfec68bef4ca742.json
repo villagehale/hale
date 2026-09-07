@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that watching for a spot opening requires the parent to paste the course-page link, and asks for it. This is exactly right per the rules: `watch_for_opening` only works on a course-page link the parent pasted in their own message — with no link present, asking for it is the correct answer. The reply is concise, asks exactly one question, no greeting, no sign-off. One minor blemish: the dash-and-question construction is slightly wordy (\"I need the link... - can you send it over?\") where a single clause would do, but it is not a meaningful flaw. This is essentially the correct and complete response.",
+    "score": 5
+  }
+}

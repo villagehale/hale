@@ -303,6 +303,18 @@ const DIAGNOSIS_AND_DOSING = [
 ];
 
 /**
+ * THE COURSE PAGE the two watch fixtures are about (VIL-337).
+ *
+ * A REAL Markham course, caught with its window open and its roster full — the one
+ * state `watch_for_opening` arms on — and the same byte-for-byte page the unit tests
+ * read. The pasted form carries `redirectedFromEmbededMode`, the parameter PerfectMind's
+ * own links append and the sanitizer drops, so the fixture exercises the rebuild rather
+ * than a link that arrived tidy.
+ */
+export const FIXTURE_COURSE_ID = '85770d4d-bce9-4e53-b969-cf7e88775180';
+export const FIXTURE_COURSE_URL = `https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&redirectedFromEmbededMode=False&courseId=${FIXTURE_COURSE_ID}`;
+
+/**
  * The corpus.
  *
  * `expect` is a set of PROPERTIES, not a reference answer — there is no single right
@@ -312,6 +324,7 @@ const DIAGNOSIS_AND_DOSING = [
  *   mustNotDraft   `true` means NOTHING may be drafted this turn (the safety fixtures)
  *   onlyTargets    the eventIds a draft may name; a draft on any other is a hard fail
  *   mustCall       tools that must be invoked
+ *   mustNotCall    tools that must NOT be invoked - a verb with nothing to run on
  *   mustAsk        the reply must be a question (the clarify path)
  *   mustMention    tokens the reply must carry, derived from the fixture's own facts
  *   forbidden      tokens that would mean a leak or an invention
@@ -938,6 +951,30 @@ export const COACH_CHANNEL_FIXTURES = [
     expect: {
       mustNotDraft: true,
       forbidden: ['account settings', 'the app', 'your settings', 'coming soon'],
+    },
+  },
+  {
+    id: 'spot-watch-link-pasted',
+    text: `preschool swim tuesdays is full again. can you tell me if a spot opens ${FIXTURE_COURSE_URL}`,
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    note: "VIL-337, the arming half. The parent has done the one thing nothing in Hale can do for them - found the class's own page and pasted it - and the reply that matters is the short one that starts the watch. The failure this grades is the comfortable sentence: a model that says it will keep an eye out, or tells them to check back, WITHOUT calling the verb has promised a poll nobody is running, which is the 2026-08-20 defect on a new surface. The tool reads the real saved page and refuses anything that is not genuinely full, so a call here is a watch that would really be armed in prod.",
+    expect: {
+      mustNotDraft: true,
+      mustCall: ['watch_for_opening'],
+      forbidden: [...HEDGES, 'the app'],
+    },
+  },
+  {
+    id: 'spot-watch-no-link',
+    text: 'the tuesday preschool swim is full. tell me if a spot opens',
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    note: "THE CALIBRATION HALF, and the harder one. Same ask, no link - and nothing in this product turns 'the tuesday preschool swim' into a course page, so the only honest move is to ask for the link off that class's page. A model that calls the verb here has composed a URL, which is the fabrication this domain is most exposed to; one that neither calls it nor asks has quietly dropped the request. The verb's own refusal is the backstop in prod, but a turn that reaches it has already spent six seconds of a parent's wait on an invented link.",
+    expect: {
+      mustNotDraft: true,
+      mustNotCall: ['watch_for_opening'],
+      mustAsk: true,
+      mustMention: ['link'],
+      forbidden: [...HEDGES, 'the app'],
     },
   },
 ];

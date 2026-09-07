@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent pasted a course-page link and asked Hale to watch for a spot. `can` explicitly lists `watch_for_opening` as a real capability, and it works only on a link the parent pastes — which they did. The reply correctly invokes that capability and promises to text when a spot opens. It names the right class (Tuesday preschool swim), is short, has no greeting or sign-off, no markdown, no app referral, no invented detail, and no question. This is the product working exactly as designed.",
+    "score": 5
+  }
+}

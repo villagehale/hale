@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces Riverdale Farm from `offerable` — a verified find with name, place, and day — and offers to draft it to the calendar. It also correctly ignores Central Library story time since the parent asked specifically about parks. The reply is concise, no greeting or sign-off, no markdown, one question at the end. The draft offer is appropriate (nothing is drafted yet, so asking is right). One small issue: \"No park in what I've got\" is slightly misleading — the soccer practice is at Cedarvale Park, which is a park, though it's a family event not a drop-in. But the parent is asking about nearby parks to visit, so the reply's intent is correct. The reply is clean, actionable, and well-shaped. Minor quibble only.",
+    "score": 4
+  }
+}

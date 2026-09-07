@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the cancel for Thursday swim (one of the two allowed drafts) and ends with \"YES to confirm.\" — exactly the contract shape. It then surfaces the one offerable indoor Saturday option (Central Library story time, Bloor/Gladstone, Sat Aug 8) which is verified and complete (name, place, day). The cap is 2 drafts per message; only one cancel was drafted, which is correct since the Saturday item is an offerable suggestion, not a calendar draft. No app mention, no invented URL, no greeting, no sign-off, no markdown. The only small blemish: the Saturday suggestion is the one offerable indoor option but Riverdale Farm (Sunday, outdoor) is correctly ignored. The reply is tight and correct. One very minor issue: the draft is a cancel and the reply names the event clearly, but it doesn't explicitly note that it's drafting the cancel (just asks for YES to confirm, which implies it). This is the correct shape. Overall this is a clean, correct reply doing exactly the job — a 5.",
+    "score": 5
+  }
+}

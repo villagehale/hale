@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that ordering groceries is outside Hale's capabilities (it is not in `knows.can`). This is not a parenting question handback — it is a genuinely out-of-scope task (grocery ordering). The reply is honest and brief. However, it could have briefly noted what Hale *can* do, but the rubric does not require that. The reply is accurate, does not send the parent to the app, does not invent anything, and does not promise something it cannot do. It is short and correct. The one small issue is that a slightly warmer or more useful redirect might have helped, but the rubric does not penalize for omitting that. This is a clean, honest, correct answer to an out-of-scope request.",
+    "score": 5
+  }
+}

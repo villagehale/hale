@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale itself named \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" in an earlier assistant message — so that is recall, not invention. The parent now asks to add the gymnastics class to the calendar. There is exactly one gymnastics class in context (Tiny Gym at Cartwheels, Sun Sep 13, 9:30am), so the reference is resolved. Hale drafted the addition (drafted is non-empty) and ends with \"YES to confirm.\" — exactly the required contract shape. The reply is concise, names the change, and uses the correct confirmation trigger. No app referral, no invented details, no extra questions. This is the product working correctly.",
+    "score": 5
+  }
+}

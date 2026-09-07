@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the referral link (which is set in `knows.referralLinkAppended`), tells the parent to forward it themselves, and gives a brief description of what Hale is — all correct. The link is the runtime-appended one, not invented. The reply is concise, no greeting, no sign-off, no markdown. One small blemish: the description of Hale (\"schedules, activities, the stuff that slips\") adds a clause that isn't strictly necessary — the parent asked how to refer others, not what Hale is — but it's a reasonable and brief context for the friend receiving the link, and it doesn't cross into machinery or padding. Overall this does the job cleanly.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces the standingPlace (High Park) with its key details, which is the right move when offerable is empty and stillBeingChecked has no names to offer. However, it ends with \"Worth checking their site for current hours before you head out\" — this tells Sam to go to a website, which is effectively sending the parent somewhere else to finish the job. The rules say a standing place should not have a website written out, and sending the parent to check a site is handing the job back. That warrants a penalty but not a catastrophic one since the core answer (High Park, its features) is correct and useful. It's a 2-at-most situation for the \"check the site\" line, but the rest of the answer is solid. I'll score it a 3: does the job but the shape is off with that closing redirect.",
+    "score": 3
+  }
+}

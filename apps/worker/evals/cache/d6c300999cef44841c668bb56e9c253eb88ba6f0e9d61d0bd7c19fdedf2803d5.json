@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply surfaces Riverdale Farm correctly from `offerable` — verified venue, free, outdoor. However, it ends with \"Want me to add it to the calendar?\" which is a question about internal machinery (calendar action) rather than a clean answer. The parent asked about a park; the reply answers that and offers a useful verified option. The question at the end is a minor shape issue — it's not a catastrophic failure, but it's not the contract shape either (no draft was made, no YES confirmation requested, just a vague offer). Also \"No park specifically\" is slightly hedged when Riverdale Farm IS a good outdoor space to run around — the framing undersells the answer. The reply is mostly correct and useful but has the dangling calendar question without actually drafting anything, which is a small blemish.",
+    "score": 4
+  }
+}

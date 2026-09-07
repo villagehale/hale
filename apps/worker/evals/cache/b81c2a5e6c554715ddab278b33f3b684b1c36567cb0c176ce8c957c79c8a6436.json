@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that Sam has a referral link appended, hands it over, explains what it does, and correctly notes the parent just forwards it themselves — nothing for Hale to do beyond that. The URL matches `knows.referralLinkAppended` exactly, so it is not invented. The reply is concise, has no greeting or sign-off, no markdown, no app referral, and does the job cleanly. One very minor blemish: the brief description of Hale (\"a text assistant that tracks your family's week - schedules, registrations, and activity ideas\") is a small extra clause that wasn't strictly needed, but it is harmless context that helps the friend understand what they're signing up for, which is actually useful when forwarding a referral link. Arguably a 5, but it's slightly longer than necessary.",
+    "score": 5
+  }
+}

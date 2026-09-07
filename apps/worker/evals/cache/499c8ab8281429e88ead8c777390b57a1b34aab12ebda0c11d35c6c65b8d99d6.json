@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text is a simple thank-you with no question, no request, and nothing to act on. The correct reply is one short, warm acknowledgment and nothing else. \"Anytime, Sam.\" does exactly that — it is appropriately brief, names the parent correctly from `knows.parent`, adds no invented details, no machinery, no questions, no sign-off filler, no markdown. It is the product working perfectly.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies Riverdale Farm from `offerable` as a free outdoor option and names it with its day. However, it also has the Central Library story time in `offerable` and ignores it — which is fine since Sam asked about a park, not a library. The bigger issue is that the reply says \"no park in what I've got verified\" when Riverdale Farm IS essentially a park-adjacent outdoor free venue and it offers it anyway — slightly contradictory framing (\"no park... the closest checked outdoor thing is Riverdale Farm\"), but it surfaces the right answer. Also, soccer practice is at Cedarvale Park this Saturday — that's a park that's already on the schedule, not a drop-in option, so not naming it as a nearby park is fine. The reply is concise, names the venue, day, and key facts (free, open daily), with no invented details, no app referral, no markdown. The slight contradiction in the opening (\"no park in what I've got verified\" vs. then offering a farm that is in fact a verified outdoor place) is a minor blemish — it reads as if Hale is being overly cautious about the word \"park\" when the parent probably just wants outdoor space nearby for kids. Overall it does the job with minor awkwardness.",
+    "score": 4
+  }
+}

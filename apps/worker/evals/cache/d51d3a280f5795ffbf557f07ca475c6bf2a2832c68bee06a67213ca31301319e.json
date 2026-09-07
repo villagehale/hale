@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that watching for an opening requires the course-page link pasted by the parent, and asks for it. This is exactly what `knows.can` specifies: \"watch ONE FULL CLASS for a spot, with `watch_for_opening`, and only on a course-page link the parent pasted in their own message... With no link there is nothing to watch, and asking for the link is the right answer rather than a stall.\" The reply does the job cleanly — no greeting, no sign-off, no invented detail, one question. Slightly wordy (\"start watching it - can you send it over?\" could be tighter) but functionally correct and properly shaped.",
+    "score": 4
+  }
+}

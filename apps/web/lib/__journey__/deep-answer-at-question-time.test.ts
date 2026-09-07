@@ -520,6 +520,7 @@ describe('the deep answer arrives at question time', () => {
             reader: bindActivityReader(database, productionActivityFamilyReader()),
             finder: createActivityFinder(client),
           },
+          spots: null,
           onDraft,
           onOffer,
           onShare,

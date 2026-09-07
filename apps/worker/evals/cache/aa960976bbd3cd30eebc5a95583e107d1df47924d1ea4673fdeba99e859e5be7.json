@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says \"cancel swim\" and the week contains TWO swim lessons (Mon 4:30 at West pool, Thu 5:15 at East pool). This is exactly the ambiguity case — more than one event matches, so Hale must ask which one before drafting anything. The reply correctly identifies both swims and asks which to cancel. It names each with day, time, and venue — everything the parent needs to answer. No draft is made, no app is mentioned, no greeting or sign-off, one question only. This is the correct shape and execution.",
+    "score": 5
+  }
+}

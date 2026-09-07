@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the referral link (which is set in `knows.referralLinkAppended`), tells Sam to forward it themselves, and gives a brief description of what Hale does — all correct. The link is the runtime-appended one, not invented. The shape is clean: no greeting, no sign-off, one sentence of context, the link. No issues with invented details or machinery. A small blemish: the description \"schedules, activities, the stuff that slips\" is a touch marketing-flavoured and slightly longer than needed, but it does not mislead or add a wrong detail. Overall this is a near-perfect answer.",
+    "score": 5
+  }
+}

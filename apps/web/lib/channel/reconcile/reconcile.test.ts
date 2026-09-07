@@ -70,6 +70,211 @@ describe('reconcile — the registration watch', () => {
   });
 });
 
+/**
+ * VIL-337 · a watched course page backs the watch sentence too.
+ *
+ * The ack a parent gets after `watch_for_opening` — "I'm watching that class and I'll
+ * text you when a spot opens" — is classified `registration_watch` by kindOf, and before
+ * this it was refused twice and rewritten away while the row it names was one send from
+ * existing. The widening is two membership checks; the negative control below is what
+ * keeps it from becoming "any open commitment backs any watch sentence".
+ */
+describe('reconcile — the spot watch', () => {
+  const body = "I'm watching that class and I'll text you when a spot opens.";
+
+  it('MATCHES the watch this very send is about to arm', () => {
+    const verdict = verdictFor(body, view({ pendingKinds: new Set(['spot_watch']) }));
+    expect(verdict.refused).toEqual([]);
+    expect(verdict.mints).toEqual([]);
+    expect(verdict.resolutions[0]).toMatchObject({
+      status: 'matched',
+      matchedBy: 'pending_commitment',
+    });
+  });
+
+  it('MATCHES a watch this family already has open', () => {
+    const verdict = verdictFor(body, view({ openKinds: new Set(['spot_watch']) }));
+    expect(verdict.refused).toEqual([]);
+    expect(verdict.resolutions[0]).toMatchObject({
+      status: 'matched',
+      matchedBy: 'open_commitment',
+    });
+  });
+
+  it('REFUSES the same sentence with no watch, no window and no ladder', () => {
+    // THE NEGATIVE CONTROL. Without it the two tests above pass on a branch that
+    // matches every registration claim regardless of what is in the view.
+    const verdict = verdictFor(body, view());
+    expect(verdict.mints).toEqual([]);
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+
+  it('does not let an unrelated open commitment back it', () => {
+    const verdict = verdictFor(body, view({ openKinds: new Set(['activity_followup']) }));
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+
+  /**
+   * THE WIDENING IS ONLY AS WIDE AS THE SENTENCE. `kindOf` reads every "I'll text you
+   * before X opens" as `registration_watch`, so a MUNICIPAL-MORNING promise and a
+   * one-class spot promise arrive here as the same kind — and a watched course page
+   * cannot back the morning. The town's season is the ladder's job; one page in Markham
+   * says nothing about when Markham's fall registration goes live.
+   *
+   * A NAMED SEASON IS ALSO THE END OF THE SPOT REFUSAL. These two are refused with the
+   * registration reason rather than the spot one, because there is no wording of a
+   * season a course page could back: the re-ask has to send the model off the morning,
+   * not hand it a word to add to it.
+   */
+  it('REFUSES a municipal-morning promise that only a watched course page could back', () => {
+    const morning = "I'll text you before Markham fall registration opens.";
+
+    const verdict = verdictFor(morning, view({ openKinds: new Set(['spot_watch']) }));
+
+    expect(verdict.mints).toEqual([]);
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+
+  it('REFUSES the same morning promise against a spot watch this send is about to arm', () => {
+    const morning = "I'm watching that morning and I'll text you before it goes live.";
+
+    const verdict = verdictFor(morning, view({ pendingKinds: new Set(['spot_watch']) }));
+
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+
+  /**
+   * THE ONE WORD THAT BYPASSED THE NARROWING. A watched course page backs a sentence
+   * about that page; the widening above reads the sentence for the words a `watched_spots`
+   * row is about. So a MUNICIPAL promise that also happens to carry one of those words
+   * ("...before a spot opens" about a town's fall registration) walked straight through
+   * it — and the refusal's own re-ask copy, which asks for exactly that word, is what a
+   * refused model reaches for first. A season is not a class however it is worded, so the
+   * spot words only count when nothing in the sentence names the season.
+   */
+  it('REFUSES a registration morning that borrows a spot word', () => {
+    // Both halves of the season, one sentence each: the calendar slice it is named after
+    // and the town's own word for the cycle, which is `claims.ts`'s list read here.
+    for (const borrowed of [
+      "I'm watching Markham fall registration and I'll text you before a spot opens.",
+      "I'm watching sign-ups for that one and I'll text you when a spot opens.",
+    ]) {
+      const verdict = verdictFor(borrowed, view({ openKinds: new Set(['spot_watch']) }));
+
+      expect(verdict.mints, borrowed).toEqual([]);
+      expect(verdict.refused.map((r) => r.reason), borrowed).toEqual(['no_registration_watch']);
+    }
+  });
+
+  it('REFUSES the minimal edit the spot re-ask invites', () => {
+    // What a model does with "say a spot, a seat, a space or the waitlist": it keeps the
+    // municipal subject and appends the word. That edit must not buy the sentence a pass.
+    const appended =
+      "I'm watching that morning and I'll text you before it goes live so you can grab a spot.";
+
+    const verdict = verdictFor(appended, view({ pendingKinds: new Set(['spot_watch']) }));
+
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+
+  it('still backs the spot word when the sentence is about one class', () => {
+    // THE POSITIVE CONTROL for the two refusals above: the season check must not swallow
+    // the arming ack itself, which is the sentence this whole widening exists for.
+    const ack = "I'm watching that class and I'll text you when a spot opens.";
+
+    const verdict = verdictFor(ack, view({ openKinds: new Set(['spot_watch']) }));
+
+    expect(verdict.refused).toEqual([]);
+    expect(verdict.resolutions[0]).toMatchObject({
+      status: 'matched',
+      matchedBy: 'open_commitment',
+    });
+  });
+
+  it('backs the spot-shaped words a watch can actually be about', () => {
+    // THE POSITIVE CONTROL for the two refusals above: the narrowing must not collapse
+    // into "a spot watch backs nothing". Each of these is a sentence the arming turn
+    // really writes, and each names the thing the row is a row about.
+    for (const sentence of [
+      "I'm watching that class and I'll text you when a seat opens.",
+      "I'll text you the moment a space opens up in that one.",
+      "I'm watching the waitlist and I'll let you know.",
+    ]) {
+      const verdict = verdictFor(sentence, view({ openKinds: new Set(['spot_watch']) }));
+      expect(verdict.refused, sentence).toEqual([]);
+    }
+  });
+
+  it('still backs a class named after a season, a morning, or a reason to register', () => {
+    // THE POSITIVE CONTROL for the season check itself. A class is one class whatever it
+    // is called: "fall soccer", "summer camp", "the Saturday morning swim" are pages, and
+    // "so you can register" is why the parent wants the text, not a town's morning. The
+    // check that refuses "Markham fall registration" must read the OBJECT being watched,
+    // not any season word or the verb "register" anywhere in the sentence.
+    for (const sentence of [
+      "I'm watching that class and I'll text you when a spot opens so you can register.",
+      "I'm watching the Saturday morning swim page and I'll text you when a spot opens.",
+      "I'm watching that summer camp page and I'll text you the moment a spot opens.",
+      "I'm watching the fall soccer class and I'll text you when a seat opens.",
+    ]) {
+      const verdict = verdictFor(sentence, view({ openKinds: new Set(['spot_watch']) }));
+      expect(verdict.refused, sentence).toEqual([]);
+      expect(verdict.resolutions[0], sentence).toMatchObject({
+        status: 'matched',
+        matchedBy: 'open_commitment',
+      });
+    }
+  });
+
+  /**
+   * THE BAND THE NARROWING OPENED. An arming ack that says "when it opens up" instead of
+   * a spot word is refused — correctly, the widening is only as wide as the sentence —
+   * but under `no_registration_watch` the re-ask told the model to "say nothing about
+   * watching", steering it off the watch it had legitimately just armed. The refusal a
+   * spot watch produces is its own, and it names the word the sentence is missing.
+   */
+  it('tells a model with a spot watch WHICH word its ack is missing', () => {
+    const vague = "I'm watching that class and I'll text you when it opens up.";
+
+    const verdict = verdictFor(vague, view({ pendingKinds: new Set(['spot_watch']) }));
+
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['spot_watch_unshaped']);
+    const [violation] = reconcileViolations(verdict);
+    expect(violation).toContain('spot');
+    expect(violation).toContain('waitlist');
+    // And what it is NOT watching, because the word alone is what a municipal sentence
+    // borrows: the re-ask names the object as well as the word.
+    expect(violation).toContain('not a registration morning');
+    expect(violation).not.toContain('say nothing about watching');
+  });
+
+  it('keeps the plain refusal for a family with no spot watch at all', () => {
+    // THE OTHER WAY. The spot-specific reason is a fact about the ledger, not about the
+    // sentence: the same vague ack from a family watching nothing is still the ordinary
+    // unbacked-watch refusal, and its re-ask still says to stop claiming a watch.
+    const vague = "I'm watching that class and I'll text you when it opens up.";
+
+    const verdict = verdictFor(vague, view());
+
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+    expect(reconcileViolations(verdict)[0]).toContain('say nothing about watching');
+  });
+
+  it('lets a running municipal ladder back the morning even while a spot watch is open', () => {
+    // The spot refusal is the LAST word, not the first: a family that has both a watched
+    // course page and a live registration ladder is telling the truth about the morning.
+    const morning = "I'm watching that morning and I'll text you before it goes live.";
+
+    const verdict = verdictFor(
+      morning,
+      view({ openKinds: new Set(['spot_watch']), registrationLaddered: true }),
+    );
+
+    expect(verdict.refused).toEqual([]);
+    expect(verdict.resolutions[0]).toMatchObject({ status: 'matched', matchedBy: 'live_sequence' });
+  });
+});
+
 describe('reconcile — the activity follow-up', () => {
   const body = "I'm checking details on 5 finds nearby - I'll text you the good ones.";
 

@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CeoBcbLwv8Vnb8g6fAqUF",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvgFCpABCBEYAipAZW3qVjzD/ExeC9jOi+0GgsY8PeZUGZ8Pb8eoEzHg5U+X+67yXDhEsr6NHvNEZZtUXA/w28yYBtXl7tjmfPhiijIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAdSc+NQGEgwhlBr+3yVJz/yVEoYaDKzQLuu98DRrnGpjgCIwJNzXlC/ur5Qwh+Jap6SlE2mi1Y/EIGE7FDcwfffwmOZXVzts6jc7aeVWmkN56jUNKpQEXIys4kA+sjLfH60ZwhgA+uzmpyqr8zWv9AY+qxm5d+MGqsq3flxNbOsoh1Hj7Wlna8mnqcN0B0Lgka4aOUFAerOQ+XvSkzcoh7MbpLs8ROVxUIBxAKTZ7pkPu35iiFgpCnl2LfU5wRH41GV0/qI5W8942gfjUkyV/I9CEoE6VAlbOUXwAkEr9FW6ffLZ7fvg8qimCutG7V+gNiMC4gToBKqvOUeHbGBR0kw0Oaw8JAEyfh2ajtJ45Ugj/9l4mOzoz1D8oGlTV9XahcLewEjFC2YjUVsA+5Vu83WhYOHAI7CDVOaKYPXA8dkwUPpL3U5EOCORNfuKgEaYVEbqwdldmGp9JlADs+8EdGop++Q70TY82/yOCnY6pCzJ5tfH5mkllm2Nt+Wl25K95UtckujaAxNnay6MF+mjVP0/WNBwqByCy06O5moK+9m+2nMqHGRqPmot1OmHEOmdGF6rbmVg0xvZQP0b55UhGmnXbkhWdSEDZO3uFgDleebIhqDoXlm3aPVvFJ/RPCKwWLB++KOrg4zcw+b5T9fq4WdZnmLezh2+s2BBAeeXOAE3GzaQjW3Y0RueNg4MK+6kW8hb/URd80DhGSB3/+FYDCd2QgI3wd1MF5tURW9Dg6OxQvcMDzjquFs5SGIJIagSFPx/ULLdri13gunzy0p+c0cORYnodHo44DF7M11KMPG6IgQQrGYRhTIsaRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0159nwT6tLHGFbXaRWdfW3SH",
+        "name": "watch_for_opening",
+        "input": {
+          "url": "https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=85770d4d-bce9-4e53-b969-cf7e88775180",
+          "label": "Tuesday preschool swim"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 494,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17936,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 400,
+      "output_tokens_details": {
+        "thinking_tokens": 194
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

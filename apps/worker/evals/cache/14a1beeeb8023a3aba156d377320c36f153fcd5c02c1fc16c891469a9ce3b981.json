@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CenXjkuw5sgLJXqkpbigg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EucECpABCBEYAipAAXnvrEa2k+EzcDUA+D1BB6tyQczhZ2nt6jke6UfNhudHcyaoQqGhKYq/Y0RpYyWp+fprROTEdukEkHHCW9XN9DIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQzNmQ3ODhmMC1iMTg1LTRiYTEtOTIyYS1jNTExN2NmZjZkODmoAeqz9tQGEgx1fkUhue6CK6KXExwaDDA1q1Vpw3g8/6EIcSIwLFITbCk06p05Bb7Km5stC+p8oNAAUxIfB0ZhKvyqbd7SnDNndUOrP2NJQuCJy1mwKoMDPABm5zoaG1vyvBXXWk93iVEo33O8K5VWgtRBBxGNnD+wLeBxiZhQ4vkxrv7AS9/7Xh3FE7gOyjabtlMSrCfvvDeYgJOx9NEYl1CgG32E0dnn4ZFYBllpvPEENc4uGB8ng6q+DaUGSbeC7UYBaP0tQdRX4Pgd2dTp2X/GUrcT/0e5rwED5AXXm1nj1BKdp6OxnwEXxXbXkcYf2hvR2Rq7SSikN+3QjAp1fVeZjnam2c0cmbkTxAoFcu4i1r/i050l2NkSicFGDxkZk4P2K7ho6UWH7qnmqUJkVz1pOGBZsmZ0TYsaZxOwCBMEVZaD/Dbp8i1tjgOnwXGkPdx/Kz0V6XNnayZsMtUetKX66z+14pkli1+7TSdmXLjv+aSTPuY3NNlgRS41MZVJW3qL9rsc4DaYb4NFPZ+GKWSPntsoaD28RepVyg/vlXOuYmTAtHcrzZYCLpfrRLbCUu0PcZaSPZbu8BUwKvEkRd6QN1asfcvr9FmEw6dULbN6ektRzzZthYsPGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_015KYrCkE75Wmo1QLSwwAKct",
+        "name": "find_activities",
+        "input": {
+          "subject": "fall kids programs",
+          "window": "fall 2026"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 657,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17841,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 198,
+      "output_tokens_details": {
+        "thinking_tokens": 117
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

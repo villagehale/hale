@@ -104,11 +104,17 @@ const NEGATIVE_SUBJECT = /\b(?:nothing|none|nobody|neither|no)\b/i;
 /** Hale will TELL the parent, or is watching so it can. */
 const NOTIFY_VERB =
   /\b(?:watch|watching|keep\s+an\s+eye|monitor|monitoring|text|texting|message|messaging|ping|let\s+you\s+know|flag|alert|remind|tell\s+you|send)\b/i;
-/** The registration morning, named. Deliberately NOT "window" or "spot": the ladder's
- * own check-in reply says "I'll flag the next Halton Hills window early", and that
- * sentence is about a cycle nobody has published yet. */
-const REGISTRATION_SUBJECT =
-  /\b(?:registration|register|registering|sign[-\s]?ups?|signing\s+up|opens?|opening|goes?\s+live|go\s+live|doors\s+open)\b/i;
+/** The registration morning, named as ITSELF. Deliberately NOT "window" or "spot": the
+ * ladder's own check-in reply says "I'll flag the next Halton Hills window early", and
+ * that sentence is about a cycle nobody has published yet.
+ *
+ * This is the CLAIM'S kind, not what a course page may back: reconcile.ts reads the
+ * watched OBJECT ("fall registration", "the registration morning") on its own, because
+ * "so you can register" on a one-class ack is a purpose, not a season (VIL-337). */
+const REGISTRATION_NAMED =
+  /\b(?:registration|register|registering|sign[-\s]?ups?|signing\s+up)\b/i;
+/** ...or named by what it is about to do, which is the half a class page shares. */
+const REGISTRATION_OPENING = /\b(?:opens?|opening|goes?\s+live|go\s+live|doors\s+open)\b/i;
 
 /** Hale will go and look, or come back with what it found. */
 const RETURN_VERB =
@@ -216,7 +222,12 @@ function kindOf(sentence: string): ClaimKind | null {
   const speaks = FIRST_PERSON_FUTURE.test(text) || FIRST_PERSON_PROGRESSIVE.test(text);
   if (speaks) {
     if (CEASE_VERB.test(text) && OWN_OUTPUT.test(text)) return 'self_referential';
-    if (NOTIFY_VERB.test(text) && REGISTRATION_SUBJECT.test(text)) return 'registration_watch';
+    if (
+      NOTIFY_VERB.test(text) &&
+      (REGISTRATION_NAMED.test(text) || REGISTRATION_OPENING.test(text))
+    ) {
+      return 'registration_watch';
+    }
     if (RETURN_VERB.test(text) && ACTIVITY_SUBJECT.test(text)) return 'activity_followup';
   }
   const assertion = SCHEDULED_ASSERTION.exec(text);

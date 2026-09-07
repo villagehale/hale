@@ -285,7 +285,7 @@ describe("the founder's welcome note", () => {
    * thing: what this file is about is which turns REACH it, never what it writes. */
   const silentCoach = {
     async respond() {
-      return { reply: 'coach takes it', planOffer: null, activityPromise: null };
+      return { reply: 'coach takes it', planOffer: null, activityPromise: null, spotWatch: null };
     },
   } as unknown as ChannelCoachRuntime;
 

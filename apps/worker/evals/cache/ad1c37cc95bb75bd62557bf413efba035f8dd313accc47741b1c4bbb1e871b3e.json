@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the referral link appended by the runtime and hands it to Sam to forward themselves — that's the right shape. However, there are two issues: (1) The reply includes a description of Hale (\"Hale is a text line that tracks your family's week - schedules, activities, parenting questions, all in one place\") which is extra machinery/marketing copy the parent didn't ask for and that pads the reply unnecessarily. The parent asked how to refer others, and the answer is simply: here's your link, forward it. (2) The URL is the one appended by the runtime (`knows.referralLinkAppended`), so that is correct recall, not invention. The extra descriptive sentence is a small blemish — it's not wrong, but it's more than needed and slightly self-absorbed in explaining what Hale does rather than just giving the link. Overall it does the job but carries one redundant clause, placing it at a 4.",
+    "score": 4
+  }
+}

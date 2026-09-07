@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked about nearby parks. Hale has two offerable items and a webFind. The reply names Riverdale Farm (an offerable) correctly — free, outdoor, open daily, Sun Aug 9. However, it omits the second offerable (Central Library story time) entirely, and it omits the webFind (Tiny Tumblers), which the rules require Hale to hand over with attribution. The webFind rule says Hale is REQUIRED to hand it over and name the source. Skipping it entirely is a failure. Also \"already checked out on our end\" slightly overstates — offerable means the venue and day are verified, which is fine to say, but the phrasing \"checked out on our end\" is acceptable. The bigger issue is the missing webFind (mandatory) and the missing second offerable. Two significant omissions. The reply is not misleading or invented, just incomplete in ways the rules treat as failures. That lands at a 2-3 range. Since the webFind omission is a clear rule violation (REQUIRED to hand it over), and the second offerable is also dropped, I'll score this a 2.",
+    "score": 2
+  }
+}

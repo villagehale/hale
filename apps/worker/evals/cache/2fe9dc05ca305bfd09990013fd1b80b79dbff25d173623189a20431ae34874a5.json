@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains an earlier Hale message naming \"Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13\" — that is recall, not invention. The parent's text asks to add that gymnastics class to the calendar, which is a clear single instruction. Hale has drafted a calendar_add and correctly asks for YES confirmation, naming the venue, day, time, and start date so the parent can confirm exactly what they're approving. The reply is concise, names the right child (Remy, the toddler — gymnastics fits), and follows the contract shape perfectly. No greeting, no sign-off, no markdown, one question. This is the product working correctly.",
+    "score": 5
+  }
+}

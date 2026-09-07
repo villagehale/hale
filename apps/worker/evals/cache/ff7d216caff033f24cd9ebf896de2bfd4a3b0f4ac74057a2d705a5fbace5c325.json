@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text is unambiguous: there is exactly one swim lesson on Thursday (Thu 5:15pm, East pool), and they want it moved to 17h45 (5:45pm). The reference is fully resolved — no clarifying question needed. Hale correctly drafted a calendar_move and asks for YES confirmation, which is exactly the contract shape. The reply is clean, in French matching the parent's language, names the right event, states the new time, and ends with the required YES prompt. One very minor blemish: it could have named the current time (5:15pm) to make clear which direction the move goes, but this is negligible. Overall this is a correct, concise reply doing exactly the job.",
+    "score": 5
+  }
+}

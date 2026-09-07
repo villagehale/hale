@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly surfaces both the verified calendar event (soccer practice, 10am, Cedarvale Park) and the offerable activity (Central Library story time at Bloor/Gladstone, free drop-in) — both are legitimate recall/offerable items. It also notes one item is still being checked implicitly by not mentioning it, which is correct since Hale has no name for the stillBeingChecked item. The reply is concise, no greeting, no sign-off, no markdown, no app referral, no invented details. One small blemish: it includes the specific date \"Sat, Aug 8\" for the story time, which is fine as it comes from the offerable data. The reply is clean and does the job well. It could arguably be slightly tightened but there's no real flaw.",
+    "score": 5
+  }
+}

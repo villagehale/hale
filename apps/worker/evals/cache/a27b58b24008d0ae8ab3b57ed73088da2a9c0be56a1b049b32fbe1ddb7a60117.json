@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that `watch_for_opening` requires a course-page link pasted by the parent, and asks for it. This is exactly the right answer per the rules: \"With no link there is nothing to watch, and asking for the link is the right answer rather than a stall.\" The reply does the job cleanly. Minor blemish: \"can you send it over?\" is a slightly wordy closing when \"paste the link and I'll watch it\" would be tighter, but the meaning is correct and the shape is right. One small redundancy (\"specific class's page\") but nothing misleading. Solid 4.",
+    "score": 4
+  }
+}
