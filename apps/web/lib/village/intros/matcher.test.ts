@@ -12,6 +12,11 @@ const NOW = new Date('2026-08-11T14:00:00Z');
 const AAA = '11111111-1111-4111-8111-111111111111';
 const BBB = '22222222-2222-4222-8222-222222222222';
 const CCC = '33333333-3333-4333-8333-333333333333';
+const DDD = '44444444-4444-4444-8444-444444444444';
+
+/** One opaque `host:courseId`, as {@link IntroCandidateFamily.classKeys} carries it. */
+const COURSE = 'cityofmarkham.perfectmind.com:22222222-2222-2222-2222-222222222222';
+const OTHER_COURSE = 'townofoakville.perfectmind.com:33333333-3333-3333-3333-333333333333';
 
 function family(overrides: Partial<IntroCandidateFamily> & { familyId: string }): IntroCandidateFamily {
   return {
@@ -19,6 +24,7 @@ function family(overrides: Partial<IntroCandidateFamily> & { familyId: string })
     fsa: 'M4K',
     // Born 2024-02-11 -> 30 months at NOW -> toddler.
     children: [{ id: `child-${overrides.familyId}`, dateOfBirth: '2024-02-11' }],
+    classKeys: new Set(),
     ...overrides,
   };
 }
@@ -93,6 +99,7 @@ describe('matchIntroPairs', () => {
         familyBChildId: `child-${BBB}`,
         fsa: 'M4K',
         stage: 'toddler',
+        signal: 'same_area',
       },
     ]);
     expect(result.skipped).toEqual([]);
@@ -354,5 +361,149 @@ describe('matchIntroPairs across a municipality', () => {
       now: NOW,
     });
     expect(result.pairings).toEqual([]);
+  });
+});
+
+/**
+ * VIL-340 · the same-class signal, which RANKS and never speaks. A key is an opaque
+ * `host:courseId` the caller derived from the family's own live watched spots; this file
+ * only ever compares them.
+ *
+ * Every case below also pins what the signal may NOT do: cross an area, override a band,
+ * or reopen a burned pair. A rank that could do any of those would be a second matching
+ * rule wearing a preference's clothes.
+ */
+describe('matchIntroPairs and the same-class signal', () => {
+  function pairs(families: IntroCandidateFamily[], pairedBefore = new Set<string>()) {
+    return matchIntroPairs({
+      families,
+      familiesWithOpenProposal: new Set(),
+      pairedBefore,
+      now: NOW,
+    }).pairings;
+  }
+
+  /** Catches the first-fit walk surviving unchanged: it would pair AAA with BBB. */
+  it('prefers the partner sharing a class key over the first-fit neighbour', () => {
+    expect(
+      pairs([
+        family({ familyId: AAA, classKeys: new Set([COURSE]) }),
+        family({ familyId: BBB }),
+        family({ familyId: CCC, classKeys: new Set([COURSE]) }),
+      ]),
+    ).toEqual([expect.objectContaining({ familyAId: AAA, familyBId: CCC, signal: 'same_class' })]);
+  });
+
+  /** Catches a walk that keeps looking after it has found a shared key (DDD would win),
+   * and a fallback that is not the first eligible partner in id order. */
+  it('takes the FIRST shared-key partner in id order, and first-fits everyone left over', () => {
+    expect(
+      pairs([
+        family({ familyId: AAA, classKeys: new Set([COURSE]) }),
+        family({ familyId: BBB }),
+        family({ familyId: CCC, classKeys: new Set([COURSE]) }),
+        family({ familyId: DDD, classKeys: new Set([COURSE]) }),
+      ]),
+    ).toEqual([
+      expect.objectContaining({ familyAId: AAA, familyBId: CCC, signal: 'same_class' }),
+      expect.objectContaining({ familyAId: BBB, familyBId: DDD, signal: 'same_area' }),
+    ]);
+  });
+
+  /** Catches a rank hoisted out of the per-area bucket — the one mutation that would turn
+   * "a Hale family near you" into a family two hours away who happens to want the same
+   * class. M4K and M5V are both Toronto and both FSA-exact by design. */
+  it('never pairs across match areas on a shared class key', () => {
+    expect(
+      pairs([
+        family({ familyId: AAA, fsa: 'M4K', classKeys: new Set([COURSE]) }),
+        family({ familyId: BBB, fsa: 'M5V', classKeys: new Set([COURSE]) }),
+      ]),
+    ).toEqual([]);
+  });
+
+  /** Catches a rank that pairs on the key alone: the band is still required, and it is
+   * still the earliest band SHARED with the chosen partner rather than the left family's
+   * own earliest. */
+  it('never lets a shared class key stand in for the stage band', () => {
+    expect(
+      pairs([
+        family({
+          familyId: AAA,
+          classKeys: new Set([COURSE]),
+          children: [{ id: 'tot', dateOfBirth: '2024-02-11' }],
+        }),
+        family({
+          familyId: BBB,
+          classKeys: new Set([COURSE]),
+          children: [{ id: 'big', dateOfBirth: '2019-02-11' }],
+        }),
+      ]),
+    ).toEqual([]);
+
+    expect(
+      pairs([
+        family({
+          familyId: AAA,
+          classKeys: new Set([COURSE]),
+          children: [
+            { id: 'a-tot', dateOfBirth: '2024-02-11' },
+            { id: 'a-big', dateOfBirth: '2019-02-11' },
+          ],
+        }),
+        family({
+          familyId: BBB,
+          classKeys: new Set([COURSE]),
+          children: [{ id: 'b-big', dateOfBirth: '2019-02-11' }],
+        }),
+      ]),
+    ).toEqual([
+      expect.objectContaining({ stage: 'child', familyAChildId: 'a-big', signal: 'same_class' }),
+    ]);
+  });
+
+  /** Catches a rank that treats a shared class as a reason to ask a burned pair again.
+   * Closed is forever; a shared class is not a one-time exception to it. */
+  it('never re-proposes a pair in pairedBefore, however good the signal', () => {
+    expect(
+      pairs(
+        [
+          family({ familyId: AAA, classKeys: new Set([COURSE]) }),
+          family({ familyId: BBB }),
+          family({ familyId: CCC, classKeys: new Set([COURSE]) }),
+        ],
+        new Set([`${AAA}:${CCC}`]),
+      ),
+    ).toEqual([expect.objectContaining({ familyAId: AAA, familyBId: BBB, signal: 'same_area' })]);
+  });
+
+  /** Two families holding keys that do not INTERSECT are not a same-class pair. Catches an
+   * intersection written as "both sides hold at least one key". */
+  it('ranks on the shared key, not on holding a key', () => {
+    expect(
+      pairs([
+        family({ familyId: AAA, classKeys: new Set([COURSE]) }),
+        family({ familyId: BBB, classKeys: new Set([OTHER_COURSE]) }),
+      ]),
+    ).toEqual([expect.objectContaining({ familyAId: AAA, familyBId: BBB, signal: 'same_area' })]);
+  });
+
+  /** With no keys anywhere the matcher is today's matcher. Catches a fallback that is not
+   * first-in-id-order (which would pair AAA with CCC) and a default signal that is not
+   * 'same_area'. */
+  it('is byte-for-byte today’s first-fit pairing when no family holds a key', () => {
+    expect(
+      pairs([family({ familyId: AAA }), family({ familyId: BBB }), family({ familyId: CCC })]),
+    ).toEqual([
+      {
+        familyAId: AAA,
+        familyBId: BBB,
+        familyAChildId: `child-${AAA}`,
+        familyBChildId: `child-${BBB}`,
+        fsa: 'M4K',
+        stage: 'toddler',
+        signal: 'same_area',
+      },
+    ]);
   });
 });

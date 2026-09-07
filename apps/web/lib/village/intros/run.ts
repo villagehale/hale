@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
-import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -28,7 +28,9 @@ import { discoverableUserIds } from './consent';
 import { INTRO_SOFT_CLOSE, stageWord } from './copy';
 import { type IntroAskRequest, type IntroVoice, productionIntroVoice } from './voice';
 import { type IntroEmailSender, createIntroEmailSender, introFirstName } from './email';
+import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import {
+  type IntroMatchSignal,
   type IntroSkipReason,
   matchAreaFsas,
   matchAreaKey,
@@ -198,6 +200,21 @@ export interface IntroSweepDeps {
   /** Parents who already carry ANY answer on the discoverability scope. */
   askedUserIds(database: Database, userIds: readonly string[]): Promise<Set<string>>;
   loadChildren(database: Database, familyId: string): Promise<IntroSweepChild[]>;
+  /**
+   * The live courses each of these families is waiting on, as opaque `host:courseId`
+   * keys — the matcher's ranking input (VIL-340).
+   *
+   * REQUIRED, with no default (rule #11). A reader that could be left out would read as
+   * "nobody shares a class", which is the same answer as a real empty result and would
+   * silently un-rank every pairing in a deployment that forgot to wire it. A family with
+   * no live watch is ABSENT from the map rather than mapped to an empty set, so
+   * "holds nothing" and "was not asked about" stay different answers.
+   */
+  loadClassKeys(
+    database: Database,
+    families: readonly { familyId: string; parentUserId: string }[],
+    now: Date,
+  ): Promise<ReadonlyMap<string, ReadonlySet<string>>>;
   loadNameLevel(database: Database, parentUserId: string): Promise<ChildNameLevel>;
   loadOpenProposalFamilyIds(database: Database): Promise<Set<string>>;
   loadPairedBefore(database: Database): Promise<Set<string>>;
@@ -294,6 +311,13 @@ export interface IntroSweepResult {
   enabled: boolean;
   asked: number;
   proposed: number;
+  /** Which signal each new pairing was ranked on (VIL-340). The only place a run says the
+   * same-class preference did anything, and the sum is `proposed`. */
+  matchedOn: Record<IntroMatchSignal, number>;
+  /** Opted-in families carrying at least one live course key this run. The tell that
+   * separates "nobody shares a class" from "no watch was ever armed" — without it a
+   * matchedOn.same_class of 0 is unreadable. */
+  classKeyed: number;
   carded: number;
   introduced: number;
   /** Both sides said yes and the email did not go. The pair stays open on purpose. */
@@ -321,6 +345,8 @@ function emptyResult(enabled: boolean): IntroSweepResult {
     enabled,
     asked: 0,
     proposed: 0,
+    matchedOn: { same_class: 0, same_area: 0 },
+    classKeyed: 0,
     carded: 0,
     introduced: 0,
     introFailed: 0,
@@ -525,14 +551,26 @@ async function runMatchPhase(
     deps.loadPairedBefore(database),
   ]);
 
+  // AFTER the consent and scope filter, never before: a family that has not said it wants
+  // to be findable is not a family this feature reads a registration intent about.
+  const classKeys = await deps.loadClassKeys(
+    database,
+    optedIn.map(({ familyId, parentUserId }) => ({ familyId, parentUserId })),
+    now,
+  );
+
   const candidates = await Promise.all(
     optedIn.map(async (family) => ({
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       fsa: family.areaCoarse,
       children: await deps.loadChildren(database, family.familyId),
+      // Absent from the map is the ordinary answer — no live watch — and it ranks the same
+      // as holding a key nobody else holds.
+      classKeys: classKeys.get(family.familyId) ?? new Set<string>(),
     })),
   );
+  result.classKeyed = candidates.filter((candidate) => candidate.classKeys.size > 0).length;
 
   const match = matchIntroPairs({
     families: candidates,
@@ -543,7 +581,12 @@ async function runMatchPhase(
   for (const skip of match.skipped) result.skipped[skip.reason] += 1;
 
   const expiresAt = new Date(now.getTime() + INTRO_EXPIRY_DAYS * 24 * 3_600_000);
-  for (const pairing of match.pairings) {
+  for (const matched of match.pairings) {
+    // The signal is split off HERE so `createProposal` is handed exactly the input it was
+    // handed before VIL-340. `insertProposal` destructures by name, so an extra field
+    // would ride through the port unnoticed today and be a column somebody adds tomorrow —
+    // and a proposal row that knows the signal is a row the card and email read back.
+    const { signal, ...pairing } = matched;
     try {
       const anchor = await deps.loadAnchorSession(database, matchAreaFsas(pairing.fsa), now);
       const proposalId = await deps.createProposal(database, {
@@ -552,6 +595,7 @@ async function runMatchPhase(
         expiresAt,
       });
       result.proposed += 1;
+      result.matchedOn[signal] += 1;
       for (const familyId of [pairing.familyAId, pairing.familyBId]) {
         await deps.audit(database, {
           familyId,
@@ -566,6 +610,10 @@ async function runMatchPhase(
             fsa: pairing.fsa,
             stage: pairing.stage,
             anchored: anchor !== null,
+            // WHY this counterpart and not the next one. Provenance, and the only record
+            // of it anywhere: a right-to-access read of either family now says the pair was
+            // ranked on a shared class, by family id and never by course identity.
+            signal,
           },
         });
       }
@@ -1073,6 +1121,74 @@ async function readIntroChildren(
     .where(eq(schema.children.familyId, familyId));
 }
 
+/**
+ * The live courses each family is waiting on, as `host:courseId` (VIL-340).
+ *
+ * COURSE ID, NOT THE URL. `source_url` also carries a `widgetId`, which is the portal
+ * WIDGET a parent's link happened to come through rather than anything about the class —
+ * two parents on one course can hold two different urls. `sanitizeSpotUrl` is the one
+ * reader of that shape, so the key is derived by running the stored url back through it
+ * rather than by a second parse living here.
+ *
+ * ARMER-SCOPED, and that is a consent rule rather than a filter. A watch is armed with
+ * the turn's own `parentUserId`, and a co_parent holds full parent scope — so without this
+ * comparison a co-parent's registration intent would rank on the PRIMARY parent's
+ * discoverability consent, which is the cross-parent case rule #5 forbids. The narrowing
+ * is deliberate: a class only one co-parent watches never ranks.
+ *
+ * The read is family-scoped (`watched_spots_family_idx`) and never asks "who else is
+ * watching this course" — a global read on a course key would be a disclosure-shaped
+ * query, and this feature has no use for one. `label` is never selected.
+ */
+async function readClassKeys(
+  database: Database,
+  families: readonly { familyId: string; parentUserId: string }[],
+  now: Date,
+): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
+  const keys = new Map<string, Set<string>>();
+  if (families.length === 0) return keys;
+
+  const armedBy = new Map(families.map((family) => [family.familyId, family.parentUserId]));
+  const rows = await database
+    .select({
+      id: schema.watchedSpots.id,
+      familyId: schema.watchedSpots.familyId,
+      parentUserId: schema.watchedSpots.parentUserId,
+      sourceUrl: schema.watchedSpots.sourceUrl,
+    })
+    .from(schema.watchedSpots)
+    .where(
+      and(
+        inArray(schema.watchedSpots.familyId, [...armedBy.keys()]),
+        // The store's own definition of live. A watch released as 'notified' is out by it:
+        // a family that got the seat is not waiting on that class any more.
+        isNull(schema.watchedSpots.releasedAt),
+        gt(schema.watchedSpots.expiresAt, now),
+      ),
+    );
+
+  for (const row of rows) {
+    if (row.parentUserId !== armedBy.get(row.familyId)) continue;
+    const sanitized = sanitizeSpotUrl(row.sourceUrl);
+    if (!sanitized.ok) {
+      // A host dropped from SPOT_PORTAL_HOSTS turns its live rows into refusals here. That
+      // is a code change, so it is LOUD and never thrown on — the sweep must not stop
+      // because one portal was retired. Spot id and the refusal enum only: never the url,
+      // its host, or the parent's label (rule #1).
+      console.error(
+        { watchedSpotId: row.id, reason: sanitized.reason },
+        'village intros: a live watch no longer resolves to a course - dropped from the class signal',
+      );
+      continue;
+    }
+    const key = `${sanitized.host}:${sanitized.courseId}`;
+    const held = keys.get(row.familyId);
+    if (held) held.add(key);
+    else keys.set(row.familyId, new Set([key]));
+  }
+  return keys;
+}
+
 /** Every parent who has ANY row on the discoverability scope — a grant or a decline.
  * Either one is proof the question was put, and the question is asked once. */
 async function readAskedUserIds(
@@ -1237,6 +1353,7 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
     discoverableUserIds,
     askedUserIds: readAskedUserIds,
     loadChildren: readIntroChildren,
+    loadClassKeys: readClassKeys,
     loadNameLevel: async (database, parentUserId) =>
       (await loadLoopPrefsView(parentUserId, database)).childNameLevel,
     loadOpenProposalFamilyIds: readOpenProposalFamilyIds,
