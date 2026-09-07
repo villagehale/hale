@@ -72,15 +72,10 @@ import { sanitizeSpotUrl } from './url';
  * cron route deliberately constructs no Anthropic client.
  */
 
-/** The dark-launch gate for the sweep itself. STRICT on the literal 'true' for the
- * reason f14Enabled is (`vercel env add` from a piped echo stores a trailing newline):
- * a truthiness check would read `'true\n'` as ON and start polling municipalities
- * nobody armed. */
-export const WATCHED_SPOTS_ENABLED_ENV = 'WATCHED_SPOTS_ENABLED';
-
-export function watchedSpotsEnabled(): boolean {
-  return process.env[WATCHED_SPOTS_ENABLED_ENV] === 'true';
-}
+// The dark-launch gate lives in ./flag so the arming verb reads the SAME definition
+// without importing this module's transport and fetch graph into every texted turn.
+import { watchedSpotsEnabled } from './flag';
+export { WATCHED_SPOTS_ENABLED_ENV, watchedSpotsEnabled } from './flag';
 
 /** The rate_limits `route` this sweep's per-slot claim lives under — an ops event with
  * no family, made exactly-once by the table's (identifier, route, window_start) index,
