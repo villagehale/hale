@@ -1,5 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Database } from '@hale/db';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SpotPortal } from '~/lib/channel/spots/url';
+import type {
+  PrepareReplyDeps,
+  PreparingSequence,
+} from '~/lib/registration/sequence/prepare-reply';
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
 import type { OpenCheckupOffer } from '~/lib/health/offer';
 import type { HealthReplyDeps } from '~/lib/health/reply';
@@ -52,6 +59,31 @@ const turn = (
   openQuestions: async () => options.open ?? [],
   inboundChannelMessageId: INBOUND_MESSAGE_ID,
 });
+
+/**
+ * The pre-open branch, wired to readers that THROW.
+ *
+ * Every case that predates VIL-338 runs with F14 dark for this family, so the branch
+ * returns before it reads anything — and this is the positive proof of that, rather
+ * than a stub that would let a widened gate pass unnoticed.
+ */
+const NO_PREPARE: PrepareReplyDeps = {
+  loadPreparingSequence: async () => {
+    throw new Error('the pre-open branch must not run for a dark household');
+  },
+  readinessAskedLastAt: async () => {
+    throw new Error('the pre-open branch must not run for a dark household');
+  },
+  fetchBody: async () => {
+    throw new Error('the pre-open branch must not fetch');
+  },
+  recordCourseBinding: async () => {
+    throw new Error('the pre-open branch must not write');
+  },
+  recordReadinessState: async () => {
+    throw new Error('the pre-open branch must not write');
+  },
+};
 
 const APPROVAL_QUESTION: OpenQuestion = {
   id: 'action-1',
@@ -305,7 +337,7 @@ function sequenceDeps(
 describe('sequenceReplyHandler', () => {
   it('claims a waitlist report and files the position', async () => {
     const deps = sequenceDeps();
-    const verdict = await sequenceReplyHandler(deps).handle(DB, turn('waitlisted #3'));
+    const verdict = await sequenceReplyHandler(deps, NO_PREPARE).handle(DB, turn('waitlisted #3'));
 
     expect(verdict.claimed).toBe(true);
     expect(deps.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
@@ -313,7 +345,7 @@ describe('sequenceReplyHandler', () => {
 
   it('claims a got-in report', async () => {
     const deps = sequenceDeps();
-    const verdict = await sequenceReplyHandler(deps).handle(DB, turn("we're in"));
+    const verdict = await sequenceReplyHandler(deps, NO_PREPARE).handle(DB, turn("we're in"));
 
     expect(verdict.claimed).toBe(true);
     expect(deps.recorded).toEqual([{ outcome: 'registered', position: null }]);
@@ -321,7 +353,7 @@ describe('sequenceReplyHandler', () => {
 
   it('claims nothing when no check-in window is open', async () => {
     const deps = sequenceDeps({ open: false });
-    const verdict = await sequenceReplyHandler(deps).handle(DB, turn('waitlisted #3'));
+    const verdict = await sequenceReplyHandler(deps, NO_PREPARE).handle(DB, turn('waitlisted #3'));
 
     expect(verdict.claimed).toBe(false);
     expect(deps.recorded).toEqual([]);
@@ -336,14 +368,14 @@ describe('sequenceReplyHandler', () => {
    */
   it('declines an unreadable message so the coach can answer it', async () => {
     const deps = sequenceDeps();
-    const verdict = await sequenceReplyHandler(deps).handle(DB, turn('what a morning'));
+    const verdict = await sequenceReplyHandler(deps, NO_PREPARE).handle(DB, turn('what a morning'));
 
     expect(verdict.claimed).toBe(false);
   });
 
   it('still declines once the re-ask is spent', async () => {
     const deps = sequenceDeps({ reaskedAt: new Date('2026-07-30T09:00:00.000Z') });
-    const verdict = await sequenceReplyHandler(deps).handle(DB, turn('what a morning'));
+    const verdict = await sequenceReplyHandler(deps, NO_PREPARE).handle(DB, turn('what a morning'));
 
     expect(verdict.claimed).toBe(false);
   });
@@ -406,7 +438,7 @@ describe('handler order — registration last', () => {
     expect((await healthReplyHandler(health).handle(DB, turn('waitlisted #3'))).claimed).toBe(
       false,
     );
-    expect((await sequenceReplyHandler(sequence).handle(DB, turn('waitlisted #3'))).claimed).toBe(
+    expect((await sequenceReplyHandler(sequence, NO_PREPARE).handle(DB, turn('waitlisted #3'))).claimed).toBe(
       true,
     );
     expect(sequence.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
@@ -626,5 +658,305 @@ describe('a bare affirmative with more than one kind of question open', () => {
     );
 
     expect(verdict.claimed).toBe(true);
+  });
+});
+
+/**
+ * VIL-338 · the PRE-OPEN branch on the same handler.
+ *
+ * M7's handler answered the morning after; it now also answers the days before, and the
+ * two shapes it can claim there are a pasted course link and a bare YES/NO to the
+ * readiness checklist. Everything below pins WHO GETS THE MESSAGE, which is the only
+ * contested decision — the writes themselves are proven against Postgres in
+ * registration/sequence/prepare-reply.test.ts.
+ */
+
+const FIXTURE_PAGE = readFileSync(
+  join(__dirname, '..', 'spots', 'fixtures', 'open-window-open-markham.html'),
+  'utf8',
+);
+
+const MARKHAM_PORTAL: SpotPortal = {
+  portalLabel: "Markham's portal",
+  municipality: 'markham',
+  timeZone: 'America/Toronto',
+  accountLabel: 'a Markham portal account',
+};
+
+const LEGO_URL =
+  'https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928';
+
+const PREPARING: PreparingSequence = {
+  sequenceId: 'seq-1',
+  familyId: FAMILY,
+  parentUserId: PARENT,
+  windowId: 'win-1',
+  municipality: 'markham',
+  portal: MARKHAM_PORTAL,
+  opensForFamilyAt: new Date('2026-08-11T06:30:00-04:00'),
+  isResidentWindow: true,
+  timeZone: 'America/Toronto',
+  courseUrl: null,
+  courseOpensAt: null,
+  readinessReady: null,
+  fitNotes: [{ childId: 'child-1', name: 'Mia', fit: 'in_band' }],
+  children: [{ id: 'child-1', dateOfBirth: '2021-08-01', dobPrecision: 'exact' }],
+};
+
+const READINESS_QUESTION: OpenQuestion = {
+  id: 'seq-1',
+  kind: 'registration_readiness',
+  description: 'Whether the setup on Markham’s portal is done',
+  subject: 'getting set up for the registration morning',
+  answerable: { yes: true, no: true },
+  askedAt: new Date('2026-08-04T14:00:00.000Z'),
+  solicited: true,
+};
+
+const PRE_OPEN_NOW = new Date('2026-08-04T12:00:00.000Z');
+
+function prepareDeps(
+  options: {
+    sequence?: PreparingSequence | null;
+    askedAt?: Date | null;
+    page?: string | null;
+  } = {},
+) {
+  const bound: Array<{ url: string; courseOpensAt: Date; inbound: string }> = [];
+  const readiness: Array<{ ready: boolean; inbound: string; read: string }> = [];
+  return {
+    bound,
+    readiness,
+    loadPreparingSequence: async () =>
+      options.sequence === undefined ? PREPARING : options.sequence,
+    readinessAskedLastAt: async () =>
+      options.askedAt === undefined ? READINESS_QUESTION.askedAt : options.askedAt,
+    fetchBody: async () => {
+      if (options.page === null) throw new Error('ETIMEDOUT');
+      return options.page ?? FIXTURE_PAGE;
+    },
+    recordCourseBinding: async (_db, input) => {
+      bound.push({
+        url: input.url,
+        courseOpensAt: input.courseOpensAt,
+        inbound: input.inboundChannelMessageId,
+      });
+      return 'bound' as const;
+    },
+    recordReadinessState: async (_db, input) => {
+      readiness.push({
+        ready: input.ready,
+        inbound: input.inboundChannelMessageId,
+        read: input.read,
+      });
+      return 'recorded' as const;
+    },
+  } satisfies PrepareReplyDeps & {
+    bound: Array<{ url: string; courseOpensAt: Date; inbound: string }>;
+    readiness: Array<{ ready: boolean; inbound: string; read: string }>;
+  };
+}
+
+/** The pre-open branch only runs for a household F14 is armed for (D21). */
+function preOpenTurn(
+  body: string,
+  options: { resolved?: ResolvedAnswer | null; open?: OpenQuestion[] } = {},
+): HandlerContext {
+  return { ...turn(body, options), now: PRE_OPEN_NOW };
+}
+
+describe('sequenceReplyHandler · the pre-open branch', () => {
+  beforeEach(() => {
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', FAMILY);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('binds a pasted course link and answers with the ack', async () => {
+    const prepare = prepareDeps();
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn(`here you go ${LEGO_URL}`),
+    );
+
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed) throw new Error('unreachable');
+    expect(verdict.outcome).toBe('bound');
+    expect(verdict.reply).toContain("Markham's portal");
+    expect(prepare.bound).toEqual([
+      {
+        url: LEGO_URL,
+        courseOpensAt: new Date('2026-08-11T06:30:00-04:00'),
+        inbound: INBOUND_MESSAGE_ID,
+      },
+    ]);
+  });
+
+  /**
+   * The collision with VIL-337. A course whose registration is already open is what the
+   * watch verb and the coach are for; a refusal here would be Hale saying it cannot do
+   * the thing it can actually do.
+   */
+  it('declines an already-registering course so the coach gets the turn', async () => {
+    const prepare = prepareDeps({
+      sequence: { ...PREPARING, opensForFamilyAt: new Date('2026-08-20T10:30:00.000Z') },
+    });
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      { ...preOpenTurn(LEGO_URL), now: new Date('2026-08-11T06:45:00-04:00') },
+    );
+
+    expect(verdict.claimed).toBe(false);
+    expect(prepare.bound).toEqual([]);
+    expect(prepare.readiness).toEqual([]);
+  });
+
+  it('records a bare YES when readiness is the only thing open', async () => {
+    const prepare = prepareDeps();
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn('yes', { open: [READINESS_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed) throw new Error('unreachable');
+    expect(verdict.outcome).toBe('readiness_recorded');
+    expect(prepare.readiness).toEqual([
+      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword' },
+    ]);
+  });
+
+  it('records a bare NO — a no is a fact this feature keeps', async () => {
+    const prepare = prepareDeps();
+    await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn('no', { open: [READINESS_QUESTION] }),
+    );
+
+    expect(prepare.readiness).toEqual([
+      { ready: false, inbound: INBOUND_MESSAGE_ID, read: 'keyword' },
+    ]);
+  });
+
+  it('claims nothing when a drafted action is open too — nobody gets an ambiguous yes', async () => {
+    const prepare = prepareDeps();
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn('yes', { open: [READINESS_QUESTION, APPROVAL_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(false);
+    expect(prepare.readiness).toEqual([]);
+  });
+
+  /**
+   * THE VACUOUS-TRUTH GUARD. An empty open-question list is unambiguous by definition,
+   * so `soleOpenKind` alone would let ANY bare yes into this writer the moment a family
+   * had an opted-in pre-open sequence — including one answering the coach's own prose
+   * question, which is never a listed kind. The ask row is what makes the claim real.
+   */
+  it('claims nothing when no ask has gone out, even with an opted-in pre-open sequence', async () => {
+    const prepare = prepareDeps({ askedAt: null });
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn('yes'),
+    );
+
+    expect(verdict.claimed).toBe(false);
+    expect(prepare.readiness).toEqual([]);
+  });
+
+  it('records both when the link and the answer arrive in one message, and acks the bind', async () => {
+    const prepare = prepareDeps();
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn(`yes ${LEGO_URL}`, { open: [READINESS_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed) throw new Error('unreachable');
+    expect(prepare.bound).toHaveLength(1);
+    expect(prepare.readiness).toEqual([
+      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword' },
+    ]);
+    // ONE ack, and it is the bind's: two receipts for one message is two messages.
+    expect(verdict.reply).toContain("Markham's portal");
+    expect(verdict.outcome).toBe('bound');
+  });
+
+  it('takes the resolver’s own reading on the second pass', async () => {
+    const prepare = prepareDeps();
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn('yeah I think so', {
+        resolved: {
+          kind: 'registration_readiness',
+          questionId: 'seq-1',
+          polarity: 'yes',
+          confidence: 'medium',
+        },
+      }),
+    );
+
+    expect(verdict.claimed).toBe(true);
+    expect(prepare.readiness).toEqual([
+      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'resolver' },
+    ]);
+  });
+
+  it('is inert while F14 is dark for this household (D21)', async () => {
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
+    const prepare = prepareDeps();
+
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn(LEGO_URL),
+    );
+
+    expect(verdict.claimed).toBe(false);
+    expect(prepare.bound).toEqual([]);
+  });
+
+  /**
+   * THE INERTNESS PROOF for the thirteen municipalities with no portal: the loader
+   * returns null and the handler behaves exactly as it did before this branch existed.
+   */
+  it('is byte-identical to today for a municipality with no portal', async () => {
+    const prepare = prepareDeps({ sequence: null });
+    const sequence = sequenceDeps();
+
+    const bare = await sequenceReplyHandler(sequence, prepare).handle(
+      DB,
+      turn('yes', { open: [READINESS_QUESTION] }),
+    );
+    const report = await sequenceReplyHandler(sequence, prepare).handle(
+      DB,
+      turn('waitlisted #3'),
+    );
+
+    expect(bare.claimed).toBe(false);
+    expect(report.claimed).toBe(true);
+    expect(sequence.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
+    expect(prepare.bound).toEqual([]);
+    expect(prepare.readiness).toEqual([]);
+  });
+
+  it('leaves the three check-in certainties to the post-open path untouched', async () => {
+    const prepare = prepareDeps();
+    const sequence = sequenceDeps();
+
+    for (const body of ['waitlisted #3', "we're in", 'missed it']) {
+      expect(
+        (await sequenceReplyHandler(sequence, prepare).handle(DB, turn(body))).claimed,
+      ).toBe(true);
+    }
+    expect(sequence.recorded.map((row) => row.outcome)).toEqual([
+      'waitlisted',
+      'registered',
+      'missed',
+    ]);
+    expect(prepare.bound).toEqual([]);
+    expect(prepare.readiness).toEqual([]);
   });
 });

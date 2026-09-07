@@ -23,7 +23,10 @@ import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { loadOpenCommitment } from '~/lib/commitments/ledger';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
-import { readinessQuestion } from '~/lib/registration/sequence/prepare-reply';
+import {
+  defaultPrepareReplyDeps,
+  readinessQuestion,
+} from '~/lib/registration/sequence/prepare-reply';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
@@ -323,7 +326,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     founderWelcomeHandler(defaultFounderReplyDeps()),
     healthReplyHandler(defaultHealthReplyDeps()),
     planReplyHandler(defaultPlanReplyDeps()),
-    sequenceReplyHandler(defaultSequenceReplyDeps()),
+    sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
     nameCaptureHandler(defaultNameCaptureDeps()),
   ];

@@ -618,6 +618,16 @@ export async function recordReadinessState(
 // ── prod wiring ──────────────────────────────────────────────────────────────
 
 export interface PrepareReplyDeps {
+  /**
+   * The two readers, injected on M7's own pattern (`SequenceReplyDeps.loadAwaitingSequence`)
+   * — the handler that orders this branch is a router file with no database of its own.
+   */
+  loadPreparingSequence(
+    database: Database,
+    familyId: string,
+    now: Date,
+  ): Promise<PreparingSequence | null>;
+  readinessAskedLastAt(database: Database, sequence: PreparingSequence): Promise<Date | null>;
   /** Non-nullable (rule #11): a bind that cannot read the page refuses in a sentence. */
   fetchBody: FetchPage;
   recordCourseBinding(
@@ -632,6 +642,8 @@ export interface PrepareReplyDeps {
 
 export function defaultPrepareReplyDeps(): PrepareReplyDeps {
   return {
+    loadPreparingSequence,
+    readinessAskedLastAt,
     fetchBody: createFetchBody(BIND_FETCH_TIMEOUT_MS),
     recordCourseBinding,
     recordReadinessState,
