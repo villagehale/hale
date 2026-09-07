@@ -437,8 +437,12 @@ export function ageEligibility(
       : facts.MaxAge * 12 + (facts.MaxAgeMonths ?? ASSUMED_MAX_AGE_MONTHS_COMPONENT);
   if (lower === null && upper === null) return 'unknown';
 
-  const startDay = facts.StartDateValue?.slice(0, 10);
-  if (startDay === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(startDay)) return 'unknown';
+  // The start day comes from the same guarded clock the leg anchors on, never from a
+  // re-slice of the raw string: a shape-only regex let `2026-02-30` through, and
+  // calendarNoon rolled it to a day the page never named.
+  const start = zonedNaiveInstant(facts.StartDateValue, ctx.timeZone);
+  if (start === null) return 'unknown';
+  const startDay = dayKeyIn(start, ctx.timeZone);
 
   const days = [dayKeyIn(ctx.now, ctx.timeZone), startDay, `${startDay.slice(0, 4)}-12-31`];
   const months = days.map((day) => ageInMonths(child.dateOfBirth, calendarNoon(day)));

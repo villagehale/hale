@@ -350,6 +350,7 @@ describe('byte-backing', () => {
       'a bare host': 'LEGO at www.evil.example',
       'the word the parent owns': 'STOP',
       'the same word with punctuation': 'stop.',
+      'a scheme separator with neither http nor www in it': 'LEGO ftp://x',
       'a bidi override': 'LEGO:‮Preschool',
       'a character no GSM-7 alphabet carries': 'LEGO: Préschool 🎉',
       'a name past the cap': `LEGO: ${'Preschool '.repeat(20)}`,
@@ -395,6 +396,12 @@ describe('byte-backing', () => {
 
     expect(read.facts.Prices?.map((row) => row.DisplayAmount)).toEqual(['$121.16']);
     expect(read.backed).not.toContain('$1.00 https://evil.example');
+    // The cap alone, with a printable link-free figure: a figure no page prints is a
+    // segment nobody budgeted, and it drops its whole row rather than half a pair.
+    const long = [{ ...prices[0], DisplayAmount: '$1,234,567,890.12 CAD' }, prices[1]];
+    expect(readVariant({ Prices: long }).facts.Prices?.map((row) => row.DisplayAmount)).toEqual([
+      '$121.16',
+    ]);
     // Positive control: the untouched pair on the same harness keeps both rows.
     expect(readVariant({}).facts.Prices?.map((row) => row.DisplayAmount)).toEqual([
       '$139.36',
@@ -541,6 +548,28 @@ describe('the age band', () => {
     expect(ageEligibility(facts, child('2009-03-01'), at)).toBe('outside_band');
     // 154 months on 2026-12-31: outside at all three.
     expect(ageEligibility(facts, child('2014-02-01'), at)).toBe('outside_band');
+  });
+
+  /**
+   * The mutation this kills: derive the start day by slicing the raw StartDateValue.
+   * A shape-only regex passed `2026-02-30`, calendarNoon rolled it to March 2, and the
+   * band's second and third instants were computed on a day the page never named —
+   * the guess the clock reader already refuses. The start day now comes from the same
+   * guarded clock, so an unreadable start is no verdict at all.
+   */
+  it('reads the band on no day the page did not name — an impossible start is unknown', () => {
+    const facts = factsOf('open-window-open-markham', LEGO);
+    const at = { now: new Date('2026-08-11T10:15:00Z'), timeZone: TZ };
+    const five = child('2021-08-01');
+
+    expect(ageEligibility({ ...facts, StartDateValue: '2026-02-30T10:15:00' }, five, at)).toBe(
+      'unknown',
+    );
+    expect(ageEligibility({ ...facts, StartDateValue: '2026-09-27T25:15:00' }, five, at)).toBe(
+      'unknown',
+    );
+    // Positive control: the page's real start still yields the band verdict.
+    expect(ageEligibility(facts, five, at)).toBe('in_band');
   });
 
   it('takes the lower bound as the year plus zero, not the year plus eleven', () => {
