@@ -398,6 +398,53 @@ describe('runWatchedSpotsSweep — one text per opening', () => {
     expect(test.fetched.length).toBe(first);
   });
 
+  it('loses a claim another writer took first, and writes nothing on top of it', async () => {
+    // The mutation this kills: X_RACED_DROP — dropping `if (openTransitions === null)
+    // return raced`. The guarded UPDATE is the only thing that makes one opening one
+    // text; a tick that ignores losing it composes from a counter it does not own and
+    // texts a household a second time about the seat it was just told about.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, { lastState: 'full' });
+
+    // Between the load and the claim, somebody else claims the same opening — the other
+    // half of a double fire that slipped the slot claim, an admin release, a re-arm.
+    const read = test.deps.fetchBody;
+    test.deps.fetchBody = async (url) => {
+      const body = await read(url);
+      await db.database
+        .update(schema.watchedSpots)
+        .set({
+          lastState: 'open',
+          pendingKind: 'seat_opened',
+          pendingSince: MIDDAY,
+          openTransitions: 1,
+        })
+        .where(eq(schema.watchedSpots.id, spotId));
+      return body;
+    };
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.raced).toBe(1);
+    expect(summary.transitions).toBe(0);
+    expect(summary.sent).toBe(0);
+    expect(summary.failed).toBe(0);
+    expect(test.sent).toEqual([]);
+    // Nothing of this tick's is on the row, in the ledger or on the trail.
+    const row = await readWatch(spotId);
+    expect(row.openTransitions).toBe(1);
+    expect(row.sendAttempts).toBe(0);
+    expect(row.notifiedMessageId).toBeNull();
+    expect(await auditVerbs(family.familyId)).toEqual([]);
+    const ledger = await db.database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.category, 'spot_open'));
+    expect(ledger).toEqual([]);
+  });
+
   it('heals a text whose bookkeeping write was lost, and does not send it again', async () => {
     // The post-send `setNotifiedMessage` failed: the attempt is spent, the ledger row
     // exists, and nothing points at it. Kills the mutation that treats "attempt spent,
@@ -665,9 +712,51 @@ describe('runWatchedSpotsSweep — a held observation is re-derived, never repla
     expect(trail?.after).toMatchObject({ instant: true });
   });
 
+  it('re-claims a held observation the page OVERTOOK, and tells the parent about the seat that is there', async () => {
+    // THE DEFECT: an observation that is overtaken by a BIGGER opening is not a stale
+    // observation, and closing it as `closed_before_send` (writing this tick's state as
+    // last_state) leaves `open -> open` next tick and a parent who is never told about a
+    // seat the page is showing right now — rule #11's shape, an opening counted under a
+    // bucket that means "the opening went away".
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, WAITLIST_REOPENED_PAGE);
+    const spotId = await seedWatch(db.database, family, {
+      lastState: 'waitlist_full',
+      now: TWO_AM,
+    });
+
+    const night = await runWatchedSpotsSweep(db.database, test.deps, TWO_AM);
+
+    expect(night.held.quiet_hours).toBe(1);
+    let row = await readWatch(spotId);
+    expect(row.pendingKind).toBe('waitlist_reopened');
+    expect(row.lastState).toBe('full');
+
+    // By morning the class is not merely queueing again: somebody withdrew and there is a
+    // real seat. The waitlist sentence is dead, the seat sentence is the true one.
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const morning = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(morning.closedBeforeSend).toBe(0);
+    expect(morning.transitions).toBe(1);
+    expect(morning.sent).toBe(1);
+    expect(test.sent).toHaveLength(1);
+    expect(test.sent[0]?.body).toContain('2 spots left');
+    row = await readWatch(spotId);
+    expect(row.pendingKind).toBe('seat_opened');
+    expect(row.lastState).toBe('open');
+    // The new claim is its own opening: a new counter (so a new dedupe key) and both
+    // attempts back.
+    expect(row.openTransitions).toBe(2);
+    expect(row.sendAttempts).toBe(1);
+  });
+
   it('drops the held opening when the page refilled overnight, and says nothing', async () => {
     // THE DEFECT CASE for a composer fed a STORED reading: it would text a parent at
-    // 08:01 about a seat that closed at 03:00.
+    // 08:01 about a seat that closed at 03:00. The positive control for the test above:
+    // the same branch, with a reading that CONTRADICTS the held observation rather than
+    // overtaking it, must still say nothing.
     const family = await seedFamily(db.database);
     const test = harness();
     test.pages.set(SOURCE_URL, OPEN_PAGE);

@@ -543,7 +543,10 @@ async function sweepSpot(
     return { kind: 'failed' };
   }
 
-  let notifiedMessageId = spot.notifiedMessageId;
+  // NOT a mutable local. Every question below is about the pointer AS THIS TICK LOADED
+  // IT — "was this spot already texted for?" — and a local that the failed branch nulls
+  // would make the heal condition further down mean something else in the same function.
+  const notifiedMessageId = spot.notifiedMessageId;
   if (notifiedMessageId !== null) {
     const status = await readLedgerStatus(database, notifiedMessageId);
     if (status === null) {
@@ -574,7 +577,6 @@ async function sweepSpot(
       // heard — so only the pointer to the dead message is cleared, and this tick goes on
       // to re-read the page before trying again.
       await clearFailedAttempt(database, { spotId: spot.id, now });
-      notifiedMessageId = null;
     } else {
       // 'queued' and every suppression: a terminal is still coming (the delivery sweep
       // forces one within a day). No fetch, no write, still live.
@@ -637,9 +639,7 @@ async function sweepSpot(
     //   no row at all — the row write itself was lost. Spend the second attempt, or say
     //     `send_unconfirmed`: the texts, if they left, cannot be accounted for.
     //
-    // Read off `spot`, never the local: a pointer this tick just cleared because the
-    // carrier FAILED the message is that same judged attempt one tick earlier.
-    if (spot.notifiedMessageId === null && spot.sendAttempts > 0) {
+    if (notifiedMessageId === null && spot.sendAttempts > 0) {
       const priorKey = spotOpenKey(spot.id, spot.openTransitions, spot.sendAttempts);
       const prior = await findLedgerRowByDedupeKey(database, priorKey);
       if (prior !== null && HEALABLE_STATUSES.has(prior.status)) {
@@ -663,10 +663,24 @@ async function sweepSpot(
     }
 
     if (!supportsKind(spot.pendingKind, reading)) {
-      // The only honest thing that can happen to a stale observation. A 2 a.m. opening
-      // held through quiet hours and gone by 8 a.m. is not news.
-      await closeBeforeSend(database, { spotId: spot.id, lastState: reading.state, now });
-      return { kind: 'closed_before_send' };
+      // A reading that does not support the held observation is USUALLY the page taking
+      // it back. It can also be the page going FURTHER: a waitlist that reopened at
+      // 02:00 and is a real seat by 08:00 does not support `waitlist_reopened` either.
+      // Closing that as `closed_before_send` would write this tick's state as
+      // `last_state`, leave `open -> open` next tick, and count an opening that is
+      // actually there under a bucket that means it went away (rule #11).
+      const escalated = transitionKind(spot.lastState, reading);
+      if (escalated === null) {
+        // The only honest thing that can happen to a stale observation. A 2 a.m. opening
+        // held through quiet hours and gone by 8 a.m. is not news.
+        await closeBeforeSend(database, { spotId: spot.id, lastState: reading.state, now });
+        return { kind: 'closed_before_send' };
+      }
+      // The held claim is dropped back to the state it was claimed FROM — the claim below
+      // carries that state in its WHERE clause, and a crash between the two writes leaves
+      // an ordinary un-held transition for the next tick to claim.
+      await closeBeforeSend(database, { spotId: spot.id, lastState: spot.lastState, now });
+      return claimAndSend(database, context, spot, link, reading, escalated);
     }
     return sendSpotOpen(database, context, spot, link, reading, spot.pendingKind);
   }
@@ -684,6 +698,23 @@ async function sweepSpot(
   }
 
   await stampRead(database, spot.id, now);
+  return claimAndSend(database, context, spot, link, reading, kind);
+}
+
+/**
+ * Claim the opening and compose from THIS tick's bytes — the one path from a transition
+ * to a sentence, whether the transition was read off a quiet page or off an observation
+ * the page has since overtaken.
+ */
+async function claimAndSend(
+  database: Database,
+  context: RunContext,
+  spot: LiveWatchedSpot,
+  link: Extract<ReturnType<typeof sanitizeSpotUrl>, { ok: true }>,
+  reading: Extract<SpotReading, { state: 'open' | 'full' | 'waitlist_full' }>,
+  kind: NonNullable<LiveWatchedSpot['pendingKind']>,
+): Promise<SpotFate> {
+  const { now, summary } = context;
   const openTransitions = await claimOpenTransition(database, {
     spotId: spot.id,
     from: spot.lastState,
