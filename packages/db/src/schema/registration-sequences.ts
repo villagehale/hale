@@ -1,4 +1,15 @@
-import { index, integer, pgTable, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { actions } from './actions.js';
 import { registrationOutcomeEnum } from './enums.js';
 import { families } from './families.js';
@@ -25,7 +36,13 @@ import { users } from './users.js';
  *     channel_messages dedupe key, exactly as it is for M4.
  *
  * What IS here is the state nothing else can derive: what the parent told us happened
- * after the window opened, and the waitlist clock that answer started.
+ * after the window opened, the waitlist clock that answer started, and — VIL-338 — the
+ * course page the parent pasted, the instant that page says it opens for THIS family,
+ * and the parent's own word about their portal setup. No lookup reproduces those three:
+ * a paste has no other home, the anchor is the municipality's own system of record and
+ * the sweep runs 288 times a day, and readiness is something only the parent knows. None
+ * of them is a status — how far along the ladder is stays a pure function of the window's
+ * live clock, for the same reason the status column above is absent.
  */
 export const registrationSequences = pgTable(
   'registration_sequences',
@@ -63,10 +80,42 @@ export const registrationSequences = pgTable(
     /** The one gentle re-ask has been spent; after this an unreadable reply is met
      * with silence rather than a third question. */
     reaskedAt: timestamp('reasked_at', { withTimezone: true }),
+    /** VIL-338 — the course page the parent pasted, exactly as sanitizeSpotUrl rebuilt
+     * it: https, a registry host, the one CoursesLandingPage path, widgetId + courseId
+     * and nothing else. The paste is the only input rung 1 takes, so this column is its
+     * whole trust boundary. Credential-free by construction: there is no column here for
+     * a password, a cookie, a token, a cart or a portal account, and nothing in this
+     * feature could fill one (rule #1). */
+    courseUrl: text('course_url'),
+    /** THE ANCHOR, and the one page-derived value this row stores. The clock that applies
+     * to THIS family (the resident instant where the family is resident and the page
+     * publishes one, else the public instant), read off the course page — which is the
+     * municipality's own system of record for that course, where the M1 window row is a
+     * hand-read of a season info page and carries only one of the two. A bound ladder's
+     * legs are a pure function of it, the way an unbound ladder's are of the window row,
+     * because the sweep runs 288 times a day and cannot re-read the page each time.
+     * Refreshed by every later read; the copy prints it only once the read of the same
+     * tick agrees with it. Nothing else the page says is stored — every other fact is
+     * re-read at send time. */
+    courseOpensAt: timestamp('course_opens_at', { withTimezone: true }),
+    /** The parent's own answer about their portal setup — never inferred, never verified.
+     * NULL is unasked-or-unanswered and false is "they said no": the copy renders both as
+     * "you have not told me the setup is done", which is true of each, and only true as
+     * "you told me the setup is done". Collapsing NULL into false would make silence read
+     * as a refusal the parent never gave. */
+    readinessReady: boolean('readiness_ready'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    // A bound course has the clock it opens on for this family, or it is not bound.
+    // Either half alone is a lie the scheduler would act on: a link with no anchor is a
+    // ladder with nothing to hang its legs from, and an anchor with no link is an instant
+    // no send-time read can re-verify.
+    courseCheck: check(
+      'registration_sequences_course_check',
+      sql`(${table.courseUrl} IS NULL) = (${table.courseOpensAt} IS NULL)`,
+    ),
     // The claim's natural key: one ladder per family per window, and the anchor the
     // sweep's insert conflicts on so a double cron tick cannot mint two.
     familyWindowUniq: uniqueIndex('registration_sequences_family_window_uniq').on(

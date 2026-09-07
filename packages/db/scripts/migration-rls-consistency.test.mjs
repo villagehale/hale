@@ -24,7 +24,6 @@ const KNOWN_UNPROTECTED = [
   'civic_venues',
   'party_invites',
   'party_rsvps',
-  'registration_sequences',
   'sms_intake_sessions',
   'teen_access_grants',
 ];
