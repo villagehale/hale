@@ -264,12 +264,19 @@ const NAIVE_LOCAL = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?$/;
  * Never a guess: an offset-bearing string, a `24/02/2026`, a rolled-over `2026-02-30`
  * and a non-zero seconds component (which no sampled page publishes and which no copy
  * renders) all yield null rather than an instant that is off by a day or a minute.
+ *
+ * TOTAL. The regex fixes the SHAPE and says nothing about the VALUE, so the range is
+ * checked here rather than downstream: `zonedLocalInstant` builds a Date out of the
+ * pair and THROWS on a NaN, and a throw inside a leg costs the family the tick. `24:00`
+ * is refused for the reason `2026-02-30` is — it rolls into the next day, and a clock
+ * that is off by a day is the one failure this whole module exists to prevent.
  */
 function zonedNaiveInstant(naive: string | null | undefined, timeZone: string): Date | null {
   if (typeof naive !== 'string') return null;
   if (!NAIVE_LOCAL.test(naive)) return null;
   const dayKey = naive.slice(0, 10);
   const hourMinute = naive.slice(11, 16);
+  if (Number(hourMinute.slice(0, 2)) > 23 || Number(hourMinute.slice(3)) > 59) return null;
   if (naive.length > 16 && naive.slice(17) !== '00') return null;
   // `new Date('2026-02-30T…')` rolls into March rather than refusing, so the day key is
   // re-rendered and compared before any zone arithmetic runs.

@@ -230,6 +230,14 @@ describe('the applicable clock', () => {
     }
   });
 
+  /**
+   * The mutation this kills: drop the HH:MM range check and let the shape of the regex
+   * stand in for the value. The four time cases are the ones a probe found reaching
+   * `zonedLocalInstant`, which builds `new Date('…T25:30:00Z')` → NaN and THROWS out of
+   * the leg — the same class of throw as the decoy-token SyntaxError below, and the
+   * exact thing this module's "total" promise forbids. `24:00` is worse than a throw:
+   * it rolls silently into the next day, the rollover the date half already refuses.
+   */
   it('refuses a datetime it cannot read exactly, and never guesses one', () => {
     const base = factsOf('open-window-open-markham', LEGO);
     const cases = [
@@ -240,6 +248,10 @@ describe('the applicable clock', () => {
       '2026-02-30T06:30:00',
       '2026-13-01T06:30:00',
       '2026-08-11T06:30:45',
+      '2026-08-11T25:30:00',
+      '2026-08-11T23:60:00',
+      '2026-08-11T24:00:00',
+      '2026-08-11T99:99',
     ];
 
     for (const value of cases) {
@@ -883,6 +895,39 @@ describe('readCoursePrep — the seven questions, in order', () => {
     // The model's own name still backs itself: the decoy answered for nothing.
     expect(verdict.facts.EventName).toBe('LEGO: Preschool');
     expect(verdict.backed).toContain('LEGO: Preschool');
+  });
+
+  /**
+   * THE SAME TOTALITY CONTRACT, at the clock. A page that publishes `25:30` is not a
+   * page Hale may throw on: the leg would lose the tick. An unreadable clock reads as
+   * no clock, so the page falls back to the one it CAN read (here the public date, a
+   * day out → window_moved) and, where neither reads, onto the no-clock branch.
+   */
+  it('answers an out-of-range page clock instead of throwing out of the leg', () => {
+    for (const value of ['2026-08-11T25:30:00', '2026-08-11T23:60:00', '2026-08-11T99:99']) {
+      const raw = variantOf('open-window-open-markham', LEGO, {
+        ResidentsRegistrationDateValue: value,
+      });
+
+      expect([value, readCoursePrep({ ok: true, raw }, ctx())]).toEqual([
+        value,
+        expect.objectContaining({
+          kind: 'window_moved',
+          clock: { at: new Date('2026-08-12T06:30:00-04:00'), name: 'public date' },
+        }),
+      ]);
+    }
+
+    const neither = variantOf('open-window-open-markham', LEGO, {
+      ResidentsRegistrationDateValue: '2026-08-11T24:00:00',
+      PublicRegistrationStartDateValue: '2026-08-12T24:00:00',
+    });
+
+    expect(readCoursePrep({ ok: true, raw: neither }, ctx())).toMatchObject({
+      kind: 'prepared',
+      clock: null,
+      anchorDriftMinutes: null,
+    });
   });
 
   it('still answers when the page publishes no clock at all', () => {
