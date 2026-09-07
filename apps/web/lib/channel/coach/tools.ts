@@ -549,7 +549,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   // reason: an "I'm watching that page" whose intent nobody collects is a parent who has
   // been told Hale is polling a portal for them when nothing is (rule #11). The dark
   // flag does NOT decide this — the frontmatter names the verb, and `toAnthropicTools`
-  // throws on a name nobody registered, so the feature's darkness lives in the sweep.
+  // throws on a name nobody registered — so the feature's darkness is a REFUSAL the
+  // handler throws and the sweep's own gate, never a verb that quietly went missing.
   if (args.spots && args.onWatch) {
     tools.push(watchForOpeningTool({ ...args.spots, onWatch: args.onWatch }));
   }

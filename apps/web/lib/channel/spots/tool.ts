@@ -2,9 +2,11 @@ import { type RegisteredTool, defineTool } from '@hale/agent';
 import { z } from 'zod';
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
+import { f14EnabledFor } from '~/lib/channel/f14';
 import { isGsm7 } from '~/lib/channel/sms-segments';
 import type { FetchPage } from '~/lib/registration/verify-sweep';
 import { type SpotReading, readSpot } from './availability';
+import { watchedSpotsEnabled } from './flag';
 import type { SpotWatchIntent } from './store';
 import { SPOT_PORTAL_HOSTS, type SpotUrlRefusal, sanitizeSpotUrl } from './url';
 
@@ -157,6 +159,19 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
     // time it calls this, and the sentence it wrote beside the call is the reply.
     registersOnly: true,
     handler: async (input, ctx) => {
+      // THE DARK GATE, AND IT IS THE FIRST QUESTION. Everything under it asks whether a
+      // watch would be HONEST; this asks whether anything would poll it at all. While
+      // the flag is off the sweep returns before it loads a row, and a family outside
+      // F14 is skipped unread (sweep.ts) — so a row armed in either state is a sixty-day
+      // promise to text, made to a parent who has just been told Hale is watching, that
+      // nothing keeps. Registration is deliberately NOT gated on this (coach/tools.ts):
+      // the verb exists, and it refuses in a sentence the model can relay.
+      if (!watchedSpotsEnabled() || !f14EnabledFor(ctx.familyId)) {
+        throw new Error(
+          'I cannot watch class pages for this household yet - nothing would be polling it. Tell the parent plainly that watching a page is not something I can do for them yet, and give them the link back so they can check it themselves.',
+        );
+      }
+
       // CONSENT FIRST, and on the parent who is texting. 'Tell me if a spot opens' is
       // not itself proactive-watch consent in v1: the instrument is the intake watch
       // offer, and a household that never took it is one Hale may not text first.

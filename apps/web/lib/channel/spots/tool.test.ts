@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type AuditEntry, invokeTool } from '@hale/agent';
-import { describe, expect, it, vi } from 'vitest';
+import { type AuditEntry, compileToolSchema, invokeTool } from '@hale/agent';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SpotWatchIntent } from './store';
 import { watchForOpeningTool } from './tool';
 
@@ -47,6 +47,68 @@ function ports(overrides: Partial<Parameters<typeof watchForOpeningTool>[0]> = {
   });
   return { tool, fetchBody, armed };
 }
+
+// LIT, for every test below that expects an arm. The verb refuses outright while the
+// feature is dark, so "the sweep is on and this family is armed" is the precondition of
+// every other gate in this file rather than a case of its own.
+beforeEach(() => {
+  vi.stubEnv('WATCHED_SPOTS_ENABLED', 'true');
+  vi.stubEnv('F14_ENABLED', 'true');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+/**
+ * THE DARK GATE, and it is the first thing the handler asks.
+ *
+ * Every other refusal here is about whether a watch would be HONEST. This one is about
+ * whether anything would poll it at all: while `WATCHED_SPOTS_ENABLED` is off the sweep
+ * returns before it loads a single row, and a family outside F14 is skipped unread — so
+ * a row armed in either state is a sixty-day promise to text that nothing keeps, and
+ * the parent has already been told Hale is watching.
+ */
+describe('watch_for_opening — the dark gate', () => {
+  it('refuses while the sweep is switched off, before it reads anybody’s page', async () => {
+    vi.stubEnv('WATCHED_SPOTS_ENABLED', 'false');
+    const { tool, fetchBody, armed } = ports();
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).rejects.toThrow(/cannot watch class pages/i);
+    expect(fetchBody).not.toHaveBeenCalled();
+    expect(armed).toEqual([]);
+  });
+
+  it('refuses a family the sweep would skip unread, before it reads their page', async () => {
+    // The flag is on for the product and this household is not in F14's allowlist:
+    // `sweepSpot` never runs for them, so an armed row here polls nothing.
+    vi.stubEnv('F14_ENABLED', 'false');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', 'fam-other');
+    const { tool, fetchBody, armed } = ports();
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).rejects.toThrow(/cannot watch class pages/i);
+    expect(fetchBody).not.toHaveBeenCalled();
+    expect(armed).toEqual([]);
+  });
+
+  it('arms for a family named on the allowlist while the F14 flag is off', async () => {
+    // THE POSITIVE CONTROL for the case above: without it the gate could refuse every
+    // family and both refusals would still pass.
+    vi.stubEnv('F14_ENABLED', 'false');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', `other, ${CTX.familyId}`);
+    const { tool, fetchBody, armed } = ports();
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveLength(1);
+  });
+});
 
 describe('watch_for_opening — arms only on a full course page, for a consenting household', () => {
   it('refuses a household that never said yes to Hale texting first, before it reads anything', async () => {
@@ -372,6 +434,26 @@ describe('watch_for_opening — the definition the model reads', () => {
     expect(tool.touchesChildContent).toBe(true);
     expect(tool.monetary).toBe(false);
     expect(tool.registersOnly).toBe(true);
+  });
+
+  /**
+   * THE GRAMMAR IS PINNED BYTE FOR BYTE, because the dark gate went into the HANDLER on
+   * purpose. What the model reads — the description and the compiled input schema — is
+   * what `apps/worker/evals/run-coach-channel-eval.mjs` replicates verbatim and what
+   * every cached agent entry is keyed on, so a gate that had edited a character of it
+   * would have re-keyed the whole eval corpus and, worse, changed the verb's REACH: a
+   * dark family would have been refused by a model that no longer offered to watch.
+   * Registration is unchanged for the same reason (coach/tools.ts).
+   */
+  it('leaves the cached tool grammar byte-identical — the gate is in the handler', () => {
+    const { tool } = ports();
+
+    expect(tool.description).toBe(
+      "Start watching a FULL class for a spot to open, on a course page the parent has sent you. `url` is that page's address, exactly as they pasted it - never one you composed, and never a search or listing page: it has to be the page for the one class. `label` is how the parent will recognise the class months later, in a few words and in their own terms ('Tuesday preschool swim'): no name, no age, no question mark. Pass `instant: true` only when they say they want it even in the middle of the night; the default holds an overnight opening until the morning. This reads the page RIGHT NOW and only arms if it is genuinely full with registration open - anything else throws a sentence telling you what is true instead, and you say that. Once armed, Hale re-reads the page about every ten minutes and texts them itself when a spot shows up, so say you are watching it and stop. Do not call this without a link from the parent: ask them for the link from the course page.",
+    );
+    expect(JSON.stringify(compileToolSchema(tool.inputSchema).schema)).toBe(
+      '{"type":"object","properties":{"url":{"type":"string","description":"At least 1 characters. At most 512 characters."},"label":{"type":"string","description":"At least 1 characters. At most 40 characters."},"childId":{"type":"string","description":"At least 1 characters."},"instant":{"type":"boolean"}},"required":["url","label"],"additionalProperties":false}',
+    );
   });
 
   it('names no real household in its examples, and every example satisfies its schema', () => {
