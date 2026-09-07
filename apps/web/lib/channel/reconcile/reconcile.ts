@@ -1,5 +1,5 @@
 import type { CommitmentKind } from '~/lib/commitments/ledger';
-import type { ClaimKind, StateClaim } from './claims';
+import { type ClaimKind, REGISTRATION_NAMED, type StateClaim } from './claims';
 
 /**
  * VIL-293 · THE RECONCILIATION PRIMITIVE, half two — is the claim TRUE?
@@ -137,7 +137,7 @@ const VIOLATION: Record<RefusalReason, string> = {
   no_registration_watch:
     'The message says Hale is watching a registration or will text before one opens. No registration window is being watched for this family, and no ladder is running. Either say what the published date is, or say nothing about watching.',
   spot_watch_unshaped:
-    'The message says Hale is watching and will text when it opens, and what Hale is actually watching is ONE class page for one place in it — not a registration window and not a season. Say a spot, a seat, a space or the waitlist is what you will text them about.',
+    'The message says Hale is watching and will text when it opens, and what Hale is actually watching is ONE class page for one place in it — not a registration window and not a season. Say you are watching ONE class page for a spot, a seat, a space or the waitlist — not a registration morning.',
   no_activity_promise:
     'The message promises to come back with activities or finds, and no such promise was registered. Call promise_activity_followup so a sweep actually comes back, or hand over what you already have and stop.',
   no_scheduled_row:
@@ -147,6 +147,25 @@ const VIOLATION: Record<RefusalReason, string> = {
 /** What a `watched_spots` row is a row ABOUT: one place in one class. The words the
  * arming sentence uses for it, and the only ones an open spot watch may back. */
 const SPOT_SHAPED = /\b(?:spot|seat|space|waitlist)s?\b/i;
+
+/** The slice of the calendar a town names its cycle after — the other half of the
+ * season, beside `REGISTRATION_NAMED`, which is the claim extractor's own list. */
+const SEASON_SHAPED = /\b(?:season|fall|winter|spring|summer|morning)\b/i;
+
+/**
+ * The sentence is about a TOWN'S CYCLE rather than one class, and no course page backs
+ * one of those however it is worded.
+ *
+ * IT IS CHECKED BEFORE THE SPOT WORDS, because the spot words are borrowable: "I'm
+ * watching Markham fall registration and I'll text you before a spot opens" carries the
+ * whole municipal promise and one word from a class page, and matching it on that word
+ * hands a season a 60-day row for one course. It is checked before the spot REFUSAL for
+ * the same reason from the other side — the re-ask that asks for a spot word is exactly
+ * the edit a model makes to a morning, and asking for it here would teach the bypass.
+ */
+function aboutTheSeason(sentence: string): boolean {
+  return REGISTRATION_NAMED.test(sentence) || SEASON_SHAPED.test(sentence);
+}
 
 function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
   const kind: ClaimKind = claim.kind;
@@ -166,7 +185,8 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
     // the same kind — and a page in Markham says nothing about when Markham's fall
     // registration goes live. Matching on the kind alone would have handed a 60-day
     // spot row to the municipal-morning promise that started this primitive.
-    if (SPOT_SHAPED.test(claim.sentence)) {
+    const season = aboutTheSeason(claim.sentence);
+    if (!season && SPOT_SHAPED.test(claim.sentence)) {
       if (view.pendingKinds.has('spot_watch')) {
         return { claim, status: 'matched', matchedBy: 'pending_commitment' };
       }
@@ -193,9 +213,11 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
     // only watch is a course page wrote a true sentence in the wrong words, and the
     // registration re-ask ("say nothing about watching") would steer it off the watch
     // this very turn armed. The narrowing above is kept — this is still a refusal — but
-    // it asks for the missing word instead of the missing window.
+    // it asks for the missing word instead of the missing window. A SENTENCE ABOUT THE
+    // SEASON gets the other one back: there is no word to add to a morning, so the only
+    // honest re-ask is the one that sends the model off it.
     const watchingOneClass =
-      view.pendingKinds.has('spot_watch') || view.openKinds.has('spot_watch');
+      !season && (view.pendingKinds.has('spot_watch') || view.openKinds.has('spot_watch'));
     return {
       claim,
       status: 'refused',

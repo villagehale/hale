@@ -120,6 +120,11 @@ describe('reconcile — the spot watch', () => {
    * one-class spot promise arrive here as the same kind — and a watched course page
    * cannot back the morning. The town's season is the ladder's job; one page in Markham
    * says nothing about when Markham's fall registration goes live.
+   *
+   * A NAMED SEASON IS ALSO THE END OF THE SPOT REFUSAL. These two are refused with the
+   * registration reason rather than the spot one, because there is no wording of a
+   * season a course page could back: the re-ask has to send the model off the morning,
+   * not hand it a word to add to it.
    */
   it('REFUSES a municipal-morning promise that only a watched course page could back', () => {
     const morning = "I'll text you before Markham fall registration opens.";
@@ -127,7 +132,7 @@ describe('reconcile — the spot watch', () => {
     const verdict = verdictFor(morning, view({ openKinds: new Set(['spot_watch']) }));
 
     expect(verdict.mints).toEqual([]);
-    expect(verdict.refused.map((r) => r.reason)).toEqual(['spot_watch_unshaped']);
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
   });
 
   it('REFUSES the same morning promise against a spot watch this send is about to arm', () => {
@@ -135,7 +140,55 @@ describe('reconcile — the spot watch', () => {
 
     const verdict = verdictFor(morning, view({ pendingKinds: new Set(['spot_watch']) }));
 
-    expect(verdict.refused.map((r) => r.reason)).toEqual(['spot_watch_unshaped']);
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+
+  /**
+   * THE ONE WORD THAT BYPASSED THE NARROWING. A watched course page backs a sentence
+   * about that page; the widening above reads the sentence for the words a `watched_spots`
+   * row is about. So a MUNICIPAL promise that also happens to carry one of those words
+   * ("...before a spot opens" about a town's fall registration) walked straight through
+   * it — and the refusal's own re-ask copy, which asks for exactly that word, is what a
+   * refused model reaches for first. A season is not a class however it is worded, so the
+   * spot words only count when nothing in the sentence names the season.
+   */
+  it('REFUSES a registration morning that borrows a spot word', () => {
+    // Both halves of the season, one sentence each: the calendar slice it is named after
+    // and the town's own word for the cycle, which is `claims.ts`'s list read here.
+    for (const borrowed of [
+      "I'm watching Markham fall registration and I'll text you before a spot opens.",
+      "I'm watching sign-ups for that one and I'll text you when a spot opens.",
+    ]) {
+      const verdict = verdictFor(borrowed, view({ openKinds: new Set(['spot_watch']) }));
+
+      expect(verdict.mints, borrowed).toEqual([]);
+      expect(verdict.refused.map((r) => r.reason), borrowed).toEqual(['no_registration_watch']);
+    }
+  });
+
+  it('REFUSES the minimal edit the spot re-ask invites', () => {
+    // What a model does with "say a spot, a seat, a space or the waitlist": it keeps the
+    // municipal subject and appends the word. That edit must not buy the sentence a pass.
+    const appended =
+      "I'm watching that morning and I'll text you before it goes live so you can grab a spot.";
+
+    const verdict = verdictFor(appended, view({ pendingKinds: new Set(['spot_watch']) }));
+
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_registration_watch']);
+  });
+
+  it('still backs the spot word when the sentence is about one class', () => {
+    // THE POSITIVE CONTROL for the two refusals above: the season check must not swallow
+    // the arming ack itself, which is the sentence this whole widening exists for.
+    const ack = "I'm watching that class and I'll text you when a spot opens.";
+
+    const verdict = verdictFor(ack, view({ openKinds: new Set(['spot_watch']) }));
+
+    expect(verdict.refused).toEqual([]);
+    expect(verdict.resolutions[0]).toMatchObject({
+      status: 'matched',
+      matchedBy: 'open_commitment',
+    });
   });
 
   it('backs the spot-shaped words a watch can actually be about', () => {
@@ -168,6 +221,9 @@ describe('reconcile — the spot watch', () => {
     const [violation] = reconcileViolations(verdict);
     expect(violation).toContain('spot');
     expect(violation).toContain('waitlist');
+    // And what it is NOT watching, because the word alone is what a municipal sentence
+    // borrows: the re-ask names the object as well as the word.
+    expect(violation).toContain('not a registration morning');
     expect(violation).not.toContain('say nothing about watching');
   });
 
