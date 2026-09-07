@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event (soccer) and one target time (11am Saturday). The reference is resolved. Hale correctly drafted the move and presented it in the confirmation shape — naming the change with YES to confirm. The reply is short, correct, and complete. No greeting, no sign-off, no extra questions, no invented detail. The event exists in the week as \"Soccer practice, Sat 10:00am, Cedarvale Park\" and the draft reflects that accurately. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks what \"Nora\" has on Tuesday. Nora matches no listed child name — Milo and Ada are named, and the teenager's name is redacted. The Tuesday slot is \"A private calendar item\" at 3:45pm. The correct reply gives the day and time while declining to share the content, which is exactly what Hale did: \"There's a private item Tue 3:45pm. What it is isn't mine to share.\" It correctly surfaces the time without naming the content, obeys the private-item rule, and does not speculate about whether Nora is the teenager or someone else. No greeting, no sign-off, no markdown, one sentence. This is the job done exactly right.",
+    "score": 5
+  }
+}

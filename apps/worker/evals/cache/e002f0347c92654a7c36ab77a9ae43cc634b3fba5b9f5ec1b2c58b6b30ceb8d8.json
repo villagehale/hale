@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancel and asks for YES confirmation — that is the contract working. It also offers the one verifiable Saturday indoor option from `offerable` (Central Library story time, named venue, named day). The draft cap is 2 and only one draft was used (the cancel), which is fine since the Saturday item is an offer, not a draft. The reply is concise, no greeting, no sign-off, no markdown, one question at most, and every detail traces back to `week` or `offerable`. One small blemish: it does not mention that Saturday already has Soccer practice at Cedarvale Park at 10am — the parent asked for something indoors for Saturday, and they should know the story time would need to fit around soccer. That is a relevant detail Hale could see but omitted, potentially causing a conflict. Still, the core task is done correctly and cleanly.",
+    "score": 4
+  }
+}

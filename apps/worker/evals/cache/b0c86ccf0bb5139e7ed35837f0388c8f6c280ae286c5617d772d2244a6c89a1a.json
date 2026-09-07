@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that a referral link is appended, hands it over, and explains what the friend does with it. The URL matches `knows.referralLinkAppended` exactly — recall, not invention. It correctly says there is nothing for Sam to do beyond forwarding it. The brief description of Hale is reasonable context for a friend. No greeting, no sign-off, no markdown, one question at most — shape is clean. The only small blemish is the one-line description of Hale (\"text assistant that tracks your family's week - schedules, registrations, and activity ideas\") which is a redundant explanatory clause Sam didn't ask for and that adds length without serving the referral task. A tighter reply would have been just the link and the forwarding instruction. Still, it does the job correctly and the link is accurate.",
+    "score": 4
+  }
+}

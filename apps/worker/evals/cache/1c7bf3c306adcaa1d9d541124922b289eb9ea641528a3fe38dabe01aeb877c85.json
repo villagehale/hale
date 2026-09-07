@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam pasted a course-page link in their own message and asked Hale to watch for a spot. The `can` array explicitly lists `watch_for_opening` as a real capability, active only when the parent pastes a course-page link — which Sam did. The reply accepts the job, confirms it is watching, and says it will text when a spot opens. That is exactly the correct shape: no machinery exposed, no app referral, no invented details, no URL written out, no greeting or sign-off, one short sentence that tells the parent what is happening and what they will get. Everything is traceable to what Hale knows and can do. This is the product working cleanly.",
+    "score": 5
+  }
+}

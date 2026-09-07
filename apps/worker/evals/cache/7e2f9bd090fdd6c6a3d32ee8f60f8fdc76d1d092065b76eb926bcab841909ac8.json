@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that Hale needs the course-page link to use `watch_for_opening`, and asks Sam to send it. This is exactly the right answer per the rules: \"With no link there is nothing to watch, and asking for the link is the right answer rather than a stall.\" The reply is concise, accurate, and asks exactly one question. Minor blemish: the dash before \"can you send it over?\" adds a slightly conversational filler clause that pads the message, but it is not a real problem. The core instruction is correct and complete.",
+    "score": 4
+  }
+}

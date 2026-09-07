@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the resident opening date (Sep 1, 7:00 a.m.) and the general opening date (Sep 8) — both are verified facts from registrationWindows, correctly stated flat without hedging. It also correctly says it is not watching that window, which is honest since watching is false and Hale has no verb to start a watch. However, the rules say \"on a false window the DATE IS THE WHOLE ANSWER and saying it is not watching that one is honest, not a denial\" — so the date plus the honest \"not watching\" is correct. But the rules also say \"score a 2 at most if it tells the parent to set their own alarm, and a 1 if it invents a clock time to set it for.\" The reply does NOT tell the parent to set their own alarm — it simply states the date and says it isn't watching. That is the correct complete answer per the rubric. The reply is short, accurate, honest, and does exactly what is required. No greeting, no sign-off, no markdown. One small issue: it could be slightly warmer or clearer that Hale genuinely cannot start a watch (the parent asked \"can you watch\"), but the reply does answer that plainly with \"I'm not watching that one\" — which is accurate. This is a solid, correct reply that fits the product shape.",
+    "score": 5
+  }
+}

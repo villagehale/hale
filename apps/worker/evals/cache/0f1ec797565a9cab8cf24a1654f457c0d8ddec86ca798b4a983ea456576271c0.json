@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply handles this well. It correctly states the registration window (Sep 1, 7:00 a.m. for residents) as a flat fact from knows.registrationWindows, correctly says it is already watching it (watching: true), and correctly names the Tiny Tumblers webFind with attribution (\"their site\") and notes no price yet — exactly what the webFind rule requires. It doesn't dress it up as verified or hedge it as unconfirmable. No app mention, no URL, no invented detail, no greeting or sign-off. The one small blemish: \"their site doesn't list a price yet\" is slightly awkward phrasing but accurate. Overall this is clean and correct.",
+    "score": 5
+  }
+}

@@ -56,6 +56,12 @@
 // them. A floor of 3 cannot be tripped by a grader having an off day about tone, and it
 // cannot be averaged away either.
 //
+// AND THE FLOOR TAKES A MEDIAN OF THREE DRAWS, not one. A hard floor over a sampled judge
+// fails on the tail: `capability-park-nearby-again` tripped it at 2 while the same reply
+// drew a 2 from a fresh sample of the round-1 text too, so the score being gated was the
+// grader's variance, not the message. The floor itself is unchanged — a reply that is
+// really a 2 still fails, because two draws below the floor is a median below it.
+//
 // AN HONEST GAP, stated where it will be read. The coaching fixtures are NOT gated on
 // `offer_full_plan` being called, even though the offer is the arc this eval belongs to.
 // The tool IS registered here (faithfully: same declared schema, same description, same
@@ -117,6 +123,7 @@ import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
 import {
   JUDGE_MIN,
+  JUDGE_SAMPLES_MEDIAN,
   cacheGet,
   cacheKey,
   cachePut,
@@ -1650,7 +1657,17 @@ async function main() {
   // differed by a comma. A grader that noisy makes a 100% gate unreachable for reasons
   // that have nothing to do with the agent. The run is cached, so the tier costs once.
   const judgeModel = (await readModelIds()).sonnet;
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'coach-channel', cachedOnly, getClient, cost);
+  // MEDIAN OF THREE, not one draw. The per-fixture floor is a hard gate and the judge is a
+  // sampled model: `capability-park-nearby-again` failed CI at 2 on a committed draw while
+  // the round-1 reply — the same text, unchanged by the branch — also drew 2 under a fresh
+  // sample, so the floor was riding the tail rather than the message. Sample zero keeps its
+  // historical cache key byte for byte (harness.mjs `makeJudge`), so every verdict already
+  // committed stays valid and only the two extra draws are new. JUDGE_MIN and the floor are
+  // untouched: a reply that is really a 2 still fails, because two draws below the floor is
+  // a median below it.
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'coach-channel', cachedOnly, getClient, cost, {
+    samples: JUDGE_SAMPLES_MEDIAN,
+  });
 
   const mode = broken ? 'broken' : severed ? 'severed' : 'real';
   console.log(
@@ -1873,6 +1890,9 @@ async function main() {
       fixture,
       reply,
       score,
+      // The draws behind the median, printed per turn: a floor that rides a median is only
+      // readable if the run shows what it was a median OF.
+      draws: verdict === null ? null : (verdict.samples ?? null),
       calls,
       reason: verdict === null ? null : verdict.reason,
       invented,
@@ -1892,7 +1912,7 @@ async function main() {
     // can compare against the run before it.
     const reached = [...new Set(result.calls.map((call) => call.tool))].join('+') || 'none';
     console.log(
-      `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}`}  tools=${reached}`,
+      `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}${result.draws ? ` of ${result.draws.join('/')}` : ''}`}  tools=${reached}`,
     );
     for (const failure of result.failures) console.log(`        - ${failure}`);
     if (!ok && result.reason) console.log(`        ? judge: ${result.reason}`);
@@ -1967,7 +1987,9 @@ async function main() {
   }
   if (belowFloor.length > 0) {
     console.log(
-      `BELOW THE FLOOR:              ${belowFloor.map((r) => `${r.fixture.id} (${r.score})`).join(', ')}`,
+      `BELOW THE FLOOR:              ${belowFloor
+        .map((r) => `${r.fixture.id} (${r.score}${r.draws ? ` of ${r.draws.join('/')}` : ''})`)
+        .join(', ')}`,
     );
   }
   if (segments.length) {

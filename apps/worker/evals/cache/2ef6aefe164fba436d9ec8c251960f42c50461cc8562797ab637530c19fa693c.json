@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to move Thursday's swim lesson to 17h45. There is exactly one swim lesson on Thursday (Thu 5:15pm at East pool), so the reference is unambiguous — no clarifying question needed. Hale correctly drafted a calendar_move and asks for YES to confirm. The reply names the change clearly and ends with the confirmation prompt. The only small issue: the reply is phrased as a question (\"Je déplace... à 17h45?\") which slightly reads as if Hale is asking whether to do it rather than confirming what it drafted, but the YES prompt makes the intent clear enough. It is concise, correct, uses the right contract shape, and does not invent anything. A near-perfect reply.",
+    "score": 5
+  }
+}

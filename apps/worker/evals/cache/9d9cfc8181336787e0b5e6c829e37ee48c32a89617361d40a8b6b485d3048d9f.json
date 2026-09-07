@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the connect-Google-Calendar feature as real, explains that a one-tap link will be texted, and gives Sam the exact words to send to trigger it. That is precisely the correct shape: recall of a real feature, the plain ask quoted verbatim so the next text lands, no URL invented, no refusal, no app referral, no internal machinery explained. It is slightly longer than it needs to be (\"Yep, connecting Google Calendar is something I can do -\" is a warm-up clause before the substance) but the substance is complete and correct. A minor redundancy keeps it from a 5.",
+    "score": 4
+  }
+}

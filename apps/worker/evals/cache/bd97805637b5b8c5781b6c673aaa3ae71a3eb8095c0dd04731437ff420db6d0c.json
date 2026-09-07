@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event (soccer on Saturday) and one target time (11am). The reference is fully resolved. Hale correctly drafted the move and presented it for confirmation with the required \"YES to confirm.\" format. The reply is concise, names the change clearly, and stops. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

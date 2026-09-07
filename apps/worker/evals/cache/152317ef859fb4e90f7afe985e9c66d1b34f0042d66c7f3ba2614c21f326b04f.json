@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not visible on this week's schedule — the two private items cannot be assumed to be piano, and the rules require Hale to say \"I do not see X on this week\" without raising private rows as possibilities. However, the reply then asks \"Want me to check next week?\" — this is a dangling question that adds unnecessary noise. The text asked to MOVE piano to Wednesday, which implies it exists somewhere on the schedule. Checking next week is a reasonable follow-up, but asking it as a question rather than just doing it (or stating it will do it) is a mild shape issue. Still, the core answer is correct: no piano visible this week, and the follow-up offer is sensible. The question is one at most, so that rule is not violated. This is close to correct but the reply could have simply said it will check next week rather than asking permission, and a warmer or more direct approach might say \"I don't see piano this week — let me check next week too.\" The reply is functionally correct but the \"Want me to check next week?\" framing is slightly off — Hale could just check. That said, it doesn't send the parent anywhere, doesn't invent anything, and handles the private rows correctly. Minor shape blemish for asking rather than doing/stating.",
+    "score": 4
+  }
+}

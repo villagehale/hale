@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly names the webFind (Tiny Tumblers, Saturday mornings, walking to 3) and attributes it to the venue's own page (\"their site\"), which is exactly what the webFind rule requires. It does not dress it up as verified. It also correctly states the registration window (Sep 1, 7:00 a.m., residents first) as a flat fact from knows.registrationWindows, and correctly says it is already watching — because watching is true, that is the complete and honest statement. No URL invented (referralLinkAppended is null). No app referral. No greeting or sign-off. stillBeingChecked is 0, so no pending-finds caveat needed. The one small issue: \"their site doesn't list a price yet\" is a fine honest note from the webFind data, but the reply omits the specific source attribution phrasing (\"their program page\" or \"their site says\") in favor of a parenthetical at the end — it does say \"their site\" which satisfies the attribution requirement. Overall this is clean, correct, and stops at the right place. Minor: it could have been slightly tighter by folding the price note into the main clause rather than a separate dash clause, but that is a very small shape issue. Scores a 5.",
+    "score": 5
+  }
+}

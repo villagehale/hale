@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the referral link (which is appended by the runtime and present in `knows.referralLinkAppended`), tells the parent to forward it themselves, and briefly explains what Hale does so the friend understands what they're signing up for. The link matches exactly. The reply is clean — no greeting, no sign-off, no markdown, no app referral. The one small blemish is the brief description of Hale (\"a text assistant that tracks your family's week - schedules, registrations, and activity ideas\") which is a touch more than strictly needed, but it's genuinely useful context for the parent forwarding the link and not padding. Overall this is a correct, well-shaped reply that does the job.",
+    "score": 5
+  }
+}

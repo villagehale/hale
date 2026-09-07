@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply offers one offerable (Riverdale Farm) correctly — name, place, day, free, verified. But it ignores the second offerable: Central Library story time at Bloor/Gladstone, Sat Aug 8. The draftCapPerMessage is 2, but more relevantly, both offerables should be surfaced since the parent asked \"any park nearby\" and both are checked candidates. It also ignores the webFind (Tiny Tumblers), which must be handed over with attribution per the rules. Dropping a confirmed offerable and a required webFind with attribution is a meaningful omission — the parent asked what is nearby and got only one of three things Hale had to give. That said, the one item it did give is handled correctly. The reply is not misleading or wrong, just incomplete in a notable way by leaving out a checked offerable and a mandatory webFind attribution.",
+    "score": 3
+  }
+}

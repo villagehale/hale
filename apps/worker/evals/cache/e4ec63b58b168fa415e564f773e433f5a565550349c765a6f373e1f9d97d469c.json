@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that a Google Calendar connection is a real capability, explains that the deterministic branch is triggered by specific words, quotes the exact phrase the parent needs to send (\"connect my Google Calendar\"), and notes the link is good for fifteen minutes. This is precisely the correct shape for a connecting ask that landed in words the branch did not catch — it hands the parent the plain words that will send the link, which is recall of a real feature. No URL is written out, no app referral, no internal machinery exposed, no invented details. Clean and complete.",
+    "score": 5
+  }
+}

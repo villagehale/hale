@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not visible on this week's calendar — there is no piano event in the week's events, and the private items cannot be assumed to be piano. The reply does not surface the private items as possibilities, which is correct per the rules. However, \"Want me to check next week?\" is a question that is reasonable given the context (piano might be next week), but it does add a question where none was strictly needed. The reply is clean, short, and honest. The question about checking next week is a sensible next step, not a dangling or misleading question. This is a solid, correct reply with minimal blemish — the question is useful rather than noise, so it earns a 4.",
+    "score": 4
+  }
+}
