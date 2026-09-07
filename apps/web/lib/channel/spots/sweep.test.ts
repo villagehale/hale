@@ -844,6 +844,31 @@ describe('runWatchedSpotsSweep — a reopened waitlist is news, a closed one is 
     expect(body.replace(SOURCE_URL, '').replace('Monday 05:00 PM', '')).not.toMatch(/\d/);
   });
 
+  it('leaves the parent knowing the class is FULL once the waitlist text lands', async () => {
+    // The mutation this kills: STATE_TOLD.waitlist_reopened = 'open'. What that text said
+    // is "the queue has room", never "there is a seat" — so the state the parent's
+    // knowledge is now consistent with is still `full`. Get it wrong and the next tick
+    // asks `transitionKind('open', ...)`, which makes a real seat opening on this page
+    // no longer news: the parent is never told about the thing they are waiting for.
+    // The mirror — a `seat_opened` receipt moving the column to 'open' — is asserted in
+    // the delivery-truth test above.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, WAITLIST_REOPENED_PAGE);
+    const spotId = await seedWatch(db.database, family, { lastState: 'waitlist_full' });
+
+    expect((await runWatchedSpotsSweep(db.database, test.deps, MIDDAY)).sent).toBe(1);
+    expect((await readWatch(spotId)).lastState).toBe('waitlist_full');
+
+    await setReceipt('delivered');
+    const settled = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
+
+    expect(settled.released.notified).toBe(1);
+    const row = await readWatch(spotId);
+    expect(row.releasedReason).toBe('notified');
+    expect(row.lastState).toBe('full');
+  });
+
   it.each([
     ['the queue is still full', WAITLIST_FULL_PAGE, 'waitlist_full'],
     ['the tenant runs no waitlist at all', NO_WAITLIST_PAGE, 'full'],
