@@ -750,6 +750,13 @@
       "when": 1781469603000,
       "tag": "0109_watched_spots",
       "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1781469604000,
+      "tag": "0110_registration_sequence_prepared",
+      "breakpoints": true
     }
   ]
 }
