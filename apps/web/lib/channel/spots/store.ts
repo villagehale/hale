@@ -27,6 +27,17 @@ import { recordSpotWatchPromise } from './promise';
  *
  * WHAT LIVE MEANS, everywhere: `released_at IS NULL`. Every write here says so, so a
  * released watch cannot be polled, claimed, sent for, or released twice.
+ *
+ * WHAT `last_state` MEANS: the last state the PARENT'S KNOWLEDGE is consistent with —
+ * NOT the last state a read saw. Three writers may move it and each one is the moment
+ * that becomes true: {@link recordPoll} on a read that was not news, {@link
+ * closeBeforeSend} when a held observation is dropped and the page's own state stands
+ * again, and {@link markNotifiedAndRelease} when the parent has actually been told.
+ * {@link claimOpenTransition} deliberately does NOT: noticing is not telling, and a
+ * claim that wrote the state it claimed would erase the state the next tick has to
+ * judge a page that moved AGAIN while the observation was held — a seat claimed from a
+ * full waitlist, retaken overnight, with the queue reopened by morning, would ask
+ * `open → full-with-room`, which is nothing, and the parent would hear nothing.
  */
 
 /**
@@ -359,13 +370,17 @@ export async function recordPoll(
  *
  * `sendAttempts` resets here and `notifiedMessageId` clears here for the same reason: the
  * two attempts are per OPENING, not per watch.
+ *
+ * `last_state` IS NOT WRITTEN, and there is no `to` to write: what the page says now is
+ * carried by `pending_kind`, which is also what guards the double claim, and the column
+ * stays on the state the parent knows until they are told (see the module note). Only
+ * `from` matters here, in the WHERE clause.
  */
 export async function claimOpenTransition(
   database: Database,
   input: {
     spotId: string;
     from: WatchedSpotState;
-    to: WatchedSpotState;
     kind: WatchedSpotPendingKind;
     now: Date;
   },
@@ -373,7 +388,6 @@ export async function claimOpenTransition(
   const [row] = await database
     .update(schema.watchedSpots)
     .set({
-      lastState: input.to,
       pendingKind: input.kind,
       pendingSince: input.now,
       openTransitions: sql`${schema.watchedSpots.openTransitions} + 1`,
@@ -448,23 +462,27 @@ export async function clearFailedAttempt(
 }
 
 /**
- * The page changed its mind before Hale was allowed to speak — the held observation is
- * dropped and the reading that overtook it becomes the state.
+ * Drop the held observation — the page moved off it before Hale was allowed to speak.
  *
- * The only honest thing that can happen to a stale observation. A 2 a.m. opening held
- * through quiet hours and gone by 8 a.m. is not news; sending it anyway would be Hale
- * telling a parent about a seat that closed six hours ago.
+ * Usually that is the page taking the opening back: a 2 a.m. seat gone by 8 a.m. is not
+ * news, sending it anyway would be Hale telling a parent about a seat that closed six
+ * hours ago, and the reading that overtook it becomes the state.
+ *
+ * `lastState` is NULL when the page moved to a DIFFERENT opening rather than away from
+ * one (a held seat that is a reopened queue by morning). Nothing about what the parent
+ * knows changed there — only the claim is dropped, so the caller can make the true one
+ * against the same `from` — and writing this tick's state would take that `from` away.
  */
 export async function closeBeforeSend(
   database: Database,
-  input: { spotId: string; lastState: WatchedSpotState; now: Date },
+  input: { spotId: string; lastState: WatchedSpotState | null; now: Date },
 ): Promise<void> {
   await database
     .update(schema.watchedSpots)
     .set({
       pendingKind: null,
       pendingSince: null,
-      lastState: input.lastState,
+      ...(input.lastState === null ? {} : { lastState: input.lastState }),
       updatedAt: input.now,
     })
     .where(and(eq(schema.watchedSpots.id, input.spotId), isNull(schema.watchedSpots.releasedAt)));
@@ -476,15 +494,22 @@ export async function closeBeforeSend(
  * `notifiedTransitions` is set to `openTransitions` rather than incremented so the two
  * counters cannot drift, and the CHECK that forbids notified > open is then unbreakable
  * by this writer.
+ *
+ * THIS is where `last_state` finally moves, to the state the text told the parent about:
+ * their knowledge is what the column tracks, and this is the one write in the lane that
+ * changes it. Null writes nothing rather than inventing a state — unreachable (a
+ * confirmed message implies the observation it was sent for), and an ending that quietly
+ * filed a made-up state would be worse than one that left the last true one standing.
  */
 export async function markNotifiedAndRelease(
   database: Database,
-  input: { spotId: string; now: Date },
+  input: { spotId: string; lastState: WatchedSpotState | null; now: Date },
 ): Promise<void> {
   await database
     .update(schema.watchedSpots)
     .set({
       notifiedTransitions: sql`${schema.watchedSpots.openTransitions}`,
+      ...(input.lastState === null ? {} : { lastState: input.lastState }),
       pendingKind: null,
       pendingSince: null,
       releasedAt: input.now,

@@ -101,11 +101,15 @@ export const watchedSpots = pgTable(
      * proactive CLASS, never to widen one. */
     instant: boolean('instant').notNull().default(false),
     /**
-     * What the last TRUSTWORTHY read said. Always full or waitlist_full at birth: a watch
-     * is only armed against a page that read that way in the same turn the parent asked.
-     * A page nobody could read is NOT a state here — it is counted in
-     * `consecutiveFailures` and changes nothing, because a page you could not open is not
-     * a page that says the class is full.
+     * The last state the PARENT'S KNOWLEDGE is consistent with — a trustworthy read that
+     * was not news, or the state a text actually told them about. Always full or
+     * waitlist_full at birth: a watch is only armed against a page that read that way in
+     * the same turn the parent asked. A page nobody could read is NOT a state here — it
+     * is counted in `consecutiveFailures` and changes nothing, because a page you could
+     * not open is not a page that says the class is full. Neither is an opening Hale has
+     * merely NOTICED: the claim leaves this column alone (that is what `pendingKind` is
+     * for), so a held observation the page overtakes is still judged against the state
+     * the household is actually working from.
      */
     lastState: text('last_state').$type<WatchedSpotState>().notNull().default('full'),
     /**

@@ -316,6 +316,9 @@ describe('runWatchedSpotsSweep — the delivery-truth invariant', () => {
     expect(row.releasedAt).toBeNull();
     expect(row.notifiedMessageId).not.toBeNull();
     expect(row.notifiedTransitions).toBe(0);
+    // A text the carrier has merely taken is not knowledge: the column still reads what
+    // the parent is working from.
+    expect(row.lastState).toBe('full');
     expect((await commitment(family.familyId))?.fulfilledAt).toBeNull();
 
     // Tick 2 — Twilio has accepted and nothing has come back. Still live, and the page
@@ -336,6 +339,9 @@ describe('runWatchedSpotsSweep — the delivery-truth invariant', () => {
     row = await readWatch(spotId);
     expect(row.releasedReason).toBe('notified');
     expect(row.notifiedTransitions).toBe(1);
+    // The receipt is where the parent's knowledge moves, and it moves to what the TEXT
+    // said. Kills a release that leaves the column on the pre-send state.
+    expect(row.lastState).toBe('open');
     const kept = await commitment(family.familyId);
     expect(kept?.fulfilledAt).not.toBeNull();
     expect(kept?.fulfilledBy).toBe(messageId);
@@ -732,7 +738,7 @@ describe('runWatchedSpotsSweep — a held observation is re-derived, never repla
     expect(night.held.quiet_hours).toBe(1);
     let row = await readWatch(spotId);
     expect(row.pendingKind).toBe('waitlist_reopened');
-    expect(row.lastState).toBe('full');
+    expect(row.lastState).toBe('waitlist_full');
 
     // By morning the class is not merely queueing again: somebody withdrew and there is a
     // real seat. The waitlist sentence is dead, the seat sentence is the true one.
@@ -746,9 +752,50 @@ describe('runWatchedSpotsSweep — a held observation is re-derived, never repla
     expect(test.sent[0]?.body).toContain('2 spots left');
     row = await readWatch(spotId);
     expect(row.pendingKind).toBe('seat_opened');
-    expect(row.lastState).toBe('open');
+    // Dropping the held claim did NOT write this tick's state: the re-claim below carries
+    // `waitlist_full` in its WHERE clause, and a crash between the two leaves an ordinary
+    // un-held transition rather than a row nothing can transition from.
+    expect(row.lastState).toBe('waitlist_full');
     // The new claim is its own opening: a new counter (so a new dedupe key) and both
     // attempts back.
+    expect(row.openTransitions).toBe(2);
+    expect(row.sendAttempts).toBe(1);
+  });
+
+  it('says the smaller true thing when the seat it was holding went back to a queue', async () => {
+    // THE MIRROR of the test above, and the one the ROOT CAUSE hid: a seat claimed FROM a
+    // full waitlist, held through quiet hours, retaken by morning — but the queue has room
+    // now. That is a `waitlist_reopened` text, and it is only reachable because the claim
+    // no longer moves `last_state`: with the claimed state written at 02:00 the morning
+    // question was `transitionKind('open', full-with-room)`, which is null, so the parent
+    // heard nothing and the Radar counted a `closed_before_send` that never happened.
+    // The kill: put `lastState: input.to` back in claimOpenTransition.
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, {
+      lastState: 'waitlist_full',
+      now: TWO_AM,
+    });
+
+    const night = await runWatchedSpotsSweep(db.database, test.deps, TWO_AM);
+
+    expect(night.held.quiet_hours).toBe(1);
+    let row = await readWatch(spotId);
+    expect(row.pendingKind).toBe('seat_opened');
+    // Nobody has been told anything, so the column still says what the parent knows.
+    expect(row.lastState).toBe('waitlist_full');
+
+    test.pages.set(SOURCE_URL, WAITLIST_REOPENED_PAGE);
+    const morning = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(morning.closedBeforeSend).toBe(0);
+    expect(morning.transitions).toBe(1);
+    expect(morning.sent).toBe(1);
+    expect(test.sent).toHaveLength(1);
+    expect(test.sent[0]?.body).toContain('room on the waitlist');
+    row = await readWatch(spotId);
+    expect(row.pendingKind).toBe('waitlist_reopened');
     expect(row.openTransitions).toBe(2);
     expect(row.sendAttempts).toBe(1);
   });

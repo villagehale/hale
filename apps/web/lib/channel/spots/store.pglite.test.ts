@@ -247,7 +247,7 @@ describe('claimOpenTransition', () => {
     const armed = await arm(family.familyId, family.parentUserId);
     if (armed.status !== 'armed') throw new Error('unreachable: the arm was refused');
 
-    const claim = { spotId: armed.spotId, from: 'full', to: 'open', kind: 'seat_opened' } as const;
+    const claim = { spotId: armed.spotId, from: 'full', kind: 'seat_opened' } as const;
     expect(await claimOpenTransition(db.database, { ...claim, now: NOW })).toBe(1);
     expect(await claimOpenTransition(db.database, { ...claim, now: NOW })).toBeNull();
 
@@ -255,7 +255,34 @@ describe('claimOpenTransition', () => {
     expect(spot?.openTransitions).toBe(1);
     expect(spot?.pendingKind).toBe('seat_opened');
     expect(spot?.pendingSince).toEqual(NOW);
-    expect(spot?.lastState).toBe('open');
+  });
+
+  /** THE INVARIANT `last_state` carries: the last state the PARENT'S KNOWLEDGE is
+   * consistent with, not the last state a read saw. A claim is Hale NOTICING something it
+   * has not been allowed to say yet, so it may not move the column — the state it was
+   * claimed from is what the next tick needs to judge a page that moved again while the
+   * observation was held. Write the claimed state here and the origin is gone: a seat
+   * claimed from a full waitlist and retaken by morning, with the queue reopened, asks
+   * `open -> full-with-room`, which is nothing, and the parent is never told about the
+   * waitlist that is actually there. Catches a claim that writes the state it claimed. */
+  it('leaves last_state at the state it was claimed FROM, because nobody has been told yet', async () => {
+    const family = await seedFamily(db.database, 'Unmoved State Family');
+    const armed = await arm(family.familyId, family.parentUserId, { lastState: 'waitlist_full' });
+    if (armed.status !== 'armed') throw new Error('unreachable: the arm was refused');
+
+    expect(
+      await claimOpenTransition(db.database, {
+        spotId: armed.spotId,
+        from: 'waitlist_full',
+        kind: 'seat_opened',
+        now: NOW,
+      }),
+    ).toBe(1);
+
+    const spot = await readSpot(armed.spotId);
+    expect(spot?.lastState).toBe('waitlist_full');
+    expect(spot?.pendingKind).toBe('seat_opened');
+    expect(spot?.openTransitions).toBe(1);
   });
 
   /** The half of the guard the double tick does not test on its own. Hale is holding a
@@ -273,7 +300,6 @@ describe('claimOpenTransition', () => {
       await claimOpenTransition(db.database, {
         spotId: armed.spotId,
         from: 'waitlist_full',
-        to: 'full',
         kind: 'waitlist_reopened',
         now: NOW,
       }),
@@ -282,7 +308,6 @@ describe('claimOpenTransition', () => {
       await claimOpenTransition(db.database, {
         spotId: armed.spotId,
         from: 'full',
-        to: 'open',
         kind: 'seat_opened',
         now: NOW,
       }),
@@ -314,7 +339,6 @@ describe('claimOpenTransition', () => {
       await claimOpenTransition(db.database, {
         spotId: armed.spotId,
         from: 'waitlist_full',
-        to: 'open',
         kind: 'seat_opened',
         now: NOW,
       }),
@@ -375,7 +399,6 @@ describe('claimSendAttempt', () => {
     await claimOpenTransition(db.database, {
       spotId,
       from: 'full',
-      to: 'open',
       kind: 'seat_opened',
       now: NOW,
     });
@@ -401,7 +424,6 @@ describe('claimSendAttempt', () => {
       await claimOpenTransition(db.database, {
         spotId,
         from: 'full',
-        to: 'open',
         kind: 'seat_opened',
         now: NOW,
       }),
@@ -417,23 +439,29 @@ describe('markNotifiedAndRelease', () => {
    * `notified_transitions` would leave it at 1 against 2 openings and the Radar would
    * report a household still owed a text it has had. Catches the reason written as
    * anything else, a held observation left behind on a closed watch, and the two counters
-   * drifting apart. */
+   * drifting apart — and, because no other writer in the lane may move `last_state` off
+   * a claim, that the parent's knowledge is finally recorded HERE. */
   it('files the ending as notified, drops the held observation, and squares the counters', async () => {
     const family = await seedFamily(db.database, 'Notified Family');
     const armed = await arm(family.familyId, family.parentUserId);
     if (armed.status !== 'armed') throw new Error('unreachable: the arm was refused');
     const spotId = armed.spotId;
-    const claim = { spotId, from: 'full', to: 'open', kind: 'seat_opened' } as const;
+    const claim = { spotId, from: 'full', kind: 'seat_opened' } as const;
 
     expect(await claimOpenTransition(db.database, { ...claim, now: NOW })).toBe(1);
     await closeBeforeSend(db.database, { spotId, lastState: 'full', now: NOW });
     expect(await claimOpenTransition(db.database, { ...claim, now: NOW })).toBe(2);
 
-    await markNotifiedAndRelease(db.database, { spotId, now: NOW });
+    // Claimed twice from 'full' and never told: until this call the column still reads the
+    // state the household is working from.
+    expect((await readSpot(spotId))?.lastState).toBe('full');
+
+    await markNotifiedAndRelease(db.database, { spotId, lastState: 'open', now: NOW });
 
     const spot = await readSpot(spotId);
     expect(spot?.releasedReason).toBe('notified');
     expect(spot?.releasedAt).toEqual(NOW);
+    expect(spot?.lastState).toBe('open');
     expect(spot?.pendingKind).toBeNull();
     expect(spot?.pendingSince).toBeNull();
     expect(spot?.notifiedTransitions).toBe(2);

@@ -15,7 +15,7 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
-import { type SpotReading, readSpot, transitionKind } from './availability';
+import { STATE_TOLD, type SpotReading, readSpot, transitionKind } from './availability';
 import { renderSpotOpen } from './copy';
 import { resettleSpotWatchPromise } from './promise';
 import {
@@ -590,7 +590,13 @@ async function sweepSpot(
       return { kind: 'failed' };
     }
     if (status === 'sent' || status === 'delivered') {
-      await markNotifiedAndRelease(database, { spotId: spot.id, now });
+      await markNotifiedAndRelease(database, {
+        spotId: spot.id,
+        // The parent has HEARD, so `last_state` moves for the first and only time in the
+        // life of this opening — to what the text said, not to what a read saw.
+        lastState: spot.pendingKind === null ? null : STATE_TOLD[spot.pendingKind],
+        now,
+      });
       await resettleSpotWatchPromise(database, {
         familyId: spot.familyId,
         keptBy: notifiedMessageId,
@@ -698,23 +704,25 @@ async function sweepSpot(
 
     if (!supportsKind(spot.pendingKind, reading)) {
       // A reading that does not support the held observation is USUALLY the page taking
-      // it back. It can also be the page going FURTHER: a waitlist that reopened at
-      // 02:00 and is a real seat by 08:00 does not support `waitlist_reopened` either.
-      // Closing that as `closed_before_send` would write this tick's state as
-      // `last_state`, leave `open -> open` next tick, and count an opening that is
-      // actually there under a bucket that means it went away (rule #11).
-      const escalated = transitionKind(spot.lastState, reading);
-      if (escalated === null) {
+      // it back. It can also be the page moving to a DIFFERENT opening — a queue that
+      // reopened at 02:00 and is a real seat by 08:00, or the seat it was holding sold
+      // and the queue open in its place. Because `last_state` still says what the parent
+      // knows, both of those are the ORDINARY question asked of any reading, and the two
+      // directions need no rule of their own: drop the claim, ask it, and either the
+      // page went away (nothing to say) or there is a true opening to claim in its place.
+      const overtaken = transitionKind(spot.lastState, reading);
+      if (overtaken === null) {
         // The only honest thing that can happen to a stale observation. A 2 a.m. opening
-        // held through quiet hours and gone by 8 a.m. is not news.
+        // held through quiet hours and gone by 8 a.m. is not news, and this tick's
+        // reading is now the state the parent's knowledge stands against.
         await closeBeforeSend(database, { spotId: spot.id, lastState: reading.state, now });
         return { kind: 'closed_before_send' };
       }
-      // The held claim is dropped back to the state it was claimed FROM — the claim below
-      // carries that state in its WHERE clause, and a crash between the two writes leaves
-      // an ordinary un-held transition for the next tick to claim.
-      await closeBeforeSend(database, { spotId: spot.id, lastState: spot.lastState, now });
-      return claimAndSend(database, context, spot, link, reading, escalated);
+      // Only the claim is dropped: the claim below carries `spot.lastState` in its WHERE
+      // clause, and a crash between the two writes leaves an ordinary un-held transition
+      // for the next tick to claim exactly as this one did.
+      await closeBeforeSend(database, { spotId: spot.id, lastState: null, now });
+      return claimAndSend(database, context, spot, link, reading, overtaken);
     }
     return sendSpotOpen(database, context, spot, link, reading, spot.pendingKind);
   }
@@ -752,7 +760,6 @@ async function claimAndSend(
   const openTransitions = await claimOpenTransition(database, {
     spotId: spot.id,
     from: spot.lastState,
-    to: reading.state,
     kind,
     now,
   });
