@@ -225,18 +225,17 @@ describe('armWatchedSpot', () => {
     logged.mockRestore();
 
     // The whole object, so an added field cannot smuggle the row back in, and a real
-    // Postgres code so the two absences below are read off a payload that exists.
+    // Postgres code so the three absences below are read off a payload that exists.
     expect(payload).toEqual({
-      fault: {
-        code: '42P01',
-        constraint: null,
-        message: expect.stringContaining('does not exist'),
-      },
+      fault: { name: 'error', code: '42P01', constraint: null },
       familyId: family.familyId,
       host: 'cityofmarkham.perfectmind.com',
     });
     expect(JSON.stringify(payload)).not.toContain('Milliken preschool swim');
     expect(JSON.stringify(payload)).not.toContain('CoursesLandingPage');
+    // Not the driver's own words either: that is the field a driver fills with the
+    // failing statement's parameters, and here those are the label and the page.
+    expect(JSON.stringify(payload)).not.toContain('does not exist');
   });
 });
 

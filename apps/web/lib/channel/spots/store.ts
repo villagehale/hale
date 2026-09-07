@@ -30,26 +30,33 @@ import { recordSpotWatchPromise } from './promise';
  */
 
 /**
- * What a driver error is allowed to say in a log line here.
+ * What a failure is allowed to say in a log line in this lane — its CLASS, never its
+ * content. The sweep's own catch-all uses this too, which is why it lives here.
  *
- * The raw error is NOT loggable in this module: postgres.js and pglite both hang the
- * failing statement and its parameters on it, and a constraint violation's `detail` is
- * "Failing row contains (…)" — every column, so the label the parent typed and the page
- * they pasted (rule #1). What identifies the fault is its code, the constraint it broke
- * and the primary message, none of which carry the row. `constraint` is pglite's spelling
+ * The raw error is not loggable: postgres.js and pglite both hang the failing statement
+ * and its parameters on it, and a constraint violation's `detail` is "Failing row
+ * contains (…)" — every column, so the label the parent typed and the page they pasted
+ * (rule #1). The MESSAGE is dropped for the same reason and not only the detail: it is
+ * the field a driver fills with the statement's parameters (drizzle ≥0.41 does), and in
+ * this lane those parameters are a course page, a label and a composed text.
+ *
+ * What is left identifies the fault without ever carrying a row: the error's class, the
+ * SQLSTATE code and the constraint it broke. The cost is real and taken deliberately — a
+ * plain bug here reads as `TypeError` and a spot id, and its message is read off the
+ * pglite suite rather than off a production log line. `constraint` is pglite's spelling
  * and `constraint_name` is postgres.js's; both drivers run this module.
  */
-function faultOf(err: unknown): {
+export function faultOf(err: unknown): {
+  name: string;
   code: string | null;
   constraint: string | null;
-  message: string;
 } {
   const fields = err as { code?: unknown; constraint?: unknown; constraint_name?: unknown };
   const constraint = fields.constraint ?? fields.constraint_name;
   return {
+    name: err instanceof Error ? err.name : typeof err,
     code: typeof fields.code === 'string' ? fields.code : null,
     constraint: typeof constraint === 'string' ? constraint : null,
-    message: err instanceof Error ? err.message : String(err),
   };
 }
 

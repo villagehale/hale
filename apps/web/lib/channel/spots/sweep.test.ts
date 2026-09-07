@@ -1282,20 +1282,40 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
     expect(test.sent).toHaveLength(1);
   });
 
-  it('fails only the spot whose parent contradicts the gate', async () => {
+  it('fails only the spot whose parent contradicts the gate, and logs the fault as a shape', async () => {
     // resolveSendablePhone returning null after an ALLOWED verdict is a contradiction,
     // not a state to paper over — but it is one household's contradiction.
+    //
+    // The second mutation this kills: logging `err.message` off that catch. It is the
+    // one line in this file that can be handed an error nobody here composed — this
+    // throw carries a user id today, and a driver that hangs the failing statement's
+    // parameters on its message would hand it the label and the composed body tomorrow.
     const family = await seedFamily(db.database);
     const test = harness();
     test.pages.set(SOURCE_URL, OPEN_PAGE);
     test.phone = null;
-    await seedWatch(db.database, family, { lastState: 'full' });
+    const spotId = await seedWatch(db.database, family, { lastState: 'full' });
 
-    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+    const logged: unknown[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      logged.push(...args);
+    });
+    let summary: WatchedSpotsSweepSummary;
+    try {
+      summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+    } finally {
+      spy.mockRestore();
+    }
 
     expect(summary.failed).toBe(1);
     expect(summary.sent).toBe(0);
     expect(test.sent).toEqual([]);
+    // Positive control: the line fired, and it names the spot it is about.
+    expect(logged[0]).toEqual({
+      spotId,
+      fault: { name: 'Error', code: null, constraint: null },
+    });
+    expect(JSON.stringify(logged)).not.toContain(family.parentUserId);
   });
 
   it('holds under the frequency cap without touching the observation', async () => {

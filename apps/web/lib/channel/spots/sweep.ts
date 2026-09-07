@@ -25,6 +25,7 @@ import {
   claimSendAttempt,
   clearFailedAttempt,
   closeBeforeSend,
+  faultOf,
   findLedgerRowByDedupeKey,
   loadDueSpots,
   loadExpiredSpots,
@@ -445,9 +446,11 @@ interface RunContext {
 type PrecheckVerdict = 'ok' | 'parent_stopped' | 'consent_withdrawn';
 
 /**
- * The last error text this module is allowed to keep. A portal's own error carries the
- * url it was fetched from, which is a page one family asked about — so the host is what
- * a log line may name, and the message is kept only for the failure counter's detail.
+ * The ONE error whose own words survive here — the fetch primitive's, because the status
+ * a municipality answered with is the whole diagnosis of an unreadable page. It carries
+ * the url it failed on, which is a page one family asked about, so its single caller
+ * replaces that url with the host (rule #1). Every other failure in this file is logged
+ * as a shape (`faultOf`), never as a message.
  */
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -525,10 +528,10 @@ export async function runWatchedSpotsSweep(
     } catch (err) {
       // One municipality — or one contradiction inside one household — is that spot's
       // outcome, never the run's. The run must RETURN so the heartbeat stamps.
-      console.error(
-        { spotId: spot.id, detail: errorText(err) },
-        'watched spots: the spot failed',
-      );
+      // The CLASS of the failure and the spot it happened to, never the error's own
+      // words: this is the one line here that can be handed an error nobody in this file
+      // composed, and a driver's message carries the statement's parameters (rule #1).
+      console.error({ spotId: spot.id, fault: faultOf(err) }, 'watched spots: the spot failed');
       fate = { kind: 'failed' };
     }
     tally(summary, fate);

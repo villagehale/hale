@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { faultOf } from '~/lib/channel/spots/store';
 import {
   defaultWatchedSpotsSweepDeps,
   runWatchedSpotsSweep,
@@ -35,8 +36,11 @@ export const GET = cronRoute('watched-spots', async () => {
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } catch (err) {
     // Surface the failure instead of 500-ing silently: log, then re-throw so the run
-    // stays a real error rather than a masked success (rule #8).
-    console.error({ err }, 'cron/watched-spots failed');
+    // stays a real error rather than a masked success (rule #8). The line this route
+    // writes carries the fault's CLASS only — the whole error would carry a driver's
+    // statement parameters, and in this lane those are a label and a course page
+    // (rule #1).
+    console.error({ fault: faultOf(err) }, 'cron/watched-spots failed');
     throw err;
   } finally {
     await flushTelemetry();
