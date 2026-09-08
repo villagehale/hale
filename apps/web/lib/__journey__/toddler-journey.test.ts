@@ -63,6 +63,7 @@ import {
   legDedupeKey,
 } from '~/lib/registration/sequence/run';
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
+import { portalForMunicipality } from '~/lib/channel/spots/url';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -115,6 +116,8 @@ const NUDGE_AT = new Date('2026-08-02T14:00:00.000Z');
 const SEQUENCE_AT = new Date('2026-08-18T14:00:00.000Z');
 /** A later nudge slot, past the weekly cap window, after the parent has opted out. */
 const WITHDRAWN_AT = new Date('2026-08-16T14:00:00.000Z');
+/** Saturday 10:00 Toronto, three days out — the readiness slot (VIL-338). */
+const READINESS_AT = new Date('2026-08-22T14:00:00.000Z');
 /** The evening before the open, 19:00 Toronto — the battle-plan slot. */
 const BATTLE_PLAN_AT = new Date('2026-08-24T23:00:00.000Z');
 /** Tuesday 06:30 Toronto — when Markham's doors open. */
@@ -358,6 +361,7 @@ interface Journey {
   /** The four gate ports consulted for the nudge, in call order. */
   gateCalls: string[];
   propose: SequenceRunResult;
+  readiness: SequenceRunResult;
   battlePlan: SequenceRunResult;
   /** The action row the shortlist minted, as persisted. */
   draftedAction: Record<string, unknown>;
@@ -660,6 +664,7 @@ async function runToddlerJourney(): Promise<Journey> {
         id: child.id,
         name: child.name,
         dateOfBirth: child.dateOfBirth,
+        dobPrecision: child.dobPrecision,
       })),
     loadWindows: (database, area) => readWindows(database, area),
     loadClaimedWindowIds: async () => new Set(claimed),
@@ -732,6 +737,9 @@ async function runToddlerJourney(): Promise<Journey> {
           outcome: null,
           waitlistPosition: null,
           waitlistStartedAt: null,
+          courseUrl: (row.courseUrl as string | null) ?? null,
+          courseOpensAt: (row.courseOpensAt as Date | null) ?? null,
+          readinessReady: (row.readinessReady as boolean | null) ?? null,
         };
       });
     },
@@ -758,6 +766,13 @@ async function runToddlerJourney(): Promise<Journey> {
     // whole ladder is a conversation, and a leg the parent answers has to be a row in
     // `messages` or the answer arrives with nothing above it.
     threadMessage: threadProactiveMessage,
+    // VIL-338 · this household has bound no course, so no leg may reach the network. A
+    // throwing fetcher is the positive proof of that rather than a stub that would
+    // quietly answer.
+    fetchBody: async (url) => {
+      throw new Error(`journey: unexpected course read ${url}`);
+    },
+    refreshCourseAnchor: async () => false,
   };
 
   const propose = await runRegistrationSequenceCron(fake.db, sequenceDeps, SEQUENCE_AT);
@@ -828,6 +843,9 @@ async function runToddlerJourney(): Promise<Journey> {
     (err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }),
   );
 
+  // VIL-338 · Markham has a registry portal, so this household's ladder has the
+  // readiness rung: three days out, once the parent has approved.
+  const readiness = await runRegistrationSequenceCron(fake.db, sequenceDeps, READINESS_AT);
   const battlePlan = await runRegistrationSequenceCron(fake.db, sequenceDeps, BATTLE_PLAN_AT);
 
   // ── STAGE 8 · a grandparent joins, scoped ─────────────────────────────────
@@ -870,6 +888,7 @@ async function runToddlerJourney(): Promise<Journey> {
     nudgeSends,
     gateCalls,
     propose,
+    readiness,
     battlePlan,
     draftedAction,
     approval,
@@ -1028,11 +1047,12 @@ describe('4 · the 48h nudge reaches a transport', () => {
     // happened to be standing. The wire body carries the CASL line and this row must
     // not — the thread is history, not a compliance surface.
     const threaded = journey.fake.rows(schema.messages).filter((row) => row.role === 'assistant');
-    // Three proactive sends happen in this journey and all three are now sentences the
-    // coach can see: the 48h nudge, then the registration ladder's heads-up and its
-    // battle plan. The ladder matters most — it is the one Hale runs as a conversation,
-    // and its heads-up asks for the YES that stage 7 gives.
-    expect(threaded).toHaveLength(3);
+    // Four proactive sends happen in this journey and all four are now sentences the
+    // coach can see: the 48h nudge, then the registration ladder's heads-up, its
+    // readiness checklist (VIL-338 — Markham has a portal Hale can read) and its battle
+    // plan. The ladder matters most — it is the one Hale runs as a conversation, and two
+    // of its rungs ask a question the parent answers into this very thread.
+    expect(threaded).toHaveLength(4);
     const body = String(threaded[0]?.content);
     expect(journey.nudgeSends[0]?.body).toContain(body);
     expect(body).not.toContain(NUDGE_OPT_OUT);
@@ -1111,13 +1131,16 @@ describe('6 · the registration sequence claims the window and prepares the morn
 
   it('fires the heads-up leg first, and holds the battle plan until the parent has said yes', () => {
     // The heads-up carries the news M4 would have carried, so it fires at optIn
-    // 'pending'. Everything after it presumes a yes.
+    // 'pending'. Everything after it presumes a yes — and the checklist between them is
+    // VIL-338's, which only exists because Markham's portal is one Hale has learned to
+    // read AND the parent approved at stage 7.
     const legs = journey.fake
       .rows(schema.auditLog)
       .filter((row) => row.actionTaken === 'registration_sequence_leg_sent')
       .map((row) => (row.after as Record<string, unknown>).leg);
-    expect(legs).toEqual(['heads_up', 'battle_plan']);
+    expect(legs).toEqual(['heads_up', 'readiness', 'battle_plan']);
     expect(journey.propose.sent).toBe(1);
+    expect(journey.readiness.sent).toBe(1);
     expect(journey.battlePlan.sent).toBe(1);
     const keys = journey.fake
       .rows(schema.channelMessages)
@@ -1125,8 +1148,26 @@ describe('6 · the registration sequence claims the window and prepares the morn
       .map((row) => row.dedupeKey);
     expect(keys).toEqual([
       legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'heads_up'),
+      legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'readiness'),
       legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'battle_plan'),
     ]);
+  });
+
+  it('asks the four-item checklist without ever claiming Hale did any of it', () => {
+    // VIL-338's rung, and the one sentence in this ladder whose whole content is a
+    // question. Every item is Markham's own published prerequisite restated, the ask is
+    // ONE (D14), and nothing here says Hale opened the portal, checked the account or
+    // filled anything in — the class of lie a parent would discover at 6:31 with the
+    // seat gone. No course is bound in this journey, so no leg reached the network at
+    // all (the deps' fetcher throws).
+    const checklist = journey.transport
+      .bodies()
+      .find((body) => body.includes('a Markham portal account')) as string;
+    expect(checklist).toContain('added with their birthday(s)');
+    expect(checklist).toContain('a card saved');
+    expect(checklist).toContain('Reply YES when that is done, or NO if not.');
+    expect(checklist).not.toMatch(/filled in|staged|held for you|all set/i);
+    expect(journey.readiness.read).toBe(0);
   });
 
   it('mints a payload the REAL executor accepts (WS3 P0)', () => {
@@ -1167,15 +1208,23 @@ describe('6 · the registration sequence claims the window and prepares the morn
     expect(windowPhrase(shortlist as never)).not.toContain('Aquatic Leadership');
     // Both children are squarely inside 12–60 months, so nothing is hedged.
     expect(shortlist?.fitNotes.map((note) => note.fit)).toEqual(['in_band', 'in_band']);
-    // The fourth argument is the portal the LEGS will run on, and it is null for the
-    // same reason `runLegForSequence` passes null: nothing reads the bound course off
-    // the row yet. The card and the ladder have to enumerate the same messages — a
-    // household promised a checklist it will not receive has consented to one thing and
-    // been sent another — so this asserts the promise this family's ladder can keep.
-    const rationale = renderShortlistRationale(shortlist as never, TZ, SEQUENCE_AT, null);
+    // The fourth argument is the portal the LEGS will run on, and Markham's is one Hale
+    // has learned to read — so the card enumerates FOUR texts, which is exactly what
+    // this household then receives above. The card and the ladder have to enumerate the
+    // same messages: a household promised a checklist it will not receive has consented
+    // to one thing and been sent another.
+    const rationale = renderShortlistRationale(
+      shortlist as never,
+      TZ,
+      SEQUENCE_AT,
+      portalForMunicipality('markham'),
+    );
     expect(rationale).toContain('I never register for you');
-    expect(rationale).toContain('a week ahead, the evening before, and 15 minutes before it opens');
-    expect(rationale).not.toContain('a checklist a few days out');
+    expect(rationale).toContain(
+      'a week ahead, a checklist a few days out, the evening before, and 15 minutes before it opens',
+    );
+    // The one place a parent learns how to bind a course, and it is read on a screen.
+    expect(rationale).toContain('the morning text will carry it');
   });
 });
 
