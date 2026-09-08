@@ -38,6 +38,21 @@ function fakeDb(args: {
   children: ChildRow[];
   members: MemberRow[];
   saves?: { title: string; savedAt: Date }[];
+  preparations?: {
+    municipality: string;
+    cycleLabel: string;
+    courseUrl: string | null;
+    courseOpensAt: Date | null;
+    readinessReady: boolean | null;
+    updatedAt: Date;
+  }[];
+  watches?: {
+    sourceUrl: string;
+    lastState: string;
+    createdAt: Date;
+    releasedAt: Date | null;
+    releasedReason: string | null;
+  }[];
   assistants?: {
     clientName: string;
     scopes: string[];
@@ -75,6 +90,16 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue(args.assistants ?? []) };
   });
 
+  const preparationsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.preparations ?? []) };
+  });
+
+  const watchesWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.watches ?? []) };
+  });
+
   // Route each select to the right terminal by call order: family, children,
   // members, the village-saves join, then this parent's assistant grants.
   let selectCall = 0;
@@ -84,7 +109,9 @@ function fakeDb(args: {
     if (which === 1) return { from: () => ({ where: childrenWhere }) };
     if (which === 2) return { from: () => ({ innerJoin: () => ({ where: membersWhere }) }) };
     if (which === 3) return { from: () => ({ innerJoin: () => ({ where: savesWhere }) }) };
-    return { from: () => ({ innerJoin: () => ({ where: assistantsWhere }) }) };
+    if (which === 4) return { from: () => ({ innerJoin: () => ({ where: assistantsWhere }) }) };
+    if (which === 5) return { from: () => ({ innerJoin: () => ({ where: preparationsWhere }) }) };
+    return { from: () => ({ where: watchesWhere }) };
   });
 
   const values = vi.fn().mockResolvedValue(undefined);
@@ -146,6 +173,113 @@ describe('assembleFamilyExport', () => {
     expect(doc.members.primary?.email).toBe('ana@example.com');
     expect(doc.savedActivities).toEqual([]);
     expect(doc.assistantConnections).toEqual([]);
+    // Present and EMPTY, never absent: a right-to-access copy that simply omits a
+    // section leaves a parent unable to tell "Hale holds none of this" from "Hale did
+    // not look".
+    expect(doc.registrationPreparation).toEqual([]);
+    expect(doc.watchedSpots).toEqual([]);
+  });
+
+  it('exports what Hale holds about a registration morning — and never the course link', async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      preparations: [
+        {
+          municipality: 'markham',
+          cycleLabel: 'Fall 2026',
+          courseUrl:
+            'https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928',
+          courseOpensAt: new Date('2026-09-15T10:30:00Z'),
+          readinessReady: true,
+          updatedAt: new Date('2026-09-01T12:00:00Z'),
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.registrationPreparation).toEqual([
+      {
+        municipality: 'markham',
+        cycleLabel: 'Fall 2026',
+        courseHost: 'cityofmarkham.perfectmind.com',
+        courseOpensAt: '2026-09-15T10:30:00.000Z',
+        readinessReady: true,
+        // When this ROW last changed, which is not the same thing as when the parent
+        // pasted the link: the anchor is refreshed by later reads. The dated bind is a
+        // trail line, and the trail is in this document.
+        updatedAt: '2026-09-01T12:00:00.000Z',
+      },
+    ]);
+    // METADATA ONLY. The course id in that URL names the exact class one of this
+    // family's children is being registered for, so the HOST is the whole of what a
+    // portability copy carries — the parent already has the link; they pasted it.
+    const serialized = JSON.stringify(doc);
+    expect(serialized).not.toContain('courseId=');
+    expect(serialized).not.toContain('BookMe4LandingPages');
+  });
+
+  it('omits a sequence Hale holds no preparation for at all', async () => {
+    // The positive control for the case above: the block is about what a parent TOLD
+    // Hale, and a claimed window nobody has pasted a link for or answered about has
+    // nothing in it to export.
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      preparations: [],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.registrationPreparation).toEqual([]);
+  });
+
+  it('exports the class pages the family asked Hale to watch, by host and state', async () => {
+    // VIL-337's rows, deferred at the time and closed here: a watch is a standing
+    // instruction the family gave, so a right-to-access copy that omitted it would be
+    // missing the one thing Hale is doing on their behalf every ten minutes.
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      watches: [
+        {
+          sourceUrl:
+            'https://townofoakville.perfectmind.com/Contacts/BookMe4LandingPages/CoursesLandingPage?widgetId=15f6af07-39c5-473e-b053-96653f77a406&courseId=16765c8e-835f-4ba6-9803-bbc84bd5ff8f',
+          lastState: 'full',
+          createdAt: new Date('2026-07-01T12:00:00Z'),
+          releasedAt: new Date('2026-07-20T09:00:00Z'),
+          releasedReason: 'notified',
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.watchedSpots).toEqual([
+      {
+        host: 'townofoakville.perfectmind.com',
+        state: 'full',
+        createdAt: '2026-07-01T12:00:00.000Z',
+        releasedAt: '2026-07-20T09:00:00.000Z',
+        releasedReason: 'notified',
+      },
+    ]);
+    // The label a parent gave the class is theirs and is already in the trail; what must
+    // never leave is the course identity itself.
+    expect(JSON.stringify(doc.watchedSpots)).not.toContain('courseId=');
   });
 
   it('includes the family village saves — user-generated rows belong in the right-to-access copy', async () => {
@@ -241,12 +375,12 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Five scoped selects (family, children, members, village saves, this parent's
-    // assistant grants)
+    // Seven scoped selects (family, children, members, village saves, this parent's
+    // assistant grants, the registration preparations and the watched spots)
     // each recorded a where-condition; none was left unscoped. (The condition
     // objects are opaque Drizzle SQL, so we assert on arity — every select
     // passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(5);
+    expect(spies.whereFamilyIds).toHaveLength(7);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 });
