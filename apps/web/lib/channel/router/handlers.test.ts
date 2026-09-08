@@ -905,6 +905,48 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     ]);
   });
 
+  it('takes the resolver’s NO as a no — kills a resolver path that ignores polarity', async () => {
+    const prepare = prepareDeps();
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn('nah not yet', {
+        resolved: {
+          kind: 'registration_readiness',
+          questionId: 'seq-1',
+          polarity: 'no',
+          confidence: 'medium',
+        },
+      }),
+    );
+
+    expect(verdict.claimed).toBe(true);
+    expect(prepare.readiness).toEqual([
+      { ready: false, inbound: INBOUND_MESSAGE_ID, read: 'resolver' },
+    ]);
+  });
+
+  /**
+   * THE PROVENANCE GUARD. Every fact this branch files points at the `channel_messages`
+   * row that carried it (rule #6), and a spoken turn has none. Unreachable today — no
+   * kind this handler resolves is in `SPOKEN_QUESTION_KINDS` — which is exactly the
+   * shape of guard that rots unwatched, so it is pinned rather than trusted.
+   */
+  it('claims nothing when the turn carries no inbound message row — kills invented provenance', async () => {
+    const prepare = prepareDeps();
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(DB, {
+      ...preOpenTurn(LEGO_URL),
+      inboundChannelMessageId: null,
+    });
+
+    expect(verdict.claimed).toBe(false);
+    expect(prepare.bound).toEqual([]);
+    expect(prepare.readiness).toEqual([]);
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+  });
+
   it('is inert while F14 is dark for this household (D21)', async () => {
     vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
     const prepare = prepareDeps();

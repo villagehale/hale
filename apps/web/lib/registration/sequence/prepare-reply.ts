@@ -13,6 +13,7 @@ import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows
 import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
 import { renderCourseBindAck, renderReadinessAck } from './copy.js';
 import {
+  type AgeVerdict,
   BIND_FETCH_TIMEOUT_MS,
   MAX_BIND_DRIFT_DAYS,
   type PrepChild,
@@ -510,7 +511,7 @@ export interface CourseBindingWrite {
   replaced: boolean;
   hasRegForm: boolean;
   prerequisite: boolean;
-  ageFit: string;
+  ageFit: AgeVerdict['fit'];
   driftMinutes: number;
   now: Date;
 }

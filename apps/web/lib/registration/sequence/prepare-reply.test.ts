@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type SpotUrlRefusal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
@@ -204,6 +204,10 @@ afterAll(async () => {
   await db.close();
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 beforeEach(async () => {
   const seeded = await seedFamily(db.database, `Prepare Reply ${Math.random()}`);
   familyId = seeded.familyId;
@@ -268,39 +272,82 @@ describe('the bind refusals', () => {
     too_long: `${legoUrl}&pad=${'x'.repeat(512)}`,
   };
 
-  it('every refusal is a sentence, and none of them is the same sentence', async () => {
+  /** A paste whose refusal is decided before anything is fetched — the portal serving
+   * this is itself the failure. */
+  const unfetched = (): never => {
+    throw new Error('this refusal must be decided without opening a page');
+  };
+
+  /** The same real Markham page with every clock this family could open on removed: a
+   * live course that publishes no registration date at all. */
+  const noPublishedClock = () =>
+    fixture('open-window-open-markham').replace(
+      /"(ResidentsRegistrationDateValue|MembersRegistrationDateValue|PublicRegistrationStartDateValue)":"[^"]*"/g,
+      '"$1":null',
+    );
+
+  /** The same page with its two published clocks moved to the NEXT cycle: six weeks
+   * from the M1 row is a different season, not a corrected date. */
+  const nextSeason = () =>
+    fixture('open-window-open-markham')
+      .replace(/2026-08-11T06:30:00/g, '2026-09-22T06:30:00')
+      .replace(/2026-08-12T06:30:00/g, '2026-09-23T06:30:00');
+
+  /**
+   * Every refusal with the paste AND the page that actually produces it. The five
+   * URL-shaped ones and `wrong_municipality` never reach a portal — `unfetched` is the
+   * proof — and each page-shaped one gets its own bytes, so no reason can quietly reach
+   * this loop through another reason's verdict.
+   */
+  const DRIVES: Record<CourseBindRefusal, { rawUrl: string; page: () => string }> = {
+    not_https: { rawUrl: REFUSED_PASTE.not_https, page: unfetched },
+    has_credentials: { rawUrl: REFUSED_PASTE.has_credentials, page: unfetched },
+    host_not_allowed: { rawUrl: REFUSED_PASTE.host_not_allowed, page: unfetched },
+    not_a_course_page: { rawUrl: REFUSED_PASTE.not_a_course_page, page: unfetched },
+    too_long: { rawUrl: REFUSED_PASTE.too_long, page: unfetched },
+    wrong_municipality: { rawUrl: oakvilleUrl, page: unfetched },
+    page_unreadable: {
+      rawUrl: legoUrl,
+      page: () => {
+        throw new Error('ETIMEDOUT');
+      },
+    },
+    course_gone: { rawUrl: legoUrl, page: () => fixture('markham-course-not-found') },
+    no_published_clock: { rawUrl: legoUrl, page: noPublishedClock },
+    different_season: { rawUrl: legoUrl, page: nextSeason },
+  };
+
+  /**
+   * Kills three things at once: a reason that never reaches its own refusal (drive each
+   * one from the page that causes it and assert the reason back), a reason that shares
+   * another's sentence, and a writer that runs before the paste has been judged.
+   */
+  it('reaches every refusal by its own cause, in its own sentence, and writes nothing', async () => {
     const sequence = await preparing();
-    const sentences = new Map<CourseBindRefusal, string>();
+    const sentences = new Set<string>();
 
     for (const reason of COURSE_BIND_REFUSALS) {
+      const drive = DRIVES[reason];
       const outcome = await handleCourseBind(
         db.database,
-        {
-          sequence,
-          rawUrl: REFUSED_PASTE[reason as SpotUrlRefusal] ?? legoUrl,
-          inboundChannelMessageId: inboundId,
-          now: NOW,
-        },
-        deps({
-          fetchBody: async () => {
-            // The four page-shaped refusals are driven below; here they only have to
-            // produce SOME refusal so the sentence can be collected.
-            if (reason === 'page_unreadable') throw new Error('timeout');
-            return fixture('markham-course-not-found');
-          },
-        }),
+        { sequence, rawUrl: drive.rawUrl, inboundChannelMessageId: inboundId, now: NOW },
+        deps({ fetchBody: async () => drive.page() }),
       );
-      if (outcome.status !== 'refused') continue;
-      sentences.set(outcome.reason, outcome.reply);
+
+      expect(outcome).toMatchObject({ status: 'refused', reason });
+      if (outcome.status !== 'refused') throw new Error('unreachable');
+      expect(outcome.reply.length).toBeGreaterThan(20);
+      expect(outcome.reply).not.toMatch(/https?:\/\//);
+      sentences.add(outcome.reply);
     }
 
-    // Every URL-shaped refusal, and the unreadable/gone pair, reached a sentence.
-    for (const [, reply] of sentences) {
-      expect(reply.length).toBeGreaterThan(20);
-      expect(reply).not.toMatch(/https?:\/\//);
-    }
-    expect(new Set(sentences.values()).size).toBe(sentences.size);
-    expect(sentences.size).toBeGreaterThanOrEqual(6);
+    expect(sentences.size).toBe(COURSE_BIND_REFUSALS.length);
+    expect(await auditRows('registration_course_bound')).toHaveLength(0);
+    expect(await auditRows('registration_readiness_stated')).toHaveLength(0);
+    const row = await sequenceRow();
+    expect(row.courseUrl).toBeNull();
+    expect(row.courseOpensAt).toBeNull();
+    expect(row.readinessReady).toBeNull();
   });
 
   it('refuses another municipality’s portal by naming the morning it is holding', async () => {
@@ -320,17 +367,12 @@ describe('the bind refusals', () => {
   });
 
   it('refuses a season more than MAX_BIND_DRIFT_DAYS from the morning it is holding', async () => {
-    // The same real page with its two published clocks moved to the NEXT cycle: six
-    // weeks from the M1 row is a different season, not a corrected date.
-    const nextSeason = fixture('open-window-open-markham')
-      .replace(/2026-08-11T06:30:00/g, '2026-09-22T06:30:00')
-      .replace(/2026-08-12T06:30:00/g, '2026-09-23T06:30:00');
     const sequence = await preparing();
 
     const outcome = await handleCourseBind(
       db.database,
       { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
-      deps({ fetchBody: serving(nextSeason) }),
+      deps({ fetchBody: serving(nextSeason()) }),
     );
 
     expect(outcome).toMatchObject({ status: 'refused', reason: 'different_season' });
@@ -412,6 +454,32 @@ describe('the bind write', () => {
     // Never the URL beyond the host, never the class name, never a price.
     expect(JSON.stringify(audit?.after)).not.toContain('widgetId');
     expect(JSON.stringify(audit?.after)).not.toMatch(/LEGO/i);
+  });
+
+  /**
+   * The page's bytes say `2026-08-11T06:30:00` with no offset, and the only zone that
+   * makes that instant is the PORTAL's. Kills `new Date(String(raw))`, which is right
+   * only on a host that happens to run Eastern time — every prod region and every
+   * laptop outside it stores a clock hours away from the morning.
+   */
+  it('reads the page’s naive clock in the portal’s zone, not the machine’s', async () => {
+    vi.stubEnv('TZ', 'America/Vancouver');
+    const sequence = await preparing();
+    const stored: Date[] = [];
+
+    await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({
+        fetchBody: serving(fixture('open-window-open-markham')),
+        recordCourseBinding: async (_database, input) => {
+          stored.push(input.courseOpensAt);
+          return 'bound';
+        },
+      }),
+    );
+
+    expect(stored).toEqual([RESIDENT_CLOCK]);
   });
 
   it('gives a two-municipality household the public clock, a day after the M1 row', async () => {
