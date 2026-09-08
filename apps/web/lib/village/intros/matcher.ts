@@ -15,6 +15,14 @@ import { fsasForMunicipality, municipalitiesForFsa } from '~/lib/registration/fs
  * same town with children the same age is a good enough reason for two parents to meet;
  * anything more is Hale's opinion.
  *
+ * VIL-340 ADDED A RANK, NOT A THIRD FACT. Inside that bucket the walk now prefers a
+ * partner waiting on the same course (see {@link IntroCandidateFamily.classKeys}) over
+ * the first eligible neighbour. It cannot widen who is eligible — the area bucket and the
+ * shared band are both still required, and `pairedBefore` is still absolute — and nothing
+ * either household is sent varies by it, which is what keeps a ranking signal from
+ * becoming a disclosure. With no keys anywhere the pairing is the one this file made
+ * before the signal existed.
+ *
  * THE TEEN BAND IS EXCLUDED AT THE SOURCE (see {@link eligibleAnchorChildren}), which
  * is a deliberate narrowing of the spec. The card copy applies the child_name_level and
  * teen-redaction rules on top, so a teen's NAME could never reach a card either way —
@@ -109,6 +117,11 @@ export interface IntroCandidateFamily {
    * caller, so no caller can pass a city in by mistake. */
   fsa: string | null;
   children: readonly IntroCandidateChild[];
+  /** The live courses this family is waiting on, as opaque `host:courseId` keys the
+   * caller derived. COMPARED, NEVER PARSED — the same discipline {@link matchAreaKey}
+   * keeps, and the reason a key can be a ranking input without being a disclosure: this
+   * file cannot name a course even to itself. Empty is the ordinary case. */
+  classKeys: ReadonlySet<string>;
 }
 
 export interface AnchorChild {
@@ -152,6 +165,13 @@ export function eligibleAnchorChildren(
  */
 export type IntroSkipReason = 'no_fsa' | 'no_matchable_child';
 
+/**
+ * WHY this pair was preferred over the next eligible one. Provenance, not a disclosure:
+ * nothing either household is ever sent varies by it, and no surface downstream reads it
+ * except the proposal audit row.
+ */
+export type IntroMatchSignal = 'same_class' | 'same_area';
+
 export interface IntroPairing {
   familyAId: string;
   familyBId: string;
@@ -162,6 +182,7 @@ export interface IntroPairing {
    * area is recoverable from this one through {@link matchAreaKey}. */
   fsa: string;
   stage: FamilyStage;
+  signal: IntroMatchSignal;
 }
 
 export interface IntroSkip {
@@ -201,6 +222,12 @@ interface Ready {
   fsa: string;
   /** Anchor children grouped by band, each already in oldest-first order. */
   byStage: Map<FamilyStage, AnchorChild[]>;
+  classKeys: ReadonlySet<string>;
+}
+
+function sharesClassKey(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  for (const key of left) if (right.has(key)) return true;
+  return false;
 }
 
 /**
@@ -252,9 +279,15 @@ export function matchIntroPairs(input: MatchIntroPairsInput): MatchIntroPairsRes
     }
 
     const area = matchAreaKey(fsa);
+    const ready: Ready = {
+      familyId: family.familyId,
+      fsa,
+      byStage,
+      classKeys: family.classKeys,
+    };
     const bucket = byArea.get(area);
-    if (bucket) bucket.push({ familyId: family.familyId, fsa, byStage });
-    else byArea.set(area, [{ familyId: family.familyId, fsa, byStage }]);
+    if (bucket) bucket.push(ready);
+    else byArea.set(area, [ready]);
   }
 
   const pairings: IntroPairing[] = [];
@@ -265,6 +298,10 @@ export function matchIntroPairs(input: MatchIntroPairsInput): MatchIntroPairsRes
     for (let i = 0; i < pool.length; i += 1) {
       const left = pool[i] as Ready;
       if (taken.has(left.familyId)) continue;
+      // CHOOSE, don't first-fit. Every eligibility test above is unchanged and still
+      // decides WHO may be paired; the walk below only decides which of the eligible
+      // partners is taken first, and it prefers one waiting on the same course.
+      let chosen: { right: Ready; stage: FamilyStage; signal: IntroMatchSignal } | null = null;
       for (let j = i + 1; j < pool.length; j += 1) {
         const right = pool[j] as Ready;
         if (taken.has(right.familyId)) continue;
@@ -273,20 +310,30 @@ export function matchIntroPairs(input: MatchIntroPairsInput): MatchIntroPairsRes
         const stage = FAMILY_STAGES.find((s) => left.byStage.has(s) && right.byStage.has(s));
         if (!stage) continue;
 
-        const [a, b] =
-          left.familyId < right.familyId ? ([left, right] as const) : ([right, left] as const);
-        pairings.push({
-          familyAId: a.familyId,
-          familyBId: b.familyId,
-          familyAChildId: (a.byStage.get(stage) as AnchorChild[])[0]?.id as string,
-          familyBChildId: (b.byStage.get(stage) as AnchorChild[])[0]?.id as string,
-          fsa: a.fsa,
-          stage,
-        });
-        taken.add(left.familyId);
-        taken.add(right.familyId);
-        break;
+        if (sharesClassKey(left.classKeys, right.classKeys)) {
+          chosen = { right, stage, signal: 'same_class' };
+          break;
+        }
+        // The first eligible partner in id order — today's choice, kept as the fallback so
+        // a pool with no keys in it pairs exactly as it did before this signal existed.
+        chosen ??= { right, stage, signal: 'same_area' };
       }
+      if (chosen === null) continue;
+
+      const { right, stage, signal } = chosen;
+      const [a, b] =
+        left.familyId < right.familyId ? ([left, right] as const) : ([right, left] as const);
+      pairings.push({
+        familyAId: a.familyId,
+        familyBId: b.familyId,
+        familyAChildId: (a.byStage.get(stage) as AnchorChild[])[0]?.id as string,
+        familyBChildId: (b.byStage.get(stage) as AnchorChild[])[0]?.id as string,
+        fsa: a.fsa,
+        stage,
+        signal,
+      });
+      taken.add(left.familyId);
+      taken.add(right.familyId);
     }
   }
 

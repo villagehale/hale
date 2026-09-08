@@ -21,6 +21,24 @@ const NOW = new Date('2026-08-11T15:00:00Z');
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
+const C = '33333333-3333-4333-8333-333333333333';
+const D = '44444444-4444-4444-8444-444444444444';
+const E = '55555555-5555-4555-8555-555555555555';
+const F = '66666666-6666-4666-8666-666666666666';
+
+/** One opaque `host:courseId` key, as the reader hands them to the matcher. */
+const COURSE = 'cityofmarkham.perfectmind.com:22222222-2222-2222-2222-222222222222';
+
+/**
+ * `loadClassKeys` is a REQUIRED port (rule #11), pinned deliberately rather than by
+ * accident of some other call site: a deps object missing it must not typecheck, because
+ * a port that could be left out would answer "nobody shares a class" — a real, silent
+ * answer that un-ranks every pairing in a deployment that forgot to wire it. The
+ * directive IS the assertion; give the port a `?` and this line stops erroring, which
+ * fails the build on an unused `@ts-expect-error`.
+ */
+// @ts-expect-error a deps object without loadClassKeys is missing a required property
+const _classKeysIsRequired: IntroSweepDeps = {} as Omit<IntroSweepDeps, 'loadClassKeys'>;
 
 /**
  * The counterpart family's real strings. A card that renders for family A is checked
@@ -76,6 +94,9 @@ interface Harness {
   sends: Array<{ templateKey: string; dedupeKey: string; parentUserId: string }>;
   /** Every intro that landed in the parent's own text thread (lib/channel/thread.ts). */
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+  /** The (familyId, parentUserId) pairs each class-key read was asked about — one entry
+   * per call. The consent rail: a family that is in here was read about. */
+  classKeyCalls: Array<Array<{ familyId: string; parentUserId: string }>>;
 }
 
 function harness(overrides: {
@@ -83,6 +104,9 @@ function harness(overrides: {
   discoverable?: Set<string>;
   alreadyAsked?: Set<string>;
   children?: Record<string, IntroSweepChild[]>;
+  /** The live course keys each family holds. A family absent from here is absent from the
+   * reader's map too, which is what the prod reader returns for a family with no watch. */
+  classKeys?: Record<string, string[]>;
   proposals?: SweepProposal[];
   pairedBefore?: Set<string>;
   synthetic?: Set<string>;
@@ -103,6 +127,7 @@ function harness(overrides: {
   const expiries: Harness['expiries'] = [];
   const sends: Harness['sends'] = [];
   const threaded: Harness['threaded'] = [];
+  const classKeyCalls: Harness['classKeyCalls'] = [];
   const identityAsk = overrides.identityAsk ?? new FakeIdentityAsk();
   const introVoice = overrides.introVoice ?? new FakeIntroVoice();
 
@@ -127,6 +152,17 @@ function harness(overrides: {
     discoverableUserIds: async () => overrides.discoverable ?? new Set(),
     askedUserIds: async () => overrides.alreadyAsked ?? new Set(),
     loadChildren: async (_db, familyId) => overrides.children?.[familyId] ?? [child()],
+    loadClassKeys: async (_db, requested) => {
+      classKeyCalls.push(
+        requested.map(({ familyId, parentUserId }) => ({ familyId, parentUserId })),
+      );
+      const keys = new Map<string, ReadonlySet<string>>();
+      for (const { familyId } of requested) {
+        const held = overrides.classKeys?.[familyId];
+        if (held) keys.set(familyId, new Set(held));
+      }
+      return keys;
+    },
     loadNameLevel: async () => overrides.nameLevel ?? 'first_name',
     loadOpenProposalFamilyIds: async () =>
       new Set((overrides.proposals ?? []).flatMap((p) => [p.familyAId, p.familyBId])),
@@ -187,6 +223,7 @@ function harness(overrides: {
     introVoice,
     sends,
     threaded,
+    classKeyCalls,
   };
 }
 
@@ -951,5 +988,182 @@ describe('phase 3 - the identity gap-fill', () => {
     expect(h.identityAsk.calls).toEqual([]);
     expect(result.introduced).toBe(1);
     expect(result.waiting).toEqual({ awaiting_email: 0, awaiting_name: 0 });
+  });
+});
+
+/**
+ * VIL-340 · the same-class signal. It is a RANK: it decides which of two eligible
+ * neighbours is paired first and changes nothing a parent can perceive. These tests hold
+ * both halves of that — the consent scoping on the read, and the byte-equality of every
+ * outbound surface between a pairing ranked on a class and one that was not.
+ */
+describe('phase 2 - the same-class signal', () => {
+  const bothOptedIn = {
+    discoverable: new Set([`user-${A}`, `user-${B}`]),
+    alreadyAsked: new Set([`user-${A}`, `user-${B}`]),
+  };
+
+  /** Catches a read placed before the consent filter, or one over every selected family:
+   * either would look at a household that never said it wanted to be findable. */
+  it('reads class keys ONCE, for exactly the opted-in in-scope families and nobody else', async () => {
+    process.env[VILLAGE_INTROS_ALLOWLIST_ENV] = `${A},${B},${C}`;
+    const h = harness({
+      families: [
+        family({ familyId: A }),
+        family({ familyId: B }),
+        family({ familyId: C }), // listed, but has not opted in
+        family({ familyId: D }), // opted in, but not listed
+      ],
+      discoverable: new Set([`user-${A}`, `user-${B}`, `user-${D}`]),
+      alreadyAsked: new Set([`user-${A}`, `user-${B}`, `user-${C}`, `user-${D}`]),
+      // Both of the families that must not be read about are holding keys, so a read that
+      // reached them would show up in the requested pairs below.
+      classKeys: { [C]: [COURSE], [D]: [COURSE] },
+    });
+
+    await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.classKeyCalls).toEqual([
+      [
+        { familyId: A, parentUserId: `user-${A}` },
+        { familyId: B, parentUserId: `user-${B}` },
+      ],
+    ]);
+  });
+
+  /** Catches `signal` riding through `createProposal` into the proposal row — the one
+   * place it could reach a surface that is read back at card and email time — and catches
+   * a same_class pair skipping the civic anchor lookup, which closed-is-forever would
+   * have made permanent for that pair. */
+  it('keeps the signal out of the proposal row and still searches the civic anchor', async () => {
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      ...bothOptedIn,
+      classKeys: { [A]: [COURSE], [B]: [COURSE] },
+    });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(result.proposed).toBe(1);
+    expect(h.anchorSearches).toEqual([['M4K']]);
+    expect(h.proposalsCreated[0]).not.toHaveProperty('signal');
+    expect(h.proposalsCreated[0]).toEqual({
+      familyAId: A,
+      familyBId: B,
+      familyAChildId: 'child-1',
+      familyBChildId: 'child-1',
+      fsa: 'M4K',
+      stage: 'toddler',
+      civicSessionId: null,
+      expiresAt: new Date('2026-08-18T15:00:00Z'),
+    });
+    // Provenance lands on the trail instead, for BOTH families (rule #6).
+    const proposed = h.audits.filter((a) => a.actionTaken === 'village_intro_proposed');
+    expect(proposed.map((a) => a.familyId)).toEqual([A, B]);
+    for (const row of proposed) expect(row.after.signal).toBe('same_class');
+  });
+
+  /** Catches counters wired to the wrong signal, and a `classKeyed` that counts keys
+   * rather than families. */
+  it('counts what it matched on, and how many opted-in families held a key at all', async () => {
+    const ranked = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      ...bothOptedIn,
+      classKeys: { [A]: [COURSE], [B]: [COURSE, 'townofoakville.perfectmind.com:other'] },
+    });
+    const rankedResult = await runVillageIntroSweep(DB, ranked.deps, NOW);
+    expect(rankedResult.matchedOn).toEqual({ same_class: 1, same_area: 0 });
+    expect(rankedResult.classKeyed).toBe(2);
+
+    const plain = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      ...bothOptedIn,
+    });
+    const plainResult = await runVillageIntroSweep(DB, plain.deps, NOW);
+    expect(plainResult.matchedOn).toEqual({ same_class: 0, same_area: 1 });
+    expect(plainResult.matchedOn.same_area).toBe(plainResult.proposed);
+    expect(plainResult.classKeyed).toBe(0);
+  });
+
+  /**
+   * THE PROPERTY THAT MAKES THE RANK A NON-DISCLOSURE, checked rather than asserted in
+   * prose: run the whole sweep twice over the same six households, differing only in
+   * whether the pair being matched holds a shared course key, and every artifact that
+   * leaves this process is deep-equal. A recipient cannot tell which kind of pairing they
+   * are in because there is nothing different to tell.
+   *
+   * The run carries all three surfaces at once: E and F are matched, A and B are carded
+   * off a live proposal, C and D are introduced by email off an accepted one.
+   */
+  it('sends byte-identical cards, emails and disclosure rows whether or not the pair shares a class', async () => {
+    const everyone = [A, B, C, D, E, F];
+    function run(classKeys: Record<string, string[]> | undefined) {
+      return harness({
+        families: everyone.map((familyId) => family({ familyId })),
+        discoverable: new Set(everyone.map((id) => `user-${id}`)),
+        alreadyAsked: new Set(everyone.map((id) => `user-${id}`)),
+        classKeys,
+        anchor: null,
+        proposals: [
+          proposal({ id: 'prop-card', familyAId: A, familyBId: B }),
+          proposal({
+            id: 'prop-email',
+            familyAId: C,
+            familyBId: D,
+            status: 'both_accepted',
+            familyAAskedAt: NOW,
+            familyBAskedAt: NOW,
+            familyAReply: 'yes',
+            familyBReply: 'yes',
+            anchorTitle: 'Family Storytime',
+            anchorStartsAt: new Date('2026-08-15T14:00:00Z'),
+          }),
+        ],
+      });
+    }
+
+    /** Everything this sweep put in front of a human, or wrote about having done so. */
+    function surfaces(h: Harness) {
+      return {
+        composerRequests: h.introVoice.calls,
+        bodies: h.transport.bodies(),
+        emails: h.emails,
+        threaded: h.threaded,
+        sends: h.sends,
+        proposalsCreated: h.proposalsCreated,
+        anchorSearches: h.anchorSearches,
+        cardAudits: h.audits.filter((a) => a.actionTaken === 'village_intro_card_sent'),
+        disclosureAudits: h.audits.filter((a) => a.actionTaken === 'village_intro_disclosed'),
+      };
+    }
+
+    // Every household holds the key, so the CARDED pair (A/B) and the EMAILED pair (C/D)
+    // share a class in fact, not only the matched pair (E/F): a card path that re-read the
+    // keys and changed one word for a shared class would differ here. A-D still match
+    // nothing — their open proposals exclude them — so the match output is unchanged.
+    const ranked = run({
+      [A]: [COURSE],
+      [B]: [COURSE],
+      [C]: [COURSE],
+      [D]: [COURSE],
+      [E]: [COURSE],
+      [F]: [COURSE],
+    });
+    const rankedResult = await runVillageIntroSweep(DB, ranked.deps, NOW);
+    const plain = run(undefined);
+    const plainResult = await runVillageIntroSweep(DB, plain.deps, NOW);
+
+    // The positive control: the two runs really did card, email and match. Without it
+    // this comparison would pass just as happily on two empty sweeps.
+    const ours = surfaces(ranked);
+    expect(ours.composerRequests).toHaveLength(2);
+    expect(ours.bodies).toHaveLength(2);
+    expect(ours.emails).toHaveLength(1);
+    expect(ours.disclosureAudits).toHaveLength(2);
+    expect(ours.proposalsCreated).toHaveLength(1);
+    expect(rankedResult.matchedOn.same_class).toBe(1);
+    expect(plainResult.matchedOn.same_area).toBe(1);
+
+    expect(ours).toEqual(surfaces(plain));
   });
 });

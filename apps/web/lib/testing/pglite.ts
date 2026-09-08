@@ -32,6 +32,15 @@ const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
 export interface TestDb {
   /** The Drizzle handle, shaped like the production `Database` the code takes. */
   database: Database;
+  /**
+   * The driver underneath `database`. Every statement Drizzle runs passes through its
+   * `query`, so wrapping that method is how a test observes the SHAPE of a read — the
+   * rows the database actually handed back — for an invariant the caller's answer cannot
+   * show, such as a query that must never see another family's rows in the first place.
+   * Wrapping it means delegating to the real client: this is an observation point, not a
+   * seam for stubbing rows.
+   */
+  client: PGlite;
   /** Raw SQL escape hatch — for asserting on indexes and other DDL. */
   exec(sql: string): Promise<unknown>;
   /** Applies ONE migration by filename — how a data-repairing migration is tested
@@ -92,6 +101,7 @@ function wrap(client: PGlite): TestDb {
 
   return {
     database,
+    client,
     exec: (sql: string) => client.exec(sql),
     applyMigration,
     close: () => client.close(),
