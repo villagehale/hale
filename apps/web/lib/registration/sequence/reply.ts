@@ -331,6 +331,7 @@ export async function loadAwaitingSequence(
       window: schema.registrationWindows,
       timezone: schema.users.timezone,
       areaCoarse: schema.families.areaCoarse,
+      courseOpensAt: schema.registrationSequences.courseOpensAt,
     })
     .from(schema.registrationSequences)
     .innerJoin(
@@ -388,7 +389,12 @@ export async function loadAwaitingSequence(
     reaskedAt: row.reaskedAt,
     shortlist,
     state: {
-      openAt: open.opensForFamilyAt,
+      // VIL-338 · THE SAME anchor the ladder ran on: the bound course's own clock where
+      // there is one. The check-in question goes out four hours after THAT morning, so a
+      // reply path measuring from the M1 row would ask on one morning and listen on
+      // another — and where the page opens earlier than the row, "we got in" arrives
+      // before this path thinks the window has opened and is heard by nobody.
+      openAt: row.courseOpensAt ?? open.opensForFamilyAt,
       timeZone: row.timezone,
       optIn,
       outcome: null,
