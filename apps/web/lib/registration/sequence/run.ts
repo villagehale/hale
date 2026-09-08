@@ -1,8 +1,9 @@
 import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { type SpotPortal, portalForMunicipality } from '~/lib/channel/spots/url';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
@@ -21,9 +22,11 @@ import { draftInlineAction } from '~/lib/coach/inline-action';
 import { localParts } from '~/lib/loop/prefs';
 import { pipelineClient } from '~/lib/pipeline/client';
 import {
+  type RegistrationMatch,
   matchRegistrationWindows,
   resolveFamilyOpen,
 } from '~/lib/registration/match-registration-windows';
+import { type FetchPage, createFetchBody, pageCache } from '~/lib/registration/verify-sweep';
 import { loadClaimedWindowIds } from './claims.js';
 import {
   headsUpPromisesPlan,
@@ -31,6 +34,13 @@ import {
   renderShortlistRationale,
   windowPhrase,
 } from './copy.js';
+import {
+  GO_FETCH_TIMEOUT_MS,
+  type PrepInput,
+  type PrepVerdict,
+  READ_WALL_BUDGET_MS,
+  readCoursePrep,
+} from './prepare.js';
 import {
   HEADS_UP_MINUTE_LOCAL,
   type RegistrationOutcome,
@@ -41,7 +51,12 @@ import {
   openLegWindows,
   waitlistDeadline,
 } from './schedule.js';
-import { type SequenceChild, type Shortlist, buildShortlist } from './shortlist.js';
+import {
+  type SequenceChild,
+  type Shortlist,
+  buildShortlist,
+  windowShortlist,
+} from './shortlist.js';
 
 /**
  * VIL-242 · M7 — the registration ladder, swept every five minutes.
@@ -127,6 +142,18 @@ export interface LiveSequence {
   outcome: RegistrationOutcome | null;
   waitlistPosition: number | null;
   waitlistStartedAt: Date | null;
+  /** VIL-338 · the course page the parent pasted, exactly as `sanitizeSpotUrl` rebuilt
+   * it, or null while nothing is bound. Non-null is what turns the two send-time reads
+   * on — it is the whole switch between the ladder that shipped and the prepared one. */
+  courseUrl: string | null;
+  /** THE ANCHOR when a course is bound: the instant that page says it opens for THIS
+   * family. Every interval and every sentence is derived from it, so a bind that moves
+   * the morning moves the ladder. Null and non-null together with `courseUrl` — the
+   * row's own CHECK constraint. */
+  courseOpensAt: Date | null;
+  /** What the parent TOLD Hale about their portal setup. Never inferred, never
+   * verified; null is "unasked or unanswered", which the copy says in those words. */
+  readinessReady: boolean | null;
 }
 
 export interface SequenceLedgerWrite {
@@ -220,7 +247,48 @@ export interface SequenceRunDeps {
    * (lib/channel/thread.ts).
    */
   threadMessage: typeof threadProactiveMessage;
+  /**
+   * VIL-338 · the send-time course read — REQUIRED, and for the reason `transport` is
+   * (rule #11). The battle plan and the go leg SPEAK about a bound course, and a sweep
+   * assembled without this would compose those sentences from a page nobody read while
+   * reporting a perfectly ordinary `sent`. There is no "no fetcher" to express: a
+   * failed read is a VERDICT with its own honest sentence (`page_unreadable`), which is
+   * a different thing from having no way to read at all.
+   */
+  fetchBody: FetchPage;
+  /**
+   * The one write a send-time read may cause, and only at the battle plan: the page has
+   * moved its own clock, so the anchor the rest of the ladder hangs from moves with it.
+   * Guarded (`WHERE course_opens_at IS DISTINCT FROM $new`) so a double tick is a no-op,
+   * and it returns whether a row actually moved — the number the leg's audit row carries
+   * is about a change that happened, never one that was merely attempted. REQUIRED for
+   * the reason above: an anchor that silently failed to move fires the flagship text on
+   * the wrong morning, which is the one failure this ticket exists to prevent.
+   */
+  refreshCourseAnchor(
+    database: Database,
+    input: { sequenceId: string; courseOpensAt: Date; now: Date },
+  ): Promise<boolean>;
 }
+
+/**
+ * What a send-time read produced, by name — the verdict kinds plus the one thing a read
+ * can DO rather than say. `anchor_moved` counts guarded refreshes that landed, so the
+ * founder signal "a municipality is disagreeing with the M1 dataset" rides a counter
+ * rather than a family-scoped audit verb about public reference data.
+ */
+export type PrepFate = PrepVerdict['kind'] | 'anchor_moved';
+
+const PREP_FATES: readonly PrepFate[] = [
+  'prepared',
+  'registration_closed',
+  'late_by_drift',
+  'window_moved',
+  'age_ineligible',
+  'course_gone',
+  'page_unreadable',
+  'anchor_moved',
+];
 
 export interface SequenceRunResult {
   /** False when neither the flag nor the allowlist armed the sweep (D21). */
@@ -242,6 +310,25 @@ export interface SequenceRunResult {
   refused: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
+  /**
+   * VIL-338 · every fate a send-time course read produced, by name. A degraded reading
+   * is never folded into `failed` (nothing broke) or into `sent` alone (the parent got a
+   * different, truthful sentence), because the two questions a founder asks of this run
+   * are "did everyone hear from us" and "what did the portals say" — and one number
+   * cannot answer both.
+   */
+  prep: Record<PrepFate, number>;
+  /** Course pages actually fetched: one GET per distinct URL per run, cache hits free. */
+  read: number;
+  /** Bound legs that SENT without a read because the run's wall budget was spent. Its
+   * own count, because the family was still texted — with the link and the honest
+   * sentence — and a run that skips reads is a run that is too slow, not one that
+   * failed. */
+  readSkipped: number;
+  /** Bound legs sent for a course no live M1 band admits any more. The band is
+   * reference data about a season; the bound course is the parent's own choice, and
+   * this is the count of the times the two disagreed. */
+  noFit: number;
 }
 
 function emptyResult(enabled: boolean): SequenceRunResult {
@@ -255,6 +342,10 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     refused: 0,
     failed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    prep: Object.fromEntries(PREP_FATES.map((fate) => [fate, 0])) as Record<PrepFate, number>,
+    read: 0,
+    readSkipped: 0,
+    noFit: 0,
   };
 }
 
@@ -371,17 +462,89 @@ async function proposeForFamily(
 
 // ── phase B: run the legs ────────────────────────────────────────────────────
 
-type LegOutcome =
+/** What a read caused, carried out of the leg alongside its outcome so the summary can
+ * count the reading and the send separately — a refused leg still read a page. */
+interface LegReadEffects {
+  prep?: PrepFate;
+  anchorMoved?: boolean;
+  noFit?: boolean;
+}
+
+type LegOutcome = (
   | { kind: 'held'; reason: ProactiveHoldReason }
   | { kind: 'quiet' }
   | { kind: 'deduped' }
   | { kind: 'refused' }
-  | { kind: 'sent' };
+  | { kind: 'sent' }
+) &
+  LegReadEffects;
+
+/**
+ * VIL-338 · the run's ONE course reader: one GET per distinct URL, one wall-clock budget
+ * for the whole run, and no throw.
+ *
+ * ONE GET PER URL because two households can be waiting on the same class and a public
+ * body's server should not be asked twice for the same bytes in one tick.
+ *
+ * A WALL BUDGET rather than a read count, because phase B is a serial loop and the go
+ * leg's interval is fifteen minutes wide: what has to be bounded is how long the run
+ * takes, not how many pages it looked at. Past the budget a bound leg still SENDS — with
+ * the page_unreadable sentence and the deep link, which is strictly better than a family
+ * hearing nothing because five other families' portals were slow.
+ *
+ * NO THROW, because a throw inside `runLegForSequence` costs that family the whole tick
+ * and counts `failed`. A failed read is a verdict with a true sentence, and this is
+ * where it becomes one.
+ */
+function courseReader(fetchBody: FetchPage, startedAt: number) {
+  const getPage = pageCache(fetchBody);
+  const fetched = new Set<string>();
+  const tally = { read: 0, skipped: 0 };
+  return {
+    tally,
+    async read(url: string): Promise<PrepInput> {
+      if (!fetched.has(url)) {
+        if (Date.now() - startedAt > READ_WALL_BUDGET_MS) {
+          tally.skipped += 1;
+          return { ok: false, reason: 'wall_budget' };
+        }
+        fetched.add(url);
+        tally.read += 1;
+      }
+      try {
+        return { ok: true, raw: await getPage(url) };
+      } catch (err) {
+        // The host, never the family: a log line about a municipal page is not a fact
+        // about a household (rule #1).
+        console.error({ err, url }, 'registration sequence: course page read failed');
+        return { ok: false, reason: 'fetch_failed' };
+      }
+    },
+  };
+}
+
+type CourseReader = ReturnType<typeof courseReader>;
+
+/** The sanitized URL's own courseId — what the reader checks the page's `EventId`
+ * against, so a portal serving somebody else's class is `wrong_course` rather than a
+ * confident sentence about the wrong course.
+ *
+ * TOTAL, because a throw here costs the family the whole tick and counts `failed`. The
+ * stored URL was rebuilt by `sanitizeSpotUrl` so an unparseable one cannot exist — and
+ * if one ever did, "I could not read the page" is the true sentence, not silence. */
+function courseIdOf(url: string): string | null {
+  try {
+    return new URL(url).searchParams.get('courseId');
+  } catch {
+    return null;
+  }
+}
 
 async function runLegForSequence(
   database: Database,
   sequence: LiveSequence,
   deps: SequenceRunDeps,
+  reader: CourseReader,
   now: Date,
 ): Promise<LegOutcome> {
   // THIS family's open instant, not the general one. A resident household in a town
@@ -391,19 +554,23 @@ async function runLegForSequence(
     sequence.window,
     sequence.areaCoarse,
   );
+  // THE ANCHOR. The course page's own clock where the parent has bound one, and the M1
+  // row's family-open instant otherwise. Fed to `dueLeg`, to every interval and to the
+  // copy from this ONE place, so the morning the ladder is scheduled on and the morning
+  // its sentences name can never be two different instants.
+  const anchor = sequence.courseOpensAt ?? opensForFamilyAt;
+  // From the registry, never from the row: a municipality Hale has learned to read is a
+  // code fact, and it is what lights the readiness leg and the two send-time reads.
+  const portal = portalForMunicipality(sequence.window.municipality);
   const leg = dueLeg(
     {
-      openAt: opensForFamilyAt,
+      openAt: anchor,
       timeZone: sequence.timeZone,
       optIn: sequence.optIn,
       outcome: sequence.outcome,
       waitlistStartedAt: sequence.waitlistStartedAt,
       waitlistResponseHours: sequence.window.waitlistResponseHours,
-      // NULL until the loader reads the bound course and the parent's answer. The
-      // readiness leg's whole content is a question, and a question Hale cannot yet
-      // file an answer to is worse than no question — so the ladder stays the four-leg
-      // one that shipped, and `dueLeg` keeps returning `heads_up` across the old tail.
-      portal: null,
+      portal,
     },
     now,
   );
@@ -427,29 +594,53 @@ async function runLegForSequence(
   if (!verdict.allowed) return { kind: 'held', reason: verdict.reason };
 
   const children = await deps.loadChildren(database, sequence.familyId);
-  const shortlist = shortlistForSequence(
-    sequence,
-    { isResidentWindow, opensForFamilyAt },
-    children,
-    now,
-  );
+  const match = matchForSequence(sequence, { isResidentWindow, opensForFamilyAt: anchor });
+  // The two legs that SPEAK about the bound course, and therefore the only two that read
+  // its page. Every other leg is about the municipal window and needs no network.
+  const readsCourse =
+    sequence.courseUrl !== null && portal !== null && (leg === 'battle_plan' || leg === 'go');
+  const fitted = buildShortlist(match, children, now);
   // A family whose children no longer fit the band (a birthday crossed the ceiling
-  // between the proposal and the leg) has nothing honest left to be told about it.
-  if (!shortlist) return { kind: 'quiet' };
+  // between the proposal and the leg) has nothing honest left to be told ABOUT THE
+  // WINDOW — but a bound course is the parent's own pick and the page is its record, so
+  // that leg still goes and the disagreement is counted by name.
+  if (fitted === null && !readsCourse) return { kind: 'quiet' };
+  const shortlist = fitted ?? windowShortlist(match);
+  const effects: LegReadEffects = fitted === null ? { noFit: true } : {};
+
+  let prep: { verdict: PrepVerdict; courseUrl: string } | null = null;
+  if (readsCourse && sequence.courseUrl !== null && portal !== null) {
+    prep = {
+      verdict: await readCourse(reader, sequence, portal, {
+        anchor,
+        isResidentWindow,
+        children,
+        now,
+      }),
+      courseUrl: sequence.courseUrl,
+    };
+    effects.prep = prep.verdict.kind;
+    // The anchor moves at the battle plan and NEVER at the go leg, whose key is already
+    // spent: moving an interval a leg has fired in is a change no later tick can undo.
+    const moved = movedClockOf(prep.verdict);
+    if (leg === 'battle_plan' && moved !== null) {
+      effects.anchorMoved = await deps.refreshCourseAnchor(database, {
+        sequenceId: sequence.sequenceId,
+        courseOpensAt: moved,
+        now,
+      });
+    }
+  }
 
   const body = renderSequenceLeg(leg, {
     shortlist,
     timeZone: sequence.timeZone,
     now,
     optIn: sequence.optIn,
-    // The four VIL-338 inputs, every one of them the ABSENCE of the thing rather than a
-    // placeholder for it (rule #11), and every absence renders the sentence that
-    // shipped. `anchor` is the M1 row's own instant because an unbound ladder has no
-    // other — `course_opens_at` is what would replace it, and nothing here reads it yet.
-    anchor: opensForFamilyAt,
-    portal: null,
-    readinessReady: null,
-    prep: null,
+    anchor,
+    portal,
+    readinessReady: sequence.readinessReady,
+    prep,
     waitlist: {
       position: sequence.waitlistPosition,
       deadlineAt:
@@ -484,7 +675,7 @@ async function runLegForSequence(
       { sequenceId: sequence.sequenceId, leg, reasons: unbacked },
       'registration sequence: the wire body claims a row that does not exist - leg refused',
     );
-    return { kind: 'refused' };
+    return { kind: 'refused', ...effects };
   }
 
   const { providerMessageId } = await deps.transport.send({ to, body: wireBody });
@@ -505,17 +696,33 @@ async function runLegForSequence(
     actionTaken: 'registration_sequence_leg_sent',
     targetTable: 'channel_messages',
     targetId: messageId,
-    // Enum-shaped provenance only, never the rendered body (rule #1).
+    // Enum-shaped provenance only, never the rendered body (rule #1). The three VIL-338
+    // fields are the whole receipt for a send-time read: WHICH sentence the page earned,
+    // how far the page's clock sat from the anchor, and whether the anchor was moved.
+    // The M1 row's own disagreement rides here rather than in an audit verb of its own —
+    // a fact about public reference data is not an event in a family's history.
     after: {
       leg,
       windowId: sequence.window.id,
       municipality: sequence.window.municipality,
       cycleLabel: sequence.window.cycleLabel,
       urgent: legIsUrgent(leg),
+      ...(prep === null
+        ? {}
+        : {
+            prep: prep.verdict.kind,
+            driftMinutes: driftOf(prep.verdict),
+            anchorMovedMinutes: effects.anchorMoved === true ? driftOf(prep.verdict) : null,
+          }),
     },
   });
 
-  await recordLegPromise(database, { sequence, shortlist, leg, messageId, opensForFamilyAt }, deps, now);
+  await recordLegPromise(
+    database,
+    { sequence, shortlist, leg, messageId, anchor, prep: prep?.verdict ?? null },
+    deps,
+    now,
+  );
   // THE THREAD, which is where the parent's answer will be read. Unconditional and
   // AFTER the send, like the promise write above: a leg that never reached a transport
   // is not something Hale said. The COMPOSED leg, never the wire body — the CASL line
@@ -525,7 +732,56 @@ async function runLegForSequence(
     parentUserId: sequence.parentUserId,
     body,
   });
-  return { kind: 'sent' };
+  return { kind: 'sent', ...effects };
+}
+
+/** THIS tick's reading of the bound course. Pure once the bytes are in hand: the verdict
+ * is a function of the page, the anchor and the family, and it never touches a clock or
+ * a database of its own (prepare.ts). */
+async function readCourse(
+  reader: CourseReader,
+  sequence: LiveSequence,
+  portal: SpotPortal,
+  ctx: {
+    anchor: Date;
+    isResidentWindow: boolean;
+    children: readonly SequenceChild[];
+    now: Date;
+  },
+): Promise<PrepVerdict> {
+  const url = sequence.courseUrl as string;
+  const courseId = courseIdOf(url);
+  // A stored URL with no courseId cannot exist (`sanitizeSpotUrl` rebuilt it to exactly
+  // two GUID parameters), and if one ever did, the honest answer is that Hale could not
+  // read the page — not a page read against the wrong class.
+  if (courseId === null) return { kind: 'page_unreadable', reason: 'wrong_course' };
+  return readCoursePrep(await reader.read(url), {
+    now: ctx.now,
+    courseId,
+    timeZone: portal.timeZone,
+    isResidentWindow: ctx.isResidentWindow,
+    anchor: ctx.anchor,
+    children: ctx.children.map((child) => ({
+      id: child.id,
+      dateOfBirth: child.dateOfBirth,
+      dobPrecision: child.dobPrecision,
+    })),
+    readinessReady: sequence.readinessReady,
+  });
+}
+
+/** The page's own clock where this reading says the anchor is WRONG, or null. Both drift
+ * verdicts carry one and nothing else may move the anchor: a `prepared` page agrees with
+ * it within the tolerance, and a page nobody could read has no clock to move it to. */
+function movedClockOf(verdict: PrepVerdict): Date | null {
+  if (verdict.kind !== 'window_moved' && verdict.kind !== 'late_by_drift') return null;
+  return verdict.clock?.at ?? null;
+}
+
+/** The page's clock minus the anchor, in whole minutes — null for a reading that never
+ * got a clock. */
+function driftOf(verdict: PrepVerdict): number | null {
+  return 'anchorDriftMinutes' in verdict ? verdict.anchorDriftMinutes : null;
 }
 
 /**
@@ -552,7 +808,11 @@ async function recordLegPromise(
     shortlist: Shortlist;
     leg: SequenceLeg;
     messageId: string;
-    opensForFamilyAt: Date;
+    /** The instant the ladder is running on — the bound course's clock where there is
+     * one, so a promise's deadline moves with the morning it is about. */
+    anchor: Date;
+    /** THIS tick's reading of the bound course, where one happened. */
+    prep: PrepVerdict | null;
   },
   deps: SequenceRunDeps,
   now: Date,
@@ -566,7 +826,7 @@ async function recordLegPromise(
       // window, and no child's name has to appear for a founder or a parent to read it
       // (rule #1).
       summary: `${windowPhrase(args.shortlist)}: your plan, the evening before.`,
-      dueAt: openLegWindows(args.opensForFamilyAt, sequence.timeZone).battle_plan.until,
+      dueAt: openLegWindows(args.anchor, sequence.timeZone).battle_plan.until,
       channelMessageId: messageId,
     });
     return;
@@ -584,7 +844,12 @@ async function recordLegPromise(
   // `go` leg and nothing earlier: the heads-up warns a week out and the battle plan hands
   // over a plan the evening before, and closing on either would file the promise as kept
   // while the parent is still waiting for the thing they were actually promised.
-  if (leg === 'go') {
+  //
+  // VIL-338 · AND the battle plan that read a course already open. `late_by_drift` moves
+  // the anchor into the past, so no go leg will ever fire under that key — this send,
+  // which carried the sign-in link, IS the text before the doors open, and leaving the
+  // promise open would report a debt Hale had already paid.
+  if (leg === 'go' || (leg === 'battle_plan' && args.prep?.kind === 'late_by_drift')) {
     await deps.fulfillCommitment(database, {
       familyId: sequence.familyId,
       kind: 'registration_watch',
@@ -594,33 +859,27 @@ async function recordLegPromise(
   }
 }
 
-/** The shortlist a leg is rendered from, rebuilt against the LIVE window and today's
+/** The match a leg's shortlist is rebuilt from, against the LIVE window and today's
  * ages rather than stored: a child ages, a municipality corrects a band or a date, and
  * a leg must say what is true this morning. */
-function shortlistForSequence(
+function matchForSequence(
   sequence: LiveSequence,
   open: { isResidentWindow: boolean; opensForFamilyAt: Date },
-  children: readonly SequenceChild[],
-  now: Date,
-): Shortlist | null {
-  return buildShortlist(
-    {
-      window: sequence.window,
-      // The sequence stores ONE window id, so a leg re-renders that cycle alone. The
-      // co-opening siblings only matter at proposal time, where the shortlist is built
-      // from the live match.
-      cycleWindows: [sequence.window],
-      matchedChildAgesMonths: [],
-      // The per-child hedge is rebuilt from the live band by buildShortlist itself, so
-      // there is nothing for the match-level flag to carry here.
-      ageApproximate: false,
-      isResidentWindow: open.isResidentWindow,
-      opensForFamilyAt: open.opensForFamilyAt,
-      generalOpenAt: sequence.window.openAt,
-    },
-    children,
-    now,
-  );
+): RegistrationMatch {
+  return {
+    window: sequence.window,
+    // The sequence stores ONE window id, so a leg re-renders that cycle alone. The
+    // co-opening siblings only matter at proposal time, where the shortlist is built
+    // from the live match.
+    cycleWindows: [sequence.window],
+    matchedChildAgesMonths: [],
+    // The per-child hedge is rebuilt from the live band by buildShortlist itself, so
+    // there is nothing for the match-level flag to carry here.
+    ageApproximate: false,
+    isResidentWindow: open.isResidentWindow,
+    opensForFamilyAt: open.opensForFamilyAt,
+    generalOpenAt: sequence.window.openAt,
+  };
 }
 
 export async function runRegistrationSequenceCron(
@@ -655,10 +914,17 @@ export async function runRegistrationSequenceCron(
     .filter(armed)
     .slice(0, MAX_SEQUENCE_FAMILIES_PER_RUN);
 
+  // ONE reader for the whole phase, because the budget and the page cache are both
+  // properties of the RUN: two households on one course cost one GET, and the wall clock
+  // starts when the leg phase does rather than when the process did.
+  const reader = courseReader(deps.fetchBody, Date.now());
   for (const sequence of sequences) {
     result.evaluated += 1;
     try {
-      const outcome = await runLegForSequence(database, sequence, deps, now);
+      const outcome = await runLegForSequence(database, sequence, deps, reader, now);
+      if (outcome.prep) result.prep[outcome.prep] += 1;
+      if (outcome.anchorMoved) result.prep.anchor_moved += 1;
+      if (outcome.noFit) result.noFit += 1;
       if (outcome.kind === 'held') result.held[outcome.reason] += 1;
       else result[outcome.kind] += 1;
     } catch (err) {
@@ -667,6 +933,8 @@ export async function runRegistrationSequenceCron(
       console.error({ err, sequenceId: sequence.sequenceId }, 'registration sequence: leg failed');
     }
   }
+  result.read = reader.tally.read;
+  result.readSkipped = reader.tally.skipped;
   return result;
 }
 
@@ -713,6 +981,9 @@ async function loadLiveSequences(database: Database): Promise<LiveSequence[]> {
       outcome: schema.registrationSequences.outcome,
       waitlistPosition: schema.registrationSequences.waitlistPosition,
       waitlistStartedAt: schema.registrationSequences.waitlistStartedAt,
+      courseUrl: schema.registrationSequences.courseUrl,
+      courseOpensAt: schema.registrationSequences.courseOpensAt,
+      readinessReady: schema.registrationSequences.readinessReady,
       actionId: schema.registrationSequences.actionId,
       executedAt: schema.actions.executedAt,
       revertedAt: schema.actions.revertedAt,
@@ -746,6 +1017,9 @@ async function loadLiveSequences(database: Database): Promise<LiveSequence[]> {
     outcome: row.outcome,
     waitlistPosition: row.waitlistPosition,
     waitlistStartedAt: row.waitlistStartedAt,
+    courseUrl: row.courseUrl,
+    courseOpensAt: row.courseOpensAt,
+    readinessReady: row.readinessReady,
   }));
 }
 
@@ -770,6 +1044,9 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
           id: schema.children.id,
           name: schema.children.name,
           dateOfBirth: schema.children.dateOfBirth,
+          // Read so the send-time course read can refuse to decide a published age band
+          // on a DOB Hale derived from a spoken age (rule #1, prepare.ts).
+          dobPrecision: schema.children.dobPrecision,
         })
         .from(schema.children)
         .where(eq(schema.children.familyId, familyId)),
@@ -849,5 +1126,22 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     recordCommitment,
     fulfillCommitment,
     threadMessage: threadProactiveMessage,
+    // The bare GET: no cookie, no User-Agent, no Referer, `redirect: 'error'`, a status
+    // throw and a 4 MB ceiling. Six seconds, because this read happens inside a leg
+    // whose interval is fifteen minutes wide.
+    fetchBody: createFetchBody(GO_FETCH_TIMEOUT_MS),
+    refreshCourseAnchor: async (database, input) => {
+      const [row] = await database
+        .update(schema.registrationSequences)
+        .set({ courseOpensAt: input.courseOpensAt, updatedAt: input.now })
+        .where(
+          and(
+            eq(schema.registrationSequences.id, input.sequenceId),
+            sql`${schema.registrationSequences.courseOpensAt} is distinct from ${input.courseOpensAt}`,
+          ),
+        )
+        .returning({ id: schema.registrationSequences.id });
+      return row !== undefined;
+    },
   };
 }

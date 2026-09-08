@@ -355,6 +355,7 @@ export async function loadAwaitingSequence(
       id: schema.children.id,
       name: schema.children.name,
       dateOfBirth: schema.children.dateOfBirth,
+      dobPrecision: schema.children.dobPrecision,
     })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));

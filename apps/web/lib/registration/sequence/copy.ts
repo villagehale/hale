@@ -146,6 +146,11 @@ function joinNames(names: readonly string[]): string {
  * reason is identical: the deadline is real whether or not Hale may say the name.
  */
 function whoPhrase(fitNotes: readonly FitNote[]): string {
+  // VIL-338 · a BOUND course reaches here with no fit notes at all: the parent picked
+  // that class and the M1 band no longer admits anybody, which is a fact about the
+  // reference row rather than about the household. "your family" is the one phrase that
+  // is true of them without naming a child the band excluded.
+  if (fitNotes.length === 0) return 'your family';
   const named = fitNotes.map((note) => note.name).filter((name): name is string => name !== null);
   const teens = fitNotes.length - named.length;
   const parts: string[] = [];
