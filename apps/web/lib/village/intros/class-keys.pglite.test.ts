@@ -135,19 +135,51 @@ describe('loadClassKeys', () => {
     expect(keys.get(one.familyId)).toEqual(new Set([`${MARKHAM}:${COURSE}`]));
   });
 
-  /** Catches a read that is not scoped to the families it was asked about — the whole
-   * point of a family-scoped query rather than a "who else watches this course" one — and
-   * a reader that maps a watchless family to an empty set, which would make "holds
-   * nothing" and "was not asked about" the same answer. */
-  it('answers about the families it was asked about, and only those', async () => {
+  /** Catches a reader that maps a watchless family to an empty set, which would make
+   * "holds nothing" and "was not asked about" the same answer to the matcher. */
+  it('leaves a family with no live watch absent from the map, not empty in it', async () => {
     const asked = await seedFamily(db.database, 'Asked Family');
-    const stranger = await seedFamily(db.database, 'Stranger Family');
-    await seedWatch(stranger.familyId, stranger.parentUserId);
 
     const keys = await loadClassKeys([asked]);
 
-    expect(keys.has(stranger.familyId)).toBe(false);
     expect(keys.has(asked.familyId)).toBe(false);
+  });
+
+  /**
+   * Catches the read losing its `family_id IN (...)` scope — a global "who else is
+   * watching this course" read, the disclosure-shaped query rule #1 argues against.
+   *
+   * The reader's ANSWER cannot catch it: the armer comparison drops a family that was
+   * never asked about in TypeScript whether or not the SQL was scoped, so a test on the
+   * returned map passes for the wrong reason. What has to be observed is the rows the
+   * database handed back. The real query still runs against the real DDL; the wrapper
+   * delegates and only records.
+   */
+  it('never lets an unasked family row reach the reader at all', async () => {
+    const asked = await seedFamily(db.database, 'Scoped Family');
+    const stranger = await seedFamily(db.database, 'Stranger Family');
+    const askedSpotId = await seedWatch(asked.familyId, asked.parentUserId);
+    const strangerSpotId = await seedWatch(stranger.familyId, stranger.parentUserId);
+
+    const reads: unknown[][] = [];
+    const real = db.client.query.bind(db.client);
+    const record = async (sql: string, params?: unknown[], options?: unknown) => {
+      const result = await real(sql, params as never, options as never);
+      if (sql.includes('watched_spots')) reads.push(result.rows);
+      return result;
+    };
+    const spy = vi.spyOn(db.client, 'query').mockImplementation(record as typeof db.client.query);
+
+    const keys = await loadClassKeys([asked]);
+    spy.mockRestore();
+
+    expect(reads).toHaveLength(1);
+    // Drizzle returns a field-selected row as an array of values, so flatten and look for
+    // the ids rather than pinning the select list's order.
+    const returned = reads[0]?.flat();
+    expect(returned).toContain(askedSpotId);
+    expect(returned).not.toContain(strangerSpotId);
+    expect(keys.get(asked.familyId)).toEqual(new Set([`${MARKHAM}:${COURSE}`]));
   });
 
   /** Catches a host removed from SPOT_PORTAL_HOSTS becoming a silent drop, and catches the

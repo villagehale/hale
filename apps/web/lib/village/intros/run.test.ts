@@ -30,6 +30,17 @@ const F = '66666666-6666-4666-8666-666666666666';
 const COURSE = 'cityofmarkham.perfectmind.com:22222222-2222-2222-2222-222222222222';
 
 /**
+ * `loadClassKeys` is a REQUIRED port (rule #11), pinned deliberately rather than by
+ * accident of some other call site: a deps object missing it must not typecheck, because
+ * a port that could be left out would answer "nobody shares a class" — a real, silent
+ * answer that un-ranks every pairing in a deployment that forgot to wire it. The
+ * directive IS the assertion; give the port a `?` and this line stops erroring, which
+ * fails the build on an unused `@ts-expect-error`.
+ */
+// @ts-expect-error a deps object without loadClassKeys is missing a required property
+const _classKeysIsRequired: IntroSweepDeps = {} as Omit<IntroSweepDeps, 'loadClassKeys'>;
+
+/**
  * The counterpart family's real strings. A card that renders for family A is checked
  * against every one of them — the sentinel-family pattern: seed distinctive values,
  * then assert none of them survived into the outbound body.
