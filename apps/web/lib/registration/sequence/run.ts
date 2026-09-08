@@ -596,28 +596,33 @@ async function runLegForSequence(
   const children = await deps.loadChildren(database, sequence.familyId);
   const match = matchForSequence(sequence, { isResidentWindow, opensForFamilyAt: anchor });
   // The two legs that SPEAK about the bound course, and therefore the only two that read
-  // its page. Every other leg is about the municipal window and needs no network.
-  const readsCourse =
-    sequence.courseUrl !== null && portal !== null && (leg === 'battle_plan' || leg === 'go');
+  // its page. Every other leg is about the municipal window and needs no network. Kept
+  // as ONE narrowed value rather than a boolean, so nothing below can reach for a URL or
+  // a portal the condition has not proved is there.
+  const boundCourse =
+    sequence.courseUrl !== null && portal !== null && (leg === 'battle_plan' || leg === 'go')
+      ? { url: sequence.courseUrl, portal }
+      : null;
   const fitted = buildShortlist(match, children, now);
   // A family whose children no longer fit the band (a birthday crossed the ceiling
   // between the proposal and the leg) has nothing honest left to be told ABOUT THE
   // WINDOW — but a bound course is the parent's own pick and the page is its record, so
   // that leg still goes and the disagreement is counted by name.
-  if (fitted === null && !readsCourse) return { kind: 'quiet' };
+  if (fitted === null && boundCourse === null) return { kind: 'quiet' };
   const shortlist = fitted ?? windowShortlist(match);
   const effects: LegReadEffects = fitted === null ? { noFit: true } : {};
 
   let prep: { verdict: PrepVerdict; courseUrl: string } | null = null;
-  if (readsCourse && sequence.courseUrl !== null && portal !== null) {
+  if (boundCourse !== null) {
     prep = {
-      verdict: await readCourse(reader, sequence, portal, {
+      verdict: await readCourse(reader, boundCourse.url, boundCourse.portal, {
         anchor,
         isResidentWindow,
         children,
         now,
+        readinessReady: sequence.readinessReady,
       }),
-      courseUrl: sequence.courseUrl,
+      courseUrl: boundCourse.url,
     };
     effects.prep = prep.verdict.kind;
     // The anchor moves at the battle plan and NEVER at the go leg, whose key is already
@@ -740,16 +745,16 @@ async function runLegForSequence(
  * a database of its own (prepare.ts). */
 async function readCourse(
   reader: CourseReader,
-  sequence: LiveSequence,
+  url: string,
   portal: SpotPortal,
   ctx: {
     anchor: Date;
     isResidentWindow: boolean;
     children: readonly SequenceChild[];
     now: Date;
+    readinessReady: boolean | null;
   },
 ): Promise<PrepVerdict> {
-  const url = sequence.courseUrl as string;
   const courseId = courseIdOf(url);
   // A stored URL with no courseId cannot exist (`sanitizeSpotUrl` rebuilt it to exactly
   // two GUID parameters), and if one ever did, the honest answer is that Hale could not
@@ -766,7 +771,7 @@ async function readCourse(
       dateOfBirth: child.dateOfBirth,
       dobPrecision: child.dobPrecision,
     })),
-    readinessReady: sequence.readinessReady,
+    readinessReady: ctx.readinessReady,
   });
 }
 
