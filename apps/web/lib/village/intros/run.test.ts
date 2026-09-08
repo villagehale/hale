@@ -1137,7 +1137,18 @@ describe('phase 2 - the same-class signal', () => {
       };
     }
 
-    const ranked = run({ [E]: [COURSE], [F]: [COURSE] });
+    // Every household holds the key, so the CARDED pair (A/B) and the EMAILED pair (C/D)
+    // share a class in fact, not only the matched pair (E/F): a card path that re-read the
+    // keys and changed one word for a shared class would differ here. A-D still match
+    // nothing — their open proposals exclude them — so the match output is unchanged.
+    const ranked = run({
+      [A]: [COURSE],
+      [B]: [COURSE],
+      [C]: [COURSE],
+      [D]: [COURSE],
+      [E]: [COURSE],
+      [F]: [COURSE],
+    });
     const rankedResult = await runVillageIntroSweep(DB, ranked.deps, NOW);
     const plain = run(undefined);
     const plainResult = await runVillageIntroSweep(DB, plain.deps, NOW);
