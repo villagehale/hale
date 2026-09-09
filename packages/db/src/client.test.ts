@@ -38,3 +38,36 @@ describe('createDb timeout discipline (audit P1-9)', () => {
     expect(db.$client.options.connection.statement_timeout).toBe(60_000);
   });
 });
+
+/**
+ * A JS Date that reaches postgres.js WITHOUT a column to map through — a raw `sql`
+ * fragment, or an operator whose left side is a fragment (`gte(sql`coalesce(...)`, now)`)
+ * — must arrive as an ISO string. drizzle's postgres-js driver installs IDENTITY
+ * serializers for the date/time oids so its column mappings own the formatting, and
+ * the driver's byte writer then throws ERR_INVALID_ARG_TYPE on the Date. pglite never
+ * sees this (a different driver), which is how the inbound SMS lane shipped down on
+ * 2026-09-08 (#617's anchor comparison) and stayed down until 2026-09-09.
+ */
+describe('Date parameters reach postgres.js as ISO strings (2026-09-09 inbound outage)', () => {
+  const url = 'postgres://user:pass@db.invalid:5432/hale';
+  const iso = '2026-09-09T02:57:07.421Z';
+
+  it.each([1082, 1083, 1114, 1184])(
+    'oid %i: a raw Date is serialized, a column-mapped string passes through',
+    (oid) => {
+      const serialize = createDb({ connectionString: url }).$client.options.serializers[oid];
+      if (!serialize) throw new Error(`no serializer registered for oid ${oid}`);
+      expect(serialize(new Date(iso))).toBe(iso);
+      expect(serialize(iso)).toBe(iso);
+    },
+  );
+
+  it('leaves the json passthrough drizzle relies on untouched', () => {
+    const { serializers } = createDb({ connectionString: url }).$client.options;
+    for (const oid of [114, 3802]) {
+      const passthrough = serializers[oid];
+      if (!passthrough) throw new Error(`no serializer registered for oid ${oid}`);
+      expect(passthrough('{"a":1}')).toBe('{"a":1}');
+    }
+  });
+});
