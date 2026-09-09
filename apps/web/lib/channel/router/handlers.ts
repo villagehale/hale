@@ -642,24 +642,35 @@ async function preOpenReply(
     // An already-registering course belongs to VIL-337's watch and to the coach.
     if (bind.status === 'declined') return { claimed: false };
 
-    // A YES riding along with the link answers the checklist too. The BIND's ack is
-    // what goes back: two receipts for one message is two messages.
+    // A YES riding along with the link answers the checklist too — under THE SAME TWO
+    // PERMISSIONS the bare word needs, because riding beside a link does not make a
+    // word less bare. Without them "yes, here's the link" answering the coach's own
+    // prose question would be filed as the parent stating their setup was done. When
+    // either permission is missing the link still binds and the word is simply not a
+    // fact: the bind's outcome is what the turn is named by, and the checklist is asked
+    // again on its own leg. The BIND's ack is what goes back either way: two receipts
+    // for one message is two messages.
     const alongside = matchFastPath(ctx.body.replace(link, ' '));
-    if (bind.status !== 'refused' && alongside !== null && alongside.index === null) {
-      if (alongside.verb !== 'undo') {
-        await handleReadinessAnswer(
-          database,
-          {
-            sequence,
-            ready: alongside.verb === 'yes',
-            read: 'keyword',
-            confidence: null,
-            inboundChannelMessageId,
-            now: ctx.now,
-          },
-          deps,
-        );
-      }
+    if (
+      bind.status !== 'refused' &&
+      alongside !== null &&
+      alongside.index === null &&
+      alongside.verb !== 'undo' &&
+      (await mayClaimBareWord(ctx, alongside, 'registration_readiness')) &&
+      (await deps.readinessAskedLastAt(database, sequence)) !== null
+    ) {
+      await handleReadinessAnswer(
+        database,
+        {
+          sequence,
+          ready: alongside.verb === 'yes',
+          read: 'keyword',
+          confidence: null,
+          inboundChannelMessageId,
+          now: ctx.now,
+        },
+        deps,
+      );
     }
     return { claimed: true, outcome: bind.status, reply: bind.reply };
   }

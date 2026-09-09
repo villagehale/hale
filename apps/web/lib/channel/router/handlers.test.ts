@@ -885,6 +885,72 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     expect(verdict.outcome).toBe('bound');
   });
 
+  /**
+   * THE RIDING WORD IS STILL A BARE WORD. A parent who answers the coach's own prose
+   * question ("send me the link?") with "yes <url>" is doing ONE thing — pasting a
+   * link. Filing a readiness fact off that word would attribute to the parent the one
+   * sentence this feature promises to attribute honestly, so the alongside write needs
+   * the SAME two permissions the bare word needs: Hale's ask has to be its last word,
+   * and no other open question could have meant the yes.
+   */
+  it('binds and ignores the riding YES when no readiness ask has gone out', async () => {
+    const prepare = prepareDeps({ askedAt: null });
+    // An EMPTY open-question list, which is vacuously unambiguous — so the ask row is
+    // the only permission that can refuse this word, and it is what the case measures.
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn(`yes ${LEGO_URL}`),
+    );
+
+    // Kills a riding-YES path that skips `readinessAskedLastAt`.
+    expect(verdict.claimed).toBe(true);
+    expect(prepare.bound).toHaveLength(1);
+    expect(prepare.readiness).toEqual([]);
+  });
+
+  it('binds and ignores the riding YES while another question could have meant it', async () => {
+    const prepare = prepareDeps();
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn(`yes ${LEGO_URL}`, { open: [READINESS_QUESTION, APPROVAL_QUESTION] }),
+    );
+
+    // Kills a riding-YES path that skips `mayClaimBareWord`.
+    expect(verdict.claimed).toBe(true);
+    expect(prepare.bound).toHaveLength(1);
+    expect(prepare.readiness).toEqual([]);
+  });
+
+  it('files nothing off the riding YES when the link itself was refused', async () => {
+    const prepare = prepareDeps();
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn(`yes ${LEGO_URL.replace('https://', 'http://')}`, {
+        open: [READINESS_QUESTION],
+      }),
+    );
+
+    // Kills dropping `bind.status !== 'refused'` from the alongside guard: a paste Hale
+    // refused is a turn the parent has to repeat, not a checklist they answered.
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed) throw new Error('unreachable');
+    expect(verdict.outcome).toBe('refused');
+    expect(prepare.bound).toEqual([]);
+    expect(prepare.readiness).toEqual([]);
+  });
+
+  /**
+   * The router finds the second-pass owner by `handler.resolves?.has(reading.kind)`
+   * (route.ts). With this set emptied every resolver-read hedged answer is dropped on
+   * the floor and the second-pass cases above still pass, because they set
+   * `ctx.resolved` directly and never go through that lookup.
+   */
+  it('declares the kind it owns, which is how the router finds it on the second pass', () => {
+    expect(sequenceReplyHandler(sequenceDeps(), NO_PREPARE).resolves).toEqual(
+      new Set(['registration_readiness']),
+    );
+  });
+
   it('takes the resolver’s own reading on the second pass', async () => {
     const prepare = prepareDeps();
     const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
