@@ -215,8 +215,11 @@ describe('channelScheduleReader — the projection at the door (VIL-270)', () =>
   it('leaves an UNATTRIBUTED row raw — nullable child_id is private nowhere', async () => {
     // Deliberate, and pinned so it stays visible: teen-ness on this table hangs entirely
     // off the nullable child_id join, and propose_calendar_add's childId is optional and
-    // model-supplied. A teen item written with no link is raw on every surface. Closing
-    // that is a write-path decision (attribution authority), not a reader projection.
+    // model-supplied. A teen item written with no link is raw on every surface — and it
+    // arrives that way by a second path too: family_events.child_id is `onDelete: 'set
+    // null'` (family-events.ts:36), so hard-deleting a 13+ child un-privates every row
+    // that was theirs. Closing both is a write-path decision (attribution authority),
+    // not a reader projection.
     const event = await resolved(fx.familyWideEventId);
 
     expect(event.title).toBe('Neighbourhood BBQ');
