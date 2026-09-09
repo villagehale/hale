@@ -6,8 +6,11 @@ import {
   type ChannelCoachToolArgs,
   type ChannelScheduleReader,
   MAX_DRAFTS_PER_TURN,
+  PRIVATE_EVENT_WHAT,
   type ScheduleEvent,
+  type ScheduleEventRow,
   buildChannelCoachTools,
+  toScheduleEvent,
 } from './tools';
 
 /**
@@ -31,20 +34,31 @@ const MON_SWIM = '33333333-3333-4333-8333-333333333333';
 const THU_SWIM = '44444444-4444-4444-8444-444444444444';
 const TEEN_KID = '55555555-5555-4555-8555-555555555555';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
+/** 16 at NOW — the deterministic age gate, not a flag a fixture can set by hand. */
+const TEEN_DOB = '2010-06-01';
 const TZ = 'America/Toronto';
 
-function scheduleEvent(overrides: Partial<ScheduleEvent> = {}): ScheduleEvent {
-  return {
-    eventId: MON_SWIM,
-    title: 'Swim lesson',
-    startsAt: new Date('2026-08-03T20:30:00.000Z'),
-    endsAt: null,
-    location: 'West pool',
-    childId: null,
-    teen: false,
-    sensitive: false,
-    ...overrides,
-  };
+/**
+ * A row as the reader's LEFT JOIN hands it over, projected by the production
+ * `toScheduleEvent` — never a ScheduleEvent composed by hand. A fake reader that
+ * assembled its own rows could disagree with the real one about what a private row
+ * looks like, and every assertion below would then be about the fake (VIL-270).
+ */
+function scheduleEvent(overrides: Partial<ScheduleEventRow> = {}): ScheduleEvent {
+  return toScheduleEvent(
+    {
+      id: MON_SWIM,
+      title: 'Swim lesson',
+      startsAt: new Date('2026-08-03T20:30:00.000Z'),
+      endsAt: null,
+      location: 'West pool',
+      sensitive: false,
+      childId: null,
+      childDob: null,
+      ...overrides,
+    },
+    NOW,
+  );
 }
 
 function fakeReader(events: ScheduleEvent[]): ChannelScheduleReader {
@@ -135,7 +149,7 @@ describe('lookup_week', () => {
   it('returns the week summary plus every resolvable event, family-local', async () => {
     const h = harness([
       scheduleEvent(),
-      scheduleEvent({ eventId: THU_SWIM, startsAt: new Date('2026-08-06T21:15:00.000Z') }),
+      scheduleEvent({ id: THU_SWIM, startsAt: new Date('2026-08-06T21:15:00.000Z') }),
     ]);
 
     const result = (await h.call('lookup_week', {})) as {
@@ -151,7 +165,7 @@ describe('lookup_week', () => {
   });
 
   it("genericizes a teen's event title and drops its place (rule #1)", async () => {
-    const h = harness([scheduleEvent({ childId: TEEN_KID, teen: true, title: 'Therapy' })]);
+    const h = harness([scheduleEvent({ childId: TEEN_KID, childDob: TEEN_DOB, title: 'Therapy' })]);
 
     const result = (await h.call('lookup_week', {})) as {
       events: Array<{ what: string; where: string | null }>;
@@ -206,7 +220,7 @@ describe('propose_calendar_move', () => {
   });
 
   it('flags the synthetic event as teen content when the target is a teen’s', async () => {
-    const h = harness([scheduleEvent({ childId: TEEN_KID, teen: true })]);
+    const h = harness([scheduleEvent({ childId: TEEN_KID, childDob: TEEN_DOB })]);
 
     await h.call('propose_calendar_move', {
       eventId: MON_SWIM,
@@ -217,6 +231,11 @@ describe('propose_calendar_move', () => {
 
     expect(h.port.drafts[0]?.teenContent).toBe(true);
     expect(h.port.drafts[0]?.payload.childId).toBe(TEEN_KID);
+    // The draft carries the handle and the new time, not the item (VIL-270). A move
+    // re-times by `reversalHandle`; the executor never needs the title, so nothing
+    // outside the database — the reviewer model included — is handed it.
+    expect(h.port.drafts[0]?.payload.title).toBe(PRIVATE_EVENT_WHAT);
+    expect(h.port.drafts[0]?.payload.location).toBeNull();
   });
 });
 
@@ -372,7 +391,7 @@ describe('the weekday a draft claims must be the weekday its date is', () => {
 
 describe('the per-turn draft cap', () => {
   it(`refuses the change after ${MAX_DRAFTS_PER_TURN} and tells the model to carry the rest`, async () => {
-    const h = harness([scheduleEvent(), scheduleEvent({ eventId: THU_SWIM })]);
+    const h = harness([scheduleEvent(), scheduleEvent({ id: THU_SWIM })]);
 
     await h.call('propose_calendar_cancel', { eventId: MON_SWIM });
     await h.call('propose_calendar_cancel', { eventId: THU_SWIM });
@@ -414,7 +433,7 @@ describe('the per-turn draft cap', () => {
    * exist.
    */
   it('reports every actionId it committed, and only those', async () => {
-    const h = harness([scheduleEvent(), scheduleEvent({ eventId: THU_SWIM })]);
+    const h = harness([scheduleEvent(), scheduleEvent({ id: THU_SWIM })]);
 
     await h.call('propose_calendar_cancel', { eventId: MON_SWIM });
     await expect(

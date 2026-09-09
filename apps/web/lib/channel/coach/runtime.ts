@@ -401,7 +401,7 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
     buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch) =>
       buildChannelCoachTools({
         familyId: turn.familyId,
-        reader: channelScheduleReader(database),
+        reader: channelScheduleReader(database, turn.now),
         draftPort: productionChannelDraftPort(database, anthropicClient(), turn.now),
         villageTool: searchVillageTool(database),
         // The second activity source. Same key, same fail-closed resolver shape as the

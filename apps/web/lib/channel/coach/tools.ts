@@ -1,7 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
-import { deriveStage } from '@hale/types';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
@@ -16,6 +15,7 @@ import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
+import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import { WEEKDAYS, weekdayOf, weekdayViolation } from './weekday';
@@ -57,18 +57,24 @@ export const MAX_DRAFTS_PER_TURN = 2;
 /** What the strictest outbound channel may say about a private item. Matches the
  * assistant-events convention: the item's EXISTENCE is the parent's to know, its
  * content is not (rule #1). */
-const PRIVATE_EVENT_WHAT = 'A private calendar item';
+export const PRIVATE_EVENT_WHAT = 'A private calendar item';
 
 /** An unmistakable placeholder, never a row — examples ride the cached tool
  * definition outside message protections (rule #1; see EXAMPLE_CHILD_ID). */
 const EXAMPLE_EVENT_ID = 'evt_0000000000example';
 
 /**
- * One changeable thing on the family's calendar, as the tools need it: the redaction
- * inputs (`teen`, `sensitive`) travel WITH the row rather than being applied by the
- * reader, because the read and the draft want opposite projections of the same row —
- * the model must be shown a genericized title, and the executor must be handed the
- * real one.
+ * One changeable thing on the family's calendar, as the tools need it — ALREADY
+ * PROJECTED for an outbound channel (VIL-270). `title` and `location` are what this
+ * tree may hold at all: a private row (a 13+ child's, or one flagged sensitive) arrives
+ * here as {@link PRIVATE_EVENT_WHAT} with no place, so no verb downstream has to
+ * remember to redact and none of them can leak by forgetting.
+ *
+ * The read and the draft want the SAME projection, because a draft is not an execution:
+ * the executor holds the row by `reversalHandle` and re-times it in place, so nothing
+ * outside the database ever needs the real title. `teen` and `sensitive` still ride the
+ * row — the draft's `teenContent`/`privacySensitive` flags are what every parent-facing
+ * surface redacts on.
  */
 export interface ScheduleEvent {
   eventId: string;
@@ -244,11 +250,6 @@ function refuseMismatchedWeekday(
   if (violation) throw new Error(violation);
 }
 
-/** A private row is named only by its shape, and never by where it is (rule #1). */
-function isPrivate(event: ScheduleEvent): boolean {
-  return event.teen || event.sensitive;
-}
-
 export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTool[] {
   const { familyId, reader, draftPort, onDraft, now } = args;
   let draftsThisTurn = 0;
@@ -317,11 +318,13 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         // arguments of a draft can be READ OFF this rather than worked out.
         days: window.dayKeys.map((date) => ({ weekday: weekdayOf(date, timeZone), date })),
         summary,
+        // No redaction here: the reader already projected a private row (VIL-270), so
+        // this renders whatever the channel is allowed to hold.
         events: events.map((event) => ({
           eventId: event.eventId,
-          what: isPrivate(event) ? PRIVATE_EVENT_WHAT : event.title,
+          what: event.title,
           when: localWhen(event.startsAt, timeZone),
-          where: isPrivate(event) ? null : event.location,
+          where: event.location,
         })),
       };
     },
@@ -558,11 +561,16 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
 }
 
 /**
- * The production reader. Two projections of family_events live behind it because the
- * verbs need both: the redaction inputs ride on the row so the tool decides what the
- * MODEL sees, while the draft keeps the real values for the executor.
+ * The production reader — and the ONE door family_events comes through into
+ * `lib/channel` (VIL-270; the tripwire is teen-access-outbound.test.ts). Every row it
+ * hands out is already projected, so raw private content never enters an outbound tree
+ * and no verb downstream can leak it by forgetting to redact.
+ *
+ * `now` is the turn's clock, not the reader's: the age gate has to be deterministic, and
+ * a reader that read `new Date()` would decide a birthday differently from the draft
+ * that quotes it. Both call sites already hold it (runtime.ts, twilio/relay-deps.ts).
  */
-export function channelScheduleReader(database: Database): ChannelScheduleReader {
+export function channelScheduleReader(database: Database, now: Date): ChannelScheduleReader {
   return {
     timeZone: (familyId) => readFamilyTimezone(database, familyId),
 
@@ -585,7 +593,7 @@ export function channelScheduleReader(database: Database): ChannelScheduleReader
           ),
         )
         .orderBy(asc(schema.familyEvents.startsAt));
-      return rows.map(toScheduleEvent);
+      return rows.map((row) => toScheduleEvent(row, now));
     },
 
     resolveEvent: async (familyId, eventId) => {
@@ -604,7 +612,7 @@ export function channelScheduleReader(database: Database): ChannelScheduleReader
         )
         .limit(1);
       const row = rows[0];
-      return row ? toScheduleEvent(row) : null;
+      return row ? toScheduleEvent(row, now) : null;
     },
   };
 }
@@ -620,7 +628,8 @@ const eventColumns = {
   childDob: schema.children.dateOfBirth,
 };
 
-type EventRow = {
+/** The LEFT-JOINed family_events row, exactly as `eventColumns` selects it. */
+export type ScheduleEventRow = {
   id: string;
   title: string;
   startsAt: Date;
@@ -631,15 +640,27 @@ type EventRow = {
   childDob: string | null;
 };
 
-function toScheduleEvent(row: EventRow): ScheduleEvent {
+/**
+ * The projection itself, exported so a test builds its rows through the same function
+ * production does — a fake reader that composes ScheduleEvents by hand can disagree with
+ * the real one about what a private row looks like, and then it is testing its own
+ * opinion (VIL-270).
+ *
+ * Private is decided by the repo's single declared predicate (`isPrivateEvent`), so the
+ * texted week, the reminder copy, the calendar invite and the follow-up ask cannot drift
+ * apart about which rows are a teen's.
+ */
+export function toScheduleEvent(row: ScheduleEventRow, now: Date): ScheduleEvent {
+  const child = row.childId && row.childDob ? [{ id: row.childId, dateOfBirth: row.childDob }] : [];
+  const redacted = isPrivateEvent({ childId: row.childId, sensitive: row.sensitive }, child, now);
   return {
     eventId: row.id,
-    title: row.title,
+    title: redacted ? PRIVATE_EVENT_WHAT : row.title,
     startsAt: row.startsAt,
     endsAt: row.endsAt,
-    location: row.location,
+    location: redacted ? null : row.location,
     childId: row.childId,
-    teen: row.childDob !== null && deriveStage(row.childDob) === 'teenager',
+    teen: row.childDob !== null && isTeenChild({ dateOfBirth: row.childDob }, now),
     sensitive: row.sensitive,
   };
 }
