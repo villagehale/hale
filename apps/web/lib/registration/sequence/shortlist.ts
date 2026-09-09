@@ -33,6 +33,10 @@ export interface SequenceChild {
   id: string;
   name: string;
   dateOfBirth: string;
+  /** 'exact' only where a parent typed the real date. Carried so the send-time course
+   * read can refuse to decide a page's age band on a DOB derived from a spoken age
+   * (see prepare.ts) — never read here, where the M1 band's own tolerance covers it. */
+  dobPrecision: string;
 }
 
 export type AgeFit = 'in_band' | 'near_band' | 'band_unknown';
@@ -165,7 +169,25 @@ export function buildShortlist(
     fitNotes.push({ childId: child.id, name: isTeen ? null : child.name, fit });
   }
   if (fitNotes.length === 0) return null;
+  return shortlistOf(match, fitNotes);
+}
 
+/**
+ * The same window with NO child attached — for a household whose course is BOUND.
+ *
+ * The parent picked that course and Hale reads that page; the M1 band is a hand-read of
+ * a season info page and has nothing to say about it. Without this, a birthday crossing
+ * the published ceiling between the proposal and the morning would silence the flagship
+ * text — the ladder losing the morning to reference data. It is deliberately not a
+ * fallback anywhere else: with no course bound the band is all Hale has, and silence is
+ * then the honest answer.
+ */
+export function windowShortlist(match: RegistrationMatch): Shortlist {
+  return shortlistOf(match, []);
+}
+
+function shortlistOf(match: RegistrationMatch, fitNotes: FitNote[]): Shortlist {
+  const { window } = match;
   return {
     windowRef: {
       id: window.id,

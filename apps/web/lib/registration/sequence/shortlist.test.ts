@@ -59,7 +59,7 @@ function child(id: string, name: string, years: number, months = 0): SequenceChi
   const dob = new Date(NOW);
   dob.setUTCFullYear(dob.getUTCFullYear() - years);
   dob.setUTCMonth(dob.getUTCMonth() - months);
-  return { id, name, dateOfBirth: dob.toISOString().slice(0, 10) };
+  return { id, name, dateOfBirth: dob.toISOString().slice(0, 10), dobPrecision: 'exact' };
 }
 
 describe('buildShortlist', () => {

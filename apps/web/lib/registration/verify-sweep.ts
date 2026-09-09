@@ -149,6 +149,18 @@ export function createFetchBody(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
       if (!res.ok) {
         throw new Error(`page fetch ${url} → HTTP ${res.status}`);
       }
+      // THE DECLARED LENGTH FIRST, so a body too large to be a page is refused before it
+      // is buffered. This primitive runs inside an inbound SMS turn on a URL a parent
+      // pasted, and an origin that answers with a video would otherwise pull the whole
+      // thing into memory to be told it was too big. The read below stays as the ceiling
+      // for every origin that declares no length at all — most of them, under chunked
+      // transfer encoding — so nothing here is a substitute for it.
+      const declared = Number(res.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > MAX_PAGE_BYTES) {
+        throw new Error(
+          `page fetch ${url} → ${declared} chars exceeds the ${MAX_PAGE_BYTES} page ceiling`,
+        );
+      }
       const body = await res.text();
       if (body.length > MAX_PAGE_BYTES) {
         throw new Error(

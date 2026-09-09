@@ -23,6 +23,10 @@ import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { loadOpenCommitment } from '~/lib/commitments/ledger';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
+import {
+  defaultPrepareReplyDeps,
+  readinessQuestion,
+} from '~/lib/registration/sequence/prepare-reply';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
@@ -322,7 +326,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     founderWelcomeHandler(defaultFounderReplyDeps()),
     healthReplyHandler(defaultHealthReplyDeps()),
     planReplyHandler(defaultPlanReplyDeps()),
-    sequenceReplyHandler(defaultSequenceReplyDeps()),
+    sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
     nameCaptureHandler(defaultNameCaptureDeps()),
   ];
@@ -671,6 +675,11 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
       const promise = await loadOpenActivityPromise(database, familyId);
       return promise && { id: promise.id, summary: promise.summary, askedAt: promise.askedAt };
     },
+    // The registration ladder's readiness checklist. Its whole TTL is the last-word rule
+    // inside the reader — the question closes the moment anything else goes out to this
+    // parent — so, unlike the offers above, there is no window to apply here.
+    registrationReadiness: (database, familyId, now) =>
+      readinessQuestion(database, familyId, now),
   });
 }
 

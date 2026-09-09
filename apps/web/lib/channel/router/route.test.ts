@@ -1916,7 +1916,9 @@ describe('the shipped chain, end to end', () => {
       handlers: [
         approvalHandler(spine as never),
         healthReplyHandler(health as never),
-        sequenceReplyHandler(sequence as never),
+        // The pre-open branch reads nothing while F14 is dark for this family, which
+        // every case in this file is (VIL-338).
+        sequenceReplyHandler(sequence as never, {} as never),
       ],
     };
   }

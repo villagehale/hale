@@ -700,6 +700,33 @@ describe('createFetchBody / createFetchPage', () => {
     await expect(createFetchBody()('https://example.ca/gone')).rejects.toThrow(/HTTP 404/);
   });
 
+  it('refuses on the declared length, before a byte of the body is buffered', async () => {
+    // A misbehaving origin (or one serving a video by mistake) can otherwise force the
+    // whole body into memory before the post-read ceiling gets a say — and this
+    // primitive now runs INSIDE an inbound SMS turn, on a URL a parent pasted.
+    let buffered = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          ({
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-length': String(5 * 1024 * 1024) }),
+            text: async () => {
+              buffered = true;
+              return 'x'.repeat(5 * 1024 * 1024);
+            },
+          }) as unknown as Response,
+      ),
+    );
+
+    await expect(createFetchBody()('https://example.ca/huge')).rejects.toThrow(
+      /exceeds the .* ceiling/,
+    );
+    expect(buffered).toBe(false);
+  });
+
   it('refuses a redirect rather than poll a host nobody approved', async () => {
     // NOT STUBBED, because the flag is not the property: only the real fetch can show
     // that a 302 becomes a failure. The spot watcher polls one sanitized, allowlisted

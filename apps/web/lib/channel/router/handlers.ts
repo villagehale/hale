@@ -11,6 +11,12 @@ import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/iden
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import { f14EnabledFor } from '~/lib/channel/f14';
+import {
+  type PrepareReplyDeps,
+  handleCourseBind,
+  handleReadinessAnswer,
+} from '~/lib/registration/sequence/prepare-reply';
 import { type SequenceReplyDeps, handleSequenceReply } from '~/lib/registration/sequence/reply';
 import {
   type ResolvedIntroAnswer,
@@ -540,10 +546,17 @@ export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
  * to the coach, and reaching into M7 to suppress it would put a second opinion about
  * the window's state in a module that does not own one.
  */
-export function sequenceReplyHandler(deps: SequenceReplyDeps): DeterministicHandler {
+export function sequenceReplyHandler(
+  deps: SequenceReplyDeps,
+  prepare: PrepareReplyDeps,
+): DeterministicHandler {
   return {
     name: 'registration',
+    resolves: new Set(['registration_readiness']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const preOpen = await preOpenReply(database, ctx, prepare);
+      if (preOpen !== null) return preOpen;
+
       const outcome = await handleSequenceReply(
         database,
         { familyId: ctx.familyId, body: ctx.body, now: ctx.now },
@@ -553,6 +566,133 @@ export function sequenceReplyHandler(deps: SequenceReplyDeps): DeterministicHand
       return { claimed: true, outcome: outcome.status, reply: outcome.reply };
     },
   };
+}
+
+/** Anything a handset made a link of. Loose on purpose: an `http://` paste is CLAIMED
+ * and refused by name, rather than falling through to a coach that cannot bind it. */
+const LINK_TOKEN = /https?:\/\/\S+/i;
+
+/**
+ * VIL-338 — the days BEFORE the morning, on the same handler.
+ *
+ * Null means "not mine, keep going", which hands the turn to the post-open check-in
+ * path below and, past that, to the coach. Everything else is a verdict.
+ *
+ * THE ORDER IS THE PRODUCT DECISION. A resolved answer comes first because the router
+ * is then on its second pass and calling exactly this handler about exactly this kind;
+ * the F14 gate comes next, so a dark household reaches nothing; the ONE live pre-open
+ * sequence comes next, because a pasted link means nothing without one; the link
+ * outranks the bare word, because a message carrying both is a parent doing two things
+ * at once and the bind is the one with a receipt worth reading.
+ *
+ * A BARE WORD NEEDS TWO INDEPENDENT PERMISSIONS and neither implies the other.
+ * `mayClaimBareWord` says no OTHER open question could have meant it; the ask row says
+ * Hale actually asked. An empty question list is vacuously unambiguous, so without the
+ * second check any "yes" at all — including one answering the coach's own prose
+ * question, which is never a listed kind — would land in the readiness column.
+ */
+async function preOpenReply(
+  database: Database,
+  ctx: HandlerContext,
+  deps: PrepareReplyDeps,
+): Promise<HandlerVerdict | null> {
+  const resolved = ctx.resolved?.kind === 'registration_readiness' ? ctx.resolved : null;
+  if (resolved === null && !f14EnabledFor(ctx.familyId)) return null;
+
+  const sequence = await deps.loadPreparingSequence(database, ctx.familyId, ctx.now);
+  if (sequence === null) return null;
+
+  if (ctx.inboundChannelMessageId === null) {
+    // A spoken turn: what the caller said is a transcription, and there is no message
+    // row to attribute the fact to. Named rather than assumed away — no handler owning
+    // one of these kinds is in SPOKEN_QUESTION_KINDS today (voice-answer.ts), so this
+    // is unreachable, and if that set ever widens the parent's answer must not be
+    // filed against provenance Hale invented.
+    console.error(
+      { familyId: ctx.familyId, sequenceId: sequence.sequenceId },
+      'registration: a pre-open answer arrived with no inbound message row - not claimed',
+    );
+    return null;
+  }
+  const inboundChannelMessageId = ctx.inboundChannelMessageId;
+
+  if (resolved !== null) {
+    const outcome = await handleReadinessAnswer(
+      database,
+      {
+        sequence,
+        ready: resolved.polarity === 'yes',
+        read: 'resolver',
+        confidence: resolved.confidence,
+        inboundChannelMessageId,
+        now: ctx.now,
+      },
+      deps,
+    );
+    return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+  }
+
+  const link = LINK_TOKEN.exec(ctx.body)?.[0] ?? null;
+  if (link !== null) {
+    const bind = await handleCourseBind(
+      database,
+      { sequence, rawUrl: link, inboundChannelMessageId, now: ctx.now },
+      deps,
+    );
+    // An already-registering course belongs to VIL-337's watch and to the coach.
+    if (bind.status === 'declined') return { claimed: false };
+
+    // A YES riding along with the link answers the checklist too — under THE SAME TWO
+    // PERMISSIONS the bare word needs, because riding beside a link does not make a
+    // word less bare. Without them "yes, here's the link" answering the coach's own
+    // prose question would be filed as the parent stating their setup was done. When
+    // either permission is missing the link still binds and the word is simply not a
+    // fact: the bind's outcome is what the turn is named by, and the checklist is asked
+    // again on its own leg. The BIND's ack is what goes back either way: two receipts
+    // for one message is two messages.
+    const alongside = matchFastPath(ctx.body.replace(link, ' '));
+    if (
+      bind.status !== 'refused' &&
+      alongside !== null &&
+      alongside.index === null &&
+      alongside.verb !== 'undo' &&
+      (await mayClaimBareWord(ctx, alongside, 'registration_readiness')) &&
+      (await deps.readinessAskedLastAt(database, sequence)) !== null
+    ) {
+      await handleReadinessAnswer(
+        database,
+        {
+          sequence,
+          ready: alongside.verb === 'yes',
+          read: 'keyword',
+          confidence: null,
+          inboundChannelMessageId,
+          now: ctx.now,
+        },
+        deps,
+      );
+    }
+    return { claimed: true, outcome: bind.status, reply: bind.reply };
+  }
+
+  const command = matchFastPath(ctx.body);
+  if (command === null || command.verb === 'undo' || command.index !== null) return null;
+  if (!(await mayClaimBareWord(ctx, command, 'registration_readiness'))) return null;
+  if ((await deps.readinessAskedLastAt(database, sequence)) === null) return null;
+
+  const outcome = await handleReadinessAnswer(
+    database,
+    {
+      sequence,
+      ready: command.verb === 'yes',
+      read: 'keyword',
+      confidence: null,
+      inboundChannelMessageId,
+      now: ctx.now,
+    },
+    deps,
+  );
+  return { claimed: true, outcome: outcome.status, reply: outcome.reply };
 }
 
 /**

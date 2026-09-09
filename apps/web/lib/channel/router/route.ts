@@ -179,6 +179,20 @@ export interface HandlerContext extends Omit<ChannelTurn, 'standingQuestions'> {
    * both checks and resolves still costs one read.
    */
   openQuestions(): Promise<readonly OpenQuestion[]>;
+  /**
+   * The `channel_messages` row that carried THIS message, so a handler that writes a
+   * fact the parent stated can point its audit row at the words that stated it.
+   *
+   * Rule #6's trail could name the family and the moment but nothing joined a parent's
+   * verbatim reply to what it authorised — the inbound row holds the body (it is the
+   * one direction that does), and every other ledger in the product already targets it.
+   *
+   * NULL ON A SPOKEN TURN, and that is a fact rather than a default: a call produces a
+   * transcription and no `channel_messages` row at all, so a handler whose write needs
+   * the parent's own words has nothing to attribute them to and must say so rather than
+   * write a receipt with no provenance (voice-answer.ts).
+   */
+  inboundChannelMessageId: string | null;
 }
 
 /** What the resolver decided, in the form the owning handler needs: which question, and
@@ -590,6 +604,7 @@ export async function routeChannelMessage(
     now,
     resolved: null,
     openQuestions: readOpenQuestions,
+    inboundChannelMessageId: job.channel_message_id,
   };
 
   /**

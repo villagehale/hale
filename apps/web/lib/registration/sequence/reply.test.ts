@@ -5,6 +5,7 @@ import {
   type AwaitingSequence,
   type SequenceReplyDeps,
   handleSequenceReply,
+  loadAwaitingSequence,
   matchCheckInReply,
 } from './reply.js';
 
@@ -306,5 +307,121 @@ describe('handleSequenceReply', () => {
     const { outcome, recorded } = reply('idk it was chaos');
     await outcome;
     expect(recorded.outcomes).toEqual([]);
+  });
+});
+
+/**
+ * VIL-338 · the reply path has to be judged against the SAME morning the ladder ran on.
+ *
+ * `runLegForSequence` anchors every leg on `course_opens_at` where a course is bound, so
+ * the check-in question goes out four hours after the COURSE's morning. A reply path
+ * still measuring from the M1 row's instant would ask on one morning and listen on
+ * another: for a household whose page opens EARLIER than the row, "we got in" arrives
+ * before the window this path thinks has even opened, and is heard by nobody.
+ */
+describe('loadAwaitingSequence · the anchor', () => {
+  const WINDOW = {
+    id: 'w-1',
+    municipality: 'markham',
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: null,
+    openAt: new Date('2026-09-15T10:30:00.000Z'),
+    residentPriorityDays: null,
+    waitlistResponseHours: 36,
+    ageMinMonths: 36,
+    ageMaxMonths: 72,
+    sourceUrl: 'https://www.markham.ca/en/recreation/registration.aspx',
+    verifiedAt: new Date('2026-07-30T04:00:00.000Z'),
+    notes: null,
+    createdAt: new Date('2026-08-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-08-01T00:00:00.000Z'),
+  };
+
+  /** Just enough of a Drizzle handle for the loader's three reads, in call order: the
+   * sequence row, the family's children, and the approval spine's own columns. */
+  function chainDb(sequenceRow: Record<string, unknown>) {
+    let call = 0;
+    return {
+      select: () => {
+        const which = call++;
+        if (which === 0) {
+          return {
+            from: () => ({
+              innerJoin: () => ({
+                innerJoin: () => ({
+                  innerJoin: () => ({
+                    where: () => ({
+                      orderBy: () => ({ limit: async () => [sequenceRow] }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (which === 1) {
+          return {
+            from: () => ({
+              where: async () => [
+                { id: 'child-1', name: 'Maya', dateOfBirth: '2022-05-01', dobPrecision: 'exact' },
+              ],
+            }),
+          };
+        }
+        return {
+          from: () => ({
+            where: () => ({
+              limit: async () => [
+                { executedAt: new Date('2026-09-01T00:00:00.000Z'), revertedAt: null },
+              ],
+            }),
+          }),
+        };
+      },
+    } as never;
+  }
+
+  it('runs on the bound course’s clock, not the M1 row’s', async () => {
+    const bound = await loadAwaitingSequence(
+      chainDb({
+        sequenceId: 'seq-1',
+        parentUserId: 'user-1',
+        reaskedAt: null,
+        actionId: 'action-1',
+        window: WINDOW,
+        timezone: 'America/Toronto',
+        areaCoarse: 'L3R',
+        courseOpensAt: new Date('2026-09-12T10:30:00.000Z'),
+      }),
+      'fam-1',
+      new Date('2026-09-12T15:00:00.000Z'),
+    );
+
+    // Three days EARLIER than the row. Anchor on the row and `awaitingOutcome` says the
+    // window has not opened yet, so the parent's "we got in" on the real morning is
+    // heard by nobody.
+    expect(bound?.state.openAt).toEqual(new Date('2026-09-12T10:30:00.000Z'));
+  });
+
+  it('runs on the M1 row for a household that has bound nothing', async () => {
+    // The positive control, and today's behaviour for the thirteen municipalities.
+    const unbound = await loadAwaitingSequence(
+      chainDb({
+        sequenceId: 'seq-1',
+        parentUserId: 'user-1',
+        reaskedAt: null,
+        actionId: 'action-1',
+        window: WINDOW,
+        timezone: 'America/Toronto',
+        areaCoarse: 'L3R',
+        courseOpensAt: null,
+      }),
+      'fam-1',
+      new Date('2026-09-15T15:00:00.000Z'),
+    );
+
+    expect(unbound?.state.openAt).toEqual(WINDOW.openAt);
   });
 });

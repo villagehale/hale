@@ -52,8 +52,53 @@ export interface FamilyExportDocument {
     expiresAt: string;
     revokedAt: string | null;
   }[];
+  /**
+   * VIL-338 · what Hale holds about a registration morning this family is preparing
+   * for. METADATA ONLY, and the omissions are the point: the course id inside the
+   * pasted URL names the exact class one of this family's children is being registered
+   * for, so only the HOST leaves — the parent already has the link, because they sent
+   * it. No price, no child, no message id. Present-and-empty for a family with none: a
+   * copy that simply omits a section leaves a parent unable to tell "Hale holds none of
+   * this" from "Hale did not look".
+   */
+  registrationPreparation: {
+    municipality: string;
+    cycleLabel: string;
+    courseHost: string | null;
+    courseOpensAt: string | null;
+    /** What the parent TOLD Hale about their portal setup. Null is unanswered. */
+    readinessReady: boolean | null;
+    /** When this ROW last changed — not when the link was pasted, which is a dated line
+     * in the trail below. Later reads refresh the anchor on the same row. */
+    updatedAt: string;
+  }[];
+  /**
+   * VIL-337 · the class pages this family asked Hale to re-read for a spot. A watch is
+   * a standing instruction the family gave, so a right-to-access copy without it would
+   * omit the one thing Hale is doing on their behalf every ten minutes. Host and state
+   * only, on the same reasoning as the block above; the label the parent chose is
+   * already a trail line.
+   */
+  watchedSpots: {
+    host: string | null;
+    state: string;
+    createdAt: string;
+    releasedAt: string | null;
+    releasedReason: string | null;
+  }[];
   /** The full, teen-redacted audit trail — the right-to-access record. */
   trail: TrailView[];
+}
+
+/** The host of a stored, already-sanitized portal URL. Null rather than a throw: a
+ * right-to-access export must not fail on one odd row. */
+function hostOf(url: string | null): string | null {
+  if (url === null) return null;
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
 }
 
 export interface AssembleFamilyExportDeps {
@@ -177,6 +222,54 @@ export async function assembleFamilyExport(
     ];
   });
 
+  const preparationRows = await database
+    .select({
+      municipality: schema.registrationWindows.municipality,
+      cycleLabel: schema.registrationWindows.cycleLabel,
+      courseUrl: schema.registrationSequences.courseUrl,
+      courseOpensAt: schema.registrationSequences.courseOpensAt,
+      readinessReady: schema.registrationSequences.readinessReady,
+      updatedAt: schema.registrationSequences.updatedAt,
+    })
+    .from(schema.registrationSequences)
+    .innerJoin(
+      schema.registrationWindows,
+      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
+    )
+    .where(eq(schema.registrationSequences.familyId, familyId))
+    .orderBy(schema.registrationSequences.createdAt);
+  // A claimed window nobody has pasted a link for or answered about holds nothing this
+  // block is about: the shortlist itself is already a trail line and an approvals row.
+  const registrationPreparation = preparationRows
+    .filter((row) => row.courseUrl !== null || row.readinessReady !== null)
+    .map((row) => ({
+      municipality: row.municipality,
+      cycleLabel: row.cycleLabel,
+      courseHost: hostOf(row.courseUrl),
+      courseOpensAt: row.courseOpensAt?.toISOString() ?? null,
+      readinessReady: row.readinessReady,
+      updatedAt: row.updatedAt.toISOString(),
+    }));
+
+  const watchRows = await database
+    .select({
+      sourceUrl: schema.watchedSpots.sourceUrl,
+      lastState: schema.watchedSpots.lastState,
+      createdAt: schema.watchedSpots.createdAt,
+      releasedAt: schema.watchedSpots.releasedAt,
+      releasedReason: schema.watchedSpots.releasedReason,
+    })
+    .from(schema.watchedSpots)
+    .where(eq(schema.watchedSpots.familyId, familyId))
+    .orderBy(schema.watchedSpots.createdAt);
+  const watchedSpots = watchRows.map((row) => ({
+    host: hostOf(row.sourceUrl),
+    state: row.lastState,
+    createdAt: row.createdAt.toISOString(),
+    releasedAt: row.releasedAt?.toISOString() ?? null,
+    releasedReason: row.releasedReason,
+  }));
+
   await database.insert(schema.auditLog).values({
     familyId,
     actor: deps.actorUserId,
@@ -198,6 +291,8 @@ export async function assembleFamilyExport(
     members,
     savedActivities,
     assistantConnections,
+    registrationPreparation,
+    watchedSpots,
     trail,
   };
 }

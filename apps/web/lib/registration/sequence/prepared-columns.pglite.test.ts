@@ -2,6 +2,8 @@ import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { loadAwaitingSequence } from './reply.js';
+import { defaultSequenceRunDeps } from './run.js';
 
 /**
  * VIL-338 · the prepared-registration columns against the REAL DDL (migration 0110).
@@ -151,5 +153,179 @@ describe('registration_sequences · the prepared-registration columns', () => {
     );
 
     expect(row).toEqual({ relrowsecurity: true });
+  });
+});
+
+/**
+ * VIL-338 · the guarded anchor refresh, against the REAL table.
+ *
+ * The battle-plan read's one write. Its whole job is in the WHERE clause — which row,
+ * which page, and only when the clock actually differs — and a Drizzle chain fake
+ * returns whatever it was handed, so the guard can only be proven here.
+ */
+describe('defaultSequenceRunDeps().refreshCourseAnchor · the guard', () => {
+  const AT = new Date('2026-08-11T10:30:00.000Z');
+  const MOVED = new Date('2026-08-12T10:30:00.000Z');
+
+  async function seedBound(): Promise<string> {
+    const windowId = await seedWindow();
+    const [row] = await db.database
+      .insert(schema.registrationSequences)
+      .values({ familyId, windowId, parentUserId, courseUrl: COURSE_URL, courseOpensAt: AT })
+      .returning({ id: schema.registrationSequences.id });
+    if (!row) throw new Error('seedBound: insert returned no row');
+    return row.id;
+  }
+
+  async function anchorOf(sequenceId: string): Promise<unknown> {
+    const [row] = await rows(
+      `SELECT course_opens_at FROM registration_sequences WHERE id = '${sequenceId}'`,
+    );
+    return row?.course_opens_at;
+  }
+
+  it('moves the clock once, and says so only the first time', async () => {
+    const { refreshCourseAnchor } = defaultSequenceRunDeps();
+    const sequenceId = await seedBound();
+
+    const first = await refreshCourseAnchor(db.database, {
+      sequenceId,
+      courseUrl: COURSE_URL,
+      courseOpensAt: MOVED,
+      now: new Date(),
+    });
+    const second = await refreshCourseAnchor(db.database, {
+      sequenceId,
+      courseUrl: COURSE_URL,
+      courseOpensAt: MOVED,
+      now: new Date(),
+    });
+
+    // Kills dropping `IS DISTINCT FROM`: every one of the battle plan's ticks would
+    // report a move, and `anchorMovedMinutes` would be a receipt for nothing.
+    expect([first, second]).toEqual([true, false]);
+    expect(new Date(String(await anchorOf(sequenceId))).toISOString()).toBe(MOVED.toISOString());
+  });
+
+  it('refuses to move a row that now holds a DIFFERENT course', async () => {
+    const { refreshCourseAnchor } = defaultSequenceRunDeps();
+    const sequenceId = await seedBound();
+    // The parent pasted a second link while the six-second read was in flight: the row
+    // is a different class now, with its own clock. Kills a guard on the id alone, which
+    // would overwrite the new page's morning with the old page's.
+    const rebound = `${COURSE_URL.slice(0, -1)}9`;
+    await db.exec(
+      `UPDATE registration_sequences SET course_url = '${rebound}' WHERE id = '${sequenceId}'`,
+    );
+
+    const moved = await refreshCourseAnchor(db.database, {
+      sequenceId,
+      courseUrl: COURSE_URL,
+      courseOpensAt: MOVED,
+      now: new Date(),
+    });
+
+    expect(moved).toBe(false);
+    expect(new Date(String(await anchorOf(sequenceId))).toISOString()).toBe(AT.toISOString());
+  });
+
+  it('says nothing moved for a sequence that is gone', async () => {
+    const { refreshCourseAnchor } = defaultSequenceRunDeps();
+    // Kills returning true unconditionally: a deleted household would be audited as
+    // having had its morning moved.
+    const moved = await refreshCourseAnchor(db.database, {
+      sequenceId: '00000000-0000-0000-0000-000000000000',
+      courseUrl: COURSE_URL,
+      courseOpensAt: MOVED,
+      now: new Date(),
+    });
+
+    expect(moved).toBe(false);
+  });
+});
+
+
+/**
+ * VIL-338 · the check-in listens for as long after the BOUND course's morning as it
+ * does after an unbound one, and answers about the morning that just ran.
+ *
+ * `runLegForSequence` anchors the ladder on `course_opens_at`, so the check-in goes out
+ * four hours after the COURSE's morning — but this loader's horizon and ordering are
+ * SQL, and a chain fake returns whatever rows it was handed however the WHERE reads. A
+ * course bound days away from the M1 row is exactly the shape an M1 anchor loses.
+ */
+describe('loadAwaitingSequence · the horizon and the ordering', () => {
+  let horizonFamilyId: string;
+  let horizonParentUserId: string;
+
+  beforeAll(async () => {
+    const seeded = await seedFamily(db.database, 'Awaiting Horizon Family');
+    horizonFamilyId = seeded.familyId;
+    horizonParentUserId = seeded.parentUserId;
+    await db.database
+      .insert(schema.children)
+      .values({ familyId: horizonFamilyId, name: 'Maya', dateOfBirth: '2022-05-01' });
+  });
+
+  async function seedSequenceOn(openAt: Date, courseOpensAt: Date | null): Promise<void> {
+    windowSeq += 1;
+    const [window] = await db.database
+      .insert(schema.registrationWindows)
+      .values({
+        municipality: 'markham',
+        programDomain: 'rec_program',
+        cycleLabel: `Fall 2026 horizon #${windowSeq}`,
+        openAt,
+        ageMinMonths: 36,
+        ageMaxMonths: 84,
+        sourceUrl: 'https://example.test/window',
+        verifiedAt: new Date('2026-09-01T00:00:00.000Z'),
+      })
+      .returning({ id: schema.registrationWindows.id });
+    if (!window) throw new Error('seedSequenceOn: insert returned no window');
+    await db.database.insert(schema.registrationSequences).values({
+      familyId: horizonFamilyId,
+      windowId: window.id,
+      parentUserId: horizonParentUserId,
+      ...(courseOpensAt === null
+        ? {}
+        : { courseUrl: COURSE_URL, courseOpensAt }),
+    });
+  }
+
+  it('still hears a reply five hours after a course bound four days past the row', async () => {
+    const courseOpensAt = new Date('2026-09-19T10:30:00.000Z');
+    await seedSequenceOn(new Date('2026-09-15T10:30:00.000Z'), courseOpensAt);
+
+    // Five hours after the COURSE's morning — an hour after the check-in went out, well
+    // inside the 72-hour reply window. Kills a horizon measured from
+    // `registration_windows.open_at`: the M1 row is 101 hours back by then, past the
+    // 76-hour filter, so the loader answers null, the parent's "we got in" is never
+    // recorded, no outcome is filed and no waitlist guard starts.
+    const awaiting = await loadAwaitingSequence(
+      db.database,
+      horizonFamilyId,
+      new Date('2026-09-19T15:30:00.000Z'),
+    );
+
+    expect(awaiting?.state.openAt).toEqual(courseOpensAt);
+  });
+
+  it('answers about the morning that just ran, not the newest M1 row', async () => {
+    const courseOpensAt = new Date('2026-09-24T10:30:00.000Z');
+    // Two live sequences inside the horizon: an unbound one whose row opens FIRST, and
+    // the bound one whose course actually ran this morning. Kills an ordering left on
+    // `open_at` — the reply would be judged against, and its outcome filed on, the
+    // wrong registration morning.
+    await seedSequenceOn(new Date('2026-09-23T10:30:00.000Z'), null);
+    await seedSequenceOn(new Date('2026-09-22T10:30:00.000Z'), courseOpensAt);
+
+    const awaiting = await loadAwaitingSequence(
+      db.database,
+      horizonFamilyId,
+      new Date('2026-09-24T15:30:00.000Z'),
+    );
+
+    expect(awaiting?.state.openAt).toEqual(courseOpensAt);
   });
 });
