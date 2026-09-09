@@ -758,6 +758,39 @@ describe('the read throttle', () => {
     expect(plural).toContain('in 10 minutes');
     expect(singular).toContain('in 1 minute and');
   });
+
+  /**
+   * Kills a sentence that asserts the read landed. The claim is spent by the REQUEST,
+   * not by the answer, so the paste that follows a six-second timeout is the one case
+   * where "I just read a course page" is false — and it arrives right after the
+   * sentence that told the same parent the page could not be read.
+   */
+  it('does not claim a read the timed-out request never made', async () => {
+    const sequence = await preparing();
+    const timesOut = vi.fn(async (): Promise<string> => {
+      throw new Error('bind fetch timed out');
+    });
+
+    const first = await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({ fetchBody: timesOut }),
+    );
+    const second = await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({ fetchBody: timesOut }),
+    );
+
+    expect(first).toMatchObject({ status: 'refused', reason: 'page_unreadable' });
+    expect(timesOut).toHaveBeenCalledTimes(1);
+    expect(second.status).toBe('read_throttled');
+    if (second.status !== 'read_throttled') throw new Error('unreachable');
+    // The positive control on the negative below: the sentence still says what Hale
+    // spent the window on, in the one verb that is true of a timeout and of a read.
+    expect(second.reply).toContain('I just tried a course page');
+    expect(second.reply).not.toContain('I just read a course page');
+  });
 });
 
 describe('the readiness writer', () => {
@@ -974,9 +1007,10 @@ describe('the bind-read claim', () => {
     expect(await rateLimitRows(familyId)).toHaveLength(1);
   });
 
-  /** Kills a hardcoded "in 10 minutes": the sentence's promise is only honest if it is
-   * the time left in THIS slot, and it must never say zero. */
-  it('counts the minutes left in the slot, floored at one', async () => {
+  /** Kills a hardcoded "in 10 minutes" and the window's own length in place of the
+   * remainder: the sentence's promise is only honest if it is the time left in THIS
+   * slot, which a paste late in one has far less of. */
+  it('counts the minutes left in the slot', async () => {
     const windowStart = Math.floor(NOW.getTime() / BIND_READ_WINDOW_MS) * BIND_READ_WINDOW_MS;
     await claim({ now: new Date(windowStart) });
 
@@ -987,8 +1021,8 @@ describe('the bind-read claim', () => {
     expect(late).toEqual({ status: 'throttled', retryMinutes: 1 });
   });
 
-  /** Kills a route-wide retention DELETE, and a claim keyed on the route alone: one
-   * household's paste must never spend another household's read. */
+  /** Kills a claim keyed on the route alone: one household's paste must never spend
+   * another household's read. */
   it('gives two families in the same window one read each', async () => {
     const other = await seedFamily(db.database, `Prepare Reply other ${Math.random()}`);
 

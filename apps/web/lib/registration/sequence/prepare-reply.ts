@@ -284,7 +284,7 @@ export async function claimBindRead(
     });
 
     const remainingMs = windowStart.getTime() + BIND_READ_WINDOW_MS - input.now.getTime();
-    return { status: 'throttled', retryMinutes: Math.max(1, Math.ceil(remainingMs / 60_000)) };
+    return { status: 'throttled', retryMinutes: Math.ceil(remainingMs / 60_000) };
   });
 }
 
@@ -479,9 +479,13 @@ function refusalSentence(
  * thing that is true: the minute the next read is theirs. The number is the slot's own
  * remainder rather than the window's length, because a fixed slot pasted into late
  * would otherwise be told to wait longer than it must.
+ *
+ * TRIED, not read: the claim is spent by the request, so the window can have gone on a
+ * six-second timeout, and this sentence then follows the one that told the same parent
+ * the page could not be read. One verb is true of both.
  */
 function throttledSentence(minutes: number): string {
-  return `I just read a course page for you, and I read one at a time. I have not opened that link and I will not come back to it - send it again in ${minutes} minute${minutes === 1 ? '' : 's'} and I will read it then.`;
+  return `I just tried a course page for you, and I read one at a time. I have not opened that link and I will not come back to it - send it again in ${minutes} minute${minutes === 1 ? '' : 's'} and I will read it then.`;
 }
 
 function when(instant: Date, timeZone: string, now: Date): string {
