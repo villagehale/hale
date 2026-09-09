@@ -393,7 +393,8 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
     );
 
     const req = create.mock.calls[0]?.[0] as Anthropic.MessageCreateParamsNonStreaming;
-    const timeWindowTool = req.tools?.find((t) => t.name === 'check_action_time_window');
+    const tools = req.tools as Anthropic.Tool[];
+    const timeWindowTool = tools.find((t) => t.name === 'check_action_time_window');
     expect(timeWindowTool?.input_schema).toEqual({
       type: 'object',
       properties: {},
