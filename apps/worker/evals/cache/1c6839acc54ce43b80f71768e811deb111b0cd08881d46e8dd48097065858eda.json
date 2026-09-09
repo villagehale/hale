@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains an earlier Hale message naming a specific gymnastics class: \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" The parent's text asks to get that gymnastics class on the calendar — a clear, unambiguous instruction referencing exactly one event. Hale has drafted the calendar add and correctly asks for YES confirmation. The reply names the class, venue, day, and time (all from prior recall in the thread), drafts it, and ends with the required \"YES to confirm.\" shape. It is short, correct, and complete. No greeting, no sign-off, no extra questions, no invented details, no app referral. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

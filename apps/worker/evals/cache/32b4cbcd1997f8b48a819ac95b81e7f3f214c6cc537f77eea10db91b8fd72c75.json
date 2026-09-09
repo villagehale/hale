@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The gymnastics class \"Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13\" was named by Hale itself in an earlier thread message — so recalling it here is correct, not invention. The parent asked to add it to the calendar, there is exactly one gymnastics class in context, so no ambiguity exists. Hale drafted a calendar_add and presented it with \"YES to confirm.\" — exactly the contract shape required. The draft names the event, place, date, and time, and ends with the confirmation trigger. No greeting, no sign-off, no markdown, no app link, no machinery exposed. This is the product working correctly and completely.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains an earlier Hale message naming \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" — that is a recalled venue, not an invention. The parent now asks to put the gymnastics class on the calendar. There is exactly one gymnastics class in the thread, so the reference is resolved. Hale drafted it (drafted is non-empty with calendar_add entries) and correctly ends with \"YES to confirm.\" The reply names the event, place, day, and time, then asks for the confirmation word. That is the correct shape. No greeting, no sign-off, no app referral, no invented detail. A clean, correct reply.",
+    "score": 5
+  }
+}

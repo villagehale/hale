@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011Ces4k4zzYdfjf8Q5gu1WJ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_014N6FboYg7rMJ7AyKLLVr8r",
+        "name": "promise_activity_followup",
+        "input": {
+          "subject": "Cartwheels Tiny Gym fall schedule",
+          "childId": "kid-remy"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 537,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18182,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 802,
+      "output_tokens_details": {
+        "thinking_tokens": 704
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

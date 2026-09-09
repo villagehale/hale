@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains an earlier Hale message naming \"Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13\" — a venue Hale itself surfaced, so recalling it is correct. The parent now asks to get that gymnastics class on the calendar. There is exactly one gymnastics class in context, so the reference is resolved. Hale has drafted a calendar_add (within the cap of 2) and asks for YES to confirm — the correct contract shape. The reply names the event, the date, the time, and ends with \"YES to confirm.\" It is short, traceable, and correct. No invented details, no app referral, no dangling question. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to add the gymnastics class to the calendar. The thread contains an earlier Hale message naming \"Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13\" — that is recall from the thread, not invention. There is exactly one gymnastics class referenced, so no ambiguity. `drafted` is non-empty (two calendar_add entries), and the reply names the change and ends with \"YES to confirm.\" — exactly the correct contract shape. It is concise, no greeting, no sign-off, one clear confirmation prompt. This is the product working correctly.",
+    "score": 5
+  }
+}
