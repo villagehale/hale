@@ -51,6 +51,7 @@ function answering(answer: string | null, hitMaxSteps = false): ChannelCoachPort
     steps: 1,
     hitMaxSteps,
     truncatedRetries: 0,
+    truncated: false,
     usage: { promptTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, completionTokens: 20 },
   });
 }
@@ -197,6 +198,34 @@ describe('channelCoachRuntime', () => {
     ]);
   });
 
+  /** THREE ways to end without an answer, three messages. A budget that ran out before
+   * the model could speak is a lane-config defect somebody can fix; "returned no answer"
+   * is the bucket that hid it for a month (rule #11). */
+  it('names a turn that ran out of ceiling rather than out of steps', async () => {
+    const p = ports({
+      runAgent: async () => ({
+        answer: null,
+        steps: 1,
+        hitMaxSteps: false,
+        truncatedRetries: 1,
+        truncated: true,
+        usage: {
+          promptTokens: 100,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          completionTokens: 800,
+        },
+      }),
+    });
+
+    await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(
+      'channel coach: agent truncated before speaking (1 re-ask)',
+    );
+    expect(p.recorded).toEqual([
+      expect.objectContaining({ agentName: 'coach-channel-sms', status: 'failed' }),
+    ]);
+  });
+
   /**
    * VIL-260 · WS4 — a turn can commit drafts and THEN break: the two propose_* calls
    * land in the approvals queue, the model runs out of steps, and the router's honesty
@@ -267,6 +296,7 @@ describe('channelCoachRuntime', () => {
         steps: 1,
         hitMaxSteps: false,
         truncatedRetries: 0,
+        truncated: false,
         usage: {
           promptTokens: 1224,
           cacheCreationTokens: 1024,

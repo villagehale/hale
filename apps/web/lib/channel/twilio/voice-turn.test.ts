@@ -45,6 +45,7 @@ const RESULT: RunAgentResult = {
   steps: 1,
   hitMaxSteps: false,
   truncatedRetries: 0,
+  truncated: false,
   usage: {
     promptTokens: 900,
     completionTokens: 20,

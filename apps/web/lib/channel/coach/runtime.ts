@@ -102,9 +102,11 @@ const MAX_STEPS = 6;
  * to every turn is room the model finds something to do with.
  *
  * So the room goes to the turn that PROVED it needed it: `runAgent` re-asks a step that
- * hit the ceiling before saying anything, once, at three times the budget
- * (packages/agent/src/agent.ts `isTruncatedBeforeSpeaking`). Ordinary turns keep the
- * ceiling — and their prompt-cache keys — untouched.
+ * hit the ceiling before saying anything, once, with thinking OFF at this same budget
+ * (packages/agent/src/agent.ts `isTruncatedBeforeSpeaking`, model.ts `withoutThinking`)
+ * — the one request shape on which 400 is a reply ceiling again, because no field on
+ * Sonnet 5 bounds the thinking half. Ordinary turns keep the ceiling — and their
+ * prompt-cache keys — untouched.
  */
 const MAX_TOKENS = 400;
 
@@ -330,7 +332,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             throw failed(
               result.hitMaxSteps
                 ? 'channel coach: agent hit maxSteps without an answer'
-                : 'channel coach: agent returned no answer',
+                : result.truncated
+                  ? // The ceiling failed, not the model and not the context — a
+                    // distinct event from "said nothing for its own reasons", and the
+                    // only one of the three a lane-config change can fix (rule #11).
+                    `channel coach: agent truncated before speaking (${result.truncatedRetries} re-ask)`
+                  : 'channel coach: agent returned no answer',
             );
           }
 
