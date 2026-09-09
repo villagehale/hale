@@ -737,16 +737,17 @@ describe('routing outcomes are logged and counted (rule #11)', () => {
     // that reaches the hand-off.
     enrol(h.fake, 'primary_parent', CANARY_PHONE_E164);
 
-    const outcome = await routeTwilioInbound(
+    // Through the REQUEST shell, because the counter is what this pins and the
+    // shell is what calls it.
+    await handleTwilioInboundRequest(
+      twilioRequest(twilioParams({ Body: 'CANARY', From: CANARY_PHONE_E164 })),
       h.deps,
-      inbound({ body: 'CANARY', from: CANARY_PHONE_E164 }),
-      0,
     );
 
-    // Never folded into `handed_off`: 144 synthetic turns a day would otherwise
-    // swamp the one rate that says how much real traffic Hale answers (#606).
-    expect(outcome).toBe('handed_off_canary');
-    expect(h.counted).toEqual([]);
+    // Never folded into `handed_off`: a synthetic turn every ten minutes would
+    // otherwise swamp the one rate that says how much real traffic Hale
+    // answers (#606).
+    expect(h.counted).toEqual(['handed_off_canary']);
     const message = h.fake
       .rows(schema.channelMessages)
       .find((r) => r.providerMessageId === 'SM11111111111111111111111111111111');
