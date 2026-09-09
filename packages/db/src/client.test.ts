@@ -56,6 +56,7 @@ describe('Date parameters reach postgres.js as ISO strings (2026-09-09 inbound o
     'oid %i: a raw Date is serialized, a column-mapped string passes through',
     (oid) => {
       const serialize = createDb({ connectionString: url }).$client.options.serializers[oid];
+      if (!serialize) throw new Error(`no serializer registered for oid ${oid}`);
       expect(serialize(new Date(iso))).toBe(iso);
       expect(serialize(iso)).toBe(iso);
     },
@@ -63,7 +64,10 @@ describe('Date parameters reach postgres.js as ISO strings (2026-09-09 inbound o
 
   it('leaves the json passthrough drizzle relies on untouched', () => {
     const { serializers } = createDb({ connectionString: url }).$client.options;
-    expect(serializers[3802]('{"a":1}')).toBe('{"a":1}');
-    expect(serializers[114]('{"a":1}')).toBe('{"a":1}');
+    for (const oid of [114, 3802]) {
+      const passthrough = serializers[oid];
+      if (!passthrough) throw new Error(`no serializer registered for oid ${oid}`);
+      expect(passthrough('{"a":1}')).toBe('{"a":1}');
+    }
   });
 });
