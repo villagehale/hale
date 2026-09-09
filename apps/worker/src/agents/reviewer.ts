@@ -86,6 +86,14 @@ const CHECK_INPUT_SCHEMAS: Partial<Record<ReviewerToolName, Anthropic.Tool['inpu
     properties: {},
     additionalProperties: false,
   },
+  // Same shape, same reason: the family id and the proposed instant are both
+  // injected server-side. Leaving them on the permissive fallback schema invited
+  // the model to author the very facts the check exists to verify (rule #3).
+  check_action_time_window: {
+    type: 'object',
+    properties: {},
+    additionalProperties: false,
+  },
 };
 
 /** Default placement length when a calendar payload gives a start but no end. */
@@ -100,6 +108,27 @@ function placementDurationMinutes(startsAt: unknown, endsAt: unknown): number {
   const end = new Date(endsAt).getTime();
   if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return DEFAULT_PLACEMENT_MINUTES;
   return Math.max(1, Math.round((end - start) / 60000));
+}
+
+/** The instant this draft proposes to act on, for the time-window check. Read
+ * from the payload under BOTH calendar key conventions — create/update_calendar_event
+ * carry `starts_at`, calendar_add/move carry `startsAt` — and falls back to the
+ * drafting instant for the action types that propose no time of their own
+ * (book_clinic_portal, cancel_clinic_appointment). Normalized to the Z form because
+ * the contract's `.datetime()` rejects the offset form the drafter emits, and that
+ * rejection is swallowed into ok:false rather than raised. */
+function proposedExecutionAt(draft: DraftedAction): string {
+  const p = draft.payload as { startsAt?: unknown; starts_at?: unknown };
+  const candidate =
+    typeof p.startsAt === 'string'
+      ? p.startsAt
+      : typeof p.starts_at === 'string'
+        ? p.starts_at
+        : draft.draftedAt;
+  const proposed = new Date(candidate).getTime();
+  return new Date(
+    Number.isNaN(proposed) ? new Date(draft.draftedAt).getTime() : proposed,
+  ).toISOString();
 }
 
 // Expose ONLY the checks REQUIRED for this action type. add_to_routine (an
@@ -257,6 +286,14 @@ export async function runReviewer(
           familyId: input.familyId,
           startsAt: typeof p.startsAt === 'string' ? p.startsAt : '',
           durationMinutes: placementDurationMinutes(p.startsAt, p.endsAt),
+        };
+      }
+      if (block.name === 'check_action_time_window') {
+        // Same class as the conflict check: the model neither knows the family id
+        // nor may be trusted to name the instant whose quiet-hours are read.
+        toolInput = {
+          familyId: input.familyId,
+          proposedExecutionAt: proposedExecutionAt(input.draft),
         };
       }
       const result = await invokeTool(block.name as ReviewerToolName, toolInput);
