@@ -986,20 +986,46 @@ function channelContext(fixture, compact, severed = false) {
 
 // ── cached client for the REAL runAgent loop ────────────────────────────────
 
-function makeCachedAgentClient(tag, model, cachedOnly, getClient, cost) {
+/**
+ * `legs` receives one entry per model call, cached or live. Without it a re-ask is
+ * invisible: the loop's own numbers are summed over the turn, so a leg that cost a full
+ * budget and said nothing looks exactly like a leg that answered. The re-ask is a MODE
+ * change (thinking off at the same max_tokens), so the report has to be able to show
+ * which shape each call actually went out in.
+ */
+function makeCachedAgentClient(tag, model, cachedOnly, getClient, cost, legs = []) {
   return {
     messages: {
       async create(params) {
+        // `thinking` and `output_config` are IN the key. Without them the thinking-off
+        // re-ask canonicalizes to the same string as the ask that was swallowed — same
+        // model, system, tools, messages, max_tokens — so cacheGet hands the retry the
+        // truncated response it is retrying, and the recovery is 100% invisible under
+        // --cached-only. JSON.stringify drops undefined, so Haiku-lane keys are unchanged.
         const canonical = JSON.stringify({
           model: params.model,
           system: params.system,
           tools: params.tools,
           messages: params.messages,
           max_tokens: params.max_tokens,
+          thinking: params.thinking,
+          output_config: params.output_config,
         });
         const key = cacheKey(`${tag}:agent`, canonical);
+        const note = (response) => {
+          legs.push({
+            max_tokens: params.max_tokens,
+            thinking: params.thinking?.type ?? 'none',
+            stop_reason: response.stop_reason,
+            output_tokens: response.usage?.output_tokens ?? 0,
+            thinking_tokens: response.usage?.output_tokens_details?.thinking_tokens ?? null,
+            cache_read: response.usage?.cache_read_input_tokens ?? 0,
+            cache_write: response.usage?.cache_creation_input_tokens ?? 0,
+          });
+          return response;
+        };
         const cached = await cacheGet(key);
-        if (cached) return cached.response;
+        if (cached) return note(cached.response);
         if (cachedOnly) {
           console.error(
             `agent cache miss in --cached-only mode (${tag}, key ${key}). Re-run live to populate, then commit the cache.`,
@@ -1019,7 +1045,7 @@ function makeCachedAgentClient(tag, model, cachedOnly, getClient, cost) {
           usage: response.usage,
         };
         await cachePut(key, { response: stored });
-        return stored;
+        return note(stored);
       },
     },
   };
@@ -1185,7 +1211,7 @@ function fabrications(reply, hay) {
 
 // ── grading ────────────────────────────────────────────────────────────────
 
-function checkFixture(fixture, reply, calls, auditLog, composed) {
+function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetries = 0) {
   const failures = [];
   if (reply === null) return ['the reply was empty after post-processing'];
 
@@ -1296,6 +1322,15 @@ function checkFixture(fixture, reply, calls, auditLog, composed) {
   // an LLM-judged gate flap.
   if (/[*_#`]|^\s*[-•]/m.test(reply)) {
     failures.push('reply carries markdown a phone renders literally');
+  }
+
+  // THE RE-ASK LEG'S OWN DETECTOR. Thinking-off text artefacts (a tool call written out
+  // as prose, an unclosed internal tag) are documented on Opus 5 and 4.8; `plainText`
+  // strips markdown and nothing else, so a stray tag rides all the way to a parent's
+  // phone. Checked only on a reply that came off a re-ask, because that is the only leg
+  // whose request shape differs from the one the rest of the corpus grades.
+  if (truncatedRetries > 0 && /<\/?[a-z][\w-]*>/i.test(reply)) {
+    failures.push('internal tag residue on a re-ask reply');
   }
 
   // Two questions cannot both be answered: C1's fast-path reads the parent's "YES" as
@@ -1695,6 +1730,10 @@ async function main() {
      * gate, because the trimmed body is inside the budget by construction. */
     let composed = null;
     let toolResults = [];
+    /** One entry per model call this turn — see makeCachedAgentClient. */
+    const legs = [];
+    /** How many of this turn's steps had to be bought twice (agent.ts `truncatedRetries`). */
+    let truncatedRetries = 0;
     // Built ONCE per turn, and read by both the run and the judge — a judge handed a
     // different thread from the model's is the half-blind grading this harness has
     // already paid for once (see the `knows` comment below).
@@ -1721,6 +1760,7 @@ async function main() {
         cachedOnly,
         getClient,
         cost,
+        legs,
       );
       const run = await agent.runAgent({
         skill,
@@ -1742,13 +1782,14 @@ async function main() {
           score: null,
           calls,
           failures: [
-            `agent returned no answer after ${run.steps} steps (calls: ${
-              calls.map((c) => c.tool).join(', ') || 'none'
-            })`,
+            `agent returned no answer after ${run.steps} steps, ${run.truncatedRetries} re-ask(s)${
+              run.truncated ? ', truncated before speaking' : ''
+            } (calls: ${calls.map((c) => c.tool).join(', ') || 'none'})`,
           ],
         });
         continue;
       }
+      truncatedRetries = run.truncatedRetries;
       const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
       composed = run.answer;
       reply = toSmsReply(
@@ -1890,6 +1931,11 @@ async function main() {
       fixture,
       reply,
       score,
+      // The re-ask, per fixture. A recovery nobody can see is one nobody can budget for
+      // (rule #11) — and these two lines are the only place the thinking-off leg is
+      // observable at all, since the loop sums its usage over the whole turn.
+      truncatedRetries,
+      legs,
       // The draws behind the median, printed per turn: a floor that rides a median is only
       // readable if the run shows what it was a median OF.
       draws: verdict === null ? null : (verdict.samples ?? null),
@@ -1898,7 +1944,7 @@ async function main() {
       invented,
       failures: [
         ...invented.map((f) => `FABRICATION: ${f}`),
-        ...checkFixture(fixture, reply, calls, auditLog, composed),
+        ...checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetries),
       ],
     });
   }
@@ -1911,9 +1957,22 @@ async function main() {
     // (VIL-294), and a run whose reach cannot be read off its own output is one nobody
     // can compare against the run before it.
     const reached = [...new Set(result.calls.map((call) => call.tool))].join('+') || 'none';
+    // THE RE-ASK, ON THE LINE. A turn that bought a step twice is a different, slower,
+    // dearer event than one that did not, and the leg's own shape is the thing this
+    // change can regress — so the numbers ride the report rather than a one-off probe.
+    const reask = result.truncatedRetries ? `  reask=${result.truncatedRetries}` : '';
     console.log(
-      `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}${result.draws ? ` of ${result.draws.join('/')}` : ''}`}  tools=${reached}`,
+      `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}${result.draws ? ` of ${result.draws.join('/')}` : ''}`}  tools=${reached}${reask}`,
     );
+    if (result.truncatedRetries) {
+      for (const leg of (result.legs ?? []).filter((l) => l.thinking === 'disabled')) {
+        console.log(
+          `        · re-ask leg: max_tokens=${leg.max_tokens} thinking=${leg.thinking} stop=${leg.stop_reason} out=${leg.output_tokens}${
+            leg.thinking_tokens === null ? '' : ` (think ${leg.thinking_tokens})`
+          } cache_read=${leg.cache_read} cache_write=${leg.cache_write}`,
+        );
+      }
+    }
     for (const failure of result.failures) console.log(`        - ${failure}`);
     if (!ok && result.reason) console.log(`        ? judge: ${result.reason}`);
     if (show && result.reply) console.log(`        > ${result.reply}`);
