@@ -16,11 +16,14 @@
 #     endpoint's thresholds already carry 2×period + 15 min of grace, so
 #     scheduler lag cannot produce a false page.
 #
-# WHAT IT DOES: every 30 minutes, probe /api/health/crons (cron names + ages
-# only — the endpoint is deliberately unrevealing) and, if the endpoint is
-# unreachable, unparseable, empty, or reports ANY stale cron, text the founder
+# WHAT IT DOES: every 10 minutes, probe /api/health/crons (names + ages only —
+# the endpoint is deliberately unrevealing) and, if the endpoint is
+# unreachable, unparseable, empty, or reports ANY stale entry, text the founder
 # via Twilio's REST API. An unreachable endpoint pages exactly like a stale
-# cron: a refusal is not evidence of health.
+# cron: a refusal is not evidence of health. The array carries one entry that
+# is not a cron — `lane:inbound-turns`, the age of the oldest unfinished
+# inbound text — and this checker needs no special case for it: it filters on
+# the 'stale' token, not on a manifest slug.
 #
 # SECRETS (Actions repo secrets, same names as the app's own env vars):
 #   TWILIO_ACCOUNT_SID   — Twilio REST credential
@@ -33,7 +36,10 @@ name: Cron dead-man
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    # Every ten minutes: the inbound lane reads stale at 600s, so a thirty-minute
+    # poll would have been the slowest link in the chain. Actions minutes are free
+    # on a public repo, and the checker is claim-free — three probes per stall.
+    - cron: '*/10 * * * *'
   workflow_dispatch: {}
 
 permissions:
@@ -76,7 +82,7 @@ jobs:
             -u "${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}" \
             --data-urlencode "To=${FOUNDER_ALERT_PHONE}" \
             --data-urlencode "From=+12892172279" \
-            --data-urlencode "Body=Hale DEADMAN: ${SUMMARY:-cron health check failed}. Vercel cron substrate may be down. ${RUN_URL}"
+            --data-urlencode "Body=Hale DEADMAN: ${SUMMARY:-cron health check failed}. A cron or the inbound lane stopped reporting healthy. ${RUN_URL}"
 
       - name: Fail the run when the probe alarmed
         if: steps.probe.outcome == 'failure'
