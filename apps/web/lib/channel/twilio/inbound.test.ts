@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
 import { STOP_ACK } from '~/lib/channel/intake/copy';
 import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, fakeSilentAnswerComposer, makeFakeDb } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
@@ -176,9 +177,9 @@ function enrol(
 }
 
 /** A family whose intake conversation is over, so the machine defers to A3. */
-function closeIntake(fake: FakeDb): void {
+function closeIntake(fake: FakeDb, phone = PHONE): void {
   fake.db.insert(schema.smsIntakeSessions).values({
-    phoneHash: phoneBlindIndex(PHONE),
+    phoneHash: phoneBlindIndex(phone),
     state: 'complete',
     closedAt: NOW,
   } as never);
@@ -724,6 +725,42 @@ describe('routing outcomes are logged and counted (rule #11)', () => {
         'twilio inbound: routed',
       ],
     ]);
+  });
+
+  it('labels the canary hand-off so the routed counters stay honest', async () => {
+    const h = harness();
+    // The synthetic probe household, resolved the way the door resolves anyone:
+    // by blind index on an active verified channel.
+    enrol(h.fake, 'primary_parent', CANARY_PHONE_E164);
+    closeIntake(h.fake, CANARY_PHONE_E164);
+
+    const outcome = await routeTwilioInbound(
+      h.deps,
+      inbound({ body: 'CANARY', from: CANARY_PHONE_E164 }),
+      0,
+    );
+
+    // Never folded into `handed_off`: 144 synthetic turns a day would otherwise
+    // swamp the one rate that says how much real traffic Hale answers (#606).
+    expect(outcome).toBe('handed_off_canary');
+    expect(h.counted).toEqual([]);
+    const message = h.fake
+      .rows(schema.channelMessages)
+      .find((r) => r.providerMessageId === 'SM11111111111111111111111111111111');
+    // Still a real hand-off in every other respect — the job exists and the row
+    // is marked, or the canary would be testing a path parents do not walk.
+    expect(message?.handedOffAt).not.toBeNull();
+    expect(h.jobs).toHaveLength(1);
+  });
+
+  it('leaves a REAL household on handed_off, even when a parent types the probe word', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    const outcome = await routeTwilioInbound(h.deps, inbound({ body: 'CANARY' }), 0);
+
+    expect(outcome).toBe('handed_off');
   });
 
   it('counts the handoff too — the counter is a denominator, not an error log', async () => {

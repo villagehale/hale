@@ -50,6 +50,7 @@ import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from '.
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
+import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import {
   approvalHandler,
@@ -329,6 +330,11 @@ export function defaultHandlers(): DeterministicHandler[] {
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
     nameCaptureHandler(defaultNameCaptureDeps()),
+    // LAST, and that placement is the mechanism rather than a tidy tail: the
+    // probe turn is only evidence if it runs every handler's decline path
+    // first — including the registration reader, which is where every turn
+    // crashed on the night the inbound lane died in silence (#617/#622).
+    inboundCanaryHandler(),
   ];
 }
 
