@@ -7,7 +7,6 @@ import {
   hardCeilingUsd,
   isOverHardCeiling,
 } from '@hale/types';
-import { redactEventPayload } from '@hale/worker/redaction';
 import { and, count, eq, sql } from 'drizzle-orm';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { classifyEvent } from './classify';
@@ -168,11 +167,7 @@ export async function ingestEvent(
   const rawContent = JSON.stringify(payload);
   const dedupHash = dedupHashFor(familyId, input.source, rawContent);
 
-  // Rule #1 ingest boundary: redact connector/inbound PII (known child names +
-  // dates/postal/email/phone) from the CLASSIFIER INPUT only. rawContent (above)
-  // stays un-redacted for the dedupHash so a signal arriving twice still dedups.
   const childNames = await loadFamilyChildNames(database, familyId);
-  const redactedRawContent = JSON.stringify(redactEventPayload(payload, childNames));
 
   // 1. Classify. Traced as 'classify-event'; the mask is the rule-#1 backstop over the
   // inbound raw content the classifier sees. WHICH MODEL RAN IS THE STAGE'S TO SAY, not
@@ -183,7 +178,7 @@ export async function ingestEvent(
     { name: 'classify-event', userId: 'system', tags: ['classify-event'], metadata: { familyId } },
     async (trace) => {
       const result = await classifyEvent(
-        { source: input.source, rawContent: redactedRawContent },
+        { source: input.source, payload, childNames },
         client,
       );
       trace.recordGeneration('classify-event-call', { model: result.model, usage: result.usage });

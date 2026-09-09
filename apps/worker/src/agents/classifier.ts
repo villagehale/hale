@@ -1,3 +1,4 @@
+import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType, FamilyStage } from '@hale/types';
@@ -6,6 +7,7 @@ import { forceToolJson } from './structured.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
 import { dedupHashFor } from './dedup.js';
 import { loadPrompt } from '../prompts/loader.js';
+import { redactEventPayload } from '../redaction/redact.js';
 import { loadStagePacks, stagePackFor } from './stage-pack.js';
 
 const eventTypeSchema = z.enum([
@@ -93,10 +95,28 @@ const classifierOutputJsonSchema = {
   required: ['event_type', 'confidence', 'rationale', 'payload', 'suggested_action'],
 } as const;
 
+export type ClassifierAnthropicClient = Pick<Anthropic, 'messages'>;
+
+interface ClassifierDeps {
+  client?: ClassifierAnthropicClient;
+}
+
 interface ClassifierRunInput {
   familyId: string;
   source: string;
-  rawContent: string;
+  /**
+   * The ORIGINAL inbound payload. The stage redacts it itself (rule #1) rather
+   * than trusting each caller to hand over a pre-redacted string — a string
+   * field could not tell a redacted copy from a raw one, and there is no field
+   * here that could carry one.
+   */
+  payload: Record<string, unknown>;
+  /**
+   * The family's known children's names, matched to [CHILD]. Required, never
+   * defaulted: a nameless call is the same bug one level down. `[]` is the
+   * honest value for a childless family — and the only hole the type leaves.
+   */
+  childNames: readonly string[];
   /**
    * Distinct family stages, used to inject stage-aware context packs. The
    * orchestrator derives these from the family's children + dateOfBirth
@@ -140,23 +160,30 @@ interface ClassifierRunOutput {
   runMetrics: AgentRunMetrics;
 }
 
-export async function runClassifier(input: ClassifierRunInput): Promise<ClassifierRunOutput> {
+export async function runClassifier(
+  input: ClassifierRunInput,
+  deps: ClassifierDeps = {},
+): Promise<ClassifierRunOutput> {
   const basePrompt = await loadPrompt('classifier');
   await loadStagePacks();
   const pack = stagePackFor(input.stages ?? ['newborn']);
   const instructions = pack ? `${basePrompt}\n\n${pack}` : basePrompt;
 
-  const dedupHash = dedupHashFor(input.familyId, input.source, input.rawContent);
+  // The dedup key is the ORIGINAL content's, so a signal that arrives twice
+  // still probes to the same row whether or not the family's names changed
+  // between the two arrivals.
+  const dedupHash = dedupHashFor(input.familyId, input.source, JSON.stringify(input.payload));
+  const redacted = JSON.stringify(redactEventPayload(input.payload, input.childNames));
 
   const userMessage = JSON.stringify({
-    signal: { source: input.source, raw_content: input.rawContent },
+    signal: { source: input.source, raw_content: redacted },
     family_context_slice: input.familyContextSlice ?? null,
   });
 
   const lane = pickLane('classify');
   const startedAt = Date.now();
   const { value: parsed, usage } = await forceToolJson({
-    client: anthropicClient(),
+    client: deps.client ?? anthropicClient(),
     lane,
     system: instructions,
     userMessage,

@@ -1,6 +1,7 @@
 import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import type { ClassifierSuggestion, EventType } from '@hale/types';
+import { redactEventPayload } from '@hale/worker/redaction';
 import { z } from 'zod';
 import { loadClassifyEventSkill } from './skill';
 import { forceToolJson } from './structured';
@@ -84,7 +85,17 @@ const classifyOutputJsonSchema = {
 
 export interface ClassifyInput {
   source: string;
-  rawContent: string;
+  /**
+   * The ORIGINAL inbound payload. The stage redacts it itself (rule #1) rather
+   * than trusting each caller to hand over a pre-redacted string — there is no
+   * field here that could carry a raw one.
+   */
+  payload: Record<string, unknown>;
+  /**
+   * The family's known children's names, matched to [CHILD]. Required, never
+   * defaulted; `[]` is the honest value for a childless family.
+   */
+  childNames: readonly string[];
   familyContextSlice?: {
     childrenAgesMonths: number[];
     province: string;
@@ -113,8 +124,9 @@ export async function classifyEvent(
   client: AgentClient,
 ): Promise<ClassifyResult> {
   const skill = await loadClassifyEventSkill();
+  const redacted = JSON.stringify(redactEventPayload(input.payload, input.childNames));
   const userMessage = JSON.stringify({
-    signal: { source: input.source, raw_content: input.rawContent },
+    signal: { source: input.source, raw_content: redacted },
     family_context_slice: input.familyContextSlice ?? null,
   });
 

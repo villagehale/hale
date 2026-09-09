@@ -5,11 +5,14 @@ import { dedupHashFor } from '../agents/dedup.js';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 
 /**
- * Rule #1 at the ingest boundary (worker path). Connector/inbound PII must be
- * redacted BEFORE it reaches the classifier — a child's name in the payload is a
- * PLACEHOLDER in what runClassifier sees. The dedup hash, however, is computed on
- * the UN-redacted original so a crash-and-retry still probes to the same row
- * (redaction must not shift the content key).
+ * Rule #1 at the ingest boundary (worker path), VIL-160 shape: the orchestrator's
+ * job is to hand the classify stage the ORIGINAL payload and the family's real
+ * child names. The redaction itself is the stage's own and is asserted at the
+ * stage (agents/classifier.test.ts, against a real request) — a mock of
+ * runClassifier could only ever witness what this file already decided to pass.
+ *
+ * The stored dedup hash is computed on the un-redacted original so a
+ * crash-and-retry still probes to the same row.
  *
  * Pure control-flow over mocked agents + memory-writer, with the REAL dedupHashFor
  * so the stability assertion is meaningful (no LLM, no DB).
@@ -26,9 +29,11 @@ const metrics: AgentRunMetrics = {
 
 const suggestion: ClassifierSuggestion = { kind: 'surface_only' };
 
-let classifierRawContent: string | null = null;
-const runClassifier = vi.fn(async (input: { rawContent: string }) => {
-  classifierRawContent = input.rawContent;
+type ClassifierInput = { payload: Record<string, unknown>; childNames: readonly string[] };
+
+let classifierInput: ClassifierInput | null = null;
+const runClassifier = vi.fn(async (input: ClassifierInput) => {
+  classifierInput = input;
   return {
     eventType: 'daycare_communication' as const,
     payload: {},
@@ -36,13 +41,13 @@ const runClassifier = vi.fn(async (input: { rawContent: string }) => {
     suggestion,
     teenContent: false,
     concernsChildId: null,
-    dedupHash: dedupHashFor('fam-1', 'gmail', input.rawContent),
+    dedupHash: dedupHashFor('fam-1', 'gmail', JSON.stringify(input.payload)),
     runMetrics: metrics,
   };
 });
 
 vi.mock('../agents/classifier.js', () => ({
-  runClassifier: (input: { rawContent: string }) => runClassifier(input),
+  runClassifier: (input: ClassifierInput) => runClassifier(input),
 }));
 vi.mock('../agents/drafter.js', () => ({ runDrafter: vi.fn() }));
 vi.mock('../agents/reviewer.js', () => ({ runReviewer: vi.fn() }));
@@ -80,24 +85,23 @@ const job: IngestedEventPayload = {
 
 describe('runOrchestrator — redaction at the ingest boundary (rule #1)', () => {
   beforeEach(() => {
-    classifierRawContent = null;
+    classifierInput = null;
     recordedDedupHash = null;
     runClassifier.mockClear();
   });
 
-  it('redacts the child name in what the classifier receives', async () => {
+  it('hands the classify stage the original payload and the family\'s child names', async () => {
     await runOrchestrator(job);
-    expect(classifierRawContent).not.toBeNull();
-    expect(classifierRawContent).not.toContain(CHILD_NAME);
-    expect(classifierRawContent).toContain('[CHILD]');
+    // Both halves matter: the stage cannot redact a payload it was not given,
+    // and it cannot match a name it was not told. An empty childNames here would
+    // pass the type and silently leak the name past the redactor.
+    expect(classifierInput?.payload).toEqual(job.payload);
+    expect(classifierInput?.childNames).toEqual([CHILD_NAME]);
   });
 
   it('computes the dedup hash on the UN-redacted original content', async () => {
     await runOrchestrator(job);
     const originalRaw = JSON.stringify(job.payload);
     expect(recordedDedupHash).toBe(dedupHashFor('fam-1', 'gmail', originalRaw));
-    // Sanity: the redacted content would hash differently — proving the stored key
-    // is NOT derived from what the classifier saw.
-    expect(recordedDedupHash).not.toBe(dedupHashFor('fam-1', 'gmail', classifierRawContent ?? ''));
   });
 });

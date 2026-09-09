@@ -26,7 +26,7 @@ function nameRe(names: readonly string[]): RegExp | null {
 }
 
 /** Redact known child names + dates/postal/email/phone from free text. */
-export function redactText(text: string, knownChildNames: readonly string[] = []): string {
+export function redactText(text: string, knownChildNames: readonly string[]): string {
   let out = text;
   const nre = nameRe(knownChildNames);
   if (nre) out = out.replace(nre, '[CHILD]');
@@ -39,7 +39,7 @@ export function redactText(text: string, knownChildNames: readonly string[] = []
 }
 
 /** Deep-redact every string value in a payload; non-strings pass through. */
-export function redactEventPayload<T>(payload: T, knownChildNames: readonly string[] = []): T {
+export function redactEventPayload<T>(payload: T, knownChildNames: readonly string[]): T {
   const walk = (v: unknown): unknown => {
     if (typeof v === 'string') return redactText(v, knownChildNames);
     if (Array.isArray(v)) return v.map(walk);
