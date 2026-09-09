@@ -84,7 +84,7 @@ describe('the classify stage owns the redaction of its own model input (VIL-160)
         // binding assertion below reads only the first `raw_content:`. One
         // producer per allowlisted file is what makes that assertion total.
         const source = readFileSync(file, 'utf8');
-        expect(source.match(/raw_content:/g)?.length).toBe(1);
+        expect(source.match(/\braw_content\b/g)?.length).toBe(1);
       });
 
       it('assigns raw_content from the redactor, called with the input it was given', () => {
