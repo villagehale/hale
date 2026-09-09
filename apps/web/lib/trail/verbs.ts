@@ -260,6 +260,7 @@ export const AUDIT_VERBS = [
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
+  'registration_bind_read_throttled',
   // ── watched spots (VIL-337) ─────────────────────────────────────────────
   'watched_spot_armed',
   'watched_spot_arm_failed',
@@ -707,6 +708,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   registration_readiness_stated: {
     sentence: 'you told Hale whether your portal setup was done',
     family: 'done',
+  },
+  // A 'note' and not a 'problem': nothing broke, and the next step is already in the
+  // sentence the parent was texted back.
+  registration_bind_read_throttled: {
+    sentence: 'Hale held off on reading a course page you sent',
+    family: 'note',
   },
   // ── watched spots (VIL-337) ─────────────────────────────────────────────
   watched_spot_armed: {

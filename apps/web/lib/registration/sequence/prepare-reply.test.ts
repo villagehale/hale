@@ -6,16 +6,19 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { type SpotUrlRefusal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
+  BIND_READ_ROUTE,
   COURSE_BIND_REFUSALS,
   type CourseBindRefusal,
   type PrepareReplyDeps,
   type PreparingSequence,
+  claimBindRead,
   defaultPrepareReplyDeps,
   handleCourseBind,
   handleReadinessAnswer,
   loadPreparingSequence,
   readinessQuestion,
 } from './prepare-reply';
+import { BIND_READ_WINDOW_MS } from './prepare';
 
 /**
  * VIL-338 · the inbound half, against the REAL DDL and the bytes a PerfectMind page
@@ -761,5 +764,85 @@ describe('the readiness question is open only while the ask is Hale’s last wor
     });
 
     expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+  });
+});
+
+describe('the bind-read claim', () => {
+  const claim = (input: { now: Date; family?: string }) =>
+    claimBindRead(db.database, {
+      familyId: input.family ?? familyId,
+      sequenceId,
+      host: 'cityofmarkham.perfectmind.com',
+      inboundChannelMessageId: inboundId,
+      now: input.now,
+    });
+
+  async function rateLimitRows(identifier: string) {
+    return db.database
+      .select()
+      .from(schema.rateLimits)
+      .where(
+        and(
+          eq(schema.rateLimits.identifier, identifier),
+          eq(schema.rateLimits.route, BIND_READ_ROUTE),
+        ),
+      );
+  }
+
+  /** Kills a claim that never conflicts (a plain insert, or an upsert that always
+   * returns a row), and a refusal that leaves no receipt behind. */
+  it('claims the window once and refuses the second read with an audit row', async () => {
+    const first = await claim({ now: NOW });
+    const second = await claim({ now: NOW });
+
+    expect(first).toEqual({ status: 'claimed' });
+    expect(second.status).toBe('throttled');
+    expect(await rateLimitRows(familyId)).toHaveLength(1);
+
+    const [receipt] = await auditRows('registration_bind_read_throttled');
+    expect(receipt).toMatchObject({
+      actor: 'system',
+      targetTable: 'channel_messages',
+      targetId: inboundId,
+    });
+    expect(receipt?.after).toEqual({
+      sequenceId,
+      host: 'cityofmarkham.perfectmind.com',
+    });
+  });
+
+  /** The positive control on the test above: kills a claim with no window in its key —
+   * a per-family boolean or a column — which would silence the household forever. */
+  it('claims again a window later, and keeps one row per family', async () => {
+    await claim({ now: NOW });
+
+    const later = await claim({ now: new Date(NOW.getTime() + BIND_READ_WINDOW_MS) });
+
+    expect(later).toEqual({ status: 'claimed' });
+    expect(await rateLimitRows(familyId)).toHaveLength(1);
+  });
+
+  /** Kills a hardcoded "in 10 minutes": the sentence's promise is only honest if it is
+   * the time left in THIS slot, and it must never say zero. */
+  it('counts the minutes left in the slot, floored at one', async () => {
+    const windowStart = Math.floor(NOW.getTime() / BIND_READ_WINDOW_MS) * BIND_READ_WINDOW_MS;
+    await claim({ now: new Date(windowStart) });
+
+    const early = await claim({ now: new Date(windowStart + 30_000) });
+    const late = await claim({ now: new Date(windowStart + BIND_READ_WINDOW_MS - 5_000) });
+
+    expect(early).toEqual({ status: 'throttled', retryMinutes: 10 });
+    expect(late).toEqual({ status: 'throttled', retryMinutes: 1 });
+  });
+
+  /** Kills a route-wide retention DELETE, and a claim keyed on the route alone: one
+   * household's paste must never spend another household's read. */
+  it('gives two families in the same window one read each', async () => {
+    const other = await seedFamily(db.database, `Prepare Reply other ${Math.random()}`);
+
+    expect(await claim({ now: NOW })).toEqual({ status: 'claimed' });
+    expect(await claim({ now: NOW, family: other.familyId })).toEqual({ status: 'claimed' });
+    expect(await rateLimitRows(familyId)).toHaveLength(1);
+    expect(await rateLimitRows(other.familyId)).toHaveLength(1);
   });
 });

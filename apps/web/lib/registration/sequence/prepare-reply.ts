@@ -1,5 +1,5 @@
 import { type Database, type Municipality, schema } from '@hale/db';
-import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import {
   SPOT_PORTAL_HOSTS,
@@ -15,6 +15,7 @@ import { renderCourseBindAck, renderReadinessAck } from './copy.js';
 import {
   type AgeVerdict,
   BIND_FETCH_TIMEOUT_MS,
+  BIND_READ_WINDOW_MS,
   MAX_BIND_DRIFT_DAYS,
   type PrepChild,
   readCoursePrep,
@@ -197,6 +198,94 @@ function portalOf(municipality: Municipality): SpotPortal | null {
   return (
     Object.values(SPOT_PORTAL_HOSTS).find((portal) => portal.municipality === municipality) ?? null
   );
+}
+
+// ── the read claim ───────────────────────────────────────────────────────────
+
+/**
+ * The `rate_limits` route one household's bind reads are claimed under.
+ *
+ * Per-FAMILY, so it does not take the `ops:` prefix the three singleton claims use, and
+ * deliberately NOT an entry in RATE_LIMITS: that table feeds `enforceRateLimit`, which
+ * counts requests and answers 429, and this is a claim whose refusal is a sentence a
+ * parent reads.
+ */
+export const BIND_READ_ROUTE = 'registration:bind-read';
+
+export interface BindReadClaim {
+  familyId: string;
+  sequenceId: string;
+  /** The portal host, and nothing else off the pasted URL (rule #1). */
+  host: string;
+  inboundChannelMessageId: string;
+  now: Date;
+}
+
+export type BindReadClaimResult =
+  | { status: 'claimed' }
+  | { status: 'throttled'; retryMinutes: number };
+
+/**
+ * Claim this family's read of a municipality for this window — the watched-spots slot
+ * claim's idiom, keyed on the family rather than on a singleton.
+ *
+ * THE AUDIT ROW IS INSIDE THE CLAIM (rule #6), not left to the caller. A read Hale
+ * refused is a thing Hale did, and putting the receipt in the same transaction as the
+ * losing insert is what makes "a refused read always leaves a row" unexpressible
+ * otherwise rather than a step a future caller has to remember.
+ *
+ * The window is a FIXED slot, the shape every limiter here uses, so the minutes the
+ * refusal sentence promises are read off the slot's own remainder and not guessed — a
+ * promise kept or not made. Retention is the tightest form: this identifier and route's
+ * rows below the current slot are deleted on every claim, so a per-family route stays
+ * at one row per family however many households arm.
+ */
+export async function claimBindRead(
+  database: Database,
+  input: BindReadClaim,
+): Promise<BindReadClaimResult> {
+  const windowStart = new Date(
+    Math.floor(input.now.getTime() / BIND_READ_WINDOW_MS) * BIND_READ_WINDOW_MS,
+  );
+
+  return database.transaction(async (tx) => {
+    await tx
+      .delete(schema.rateLimits)
+      .where(
+        and(
+          eq(schema.rateLimits.identifier, input.familyId),
+          eq(schema.rateLimits.route, BIND_READ_ROUTE),
+          lt(schema.rateLimits.windowStart, windowStart),
+        ),
+      );
+
+    const claimed = await tx
+      .insert(schema.rateLimits)
+      .values({ identifier: input.familyId, route: BIND_READ_ROUTE, windowStart, count: 1 })
+      .onConflictDoNothing({
+        target: [
+          schema.rateLimits.identifier,
+          schema.rateLimits.route,
+          schema.rateLimits.windowStart,
+        ],
+      })
+      .returning({ id: schema.rateLimits.id });
+    if (claimed.length > 0) return { status: 'claimed' };
+
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      // Hale's own refusal, not a fact the parent stated — the convention the watched
+      // spots' arm failure writes under.
+      actor: 'system',
+      actionTaken: 'registration_bind_read_throttled',
+      targetTable: 'channel_messages',
+      targetId: input.inboundChannelMessageId,
+      after: { sequenceId: input.sequenceId, host: input.host },
+    });
+
+    const remainingMs = windowStart.getTime() + BIND_READ_WINDOW_MS - input.now.getTime();
+    return { status: 'throttled', retryMinutes: Math.max(1, Math.ceil(remainingMs / 60_000)) };
+  });
 }
 
 // ── the bind ─────────────────────────────────────────────────────────────────
