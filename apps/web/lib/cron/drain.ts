@@ -433,6 +433,30 @@ function processDeadJobFor(queue: string) {
  * fetch, so `channel.message.received` returns a short batch on every fetch and a
  * parent's second text waited for the next cron tick.
  */
+/**
+ * A thrown error as plain strings. Logged and stored as strings, not as the Error:
+ * Next's error inspection hides node_modules and Node-internal frames, so an error
+ * thrown inside the database driver printed as a bare header in prod AND in dev
+ * (2026-09-08 inbound outage, diagnosed blind for an hour). Strings are not inspected.
+ * The same shape is the pg-boss failure payload, so a retrying job carries its diagnosis.
+ * No family data: a stack is file paths and line numbers.
+ */
+function describeThrown(err: unknown): {
+  name: string;
+  message: string;
+  code?: string;
+  stack?: string;
+} {
+  if (!(err instanceof Error)) return { name: 'non-error', message: String(err) };
+  const code = (err as { code?: unknown }).code;
+  return {
+    name: err.name,
+    message: err.message,
+    ...(typeof code === 'string' ? { code } : {}),
+    ...(err.stack ? { stack: err.stack } : {}),
+  };
+}
+
 async function drainQueue(
   deps: DrainDeps,
   queue: string,
@@ -456,10 +480,9 @@ async function drainQueue(
         else summary.dropped += 1;
       } catch (err) {
         summary.failed += 1;
-        deps.log.error({ queue, jobId: job.id, err }, 'drain: handler threw — failing job');
-        await deps.boss.fail(queue, job.id, {
-          message: err instanceof Error ? err.message : String(err),
-        });
+        const failure = describeThrown(err);
+        deps.log.error({ queue, jobId: job.id, err: failure }, 'drain: handler threw — failing job');
+        await deps.boss.fail(queue, job.id, failure);
       }
     }
   }

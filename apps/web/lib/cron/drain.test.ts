@@ -427,6 +427,40 @@ describe('drainHotQueues', () => {
     expect(summary).toEqual({ processed: 0, failed: 1, dropped: 0 });
   });
 
+  it('records a thrown error as plain strings — name, message, code, stack — in the log and the job', async () => {
+    // The 2026-09-08 inbound outage was diagnosed blind: the drain logged the Error
+    // OBJECT, and Next's error inspection hides node_modules and internal frames, so an
+    // error thrown inside the database driver printed as a bare header in prod and in
+    // dev. Strings are not inspected; they print whole. The same strings go into the
+    // pg-boss failure payload, so the retrying job carries its own diagnosis.
+    const { boss } = makeFakeBoss({
+      [EVENTS]: [{ id: 'e1', data: validIngested() }],
+    });
+    const thrown = Object.assign(new TypeError('driver choked'), { code: 'ERR_INVALID_ARG_TYPE' });
+    const deps = makeDeps(boss, {
+      runOrchestrator: vi.fn(async () => {
+        throw thrown;
+      }),
+    });
+
+    await drainHotQueues(deps);
+
+    const logged = vi.mocked(deps.log.error).mock.calls[0]?.[0] as { err: unknown };
+    expect(logged.err).not.toBeInstanceOf(Error);
+    expect(logged.err).toEqual({
+      name: 'TypeError',
+      message: 'driver choked',
+      code: 'ERR_INVALID_ARG_TYPE',
+      stack: expect.stringContaining('\n    at '),
+    });
+    expect(boss.fail).toHaveBeenCalledWith(EVENTS, 'e1', {
+      name: 'TypeError',
+      message: 'driver choked',
+      code: 'ERR_INVALID_ARG_TYPE',
+      stack: expect.stringContaining('\n    at '),
+    });
+  });
+
   it('DROPS (completes, does not fail, does not throw) a schema-invalid payload', async () => {
     const { boss, completed, failed } = makeFakeBoss({
       [EVENTS]: [{ id: 'bad', data: { not: 'a valid payload' } }],
