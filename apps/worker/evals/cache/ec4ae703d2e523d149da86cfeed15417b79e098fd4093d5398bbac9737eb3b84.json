@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior Hale message naming \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" — so that is recalled context, not invention. The parent now asks to get the gymnastics class on the calendar. There is exactly one gymnastics class named in the thread, so the reference is resolved. Hale has correctly drafted a calendar_add and asks for YES to confirm. The reply names the event clearly (Tiny Gym at Cartwheels, Sun Sept 13, 9:30am) and ends with \"YES to confirm.\" — exactly the contract shape required. No greeting, no sign-off, no markdown, one question, all details traceable. This is the job done correctly.",
+    "score": 5
+  }
+}

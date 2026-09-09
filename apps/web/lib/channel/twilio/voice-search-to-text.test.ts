@@ -184,6 +184,7 @@ async function callAndAsk(options: {
           steps: 2,
           hitMaxSteps: false,
           truncatedRetries: 0,
+          truncated: false,
           usage: {
             promptTokens: 10,
             completionTokens: 5,

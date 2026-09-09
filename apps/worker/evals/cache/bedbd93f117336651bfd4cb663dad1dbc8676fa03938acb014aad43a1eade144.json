@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior Hale message: \"Update on the gymnastics: Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" That is a venue Hale itself named earlier, so recalling it now is correct — not invention. The parent's text names one event (gymnastics), which resolves unambiguously to that class. `drafted` is non-empty (two calendar_add entries), so drafting is the right move and ending with \"YES to confirm.\" is exactly the contract. The reply names the event, place, day, and time, then closes with the required YES confirmation prompt. It is short, correct, and complete. A 5.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale itself named the class in an earlier message: \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" The parent's text asks to get \"that gymnastics class\" on the calendar — one event, resolved by Hale's own prior message. Drafting it and ending with \"YES to confirm.\" is exactly the correct shape. The reply names the event with its full detail (venue, day, time), drafts it, and closes with the required confirmation trigger. draftCapPerMessage is 2 and only one item is being added, so no cap issue. No invented details, no app referral, no extra questions, no sign-off. This is the product working correctly.",
+    "score": 5
+  }
+}

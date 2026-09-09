@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale previously surfaced \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" — that was a named venue with a day and time, stated in an earlier message. The parent now asks to get \"that gymnastics class\" on the calendar. There is exactly one gymnastics class in context (the one Hale named), so the reference is resolved. Hale correctly drafts a calendar_add and asks for YES to confirm. The reply names the class, venue, day, date, and time drawn from the thread, and ends with the required YES confirmation prompt. Draft cap is 2 and only 1 is used. No app referral, no invented details, no URL, no greeting or sign-off. This is the product working exactly as it should.",
+    "score": 5
+  }
+}

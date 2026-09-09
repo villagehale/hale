@@ -10,6 +10,7 @@ import {
   laneRequestFields,
   pickLane,
   pickModel,
+  withoutThinking,
 } from './model.js';
 
 describe('pickModel', () => {
@@ -68,15 +69,16 @@ describe('pickModel', () => {
   });
 });
 
+const HAIKU_TASKS: AgentTask[] = [
+  'simple-lookup',
+  'triage',
+  'acknowledge',
+  'screen',
+  'answer',
+  'speak',
+];
+
 describe('laneRequestFields', () => {
-  const HAIKU_TASKS: AgentTask[] = [
-    'simple-lookup',
-    'triage',
-    'acknowledge',
-    'screen',
-    'answer',
-    'speak',
-  ];
 
   it.each(HAIKU_TASKS)('sends %s with no reasoning knobs at all', (task) => {
     // Verified against the live API 2026-08-21: Haiku 4.5 rejects BOTH knobs with
@@ -131,6 +133,43 @@ describe('laneRequestFields', () => {
       }
     }
   });
+});
+
+describe('withoutThinking', () => {
+  it('keeps the model and the effort and only flips the mode off', () => {
+    // The one request shape on which `max_tokens` is a REPLY ceiling: Sonnet 5 has no
+    // field that bounds the thinking half (`budget_tokens` is a 400), so the re-ask
+    // changes the mode rather than the number. Effort survives because it is the knob
+    // that governs tool reach on this lane (see TASK_LANE's converse note).
+    expect(withoutThinking(pickLane('converse'))).toEqual({
+      model: SONNET5_MODEL,
+      thinking: 'disabled',
+      effort: 'high',
+    });
+    expect(withoutThinking(pickLane('discover'))).toEqual({
+      model: SONNET5_MODEL,
+      thinking: 'disabled',
+      effort: 'medium',
+    });
+  });
+
+  it('clamps xhigh to high, because disabled + xhigh is a 400', () => {
+    expect(withoutThinking(pickLane('high-stakes-judgment'))).toEqual({
+      model: OPUS_MODEL,
+      thinking: 'disabled',
+      effort: 'high',
+    });
+  });
+
+  it.each<AgentTask>(['draft', 'infer', ...HAIKU_TASKS])(
+    'has no thinking-off form for %s',
+    (task) => {
+      // A lane that was not thinking has nothing to turn off: re-asking it at the same
+      // shape buys the same completion twice. Null is the named absence, and runAgent
+      // reads it as "no re-ask on this lane" rather than sending a second identical ask.
+      expect(withoutThinking(pickLane(task))).toBeNull();
+    },
+  );
 });
 
 describe('isAgentTask', () => {

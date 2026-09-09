@@ -100,6 +100,7 @@ describe('a spoken turn can see what Hale already said out loud', () => {
             steps: 1,
             hitMaxSteps: false,
             truncatedRetries: 0,
+            truncated: false,
             usage: {
               promptTokens: 10,
               completionTokens: 5,

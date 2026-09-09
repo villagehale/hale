@@ -466,6 +466,7 @@ describe('the deep answer arrives at question time', () => {
         steps: steps.length + 1,
         hitMaxSteps: false,
         truncatedRetries: 0,
+        truncated: false,
         usage: {
           promptTokens: 100,
           completionTokens: 40,

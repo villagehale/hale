@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior Hale message naming \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" — that is the only gymnastics class in context. The parent's text asks to get it on the calendar. Hale correctly identified the single matching event from its own prior message (recall, not invention), drafted the calendar add, and formed the correct confirmation prompt: names the event, date, time, and ends \"YES to confirm.\" This is exactly the contract shape. No greeting, no sign-off, no extra questions, no app referral. The draft cap is 2 and only 1 is used. The reply is short, precise, and actionable.",
+    "score": 5
+  }
+}

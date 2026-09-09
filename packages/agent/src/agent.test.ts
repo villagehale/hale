@@ -218,6 +218,8 @@ describe('runAgent loop mechanics', () => {
     expect(result.hitMaxSteps).toBe(true);
     expect(result.answer).toBeNull();
     expect(result.steps).toBe(2);
+    // Out of steps is its own outcome; it must not be reported as out of ceiling.
+    expect(result.truncated).toBe(false);
   });
 
   it('feeds a bad-argument tool error back to the model instead of crashing the turn', async () => {
@@ -311,14 +313,45 @@ function truncatedThinkingMessage(u: Anthropic.Usage): Anthropic.Message {
   };
 }
 
+/**
+ * A completion cut mid-tool-call: the arguments the model had written when the ceiling
+ * hit, which for a required-field schema is an object that cannot be dispatched.
+ */
+function clippedToolUseMessage(u: Anthropic.Usage): Anthropic.Message {
+  return {
+    id: 'msg-clipped-tool',
+    type: 'message',
+    role: 'assistant',
+    model: 'claude-sonnet-4-6',
+    stop_reason: 'max_tokens',
+    stop_sequence: null,
+    content: [
+      { type: 'thinking', thinking: '', signature: 'sig' } as Anthropic.ContentBlock,
+      { type: 'tool_use', id: 'call-1', name: 'get_child_profile', input: {} } as Anthropic.ToolUseBlock,
+    ],
+    usage: u,
+  };
+}
+
+/** The reasoning knobs, which the pinned SDK does not type (see model.ts). */
+interface WireShape {
+  thinking?: { type: string };
+  output_config?: { effort: string };
+}
+
 describe('runAgent when a step is truncated before it says anything', () => {
   function capturing(script: Anthropic.Message[]) {
     const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
+    /** The messages AS SENT. `runAgent` mutates one array across the loop and the
+     * captured params alias it, so comparing `requests[0].messages` to
+     * `requests[1].messages` compares an array to itself and passes on any change. */
+    const sent: Anthropic.MessageParam[][] = [];
     let calls = 0;
     const client = {
       messages: {
         create: vi.fn(async (params: Anthropic.MessageCreateParamsNonStreaming) => {
           requests.push(params);
+          sent.push(structuredClone(params.messages));
           const msg = script[calls];
           calls += 1;
           if (!msg) throw new Error('capturing: script exhausted');
@@ -326,13 +359,29 @@ describe('runAgent when a step is truncated before it says anything', () => {
         }),
       },
     } as unknown as AgentClient;
-    return { client, requests };
+    return { client, requests, sent };
   }
 
-  const args = (client: AgentClient) => ({
+  /** The same profile tool, recording every dispatch — a clipped call that reaches the
+   * handler is the failure these cases exist to catch. */
+  function recordingProfileTool(read: string[]) {
+    return defineTool({
+      name: 'get_child_profile',
+      description: 'Read a child profile.',
+      monetary: false,
+      touchesChildContent: false,
+      inputSchema: z.object({ childId: z.string() }),
+      handler: async (input: { childId: string }) => {
+        read.push(input.childId);
+        return { childId: input.childId, ageMonths: 5 };
+      },
+    });
+  }
+
+  const args = (client: AgentClient, tools = [profileTool]) => ({
     skill,
     context: { q: 'when does he need shoes' },
-    tools: [profileTool],
+    tools,
     client,
     maxSteps: 6,
     maxTokens: 400,
@@ -340,8 +389,8 @@ describe('runAgent when a step is truncated before it says anything', () => {
     guardDeps: guardDeps().deps,
   });
 
-  it('asks again with room instead of handing back an empty answer', async () => {
-    const { client, requests } = capturing([
+  it('asks again with thinking off, at the same budget', async () => {
+    const { client, requests, sent } = capturing([
       truncatedThinkingMessage(usage(1_000, 400)),
       textMessage('Around 18 months, once he is walking outside.', usage(1_000, 40)),
     ]);
@@ -351,18 +400,101 @@ describe('runAgent when a step is truncated before it says anything', () => {
     // The recovery, not the symptom: the parent gets the answer the model was in the
     // middle of composing, not the apology template.
     expect(result.answer).toBe('Around 18 months, once he is walking outside.');
-    // ONE retry, at a budget big enough that a turn which already spent 400 on thinking
-    // can both finish and speak. Same messages — this is a re-ask, not a next step.
+    // ONE re-ask, at the SAME budget with the mode flipped off. A bigger number is the
+    // same bet with more chips — `max_tokens` bounds thinking plus text together and
+    // Sonnet 5 has no field that bounds the thinking half, so only `disabled` makes the
+    // 400 a reply ceiling again. Same messages: this is a re-ask, not a next step.
     expect(requests).toHaveLength(2);
-    expect(requests[1]?.max_tokens).toBeGreaterThan(400);
-    expect(requests[1]?.messages).toEqual(requests[0]?.messages);
+    expect(requests[1]?.max_tokens).toBe(400);
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'disabled' });
+    // Effort survives the flip — it is the knob that governs tool reach on this lane.
+    expect((requests[1] as unknown as WireShape).output_config).toEqual({ effort: 'high' });
+    expect((requests[0] as unknown as WireShape).thinking).toEqual({ type: 'adaptive' });
+    expect(sent[1]).toEqual(sent[0]);
     // NAMED, not folded into the step count: a turn that had to buy its answer twice is
     // a different event from one that did not, and telemetry must be able to see it
     // (rule #11 — never a silent recovery).
     expect(result.truncatedRetries).toBe(1);
+    // A recovered turn is not a truncated one: the flag is about what the PARENT got.
+    expect(result.truncated).toBe(false);
     // The retry's tokens are counted. A recovery that under-reports what it spent turns
     // the cost dashboards into fiction.
     expect(result.usage.completionTokens).toBe(440);
+  });
+
+  it('re-asks a tool call cut at the ceiling instead of dispatching it', async () => {
+    // Under `max_tokens` the LAST tool_use block is the one that was cut, and the API
+    // returns whatever JSON it had: `{}` where `childId` is required. Dispatching that
+    // is a ZodError inside invokeTool, fed back as is_error, costing a step at full
+    // budget for nothing — six of the committed coach-eval truncations are this shape.
+    const read: string[] = [];
+    const { client, requests } = capturing([
+      clippedToolUseMessage(usage(1_000, 400)),
+      textMessage('He is five months old.', usage(1_000, 40)),
+    ]);
+
+    const result = await runAgent(args(client, [recordingProfileTool(read)]));
+
+    // The handler never ran: a clipped call is re-drawn whole, not half-run.
+    expect(read).toEqual([]);
+    expect(requests).toHaveLength(2);
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'disabled' });
+    expect(result.answer).toBe('He is five months old.');
+    expect(result.truncatedRetries).toBe(1);
+  });
+
+  it('dispatches a complete tool call even under max_tokens', async () => {
+    // The positive control for the schema test: a completion cut right after its last
+    // argument is still dispatchable, so it is dispatched exactly as today. Without
+    // this, "re-ask on max_tokens with no text" would throw away work the model
+    // finished (coach-eval cache f9d26e00…, a whole `watch_for_opening`).
+    const complete: Anthropic.Message = {
+      ...clippedToolUseMessage(usage(1_000, 400)),
+      content: [
+        { type: 'thinking', thinking: '', signature: 'sig' } as Anthropic.ContentBlock,
+        {
+          type: 'tool_use',
+          id: 'call-1',
+          name: 'get_child_profile',
+          input: { childId: 'kid-1' },
+        } as Anthropic.ToolUseBlock,
+      ],
+    };
+    const read: string[] = [];
+    const { client, requests, sent } = capturing([
+      complete,
+      textMessage('He is five months old.', usage(1_000, 40)),
+    ]);
+
+    const result = await runAgent(args(client, [recordingProfileTool(read)]));
+
+    expect(read).toEqual(['kid-1']);
+    expect(requests).toHaveLength(2);
+    // A NEXT STEP, not a re-ask: still adaptive, and carrying the tool result.
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'adaptive' });
+    expect(sent[1]?.length).toBeGreaterThan(sent[0]?.length ?? 0);
+    expect(result.truncatedRetries).toBe(0);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('does not re-ask a lane that was not thinking', async () => {
+    // `draft` is `thinking: 'disabled'` already, so there is no second shape to buy:
+    // no text and a clipped call there means the REPLY did not fit the budget, which is
+    // a lane constant to fix, not a turn to re-draw. Named rather than silent (rule #11).
+    const draftSkill: Skill = { ...skill, meta: { ...skill.meta, task: 'draft' } };
+    const read: string[] = [];
+    const { client, requests } = capturing([clippedToolUseMessage(usage(1_000, 400))]);
+
+    const result = await runAgent({
+      ...args(client, [recordingProfileTool(read)]),
+      skill: draftSkill,
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(read).toEqual([]);
+    expect(result.answer).toBeNull();
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedRetries).toBe(0);
   });
 
   it('does not retry a step that was truncated AFTER it had started speaking', async () => {
@@ -387,19 +519,30 @@ describe('runAgent when a step is truncated before it says anything', () => {
     expect(result.truncatedRetries).toBe(0);
   });
 
-  it('gives up after one retry rather than escalating forever', async () => {
+  it('gives up after one re-ask rather than escalating forever', async () => {
+    // The re-ask leg can itself run out — a preamble plus a four-argument propose is a
+    // few hundred tokens. What it must NOT do is dispatch the clipped call it came back
+    // with just because it is the second leg.
+    const read: string[] = [];
     const { client, requests } = capturing([
       truncatedThinkingMessage(usage(1_000, 400)),
-      truncatedThinkingMessage(usage(1_000, 1_200)),
+      clippedToolUseMessage(usage(1_000, 400)),
     ]);
 
-    const result = await runAgent(args(client));
+    const result = await runAgent(args(client, [recordingProfileTool(read)]));
 
     // Two calls total, then the honest empty answer — an unbounded escalation on a turn
     // a parent is waiting on is worse than saying nothing.
     expect(requests).toHaveLength(2);
+    expect(requests[1]?.max_tokens).toBe(400);
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'disabled' });
+    expect(read).toEqual([]);
     expect(result.answer).toBeNull();
+    // The outcome has a NAME now: this is not "ran out of steps" and not "said nothing
+    // for its own reasons" — the ceiling failed, twice (rule #11).
+    expect(result.truncated).toBe(true);
     expect(result.truncatedRetries).toBe(1);
+    expect(result.usage.completionTokens).toBe(800);
   });
 });
 
@@ -456,6 +599,7 @@ describe('runAgent keeps the answer written beside a registering tool call', () 
     // One round trip, not two: the second scripted message was never asked for.
     expect(result.steps).toBe(1);
     expect(client.messages.create).toHaveBeenCalledTimes(1);
+    expect(result.truncated).toBe(false);
   });
 
   it('takes another turn when the registering tool REFUSED, so the fix reaches the parent', async () => {
@@ -657,6 +801,103 @@ describe('runAgentStreaming', () => {
         after: { childId: 'kid-1' },
       },
     ]);
+  });
+
+  it('names a stream that hit the ceiling before a single token reached the parent', async () => {
+    // Streaming has no re-ask — partial text is already on the wire, so asking again
+    // would show two answers to one question. That argument fails exactly here, where
+    // NOTHING streamed, so the outcome at least has to be reported rather than hidden
+    // in a null answer (rule #11): the same swallow runAgent re-asks, named.
+    const client = fakeStreamingClient([
+      { chunks: [], final: truncatedThinkingMessage(usage(1_000, 400)) },
+    ]);
+    const { deps } = guardDeps();
+
+    const result = await runAgentStreaming({
+      skill,
+      context: { question: 'is my baby on track?' },
+      tools: [profileTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+    });
+
+    expect(result.answer).toBeNull();
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedRetries).toBe(0);
+    expect(result.hitMaxSteps).toBe(false);
+  });
+
+  it('does not call a stream truncated once its text was already on the wire', async () => {
+    // The positive control for the flag above: same `max_tokens` stop, but the parent
+    // has the sentence. A clipped answer is an answer, and calling it truncated would
+    // put a lane-config defect's name on an ordinary long reply.
+    const clipped: Anthropic.Message = {
+      id: 'msg-clipped-stream',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'max_tokens',
+      stop_sequence: null,
+      content: [
+        { type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock,
+      ],
+      usage: usage(1_000, 400),
+    };
+    const client = fakeStreamingClient([
+      { chunks: ['Around 18 months, ', 'once he'], final: clipped },
+    ]);
+    const { deps } = guardDeps();
+
+    const result = await runAgentStreaming({
+      skill,
+      context: { question: 'when does he drop the nap?' },
+      tools: [profileTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+    });
+
+    expect(result.answer).toBe('Around 18 months, once he');
+    expect(result.truncated).toBe(false);
+  });
+
+  it('hard-stops at maxSteps without calling the run truncated', async () => {
+    const client = fakeStreamingClient([
+      {
+        chunks: [],
+        final: toolUseMessage('tu-1', 'get_child_profile', { childId: 'kid-1' }, usage(100, 20)),
+      },
+      {
+        chunks: [],
+        final: toolUseMessage('tu-2', 'get_child_profile', { childId: 'kid-1' }, usage(100, 20)),
+      },
+    ]);
+    const { deps } = guardDeps();
+
+    const result = await runAgentStreaming({
+      skill,
+      context: { question: 'is my baby on track?' },
+      tools: [profileTool],
+      client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+    });
+
+    // Out of steps is its own outcome; it must not be reported as out of ceiling.
+    expect(result.hitMaxSteps).toBe(true);
+    expect(result.answer).toBeNull();
+    expect(result.steps).toBe(2);
+    expect(result.truncated).toBe(false);
   });
 
   it('fires onStep/onToolCall/onToolResult in order, name+ok+preview only, NEVER raw args or output (rule #1)', async () => {

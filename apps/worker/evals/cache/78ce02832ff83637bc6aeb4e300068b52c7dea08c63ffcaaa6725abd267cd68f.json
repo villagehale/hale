@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply drafts the gymnastics class from the thread (Tiny Gym at Cartwheels, Sundays at 9:30, starting September 13) and ends with \"YES to confirm.\" — exactly the contract shape. The venue and time come from an earlier Hale message in the thread, so it is recall not invention. drafted is non-empty and the reply names the change and asks for YES. Short, no greeting, no sign-off. The only small question is whether drafting one item when draftCapPerMessage is 2 and the parent only asked for one event is correct — yes, one draft is right here. This is exactly what the product requires.",
+    "score": 5
+  }
+}

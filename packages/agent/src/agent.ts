@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { compileToolSchema } from './json-schema.js';
-import { type AgentTask, laneRequestFields, pickLane } from './model.js';
+import { type AgentTask, laneRequestFields, pickLane, withoutThinking } from './model.js';
 import type { Skill } from './skill.js';
 import {
   type GuardDeps,
@@ -107,6 +107,12 @@ export interface RunAgentResult {
    * than one that did not, and a recovery nobody can see is one nobody can budget for.
    */
   truncatedRetries: number;
+  /**
+   * The final completion hit `max_tokens` before saying anything dispatchable, and the
+   * re-ask (if the lane had one) did not recover it. Distinct from `hitMaxSteps`, which
+   * is a loop that ran out of turns — this is a turn that ran out of ceiling (rule #11).
+   */
+  truncated: boolean;
   usage: AgentUsage;
 }
 
@@ -368,25 +374,40 @@ function wireLane(task: AgentTask): WireLaneFields {
 }
 
 /**
- * How much bigger the one re-ask gets. Three times, because the step that triggers this
- * spent 100% of its budget thinking: it needs room to finish the thought AND say
- * something, and a factor that merely nudges buys a second empty completion.
- */
-const TRUNCATED_RETRY_FACTOR = 3;
-
-/**
  * Did this completion hit the token ceiling before producing anything usable?
  *
- * Text OR a tool call means the budget went where it was supposed to — a clipped
- * sentence is still an answer the post-processor can trim, and re-asking there would pay
- * twice for something already in hand. Only a `max_tokens` stop with neither is the case
- * worth buying again.
+ * Text means the budget went where it was supposed to — a clipped sentence is still an
+ * answer the post-processor can trim, and re-asking there would pay twice for something
+ * already in hand.
+ *
+ * A tool call counts only if EVERY call in the completion PARSES. Under `max_tokens` the
+ * last tool_use block is the one that was cut, and the API returns whatever JSON it had:
+ * `propose_calendar_add {title}`, `{title,date}`, `{}`, an `offer_full_plan` with no
+ * `offer` — all four are in the committed coach-eval cache. Dispatching one of those is
+ * a ZodError inside invokeTool, fed back as `is_error`, costing a step at full budget to
+ * learn nothing. Complete calls beside a clipped one are discarded and re-drawn rather
+ * than half-run: every tool_use id in a turn needs a tool_result. A completion whose
+ * calls all parse is dispatched even under `max_tokens` (cache `f9d26e00…`, a whole
+ * `watch_for_opening` cut right after its last argument) — schema validity is the same
+ * test invokeTool applies, so nothing this predicate accepts can fail there.
+ *
+ * An unknown tool NAME is left alone: handleToolUses throws loudly on it, and a re-ask
+ * would turn a skill-config bug into a silent retry.
  */
-function isTruncatedBeforeSpeaking(response: Anthropic.Message): boolean {
+function isTruncatedBeforeSpeaking(
+  response: Anthropic.Message,
+  toolByName: Map<string, RegisteredTool>,
+): boolean {
+  if (response.stop_reason !== 'max_tokens' || textFrom(response.content) !== null) return false;
+  const toolUses = response.content.filter(
+    (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+  );
   return (
-    response.stop_reason === 'max_tokens' &&
-    textFrom(response.content) === null &&
-    !response.content.some((b) => b.type === 'tool_use')
+    toolUses.length === 0 ||
+    toolUses.some((b) => {
+      const tool = toolByName.get(b.name);
+      return tool !== undefined && !tool.inputSchema.safeParse(b.input).success;
+    })
   );
 }
 
@@ -515,7 +536,9 @@ async function handleToolUses(
 }
 
 export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
-  const lane = wireLane(args.skill.meta.task);
+  const laneConfig = pickLane(args.skill.meta.task);
+  const lane = laneRequestFields(laneConfig) as WireLaneFields;
+  const reaskLane = withoutThinking(laneConfig);
   const system = buildSystem(args.skill);
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
@@ -550,37 +573,73 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     });
     meter(response.usage);
 
-    // THE STEP THAT SAID NOTHING, ASKED AGAIN WITH ROOM.
+    // THE STEP THAT SAID NOTHING, ASKED AGAIN WITH THINKING OFF, AT THE SAME BUDGET.
     //
     // `max_tokens` is the ceiling on thinking PLUS text, and on a thinking lane the model
     // spends it in that order. So a hard turn can hit the ceiling having produced one
-    // empty thinking block and no text and no tool call — a completion that cost a full
-    // budget and carries nothing. Until now that fell through as `answer: null`, which is
-    // the same value the loop returns for "ran out of steps": two different failures in
-    // one bucket, and downstream the SMS router turned both into "nothing was changed"
-    // (rule #11). It is prod's only failed coach-channel-sms run, 2026-08-22 17:41,
-    // 399 thinking tokens of 400 on a follow-up whose answer was sitting in the thread.
+    // empty thinking block and no text and no dispatchable tool call — a completion that
+    // cost a full budget and carries nothing. Until now that fell through as
+    // `answer: null`, which is the same value the loop returns for "ran out of steps":
+    // two different failures in one bucket, and downstream the SMS router turned both
+    // into "nothing was changed" (rule #11). It is prod's only failed coach-channel-sms
+    // run, 2026-08-22 17:41, 399 thinking tokens of 400 on a follow-up whose answer was
+    // sitting in the thread.
     //
     // RE-ASKED, not continued: the messages are byte-identical, so this is the same step
-    // with a bigger allowance rather than a new turn — the model has nothing to continue
-    // FROM, since it never said anything. Bounded to ONE escalation per step, because a
-    // parent is waiting and a budget that keeps doubling is a turn that never ends.
+    // in a different SHAPE rather than a new turn — the model has nothing to continue
+    // FROM, since it never said anything.
+    //
+    // Thinking off, not a bigger number. Sonnet 5 has no field that bounds the thinking
+    // half (`budget_tokens` is a 400), so more room is the same bet with more chips: the
+    // old ×3 leg is 2/2 on the committed corpus but was still swallowed once at 1,200
+    // (cache `3b023db4…`: 1,169 tokens spent thinking, then `propose_calendar_add {}`),
+    // and its swallow rate moved with skill length (round 4, VIL-337). `disabled` is the
+    // one request on which the budget cannot be spent reasoning, so the lane's ceiling is
+    // its reply ruler again on this leg.
+    //
+    // Bounded to ONE re-ask per step, because a parent is waiting. A leg that is still
+    // cut returns `truncated: true` rather than dispatching a clipped call. A lane that
+    // was not thinking has no second shape to buy and does not re-ask at all.
+    //
+    // Ordinary turns keep their shape and their prompt-cache keys; this leg pays a cold
+    // messages-cache read (toggling thinking invalidates it on every model; whether the
+    // tools/system prefix also re-writes is model-specific — read
+    // `usage.cache_creation_input_tokens` on the leg, which the eval report prints).
+    // Measured on the coach corpus: the first thinking-off leg writes the ~18k prefix
+    // once, every later one reads it back warm.
+    //
+    // A re-ask at step 2 or later sends history that already carries a SIGNED thinking
+    // block from the adaptive step before it. That is accepted under
+    // `thinking: {type:'disabled'}` — probed live against Sonnet 5, 200 not 400 — so the
+    // history needs no stripping.
     //
     // Raising the LANE budget instead was the obvious alternative and it is the wrong
     // trade: measured on the coach corpus, more room for every turn makes the model
     // reason its way past its second tool (see the note on MAX_TOKENS in
     // apps/web/lib/channel/coach/runtime.ts). The room belongs to the turn that proved
     // it needed it.
-    if (isTruncatedBeforeSpeaking(response)) {
-      truncatedRetries += 1;
-      response = await args.client.messages.create({
-        ...lane,
-        max_tokens: maxTokens * TRUNCATED_RETRY_FACTOR,
-        system,
-        ...(tools.length > 0 && { tools }),
-        messages,
-      });
-      meter(response.usage);
+    if (isTruncatedBeforeSpeaking(response, toolByName)) {
+      if (reaskLane !== null) {
+        truncatedRetries += 1;
+        response = await args.client.messages.create({
+          ...(laneRequestFields(reaskLane) as WireLaneFields),
+          max_tokens: maxTokens,
+          system,
+          ...(tools.length > 0 && { tools }),
+          messages,
+        });
+        meter(response.usage);
+      }
+      if (reaskLane === null || isTruncatedBeforeSpeaking(response, toolByName)) {
+        return {
+          answer: null,
+          steps,
+          hitMaxSteps: false,
+          truncatedRetries,
+          truncated: true,
+          usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+        };
+      }
     }
 
     const toolUses = response.content.filter(
@@ -593,6 +652,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         steps,
         hitMaxSteps: false,
         truncatedRetries,
+        truncated: false,
         usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
@@ -620,6 +680,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         steps,
         hitMaxSteps: false,
         truncatedRetries,
+        truncated: false,
         usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
@@ -630,6 +691,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     steps,
     hitMaxSteps: true,
     truncatedRetries,
+    truncated: false,
     usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
   };
 }
@@ -691,8 +753,13 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
         steps,
         hitMaxSteps: false,
         // Streaming has no re-ask: a truncated stream has already put partial text on the
-        // wire, so asking again would show the parent two answers to one question.
+        // wire, so asking again would show the parent two answers to one question. That
+        // justification fails exactly when NOTHING streamed, so the outcome is at least
+        // reported honestly rather than hidden in a null answer (rule #11) — the re-ask
+        // itself is a separate change.
         truncatedRetries: 0,
+        truncated:
+          response.stop_reason === 'max_tokens' && textFrom(response.content) === null,
         usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
@@ -713,6 +780,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     // Streaming has no re-ask: a truncated stream has already put partial text on the
     // wire, so asking again would show the parent two answers to one question.
     truncatedRetries: 0,
+    truncated: false,
     usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
   };
 }

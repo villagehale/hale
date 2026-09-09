@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread shows Hale itself named \"Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13\" in an earlier assistant message — so using that detail is recall, not invention. The parent's text names exactly one gymnastics class (the one Hale already surfaced), so the reference is resolved. Drafting the calendar add and asking for YES to confirm is exactly the correct shape. The reply names the event, day, date, and time clearly, and ends with \"YES to confirm.\" — the required consent phrase. No greeting, no sign-off, no extra questions, no app mention, no invented details. One draft, within the cap of 2. This is the product working perfectly.",
+    "score": 5
+  }
+}

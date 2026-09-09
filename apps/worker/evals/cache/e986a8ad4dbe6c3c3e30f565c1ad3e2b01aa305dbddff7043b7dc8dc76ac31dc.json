@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The thread contains a prior assistant message: \"Update on the gymnastics: Tiny Gym at Cartwheels runs Sundays at 9:30, starting September 13.\" The parent is now asking to add that gymnastics class to the calendar. `offerable` is empty and `webFind` is null, so the only source for this venue/time is that prior thread message — which is recall, not invention, since Hale named it itself. The reply drafts it (drafted is non-empty with two calendar_add entries) and ends with \"YES to confirm.\" — exactly the contract shape. It names the event, day, and time clearly, uses no markdown, no greeting, no sign-off, one clean sentence plus the confirm prompt. The draftCapPerMessage is 2, and two drafts are made (consistent with adding a recurring Sunday class starting Sept 13). This is correct handling: the reference is unambiguous (one gymnastics class in thread), it drafts rather than acts unilaterally, and it uses the YES confirmation word. No invented details, no app referral, no unnecessary questions. A perfectly correct, appropriately short reply.",
+    "score": 5
+  }
+}

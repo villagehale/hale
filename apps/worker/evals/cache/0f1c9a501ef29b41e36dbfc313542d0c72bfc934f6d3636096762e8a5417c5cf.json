@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The bare \"Yes, please\" follows Hale's last message which said \"I'll keep watching and text you when they post.\" The standingQuestions list is empty, so the yes belongs to that last message. Hale's reply correctly identifies what the yes was about (watching for Cartwheels' fall Tiny Gym dates) and confirms it is already doing exactly that. It doesn't ask a clarifying question, doesn't send the parent to the app, doesn't invent details, and doesn't offer internal machinery options. It's short, accurate, and complete. The only minor issue is it slightly restates what was already established (\"already watching\" was already said in the prior turn), but it's a natural confirmation of the parent's agreement rather than wasted words. This is the correct shape — a plain sentence confirming the thing the last message said Hale is doing.",
+    "score": 5
+  }
+}
