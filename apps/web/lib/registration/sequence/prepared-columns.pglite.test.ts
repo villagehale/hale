@@ -3,7 +3,6 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { loadAwaitingSequence } from './reply.js';
-import { loadAwaitingSequence } from './reply.js';
 import { defaultSequenceRunDeps } from './run.js';
 
 /**
