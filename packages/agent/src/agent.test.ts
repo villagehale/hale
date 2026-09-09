@@ -218,6 +218,8 @@ describe('runAgent loop mechanics', () => {
     expect(result.hitMaxSteps).toBe(true);
     expect(result.answer).toBeNull();
     expect(result.steps).toBe(2);
+    // Out of steps is its own outcome; it must not be reported as out of ceiling.
+    expect(result.truncated).toBe(false);
   });
 
   it('feeds a bad-argument tool error back to the model instead of crashing the turn', async () => {
@@ -597,6 +599,7 @@ describe('runAgent keeps the answer written beside a registering tool call', () 
     // One round trip, not two: the second scripted message was never asked for.
     expect(result.steps).toBe(1);
     expect(client.messages.create).toHaveBeenCalledTimes(1);
+    expect(result.truncated).toBe(false);
   });
 
   it('takes another turn when the registering tool REFUSED, so the fix reaches the parent', async () => {
@@ -862,6 +865,38 @@ describe('runAgentStreaming', () => {
     });
 
     expect(result.answer).toBe('Around 18 months, once he');
+    expect(result.truncated).toBe(false);
+  });
+
+  it('hard-stops at maxSteps without calling the run truncated', async () => {
+    const client = fakeStreamingClient([
+      {
+        chunks: [],
+        final: toolUseMessage('tu-1', 'get_child_profile', { childId: 'kid-1' }, usage(100, 20)),
+      },
+      {
+        chunks: [],
+        final: toolUseMessage('tu-2', 'get_child_profile', { childId: 'kid-1' }, usage(100, 20)),
+      },
+    ]);
+    const { deps } = guardDeps();
+
+    const result = await runAgentStreaming({
+      skill,
+      context: { question: 'is my baby on track?' },
+      tools: [profileTool],
+      client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+    });
+
+    // Out of steps is its own outcome; it must not be reported as out of ceiling.
+    expect(result.hitMaxSteps).toBe(true);
+    expect(result.answer).toBeNull();
+    expect(result.steps).toBe(2);
     expect(result.truncated).toBe(false);
   });
 
