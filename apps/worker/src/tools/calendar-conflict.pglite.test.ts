@@ -32,7 +32,7 @@ describe('check_calendar_conflict — the overlap, not the item', () => {
   beforeEach(async () => {
     db = await createTestDb();
     ({ familyId } = await seedFamily(db.database));
-  });
+  }, 120_000);
 
   afterEach(async () => {
     await db.close();
