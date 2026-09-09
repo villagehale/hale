@@ -447,6 +447,34 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   },
 };
 
+/**
+ * The output contract, applied on the way out (VIL-270).
+ *
+ * A check's result is JSON-stringified straight into a third-party model's turn
+ * (reviewer.ts:267), so what leaves this function is what leaves the country. The
+ * declared schema — not whichever columns a query happens to select — decides that:
+ * undeclared fields are stripped here, once, for every reviewer tool, which is what
+ * makes `check_calendar_conflict` unable to re-grow the sibling titles it dropped. A
+ * result that cannot satisfy its own contract is a REFUSAL with a named reason, never
+ * a raw pass-through: an unvalidated shape is exactly the one nobody has read.
+ */
+export function throughOutputContract<TName extends ReviewerToolName>(
+  name: TName,
+  ok: boolean,
+  result: unknown,
+): ToolResult {
+  const parsed = REVIEWER_TOOLS[name].output.safeParse(result);
+  if (!parsed.success) {
+    // Paths only — the values are the thing we are refusing to hand out.
+    logger.error(
+      { tool: name, paths: parsed.error.issues.map((issue) => issue.path.join('.')) },
+      'reviewer tool output failed its output contract',
+    );
+    return { tool: name, ok: false, result: { error: 'tool output failed its output contract' } };
+  }
+  return { tool: name, ok, result: parsed.data };
+}
+
 export async function invokeReviewerTool<TName extends ReviewerToolName>(
   name: TName,
   input: unknown,
@@ -455,7 +483,7 @@ export async function invokeReviewerTool<TName extends ReviewerToolName>(
   try {
     const impl = implementations[name];
     const result = await impl(input, database);
-    return result as ToolResult;
+    return throughOutputContract(name, result.ok, result.result);
   } catch (err) {
     logger.warn({ tool: name, err }, 'reviewer tool invocation failed');
     return {

@@ -47,38 +47,36 @@ describe('check_calendar_conflict — the overlap, not the item', () => {
     return row.id;
   }
 
-  async function conflicts(): Promise<CalendarConflictOutput> {
+  async function conflicts(): Promise<{ raw: unknown; parsed: CalendarConflictOutput }> {
     const result = await invokeReviewerTool(
       'check_calendar_conflict',
       { familyId, startsAt: START.toISOString(), durationMinutes: 60 },
       db.database,
     );
-    // Parsed through the contract, so the shape the reviewer is handed is the shape
-    // the wire declares — a stray field would not survive the strip.
-    return calendarConflictOutput.parse(result.result);
+    // The RAW result is what reviewer.ts:267 stringifies into the model's turn, so the
+    // assertions below run on it. Parsing here as well would strip a re-grown column and
+    // hide the very regression this test exists for.
+    return { raw: result.result, parsed: calendarConflictOutput.parse(result.result) };
   }
 
   it('reports the overlap by id and window, and hands the model no title', async () => {
     const eventId = await seedEvent(TEEN_TITLE, new Date(START.getTime() + 15 * 60 * 1000), null);
 
-    const out = await conflicts();
+    const { raw, parsed } = await conflicts();
 
-    expect(out.hasConflict).toBe(true);
-    expect(out.conflictingEvents.map((e) => e.id)).toEqual([eventId]);
-    expect(Object.keys(out.conflictingEvents[0] ?? {}).sort()).toEqual([
-      'endsAt',
-      'id',
-      'startsAt',
-    ]);
-    expect(JSON.stringify(out)).not.toContain(TEEN_TITLE);
+    const rawEvents = (raw as { conflictingEvents: Record<string, unknown>[] }).conflictingEvents;
+    expect(Object.keys(rawEvents[0] ?? {}).sort()).toEqual(['endsAt', 'id', 'startsAt']);
+    expect(JSON.stringify(raw)).not.toContain(TEEN_TITLE);
+    expect(parsed.hasConflict).toBe(true);
+    expect(parsed.conflictingEvents.map((e) => e.id)).toEqual([eventId]);
   });
 
   it('still says no conflict when nothing overlaps — the check did not go blind', async () => {
     await seedEvent('Swim lesson', new Date(START.getTime() + 3 * HOUR), null);
 
-    const out = await conflicts();
+    const { parsed } = await conflicts();
 
-    expect(out.hasConflict).toBe(false);
-    expect(out.conflictingEvents).toEqual([]);
+    expect(parsed.hasConflict).toBe(false);
+    expect(parsed.conflictingEvents).toEqual([]);
   });
 });

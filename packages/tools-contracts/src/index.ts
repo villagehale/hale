@@ -229,6 +229,10 @@ export const actionTimeWindowOutput = z.object({
   withinWindow: z.boolean(),
   windowDescription: z.string(),
   nextAllowedAt: z.string().datetime().optional(),
+  /** The proposed hour in the family's own timezone — declared because the registry
+   * returns it and the reviewer reasons with it, and the door only sends what is
+   * declared (VIL-270). */
+  observedHour: z.number().int().min(0).max(23).optional(),
 });
 export type ActionTimeWindowInput = z.infer<typeof actionTimeWindowInput>;
 export type ActionTimeWindowOutput = z.infer<typeof actionTimeWindowOutput>;

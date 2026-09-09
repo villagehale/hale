@@ -104,10 +104,12 @@ function makeCachedClient(tag) {
   };
 }
 
-// A tool invoker that mirrors the REAL invokeReviewerTool: it parses the model's
-// input through the live tools-contracts schema (a bad call → ok:false), then
-// returns the fixture-scripted ok for a valid call. This is what makes a missing
-// action_hash surface as ok:false — the exact ISSUE-5 failure mode.
+// A tool invoker that mirrors the INPUT half of the real invokeReviewerTool: it parses
+// the model's input through the live tools-contracts schema (a bad call → ok:false),
+// then returns the fixture-scripted ok for a valid call. This is what makes a missing
+// action_hash surface as ok:false — the exact ISSUE-5 failure mode. The results are
+// scripted rather than contract-shaped, so this eval says nothing about the real door's
+// output projection (VIL-270); that is pinned by output-contract.test.ts instead.
 function makeInvokeTool(checkPolicy) {
   return async (name, rawInput) => {
     const spec = REVIEWER_TOOLS[name];
