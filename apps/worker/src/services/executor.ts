@@ -454,20 +454,17 @@ async function calendarPlacement(
     };
   }
 
-  const title = requirePayloadString(payload.title, 'title', actionType);
   const startsAt = parsePayloadInstant(payload.startsAt, 'startsAt', actionType);
   const endsAt = optionalPayloadInstant(payload.endsAt, 'endsAt', actionType);
-  const location = typeof payload.location === 'string' ? payload.location : null;
 
   if (actionType === 'calendar_move') {
+    // Only the new time. The row keeps its own title and place — see CalendarMoveInput.
     const result = await deps.moveCalendarEvent({
       familyId: input.familyId,
       actionId: input.approved.id,
       reversalHandle: requirePayloadString(payload.reversalHandle, 'reversalHandle', actionType),
-      title,
       startsAt,
       endsAt,
-      location,
     });
     const invites = await inviteUnlessAlreadyWritten(input, deps, result, 'REQUEST');
     return {
@@ -485,6 +482,8 @@ async function calendarPlacement(
     };
   }
 
+  const title = requirePayloadString(payload.title, 'title', actionType);
+  const location = typeof payload.location === 'string' ? payload.location : null;
   const result = await deps.addToCalendar({
     familyId: input.familyId,
     actionId: input.approved.id,
