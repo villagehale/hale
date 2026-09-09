@@ -1,3 +1,4 @@
+import { inspect } from 'node:util';
 import type { RegistrationWindow } from '@hale/db';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -1210,7 +1211,8 @@ describe('VIL-338 · the bound course is read at send time', () => {
     // Rule #1. The courseId in that URL names the exact class one household is signing
     // a child up for, and this log line is the only place in the feature where a stored
     // page value leaves the process — on the path a slow municipal server takes every
-    // morning. Kills logging the URL itself.
+    // morning. Kills logging the URL itself, and kills logging the ERROR, whose message
+    // is where the URL actually travels.
     const lines: unknown[][] = [];
     const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       lines.push(args);
@@ -1218,8 +1220,9 @@ describe('VIL-338 · the bound course is read at send time', () => {
     try {
       const h = harness({
         sequences: [bound()],
-        fetchBody: async () => {
-          throw new Error('socket hang up');
+        fetchBody: async (url) => {
+          // The message the REAL primitive throws (verify-sweep.ts) — the URL is IN it.
+          throw new Error(`page fetch ${url} → HTTP 503`);
         },
       });
 
@@ -1227,7 +1230,11 @@ describe('VIL-338 · the bound course is read at send time', () => {
 
       const line = lines.find((args) => String(args[1]).includes('course page read failed'));
       expect(line?.[0]).toMatchObject({ host: 'cityofmarkham.perfectmind.com' });
-      expect(JSON.stringify(line?.[0])).not.toContain(MARKHAM_COURSE_ID);
+      // `inspect`, not `JSON.stringify`: an Error serializes to `{}` through JSON, so a
+      // stringify assertion here passes with the whole URL sitting in the payload — the
+      // shape the runtime's own console formatter prints in full.
+      expect(inspect(line?.[0], { depth: 5 })).not.toContain(MARKHAM_COURSE_ID);
+      expect(inspect(line?.[0], { depth: 5 })).not.toContain('perfectmind.com/Clients');
     } finally {
       errorSpy.mockRestore();
     }

@@ -528,11 +528,16 @@ function courseReader(fetchBody: FetchPage, startedAt: number) {
       try {
         return { ok: true, raw: await getPage(url) };
       } catch (err) {
-        // THE HOST AND NOTHING ELSE (rule #1). A log line about a slow municipal server
-        // is a fact about that server; the `courseId` in the URL is the exact class one
-        // household is signing a child up for, and it is not needed to read "Markham was
-        // unreachable this morning" off a log.
-        console.error({ err, host: hostOf(url) }, 'registration sequence: course page read failed');
+        // THE HOST AND THE ERROR'S CLASS, AND NOTHING ELSE (rule #1). A log line about a
+        // slow municipal server is a fact about that server; the `courseId` in the URL is
+        // the exact class one household is signing a child up for, and it is not needed
+        // to read "Markham was unreachable this morning" off a log. NOT the error object:
+        // the fetch primitive throws `page fetch ${url} → HTTP ${status}`, so logging
+        // `err` carries the whole course URL into the log through its message.
+        console.error(
+          { name: err instanceof Error ? err.name : 'unknown', host: hostOf(url) },
+          'registration sequence: course page read failed',
+        );
         return { ok: false, reason: 'fetch_failed' };
       }
     },
