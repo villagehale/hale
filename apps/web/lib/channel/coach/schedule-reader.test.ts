@@ -44,6 +44,7 @@ interface Fixture {
   familyId: string;
   teenEventId: string;
   sensitiveEventId: string;
+  sensitiveUnattributedEventId: string;
   toddlerEventId: string;
   familyWideEventId: string;
   almostTeenEventId: string;
@@ -118,6 +119,13 @@ describe('channelScheduleReader — the projection at the door (VIL-270)', () =>
         location: 'SickKids, 4B',
         sensitive: true,
       }),
+      sensitiveUnattributedEventId: await seedEvent({
+        familyId,
+        childId: null,
+        title: 'Couples counselling — Dr. Mensah',
+        location: 'Bloor & Spadina, suite 300',
+        sensitive: true,
+      }),
       toddlerEventId: await seedEvent({
         familyId,
         childId: toddlerChildId,
@@ -177,6 +185,23 @@ describe('channelScheduleReader — the projection at the door (VIL-270)', () =>
     expect(event.location).toBeNull();
     expect(event.teen).toBe(false);
     expect(event.sensitive).toBe(true);
+  });
+
+  it('projects a sensitive row that names no child — the two gates are independent', async () => {
+    // The parent's own therapy hour: `addToCalendar` takes childId and sensitive as
+    // independent fields (internal-writes.ts:193-196), so a row can be flagged private
+    // with nothing to join a child on. `sensitive` is then the ONLY mark on it, and a
+    // projection that reached for the child join first would hand this one out raw.
+    for (const event of [
+      await resolved(fx.sensitiveUnattributedEventId),
+      await inWeek(fx.sensitiveUnattributedEventId),
+    ]) {
+      expect(event.title).toBe(PRIVATE_EVENT_WHAT);
+      expect(event.location).toBeNull();
+      expect(event.childId).toBeNull();
+      expect(event.teen).toBe(false);
+      expect(event.sensitive).toBe(true);
+    }
   });
 
   it('leaves a toddler-linked row raw — the projection is a gate, not a blanket', async () => {
