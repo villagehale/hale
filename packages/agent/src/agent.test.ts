@@ -800,6 +800,71 @@ describe('runAgentStreaming', () => {
     ]);
   });
 
+  it('names a stream that hit the ceiling before a single token reached the parent', async () => {
+    // Streaming has no re-ask — partial text is already on the wire, so asking again
+    // would show two answers to one question. That argument fails exactly here, where
+    // NOTHING streamed, so the outcome at least has to be reported rather than hidden
+    // in a null answer (rule #11): the same swallow runAgent re-asks, named.
+    const client = fakeStreamingClient([
+      { chunks: [], final: truncatedThinkingMessage(usage(1_000, 400)) },
+    ]);
+    const { deps } = guardDeps();
+
+    const result = await runAgentStreaming({
+      skill,
+      context: { question: 'is my baby on track?' },
+      tools: [profileTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+    });
+
+    expect(result.answer).toBeNull();
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedRetries).toBe(0);
+    expect(result.hitMaxSteps).toBe(false);
+  });
+
+  it('does not call a stream truncated once its text was already on the wire', async () => {
+    // The positive control for the flag above: same `max_tokens` stop, but the parent
+    // has the sentence. A clipped answer is an answer, and calling it truncated would
+    // put a lane-config defect's name on an ordinary long reply.
+    const clipped: Anthropic.Message = {
+      id: 'msg-clipped-stream',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'max_tokens',
+      stop_sequence: null,
+      content: [
+        { type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock,
+      ],
+      usage: usage(1_000, 400),
+    };
+    const client = fakeStreamingClient([
+      { chunks: ['Around 18 months, ', 'once he'], final: clipped },
+    ]);
+    const { deps } = guardDeps();
+
+    const result = await runAgentStreaming({
+      skill,
+      context: { question: 'when does he drop the nap?' },
+      tools: [profileTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+    });
+
+    expect(result.answer).toBe('Around 18 months, once he');
+    expect(result.truncated).toBe(false);
+  });
+
   it('fires onStep/onToolCall/onToolResult in order, name+ok+preview only, NEVER raw args or output (rule #1)', async () => {
     // The tool_use carries a real childId in its args, and the tool HANDLER returns a
     // child's name — both are teen-sensitive. The step/tool events must expose the
