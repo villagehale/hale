@@ -9,6 +9,8 @@ import {
   type CronManifestEntry,
   cronSlug,
   STALE_GRACE_SECONDS,
+  INBOUND_LANE_STALL_SECONDS,
+  assessInboundLane,
   schedulePeriodSeconds,
   staleAfterSeconds,
 } from './deadman';
@@ -234,6 +236,37 @@ describe('MUTATION JOURNEY: freeze a stamp → report goes stale → the real ch
     expect(alarm.output).toContain('drain');
   });
 
+  it('the real checker names a stale LANE exactly as it names a stale cron', () => {
+    // The lane rides the existing `crons` array precisely so the checker needs no
+    // edit: it filters on the 'stale' token, not on a manifest slug.
+    const crons = manifest().map(({ path, schedule }) => ({
+      name: cronSlug(path),
+      status: 'ok',
+      ageSeconds: 30,
+      staleAfterSeconds: staleAfterSeconds(schedule),
+    }));
+
+    const alarm = runChecker(
+      200,
+      JSON.stringify({
+        ok: false,
+        crons: [...crons, assessInboundLane(1_860)],
+      }),
+    );
+    expect(alarm.exitCode).toBe(1);
+    expect(alarm.output).toContain('ALARM');
+    expect(alarm.output).toContain('lane:inbound-turns (31m)');
+
+    // POSITIVE CONTROL: the same body with a healthy lane passes, so the line
+    // above is the lane's doing and not a body the checker rejects wholesale.
+    const pass = runChecker(
+      200,
+      JSON.stringify({ ok: true, crons: [...crons, assessInboundLane(null)] }),
+    );
+    expect(pass.exitCode).toBe(0);
+    expect(pass.output).toContain(`all ${crons.length + 1} crons fresh`);
+  });
+
   it('a refusal is not evidence: non-200, unparseable, and empty verdicts all alarm', () => {
     expect(runChecker(503, JSON.stringify({ ok: false, error: 'db_unreachable' })).exitCode).toBe(
       1,
@@ -241,5 +274,36 @@ describe('MUTATION JOURNEY: freeze a stamp → report goes stale → the real ch
     expect(runChecker(200, 'not json').exitCode).toBe(1);
     // A body that says nothing must never read as healthy.
     expect(runChecker(200, JSON.stringify({ ok: true, crons: [] })).exitCode).toBe(1);
+  });
+});
+
+describe('assessInboundLane', () => {
+  it('an empty lane is ok and publishes no age', () => {
+    expect(assessInboundLane(null)).toEqual({
+      name: 'lane:inbound-turns',
+      status: 'ok',
+      ageSeconds: null,
+      staleAfterSeconds: INBOUND_LANE_STALL_SECONDS,
+    });
+    expect(INBOUND_LANE_STALL_SECONDS).toBe(600);
+  });
+
+  it('withholds the age of a HEALTHY lane, right up to the threshold', () => {
+    // A healthy age would tell an anonymous poller "a family texted 12 seconds
+    // ago" — traffic timing about real households on an unauthenticated
+    // endpoint (rule #1). Only an outage duration is published.
+    expect(assessInboundLane(0)).toMatchObject({ status: 'ok', ageSeconds: null });
+    expect(assessInboundLane(600)).toMatchObject({ status: 'ok', ageSeconds: null });
+  });
+
+  it('one second past the threshold is stale, and carries the outage duration', () => {
+    expect(assessInboundLane(601)).toEqual({
+      name: 'lane:inbound-turns',
+      // The SAME token the off-Vercel checker filters on — a lane named 'stalled'
+      // would flip ok:false and then be left out of the founder's SMS.
+      status: 'stale',
+      ageSeconds: 601,
+      staleAfterSeconds: 600,
+    });
   });
 });
