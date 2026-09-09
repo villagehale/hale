@@ -112,6 +112,11 @@ export const registrationSequences = pgTable(
     // Either half alone is a lie the scheduler would act on: a link with no anchor is a
     // ladder with nothing to hang its legs from, and an anchor with no link is an instant
     // no send-time read can re-verify.
+    // 200 = apps/web/lib/channel/spots/url.ts MAX_URL_CHARS, pinned by url-check-consistency.test.ts
+    courseUrlLengthCheck: check(
+      'registration_sequences_course_url_length_check',
+      sql`${table.courseUrl} IS NULL OR length(${table.courseUrl}) <= 200`,
+    ),
     courseCheck: check(
       'registration_sequences_course_check',
       sql`(${table.courseUrl} IS NULL) = (${table.courseOpensAt} IS NULL)`,
