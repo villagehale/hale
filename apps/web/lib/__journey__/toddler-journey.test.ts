@@ -54,7 +54,7 @@ import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
-import { renderShortlistRationale, windowPhrase } from '~/lib/registration/sequence/copy';
+import { windowPhrase } from '~/lib/registration/sequence/copy';
 import {
   type LiveSequence,
   type SequenceFamily,
@@ -63,7 +63,6 @@ import {
   legDedupeKey,
 } from '~/lib/registration/sequence/run';
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
-import { portalForMunicipality } from '~/lib/channel/spots/url';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -1208,23 +1207,22 @@ describe('6 · the registration sequence claims the window and prepares the morn
     expect(windowPhrase(shortlist as never)).not.toContain('Aquatic Leadership');
     // Both children are squarely inside 12–60 months, so nothing is hedged.
     expect(shortlist?.fitNotes.map((note) => note.fit)).toEqual(['in_band', 'in_band']);
-    // The fourth argument is the portal the LEGS will run on, and Markham's is one Hale
-    // has learned to read — so the card enumerates FOUR texts, which is exactly what
-    // this household then receives above. The card and the ladder have to enumerate the
-    // same messages: a household promised a checklist it will not receive has consented
-    // to one thing and been sent another.
-    const rationale = renderShortlistRationale(
-      shortlist as never,
-      TZ,
-      SEQUENCE_AT,
-      portalForMunicipality('markham'),
-    );
-    expect(rationale).toContain('I never register for you');
-    expect(rationale).toContain(
+  });
+
+  it('enumerates on the card the four texts this household then receives', () => {
+    // THE CARD ITSELF, not a second call to the renderer — the sentence the parent's
+    // approval consents to is `payload.summary`, which is what the approvals surface
+    // reads (inline-action.ts). Markham's portal is one Hale has learned to read, so
+    // this ladder fires FOUR legs (['heads_up','readiness','battle_plan'] above, plus
+    // the go leg), and a card that enumerated three would have the household consent to
+    // one thing and receive another.
+    const summary = String((journey.draftedAction.payload as Record<string, unknown>).summary);
+    expect(summary).toContain('I never register for you');
+    expect(summary).toContain(
       'a week ahead, a checklist a few days out, the evening before, and 15 minutes before it opens',
     );
     // The one place a parent learns how to bind a course, and it is read on a screen.
-    expect(rationale).toContain('the morning text will carry it');
+    expect(summary).toContain('the morning text will carry it');
   });
 });
 

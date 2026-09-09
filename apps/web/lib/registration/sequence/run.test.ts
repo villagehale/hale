@@ -313,6 +313,23 @@ describe('the shortlist proposal', () => {
     expect(auditActions(h.writes)).toContain('registration_shortlist_drafted');
   });
 
+  it('enumerates THREE texts on the card for a town with no portal Hale can read', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ windows: [win()] });
+    await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
+    // Richmond Hill is one of the thirteen. The card a household there consents to is
+    // byte-identical to the one that shipped before VIL-338, because no readiness leg
+    // will ever fire for them — and the sentence enumerating the ladder is the one
+    // thing the approval IS. Kills a rationale that names a portal from anywhere but
+    // this window's own municipality.
+    const rationale = String(h.drafts[0]?.rationale);
+    expect(rationale).toContain(
+      'Approving this asks me to text you a week ahead, the evening before, and 15 minutes before it opens. I never register for you.',
+    );
+    expect(rationale).not.toContain('a checklist a few days out');
+    expect(rationale).not.toContain('the morning text will carry it');
+  });
+
   it('proposes at most ONE window per family per run', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const second = win({ id: 'w-2', cycleLabel: 'Fall 2026 Swim', programDomain: 'swim' });

@@ -427,13 +427,17 @@ async function proposeForFamily(
         // shortlist may cover two siblings at once.
         childId: null,
         intentKind: 'registration_shortlist',
-        // NULL, and it is the same null every leg below is handed: nothing in this
-        // module yet reads `course_url`, `course_opens_at` or `readiness_ready` off the
-        // row, so no household is on the portal ladder and the card must not enumerate
-        // a fourth text nobody will send. The registry lookup lands with the loader
-        // that reads those three columns, in one change — the sentence a parent
-        // consents to and the legs they then receive have to move together.
-        rationale: renderShortlistRationale(shortlist, family.timeZone, now, null),
+        // THE SAME REGISTRY LOOKUP THE LEGS RUN ON (`dueLeg`, `renderSequenceLeg`), so
+        // the card enumerates exactly the texts this household will receive: four where
+        // Hale has learned to read the town's portal and the readiness leg therefore
+        // fires, three everywhere else. The sentence a parent consents to and the legs
+        // they then get have to move together.
+        rationale: renderShortlistRationale(
+          shortlist,
+          family.timeZone,
+          now,
+          portalForMunicipality(match.window.municipality),
+        ),
         // The card's own copy. Without these the approvals surface showed the generic
         // "Note in your daily digest" over the raw payload keys, so the municipality,
         // the date, the link and the "I never register for you" line — the things the
