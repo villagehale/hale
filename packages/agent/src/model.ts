@@ -219,6 +219,24 @@ export function laneRequestFields(lane: LaneConfig): LaneRequestFields {
   };
 }
 
+/**
+ * The same lane with thinking off.
+ *
+ * On Sonnet 5 and Opus 5 this is the one request shape on which `max_tokens` cannot be
+ * spent reasoning: there is no thinking budget on these models (`budget_tokens` is a
+ * 400) and `effort` is a hint, not a bound. Null when the lane was not thinking in the
+ * first place — a re-ask at the same shape buys the same completion twice. `xhigh`
+ * clamps to `high` because disabled + xhigh is a 400 (see LaneConfig).
+ */
+export function withoutThinking(lane: LaneConfig): LaneConfig | null {
+  if (!('thinking' in lane) || lane.thinking === 'disabled') return null;
+  return {
+    model: lane.model,
+    thinking: 'disabled',
+    effort: lane.effort === 'xhigh' ? 'high' : lane.effort,
+  };
+}
+
 /** Type guard: is `value` a known AgentTask? Lets the skill loader fail loudly on a typo. */
 export function isAgentTask(value: string): value is AgentTask {
   return value in TASK_LANE;
