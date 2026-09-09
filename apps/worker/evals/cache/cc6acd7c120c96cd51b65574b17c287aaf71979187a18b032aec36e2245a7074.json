@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply drafts the gymnastics class (Tiny Gym at Cartwheels, Sundays at 9:30, Sept 13) that Hale itself named in an earlier thread message — that is recall, not invention. The parent's text names exactly one event (the gymnastics class Hale already surfaced), so the reference is resolved and drafting is correct. Two items are drafted (within the draftCapPerMessage of 2). The reply names the change and ends with \"YES to lock it in.\" — exactly the contract shape required. It is short, no greeting, no sign-off, no markdown, one question. The only tiny blemish is \"want me to confirm?\" before \"YES to lock it in\" — the contract already makes the YES the confirmation mechanism, so that clause is mildly redundant but not harmful. Otherwise this is the product working correctly.",
+    "score": 4
+  }
+}
