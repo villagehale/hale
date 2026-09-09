@@ -4,6 +4,7 @@ import type { Database } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import type {
+  BindReadClaimResult,
   PrepareReplyDeps,
   PreparingSequence,
 } from '~/lib/registration/sequence/prepare-reply';
@@ -73,6 +74,9 @@ const NO_PREPARE: PrepareReplyDeps = {
   },
   readinessAskedLastAt: async () => {
     throw new Error('the pre-open branch must not run for a dark household');
+  },
+  claimBindRead: async () => {
+    throw new Error('the pre-open branch must not claim a read');
   },
   fetchBody: async () => {
     throw new Error('the pre-open branch must not fetch');
@@ -720,6 +724,7 @@ function prepareDeps(
     sequence?: PreparingSequence | null;
     askedAt?: Date | null;
     page?: string | null;
+    claim?: BindReadClaimResult;
   } = {},
 ) {
   const bound: Array<{ url: string; courseOpensAt: Date; inbound: string }> = [];
@@ -731,6 +736,7 @@ function prepareDeps(
       options.sequence === undefined ? PREPARING : options.sequence,
     readinessAskedLastAt: async () =>
       options.askedAt === undefined ? READINESS_QUESTION.askedAt : options.askedAt,
+    claimBindRead: async () => options.claim ?? { status: 'claimed' as const },
     fetchBody: async () => {
       if (options.page === null) throw new Error('ETIMEDOUT');
       return options.page ?? FIXTURE_PAGE;

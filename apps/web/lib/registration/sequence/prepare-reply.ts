@@ -312,6 +312,12 @@ export type CourseBindOutcome =
   | { status: 'already_bound'; reply: string }
   | { status: 'refused'; reason: CourseBindRefusal; reply: string }
   /**
+   * The one outcome that is about HALE rather than about the link, which is why it is
+   * not a member of {@link COURSE_BIND_REFUSALS}: every reason in that list is a fact
+   * about the paste and writes nothing, and this one must write (rule #6).
+   */
+  | { status: 'read_throttled'; reply: string }
+  /**
    * NOT this module's message. A course whose registration is already open is what
    * VIL-337's watch verb and the coach are for, and a refusal here would be Hale
    * telling a parent it cannot do the thing it can actually do.
@@ -338,6 +344,19 @@ export async function handleCourseBind(
   const pasted = SPOT_PORTAL_HOSTS[sanitized.host];
   if (pasted === undefined || pasted.municipality !== sequence.municipality) {
     return refuse(sequence, 'wrong_municipality', now);
+  }
+
+  // BELOW the sanitizer and the municipality check, deliberately: a paste Hale refuses
+  // without opening anything costs no request, so it must cost no read either.
+  const claim = await deps.claimBindRead(database, {
+    familyId: sequence.familyId,
+    sequenceId: sequence.sequenceId,
+    host: sanitized.host,
+    inboundChannelMessageId: input.inboundChannelMessageId,
+    now,
+  });
+  if (claim.status === 'throttled') {
+    return { status: 'read_throttled', reply: throttledSentence(claim.retryMinutes) };
   }
 
   let raw: string;
@@ -450,6 +469,19 @@ function refusalSentence(
     case 'different_season':
       return `That course opens ${when(pageClock as Date, sequence.timeZone, now)} and the ${town} morning I am holding is ${when(sequence.opensForFamilyAt, sequence.timeZone, now)}. That looks like a different season, so I have left it as it was.`;
   }
+}
+
+/**
+ * The throttle's one sentence, and it makes no promise it does not keep.
+ *
+ * Hale does NOT come back to the link later — there is no re-read job and no new kind
+ * of commitment — so the sentence says exactly that, and hands the parent the only
+ * thing that is true: the minute the next read is theirs. The number is the slot's own
+ * remainder rather than the window's length, because a fixed slot pasted into late
+ * would otherwise be told to wait longer than it must.
+ */
+function throttledSentence(minutes: number): string {
+  return `I just read a course page for you, and I read one at a time. I have not opened that link and I will not come back to it - send it again in ${minutes} minute${minutes === 1 ? '' : 's'} and I will read it then.`;
 }
 
 function when(instant: Date, timeZone: string, now: Date): string {
@@ -718,7 +750,12 @@ export interface PrepareReplyDeps {
     now: Date,
   ): Promise<PreparingSequence | null>;
   readinessAskedLastAt(database: Database, sequence: PreparingSequence): Promise<Date | null>;
-  /** Non-nullable (rule #11): a bind that cannot read the page refuses in a sentence. */
+  /**
+   * Non-nullable (rule #11), both of them. A bind that cannot read the page refuses in
+   * a sentence; a bind whose read is not this family's to take this window refuses in
+   * another, and neither is a dependency a caller may withhold to get a quiet no-op.
+   */
+  claimBindRead(database: Database, input: BindReadClaim): Promise<BindReadClaimResult>;
   fetchBody: FetchPage;
   recordCourseBinding(
     database: Database,
@@ -734,6 +771,7 @@ export function defaultPrepareReplyDeps(): PrepareReplyDeps {
   return {
     loadPreparingSequence,
     readinessAskedLastAt,
+    claimBindRead,
     fetchBody: createFetchBody(BIND_FETCH_TIMEOUT_MS),
     recordCourseBinding,
     recordReadinessState,
