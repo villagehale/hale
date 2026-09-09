@@ -605,6 +605,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     // messages-cache read (toggling thinking invalidates it on every model; whether the
     // tools/system prefix also re-writes is model-specific — read
     // `usage.cache_creation_input_tokens` on the leg, which the eval report prints).
+    // Measured on the coach corpus: the first thinking-off leg writes the ~18k prefix
+    // once, every later one reads it back warm.
+    //
+    // A re-ask at step 2 or later sends history that already carries a SIGNED thinking
+    // block from the adaptive step before it. That is accepted under
+    // `thinking: {type:'disabled'}` — probed live against Sonnet 5, 200 not 400 — so the
+    // history needs no stripping.
     //
     // Raising the LANE budget instead was the obvious alternative and it is the wrong
     // trade: measured on the coach corpus, more room for every turn makes the model
