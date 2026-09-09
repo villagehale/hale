@@ -137,7 +137,7 @@ async function setArea(area: string): Promise<void> {
     .where(eq(schema.families.id, familyId));
 }
 
-async function seedInbound(body: string): Promise<string> {
+async function seedInbound(body: string, createdAt = NOW): Promise<string> {
   const [row] = await db.database
     .insert(schema.channelMessages)
     .values({
@@ -148,7 +148,7 @@ async function seedInbound(body: string): Promise<string> {
       category: 'reply',
       status: 'delivered',
       body,
-      createdAt: NOW,
+      createdAt,
     })
     .returning({ id: schema.channelMessages.id });
   if (!row) throw new Error('seedInbound: no row');
@@ -251,6 +251,47 @@ describe('loadPreparingSequence', () => {
       .where(eq(schema.actions.familyId, familyId));
 
     expect(await loadPreparingSequence(db.database, familyId, NOW)).toBeNull();
+  });
+
+  it('is null once the family has an outcome on file — kills dropping `outcome is null`', async () => {
+    await db.database
+      .update(schema.registrationSequences)
+      .set({ outcome: 'registered' })
+      .where(eq(schema.registrationSequences.id, sequenceId));
+
+    // The anchor is still four days ahead, so only the outcome filter can refuse this.
+    expect(await loadPreparingSequence(db.database, familyId, NOW)).toBeNull();
+  });
+
+  it('is null once the shortlist was DECLINED — kills dropping `reverted_at is null`', async () => {
+    // A declined card is the parent saying no to the whole ladder. Without this filter
+    // a pasted link binds onto a sequence that will never send a leg, and the ack
+    // promises a morning text nobody is going to receive.
+    await db.database
+      .update(schema.actions)
+      .set({ revertedAt: NOW })
+      .where(eq(schema.actions.familyId, familyId));
+
+    expect(await loadPreparingSequence(db.database, familyId, NOW)).toBeNull();
+  });
+
+  it('is null once the RESIDENT date has passed, while the general one is still ahead', async () => {
+    // The only shape that tells the JS anchor check apart from the SQL predicate it
+    // narrows: `open_at` is a day away (the row passes the WHERE) but this L3R family
+    // registers on the resident clock, which ran this morning.
+    await db.database
+      .update(schema.registrationWindows)
+      .set({ residentOpenAt: RESIDENT_CLOCK, openAt: PUBLIC_CLOCK, residentPriorityDays: 1 })
+      .where(eq(schema.registrationWindows.id, windowId));
+
+    expect(
+      await loadPreparingSequence(db.database, familyId, new Date('2026-08-11T11:00:00.000Z')),
+    ).toBeNull();
+    // The positive control: an hour BEFORE the resident clock the same row still loads,
+    // so the case above is refusing on the anchor and not on a broken seed.
+    expect(
+      await loadPreparingSequence(db.database, familyId, new Date('2026-08-11T09:30:00.000Z')),
+    ).not.toBeNull();
   });
 
   it('is null for a municipality Hale has never read a portal for', async () => {
@@ -674,6 +715,22 @@ describe('the readiness question is open only while the ask is Hale’s last wor
     });
 
     expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+  });
+
+  /**
+   * THE POSITIVE CONTROL on `direction = 'out'`. In production the parent's own reply is
+   * ALWAYS a newer row than the ask — twilio/inbound.ts inserts it (direction 'in',
+   * parentUserId) before the turn is enqueued — so a newer-message read that forgets to
+   * ask which way the message went closes the question on every real turn, and the
+   * suite's other cases, whose only inbound predates the ask, would never notice.
+   */
+  it('stays open across the parent’s own reply — kills a newer read that forgets direction', async () => {
+    await seedOutbound({ dedupeKey: readinessKey(), createdAt: ASKED_AT });
+    await seedInbound('yes', new Date(ASKED_AT.getTime() + 3_600_000));
+
+    expect(await readinessQuestion(db.database, familyId, NOW)).toMatchObject({
+      askedAt: ASKED_AT,
+    });
   });
 
   it('re-opens on the battle plan’s re-ask, and dates itself by the NEWEST ask', async () => {
