@@ -24,7 +24,6 @@ import { runDrafter } from '../agents/drafter.js';
 import { runReviewer } from '../agents/reviewer.js';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { logger } from '../logger.js';
-import { redactEventPayload } from '../redaction/redact.js';
 import {
   type CalendarInviteSender,
   type ExecutorDeps,
@@ -261,11 +260,7 @@ export async function runOrchestrator(
       return;
     }
 
-    // Rule #1 ingest boundary: redact connector/inbound PII (known child names +
-    // dates/postal/email/phone) from the CLASSIFIER INPUT only. rawContent stays
-    // un-redacted for the dedupHash below so a crash-and-retry probes the same row.
     const childNames = familyContext.children.map((c) => c.name);
-    const redactedRaw = JSON.stringify(redactEventPayload(job.payload, childNames));
 
     const isAcceptedVillageItem =
       job.source === VILLAGE_SOURCE && job.payload.event_type === VILLAGE_ACCEPT_EVENT_TYPE;
@@ -274,7 +269,8 @@ export async function runOrchestrator(
       : await runClassifier({
           familyId,
           source: job.source,
-          rawContent: redactedRaw,
+          payload: job.payload,
+          childNames,
           stages,
           familyContextSlice: familyContext.contextSlice,
         });
@@ -301,9 +297,8 @@ export async function runOrchestrator(
       eventType: fresh.eventType,
       payload: fresh.payload,
       classifierConfidence: fresh.confidence.score,
-      // The stored dedup key is the ORIGINAL content hash (computed above from the
-      // un-redacted rawContent), NOT fresh.dedupHash — the classifier now hashes
-      // the redacted input, which would shift the key and break resume/dedup.
+      // The stored key is the one computed at the top of the run, BEFORE the
+      // resume probe read it — so a crash-and-retry probes to this same row.
       dedupHash,
       suggestion: fresh.suggestion,
       teenContent,
