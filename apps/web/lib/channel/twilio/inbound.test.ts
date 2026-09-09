@@ -177,9 +177,9 @@ function enrol(
 }
 
 /** A family whose intake conversation is over, so the machine defers to A3. */
-function closeIntake(fake: FakeDb, phone = PHONE): void {
+function closeIntake(fake: FakeDb): void {
   fake.db.insert(schema.smsIntakeSessions).values({
-    phoneHash: phoneBlindIndex(phone),
+    phoneHash: phoneBlindIndex(PHONE),
     state: 'complete',
     closedAt: NOW,
   } as never);
@@ -731,8 +731,11 @@ describe('routing outcomes are logged and counted (rule #11)', () => {
     const h = harness();
     // The synthetic probe household, resolved the way the door resolves anyone:
     // by blind index on an active verified channel.
+    // NO intake session, which is what production will look like: the machine
+    // is session-less for this number, resolves it as a known parent, finds
+    // nothing to answer, and returns no_open_conversation — the one outcome
+    // that reaches the hand-off.
     enrol(h.fake, 'primary_parent', CANARY_PHONE_E164);
-    closeIntake(h.fake, CANARY_PHONE_E164);
 
     const outcome = await routeTwilioInbound(
       h.deps,
