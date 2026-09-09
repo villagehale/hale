@@ -127,12 +127,18 @@ export const calendarConflictInput = z.object({
   startsAt: z.string().datetime(),
   durationMinutes: z.number().int().positive(),
 });
+/**
+ * Deliberately no `title` (VIL-270): the reviewer is a third-party model, this check is
+ * FORCED on every calendar draft, and a verdict about a TIME COLLISION needs the window
+ * and the id — never the words. Returning the overlapping rows' titles put a private
+ * sibling event in front of Anthropic on a draft that had nothing to do with it, with no
+ * teen or sensitive filter anywhere on the path.
+ */
 export const calendarConflictOutput = z.object({
   hasConflict: z.boolean(),
   conflictingEvents: z.array(
     z.object({
       id: z.string(),
-      title: z.string(),
       startsAt: z.string().datetime(),
       endsAt: z.string().datetime(),
     }),

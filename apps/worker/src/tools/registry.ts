@@ -183,7 +183,6 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
     const overlapping = await database
       .select({
         id: schema.familyEvents.id,
-        title: schema.familyEvents.title,
         startsAt: schema.familyEvents.startsAt,
         endsAt: schema.familyEvents.endsAt,
       })
@@ -212,9 +211,10 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
       ok: overlapping.length === 0,
       result: {
         hasConflict: overlapping.length > 0,
+        // Ids and windows only — never the rows' titles (VIL-270). The moved row's own
+        // id equals the draft's reversalHandle, so self-overlap is still recognisable.
         conflictingEvents: overlapping.map((e) => ({
           id: e.id,
-          title: e.title,
           startsAt: e.startsAt.toISOString(),
           endsAt: (e.endsAt ?? e.startsAt).toISOString(),
         })),
