@@ -2,6 +2,8 @@ import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { loadAwaitingSequence } from './reply.js';
+import { loadAwaitingSequence } from './reply.js';
 import { defaultSequenceRunDeps } from './run.js';
 
 /**
@@ -240,5 +242,91 @@ describe('defaultSequenceRunDeps().refreshCourseAnchor · the guard', () => {
     });
 
     expect(moved).toBe(false);
+  });
+});
+
+
+/**
+ * VIL-338 · the check-in listens for as long after the BOUND course's morning as it
+ * does after an unbound one, and answers about the morning that just ran.
+ *
+ * `runLegForSequence` anchors the ladder on `course_opens_at`, so the check-in goes out
+ * four hours after the COURSE's morning — but this loader's horizon and ordering are
+ * SQL, and a chain fake returns whatever rows it was handed however the WHERE reads. A
+ * course bound days away from the M1 row is exactly the shape an M1 anchor loses.
+ */
+describe('loadAwaitingSequence · the horizon and the ordering', () => {
+  let horizonFamilyId: string;
+  let horizonParentUserId: string;
+
+  beforeAll(async () => {
+    const seeded = await seedFamily(db.database, 'Awaiting Horizon Family');
+    horizonFamilyId = seeded.familyId;
+    horizonParentUserId = seeded.parentUserId;
+    await db.database
+      .insert(schema.children)
+      .values({ familyId: horizonFamilyId, name: 'Maya', dateOfBirth: '2022-05-01' });
+  });
+
+  async function seedSequenceOn(openAt: Date, courseOpensAt: Date | null): Promise<void> {
+    windowSeq += 1;
+    const [window] = await db.database
+      .insert(schema.registrationWindows)
+      .values({
+        municipality: 'markham',
+        programDomain: 'rec_program',
+        cycleLabel: `Fall 2026 horizon #${windowSeq}`,
+        openAt,
+        ageMinMonths: 36,
+        ageMaxMonths: 84,
+        sourceUrl: 'https://example.test/window',
+        verifiedAt: new Date('2026-09-01T00:00:00.000Z'),
+      })
+      .returning({ id: schema.registrationWindows.id });
+    if (!window) throw new Error('seedSequenceOn: insert returned no window');
+    await db.database.insert(schema.registrationSequences).values({
+      familyId: horizonFamilyId,
+      windowId: window.id,
+      parentUserId: horizonParentUserId,
+      ...(courseOpensAt === null
+        ? {}
+        : { courseUrl: COURSE_URL, courseOpensAt }),
+    });
+  }
+
+  it('still hears a reply five hours after a course bound four days past the row', async () => {
+    const courseOpensAt = new Date('2026-09-19T10:30:00.000Z');
+    await seedSequenceOn(new Date('2026-09-15T10:30:00.000Z'), courseOpensAt);
+
+    // Five hours after the COURSE's morning — an hour after the check-in went out, well
+    // inside the 72-hour reply window. Kills a horizon measured from
+    // `registration_windows.open_at`: the M1 row is 101 hours back by then, past the
+    // 76-hour filter, so the loader answers null, the parent's "we got in" is never
+    // recorded, no outcome is filed and no waitlist guard starts.
+    const awaiting = await loadAwaitingSequence(
+      db.database,
+      horizonFamilyId,
+      new Date('2026-09-19T15:30:00.000Z'),
+    );
+
+    expect(awaiting?.state.openAt).toEqual(courseOpensAt);
+  });
+
+  it('answers about the morning that just ran, not the newest M1 row', async () => {
+    const courseOpensAt = new Date('2026-09-24T10:30:00.000Z');
+    // Two live sequences inside the horizon: an unbound one whose row opens FIRST, and
+    // the bound one whose course actually ran this morning. Kills an ordering left on
+    // `open_at` — the reply would be judged against, and its outcome filed on, the
+    // wrong registration morning.
+    await seedSequenceOn(new Date('2026-09-23T10:30:00.000Z'), null);
+    await seedSequenceOn(new Date('2026-09-22T10:30:00.000Z'), courseOpensAt);
+
+    const awaiting = await loadAwaitingSequence(
+      db.database,
+      horizonFamilyId,
+      new Date('2026-09-24T15:30:00.000Z'),
+    );
+
+    expect(awaiting?.state.openAt).toEqual(courseOpensAt);
   });
 });

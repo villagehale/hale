@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, gte, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { normalizeKeyword } from '~/lib/channel/intake/keywords';
 import { portalForMunicipality } from '~/lib/channel/spots/url';
 import { writeFact } from '~/lib/memory/facts';
@@ -309,6 +309,11 @@ export async function recordRegistrationOutcome(
   });
 }
 
+/** The instant a sequence's registration morning actually ran on, as SQL: the bound
+ * course's own clock where there is one, the M1 row's otherwise. Written once because
+ * the horizon and the ordering have to agree with each other and with the ladder. */
+const anchorAt = sql`coalesce(${schema.registrationSequences.courseOpensAt}, ${schema.registrationWindows.openAt})`;
+
 /**
  * The one open window this family could be answering about: the newest sequence whose
  * window has opened, that carries no outcome yet. The pure `awaitingOutcome` check in
@@ -344,10 +349,14 @@ export async function loadAwaitingSequence(
       and(
         eq(schema.registrationSequences.familyId, familyId),
         isNull(schema.registrationSequences.outcome),
-        gte(schema.registrationWindows.openAt, horizonStart),
+        // THE SAME ANCHOR THE LADDER RAN ON, in SQL. The check-in goes out four hours
+        // after the bound course's morning, so a horizon measured from the M1 row hears
+        // a reply for only `72h − drift` after it — and a course bound three days off
+        // the row (the bind gate allows seven) is never heard at all.
+        gte(anchorAt, horizonStart),
       ),
     )
-    .orderBy(desc(schema.registrationWindows.openAt))
+    .orderBy(desc(anchorAt))
     .limit(1);
   if (!row) return null;
 
