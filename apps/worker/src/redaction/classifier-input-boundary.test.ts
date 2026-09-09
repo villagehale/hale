@@ -78,14 +78,23 @@ describe('the classify stage owns the redaction of its own model input (VIL-160)
     [WEB_CLASSIFY, 'web classify stage'] as const,
   ]) {
     describe(`${why}`, () => {
+      it('builds exactly one raw_content signal', () => {
+        // (a) allowlists the FILE, so without this the allowlist would grant a
+        // second producer appended anywhere in the same module — and the
+        // binding assertion below reads only the first `raw_content:`. One
+        // producer per allowlisted file is what makes that assertion total.
+        const source = readFileSync(file, 'utf8');
+        expect(source.match(/raw_content:/g)?.length).toBe(1);
+      });
+
       it('assigns raw_content from the redactor, called with the input it was given', () => {
         const source = readFileSync(file, 'utf8');
         expect(source).toContain('redactEventPayload');
 
-        // The binding sent as raw_content must be the one the redactor produced,
-        // from THIS call's payload and THIS family's names. The literal second
-        // argument is the point: `[]`, a stray variable, or a dropped argument
-        // all fail here.
+        // The only binding sent as raw_content must be the one the redactor
+        // produced, from THIS call's payload and THIS family's names. The
+        // literal second argument is the point: `[]`, a stray variable, or a
+        // dropped argument all fail here.
         const binding = source.match(/raw_content:\s*([A-Za-z_$][\w$]*)/)?.[1];
         expect(binding).toBeDefined();
         expect(source).toContain(
