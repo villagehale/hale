@@ -293,6 +293,7 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
   function timeWindowDraft(
     actionType: DraftedAction['actionType'],
     payload: Record<string, unknown>,
+    draftedAt = '2026-07-06T10:00:00.000Z',
   ): DraftedAction {
     return {
       id: '66666666-6666-4666-8666-666666666666',
@@ -303,7 +304,7 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
       draftConfidence: 0.9,
       rationale: 'placement',
       recipientVisibility: 'internal_only',
-      draftedAt: '2026-07-06T10:00:00.000Z',
+      draftedAt,
     };
   }
 
@@ -336,6 +337,8 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
   }
 
   it("overrides the model's family and instant with the server's", async () => {
+    // Kills: dropping the override and letting the model's own args through — the
+    // check would then read a family and an hour the model authored (rule #3).
     const input = await capturedTimeWindowInput(
       timeWindowDraft('calendar_add', {
         title: 'Swim class',
@@ -344,10 +347,28 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
       }),
     );
 
-    expect(input).toEqual({ familyId, proposedExecutionAt: '2026-07-10T14:00:00.000Z' });
+    expect(input).toEqual({ familyId, proposedExecutionAt: '2026-07-06T10:00:00.000Z' });
   });
 
-  it('reads starts_at for create_calendar_event drafts', async () => {
+  it("injects the ACTING instant, not the placement's own start time", async () => {
+    // Kills: reading payload.startsAt. allowActionsBetween bounds when HALE acts,
+    // not when the family's event begins — and the Sunday loop stamps every weekly
+    // placement at family-local midnight (mint-placements.zonedDayStartInstant), so
+    // a start-time read refuses observedHour 0 on every one of them.
+    const input = await capturedTimeWindowInput(
+      timeWindowDraft(
+        'calendar_add',
+        { title: 'Swim class', startsAt: '2026-07-13T04:00:00.000Z', endsAt: null },
+        '2026-07-12T23:30:00.000Z',
+      ),
+    );
+
+    expect(input).toEqual({ familyId, proposedExecutionAt: '2026-07-12T23:30:00.000Z' });
+  });
+
+  it("ignores the payload's starts_at for create_calendar_event drafts", async () => {
+    // Kills: a snake_case branch surviving the switch to the acting instant — the
+    // two key conventions must BOTH stop feeding this check, not just the camel one.
     const input = await capturedTimeWindowInput(
       timeWindowDraft('create_calendar_event', {
         title: '18-month visit',
@@ -356,32 +377,39 @@ describe('runReviewer — time_window args are injected server-side (rule #3)', 
       }),
     );
 
-    expect(input).toEqual({ familyId, proposedExecutionAt: '2026-07-10T14:00:00.000Z' });
-  });
-
-  it("falls back to the draft's own draftedAt when the payload carries no proposed time", async () => {
-    const input = await capturedTimeWindowInput(
-      timeWindowDraft('book_clinic_portal', { clinic: 'Riverdale Peds' }),
-    );
-
     expect(input).toEqual({ familyId, proposedExecutionAt: '2026-07-06T10:00:00.000Z' });
   });
 
-  it('injects a value the REAL check_action_time_window contract accepts, offsets normalized', async () => {
-    // Parsed through the shipped contract, not a hand-written shape: zod's
-    // .datetime() REJECTS the offset form the drafter emits, and a rejected input
-    // is swallowed into ok:false → every such action silently flags.
+  it('injects a value the REAL check_action_time_window contract accepts', async () => {
+    // Kills: any reshaping of the instant that the shipped contract would reject —
+    // zod .datetime() refusal is swallowed into ok:false, so a bad shape silently
+    // flags every action of that type rather than erroring.
     const input = await capturedTimeWindowInput(
       timeWindowDraft('calendar_move', { startsAt: '2026-07-10T09:00:00-05:00' }),
     );
 
     expect(REVIEWER_TOOLS.check_action_time_window.input.parse(input)).toEqual({
       familyId,
-      proposedExecutionAt: '2026-07-10T14:00:00.000Z',
+      proposedExecutionAt: '2026-07-06T10:00:00.000Z',
     });
   });
 
+  it('hands an unparseable draftedAt to the door raw, for the contract to refuse', async () => {
+    // Kills: substituting a fallback instant for a malformed one — that would check
+    // some OTHER moment's quiet hours and report ok:true, a silent outcome (rule #11).
+    // Raw, the door's contract refuses it into a named ok:false → flag_for_human.
+    const input = await capturedTimeWindowInput(
+      timeWindowDraft('book_clinic_portal', { clinic: 'Riverdale Peds' }, 'tomorrow at 3'),
+    );
+
+    expect(input).toEqual({ familyId, proposedExecutionAt: 'tomorrow at 3' });
+    expect(() => REVIEWER_TOOLS.check_action_time_window.input.parse(input)).toThrow();
+  });
+
   it('shows the model no suppliable arguments for check_action_time_window', async () => {
+    // Kills: restoring the permissive `additionalProperties:true` fallback schema —
+    // the model would resume authoring familyId/proposedExecutionAt itself, and a
+    // check whose inputs the model chooses is not a check (rule #3).
     const create = vi.fn(
       async (_req: Anthropic.MessageCreateParamsNonStreaming) => assistantMessage([]),
     );
