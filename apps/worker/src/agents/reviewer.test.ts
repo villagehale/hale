@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { DraftedAction, ToolResult } from '@hale/types';
-import { REQUIRED_CHECKS, type ReviewerToolName } from '@hale/tools-contracts';
+import { REQUIRED_CHECKS, REVIEWER_TOOLS, type ReviewerToolName } from '@hale/tools-contracts';
 import { runReviewer, type ReviewerAnthropicClient } from './reviewer.js';
 
 /**
@@ -288,3 +288,116 @@ describe('runReviewer — calendar_conflict args are injected server-side (rule 
     });
   });
 })
+
+describe('runReviewer — time_window args are injected server-side (rule #3)', () => {
+  function timeWindowDraft(
+    actionType: DraftedAction['actionType'],
+    payload: Record<string, unknown>,
+  ): DraftedAction {
+    return {
+      id: '66666666-6666-4666-8666-666666666666',
+      eventId: '77777777-7777-4777-8777-777777777777',
+      familyId,
+      actionType,
+      payload: { ...payload, action_hash: 'deadbeef' },
+      draftConfidence: 0.9,
+      rationale: 'placement',
+      recipientVisibility: 'internal_only',
+      draftedAt: '2026-07-06T10:00:00.000Z',
+    };
+  }
+
+  /** Runs a review where the model spoofs every check's args, and returns what
+   * the reviewer actually handed the tool door. */
+  async function capturedTimeWindowInput(draftedAction: DraftedAction): Promise<unknown> {
+    const client = scriptedClient([
+      REQUIRED_CHECKS[draftedAction.actionType].map((name) => ({
+        name,
+        input:
+          name === 'check_action_time_window'
+            ? { familyId: 'SPOOFED', proposedExecutionAt: '2099-01-01T12:00:00.000Z' }
+            : { familyId },
+      })),
+      [{ name: VERDICT_TOOL, input: { verdict: 'approve', rationale: 'clear' } }],
+    ]);
+
+    const seen: Array<{ name: string; input: unknown }> = [];
+    const capturing = vi.fn(async (name: ReviewerToolName, input: unknown) => {
+      seen.push({ name, input });
+      return { tool: name, ok: true, result: { withinWindow: true } };
+    });
+
+    const { verdict } = await runReviewer(
+      { familyId, draft: draftedAction },
+      { client, invokeTool: capturing, loadChildNames: noChildNames },
+    );
+    expect(verdict.kind).toBe('approve');
+    return seen.find((c) => c.name === 'check_action_time_window')?.input;
+  }
+
+  it("overrides the model's family and instant with the server's", async () => {
+    const input = await capturedTimeWindowInput(
+      timeWindowDraft('calendar_add', {
+        title: 'Swim class',
+        startsAt: '2026-07-10T14:00:00.000Z',
+        endsAt: '2026-07-10T14:45:00.000Z',
+      }),
+    );
+
+    expect(input).toEqual({ familyId, proposedExecutionAt: '2026-07-10T14:00:00.000Z' });
+  });
+
+  it('reads starts_at for create_calendar_event drafts', async () => {
+    const input = await capturedTimeWindowInput(
+      timeWindowDraft('create_calendar_event', {
+        title: '18-month visit',
+        starts_at: '2026-07-10T14:00:00.000Z',
+        ends_at: '2026-07-10T15:00:00.000Z',
+      }),
+    );
+
+    expect(input).toEqual({ familyId, proposedExecutionAt: '2026-07-10T14:00:00.000Z' });
+  });
+
+  it("falls back to the draft's own draftedAt when the payload carries no proposed time", async () => {
+    const input = await capturedTimeWindowInput(
+      timeWindowDraft('book_clinic_portal', { clinic: 'Riverdale Peds' }),
+    );
+
+    expect(input).toEqual({ familyId, proposedExecutionAt: '2026-07-06T10:00:00.000Z' });
+  });
+
+  it('injects a value the REAL check_action_time_window contract accepts, offsets normalized', async () => {
+    // Parsed through the shipped contract, not a hand-written shape: zod's
+    // .datetime() REJECTS the offset form the drafter emits, and a rejected input
+    // is swallowed into ok:false → every such action silently flags.
+    const input = await capturedTimeWindowInput(
+      timeWindowDraft('calendar_move', { startsAt: '2026-07-10T09:00:00-05:00' }),
+    );
+
+    expect(REVIEWER_TOOLS.check_action_time_window.input.parse(input)).toEqual({
+      familyId,
+      proposedExecutionAt: '2026-07-10T14:00:00.000Z',
+    });
+  });
+
+  it('shows the model no suppliable arguments for check_action_time_window', async () => {
+    const create = vi.fn(
+      async (_req: Anthropic.MessageCreateParamsNonStreaming) => assistantMessage([]),
+    );
+    const client = { messages: { create } } as unknown as ReviewerAnthropicClient;
+
+    await runReviewer(
+      { familyId, draft: timeWindowDraft('calendar_add', { startsAt: '2026-07-10T14:00:00.000Z' }) },
+      { client, loadChildNames: noChildNames },
+    );
+
+    const req = create.mock.calls[0]?.[0] as Anthropic.MessageCreateParamsNonStreaming;
+    const timeWindowTool = req.tools?.find((t) => t.name === 'check_action_time_window');
+    expect(timeWindowTool?.input_schema).toEqual({
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    });
+  });
+});
