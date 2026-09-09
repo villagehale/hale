@@ -116,7 +116,7 @@ interface Harness {
   /** Every leg that landed in the parent's own text thread (lib/channel/thread.ts). */
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
   /** VIL-338 · every guarded anchor refresh the battle-plan read caused. */
-  anchors: Array<{ sequenceId: string; courseOpensAt: Date }>;
+  anchors: Array<{ sequenceId: string; courseUrl: string; courseOpensAt: Date }>;
 }
 
 function harness(
@@ -220,10 +220,15 @@ function harness(
       (async (url) => {
         throw new Error(`unexpected course read: ${url}`);
       }),
-    // SEAM: prod's refresh is `UPDATE ... WHERE id = $id AND course_opens_at IS
-    // DISTINCT FROM $new RETURNING id` — the guard is what makes a double tick a no-op.
+    // SEAM: prod's refresh is `UPDATE ... WHERE id = $id AND course_url = $url AND
+    // course_opens_at IS DISTINCT FROM $new RETURNING id` — the guard is what makes a
+    // double tick a no-op and what makes a link pasted DURING the read lose nothing.
     refreshCourseAnchor: async (_db, input) => {
-      anchors.push({ sequenceId: input.sequenceId, courseOpensAt: input.courseOpensAt });
+      anchors.push({
+        sequenceId: input.sequenceId,
+        courseUrl: input.courseUrl,
+        courseOpensAt: input.courseOpensAt,
+      });
       return true;
     },
   };
@@ -910,6 +915,22 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect(body).not.toContain('MemberSignIn');
     // The one thing a portal household has that the other thirteen do not.
     expect(body).toContain('You have not told me the setup is done');
+    // And the trail says WHICH kind of morning this was. A Markham household with
+    // nothing bound is a household that could paste a link tomorrow; a Richmond Hill one
+    // never can, and a founder reading the two rows has to be able to tell them apart.
+    // Kills omitting `prep` on the leg that had a portal and no course to read.
+    expect(result.prep.unbound).toBe(1);
+    expect(auditAfter(h.writes, 'registration_sequence_leg_sent')).toMatchObject({
+      leg: 'go',
+      prep: 'unbound',
+    });
+
+    // The positive control the assertion above needs: the thirteen towns with no
+    // readable portal write the row they always wrote. Kills stamping every unbound leg
+    // `unbound`, which would say a town with no portal at all was one paste away from one.
+    const town = harness({ sequences: [live()] });
+    await runRegistrationSequenceCron(db(), town.deps, GO_TICK);
+    expect(auditAfter(town.writes, 'registration_sequence_leg_sent')).not.toHaveProperty('prep');
   });
 
   it('is byte-identical to today for a municipality with no readable portal', async () => {
@@ -987,8 +1008,15 @@ describe('VIL-338 · the bound course is read at send time', () => {
 
     expect(result).toMatchObject({ sent: 1 });
     expect(result.prep).toMatchObject({ window_moved: 1, anchor_moved: 1 });
+    // The URL travels with the clock: the row is only moved where it still holds the
+    // page this reading came from. Kills refreshing on the id alone, which would write
+    // an old page's moved clock over a link the parent pasted during the read.
     expect(h.anchors).toEqual([
-      { sequenceId: 'seq-1', courseOpensAt: new Date('2026-09-15T11:30:00.000Z') },
+      {
+        sequenceId: 'seq-1',
+        courseUrl: MARKHAM_COURSE,
+        courseOpensAt: new Date('2026-09-15T11:30:00.000Z'),
+      },
     ]);
     expect(h.transport.bodies()[0]).toContain('7:30 a.m.');
     expect(auditAfter(h.writes, 'registration_sequence_leg_sent')).toMatchObject({
@@ -1013,7 +1041,11 @@ describe('VIL-338 · the bound course is read at send time', () => {
 
     expect(result.prep.late_by_drift).toBe(1);
     expect(h.anchors).toEqual([
-      { sequenceId: 'seq-1', courseOpensAt: new Date('2026-09-14T10:30:00.000Z') },
+      {
+        sequenceId: 'seq-1',
+        courseUrl: MARKHAM_COURSE,
+        courseOpensAt: new Date('2026-09-14T10:30:00.000Z'),
+      },
     ]);
     // It still keeps the evening-before plan it always kept, AND the watch.
     expect(h.kept).toEqual([
@@ -1133,6 +1165,57 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:go']);
   });
 
+  it('never lets a failed read cost the BATTLE PLAN either, and moves no anchor on one', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // The no-throw property is leg-agnostic in the reader, and the battle plan is the
+    // leg that also WRITES: a read that ends in a throw must still send the evening
+    // plan, and must not reach the guarded UPDATE with nothing to move it to. Kills
+    // scoping the reader's catch to the go leg, and kills refreshing the anchor off a
+    // verdict that never got a clock.
+    const h = harness({
+      sequences: [bound()],
+      fetchBody: async () => {
+        throw new Error('ETIMEDOUT');
+      },
+    });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
+
+    expect(result).toMatchObject({ sent: 1, failed: 0, read: 1 });
+    expect(result.prep).toMatchObject({ page_unreadable: 1, anchor_moved: 0 });
+    expect(h.anchors).toEqual([]);
+    expect(h.transport.bodies()[0]).toContain('I could not re-read the course page tonight');
+    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:battle_plan']);
+  });
+
+  it('names the host of a page it could not read, never the class behind it', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // Rule #1. The courseId in that URL names the exact class one household is signing
+    // a child up for, and this log line is the only place in the feature where a stored
+    // page value leaves the process — on the path a slow municipal server takes every
+    // morning. Kills logging the URL itself.
+    const lines: unknown[][] = [];
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      lines.push(args);
+    });
+    try {
+      const h = harness({
+        sequences: [bound()],
+        fetchBody: async () => {
+          throw new Error('socket hang up');
+        },
+      });
+
+      await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
+
+      const line = lines.find((args) => String(args[1]).includes('course page read failed'));
+      expect(line?.[0]).toMatchObject({ host: 'cityofmarkham.perfectmind.com' });
+      expect(JSON.stringify(line?.[0])).not.toContain(MARKHAM_COURSE_ID);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('costs one GET when two households are waiting on the same course', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     let gets = 0;
@@ -1224,6 +1307,52 @@ describe('VIL-338 · the bound course is read at send time', () => {
     const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
 
     expect(result).toMatchObject({ sent: 0, quiet: 1, noFit: 0 });
+  });
+
+  it('still asks a bound no-fit household how it went, and still guards its waitlist', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // The same birthday that crossed the band ceiling before the morning is still across
+    // it after. A household that got the go text is owed the question that follows it,
+    // and the two legs after the morning never named who the window fits: "How did X go?"
+    // and a clock the parent's own message started. Kills scoping the bound exemption to
+    // the two legs that read the page, which leaves this ladder ending mid-sentence.
+    const aged: SequenceChild[] = [
+      { id: 'child-1', name: 'Ada', dateOfBirth: '2012-05-01', dobPrecision: 'exact' },
+    ];
+
+    const checkIn = harness({ sequences: [bound()], children: aged });
+    const checkInResult = await runRegistrationSequenceCron(
+      db(),
+      checkIn.deps,
+      new Date('2026-09-15T14:30:00.000Z'),
+    );
+    expect(checkInResult).toMatchObject({ sent: 1, noFit: 1, quiet: 0, read: 0 });
+    expect(checkIn.transport.bodies()[0]).toContain('How did');
+
+    const guard = harness({
+      sequences: [
+        bound({
+          outcome: 'waitlisted',
+          waitlistPosition: 15,
+          waitlistStartedAt: new Date('2026-09-15T15:00:00.000Z'),
+        }),
+      ],
+      children: aged,
+    });
+    const guardResult = await runRegistrationSequenceCron(
+      db(),
+      guard.deps,
+      new Date('2026-09-16T14:00:00.000Z'),
+    );
+    expect(guardResult).toMatchObject({ sent: 1, noFit: 1 });
+    expect(guard.transport.bodies()[0]).toContain('36h');
+
+    // The other half of the rule, and the positive control for both: the two legs that
+    // DO name who fits stay quiet for this household, bound or not — a heads-up "for
+    // Ada" about a band Ada has aged out of is the sentence the silence exists for.
+    const headsUp = harness({ sequences: [bound()], children: aged });
+    const headsUpResult = await runRegistrationSequenceCron(db(), headsUp.deps, HEADS_UP_TICK);
+    expect(headsUpResult).toMatchObject({ sent: 0, quiet: 1, noFit: 0 });
   });
 
   it('sends the readiness checklist to an approved portal household, and only there', async () => {

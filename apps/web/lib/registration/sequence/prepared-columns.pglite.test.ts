@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { defaultSequenceRunDeps } from './run.js';
 
 /**
  * VIL-338 · the prepared-registration columns against the REAL DDL (migration 0110).
@@ -151,5 +152,93 @@ describe('registration_sequences · the prepared-registration columns', () => {
     );
 
     expect(row).toEqual({ relrowsecurity: true });
+  });
+});
+
+/**
+ * VIL-338 · the guarded anchor refresh, against the REAL table.
+ *
+ * The battle-plan read's one write. Its whole job is in the WHERE clause — which row,
+ * which page, and only when the clock actually differs — and a Drizzle chain fake
+ * returns whatever it was handed, so the guard can only be proven here.
+ */
+describe('defaultSequenceRunDeps().refreshCourseAnchor · the guard', () => {
+  const AT = new Date('2026-08-11T10:30:00.000Z');
+  const MOVED = new Date('2026-08-12T10:30:00.000Z');
+
+  async function seedBound(): Promise<string> {
+    const windowId = await seedWindow();
+    const [row] = await db.database
+      .insert(schema.registrationSequences)
+      .values({ familyId, windowId, parentUserId, courseUrl: COURSE_URL, courseOpensAt: AT })
+      .returning({ id: schema.registrationSequences.id });
+    if (!row) throw new Error('seedBound: insert returned no row');
+    return row.id;
+  }
+
+  async function anchorOf(sequenceId: string): Promise<unknown> {
+    const [row] = await rows(
+      `SELECT course_opens_at FROM registration_sequences WHERE id = '${sequenceId}'`,
+    );
+    return row?.course_opens_at;
+  }
+
+  it('moves the clock once, and says so only the first time', async () => {
+    const { refreshCourseAnchor } = defaultSequenceRunDeps();
+    const sequenceId = await seedBound();
+
+    const first = await refreshCourseAnchor(db.database, {
+      sequenceId,
+      courseUrl: COURSE_URL,
+      courseOpensAt: MOVED,
+      now: new Date(),
+    });
+    const second = await refreshCourseAnchor(db.database, {
+      sequenceId,
+      courseUrl: COURSE_URL,
+      courseOpensAt: MOVED,
+      now: new Date(),
+    });
+
+    // Kills dropping `IS DISTINCT FROM`: every one of the battle plan's ticks would
+    // report a move, and `anchorMovedMinutes` would be a receipt for nothing.
+    expect([first, second]).toEqual([true, false]);
+    expect(new Date(String(await anchorOf(sequenceId))).toISOString()).toBe(MOVED.toISOString());
+  });
+
+  it('refuses to move a row that now holds a DIFFERENT course', async () => {
+    const { refreshCourseAnchor } = defaultSequenceRunDeps();
+    const sequenceId = await seedBound();
+    // The parent pasted a second link while the six-second read was in flight: the row
+    // is a different class now, with its own clock. Kills a guard on the id alone, which
+    // would overwrite the new page's morning with the old page's.
+    const rebound = `${COURSE_URL.slice(0, -1)}9`;
+    await db.exec(
+      `UPDATE registration_sequences SET course_url = '${rebound}' WHERE id = '${sequenceId}'`,
+    );
+
+    const moved = await refreshCourseAnchor(db.database, {
+      sequenceId,
+      courseUrl: COURSE_URL,
+      courseOpensAt: MOVED,
+      now: new Date(),
+    });
+
+    expect(moved).toBe(false);
+    expect(new Date(String(await anchorOf(sequenceId))).toISOString()).toBe(AT.toISOString());
+  });
+
+  it('says nothing moved for a sequence that is gone', async () => {
+    const { refreshCourseAnchor } = defaultSequenceRunDeps();
+    // Kills returning true unconditionally: a deleted household would be audited as
+    // having had its morning moved.
+    const moved = await refreshCourseAnchor(db.database, {
+      sequenceId: '00000000-0000-0000-0000-000000000000',
+      courseUrl: COURSE_URL,
+      courseOpensAt: MOVED,
+      now: new Date(),
+    });
+
+    expect(moved).toBe(false);
   });
 });

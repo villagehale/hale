@@ -259,25 +259,34 @@ export interface SequenceRunDeps {
   /**
    * The one write a send-time read may cause, and only at the battle plan: the page has
    * moved its own clock, so the anchor the rest of the ladder hangs from moves with it.
-   * Guarded (`WHERE course_opens_at IS DISTINCT FROM $new`) so a double tick is a no-op,
-   * and it returns whether a row actually moved — the number the leg's audit row carries
-   * is about a change that happened, never one that was merely attempted. REQUIRED for
-   * the reason above: an anchor that silently failed to move fires the flagship text on
-   * the wrong morning, which is the one failure this ticket exists to prevent.
+   * Guarded (`WHERE course_url = $url AND course_opens_at IS DISTINCT FROM $new`) so a
+   * double tick is a no-op, and it returns whether a row actually moved — the number the
+   * leg's audit row carries is about a change that happened, never one that was merely
+   * attempted. REQUIRED for the reason above: an anchor that silently failed to move
+   * fires the flagship text on the wrong morning, which is the one failure this ticket
+   * exists to prevent.
+   *
+   * The URL is half the guard because the read takes seconds and a parent may paste a
+   * second link inside them: a clock read off the OLD page is not a fact about the
+   * course the row holds now, and the bind wrote that course's own clock already.
    */
   refreshCourseAnchor(
     database: Database,
-    input: { sequenceId: string; courseOpensAt: Date; now: Date },
+    input: { sequenceId: string; courseUrl: string; courseOpensAt: Date; now: Date },
   ): Promise<boolean>;
 }
 
 /**
- * What a send-time read produced, by name — the verdict kinds plus the one thing a read
- * can DO rather than say. `anchor_moved` counts guarded refreshes that landed, so the
- * founder signal "a municipality is disagreeing with the M1 dataset" rides a counter
- * rather than a family-scoped audit verb about public reference data.
+ * What a send-time read produced, by name — the verdict kinds, the one thing a read can
+ * DO rather than say, and the one morning where there was nothing to read. `anchor_moved`
+ * counts guarded refreshes that landed, so the founder signal "a municipality is
+ * disagreeing with the M1 dataset" rides a counter rather than a family-scoped audit verb
+ * about public reference data. `unbound` counts the morning legs of a household whose
+ * town Hale CAN read and who has pasted nothing: rung 1's adoption number, and the fate
+ * that keeps such a leg's trail row distinguishable from the thirteen towns that have no
+ * portal at all.
  */
-export type PrepFate = PrepVerdict['kind'] | 'anchor_moved';
+export type PrepFate = PrepVerdict['kind'] | 'anchor_moved' | 'unbound';
 
 const PREP_FATES: readonly PrepFate[] = [
   'prepared',
@@ -288,6 +297,7 @@ const PREP_FATES: readonly PrepFate[] = [
   'course_gone',
   'page_unreadable',
   'anchor_moved',
+  'unbound',
 ];
 
 export interface SequenceRunResult {
@@ -514,9 +524,11 @@ function courseReader(fetchBody: FetchPage, startedAt: number) {
       try {
         return { ok: true, raw: await getPage(url) };
       } catch (err) {
-        // The host, never the family: a log line about a municipal page is not a fact
-        // about a household (rule #1).
-        console.error({ err, url }, 'registration sequence: course page read failed');
+        // THE HOST AND NOTHING ELSE (rule #1). A log line about a slow municipal server
+        // is a fact about that server; the `courseId` in the URL is the exact class one
+        // household is signing a child up for, and it is not needed to read "Markham was
+        // unreachable this morning" off a log.
+        console.error({ err, host: hostOf(url) }, 'registration sequence: course page read failed');
         return { ok: false, reason: 'fetch_failed' };
       }
     },
@@ -524,6 +536,18 @@ function courseReader(fetchBody: FetchPage, startedAt: number) {
 }
 
 type CourseReader = ReturnType<typeof courseReader>;
+
+/** The bare host of a stored course URL, for the one log line this module writes about a
+ * read. TOTAL for the same reason `courseIdOf` is, and it falls back to the constant
+ * string rather than to the URL: a line that cannot name its host still must not name a
+ * family's class. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return 'unparseable';
+  }
+}
 
 /** The sanitized URL's own courseId — what the reader checks the page's `EventId`
  * against, so a portal serving somebody else's class is `wrong_course` rather than a
@@ -595,20 +619,28 @@ async function runLegForSequence(
 
   const children = await deps.loadChildren(database, sequence.familyId);
   const match = matchForSequence(sequence, { isResidentWindow, opensForFamilyAt: anchor });
+  // A course this family picked, on a portal Hale can read. Kept as ONE narrowed value
+  // rather than a boolean, so nothing below can reach for a URL or a portal the
+  // condition has not proved is there.
+  const bound =
+    sequence.courseUrl !== null && portal !== null ? { url: sequence.courseUrl, portal } : null;
   // The two legs that SPEAK about the bound course, and therefore the only two that read
-  // its page. Every other leg is about the municipal window and needs no network. Kept
-  // as ONE narrowed value rather than a boolean, so nothing below can reach for a URL or
-  // a portal the condition has not proved is there.
-  const boundCourse =
-    sequence.courseUrl !== null && portal !== null && (leg === 'battle_plan' || leg === 'go')
-      ? { url: sequence.courseUrl, portal }
-      : null;
+  // its page. Every other leg is about the municipal window and needs no network.
+  const boundCourse = leg === 'battle_plan' || leg === 'go' ? bound : null;
   const fitted = buildShortlist(match, children, now);
   // A family whose children no longer fit the band (a birthday crossed the ceiling
   // between the proposal and the leg) has nothing honest left to be told ABOUT THE
-  // WINDOW — but a bound course is the parent's own pick and the page is its record, so
-  // that leg still goes and the disagreement is counted by name.
-  if (fitted === null && boundCourse === null) return { kind: 'quiet' };
+  // WINDOW — the heads-up and the readiness checklist both name who it fits, and a
+  // ladder with no course bound has only the band to speak from.
+  //
+  // A bound ladder is a different thing after those two: the parent picked THIS course
+  // and the page is its record, the two morning legs speak from that page, and the
+  // check-in ("How did that go?") and the waitlist guards (a clock the parent's own
+  // message started) never named who fits at all. Silence there would end the ladder
+  // mid-sentence for the household this feature is for. Nothing changes for an unbound
+  // ladder, which is every one of the thirteen municipalities Hale cannot read.
+  const boundSpeaks = bound !== null && leg !== 'heads_up' && leg !== 'readiness';
+  if (fitted === null && !boundSpeaks) return { kind: 'quiet' };
   const shortlist = fitted ?? windowShortlist(match);
   const effects: LegReadEffects = fitted === null ? { noFit: true } : {};
 
@@ -631,10 +663,17 @@ async function runLegForSequence(
     if (leg === 'battle_plan' && moved !== null) {
       effects.anchorMoved = await deps.refreshCourseAnchor(database, {
         sequenceId: sequence.sequenceId,
+        // The page this clock was read off, so a link pasted while the read was in
+        // flight keeps its own morning.
+        courseUrl: boundCourse.url,
         courseOpensAt: moved,
         now,
       });
     }
+  } else if (portal !== null && (leg === 'battle_plan' || leg === 'go')) {
+    // A morning leg for a household whose town Hale can read, with nothing pasted: the
+    // trail should say so in a word, or this row and a no-portal town's are the same row.
+    effects.prep = 'unbound';
   }
 
   const body = renderSequenceLeg(leg, {
@@ -712,10 +751,12 @@ async function runLegForSequence(
       municipality: sequence.window.municipality,
       cycleLabel: sequence.window.cycleLabel,
       urgent: legIsUrgent(leg),
+      // `prep` alone on the leg that had a portal and nothing bound: there was no read,
+      // so there is no drift to report and no anchor that could have moved.
+      ...(effects.prep === undefined ? {} : { prep: effects.prep }),
       ...(prep === null
         ? {}
         : {
-            prep: prep.verdict.kind,
             driftMinutes: driftOf(prep.verdict),
             anchorMovedMinutes: effects.anchorMoved === true ? driftOf(prep.verdict) : null,
           }),
@@ -1142,6 +1183,8 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
         .where(
           and(
             eq(schema.registrationSequences.id, input.sequenceId),
+            // The page the clock came from, still the page the row holds.
+            eq(schema.registrationSequences.courseUrl, input.courseUrl),
             sql`${schema.registrationSequences.courseOpensAt} is distinct from ${input.courseOpensAt}`,
           ),
         )
