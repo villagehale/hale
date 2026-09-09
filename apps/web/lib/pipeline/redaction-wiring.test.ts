@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
+import type { ClassifyInput } from './classify';
 import { dedupHashFor } from './record';
 import { ingestEvent } from './ingest';
 
@@ -140,5 +141,19 @@ describe('ingestEvent — redaction at the ingest boundary (rule #1)', () => {
     expect(capture.events[0]?.dedupHash).not.toBe(
       dedupHashFor(FAMILY_ID, baseInput.source, capture.modelRawContent ?? ''),
     );
+  });
+
+  it('has no field for un-redacted content — the type refuses a rawContent string', () => {
+    const input: ClassifyInput = {
+      source: 'email',
+      payload: { body: baseInput.body },
+      childNames: [CHILD_NAME],
+      // @ts-expect-error — VIL-160: `rawContent` is not a field of the classify
+      // stage's input. If this line ever compiles, a caller can hand the model an
+      // arbitrary string again and no type or callee could tell it from a
+      // redacted one.
+      rawContent: baseInput.body,
+    };
+    expect(input.childNames).toEqual([CHILD_NAME]);
   });
 });
