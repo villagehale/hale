@@ -127,12 +127,18 @@ export const calendarConflictInput = z.object({
   startsAt: z.string().datetime(),
   durationMinutes: z.number().int().positive(),
 });
+/**
+ * Deliberately no `title` (VIL-270): the reviewer is a third-party model, this check is
+ * FORCED on every calendar draft, and a verdict about a TIME COLLISION needs the window
+ * and the id — never the words. Returning the overlapping rows' titles put a private
+ * sibling event in front of Anthropic on a draft that had nothing to do with it, with no
+ * teen or sensitive filter anywhere on the path.
+ */
 export const calendarConflictOutput = z.object({
   hasConflict: z.boolean(),
   conflictingEvents: z.array(
     z.object({
       id: z.string(),
-      title: z.string(),
       startsAt: z.string().datetime(),
       endsAt: z.string().datetime(),
     }),
@@ -223,6 +229,10 @@ export const actionTimeWindowOutput = z.object({
   withinWindow: z.boolean(),
   windowDescription: z.string(),
   nextAllowedAt: z.string().datetime().optional(),
+  /** The proposed hour in the family's own timezone — declared because the registry
+   * returns it and the reviewer reasons with it, and the door only sends what is
+   * declared (VIL-270). */
+  observedHour: z.number().int().min(0).max(23).optional(),
 });
 export type ActionTimeWindowInput = z.infer<typeof actionTimeWindowInput>;
 export type ActionTimeWindowOutput = z.infer<typeof actionTimeWindowOutput>;

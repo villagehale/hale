@@ -99,7 +99,7 @@ export function voiceRelayDeps(socket: RelaySocket, token: string | null): Relay
       buildTools: (turn, onDraft) =>
         buildChannelCoachTools({
           familyId: turn.familyId,
-          reader: channelScheduleReader(database),
+          reader: channelScheduleReader(database, turn.now),
           draftPort: productionChannelDraftPort(database, pipelineClient(), turn.now),
           activity: {
             reader: activityReader,

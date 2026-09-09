@@ -158,3 +158,72 @@ describe('teen access grants never reach an outbound channel', () => {
     expect(call?.[1]?.split(',').map((a) => a.trim())).toEqual(['database', 'familyId']);
   });
 });
+
+/**
+ * VIL-270 · ONE DOOR PER TREE, AND EVERY DOOR IS NAMED.
+ *
+ * The check above bans a grant READER from an outbound tree. This one bans the raw
+ * TABLE: `family_events` carries a 13+ child's calendar content, and `lib/channel` has
+ * no authenticated viewer, so a file in there that reads the table decides — on its own,
+ * silently — whether a teen's title goes out over SMS. Three files do, each projects or
+ * withholds on purpose, and they are listed here with the reason. A fourth is a defect.
+ *
+ * The key is the TABLE identifier, not a column name. Drizzle hands back `title` and
+ * `location` for a bare `.select().from(schema.familyEvents)` with neither column ever
+ * spelled out — and lib/channel already uses that idiom on another table — so a
+ * column-token tripwire would close the spelling and leave the class wide open.
+ *
+ * Named residual: a raw `sql` string naming the table would slip past a token check.
+ * None exists in lib/channel today (the string appears only in comments and one audit
+ * `targetTable`), and the tree is Drizzle-only.
+ */
+const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
+  [
+    'lib/channel/coach/tools.ts',
+    'the schedule reader — it PROJECTS a private row to the placeholder title with no location before anything in this tree sees it',
+  ],
+  [
+    'lib/channel/followup/run.ts',
+    'the follow-up ask — it runs the same isPrivateEvent predicate and asks about a "private item" instead of naming it',
+  ],
+  [
+    'lib/channel/reconcile/view.ts',
+    'the reconcile view — titles feed a token-overlap predicate and are never emitted to a recipient',
+  ],
+];
+
+/** Any reference to the table by any Drizzle API, including a bare destructured one. */
+const FAMILY_EVENTS_TOKEN = /\bfamilyEvents\b/;
+
+describe('family_events reaches the outbound channel through named doors only', () => {
+  const channelFiles = () =>
+    walk(`${WEB_ROOT}/lib/channel`).map((file) => file.slice(WEB_ROOT.length + 1));
+
+  it('no unlisted file in lib/channel touches the table', () => {
+    const files = channelFiles();
+    // Guard the guard: an empty walk would assert nothing at all.
+    expect(files.length).toBeGreaterThan(0);
+    const doors = new Set(FAMILY_EVENTS_DOORS.map(([file]) => file));
+
+    const offenders = files.filter(
+      (file) =>
+        !doors.has(file) && FAMILY_EVENTS_TOKEN.test(readFileSync(`${WEB_ROOT}/${file}`, 'utf8')),
+    );
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('the walk actually reaches the projecting reader', () => {
+    // Guard the guard, the other way: if the walk stopped covering the reader, the check
+    // above would pass by not looking rather than by holding.
+    expect(channelFiles()).toContain('lib/channel/coach/tools.ts');
+  });
+
+  for (const [file, why] of FAMILY_EVENTS_DOORS) {
+    it(`${file} is a door on purpose — ${why}`, () => {
+      // A listed file that no longer reads the table is a stale exemption widening the
+      // allowlist for free, so the reason has to stay true as well as written down.
+      expect(FAMILY_EVENTS_TOKEN.test(readFileSync(`${WEB_ROOT}/${file}`, 'utf8'))).toBe(true);
+    });
+  }
+});

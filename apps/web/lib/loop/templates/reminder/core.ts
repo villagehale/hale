@@ -35,30 +35,34 @@ export function localTimeLabel(startsAt: string, timeZone: string): string {
   return `${hour}:${minute}`;
 }
 
-function eventChild(
-  event: ReminderEventView,
-  children: readonly ReminderChild[],
-): ReminderChild | undefined {
+function eventChild<C extends Pick<ReminderChild, 'id'>>(
+  event: Pick<ReminderEventView, 'childId'>,
+  children: readonly C[],
+): C | undefined {
   return event.childId ? children.find((c) => c.id === event.childId) : undefined;
 }
 
-function isTeen(child: ReminderChild, now: Date): boolean {
+/** The deterministic age gate itself (rule #1), exported so a surface that holds a DOB
+ * without a whole child row still decides teen-ness the one way. */
+export function isTeenChild(child: Pick<ReminderChild, 'dateOfBirth'>, now: Date): boolean {
   return deriveStage(child.dateOfBirth, now) === 'teenager';
 }
 
 /**
  * Whether an event may carry NO detail outbound: a 13+ child's event (the deterministic
  * age gate, rule #1) or one flagged sensitive. The single predicate behind every
- * outbound surface's genericization — the reminder copy here and the per-event calendar
- * invite (VIL-249), so the two can never drift apart.
+ * outbound surface's genericization — the reminder copy here, the per-event calendar
+ * invite (VIL-249) and the texted schedule reader (VIL-270), so they can never drift
+ * apart. It declares only the fields it READS, so a caller holding a join row rather
+ * than a whole child does not have to fabricate a name to ask the question.
  */
 export function isPrivateEvent(
-  event: ReminderEventView,
-  children: readonly ReminderChild[],
+  event: Pick<ReminderEventView, 'childId' | 'sensitive'>,
+  children: readonly Pick<ReminderChild, 'id' | 'dateOfBirth'>[],
   now: Date,
 ): boolean {
   const child = eventChild(event, children);
-  return (child !== undefined && isTeen(child, now)) || event.sensitive === true;
+  return (child !== undefined && isTeenChild(child, now)) || event.sensitive === true;
 }
 
 /**

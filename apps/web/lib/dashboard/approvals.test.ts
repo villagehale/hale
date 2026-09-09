@@ -234,3 +234,47 @@ describe('toApprovalView — the preview names the drafted item', () => {
     ).toBe('Remove from your calendar — Swim lesson');
   });
 });
+
+/**
+ * VIL-270 · the cost of projecting at the door, pinned so it is a decision rather than
+ * an accident.
+ *
+ * The texted schedule reader genericizes a private row before anything in lib/channel
+ * sees it, and `sensitive` (health) rows are private by the same predicate as a 13+
+ * child's. So a health item the parent themselves asked to move previews in their own
+ * authenticated queue as the generic line — for a change they made, about content they
+ * can read by title everywhere else in the app.
+ *
+ * Accepted, because what the channel may KNOW is what the channel may WRITE: a title
+ * that rides this payload is a title the reviewer model was handed. The row is not
+ * redacted, though, and the difference is legible in the data: `teenRedacted` is false,
+ * the payload is exposed, and `privacySensitive` says why the words are generic. The
+ * queue holds the row by `reversalHandle`, so resolving the real title server-side for a
+ * non-teen viewer stays available later without any payload change.
+ */
+describe('toApprovalView — a channel-minted sensitive row previews generically (VIL-270)', () => {
+  const SENSITIVE_MOVE: PendingApprovalRow = {
+    ...BASE,
+    actionType: 'calendar_move',
+    payload: {
+      title: 'A private calendar item',
+      startsAt: '2026-07-01T14:00:00.000Z',
+      privacySensitive: true,
+      reversalHandle: '44444444-4444-4444-8444-444444444444',
+    },
+  };
+
+  it('shows the verb and the time, with the generic what', () => {
+    expect(toApprovalView(SENSITIVE_MOVE, TZ).preview).toBe(
+      'Reschedule on your calendar — A private calendar item, Jul 1, 10:00',
+    );
+  });
+
+  it('is NOT teen-redacted — the payload is still the parent’s to inspect', () => {
+    const view = toApprovalView(SENSITIVE_MOVE, TZ);
+
+    expect(view.teenRedacted).toBe(false);
+    expect(view.preview).not.toBe(TEEN_REDACTED_PLACEHOLDER);
+    expect(view.payload).toMatchObject({ privacySensitive: true });
+  });
+});

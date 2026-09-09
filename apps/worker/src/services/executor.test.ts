@@ -424,9 +424,17 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
       deps,
     );
 
-    expect(deps.moveCalendarEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ familyId, actionId, reversalHandle: 'fe-9', title: 'Swim class' }),
-    );
+    // The exact input, not objectContaining: a move re-times by handle, so the payload's
+    // title and location must not reach the write at all (VIL-270). The channel projects
+    // a private row before it drafts, and re-titling from that payload would overwrite a
+    // teen's real title with the placeholder the model was shown.
+    expect(deps.moveCalendarEvent).toHaveBeenCalledWith({
+      familyId,
+      actionId,
+      reversalHandle: 'fe-9',
+      startsAt: new Date(ADD_PAYLOAD.startsAt),
+      endsAt: new Date(ADD_PAYLOAD.endsAt),
+    });
     expect(result.detail).toMatchObject({ kind: 'calendar_moved', reversalHandle: 'fe-9' });
     expect(result.reversible).toBe(false);
   });

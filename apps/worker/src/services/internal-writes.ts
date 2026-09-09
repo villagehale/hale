@@ -196,15 +196,21 @@ export interface CalendarPlacementInput {
   sensitive: boolean;
 }
 
-/** calendar_move: the target row (reversalHandle) plus its new time/title/place. */
+/**
+ * calendar_move: the target row (reversalHandle) plus its new time — and nothing else.
+ *
+ * A move RE-TIMES a row the database already holds; it does not re-describe it. There
+ * is deliberately no `title`/`location` here, which is what lets the channel project a
+ * private row before it drafts (VIL-270): the draft carries a handle, the row keeps its
+ * own words, and no payload can overwrite a teen's real title with the placeholder the
+ * model was shown. A future "rename while moving" is a new action, not a field.
+ */
 export interface CalendarMoveInput {
   familyId: string;
   actionId: string;
   reversalHandle: string;
-  title: string;
   startsAt: Date;
   endsAt: Date | null;
-  location: string | null;
 }
 
 /** calendar_cancel: just the target row to soft-delete. */
@@ -367,10 +373,8 @@ export function moveCalendarEvent(
     const updated = await tx
       .update(schema.familyEvents)
       .set({
-        title: input.title,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
-        location: input.location,
       })
       .where(
         and(

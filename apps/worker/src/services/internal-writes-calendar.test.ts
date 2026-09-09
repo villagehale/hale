@@ -150,7 +150,26 @@ describe('cancelCalendarEvent', () => {
 });
 
 describe('moveCalendarEvent', () => {
-  it('updates the handle row and throws when it is missing', async () => {
+  it('re-times the handle row and re-describes NOTHING (VIL-270)', async () => {
+    const { database, updateSets } = fakeDb({});
+    const startsAt = new Date('2026-07-23T14:00:00.000Z');
+    const endsAt = new Date('2026-07-23T15:00:00.000Z');
+
+    const result = await moveCalendarEvent(
+      { familyId: FAMILY_ID, actionId: ACTION_ID, reversalHandle: HANDLE, startsAt, endsAt },
+      database,
+    );
+
+    expect(result).toEqual({ outcome: 'written', familyEventId: HANDLE });
+    // toStrictEqual, not toEqual: `toEqual` treats `{title: undefined}` as absent, so it
+    // would pass against the very SET this test exists to forbid. The assertion IS that
+    // no other key can ride — a move re-times a row the database already holds, and a
+    // title on this input is a second chance to rename a family's event, which was the
+    // only reason the channel's draft had to carry a private item's real title at all.
+    expect(updateSets[0]).toStrictEqual({ startsAt, endsAt });
+  });
+
+  it('throws (no false ok) when the target row is missing or already deleted', async () => {
     const missing = fakeDb({ updateReturns: [] });
     await expect(
       moveCalendarEvent(
@@ -158,10 +177,8 @@ describe('moveCalendarEvent', () => {
           familyId: FAMILY_ID,
           actionId: ACTION_ID,
           reversalHandle: HANDLE,
-          title: 'Swim (moved)',
           startsAt: new Date('2026-07-23T14:00:00.000Z'),
           endsAt: null,
-          location: null,
         },
         missing.database,
       ),

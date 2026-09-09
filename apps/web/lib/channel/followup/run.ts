@@ -555,13 +555,7 @@ async function runActivityFollowups(
         }
 
         const isPrivate = isPrivateEvent(
-          {
-            eventRef: event.eventId,
-            title: event.title,
-            startsAt: event.startsAt.toISOString(),
-            childId: event.childId,
-            sensitive: event.sensitive,
-          },
+          { childId: event.childId, sensitive: event.sensitive },
           children,
           now,
         );
