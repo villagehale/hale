@@ -36,6 +36,9 @@ interface CreateDbOptions {
   statementTimeoutMs?: number;
 }
 
+/** date, time, timestamp, timestamptz — the oids drizzle/postgres-js makes transparent. */
+const DATE_OIDS = [1082, 1083, 1114, 1184] as const;
+
 export function createDb(options: CreateDbOptions) {
   const client = postgres(options.connectionString, {
     max: options.max ?? 10,
@@ -47,5 +50,18 @@ export function createDb(options: CreateDbOptions) {
     },
   });
 
-  return drizzle(client, { schema, casing: 'snake_case' });
+  const db = drizzle(client, { schema, casing: 'snake_case' });
+
+  // drizzle's postgres-js driver replaces the driver's date serializers with identity so
+  // its column mappings own the formatting. A Date with no column to map through (a raw
+  // `sql` fragment, an operator over a fragment) then reaches the byte writer unconverted
+  // and the statement throws ERR_INVALID_ARG_TYPE before it is sent — pglite, a different
+  // driver, never sees it. Every one of those Dates now goes out the way a mapped column
+  // would send it.
+  for (const oid of DATE_OIDS) {
+    client.options.serializers[oid] = (value: unknown): string =>
+      value instanceof Date ? value.toISOString() : (value as string);
+  }
+
+  return db;
 }
