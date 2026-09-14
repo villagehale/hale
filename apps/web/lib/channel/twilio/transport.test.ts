@@ -236,8 +236,10 @@ describe('media', () => {
 });
 
 describe('messaging service sender', () => {
-  it('sends via MessagingServiceSid when configured, and the bare From otherwise', async () => {
-    configure();
+  beforeEach(configure);
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('names the Hale number in From ALONGSIDE the service — left to pick, Twilio takes the pooled toll-free (its sender precedence puts toll-free above long codes in Canada) and the parent gets a "YES to confirm" from a number that cannot receive it', async () => {
     vi.stubEnv('TWILIO_MESSAGING_SERVICE_SID', 'MG39e4469dd337f9952f026cbff0e4e964');
     const fetchMock = vi.fn().mockResolvedValue(okResponse());
     vi.stubGlobal('fetch', fetchMock);
@@ -246,7 +248,19 @@ describe('messaging service sender', () => {
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     const sent = new URLSearchParams(init.body as string);
     expect(sent.get('MessagingServiceSid')).toBe('MG39e4469dd337f9952f026cbff0e4e964');
-    expect(sent.get('From')).toBeNull();
+    expect(sent.get('From')).toBe(FROM);
+  });
+
+  it('sends the bare From and no service at all when none is configured', async () => {
+    const fetchMock = vi.fn(async () => okResponse());
+    const transport = createTwilioTransport({ fetch: fetchMock as unknown as typeof fetch });
+
+    await transport.send({ to: TO, body: BODY });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const sent = new URLSearchParams(init.body as string);
+    expect(sent.get('From')).toBe(FROM);
+    expect(sent.get('MessagingServiceSid')).toBeNull();
   });
 });
 
