@@ -356,7 +356,10 @@ export async function handleCourseBind(
     now,
   });
   if (claim.status === 'throttled') {
-    return { status: 'read_throttled', reply: throttledSentence(claim.retryMinutes) };
+    return {
+      status: 'read_throttled',
+      reply: throttledSentence(claim.retryMinutes, sequence.courseUrl === sanitized.url),
+    };
   }
 
   let raw: string;
@@ -483,8 +486,16 @@ function refusalSentence(
  * TRIED, not read: the claim is spent by the request, so the window can have gone on a
  * six-second timeout, and this sentence then follows the one that told the same parent
  * the page could not be read. One verb is true of both.
+ *
+ * THE LINK ALREADY BOUND GETS ITS OWN SENTENCE, because the first one's "I have not
+ * opened that link" is false of it — Hale opened that exact link, bound it and acked
+ * it, and a resend is the commonest second paste there is. The window is still spent,
+ * so this is not the ack again; it is the one thing that is true without a fresh read.
  */
-function throttledSentence(minutes: number): string {
+function throttledSentence(minutes: number, alreadyBound: boolean): string {
+  if (alreadyBound) {
+    return 'I already have that class from you, and I read one page at a time, so I have not opened it again. There is nothing to resend.';
+  }
   return `I just tried a course page for you, and I read one at a time. I have not opened that link and I will not come back to it - send it again in ${minutes} minute${minutes === 1 ? '' : 's'} and I will read it then.`;
 }
 

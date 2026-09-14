@@ -394,6 +394,7 @@ describe('the bind refusals', () => {
     expect(sentences.size).toBe(COURSE_BIND_REFUSALS.length);
     expect(await auditRows('registration_course_bound')).toHaveLength(0);
     expect(await auditRows('registration_readiness_stated')).toHaveLength(0);
+    expect(await auditRows('registration_bind_read_throttled')).toHaveLength(0);
     const row = await sequenceRow();
     expect(row.courseUrl).toBeNull();
     expect(row.courseOpensAt).toBeNull();
@@ -698,6 +699,51 @@ describe('the read throttle', () => {
     expect(later.status).toBe('already_bound');
   });
 
+  /**
+   * The commonest second paste there is — an SMS resend, a double tap, a parent making
+   * sure the first one landed — and the window is spent, so the reply is the throttle's.
+   * "I have not opened that link" is FALSE of this one: Hale opened that exact link
+   * seconds ago, bound it, and texted the ack back. Kills a sentence that says it
+   * anyway.
+   */
+  it('tells the same link, pasted again inside the window, that it already has it', async () => {
+    const net = counting();
+
+    const first = await handleCourseBind(
+      db.database,
+      {
+        sequence: await preparing(),
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
+      deps({ fetchBody: net.fetchBody }),
+    );
+    const again = await handleCourseBind(
+      db.database,
+      {
+        sequence: await preparing(),
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
+      deps({ fetchBody: net.fetchBody }),
+    );
+
+    expect(first.status).toBe('bound');
+    expect(net.calls).toHaveLength(1);
+    expect(again.status).toBe('read_throttled');
+    if (again.status !== 'read_throttled') throw new Error('unreachable');
+    expect(again.reply).toContain('I already have that class from you');
+    expect(again.reply).not.toContain('I have not opened that link');
+    expect(again.reply).not.toContain('send it again');
+    expect(
+      preparedCopyViolations(again.reply, { url: null, printed: [], backed: [], optOut: null }),
+    ).toEqual([]);
+    expect(again.reply).not.toContain('?');
+    expect(smsSegments(again.reply)).toBeLessThanOrEqual(MAX_PORTAL_SEGMENTS);
+  });
+
   /** Kills hoisting the claim above the sanitizer and the municipality check: one
    * fat-fingered paste must not cost a parent their read. */
   it('leaves the claim unspent when the paste is refused before the fetch', async () => {
@@ -730,10 +776,12 @@ describe('the read throttle', () => {
   it('says it in one sentence the prepared-copy gate accepts, in both plurals', async () => {
     const sequence = await preparing();
     const net = counting();
+    // A SECOND class, not the one just bound: the link already bound has its own
+    // sentence and its own case above, and reusing it here would measure that one.
     const throttled = async (now: Date) => {
       const outcome = await handleCourseBind(
         db.database,
-        { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now },
+        { sequence, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now },
         deps({ fetchBody: net.fetchBody }),
       );
       if (outcome.status !== 'read_throttled') throw new Error(`expected a throttle, got ${outcome.status}`);
