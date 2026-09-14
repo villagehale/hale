@@ -57,10 +57,25 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · 夏威夷语，意为「家」",
-    "heroH1a": "发条消息就能用的",
-    "heroH1b": "家庭",
-    "heroH1Accent": "助理。",
-    "heroSub": "把家里的琐事从你肩上卸下来。游泳、营队和报名日，在报满前抢到。不用装应用：Hale 就是你手机里的一个联系人。",
+    "heroH1a": "三条短信，",
+    "heroH1b": "之后便",
+    "heroH1Accent": "安静下来。",
+    "heroSub": "游泳、营队和报名日——在名额没了之前就替你抓住。不用装应用：Hale 就是你手机里的一个联系人，我替你盯住附近每一个报名日期。",
+    "heroThread": [
+      {
+        "dir": "out",
+        "text": "你好——Mia 4 岁，我们住在 Halton Hills，邮编 L7G。想报游泳和秋季课程。"
+      },
+      {
+        "dir": "in",
+        "text": "记下了。霍尔顿希尔斯秋季康乐课程周二早上 7:00 开放，你的邮编能用居民优先日期。我会在前一天晚上、以及开放前十五分钟发消息给你，附上你的链接。回复 YES，那天早上我陪你一起搞定。"
+      },
+      {
+        "dir": "out",
+        "text": "YES"
+      }
+    ],
+    "heroFounding": "创始家庭免费加入——并永远保留创始价。",
     "threadEyebrow": "给 Hale 发短信是这样的",
     "threadH2a": "给我发消息，就像发给",
     "threadH2Accent": "朋友一样。",
@@ -113,8 +128,8 @@
       }
     ],
     "howEyebrow": "Hale 是怎么运作的",
-    "howH2a": "三条短信，之后便",
-    "howH2Accent": "安静下来。",
+    "howH2a": "一条短信开始。",
+    "howH2Accent": "之后由我盯着。",
     "steps": [
       {
         "when": "现在就可以",
@@ -185,7 +200,6 @@
         "body": "我会点出方案里的那一天，自己把提醒设好。"
       }
     ],
-    "coachingRail": "你来问我时会发生什么",
     "coachingStopTitle": "我在哪里止步",
     "coachingStopBody": "我不做诊断，也绝不给出剂量——方案只会点出那一种值得跟你的医生提一提的情况。",
     "helpersEyebrow": "你的帮手",

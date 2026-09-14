@@ -57,6 +57,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
   const textNs = getTranslator(locale, 'Text');
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
 
+  const heroBubbles = t.raw('heroThread') as ThreadRow[];
   const bubbles = t.raw('threadBubbles') as ThreadRow[];
   const steps = t.raw('steps') as TimedStep[];
   const contrast = t.raw('contrast') as Card[];
@@ -107,31 +108,51 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             <br />
             {t('heroH1b')} <span className="v4-accent">{t('heroH1Accent')}</span>
           </h1>
-          <p className="v4-hero-sub">{t('heroSub', { count: MUNICIPALITIES.length })}</p>
+          <p className="v4-hero-sub">{t('heroSub')}</p>
+
+          {/* The ten-second proof. Not the transcript below in miniature: that
+              one runs the four scheduled legs of a registration already set up,
+              and this is the moment BEFORE it — a parent's first text, and the
+              answer that names the date, the residents-first rule and what Hale
+              will do next. Same bubbles, same tokens; the wrapper is what scopes
+              the sizing, and what keeps the transcript's own scans (which key on
+              a leading `v4-thread`) about the transcript. */}
+          <div className="v4-hero-thread v4-thread v4-glass">
+            {heroBubbles.map((row, i) => (
+              <p key={`${i}-${row.dir}`} className={`v4-bubble v4-bubble-${row.dir}`}>
+                {row.text}
+              </p>
+            ))}
+          </div>
 
           {/* Stanley beat: ONE big CTA — the chooser works on every device, so
               the hero no longer needs a second (copy-chip) door; the desktop
-              affordances live on /text now. */}
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            {smsHref ? (
-              <ChooserLink locale={locale} placement="hero" className="v4-btn-solid v4-glass">
-                {common('messageHale')} <span aria-hidden="true">→</span>
-              </ChooserLink>
-            ) : (
-              <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
-                {common('emailHale')}
-              </a>
+              affordances live on /text now. The founding line rides with it
+              rather than waiting for the closing band: a visitor who is already
+              convinced should not have to scroll a whole page to act on it. */}
+          <div className="v4-hero-offer">
+            <p className="v4-hero-founding">{t('heroFounding')}</p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {smsHref ? (
+                <ChooserLink locale={locale} placement="hero" className="v4-btn-solid v4-glass">
+                  {common('messageHale')} <span aria-hidden="true">→</span>
+                </ChooserLink>
+              ) : (
+                <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
+                  {common('emailHale')}
+                </a>
+              )}
+            </div>
+            {smsHref && (
+              <p className="v4-hero-terms">
+                {t('heroTerms')}{' '}
+                <a href={localeHref(locale, '/privacy')} className="underline underline-offset-2">
+                  {t('heroTermsLink')}
+                </a>
+                .
+              </p>
             )}
           </div>
-          {smsHref && (
-            <p className="v4-hero-terms">
-              {t('heroTerms')}{' '}
-              <a href={localeHref(locale, '/privacy')} className="underline underline-offset-2">
-                {t('heroTermsLink')}
-              </a>
-              .
-            </p>
-          )}
         </div>
       </section>
 
@@ -151,7 +172,9 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
 
         The coaching exchange that used to share this slot moved out rather than
         being kept alongside — breadth is already claimed above it (the hero
-        sub), so the product shot can afford depth.
+        sub), so the product shot can afford depth. The hero's own exchange is
+        the moment BEFORE this one (intake, and the first answer); this is the
+        registration itself, a week later.
       */}
       <section className="shell pt-12 sm:pt-20 lg:pt-28">
         <p className="v4-eyebrow text-center">{t('threadEyebrow')}</p>
@@ -176,6 +199,8 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
       {/* ── How it works — three glass cards ──────────────────────────────── */}
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow text-center">{t('howEyebrow')}</p>
+        {/* "Three texts, then quiet." is the hero's line now; this H2 says what
+            the three steps below actually are rather than repeating it. */}
         <h2 className="v4-display v4-h2-wide mx-auto mt-4 max-w-[16ch] text-center">
           {t('howH2a')} <span className="v4-accent">{t('howH2Accent')}</span>
         </h2>
@@ -242,29 +267,6 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
         </ScrollRail>
       </section>
 
-      {/* ── Coaching — the questions that aren't scheduling ───────────────── */}
-      <section className="shell py-12 sm:py-20 lg:py-28">
-        <p className="v4-eyebrow">{t('coachingEyebrow')}</p>
-        <h2 className="v4-display v4-h2 mt-4">
-          {t('coachingH2a')} <span className="v4-accent">{t('coachingH2Accent')}</span>
-        </h2>
-        <p className="v4-lede">{t('coachingLede')}</p>
-        <ScrollRail as="ol" className="v4-cardgrid mt-7 sm:mt-12" label={t('coachingRail')}>
-          {coaching.map((item, i) => (
-            <li key={item.step} className="v4-card v4-glass">
-              <p className="v4-card-n">0{i + 1}</p>
-              <h3 className="text-spruce">{item.step}</h3>
-              <p>{item.body}</p>
-            </li>
-          ))}
-        </ScrollRail>
-        {/* The medical boundary keeps its own card — the topic list moved to the FAQ. */}
-        <article className="v4-card v4-glass mt-4 sm:mt-6">
-          <h3 className="text-spruce">{t('coachingStopTitle')}</h3>
-          <p>{t('coachingStopBody')}</p>
-        </article>
-      </section>
-
       {/* ── The caregivers, scoped ────────────────────────────────────────── */}
       <section className="shell py-12 sm:py-20 lg:py-28">
         <p className="v4-eyebrow">{t('helpersEyebrow')}</p>
@@ -279,6 +281,40 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             </article>
           ))}
         </ScrollRail>
+      </section>
+
+      {/*
+        ── Coaching — the questions that aren't scheduling ───────────────────
+        Demoted, not dropped. It kept every word it had, and lost the weight:
+        it sat above the helpers with a .v4-h2 and a card rail, which read as a
+        second product competing with the wedge the page is actually sold on.
+        Now it is one band below the registration story — eyebrow, a heading a
+        rung under the section H2s, the lede, and the three beats as rows rather
+        than cards. No rail, so nothing here scrolls sideways on a phone either.
+      */}
+      <section className="shell py-12 sm:py-20 lg:py-28">
+        <p className="v4-eyebrow">{t('coachingEyebrow')}</p>
+        <h2 className="v4-display mt-3 text-[clamp(1.45rem,2.6vw,1.9rem)] text-ink">
+          {t('coachingH2a')} <span className="v4-accent">{t('coachingH2Accent')}</span>
+        </h2>
+        <p className="v4-lede">{t('coachingLede')}</p>
+        <div className="v4-panel v4-glass mt-5 sm:mt-8">
+          <ol className="grid gap-5 sm:grid-cols-3 sm:gap-8">
+            {coaching.map((item) => (
+              <li key={item.step}>
+                <h3 className="text-[1.05rem] leading-[1.25] text-spruce">{item.step}</h3>
+                <p className="meta mt-2 text-[0.95rem]" style={{ lineHeight: 1.55 }}>
+                  {item.body}
+                </p>
+              </li>
+            ))}
+          </ol>
+          {/* The medical boundary stays in the band — the topic list is in the FAQ. */}
+          <p className="meta mt-6 text-[0.95rem]" style={{ lineHeight: 1.55 }}>
+            <span className="font-semibold text-spruce">{t('coachingStopTitle')}</span> —{' '}
+            {t('coachingStopBody')}
+          </p>
+        </div>
       </section>
 
       {/* ── Privacy, the Canadian way ─────────────────────────────────────── */}

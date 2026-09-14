@@ -49,6 +49,7 @@ afterEach(() => {
 
 describe('landing — the v4 hero', () => {
   const html = render();
+  const text = visibleText(html);
 
   it('opens on the shore hero, scrimmed behind glass', () => {
     expect(html).toContain('class="v4-hero"');
@@ -60,16 +61,17 @@ describe('landing — the v4 hero', () => {
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
     const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1).toContain('v4-display');
-    // The founder-approved poster stack. The brand line may lead ONLY because the
-    // sub resolves it in one breath — the v1 hero died when this same line stood
-    // over a paragraph that never got to the point, and the 7:02-first hero died
-    // as a hook with no introduction. H1 names the brand; the next line says what
-    // it is in a parent's words.
-    expect(visibleText(h1)).toBe('The family assistant you message.');
+    // The H1 is the PROMISE now, not the category. "The family assistant you
+    // message." named what Hale is and left the sharper wedge — scarce local
+    // programs, gone before you wake up — to a section three screens down; the
+    // sub carries the introduction instead, in one breath, and the exchange
+    // under it proves the promise before the reader has scrolled.
+    expect(visibleText(h1)).toBe('Three texts, then quiet.');
     expect(h1).not.toContain('7:02');
-    // Outcome-first, verb-led: the sub leads with what the reader gets rid of,
-    // not with a pronoun that makes them wait for the subject.
-    expect(html).toContain('Take the family admin off your plate');
+    // The sub names the wedge and the mechanism, and keeps the no-app line.
+    expect(html).toContain('caught before the spots are gone');
+    expect(html).toContain('I watch every registration date near you');
+    expect(html).not.toContain('Take the family admin off your plate');
     // The accent word is amber at the heading's own weight — colour, not slant.
     expect(h1).toContain('class="v4-accent"');
   });
@@ -105,6 +107,27 @@ describe('landing — the v4 hero', () => {
     // No exclamation marks anywhere in the hero band.
     const hero = html.match(/<section class="v4-hero v4-hero-top"[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(visibleText(hero)).not.toContain('!');
+  });
+
+  it('puts the promise, a believable exchange and the founding CTA above the transcript', () => {
+    // Boardy's three notes are one claim about ORDER — a visitor can act before
+    // scrolling, the wedge leads, and the product is felt in ten seconds — so
+    // they are pinned as order rather than as four presence checks that a
+    // re-shuffle would leave green.
+    const order = [
+      'Three texts, then quiet.',
+      'Hi — Mia is 4, we’re in Halton Hills, L7G.',
+      'Founding families join free — and keep the founding rate for good.',
+      'Texting Hale looks like this',
+    ].map((marker) => text.indexOf(marker));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // The act itself, not only its words: the chooser door is INSIDE the hero
+    // section, beside the exchange and the founding line.
+    const hero = html.match(/<section class="v4-hero v4-hero-top"[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(hero).toContain('data-cta-placement="hero"');
+    expect(hero).toContain('v4-hero-thread');
+    expect(hero).toContain('Founding families join free — and keep the founding rate for good.');
   });
 
   it('shows what texting Hale is like as a static thread, not a typed dramatisation', () => {
@@ -222,7 +245,9 @@ describe('landing — the brand tile, the shore, and nothing else', () => {
     }
     expect(svgs.filter((svg) => svg.includes('role="img"'))).toHaveLength(1);
     // Positive control: the wordmark's name still reaches the tree beside the art.
-    expect([...html.matchAll(/<span class="sr-only" translate="no">Hale<\/span>/g)]).toHaveLength(3);
+    expect([...html.matchAll(/<span class="sr-only" translate="no">Hale<\/span>/g)]).toHaveLength(
+      3,
+    );
   });
 
   it('uses the day shore for both the hero and the close, no night panel, and no mascot art', () => {
@@ -231,7 +256,12 @@ describe('landing — the brand tile, the shore, and nothing else', () => {
     const imgs = html.match(/<img[^>]*>/g) ?? [];
     expect(imgs.filter((img) => img.includes('hale-shore-hero'))).toHaveLength(2);
     expect(imgs.filter((img) => img.includes('hale-shore-night'))).toHaveLength(0);
-    for (const mascot of ['hale-turtle', 'village-illustration', 'diamondhead', 'shore-ultrawide']) {
+    for (const mascot of [
+      'hale-turtle',
+      'village-illustration',
+      'diamondhead',
+      'shore-ultrawide',
+    ]) {
       expect(html, `${mascot} must not appear`).not.toContain(mascot);
     }
   });
@@ -267,7 +297,8 @@ describe('landing — no signup funnel; the only way in is texting Hale', () => 
     // Stanley grammar: a returning parent gets a whisper (the header navlink and
     // the footer's bottom bar), a cold parent is never SOLD the app. The body
     // sections must not point at it — only the shared chrome may.
-    const chrome = (html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? '') +
+    const chrome =
+      (html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? '') +
       (html.match(/<footer[\s\S]*?<\/footer>/)?.[0] ?? '');
     expect(chrome).toContain('/sign-in');
     const body = html
@@ -402,14 +433,16 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      'The family assistant',
+      'Three texts, then quiet.',
       'Texting Hale looks like this',
       'How Hale works',
       'What I watch',
-      'When you ask me something',
       'Your helpers',
+      'When you ask me something',
       'the Canadian way',
-      'Founding families',
+      // The closing H2 exactly — "Founding families" alone now first appears in
+      // the hero, which is the change this order test would otherwise miss.
+      'Founding families join free.',
     ].map((marker) => text.indexOf(marker));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
@@ -426,6 +459,20 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
     // landing claims the promise, not a fixed count.
     expect(text).toContain('I name the day in the plan');
     expect(text).not.toContain('Three days later');
+  });
+
+  it('rides below the helpers as a compact band — no rail, no hero-scale heading', () => {
+    // Boardy: sleep/solids/potty pulls attention off the wedge. It keeps every
+    // word it had; what it loses is the weight — the card rail and the .v4-h2
+    // display rung that made it read as a second product.
+    const html = render();
+    const band =
+      html.match(/<p class="v4-eyebrow">When you ask me something[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(band, 'the coaching band must render').toContain('Where I stop');
+    expect(band).not.toContain('v4-cardgrid');
+    expect(band).not.toContain('v4-h2');
+    // Positive control: a hero-scale H2 is still what the section ABOVE it wears.
+    expect(html).toContain('class="v4-display v4-h2 mt-4"');
   });
 
   it('keeps the topic claim to the header trio — the full list lives in the FAQ', () => {
@@ -452,14 +499,15 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
 
 describe('landing — the phone snap rails', () => {
   it('ships them with no focus attributes baked into the server markup', () => {
-    // The four card sets that become horizontal snap rails under 640px (the
-    // coaching boundary card stands alone since the sparseness pass). Matching
-    // the opening tags is the positive control: the absences below are attributes
-    // withheld from rails that are demonstrably here, not four missing sections.
+    // The three card sets that become horizontal snap rails under 640px —
+    // how-it-works, what-I-watch and the helpers. Coaching lost its rail when it
+    // was demoted to a compact band. Matching the opening tags is the positive
+    // control: the absences below are attributes withheld from rails that are
+    // demonstrably here, not three missing sections.
     const rails = [...render().matchAll(/<(?:div|ol)[^>]*class="v4-cardgrid[^"]*"[^>]*>/g)].map(
       (match) => match[0],
     );
-    expect(rails).toHaveLength(4);
+    expect(rails).toHaveLength(3);
     // tabindex/role/aria-label are attached on mount and only while a rail really
     // overflows. Static ones would be five dead tab stops on the desktop
     // composition, where the grid wraps and there is nothing to scroll.
@@ -538,11 +586,15 @@ describe('landing — the thread is one continuous registration loop', () => {
   });
 
   it('renders each leg as a timestamp between bubbles, never as another bubble', () => {
-    expect([...html.matchAll(/class="v4-thread-time"/g)]).toHaveLength(4);
+    // Scoped to the transcript: the hero now carries an exchange in the same
+    // bubbles, so a page-wide count would stop describing this section.
+    expect([...thread.matchAll(/class="v4-thread-time"/g)]).toHaveLength(4);
     // Positive control: the bubbles are still bubbles, so "four timestamps" is a
     // separate row type rather than four mislabelled messages.
-    expect([...html.matchAll(/class="v4-bubble v4-bubble-in"/g)].length).toBeGreaterThanOrEqual(5);
-    expect([...html.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(2);
+    expect([...thread.matchAll(/class="v4-bubble v4-bubble-in"/g)].length).toBeGreaterThanOrEqual(
+      5,
+    );
+    expect([...thread.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(2);
   });
 
   it('tells the whole story: the warning, the parent’s yes, the link, the receipt', () => {

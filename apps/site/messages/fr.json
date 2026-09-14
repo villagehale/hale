@@ -57,10 +57,25 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · hawaïen pour « maison »",
-    "heroH1a": "L’assistant familial",
-    "heroH1b": "que vous",
-    "heroH1Accent": "messagez.",
-    "heroSub": "Déchargez-vous de l’admin de la famille. Natation, camps et jour d’inscription, attrapés avant que tout soit complet. Pas d’appli : Hale est un contact dans votre téléphone.",
+    "heroH1a": "Trois textos,",
+    "heroH1b": "puis le",
+    "heroH1Accent": "silence.",
+    "heroSub": "Natation, camps et jour d’inscription — attrapés avant que les places soient parties. Pas d’appli : Hale est un contact dans votre téléphone, et je surveille chaque date d’inscription près de chez vous.",
+    "heroThread": [
+      {
+        "dir": "out",
+        "text": "Bonjour — Mia a 4 ans, on est à Halton Hills, L7G. La natation et les programmes d’automne."
+      },
+      {
+        "dir": "in",
+        "text": "C’est noté. Les loisirs d’automne de Halton Hills ouvrent mardi à 7 h — les résidents d’abord, grâce à votre code postal. Je vous écris la veille au soir et quinze minutes avant, avec votre lien. Répondez OUI et je fais cette matinée avec vous."
+      },
+      {
+        "dir": "out",
+        "text": "OUI"
+      }
+    ],
+    "heroFounding": "Les familles fondatrices commencent gratuitement — et gardent leur tarif fondateur pour toujours.",
     "threadEyebrow": "Texter Hale, ça ressemble à ça",
     "threadH2a": "Textez-moi comme vous textez",
     "threadH2Accent": "un ami.",
@@ -113,8 +128,8 @@
       }
     ],
     "howEyebrow": "Comment Hale fonctionne",
-    "howH2a": "Trois textos, puis",
-    "howH2Accent": "le silence.",
+    "howH2a": "Un texto pour commencer.",
+    "howH2Accent": "Ensuite, je veille.",
     "steps": [
       {
         "when": "Tout de suite",
@@ -185,7 +200,6 @@
         "body": "Je nomme le jour dans le plan et je programme ce rappel moi-même."
       }
     ],
-    "coachingRail": "Ce qui se passe quand vous me demandez quelque chose",
     "coachingStopTitle": "Là où je m’arrête",
     "coachingStopBody": "Je ne pose pas de diagnostic et je ne nomme jamais de dose — et un plan nomme la seule situation qui mérite d’être signalée à votre médecin.",
     "helpersEyebrow": "Vos aidants",
