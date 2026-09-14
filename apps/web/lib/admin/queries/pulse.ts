@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import { notCanaryTraffic } from '~/lib/channel/canary/config';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { db as defaultDb } from '~/lib/db';
 import { torontoTodayStart } from './day';
@@ -41,7 +42,7 @@ export async function loadPulse(database: Database = defaultDb()): Promise<Pulse
       failedToday: sql<number>`count(*) filter (where ${m.direction} = 'out' and ${m.status} = 'failed')::int`,
     })
     .from(m)
-    .where(sql`${m.createdAt} >= ${todayStart}`);
+    .where(sql`${m.createdAt} >= ${todayStart} and ${notCanaryTraffic(m.parentUserId)}`);
 
   const hourRows = await database
     .select({
@@ -49,7 +50,9 @@ export async function loadPulse(database: Database = defaultDb()): Promise<Pulse
       count: sql<number>`count(*)::int`,
     })
     .from(m)
-    .where(sql`${m.direction} = 'in' and ${m.createdAt} >= now() - interval '24 hours'`)
+    .where(
+      sql`${m.direction} = 'in' and ${m.createdAt} >= now() - interval '24 hours' and ${notCanaryTraffic(m.parentUserId)}`,
+    )
     .groupBy(sql`date_trunc('hour', ${m.createdAt})`);
 
   const [fam] = await database

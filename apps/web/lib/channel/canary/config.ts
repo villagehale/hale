@@ -1,6 +1,8 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { type SQL, sql } from 'drizzle-orm';
 import { isSyntheticProbeNumber } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 
 /**
  * THE INBOUND CANARY — who it is, what it says, and what answering it looks like.
@@ -66,16 +68,53 @@ export async function canaryChannel(database: Database): Promise<CanaryHousehold
 }
 
 /**
- * Is this turn the canary's? The BODY is checked first and the lookup runs only
- * then, so the chain a real parent's text walks — and the door it walks through
- * — pays no extra query.
+ * The canary's own turns, excluded from an aggregate over `channel_messages`.
+ *
+ * Six synthetic inbounds an hour is one permanent extra sender EVERY day and a
+ * 6/hour floor under the hourly strip: "families who texted today" could never
+ * read 0 again, and the founder's line would stop being a measure of families.
+ * The door already keeps the probe out of the routed counter
+ * (`handed_off_canary`); this keeps it out of the dashboards for the same
+ * reason.
+ *
+ * `not exists` rather than `not in` on purpose: `parent_user_id` is nullable,
+ * and `null not in (…)` is NULL, which would silently drop those rows from
+ * counts that must include them. A correlated probe on the blind index — the
+ * same identity both halves of the canary join on — needs no decryption and
+ * rides `parent_channels`' own index on the hash.
+ */
+export function notCanaryTraffic(parentUserId: SQL | unknown): SQL {
+  return sql`not exists (select 1 from ${schema.parentChannels} where ${schema.parentChannels.userId} = ${parentUserId} and ${schema.parentChannels.phoneE164Hash} = ${phoneBlindIndex(CANARY_PHONE_E164)})`;
+}
+
+function isCanaryBody(body: string): boolean {
+  return body.trim().toUpperCase() === CANARY_BODY;
+}
+
+/**
+ * Is this turn the canary's, as THE DOOR can tell? The door has already
+ * canonicalized the `From`, so the identity is right there and the question is
+ * pure. That matters more than the saved query: the door asks only to LABEL its
+ * counter, and it asks after the ledger insert, the audit row and the enqueue
+ * have all committed — a lookup there could turn a completed hand-off into a
+ * 500, a Twilio retry, and a 'duplicate'. A label must never be able to fail the
+ * request it is labelling.
+ */
+export function isCanaryInbound(phoneE164: string, body: string): boolean {
+  return phoneE164 === CANARY_PHONE_E164 && isCanaryBody(body);
+}
+
+/**
+ * The same question from INSIDE the router, which holds a familyId and not a
+ * number, so it must resolve the household. The BODY is checked first, so the
+ * chain a real parent's text walks pays no extra query.
  */
 export async function isCanaryTurn(
   database: Database,
   body: string,
   familyId: string,
 ): Promise<boolean> {
-  if (body.trim().toUpperCase() !== CANARY_BODY) return false;
+  if (!isCanaryBody(body)) return false;
   const household = await canaryChannel(database);
   return household?.familyId === familyId;
 }

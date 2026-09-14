@@ -51,7 +51,7 @@ const INJECTION_TIMEOUT_MS = 10_000;
  * twenty-two covers two ticks plus lag.
  */
 const VERIFY_NOT_AFTER_MS = 2 * 60_000;
-const VERIFY_NOT_BEFORE_MS = 22 * 60_000;
+export const VERIFY_NOT_BEFORE_MS = 22 * 60_000;
 
 /**
  * Minute-truncated, so two invocations inside one minute collide on

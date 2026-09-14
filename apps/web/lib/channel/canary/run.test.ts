@@ -3,14 +3,16 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { schedulePeriodSeconds } from '~/lib/cron/deadman';
 import { createTestDb, seedFamily, type SeededFamily, type TestDb } from '~/lib/testing/pglite';
+import vercelConfig from '~/vercel.json';
 import {
   isValidTwilioSignature,
   parseTwilioParams,
   twilioWebhookUrl,
 } from '../twilio/signature';
 import { CANARY_ANSWERED_ACTION, CANARY_PHONE_E164 } from './config';
-import { CANARY_SID_PREFIX, runInboundCanary } from './run';
+import { CANARY_SID_PREFIX, runInboundCanary, VERIFY_NOT_BEFORE_MS } from './run';
 
 /**
  * The write side, over the real tables.
@@ -27,6 +29,7 @@ const KEY = Buffer.alloc(32, 11).toString('base64');
 const AUTH_TOKEN = 'twilio_auth_token_value';
 const APP_URL = 'https://app.villagehale.com';
 const NOW = new Date('2026-09-09T12:04:30.000Z');
+const CANARY_CRON_PATH = '/api/cron/inbound-canary';
 
 let db: TestDb;
 let canary: SeededFamily;
@@ -37,15 +40,45 @@ interface Capture {
   signature: string | null;
 }
 
-/** A fake door, answering `status`, recording exactly what crossed the wire. */
-function fakeDoor(status = 200): { fetch: typeof globalThis.fetch; calls: Capture[] } {
+/**
+ * A fake door that answers `status`, records what crossed the wire, and — on a
+ * 2xx — does the one thing the real door does that this cron can see: writes the
+ * inbound `channel_messages` row, stamped `sentAt = its own clock`
+ * (inbound.ts:412 + :288).
+ *
+ * That clock belongs to the WEBHOOK instance, not to the cron's. `skewMs` is the
+ * difference, and NEGATIVE skew — the webhook running behind — is the only case
+ * the verify window's upper bound exists for. Without the bound, the canary
+ * selects the row it posted milliseconds ago, whose answer cannot have landed
+ * yet (the drain kick is async), and pages every tick forever.
+ */
+function fakeDoor(options: { status?: number; skewMs?: number } = {}): {
+  fetch: typeof globalThis.fetch;
+  calls: Capture[];
+} {
+  const { status = 200, skewMs = 0 } = options;
   const calls: Capture[] = [];
   const fetchImpl = (async (url: string, init: RequestInit) => {
+    const body = String(init.body);
     calls.push({
       url,
-      body: String(init.body),
+      body,
       signature: new Headers(init.headers).get('x-twilio-signature'),
     });
+    if (status < 300) {
+      const params = parseTwilioParams(body);
+      await db.database.insert(schema.channelMessages).values({
+        familyId: canary.familyId,
+        parentUserId: canary.parentUserId,
+        channel: 'sms',
+        direction: 'in',
+        category: 'reply',
+        providerMessageId: params.MessageSid,
+        status: 'delivered',
+        body: params.Body,
+        sentAt: new Date(NOW.getTime() + skewMs),
+      });
+    }
     return new Response('<Response/>', { status });
   }) as unknown as typeof globalThis.fetch;
   return { fetch: fetchImpl, calls };
@@ -204,7 +237,7 @@ describe('runInboundCanary · fail-closed ordering', () => {
   });
 
   it('names the door when the door refuses the injection', async () => {
-    const door = fakeDoor(403);
+    const door = fakeDoor({ status: 403 });
 
     // 403 is signature/APP_URL drift, 503 is twilio_not_configured — either way
     // the webhook itself is the thing to look at, and the throw says so.
@@ -242,5 +275,42 @@ describe('runInboundCanary · fail-closed ordering', () => {
     await seedAnswer(db.database, prior, stale);
 
     await expect(run(door.fetch)).rejects.toThrow(/no injection in the last 22 minutes/);
+  });
+
+  it('grades the PREVIOUS tick, never the row it just posted, even with the door ninety seconds behind', async () => {
+    // The row the door just wrote carries the WEBHOOK instance's clock. Nothing
+    // guarantees it is later than the cron's — so the upper bound, not the
+    // ordering of two wall clocks, is what keeps this tick out of its own
+    // verdict. Grading it would read a turn whose answer the drain has not had
+    // time to write, and page every ten minutes forever.
+    const door = fakeDoor({ skewMs: -90_000 });
+    const prior = await seedPriorInjection(db.database, new Date(NOW.getTime() - 10 * 60_000));
+    await seedAnswer(db.database, prior, new Date(NOW.getTime() - 10 * 60_000 + 1_000));
+
+    await expect(run(door.fetch)).resolves.toBeUndefined();
+
+    // Positive control: the injection really did land, so the pass above is not
+    // the door quietly writing nothing.
+    const landed = await db.database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(
+        eq(
+          schema.channelMessages.providerMessageId,
+          `${CANARY_SID_PREFIX}2026-09-09T12:04:00.000Z`,
+        ),
+      );
+    expect(landed).toHaveLength(1);
+  });
+
+  it('keeps a window wide enough for two ticks of the SHIPPED cadence', async () => {
+    // The 22 minutes and the manifest's `9-59/10` are one decision in two files.
+    // At a 20-minute cadence the previous tick sits at the very edge and any
+    // scheduler lag reads as "no injection" — a false page, from an edit that
+    // never touched this file.
+    const entry = vercelConfig.crons.find((cron) => cron.path === CANARY_CRON_PATH);
+    if (!entry) throw new Error(`${CANARY_CRON_PATH} is not in vercel.json`);
+
+    expect(VERIFY_NOT_BEFORE_MS).toBeGreaterThan(2 * schedulePeriodSeconds(entry.schedule) * 1_000);
   });
 });

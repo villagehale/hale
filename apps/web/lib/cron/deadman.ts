@@ -105,11 +105,6 @@ export function staleAfterSeconds(schedule: string): number {
 }
 
 /**
- * The verdict the health endpoint publishes and the off-Vercel checker reads.
- * Names and ages only — no error text, no counts, no family data (rule #1: the
- * endpoint is unauthenticated, so it must be unrevealing).
- */
-/**
  * The INBOUND TURN LANE — the half of liveness a heartbeat cannot carry.
  *
  * `cronRoute` stamps on completion, so a drain whose every inbound job throws
@@ -150,6 +145,11 @@ export function assessInboundLane(ageSeconds: number | null): CronHealth {
   };
 }
 
+/**
+ * The verdict the health endpoint publishes and the off-Vercel checker reads.
+ * Names and ages only — no error text, no counts, no family data (rule #1: the
+ * endpoint is unauthenticated, so it must be unrevealing).
+ */
 export function assessCronHealth(
   manifest: readonly CronManifestEntry[],
   rows: readonly HeartbeatRow[],

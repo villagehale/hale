@@ -4,7 +4,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
-import { isCanaryTurn } from '~/lib/channel/canary/config';
+import { isCanaryInbound } from '~/lib/channel/canary/config';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
@@ -334,11 +334,10 @@ async function handOffToConversation(
     .set({ handedOffAt: deps.now?.() ?? new Date() })
     .where(eq(schema.channelMessages.id, channelMessageId));
 
-  // The body is read first inside isCanaryTurn, so a real parent's text costs
-  // no extra query here — only the one word the probe sends pays the lookup.
-  return (await isCanaryTurn(deps.database, inbound.body, owner.familyId))
-    ? 'handed_off_canary'
-    : 'handed_off';
+  // Pure, over the canonical `From` the door already holds: a label computed
+  // after the row, the audit and the enqueue have committed must not be able to
+  // fail the hand-off it is labelling.
+  return isCanaryInbound(phoneE164, inbound.body) ? 'handed_off_canary' : 'handed_off';
 }
 
 /**
