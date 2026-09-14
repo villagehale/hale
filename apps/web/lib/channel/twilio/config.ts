@@ -26,10 +26,12 @@ export interface TwilioConfig {
   readonly apiKeySecret: string;
   /** The Hale number parents text, E.164. Reuses A2's existing env name. */
   readonly fromNumber: string;
-  /** When set, sends go out via the Messaging Service (queueing, smart encoding,
-   * sender-pool scaling) instead of the bare number. Optional at this boundary:
-   * absent means the pre-service behavior — a direct From send — which still
-   * sends; it is a valid mode, not a silent no-op. */
+  /** When set, sends carry the Messaging Service (queueing, smart encoding, opt-out
+   * handling) ALONGSIDE `fromNumber` — the service adds its features, it does not
+   * choose the sender; left to choose it prefers a pooled toll-free over this long
+   * code. Optional at this boundary: absent means the pre-service behavior — the same
+   * From, without the service's features — which still sends; it is a valid mode, not
+   * a silent no-op. */
   readonly messagingServiceSid: string | null;
 }
 

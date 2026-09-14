@@ -144,12 +144,17 @@ export function createTwilioTransport(deps: TwilioTransportDeps = {}): ChannelTr
 
       const form = new URLSearchParams({
         To: to,
-        // Via the Messaging Service when configured (Twilio-side queueing and
-        // encoding; the pool holds the same brand number, so the parent still
-        // sees the contact they saved) — direct From otherwise.
+        From: config.fromNumber,
+        // The service rides ALONGSIDE From, never instead of it. Left to choose,
+        // Twilio picks from the whole sender pool — toll-free ahead of long codes in
+        // Canada — and sticky-sender then pins the parent to whatever it picked, so a
+        // bench toll-free with no inbound webhook silently became the number parents
+        // were asked to reply YES to (observed 2026-09-07..14). Naming a sender from
+        // the pool keeps the service's queueing, encoding and opt-out handling while
+        // the message leaves from the one number that can hear the answer.
         ...(config.messagingServiceSid
           ? { MessagingServiceSid: config.messagingServiceSid }
-          : { From: config.fromNumber }),
+          : {}),
         Body: body,
         // Live-gate finding (2026-08-11): Twilio only sends delivery receipts to a
         // StatusCallback named IN the send request — the number-level field does
