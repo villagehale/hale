@@ -122,6 +122,24 @@ describe('check_action_time_window — the acting instant clears the family cloc
     expect(window?.result).toMatchObject({ withinWindow: true, observedHour: 8 });
   });
 
+  it('holds the window’s own edges: 06:00 is inside, 22:00 is not', async () => {
+    // Kills: relaxing either end of registry.ts's `hour >= openHour && hour < closeHour`.
+    // The two cases around this one clear the window by four hours in each direction, so
+    // an off-by-one at the boundary reads green everywhere else — and 22:00 is precisely
+    // the hour allowActionsBetween exists to refuse.
+    const open = await review('2026-07-12T10:00:00.000Z'); // 06:00 America/Toronto
+    const openWindow = open.verdict.toolResults.find((r) => r.tool === 'check_action_time_window');
+    expect(openWindow?.ok).toBe(true);
+    expect(openWindow?.result).toMatchObject({ withinWindow: true, observedHour: 6 });
+
+    const close = await review('2026-07-13T02:00:00.000Z'); // 22:00 America/Toronto
+    const closeWindow = close.verdict.toolResults.find(
+      (r) => r.tool === 'check_action_time_window',
+    );
+    expect(closeWindow?.ok).toBe(false);
+    expect(closeWindow?.result).toMatchObject({ withinWindow: false, observedHour: 22 });
+  });
+
   it('still flags a draft acted on inside quiet hours — the check did not go blind', async () => {
     // Positive control for the assertion above: an absence test that cannot fail is
     // worthless. 03:00 America/Toronto is outside allowActionsBetween ['06:00','22:00'].
