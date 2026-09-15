@@ -723,7 +723,10 @@ describe('the read throttle', () => {
       db.database,
       {
         sequence: await preparing(),
-        rawUrl: legoUrl,
+        // The address-bar form, so the raw string and the sanitized one differ: it is
+        // the SANITIZED url that the bound courseUrl can be equal to, and a resend
+        // carrying the portal's own embed flag is the ordinary shape of this paste.
+        rawUrl: `${legoUrl}&redirectedFromEmbededMode=False&sessionId=ABC`,
         inboundChannelMessageId: inboundId,
         now: NOW,
       },
