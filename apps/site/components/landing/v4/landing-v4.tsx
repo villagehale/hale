@@ -135,7 +135,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             <div className="flex flex-wrap items-center justify-center gap-3">
               {smsHref ? (
                 <ChooserLink locale={locale} placement="hero" className="v4-btn-solid v4-glass">
-                  {common('messageHale')} <span aria-hidden="true">→</span>
+                  {common('textHale')} <span aria-hidden="true">→</span>
                 </ChooserLink>
               ) : (
                 <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">
@@ -364,7 +364,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             <div className="flex flex-wrap items-center justify-center gap-3">
               {smsHref ? (
                 <ChooserLink locale={locale} placement="closing" className="v4-btn-solid v4-glass">
-                  {common('messageHale')} <span aria-hidden="true">→</span>
+                  {common('textHale')} <span aria-hidden="true">→</span>
                 </ChooserLink>
               ) : (
                 <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid v4-glass">

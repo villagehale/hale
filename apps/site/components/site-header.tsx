@@ -39,7 +39,7 @@ export function SiteHeader({ locale = routing.defaultLocale }: { locale?: Locale
 
   const cta = smsNumber ? (
     <ChooserLink locale={locale} placement="header" className="v4-btn-solid">
-      {common('messageHale')}
+      {common('textHale')}
     </ChooserLink>
   ) : (
     <a href={`mailto:${CONTACT_EMAIL}`} className="v4-btn-solid">
