@@ -787,7 +787,8 @@ describe('the read throttle', () => {
         { sequence, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now },
         deps({ fetchBody: net.fetchBody }),
       );
-      if (outcome.status !== 'read_throttled') throw new Error(`expected a throttle, got ${outcome.status}`);
+      if (outcome.status !== 'read_throttled')
+        throw new Error(`expected a throttle, got ${outcome.status}`);
       return outcome.reply;
     };
 
@@ -1081,5 +1082,18 @@ describe('the bind-read claim', () => {
     expect(await claim({ now: NOW, family: other.familyId })).toEqual({ status: 'claimed' });
     expect(await rateLimitRows(familyId)).toHaveLength(1);
     expect(await rateLimitRows(other.familyId)).toHaveLength(1);
+  });
+
+  /** Kills a retention sweep scoped to the route alone. It runs on every claim, so one
+   * household moving into a new slot would hand another household a second read — the
+   * two instances serving them need not agree on the minute. */
+  it('sweeps only its own rows when a family moves into a new window', async () => {
+    const other = await seedFamily(db.database, `Prepare Reply other ${Math.random()}`);
+    await claim({ now: NOW, family: other.familyId });
+
+    await claim({ now: new Date(NOW.getTime() + BIND_READ_WINDOW_MS) });
+
+    expect(await rateLimitRows(other.familyId)).toHaveLength(1);
+    expect((await claim({ now: NOW, family: other.familyId })).status).toBe('throttled');
   });
 });
