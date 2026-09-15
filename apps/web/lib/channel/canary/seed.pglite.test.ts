@@ -19,7 +19,11 @@ let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
   db = await createTestDb();
-});
+  // The full migration chain past Vitest's 30s hook default, the way every
+  // other PGlite suite here boots: a whole-repo run has hundreds of files in
+  // flight and this hook is what times out first (see deep-answer-at-question-
+  // time.test.ts).
+}, 120_000);
 
 afterAll(async () => {
   await db.close();

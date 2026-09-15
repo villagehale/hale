@@ -337,7 +337,7 @@ async function handOffToConversation(
   // Pure, over the canonical `From` the door already holds: a label computed
   // after the row, the audit and the enqueue have committed must not be able to
   // fail the hand-off it is labelling.
-  return isCanaryInbound(phoneE164, inbound.body) ? 'handed_off_canary' : 'handed_off';
+  return isCanaryInbound(phoneE164) ? 'handed_off_canary' : 'handed_off';
 }
 
 /**

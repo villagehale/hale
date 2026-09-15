@@ -1,8 +1,8 @@
 import { schema } from '@hale/db';
-import { sql } from 'drizzle-orm';
+import { and, inArray, sql } from 'drizzle-orm';
 import { pgSchema, text, timestamp } from 'drizzle-orm/pg-core';
 import { NextResponse } from 'next/server';
-import { CHANNEL_MESSAGE_RECEIVED_QUEUE } from '~/lib/channel/config';
+import { INBOUND_TURN_QUEUES } from '~/lib/channel/config';
 import { assessCronHealth, assessInboundLane } from '~/lib/cron/deadman';
 import { armCronHeartbeats } from '~/lib/cron/heartbeat';
 import { db } from '~/lib/db';
@@ -28,6 +28,12 @@ const pgbossJob = pgSchema('pgboss').table('job', {
  * Seconds since the OLDEST inbound turn that has not reached a terminal state,
  * or null when there is none.
  *
+ * The queues are {@link INBOUND_TURN_QUEUES} — the same set the doors kick a drain
+ * of — rather than a name of this lane's own, so a second inbound-turn queue is
+ * watched the moment it joins the set. A lane naming one queue would go on reading
+ * 'ok' through a stall on the other, which is the failure this whole endpoint exists
+ * to make impossible.
+ *
  * `state` is compared against SQL LITERALS (pg-boss's own idiom): the column is
  * the `pgboss.job_state` enum, and a text-typed bind parameter would have to be
  * cast. `now()` is SQL for the same class of reason — a bound Date is what
@@ -44,7 +50,10 @@ async function inboundLaneAgeSeconds(): Promise<number | null> {
     })
     .from(pgbossJob)
     .where(
-      sql`${pgbossJob.name} = ${CHANNEL_MESSAGE_RECEIVED_QUEUE} and ${pgbossJob.state} in ('created', 'retry', 'active')`,
+      and(
+        inArray(pgbossJob.name, [...INBOUND_TURN_QUEUES]),
+        sql`${pgbossJob.state} in ('created', 'retry', 'active')`,
+      ),
     );
   return row?.ageSeconds ?? null;
 }

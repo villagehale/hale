@@ -14,10 +14,15 @@ import { CANARY_PHONE_E164 } from './config';
  * VERIFIED sms channel for CANARY_PHONE_E164 carrying its CASL consent record.
  * No children, no province, no email (users.email is nullable exactly for an
  * SMS-provisioned parent), onboarding stage left at its 'pending_invite'
- * default: the four proactive senders gate on stage 'sms_active' and the
- * week-plan sweep gates on the probe channel itself, so nothing composes for it
- * and nothing texts it. The inbound reply path reads none of that, which is why
- * the turn the canary exists to exercise is unaffected.
+ * default: the nudge, intro and follow-up sweeps all gate on stage 'sms_active',
+ * which this household never reaches, and the week-plan sweep gates on the probe
+ * channel itself (loop/cron.ts selectFamiliesToCompose). Sunday-send is the one
+ * that matches on none of it — role, prefs and the local send moment only, so it
+ * DOES select this parent; what stops it is one layer on, and worth naming
+ * because it is a chain rather than a gate: nothing composed means no week-plan
+ * artifact, `readPlan` returns null, and the run skips with `skippedNoPlan`
+ * (loop/send.ts). The inbound reply path reads none of that, which is why the
+ * turn the canary exists to exercise is unaffected.
  *
  * ONE TRANSACTION, because a verified SMS channel is never just a row: every
  * production path that creates one (sms-consent-core's enrolVerifiedChannel,

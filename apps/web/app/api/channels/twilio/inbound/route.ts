@@ -2,7 +2,7 @@ import { after } from 'next/server';
 import { withWebhookFailureAlert } from '~/lib/channel/twilio/alert';
 import { twilioInboundDeps } from '~/lib/channel/twilio/deps';
 import { handleTwilioInboundRequest } from '~/lib/channel/twilio/inbound';
-import { INBOUND_TURN_QUEUES } from '~/lib/cron/drain';
+import { INBOUND_TURN_QUEUES } from '~/lib/channel/config';
 import { kickDrain } from '~/lib/cron/kick-drain';
 
 // Node runtime: the handler reaches pg-boss (raw pg + prepared statements), node:crypto

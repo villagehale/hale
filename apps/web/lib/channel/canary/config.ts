@@ -99,9 +99,16 @@ function isCanaryBody(body: string): boolean {
  * have all committed — a lookup there could turn a completed hand-off into a
  * 500, a Twilio retry, and a 'duplicate'. A label must never be able to fail the
  * request it is labelling.
+ *
+ * The NUMBER alone, not the number and the word. Everything arriving from the
+ * probe is synthetic whatever it says, which is the same rule `notCanaryTraffic`
+ * applies to the dashboards; a label that also demanded the word would put
+ * synthetic turns back into the real denominator the day the cron's body
+ * constant drifts. The word is the HANDLER's question — whether to answer — and
+ * that one is asked in `isCanaryTurn`.
  */
-export function isCanaryInbound(phoneE164: string, body: string): boolean {
-  return phoneE164 === CANARY_PHONE_E164 && isCanaryBody(body);
+export function isCanaryInbound(phoneE164: string): boolean {
+  return phoneE164 === CANARY_PHONE_E164;
 }
 
 /**

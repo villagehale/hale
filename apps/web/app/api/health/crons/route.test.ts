@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { schema } from '@hale/db';
 import PgBoss from 'pg-boss';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CHANNEL_MESSAGE_RECEIVED_QUEUE } from '~/lib/channel/config';
+import { CHANNEL_MESSAGE_RECEIVED_QUEUE, INBOUND_TURN_QUEUES } from '~/lib/channel/config';
 import { cronSlug, INBOUND_LANE_NAME } from '~/lib/cron/deadman';
 import { createTestDb, type TestDb } from '~/lib/testing/pglite';
 import vercelConfig from '~/vercel.json';
@@ -57,7 +59,7 @@ async function bootPgBoss(): Promise<PgBoss> {
     },
   } as never);
   await started.start();
-  await started.createQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE);
+  for (const queue of INBOUND_TURN_QUEUES) await started.createQueue(queue);
   return started;
 }
 
@@ -233,6 +235,36 @@ describe('GET /api/health/crons · the inbound turn lane', () => {
     expect(lane?.staleAfterSeconds).toBe(600);
     expect(lane?.ageSeconds as number).toBeGreaterThanOrEqual(1_790);
     expect(lane?.ageSeconds as number).toBeLessThan(1_900);
+  });
+
+  // Per queue, not over the set: with the whole set seeded at once a lane that
+  // watched only its favourite name would still read stale. This is the case
+  // that goes red the day a second inbound-turn queue joins INBOUND_TURN_QUEUES
+  // and the lane is still naming one of its own.
+  it.each([...INBOUND_TURN_QUEUES])(
+    'a turn stuck on %s alone is enough to go stale',
+    async (queue) => {
+      await clearInboundLane();
+      await boss.send(queue, {});
+      await db.exec(`update pgboss.job set created_on = now() - interval '30 minutes'`);
+
+      const body = await (await callRoute()).json();
+
+      expect(body.ok).toBe(false);
+      expect(laneOf(body)?.status).toBe('stale');
+    },
+  );
+
+  it('reads the lane through the query builder, never execute() (#622)', () => {
+    // execute() hands back `{rows}` on drizzle's pglite session and a RowList
+    // ARRAY on postgres-js, so a reader written on it passes every case above
+    // and returns undefined in production — the lane permanently 'ok' and the
+    // alarm silently dead. PGlite structurally cannot show that, so the gate is
+    // the source: the query builder is array-shaped on both drivers.
+    const source = readFileSync(fileURLToPath(new URL('./route.ts', import.meta.url)), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+    expect(code).not.toContain('.execute(');
   });
 
   it('the same job, completed, leaves the lane empty — and the age stays withheld', async () => {

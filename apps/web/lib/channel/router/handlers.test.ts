@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type Database, schema } from '@hale/db';
+import type { Database } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { encryptString } from '~/lib/crypto/string-cipher';
-import { createTestDb, seedFamily, type SeededFamily, type TestDb } from '~/lib/testing/pglite';
+import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
+import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
+import { createTestDb, type TestDb } from '~/lib/testing/pglite';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import type {
   PrepareReplyDeps,
@@ -1091,20 +1090,19 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
 describe('the canary turn walks the whole chain', () => {
   const CANARY_KEY = Buffer.alloc(32, 9).toString('base64');
   let canaryDb: TestDb;
-  let household: SeededFamily;
+  let household: CanaryHousehold;
 
   beforeAll(async () => {
     process.env.APP_ENCRYPTION_KEY = CANARY_KEY;
     canaryDb = await createTestDb();
-    household = await seedFamily(canaryDb.database, 'Hale inbound canary');
-    await canaryDb.database.insert(schema.parentChannels).values({
-      userId: household.parentUserId,
-      familyId: household.familyId,
-      kind: 'sms',
-      phoneE164Encrypted: encryptString(CANARY_PHONE_E164),
-      phoneE164Hash: phoneBlindIndex(CANARY_PHONE_E164),
-      verifiedAt: new Date(),
-    });
+    // The REAL seed script's household, not a stand-in: this test is the evidence
+    // that the probe reaches the #617 crash site, and a hand-rolled family with an
+    // email and a province is not the family production will have (seed.ts writes
+    // neither). Resolved back through the identity path the door uses.
+    await seedCanaryHousehold(canaryDb.database);
+    const resolved = await canaryChannel(canaryDb.database);
+    if (!resolved) throw new Error('the seeded canary household did not resolve');
+    household = resolved;
   }, 120_000);
 
   afterAll(async () => {

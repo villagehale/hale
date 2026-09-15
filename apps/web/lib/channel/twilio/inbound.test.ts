@@ -757,6 +757,23 @@ describe('routing outcomes are logged and counted (rule #11)', () => {
     expect(h.jobs).toHaveLength(1);
   });
 
+  it('labels a probe-number turn whatever it says — the counters exclude the probe by IDENTITY', async () => {
+    const h = harness();
+    enrol(h.fake, 'primary_parent', CANARY_PHONE_E164);
+
+    // The body the cron sends is a constant that can drift; the number cannot.
+    // Everything from the probe number is synthetic, so labelling on the word
+    // would put synthetic turns back in the real denominator the day the two
+    // constants disagree — and the dashboards already exclude this household by
+    // identity alone (canary/config.ts notCanaryTraffic).
+    await handleTwilioInboundRequest(
+      twilioRequest(twilioParams({ Body: 'CANARY PING', From: CANARY_PHONE_E164 })),
+      h.deps,
+    );
+
+    expect(h.counted).toEqual(['handed_off_canary']);
+  });
+
   it('leaves a REAL household on handed_off, even when a parent types the probe word', async () => {
     const h = harness();
     enrol(h.fake);
