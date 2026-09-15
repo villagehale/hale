@@ -379,6 +379,7 @@ describe('the founder dashboards count FAMILY traffic, not the inbound canary', 
       pulse: await loadPulse(db.database),
       trends: await loadTextingTrends(db.database),
       hours: await loadTextingByHour(db.database),
+      mix: await loadAuditMix(db.database),
     };
 
     const inbound = (fam: { familyId: string; parentUserId: string }) => ({
@@ -405,10 +406,36 @@ describe('the founder dashboards count FAMILY traffic, not the inbound canary', 
         inbound(real),
       ]);
 
+    // The same seven turns in the audit trail. A canary tick leaves TWO rows —
+    // the door's and the handler's — both actored by the household's own parent
+    // (twilio/inbound.ts, canary/handler.ts), which is the column the mix joins on.
+    const acting = (fam: { familyId: string; parentUserId: string }, action: string) => ({
+      familyId: fam.familyId,
+      actor: fam.parentUserId,
+      actionTaken: action,
+      targetTable: 'channel_messages',
+    });
+    const tick = (fam: { familyId: string; parentUserId: string }) => [
+      acting(fam, 'sms_reply_received'),
+      acting(fam, 'sms_canary_answered'),
+    ];
+    await db.database
+      .insert(schema.auditLog)
+      .values([
+        ...tick(probe),
+        ...tick(probe),
+        ...tick(probe),
+        ...tick(probe),
+        ...tick(probe),
+        ...tick(probe),
+        acting(real, 'sms_reply_received'),
+      ]);
+
     const after = {
       pulse: await loadPulse(db.database),
       trends: await loadTextingTrends(db.database),
       hours: await loadTextingByHour(db.database),
+      mix: await loadAuditMix(db.database),
     };
 
     // POSITIVE CONTROL first: the real parent did land, so a zero delta below
@@ -427,5 +454,12 @@ describe('the founder dashboards count FAMILY traffic, not the inbound canary', 
 
     const hourly = (rows: { count: number }[]) => rows.reduce((sum, r) => sum + r.count, 0);
     expect(hourly(after.hours)).toBe(hourly(before.hours) + 1);
+
+    const acted = (rows: { action: string; count: number }[], action: string) =>
+      rows.filter((r) => r.action === action).reduce((sum, r) => sum + r.count, 0);
+    expect(acted(after.mix, 'sms_reply_received')).toBe(
+      acted(before.mix, 'sms_reply_received') + 1,
+    );
+    expect(acted(after.mix, 'sms_canary_answered')).toBe(0);
   });
 });

@@ -68,23 +68,28 @@ export async function canaryChannel(database: Database): Promise<CanaryHousehold
 }
 
 /**
- * The canary's own turns, excluded from an aggregate over `channel_messages`.
+ * The canary's own rows, excluded from an aggregate the founder reads as a
+ * measure of families — keyed on whichever column names the person: the sender
+ * of a `channel_messages` row, the actor of an `audit_log` one.
  *
  * Six synthetic inbounds an hour is one permanent extra sender EVERY day and a
  * 6/hour floor under the hourly strip: "families who texted today" could never
  * read 0 again, and the founder's line would stop being a measure of families.
- * The door already keeps the probe out of the routed counter
- * (`handed_off_canary`); this keeps it out of the dashboards for the same
- * reason.
+ * Each of those ticks also lands two audit rows — the door's `sms_reply_received`
+ * and the handler's answer — which is 288 a day against nine households, enough
+ * to make the audit mix a picture of the probe. The door already keeps it out of
+ * the routed counter (`handed_off_canary`); this keeps it out of the dashboards.
  *
  * `not exists` rather than `not in` on purpose: `parent_user_id` is nullable,
  * and `null not in (…)` is NULL, which would silently drop those rows from
  * counts that must include them. A correlated probe on the blind index — the
  * same identity both halves of the canary join on — needs no decryption and
- * rides `parent_channels`' own index on the hash.
+ * rides `parent_channels`' own index on the hash. Both sides of the identity
+ * comparison are cast because `audit_log.actor` is TEXT and reads 'system' or an
+ * agent-run id as often as a user id, so it is the uuid that must give way.
  */
-export function notCanaryTraffic(parentUserId: SQL | unknown): SQL {
-  return sql`not exists (select 1 from ${schema.parentChannels} where ${schema.parentChannels.userId} = ${parentUserId} and ${schema.parentChannels.phoneE164Hash} = ${phoneBlindIndex(CANARY_PHONE_E164)})`;
+export function notCanaryTraffic(actor: SQL | unknown): SQL {
+  return sql`not exists (select 1 from ${schema.parentChannels} where ${schema.parentChannels.userId}::text = ${actor}::text and ${schema.parentChannels.phoneE164Hash} = ${phoneBlindIndex(CANARY_PHONE_E164)})`;
 }
 
 function isCanaryBody(body: string): boolean {
