@@ -68,7 +68,7 @@
       },
       {
         "dir": "in",
-        "text": "C’est noté. Les loisirs d’automne de Halton Hills ouvrent mardi à 7 h — les résidents d’abord, grâce à votre code postal. Je vous écris la veille au soir et quinze minutes avant, avec votre lien. Répondez OUI et je fais cette matinée avec vous."
+        "text": "C’est noté. Les loisirs d’automne de Halton Hills ouvrent mardi à 7 h, et L7G est dans la fenêtre réservée aux résidents. Répondez OUI et je vous envoie votre lien la veille au soir, puis quinze minutes avant l’ouverture."
       },
       {
         "dir": "out",
@@ -76,6 +76,9 @@
       }
     ],
     "heroFounding": "Les familles fondatrices commencent gratuitement — et gardent leur tarif fondateur pour toujours.",
+    "heroThreadCap": "Exemple : un premier texto à Hale, et la réponse",
+    "bubbleYou": "Vous :",
+    "bubbleHale": "Hale :",
     "threadEyebrow": "Texter Hale, ça ressemble à ça",
     "threadH2a": "Textez-moi comme vous textez",
     "threadH2Accent": "un ami.",
@@ -224,7 +227,7 @@
     "closingH2a": "Les familles fondatrices adhèrent",
     "closingH2Accent": "gratuitement.",
     "closingSub": "Gratuit tant que je suis nouveau — et les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Pas de compte à rebours, juste le numéro.",
-    "heroTerms": "Gratuit pour commencer. C’est vous qui écrivez en premier; les tarifs de messagerie standards s’appliquent, répondez STOP à tout moment. Vos données restent au Canada —",
+    "heroTerms": "Gratuit pour commencer. C’est vous qui textez en premier; les tarifs de messagerie standards s’appliquent, répondez STOP à tout moment. Vos données restent au Canada —",
     "heroTermsLink": "politique de confidentialité"
   },
   "About": {

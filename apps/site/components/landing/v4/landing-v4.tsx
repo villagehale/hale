@@ -65,6 +65,15 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
   const coaching = t.raw('coaching') as Step[];
   const caregivers = t.raw('caregivers') as Card[];
 
+  /**
+   * Who said it. A bubble's side is drawn with `align-self` and a fill, and in
+   * dark the out-bubble's navy sits on a near-identical glass ground — so
+   * direction is a visual cue only, and a reader who cannot see the alignment
+   * gets a bare "YES" with no idea whose turn it was. The prefix is sr-only: the
+   * same sentence, said to the reader the layout does not reach.
+   */
+  const speaker = (dir: ThreadRow['dir']) => (dir === 'in' ? t('bubbleHale') : t('bubbleYou'));
+
   return (
     <main id="main" tabIndex={-1}>
       {/* Renders nothing — how far down this long page a reader actually got, which is
@@ -118,8 +127,16 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               the sizing, and what keeps the transcript's own scans (which key on
               a leading `v4-thread`) about the transcript. */}
           <div className="v4-hero-thread v4-thread v4-glass">
+            {/* The transcript below opens on a visible `v4-thread-cap` saying
+                whose thread this is. The hero says the same thing to the same
+                reader and spends no fold height on it: the exchange is a demo,
+                and a reader who can see it already knows that from the bubbles.
+                (A `role="group"` + aria-label was the other way, and lints as a
+                fieldset — which this is not.) */}
+            <p className="sr-only">{t('heroThreadCap')}</p>
             {heroBubbles.map((row, i) => (
               <p key={`${i}-${row.dir}`} className={`v4-bubble v4-bubble-${row.dir}`}>
+                <span className="sr-only">{speaker(row.dir)} </span>
                 {row.text}
               </p>
             ))}
@@ -190,6 +207,7 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
               key={`${i}-${row.dir}`}
               className={row.dir === 'time' ? 'v4-thread-time' : `v4-bubble v4-bubble-${row.dir}`}
             >
+              {row.dir !== 'time' && <span className="sr-only">{speaker(row.dir)} </span>}
               {row.text}
             </p>
           ))}
@@ -376,8 +394,14 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
                 (rule #11 applied to the funnel), so the close also offers the same
                 URI as a scannable code. Hidden on phones, where the button IS the
                 path. */}
+            {/* On glass, not straight on the shore. This is the one block of
+                small secondary text the page sets over the artwork, and over the
+                bright water `.meta` measured 4.09:1 on rendered pixels — under
+                the 4.5:1 floor. The same glass the hero's exchange sits on puts
+                the page's own canvas back under it (5.0:1) without inventing a
+                panel treatment the page does not already use. */}
             {smsHref && (
-              <div className="mt-8 hidden items-center gap-6 text-left sm:flex">
+              <div className="v4-glass mt-8 hidden items-center gap-6 rounded-[var(--r-lg)] p-5 text-left sm:flex">
                 <QrCode value={smsHref} label={textNs('qrAria')} />
                 <div className="max-w-sm">
                   <p className="font-semibold">{textNs('onLaptop')}</p>

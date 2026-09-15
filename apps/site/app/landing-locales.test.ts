@@ -34,6 +34,11 @@ function transcript(html: string): string {
   return html.match(/<p class="v4-thread-cap"[\s\S]*?<\/section>/)?.[0] ?? '';
 }
 
+/** The hero's own three-bubble exchange, the other conversation on the page. */
+function heroExchange(html: string): string {
+  return html.match(/<div class="v4-hero-thread[\s\S]*?<\/div>/)?.[0] ?? '';
+}
+
 describe('the registration loop renders in every locale', () => {
   it.each(routing.locales)('%s runs four legs and seven bubbles, in order', (locale) => {
     const html = transcript(HTML[locale]);
@@ -116,11 +121,34 @@ describe('the registration loop renders in every locale', () => {
     for (const locale of routing.locales) expect(keys(locale), locale).toEqual(en);
   });
 
-  it.each(routing.locales)('%s keeps the demo evergreen — no calendar date', (locale) => {
-    const thread = transcript(HTML[locale]);
-    expect(thread, 'the thread must render').toContain('v4-thread-time');
-    // 20xx would be a cycle label; the clock times (10:04, 7:00) are three digits
-    // or fewer either side of the colon and cannot match.
-    expect(thread).not.toMatch(/\b20\d\d\b/);
+  it.each(routing.locales)('%s keeps BOTH demos evergreen — no calendar date', (locale) => {
+    // Run over the hero exchange as well as the transcript. A translator writing
+    // the hero reply has the same temptation to print the cycle the row is drawn
+    // from, and the hero is the one a first-time reader sees — scoping this to
+    // the transcript left the above-the-fold copy the only ungated conversation
+    // on the page. 20xx would be a cycle label; the clock times (10:04, 7:00) are
+    // three digits or fewer either side of the colon and cannot match.
+    for (const [name, block] of [
+      ['the transcript', transcript(HTML[locale])],
+      ['the hero exchange', heroExchange(HTML[locale])],
+    ] as const) {
+      expect(block, `${name} must render`).toContain('v4-bubble');
+      expect(block, `${locale} · ${name}`).not.toMatch(/\b20\d\d\b/);
+    }
+  });
+
+  it.each(routing.locales)('%s says who is speaking, not only which side', (locale) => {
+    // Direction is drawn with align-self and a fill; in dark the out-bubble's
+    // navy sits on a near-identical glass ground, so a reader who cannot see the
+    // alignment gets a bare "YES". Every bubble in both conversations carries an
+    // sr-only speaker, and the hero exchange opens on a caption saying what the
+    // three bubbles are — the transcript's visible `v4-thread-cap`, said only to
+    // the reader the layout does not reach, because the hero has no fold height
+    // to spend on a line its sighted reader can already see.
+    const html = HTML[locale];
+    const bubbles = [...html.matchAll(/<p class="v4-bubble[^"]*">(.*?)<\/p>/g)].map((m) => m[1]);
+    expect(bubbles.length, 'the bubbles must render').toBe(10);
+    for (const bubble of bubbles) expect(bubble).toMatch(/^<span class="sr-only">[^<]+ <\/span>/);
+    expect(heroExchange(html)).toMatch(/^<div class="v4-hero-thread[^>]*><p class="sr-only">[^<]+</);
   });
 });

@@ -81,11 +81,20 @@ describe('landing — the v4 hero', () => {
   });
 
   it('carries a conversion surface in the hero nav and the hero body', () => {
-    // Two Message Hale CTAs above the fold — the nav pill and the hero — both
-    // opening the /text chooser, the one target that works on every device.
-    // Wired as cta_message_click (an internal navigation, NOT cta_text_click:
-    // that event means "a composer opened" and lives on the chooser now).
-    expect([...html.matchAll(/Message Hale/g)].length).toBeGreaterThanOrEqual(2);
+    // Three chooser doors — the nav pill, the hero and the close, two of them
+    // above the fold — all opening the /text chooser, the one target that works
+    // on every device. Wired as cta_message_click (an internal navigation, NOT
+    // cta_text_click: that event means "a composer opened" and lives on the
+    // chooser now).
+    //
+    // The LABEL is "Text Hale". The page's promise is three texts and a number
+    // you text, so the door says the verb the page just used; "Message Hale" is
+    // kept for /text itself, where the reader is picking a composer rather than
+    // deciding (pinned in components/text-entry.test.ts). On the landing it is a
+    // regression. The count above is that absence's positive control — the page
+    // demonstrably labels its doors, just not with that word.
+    expect([...html.matchAll(/Text Hale/g)]).toHaveLength(3);
+    expect(html).not.toContain('Message Hale');
     const chooserAnchors = [...html.matchAll(/<a\s[^>]*data-cta="cta_message_click"[^>]*>/g)].map(
       (m) => m[0],
     );
@@ -101,7 +110,9 @@ describe('landing — the v4 hero', () => {
   it('shows the terms microcopy under the hero CTA, privacy link included', () => {
     expect(html).toContain('class="v4-hero-terms"');
     expect(visibleText(html)).toContain(
-      'Free to start. You message first; standard message rates apply, reply STOP any time.',
+      // "You text first", to match the door right above it — the fine print was
+      // the last line still saying "message" under a button that says "Text Hale".
+      'Free to start. You text first; standard message rates apply, reply STOP any time.',
     );
     expect(visibleText(html)).toContain('Your data stays in Canada — privacy policy');
     // No exclamation marks anywhere in the hero band.
@@ -197,7 +208,13 @@ describe('landing — the number is reachable and never readable', () => {
     // hidden on phones, where the button IS the path — captioned with /text's
     // existing laptop strings rather than new copy.
     expect(html).toContain('aria-label="QR code — scan to text Hale"');
-    expect(html).toContain('hidden items-center gap-6 text-left sm:flex');
+    // Withheld on phones, shown from sm up; and on glass, because this is the
+    // only small secondary text the page sets over the shore art and `.meta`
+    // straight on the water measured 4.09:1 (sampled off a rendered screenshot).
+    const qrRow = html.match(/<div class="[^"]*"[^>]*>(?=<svg[^>]*role="img")/)?.[0] ?? '';
+    expect(qrRow, 'the QR row must render').toContain('sm:flex');
+    expect(qrRow).toContain('hidden');
+    expect(qrRow).toContain('v4-glass');
     expect(text).toContain('On a laptop?');
     expect(text).toContain('Scan the code with your phone’s camera');
   });
@@ -245,9 +262,7 @@ describe('landing — the brand tile, the shore, and nothing else', () => {
     }
     expect(svgs.filter((svg) => svg.includes('role="img"'))).toHaveLength(1);
     // Positive control: the wordmark's name still reaches the tree beside the art.
-    expect([...html.matchAll(/<span class="sr-only" translate="no">Hale<\/span>/g)]).toHaveLength(
-      3,
-    );
+    expect([...html.matchAll(/<span class="sr-only" translate="no">Hale<\/span>/g)]).toHaveLength(3);
   });
 
   it('uses the day shore for both the hero and the close, no night panel, and no mascot art', () => {
@@ -256,12 +271,7 @@ describe('landing — the brand tile, the shore, and nothing else', () => {
     const imgs = html.match(/<img[^>]*>/g) ?? [];
     expect(imgs.filter((img) => img.includes('hale-shore-hero'))).toHaveLength(2);
     expect(imgs.filter((img) => img.includes('hale-shore-night'))).toHaveLength(0);
-    for (const mascot of [
-      'hale-turtle',
-      'village-illustration',
-      'diamondhead',
-      'shore-ultrawide',
-    ]) {
+    for (const mascot of ['hale-turtle', 'village-illustration', 'diamondhead', 'shore-ultrawide']) {
       expect(html, `${mascot} must not appear`).not.toContain(mascot);
     }
   });
@@ -297,8 +307,7 @@ describe('landing — no signup funnel; the only way in is texting Hale', () => 
     // Stanley grammar: a returning parent gets a whisper (the header navlink and
     // the footer's bottom bar), a cold parent is never SOLD the app. The body
     // sections must not point at it — only the shared chrome may.
-    const chrome =
-      (html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? '') +
+    const chrome = (html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? '') +
       (html.match(/<footer[\s\S]*?<\/footer>/)?.[0] ?? '');
     expect(chrome).toContain('/sign-in');
     const body = html
@@ -446,6 +455,10 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     ].map((marker) => text.indexOf(marker));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // The hero TOOK that line from how-it-works, which then took a new one; a
+    // page that says it in both places has an H2 arguing with its own H1. The
+    // pin is the count, not the replacement wording.
+    expect([...text.matchAll(/Three texts/g)]).toHaveLength(1);
   });
 });
 
@@ -618,17 +631,69 @@ describe('landing — the thread is one continuous registration loop', () => {
     expect(text).toContain('haltonhills.ca/Play/Recreation/Programs');
   });
 
-  it('carries no calendar date or cycle year, so the demo cannot go stale', () => {
+  it('carries no calendar date or cycle year in EITHER conversation, so neither can go stale', () => {
     // The live heads-up prints "Sep 1, 7:00 a.m." and the cycle label "Fall 2026";
-    // the demo prints the published WEEKDAY and a bare season from the same
-    // verified row instead, both of which stay true after that window closes.
-    expect(thread, 'the thread must render for these absences to mean anything').toContain(
-      'v4-thread-time',
-    );
-    expect(thread).not.toMatch(/\b20\d\d\b/);
-    expect(thread).not.toMatch(
-      /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/,
-    );
+    // both demos print the published WEEKDAY and a bare season from the same
+    // verified row instead, which stay true after that window closes.
+    //
+    // Scoped per conversation rather than page-wide — the shore's srcSet carries
+    // `w=2048`, which a page-wide /\b20\d\d\b/ would read as a cycle year — and
+    // run over BOTH, because the hero exchange is the copy a first-time reader
+    // sees above the fold and is the one this rule most needs to hold for.
+    const heroExchange = html.match(/<div class="v4-hero-thread[\s\S]*?<\/div>/)?.[0] ?? '';
+    for (const [name, block] of [
+      ['the transcript', thread],
+      ['the hero exchange', heroExchange],
+    ] as const) {
+      expect(block, `${name} must render for these absences to mean anything`).toContain(
+        'v4-bubble',
+      );
+      expect(block, name).not.toMatch(/\b20\d\d\b/);
+      expect(block, name).not.toMatch(
+        /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/,
+      );
+    }
+  });
+
+  it('never re-says a transcript sentence in the hero exchange, one word apart included', () => {
+    // The hero is the moment BEFORE this one — the first text and the first
+    // answer — not the transcript's opening lines moved up. Two conversations a
+    // screen and a half apart that say the same sentence read as one
+    // conversation printed twice, which is the specific way a landing page gets
+    // long.
+    //
+    // An exact-substring pin does not hold this: the copy it was written against
+    // said "I’ll run THAT morning with you" against the transcript's "I’ll run
+    // THE morning with you" and passed. So the comparison is per sentence pair
+    // on word SETS, which a one-word edit barely moves. Measured: this copy's
+    // worst pair is the two "Halton Hills fall recreation opens Tuesday at 7:00
+    // a.m." openings at 0.50 — two messages that share a fact, which they must —
+    // and the near-copy above scores 0.79. The line is drawn at 0.65, with room
+    // either side, and it is the SENTENCES that are compared, so a shared fact
+    // inside differently-argued sentences stays legal.
+    const words = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+    const overlap = (a: Set<string>, b: Set<string>) => {
+      const shared = [...a].filter((w) => b.has(w)).length;
+      return shared / (a.size + b.size - shared);
+    };
+    const sentences = (block: string) =>
+      visibleText(block)
+        .split(/(?<=[.?])\s+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 24);
+
+    const heroExchange = html.match(/<div class="v4-hero-thread[\s\S]*?<\/div>/)?.[0] ?? '';
+    const heroSentences = sentences(heroExchange);
+    const threadSentences = sentences(thread);
+    expect(heroSentences.length, 'the hero exchange must render').toBeGreaterThanOrEqual(2);
+    expect(threadSentences.length, 'the transcript must render').toBeGreaterThanOrEqual(4);
+    for (const hero of heroSentences) {
+      for (const said of threadSentences) {
+        expect(overlap(words(hero), words(said)), `${hero}\n…already said as…\n${said}`).toBeLessThan(
+          0.65,
+        );
+      }
+    }
   });
 
   it('never claims Hale registers the child itself — the parent taps the link', () => {

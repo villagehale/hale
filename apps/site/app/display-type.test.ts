@@ -733,9 +733,24 @@ describe('the accent is neither slant nor colour', () => {
       }
     });
     expect(amberDisplay).toEqual([]);
-    // Positive control: amber is still painted, on the functional elements it was
-    // reserved to — the eyebrow label and the CTA/link family.
-    expect(only('.v4-eyebrow', 'color')).toBe('var(--color-amber)');
+    // Positive control: amber is still painted, on what it is reserved to — the
+    // 01/02/03 numerals, 2.4rem of display serif, plus the CTA/link family.
+    expect(only('.v4-card-n', 'color')).toBe('var(--color-amber)');
+  });
+
+  it('never paints the small letterspaced caps in amber, which they fail AA in', () => {
+    // ~11px caps are NORMAL text to WCAG — the 4.5:1 floor, not the 3:1 one large
+    // type gets — and #b26b1f on the linen canvas measures 4.08:1 off a rendered
+    // screenshot of this page. So the eight landing kickers take navy in light and
+    // keep the amber only in dark, where it clears (8.4:1 on the navy ground).
+    // Amber is left where it is large or decorative: the numerals above.
+    for (const kicker of ['.v4-eyebrow', '.v4-when']) {
+      const color = only(kicker, 'color');
+      expect(color, kicker).not.toContain('--color-amber');
+      expect(color, `${kicker} keeps the amber in dark only`).toMatch(
+        /^light-dark\(rgb\(23 41 74 \/ 0\.\d+\), #[0-9a-f]{6}\)$/,
+      );
+    }
   });
 
   it('loads no italic master for any face', () => {
@@ -751,10 +766,11 @@ describe('the accent is neither slant nor colour', () => {
 describe('the pronunciation line is quieter than the labels that share its style', () => {
   it('drops 15–20% of its size, and none of its contrast', () => {
     // The founder asked for it quieter by 15–20%, in size and/or contrast.
-    // Contrast was not available: amber measures 4.6:1 on the page in light, which
-    // is 0.1 over the AA floor for normal text, so any tint at all would have
-    // bought the quiet by making the line inaccessible. So the whole reduction is
-    // size, and the colour is asserted to be untouched rather than left unstated.
+    // Contrast was not available: at 9.8px a tint would have bought the quiet by
+    // pushing the line under the 4.5:1 floor small caps answer to. So the whole
+    // reduction is size, and the class itself is asserted to paint no colour at
+    // all rather than left unstated (the hero's own deepening rides the
+    // `.v4-hero-top` descendant, which reads against the sky, not the canvas).
     const eyebrow = Number(only('.v4-eyebrow', 'font-size').replace('rem', ''));
     const pronounce = Number(only('.v4-pronounce', 'font-size').replace('rem', ''));
     expect(pronounce / eyebrow).toBeLessThanOrEqual(0.85);
@@ -773,5 +789,54 @@ describe('the pronunciation line is quieter than the labels that share its style
     );
     expect([...landing.matchAll(/v4-pronounce/g)]).toHaveLength(1);
     expect([...landing.matchAll(/className="v4-eyebrow/g)].length).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe('type set over the shore art carries its own veil, in both bands', () => {
+  it('veils every .v4-hero-body, not just the one in the hero', () => {
+    // The page sets type over the shore illustration TWICE — the hero and the
+    // closing band, which share `.v4-hero-body`. The page-wide scrim is tuned for
+    // the artwork and leaves the bright water nearly untouched, so the type block
+    // gets its own soft radial behind it. That rule was scoped `.v4-hero-top
+    // .v4-hero-body::before`, which left the closing band — the last thing a
+    // converting reader reads, and the one carrying the founding-rate line — on
+    // raw artwork at 2.29:1. The pin is the SCOPE: the veil is a property of
+    // setting type on the shore, not of being the hero.
+    expect(only('.v4-hero-body::before', 'background')).toContain('radial-gradient');
+    expect(
+      declarations('.v4-hero-top .v4-hero-body::before', 'background'),
+      'the veil must not be re-scoped to the hero',
+    ).toEqual([]);
+    // Positive control: both bands really do wear that class over the art.
+    const landing = readFileSync(
+      fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect([...landing.matchAll(/className="v4-hero-body/g)]).toHaveLength(2);
+  });
+
+  it('fades the trailing edge of every phone card rail, so the cut reads as a carousel', () => {
+    // At 390px the card grids become horizontal rails and the second card is
+    // sliced mid-word by the viewport edge. The peek IS the affordance, but a
+    // hard slice reads as a rendering bug; the fade is what says the cut is
+    // deliberate. Asserted on all three rail classes, under the phone query only
+    // — a mask at desktop width would fade a grid that does not scroll.
+    for (const rail of ['.v4-cardgrid', '.v4-cardgrid-4', '.v4-cardgrid-2']) {
+      const masked: { value: string; query: string }[] = [];
+      root.walkRules((rule) => {
+        if (!selectorList(rule.selector).includes(rail)) return;
+        // Same RULE as the one that turned the grid into a rail, and that rule's
+        // own media query — `declarations` only records min-width, and this
+        // breakpoint is a max-width, so it cannot answer "phone only" on its own.
+        if (!rule.some((d) => d.type === 'decl' && d.prop === 'scroll-snap-type')) return;
+        const query = rule.parent?.type === 'atrule' ? (rule.parent as postcss.AtRule).params : '';
+        rule.walkDecls('mask-image', (decl) => {
+          masked.push({ value: decl.value, query });
+        });
+      });
+      expect(masked, `${rail} must fade its trailing edge`).toHaveLength(1);
+      expect(masked[0]?.value).toMatch(/linear-gradient\(\s*to right[\s\S]*transparent 100%\)/);
+      expect(masked[0]?.query, `${rail}'s fade is phone-only`).toMatch(/max-width/);
+    }
   });
 });

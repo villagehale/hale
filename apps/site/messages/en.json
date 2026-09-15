@@ -68,7 +68,7 @@
       },
       {
         "dir": "in",
-        "text": "Got it. Halton Hills fall recreation opens Tuesday at 7:00 a.m. — residents first with your postal code. I’ll text you the night before and fifteen minutes before, with your link. Reply YES and I’ll run that morning with you."
+        "text": "Got it. Halton Hills fall recreation opens Tuesday at 7:00 a.m., and L7G is inside the residents-first window. Say YES and I’ll send your link the night before, then again fifteen minutes out."
       },
       {
         "dir": "out",
@@ -76,6 +76,9 @@
       }
     ],
     "heroFounding": "Founding families join free — and keep the founding rate for good.",
+    "heroThreadCap": "An example first text to Hale, and the reply",
+    "bubbleYou": "You:",
+    "bubbleHale": "Hale:",
     "threadEyebrow": "Texting Hale looks like this",
     "threadH2a": "Text me like you’d text",
     "threadH2Accent": "a friend.",
@@ -224,7 +227,7 @@
     "closingH2a": "Founding families join",
     "closingH2Accent": "free.",
     "closingSub": "Free while I’m new — and families who start now keep their founding rate for good. No countdown, just the number.",
-    "heroTerms": "Free to start. You message first; standard message rates apply, reply STOP any time. Your data stays in Canada —",
+    "heroTerms": "Free to start. You text first; standard message rates apply, reply STOP any time. Your data stays in Canada —",
     "heroTermsLink": "privacy policy"
   },
   "About": {
