@@ -59,11 +59,19 @@ describe('toReviewChecks — the reviewer’s invoked verifications (rule #3)', 
       { tool: 'check_calendar_conflict', ok: true, result: {} },
       { tool: 'check_calendar_conflict', ok: false, result: {} },
       { tool: 'check_pii_leak', ok: true, result: {} },
+      { tool: 'check_action_time_window', ok: true, result: {} },
+      { tool: 'check_action_time_window', ok: false, result: {} },
     ]);
     expect(checks.map((c) => c.label)).toEqual([
       'calendar clear',
       'calendar clash',
       'no private details',
+      // The window judges HALE's own clock (the drafting instant), not the hour of
+      // the parent's event — so the copy names the family's quiet hours rather than
+      // grading the proposal. A parent texting at 22:15 about a 10:00 swim class
+      // must not be told their sensible plan is an "odd hour".
+      'outside your quiet hours',
+      'inside your quiet hours',
     ]);
   });
 

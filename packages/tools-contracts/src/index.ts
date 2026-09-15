@@ -438,8 +438,9 @@ export const REQUIRED_CHECKS = {
   // check_vaccine_schedule (permanent not_configured stubs → un-approvable).
   add_to_routine: ['check_action_idempotency'],
 
-  // Placing an item on Hale's own family calendar (VIL-219): respect the time
-  // window (past / quiet hours), don't double-place (idempotency), and don't
+  // Placing an item on Hale's own family calendar (VIL-219): the time window bounds
+  // when HALE acts — the drafting instant against the family's allowActionsBetween,
+  // never the hour the placement starts — don't double-place (idempotency), and don't
   // clash with an existing placement for the same child (check_calendar_conflict,
   // now a REAL query over family_events — no longer the not_configured stub).
   calendar_add: ['check_action_time_window', 'check_action_idempotency', 'check_calendar_conflict'],

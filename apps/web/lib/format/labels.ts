@@ -109,7 +109,13 @@ const REVIEWER_CHECK_LABELS: Record<string, { passed: string; failed: string }> 
   check_spending_cap: { passed: 'inside your cap', failed: 'over your cap' },
   check_recipient_allowlist: { passed: 'known recipient', failed: 'new recipient' },
   check_sender_allowlist: { passed: 'known sender', failed: 'new sender' },
-  check_action_time_window: { passed: 'sensible hour', failed: 'odd hour' },
+  // Names the family's quiet hours, not the proposal's hour: the check reads the
+  // instant HALE acts (the draft's own draftedAt), so "odd hour" beside a 10:00
+  // Saturday class the parent asked for at 22:15 would grade the wrong clock.
+  check_action_time_window: {
+    passed: 'outside your quiet hours',
+    failed: 'inside your quiet hours',
+  },
   check_action_idempotency: { passed: 'not a repeat', failed: 'looks like a repeat' },
   check_pii_leak: { passed: 'no private details', failed: 'private details inside' },
   check_user_override: { passed: 'matches your rules', failed: 'against your rules' },

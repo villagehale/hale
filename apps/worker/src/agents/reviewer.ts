@@ -86,6 +86,14 @@ const CHECK_INPUT_SCHEMAS: Partial<Record<ReviewerToolName, Anthropic.Tool['inpu
     properties: {},
     additionalProperties: false,
   },
+  // Same shape, same reason: the family id and the acting instant are both
+  // injected server-side. Leaving them on the permissive fallback schema invited
+  // the model to author the very facts the check exists to verify (rule #3).
+  check_action_time_window: {
+    type: 'object',
+    properties: {},
+    additionalProperties: false,
+  },
 };
 
 /** Default placement length when a calendar payload gives a start but no end. */
@@ -257,6 +265,21 @@ export async function runReviewer(
           familyId: input.familyId,
           startsAt: typeof p.startsAt === 'string' ? p.startsAt : '',
           durationMinutes: placementDurationMinutes(p.startsAt, p.endsAt),
+        };
+      }
+      if (block.name === 'check_action_time_window') {
+        // Same class as the conflict check: the model neither knows the family id
+        // nor may be trusted to name the instant whose quiet-hours are read. The
+        // instant is the draft's OWN drafting stamp — `allowActionsBetween` bounds
+        // when HALE acts, and review + execution follow drafting in the same pass.
+        // Reading the payload's start time instead asks a different question (is the
+        // FAMILY's event in daytime?) and refuses every weekly placement, which the
+        // Sunday loop stamps at family-local midnight. Passed raw: a malformed stamp
+        // must reach the door and be refused into a named ok:false, never quietly
+        // stand in for some other moment's quiet hours (rule #11).
+        toolInput = {
+          familyId: input.familyId,
+          proposedExecutionAt: input.draft.draftedAt,
         };
       }
       const result = await invokeTool(block.name as ReviewerToolName, toolInput);
