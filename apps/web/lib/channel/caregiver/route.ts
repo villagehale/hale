@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
+import { acceptCoParentInvite } from '~/lib/channel/coparent/accept';
 import {
   CO_PARENT_ANSWER_PROMPT_BY_LANGUAGE,
   CO_PARENT_DECLINE_ACK_BY_LANGUAGE,
@@ -8,17 +9,22 @@ import {
   REFERRER_UNNAMED_BY_LANGUAGE,
   coParentInviteDroppedAck,
   coParentInviteSentAck,
+  coParentWelcome,
   inviterNameIsAffordable,
 } from '~/lib/channel/coparent/copy';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
+import { JOIN_ACCEPTED_ACK } from '~/lib/channel/join/copy';
 import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
 import { type JoinOutcome, handleJoinRequest } from '~/lib/channel/join/route';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { type OpenQuestion, soleOpenKind } from '~/lib/channel/router/open-questions';
 import { type FamilyRole, isCaregiverRole, isParentRole } from '~/lib/channel/role-scope';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import {
   ADD_EXAMPLE,
   ALREADY_INVITED,
@@ -132,7 +138,22 @@ export type CoParentOutcome =
   /** `dark` is the flag, and it is a refusal like any other: the parent asked and Hale
    * answered with the forwardable link instead. It is NOT silence. */
   | { status: 'co_parent_add_refused'; reason: CoParentRefusal | 'dark' }
+  | {
+      status: 'co_parent_accepted';
+      /** Whether the inviting parent's confirmation actually went out, and why it did
+       * not (rule #11 — the absence is typed, never inferred). `no_channel` is a STOP
+       * since they asked; `quiet_hours` is the ads-week fix: the ack is a PROACTIVE
+       * message to somebody who texted nothing tonight, so at 22:36 local it holds. The
+       * seat happens either way, and they find out the way they always could. */
+      inviterNotified: boolean;
+      inviterHeld: 'no_channel' | 'quiet_hours' | null;
+      /** A caregiver invite in flight on the same number, closed by the seating
+       * transaction. Null is the ordinary case. */
+      supersededInviteId: string | null;
+    }
   | { status: 'co_parent_declined' }
+  /** Also the answer to a LOST race for one invite: nobody was seated twice, and the
+   * loser is answered with the same one nudge any unreadable reply gets. */
   | { status: 'co_parent_prompted' };
 
 /**
@@ -311,6 +332,36 @@ async function primaryParentName(database: Database, familyId: string): Promise<
   return primary ? userName(database, primary.userId) : null;
 }
 
+/** Everything the INVITING parent's acknowledgment needs, in one read: whether Hale may
+ * text them at all, what to call them, and which clock their night runs on. */
+interface InviterContact {
+  /** Null means no live channel — a STOP since they asked. */
+  phoneE164: string | null;
+  name: string | null;
+  timeZone: string;
+}
+
+async function inviterContact(database: Database, userId: string): Promise<InviterContact> {
+  const rows = await database
+    .select({ id: schema.users.id, name: schema.users.name, timezone: schema.users.timezone })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId));
+  const row = rows.find((r) => r.id === userId);
+  return {
+    phoneE164: await resolveSendablePhone(database, userId),
+    name: row?.name ?? null,
+    // The column is NOT NULL with a default in prod; the fallback only ever serves a
+    // store that skipped the default.
+    timeZone: row?.timezone ?? DEFAULT_TIMEZONE,
+  };
+}
+
+/** Why the inviter's confirmation is being withheld, or null when it may go. */
+function heldReason(inviter: InviterContact, now: Date): 'no_channel' | 'quiet_hours' | null {
+  if (inviter.phoneE164 === null) return 'no_channel';
+  return inProactiveQuietHours(now, inviter.timeZone) ? 'quiet_hours' : null;
+}
+
 /**
  * An inbound from a number we have texted an invite to. Their yes is their consent,
  * their no closes it, and anything else gets one plain restatement of the choice.
@@ -393,10 +444,12 @@ async function handleCaregiverInviteReply(
 /**
  * The invitee's answer to the one cold text Hale sent them (VIL-355).
  *
- * Their NO tells the inviting parent NOTHING: the caregiver precedent, because a refusal
- * from a number is that person's business and not the household's. Their STOP never
- * reaches here at all — the keyword branch upstream closes the invite by number before
- * anybody interprets a word of it. Anything else gets one plain restatement.
+ * Their YES is their OWN express consent, given from the number itself — the second half
+ * of the double opt-in, and the reason this path does not lean on CASL's referral
+ * exemption. Their NO tells the inviting parent NOTHING: the caregiver precedent, because
+ * a refusal from a number is that person's business and not the household's. Their STOP
+ * never reaches here at all — the keyword branch upstream closes the invite by number
+ * before anybody interprets a word of it.
  */
 async function handleCoParentInviteReply(
   database: Database,
@@ -419,6 +472,61 @@ async function handleCoParentInviteReply(
   });
 
   const answer = readAffirmative(inbound.body);
+
+  if (answer === 'yes') {
+    // Both read BEFORE the transaction, while the inviting parent is still the only
+    // channel on this family: what is about to be written is a second one.
+    const inviter = await inviterContact(database, invite.invitedByUserId);
+    const seated = await acceptCoParentInvite(database, {
+      invite,
+      verbatimReply: inbound.body,
+      now,
+    });
+    // Null is the LOSER of a race for the same invite — two phones, one forwarded
+    // thread, both saying yes. Nobody was seated twice and nobody is answered twice.
+    if (!seated) return { status: 'co_parent_prompted' };
+    await reply(database, deps, {
+      to: args.phoneE164,
+      body: coParentWelcome(inviter.name, language),
+      familyId: invite.familyId,
+      parentUserId: seated.coParentUserId,
+      lane: 'co_parent',
+      now,
+    });
+
+    // The inviter's ack is the one send here to somebody who texted NOTHING this turn — a
+    // proactive extra, not a reply — so it keeps the proactive quiet window, exactly as
+    // the join link's does. The seat is already done and the partner already answered;
+    // only this sentence waits.
+    const inviterHeld = heldReason(inviter, now);
+    if (inviterHeld === 'quiet_hours') {
+      console.warn(
+        { familyId: invite.familyId },
+        'co-parent invite accepted: the inviter ack is held for quiet hours - they learn in the morning, or from their partner',
+      );
+    }
+    if (inviter.phoneE164 !== null && inviterHeld === null) {
+      await replyToParent(database, deps, {
+        to: inviter.phoneE164,
+        // The join link's own ack, verbatim: the same person arrived, and the inviting
+        // parent must not be told two different things about it. English, because the
+        // inviter wrote nothing this turn and language.ts is per MESSAGE — there is no
+        // message of theirs in front of us to read (the invitee's is not theirs).
+        body: JOIN_ACCEPTED_ACK,
+        familyId: invite.familyId,
+        parentUserId: invite.invitedByUserId,
+        lane: 'co_parent',
+        now,
+      });
+    }
+
+    return {
+      status: 'co_parent_accepted',
+      inviterNotified: inviterHeld === null,
+      inviterHeld,
+      supersededInviteId: seated.supersededInviteId,
+    };
+  }
 
   if (answer === 'no') {
     await declineInvite(database, { invite, by: 'caregiver', now });

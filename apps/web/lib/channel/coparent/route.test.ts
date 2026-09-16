@@ -14,6 +14,7 @@ import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine'
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { F14_ALLOWLIST_ENV } from '~/lib/channel/f14';
+import { JOIN_ACCEPTED_ACK, joinWelcome } from '~/lib/channel/join/copy';
 import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -423,6 +424,67 @@ async function upToInvite(
 }
 
 describe('co-parent invite · the invitee half', () => {
+  it("turns their yes into their OWN consent, channel, membership and the inviter's ack", async () => {
+    const { fake, transport, deps } = harness();
+    await upToInvite(fake, transport, deps);
+    const beforeReply = transport.sent.length;
+
+    const accepted = await text(fake, transport, deps, PARTNER_PHONE, 'yes');
+
+    expect(accepted).toEqual({
+      status: 'co_parent_accepted',
+      inviterNotified: true,
+      inviterHeld: null,
+      supersededInviteId: null,
+    });
+
+    // Two consents, two people, neither inferred from the other. The invitee's scope
+    // says Hale started the conversation; `sms_join_origination` would say they did.
+    const theirs = inserts(fake, schema.consentRecords).filter(
+      (r) => r.consentType === 'sms_service_messages',
+    );
+    expect(theirs).toHaveLength(1);
+    expect(theirs[0]).toMatchObject({ granted: true, consentScope: 'sms_coparent_invite_reply' });
+    expect((theirs[0]?.evidence as Record<string, unknown>).verbatimReply).toBe('yes');
+    const coParentUserId = theirs[0]?.userId;
+    const grant = inserts(fake, schema.consentRecords).find(
+      (r) => r.consentType === 'co_parent_access_grant',
+    );
+    expect(coParentUserId).not.toBe(grant?.userId);
+
+    expect(inserts(fake, schema.familyMembers).at(-1)).toMatchObject({
+      role: 'co_parent',
+      userId: coParentUserId,
+    });
+    expect(inserts(fake, schema.parentChannels).at(-1)).toMatchObject({
+      userId: coParentUserId,
+      phoneE164Hash: phoneBlindIndex(PARTNER_PHONE),
+      verifiedAt: NOW,
+    });
+
+    // The two sends, in order: the welcome to them, the ack to the parent who asked.
+    const since = transport.sent.slice(beforeReply);
+    expect(since.map((s) => s.to)).toEqual([PARTNER_PHONE, PARENT_PHONE]);
+    // The join link's own words, verbatim: the same person arrives through both doors
+    // and must not be told two different things about what they just joined.
+    expect(since[0]?.body).toBe(joinWelcome('Ana'));
+    expect(since[1]?.body).toBe(JOIN_ACCEPTED_ACK);
+
+    expect(auditActions(fake)).toEqual(
+      expect.arrayContaining([
+        'co_parent_invite_accepted',
+        'channel_sms_enrolled',
+        'co_parent_sms_inbound',
+        'co_parent_sms_outbound',
+      ]),
+    );
+    // The exchange is its own ledger lane (migration 0112) — a co-parent's messages
+    // filed under 'caregiver' would read as a disclosure to somebody outside the house.
+    const ledgered = inserts(fake, schema.channelMessages);
+    expect(ledgered.every((r) => r.category === 'co_parent_invite')).toBe(true);
+    expect(ledgered.filter((r) => r.direction === 'out').every((r) => r.body === null)).toBe(true);
+  });
+
   it('tells the inviting parent NOTHING when the invitee says no', async () => {
     const { fake, transport, deps } = harness();
     await upToInvite(fake, transport, deps);
@@ -456,6 +518,29 @@ describe('co-parent invite · the invitee half', () => {
     expect(inserts(fake, schema.familyMembers).filter((r) => r.role === 'co_parent')).toHaveLength(
       0,
     );
+  });
+
+  /**
+   * The seat is not the ack. At 22:00 the inviting parent texted nothing tonight, so
+   * their confirmation is a PROACTIVE message and holds — while the person who did just
+   * text gets answered immediately. Rule #11: the withheld send is named in the return
+   * value rather than being an outcome that quietly means "sent nothing".
+   */
+  it('holds the inviter ack in quiet hours, and seats the co-parent anyway', async () => {
+    const night = new Date('2026-09-16T02:00:00.000Z');
+    const { fake, transport, deps } = harness(night);
+    await upToInvite(fake, transport, deps);
+    const beforeReply = transport.sent.length;
+
+    const accepted = await text(fake, transport, deps, PARTNER_PHONE, 'yes');
+
+    expect(accepted).toMatchObject({
+      status: 'co_parent_accepted',
+      inviterNotified: false,
+      inviterHeld: 'quiet_hours',
+    });
+    expect(transport.sent.slice(beforeReply).map((s) => s.to)).toEqual([PARTNER_PHONE]);
+    expect(inserts(fake, schema.familyMembers).at(-1)).toMatchObject({ role: 'co_parent' });
   });
 });
 
