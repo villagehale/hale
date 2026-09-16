@@ -60,6 +60,16 @@ export const MAX_BIND_DRIFT_DAYS = 7;
  * VIL-337's MINT_FETCH_TIMEOUT_MS. */
 export const BIND_FETCH_TIMEOUT_MS = 6_000;
 
+/**
+ * One bind read per family per window. The inbound door already caps a number at 30
+ * texts an hour, so this is not an abuse wall — it is the rule that one household's
+ * pastes cannot become a burst of six-second GETs at a public body, inside turns a
+ * parent is waiting on. Ten minutes is the slot the watched-spots sweep already reads
+ * these same municipalities on, and it is short enough that a parent who pasted the
+ * wrong class waits minutes rather than an hour.
+ */
+export const BIND_READ_WINDOW_MS = 600_000;
+
 /** The read budget for a leg's send-time re-read. */
 export const GO_FETCH_TIMEOUT_MS = 6_000;
 

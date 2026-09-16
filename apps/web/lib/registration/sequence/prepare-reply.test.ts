@@ -6,16 +6,21 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { type SpotUrlRefusal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
+  BIND_READ_ROUTE,
   COURSE_BIND_REFUSALS,
   type CourseBindRefusal,
   type PrepareReplyDeps,
   type PreparingSequence,
+  claimBindRead,
   defaultPrepareReplyDeps,
   handleCourseBind,
   handleReadinessAnswer,
   loadPreparingSequence,
   readinessQuestion,
 } from './prepare-reply';
+import { BIND_READ_WINDOW_MS } from './prepare';
+import { MAX_PORTAL_SEGMENTS, preparedCopyViolations } from './copy';
+import { smsSegments } from '~/lib/channel/sms-segments';
 
 /**
  * VIL-338 · the inbound half, against the REAL DDL and the bytes a PerfectMind page
@@ -367,11 +372,15 @@ describe('the bind refusals', () => {
     const sequence = await preparing();
     const sentences = new Set<string>();
 
-    for (const reason of COURSE_BIND_REFUSALS) {
+    // ONE BIND-READ WINDOW PER ITERATION, because four of these ten reasons reach the
+    // portal and the read claim is real here (`deps()` spreads the prod wiring). A stub
+    // that always allowed would delete this file's only honesty about the throttle.
+    for (const [index, reason] of COURSE_BIND_REFUSALS.entries()) {
       const drive = DRIVES[reason];
+      const now = new Date(NOW.getTime() + index * BIND_READ_WINDOW_MS);
       const outcome = await handleCourseBind(
         db.database,
-        { sequence, rawUrl: drive.rawUrl, inboundChannelMessageId: inboundId, now: NOW },
+        { sequence, rawUrl: drive.rawUrl, inboundChannelMessageId: inboundId, now },
         deps({ fetchBody: async () => drive.page() }),
       );
 
@@ -385,6 +394,7 @@ describe('the bind refusals', () => {
     expect(sentences.size).toBe(COURSE_BIND_REFUSALS.length);
     expect(await auditRows('registration_course_bound')).toHaveLength(0);
     expect(await auditRows('registration_readiness_stated')).toHaveLength(0);
+    expect(await auditRows('registration_bind_read_throttled')).toHaveLength(0);
     const row = await sequenceRow();
     expect(row.courseUrl).toBeNull();
     expect(row.courseOpensAt).toBeNull();
@@ -556,15 +566,17 @@ describe('the bind write', () => {
 
   it('is idempotent: the same link again re-renders the ack and writes no second audit row', async () => {
     const sequence = await preparing();
-    const bind = () =>
+    // A window apart, so the second paste is read rather than throttled: what this case
+    // measures is the guarded UPDATE's answer, not the read claim's.
+    const bind = (now: Date) =>
       handleCourseBind(
         db.database,
-        { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+        { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now },
         deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
       );
 
-    const first = await bind();
-    const second = await bind();
+    const first = await bind(NOW);
+    const second = await bind(new Date(NOW.getTime() + BIND_READ_WINDOW_MS));
 
     expect(first.status).toBe('bound');
     expect(second.status).toBe('already_bound');
@@ -579,14 +591,15 @@ describe('the bind write', () => {
       { sequence: await preparing(), rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
-    // A second course on the same portal whose clock is inside the drift ceiling.
+    // A second course on the same portal whose clock is inside the drift ceiling, a
+    // window later so this family's read is theirs to take again.
     const outcome = await handleCourseBind(
       db.database,
       {
         sequence: await preparing(),
         rawUrl: chessUrl,
         inboundChannelMessageId: inboundId,
-        now: NOW,
+        now: new Date(NOW.getTime() + BIND_READ_WINDOW_MS),
       },
       deps({
         fetchBody: serving(
@@ -602,6 +615,233 @@ describe('the bind write', () => {
     const rows = await auditRows('registration_course_bound');
     expect(rows).toHaveLength(2);
     expect(rows.map((row) => (row.after as { replaced: boolean }).replaced)).toEqual([false, true]);
+  });
+});
+
+describe('the read throttle', () => {
+  /** A portal that serves the real bytes and counts every GET, so "one read" is a
+   * measurement rather than an inference from the outcome. */
+  function counting() {
+    const calls: string[] = [];
+    const page = fixture('open-window-open-markham');
+    return {
+      calls,
+      fetchBody: async (url: string) => {
+        calls.push(url);
+        return page;
+      },
+    };
+  }
+
+  /**
+   * Kills a claim taken AFTER the fetch (the read has already happened by then) and a
+   * claim taken not at all — the shipped behaviour, where one armed household could
+   * drive a six-second GET at a municipality on every text it sends.
+   */
+  it('reads the municipality once a window, and tells the second paste when to send it again', async () => {
+    const sequence = await preparing();
+    const net = counting();
+
+    const first = await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({ fetchBody: net.fetchBody }),
+    );
+    const second = await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({ fetchBody: net.fetchBody }),
+    );
+
+    expect(first.status).toBe('bound');
+    expect(net.calls).toHaveLength(1);
+    expect(second).toMatchObject({ status: 'read_throttled' });
+    if (second.status !== 'read_throttled') throw new Error('unreachable');
+    expect(second.reply).toContain('10 minutes');
+    // The refusal is a receipt, never a silence — and it says nothing about the paste
+    // beyond the host the sequence already holds.
+    const [receipt] = await auditRows('registration_bind_read_throttled');
+    expect(receipt).toMatchObject({ actor: 'system', targetId: inboundId });
+    expect(JSON.stringify(receipt?.after)).not.toContain('widgetId');
+    expect(JSON.stringify(receipt?.after)).not.toContain(CHESS);
+    // Nothing about the second paste reached the sequence.
+    expect(await auditRows('registration_course_bound')).toHaveLength(1);
+    const sanitized = sanitizeSpotUrl(legoUrl);
+    expect((await sequenceRow()).courseUrl).toBe(sanitized.ok ? sanitized.url : null);
+  });
+
+  /**
+   * The positive control on the case above: kills a claim that never releases — a
+   * per-family flag or a sequence column — which would silence the household for good
+   * rather than for ten minutes.
+   */
+  it('reads again a window later', async () => {
+    const sequence = await preparing();
+    const net = counting();
+
+    await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({ fetchBody: net.fetchBody }),
+    );
+    const later = await handleCourseBind(
+      db.database,
+      {
+        sequence,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: new Date(NOW.getTime() + BIND_READ_WINDOW_MS),
+      },
+      deps({ fetchBody: net.fetchBody }),
+    );
+
+    expect(net.calls).toHaveLength(2);
+    expect(later.status).toBe('already_bound');
+  });
+
+  /**
+   * The commonest second paste there is — an SMS resend, a double tap, a parent making
+   * sure the first one landed — and the window is spent, so the reply is the throttle's.
+   * "I have not opened that link" is FALSE of this one: Hale opened that exact link
+   * seconds ago, bound it, and texted the ack back. Kills a sentence that says it
+   * anyway.
+   */
+  it('tells the same link, pasted again inside the window, that it already has it', async () => {
+    const net = counting();
+
+    const first = await handleCourseBind(
+      db.database,
+      {
+        sequence: await preparing(),
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
+      deps({ fetchBody: net.fetchBody }),
+    );
+    const again = await handleCourseBind(
+      db.database,
+      {
+        sequence: await preparing(),
+        // The address-bar form, so the raw string and the sanitized one differ: it is
+        // the SANITIZED url that the bound courseUrl can be equal to, and a resend
+        // carrying the portal's own embed flag is the ordinary shape of this paste.
+        rawUrl: `${legoUrl}&redirectedFromEmbededMode=False&sessionId=ABC`,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
+      deps({ fetchBody: net.fetchBody }),
+    );
+
+    expect(first.status).toBe('bound');
+    expect(net.calls).toHaveLength(1);
+    expect(again.status).toBe('read_throttled');
+    if (again.status !== 'read_throttled') throw new Error('unreachable');
+    expect(again.reply).toContain('I already have that class from you');
+    expect(again.reply).not.toContain('I have not opened that link');
+    expect(again.reply).not.toContain('send it again');
+    expect(
+      preparedCopyViolations(again.reply, { url: null, printed: [], backed: [], optOut: null }),
+    ).toEqual([]);
+    expect(again.reply).not.toContain('?');
+    expect(smsSegments(again.reply)).toBeLessThanOrEqual(MAX_PORTAL_SEGMENTS);
+  });
+
+  /** Kills hoisting the claim above the sanitizer and the municipality check: one
+   * fat-fingered paste must not cost a parent their read. */
+  it('leaves the claim unspent when the paste is refused before the fetch', async () => {
+    const sequence = await preparing();
+    const net = counting();
+
+    const refused = await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: oakvilleUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({ fetchBody: net.fetchBody }),
+    );
+    const good = await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({ fetchBody: net.fetchBody }),
+    );
+
+    expect(refused).toMatchObject({ status: 'refused', reason: 'wrong_municipality' });
+    expect(good.status).toBe('bound');
+    expect(net.calls).toHaveLength(1);
+    expect(await auditRows('registration_bind_read_throttled')).toHaveLength(0);
+  });
+
+  /**
+   * The sentence is the promise, so it runs the composer's own gate. Kills a curly dash
+   * or apostrophe (which flips the whole body to UCS-2 and halves the segment), an
+   * interrogative rewrite, a template that grows past three segments, and a plural that
+   * says "in 1 minutes" — none of which any other test here would see.
+   */
+  it('says it in one sentence the prepared-copy gate accepts, in both plurals', async () => {
+    const sequence = await preparing();
+    const net = counting();
+    // A SECOND class, not the one just bound: the link already bound has its own
+    // sentence and its own case above, and reusing it here would measure that one.
+    const throttled = async (now: Date) => {
+      const outcome = await handleCourseBind(
+        db.database,
+        { sequence, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now },
+        deps({ fetchBody: net.fetchBody }),
+      );
+      if (outcome.status !== 'read_throttled')
+        throw new Error(`expected a throttle, got ${outcome.status}`);
+      return outcome.reply;
+    };
+
+    await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({ fetchBody: net.fetchBody }),
+    );
+    const plural = await throttled(NOW);
+    const singular = await throttled(new Date(NOW.getTime() + BIND_READ_WINDOW_MS - 5_000));
+
+    for (const reply of [plural, singular]) {
+      expect(
+        preparedCopyViolations(reply, { url: null, printed: [], backed: [], optOut: null }),
+      ).toEqual([]);
+      expect(reply).not.toContain('?');
+      expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_PORTAL_SEGMENTS);
+    }
+    expect(plural).toContain('in 10 minutes');
+    expect(singular).toContain('in 1 minute and');
+  });
+
+  /**
+   * Kills a sentence that asserts the read landed. The claim is spent by the REQUEST,
+   * not by the answer, so the paste that follows a six-second timeout is the one case
+   * where "I just read a course page" is false — and it arrives right after the
+   * sentence that told the same parent the page could not be read.
+   */
+  it('does not claim a read the timed-out request never made', async () => {
+    const sequence = await preparing();
+    const timesOut = vi.fn(async (): Promise<string> => {
+      throw new Error('bind fetch timed out');
+    });
+
+    const first = await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({ fetchBody: timesOut }),
+    );
+    const second = await handleCourseBind(
+      db.database,
+      { sequence, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
+      deps({ fetchBody: timesOut }),
+    );
+
+    expect(first).toMatchObject({ status: 'refused', reason: 'page_unreadable' });
+    expect(timesOut).toHaveBeenCalledTimes(1);
+    expect(second.status).toBe('read_throttled');
+    if (second.status !== 'read_throttled') throw new Error('unreachable');
+    // The positive control on the negative below: the sentence still says what Hale
+    // spent the window on, in the one verb that is true of a timeout and of a read.
+    expect(second.reply).toContain('I just tried a course page');
+    expect(second.reply).not.toContain('I just read a course page');
   });
 });
 
@@ -761,5 +1001,99 @@ describe('the readiness question is open only while the ask is Hale’s last wor
     });
 
     expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+  });
+});
+
+describe('the bind-read claim', () => {
+  const claim = (input: { now: Date; family?: string }) =>
+    claimBindRead(db.database, {
+      familyId: input.family ?? familyId,
+      sequenceId,
+      host: 'cityofmarkham.perfectmind.com',
+      inboundChannelMessageId: inboundId,
+      now: input.now,
+    });
+
+  async function rateLimitRows(identifier: string) {
+    return db.database
+      .select()
+      .from(schema.rateLimits)
+      .where(
+        and(
+          eq(schema.rateLimits.identifier, identifier),
+          eq(schema.rateLimits.route, BIND_READ_ROUTE),
+        ),
+      );
+  }
+
+  /** Kills a claim that never conflicts (a plain insert, or an upsert that always
+   * returns a row), and a refusal that leaves no receipt behind. */
+  it('claims the window once and refuses the second read with an audit row', async () => {
+    const first = await claim({ now: NOW });
+    const second = await claim({ now: NOW });
+
+    expect(first).toEqual({ status: 'claimed' });
+    expect(second.status).toBe('throttled');
+    expect(await rateLimitRows(familyId)).toHaveLength(1);
+
+    const [receipt] = await auditRows('registration_bind_read_throttled');
+    expect(receipt).toMatchObject({
+      actor: 'system',
+      targetTable: 'channel_messages',
+      targetId: inboundId,
+    });
+    expect(receipt?.after).toEqual({
+      sequenceId,
+      host: 'cityofmarkham.perfectmind.com',
+    });
+  });
+
+  /** The positive control on the test above: kills a claim with no window in its key —
+   * a per-family boolean or a column — which would silence the household forever. */
+  it('claims again a window later, and keeps one row per family', async () => {
+    await claim({ now: NOW });
+
+    const later = await claim({ now: new Date(NOW.getTime() + BIND_READ_WINDOW_MS) });
+
+    expect(later).toEqual({ status: 'claimed' });
+    expect(await rateLimitRows(familyId)).toHaveLength(1);
+  });
+
+  /** Kills a hardcoded "in 10 minutes" and the window's own length in place of the
+   * remainder: the sentence's promise is only honest if it is the time left in THIS
+   * slot, which a paste late in one has far less of. */
+  it('counts the minutes left in the slot', async () => {
+    const windowStart = Math.floor(NOW.getTime() / BIND_READ_WINDOW_MS) * BIND_READ_WINDOW_MS;
+    await claim({ now: new Date(windowStart) });
+
+    const early = await claim({ now: new Date(windowStart + 30_000) });
+    const late = await claim({ now: new Date(windowStart + BIND_READ_WINDOW_MS - 5_000) });
+
+    expect(early).toEqual({ status: 'throttled', retryMinutes: 10 });
+    expect(late).toEqual({ status: 'throttled', retryMinutes: 1 });
+  });
+
+  /** Kills a claim keyed on the route alone: one household's paste must never spend
+   * another household's read. */
+  it('gives two families in the same window one read each', async () => {
+    const other = await seedFamily(db.database, `Prepare Reply other ${Math.random()}`);
+
+    expect(await claim({ now: NOW })).toEqual({ status: 'claimed' });
+    expect(await claim({ now: NOW, family: other.familyId })).toEqual({ status: 'claimed' });
+    expect(await rateLimitRows(familyId)).toHaveLength(1);
+    expect(await rateLimitRows(other.familyId)).toHaveLength(1);
+  });
+
+  /** Kills a retention sweep scoped to the route alone. It runs on every claim, so one
+   * household moving into a new slot would hand another household a second read — the
+   * two instances serving them need not agree on the minute. */
+  it('sweeps only its own rows when a family moves into a new window', async () => {
+    const other = await seedFamily(db.database, `Prepare Reply other ${Math.random()}`);
+    await claim({ now: NOW, family: other.familyId });
+
+    await claim({ now: new Date(NOW.getTime() + BIND_READ_WINDOW_MS) });
+
+    expect(await rateLimitRows(other.familyId)).toHaveLength(1);
+    expect((await claim({ now: NOW, family: other.familyId })).status).toBe('throttled');
   });
 });

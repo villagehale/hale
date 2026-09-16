@@ -1,5 +1,5 @@
 import { type Database, type Municipality, schema } from '@hale/db';
-import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import {
   SPOT_PORTAL_HOSTS,
@@ -15,6 +15,7 @@ import { renderCourseBindAck, renderReadinessAck } from './copy.js';
 import {
   type AgeVerdict,
   BIND_FETCH_TIMEOUT_MS,
+  BIND_READ_WINDOW_MS,
   MAX_BIND_DRIFT_DAYS,
   type PrepChild,
   readCoursePrep,
@@ -199,6 +200,94 @@ function portalOf(municipality: Municipality): SpotPortal | null {
   );
 }
 
+// ── the read claim ───────────────────────────────────────────────────────────
+
+/**
+ * The `rate_limits` route one household's bind reads are claimed under.
+ *
+ * Per-FAMILY, so it does not take the `ops:` prefix the three singleton claims use, and
+ * deliberately NOT an entry in RATE_LIMITS: that table feeds `enforceRateLimit`, which
+ * counts requests and answers 429, and this is a claim whose refusal is a sentence a
+ * parent reads.
+ */
+export const BIND_READ_ROUTE = 'registration:bind-read';
+
+export interface BindReadClaim {
+  familyId: string;
+  sequenceId: string;
+  /** The portal host, and nothing else off the pasted URL (rule #1). */
+  host: string;
+  inboundChannelMessageId: string;
+  now: Date;
+}
+
+export type BindReadClaimResult =
+  | { status: 'claimed' }
+  | { status: 'throttled'; retryMinutes: number };
+
+/**
+ * Claim this family's read of a municipality for this window — the watched-spots slot
+ * claim's idiom, keyed on the family rather than on a singleton.
+ *
+ * THE AUDIT ROW IS INSIDE THE CLAIM (rule #6), not left to the caller. A read Hale
+ * refused is a thing Hale did, and putting the receipt in the same transaction as the
+ * losing insert is what makes "a refused read always leaves a row" unexpressible
+ * otherwise rather than a step a future caller has to remember.
+ *
+ * The window is a FIXED slot, the shape every limiter here uses, so the minutes the
+ * refusal sentence promises are read off the slot's own remainder and not guessed — a
+ * promise kept or not made. Retention is the tightest form: this identifier and route's
+ * rows below the current slot are deleted on every claim, so a per-family route stays
+ * at one row per family however many households arm.
+ */
+export async function claimBindRead(
+  database: Database,
+  input: BindReadClaim,
+): Promise<BindReadClaimResult> {
+  const windowStart = new Date(
+    Math.floor(input.now.getTime() / BIND_READ_WINDOW_MS) * BIND_READ_WINDOW_MS,
+  );
+
+  return database.transaction(async (tx) => {
+    await tx
+      .delete(schema.rateLimits)
+      .where(
+        and(
+          eq(schema.rateLimits.identifier, input.familyId),
+          eq(schema.rateLimits.route, BIND_READ_ROUTE),
+          lt(schema.rateLimits.windowStart, windowStart),
+        ),
+      );
+
+    const claimed = await tx
+      .insert(schema.rateLimits)
+      .values({ identifier: input.familyId, route: BIND_READ_ROUTE, windowStart, count: 1 })
+      .onConflictDoNothing({
+        target: [
+          schema.rateLimits.identifier,
+          schema.rateLimits.route,
+          schema.rateLimits.windowStart,
+        ],
+      })
+      .returning({ id: schema.rateLimits.id });
+    if (claimed.length > 0) return { status: 'claimed' };
+
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      // Hale's own refusal, not a fact the parent stated — the convention the watched
+      // spots' arm failure writes under.
+      actor: 'system',
+      actionTaken: 'registration_bind_read_throttled',
+      targetTable: 'channel_messages',
+      targetId: input.inboundChannelMessageId,
+      after: { sequenceId: input.sequenceId, host: input.host },
+    });
+
+    const remainingMs = windowStart.getTime() + BIND_READ_WINDOW_MS - input.now.getTime();
+    return { status: 'throttled', retryMinutes: Math.ceil(remainingMs / 60_000) };
+  });
+}
+
 // ── the bind ─────────────────────────────────────────────────────────────────
 
 /** Every way a pasted link can be refused, as a closed list — the test iterates it, so
@@ -222,6 +311,12 @@ export type CourseBindOutcome =
   | { status: 'bound'; reply: string }
   | { status: 'already_bound'; reply: string }
   | { status: 'refused'; reason: CourseBindRefusal; reply: string }
+  /**
+   * The one outcome that is about HALE rather than about the link, which is why it is
+   * not a member of {@link COURSE_BIND_REFUSALS}: every reason in that list is a fact
+   * about the paste and writes nothing, and this one must write (rule #6).
+   */
+  | { status: 'read_throttled'; reply: string }
   /**
    * NOT this module's message. A course whose registration is already open is what
    * VIL-337's watch verb and the coach are for, and a refusal here would be Hale
@@ -249,6 +344,22 @@ export async function handleCourseBind(
   const pasted = SPOT_PORTAL_HOSTS[sanitized.host];
   if (pasted === undefined || pasted.municipality !== sequence.municipality) {
     return refuse(sequence, 'wrong_municipality', now);
+  }
+
+  // BELOW the sanitizer and the municipality check, deliberately: a paste Hale refuses
+  // without opening anything costs no request, so it must cost no read either.
+  const claim = await deps.claimBindRead(database, {
+    familyId: sequence.familyId,
+    sequenceId: sequence.sequenceId,
+    host: sanitized.host,
+    inboundChannelMessageId: input.inboundChannelMessageId,
+    now,
+  });
+  if (claim.status === 'throttled') {
+    return {
+      status: 'read_throttled',
+      reply: throttledSentence(claim.retryMinutes, sequence.courseUrl === sanitized.url),
+    };
   }
 
   let raw: string;
@@ -361,6 +472,31 @@ function refusalSentence(
     case 'different_season':
       return `That course opens ${when(pageClock as Date, sequence.timeZone, now)} and the ${town} morning I am holding is ${when(sequence.opensForFamilyAt, sequence.timeZone, now)}. That looks like a different season, so I have left it as it was.`;
   }
+}
+
+/**
+ * The throttle's one sentence, and it makes no promise it does not keep.
+ *
+ * Hale does NOT come back to the link later — there is no re-read job and no new kind
+ * of commitment — so the sentence says exactly that, and hands the parent the only
+ * thing that is true: the minute the next read is theirs. The number is the slot's own
+ * remainder rather than the window's length, because a fixed slot pasted into late
+ * would otherwise be told to wait longer than it must.
+ *
+ * TRIED, not read: the claim is spent by the request, so the window can have gone on a
+ * six-second timeout, and this sentence then follows the one that told the same parent
+ * the page could not be read. One verb is true of both.
+ *
+ * THE LINK ALREADY BOUND GETS ITS OWN SENTENCE, because the first one's "I have not
+ * opened that link" is false of it — Hale opened that exact link, bound it and acked
+ * it, and a resend is the commonest second paste there is. The window is still spent,
+ * so this is not the ack again; it is the one thing that is true without a fresh read.
+ */
+function throttledSentence(minutes: number, alreadyBound: boolean): string {
+  if (alreadyBound) {
+    return 'I already have that class from you, and I read one page at a time, so I have not opened it again. There is nothing to resend.';
+  }
+  return `I just tried a course page for you, and I read one at a time. I have not opened that link and I will not come back to it - send it again in ${minutes} minute${minutes === 1 ? '' : 's'} and I will read it then.`;
 }
 
 function when(instant: Date, timeZone: string, now: Date): string {
@@ -629,7 +765,12 @@ export interface PrepareReplyDeps {
     now: Date,
   ): Promise<PreparingSequence | null>;
   readinessAskedLastAt(database: Database, sequence: PreparingSequence): Promise<Date | null>;
-  /** Non-nullable (rule #11): a bind that cannot read the page refuses in a sentence. */
+  /**
+   * Non-nullable (rule #11), both of them. A bind that cannot read the page refuses in
+   * a sentence; a bind whose read is not this family's to take this window refuses in
+   * another, and neither is a dependency a caller may withhold to get a quiet no-op.
+   */
+  claimBindRead(database: Database, input: BindReadClaim): Promise<BindReadClaimResult>;
   fetchBody: FetchPage;
   recordCourseBinding(
     database: Database,
@@ -645,6 +786,7 @@ export function defaultPrepareReplyDeps(): PrepareReplyDeps {
   return {
     loadPreparingSequence,
     readinessAskedLastAt,
+    claimBindRead,
     fetchBody: createFetchBody(BIND_FETCH_TIMEOUT_MS),
     recordCourseBinding,
     recordReadinessState,

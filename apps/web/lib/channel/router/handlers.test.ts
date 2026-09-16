@@ -7,6 +7,7 @@ import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
 import { createTestDb, type TestDb } from '~/lib/testing/pglite';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import type {
+  BindReadClaimResult,
   PrepareReplyDeps,
   PreparingSequence,
 } from '~/lib/registration/sequence/prepare-reply';
@@ -76,6 +77,9 @@ const NO_PREPARE: PrepareReplyDeps = {
   },
   readinessAskedLastAt: async () => {
     throw new Error('the pre-open branch must not run for a dark household');
+  },
+  claimBindRead: async () => {
+    throw new Error('the pre-open branch must not claim a read');
   },
   fetchBody: async () => {
     throw new Error('the pre-open branch must not fetch');
@@ -728,6 +732,7 @@ function prepareDeps(
     sequence?: PreparingSequence | null;
     askedAt?: Date | null;
     page?: string | null;
+    claim?: BindReadClaimResult;
   } = {},
 ) {
   const bound: Array<{ url: string; courseOpensAt: Date; inbound: string }> = [];
@@ -739,6 +744,7 @@ function prepareDeps(
       options.sequence === undefined ? PREPARING : options.sequence,
     readinessAskedLastAt: async () =>
       options.askedAt === undefined ? READINESS_QUESTION.askedAt : options.askedAt,
+    claimBindRead: async () => options.claim ?? { status: 'claimed' as const },
     fetchBody: async () => {
       if (options.page === null) throw new Error('ETIMEDOUT');
       return options.page ?? FIXTURE_PAGE;
@@ -891,6 +897,48 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     // ONE ack, and it is the bind's: two receipts for one message is two messages.
     expect(verdict.reply).toContain("Markham's portal");
     expect(verdict.outcome).toBe('bound');
+  });
+
+  /**
+   * Structural today — a turn with no link never reaches the bind at all — so this is
+   * the guard ON that structure. Kills hoisting the read claim into `preOpenReply` or
+   * the handler above the LINK_TOKEN branch, where a bare YES would spend a household's
+   * read on a message that asked no municipality anything.
+   */
+  it('never touches the read claim on a turn that carries no link', async () => {
+    const prepare = prepareDeps();
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), {
+      ...prepare,
+      claimBindRead: async () => {
+        throw new Error('a turn with no link must not claim a read');
+      },
+    }).handle(DB, preOpenTurn('yes', { open: [READINESS_QUESTION] }));
+
+    expect(verdict.claimed).toBe(true);
+    expect(prepare.readiness).toEqual([
+      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword' },
+    ]);
+  });
+
+  /**
+   * Kills `bind.status !== 'refused'` — a NEGATIVE check that silently admits every
+   * status added after it. A throttled turn files the parent's portal setup as a stated
+   * fact against a message whose reply says Hale never opened their link: two receipts
+   * for one text, and one of them contradicting the other.
+   */
+  it('does not file the riding YES when the link was never read', async () => {
+    const prepare = prepareDeps({ claim: { status: 'throttled', retryMinutes: 7 } });
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn(`yes ${LEGO_URL}`, { open: [READINESS_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed) throw new Error('unreachable');
+    expect(verdict.outcome).toBe('read_throttled');
+    expect(verdict.reply).toContain('in 7 minutes');
+    expect(prepare.bound).toEqual([]);
+    expect(prepare.readiness).toEqual([]);
   });
 
   /**
