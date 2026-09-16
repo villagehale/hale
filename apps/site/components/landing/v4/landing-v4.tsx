@@ -321,14 +321,14 @@ export function LandingV4({ locale, smsNumber }: { locale: Locale; smsNumber: st
             {coaching.map((item) => (
               <li key={item.step}>
                 <h3 className="text-[1.05rem] leading-[1.25] text-spruce">{item.step}</h3>
-                <p className="meta mt-2 text-[0.95rem]" style={{ lineHeight: 1.55 }}>
+                <p className="meta mt-2 text-[0.95rem] leading-[1.55]">
                   {item.body}
                 </p>
               </li>
             ))}
           </ol>
           {/* The medical boundary stays in the band — the topic list is in the FAQ. */}
-          <p className="meta mt-6 text-[0.95rem]" style={{ lineHeight: 1.55 }}>
+          <p className="meta mt-6 text-[0.95rem] leading-[1.55]">
             <span className="font-semibold text-spruce">{t('coachingStopTitle')}</span> —{' '}
             {t('coachingStopBody')}
           </p>

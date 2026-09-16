@@ -39,6 +39,40 @@ function heroExchange(html: string): string {
   return html.match(/<div class="v4-hero-thread[\s\S]*?<\/div>/)?.[0] ?? '';
 }
 
+function landingBundle(locale: string): Record<string, unknown> {
+  return (
+    JSON.parse(
+      readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+    ) as { Landing: Record<string, unknown> }
+  ).Landing;
+}
+
+/** The hero H1 is `max-width: 15ch`, and a ch is the width of the display face's
+ * zero: 0.606em in Fraunces (en/fr) and 0.46em in the serif the ≥1024px rule hands
+ * zh, so the column is 9.09em wide for en/fr and 6.9em for zh (computed max-width
+ * ÷ font-size, Chromium, 1440×900). A CJK glyph advances exactly 1em in every CJK
+ * face, so a zh line is its glyph count plus the word space — one glyph too many
+ * wraps the compound mid-word and pushes the hero CTA under the 900px fold, which
+ * no static-markup test can see. Latin is counted at half an em, generous for
+ * Fraunces at 450, so the estimate errs toward failing. */
+const H1_COLUMN_EM: Record<(typeof routing.locales)[number], number> = { en: 9.09, fr: 9.09, zh: 6.9 };
+
+function landingString(locale: string, key: string): string {
+  const value = landingBundle(locale)[key];
+  if (typeof value !== 'string') throw new Error(`${locale}.Landing.${key} is not a string`);
+  return value;
+}
+
+function advanceEm(line: string): number {
+  let em = 0;
+  for (const ch of line) {
+    if (/[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]/u.test(ch)) em += 1;
+    else if (ch === ' ') em += 0.25;
+    else em += 0.5;
+  }
+  return em;
+}
+
 describe('the registration loop renders in every locale', () => {
   it.each(routing.locales)('%s runs four legs and seven bubbles, in order', (locale) => {
     const html = transcript(HTML[locale]);
@@ -105,20 +139,26 @@ describe('the registration loop renders in every locale', () => {
   );
 
   it('carries every Landing key in all three bundles — no locale silently renders a key name', () => {
-    const keys = (locale: string) =>
-      Object.keys(
-        (
-          JSON.parse(
-            readFileSync(
-              fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)),
-              'utf8',
-            ),
-          ) as { Landing: Record<string, unknown> }
-        ).Landing,
-      ).sort();
+    const keys = (locale: string) => Object.keys(landingBundle(locale)).sort();
     const en = keys('en');
     expect(en.length).toBeGreaterThan(30);
     for (const locale of routing.locales) expect(keys(locale), locale).toEqual(en);
+  });
+
+  it.each(routing.locales)('%s fits each hero H1 line inside the 15ch column at the desktop ceiling', (locale) => {
+    // The markup forces one break: heroH1a, then heroH1b + a word space + the accent.
+    const lines = [
+      landingString(locale, 'heroH1a'),
+      `${landingString(locale, 'heroH1b')} ${landingString(locale, 'heroH1Accent')}`,
+    ];
+    for (const line of lines) {
+      expect(advanceEm(line), `${locale}: "${line}"`).toBeLessThanOrEqual(H1_COLUMN_EM[locale]);
+    }
+  });
+
+  it('would have caught the zh accent that wrapped mid-compound', () => {
+    // The line that shipped as "之后便 安静下 / 来。" at 1440×900 and put the hero CTA under the fold.
+    expect(advanceEm('之后便 安静下来。')).toBeGreaterThan(H1_COLUMN_EM.zh);
   });
 
   it.each(routing.locales)('%s keeps BOTH demos evergreen — no calendar date', (locale) => {
