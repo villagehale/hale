@@ -379,7 +379,10 @@ describe('the one seat, at the moment of seating', () => {
       now: NOW,
     });
 
-    expect(redeemed).toBeNull();
+    // NAMED, not a bare null (rule #11): the caller answers this person with the lane's
+    // own "the seat is gone" sentence, and a null here is what dropped them into the
+    // greeting that asks a stranger for their children's names.
+    expect(redeemed).toEqual({ outcome: 'seat_taken' });
     expect((await members(seeded.familyId)).filter((m) => m.role === 'co_parent')).toHaveLength(1);
     expect(
       (await channels()).filter((c) => c.phoneE164Hash === phoneBlindIndex(PARTNER_PHONE)),
@@ -409,7 +412,7 @@ describe('the one seat, at the moment of seating', () => {
       now: NOW,
     });
 
-    expect(redeemed).not.toBeNull();
+    expect(redeemed.outcome).toBe('seated');
     expect((await members(seeded.familyId)).filter((m) => m.role === 'co_parent')).toHaveLength(1);
   });
 });

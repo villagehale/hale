@@ -50,7 +50,7 @@ import {
   declineInvite,
   loadPendingAssent,
   recordCoParentAssent,
-  recordCoParentRefusal,
+  recordInviteRefusal,
   recordParentAssent,
   startCaregiverInvite,
   startCoParentInvite,
@@ -807,9 +807,10 @@ async function refuseAfterAssent(
   deps: CaregiverDeps,
 ): Promise<CoParentOutcome> {
   const { owner, pending, now } = args;
-  await recordCoParentRefusal(database, {
+  await recordInviteRefusal(database, {
     familyId: owner.familyId,
     actorUserId: owner.userId,
+    role: 'co_parent',
     reason: args.reason,
     phoneE164: pending.phoneE164,
     targetId: pending.id,

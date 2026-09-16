@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import {
   type CoParentInvite,
   declineOpenInviteOnStop,
+  loadOpenInviteByPhone,
   loadPendingAssent,
   recordCoParentAssent,
   startCaregiverInvite,
@@ -295,6 +296,13 @@ describe('the refusal binds BOTH doors', () => {
     expect(await startCaregiver(seeded, PARTNER_PHONE)).toEqual({
       status: 'previously_declined',
     });
+    // AND IT SAYS SO ON THE LANE IT HAPPENED ON. The refusal recorder was written for the
+    // co-parent lane and kept its verb when the lookback was widened to this door, so a
+    // household that has never used the co-parent feature collected `co_parent_*` rows
+    // about an ask where no co-parent was ever mentioned — the {@link inviteVerb}
+    // landmine, facing the other way.
+    expect(await auditVerbs()).toContain('caregiver_invite_blocked_prior_refusal');
+    expect(await auditVerbs()).not.toContain('co_parent_invite_blocked_prior_refusal');
   });
 
   /** The positive control: a number that never refused still opens on the same door. */
@@ -346,6 +354,47 @@ describe('the parent assent, claimed exactly once', () => {
     expect(grants.filter((g) => g.consentType === 'co_parent_access_grant')).toHaveLength(1);
     expect((await auditVerbs()).filter((v) => v === 'co_parent_access_granted')).toHaveLength(1);
   });
+
+  /**
+   * THE INVITEE GETS THEIR OWN 72 HOURS, not the remainder of the parent's.
+   *
+   * The clock was started when the PARENT was asked, and a parent may sit on the scope
+   * question for three days: without the reset the stranger who is finally texted on
+   * Thursday morning has one hour to answer a message they have not read yet, and their
+   * yes is swept to 'expired' on read. Asserted through the reader rather than off the
+   * column, so it is the behaviour that is pinned and not the arithmetic.
+   */
+  it('gives the invitee a fresh 72h from the moment the parent said yes', async () => {
+    const seeded = await seedFamily();
+    const opened = await start(seeded, PARTNER_PHONE);
+    if (opened.status !== 'started') throw new Error('expected an open invite');
+    const assentAt = new Date(NOW.getTime() + 71 * 3_600_000);
+
+    const body = await recordCoParentAssent(db.database, {
+      invite: opened.invite,
+      inviterName: 'Ana',
+      language: 'en',
+      verbatimReply: 'yes',
+      channelMessageId: null,
+      now: assentAt,
+    });
+    expect(body).toBeTypeOf('string');
+
+    const stillAnswerable = await loadOpenInviteByPhone(
+      db.database,
+      PARTNER_PHONE,
+      new Date(assentAt.getTime() + 71 * 3_600_000),
+    );
+    expect(stillAnswerable?.state).toBe('awaiting_caregiver_reply');
+    // And the fresh window is a window, not a removal of the bound.
+    expect(
+      await loadOpenInviteByPhone(
+        db.database,
+        PARTNER_PHONE,
+        new Date(assentAt.getTime() + 73 * 3_600_000),
+      ),
+    ).toBeNull();
+  });
 });
 
 describe('STOP, and what it leaves behind', () => {
@@ -367,6 +416,66 @@ describe('STOP, and what it leaves behind', () => {
       status: 'refused',
       reason: 'previously_declined',
     });
+  });
+
+  /**
+   * "Reply STOP anytime" is printed verbatim on the one cold text this feature sends, and
+   * it used to mean "for the next 72 hours". The STOP was read through
+   * `loadOpenInviteByPhone`, whose sweep closes a lapsed row as 'expired' and answers
+   * null — so a refusal arriving a minute late wrote no memory at all, and the same
+   * household re-opened a fresh invite and texted the same stranger again the next hour.
+   * Under CASL a withdrawal is effective when it is SENT; the invite's clock has no say.
+   */
+  it('remembers a STOP that arrives after the 72h window has closed', async () => {
+    const seeded = await seedFamily();
+    await start(seeded, PARTNER_PHONE);
+    const late = new Date(NOW.getTime() + 72 * 3_600_000 + 60_000);
+
+    expect(await declineOpenInviteOnStop(db.database, PARTNER_PHONE, late)).toBe(true);
+
+    expect(await inviteStates()).toEqual([{ state: 'declined', closed: true }]);
+    expect(await auditVerbs()).toContain('co_parent_invite_refused');
+    expect(await start(seeded, PARTNER_PHONE, new Date(late.getTime() + 3_600_000))).toEqual({
+      status: 'refused',
+      reason: 'previously_declined',
+    });
+  });
+
+  /** The same STOP, arriving after some OTHER read already swept the row to 'expired'.
+   * Which of the two got there first is a race between this turn and every other read of
+   * the table, so a refusal that only bound the un-swept row would bind by luck. */
+  it('remembers a STOP on a row another read has already expired', async () => {
+    const seeded = await seedFamily();
+    await start(seeded, PARTNER_PHONE);
+    const late = new Date(NOW.getTime() + 73 * 3_600_000);
+    // Any read is also the sweep: this one closes the row as 'expired' before the STOP.
+    expect(await loadPendingAssent(db.database, seeded.parentUserId, late)).toBeNull();
+    expect(await inviteStates()).toEqual([{ state: 'expired', closed: true }]);
+
+    expect(
+      await declineOpenInviteOnStop(db.database, PARTNER_PHONE, new Date(late.getTime() + 60_000)),
+    ).toBe(true);
+
+    expect(await inviteStates()).toEqual([{ state: 'declined', closed: true }]);
+    expect(await start(seeded, PARTNER_PHONE, new Date(late.getTime() + 3_600_000))).toEqual({
+      status: 'refused',
+      reason: 'previously_declined',
+    });
+  });
+
+  /**
+   * THE POSITIVE CONTROL for both of the above, and the one that keeps them from failing
+   * open: silence is not refusal. A number that simply never answered may be asked again
+   * — so the memory has to be written by the STOP and by nothing else.
+   */
+  it('does not treat a silent expiry as a refusal', async () => {
+    const seeded = await seedFamily();
+    await start(seeded, PARTNER_PHONE);
+    const late = new Date(NOW.getTime() + 73 * 3_600_000);
+    expect(await loadPendingAssent(db.database, seeded.parentUserId, late)).toBeNull();
+
+    expect(await declineOpenInviteOnStop(db.database, FRESH_PHONE, late)).toBe(false);
+    expect((await start(seeded, PARTNER_PHONE, late)).status).toBe('started');
   });
 });
 

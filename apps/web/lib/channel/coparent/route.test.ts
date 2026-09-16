@@ -20,6 +20,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
+  CO_PARENT_OWN_NUMBER_BY_LANGUAGE,
   CO_PARENT_SEAT_TAKEN_BY_LANGUAGE,
   PREVIOUSLY_DECLINED_BY_LANGUAGE,
   REFERRER_UNNAMED_BY_LANGUAGE,
@@ -464,6 +465,32 @@ describe('co-parent invite · the refusals', () => {
     // Says the number is spoken for; never whose household it belongs to (rule #1).
     expect(transport.sent.at(-1)?.body).toContain('already set up with Hale');
     expect(transport.sent.at(-1)?.body).not.toContain('Jo');
+  });
+
+  /**
+   * THE PARENT'S OWN NUMBER, and the reason this guard is answered rather than left to
+   * fall through: the parent IS an active channel on this household, so without it the
+   * next check matches and Hale answers "that number is already set up with Hale …
+   * they'd need to reply STOP there first" — telling a parent to unenrol themselves,
+   * about their own phone, in a thread they are holding it in.
+   */
+  it('names the parent’s own number as their own, not as somebody else’s account', async () => {
+    const { fake, transport, deps } = harness();
+    const { familyId } = await seedFamily(fake);
+    armFor(familyId);
+
+    const outcome = await text(
+      fake,
+      transport,
+      deps,
+      PARENT_PHONE,
+      'add Sam 416-555-1234 as my partner',
+    );
+
+    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'own_number' });
+    expect(transport.sent.at(-1)?.body).toBe(CO_PARENT_OWN_NUMBER_BY_LANGUAGE.en);
+    expect(transport.sent.at(-1)?.body).not.toContain('STOP');
+    expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
 });
 

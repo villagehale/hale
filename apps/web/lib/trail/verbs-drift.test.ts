@@ -114,6 +114,8 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'caregiver_invite_superseded_by_enrollment',
     'caregiver_invite_withdrawn',
     'caregiver_invite_refused',
+    'caregiver_invite_blocked_prior_refusal',
+    'caregiver_invite_blocked',
     'co_parent_invite_expired',
     'co_parent_invite_superseded',
     'co_parent_invite_superseded_by_join',
@@ -122,7 +124,8 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'co_parent_invite_refused',
     // `closeCoParentInviteSeatTaken` passes it positionally, like every suffix above.
     'co_parent_invite_seat_taken',
-    // `recordCoParentRefusal` picks one of two by the reason it was handed.
+    // `recordInviteRefusal` picks one of two by the reason it was handed, on whichever
+    // lane the ask was made — the caregiver twins are two entries up.
     'co_parent_invite_blocked',
     'co_parent_invite_blocked_prior_refusal',
   ],

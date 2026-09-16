@@ -322,9 +322,10 @@ export async function startCaregiverInvite(
     phoneE164: parsed.phoneE164,
   });
   if (refusedBefore) {
-    await recordCoParentRefusal(database, {
+    await recordInviteRefusal(database, {
       familyId: input.familyId,
       actorUserId: input.invitedByUserId,
+      role: parsed.role,
       reason: refusedBefore.whose === 'this_family' ? 'previously_declined' : 'unavailable',
       phoneE164: parsed.phoneE164,
       targetId: refusedBefore.whose === 'this_family' ? refusedBefore.inviteId : null,
@@ -486,12 +487,18 @@ async function refusalBlock(
  * Never a raw number, and never another household's row id: `targetId` is null unless the
  * invite it points at is this family's own (a cross-tenant identifier inside the surface a
  * PIPEDA access request exports, rule #1).
+ *
+ * THE LANE COMES FROM THE ROLE, exactly as {@link inviteVerb}'s does, and for the same
+ * reason facing the other way: the refusal memory binds both doors, so a CAREGIVER ask
+ * blocked by it was writing `co_parent_invite_blocked` for a household that had never
+ * used the co-parent feature and about whom no co-parent was ever asked.
  */
-export async function recordCoParentRefusal(
+export async function recordInviteRefusal(
   database: Database,
   input: {
     familyId: string;
     actorUserId: string;
+    role: AddRole;
     reason: CoParentRefusal | 'dark';
     phoneE164: string;
     targetId: string | null;
@@ -500,10 +507,10 @@ export async function recordCoParentRefusal(
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,
     actor: input.actorUserId,
-    actionTaken:
-      input.reason === 'previously_declined'
-        ? 'co_parent_invite_blocked_prior_refusal'
-        : 'co_parent_invite_blocked',
+    actionTaken: inviteVerb(
+      input.role,
+      input.reason === 'previously_declined' ? 'blocked_prior_refusal' : 'blocked',
+    ),
     targetTable: 'caregiver_invites',
     targetId: input.targetId,
     // Says a refusal happened and never when or by whom — the same bound the parent's
@@ -541,9 +548,10 @@ export async function startCoParentInvite(
     reason: CoParentRefusal,
     targetId: string | null = null,
   ): Promise<StartCoParentResult> => {
-    await recordCoParentRefusal(database, {
+    await recordInviteRefusal(database, {
       familyId: input.familyId,
       actorUserId: input.invitedByUserId,
+      role: 'co_parent',
       reason,
       phoneE164: parsed.phoneE164,
       targetId,
@@ -999,7 +1007,41 @@ export async function acceptInvite(
 }
 
 /**
- * A STOP from a number with an invite in flight. "Reply STOP anytime" is on the invite
+ * The invite a STOP closes, read WITHOUT the expiry sweep.
+ *
+ * `loadOpenInviteByPhone` answers a different question — "is there an invitation this
+ * number can still say YES to" — and its sweep closes a lapsed row as 'expired' and
+ * returns null. Reading a refusal through it made "Reply STOP anytime", printed verbatim
+ * on the one cold text this feature sends, expire with the invitation: a STOP arriving at
+ * 72h + 1 minute wrote no memory, and the same household opened a fresh invite and texted
+ * the same stranger again an hour later. Under CASL a withdrawal is effective when it is
+ * sent, not while a timer happens to be running.
+ *
+ * So the eligible rows are the ones that were never answered: still open, or already
+ * swept to 'expired'. Which of those two a row is in is a race between this turn and
+ * every other read of the table, and a promise that bound only one of them would bind by
+ * luck. Terminal states somebody DID answer are left alone — an 'accepted' invite belongs
+ * to the channel-revocation path, and a 'superseded' one describes something larger that
+ * the person did instead.
+ */
+async function inviteClosableByStop(
+  database: Database,
+  phoneE164: string,
+): Promise<CaregiverInvite | null> {
+  const hash = phoneBlindIndex(phoneE164);
+  const rows = (await database
+    .select(INVITE_COLUMNS)
+    .from(schema.caregiverInvites)
+    .where(eq(schema.caregiverInvites.phoneE164Hash, hash))) as InviteRow[];
+  const unanswered = rows
+    .filter((r) => r.phoneE164Hash === hash && (r.closedAt === null || r.state === 'expired'))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const row = unanswered[0];
+  return row ? toInvite(row) : null;
+}
+
+/**
+ * A STOP from a number that was asked something. "Reply STOP anytime" is on the invite
  * itself, so it has to close the invite too — otherwise the one thing we promised
  * them would only cover messages we had already stopped sending.
  */
@@ -1008,7 +1050,7 @@ export async function declineOpenInviteOnStop(
   phoneE164: string,
   now: Date,
 ): Promise<boolean> {
-  const invite = await loadOpenInviteByPhone(database, phoneE164, now);
+  const invite = await inviteClosableByStop(database, phoneE164);
   if (!invite) return false;
   await declineInvite(database, { invite, by: 'caregiver', now });
   return true;

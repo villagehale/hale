@@ -281,6 +281,21 @@ async function ensureJoinUser(tx: Database, externalAuthId: string): Promise<str
 }
 
 /**
+ * What a redemption decided — three outcomes, never folded into one another (rule #11).
+ *
+ * `spent` is a token that bought nothing: burned yesterday, or lost the race to another
+ * phone on the same forwarded thread. `seat_taken` is a LIVE token whose household has
+ * no seat left, and it is a different fact about a different person — somebody holding a
+ * good link, who must be told rather than dropped into the greeting that asks a stranger
+ * for their children's names. They shared one `null` until VIL-355, and the caller could
+ * not tell them apart because there was nothing there to read.
+ */
+export type JoinRedemption =
+  | { outcome: 'seated'; coParentUserId: string; supersededInviteId: string | null }
+  | { outcome: 'seat_taken' }
+  | { outcome: 'spent' };
+
+/**
  * Spend the link. In ONE transaction: the partner's identity, their own CASL consent,
  * their verified channel, their membership, the token's burn, and the audit trail. A
  * crash anywhere leaves none of it — there is no state in which a co-parent is a member
@@ -293,10 +308,10 @@ async function ensureJoinUser(tx: Database, externalAuthId: string): Promise<str
  * UPDATE is the only thing that decides — the row is locked, `consumed_at IS NULL` is
  * re-tested against it, and the loser matches nothing.
  *
- * NULL IS THE LOSER'S ANSWER, and it is the same answer a spent link gives a bystander:
- * nobody is seated, nothing is written, and the caller falls back to the ordinary
- * greeting. It is returned rather than thrown because losing a race for a forwarded
- * link is not an error — it is the single-use rule working.
+ * `spent` IS THE LOSER'S ANSWER, and it is the same answer a spent link gives a
+ * bystander: nobody is seated, nothing is written, and the caller falls back to the
+ * ordinary greeting. It is returned rather than thrown because losing a race for a
+ * forwarded link is not an error — it is the single-use rule working.
  *
  * ONE SEAT PER HOUSEHOLD, and this is the second place it has to be true (VIL-355). The
  * SMS invite checks it when the parent asks and again where it seats; a link minted
@@ -308,7 +323,7 @@ async function ensureJoinUser(tx: Database, externalAuthId: string): Promise<str
 export async function redeemJoinInvite(
   database: Database,
   input: { invite: JoinInvite; phoneE164: string; verbatimReply: string; now: Date },
-): Promise<{ coParentUserId: string; supersededInviteId: string | null } | null> {
+): Promise<JoinRedemption> {
   const { invite, phoneE164, now } = input;
   const hash = phoneBlindIndex(phoneE164);
 
@@ -322,7 +337,7 @@ export async function redeemJoinInvite(
         { familyId: invite.familyId },
         'join link not redeemed: the household already holds its one co-parent seat',
       );
-      return null;
+      return { outcome: 'seat_taken' };
     }
     // Claimed before a single row is written for this redeemer: everything below is
     // work that a loser must not commit, and returning from a transaction COMMITS it.
@@ -331,7 +346,7 @@ export async function redeemJoinInvite(
       .set({ consumedAt: now })
       .where(and(eq(schema.joinInvites.id, invite.id), isNull(schema.joinInvites.consumedAt)))
       .returning({ id: schema.joinInvites.id });
-    if (burned.length === 0) return null;
+    if (burned.length === 0) return { outcome: 'spent' };
 
     const coParentUserId = await ensureJoinUser(tx, `sms:${hash}`);
 
@@ -432,6 +447,6 @@ export async function redeemJoinInvite(
       },
     ]);
 
-    return { coParentUserId, supersededInviteId };
+    return { outcome: 'seated', coParentUserId, supersededInviteId };
   });
 }

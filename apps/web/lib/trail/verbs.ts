@@ -187,6 +187,8 @@ export const AUDIT_VERBS = [
   'caregiver_invite_superseded_by_enrollment',
   'caregiver_invite_withdrawn',
   'caregiver_invite_refused',
+  'caregiver_invite_blocked_prior_refusal',
+  'caregiver_invite_blocked',
   'caregiver_sms_inbound',
   'caregiver_sms_outbound',
   // ── the co-parent join link ─────────────────────────────────────────────
@@ -572,6 +574,18 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   caregiver_invite_withdrawn: { sentence: 'you withdrew a caregiver invite', family: 'done' },
   caregiver_invite_refused: { sentence: 'a caregiver declined your invite', family: 'note' },
+  // The same two verbs the co-parent lane writes, on the lane that actually refused.
+  // Derived from the invite's role rather than named by the caller, because the reverse
+  // of this bug — a co-parent closure rendering as "a caregiver invite" — is the landmine
+  // {@link inviteVerb} exists for, and it is the same mistake facing the other way.
+  caregiver_invite_blocked: {
+    sentence: 'Hale did not text the number you gave me',
+    family: 'note',
+  },
+  caregiver_invite_blocked_prior_refusal: {
+    sentence: 'Hale did not text a number that had already said no',
+    family: 'note',
+  },
   caregiver_sms_inbound: { sentence: 'a caregiver texted Hale', family: 'note' },
   caregiver_sms_outbound: { sentence: 'Hale texted a caregiver', family: 'note' },
   // ── the co-parent join link ─────────────────────────────────────────────

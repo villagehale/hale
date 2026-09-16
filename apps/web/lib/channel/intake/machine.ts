@@ -307,7 +307,10 @@ export async function handleInboundSms(
     );
     if (joined) return joined;
     // Spent, lapsed, forged, or a number that already has its own channel: nothing was
-    // seated, so the turn carries on exactly as if the tag had not been there.
+    // seated, so the turn carries on exactly as if the tag had not been there. A LIVE
+    // link onto a filled seat is not one of those — it comes back as `join_seat_taken`
+    // and is answered, because the person holding it is the household's real other
+    // parent (VIL-355).
   }
 
   if (!session || session.state === 'stopped') {
@@ -403,9 +406,10 @@ function joinTagFromBody(body: string): string | null {
 /**
  * Redeem a join tag, or hand the turn back.
  *
- * Null means NOTHING WAS SEATED — a spent, lapsed or forged token, or a number that is
- * already enrolled — and the caller carries on with the routing it would have done
- * anyway. It is not an error and is never answered as one.
+ * Null means NOTHING WAS SEATED AND NOTHING WAS SAID — a spent, lapsed or forged token,
+ * or a number that is already enrolled — and the caller carries on with the routing it
+ * would have done anyway. It is not an error and is never answered as one. `seat_taken`
+ * also seats nobody, but it HAS been answered, so it ends the turn.
  */
 async function joinFromTag(
   database: Database,
@@ -432,6 +436,10 @@ async function joinFromTag(
     deps,
   );
   if (!joined) return null;
+  // Nobody was seated, so nothing supersedes the conversation this link interrupted:
+  // they were told the seat is gone and are free to go on being whoever they were on
+  // this number. The token is deliberately unburned, so the tap works if a seat frees.
+  if (joined.status === 'join_seat_taken') return joined;
 
   // The conversation the link interrupted is closed in the same turn that seated them,
   // or it shadows their next text exactly as it shadowed this one. `superseded` rather
