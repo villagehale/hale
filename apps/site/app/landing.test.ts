@@ -49,6 +49,7 @@ afterEach(() => {
 
 describe('landing — the v4 hero', () => {
   const html = render();
+  const text = visibleText(html);
 
   it('opens on the shore hero, scrimmed behind glass', () => {
     expect(html).toContain('class="v4-hero"');
@@ -60,16 +61,17 @@ describe('landing — the v4 hero', () => {
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
     const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1).toContain('v4-display');
-    // The founder-approved poster stack. The brand line may lead ONLY because the
-    // sub resolves it in one breath — the v1 hero died when this same line stood
-    // over a paragraph that never got to the point, and the 7:02-first hero died
-    // as a hook with no introduction. H1 names the brand; the next line says what
-    // it is in a parent's words.
-    expect(visibleText(h1)).toBe('The family assistant you message.');
+    // The H1 is the PROMISE now, not the category. "The family assistant you
+    // message." named what Hale is and left the sharper wedge — scarce local
+    // programs, gone before you wake up — to a section three screens down; the
+    // sub carries the introduction instead, in one breath, and the exchange
+    // under it proves the promise before the reader has scrolled.
+    expect(visibleText(h1)).toBe('Three texts, then quiet.');
     expect(h1).not.toContain('7:02');
-    // Outcome-first, verb-led: the sub leads with what the reader gets rid of,
-    // not with a pronoun that makes them wait for the subject.
-    expect(html).toContain('Take the family admin off your plate');
+    // The sub names the wedge and the mechanism, and keeps the no-app line.
+    expect(html).toContain('caught before the spots are gone');
+    expect(html).toContain('I watch every registration date near you');
+    expect(html).not.toContain('Take the family admin off your plate');
     // The accent word is amber at the heading's own weight — colour, not slant.
     expect(h1).toContain('class="v4-accent"');
   });
@@ -79,11 +81,20 @@ describe('landing — the v4 hero', () => {
   });
 
   it('carries a conversion surface in the hero nav and the hero body', () => {
-    // Two Message Hale CTAs above the fold — the nav pill and the hero — both
-    // opening the /text chooser, the one target that works on every device.
-    // Wired as cta_message_click (an internal navigation, NOT cta_text_click:
-    // that event means "a composer opened" and lives on the chooser now).
-    expect([...html.matchAll(/Message Hale/g)].length).toBeGreaterThanOrEqual(2);
+    // Three chooser doors — the nav pill, the hero and the close, two of them
+    // above the fold — all opening the /text chooser, the one target that works
+    // on every device. Wired as cta_message_click (an internal navigation, NOT
+    // cta_text_click: that event means "a composer opened" and lives on the
+    // chooser now).
+    //
+    // The LABEL is "Text Hale". The page's promise is three texts and a number
+    // you text, so the door says the verb the page just used; "Message Hale" is
+    // kept for /text itself, where the reader is picking a composer rather than
+    // deciding (pinned in components/text-entry.test.ts). On the landing it is a
+    // regression. The count above is that absence's positive control — the page
+    // demonstrably labels its doors, just not with that word.
+    expect([...html.matchAll(/Text Hale/g)]).toHaveLength(3);
+    expect(html).not.toContain('Message Hale');
     const chooserAnchors = [...html.matchAll(/<a\s[^>]*data-cta="cta_message_click"[^>]*>/g)].map(
       (m) => m[0],
     );
@@ -99,12 +110,35 @@ describe('landing — the v4 hero', () => {
   it('shows the terms microcopy under the hero CTA, privacy link included', () => {
     expect(html).toContain('class="v4-hero-terms"');
     expect(visibleText(html)).toContain(
-      'Free to start. You message first; standard message rates apply, reply STOP any time.',
+      // "You text first", to match the door right above it — the fine print was
+      // the last line still saying "message" under a button that says "Text Hale".
+      'Free to start. You text first; standard message rates apply, reply STOP any time.',
     );
     expect(visibleText(html)).toContain('Your data stays in Canada — privacy policy');
     // No exclamation marks anywhere in the hero band.
     const hero = html.match(/<section class="v4-hero v4-hero-top"[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(visibleText(hero)).not.toContain('!');
+  });
+
+  it('puts the promise, a believable exchange and the founding CTA above the transcript', () => {
+    // Boardy's three notes are one claim about ORDER — a visitor can act before
+    // scrolling, the wedge leads, and the product is felt in ten seconds — so
+    // they are pinned as order rather than as four presence checks that a
+    // re-shuffle would leave green.
+    const order = [
+      'Three texts, then quiet.',
+      'Hi — Mia is 4, we’re in Halton Hills, L7G.',
+      'Founding families join free — and keep the founding rate for good.',
+      'Texting Hale looks like this',
+    ].map((marker) => text.indexOf(marker));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // The act itself, not only its words: the chooser door is INSIDE the hero
+    // section, beside the exchange and the founding line.
+    const hero = html.match(/<section class="v4-hero v4-hero-top"[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(hero).toContain('data-cta-placement="hero"');
+    expect(hero).toContain('v4-hero-thread');
+    expect(hero).toContain('Founding families join free — and keep the founding rate for good.');
   });
 
   it('shows what texting Hale is like as a static thread, not a typed dramatisation', () => {
@@ -174,7 +208,13 @@ describe('landing — the number is reachable and never readable', () => {
     // hidden on phones, where the button IS the path — captioned with /text's
     // existing laptop strings rather than new copy.
     expect(html).toContain('aria-label="QR code — scan to text Hale"');
-    expect(html).toContain('hidden items-center gap-6 text-left sm:flex');
+    // Withheld on phones, shown from sm up; and on glass, because this is the
+    // only small secondary text the page sets over the shore art and `.meta`
+    // straight on the water measured 4.09:1 (sampled off a rendered screenshot).
+    const qrRow = html.match(/<div class="[^"]*"[^>]*>(?=<svg[^>]*role="img")/)?.[0] ?? '';
+    expect(qrRow, 'the QR row must render').toContain('sm:flex');
+    expect(qrRow).toContain('hidden');
+    expect(qrRow).toContain('v4-glass');
     expect(text).toContain('On a laptop?');
     expect(text).toContain('Scan the code with your phone’s camera');
   });
@@ -402,17 +442,23 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      'The family assistant',
+      'Three texts, then quiet.',
       'Texting Hale looks like this',
       'How Hale works',
       'What I watch',
-      'When you ask me something',
       'Your helpers',
+      'When you ask me something',
       'the Canadian way',
-      'Founding families',
+      // The closing H2 exactly — "Founding families" alone now first appears in
+      // the hero, which is the change this order test would otherwise miss.
+      'Founding families join free.',
     ].map((marker) => text.indexOf(marker));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // The hero TOOK that line from how-it-works, which then took a new one; a
+    // page that says it in both places has an H2 arguing with its own H1. The
+    // pin is the count, not the replacement wording.
+    expect([...text.matchAll(/Three texts/g)]).toHaveLength(1);
   });
 });
 
@@ -426,6 +472,20 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
     // landing claims the promise, not a fixed count.
     expect(text).toContain('I name the day in the plan');
     expect(text).not.toContain('Three days later');
+  });
+
+  it('rides below the helpers as a compact band — no rail, no hero-scale heading', () => {
+    // Boardy: sleep/solids/potty pulls attention off the wedge. It keeps every
+    // word it had; what it loses is the weight — the card rail and the .v4-h2
+    // display rung that made it read as a second product.
+    const html = render();
+    const band =
+      html.match(/<p class="v4-eyebrow">When you ask me something[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(band, 'the coaching band must render').toContain('Where I stop');
+    expect(band).not.toContain('v4-cardgrid');
+    expect(band).not.toContain('v4-h2');
+    // Positive control: a hero-scale H2 is still what the section ABOVE it wears.
+    expect(html).toContain('class="v4-display v4-h2 mt-4"');
   });
 
   it('keeps the topic claim to the header trio — the full list lives in the FAQ', () => {
@@ -452,14 +512,15 @@ describe('landing — parenting coaching: the answer, the plan, the check-in', (
 
 describe('landing — the phone snap rails', () => {
   it('ships them with no focus attributes baked into the server markup', () => {
-    // The four card sets that become horizontal snap rails under 640px (the
-    // coaching boundary card stands alone since the sparseness pass). Matching
-    // the opening tags is the positive control: the absences below are attributes
-    // withheld from rails that are demonstrably here, not four missing sections.
+    // The three card sets that become horizontal snap rails under 640px —
+    // how-it-works, what-I-watch and the helpers. Coaching lost its rail when it
+    // was demoted to a compact band. Matching the opening tags is the positive
+    // control: the absences below are attributes withheld from rails that are
+    // demonstrably here, not three missing sections.
     const rails = [...render().matchAll(/<(?:div|ol)[^>]*class="v4-cardgrid[^"]*"[^>]*>/g)].map(
       (match) => match[0],
     );
-    expect(rails).toHaveLength(4);
+    expect(rails).toHaveLength(3);
     // tabindex/role/aria-label are attached on mount and only while a rail really
     // overflows. Static ones would be five dead tab stops on the desktop
     // composition, where the grid wraps and there is nothing to scroll.
@@ -538,11 +599,15 @@ describe('landing — the thread is one continuous registration loop', () => {
   });
 
   it('renders each leg as a timestamp between bubbles, never as another bubble', () => {
-    expect([...html.matchAll(/class="v4-thread-time"/g)]).toHaveLength(4);
+    // Scoped to the transcript: the hero now carries an exchange in the same
+    // bubbles, so a page-wide count would stop describing this section.
+    expect([...thread.matchAll(/class="v4-thread-time"/g)]).toHaveLength(4);
     // Positive control: the bubbles are still bubbles, so "four timestamps" is a
     // separate row type rather than four mislabelled messages.
-    expect([...html.matchAll(/class="v4-bubble v4-bubble-in"/g)].length).toBeGreaterThanOrEqual(5);
-    expect([...html.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(2);
+    expect([...thread.matchAll(/class="v4-bubble v4-bubble-in"/g)].length).toBeGreaterThanOrEqual(
+      5,
+    );
+    expect([...thread.matchAll(/class="v4-bubble v4-bubble-out"/g)]).toHaveLength(2);
   });
 
   it('tells the whole story: the warning, the parent’s yes, the link, the receipt', () => {
@@ -566,17 +631,69 @@ describe('landing — the thread is one continuous registration loop', () => {
     expect(text).toContain('haltonhills.ca/Play/Recreation/Programs');
   });
 
-  it('carries no calendar date or cycle year, so the demo cannot go stale', () => {
+  it('carries no calendar date or cycle year in EITHER conversation, so neither can go stale', () => {
     // The live heads-up prints "Sep 1, 7:00 a.m." and the cycle label "Fall 2026";
-    // the demo prints the published WEEKDAY and a bare season from the same
-    // verified row instead, both of which stay true after that window closes.
-    expect(thread, 'the thread must render for these absences to mean anything').toContain(
-      'v4-thread-time',
-    );
-    expect(thread).not.toMatch(/\b20\d\d\b/);
-    expect(thread).not.toMatch(
-      /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/,
-    );
+    // both demos print the published WEEKDAY and a bare season from the same
+    // verified row instead, which stay true after that window closes.
+    //
+    // Scoped per conversation rather than page-wide — the shore's srcSet carries
+    // `w=2048`, which a page-wide /\b20\d\d\b/ would read as a cycle year — and
+    // run over BOTH, because the hero exchange is the copy a first-time reader
+    // sees above the fold and is the one this rule most needs to hold for.
+    const heroExchange = html.match(/<div class="v4-hero-thread[\s\S]*?<\/div>/)?.[0] ?? '';
+    for (const [name, block] of [
+      ['the transcript', thread],
+      ['the hero exchange', heroExchange],
+    ] as const) {
+      expect(block, `${name} must render for these absences to mean anything`).toContain(
+        'v4-bubble',
+      );
+      expect(block, name).not.toMatch(/\b20\d\d\b/);
+      expect(block, name).not.toMatch(
+        /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/,
+      );
+    }
+  });
+
+  it('never re-says a transcript sentence in the hero exchange, one word apart included', () => {
+    // The hero is the moment BEFORE this one — the first text and the first
+    // answer — not the transcript's opening lines moved up. Two conversations a
+    // screen and a half apart that say the same sentence read as one
+    // conversation printed twice, which is the specific way a landing page gets
+    // long.
+    //
+    // An exact-substring pin does not hold this: the copy it was written against
+    // said "I’ll run THAT morning with you" against the transcript's "I’ll run
+    // THE morning with you" and passed. So the comparison is per sentence pair
+    // on word SETS, which a one-word edit barely moves. Measured: this copy's
+    // worst pair is the two "Halton Hills fall recreation opens Tuesday at 7:00
+    // a.m." openings at 0.50 — two messages that share a fact, which they must —
+    // and the near-copy above scores 0.79. The line is drawn at 0.65, with room
+    // either side, and it is the SENTENCES that are compared, so a shared fact
+    // inside differently-argued sentences stays legal.
+    const words = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+    const overlap = (a: Set<string>, b: Set<string>) => {
+      const shared = [...a].filter((w) => b.has(w)).length;
+      return shared / (a.size + b.size - shared);
+    };
+    const sentences = (block: string) =>
+      visibleText(block)
+        .split(/(?<=[.?])\s+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 24);
+
+    const heroExchange = html.match(/<div class="v4-hero-thread[\s\S]*?<\/div>/)?.[0] ?? '';
+    const heroSentences = sentences(heroExchange);
+    const threadSentences = sentences(thread);
+    expect(heroSentences.length, 'the hero exchange must render').toBeGreaterThanOrEqual(2);
+    expect(threadSentences.length, 'the transcript must render').toBeGreaterThanOrEqual(4);
+    for (const hero of heroSentences) {
+      for (const said of threadSentences) {
+        expect(overlap(words(hero), words(said)), `${hero}\n…already said as…\n${said}`).toBeLessThan(
+          0.65,
+        );
+      }
+    }
   });
 
   it('never claims Hale registers the child itself — the parent taps the link', () => {
