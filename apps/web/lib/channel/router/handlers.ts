@@ -654,7 +654,7 @@ async function preOpenReply(
     // The bind test is POSITIVE — the two statuses that mean a page was actually read —
     // and not `!== 'refused'`: a negative check silently admits every status added
     // after it, and a throttled or refused turn filing the parent's setup as a fact
-    // against a reply that says Hale never opened their link is the exact double
+    // against a reply that says Hale read no page on this turn is the exact double
     // receipt this block exists to prevent.
     const alongside = matchFastPath(ctx.body.replace(link, ' '));
     if (
