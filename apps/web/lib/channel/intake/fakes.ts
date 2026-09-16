@@ -5,6 +5,7 @@ import type {
   IdentityAskRequest,
   IdentityAskVoice,
 } from '~/lib/channel/identity/ask-voice';
+import type { OpenQuestionsForParent } from '~/lib/channel/caregiver/route';
 import type { IntroAskRequest, IntroVoice, IntroVoiceOutcome } from '~/lib/village/intros/voice';
 import type { IntakeAnswerComposer, IntakeAnswerInput, IntakeAnswerOutcome } from './answer';
 import { followUp } from './copy';
@@ -159,6 +160,17 @@ export function echoIntroAsk(request: IntroAskRequest): string {
       : ` They're also eyeing ${request.anchorTitle} ${request.anchorDay}.`;
   return `A Hale family near you has a ${request.counterpartWord} around ${request.ownChildPossessive} age.${anchor} Want an intro?`;
 }
+
+/**
+ * "Nothing else is outstanding" — the ordinary state, and the one every routing test that
+ * predates VIL-355 was written against.
+ *
+ * A NAMED EMPTY LIST rather than an optional dependency, so a test that means to open a
+ * second question has to say so. `soleOpenKind` reads an empty list as vacuously true,
+ * which is the correct reading: with nothing outstanding there is nothing for a bare
+ * "yes" to be ambiguous with.
+ */
+export const fakeNoOpenQuestions: OpenQuestionsForParent = async () => [];
 
 /**
  * An UPDATE's `where` clause, evaluated against a stored row.

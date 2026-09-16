@@ -3,7 +3,7 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
 import { STOP_ACK } from '~/lib/channel/intake/copy';
-import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, fakeSilentAnswerComposer, makeFakeDb } from '~/lib/channel/intake/fakes';
+import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, fakeNoOpenQuestions, fakeSilentAnswerComposer, makeFakeDb } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -112,6 +112,7 @@ function harness(): Harness {
     radar: fakeRadar,
     ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
+    openQuestions: fakeNoOpenQuestions,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
     now: NOW,

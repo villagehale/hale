@@ -38,16 +38,72 @@ describe('caregiver · parsing the add command', () => {
     );
   });
 
-  it('turns a co-parent request away with its own reason, not a generic failure', () => {
-    expect(parseAddCaregiver('add Sam 647-555-0199 as co-parent')).toEqual({
-      ok: false,
-      reason: 'unsupported_role',
+  it.each(['partner', 'spouse', 'wife', 'husband', 'co-parent', 'co parent', 'coparent'])(
+    'reads the partner word "%s" as a co_parent add (VIL-355)',
+    (word) => {
+      expect(parseAddCaregiver(`add Sam 647-555-0199 as ${word}`)).toEqual({
+        ok: true,
+        name: 'Sam',
+        phoneE164: '+16475550199',
+        role: 'co_parent',
+      });
+    },
+  );
+
+  /**
+   * The wording the feature was specified around: a parent writes "as MY partner", not
+   * "as partner". The determiner is dropped before the lookup, so one table entry covers
+   * both — and it covers the caregiver words for free, which is how the sentence reads.
+   */
+  it('drops the determiner a parent actually writes in front of the relationship', () => {
+    expect(parseAddCaregiver('add Sam 647-555-0199 as my partner')).toEqual({
+      ok: true,
+      name: 'Sam',
+      phoneE164: '+16475550199',
+      role: 'co_parent',
     });
-    expect(parseAddCaregiver('add Sam 647-555-0199 as coparent')).toEqual({
+    expect(parseAddCaregiver('add Nana 647-555-0199 as our nanny')).toEqual({
+      ok: true,
+      name: 'Nana',
+      phoneE164: '+16475550199',
+      role: 'nanny',
+    });
+    // And it cannot widen what is grantable: the word behind the determiner goes through
+    // the same two closed tables.
+    expect(parseAddCaregiver('add Sam 647-555-0199 as my parent')).toEqual({
       ok: false,
       reason: 'unsupported_role',
     });
   });
+
+  /**
+   * "as parent" is the one word VIL-355 leaves refused. It is what a parent writes about
+   * a grandparent, a step-parent and their own partner alike, and the seat behind it is
+   * the whole family surface — so the ambiguous word keeps the redirect and the specific
+   * ones get the flow.
+   */
+  it('keeps bare "parent" refused — too weak a word to seat a full-scope member', () => {
+    expect(parseAddCaregiver('add Sam 647-555-0199 as parent')).toEqual({
+      ok: false,
+      reason: 'unsupported_role',
+    });
+  });
+
+  /**
+   * THE TABLES ARE CLOSED, and a prototype key is not a word in them. The role pattern
+   * admits `constructor` and the lookup normalizes to lower case, so a plain-object
+   * `CO_PARENT_WORDS[roleWord]` handed back `Object.prototype.constructor` — truthy, and
+   * typed as a role. It refused only because a different guard ran first.
+   */
+  it.each(['constructor', 'valueof', 'tostring', 'hasownproperty'])(
+    'reads the inherited key %s as no role at all',
+    (word) => {
+      expect(parseAddCaregiver(`add Sam 647-555-0199 as ${word}`)).toEqual({
+        ok: false,
+        reason: 'unparseable',
+      });
+    },
+  );
 
   it.each([
     ['no number at all', 'add grandma as grandparent'],
@@ -77,6 +133,17 @@ describe('caregiver · parsing the add command', () => {
     expect(looksLikeAddCommand('add grandma 647-555-0199 as chauffeur')).toBe(true);
     expect(looksLikeAddCommand('added the swim class already')).toBe(false);
     expect(looksLikeAddCommand('can you add soccer on saturday')).toBe(false);
+  });
+
+  /**
+   * VIL-355 widened the role words, not the SHAPE. The two sentences a parent is most
+   * likely to write about a partner still have to go where they went before: the
+   * numberless one to the forwardable link (join/parse.ts), and the one about somebody
+   * else's dentist to the coach.
+   */
+  it('leaves the numberless partner ask and a possessive to the paths that own them', () => {
+    expect(looksLikeAddCommand('add my partner')).toBe(false);
+    expect(looksLikeAddCommand("add my partner's dentist")).toBe(false);
   });
 
   /**

@@ -81,7 +81,15 @@ export type OpenQuestionKind =
    * outbound word to that parent and closed the moment anything else goes out (see
    * `OpenQuestionSources.registrationReadiness`).
    */
-  | 'registration_readiness';
+  | 'registration_readiness'
+  /**
+   * "Reply YES and I'll text them once." — the parent authorising Hale to text the
+   * number they named and seat that person as their co-parent (VIL-355, caregiver/
+   * invites.ts). Its YES is the only one on this list that puts an unsolicited message
+   * on a phone belonging to somebody who has never heard of Hale, which is why the
+   * co-parent start now consults `soleOpenKind` before claiming a bare affirmative.
+   */
+  | 'co_parent_assent';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -120,6 +128,10 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // recorded at medium confidence instead of costing a clarifying round trip on the
   // three days when the parent is actually doing the work.
   registration_readiness: 'ordinary',
+  // Texts a number nobody has consented for, in the answering parent's name, and seats
+  // whoever replies with the whole family surface. The same class of cost as an
+  // introduction and then some — so the same grade.
+  co_parent_assent: 'consequential',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
@@ -158,6 +170,10 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // "You have not told me the setup is done" because of it. A no-answerable readiness
   // question would drop the one answer the parent is most likely to have to give.
   registration_readiness: { yes: true, no: true },
+  // BOTH polarities: the yes sends the one message, and the no CLOSES the invite with
+  // its own terminal state rather than leaving it to lapse — a parent who changes their
+  // mind about texting their partner should not have to wait 72 hours for it.
+  co_parent_assent: { yes: true, no: true },
 };
 
 export interface Answerable {
@@ -240,6 +256,8 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // The readiness leg and the battle plan both print 'Reply YES when that is done, or
   // NO if not.' verbatim (registration/sequence/copy.ts).
   registration_readiness: true,
+  // The scope question prints "Reply YES and I'll text them once." (coparent/copy.ts).
+  co_parent_assent: true,
 };
 
 /**
@@ -282,6 +300,10 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval'>, string> = {
   activity_followup: 'what I said I would come back to you about',
   founder_welcome_offer: 'sending your welcome note to the new family',
   registration_readiness: 'getting set up for the registration morning',
+  // No name in it, deliberately: the parent typed a number and a first name, and this
+  // phrase can end up in a list Hale prints back (rule #1 — nothing about the person on
+  // the other end of an invite they have not answered).
+  co_parent_assent: 'texting your co-parent',
 };
 
 /**
@@ -409,6 +431,18 @@ export interface OpenQuestionSources {
     familyId: string,
     now: Date,
   ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  /**
+   * The co-parent invite THIS parent still owes a yes/no on, or null (VIL-355).
+   *
+   * Per-PARENT rather than per-family, like the intro opt-in and for the same reason:
+   * the scope question was put to the parent who typed the number, and nobody else in
+   * the household may answer it — a co-parent's "yes" must not authorise a disclosure
+   * they were never asked about.
+   */
+  coParentAssent(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ id: string; askedAt: Date } | null>;
 }
 
 /**
@@ -427,7 +461,7 @@ export interface OpenQuestionSources {
 export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQuestionReader {
   return {
     async open(database, input) {
-      const [approvals, optIn, proposal, offer, checkup, promise, welcome, readiness] =
+      const [approvals, optIn, proposal, offer, checkup, promise, welcome, readiness, assent] =
         await Promise.all([
           sources.pendingApprovals(database, input.familyId),
           sources.introOptInOpen(database, {
@@ -440,6 +474,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           sources.activityPromise(database, input.familyId),
           sources.founderWelcomeOffer(database, input.familyId, input.now),
           sources.registrationReadiness(database, input.familyId, input.now),
+          sources.coParentAssent(database, input),
         ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(
@@ -522,6 +557,19 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.registration_readiness,
           askedAt: readiness.askedAt,
           solicited: SOLICITED.registration_readiness,
+        });
+      }
+      if (assent) {
+        // NOT the invite's display name and not the number: the parent typed both about
+        // somebody who has not answered, and this description goes to a model (rule #1).
+        questions.push({
+          id: assent.id,
+          kind: 'co_parent_assent',
+          description: 'Whether to text the number you gave me and seat them as your co-parent',
+          subject: SUBJECT.co_parent_assent,
+          answerable: KIND_ANSWERABLE.co_parent_assent,
+          askedAt: assent.askedAt,
+          solicited: SOLICITED.co_parent_assent,
         });
       }
       if (promise) {

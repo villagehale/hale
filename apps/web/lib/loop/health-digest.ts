@@ -150,6 +150,12 @@ const PARENT_STARTED_CATEGORIES: readonly MessageCategory[] = [
   'reply',
   'intake',
   'caregiver',
+  // VIL-355 · the co-parent invite exchange, for the same reason 'caregiver' is here:
+  // every message on it exists because a parent typed "add Sam … as my partner". The
+  // one cold text it produces is the parent's ask reaching a phone, not Hale making
+  // contact first, and counting it would inflate the engagement numerator with the
+  // household's own instruction and Hale's answer to it.
+  'co_parent_invite',
   'rsvp',
   'voice',
 ];

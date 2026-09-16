@@ -6,8 +6,10 @@ import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
+import { replyLanguage } from '~/lib/channel/language';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from './copy';
-import { loadOpenJoinInvite, mintJoinInvite, redeemJoinInvite } from './invites';
+import { type JoinInvite, loadOpenJoinInvite, mintJoinInvite, redeemJoinInvite } from './invites';
 
 /**
  * The two ends of the forwardable co-parent link: where it is minted, and where it is
@@ -64,8 +66,24 @@ export interface JoinAcceptance {
   supersededInviteId: string | null;
 }
 
+/**
+ * A LIVE link whose household has no co-parent seat left.
+ *
+ * Its own status rather than the greeting, and that is rule #11 read strictly: this is a
+ * real other parent holding a good token, and the ordinary fallback would ask them for
+ * their children's names and start a SECOND household for the family that invited them —
+ * the exact failure the join-tag branch exists to prevent. The lane's SMS door already
+ * names this fact (`CoParentAcceptance`'s `seat_taken`); the same person arrives through
+ * both, and must not be told two different things.
+ */
+export interface JoinSeatTaken {
+  status: 'join_seat_taken';
+  familyId: string;
+}
+
 export type JoinOutcome =
   | { status: 'join_link_minted' }
+  | JoinSeatTaken
   /**
    * `supersededSessionId` is the other absence this path has to name: a link can arrive
    * mid-conversation, and the intake session it interrupts is CLOSED in the same turn
@@ -92,10 +110,12 @@ async function record(
   input: {
     familyId: string;
     parentUserId: string;
-    category: 'caregiver' | 'intake';
+    category: 'caregiver' | 'intake' | 'co_parent_invite';
     direction: 'in' | 'out';
     providerId: string;
-    body: string;
+    /** Null on an inbound from somebody who has consented to nothing — see
+     * {@link tellRedeemerTheSeatIsGone}. Outbound bodies are never stored either way. */
+    body: string | null;
     now: Date;
   },
 ): Promise<string> {
@@ -142,7 +162,7 @@ async function sendThreaded(
     body: string;
     familyId: string;
     parentUserId: string;
-    category: 'caregiver' | 'intake';
+    category: 'caregiver' | 'intake' | 'co_parent_invite';
     now: Date;
   },
 ): Promise<void> {
@@ -226,6 +246,54 @@ export async function handleJoinRequest(
 }
 
 /**
+ * The link was good and the seat was not there. Said to the REDEEMER, and to nobody else.
+ *
+ * To them, because they answered something Hale offered them and silence would leave a
+ * real co-parent believing the tap had worked — and because the alternative, falling
+ * through to the greeting, asks them for their children's names and starts them a second
+ * household. Not to the inviting parent: they are the one who filled the seat, and the
+ * caregiver precedent keeps a number's own answer out of the household's thread.
+ *
+ * UNTHREADED, unlike everything else this module sends. `sendThreaded` puts a message in
+ * the RECIPIENT's coach thread, and this recipient has no seat and therefore no thread;
+ * the rows below are ledgered against the parent who minted the link because
+ * `channel_messages.parent_user_id` is NOT NULL and there is no user for this number to
+ * be — the same seam the SMS lane keeps with `reply` rather than `replyToParent`.
+ *
+ * WITHOUT THE WORDS, for the same reason: the verbatim text of somebody who has consented
+ * to nothing has no business sitting indefinitely in another household's ledger (rule #1),
+ * and the decision it carried is already the outcome this returns.
+ */
+async function tellRedeemerTheSeatIsGone(
+  database: Database,
+  args: { invite: JoinInvite; phoneE164: string; inbound: InboundMessage; now: Date },
+  deps: JoinDeps,
+): Promise<JoinSeatTaken> {
+  const { invite, inbound, now } = args;
+  await record(database, {
+    familyId: invite.familyId,
+    parentUserId: invite.invitedByUserId,
+    category: 'co_parent_invite',
+    direction: 'in',
+    providerId: inbound.providerId,
+    body: null,
+    now,
+  });
+  const body = CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE[replyLanguage(inbound.body)];
+  const { providerMessageId } = await deps.transport.send({ to: args.phoneE164, body });
+  await record(database, {
+    familyId: invite.familyId,
+    parentUserId: invite.invitedByUserId,
+    category: 'co_parent_invite',
+    direction: 'out',
+    providerId: providerMessageId,
+    body,
+    now,
+  });
+  return { status: 'join_seat_taken', familyId: invite.familyId };
+}
+
+/**
  * A first-ever text carrying a join tag: `Hi (via join-…)`, pre-written by the /text
  * page the forwarded link opens.
  *
@@ -238,7 +306,7 @@ export async function handleJoinArrival(
   database: Database,
   args: { code: string; phoneE164: string; inbound: InboundMessage; now: Date },
   deps: JoinDeps,
-): Promise<JoinAcceptance | null> {
+): Promise<JoinAcceptance | JoinSeatTaken | null> {
   const { inbound, now } = args;
   const invite = await loadOpenJoinInvite(database, args.code, now);
   if (!invite) return null;
@@ -257,7 +325,15 @@ export async function handleJoinArrival(
   // Somebody else spent this link between the read above and the burn. That is the
   // single-use rule working, and it is the SAME answer a link spent yesterday gives:
   // null, and the ordinary greeting.
-  if (!redeemed) return null;
+  if (redeemed.outcome === 'spent') return null;
+  // A GOOD link onto a filled seat is not that, and must not be answered as if it were.
+  if (redeemed.outcome === 'seat_taken') {
+    return tellRedeemerTheSeatIsGone(
+      database,
+      { invite, phoneE164: args.phoneE164, inbound, now },
+      deps,
+    );
+  }
   const { coParentUserId, supersededInviteId } = redeemed;
 
   // Recorded AFTER the seat exists, not before: channel_messages.parent_user_id is a

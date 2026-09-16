@@ -9,8 +9,10 @@ import {
   fakeAckComposer,
   fakeRadar,
   fakeSilentAnswerComposer,
+  fakeNoOpenQuestions,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
+import { CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
 import { greeting } from '~/lib/channel/intake/copy';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -89,6 +91,7 @@ function harness(): Harness {
       radar: fakeRadar,
       ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => now.getTime()),
       now,
@@ -435,6 +438,54 @@ describe('a link that is no longer good · never an error to the person holding 
     expect(inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent')).toHaveLength(
       0,
     );
+  });
+
+  /**
+   * A LIVE LINK ON A FILLED SEAT IS NOT A DEAD LINK (VIL-355). The one-seat guard landed
+   * on this door as a bare `null` — the same value that means spent, lapsed or forged —
+   * so the real other parent, holding a valid unspent link, fell through to the ordinary
+   * greeting and was asked for their children's names: a SECOND household for a family
+   * that already has one, with the household that invited them told nothing. Rule #11:
+   * an absence folded into a bucket that means something else. The lane's own SMS door
+   * already answers this fact by name, and this is the same person arriving.
+   */
+  it('tells a redeemer the seat is gone rather than starting them a household', async () => {
+    const h = harness();
+    const { familyId } = await seedFamily(h.fake);
+    await text(h, PARENT_PHONE, 'add my partner');
+    const code = mintedCode(h.transport);
+    // Somebody else took the household's one seat between the mint and the tap — the
+    // SMS invite answered, or a link forwarded twice. No concurrency required.
+    const [other] = await h.fake.db
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms:already-the-co-parent', email: null, name: 'Jo' })
+      .returning({ id: schema.users.id });
+    await h.fake.db
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: other?.id as string, role: 'co_parent' });
+    const before = h.transport.sent.length;
+
+    const late = await text(h, PARTNER_PHONE, arrival(code));
+
+    expect(late).toEqual({ status: 'join_seat_taken', familyId });
+    expect(h.transport.sent.slice(before).map((s) => s.body)).toEqual([
+      CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE.en,
+    ]);
+    expect(h.transport.sent.at(-1)?.to).toBe(PARTNER_PHONE);
+    // Not greeted, and no intake session opened on their number: the greeting is what
+    // asks them for their children's names.
+    expect(h.transport.bodies()).not.toContain(greeting(null, 'en'));
+    expect(inserts(h.fake, schema.smsIntakeSessions)).toHaveLength(0);
+    // And nothing was seated or burned — the link stays good if the seat frees. The one
+    // co-parent is the one the test seeded; this redeemer got no row of any kind.
+    expect(
+      inserts(h.fake, schema.familyMembers).filter((r) => r.role === 'co_parent'),
+    ).toHaveLength(1);
+    expect(
+      inserts(h.fake, schema.parentChannels).filter(
+        (r) => r.phoneE164Hash === phoneBlindIndex(PARTNER_PHONE),
+      ),
+    ).toHaveLength(0);
   });
 
   it('drops an unknown token rather than storing a capability string on the session', async () => {

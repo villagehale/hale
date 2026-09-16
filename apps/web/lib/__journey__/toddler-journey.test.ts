@@ -22,6 +22,7 @@ import {
   FakeIdentityAsk,
   FakeIntentReader,
   fakeSilentAnswerComposer,
+  fakeNoOpenQuestions,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
@@ -426,6 +427,7 @@ async function runToddlerJourney(): Promise<Journey> {
     // A FakeDb has no `conversations` to resolve, and what this file pins is not the
     // thread — the machine's own suite owns that (intake/machine.test.ts).
     threadMessage: async () => 'conv-1',
+    openQuestions: fakeNoOpenQuestions,
     extractor: new FakeExtractor(extractions),
     intentReader: new FakeIntentReader([assent('yes please')]),
     // The REAL radar composer, on the REAL production fallback path (`client: null`

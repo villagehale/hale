@@ -534,7 +534,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, founder_welcome, health, coach_plan, registration, rec_morning, name_capture, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, founder_welcome, co_parent_assent, health, coach_plan, registration, rec_morning, name_capture, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -548,6 +548,11 @@ describe('the shipped order', () => {
       // Ahead of the three handlers that read a bare affirmative for a household's OWN
       // business: this is the only one whose wrong answer texts a different household.
       'founder_welcome',
+      // Owns the co-parent scope question and DECLINES every reading of it (VIL-355):
+      // the answer is read by keyword one lane earlier, because a model deciding it
+      // heard a yes here is a cold text to a stranger. Its position is free — it claims
+      // nothing — but it is listed so the resolver never finds a kind without an owner.
+      'co_parent_assent',
       'health',
       'coach_plan',
       'registration',
