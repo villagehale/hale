@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { INBOUND_TURN_QUEUES } from './drain';
+import { INBOUND_TURN_QUEUES } from '~/lib/channel/config';
 
 /**
  * The kick is the whole reason a parent's text is answered in seconds rather than on the

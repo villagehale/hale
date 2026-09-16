@@ -57,10 +57,28 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · Hawaiian for home",
-    "heroH1a": "The family assistant",
-    "heroH1b": "you",
-    "heroH1Accent": "message.",
-    "heroSub": "Take the family admin off your plate. Swim, camps and registration day, caught before they fill. No app; Hale is a contact in your phone.",
+    "heroH1a": "Three texts,",
+    "heroH1b": "then",
+    "heroH1Accent": "quiet.",
+    "heroSub": "Swim, camps and registration day — caught before the spots are gone. No app: Hale is a contact in your phone, and I watch every registration date near you.",
+    "heroThread": [
+      {
+        "dir": "out",
+        "text": "Hi — Mia is 4, we’re in Halton Hills, L7G. Swim and the fall programs."
+      },
+      {
+        "dir": "in",
+        "text": "Got it. Halton Hills fall recreation opens Tuesday at 7:00 a.m., and L7G is inside the residents-first window. Say YES and I’ll send your link the night before, then again fifteen minutes out."
+      },
+      {
+        "dir": "out",
+        "text": "YES"
+      }
+    ],
+    "heroFounding": "Founding families join free — and keep the founding rate for good.",
+    "heroThreadCap": "An example first text to Hale, and the reply",
+    "bubbleYou": "You:",
+    "bubbleHale": "Hale:",
     "threadEyebrow": "Texting Hale looks like this",
     "threadH2a": "Text me like you’d text",
     "threadH2Accent": "a friend.",
@@ -113,8 +131,8 @@
       }
     ],
     "howEyebrow": "How Hale works",
-    "howH2a": "Three texts, then",
-    "howH2Accent": "quiet.",
+    "howH2a": "One text to start.",
+    "howH2Accent": "Then I keep watch.",
     "steps": [
       {
         "when": "Right now",
@@ -185,7 +203,6 @@
         "body": "I name the day in the plan and set that reminder myself."
       }
     ],
-    "coachingRail": "What happens when you ask",
     "coachingStopTitle": "Where I stop",
     "coachingStopBody": "I don’t diagnose and I never name a dose — and a plan names the one situation worth raising with your doctor.",
     "helpersEyebrow": "Your helpers",
@@ -210,7 +227,7 @@
     "closingH2a": "Founding families join",
     "closingH2Accent": "free.",
     "closingSub": "Free while I’m new — and families who start now keep their founding rate for good. No countdown, just the number.",
-    "heroTerms": "Free to start. You message first; standard message rates apply, reply STOP any time. Your data stays in Canada —",
+    "heroTerms": "Free to start. You text first; standard message rates apply, reply STOP any time. Your data stays in Canada —",
     "heroTermsLink": "privacy policy"
   },
   "About": {

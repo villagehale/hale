@@ -146,6 +146,10 @@ export const AUDIT_VERBS = [
   'channel_sms_revoked',
   'sms_reply_received',
   'sms_reply_sent',
+  // Only ever written for the synthetic canary household — but rule #6 admits no
+  // row the trail cannot describe, and an unnamed verb renders as "recorded an
+  // update" for every row that carries it.
+  'sms_canary_answered',
   'sms_intake_inbound',
   'sms_intake_outbound',
   'sms_intake_provisioned',
@@ -277,6 +281,7 @@ export const AUDIT_VERBS = [
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
+  'registration_bind_read_throttled',
   // ── watched spots (VIL-337) ─────────────────────────────────────────────
   'watched_spot_armed',
   'watched_spot_arm_failed',
@@ -478,6 +483,7 @@ const VERBS: Record<AuditVerb, Verb> = {
   channel_sms_revoked: { sentence: 'you turned off texting with Hale', family: 'done' },
   sms_reply_received: { sentence: 'you texted Hale', family: 'note' },
   sms_reply_sent: { sentence: 'Hale texted you back', family: 'note' },
+  sms_canary_answered: { sentence: 'Hale answered its own service check', family: 'note' },
   sms_intake_inbound: { sentence: 'you texted Hale while getting set up', family: 'note' },
   sms_intake_outbound: { sentence: 'Hale texted you while getting set up', family: 'note' },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
@@ -801,6 +807,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   registration_readiness_stated: {
     sentence: 'you told Hale whether your portal setup was done',
     family: 'done',
+  },
+  // A 'note' and not a 'problem': nothing broke, and the next step is already in the
+  // sentence the parent was texted back.
+  registration_bind_read_throttled: {
+    sentence: 'Hale held off on reading a course page you sent',
+    family: 'note',
   },
   // ── watched spots (VIL-337) ─────────────────────────────────────────────
   watched_spot_armed: {

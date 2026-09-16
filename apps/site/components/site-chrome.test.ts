@@ -204,7 +204,12 @@ describe('the header carries the two doors, weighted correctly', () => {
     expect(pill).toContain('href="/text"');
     expect(pill).toContain('data-cta="cta_message_click"');
     expect(pill).toContain('data-cta-placement="header"');
-    expect(header).toContain('>Message Hale</a>');
+    // "Text Hale", not "Message Hale": the landing's promise is three texts and
+    // a number you text, and the bar that rides over it says the same verb. The
+    // chooser page keeps "Message Hale" — that label names a composer, not the
+    // act (components/text-entry.test.ts).
+    expect(header).toContain('>Text Hale</a>');
+    expect(header).not.toContain('Message Hale');
     // The pill stopped being an sms: deep link — the chooser ended the header's
     // three-way fork (deep link / scroll target / dead laptop click).
     expect(header).not.toContain('sms:');
@@ -224,7 +229,10 @@ describe('the header carries the two doors, weighted correctly', () => {
     const header = chrome(renderToStaticMarkup(createElement(SiteHeader)), 'header');
     expect(header).toContain('href="mailto:aloha@villagehale.com"');
     expect(header).not.toContain('href="/text"');
-    expect(header).not.toContain('Message Hale');
+    // The chooser's own label goes with it — a header that still said "Text
+    // Hale" over a mailto: would be the honesty bug this degradation exists for.
+    expect(header).not.toContain('Text Hale');
+    expect(header).toContain('>Email Hale</a>');
   });
 });
 

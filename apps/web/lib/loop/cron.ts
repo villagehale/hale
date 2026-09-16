@@ -3,6 +3,7 @@ import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/cli
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { familyHasSyntheticProbeChannel } from '~/lib/channels/sms-consent-core';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import {
@@ -286,7 +287,14 @@ export async function selectFamiliesToCompose(db: Database, now: Date): Promise<
     // Absent row → the documented default (weekly plan ON), matching loadLoopPrefsView.
     const view = prefsByUser.get(row.userId) ?? DEFAULT_LOOP_PREFS;
     if (!view.catWeeklyPlan) continue;
-    if (isComposeMoment(view, now, row.timezone, row.weekStartDay)) toCompose.push(row.familyId);
+    if (!isComposeMoment(view, now, row.timezone, row.weekStartDay)) continue;
+    // Last, because it is the only read here that costs two queries — and it is
+    // needed because this sweep is the one per-family path that SPENDS:
+    // composeWeekVoice and the placement reviewer are both real model calls, and
+    // the onboarding stage the four proactive SENDERS gate on is not consulted
+    // anywhere above. Same chokepoint the founder ping and the intro sweep use.
+    if (await familyHasSyntheticProbeChannel(db, row.familyId)) continue;
+    toCompose.push(row.familyId);
   }
   return toCompose;
 }

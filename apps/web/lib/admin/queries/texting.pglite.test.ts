@@ -13,6 +13,9 @@ import { loadTextingTrends } from './texting';
 let db: TestDb;
 
 beforeAll(async () => {
+  // The loaders exclude the inbound canary by its phone blind index, which is
+  // HKDF-derived from this key (channel/canary/config.ts).
+  process.env.APP_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
   db = await createTestDb();
 });
 

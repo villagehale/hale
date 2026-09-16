@@ -1875,23 +1875,31 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
         var(--color-linen) 100%
       );
   }
-  /* The type-block veil (landing hero only). The page-wide scrim above is tuned
-   * for the ARTWORK — it leaves the palest sky band nearly untouched, and that
-   * band is exactly where the eyebrow and the h1's top line sit (measured
-   * worst-case before this rule: eyebrow 2.19:1 dark / 3.33:1 light). A soft
-   * radial behind the type block only — same wash each theme already pours,
-   * poured a little deeper where the words are — so the shoreline at the edges
-   * still reads at full strength and nothing looks like a box. */
-  .v4-hero-top .v4-hero-body::before {
+  /* The type-block veil, on BOTH bodies that set type over the shore. The
+   * page-wide scrim above is tuned for the ARTWORK — it leaves the palest sky
+   * band and the bright water nearly untouched, and those are exactly where the
+   * words sit. A soft radial behind the type block only — the same wash each
+   * theme already pours, poured deeper where the words are — so the shoreline at
+   * the edges still reads at full strength and nothing looks like a box.
+   *
+   * It was scoped to the landing hero, which left the CLOSING band — the last
+   * thing a converting reader reads — on raw artwork: its sub measured 2.29:1
+   * and its h2 2.25:1 in dark at 1440×900, both under the floor (2%-worst
+   * background pixel under the glyph box, sampled off rendered screenshots, not
+   * computed from tokens). Unscoping it, widening the ellipse to the full type
+   * column and deepening the dark pour takes those two to 8.18:1 and 9.33:1, and
+   * carries the hero's own dark worst cases up with it (eyebrow 3.29 → 5.59,
+   * sub 4.11 → 6.71). Light was already clear and moves 5.67 → 8.21. */
+  .v4-hero-body::before {
     content: '';
     position: absolute;
     inset: 0;
     z-index: -1;
     pointer-events: none;
     background: radial-gradient(
-      ellipse 64% 56% at 50% 46%,
-      light-dark(rgb(253 252 250 / 0.62), rgb(12 26 54 / 0.48)) 0%,
-      light-dark(rgb(253 252 250 / 0.62), rgb(12 26 54 / 0.48)) 38%,
+      ellipse 78% 68% at 50% 46%,
+      light-dark(rgb(253 252 250 / 0.66), rgb(12 26 54 / 0.72)) 0%,
+      light-dark(rgb(253 252 250 / 0.66), rgb(12 26 54 / 0.72)) 46%,
       transparent 100%
     );
   }
@@ -2006,27 +2014,34 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     padding: 3rem 1.5rem 5rem;
     text-align: center;
   }
+  /* The eyebrow is ~11px letterspaced caps, which is NORMAL text to WCAG: the
+   * 4.5:1 floor, not the 3:1 one large type gets. Amber does not clear it in
+   * light — #b26b1f on the linen canvas measures 4.08:1, sampled off a rendered
+   * screenshot of this page, not computed from the token — and it also breaks
+   * the brand rule that amber is a fill and an accent, never small text on a
+   * pale ground. So in light the eight eyebrows are navy at 72%: 5.5:1 on the
+   * same canvas, still visibly a label rather than body copy. Dark keeps the
+   * amber it passes in (#e2a75a, 8.4:1 on the navy ground). Amber stays where it
+   * is large or decorative — .v4-accent and the 01/02/03 numerals. */
   .v4-eyebrow {
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.24em;
     text-transform: uppercase;
-    color: var(--color-amber);
+    color: light-dark(rgb(23 41 74 / 0.72), #e2a75a);
   }
   /* The pronunciation, the one eyebrow that labels nothing — it says the name out
    * loud above the hero rather than naming a section, so the founder asked for it
-   * 15–20% quieter than the seven that do. The whole reduction is SIZE: amber
-   * measures 4.6:1 on the page, 0.1 over the AA floor for normal text, so buying
-   * the quiet with a tint or an opacity would have bought it by making the line
+   * 15–20% quieter than the seven that do. The reduction is SIZE only: at 9.8px
+   * a tint on top of it would be buying the quiet by making the line
    * inaccessible. -15.3%, colour untouched. */
   .v4-pronounce { font-size: 0.61rem; }
-  /* Over the shore, --color-amber loses the page it was tuned for: the palest
-   * sky band held it to 2.19:1 (dark) / 3.33:1 (light), measured on rendered
-   * pixels. On the veiled hero the same amber family is taken one step deeper
-   * in light and one step brighter in dark — the token itself is untouched, so
-   * the seven on-page eyebrows keep their 4.6:1. Measured worst-case with the
-   * veil: 5.0:1 light / 4.7:1 dark, clear of AA at any size. */
-  .v4-hero-top .v4-pronounce { color: light-dark(#8f5713, #f2c489); }
+  /* Over the shore the hero eyebrow answers to the sky rather than the canvas —
+   * the palest band held the old amber to 3.33:1 (light) / 2.19:1 (dark) on
+   * rendered pixels. Light now inherits the navy above and only deepens it (the
+   * veil under the type block is what it reads against); dark keeps the brighter
+   * amber, which clears AA on the night shore. */
+  .v4-hero-top .v4-pronounce { color: light-dark(rgb(23 41 74 / 0.86), #f2c489); }
   .v4-hero-h1 {
     font-size: clamp(2.9rem, 8.5vw, 6.5rem);
     color: var(--color-ink);
@@ -2058,7 +2073,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v4-hero-sub {
     max-width: 42ch;
     font-size: clamp(1rem, 1.6vw, 1.15rem);
-    line-height: 1.6;
+    line-height: 1.45;
     color: var(--color-navy);
     opacity: 0.9;
     /* Same invalid light-dark(<shadow>) shape as the h1's — never rendered. */
@@ -2069,9 +2084,38 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     margin-top: 1rem;
     max-width: 52ch;
     font-size: 0.85rem;
-    line-height: 1.6;
+    line-height: 1.5;
     color: var(--color-navy);
     opacity: 0.9;
+  }
+
+  /* ── The founding line and the act, in the hero ───────────────────────────
+   * The landing hero now carries six blocks where it carried four: the promise,
+   * the sub, a live exchange, the founding line, the CTA and the terms — and
+   * they have to clear the fold at 1440×900 AND 390×844, which is the whole
+   * reason they were moved up. So the hero tightens the rhythm that suited four
+   * blocks, gives back most of the five rem it spent on its own foot, and groups
+   * the offer so the terms ride with the button instead of costing a full gap.
+   * (The exchange's own sizing lives with .v4-thread, which it overrides.)
+   *
+   * The budget is the FOLD, not taste: at 1440×900 the terms line ended at
+   * y=902 — two pixels past the viewport — and on a phone `100svh` is the
+   * viewport with the URL bar SHOWING, which is the height this has to fit. So
+   * the rhythm is tuned against a measured fold at both sizes rather than eyeballed. */
+  .v4-hero-top .v4-hero-body { gap: 0.85rem; padding-top: 2.25rem; padding-bottom: 2.5rem; }
+  .v4-hero-offer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .v4-hero-offer .v4-hero-terms { margin-top: 0; }
+  .v4-hero-founding {
+    max-width: 42ch;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--color-navy);
   }
 
   /* The reply-chip row — the questions parents actually send, echoing v3, as
@@ -2119,7 +2163,9 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     color: var(--color-amber);
   }
   /* The step's WHEN, riding the empty half of the numeral's line so the
-   * first-week contract costs the card no extra height. */
+   * first-week contract costs the card no extra height. Same small-caps rule as
+   * .v4-eyebrow — it is a kicker, not the numeral beside it, so it takes the
+   * navy rather than the amber. */
   .v4-when {
     margin-left: auto;
     font-family: var(--font-body);
@@ -2129,7 +2175,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     line-height: 1;
     text-align: right;
     text-transform: uppercase;
-    color: var(--color-amber);
+    color: light-dark(rgb(23 41 74 / 0.72), #e2a75a);
   }
   .v4-card h3 { margin-top: 0.9rem; font-size: 1.15rem; line-height: 1.25; }
   .v4-card p { margin-top: 0.6rem; color: var(--color-slate-green); line-height: 1.6; }
@@ -2405,6 +2451,17 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     background: light-dark(rgb(255 255 255 / 0.74), rgb(255 255 255 / 0.09));
     color: var(--color-spruce);
   }
+  /* The hero's own exchange — the same thread, a rung tighter, because it has to
+   * clear the fold with the founding line and the CTA under it. It lives here
+   * rather than up with the hero: .v4-thread sets the padding and gap it
+   * overrides, and at equal specificity the later rule is the one that lands. */
+  .v4-hero-thread {
+    width: 100%;
+    padding: 0.85rem 0.9rem;
+    gap: 0.45rem;
+    /* The hero centres its type; a message does not centre. */
+    text-align: left;
+  }
 
   /* The closing shore. Same body as the hero, but it sits inside a rounded card
    * rather than a full viewport, so it carries its own (smaller) padding. */
@@ -2452,6 +2509,20 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
        * so a `margin-block` here would silently apply to one side. */
       padding-bottom: 0.6rem;
       margin-bottom: -0.6rem;
+      /* The peek IS the affordance — the next card shows past the edge — but a
+       * hard slice through a word reads as a rendering bug rather than as a
+       * carousel. Fading the trailing edge is what tells a reader the cut is
+       * deliberate and that swiping is the way on. A mask rather than an overlay
+       * gradient: the rail is full-bleed, so an overlay would have to know the
+       * page ground, which flips with the theme; a mask fades to whatever is
+       * actually behind. */
+      -webkit-mask-image: linear-gradient(
+        to right,
+        #000 0,
+        #000 calc(100% - 2.5rem),
+        transparent 100%
+      );
+      mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 2.5rem), transparent 100%);
     }
     .v4-cardgrid > *,
     .v4-cardgrid-4 > *,
@@ -2462,11 +2533,22 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     .v4-card h3 { margin-top: 0.55rem; font-size: 1.08rem; }
     .v4-card p { margin-top: 0.45rem; font-size: 0.95rem; line-height: 1.55; }
 
+    /* The hero has to fit the promise, the exchange and the act above the phone
+     * fold, so under this breakpoint it spends the least it can on air. The fold
+     * it is measured against is `100svh` — 390×844 MINUS the URL bar, ~750 —
+     * because a CTA that clears only the headless viewport is a CTA no parent
+     * ever sees without scrolling. */
+    .v4-hero-top .v4-hero-body { gap: 0.5rem; padding: 1rem 1.25rem 1.5rem; }
+    .v4-hero-offer { gap: 0.45rem; }
+    .v4-hero-founding { font-size: 0.9rem; line-height: 1.35; }
+
     /* The thread grew from five bubbles to a whole registration, so it pays for
      * the height it added the same way #486 paid for the rest of the page:
      * tighter interior rhythm under the phone breakpoint only. */
     .v4-thread { padding: 1.05rem 0.9rem; gap: 0.55rem; }
-    .v4-bubble { padding: 0.6rem 0.85rem; font-size: 0.9rem; line-height: 1.45; }
+    /* After .v4-thread, for the same reason as the base pair. */
+    .v4-hero-thread { padding: 0.6rem 0.7rem; gap: 0.3rem; }
+    .v4-bubble { padding: 0.5rem 0.8rem; font-size: 0.9rem; line-height: 1.4; }
     .v4-thread-time { margin-top: 0.3rem; font-size: 0.66rem; }
     .v4-when { font-size: 0.66rem; letter-spacing: 0.1em; }
 

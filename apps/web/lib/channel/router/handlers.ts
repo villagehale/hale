@@ -674,9 +674,15 @@ async function preOpenReply(
     // fact: the bind's outcome is what the turn is named by, and the checklist is asked
     // again on its own leg. The BIND's ack is what goes back either way: two receipts
     // for one message is two messages.
+    //
+    // The bind test is POSITIVE — the two statuses that mean a page was actually read —
+    // and not `!== 'refused'`: a negative check silently admits every status added
+    // after it, and a throttled or refused turn filing the parent's setup as a fact
+    // against a reply that says Hale read no page on this turn is the exact double
+    // receipt this block exists to prevent.
     const alongside = matchFastPath(ctx.body.replace(link, ' '));
     if (
-      bind.status !== 'refused' &&
+      (bind.status === 'bound' || bind.status === 'already_bound') &&
       alongside !== null &&
       alongside.index === null &&
       alongside.verb !== 'undo' &&

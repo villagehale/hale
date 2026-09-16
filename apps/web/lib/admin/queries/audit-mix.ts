@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import { notCanaryTraffic } from '~/lib/channel/canary/config';
 import { db as defaultDb } from '~/lib/db';
 import { TREND_DAYS } from '../window';
 import { torontoDay } from './day';
@@ -25,7 +26,9 @@ export async function loadAuditMix(database: Database = defaultDb()): Promise<Au
       count: sql<number>`count(*)::int`,
     })
     .from(a)
-    .where(sql`${a.occurredAt} >= now() - make_interval(days => ${TREND_DAYS})`)
+    .where(
+      sql`${a.occurredAt} >= now() - make_interval(days => ${TREND_DAYS}) and ${notCanaryTraffic(a.actor)}`,
+    )
     .groupBy(day, a.actionTaken)
     .orderBy(day);
 }

@@ -30,6 +30,23 @@ export const CHANNEL_SEND_QUEUE = 'channel.send';
 export const CHANNEL_MESSAGE_RECEIVED_QUEUE = 'channel.message.received';
 
 /**
+ * THE HOT PATH — the only queue a parent's text has to travel to be answered.
+ *
+ * {@link CHANNEL_SEND_QUEUE} is deliberately NOT in it. The router replies straight
+ * through the transport (channel/router/route.ts sendReply), so the outbound queue is
+ * not on the reply path at all; asking for it would put a parent's question behind a
+ * brief-and-reminder backlog for no benefit. Everything else the turn produces — an
+ * approval the parent texted YES to, a signal to classify — is not what they are
+ * waiting on, and the every-minute cron reaps it.
+ *
+ * It lives beside the queue name for the same reason the policy does: the doors kick a
+ * drain of exactly this slice, and /api/health/crons watches exactly this slice for the
+ * oldest unfinished turn. A lane that named one queue of its own would keep reading
+ * 'ok' through a stall on the day a second one joins the set.
+ */
+export const INBOUND_TURN_QUEUES: readonly string[] = [CHANNEL_MESSAGE_RECEIVED_QUEUE];
+
+/**
  * VIL-220 · C1 — the queue POLICY, which is what makes the singleton key mean anything.
  *
  * pg-boss enforces a singleton key only where the policy says to (its unique index is
