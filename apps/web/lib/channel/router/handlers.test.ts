@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Database } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
+import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
+import { createTestDb, type TestDb } from '~/lib/testing/pglite';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import type {
   PrepareReplyDeps,
@@ -527,7 +530,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, founder_welcome, health, coach_plan, registration, rec_morning, name_capture', async () => {
+  it('is village_intro, approval, email_capture, connector_link, founder_welcome, health, coach_plan, registration, rec_morning, name_capture, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -546,6 +549,11 @@ describe('the shipped order', () => {
       'registration',
       'rec_morning',
       'name_capture',
+      // Behind even the bare-word capture, and that is the mechanism rather
+      // than a tidy tail: the canary turn is worth its rows only if it runs
+      // every other handler's DECLINE path first — including the registration
+      // reader, which is where every turn actually crashed (#617).
+      'inbound_canary',
     ]);
   });
 
@@ -559,7 +567,7 @@ describe('the shipped order', () => {
   it('puts the name capture behind every handler that matches a specific word', async () => {
     const { defaultHandlers } = await import('./wiring');
     const names = defaultHandlers().map((h) => h.name);
-    expect(names.at(-1)).toBe('name_capture');
+    expect(names.at(-1)).toBe('inbound_canary');
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('registration'));
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('rec_morning'));
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('health'));
@@ -1066,5 +1074,105 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     ]);
     expect(prepare.bound).toEqual([]);
     expect(prepare.readiness).toEqual([]);
+  });
+});
+
+/**
+ * THE CANARY REACHES THE CRASH SITE (#617/#622).
+ *
+ * The write-side canary is only evidence if its turn walks the code a real
+ * turn walks. What broke on the night this exists for was inside the EIGHTH
+ * handler's reader — `loadAwaitingSequence`, whose bound Date threw at
+ * serialization before the statement was sent, for any family at all. So the
+ * claim being pinned here is not "the canary handler works"; it is "nothing
+ * ahead of it claims, and a throw anywhere in front of it takes the job down".
+ */
+describe('the canary turn walks the whole chain', () => {
+  const CANARY_KEY = Buffer.alloc(32, 9).toString('base64');
+  let canaryDb: TestDb;
+  let household: CanaryHousehold;
+
+  beforeAll(async () => {
+    process.env.APP_ENCRYPTION_KEY = CANARY_KEY;
+    canaryDb = await createTestDb();
+    // The REAL seed script's household, not a stand-in: this test is the evidence
+    // that the probe reaches the #617 crash site, and a hand-rolled family with an
+    // email and a province is not the family production will have (seed.ts writes
+    // neither). Resolved back through the identity path the door uses.
+    await seedCanaryHousehold(canaryDb.database);
+    const resolved = await canaryChannel(canaryDb.database);
+    if (!resolved) throw new Error('the seeded canary household did not resolve');
+    household = resolved;
+  }, 120_000);
+
+  afterAll(async () => {
+    process.env.APP_ENCRYPTION_KEY = '';
+    await canaryDb.close();
+  });
+
+  function canaryTurn(): HandlerContext {
+    return {
+      familyId: household.familyId,
+      parentUserId: household.parentUserId,
+      conversationId: '77777777-7777-4777-8777-777777777777',
+      body: 'CANARY',
+      now: new Date(),
+      send: async () => {
+        throw new Error('the canary answers for itself — it must never send');
+      },
+      resolved: null,
+      openQuestions: async () => [],
+      inboundChannelMessageId: INBOUND_MESSAGE_ID,
+    };
+  }
+
+  it('is declined by all ten handlers ahead of it, and claimed by the eleventh', async () => {
+    const { defaultHandlers } = await import('./wiring');
+    const chain = defaultHandlers();
+
+    const verdicts: boolean[] = [];
+    for (const handler of chain) {
+      const verdict = await handler.handle(canaryDb.database, canaryTurn());
+      verdicts.push(verdict.claimed);
+      if (verdict.claimed) break;
+    }
+
+    expect(verdicts.slice(0, -1).every((claimed) => claimed === false)).toBe(true);
+    expect(verdicts).toHaveLength(chain.length);
+    expect(chain[verdicts.length - 1]?.name).toBe('inbound_canary');
+  });
+
+  it('would have gone red on the night the registration reader threw', async () => {
+    const { defaultHandlers } = await import('./wiring');
+    const chain = defaultHandlers();
+
+    // The #617 shape at the seam it really happened at: the DRIVER refuses the
+    // registration read before the statement is sent. Injected at the driver
+    // rather than at a module boundary because the throw was a serialization
+    // failure inside the driver, and a mocked reader could never show it.
+    vi.spyOn(canaryDb.client, 'query').mockImplementation((async (
+      sql: string,
+      ...rest: unknown[]
+    ) => {
+      if (typeof sql === 'string' && sql.includes('registration_sequences')) {
+        throw new TypeError('ERR_INVALID_ARG_TYPE');
+      }
+      return (
+        Object.getPrototypeOf(canaryDb.client) as { query: (...args: unknown[]) => unknown }
+      ).query.call(canaryDb.client, sql, ...rest);
+    }) as never);
+
+    const walk = async () => {
+      for (const handler of chain) {
+        const verdict = await handler.handle(canaryDb.database, canaryTurn());
+        if (verdict.claimed) return handler.name;
+      }
+      return null;
+    };
+
+    // No handler ever claims: the job throws, pg-boss leaves the row in
+    // `retry`, and the lane reads stale ten minutes later.
+    await expect(walk()).rejects.toThrow('ERR_INVALID_ARG_TYPE');
+    vi.restoreAllMocks();
   });
 });

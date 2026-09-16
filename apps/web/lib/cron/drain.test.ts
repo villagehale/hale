@@ -8,6 +8,7 @@ import {
 } from '~/lib/channel/activity/deep-queue';
 import {
   CHANNEL_MESSAGE_RECEIVED_RETRY,
+  INBOUND_TURN_QUEUES,
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
 import {
@@ -15,7 +16,6 @@ import {
   type DrainBoss,
   type DrainDeps,
   HOT_QUEUE_EXPIRE_SECONDS,
-  INBOUND_TURN_QUEUES,
   drainHotQueues,
   isConnectionExhaustion,
 } from './drain';

@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
 import { STOP_ACK } from '~/lib/channel/intake/copy';
 import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, fakeSilentAnswerComposer, makeFakeDb } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
@@ -724,6 +725,63 @@ describe('routing outcomes are logged and counted (rule #11)', () => {
         'twilio inbound: routed',
       ],
     ]);
+  });
+
+  it('labels the canary hand-off so the routed counters stay honest', async () => {
+    const h = harness();
+    // The synthetic probe household, resolved the way the door resolves anyone:
+    // by blind index on an active verified channel.
+    // NO intake session, which is what production will look like: the machine
+    // is session-less for this number, resolves it as a known parent, finds
+    // nothing to answer, and returns no_open_conversation — the one outcome
+    // that reaches the hand-off.
+    enrol(h.fake, 'primary_parent', CANARY_PHONE_E164);
+
+    // Through the REQUEST shell, because the counter is what this pins and the
+    // shell is what calls it.
+    await handleTwilioInboundRequest(
+      twilioRequest(twilioParams({ Body: 'CANARY', From: CANARY_PHONE_E164 })),
+      h.deps,
+    );
+
+    // Never folded into `handed_off`: a synthetic turn every ten minutes would
+    // otherwise swamp the one rate that says how much real traffic Hale
+    // answers (#606).
+    expect(h.counted).toEqual(['handed_off_canary']);
+    const message = h.fake
+      .rows(schema.channelMessages)
+      .find((r) => r.providerMessageId === 'SM11111111111111111111111111111111');
+    // Still a real hand-off in every other respect — the job exists and the row
+    // is marked, or the canary would be testing a path parents do not walk.
+    expect(message?.handedOffAt).not.toBeNull();
+    expect(h.jobs).toHaveLength(1);
+  });
+
+  it('labels a probe-number turn whatever it says — the counters exclude the probe by IDENTITY', async () => {
+    const h = harness();
+    enrol(h.fake, 'primary_parent', CANARY_PHONE_E164);
+
+    // The body the cron sends is a constant that can drift; the number cannot.
+    // Everything from the probe number is synthetic, so labelling on the word
+    // would put synthetic turns back in the real denominator the day the two
+    // constants disagree — and the dashboards already exclude this household by
+    // identity alone (canary/config.ts notCanaryTraffic).
+    await handleTwilioInboundRequest(
+      twilioRequest(twilioParams({ Body: 'CANARY PING', From: CANARY_PHONE_E164 })),
+      h.deps,
+    );
+
+    expect(h.counted).toEqual(['handed_off_canary']);
+  });
+
+  it('leaves a REAL household on handed_off, even when a parent types the probe word', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    const outcome = await routeTwilioInbound(h.deps, inbound({ body: 'CANARY' }), 0);
+
+    expect(outcome).toBe('handed_off');
   });
 
   it('counts the handoff too — the counter is a denominator, not an error log', async () => {

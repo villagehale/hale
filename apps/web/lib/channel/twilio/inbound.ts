@@ -4,6 +4,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
+import { isCanaryInbound } from '~/lib/channel/canary/config';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
@@ -87,6 +88,11 @@ export type TwilioInboundOutcome =
   | 'rate_limited'
   /** Recorded and handed to C1's queue. */
   | 'handed_off'
+  /** The same, for the synthetic probe household (channel/canary/config.ts). Its own
+   * value so the routed rates stay a measure of REAL traffic: the canary hands off on
+   * a clock, and folding its turns into `handed_off` would swamp the one denominator
+   * that says how much of what parents send Hale actually answers. */
+  | 'handed_off_canary'
   /** Recorded, but the queue refused it: the row is left unmarked for the reconciler,
    * and the parent is owed a reply Hale has not yet given. Never folded into
    * `handed_off` — that value is a claim that C1 has the text. */
@@ -327,7 +333,11 @@ async function handOffToConversation(
     .update(schema.channelMessages)
     .set({ handedOffAt: deps.now?.() ?? new Date() })
     .where(eq(schema.channelMessages.id, channelMessageId));
-  return 'handed_off';
+
+  // Pure, over the canonical `From` the door already holds: a label computed
+  // after the row, the audit and the enqueue have committed must not be able to
+  // fail the hand-off it is labelling.
+  return isCanaryInbound(phoneE164) ? 'handed_off_canary' : 'handed_off';
 }
 
 /**

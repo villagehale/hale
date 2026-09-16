@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import { notCanaryTraffic } from '~/lib/channel/canary/config';
 import { db as defaultDb } from '~/lib/db';
 import { TREND_DAYS } from '../window';
 import { torontoDay, torontoHour } from './day';
@@ -29,7 +30,7 @@ export async function loadTextingByHour(
     })
     .from(m)
     .where(
-      sql`${m.direction} = 'in' and ${m.createdAt} >= now() - make_interval(days => ${TREND_DAYS})`,
+      sql`${m.direction} = 'in' and ${m.createdAt} >= now() - make_interval(days => ${TREND_DAYS}) and ${notCanaryTraffic(m.parentUserId)}`,
     )
     .groupBy(day, hour)
     .orderBy(day, hour);

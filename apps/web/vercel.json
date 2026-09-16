@@ -24,6 +24,7 @@
     { "path": "/api/cron/papercut-digest", "schedule": "13 16 * * 1" },
     { "path": "/api/cron/drain", "schedule": "* * * * *" },
     { "path": "/api/cron/queue-maintenance", "schedule": "*/10 * * * *" },
-    { "path": "/api/cron/connector-sync", "schedule": "*/15 * * * *" }
+    { "path": "/api/cron/connector-sync", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/inbound-canary", "schedule": "9-59/10 * * * *" }
   ]
 }

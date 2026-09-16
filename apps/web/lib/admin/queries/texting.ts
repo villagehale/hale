@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import { notCanaryTraffic } from '~/lib/channel/canary/config';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { db as defaultDb } from '~/lib/db';
 import { TREND_DAYS } from '../window';
@@ -38,7 +39,9 @@ export async function loadTextingTrends(database: Database = defaultDb()): Promi
       msgsFailed: sql<number>`count(*) filter (where ${schema.channelMessages.direction} = 'out' and ${schema.channelMessages.status} = 'failed')::int`,
     })
     .from(schema.channelMessages)
-    .where(sql`${schema.channelMessages.createdAt} >= now() - make_interval(days => ${TREND_DAYS})`)
+    .where(
+      sql`${schema.channelMessages.createdAt} >= now() - make_interval(days => ${TREND_DAYS}) and ${notCanaryTraffic(schema.channelMessages.parentUserId)}`,
+    )
     .groupBy(day)
     .orderBy(day);
 }

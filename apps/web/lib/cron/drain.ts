@@ -544,18 +544,6 @@ const DRAIN_PLAN = [
  * route refuses it rather than draining nothing and reporting success. */
 export const DRAINABLE_QUEUES: readonly string[] = DRAIN_PLAN.map((step) => step.queue);
 
-/**
- * THE HOT PATH — the only queue a parent's text has to travel to be answered.
- *
- * `channel.send` is deliberately NOT in it. The router replies straight through the
- * transport (channel/router/route.ts sendReply), so the outbound queue is not on the
- * reply path at all; asking for it would put a parent's question behind a brief-and-
- * reminder backlog for no benefit. Everything else the turn produces — an approval the
- * parent texted YES to, a signal to classify — is not what they are waiting on, and the
- * every-minute cron reaps it.
- */
-export const INBOUND_TURN_QUEUES: readonly string[] = [CHANNEL_MESSAGE_RECEIVED_QUEUE];
-
 export interface DrainOptions {
   /** Restrict the run to this slice of {@link DRAINABLE_QUEUES}; omitted drains all. */
   queues?: readonly string[];

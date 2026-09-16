@@ -1,5 +1,8 @@
 import { schema } from '@hale/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { createTestDb, seedFamily, type TestDb } from '~/lib/testing/pglite';
 import { loadAgentSpend } from './agent-spend';
 import { loadAuditMix } from './audit-mix';
@@ -9,6 +12,7 @@ import { loadIntakeFunnel } from './intake-funnel';
 import { loadPulse } from './pulse';
 import { loadRadar } from './radar';
 import { loadTextingTrends } from './texting';
+import { loadTextingByHour } from './texting-hours';
 import { loadWatchedSpots } from './watched-spots';
 
 /**
@@ -22,6 +26,7 @@ import { loadWatchedSpots } from './watched-spots';
 let db: TestDb;
 
 beforeAll(async () => {
+  process.env.APP_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
   db = await createTestDb();
 });
 
@@ -353,5 +358,108 @@ describe('loadDbErrors — the send-failure ledger is outbound only (seeded, exa
     expect(codes).toContain('30007');
     // ...and the inbound one never is.
     expect(codes).not.toContain('30099');
+  });
+});
+
+// Seeds "today" rows too — last, for the same reason the two above are late.
+describe('the founder dashboards count FAMILY traffic, not the inbound canary', () => {
+  it('a probe turn moves no numeral; a real parent in the same batch moves all of them', async () => {
+    const real = await seedFamily(db.database, 'Real Family');
+    const probe = await seedFamily(db.database, 'Hale inbound canary');
+    await db.database.insert(schema.parentChannels).values({
+      userId: probe.parentUserId,
+      familyId: probe.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(CANARY_PHONE_E164),
+      phoneE164Hash: phoneBlindIndex(CANARY_PHONE_E164),
+      verifiedAt: new Date(),
+    });
+
+    const before = {
+      pulse: await loadPulse(db.database),
+      trends: await loadTextingTrends(db.database),
+      hours: await loadTextingByHour(db.database),
+      mix: await loadAuditMix(db.database),
+    };
+
+    const inbound = (fam: { familyId: string; parentUserId: string }) => ({
+      familyId: fam.familyId,
+      parentUserId: fam.parentUserId,
+      channel: 'sms' as const,
+      direction: 'in' as const,
+      category: 'reply' as const,
+      status: 'delivered' as const,
+      createdAt: new Date(),
+    });
+
+    // Six canary ticks — one hour of the shipped 9-59/10 cadence — and ONE real
+    // parent. Every numeral below must move by exactly the one.
+    await db.database
+      .insert(schema.channelMessages)
+      .values([
+        inbound(probe),
+        inbound(probe),
+        inbound(probe),
+        inbound(probe),
+        inbound(probe),
+        inbound(probe),
+        inbound(real),
+      ]);
+
+    // The same seven turns in the audit trail. A canary tick leaves TWO rows —
+    // the door's and the handler's — both actored by the household's own parent
+    // (twilio/inbound.ts, canary/handler.ts), which is the column the mix joins on.
+    const acting = (fam: { familyId: string; parentUserId: string }, action: string) => ({
+      familyId: fam.familyId,
+      actor: fam.parentUserId,
+      actionTaken: action,
+      targetTable: 'channel_messages',
+    });
+    const tick = (fam: { familyId: string; parentUserId: string }) => [
+      acting(fam, 'sms_reply_received'),
+      acting(fam, 'sms_canary_answered'),
+    ];
+    await db.database
+      .insert(schema.auditLog)
+      .values([
+        ...tick(probe),
+        ...tick(probe),
+        ...tick(probe),
+        ...tick(probe),
+        ...tick(probe),
+        ...tick(probe),
+        acting(real, 'sms_reply_received'),
+      ]);
+
+    const after = {
+      pulse: await loadPulse(db.database),
+      trends: await loadTextingTrends(db.database),
+      hours: await loadTextingByHour(db.database),
+      mix: await loadAuditMix(db.database),
+    };
+
+    // POSITIVE CONTROL first: the real parent did land, so a zero delta below
+    // cannot be the seed silently failing.
+    expect(after.pulse.msgsInToday).toBe(before.pulse.msgsInToday + 1);
+    expect(after.pulse.familiesToday).toBe(before.pulse.familiesToday + 1);
+
+    const strip = (p: { hourly: { count: number }[] }) =>
+      p.hourly.reduce((sum, slot) => sum + slot.count, 0);
+    expect(strip(after.pulse)).toBe(strip(before.pulse) + 1);
+
+    const msgsIn = (rows: { msgsIn: number }[]) => rows.reduce((sum, r) => sum + r.msgsIn, 0);
+    const senders = (rows: { senders: number }[]) => rows.reduce((sum, r) => sum + r.senders, 0);
+    expect(msgsIn(after.trends)).toBe(msgsIn(before.trends) + 1);
+    expect(senders(after.trends)).toBe(senders(before.trends) + 1);
+
+    const hourly = (rows: { count: number }[]) => rows.reduce((sum, r) => sum + r.count, 0);
+    expect(hourly(after.hours)).toBe(hourly(before.hours) + 1);
+
+    const acted = (rows: { action: string; count: number }[], action: string) =>
+      rows.filter((r) => r.action === action).reduce((sum, r) => sum + r.count, 0);
+    expect(acted(after.mix, 'sms_reply_received')).toBe(
+      acted(before.mix, 'sms_reply_received') + 1,
+    );
+    expect(acted(after.mix, 'sms_canary_answered')).toBe(0);
   });
 });
