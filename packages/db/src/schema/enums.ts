@@ -389,7 +389,12 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // the household, and a PIPEDA right-to-access read that filed a co-parent's own
   // messages under it would describe the opposite of what happened. Loop enforcement
   // never applies to it, for the same reason it never applies to 'caregiver' — this is
-  // a live conversation the parent started.
+  // a live conversation the parent started. Two consumers have to agree with that
+  // sentence and neither is automatic: the outbound gate reads an INCLUSION map
+  // (PROACTIVE_CATEGORY, outbound-gate.ts), so a new category is unmetered by default,
+  // while the loop-health digest reads an EXCLUSION list (PARENT_STARTED_CATEGORIES,
+  // health-digest.ts), so a new one counts as Hale making contact first until it is
+  // named there.
   'co_parent_invite',
 ]);
 

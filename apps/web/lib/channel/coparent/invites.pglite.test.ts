@@ -5,6 +5,8 @@ import {
   type CoParentInvite,
   declineOpenInviteOnStop,
   loadPendingAssent,
+  recordCoParentAssent,
+  startCaregiverInvite,
   startCoParentInvite,
 } from '~/lib/channel/caregiver/invites';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -133,9 +135,15 @@ describe('the refusal a closed row remembers', () => {
     expect(fresh.status).toBe('started');
   });
 
-  /** The refusal is FAMILY-BLIND, the same scope the STOP keyword already has: a number
-   * that said no to one household has not volunteered for the next one. */
-  it('remembers the refusal against a household that never asked before', async () => {
+  /**
+   * The SUPPRESSION is family-blind — the same scope the STOP keyword already has: a
+   * number that said no to one household has not volunteered for the next one. The
+   * SENTENCE is not, and that is the fix: "that number already said no to me once" told
+   * a parent in family A that a number they typed had been invited by some other
+   * household and had refused. A parent may probe arbitrary numbers with this command,
+   * so the answer has to distinguish fewer states than the database does.
+   */
+  it('suppresses a refusal made to another household WITHOUT saying one happened', async () => {
     const first = await seedFamily();
     await db.database.insert(schema.caregiverInvites).values({
       familyId: first.familyId,
@@ -153,8 +161,190 @@ describe('the refusal a closed row remembers', () => {
 
     expect(await start(second, PARTNER_PHONE)).toEqual({
       status: 'refused',
-      reason: 'previously_declined',
+      reason: 'unavailable',
     });
+    // And no row of the FIRST household's is named in the second's audit log: a
+    // cross-tenant id inside the surface a PIPEDA access request exports.
+    const rows = await db.database
+      .select({
+        familyId: schema.auditLog.familyId,
+        actionTaken: schema.auditLog.actionTaken,
+        targetId: schema.auditLog.targetId,
+      })
+      .from(schema.auditLog);
+    const theirs = rows.filter((r) => r.familyId === second.familyId);
+    // The generic verb, not the one whose sentence says a refusal happened: that sentence
+    // is about a person this household has never asked.
+    expect(theirs.map((r) => r.actionTaken)).toEqual(['co_parent_invite_blocked']);
+    expect(theirs[0]?.targetId).toBeNull();
+  });
+});
+
+/**
+ * THE PROMISE ON THE COLD TEXT IS "Reply STOP anytime", and it has to hold against the
+ * command next door. `startCaregiverInvite` consulted only OPEN invites, so somebody who
+ * replied STOP to a co-parent invite could be re-texted by the same parent a minute later
+ * with `add Sam <same number> as my nanny` — five a day, forever, on a path that
+ * legitimately bypasses the outbound gate.
+ */
+/**
+ * THE COMMAND MUST NOT ANSWER QUESTIONS ABOUT STRANGERS' HOUSEHOLDS.
+ *
+ * A parent may type ANY phone number here, so every guard that reads the number is a
+ * question anyone can ask about anyone. "That number is already set up with Hale" is this
+ * household's own fact when the account is theirs and a disclosure about somebody else's
+ * when it is not — the same sentence, two completely different things to say.
+ *
+ * Both halves in reach of one another on purpose: a refusal that said `unavailable` for
+ * every account would hide the oracle and also stop telling a parent the true, useful
+ * thing about their own household, so neither assertion is worth anything alone.
+ */
+describe('what the refusal may say about a number', () => {
+  async function seedVerifiedChannel(familyId: string, phoneE164: string, label: string) {
+    const [owner] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${label}`, name: 'Jo' })
+      .returning({ id: schema.users.id });
+    await db.database.insert(schema.parentChannels).values({
+      userId: owner?.id as string,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phoneE164),
+      phoneE164Hash: phoneBlindIndex(phoneE164),
+      verifiedAt: NOW,
+    });
+  }
+
+  it('names the account when it is this household’s own', async () => {
+    const seeded = await seedFamily();
+    await seedVerifiedChannel(seeded.familyId, PARTNER_PHONE, 'ours');
+
+    expect(await start(seeded, PARTNER_PHONE)).toEqual({
+      status: 'refused',
+      reason: 'number_in_use',
+    });
+  });
+
+  it('will not confirm that a stranger’s number has a Hale account', async () => {
+    const theirs = await seedFamily();
+    await seedVerifiedChannel(theirs.familyId, PARTNER_PHONE, 'theirs');
+    const asking = await seedFamily();
+
+    // The same number, the same guard, a different household asking — and the answer says
+    // only that Hale will not do it. `number_in_use` here would let a parent enumerate
+    // which phone numbers in the country are on Hale, one add command at a time.
+    expect(await start(asking, PARTNER_PHONE)).toEqual({
+      status: 'refused',
+      reason: 'unavailable',
+    });
+  });
+
+  /**
+   * The third fact behind the same sentence: an invite somebody else's household has open
+   * on this number. Distinguishable from a refusal and from an account by the reply, it
+   * would tell the asking parent that a stranger is mid-conversation with Hale.
+   */
+  it('will not confirm that a stranger’s number has an invite open on it', async () => {
+    const theirs = await seedFamily();
+    await start(theirs, PARTNER_PHONE);
+    const asking = await seedFamily();
+
+    expect(await start(asking, PARTNER_PHONE)).toEqual({
+      status: 'refused',
+      reason: 'unavailable',
+    });
+  });
+
+  /** The positive control for that one: this household's OWN open invite is theirs to be
+   * told about, and says so in the words that let them wait rather than retry. */
+  it('tells this household when the open invite is its own', async () => {
+    const seeded = await seedFamily();
+    await start(seeded, PARTNER_PHONE);
+    await db.database
+      .update(schema.caregiverInvites)
+      .set({ state: 'awaiting_caregiver_reply' })
+      .where(eq(schema.caregiverInvites.familyId, seeded.familyId));
+
+    expect(await start(seeded, FRESH_PHONE)).toMatchObject({ status: 'started' });
+    expect(await start(seeded, PARTNER_PHONE)).toEqual({
+      status: 'refused',
+      reason: 'already_invited',
+    });
+  });
+});
+
+describe('the refusal binds BOTH doors', () => {
+  function startCaregiver(
+    seeded: { familyId: string; parentUserId: string },
+    phoneE164: string,
+  ) {
+    return startCaregiverInvite(db.database, {
+      familyId: seeded.familyId,
+      invitedByUserId: seeded.parentUserId,
+      inviterPhoneE164: PARENT_PHONE,
+      parsed: { ok: true, name: 'Sam', phoneE164, role: 'nanny' },
+      now: NOW,
+    });
+  }
+
+  it('refuses a caregiver ask on a number that said STOP to a co-parent invite', async () => {
+    const seeded = await seedFamily();
+    await start(seeded, PARTNER_PHONE);
+    expect(await declineOpenInviteOnStop(db.database, PARTNER_PHONE, NOW)).toBe(true);
+
+    expect(await startCaregiver(seeded, PARTNER_PHONE)).toEqual({
+      status: 'previously_declined',
+    });
+  });
+
+  /** The positive control: a number that never refused still opens on the same door. */
+  it('still opens a caregiver invite for a number that never refused', async () => {
+    const seeded = await seedFamily();
+    expect((await startCaregiver(seeded, FRESH_PHONE)).status).toBe('started');
+  });
+});
+
+/**
+ * THE ASSENT IS A CLAIM, and it had none: the state advance ran `where id = …` with no
+ * test that the invite was still awaiting an answer, while its sibling in accept.ts
+ * re-tests `closed_at IS NULL` for exactly this reason. Two affirmatives arriving
+ * together both read the pending invite, both wrote a grant row, and both reached the
+ * send — two unsolicited messages to a stranger for one authorisation.
+ */
+describe('the parent assent, claimed exactly once', () => {
+  it('advances once and returns nothing the second time', async () => {
+    const seeded = await seedFamily();
+    const opened = await start(seeded, PARTNER_PHONE);
+    if (opened.status !== 'started') throw new Error('expected an open invite');
+    const invite = opened.invite;
+
+    const first = await recordCoParentAssent(db.database, {
+      invite,
+      inviterName: 'Ana',
+      language: 'en',
+      verbatimReply: 'yes',
+      channelMessageId: null,
+      now: NOW,
+    });
+    // The same stale invite the losing turn is holding.
+    const second = await recordCoParentAssent(db.database, {
+      invite,
+      inviterName: 'Ana',
+      language: 'en',
+      verbatimReply: 'yes',
+      channelMessageId: null,
+      now: new Date(NOW.getTime() + 1_000),
+    });
+
+    expect(first).toBeTypeOf('string');
+    // Null is the loser's answer, and the caller has nothing to send — which is the
+    // point: the body IS the licence to text the stranger.
+    expect(second).toBeNull();
+    const grants = await db.database
+      .select({ consentType: schema.consentRecords.consentType })
+      .from(schema.consentRecords);
+    expect(grants.filter((g) => g.consentType === 'co_parent_access_grant')).toHaveLength(1);
+    expect((await auditVerbs()).filter((v) => v === 'co_parent_access_granted')).toHaveLength(1);
   });
 });
 

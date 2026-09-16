@@ -94,6 +94,16 @@ export const OWN_NUMBER = "That's your own number - you're already here.";
 export const ALREADY_INVITED =
   "I've already texted them - I'll let you know as soon as they answer.";
 
+/**
+ * The number has told Hale no before, on either lane (VIL-355).
+ *
+ * NON-COMMITTAL on purpose, unlike the co-parent lane's own sentence: here the refusal
+ * may have been made to any household, and "that number already said no to me" would
+ * tell this parent something about a stranger's. It says only that Hale will not do it.
+ */
+export const CANNOT_TEXT_THAT_NUMBER =
+  "I can't text that number for you. If they'd like to be here, they can text me first.";
+
 /** The per-family invite meter. Says the bound plainly instead of failing silently. */
 export const TOO_MANY_INVITES =
   "That's a lot of people in one day - I'll pick this up tomorrow. Nobody new has been texted.";

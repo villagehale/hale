@@ -6,6 +6,7 @@ import {
   CO_PARENT_ANSWER_PROMPT_BY_LANGUAGE,
   CO_PARENT_DECLINE_ACK_BY_LANGUAGE,
   CO_PARENT_REFUSAL_COPY,
+  CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE,
   REFERRER_UNNAMED_BY_LANGUAGE,
   coParentInviteDroppedAck,
   coParentInviteSentAck,
@@ -28,6 +29,7 @@ import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import {
   ADD_EXAMPLE,
   ALREADY_INVITED,
+  CANNOT_TEXT_THAT_NUMBER,
   CAREGIVER_ANSWER_PROMPT,
   CAREGIVER_DECLINE_ACK,
   CAREGIVER_WELCOME,
@@ -48,6 +50,7 @@ import {
   declineInvite,
   loadPendingAssent,
   recordCoParentAssent,
+  recordCoParentRefusal,
   recordParentAssent,
   startCaregiverInvite,
   startCoParentInvite,
@@ -117,6 +120,9 @@ export type CaregiverOutcome =
         | 'number_in_use'
         | 'already_invited'
         | 'too_many'
+        /** The number has told Hale no before, on either lane (VIL-355) — the promise
+         * "Reply STOP anytime" has to hold against the command next door. */
+        | 'previously_declined'
         | 'unsupported_role'
         | 'unparseable';
     }
@@ -152,6 +158,19 @@ export type CoParentOutcome =
       supersededInviteId: string | null;
     }
   | { status: 'co_parent_declined' }
+  /**
+   * They said yes and the household's one seat had been filled in the meantime. Its own
+   * outcome rather than a refusal or a decline (rule #11): nobody refused anything, the
+   * message HAD already reached a stranger, and the person who answered is owed a
+   * sentence saying why the answer bought them nothing.
+   */
+  | { status: 'co_parent_seat_taken' }
+  /**
+   * The parent's YES arrived at an invite that was no longer awaiting one — the losing
+   * half of two affirmatives in the same moment. Nothing was sent and nothing was
+   * written; the turn that won did both.
+   */
+  | { status: 'co_parent_assent_already_claimed' }
   /** Also the answer to a LOST race for one invite: nobody was seated twice, and the
    * loser is answered with the same one nudge any unreadable reply gets. */
   | { status: 'co_parent_prompted' };
@@ -189,7 +208,16 @@ async function record(
     lane: Lane;
     direction: 'in' | 'out';
     providerId: string;
-    body: string;
+    /**
+     * Verbatim for an inbound, and NULL for one Hale may not keep (rule #1).
+     *
+     * The null case is the co-parent invitee before they have accepted: their words are
+     * a non-member's, held only because a parent asked us to text their number, and
+     * `channel_messages` here is keyed to the INVITING parent's family. What they decided
+     * is already durable without the sentence — the invite's terminal state, and, when
+     * they accept, the verbatim reply inside their own consent row.
+     */
+    body: string | null;
     now: Date;
   },
 ): Promise<string> {
@@ -461,13 +489,18 @@ async function handleCoParentInviteReply(
   // Pre-acceptance there is no users row for them, so the exchange is ledgered against
   // the parent who authorised it — and NOT threaded into that parent's coach thread
   // (`reply`, not `replyToParent`): this is not their conversation.
+  //
+  // WITHOUT THE WORDS. The row proves a message arrived and when; the verbatim text of
+  // somebody who has consented to nothing, kept indefinitely in another household's
+  // ledger, is what a PIPEDA read of "what do you hold about me" would have to hand back
+  // — and the decision it carries is already recorded in the invite's own state.
   await record(database, {
     familyId: invite.familyId,
     parentUserId: invite.invitedByUserId,
     lane: 'co_parent',
     direction: 'in',
     providerId: inbound.providerId,
-    body: inbound.body,
+    body: null,
     now,
   });
 
@@ -482,9 +515,24 @@ async function handleCoParentInviteReply(
       verbatimReply: inbound.body,
       now,
     });
-    // Null is the LOSER of a race for the same invite — two phones, one forwarded
-    // thread, both saying yes. Nobody was seated twice and nobody is answered twice.
-    if (!seated) return { status: 'co_parent_prompted' };
+    // The LOSER of a race for the same invite — two phones, one forwarded thread, both
+    // saying yes. Nobody was seated twice and nobody is answered twice.
+    if (seated.outcome === 'lost_race') return { status: 'co_parent_prompted' };
+    // The seat went to somebody else while they thought about it. They are told, because
+    // Hale asked them a question and they answered it; the inviting parent is not, for
+    // the same reason a refusal is not passed on — and because they are the one who
+    // seated the other person.
+    if (seated.outcome === 'seat_taken') {
+      await reply(database, deps, {
+        to: args.phoneE164,
+        body: CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE[language],
+        familyId: invite.familyId,
+        parentUserId: invite.invitedByUserId,
+        lane: 'co_parent',
+        now,
+      });
+      return { status: 'co_parent_seat_taken' };
+    }
     await reply(database, deps, {
       to: args.phoneE164,
       body: coParentWelcome(inviter.name, language),
@@ -681,21 +729,27 @@ async function sendCoParentInvite(
     now,
   });
 
+  // THE FLAG IS RE-READ AT THE SEND, not only at the ask (D21). An invite lives for 72
+  // hours, so a gate on the start command alone leaves every invite opened before a flip
+  // still able to cold-text a stranger afterwards — and the send is the thing the flag
+  // exists to hold back. The invitee's own reply is deliberately NOT gated: Hale already
+  // texted them, and refusing to read their yes or their STOP would punish them for a
+  // switch somebody else threw.
+  if (!f14EnabledFor(owner.familyId)) {
+    return refuseAfterAssent(database, { ...args, reason: 'dark', body: CO_PARENT_REDIRECT }, deps);
+  }
+
   const inviterName = await userName(database, owner.userId);
   // Re-asked at the last moment rather than trusted from the start: the name is free text
   // a parent can clear between the ask and the yes, and an anonymous cold text is the one
   // message this feature exists not to send. The invite stays open and lapses on its own
   // clock — nothing here closes a question the parent answered correctly.
   if (!inviterNameIsAffordable(inviterName)) {
-    await replyToParent(database, deps, {
-      to: args.parentPhoneE164,
-      body: REFERRER_UNNAMED_BY_LANGUAGE[language],
-      familyId: owner.familyId,
-      parentUserId: owner.userId,
-      lane: 'co_parent',
-      now,
-    });
-    return { status: 'co_parent_add_refused', reason: 'referrer_unnamed' };
+    return refuseAfterAssent(
+      database,
+      { ...args, reason: 'referrer_unnamed', body: REFERRER_UNNAMED_BY_LANGUAGE[language] },
+      deps,
+    );
   }
 
   const body = await recordCoParentAssent(database, {
@@ -706,6 +760,10 @@ async function sendCoParentInvite(
     channelMessageId,
     now,
   });
+  // Null means another turn already claimed this assent and already sent the one message.
+  // Nothing to send here, and deliberately nothing said: the parent's own ack went out on
+  // the turn that won, and a second one would read as a second invite.
+  if (body === null) return { status: 'co_parent_assent_already_claimed' };
 
   await reply(database, deps, {
     to: pending.phoneE164,
@@ -724,6 +782,47 @@ async function sendCoParentInvite(
     now,
   });
   return { status: 'co_parent_invite_sent' };
+}
+
+/**
+ * The parent said YES and Hale is still not going to text anybody — the flag came down,
+ * or their name went away between the ask and the answer.
+ *
+ * ON THE RECORD, both halves (rule #6). The refusals at the ASK write their row inside
+ * `startCoParentInvite`; this one happens after an authorisation the parent actually
+ * gave, and without a row the durable record would say they never answered a question
+ * they did answer. The invite is deliberately left open to lapse on its own clock:
+ * nothing here closes a question the parent answered correctly.
+ */
+async function refuseAfterAssent(
+  database: Database,
+  args: {
+    pending: CoParentInvite;
+    owner: { userId: string; familyId: string };
+    parentPhoneE164: string;
+    now: Date;
+    reason: CoParentRefusal | 'dark';
+    body: string;
+  },
+  deps: CaregiverDeps,
+): Promise<CoParentOutcome> {
+  const { owner, pending, now } = args;
+  await recordCoParentRefusal(database, {
+    familyId: owner.familyId,
+    actorUserId: owner.userId,
+    reason: args.reason,
+    phoneE164: pending.phoneE164,
+    targetId: pending.id,
+  });
+  await replyToParent(database, deps, {
+    to: args.parentPhoneE164,
+    body: args.body,
+    familyId: owner.familyId,
+    parentUserId: owner.userId,
+    lane: 'co_parent',
+    now,
+  });
+  return { status: 'co_parent_add_refused', reason: args.reason };
 }
 
 /** The parent's NO, before anybody was contacted. The invite closes; nothing was sent to
@@ -945,6 +1044,12 @@ async function startFromCommand(
   }
   if (started.status === 'too_many') {
     return answer(TOO_MANY_INVITES, { status: 'caregiver_add_refused', reason: 'too_many' });
+  }
+  if (started.status === 'previously_declined') {
+    return answer(CANNOT_TEXT_THAT_NUMBER, {
+      status: 'caregiver_add_refused',
+      reason: 'previously_declined',
+    });
   }
   return answer(started.reply, { status: 'caregiver_invite_started' });
 }

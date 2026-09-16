@@ -2,6 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import {
   type CoParentInvite,
+  closeCoParentInviteSeatTaken,
+  familyHasCoParent,
   supersedeOpenInviteOnEnrollment,
 } from '~/lib/channel/caregiver/invites';
 import { maskPhoneE164 } from '~/lib/channels/phone';
@@ -28,12 +30,28 @@ import { encryptString } from '~/lib/crypto/string-cipher';
  * carrier then retries.
  */
 export interface CoParentSeated {
+  outcome: 'seated';
   coParentUserId: string;
   /** A CAREGIVER invite that was also in flight on this number, closed by the same
    * transaction (rule #11 — the absence is named, never inferred from a `closed_at`
    * somebody went looking for). Null is the ordinary case. */
   supersededInviteId: string | null;
 }
+
+/**
+ * What the seating transaction decided — three facts, never folded into one another
+ * (rule #11), because the invitee is owed a different sentence for each.
+ *
+ * `lost_race` is two phones on one forwarded thread both saying yes: nobody was seated
+ * twice, and the loser gets the same nudge any unreadable reply gets. `seat_taken` is a
+ * DIFFERENT person having become the co-parent while this one thought about it — the
+ * household's one seat, re-tested where it is actually taken rather than only where it
+ * was asked about.
+ */
+export type CoParentAcceptance =
+  | CoParentSeated
+  | { outcome: 'lost_race' }
+  | { outcome: 'seat_taken' };
 
 /** The users row for this number, created if absent. Keyed by the SAME blind index intake,
  * the caregiver flow and the join link use, so somebody Hale already knows from another
@@ -62,7 +80,7 @@ export const CO_PARENT_INVITE_CONSENT_SCOPE = 'sms_coparent_invite_reply';
 export async function acceptCoParentInvite(
   database: Database,
   input: { invite: CoParentInvite; verbatimReply: string; now: Date },
-): Promise<CoParentSeated | null> {
+): Promise<CoParentAcceptance> {
   const { invite, now } = input;
   const hash = phoneBlindIndex(invite.phoneE164);
 
@@ -75,7 +93,19 @@ export async function acceptCoParentInvite(
         and(eq(schema.caregiverInvites.id, invite.id), isNull(schema.caregiverInvites.closedAt)),
       )
       .returning({ id: schema.caregiverInvites.id });
-    if (claimed.length === 0) return null;
+    if (claimed.length === 0) return { outcome: 'lost_race' };
+
+    // ONE SEAT, RE-TESTED WHERE IT IS TAKEN. `startCoParentInvite` asked this question
+    // when the parent asked theirs, up to 72 hours ago, and nothing has held it since:
+    // the forwardable link stays live for seven days, and `family_members` constrains
+    // (family_id, user_id) and nothing about the role. Without this the second person
+    // through either door landed a second `co_parent` row — the whole household surface,
+    // with the first parent never told, against copy that promised "I keep one, so
+    // nobody is added without the other knowing".
+    if (await familyHasCoParent(tx, invite.familyId)) {
+      await closeCoParentInviteSeatTaken(tx, invite, now);
+      return { outcome: 'seat_taken' };
+    }
 
     const coParentUserId = await ensureCoParentUser(tx, `sms:${hash}`);
 
@@ -173,6 +203,6 @@ export async function acceptCoParentInvite(
       },
     ]);
 
-    return { coParentUserId, supersededInviteId };
+    return { outcome: 'seated', coParentUserId, supersededInviteId };
   });
 }

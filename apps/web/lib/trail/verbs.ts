@@ -205,7 +205,9 @@ export const AUDIT_VERBS = [
   'co_parent_invite_superseded_by_enrollment',
   'co_parent_invite_withdrawn',
   'co_parent_invite_refused',
+  'co_parent_invite_seat_taken',
   'co_parent_invite_blocked_prior_refusal',
+  'co_parent_invite_blocked',
   'co_parent_sms_inbound',
   'co_parent_sms_outbound',
   // ── the executor's own writes (internal-writes.ts) ──────────────────────
@@ -622,15 +624,36 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   co_parent_invite_withdrawn: { sentence: 'you withdrew a co-parent invite', family: 'done' },
-  co_parent_invite_refused: { sentence: 'your co-parent declined the invite', family: 'note' },
+  // Says what happened to the NUMBER, never what the person is to this family: they
+  // refused, so they are not anybody's co-parent, and a STOP lands on this verb too.
+  co_parent_invite_refused: {
+    sentence: 'the number you gave me did not join',
+    family: 'note',
+  },
+  co_parent_invite_seat_taken: {
+    sentence: 'a co-parent invite closed because the seat was already taken',
+    family: 'note',
+  },
+  // Every OTHER way an ask went nowhere, with the reason in `after` rather than in six
+  // verbs that would all read "Hale did not text them". Written at both moments it can
+  // happen: when the ask is refused, and when the parent's yes is refused after the fact.
+  co_parent_invite_blocked: {
+    sentence: 'Hale did not text the number you gave me',
+    family: 'note',
+  },
   co_parent_invite_blocked_prior_refusal: {
     // Says the refusal happened, never when or by whom — the same bound the parent's own
     // reply carries. The row exists so an operator can answer "why was nobody texted".
     sentence: 'Hale did not text a number that had already said no',
     family: 'note',
   },
-  co_parent_sms_inbound: { sentence: 'your co-parent texted Hale', family: 'note' },
-  co_parent_sms_outbound: { sentence: 'Hale texted your co-parent', family: 'note' },
+  // ABOUT THE INVITE, not about a person. Both halves of this lane land on these two
+  // verbs — the parent's own "add Sam … as my partner" and the invitee's reply — and
+  // "your co-parent texted Hale" was wrong for the first (it was the parent) and
+  // presumptuous for the second (they have not consented to anything yet, and may say
+  // no). The row says which conversation it belongs to; channel_messages says who.
+  co_parent_sms_inbound: { sentence: 'a message came in about your co-parent invite', family: 'note' },
+  co_parent_sms_outbound: { sentence: 'Hale replied about your co-parent invite', family: 'note' },
   // ── what the executor actually did ──────────────────────────────────────
   'action.routine_pinned': { sentence: 'pinned an activity to your week', family: 'done' },
   'action.routine_pinned.skipped_duplicate': {

@@ -53,6 +53,7 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import {
   approvalHandler,
+  coParentAssentHandler,
   connectorLinkHandler,
   emailCaptureHandler,
   founderWelcomeHandler,
@@ -328,6 +329,9 @@ export function defaultHandlers(): DeterministicHandler[] {
     emailCaptureHandler(defaultEmailCaptureDeps()),
     connectorLinkHandler(),
     founderWelcomeHandler(defaultFounderReplyDeps()),
+    // Owns the co-parent scope question and declines every reading of it — see the
+    // handler's own note. Listed so the router never resolves a kind nobody owns.
+    coParentAssentHandler(),
     healthReplyHandler(defaultHealthReplyDeps()),
     planReplyHandler(defaultPlanReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),

@@ -12,8 +12,8 @@ import {
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
-import { F14_ALLOWLIST_ENV } from '~/lib/channel/f14';
+import { CANNOT_TEXT_THAT_NUMBER, CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
+import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import { JOIN_ACCEPTED_ACK, joinWelcome } from '~/lib/channel/join/copy';
 import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -164,10 +164,16 @@ function armFor(familyId: string) {
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   process.env[F14_ALLOWLIST_ENV] = '';
+  // BOTH halves of the gate, or the dark test is a test of the developer's shell:
+  // `f14EnabledFor` is `f14Enabled() || allowlist.has(id)`, and a machine with
+  // F14_ENABLED=true exported turned the one assertion that nobody is texted green
+  // for the wrong reason.
+  process.env[F14_ENABLED_ENV] = '';
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
   process.env[F14_ALLOWLIST_ENV] = '';
+  process.env[F14_ENABLED_ENV] = '';
 });
 
 describe('co-parent invite · the dark gate', () => {
@@ -186,6 +192,29 @@ describe('co-parent invite · the dark gate', () => {
     expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark' });
     expect(transport.sent.at(-1)?.body).toBe(CO_PARENT_REDIRECT);
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
+  });
+
+  /**
+   * THE SWITCH HAS TO MEAN "STOP", not "stop new asks". The flag gated only the start
+   * command, and an invite lives for 72 hours — so a family disarmed after the ask would
+   * still have Hale cold-text the number on the parent's yes, which is the one send the
+   * flag exists to hold back.
+   */
+  it('sends nothing to the stranger when the family is disarmed between the ask and the yes', async () => {
+    const { fake, transport, deps } = harness();
+    const { familyId } = await seedFamily(fake);
+    armFor(familyId);
+    await text(fake, transport, deps, PARENT_PHONE, 'add Sam 647-555-0199 as my partner');
+    process.env[F14_ALLOWLIST_ENV] = '';
+
+    const outcome = await text(fake, transport, deps, PARENT_PHONE, 'yes');
+
+    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark' });
+    expect(toPartner(transport)).toHaveLength(0);
+    expect(transport.sent.at(-1)?.body).toBe(CO_PARENT_REDIRECT);
+    // Nothing was authorised either: a grant row for a disclosure that did not happen is
+    // a false record of what the parent agreed to.
+    expect(inserts(fake, schema.consentRecords)).toHaveLength(0);
   });
 });
 
@@ -378,6 +407,34 @@ describe('co-parent invite · the refusals', () => {
     expect(transport.sent.at(-1)?.body).toContain('Adding Alex as your co-parent');
   });
 
+  /**
+   * "Reply STOP anytime" is on the one cold text, and the command next door must honour
+   * it. Before this, a stranger who replied STOP could be re-texted a minute later as a
+   * nanny — the caregiver door consulted only OPEN invites, and a refusal closes one.
+   */
+  it('honours a STOP from the invitee on the CAREGIVER door too', async () => {
+    const { fake, transport, deps } = harness();
+    await upToInvite(fake, transport, deps);
+    await text(fake, transport, deps, PARTNER_PHONE, 'STOP');
+    const beforeReAsk = transport.sent.length;
+
+    const reAsked = await text(
+      fake,
+      transport,
+      deps,
+      PARENT_PHONE,
+      'add Sam 647-555-0199 as my nanny',
+    );
+
+    expect(reAsked).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'previously_declined',
+    });
+    // Nothing further reached them, and the sentence says only that Hale will not do it.
+    expect(transport.sent.slice(beforeReAsk).every((s) => s.to === PARENT_PHONE)).toBe(true);
+    expect(transport.sent.at(-1)?.body).toBe(CANNOT_TEXT_THAT_NUMBER);
+  });
+
   it('refuses a number that already carries an active Hale channel', async () => {
     const { fake, transport, deps } = harness();
     const { familyId } = await seedFamily(fake);
@@ -483,6 +540,15 @@ describe('co-parent invite · the invitee half', () => {
     const ledgered = inserts(fake, schema.channelMessages);
     expect(ledgered.every((r) => r.category === 'co_parent_invite')).toBe(true);
     expect(ledgered.filter((r) => r.direction === 'out').every((r) => r.body === null)).toBe(true);
+    // The parent's own words are kept — they are a member, and their instruction is the
+    // first link in the chain. The INVITEE's are not: they have consented to nothing, and
+    // what they decided lives in the invite's state and in their own consent row.
+    const inbound = ledgered.filter((r) => r.direction === 'in');
+    expect(inbound.map((r) => r.body)).toEqual([
+      'add Sam 647-555-0199 as my partner',
+      'yes',
+      null,
+    ]);
   });
 
   it('tells the inviting parent NOTHING when the invitee says no', async () => {
@@ -521,6 +587,41 @@ describe('co-parent invite · the invitee half', () => {
   });
 
   /**
+   * The seat was checked when the parent asked and again where it is taken, and 72 hours
+   * fit in between. Somebody else became the co-parent while this person thought about
+   * it: they are TOLD — they answered a question Hale asked them — and nobody is seated
+   * twice.
+   */
+  it('tells the invitee when the seat went to somebody else, and seats nobody', async () => {
+    const { fake, transport, deps, threaded } = harness();
+    const { familyId } = await upToInvite(fake, transport, deps);
+    const [other] = await fake.db
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms:took-the-seat', email: null, name: 'Jo' })
+      .returning({ id: schema.users.id });
+    await fake.db
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: other?.id as string, role: 'co_parent' });
+    const beforeReply = transport.sent.length;
+    const threadedBefore = threaded.length;
+
+    const outcome = await text(fake, transport, deps, PARTNER_PHONE, 'yes');
+
+    expect(outcome).toEqual({ status: 'co_parent_seat_taken' });
+    const since = transport.sent.slice(beforeReply);
+    expect(since.map((s) => s.to)).toEqual([PARTNER_PHONE]);
+    expect(since[0]?.body).toContain('somebody else was added as the co-parent');
+    // Nothing of theirs was written, and the parent's thread heard none of it.
+    expect(
+      inserts(fake, schema.consentRecords).filter((r) => r.consentType === 'sms_service_messages'),
+    ).toHaveLength(0);
+    expect(inserts(fake, schema.parentChannels)).toHaveLength(1);
+    expect(threaded).toHaveLength(threadedBefore);
+    expect(auditActions(fake)).toContain('co_parent_invite_seat_taken');
+    expect(auditActions(fake)).not.toContain('co_parent_invite_accepted');
+  });
+
+  /**
    * The seat is not the ack. At 22:00 the inviting parent texted nothing tonight, so
    * their confirmation is a PROACTIVE message and holds — while the person who did just
    * text gets answered immediately. Rule #11: the withheld send is named in the return
@@ -541,6 +642,130 @@ describe('co-parent invite · the invitee half', () => {
     });
     expect(transport.sent.slice(beforeReply).map((s) => s.to)).toEqual([PARTNER_PHONE]);
     expect(inserts(fake, schema.familyMembers).at(-1)).toMatchObject({ role: 'co_parent' });
+  });
+});
+
+/**
+ * THE INVITEE'S EXCHANGE IS NOT THE PARENT'S CONVERSATION.
+ *
+ * Their messages ledger against the authorising parent — `channel_messages.parent_user_id`
+ * is NOT NULL and pre-acceptance there is no users row for them — but the parent's COACH
+ * THREAD must not receive a word of it. `reply()` sends; `replyToParent()` sends and
+ * threads, and the whole difference is who is being texted. Threaded, the coach reads a
+ * stranger's half of a conversation back to the parent as things Hale said to them.
+ */
+describe('co-parent invite · whose conversation is whose', () => {
+  it('threads what Hale said to the PARENT, and nothing it said to the invitee', async () => {
+    const { fake, transport, deps, threaded } = harness();
+    await upToInvite(fake, transport, deps);
+    await text(fake, transport, deps, PARTNER_PHONE, 'yes');
+
+    // Exactly the three sentences addressed to the parent, in order. An equality rather
+    // than a `not.toContain`: a threading regression adds a message, and only a test that
+    // knows how many there should be can see one arrive.
+    expect(threaded).toHaveLength(3);
+    expect(threaded.every((t) => t.parentUserId !== undefined)).toBe(true);
+    expect(threaded[0]?.body).toContain('Adding Sam as your co-parent');
+    expect(threaded[1]?.body).toContain("I've texted Sam");
+    expect(threaded[2]?.body).toBe(JOIN_ACCEPTED_ACK);
+    // And nothing Hale said to the person being invited — the cold text itself, or the
+    // welcome that answered their yes.
+    const toThem = toPartner(transport).map((s) => s.body);
+    expect(toThem).toHaveLength(2);
+    for (const body of toThem) {
+      expect(threaded.map((t) => t.body)).not.toContain(body);
+    }
+    expect(threaded.map((t) => t.body)).not.toContain(joinWelcome('Ana'));
+  });
+
+  it('threads nothing at all when the invitee refuses, or writes something unreadable', async () => {
+    const { fake, transport, deps, threaded } = harness();
+    await upToInvite(fake, transport, deps);
+    const parentSideSoFar = threaded.length;
+
+    await text(fake, transport, deps, PARTNER_PHONE, 'who is this?');
+    await text(fake, transport, deps, PARTNER_PHONE, 'no thanks');
+
+    // Both answers went to THEM and nowhere else: the inviting parent is told nothing
+    // about a refusal, and a nudge to a stranger is not a line in anybody's transcript.
+    expect(threaded).toHaveLength(parentSideSoFar);
+    expect(transport.sent.slice(-2).every((s) => s.to === PARTNER_PHONE)).toBe(true);
+  });
+});
+
+/**
+ * THE DAILY CAP IS THE OUTBOUND GATE'S STAND-IN ON THIS PATH.
+ *
+ * `outbound-gate.ts` is bypassed by design here (role-scope.ts: every check it makes
+ * presumes an enrolled recipient, and an invitee has none), so this counter is the whole
+ * meter on how many strangers one family may have Hale text in a day.
+ */
+describe('co-parent invite · the meter on strangers', () => {
+  const NUMBERS = [
+    '+16475550101',
+    '+16475550102',
+    '+16475550103',
+    '+16475550104',
+    '+16475550105',
+    '+16475550106',
+  ];
+
+  it('sends five and refuses the sixth, with nobody new texted', async () => {
+    const { fake, transport, deps } = harness();
+    const { familyId } = await seedFamily(fake);
+    armFor(familyId);
+
+    for (const number of NUMBERS.slice(0, 5)) {
+      await text(fake, transport, deps, PARENT_PHONE, `add Sam ${number} as my partner`);
+      await text(fake, transport, deps, PARENT_PHONE, 'yes');
+    }
+    const strangersTexted = transport.sent.filter((s) => NUMBERS.includes(s.to)).length;
+
+    const sixth = await text(
+      fake,
+      transport,
+      deps,
+      PARENT_PHONE,
+      `add Sam ${NUMBERS[5]} as my partner`,
+    );
+
+    expect(sixth).toEqual({ status: 'co_parent_add_refused', reason: 'too_many' });
+    expect(transport.sent.at(-1)?.to).toBe(PARENT_PHONE);
+    expect(transport.sent.at(-1)?.body).toContain("That's a lot of people in one day");
+    // The count, not the last outcome: the assertion has to be able to see a sixth
+    // stranger being texted, which a check on the final reply alone cannot.
+    expect(strangersTexted).toBe(5);
+    expect(transport.sent.filter((s) => NUMBERS.includes(s.to))).toHaveLength(5);
+  });
+
+  /**
+   * What the meter counts is an invite that REACHED somebody. A parent who fumbles the
+   * wording five times texted nobody, and charging them for it would leave them stuck —
+   * which is exactly what the meter's exclusion of `awaiting_parent_assent` and
+   * `superseded` is for. Asserted here because those two words are otherwise a comment.
+   */
+  it('does not charge unconfirmed asks against it — five fumbles still leave the budget whole', async () => {
+    const { fake, transport, deps } = harness();
+    const { familyId } = await seedFamily(fake);
+    armFor(familyId);
+
+    for (const number of NUMBERS.slice(0, 5)) {
+      await text(fake, transport, deps, PARENT_PHONE, `add Sam ${number} as my partner`);
+    }
+    expect(transport.sent.filter((s) => NUMBERS.includes(s.to))).toHaveLength(0);
+
+    const sixth = await text(
+      fake,
+      transport,
+      deps,
+      PARENT_PHONE,
+      `add Sam ${NUMBERS[5]} as my partner`,
+    );
+    expect(sixth).toEqual({ status: 'co_parent_invite_started' });
+
+    // And the ask that follows it still reaches a phone: the budget was never spent.
+    await text(fake, transport, deps, PARENT_PHONE, 'yes');
+    expect(transport.sent.filter((s) => s.to === NUMBERS[5])).toHaveLength(1);
   });
 });
 

@@ -89,6 +89,22 @@ describe('caregiver · parsing the add command', () => {
     });
   });
 
+  /**
+   * THE TABLES ARE CLOSED, and a prototype key is not a word in them. The role pattern
+   * admits `constructor` and the lookup normalizes to lower case, so a plain-object
+   * `CO_PARENT_WORDS[roleWord]` handed back `Object.prototype.constructor` — truthy, and
+   * typed as a role. It refused only because a different guard ran first.
+   */
+  it.each(['constructor', 'valueof', 'tostring', 'hasownproperty'])(
+    'reads the inherited key %s as no role at all',
+    (word) => {
+      expect(parseAddCaregiver(`add Sam 647-555-0199 as ${word}`)).toEqual({
+        ok: false,
+        reason: 'unparseable',
+      });
+    },
+  );
+
   it.each([
     ['no number at all', 'add grandma as grandparent'],
     ['no role', 'add grandma 647-555-0199'],

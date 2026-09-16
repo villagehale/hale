@@ -5,6 +5,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
+  aggregateFamilyEngagement,
   aggregateMedicalAnswers,
   aggregateRadarVerification,
   aggregateW4Retention,
@@ -414,4 +415,74 @@ describe('aggregateW4Retention — the cohort grid', () => {
   it('reads an empty database as no cohorts at all, not as a zero-percent one', async () => {
     expect(await aggregateW4Retention(db.database, AS_OF)).toEqual([]);
   });
+});
+
+/**
+ * aggregateFamilyEngagement — "families Hale contacted", and which lanes count as Hale
+ * making contact.
+ *
+ * PARENT_STARTED_CATEGORIES is an EXCLUSION list, so every category added to the enum
+ * counts as Hale-initiated until somebody names it there. That default is the right one
+ * (the next proactive lane is counted rather than silently dropped) and it means the
+ * co-parent invite lane, whose every message exists because a parent typed "add Sam … as
+ * my partner", inflates the numerator with the household's own instruction until it is
+ * named. Nothing tested this row at all; the two halves below are what make the list a
+ * decision rather than a comment.
+ */
+describe('aggregateFamilyEngagement — who Hale actually reached out to', () => {
+  const ESTABLISHED = new Date('2026-07-01T00:00:00Z');
+  const IN_WINDOW = new Date('2026-08-05T09:00:00Z');
+
+  async function established(displayName: string): Promise<{
+    familyId: string;
+    parentUserId: string;
+  }> {
+    const family = await seedFamily(db.database, displayName);
+    await db.database
+      .update(schema.families)
+      .set({ createdAt: ESTABLISHED })
+      .where(eq(schema.families.id, family.familyId));
+    return family;
+  }
+
+  async function sent(
+    family: { familyId: string; parentUserId: string },
+    category: 'nudge' | 'co_parent_invite' | 'caregiver',
+  ): Promise<void> {
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category,
+      status: 'sent',
+      createdAt: IN_WINDOW,
+    });
+  }
+
+  it('counts a family Hale sent a nudge to', async () => {
+    await sent(await established('Nudged'), 'nudge');
+
+    expect(await aggregateFamilyEngagement(db.database, WINDOW_START, WINDOW_END)).toEqual({
+      families: 1,
+      contacted: 1,
+    });
+  });
+
+  /**
+   * The co-parent lane alongside its established twin. Both are answers to something the
+   * parent typed, and a family whose whole week with Hale was "add Sam as my partner" was
+   * not a family Hale reached out to.
+   */
+  it.each(['co_parent_invite', 'caregiver'] as const)(
+    'does not count %s as Hale making contact first',
+    async (category) => {
+      await sent(await established(`Asked · ${category}`), category);
+
+      expect(await aggregateFamilyEngagement(db.database, WINDOW_START, WINDOW_END)).toEqual({
+        families: 1,
+        contacted: 0,
+      });
+    },
+  );
 });

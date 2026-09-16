@@ -1,5 +1,6 @@
 import {
   ALREADY_INVITED,
+  CANNOT_TEXT_THAT_NUMBER,
   CAREGIVER_ANSWER_PROMPT,
   CAREGIVER_DECLINE_ACK,
   OWN_NUMBER,
@@ -129,8 +130,33 @@ export const REFERRER_UNNAMED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   fr: "Je leur écrirais sans prévenir, alors je veux pouvoir dire qui m'envoie - dites-moi votre nom d'abord, ou écrivez add my partner pour un lien à transférer.",
 };
 
-/** The number already has a Hale account. Deliberately does not say WHOSE — it may not
- * be this parent's to know (rule #1), and the caregiver twin says "as a caregiver". */
+/**
+ * The number is spoken for by somebody else's household, and that is ALL this says.
+ *
+ * Three different facts arrive here — an account, an open invite, a refusal — and they
+ * are answered with one sentence on purpose. A parent may type any number into this
+ * command, so a reply that told them apart would answer "does this phone number know
+ * Hale, and did it say no" about any phone in the country. The three sentences next door
+ * stay, and are reached only when the fact is this household's own.
+ */
+export const CO_PARENT_UNAVAILABLE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: CANNOT_TEXT_THAT_NUMBER,
+  fr: "Je ne peux pas écrire à ce numéro pour vous. S'ils veulent être ici, ils peuvent m'écrire en premier.",
+};
+
+/**
+ * The invitee said yes and the household's one seat had been filled while they thought
+ * about it. Said to THEM, not to the parent — they answered a question Hale asked, and
+ * silence would leave a stranger believing they had joined something.
+ */
+export const CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: "Thanks for answering - somebody else was added as the co-parent in the meantime, so there's no spot for you here. I won't text you again.",
+  fr: "Merci d'avoir répondu - quelqu'un d'autre a été ajouté comme co-parent entre-temps, donc il n'y a plus de place ici. Je ne vous écrirai plus.",
+};
+
+/** The number already has a Hale account IN THIS HOUSEHOLD. Deliberately does not say
+ * whose — it may not be this parent's to know (rule #1), and the caregiver twin says "as
+ * a caregiver". Another household's account is answered by the sentence above. */
 export const CO_PARENT_NUMBER_IN_USE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: "That number is already set up with Hale, so I can't add it as your co-parent - they'd need to reply STOP there first.",
   fr: "Ce numéro est déjà configuré avec Hale, donc je ne peux pas l'ajouter comme co-parent - il faudrait d'abord répondre ARRET là-bas.",
@@ -144,11 +170,15 @@ export const CO_PARENT_SEAT_TAKEN_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 };
 
 /**
- * This number has already refused an invite from us, so we will not ask it again.
+ * This number has already refused an invite FROM THIS HOUSEHOLD, so we will not ask it
+ * again.
  *
  * Says the refusal happened without saying who refused or when — the parent asked us to
  * text a number and is owed the reason their request went nowhere, and the person behind
- * the number is owed their no meaning no.
+ * the number is owed their no meaning no. Scoped to this family's own refusals: the
+ * suppression stays family-blind, but saying so about ANOTHER household's refusal would
+ * turn the command into a query anyone could run against any number
+ * ({@link CO_PARENT_UNAVAILABLE_BY_LANGUAGE}).
  */
 export const PREVIOUSLY_DECLINED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: "That number already said no to me once, so I won't text it again. If that's changed, they can text me first.",
@@ -186,4 +216,5 @@ export const CO_PARENT_REFUSAL_COPY: Record<CoParentRefusal, Record<ReplyLanguag
   co_parent_seat_taken: CO_PARENT_SEAT_TAKEN_BY_LANGUAGE,
   previously_declined: PREVIOUSLY_DECLINED_BY_LANGUAGE,
   referrer_unnamed: REFERRER_UNNAMED_BY_LANGUAGE,
+  unavailable: CO_PARENT_UNAVAILABLE_BY_LANGUAGE,
 };

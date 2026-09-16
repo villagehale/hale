@@ -159,8 +159,18 @@ export function parseAddCaregiver(body: string): ParsedAddCaregiver {
   if (!groups) return { ok: false, reason: 'unparseable' };
 
   const roleWord = normalizeRoleWord(groups.role as string);
-  if (roleWord in UNSUPPORTED_WORDS) return { ok: false, reason: 'unsupported_role' };
-  const role: AddRole | undefined = CAREGIVER_WORDS[roleWord] ?? CO_PARENT_WORDS[roleWord];
+  // `Object.hasOwn` and not `in`, and own-key reads and not bracket access on a plain
+  // object: the role regex admits `constructor`, and `normalizeRoleWord` lowercases, so
+  // "add Sam 647-555-0199 as constructor" reached `CO_PARENT_WORDS['constructor']` and
+  // got back `Object.prototype.constructor` — a truthy value typed `AddRole`. It failed
+  // closed only because the `in` check above happened to fire first, which made the
+  // ORDER of two guards the thing standing between a prototype key and a co-parent seat.
+  if (Object.hasOwn(UNSUPPORTED_WORDS, roleWord)) return { ok: false, reason: 'unsupported_role' };
+  const role: AddRole | undefined = Object.hasOwn(CAREGIVER_WORDS, roleWord)
+    ? CAREGIVER_WORDS[roleWord]
+    : Object.hasOwn(CO_PARENT_WORDS, roleWord)
+      ? CO_PARENT_WORDS[roleWord]
+      : undefined;
   if (!role) return { ok: false, reason: 'unparseable' };
 
   const name = (groups.name as string).replace(/\s+/g, ' ').trim();

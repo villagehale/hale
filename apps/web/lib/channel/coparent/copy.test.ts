@@ -66,9 +66,13 @@ describe('co-parent copy · the budget', () => {
 });
 
 describe('co-parent copy · what it promises', () => {
-  it('names the inviter BEFORE the first pronoun that points at them', () => {
+  it('names the inviter, BEFORE the first pronoun that points at them', () => {
     for (const language of LANGUAGES) {
       const body = coParentInviteBody('Ana', language);
+      // The presence first: an ordering assertion is satisfied by a body with no name in
+      // it at all (indexOf -1 is less than everything), which is exactly the anonymous
+      // cold text `referrer_unnamed` exists to prevent.
+      expect(body).toContain('Ana');
       expect(body.indexOf('Ana')).toBeLessThan(body.indexOf(language === 'fr' ? 'leur' : 'their'));
     }
   });

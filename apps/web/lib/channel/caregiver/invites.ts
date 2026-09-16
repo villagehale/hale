@@ -69,6 +69,11 @@ export type CaregiverInviteState =
    * to be able to tell "they joined you as a co-parent instead" from "they signed up on
    * their own and can no longer be your sitter". */
   | 'superseded_by_enrollment'
+  /** The invitee said yes, and the household's one co-parent seat had been filled in the
+   * meantime. Terminal, and neither 'declined' (nobody refused — reading it as a refusal
+   * would also bar them from ever being asked again, see {@link priorRefusal}) nor
+   * 'superseded' (they WERE texted, and the meter has to keep counting it). */
+  | 'seat_taken'
   /** 72h of silence on whichever side we were waiting for. Terminal. */
   | 'expired';
 
@@ -287,7 +292,9 @@ export type StartInviteResult =
   | { status: 'own_number' }
   | { status: 'number_in_use' }
   | { status: 'already_invited' }
-  | { status: 'too_many' };
+  | { status: 'too_many' }
+  /** This number has already told Hale no, on either lane. See {@link priorRefusal}. */
+  | { status: 'previously_declined' };
 
 /**
  * Open an invite and state the scope back to the parent. NOTHING is sent to the
@@ -305,6 +312,25 @@ export async function startCaregiverInvite(
 ): Promise<StartInviteResult> {
   const { parsed, now } = input;
   if (parsed.phoneE164 === input.inviterPhoneE164) return { status: 'own_number' };
+
+  // THE REFUSAL BINDS THIS DOOR TOO (VIL-355). "Reply STOP anytime" rides on the
+  // co-parent invite, and a promise that only covered the lane it was written on would
+  // be no promise at all: without this, somebody who replied STOP could be re-texted a
+  // minute later as a nanny, five a day, on a path that bypasses the outbound gate.
+  const refusedBefore = await refusalBlock(database, {
+    familyId: input.familyId,
+    phoneE164: parsed.phoneE164,
+  });
+  if (refusedBefore) {
+    await recordCoParentRefusal(database, {
+      familyId: input.familyId,
+      actorUserId: input.invitedByUserId,
+      reason: refusedBefore.whose === 'this_family' ? 'previously_declined' : 'unavailable',
+      phoneE164: parsed.phoneE164,
+      targetId: refusedBefore.whose === 'this_family' ? refusedBefore.inviteId : null,
+    });
+    return { status: 'previously_declined' };
+  }
 
   // A number already carrying an active Hale channel cannot take a second one (the
   // partial unique index says so), and quietly attaching it to another household
@@ -361,14 +387,35 @@ export type CoParentRefusal =
   | 'too_many'
   | 'co_parent_seat_taken'
   | 'previously_declined'
-  | 'referrer_unnamed';
+  | 'referrer_unnamed'
+  /**
+   * The number is spoken for by SOMEBODY ELSE'S household — an account, an open invite,
+   * or a refusal that was made to another family.
+   *
+   * ONE REASON FOR THREE FACTS, deliberately, and it is the only place this lane
+   * collapses them. Every other refusal here tells the parent something about their own
+   * household; these three would tell them something about a stranger's. A parent may
+   * type ANY number into this command, so a reply that distinguished "already has Hale"
+   * from "already invited" from "already said no" is an oracle anyone can query about
+   * any phone in the country — and the suppression itself has to stay family-blind
+   * (CASL: a no is a no, to everyone), so the sentence is the only place to draw it.
+   */
+  | 'unavailable';
 
 export type StartCoParentResult =
   | { status: 'started'; invite: CoParentInvite; reply: string }
   | { status: 'refused'; reason: CoParentRefusal };
 
-/** Whether this household already holds its one co-parent seat. */
-async function familyHasCoParent(database: Database, familyId: string): Promise<boolean> {
+/**
+ * Whether this household already holds its one co-parent seat.
+ *
+ * EXPORTED because the ask is not the only place it has to be true. A seat checked when
+ * the parent asked, and never again, is a seat two people can take: up to 72 hours pass
+ * before the invitee answers, the forwardable link (VIL-297) stays live for seven days,
+ * and `family_members` bounds nothing but (family_id, user_id). Both seating
+ * transactions re-test it against the row they are about to write.
+ */
+export async function familyHasCoParent(database: Database, familyId: string): Promise<boolean> {
   const rows = await database
     .select({
       familyId: schema.familyMembers.familyId,
@@ -408,6 +455,64 @@ async function priorRefusal(database: Database, phoneE164: string): Promise<Invi
 }
 
 /**
+ * Apply {@link priorRefusal} and report WHOSE refusal it was, or null when the number
+ * never said no.
+ *
+ * The distinction is not about whether to suppress (a no is a no, to every household) but
+ * about what may be SAID: "that number already said no to me" is this family's own history
+ * when the refusal was theirs, and a disclosure about a stranger's household when it was
+ * not.
+ */
+async function refusalBlock(
+  database: Database,
+  input: { familyId: string; phoneE164: string },
+): Promise<{ whose: 'this_family' | 'another_family'; inviteId: string } | null> {
+  const refused = await priorRefusal(database, input.phoneE164);
+  if (!refused) return null;
+  return {
+    whose: refused.familyId === input.familyId ? 'this_family' : 'another_family',
+    inviteId: refused.id,
+  };
+}
+
+/**
+ * One row per refusal, whichever it was (rule #6). A parent asked Hale to text somebody
+ * and nobody was texted; "why" is the question this log exists to answer, and six of the
+ * seven refusals used to write nothing at all.
+ *
+ * The prior-refusal verb stays distinct because it is the only one whose sentence is
+ * about the PERSON rather than about the ask. Everything else is one verb with the reason
+ * in `after` — a verb per refusal would be six sentences saying "Hale did not text them".
+ * Never a raw number, and never another household's row id: `targetId` is null unless the
+ * invite it points at is this family's own (a cross-tenant identifier inside the surface a
+ * PIPEDA access request exports, rule #1).
+ */
+export async function recordCoParentRefusal(
+  database: Database,
+  input: {
+    familyId: string;
+    actorUserId: string;
+    reason: CoParentRefusal | 'dark';
+    phoneE164: string;
+    targetId: string | null;
+  },
+): Promise<void> {
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: input.actorUserId,
+    actionTaken:
+      input.reason === 'previously_declined'
+        ? 'co_parent_invite_blocked_prior_refusal'
+        : 'co_parent_invite_blocked',
+    targetTable: 'caregiver_invites',
+    targetId: input.targetId,
+    // Says a refusal happened and never when or by whom — the same bound the parent's
+    // own sentence keeps (rule #1).
+    after: { reason: input.reason, maskedPhone: maskPhoneE164(input.phoneE164) },
+  });
+}
+
+/**
  * Open a CO-PARENT invite and state the scope back to the parent. NOTHING is sent to the
  * number they named here — `awaiting_parent_assent` is that guarantee, and it is the same
  * one the caregiver flow makes, on the same table and the same 72h clock.
@@ -432,36 +537,57 @@ export async function startCoParentInvite(
   },
 ): Promise<StartCoParentResult> {
   const { parsed, now } = input;
-  const refuse = (reason: CoParentRefusal): StartCoParentResult => ({ status: 'refused', reason });
+  const refuse = async (
+    reason: CoParentRefusal,
+    targetId: string | null = null,
+  ): Promise<StartCoParentResult> => {
+    await recordCoParentRefusal(database, {
+      familyId: input.familyId,
+      actorUserId: input.invitedByUserId,
+      reason,
+      phoneE164: parsed.phoneE164,
+      targetId,
+    });
+    return { status: 'refused', reason };
+  };
 
   if (parsed.phoneE164 === input.inviterPhoneE164) return refuse('own_number');
   if (await familyHasCoParent(database, input.familyId)) return refuse('co_parent_seat_taken');
   if (!inviterNameIsAffordable(input.inviterName)) return refuse('referrer_unnamed');
-  if (await activeChannelOwner(database, parsed.phoneE164)) return refuse('number_in_use');
 
-  const hash = phoneBlindIndex(parsed.phoneE164);
-  const open = await openInvites(database);
-  if (open.some((r) => r.phoneE164Hash === hash)) return refuse('already_invited');
-
-  const refused = await priorRefusal(database, parsed.phoneE164);
-  if (refused) {
-    // Written even though nothing was sent, because "why was nobody texted" is exactly
-    // the question this row exists to answer. It says a refusal happened and never when
-    // or by whom — the same bound the parent's own sentence keeps (rule #1).
-    await database.insert(schema.auditLog).values({
-      familyId: input.familyId,
-      actor: input.invitedByUserId,
-      actionTaken: 'co_parent_invite_blocked_prior_refusal',
-      targetTable: 'caregiver_invites',
-      targetId: refused.id,
-      after: { maskedPhone: maskPhoneE164(parsed.phoneE164) },
-    });
-    return refuse('previously_declined');
-  }
-
+  // THE METER COMES BEFORE THE LOOKUPS, and that ordering is the fix for an oracle: every
+  // guard below answers a question about a number the parent typed, so a parent who could
+  // ask them for free could enumerate other households' phone numbers a hundred a minute.
+  // Behind the cap the whole command costs a refusal that says the same thing every time.
   const since = new Date(now.getTime() - INVITE_CAP_WINDOW_MS);
   if ((await invitesDeliveredSince(database, input.familyId, since)) >= INVITE_DAILY_CAP) {
     return refuse('too_many');
+  }
+
+  const refusedBy = await refusalBlock(database, {
+    familyId: input.familyId,
+    phoneE164: parsed.phoneE164,
+  });
+  if (refusedBy) {
+    return refusedBy.whose === 'this_family'
+      ? refuse('previously_declined', refusedBy.inviteId)
+      : refuse('unavailable');
+  }
+
+  const owner = await activeChannelOwner(database, parsed.phoneE164);
+  if (owner) {
+    // "Already set up with Hale" is this family's own fact when the account is theirs,
+    // and a disclosure about somebody else's household when it is not.
+    return refuse(owner.familyId === input.familyId ? 'number_in_use' : 'unavailable');
+  }
+
+  const hash = phoneBlindIndex(parsed.phoneE164);
+  const open = await openInvites(database);
+  const openOnThisNumber = open.find((r) => r.phoneE164Hash === hash);
+  if (openOnThisNumber) {
+    return refuse(
+      openOnThisNumber.familyId === input.familyId ? 'already_invited' : 'unavailable',
+    );
   }
 
   const superseded = open.find(
@@ -546,6 +672,18 @@ async function openInviteRow<R extends AddRole>(
  * nothing about it is the same record: a different consent type, a different scope, a
  * different question in the evidence, and a different verb. The one thing the two share
  * is the shape of the promise — the row and the advance stand or fall together.
+ *
+ * THE ADVANCE IS THE CLAIM, AND IT GOES FIRST — the discipline `acceptCoParentInvite` and
+ * `redeemJoinInvite` already keep. The invite was read outside this transaction and
+ * nothing upstream serialises a parent's turn, so two affirmatives arriving together both
+ * see it pending: the conditional UPDATE re-tests `awaiting_parent_assent` against the
+ * locked row, and the loser matches nothing and is returned NULL. Without it both would
+ * write a grant row and both would reach the send — two unsolicited messages to a
+ * stranger for one authorisation.
+ *
+ * NULL IS THE LOSER'S ANSWER, and the caller then has nothing to send. That is the shape
+ * of the whole function: the body IS the licence to text, so a turn that did not win the
+ * claim cannot be holding one.
  */
 export async function recordCoParentAssent(
   database: Database,
@@ -557,10 +695,27 @@ export async function recordCoParentAssent(
     channelMessageId: string | null;
     now: Date;
   },
-): Promise<string> {
+): Promise<string | null> {
   const { invite, now } = input;
-  await database.transaction(async (rawTx) => {
+  const claimed = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    const advanced = await tx
+      .update(schema.caregiverInvites)
+      .set({
+        state: 'awaiting_caregiver_reply',
+        expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.caregiverInvites.id, invite.id),
+          eq(schema.caregiverInvites.state, 'awaiting_parent_assent'),
+          isNull(schema.caregiverInvites.closedAt),
+        ),
+      )
+      .returning({ id: schema.caregiverInvites.id });
+    if (advanced.length === 0) return false;
+
     await tx.insert(schema.consentRecords).values({
       userId: invite.invitedByUserId,
       familyId: invite.familyId,
@@ -577,15 +732,6 @@ export async function recordCoParentAssent(
       },
     });
 
-    await tx
-      .update(schema.caregiverInvites)
-      .set({
-        state: 'awaiting_caregiver_reply',
-        expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
-        updatedAt: now,
-      })
-      .where(eq(schema.caregiverInvites.id, invite.id));
-
     await tx.insert(schema.auditLog).values({
       familyId: invite.familyId,
       actor: invite.invitedByUserId,
@@ -594,9 +740,10 @@ export async function recordCoParentAssent(
       targetId: invite.id,
       after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
     });
+    return true;
   });
 
-  return coParentInviteBody(input.inviterName, input.language);
+  return claimed ? coParentInviteBody(input.inviterName, input.language) : null;
 }
 
 /**
@@ -662,7 +809,12 @@ async function closeInvite(
   invite: CaregiverInvite,
   state: Extract<
     CaregiverInviteState,
-    'declined' | 'expired' | 'superseded' | 'superseded_by_join' | 'superseded_by_enrollment'
+    | 'declined'
+    | 'expired'
+    | 'superseded'
+    | 'superseded_by_join'
+    | 'superseded_by_enrollment'
+    | 'seat_taken'
   >,
   now: Date,
   actionTaken: string,
@@ -680,6 +832,22 @@ async function closeInvite(
     targetId: invite.id,
     after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
   });
+}
+
+/**
+ * The invitee said yes and the seat was gone. Closed HERE rather than left open, because
+ * an open invite outranks everything else the intake machine reads about a number: their
+ * next word would be answered with the same question, on a seat that is not coming back.
+ *
+ * NOT `declineInvite`. Nobody refused, and a 'declined' row is the suppression memory —
+ * it would bar this person from ever being invited again, for having said yes.
+ */
+export async function closeCoParentInviteSeatTaken(
+  database: Database,
+  invite: CoParentInvite,
+  now: Date,
+): Promise<void> {
+  await closeInvite(database, invite, 'seat_taken', now, 'co_parent_invite_seat_taken');
 }
 
 /**

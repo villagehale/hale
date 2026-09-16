@@ -1,7 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { maskPhoneE164 } from '~/lib/channels/phone';
-import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
+import {
+  familyHasCoParent,
+  supersedeOpenInviteOnEnrollment,
+} from '~/lib/channel/caregiver/invites';
 import { CO_PARENT_GRANT_SCOPE } from '~/lib/channel/role-scope';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -294,6 +297,13 @@ async function ensureJoinUser(tx: Database, externalAuthId: string): Promise<str
  * nobody is seated, nothing is written, and the caller falls back to the ordinary
  * greeting. It is returned rather than thrown because losing a race for a forwarded
  * link is not an error — it is the single-use rule working.
+ *
+ * ONE SEAT PER HOUSEHOLD, and this is the second place it has to be true (VIL-355). The
+ * SMS invite checks it when the parent asks and again where it seats; a link minted
+ * before either is still good for seven days, so without the check here the sequence
+ * "mint a link, then text an invite, then both are answered" seats TWO co-parents —
+ * no concurrency required. The token is not burned when the seat is gone: it bought
+ * nothing, and burning it would strand whoever is holding it if the seat frees.
  */
 export async function redeemJoinInvite(
   database: Database,
@@ -304,6 +314,16 @@ export async function redeemJoinInvite(
 
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    // Read BEFORE the burn, so a link that buys nothing is also not spent. `co_parent`
+    // is the only role a join invite carries (see mintJoinInvite), so this is the seat
+    // every redemption is asking for.
+    if (await familyHasCoParent(tx, invite.familyId)) {
+      console.warn(
+        { familyId: invite.familyId },
+        'join link not redeemed: the household already holds its one co-parent seat',
+      );
+      return null;
+    }
     // Claimed before a single row is written for this redeemer: everything below is
     // work that a loser must not commit, and returning from a transaction COMMITS it.
     const burned = await tx

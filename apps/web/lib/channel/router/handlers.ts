@@ -568,6 +568,30 @@ export function sequenceReplyHandler(
   };
 }
 
+/**
+ * VIL-355 · the co-parent scope question's OWNER, and it claims nothing.
+ *
+ * The question is listed to the router (open-questions.ts) so that every OTHER handler
+ * treats a bare affirmative as ambiguous while Hale is waiting to hear whether it may
+ * text somebody's partner. But the answer itself is read one lane earlier, by keyword,
+ * before a router turn exists (caregiver/route.ts): authorising an unsolicited text to a
+ * stranger in a parent's name is not something a model may decide it heard.
+ *
+ * WITHOUT AN OWNER the resolver could read a sentence as this kind and find nobody to
+ * hand it to — `route.ts` logs that at ERROR as an impossible state, on a path that is
+ * neither impossible nor an error. Declining here says the same thing truthfully: the
+ * kind has an owner, and its owner does not act on a reading.
+ */
+export function coParentAssentHandler(): DeterministicHandler {
+  return {
+    name: 'co_parent_assent',
+    resolves: new Set<OpenQuestionKind>(['co_parent_assent']),
+    async handle(): Promise<HandlerVerdict> {
+      return { claimed: false };
+    },
+  };
+}
+
 /** Anything a handset made a link of. Loose on purpose: an `http://` paste is CLAIMED
  * and refused by name, rather than falling through to a coach that cannot bind it. */
 const LINK_TOKEN = /https?:\/\/\S+/i;

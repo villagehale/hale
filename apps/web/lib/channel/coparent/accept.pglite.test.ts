@@ -5,6 +5,11 @@ import {
   type CoParentInvite,
   supersedeOpenInviteOnEnrollment,
 } from '~/lib/channel/caregiver/invites';
+import {
+  loadOpenJoinInvite,
+  mintJoinInvite,
+  redeemJoinInvite,
+} from '~/lib/channel/join/invites';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { createTestDb, type TestDb } from '~/lib/testing/pglite';
@@ -159,12 +164,13 @@ describe('the invitee is seated', () => {
       now: NOW,
     });
 
-    expect(seated?.coParentUserId).toBeTypeOf('string');
-    expect(seated?.supersededInviteId).toBeNull();
+    if (seated.outcome !== 'seated') throw new Error(`expected a seat, got ${seated.outcome}`);
+    expect(seated.coParentUserId).toBeTypeOf('string');
+    expect(seated.supersededInviteId).toBeNull();
 
     // THEIR OWN consent, from their own number, on the scope that says who started the
     // conversation. `sms_join_origination` would be a false record: Hale texted first.
-    const theirConsent = (await consents()).filter((c) => c.userId === seated?.coParentUserId);
+    const theirConsent = (await consents()).filter((c) => c.userId === seated.coParentUserId);
     expect(theirConsent).toEqual([
       expect.objectContaining({
         consentType: 'sms_service_messages',
@@ -175,7 +181,7 @@ describe('the invitee is seated', () => {
     expect((theirConsent[0]?.evidence as Record<string, unknown>).verbatimReply).toBe('yes');
 
     expect(await members(seeded.familyId)).toEqual(
-      expect.arrayContaining([{ userId: seated?.coParentUserId, role: 'co_parent' }]),
+      expect.arrayContaining([{ userId: seated.coParentUserId, role: 'co_parent' }]),
     );
     const theirChannel = (await channels()).filter(
       (c) => c.phoneE164Hash === phoneBlindIndex(PARTNER_PHONE),
@@ -212,8 +218,11 @@ describe('the invitee is seated', () => {
       now: new Date(NOW.getTime() + 1_000),
     });
 
-    expect(first).not.toBeNull();
-    expect(second).toBeNull();
+    expect(first.outcome).toBe('seated');
+    // Named rather than null (rule #11): losing a race for one invite is not the same
+    // fact as the seat having been filled by somebody else, and the invitee is answered
+    // differently for each.
+    expect(second).toEqual({ outcome: 'lost_race' });
     expect(
       (await channels()).filter((c) => c.phoneE164Hash === phoneBlindIndex(PARTNER_PHONE)),
     ).toHaveLength(1);
@@ -271,6 +280,137 @@ describe('the invitee is seated', () => {
       .from(schema.caregiverInvites)
       .where(eq(schema.caregiverInvites.id, invite.id));
     expect(after).toEqual({ state: 'awaiting_caregiver_reply', closedAt: null });
+  });
+});
+
+/**
+ * ONE SEAT, RE-TESTED WHERE THE SEAT IS TAKEN.
+ *
+ * `startCoParentInvite` checks `familyHasCoParent` when the parent asks, and up to 72
+ * hours pass before the invitee answers. Nothing re-checked it at the moment a row was
+ * written, and `family_members` bounds nothing but (family_id, user_id) — so the second
+ * person through either door landed a second `co_parent` row carrying the whole household
+ * surface, while the parent had been told "I keep one, so nobody is added without the
+ * other knowing".
+ */
+describe('the one seat, at the moment of seating', () => {
+  async function seatSomebodyElse(familyId: string, tag: string): Promise<string> {
+    const [other] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${tag}` })
+      .returning({ id: schema.users.id });
+    const userId = other?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId, role: 'co_parent' });
+    return userId;
+  }
+
+  it('refuses to seat a second co-parent through the SMS invite, and says which fact stopped it', async () => {
+    const seeded = await seedFamily();
+    const invite = await armedInvite(seeded);
+    // The seat is taken AFTER the invite went out — the whole window the start-time
+    // guard cannot see.
+    await seatSomebodyElse(seeded.familyId, 'took-the-seat');
+
+    const seated = await acceptCoParentInvite(db.database, {
+      invite,
+      verbatimReply: 'yes',
+      now: NOW,
+    });
+
+    expect(seated).toEqual({ outcome: 'seat_taken' });
+    expect((await members(seeded.familyId)).filter((m) => m.role === 'co_parent')).toHaveLength(1);
+    // Nothing of theirs was written: no identity that consented to nothing, no channel
+    // Hale may text, no consent row for a seat they did not get.
+    expect(
+      (await channels()).filter((c) => c.phoneE164Hash === phoneBlindIndex(PARTNER_PHONE)),
+    ).toHaveLength(0);
+    expect(await consents()).toHaveLength(0);
+    // The invite is CLOSED, in a state of its own: nobody refused anything, and leaving
+    // it open would answer their next word with the same question again.
+    const [after] = await db.database
+      .select({ state: schema.caregiverInvites.state, closedAt: schema.caregiverInvites.closedAt })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, invite.id));
+    expect(after?.state).toBe('seat_taken');
+    expect(after?.closedAt).not.toBeNull();
+    expect(await auditVerbs()).toEqual(['co_parent_invite_seat_taken']);
+  });
+
+  /** The positive control: with the seat free the same call seats them. Without it a
+   * guard that refused every acceptance would pass the test above. */
+  it('still seats them when the seat is free', async () => {
+    const seeded = await seedFamily();
+    const invite = await armedInvite(seeded);
+
+    const seated = await acceptCoParentInvite(db.database, {
+      invite,
+      verbatimReply: 'yes',
+      now: NOW,
+    });
+
+    expect(seated.outcome).toBe('seated');
+    expect((await members(seeded.familyId)).filter((m) => m.role === 'co_parent')).toHaveLength(1);
+  });
+
+  /**
+   * The OTHER door onto the same seat. `redeemJoinInvite` had no seat check at all, so a
+   * forwardable link still live from the same household seated a second co-parent — no
+   * concurrency required, just a link opened after the SMS invite was answered.
+   */
+  it('refuses the forwardable link once the seat is filled, and burns nothing', async () => {
+    const seeded = await seedFamily();
+    await seatSomebodyElse(seeded.familyId, 'already-the-co-parent');
+    const { code } = await mintJoinInvite(db.database, {
+      familyId: seeded.familyId,
+      invitedByUserId: seeded.parentUserId,
+      verbatimRequest: 'add my partner',
+      channelMessageId: null,
+      now: NOW,
+    });
+    const invite = await loadOpenJoinInvite(db.database, code, NOW);
+    if (!invite) throw new Error('the link should still be open');
+
+    const redeemed = await redeemJoinInvite(db.database, {
+      invite,
+      phoneE164: PARTNER_PHONE,
+      verbatimReply: 'Hi',
+      now: NOW,
+    });
+
+    expect(redeemed).toBeNull();
+    expect((await members(seeded.familyId)).filter((m) => m.role === 'co_parent')).toHaveLength(1);
+    expect(
+      (await channels()).filter((c) => c.phoneE164Hash === phoneBlindIndex(PARTNER_PHONE)),
+    ).toHaveLength(0);
+    // The token is NOT spent by a redemption that bought nothing — the seat may free up,
+    // and burning it here would strand the person holding the link.
+    expect(await loadOpenJoinInvite(db.database, code, NOW)).not.toBeNull();
+  });
+
+  /** The positive control for the door above. */
+  it('still redeems the link when the seat is free', async () => {
+    const seeded = await seedFamily();
+    const { code } = await mintJoinInvite(db.database, {
+      familyId: seeded.familyId,
+      invitedByUserId: seeded.parentUserId,
+      verbatimRequest: 'add my partner',
+      channelMessageId: null,
+      now: NOW,
+    });
+    const invite = await loadOpenJoinInvite(db.database, code, NOW);
+    if (!invite) throw new Error('the link should still be open');
+
+    const redeemed = await redeemJoinInvite(db.database, {
+      invite,
+      phoneE164: PARTNER_PHONE,
+      verbatimReply: 'Hi',
+      now: NOW,
+    });
+
+    expect(redeemed).not.toBeNull();
+    expect((await members(seeded.familyId)).filter((m) => m.role === 'co_parent')).toHaveLength(1);
   });
 });
 
