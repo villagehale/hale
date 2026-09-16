@@ -48,21 +48,73 @@ const CAREGIVER_WORDS: Record<string, CaregiverRole> = {
 };
 
 /**
- * Roles this command deliberately does NOT grant. A co-parent gets the whole family
- * surface, and a single YES texted from a phone is not enough to authorise that — the
- * existing invite path (family_invites) verifies who they are. Recognised here only so
- * the parent gets a straight answer instead of "I didn't understand".
+ * VIL-355 · the words that mean "the other parent of these children".
+ *
+ * Each one names a SPECIFIC relationship, which is the whole reason they may seat a
+ * co-parent when `parent` below may not. The seat is the entire family surface, so the
+ * word that opens it has to be one nobody writes by accident about a grandmother.
  */
-const UNSUPPORTED_WORDS: Record<string, FamilyRole> = {
+const CO_PARENT_WORDS: Record<string, 'co_parent'> = {
+  partner: 'co_parent',
+  spouse: 'co_parent',
+  wife: 'co_parent',
+  husband: 'co_parent',
   'co-parent': 'co_parent',
   'co parent': 'co_parent',
   coparent: 'co_parent',
-  partner: 'co_parent',
+};
+
+/**
+ * Roles this command deliberately does NOT grant. `parent` is the survivor of VIL-241's
+ * longer list: it is what a parent writes about a grandparent, a step-parent and their
+ * own partner alike, and the scope behind it is the whole household — so the ambiguous
+ * word keeps the redirect while the specific ones above get the flow. Recognised here
+ * only so the parent gets a straight answer instead of "I didn't understand".
+ */
+const UNSUPPORTED_WORDS: Record<string, FamilyRole> = {
   parent: 'co_parent',
 };
 
+/**
+ * The determiner a parent writes in front of the relationship, dropped.
+ *
+ * "as my partner" is how the sentence is actually written — it is the wording the whole
+ * feature was specified around — and "my partner" matched nothing in either table, so the
+ * command fell to the example. Stripping the determiner rather than adding "my partner",
+ * "our nanny" and the rest to the maps keeps ONE entry per relationship: a second spelling
+ * of a role word is how one of them ends up with a fix the other does not get.
+ *
+ * It cannot widen what is grantable. The word behind the determiner is still looked up in
+ * the same two closed tables, so "as my parent" is the same refusal "as parent" is.
+ */
+const ROLE_DETERMINERS = /^(?:my|our|their|the)\s+/;
+
+function normalizeRoleWord(role: string): string {
+  return role.toLowerCase().replace(/\s+/g, ' ').trim().replace(ROLE_DETERMINERS, '');
+}
+
+/** Every role this one command can open an invite for. */
+export type AddRole = CaregiverRole | 'co_parent';
+
+interface ParsedAdd {
+  ok: true;
+  name: string;
+  phoneE164: string;
+}
+
+/**
+ * Two `ok: true` arms rather than one with a widened `role`, because the ROLE is what
+ * decides which lane runs: a caregiver add goes through the scoped double opt-in, a
+ * co-parent add through VIL-355's. Discriminating here means a caller that has checked
+ * the role is holding a value the other lane's functions will not accept, so the two can
+ * never be crossed by accident.
+ */
+export type ParsedCaregiverAdd = ParsedAdd & { role: CaregiverRole };
+export type ParsedCoParentAdd = ParsedAdd & { role: 'co_parent' };
+
 export type ParsedAddCaregiver =
-  | { ok: true; name: string; phoneE164: string; role: CaregiverRole }
+  | ParsedCaregiverAdd
+  | ParsedCoParentAdd
   | { ok: false; reason: 'unparseable' | 'unsupported_role' };
 
 /**
@@ -106,9 +158,9 @@ export function parseAddCaregiver(body: string): ParsedAddCaregiver {
   const groups = match?.groups;
   if (!groups) return { ok: false, reason: 'unparseable' };
 
-  const roleWord = (groups.role as string).toLowerCase().replace(/\s+/g, ' ').trim();
+  const roleWord = normalizeRoleWord(groups.role as string);
   if (roleWord in UNSUPPORTED_WORDS) return { ok: false, reason: 'unsupported_role' };
-  const role = CAREGIVER_WORDS[roleWord];
+  const role: AddRole | undefined = CAREGIVER_WORDS[roleWord] ?? CO_PARENT_WORDS[roleWord];
   if (!role) return { ok: false, reason: 'unparseable' };
 
   const name = (groups.name as string).replace(/\s+/g, ' ').trim();
@@ -119,5 +171,7 @@ export function parseAddCaregiver(body: string): ParsedAddCaregiver {
   const phoneE164 = normalizePhoneE164(groups.phone as string);
   if (!phoneE164) return { ok: false, reason: 'unparseable' };
 
-  return { ok: true, name, phoneE164, role };
+  return role === 'co_parent'
+    ? { ok: true, name, phoneE164, role }
+    : { ok: true, name, phoneE164, role };
 }

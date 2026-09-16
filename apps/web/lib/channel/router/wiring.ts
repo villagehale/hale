@@ -72,6 +72,10 @@ import {
 import type { ReplyRoute } from './reply-route';
 import { createReplyTransport } from './reply-transport';
 import { createDisambiguationStore } from './disambiguation';
+import {
+  INVITE_SILENCE_MS,
+  loadPendingAssent,
+} from '~/lib/channel/caregiver/invites';
 import { createOpenQuestionReader, type OpenQuestionReader } from './open-questions';
 import { createReplyResolver } from './resolve';
 import type { SmokeAlarmClaim } from './smoke-alarm';
@@ -680,6 +684,19 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     // parent — so, unlike the offers above, there is no window to apply here.
     registrationReadiness: (database, familyId, now) =>
       readinessQuestion(database, familyId, now),
+    // The co-parent scope question (VIL-355), read through the invite module's own
+    // `loadPendingAssent` — which also applies the 72h expiry on read, so a lapsed ask
+    // is never listed. Filtered to the co-parent role here rather than in the reader: a
+    // caregiver invite awaiting the same parent's yes is answered by the caregiver lane
+    // before a router turn exists, and listing it would make every bare affirmative in
+    // the household ambiguous for a question nothing on this list can resolve.
+    coParentAssent: async (database, { parentUserId, familyId, now }) => {
+      const pending = await loadPendingAssent(database, parentUserId, now);
+      if (!pending || pending.role !== 'co_parent' || pending.familyId !== familyId) return null;
+      // The ask went out with the invite, so the invite's own clock is when it was put to
+      // them: `expiresAt` is 72h after that, by construction.
+      return { id: pending.id, askedAt: new Date(pending.expiresAt.getTime() - INVITE_SILENCE_MS) };
+    },
   });
 }
 

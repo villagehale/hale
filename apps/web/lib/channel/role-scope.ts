@@ -99,6 +99,17 @@ export function isParentRole(role: string): boolean {
   return (PARENT_ROLES as readonly string[]).includes(role);
 }
 
+/**
+ * What a parent's authorisation to seat a co-parent is scoped to, on `consent_records`.
+ *
+ * The ROLE, because on this page the role IS the scope: a co_parent holds `PARENT_SCOPE`
+ * below. It lives here rather than beside either door that grants it — the forwardable
+ * link (join/invites.ts) or the SMS invite (caregiver/invites.ts) — because the two doors
+ * seat the same person with the same powers, and a second spelling of this string is how
+ * a PIPEDA read ends up unable to find half the grants.
+ */
+export const CO_PARENT_GRANT_SCOPE = 'family_role:co_parent';
+
 /** A parent sees their own household. Teen content reaches them under rule #1's own
  * redaction (category/summary, raw only under a logged time-limited grant) — that is
  * a separate, finer gate applied at compose time; the ROLE does not withhold it. */

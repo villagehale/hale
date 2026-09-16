@@ -131,6 +131,9 @@ describe("the founder's welcome note", () => {
       // The REAL threader over the same store: what intake says after provisioning is
       // what the coach picks the conversation up from.
       threadMessage: threadProactiveMessage,
+      // The REAL reader, over the same store — this file's whole subject is a bare YES
+      // being arbitrated against what is actually open.
+      openQuestions: (db2, input) => defaultOpenQuestionReader().open(db2, input),
       // SEAM: the model that reads a parent's sentence. Faked for MECHANICS only — what
       // it can actually pull out of real words is an eval's job (rule #8).
       extractor: new FakeExtractor([

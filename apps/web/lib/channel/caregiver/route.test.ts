@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, fakeSilentAnswerComposer, makeFakeDb } from '~/lib/channel/intake/fakes';
+import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, fakeNoOpenQuestions, fakeSilentAnswerComposer, makeFakeDb } from '~/lib/channel/intake/fakes';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -87,6 +87,7 @@ function harness(
       radar: fakeRadar,
       ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => now.getTime()),
       now,
@@ -320,11 +321,31 @@ describe('caregiver invite · the ways it does not happen', () => {
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
 
-  it('refuses to grant a co-parent the full surface over text, and says why', async () => {
+  /**
+   * VIL-355 REVERSED this refusal, and it still has to be the answer while the flag is
+   * off (D21) — the whole point of keeping the sentence rather than deleting it. What
+   * changed is the outcome it is reported under: an un-armed family is refused by the
+   * FLAG, and an operator counting `unsupported_role` must not be shown a dark launch.
+   */
+  it('answers a co-parent add with the forwardable link while the flag is off', async () => {
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
 
     const outcome = await text(fake, transport, deps, PARENT_PHONE, 'add Sam 647-555-0199 as co-parent');
+
+    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark' });
+    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: CO_PARENT_REDIRECT });
+    expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
+  });
+
+  /** The word VIL-355 deliberately left behind: "as parent" is too weak to seat a member
+   * with the whole family surface, so it keeps the original refusal whatever the flag
+   * says. */
+  it('still refuses the bare word "parent", armed or not', async () => {
+    const { fake, transport, deps } = harness();
+    await seedFamily(fake);
+
+    const outcome = await text(fake, transport, deps, PARENT_PHONE, 'add Sam 647-555-0199 as parent');
 
     expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'unsupported_role' });
     expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: CO_PARENT_REDIRECT });

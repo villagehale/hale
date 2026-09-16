@@ -764,6 +764,13 @@
       "when": 1781469605000,
       "tag": "0111_registration_sequence_course_url_length",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1781469606000,
+      "tag": "0112_co_parent_invite_category",
+      "breakpoints": true
     }
   ]
 }

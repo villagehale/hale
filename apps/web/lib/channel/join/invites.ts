@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
+import { CO_PARENT_GRANT_SCOPE } from '~/lib/channel/role-scope';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -38,8 +39,9 @@ export const JOIN_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const JOIN_CONSENT_SCOPE = 'sms_join_origination';
 
 /** What the parent's authorisation is scoped to. The role, because the role IS the
- * scope (role-scope.ts) — a co_parent sees everything the inviting parent sees. */
-export const JOIN_GRANT_SCOPE = 'family_role:co_parent';
+ * scope (role-scope.ts) — a co_parent sees everything the inviting parent sees. Shared
+ * with the SMS invite door, which grants the identical thing (VIL-355). */
+export const JOIN_GRANT_SCOPE = CO_PARENT_GRANT_SCOPE;
 
 export interface JoinInvite {
   id: string;

@@ -110,6 +110,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       founderWelcomeOffer: async () => ({ id: 'offer-1', summary: 'a note', askedAt: T1 }),
       activityPromise: async () => ({ id: 'promise-1', summary: 'a promise', askedAt: T0 }),
       registrationReadiness: async () => null,
+      coParentAssent: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -183,6 +184,7 @@ describe('the registration-readiness question on the open list', () => {
         summary: 'Getting set up on the portal before the registration morning',
         askedAt: T1,
       }),
+      coParentAssent: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -214,6 +216,7 @@ describe('the registration-readiness question on the open list', () => {
       founderWelcomeOffer: async () => null,
       activityPromise: async () => null,
       registrationReadiness: async () => null,
+      coParentAssent: async () => null,
     });
 
     const questions = await reader.open({} as never, {

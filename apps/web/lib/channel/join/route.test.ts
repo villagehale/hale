@@ -9,6 +9,7 @@ import {
   fakeAckComposer,
   fakeRadar,
   fakeSilentAnswerComposer,
+  fakeNoOpenQuestions,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { greeting } from '~/lib/channel/intake/copy';
@@ -89,6 +90,7 @@ function harness(): Harness {
       radar: fakeRadar,
       ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => now.getTime()),
       now,

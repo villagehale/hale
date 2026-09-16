@@ -383,6 +383,14 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // BOTH proactive kinds count here, the held one and the instant one, so a family that
   // opted into being told at 2 a.m. bought timing rather than volume.
   'spot_open',
+  // VIL-355 · the co-parent invite exchange — the parent's scope question, the one text
+  // to the number they named, and that person's answer. Its own category and NOT
+  // 'caregiver' (migration 0112): a caregiver row is a disclosure to somebody outside
+  // the household, and a PIPEDA right-to-access read that filed a co-parent's own
+  // messages under it would describe the opposite of what happened. Loop enforcement
+  // never applies to it, for the same reason it never applies to 'caregiver' — this is
+  // a live conversation the parent started.
+  'co_parent_invite',
 ]);
 
 /**

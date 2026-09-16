@@ -1,12 +1,18 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, isNull } from 'drizzle-orm';
+import {
+  coParentInviteBody,
+  coParentScopeConfirm,
+  inviterNameIsAffordable,
+} from '~/lib/channel/coparent/copy';
+import type { ReplyLanguage } from '~/lib/channel/language';
+import { CO_PARENT_GRANT_SCOPE, type CaregiverRole } from '~/lib/channel/role-scope';
 import { maskPhoneE164 } from '~/lib/channels/phone';
-import type { CaregiverRole } from '~/lib/channel/role-scope';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { ROLE_LABEL, inviteBody, scopeConfirm } from './copy';
-import type { ParsedAddCaregiver } from './parse';
+import type { AddRole, ParsedCaregiverAdd, ParsedCoParentAdd } from './parse';
 
 /**
  * VIL-241 · M6 — the caregiver invite's state transitions and the rows they write.
@@ -85,17 +91,28 @@ export const INVITE_SILENCE_MS = 72 * 60 * 60 * 1000;
 export const INVITE_DAILY_CAP = 5;
 const INVITE_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-export interface CaregiverInvite {
+interface InviteFields {
   id: string;
   familyId: string;
   invitedByUserId: string;
-  role: CaregiverRole;
   displayName: string;
   /** Decrypted only in memory, to address the send. Never logged, never audited raw. */
   phoneE164: string;
   state: CaregiverInviteState;
   expiresAt: Date;
 }
+
+/**
+ * VIL-355 widened this table's reach from `CaregiverRole`: the same row, the same double
+ * opt-in and the same 72h clock now also carry a co-parent ask. It is a UNION on the role
+ * rather than a widened field so that a caller who has checked which lane it is in cannot
+ * then hand the invite to the other lane's functions — everything that renders off the
+ * role branches (see {@link inviteVerb} and the copy each start function picks), because
+ * the one thing a co-parent's trail must never say is "a caregiver invite closed…".
+ */
+export type CaregiverLaneInvite = InviteFields & { role: CaregiverRole };
+export type CoParentInvite = InviteFields & { role: 'co_parent' };
+export type CaregiverInvite = CaregiverLaneInvite | CoParentInvite;
 
 type InviteRow = {
   id: string;
@@ -112,16 +129,30 @@ type InviteRow = {
 };
 
 function toInvite(row: InviteRow): CaregiverInvite {
-  return {
+  const fields: InviteFields = {
     id: row.id,
     familyId: row.familyId,
     invitedByUserId: row.invitedByUserId,
-    role: row.role as CaregiverRole,
     displayName: row.displayName,
     phoneE164: decryptString(row.phoneE164Encrypted),
     state: row.state as CaregiverInviteState,
     expiresAt: new Date(row.expiresAt),
   };
+  const role = row.role as AddRole;
+  return role === 'co_parent' ? { ...fields, role } : { ...fields, role };
+}
+
+/**
+ * The audit verb for something that happened to THIS invite.
+ *
+ * Derived rather than passed, and that is the fix for the landmine VIL-355 found: every
+ * closure below used to name a `caregiver_invite_*` verb unconditionally, so a co-parent
+ * invite closed by a forwarded link rendered in the trail as "a caregiver invite closed
+ * because that number is already set up with Hale" — about the other parent of these
+ * children. A caller cannot get this wrong now because a caller no longer says it.
+ */
+function inviteVerb(role: AddRole, suffix: string): string {
+  return `${role === 'co_parent' ? 'co_parent' : 'caregiver'}_invite_${suffix}`;
 }
 
 const INVITE_COLUMNS = {
@@ -155,7 +186,8 @@ async function throughExpiry(
   now: Date,
 ): Promise<CaregiverInvite | null> {
   if (new Date(row.expiresAt).getTime() > now.getTime()) return toInvite(row);
-  await closeInvite(database, toInvite(row), 'expired', now, 'caregiver_invite_expired');
+  const invite = toInvite(row);
+  await closeInvite(database, invite, 'expired', now, inviteVerb(invite.role, 'expired'));
   return null;
 }
 
@@ -251,7 +283,7 @@ async function invitesDeliveredSince(
 }
 
 export type StartInviteResult =
-  | { status: 'started'; invite: CaregiverInvite; reply: string }
+  | { status: 'started'; invite: CaregiverLaneInvite; reply: string }
   | { status: 'own_number' }
   | { status: 'number_in_use' }
   | { status: 'already_invited' }
@@ -267,7 +299,7 @@ export async function startCaregiverInvite(
     familyId: string;
     invitedByUserId: string;
     inviterPhoneE164: string;
-    parsed: Extract<ParsedAddCaregiver, { ok: true }>;
+    parsed: ParsedCaregiverAdd;
     now: Date;
   },
 ): Promise<StartInviteResult> {
@@ -297,15 +329,181 @@ export async function startCaregiverInvite(
     (r) => r.invitedByUserId === input.invitedByUserId && r.state === 'awaiting_parent_assent',
   );
   if (superseded) {
-    await closeInvite(
-      database,
-      toInvite(superseded),
-      'superseded',
-      now,
-      'caregiver_invite_superseded',
-    );
+    const previous = toInvite(superseded);
+    await closeInvite(database, previous, 'superseded', now, inviteVerb(previous.role, 'superseded'));
   }
 
+  const invite = await openInviteRow(database, { ...input, hash });
+
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: input.invitedByUserId,
+    actionTaken: 'caregiver_invite_started',
+    targetTable: 'caregiver_invites',
+    targetId: invite.id,
+    after: {
+      role: parsed.role,
+      displayName: parsed.name,
+      maskedPhone: maskPhoneE164(parsed.phoneE164),
+    },
+  });
+
+  return { status: 'started', invite, reply: scopeConfirm(parsed.name, parsed.role) };
+}
+
+/** Why Hale will not open a CO-PARENT invite. Every one of them is answered with its own
+ * sentence (coparent/copy.ts) — a parent who asked us to text somebody is owed the reason
+ * nobody was texted, and a shared "can't do that" would hide four different facts. */
+export type CoParentRefusal =
+  | 'own_number'
+  | 'number_in_use'
+  | 'already_invited'
+  | 'too_many'
+  | 'co_parent_seat_taken'
+  | 'previously_declined'
+  | 'referrer_unnamed';
+
+export type StartCoParentResult =
+  | { status: 'started'; invite: CoParentInvite; reply: string }
+  | { status: 'refused'; reason: CoParentRefusal };
+
+/** Whether this household already holds its one co-parent seat. */
+async function familyHasCoParent(database: Database, familyId: string): Promise<boolean> {
+  const rows = await database
+    .select({
+      familyId: schema.familyMembers.familyId,
+      role: schema.familyMembers.role,
+    })
+    .from(schema.familyMembers)
+    .where(and(eq(schema.familyMembers.familyId, familyId), eq(schema.familyMembers.role, 'co_parent')));
+  return rows.some((r) => r.familyId === familyId && r.role === 'co_parent');
+}
+
+/**
+ * A CLOSED invite this number already refused, or null.
+ *
+ * NUMBER-KEYED AND FAMILY-BLIND, the same scope `declineOpenInviteOnStop` already uses,
+ * and that is the whole point: `startCaregiverInvite` looks only at OPEN invites, so a
+ * person who replied NO — or STOP, which lands in the same terminal state — could be
+ * asked again tomorrow, five times a day, by this household or any other. Nothing in the
+ * schema remembered a refusal because nothing had to: a refusal writes no consent row
+ * (see {@link declineInvite}) and there is no suppression table. The closed row is the
+ * memory, and its blind index is what makes it findable without storing the number.
+ */
+async function priorRefusal(database: Database, phoneE164: string): Promise<InviteRow | null> {
+  const hash = phoneBlindIndex(phoneE164);
+  const rows = (await database
+    .select(INVITE_COLUMNS)
+    .from(schema.caregiverInvites)
+    .where(
+      and(
+        eq(schema.caregiverInvites.phoneE164Hash, hash),
+        eq(schema.caregiverInvites.state, 'declined'),
+      ),
+    )) as InviteRow[];
+  const refusals = rows
+    .filter((r) => r.phoneE164Hash === hash && r.state === 'declined')
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return refusals[0] ?? null;
+}
+
+/**
+ * Open a CO-PARENT invite and state the scope back to the parent. NOTHING is sent to the
+ * number they named here — `awaiting_parent_assent` is that guarantee, and it is the same
+ * one the caregiver flow makes, on the same table and the same 72h clock.
+ *
+ * WHAT IS NOT SHARED with {@link startCaregiverInvite} is the guard list, and the three
+ * extra refusals are the three ways this ask differs from that one. The seat is single
+ * ({@link familyHasCoParent}), the refusal is remembered ({@link priorRefusal}), and the
+ * message cannot go out unsigned: a caregiver invite from an unnamed parent still reads
+ * as an invitation, while "a parent added you as their co-parent" from an unknown number
+ * is the cold text this whole feature exists not to send.
+ */
+export async function startCoParentInvite(
+  database: Database,
+  input: {
+    familyId: string;
+    invitedByUserId: string;
+    inviterPhoneE164: string;
+    inviterName: string | null;
+    parsed: ParsedCoParentAdd;
+    language: ReplyLanguage;
+    now: Date;
+  },
+): Promise<StartCoParentResult> {
+  const { parsed, now } = input;
+  const refuse = (reason: CoParentRefusal): StartCoParentResult => ({ status: 'refused', reason });
+
+  if (parsed.phoneE164 === input.inviterPhoneE164) return refuse('own_number');
+  if (await familyHasCoParent(database, input.familyId)) return refuse('co_parent_seat_taken');
+  if (!inviterNameIsAffordable(input.inviterName)) return refuse('referrer_unnamed');
+  if (await activeChannelOwner(database, parsed.phoneE164)) return refuse('number_in_use');
+
+  const hash = phoneBlindIndex(parsed.phoneE164);
+  const open = await openInvites(database);
+  if (open.some((r) => r.phoneE164Hash === hash)) return refuse('already_invited');
+
+  const refused = await priorRefusal(database, parsed.phoneE164);
+  if (refused) {
+    // Written even though nothing was sent, because "why was nobody texted" is exactly
+    // the question this row exists to answer. It says a refusal happened and never when
+    // or by whom — the same bound the parent's own sentence keeps (rule #1).
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.invitedByUserId,
+      actionTaken: 'co_parent_invite_blocked_prior_refusal',
+      targetTable: 'caregiver_invites',
+      targetId: refused.id,
+      after: { maskedPhone: maskPhoneE164(parsed.phoneE164) },
+    });
+    return refuse('previously_declined');
+  }
+
+  const since = new Date(now.getTime() - INVITE_CAP_WINDOW_MS);
+  if ((await invitesDeliveredSince(database, input.familyId, since)) >= INVITE_DAILY_CAP) {
+    return refuse('too_many');
+  }
+
+  const superseded = open.find(
+    (r) => r.invitedByUserId === input.invitedByUserId && r.state === 'awaiting_parent_assent',
+  );
+  if (superseded) {
+    const previous = toInvite(superseded);
+    await closeInvite(database, previous, 'superseded', now, inviteVerb(previous.role, 'superseded'));
+  }
+
+  const invite = await openInviteRow(database, { ...input, hash });
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: input.invitedByUserId,
+    actionTaken: 'co_parent_invite_started',
+    targetTable: 'caregiver_invites',
+    targetId: invite.id,
+    after: {
+      role: parsed.role,
+      displayName: parsed.name,
+      maskedPhone: maskPhoneE164(parsed.phoneE164),
+    },
+  });
+
+  return { status: 'started', invite, reply: coParentScopeConfirm(parsed.name, input.language) };
+}
+
+/** The `caregiver_invites` row itself, with nobody texted yet. Shared by both start
+ * functions so the two doors cannot drift on what an unanswered invite looks like; the
+ * audit verb stays with each caller, because that is the one thing they must not share. */
+async function openInviteRow<R extends AddRole>(
+  database: Database,
+  input: {
+    familyId: string;
+    invitedByUserId: string;
+    parsed: { name: string; phoneE164: string; role: R };
+    hash: string;
+    now: Date;
+  },
+): Promise<InviteFields & { role: R }> {
+  const { parsed, now } = input;
+  const expiresAt = new Date(now.getTime() + INVITE_SILENCE_MS);
   const [row] = await database
     .insert(schema.caregiverInvites)
     .values({
@@ -314,47 +512,91 @@ export async function startCaregiverInvite(
       role: parsed.role,
       displayName: parsed.name,
       phoneE164Encrypted: encryptString(parsed.phoneE164),
-      phoneE164Hash: hash,
+      phoneE164Hash: input.hash,
       state: 'awaiting_parent_assent',
-      expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
-      // Written explicitly rather than left to the column default: the cap above reads
-      // it back, and a meter that depends on the clock the row was written by cannot be
+      expiresAt,
+      // Written explicitly rather than left to the column default: the cap reads it
+      // back, and a meter that depends on the clock the row was written by cannot be
       // reasoned about (or tested) deterministically.
       createdAt: now,
     })
     .returning({ id: schema.caregiverInvites.id });
   const id = row?.id;
   if (!id) {
-    throw new Error('startCaregiverInvite: caregiver_invites insert returned no row');
+    throw new Error('openInviteRow: caregiver_invites insert returned no row');
   }
-
-  await database.insert(schema.auditLog).values({
+  return {
+    id,
     familyId: input.familyId,
-    actor: input.invitedByUserId,
-    actionTaken: 'caregiver_invite_started',
-    targetTable: 'caregiver_invites',
-    targetId: id,
-    after: {
-      role: parsed.role,
-      displayName: parsed.name,
-      maskedPhone: maskPhoneE164(parsed.phoneE164),
-    },
+    invitedByUserId: input.invitedByUserId,
+    displayName: parsed.name,
+    phoneE164: parsed.phoneE164,
+    state: 'awaiting_parent_assent',
+    expiresAt,
+    role: parsed.role,
+  };
+}
+
+/**
+ * The parent's YES to seating a co-parent: the authorisation row and the state advance in
+ * one transaction, and the body to text the person they named returned from it — so a
+ * caller cannot advance the state without holding something to send.
+ *
+ * ITS OWN FUNCTION rather than a branch inside {@link recordParentAssent}, because almost
+ * nothing about it is the same record: a different consent type, a different scope, a
+ * different question in the evidence, and a different verb. The one thing the two share
+ * is the shape of the promise — the row and the advance stand or fall together.
+ */
+export async function recordCoParentAssent(
+  database: Database,
+  input: {
+    invite: CoParentInvite;
+    inviterName: string;
+    language: ReplyLanguage;
+    verbatimReply: string;
+    channelMessageId: string | null;
+    now: Date;
+  },
+): Promise<string> {
+  const { invite, now } = input;
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx.insert(schema.consentRecords).values({
+      userId: invite.invitedByUserId,
+      familyId: invite.familyId,
+      consentType: 'co_parent_access_grant',
+      granted: true,
+      consentScope: CO_PARENT_GRANT_SCOPE,
+      policyVersion: POLICY_VERSION,
+      evidence: {
+        question: coParentScopeConfirm(invite.displayName, input.language),
+        verbatimReply: input.verbatimReply,
+        interpretation: `parent authorised texting ${invite.displayName} and seating them as a co-parent, with everything a parent sees`,
+        channelMessageId: input.channelMessageId,
+        maskedPhone: maskPhoneE164(invite.phoneE164),
+      },
+    });
+
+    await tx
+      .update(schema.caregiverInvites)
+      .set({
+        state: 'awaiting_caregiver_reply',
+        expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
+        updatedAt: now,
+      })
+      .where(eq(schema.caregiverInvites.id, invite.id));
+
+    await tx.insert(schema.auditLog).values({
+      familyId: invite.familyId,
+      actor: invite.invitedByUserId,
+      actionTaken: 'co_parent_access_granted',
+      targetTable: 'caregiver_invites',
+      targetId: invite.id,
+      after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
+    });
   });
 
-  return {
-    status: 'started',
-    invite: {
-      id,
-      familyId: input.familyId,
-      invitedByUserId: input.invitedByUserId,
-      role: parsed.role,
-      displayName: parsed.name,
-      phoneE164: parsed.phoneE164,
-      state: 'awaiting_parent_assent',
-      expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
-    },
-    reply: scopeConfirm(parsed.name, parsed.role),
-  };
+  return coParentInviteBody(input.inviterName, input.language);
 }
 
 /**
@@ -366,7 +608,7 @@ export async function startCaregiverInvite(
 export async function recordParentAssent(
   database: Database,
   input: {
-    invite: CaregiverInvite;
+    invite: CaregiverLaneInvite;
     inviterName: string | null;
     verbatimReply: string;
     channelMessageId: string | null;
@@ -457,7 +699,7 @@ export async function declineInvite(
     input.invite,
     'declined',
     input.now,
-    input.by === 'parent' ? 'caregiver_invite_withdrawn' : 'caregiver_invite_refused',
+    inviteVerb(input.invite.role, input.by === 'parent' ? 'withdrawn' : 'refused'),
   );
 }
 
@@ -493,7 +735,7 @@ export interface AcceptResult {
  */
 export async function acceptInvite(
   database: Database,
-  input: { invite: CaregiverInvite; verbatimReply: string; now: Date },
+  input: { invite: CaregiverLaneInvite; verbatimReply: string; now: Date },
 ): Promise<AcceptResult> {
   const { invite, now } = input;
   const hash = phoneBlindIndex(invite.phoneE164);
@@ -615,15 +857,9 @@ export async function declineOpenInviteOnStop(
  * The inviting parent's trail has to be able to tell those apart.
  */
 const ENROLMENT_SUPERSEDES = {
-  co_parent_join: {
-    state: 'superseded_by_join',
-    actionTaken: 'caregiver_invite_superseded_by_join',
-  },
-  sms_intake: {
-    state: 'superseded_by_enrollment',
-    actionTaken: 'caregiver_invite_superseded_by_enrollment',
-  },
-} as const satisfies Record<string, { state: CaregiverInviteState; actionTaken: string }>;
+  co_parent_join: { state: 'superseded_by_join', suffix: 'superseded_by_join' },
+  sms_intake: { state: 'superseded_by_enrollment', suffix: 'superseded_by_enrollment' },
+} as const satisfies Record<string, { state: CaregiverInviteState; suffix: string }>;
 
 export type EnrolmentDoor = keyof typeof ENROLMENT_SUPERSEDES;
 
@@ -662,7 +898,7 @@ export async function supersedeOpenInviteOnEnrollment(
 ): Promise<string | null> {
   const invite = await loadOpenInviteByPhone(database, input.phoneE164, input.now);
   if (!invite) return null;
-  const { state, actionTaken } = ENROLMENT_SUPERSEDES[input.via];
-  await closeInvite(database, invite, state, input.now, actionTaken);
+  const { state, suffix } = ENROLMENT_SUPERSEDES[input.via];
+  await closeInvite(database, invite, state, input.now, inviteVerb(invite.role, suffix));
   return invite.id;
 }

@@ -4,7 +4,9 @@ import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { declineOpenInviteOnStop, loadOpenInviteByPhone } from '~/lib/channel/caregiver/invites';
 import {
   type CaregiverOutcome,
-  handleCaregiverInviteReply,
+  type CoParentOutcome,
+  type OpenQuestionsForParent,
+  handleInviteReply,
   handleKnownNumberInbound,
 } from '~/lib/channel/caregiver/route';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
@@ -128,6 +130,15 @@ export interface IntakeDeps {
    * {@link sendAndRecord}.
    */
   threadMessage: typeof threadProactiveMessage;
+  /**
+   * What Hale is still waiting to hear back about from this parent — handed straight to
+   * the caregiver/co-parent lane, the one branch on this machine that reads it (VIL-355:
+   * a bare YES may not claim a co-parent invite while another question is open).
+   *
+   * Required, never nullable (rule #11): the absence of this reader is the absence of the
+   * arbitration, and the failure it prevents is an unsolicited text to a stranger.
+   */
+  openQuestions: OpenQuestionsForParent;
   extractor: IntakeExtractor;
   intentReader: ReplyIntentReader;
   radar: RadarComposer;
@@ -205,6 +216,10 @@ export type IntakeOutcome =
   // caregiver texts the SAME number a parent does; what differs is who the number
   // belongs to, which is a lookup, not a second inbox.
   | CaregiverOutcome
+  // VIL-355 · the co-parent SMS invite's own outcomes. Kept out of CaregiverOutcome for
+  // the reason the whole ticket exists: the two lanes text different people about
+  // different things, and one bucket would make an operator read the wrong story.
+  | CoParentOutcome
   // The co-parent join link's two ends. Kept OUT of `ignored` deliberately: that
   // outcome's `no_open_conversation` reason is what hands the turn to C1
   // (twilio/inbound.ts), and a redemption has already been answered.
@@ -308,7 +323,7 @@ export async function handleInboundSms(
     // starting an intake and they would be asked for their children's names.
     const invite = await loadOpenInviteByPhone(database, phoneE164, now);
     if (invite?.state === 'awaiting_caregiver_reply') {
-      return handleCaregiverInviteReply(database, { invite, phoneE164, inbound, now }, deps);
+      return handleInviteReply(database, { invite, phoneE164, inbound, now }, deps);
     }
 
     const existing = await resolveVerifiedChannelByPhone(database, phoneE164);

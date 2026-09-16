@@ -17,6 +17,7 @@ import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
+import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { db } from '~/lib/db';
@@ -67,6 +68,10 @@ export function buildIntakeDeps(inboundTransport: MessageTransport = 'sms'): Int
         }),
     }),
     threadMessage: threadProactiveMessage,
+    // The SAME reader the router uses for a bare affirmative (router/wiring.ts), so
+    // "which questions are open" cannot get two answers on one turn depending on which
+    // door the text came through.
+    openQuestions: (db2, input) => defaultOpenQuestionReader().open(db2, input),
     extractor: createIntakeExtractor(client),
     intentReader: createReplyIntentReader(client),
     radar: createRadarComposer({ database, weather: createOpenMeteoWeather(), client }),

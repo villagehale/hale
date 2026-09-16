@@ -43,6 +43,7 @@ import {
   FakeIdentityAsk,
   FakeIntentReader,
   fakeAckComposer,
+  fakeNoOpenQuestions,
   fakeRadar,
   fakeSilentAnswerComposer,
   makeFakeDb,
@@ -120,6 +121,7 @@ function harness(options: {
         threaded.push(input);
         return 'conv-1';
       },
+      openQuestions: fakeNoOpenQuestions,
       extractor: new FakeExtractor(options.extractions ?? [MAYA_AND_LEO]),
       intentReader: new FakeIntentReader(options.intents ?? [assent('yes')]),
       radar: {
@@ -1508,6 +1510,7 @@ describe('intake · CASL keywords', () => {
       radar: fakeRadar,
       ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      openQuestions: fakeNoOpenQuestions,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => NOW.getTime()),
       now: NOW,

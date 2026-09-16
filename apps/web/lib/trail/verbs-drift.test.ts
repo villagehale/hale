@@ -105,13 +105,21 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'quick_log_booking_requested',
   ],
   // closeInvite takes its verb as a POSITIONAL parameter and writes it as object
-  // shorthand — the terminal states of a caregiver invite.
+  // shorthand — the terminal states of an invite, in BOTH lanes: `inviteVerb` derives the
+  // prefix from the invite's own role (VIL-355), so every suffix below exists twice.
   'apps/web/lib/channel/caregiver/invites.ts': [
     'caregiver_invite_expired',
     'caregiver_invite_superseded',
     'caregiver_invite_superseded_by_join',
+    'caregiver_invite_superseded_by_enrollment',
     'caregiver_invite_withdrawn',
     'caregiver_invite_refused',
+    'co_parent_invite_expired',
+    'co_parent_invite_superseded',
+    'co_parent_invite_superseded_by_join',
+    'co_parent_invite_superseded_by_enrollment',
+    'co_parent_invite_withdrawn',
+    'co_parent_invite_refused',
   ],
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
   // `REPLY_SENT_ACTION[carriedBy]` — one verb per door the router can answer
@@ -119,7 +127,14 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // to say WHICH one an answer went out of.
   'apps/web/lib/channel/router/route.ts': ['sms_reply_sent', 'email_reply_sent'],
   'apps/web/lib/channel/coach/draft.ts': ['channel_sms.calendar_drafted'],
-  'apps/web/lib/channel/caregiver/route.ts': ['caregiver_sms_inbound', 'caregiver_sms_outbound'],
+  // `LANE[lane].inbound|outbound` — one pair per lane, because a co-parent's own message
+  // is not a disclosure to somebody outside the household (VIL-355).
+  'apps/web/lib/channel/caregiver/route.ts': [
+    'caregiver_sms_inbound',
+    'caregiver_sms_outbound',
+    'co_parent_sms_inbound',
+    'co_parent_sms_outbound',
+  ],
   'apps/web/lib/channel/join/route.ts': ['join_sms_inbound', 'join_sms_outbound'],
   'apps/web/lib/channel/intake/machine.ts': ['sms_intake_inbound', 'sms_intake_outbound'],
   'apps/web/lib/channel/intake/watch-consent.ts': [
