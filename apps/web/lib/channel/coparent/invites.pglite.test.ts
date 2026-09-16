@@ -593,3 +593,43 @@ describe('one open invite per number', () => {
     expect(await inviteStates()).toHaveLength(2);
   });
 });
+
+describe('STOP, from the one closed row that still holds a texted stranger', () => {
+  /**
+   * `seat_taken` is the terminal state where the person WAS texted, is NOT a member,
+   * and has no channel for the STOP keyword to revoke: they said yes late and the seat
+   * was gone. "Reply STOP anytime" was on their cold text too, and reading it through a
+   * "was this row swept" predicate dropped it — the same household could re-open an
+   * invite on that number an hour later.
+   */
+  it('remembers a STOP from an invitee whose yes found the seat taken', async () => {
+    const seeded = await seedFamily();
+    await start(seeded, PARTNER_PHONE);
+    await db.database
+      .update(schema.caregiverInvites)
+      .set({ state: 'seat_taken', closedAt: NOW })
+      .where(eq(schema.caregiverInvites.phoneE164Hash, phoneBlindIndex(PARTNER_PHONE)));
+
+    expect(await declineOpenInviteOnStop(db.database, PARTNER_PHONE, NOW)).toBe(true);
+    expect(await inviteStates()).toEqual([{ state: 'declined', closed: true }]);
+    expect(await start(seeded, PARTNER_PHONE)).toEqual({
+      status: 'refused',
+      reason: 'previously_declined',
+    });
+  });
+
+  /** The positive control for the exclusion: an ACCEPTED invitee holds a channel, and
+   * their STOP belongs to channel revocation — closing the invite as a refusal would tell
+   * the inviting parent's trail that their co-parent said no. */
+  it('leaves an accepted invite alone', async () => {
+    const seeded = await seedFamily();
+    await start(seeded, PARTNER_PHONE);
+    await db.database
+      .update(schema.caregiverInvites)
+      .set({ state: 'accepted', closedAt: NOW })
+      .where(eq(schema.caregiverInvites.phoneE164Hash, phoneBlindIndex(PARTNER_PHONE)));
+
+    expect(await declineOpenInviteOnStop(db.database, PARTNER_PHONE, NOW)).toBe(false);
+    expect(await inviteStates()).toEqual([{ state: 'accepted', closed: true }]);
+  });
+});

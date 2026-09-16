@@ -1017,13 +1017,26 @@ export async function acceptInvite(
  * the same stranger again an hour later. Under CASL a withdrawal is effective when it is
  * sent, not while a timer happens to be running.
  *
- * So the eligible rows are the ones that were never answered: still open, or already
- * swept to 'expired'. Which of those two a row is in is a race between this turn and
- * every other read of the table, and a promise that bound only one of them would bind by
- * luck. Terminal states somebody DID answer are left alone — an 'accepted' invite belongs
- * to the channel-revocation path, and a 'superseded' one describes something larger that
- * the person did instead.
+ * So the eligible rows are the ones the PERSON never answered — still open, swept to
+ * 'expired', or closed as 'seat_taken' (they answered late, hold nothing, and were told
+ * "I won't text you again"). Which of those a row is in is a race between this turn and
+ * every other read of the table, and a promise that bound only some of them would bind
+ * by luck — which is why the rule is an exclusion list of the states the person reached
+ * by answering or by becoming a member ({@link STOP_ANSWERED_STATES}), so the next
+ * terminal state anyone adds is suppressible by default rather than silently exempt.
  */
+const STOP_ANSWERED_STATES: ReadonlySet<string> = new Set<CaregiverInviteState>([
+  // Holds a channel; their STOP is channel revocation, not a refusal of this invite.
+  'accepted',
+  // Already the suppression memory.
+  'declined',
+  // Nobody was texted under this row; the parent re-asked before the send.
+  'superseded',
+  // Became a member; the invite closed because of something larger they did.
+  'superseded_by_join',
+  'superseded_by_enrollment',
+]);
+
 async function inviteClosableByStop(
   database: Database,
   phoneE164: string,
@@ -1034,7 +1047,7 @@ async function inviteClosableByStop(
     .from(schema.caregiverInvites)
     .where(eq(schema.caregiverInvites.phoneE164Hash, hash))) as InviteRow[];
   const unanswered = rows
-    .filter((r) => r.phoneE164Hash === hash && (r.closedAt === null || r.state === 'expired'))
+    .filter((r) => r.phoneE164Hash === hash && !STOP_ANSWERED_STATES.has(r.state))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const row = unanswered[0];
   return row ? toInvite(row) : null;
