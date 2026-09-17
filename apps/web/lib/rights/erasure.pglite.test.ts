@@ -83,9 +83,15 @@ describe('requestErasure — one door, two answers', () => {
       departure: {
         outcome: 'departed',
         channelRevoked: 0,
+        mcpGrantsRevoked: 0,
+        connectorsRevoked: 0,
+        teenGrantsRevoked: 0,
         membershipRemoved: true,
         consentWithdrawn: 0,
         threadRetained: 0,
+        channelRecordRetained: 0,
+        inviteRecordRetained: 0,
+        identityRetained: true,
       },
     });
     expect(await scheduledDeletionAt(family.familyId)).toEqual([{ at: null }]);
@@ -114,5 +120,60 @@ describe('requestErasure — one door, two answers', () => {
       'co_parent',
       'primary_parent',
     ]);
+  });
+});
+
+/**
+ * A scoped seat is not an owner. `grandparent`, `nanny` and `babysitter` are redaction
+ * LEVELS (role-scope.ts), they can sign in by claiming their number, and this route has
+ * no role gate of its own — so before this test the babysitter's "delete my account"
+ * stamped the children's entire history for deletion, and nobody was told. The door
+ * fails closed on any role it does not have an erasure for; a caregiver's own leave
+ * door is a separate question, and answering it with the family sweep is the one
+ * answer that can never be right.
+ */
+describe('requestErasure — a scoped seat cannot erase the household', () => {
+  it.each(['grandparent', 'nanny', 'babysitter', 'extended', 'service'] as const)(
+    'refuses a %s and schedules nothing',
+    async (role) => {
+      const family = await seedTwoParentFamily();
+      const [caregiver] = await db.database
+        .insert(schema.users)
+        .values({ externalAuthId: `sms:caregiver_${role}_${households}` })
+        .returning({ id: schema.users.id });
+      const caregiverUserId = caregiver?.id as string;
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId: family.familyId, userId: caregiverUserId, role });
+
+      const result = await requestErasure(db.database, {
+        familyId: family.familyId,
+        actorUserId: caregiverUserId,
+        now: NOW,
+      });
+
+      expect(result).toEqual({ outcome: 'not_permitted', role });
+      expect(await scheduledDeletionAt(family.familyId)).toEqual([{ at: null }]);
+      expect((await roles(family.familyId)).map((r) => r.role).sort()).toEqual(
+        ['co_parent', role, 'primary_parent'].sort(),
+      );
+    },
+  );
+
+  it('refuses a caller with no seat in the family at all', async () => {
+    const family = await seedTwoParentFamily();
+    const [stranger] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `google_stranger_${households}` })
+      .returning({ id: schema.users.id });
+
+    const result = await requestErasure(db.database, {
+      familyId: family.familyId,
+      actorUserId: stranger?.id as string,
+      now: NOW,
+    });
+
+    expect(result).toEqual({ outcome: 'not_permitted', role: null });
+    expect(await scheduledDeletionAt(family.familyId)).toEqual([{ at: null }]);
   });
 });

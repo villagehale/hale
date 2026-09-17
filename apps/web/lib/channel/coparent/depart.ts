@@ -1,7 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
+import { revokeTeenAccessGrantsForDepartingMember } from '~/lib/teen-access';
 
 /**
  * VIL-355 · one parent leaves, and the household keeps its record.
@@ -9,18 +10,35 @@ import { POLICY_VERSION } from '~/lib/consent';
  * `runDeletionSweep` (`rights/delete.ts`) erases a FAMILY: every row, every byte, one
  * cascade. There was no other door, so a co-parent asking to be erased could only ever
  * be answered by deleting the children's whole history — including the primary parent's,
- * who did not ask for anything. This is the per-ACTOR door, and everything it does is
- * chosen so the asymmetry is true BY CONSTRUCTION rather than by care: the transaction
- * names `parent_channels`, `consent_records` and `family_members`, and no other table.
- * A family-scoped row cannot be erased here because there is no statement that could.
+ * who did not ask for anything. This is the per-ACTOR door.
  *
- * WHAT THAT LEAVES BEHIND, DELIBERATELY. `family_memory_facts` are the HOUSEHOLD's
- * record, not this parent's — the bedtime, the allergy, the sitter's name — and they
- * were never provenanced per author (VIL-353 is where that would come from). Their
- * thread (`channel-sms:<userId>`) is family-scoped too, and stays: counsel's call,
- * recorded in the brief. So the tally names it (rule #11) — `threadRetained` is a
- * COUNT of what was deliberately not touched, visible in the return value rather than
- * silently absent from it.
+ * WHAT LEAVING HAS TO MEAN. The seat was never the only way into this household, and a
+ * departure that removed only the seat left three live reads standing: an MCP bearer
+ * grant (30-day TTL, and `verifyMcpBearer` never joined `family_members`), a Gmail or
+ * Calendar connector (swept by provider and status, with no membership check), and any
+ * teen-access grant, which is keyed on the reader rather than on their seat. So the
+ * transaction ends EVERY standing access this actor holds in this family, and the tally
+ * counts each one separately — a single number would let a missed door hide inside a
+ * non-zero total.
+ *
+ * WHAT IT LEAVES BEHIND, DELIBERATELY, AND SAYS SO. `family_memory_facts` are the
+ * HOUSEHOLD's record, not this parent's — the bedtime, the allergy, the sitter's name —
+ * and they were never provenanced per author (VIL-353 is where that would come from).
+ * Their thread (`channel-sms:<userId>`) is family-scoped too. Their `users` row, the
+ * revoked `parent_channels` row holding their encrypted number, and the
+ * `caregiver_invites` row that authorised the one text Hale sent them all survive: the
+ * number is the EVIDENCE of express consent, which CASL requires be producible for
+ * three years after it ends, and erasing it would destroy the only proof that the
+ * message Hale sent was lawful. Every one of those is a COUNT in the return value
+ * rather than a silence (rule #11), and the route hands the whole tally to the person
+ * who asked, so an erasure request is never answered with only the good news.
+ *
+ * FOLLOW-UP, NAMED HERE BECAUSE NOTHING ELSE NAMES IT. When this was their only
+ * household, `users` has no family FK and `runDeletionSweep` only ever deletes families,
+ * so the row is orphaned with no path that will ever remove it. An orphan-user erasure
+ * sweep, on the retention clock the encrypted number is held under, is a separate
+ * change — it is not something this door can do, and pretending otherwise by deleting
+ * the row early would take the consent evidence with it.
  *
  * THE DELETE IS THE CLAIM, AND IT GOES FIRST — the discipline both seating transactions
  * keep. The role is re-tested inside the conditional DELETE against the locked row, so a
@@ -34,11 +52,24 @@ export interface CoParentDeparted {
   outcome: 'departed';
   /** Active SMS channels of THIS actor in THIS family that were revoked. */
   channelRevoked: number;
+  /** Live MCP bearer grants closed — the connected-assistant door into this family. */
+  mcpGrantsRevoked: number;
+  /** Their user-scoped connectors (Gmail/Calendar/Drive) disconnected, tokens purged. */
+  connectorsRevoked: number;
+  /** Teen raw-content windows closed — rule #1's named exception, held by THEM. */
+  teenGrantsRevoked: number;
   membershipRemoved: true;
   /** `granted=false` rows appended — one per messaging scope that was still standing. */
   consentWithdrawn: number;
-  /** Threads left alone on purpose. Named, never inferred from silence (rule #11). */
+  /** ── kept on purpose, each named rather than absent (rule #11) ─────────────── */
+  /** Threads left alone: family-scoped, and the household's own record. */
   threadRetained: number;
+  /** Revoked `parent_channels` rows kept — the CASL evidence of express consent. */
+  channelRecordRetained: number;
+  /** `caregiver_invites` rows kept — the authorisation for the text Hale sent them. */
+  inviteRecordRetained: number;
+  /** Their `users` row is never deleted here; no per-user erasure sweep exists yet. */
+  identityRetained: true;
 }
 
 /**
@@ -163,7 +194,73 @@ export async function departCoParent(
               consentScope: schema.consentRecords.consentScope,
             });
 
-    const retained = await tx
+    // Each of these is a live READ into the children's data that outlives the seat by
+    // its own clock, so each is closed here and counted on its own. `revoked_at IS NULL`
+    // / `status <> 'revoked'` keeps an already-closed door closed at its ORIGINAL date —
+    // re-stamping it would move the instant a CASL or PIPEDA read is taken against.
+    const revokedGrants = await tx
+      .update(schema.mcpGrants)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(schema.mcpGrants.familyId, familyId),
+          eq(schema.mcpGrants.userId, actorUserId),
+          isNull(schema.mcpGrants.revokedAt),
+        ),
+      )
+      .returning({ id: schema.mcpGrants.id, clientId: schema.mcpGrants.clientId });
+
+    const revokedConnectors = await tx
+      .update(schema.integrations)
+      .set({ oauthTokensEncrypted: null, status: 'revoked', updatedAt: now })
+      .where(
+        and(
+          eq(schema.integrations.familyId, familyId),
+          eq(schema.integrations.userId, actorUserId),
+          ne(schema.integrations.status, 'revoked'),
+        ),
+      )
+      .returning({ id: schema.integrations.id, provider: schema.integrations.provider });
+
+    // Asked for by name rather than done here, and that is structural: `lib/channel`
+    // is forbidden from naming the teen-grant machinery at all
+    // (`teen-access-outbound.test.ts`), because an outbound tree that can reach the
+    // grant reader can leak unlocked teen content. The module that owns the table
+    // closes the windows — enforcement row, consent ledger and audit row together —
+    // inside this transaction.
+    const teenGrantsRevoked = await revokeTeenAccessGrantsForDepartingMember(tx, {
+      familyId,
+      userId: actorUserId,
+      now,
+    });
+
+    // ── what is KEPT, counted so the answer can say it out loud ──────────────
+    const retainedChannels = await tx
+      .select({
+        id: schema.parentChannels.id,
+        phoneE164Hash: schema.parentChannels.phoneE164Hash,
+      })
+      .from(schema.parentChannels)
+      .where(
+        and(
+          eq(schema.parentChannels.userId, actorUserId),
+          eq(schema.parentChannels.familyId, familyId),
+        ),
+      );
+    const hashes = retainedChannels.map((row) => row.phoneE164Hash);
+    const retainedInvites =
+      hashes.length === 0
+        ? []
+        : await tx
+            .select({ id: schema.caregiverInvites.id })
+            .from(schema.caregiverInvites)
+            .where(
+              and(
+                eq(schema.caregiverInvites.familyId, familyId),
+                inArray(schema.caregiverInvites.phoneE164Hash, hashes),
+              ),
+            );
+    const retainedThreads = await tx
       .select({ id: schema.conversations.id })
       .from(schema.conversations)
       .where(
@@ -175,7 +272,9 @@ export async function departCoParent(
 
     // One row per EFFECT (rule #6), and nothing that identifies the person who left:
     // not their number, not the name the inviting parent gave them. An operator reading
-    // this answers "what was undone", which is all the trail is for.
+    // this answers "what was undone", which is all the trail is for. The verbs are the
+    // ones each door already writes when it is closed by hand, so a departure reads the
+    // same as a disconnection in the trail rather than inventing a private vocabulary.
     await tx.insert(schema.auditLog).values([
       ...revokedChannels.map((channel) => ({
         familyId,
@@ -193,22 +292,44 @@ export async function departCoParent(
         targetId: row.id,
         after: { granted: false, consentScope: row.consentScope },
       })),
+      ...revokedGrants.map((grant) => ({
+        familyId,
+        actor: actorUserId,
+        actionTaken: 'mcp.grant_revoked',
+        targetTable: 'mcp_grants',
+        targetId: grant.id,
+        after: { clientId: grant.clientId, reason: 'co_parent_departed' },
+      })),
+      ...revokedConnectors.map((connector) => ({
+        familyId,
+        actor: actorUserId,
+        actionTaken: 'integration_revoked',
+        targetTable: 'integrations',
+        targetId: connector.id,
+        after: { provider: connector.provider, reason: 'co_parent_departed' },
+      })),
       {
         familyId,
         actor: actorUserId,
         actionTaken: 'co_parent_departed',
         targetTable: 'family_members',
         targetId: actorUserId,
-        after: { role: 'co_parent', threadRetained: retained.length },
+        after: { role: 'co_parent', threadRetained: retainedThreads.length },
       },
     ]);
 
     return {
       outcome: 'departed',
       channelRevoked: revokedChannels.length,
+      mcpGrantsRevoked: revokedGrants.length,
+      connectorsRevoked: revokedConnectors.length,
+      teenGrantsRevoked,
       membershipRemoved: true,
       consentWithdrawn: withdrawals.length,
-      threadRetained: retained.length,
+      threadRetained: retainedThreads.length,
+      channelRecordRetained: retainedChannels.length,
+      inviteRecordRetained: retainedInvites.length,
+      identityRetained: true,
     };
   });
 }

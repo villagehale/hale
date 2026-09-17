@@ -242,7 +242,16 @@ export interface VerifiedMcpGrant {
   scopes: McpScope[];
 }
 
-/** Live DB verification makes revocation and expiry effective on the next call. */
+/**
+ * Live DB verification makes revocation and expiry effective on the next call.
+ *
+ * The membership INNER JOIN is the part no door has to remember (VIL-355): a grant is
+ * a read into a HOUSEHOLD, and it lived on its own 30-day clock, so any path that took
+ * somebody's seat away — a co-parent departing, a caregiver removed — had to also think
+ * of this table or the bearer token kept reading the children's data from a family the
+ * holder had left. Joining the seat makes every such removal fail this check closed on
+ * the very next call, which is the version of the rule that cannot be forgotten.
+ */
 export async function verifyMcpBearer(
   database: Database,
   token: string,
@@ -262,6 +271,13 @@ export async function verifyMcpBearer(
     .innerJoin(
       schema.mcpOauthClients,
       eq(schema.mcpOauthClients.clientId, schema.mcpGrants.clientId),
+    )
+    .innerJoin(
+      schema.familyMembers,
+      and(
+        eq(schema.familyMembers.familyId, schema.mcpGrants.familyId),
+        eq(schema.familyMembers.userId, schema.mcpGrants.userId),
+      ),
     )
     .where(
       and(

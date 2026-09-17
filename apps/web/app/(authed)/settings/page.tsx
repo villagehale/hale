@@ -16,7 +16,10 @@ import { ConnectedAssistants } from '~/components/hale/connected-assistants';
 import { ConnectionChannelsCard } from '~/components/hale/connection-channels-card';
 import { ConnectionSources } from '~/components/hale/connection-sources';
 import { ConsentRecordsList } from '~/components/hale/consent-records-list';
-import { DeleteAccountButton } from '~/components/hale/delete-account-button';
+import {
+  DeleteAccountButton,
+  type DeleteAccountRole,
+} from '~/components/hale/delete-account-button';
 import { ExportDataButton } from '~/components/hale/export-data-button';
 import { FamilyParent } from '~/components/hale/family-parent';
 import { FamilyPlan } from '~/components/hale/family-plan';
@@ -36,7 +39,7 @@ import { loadSmsChannel } from '~/lib/channels/sms-consent';
 import { listConsentRecordsForViewer } from '~/lib/consent-records';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
-import { currentFamilyId, currentUserId, loadViewerProfile } from '~/lib/family';
+import { currentFamilyId, currentUserId, listSeatsForUser, loadViewerProfile } from '~/lib/family';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
 import { PRIVACY_URL, TERMS_URL } from '~/lib/legal-links';
 import { listMcpConnectionsForUser } from '~/lib/mcp/oauth-store';
@@ -66,12 +69,62 @@ export default async function SettingsPage() {
       currentFamilyId(database),
       currentUserId(database),
     ]);
-  const [assistantConnections, consents] = await Promise.all([
+  const [assistantConnections, consents, seats] = await Promise.all([
     familyId && userId
       ? listMcpConnectionsForUser(database, familyId, userId)
       : Promise.resolve([]),
     userId ? listConsentRecordsForViewer(database, userId) : Promise.resolve([]),
+    userId ? listSeatsForUser(userId, database) : Promise.resolve([]),
   ]);
+  // The danger card asks for consent to an ACT, and which act it is depends on the seat
+  // (VIL-355): a co-parent's request is a DEPARTURE, not the family's erasure, so only
+  // that seat gets the leaving words. A named caregiver has no erasure of its own and is
+  // told so instead of being offered a button the route would refuse. An unresolved
+  // viewer keeps today's family wording — unchanged behaviour, not a new promise.
+  const viewerRole = seats.find((seat) => seat.familyId === familyId)?.role ?? null;
+  const viewerIsCoParent = viewerRole === 'co_parent';
+  const deleteRole: DeleteAccountRole = viewerIsCoParent
+    ? 'co_parent'
+    : viewerRole === null || viewerRole === 'primary_parent'
+      ? 'primary_parent'
+      : 'scoped';
+  // The card and the button say the SAME thing about the same act, because a heading
+  // that promises an erasure over a button that performs a departure is the defect this
+  // exists to close.
+  const dangerCard =
+    deleteRole === 'co_parent'
+      ? {
+          label: 'Leave this family',
+          body: (
+            <>
+              You can leave this family at any time. Hale stops texting you about them straight away
+              and disconnects everything you connected. The family’s own record — the children, the
+              history — belongs to the household and stays with it. To ask what Hale still holds for
+              you, email{' '}
+              <a className="link" href="mailto:privacy@villagehale.com">
+                privacy@villagehale.com
+              </a>
+              .
+            </>
+          ),
+        }
+      : deleteRole === 'scoped'
+        ? { label: 'Your data', body: null }
+        : {
+            label: 'Delete everything',
+            body: (
+              <>
+                This removes everything Hale holds about your family — your children, your history,
+                and every connected service. Deletion begins after a 7-day grace window; you’ll see
+                the exact date when you confirm. There’s no in-app undo: to stop it during those 7
+                days, reply to any Hale text or email{' '}
+                <a className="link" href="mailto:privacy@villagehale.com">
+                  privacy@villagehale.com
+                </a>
+                .
+              </>
+            ),
+          };
 
   const canSignOut = authConfigured();
 
@@ -273,22 +326,15 @@ export default async function SettingsPage() {
       </SettingsSection>
 
       {/* ── Danger ──────────────────────────────────────────────────────── */}
-      <section aria-label="Delete everything">
+      <section aria-label={dangerCard.label}>
         <SettingsCard>
           <div className="py-4">
-            <p className="eyebrow text-berry">Delete everything</p>
-            <p className="text-spruce leading-relaxed max-w-md mt-3">
-              This removes everything Hale holds about your family — your children, your history,
-              and every connected service. Deletion begins after a 7-day grace window; you’ll see
-              the exact date when you confirm. There’s no in-app undo: to stop it during those 7
-              days, reply to any Hale text or email{' '}
-              <a className="link" href="mailto:privacy@villagehale.com">
-                privacy@villagehale.com
-              </a>
-              .
-            </p>
+            <p className="eyebrow text-berry">{dangerCard.label}</p>
+            {dangerCard.body ? (
+              <p className="text-spruce leading-relaxed max-w-md mt-3">{dangerCard.body}</p>
+            ) : null}
             <div className="mt-4">
-              <DeleteAccountButton />
+              <DeleteAccountButton role={deleteRole} />
             </div>
           </div>
         </SettingsCard>

@@ -66,15 +66,20 @@ export async function scheduleFamilyDeletion(
   return { scheduledDeletionAt };
 }
 
+type FamilyRole = (typeof schema.familyMembers.$inferSelect)['role'];
+
 /**
- * What an erasure request turned out to mean. Two outcomes, never folded into one
- * (rule #11): a co-parent's request erases THEM, and the caller owes them a different
- * sentence from the one a scheduled family gets — there is no grace window to name,
- * because nothing of the household was scheduled.
+ * What an erasure request turned out to mean. Three outcomes, never folded into one
+ * another (rule #11): a co-parent's request erases THEM, and the caller owes them a
+ * different sentence from the one a scheduled family gets — there is no grace window
+ * to name, because nothing of the household was scheduled — while a seat with no
+ * erasure of its own is refused outright and carries the role it was refused for, so
+ * the route can say 403 rather than guess.
  */
 export type ErasureRequest =
   | { outcome: 'family_scheduled'; scheduledDeletionAt: Date }
-  | { outcome: 'co_parent_departed'; departure: CoParentDeparted };
+  | { outcome: 'co_parent_departed'; departure: CoParentDeparted }
+  | { outcome: 'not_permitted'; role: FamilyRole | null };
 
 /**
  * VIL-355 · the right-to-erasure door, which has two sides.
@@ -85,9 +90,17 @@ export type ErasureRequest =
  * answer to the right question: they asked to be erased, and Hale would have scheduled
  * the children's whole history, the other parent's included, for deletion.
  *
- * So the role decides, read from `family_members` rather than inferred from the session,
- * and a co-parent gets {@link departCoParent}. EVERY OTHER ROLE FALLS THROUGH UNCHANGED —
- * including a caregiver, whose own door is a separate question this does not answer.
+ * So the role decides, read from `family_members` rather than inferred from the session:
+ * the primary parent schedules the family, a co-parent gets {@link departCoParent}, and
+ * EVERYTHING ELSE IS REFUSED.
+ *
+ * The refusal is the second half of the fix, not an aside. `grandparent`, `nanny` and
+ * `babysitter` are scoped redaction levels, they sign in by claiming their number, and
+ * this door has no role gate above it — so a babysitter's "delete my account" used to
+ * stamp the children's entire history for deletion, with nothing telling the parent it
+ * had happened. A scoped seat's own leave door is a separate question; answering it
+ * with the household's erasure is the one answer that can never be right, so this
+ * fails closed and names the role it refused.
  */
 export async function requestErasure(
   database: Database,
@@ -106,7 +119,11 @@ export async function requestErasure(
       ),
     );
 
-  if (seat?.role === 'co_parent') {
+  if (!seat || (seat.role !== 'co_parent' && seat.role !== 'primary_parent')) {
+    return { outcome: 'not_permitted', role: seat?.role ?? null };
+  }
+
+  if (seat.role === 'co_parent') {
     const departure = await departCoParent(database, { familyId, actorUserId, now });
     // The seat was read and claimed in two statements, so a departure that lost the
     // race between them found nothing to remove. Nothing is erased and nothing is

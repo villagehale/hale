@@ -226,9 +226,15 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
     expect(result).toEqual({
       outcome: 'departed',
       channelRevoked: 1,
+      mcpGrantsRevoked: 0,
+      connectorsRevoked: 0,
+      teenGrantsRevoked: 0,
       membershipRemoved: true,
       consentWithdrawn: 1,
       threadRetained: 1,
+      channelRecordRetained: 1,
+      inviteRecordRetained: 1,
+      identityRetained: true,
     });
 
     // THE ACTOR'S OWN ROWS CHANGED — the positive control every identity assertion
@@ -378,9 +384,15 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
     expect(result).toEqual({
       outcome: 'departed',
       channelRevoked: 0,
+      mcpGrantsRevoked: 0,
+      connectorsRevoked: 0,
+      teenGrantsRevoked: 0,
       membershipRemoved: true,
       consentWithdrawn: 0,
       threadRetained: 1,
+      channelRecordRetained: 1,
+      inviteRecordRetained: 1,
+      identityRetained: true,
     });
     expect((await channelsOf(household.coParentUserId))[0]?.revokedAt).toEqual(STOPPED_AT);
     expect(await consentsOf(household.coParentUserId)).toHaveLength(2);
@@ -483,5 +495,219 @@ describe('departCoParent — scoped to the family that was asked', () => {
         ),
       );
     expect(inOtherHousehold).toEqual([{ granted: true }]);
+  });
+});
+
+/**
+ * The seat was never the only door into the household. An MCP grant lives 30 days and
+ * `verifyMcpBearer` never joined `family_members`; a connector row is swept by provider
+ * and status with no membership check; a teen-access grant is keyed on the reader, not
+ * on their seat. So a departure that removed only the seat left three live reads into
+ * the children's data, held by somebody Hale had just told it would stop texting them.
+ *
+ * Every assertion here is PAIRED with the primary parent's equivalent row, untouched —
+ * a revocation that took the whole family's access would pass a co-parent-only check.
+ */
+describe('departCoParent — every standing read into the household ends with the seat', () => {
+  async function grantMcp(household: Household, userId: string, tokenHash: string) {
+    await db.database
+      .insert(schema.mcpOauthClients)
+      .values({
+        clientId: `client-${tokenHash}`,
+        clientName: 'Example assistant',
+        redirectUris: ['https://assistant.example/callback'],
+      })
+      .onConflictDoNothing();
+    const [consent] = await db.database
+      .insert(schema.consentRecords)
+      .values({
+        userId,
+        familyId: household.familyId,
+        consentType: 'mcp_third_party_model',
+        granted: true,
+        policyVersion: POLICY_VERSION,
+        grantedAt: NOW,
+      })
+      .returning({ id: schema.consentRecords.id });
+    const [grant] = await db.database
+      .insert(schema.mcpGrants)
+      .values({
+        familyId: household.familyId,
+        userId,
+        clientId: `client-${tokenHash}`,
+        consentRecordId: consent?.id as string,
+        tokenHash,
+        resource: 'https://app.example/api/mcp',
+        scopes: ['week_plan.read'],
+        expiresAt: new Date(DEPARTED_AT.getTime() + 30 * 24 * 3_600_000),
+      })
+      .returning({ id: schema.mcpGrants.id });
+    return grant?.id as string;
+  }
+
+  async function connectGmail(household: Household, userId: string) {
+    const [row] = await db.database
+      .insert(schema.integrations)
+      .values({
+        familyId: household.familyId,
+        userId,
+        provider: 'gmail',
+        status: 'active',
+        oauthTokensEncrypted: encryptString('{"access_token":"tok"}'),
+      })
+      .returning({ id: schema.integrations.id });
+    return row?.id as string;
+  }
+
+  async function grantTeenRead(household: Household, userId: string, childName: string) {
+    const [child] = await db.database
+      .insert(schema.children)
+      .values({ familyId: household.familyId, name: childName, dateOfBirth: '2011-04-02' })
+      .returning({ id: schema.children.id });
+    const [grant] = await db.database
+      .insert(schema.teenAccessGrants)
+      .values({
+        familyId: household.familyId,
+        childId: child?.id as string,
+        grantedToUserId: userId,
+        scope: 'message_content',
+        reason: 'checking in after a rough week',
+        teenAssentAt: NOW,
+        startsAt: NOW,
+        expiresAt: new Date(DEPARTED_AT.getTime() + 3 * 24 * 3_600_000),
+      })
+      .returning({ id: schema.teenAccessGrants.id });
+    return grant?.id as string;
+  }
+
+  function mcpGrant(id: string) {
+    return db.database
+      .select({ revokedAt: schema.mcpGrants.revokedAt })
+      .from(schema.mcpGrants)
+      .where(eq(schema.mcpGrants.id, id));
+  }
+
+  function connector(id: string) {
+    return db.database
+      .select({
+        status: schema.integrations.status,
+        enc: schema.integrations.oauthTokensEncrypted,
+      })
+      .from(schema.integrations)
+      .where(eq(schema.integrations.id, id));
+  }
+
+  function teenGrant(id: string) {
+    return db.database
+      .select({ revokedAt: schema.teenAccessGrants.revokedAt })
+      .from(schema.teenAccessGrants)
+      .where(eq(schema.teenAccessGrants.id, id));
+  }
+
+  it('revokes the leaver’s MCP grant, connector and teen-access grant — and only theirs', async () => {
+    const household = await seedSeatedHousehold();
+    await seedHouseholdRecord(household);
+    const leaverMcp = await grantMcp(household, household.coParentUserId, 'hash-leaver');
+    const stayerMcp = await grantMcp(household, household.parentUserId, 'hash-stayer');
+    const leaverGmail = await connectGmail(household, household.coParentUserId);
+    const stayerGmail = await connectGmail(household, household.parentUserId);
+    const leaverTeen = await grantTeenRead(household, household.coParentUserId, 'Robin');
+    const stayerTeen = await grantTeenRead(household, household.parentUserId, 'Robin');
+
+    const result = await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.coParentUserId,
+      now: DEPARTED_AT,
+    });
+
+    expect(result).toMatchObject({
+      outcome: 'departed',
+      mcpGrantsRevoked: 1,
+      connectorsRevoked: 1,
+      teenGrantsRevoked: 1,
+    });
+    expect(await mcpGrant(leaverMcp)).toEqual([{ revokedAt: DEPARTED_AT }]);
+    expect(await connector(leaverGmail)).toEqual([{ status: 'revoked', enc: null }]);
+    expect(await teenGrant(leaverTeen)).toEqual([{ revokedAt: DEPARTED_AT }]);
+
+    // THE PARENT WHO STAYED KEEPS EVERYTHING — the positive control.
+    expect(await mcpGrant(stayerMcp)).toEqual([{ revokedAt: null }]);
+    expect((await connector(stayerGmail))[0]?.status).toBe('active');
+    expect((await connector(stayerGmail))[0]?.enc).not.toBeNull();
+    expect(await teenGrant(stayerTeen)).toEqual([{ revokedAt: null }]);
+  });
+
+  it('writes one audit row per revoked door, and the tally counts nothing twice', async () => {
+    const household = await seedSeatedHousehold();
+    await grantMcp(household, household.coParentUserId, 'hash-audited');
+    await connectGmail(household, household.coParentUserId);
+    await grantTeenRead(household, household.coParentUserId, 'Robin');
+    await db.database
+      .delete(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, household.familyId));
+
+    await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.coParentUserId,
+      now: DEPARTED_AT,
+    });
+
+    const rows = await auditRows(household.familyId);
+    expect(rows.map((r) => r.actionTaken).sort()).toEqual([
+      'channel_sms_revoked',
+      'co_parent_access_withdrawn',
+      'co_parent_departed',
+      'integration_revoked',
+      'mcp.grant_revoked',
+      'teen_content_access.revoked',
+    ]);
+    for (const row of rows) {
+      expect(row.actor).toBe(household.coParentUserId);
+    }
+  });
+
+  /** An already-revoked door is not revoked twice: the count is what THIS departure
+   * undid, and a second `revoked_at` would move the date a CASL or PIPEDA read is
+   * taken against. */
+  it('leaves an already-revoked grant alone and counts it as zero', async () => {
+    const household = await seedSeatedHousehold();
+    const REVOKED_EARLIER = new Date('2026-09-20T09:00:00.000Z');
+    const grantId = await grantMcp(household, household.coParentUserId, 'hash-already');
+    await db.database
+      .update(schema.mcpGrants)
+      .set({ revokedAt: REVOKED_EARLIER })
+      .where(eq(schema.mcpGrants.id, grantId));
+
+    const result = await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.coParentUserId,
+      now: DEPARTED_AT,
+    });
+
+    expect(result).toMatchObject({ outcome: 'departed', mcpGrantsRevoked: 0 });
+    expect(await mcpGrant(grantId)).toEqual([{ revokedAt: REVOKED_EARLIER }]);
+  });
+
+  /** The same person co-parents two households (the separated-parent case). Leaving one
+   * may not close the door they still legitimately hold on the other. */
+  it('leaves the same person’s grant in another household standing', async () => {
+    const one = await seedSeatedHousehold();
+    const two = await seedSeatedHousehold();
+    const here = await grantMcp(one, one.coParentUserId, 'hash-here');
+    await db.database.insert(schema.familyMembers).values({
+      familyId: two.familyId,
+      userId: one.coParentUserId,
+      role: 'co_parent',
+    });
+    const there = await grantMcp(two, one.coParentUserId, 'hash-there');
+
+    await departCoParent(db.database, {
+      familyId: one.familyId,
+      actorUserId: one.coParentUserId,
+      now: DEPARTED_AT,
+    });
+
+    expect(await mcpGrant(here)).toEqual([{ revokedAt: DEPARTED_AT }]);
+    expect(await mcpGrant(there)).toEqual([{ revokedAt: null }]);
   });
 });
