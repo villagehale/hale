@@ -110,6 +110,22 @@ export const HOT_QUEUE_EXPIRE_SECONDS = 900;
  * block the next tick. Each batch is fetched, processed, then the budget is
  * re-checked before fetching the next. */
 const BATCH_SIZE = 10;
+
+/**
+ * How many inbound turns one run works AT ONCE, and how many it fetches per batch.
+ *
+ * Ten parents texting inside the same few seconds land in one kicked run (the door kicks
+ * the inbound slice, and the first fetch takes the whole batch), and a run worked its
+ * batch one turn at a time — the tenth parent waited behind nine model turns, minutes
+ * on a demo floor. Turns from DIFFERENT families share nothing: the queue's singleton
+ * key already hands a run at most one job per family, so what is parallel here is only
+ * ever other households. Five, not the batch of ten, because every turn borrows from the
+ * one pool of ten database connections (packages/db/src/client.ts) and a burst that
+ * exhausts it answers 503 to the very kick that is trying to help. Fetching five at a
+ * time is the other half: the second kicked run finds the rest of the burst still on the
+ * queue and works it beside this one, instead of finding an empty queue and exiting.
+ */
+const INBOUND_TURN_CONCURRENCY = 5;
 const WALL_CLOCK_BUDGET_MS = 700_000;
 
 /**
@@ -467,24 +483,43 @@ async function drainQueue(
   deadlineMs: number,
   summary: DrainSummary,
   batchSize: number = BATCH_SIZE,
+  concurrency = 1,
 ): Promise<void> {
   while (deps.now() < deadlineMs) {
     const jobs = await deps.boss.fetch<unknown>(queue, { batchSize });
     if (jobs.length === 0) return;
 
-    for (const job of jobs) {
-      try {
-        const outcome = await process(deps, job);
-        await deps.boss.complete(queue, job.id);
-        if (outcome === 'processed') summary.processed += 1;
-        else summary.dropped += 1;
-      } catch (err) {
-        summary.failed += 1;
-        const failure = describeThrown(err);
-        deps.log.error({ queue, jobId: job.id, err: failure }, 'drain: handler threw — failing job');
-        await deps.boss.fail(queue, job.id, failure);
-      }
+    // Waves of `concurrency`, in fetch order. A job settles on its own — completed, or
+    // failed with its error — so one turn throwing never touches the others in its wave,
+    // and the deadline is re-checked between batches exactly as before.
+    for (let at = 0; at < jobs.length; at += concurrency) {
+      await Promise.all(
+        jobs.slice(at, at + concurrency).map((job) => settleJob(deps, queue, process, job, summary)),
+      );
     }
+  }
+}
+
+async function settleJob(
+  deps: DrainDeps,
+  queue: string,
+  process: (
+    deps: DrainDeps,
+    job: { id: string; data: unknown },
+  ) => Promise<'processed' | 'dropped'>,
+  job: { id: string; data: unknown },
+  summary: DrainSummary,
+): Promise<void> {
+  try {
+    const outcome = await process(deps, job);
+    await deps.boss.complete(queue, job.id);
+    if (outcome === 'processed') summary.processed += 1;
+    else summary.dropped += 1;
+  } catch (err) {
+    summary.failed += 1;
+    const failure = describeThrown(err);
+    deps.log.error({ queue, jobId: job.id, err: failure }, 'drain: handler threw — failing job');
+    await deps.boss.fail(queue, job.id, failure);
   }
 }
 
@@ -511,7 +546,12 @@ const DRAIN_PLAN = [
   // Each dead letter drains right behind its queue — an unread DLQ is a silent drop
   // with extra steps (rule #11). All are near-empty near-free reads on a healthy tick.
   { queue: CHANNEL_SEND_DLQ, process: processDeadSendJob },
-  { queue: CHANNEL_MESSAGE_RECEIVED_QUEUE, process: processChannelMessageJob },
+  {
+    queue: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+    process: processChannelMessageJob,
+    batchSize: INBOUND_TURN_CONCURRENCY,
+    concurrency: INBOUND_TURN_CONCURRENCY,
+  },
   { queue: CHANNEL_MESSAGE_RECEIVED_DLQ, process: processExpiredTurnJob },
   { queue: EVENTS_QUEUE, process: processIngestedJob },
   { queue: EVENTS_DLQ, process: processDeadJobFor(EVENTS_DLQ) },
@@ -538,6 +578,7 @@ const DRAIN_PLAN = [
   process: (deps: DrainDeps, job: { id: string; data: unknown }) => Promise<'processed' | 'dropped'>;
   budgetMs?: number;
   batchSize?: number;
+  concurrency?: number;
 }>;
 
 /** Every queue a run may be asked for. A name outside this set is a caller bug, and the
@@ -626,6 +667,7 @@ export async function drainHotQueues(
       stepDeadlineMs,
       summary,
       'batchSize' in step ? step.batchSize : undefined,
+      'concurrency' in step ? step.concurrency : undefined,
     );
   }
 
