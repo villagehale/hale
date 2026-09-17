@@ -425,7 +425,13 @@ export function firstInboundWords(body: string): string {
   return trimmed.replace(SOURCE_TAG_SUFFIX, '').trim();
 }
 
-const BARE_HELLO = /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)(?:[,!]?\s+hale)?[.!,\s]*$/i;
+// The /text page prefills "Hi Hale <wave> ready to get started" (apps/site/lib/text-entry.ts,
+// pinned against this classifier by copy.test.ts): a wave emoji (U+1F44B) and a
+// getting-started tail are still a hello, in either apostrophe iOS may send (U+2019 or
+// ASCII). Written as escapes so this file stays inside the GSM-7 gate that guards the
+// outbound copy around it. Anything with other words is a message and goes to the answerer.
+const BARE_HELLO =
+  /^(hi|hey|hello|yo|howdy|bonjour|salut|allo)(?:[,!]?\s+hale)?(?:\s*\u{1F44B})?(?:[,!]?\s*(?:ready to get started|let[\u2019']?s get started|i[\u2019']?d like to get started|on commence))?[.!,\s]*$/iu;
 
 /**
  * True when the first inbound is just a hello — with or without Hale's own name,

@@ -1,4 +1,5 @@
 import type { RegistrationGuide } from './types';
+import { INTAKE_PREFILL } from '../text-entry';
 
 const TORONTO_REC =
   'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/';
@@ -509,7 +510,7 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
   ctaSub:
     "Hale watches kids' swim for parents. Adult lessons stay on the city page. Text your kids' names, ages, and postal and I'll watch Sept 9. Founding families free.",
   footerNote: FOOTER,
-  smsPrefill: 'Hi Hale',
+  smsPrefill: INTAKE_PREFILL,
 };
 
 export const YMCA_GTA: RegistrationGuide = {
