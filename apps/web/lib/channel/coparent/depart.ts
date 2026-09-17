@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
+import { appendMcpGrantWithdrawals } from '~/lib/mcp/oauth-store';
 import { revokeTeenAccessGrantsForDepartingMember } from '~/lib/teen-access';
 
 /**
@@ -208,7 +209,20 @@ export async function departCoParent(
           isNull(schema.mcpGrants.revokedAt),
         ),
       )
-      .returning({ id: schema.mcpGrants.id, clientId: schema.mcpGrants.clientId });
+      .returning({
+        id: schema.mcpGrants.id,
+        clientId: schema.mcpGrants.clientId,
+        scopes: schema.mcpGrants.scopes,
+      });
+    // Closing the grant ends the access; the ledger is what a consent list and a PIPEDA
+    // access read answer from, and it is the MCP door's own half of the revocation
+    // rather than this one's invention — so it is written by the module that owns it.
+    await appendMcpGrantWithdrawals(tx, {
+      userId: actorUserId,
+      familyId,
+      grants: revokedGrants,
+      grantedAt: now,
+    });
 
     const revokedConnectors = await tx
       .update(schema.integrations)
@@ -222,12 +236,13 @@ export async function departCoParent(
       )
       .returning({ id: schema.integrations.id, provider: schema.integrations.provider });
 
-    // Asked for by name rather than done here, and that is structural: `lib/channel`
-    // is forbidden from naming the teen-grant machinery at all
-    // (`teen-access-outbound.test.ts`), because an outbound tree that can reach the
-    // grant reader can leak unlocked teen content. The module that owns the table
-    // closes the windows — enforcement row, consent ledger and audit row together —
-    // inside this transaction.
+    // Asked for by name rather than done here, and that is structural: `lib/channel` is
+    // banned from the teen-grant machinery (`teen-access-outbound.test.ts`), because an
+    // outbound tree that can reach the grant reader can leak unlocked teen content. The
+    // module that owns the table closes the windows — enforcement row, consent ledger
+    // and audit row together — inside this transaction. This ONE write-only symbol is
+    // exempted there by name, for this file only; anything else teen-shaped in here
+    // still fails the check.
     const teenGrantsRevoked = await revokeTeenAccessGrantsForDepartingMember(tx, {
       familyId,
       userId: actorUserId,
@@ -272,14 +287,20 @@ export async function departCoParent(
 
     // One row per EFFECT (rule #6), and nothing that identifies the person who left:
     // not their number, not the name the inviting parent gave them. An operator reading
-    // this answers "what was undone", which is all the trail is for. The verbs are the
-    // ones each door already writes when it is closed by hand, so a departure reads the
-    // same as a disconnection in the trail rather than inventing a private vocabulary.
+    // this answers "what was undone", which is all the trail is for.
+    //
+    // The verbs are the departure's OWN, not the ones each door writes when a parent
+    // closes it by hand. Reusing those looked like thrift and was a false claim about
+    // the reader: this family's trail is read by the parent who STAYED, the actor has no
+    // seat any more so it renders under Hale's byline (buildActorResolver), and the
+    // house sentences are first person — "you turned off texting with Hale" about
+    // somebody else's number. The reason lives in `after` and nothing renders `after`,
+    // so it has to be in the verb.
     await tx.insert(schema.auditLog).values([
       ...revokedChannels.map((channel) => ({
         familyId,
         actor: actorUserId,
-        actionTaken: 'channel_sms_revoked',
+        actionTaken: 'co_parent_channel_sms_revoked',
         targetTable: 'parent_channels',
         targetId: channel.id,
         after: { revoked: true, reason: 'co_parent_departed' },
@@ -295,7 +316,7 @@ export async function departCoParent(
       ...revokedGrants.map((grant) => ({
         familyId,
         actor: actorUserId,
-        actionTaken: 'mcp.grant_revoked',
+        actionTaken: 'co_parent_mcp_grant_revoked',
         targetTable: 'mcp_grants',
         targetId: grant.id,
         after: { clientId: grant.clientId, reason: 'co_parent_departed' },
@@ -303,7 +324,7 @@ export async function departCoParent(
       ...revokedConnectors.map((connector) => ({
         familyId,
         actor: actorUserId,
-        actionTaken: 'integration_revoked',
+        actionTaken: 'co_parent_integration_revoked',
         targetTable: 'integrations',
         targetId: connector.id,
         after: { provider: connector.provider, reason: 'co_parent_departed' },

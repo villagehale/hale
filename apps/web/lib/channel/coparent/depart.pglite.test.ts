@@ -2,10 +2,12 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { CoParentInvite } from '~/lib/channel/caregiver/invites';
+import { SMS_CONSENT_SCOPE, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { POLICY_VERSION } from '~/lib/consent';
+import { revokeMcpGrant } from '~/lib/mcp/oauth-store';
 import { createTestDb, type TestDb } from '~/lib/testing/pglite';
 import { CO_PARENT_INVITE_CONSENT_SCOPE, acceptCoParentInvite } from './accept';
 import { departCoParent } from './depart';
@@ -293,8 +295,8 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
 
     const rows = await auditRows(household.familyId);
     expect(rows.map((r) => r.actionTaken).sort()).toEqual([
-      'channel_sms_revoked',
       'co_parent_access_withdrawn',
+      'co_parent_channel_sms_revoked',
       'co_parent_departed',
     ]);
     for (const row of rows) {
@@ -353,27 +355,29 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
     expect(await auditRows(household.familyId)).toEqual(auditAfterFirst);
   });
 
-  /** They texted STOP weeks ago, and only now ask to be erased. Both effects are already
-   * done, and the ledger must say so ONCE: a second `granted=false` row would make the
-   * withdrawal look like it happened on the day they left, and re-stamping `revoked_at`
-   * would move the date CASL is read against. The seat still goes. */
-  it('does not re-revoke or re-withdraw what a STOP already closed, and still removes the seat', async () => {
+  /**
+   * They texted STOP weeks ago, and only now ask to be erased. Seeded through the call
+   * STOP actually makes (`revokeSmsChannel`, from the intake machine) rather than a
+   * hand-written row, because the two are NOT the same ledger entry and the difference
+   * is the whole test: STOP withdraws `sms_service_messages:<version>`, while the seat
+   * this person holds was granted under the co-parent invite's own scope. Per-scope
+   * latest-row-wins, so the invite grant is still standing on the day they leave and
+   * departure withdraws it — one row, under its own scope, dated the departure.
+   *
+   * What is NOT repeated: the channel keeps the date STOP revoked it at (re-stamping
+   * would move the instant CASL is read against), and the STOP's own withdrawal is not
+   * written twice.
+   */
+  it('withdraws the invite-scope grant a STOP never touched, and re-revokes nothing', async () => {
     const household = await seedSeatedHousehold();
     await seedHouseholdRecord(household);
     const STOPPED_AT = new Date('2026-09-20T09:00:00.000Z');
-    await db.database
-      .update(schema.parentChannels)
-      .set({ revokedAt: STOPPED_AT })
-      .where(eq(schema.parentChannels.userId, household.coParentUserId));
-    await db.database.insert(schema.consentRecords).values({
-      userId: household.coParentUserId,
-      familyId: household.familyId,
-      consentType: 'sms_service_messages',
-      granted: false,
-      consentScope: CO_PARENT_INVITE_CONSENT_SCOPE,
-      policyVersion: POLICY_VERSION,
-      grantedAt: STOPPED_AT,
-    });
+    const stopped = await revokeSmsChannel(
+      db.database,
+      { userId: household.coParentUserId, familyId: household.familyId },
+      { now: STOPPED_AT },
+    );
+    expect(stopped).toEqual({ status: 'revoked' });
 
     const result = await departCoParent(db.database, {
       familyId: household.familyId,
@@ -388,14 +392,33 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
       connectorsRevoked: 0,
       teenGrantsRevoked: 0,
       membershipRemoved: true,
-      consentWithdrawn: 0,
+      consentWithdrawn: 1,
       threadRetained: 1,
       channelRecordRetained: 1,
       inviteRecordRetained: 1,
       identityRetained: true,
     });
     expect((await channelsOf(household.coParentUserId))[0]?.revokedAt).toEqual(STOPPED_AT);
-    expect(await consentsOf(household.coParentUserId)).toHaveLength(2);
+    // Asserted as a SET of three distinct rows rather than in order: `revokeSmsChannel`
+    // files its withdrawal on the database's clock, so the ordering between it and the
+    // dated fixtures depends on the day the suite is run.
+    const ledger = await consentsOf(household.coParentUserId);
+    expect(ledger).toHaveLength(3);
+    expect(ledger).toEqual(
+      expect.arrayContaining([
+        {
+          consentType: 'sms_service_messages',
+          consentScope: CO_PARENT_INVITE_CONSENT_SCOPE,
+          granted: true,
+        },
+        { consentType: 'sms_service_messages', consentScope: SMS_CONSENT_SCOPE, granted: false },
+        {
+          consentType: 'sms_service_messages',
+          consentScope: CO_PARENT_INVITE_CONSENT_SCOPE,
+          granted: false,
+        },
+      ]),
+    );
     expect(await members(household.familyId)).toEqual([
       { userId: household.parentUserId, role: 'primary_parent' },
     ]);
@@ -509,11 +532,16 @@ describe('departCoParent — scoped to the family that was asked', () => {
  * a revocation that took the whole family's access would pass a co-parent-only check.
  */
 describe('departCoParent — every standing read into the household ends with the seat', () => {
-  async function grantMcp(household: Household, userId: string, tokenHash: string) {
+  async function grantMcp(
+    household: Household,
+    userId: string,
+    tokenHash: string,
+    clientId = `client-${tokenHash}`,
+  ) {
     await db.database
       .insert(schema.mcpOauthClients)
       .values({
-        clientId: `client-${tokenHash}`,
+        clientId,
         clientName: 'Example assistant',
         redirectUris: ['https://assistant.example/callback'],
       })
@@ -534,7 +562,7 @@ describe('departCoParent — every standing read into the household ends with th
       .values({
         familyId: household.familyId,
         userId,
-        clientId: `client-${tokenHash}`,
+        clientId,
         consentRecordId: consent?.id as string,
         tokenHash,
         resource: 'https://app.example/api/mcp',
@@ -654,11 +682,11 @@ describe('departCoParent — every standing read into the household ends with th
 
     const rows = await auditRows(household.familyId);
     expect(rows.map((r) => r.actionTaken).sort()).toEqual([
-      'channel_sms_revoked',
       'co_parent_access_withdrawn',
+      'co_parent_channel_sms_revoked',
       'co_parent_departed',
-      'integration_revoked',
-      'mcp.grant_revoked',
+      'co_parent_integration_revoked',
+      'co_parent_mcp_grant_revoked',
       'teen_content_access.revoked',
     ]);
     for (const row of rows) {
@@ -688,6 +716,56 @@ describe('departCoParent — every standing read into the household ends with th
     expect(await mcpGrant(grantId)).toEqual([{ revokedAt: REVOKED_EARLIER }]);
   });
 
+  /**
+   * The house's `revokeMcpGrant` closes a connected assistant in THREE writes: the grant
+   * row, the audit row, and a `mcp_third_party_model` granted=false row in the
+   * append-only consent ledger. A departure that stamped only the first two left the
+   * departed parent's third-party-model consent reading as GRANTED — under the ledger's
+   * latest-row-wins convention that is what a consent-records list and a PIPEDA access
+   * read would both say — while the grant behind it was closed. No access leak; an
+   * unfaithful ledger, which is its own obligation (rule #1).
+   *
+   * Asserted against the row the HOUSE door writes for an equally-shaped grant rather
+   * than against a copied scope string, so the two cannot drift apart quietly.
+   */
+  it('appends the same consent withdrawal the house’s revoke door appends, per grant', async () => {
+    const household = await seedSeatedHousehold();
+    const SHARED_CLIENT = 'client-shared-assistant';
+    const stayerGrant = await grantMcp(
+      household,
+      household.parentUserId,
+      'hash-house-door',
+      SHARED_CLIENT,
+    );
+    await grantMcp(household, household.coParentUserId, 'hash-departure', SHARED_CLIENT);
+
+    await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.coParentUserId,
+      now: DEPARTED_AT,
+    });
+    const houseRevoke = await revokeMcpGrant(
+      db.database,
+      { grantId: stayerGrant, familyId: household.familyId, userId: household.parentUserId },
+      DEPARTED_AT,
+    );
+
+    expect(houseRevoke).toEqual({ status: 'revoked' });
+    const houseWithdrawal = (await consentsOf(household.parentUserId)).filter(
+      (row) => row.consentType === 'mcp_third_party_model' && row.granted === false,
+    );
+    // The positive control: the comparison below is worthless if the house door wrote
+    // nothing either.
+    expect(houseWithdrawal).toHaveLength(1);
+    expect(houseWithdrawal[0]?.consentScope).toContain(SHARED_CLIENT);
+
+    expect(
+      (await consentsOf(household.coParentUserId)).filter(
+        (row) => row.consentType === 'mcp_third_party_model' && row.granted === false,
+      ),
+    ).toEqual(houseWithdrawal);
+  });
+
   /** The same person co-parents two households (the separated-parent case). Leaving one
    * may not close the door they still legitimately hold on the other. */
   it('leaves the same person’s grant in another household standing', async () => {
@@ -709,5 +787,51 @@ describe('departCoParent — every standing read into the household ends with th
 
     expect(await mcpGrant(here)).toEqual([{ revokedAt: DEPARTED_AT }]);
     expect(await mcpGrant(there)).toEqual([{ revokedAt: null }]);
+  });
+
+  /**
+   * ALL OF IT, OR NONE OF IT — and nothing above proves that. Every other test reads
+   * the state after a call that SUCCEEDED, which looks identical whether the six writes
+   * committed together or one at a time. So the last write is forced to fail, and the
+   * other five are re-read.
+   *
+   * The mutation this exists to kill: `database.transaction(...)` replaced by a plain
+   * async function over the same handle. Under it the caller is told the departure
+   * failed while the seat is gone, the channel is revoked, the grants are closed and the
+   * ledger has a withdrawal in it — a co-parent removed from a household that still has
+   * no record of removing them, and no way to tell which half happened.
+   */
+  it('commits nothing when the final audit write fails — the departure is one transaction', async () => {
+    const household = await seedSeatedHousehold();
+    await seedHouseholdRecord(household);
+    const grantId = await grantMcp(household, household.coParentUserId, 'hash-atomic');
+    const consentsBefore = await consentsOf(household.coParentUserId);
+
+    await db.exec(`
+      create or replace function refuse_departure_audit() returns trigger as $$
+      begin raise exception 'audit write refused'; end;
+      $$ language plpgsql;
+      create trigger refuse_departure_audit_trg before insert on audit_log
+        for each row when (new.action_taken = 'co_parent_departed')
+        execute function refuse_departure_audit();
+    `);
+    try {
+      await expect(
+        departCoParent(db.database, {
+          familyId: household.familyId,
+          actorUserId: household.coParentUserId,
+          now: DEPARTED_AT,
+        }),
+      ).rejects.toThrow(/audit write refused/);
+
+      expect(await members(household.familyId)).toEqual(
+        expect.arrayContaining([{ userId: household.coParentUserId, role: 'co_parent' }]),
+      );
+      expect((await channelsOf(household.coParentUserId))[0]?.revokedAt).toBeNull();
+      expect(await mcpGrant(grantId)).toEqual([{ revokedAt: null }]);
+      expect(await consentsOf(household.coParentUserId)).toEqual(consentsBefore);
+    } finally {
+      await db.exec('drop trigger if exists refuse_departure_audit_trg on audit_log');
+    }
   });
 });

@@ -218,6 +218,16 @@ export const AUDIT_VERBS = [
   'co_parent_sms_outbound',
   'co_parent_access_withdrawn',
   'co_parent_departed',
+  // The three doors a departure closes on its way out. They have house verbs of their
+  // own (`channel_sms_revoked`, `mcp.grant_revoked`, `integration_revoked`) whose
+  // sentences are written to the person who did it — and the person who did it has no
+  // seat any more, so the trail attributes them to Hale and reads them at the parent
+  // who stayed. These say the same facts in the third person instead.
+  'co_parent_channel_sms_revoked',
+  'co_parent_mcp_grant_revoked',
+  'co_parent_integration_revoked',
+  // A seat that has no erasure of its own asked for one anyway.
+  'erasure_refused',
   // ── the executor's own writes (internal-writes.ts) ──────────────────────
   'action.routine_pinned',
   'action.routine_pinned.skipped_duplicate',
@@ -687,6 +697,30 @@ const VERBS: Record<AuditVerb, Verb> = {
   co_parent_departed: {
     sentence: 'a co-parent left your family — your family’s record was kept',
     family: 'done',
+  },
+  // Third person, and each names LEAVING as the reason. The house verbs for these three
+  // doors say 'you turned off texting with Hale' and 'you disconnected an outside
+  // assistant' — true of a parent closing their own door, and a false claim about the
+  // reader once the trail is showing them a departed co-parent's, under Hale's byline
+  // (buildActorResolver resolves a seatless actor to Hale).
+  co_parent_channel_sms_revoked: {
+    sentence: 'a co-parent’s texting with Hale ended when they left this family',
+    family: 'done',
+  },
+  co_parent_mcp_grant_revoked: {
+    sentence: 'a co-parent’s outside assistant was disconnected when they left this family',
+    family: 'done',
+  },
+  co_parent_integration_revoked: {
+    sentence: 'a co-parent’s connected account was disconnected when they left this family',
+    family: 'done',
+  },
+  // Third person for the same reason as the three above: a scoped caregiver reads as
+  // 'co-parent' on this surface, so a first-person sentence would tell the parent that
+  // THEY asked. 'note' — nothing was done, which is the point of the row.
+  erasure_refused: {
+    sentence: 'someone asked Hale to delete this family and was told no',
+    family: 'note',
   },
   // ── what the executor actually did ──────────────────────────────────────
   'action.routine_pinned': { sentence: 'pinned an activity to your week', family: 'done' },

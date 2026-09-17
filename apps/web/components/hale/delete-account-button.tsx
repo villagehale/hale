@@ -8,8 +8,10 @@ type State = 'idle' | 'confirming' | 'pending' | 'scheduled' | 'departed' | 'amb
  * The seat the viewer holds, which decides WHAT this button asks them to consent to.
  * `scoped` is every named caregiver role: they have no erasure of their own, the route
  * answers them 403, and offering the button anyway would be an offer Hale cannot keep.
+ * `ambiguous` is more than one seat — the route 409s on it, so there is no act to ask
+ * about and the question goes back to the person before they click rather than after.
  */
-export type DeleteAccountRole = 'primary_parent' | 'co_parent' | 'scoped';
+export type DeleteAccountRole = 'primary_parent' | 'co_parent' | 'scoped' | 'ambiguous';
 
 /**
  * Requests erasure (PIPEDA/Law 25 right-to-erasure). Confirm-gated: the first click
@@ -62,6 +64,23 @@ export function DeleteAccountButton({ role }: { role: DeleteAccountRole }) {
     }
   }
 
+  // Two households, one click, two different irreversible acts — so nothing happens
+  // until a person says which one they meant. Rendered from the SEAT COUNT the page
+  // read as well as from the route's own 409: a role-specific promise over a seat the
+  // route will refuse to choose is the ask being wrong at the moment it is made.
+  if (role === 'ambiguous' || state === 'ambiguous') {
+    return (
+      <p className="meta text-slate-green" aria-live="polite">
+        you’re part of more than one family, so this isn’t a choice Hale can make for you — nothing
+        has been changed. email{' '}
+        <a className="link" href="mailto:privacy@villagehale.com">
+          privacy@villagehale.com
+        </a>{' '}
+        and say which one you mean.
+      </p>
+    );
+  }
+
   // A scoped seat is not an owner: the household's record is not theirs to erase, and
   // the door that would refuse them is better not shown than shown and refused.
   if (role === 'scoped') {
@@ -82,20 +101,6 @@ export function DeleteAccountButton({ role }: { role: DeleteAccountRole }) {
       <p className="meta text-slate-green" aria-live="polite">
         you’ve left this family. hale won’t text you about them again, and the family’s own record
         stays with them.
-      </p>
-    );
-  }
-
-  // Two households, one click, two different irreversible acts — so nothing happens
-  // until a person says which one they meant.
-  if (state === 'ambiguous') {
-    return (
-      <p className="meta text-slate-green" aria-live="polite">
-        you’re part of more than one family, so nothing was changed. email{' '}
-        <a className="link" href="mailto:privacy@villagehale.com">
-          privacy@villagehale.com
-        </a>{' '}
-        and say which one you mean.
       </p>
     );
   }

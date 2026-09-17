@@ -81,13 +81,23 @@ export default async function SettingsPage() {
   // that seat gets the leaving words. A named caregiver has no erasure of its own and is
   // told so instead of being offered a button the route would refuse. An unresolved
   // viewer keeps today's family wording — unchanged behaviour, not a new promise.
+  //
+  // MORE THAN ONE SEAT IS ITS OWN ANSWER, and it comes first. `familyId` is resolved by
+  // a `limit(1)` with no ORDER BY, so a separated parent's role here is whichever
+  // household the heap handed back — while the route enumerates the seats and 409s
+  // rather than choosing. Asking them in the household's own words and only then
+  // admitting Hale cannot tell which household they meant is the promise being made at
+  // the wrong moment, so the question is put before the click instead of after it.
   const viewerRole = seats.find((seat) => seat.familyId === familyId)?.role ?? null;
-  const viewerIsCoParent = viewerRole === 'co_parent';
-  const deleteRole: DeleteAccountRole = viewerIsCoParent
-    ? 'co_parent'
-    : viewerRole === null || viewerRole === 'primary_parent'
-      ? 'primary_parent'
-      : 'scoped';
+  const viewerIsCoParent = seats.length === 1 && viewerRole === 'co_parent';
+  const deleteRole: DeleteAccountRole =
+    seats.length > 1
+      ? 'ambiguous'
+      : viewerIsCoParent
+        ? 'co_parent'
+        : viewerRole === null || viewerRole === 'primary_parent'
+          ? 'primary_parent'
+          : 'scoped';
   // The card and the button say the SAME thing about the same act, because a heading
   // that promises an erasure over a button that performs a departure is the defect this
   // exists to close.
@@ -108,7 +118,7 @@ export default async function SettingsPage() {
             </>
           ),
         }
-      : deleteRole === 'scoped'
+      : deleteRole === 'scoped' || deleteRole === 'ambiguous'
         ? { label: 'Your data', body: null }
         : {
             label: 'Delete everything',

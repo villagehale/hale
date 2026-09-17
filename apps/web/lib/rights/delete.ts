@@ -120,6 +120,18 @@ export async function requestErasure(
     );
 
   if (!seat || (seat.role !== 'co_parent' && seat.role !== 'primary_parent')) {
+    // The refusal is recorded, not just returned. Rule #6 speaks of actions and a
+    // refusal is not one — but "nobody asked" and "somebody asked and was told no" are
+    // different facts about a household, and only one of them was ever findable. The
+    // role is the whole payload: no number, no name, nothing from the request.
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: actorUserId,
+      actionTaken: 'erasure_refused',
+      targetTable: 'family_members',
+      targetId: actorUserId,
+      after: { role: seat?.role ?? null },
+    });
     return { outcome: 'not_permitted', role: seat?.role ?? null };
   }
 

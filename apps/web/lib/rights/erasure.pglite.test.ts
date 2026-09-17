@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createTestDb, type TestDb } from '~/lib/testing/pglite';
 import { DELETION_GRACE_MS, requestErasure } from './delete';
@@ -66,6 +66,23 @@ function roles(familyId: string) {
     .select({ role: schema.familyMembers.role })
     .from(schema.familyMembers)
     .where(eq(schema.familyMembers.familyId, familyId));
+}
+
+function refusals(familyId: string) {
+  return db.database
+    .select({
+      actor: schema.auditLog.actor,
+      targetTable: schema.auditLog.targetTable,
+      targetId: schema.auditLog.targetId,
+      after: schema.auditLog.after,
+    })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, 'erasure_refused'),
+      ),
+    );
 }
 
 describe('requestErasure — one door, two answers', () => {
@@ -166,14 +183,61 @@ describe('requestErasure — a scoped seat cannot erase the household', () => {
       .insert(schema.users)
       .values({ externalAuthId: `google_stranger_${households}` })
       .returning({ id: schema.users.id });
+    const strangerUserId = stranger?.id as string;
 
     const result = await requestErasure(db.database, {
       familyId: family.familyId,
-      actorUserId: stranger?.id as string,
+      actorUserId: strangerUserId,
       now: NOW,
     });
 
     expect(result).toEqual({ outcome: 'not_permitted', role: null });
     expect(await scheduledDeletionAt(family.familyId)).toEqual([{ at: null }]);
+    // A seatless caller is the other half of the branch, and the row says so rather than
+    // guessing at a role it never found.
+    expect(await refusals(family.familyId)).toEqual([
+      {
+        actor: strangerUserId,
+        targetTable: 'family_members',
+        targetId: strangerUserId,
+        after: { role: null },
+      },
+    ]);
+  });
+
+  /**
+   * A refused erasure leaves no other trace. Rule #6 is about actions, and refusing is
+   * not one, so this is not a violation — but a caregiver asking for the household to be
+   * deleted is exactly the event an operator goes looking for later, and "nothing
+   * happened" and "somebody tried" are not the same record. The row carries the ROLE it
+   * refused and nothing else: no number, no name, no request body.
+   */
+  it('records the refusal, actored by whoever asked, with the role and no more', async () => {
+    const family = await seedTwoParentFamily();
+    const [caregiver] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:caregiver_audited_${households}`, name: 'Rosa' })
+      .returning({ id: schema.users.id });
+    const caregiverUserId = caregiver?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: family.familyId, userId: caregiverUserId, role: 'grandparent' });
+
+    await requestErasure(db.database, {
+      familyId: family.familyId,
+      actorUserId: caregiverUserId,
+      now: NOW,
+    });
+
+    const rows = await refusals(family.familyId);
+    expect(rows).toEqual([
+      {
+        actor: caregiverUserId,
+        targetTable: 'family_members',
+        targetId: caregiverUserId,
+        after: { role: 'grandparent' },
+      },
+    ]);
+    expect(JSON.stringify(rows[0]?.after ?? {})).not.toContain('Rosa');
   });
 });
