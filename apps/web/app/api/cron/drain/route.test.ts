@@ -18,6 +18,13 @@ vi.mock('~/lib/cron/drain', async (importActual) => ({
   runDrainCron: (...args: unknown[]) => runDrainCronMock(...args),
 }));
 vi.mock('~/lib/telemetry/langfuse', () => ({ flushTelemetry: async () => {} }));
+const afterCallbacks: Array<() => Promise<void> | void> = [];
+vi.mock('next/server', async (importActual) => ({
+  ...(await importActual<typeof import('next/server')>()),
+  after: (fn: () => Promise<void> | void) => {
+    afterCallbacks.push(fn);
+  },
+}));
 
 const SECRET = 'test-cron-secret';
 
@@ -29,6 +36,7 @@ describe('GET /api/cron/drain', () => {
   beforeEach(() => {
     process.env.CRON_SECRET = SECRET;
     runDrainCronMock.mockReset();
+    afterCallbacks.length = 0;
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -54,6 +62,36 @@ describe('GET /api/cron/drain', () => {
     runDrainCronMock.mockRejectedValue(new Error('orchestrator blew up'));
 
     await expect(GET(request())).rejects.toThrow('orchestrator blew up');
+  });
+
+  it('answers a KICKED run 202 before working, and does the work after the response', async () => {
+    const { GET } = await import('./route');
+    let settled = false;
+    runDrainCronMock.mockImplementation(async () => {
+      settled = true;
+      return { processed: 1, failed: 0, dropped: 0 };
+    });
+    const response = await GET(request('https://app.example.com/api/cron/drain?queues=channel.message.received'));
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ ok: true, kicked: true, queues: ['channel.message.received'] });
+    // Nothing ran while the kicker was waiting.
+    expect(settled).toBe(false);
+    expect(afterCallbacks).toHaveLength(1);
+    await afterCallbacks[0]?.();
+    expect(runDrainCronMock).toHaveBeenCalledWith({ queues: ['channel.message.received'] });
+    expect(settled).toBe(true);
+  });
+
+  it('logs a kicked run that fails instead of throwing after the 202', async () => {
+    const { GET } = await import('./route');
+    runDrainCronMock.mockRejectedValue(new Error('orchestrator blew up'));
+    const response = await GET(request('https://app.example.com/api/cron/drain?queues=channel.message.received'));
+    expect(response.status).toBe(202);
+    await expect(afterCallbacks[0]?.()).resolves.toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith(
+      expect.objectContaining({ dbUnavailable: false }),
+      'cron/drain kicked run failed',
+    );
   });
 
   it('answers the summary on a clean run', async () => {

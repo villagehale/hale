@@ -112,20 +112,19 @@ export const HOT_QUEUE_EXPIRE_SECONDS = 900;
 const BATCH_SIZE = 10;
 
 /**
- * How many inbound turns one run works AT ONCE, and how many it fetches per batch.
+ * How many inbound turns a run takes per fetch: ONE.
  *
- * Ten parents texting inside the same few seconds land in one kicked run (the door kicks
- * the inbound slice, and the first fetch takes the whole batch), and a run worked its
- * batch one turn at a time — the tenth parent waited behind nine model turns, minutes
- * on a demo floor. Turns from DIFFERENT families share nothing: the queue's singleton
- * key already hands a run at most one job per family, so what is parallel here is only
- * ever other households. Five, not the batch of ten, because every turn borrows from the
- * one pool of ten database connections (packages/db/src/client.ts) and a burst that
- * exhausts it answers 503 to the very kick that is trying to help. Fetching five at a
- * time is the other half: the second kicked run finds the rest of the burst still on the
- * queue and works it beside this one, instead of finding an empty queue and exiting.
+ * A kicked run lives only as long as the kick that started it. The door's kick aborts at
+ * KICK_TIMEOUT_MS and the platform cancels the invocation with it (observed 2026-09-17:
+ * two kicked runs that had taken five turns each died mid-batch, their unfinished turns
+ * sat `active` until the 15-minute expiry, and the drain request logged status 0). The
+ * app already defers a single turn that outgrows that window (`sms_turn_deferred`); a
+ * run holding more than one turn has no such defence. So a run takes one turn per fetch,
+ * and a burst of ten first texts is shared across the ten kicks the doors fire — each
+ * kicked run works one turn, then fetches the next only if any is left. The scheduled
+ * cron run loops the same way and is never aborted, so it still drains a backlog.
  */
-const INBOUND_TURN_CONCURRENCY = 5;
+const INBOUND_TURN_BATCH = 1;
 const WALL_CLOCK_BUDGET_MS = 700_000;
 
 /**
@@ -483,20 +482,12 @@ async function drainQueue(
   deadlineMs: number,
   summary: DrainSummary,
   batchSize: number = BATCH_SIZE,
-  concurrency = 1,
 ): Promise<void> {
   while (deps.now() < deadlineMs) {
     const jobs = await deps.boss.fetch<unknown>(queue, { batchSize });
     if (jobs.length === 0) return;
 
-    // Waves of `concurrency`, in fetch order. A job settles on its own — completed, or
-    // failed with its error — so one turn throwing never touches the others in its wave,
-    // and the deadline is re-checked between batches exactly as before.
-    for (let at = 0; at < jobs.length; at += concurrency) {
-      await Promise.all(
-        jobs.slice(at, at + concurrency).map((job) => settleJob(deps, queue, process, job, summary)),
-      );
-    }
+    for (const job of jobs) await settleJob(deps, queue, process, job, summary);
   }
 }
 
@@ -549,8 +540,7 @@ const DRAIN_PLAN = [
   {
     queue: CHANNEL_MESSAGE_RECEIVED_QUEUE,
     process: processChannelMessageJob,
-    batchSize: INBOUND_TURN_CONCURRENCY,
-    concurrency: INBOUND_TURN_CONCURRENCY,
+    batchSize: INBOUND_TURN_BATCH,
   },
   { queue: CHANNEL_MESSAGE_RECEIVED_DLQ, process: processExpiredTurnJob },
   { queue: EVENTS_QUEUE, process: processIngestedJob },
@@ -578,7 +568,6 @@ const DRAIN_PLAN = [
   process: (deps: DrainDeps, job: { id: string; data: unknown }) => Promise<'processed' | 'dropped'>;
   budgetMs?: number;
   batchSize?: number;
-  concurrency?: number;
 }>;
 
 /** Every queue a run may be asked for. A name outside this set is a caller bug, and the
@@ -667,7 +656,6 @@ export async function drainHotQueues(
       stepDeadlineMs,
       summary,
       'batchSize' in step ? step.batchSize : undefined,
-      'concurrency' in step ? step.concurrency : undefined,
     );
   }
 
