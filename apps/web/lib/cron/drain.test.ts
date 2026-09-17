@@ -630,43 +630,30 @@ describe('channel.message.received', () => {
   });
 
   /**
-   * Ten parents texting inside the same few seconds land in ONE kicked run, and a run
-   * used to work its batch one turn at a time — the tenth parent waited behind nine
-   * model turns. Turns from DIFFERENT families share nothing (the singleton key already
-   * serialises one family's own turns), so a run may hold several open at once. The gate
-   * below only opens once every turn is in flight together; a serial drain never gets
-   * there, and the 200ms fallback lets it finish red instead of hanging.
+   * A kicked run lives only as long as the kick (60s), and the platform cancels it with
+   * the kick — so a run must never hold more than one inbound turn at a time. One per
+   * fetch, and the loop keeps fetching until the queue is empty, so a burst is shared
+   * across the kicks the doors fire rather than swallowed by the first run.
    */
-  it('works inbound turns from different families at once, and still fails only the job that threw', async () => {
-    const { boss, completed, failed } = makeFakeBoss({
+  it('takes inbound turns one per fetch, and keeps fetching until the queue is empty', async () => {
+    const { boss, completed } = makeFakeBoss({
       [INBOUND]: [
         { id: 'i1', data: { ...inbound('SM1'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1' } },
         { id: 'i2', data: { ...inbound('SM2'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2' } },
         { id: 'i3', data: { ...inbound('SM3'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3' } },
       ],
-    });
-    let inFlight = 0;
-    let peak = 0;
-    let release: () => void = () => undefined;
-    const allInFlight = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const channelMessage = vi.fn(async (payload: { provider_message_id: string }) => {
-      inFlight += 1;
-      peak = Math.max(peak, inFlight);
-      if (inFlight === 3) release();
-      await Promise.race([allInFlight, new Promise((r) => setTimeout(r, 200))]);
-      inFlight -= 1;
-      if (payload.provider_message_id === 'SM2') throw new Error('boom');
+      [CHANNEL]: [{ id: 'c1', data: validChannelSend() }],
     });
 
-    const summary = await drainHotQueues(makeDeps(boss, { channelMessage }));
+    const summary = await drainHotQueues(makeDeps(boss));
 
-    expect(peak).toBe(3);
-    expect([...completed(INBOUND)].sort()).toEqual(['i1', 'i3']);
-    expect(failed(INBOUND)).toEqual(['i2']);
-    expect(summary.processed).toBe(2);
-    expect(summary.failed).toBe(1);
+    const inboundFetches = boss.fetch.mock.calls.filter(([name]) => name === INBOUND);
+    expect(inboundFetches.length).toBeGreaterThanOrEqual(3);
+    for (const call of inboundFetches) expect(call[1]).toEqual({ batchSize: 1 });
+    // Positive control: the send queue still takes a full batch.
+    expect(boss.fetch).toHaveBeenCalledWith(CHANNEL, { batchSize: 10 });
+    expect([...completed(INBOUND)].sort()).toEqual(['i1', 'i2', 'i3']);
+    expect(summary.processed).toBe(4);
   });
 
   it('routes a pending inbound job and completes it', async () => {

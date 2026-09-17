@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { cronRoute } from '~/lib/cron/auth';
 import { DRAINABLE_QUEUES, isConnectionExhaustion, runDrainCron } from '~/lib/cron/drain';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
@@ -36,6 +36,33 @@ export const GET = cronRoute('drain', async (req: Request) => {
   const unknown = queues?.filter((queue) => !DRAINABLE_QUEUES.includes(queue));
   if (unknown?.length) {
     return NextResponse.json({ error: 'unknown_queues', unknown }, { status: 400 });
+  }
+
+  // A KICKED run (the doors ask for the inbound slice) answers before it works. The kick
+  // that started it aborts at KICK_TIMEOUT_MS and the platform cancels the invocation
+  // with the request, so a run that kept the kicker waiting could only ever finish what
+  // fits in that window — anything longer died mid-turn and sat `active` until the
+  // queue's expiry (observed 2026-09-17). `after` keeps this instance alive for the work
+  // once the 202 is out, up to maxDuration, and the kicker is free the moment it hears
+  // back. The cost is the 503 contract below: a kicked run can no longer tell the kicker
+  // its database is out of connections, so that failure is logged here and the scheduled
+  // run picks the turn up. The scheduled run stays synchronous — nothing aborts it, and
+  // its summary is the heartbeat's evidence.
+  if (queues) {
+    after(async () => {
+      try {
+        const summary = await runDrainCron({ queues });
+        console.info({ ...summary, queues }, 'cron/drain kicked run complete');
+      } catch (err) {
+        console.error(
+          { err, queues, dbUnavailable: isConnectionExhaustion(err) },
+          'cron/drain kicked run failed',
+        );
+      } finally {
+        await flushTelemetry();
+      }
+    });
+    return NextResponse.json({ ok: true, kicked: true, queues }, { status: 202 });
   }
 
   try {
