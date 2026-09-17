@@ -2469,9 +2469,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * thread hangs on the page's left rail rather than centring. Later than
    * `.v4-thread` on purpose: equal specificity, so source order is what lands
    * the margin and the width. Hale's side keeps the amber wash this page has
-   * always shown its first reply in — the parent's side is the navy the landing
-   * already gives the reader's own messages, so the two surfaces read as one
-   * thread and the two fills are never the same colour. */
+   * always shown its first reply in. */
   .text-thread {
     width: 100%;
     max-width: 30rem;
@@ -2479,10 +2477,24 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     background: var(--color-oat);
     border: 1px solid var(--color-rule);
   }
+  .text-thread .v4-bubble { border: 1px solid var(--color-rule); }
   .text-thread .v4-bubble-in { background: var(--color-apricot-tint); }
+  /* The parent's own message is a MESSAGE, not a second button. The landing
+   * fills its out bubble with --color-navy, which is .btn-primary's exact ink
+   * and radius; on the landing that bubble is inside a photographic hero and
+   * nothing else on the shore is navy-on-cream. On /text it would sit ~300px
+   * ABOVE the one real CTA, so the first navy pill a squinting reader lands on
+   * is the fake one. The page-scoped retint keeps the pale navy wash the site
+   * already uses for a quoted surface (.pill-sky) and leaves exactly one navy
+   * fill on the page: the button. */
+  .text-thread .v4-bubble-out {
+    background: var(--color-sky-tint);
+    color: var(--color-spruce);
+  }
   /* Each side is captioned in the future tense: nothing in this thread has
    * happened yet, and the received bubble must never read as a text already on
-   * the reader's phone. */
+   * the reader's phone. The caption is `aria-hidden` where it sits and repeated
+   * sr-only INSIDE its bubble, so the framing travels with the message. */
   .text-thread-label {
     align-self: flex-start;
     margin-bottom: -0.35rem;
@@ -2490,6 +2502,18 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     color: var(--color-faded-sage);
   }
   .text-thread-label-out { align-self: flex-end; }
+  /* What the English prefill SAYS, for the locales the prefill is not written
+   * in. The bubble above it is the literal SMS body and stays English in every
+   * locale — translating it would misrepresent what the composer sends — so the
+   * gloss is how a FR/ZH reader learns what they are about to send. */
+  .text-thread-gloss {
+    align-self: flex-end;
+    margin-top: -0.35rem;
+    max-width: 84%;
+    text-align: right;
+    font-size: 0.78rem;
+    color: var(--color-faded-sage);
+  }
 
   /* The closing shore. Same body as the hero, but it sits inside a rounded card
    * rather than a full viewport, so it carries its own (smaller) padding. */

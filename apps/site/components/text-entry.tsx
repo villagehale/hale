@@ -191,16 +191,38 @@ export function TextEntry({
    *
    * Each side is captioned in the future tense: nothing here has happened yet,
    * and a reader must never take the received bubble for a text already sitting
-   * on their phone. The ZH previewLabel carries its own "(English original)"
-   * because copy.ts has no Chinese greeting.
+   * on their phone. That caption is `aria-hidden` where it sits and repeated
+   * sr-only INSIDE its own bubble (the landing does the same with its speaker
+   * names), so the framing travels with the message rather than depending on
+   * two <p>s staying adjacent — and no reader hears it twice. The ZH
+   * previewLabel carries its own "(English original)" because copy.ts has no
+   * Chinese greeting.
+   *
+   * The sent bubble is the literal SMS body, so it is English on every locale;
+   * `sentGloss` says what it means, and is the prefill itself in EN — which is
+   * exactly the condition that leaves the line off a page that needs no gloss.
    *
    * Only where a channel is live: the dark page promises no text back. */
+  const sentLabel = t('sentLabel');
+  const previewLabel = t('previewLabel');
+  const sentGloss = t('sentGloss');
   const exchange = live ? (
     <div className="v4-thread text-thread mt-8">
-      <p className="text-thread-label text-thread-label-out">{t('sentLabel')}</p>
-      <p className="v4-bubble v4-bubble-out">{INTAKE_PREFILL}</p>
-      <p className="text-thread-label">{t('previewLabel')}</p>
-      <p className="v4-bubble v4-bubble-in">{t('greeting')}</p>
+      <p className="text-thread-label text-thread-label-out" aria-hidden="true">
+        {sentLabel}
+      </p>
+      <p className="v4-bubble v4-bubble-out">
+        <span className="sr-only">{sentLabel} </span>
+        {INTAKE_PREFILL}
+      </p>
+      {sentGloss !== INTAKE_PREFILL && <p className="text-thread-gloss">{sentGloss}</p>}
+      <p className="text-thread-label" aria-hidden="true">
+        {previewLabel}
+      </p>
+      <p className="v4-bubble v4-bubble-in">
+        <span className="sr-only">{previewLabel} </span>
+        {t('greeting')}
+      </p>
     </div>
   ) : null;
 
@@ -291,10 +313,12 @@ export function TextEntry({
           {qrLeads(platform) ? null : desktopCard}
 
           {/* The trust strip — the four flat facts plus the one link that backs
-              them up. Live arms only: "reply STOP" needs a number to stop. */}
+              them up. Live arms only: "reply STOP" needs a number to stop.
+              `nowrap` because ZH has no spaces: 隐私政策 otherwise breaks across
+              two lines mid-label, and half a link is not a legal link. */}
           <p className="meta mt-8">
             {t('trustLine')} ·{' '}
-            <a href={localeHref(locale, '/privacy')} className="link">
+            <a href={localeHref(locale, '/privacy')} className="link whitespace-nowrap">
               {t('privacyLink')}
             </a>
           </p>
@@ -314,7 +338,7 @@ export function TextEntry({
 
       <p className="meta mt-14 rise rise-3">
         {t('footerPre')}{' '}
-        <a href={localeHref(locale, '/privacy')} className="link">
+        <a href={localeHref(locale, '/privacy')} className="link whitespace-nowrap">
           {t('privacyLink')}
         </a>
         .{live && <> {t('termsLine')}</>}

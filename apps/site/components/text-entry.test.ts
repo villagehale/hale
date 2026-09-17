@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import postcss from 'postcss';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -47,19 +48,54 @@ function anchors(html: string): string[] {
 
 /** A bubble's rendered text, tags stripped — read through the shared landing
  * primitives (`v4-bubble` / `v4-bubble-out|in`) so a page that grew its own
- * second bubble style would return null here rather than pass. */
+ * second bubble style would return null here rather than pass. The bubble's own
+ * sr-only caption comes off FIRST: it is said to the reader the layout does not
+ * reach, and what is left is the message a sighted reader sees. */
 function bubbleText(html: string, dir: 'out' | 'in'): string | null {
   const match = new RegExp(`<p class="v4-bubble v4-bubble-${dir}"[^>]*>([\\s\\S]*?)</p>`).exec(html);
-  return match?.[1]?.replace(/<[^>]+>/g, '').trim() ?? null;
+  if (match?.[1] === undefined) return null;
+  return match[1]
+    .replace(/<span class="sr-only">[\s\S]*?<\/span>/, '')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+}
+
+/** The caption a bubble carries for screen readers, or null when it carries none. */
+function bubbleSrLabel(html: string, dir: 'out' | 'in'): string | null {
+  const match = new RegExp(
+    `<p class="v4-bubble v4-bubble-${dir}"[^>]*><span class="sr-only">([\\s\\S]*?)</span>`,
+  ).exec(html);
+  return match?.[1]?.trim() ?? null;
+}
+
+function messages(locale: 'en' | 'fr' | 'zh'): { Text: Record<string, string> } {
+  return JSON.parse(
+    readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+  );
 }
 
 /** en.json Text.greeting, escaped the way react-dom/server writes it — the same
  * bytes app/text-page-copy.test.ts pins against apps/web's intake copy. */
-const PINNED_GREETING = (
-  JSON.parse(
-    readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'),
-  ) as { Text: { greeting: string } }
-).Text.greeting.replaceAll('&', '&amp;').replaceAll("'", '&#x27;');
+const PINNED_GREETING = (messages('en').Text.greeting as string)
+  .replaceAll('&', '&amp;')
+  .replaceAll("'", '&#x27;');
+
+/** globals.css as postcss sees it — the fill rules below are a HIERARCHY claim
+ * (one navy fill on the page, and it is the button), which no rendered markup
+ * can carry: the bubbles and the CTA differ only in their declared background. */
+const CSS_ROOT = postcss.parse(
+  readFileSync(fileURLToPath(new URL('../app/globals.css', import.meta.url)), 'utf8'),
+);
+
+function declaration(selector: string, prop: string): string | undefined {
+  let value: string | undefined;
+  CSS_ROOT.walkRules(selector, (rule) => {
+    rule.walkDecls(prop, (decl) => {
+      value = decl.value;
+    });
+  });
+  return value;
+}
 
 /** The QR's single path — the module grid, drawn inline. Read through the QR's
  * OWN <svg> rather than off the first <path> on the page: the wordmark and the
@@ -73,26 +109,33 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
   it('leads with what Hale IS — the five-second line, both arms', () => {
     for (const html of [liveHtml, unsetHtml]) {
       expect(html).toContain('The family assistant you text.');
+      // ONE sentence. "No app, no account" moved out of the lede: the trust
+      // strip already says it, and above the fold every restated line is a line
+      // between a stranger and the button.
       expect(html).toContain(
-        'Hale watches registration dates and the family week so you don’t have to. No app, no account — just this text thread.',
+        'Hale watches registration dates and the family week so you don’t have to.',
       );
+      expect(html).not.toContain('No app, no account — just this text thread.');
     }
+    // Positive control: the fact itself is still on the page, once.
+    expect([...liveHtml.matchAll(/No app/g)]).toHaveLength(1);
     expect(liveHtml).not.toContain('Change the names to yours and send.');
     expect(liveHtml).not.toContain('Pick where we talk');
     expect(liveHtml).not.toContain('Welcome.');
   });
 
   it('says what to DO in ONE folded line — the three numbered steps are gone', () => {
-    expect(liveHtml).toContain(
-      'Answer one text with your kids’ ages and postal code; your first watch comes back the same minute.',
-    );
+    // The only beat the exchange does not already show is WHEN the payoff lands;
+    // the greeting bubble itself asks for the ages and the postal code.
+    expect(liveHtml).toContain('Your first watch comes back the same minute.');
+    expect(liveHtml).not.toContain('Answer one text with your kids’ ages and postal code;');
     // The numbered row is retired: the exchange shows the first beat, the folded
     // line says the rest. No <ol> survives anywhere on the page.
     expect([...liveHtml.matchAll(/<ol[\s>]/g)]).toHaveLength(0);
     expect(liveHtml).not.toContain('Say hi — the first message is already written.');
     expect(liveHtml).not.toContain('Answer one text: kids’ names, ages, postal code.');
     // The dark page promises no text back, so it makes no promises about one.
-    expect(unsetHtml).not.toContain('your first watch comes back the same minute');
+    expect(unsetHtml).not.toContain('first watch comes back the same minute');
   });
 
   it('shows what comes BACK — an honestly-labeled bubble, absent while no channel is live', () => {
@@ -179,6 +222,23 @@ describe('TextEntry — the exchange is the hero', () => {
     expect(PINNED_GREETING).toContain('sign-up mornings'); // the pin is not empty
   });
 
+  it('leaves the CTA as the only navy fill: the sent bubble is a message, not a button', () => {
+    // The landing's out bubble IS navy on cream — the same ink and the same
+    // full radius as .btn-primary. On /text that bubble sits 300px ABOVE the
+    // real button, so squinting lands the eye on the fake one. The page-scoped
+    // override retints it; the primitive itself is untouched.
+    expect(declaration('.btn-primary', 'background')).toBe('var(--color-navy)');
+    expect(declaration('.v4-bubble-out', 'background')).toBe('var(--color-navy)');
+    const sent = declaration('.text-thread .v4-bubble-out', 'background');
+    expect(sent, '/text must retint the sent bubble').toBeDefined();
+    expect(sent).not.toBe('var(--color-navy)');
+    expect(sent).toBe('var(--color-sky-tint)');
+    // …and the two bubbles are never the same fill as each other.
+    expect(declaration('.text-thread .v4-bubble-in', 'background')).toBe(
+      'var(--color-apricot-tint)',
+    );
+  });
+
   it('reuses the landing’s bubble primitives — no second bubble style on the site', () => {
     expect(liveHtml).toContain('class="v4-bubble v4-bubble-out"');
     expect(liveHtml).toContain('class="v4-bubble v4-bubble-in"');
@@ -197,11 +257,49 @@ describe('TextEntry — the exchange is the hero', () => {
     expect(liveHtml).toContain('>Text Hale</a>');
     // Order: exchange, then the folded line, then the button.
     expect(liveHtml.indexOf('v4-bubble-in')).toBeLessThan(
-      liveHtml.indexOf('your first watch comes back the same minute'),
+      liveHtml.indexOf('first watch comes back the same minute'),
     );
-    expect(liveHtml.indexOf('your first watch comes back the same minute')).toBeLessThan(
+    expect(liveHtml.indexOf('first watch comes back the same minute')).toBeLessThan(
       liveHtml.indexOf('btn-primary'),
     );
+  });
+
+  it('keeps its future-tense caption INSIDE each bubble, so the framing cannot be orphaned', () => {
+    // The visible label is repeated to screen readers from within the bubble and
+    // hidden from them where it sits, so the honesty ("you’ll send" / "you’ll get
+    // back") travels with the message instead of relying on DOM adjacency — and
+    // no reader hears it twice.
+    expect(bubbleSrLabel(liveHtml, 'out')).toBe('What you’ll send:');
+    expect(bubbleSrLabel(liveHtml, 'in')).toBe('The text you’ll get back:');
+    expect(liveHtml).toContain(
+      '<p class="text-thread-label text-thread-label-out" aria-hidden="true">What you’ll send:</p>',
+    );
+    expect(liveHtml).toContain(
+      '<p class="text-thread-label" aria-hidden="true">The text you’ll get back:</p>',
+    );
+    // FR carries its own words into the bubble, not English ones.
+    expect(bubbleSrLabel(render({ source: null, locale: 'fr' }), 'out')).toBe(
+      'Ce que vous enverrez :',
+    );
+  });
+
+  it('glosses the English prefill wherever the page is not English — and nowhere else', () => {
+    // The out bubble is the literal SMS body, so it stays English in every
+    // locale (a translated bubble would misrepresent what the composer sends).
+    // The gloss beside it is how a FR/ZH reader learns what they are sending.
+    for (const locale of ['fr', 'zh'] as const) {
+      const html = render({ source: null, locale });
+      expect(bubbleText(html, 'out')).toBe(INTAKE_PREFILL);
+      expect(html).toContain('text-thread-gloss');
+    }
+    expect(render({ source: null, locale: 'fr' })).toContain(
+      'En anglais : « Bonjour Hale 👋 prêt à commencer »',
+    );
+    expect(render({ source: null, locale: 'zh' })).toContain('英文：“你好 Hale 👋 我准备好开始了”');
+    // English needs no gloss of English — the key exists, and it is the prefill
+    // itself, which is exactly the condition that suppresses the line.
+    expect(liveHtml).not.toContain('text-thread-gloss');
+    expect(messages('en').Text.sentGloss).toBe(INTAKE_PREFILL);
   });
 
   it('has no exchange at all on the dark page — nothing is promised without a number', () => {
@@ -410,7 +508,7 @@ describe('TextEntry (the other two locales)', () => {
     const zh = render({ source: null, locale: 'zh' });
     expect(fr).toContain('Ce que vous enverrez :');
     expect(zh).toContain('你会发出的内容：');
-    expect(fr).toContain('votre première veille arrive dans la minute.');
+    expect(fr).toContain('Votre première veille arrive dans la minute.');
     expect(zh).toContain('你的第一份关注同一分钟就会回来。');
     for (const html of [fr, zh]) {
       expect(html).not.toContain('Text.sentLabel');
