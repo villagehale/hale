@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNotNull, lte } from 'drizzle-orm';
+import { type CoParentDeparted, departCoParent } from '../channel/coparent/depart.js';
 import { removeDocument } from '../docs/storage.js';
 
 /**
@@ -63,6 +64,93 @@ export async function scheduleFamilyDeletion(
   });
 
   return { scheduledDeletionAt };
+}
+
+type FamilyRole = (typeof schema.familyMembers.$inferSelect)['role'];
+
+/**
+ * What an erasure request turned out to mean. Three outcomes, never folded into one
+ * another (rule #11): a co-parent's request erases THEM, and the caller owes them a
+ * different sentence from the one a scheduled family gets — there is no grace window
+ * to name, because nothing of the household was scheduled — while a seat with no
+ * erasure of its own is refused outright and carries the role it was refused for, so
+ * the route can say 403 rather than guess.
+ */
+export type ErasureRequest =
+  | { outcome: 'family_scheduled'; scheduledDeletionAt: Date }
+  | { outcome: 'co_parent_departed'; departure: CoParentDeparted }
+  | { outcome: 'not_permitted'; role: FamilyRole | null };
+
+/**
+ * VIL-355 · the right-to-erasure door, which has two sides.
+ *
+ * Until now there was one: every request stamped the FAMILY, because the sweep is the
+ * only erasure that existed. For the primary parent that is right — the household is
+ * theirs and the grace window makes it recoverable. For a co-parent it was the wrong
+ * answer to the right question: they asked to be erased, and Hale would have scheduled
+ * the children's whole history, the other parent's included, for deletion.
+ *
+ * So the role decides, read from `family_members` rather than inferred from the session:
+ * the primary parent schedules the family, a co-parent gets {@link departCoParent}, and
+ * EVERYTHING ELSE IS REFUSED.
+ *
+ * The refusal is the second half of the fix, not an aside. `grandparent`, `nanny` and
+ * `babysitter` are scoped redaction levels, they sign in by claiming their number, and
+ * this door has no role gate above it — so a babysitter's "delete my account" used to
+ * stamp the children's entire history for deletion, with nothing telling the parent it
+ * had happened. A scoped seat's own leave door is a separate question; answering it
+ * with the household's erasure is the one answer that can never be right, so this
+ * fails closed and names the role it refused.
+ */
+export async function requestErasure(
+  database: Database,
+  args: ScheduleFamilyDeletionArgs,
+): Promise<ErasureRequest> {
+  const { familyId, actorUserId } = args;
+  const now = args.now ?? new Date();
+
+  const [seat] = await database
+    .select({ role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        eq(schema.familyMembers.userId, actorUserId),
+      ),
+    );
+
+  if (!seat || (seat.role !== 'co_parent' && seat.role !== 'primary_parent')) {
+    // The refusal is recorded, not just returned. Rule #6 speaks of actions and a
+    // refusal is not one — but "nobody asked" and "somebody asked and was told no" are
+    // different facts about a household, and only one of them was ever findable. The
+    // role is the whole payload: no number, no name, nothing from the request.
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: actorUserId,
+      actionTaken: 'erasure_refused',
+      targetTable: 'family_members',
+      targetId: actorUserId,
+      after: { role: seat?.role ?? null },
+    });
+    return { outcome: 'not_permitted', role: seat?.role ?? null };
+  }
+
+  if (seat.role === 'co_parent') {
+    const departure = await departCoParent(database, { familyId, actorUserId, now });
+    // The seat was read and claimed in two statements, so a departure that lost the
+    // race between them found nothing to remove. Nothing is erased and nothing is
+    // scheduled — the request is answered by the state it found, never by falling
+    // through to the family sweep, which would erase the household on a retry.
+    if (departure.outcome !== 'departed') {
+      throw new Error(`requestErasure: co-parent seat vanished mid-request (${departure.outcome})`);
+    }
+    return { outcome: 'co_parent_departed', departure };
+  }
+
+  return {
+    outcome: 'family_scheduled',
+    ...(await scheduleFamilyDeletion(database, { familyId, actorUserId, now })),
+  };
 }
 
 /** Families whose scheduled_deletion_at has elapsed — the ones to erase now. */
