@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { CONTACT_CARD_PATH } from '~/lib/contact-card.js';
+import { INTAKE_PREFILL } from '~/lib/text-entry.js';
 import { TextEntry } from './text-entry.js';
 
 /**
@@ -42,6 +45,22 @@ function anchors(html: string): string[] {
   return [...html.matchAll(/<a\s[^>]*>/g)].map((m) => m[0]);
 }
 
+/** A bubble's rendered text, tags stripped — read through the shared landing
+ * primitives (`v4-bubble` / `v4-bubble-out|in`) so a page that grew its own
+ * second bubble style would return null here rather than pass. */
+function bubbleText(html: string, dir: 'out' | 'in'): string | null {
+  const match = new RegExp(`<p class="v4-bubble v4-bubble-${dir}"[^>]*>([\\s\\S]*?)</p>`).exec(html);
+  return match?.[1]?.replace(/<[^>]+>/g, '').trim() ?? null;
+}
+
+/** en.json Text.greeting, escaped the way react-dom/server writes it — the same
+ * bytes app/text-page-copy.test.ts pins against apps/web's intake copy. */
+const PINNED_GREETING = (
+  JSON.parse(
+    readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'),
+  ) as { Text: { greeting: string } }
+).Text.greeting.replaceAll('&', '&amp;').replaceAll("'", '&#x27;');
+
 /** The QR's single path — the module grid, drawn inline. Read through the QR's
  * OWN <svg> rather than off the first <path> on the page: the wordmark and the
  * handoff tiles are drawn art too. */
@@ -63,16 +82,17 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
     expect(liveHtml).not.toContain('Welcome.');
   });
 
-  it('says what to DO — three light steps, one-tap arm only, never on the dark page', () => {
-    expect(liveHtml).toContain('Say hi — the first message is already written.');
-    expect(liveHtml).toContain('Answer one text: kids’ names, ages, postal code.');
+  it('says what to DO in ONE folded line — the three numbered steps are gone', () => {
     expect(liveHtml).toContain(
-      'Your first watch arrives — the sign-up dates Hale now tracks for you.',
+      'Answer one text with your kids’ ages and postal code; your first watch comes back the same minute.',
     );
-    // A numbered row, not cards — the three land inside one ordered list.
-    expect([...liveHtml.matchAll(/<ol[\s>]/g)]).toHaveLength(1);
+    // The numbered row is retired: the exchange shows the first beat, the folded
+    // line says the rest. No <ol> survives anywhere on the page.
+    expect([...liveHtml.matchAll(/<ol[\s>]/g)]).toHaveLength(0);
+    expect(liveHtml).not.toContain('Say hi — the first message is already written.');
+    expect(liveHtml).not.toContain('Answer one text: kids’ names, ages, postal code.');
     // The dark page promises no text back, so it makes no promises about one.
-    expect(unsetHtml).not.toContain('Say hi — the first message is already written.');
+    expect(unsetHtml).not.toContain('your first watch comes back the same minute');
   });
 
   it('shows what comes BACK — an honestly-labeled bubble, absent while no channel is live', () => {
@@ -134,6 +154,60 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
       expect(html).not.toContain('<form');
       expect(html).not.toContain('<input');
     }
+  });
+});
+
+/**
+ * Composer-as-hero (founder decision 2026-09-16). The page's centre of gravity
+ * is the EXCHANGE — the message the parent is about to send, and the reply Hale
+ * really sends back — drawn with the landing hero's own bubble primitives so the
+ * two surfaces are one messaging idiom rather than two.
+ */
+describe('TextEntry — the exchange is the hero', () => {
+  it('sends what the composer actually carries: INTAKE_PREFILL, with no attribution token', () => {
+    expect(bubbleText(liveHtml, 'out')).toBe(INTAKE_PREFILL);
+    // The venue token rides in the href, never in the bubble the parent reads.
+    expect(bubbleText(liveHtml, 'out')).not.toContain('(via');
+    expect(bubbleText(liveHtml, 'out')).not.toContain('earlyon-richmondhill');
+    // Positive control: this render DOES carry a source, so the absence above is
+    // the bubble being clean rather than the source having gone missing.
+    expect(liveHtml).toContain('(via%20earlyon-richmondhill)');
+  });
+
+  it('receives Hale’s pinned greeting, byte-for-byte, in the received bubble', () => {
+    expect(bubbleText(liveHtml, 'in')).toBe(PINNED_GREETING);
+    expect(PINNED_GREETING).toContain('sign-up mornings'); // the pin is not empty
+  });
+
+  it('reuses the landing’s bubble primitives — no second bubble style on the site', () => {
+    expect(liveHtml).toContain('class="v4-bubble v4-bubble-out"');
+    expect(liveHtml).toContain('class="v4-bubble v4-bubble-in"');
+    // The sent bubble reads first: a thread runs parent → Hale.
+    expect(liveHtml.indexOf('v4-bubble-out')).toBeLessThan(liveHtml.indexOf('v4-bubble-in'));
+    // Labelled as what WILL be sent / WILL come back, never as a live thread.
+    expect(liveHtml).toContain('What you’ll send:');
+    expect(liveHtml).toContain('The text you’ll get back:');
+  });
+
+  it('puts ONE primary CTA directly under the exchange, and it is the sms: composer', () => {
+    const primaries = anchors(liveHtml).filter((a) => a.includes('btn-primary'));
+    expect(primaries).toHaveLength(1);
+    expect(primaries[0]).toContain('href="sms:+16475551234?&amp;body=');
+    expect(primaries[0]).toContain('data-cta="cta_text_click"');
+    expect(liveHtml).toContain('>Text Hale</a>');
+    // Order: exchange, then the folded line, then the button.
+    expect(liveHtml.indexOf('v4-bubble-in')).toBeLessThan(
+      liveHtml.indexOf('your first watch comes back the same minute'),
+    );
+    expect(liveHtml.indexOf('your first watch comes back the same minute')).toBeLessThan(
+      liveHtml.indexOf('btn-primary'),
+    );
+  });
+
+  it('has no exchange at all on the dark page — nothing is promised without a number', () => {
+    expect(bubbleText(unsetHtml, 'out')).toBeNull();
+    expect(bubbleText(unsetHtml, 'in')).toBeNull();
+    expect(unsetHtml).not.toContain(INTAKE_PREFILL);
   });
 });
 
@@ -329,6 +403,21 @@ describe('TextEntry (the other two locales)', () => {
     expect(fr).toContain('Enregistrer Hale dans vos contacts');
     expect(zh).toContain('把 Hale 存入通讯录');
     for (const html of [fr, zh]) expect(html).not.toContain('Text.saveContact');
+  });
+
+  it('speaks the exchange frame in French and Chinese — no key paths', () => {
+    const fr = render({ source: null, locale: 'fr' });
+    const zh = render({ source: null, locale: 'zh' });
+    expect(fr).toContain('Ce que vous enverrez :');
+    expect(zh).toContain('你会发出的内容：');
+    expect(fr).toContain('votre première veille arrive dans la minute.');
+    expect(zh).toContain('你的第一份关注同一分钟就会回来。');
+    for (const html of [fr, zh]) {
+      expect(html).not.toContain('Text.sentLabel');
+      expect(html).not.toContain('Text.afterSend');
+      // The prefill is a literal the parent will send — never translated.
+      expect(bubbleText(html, 'out')).toBe(INTAKE_PREFILL);
+    }
   });
 
   it('speaks the chooser in French and Chinese — no key paths, no English fallback', () => {

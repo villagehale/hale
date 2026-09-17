@@ -2463,6 +2463,34 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     text-align: left;
   }
 
+  /* The /text door's exchange — the same thread on a page with no photo under
+   * it. The landing's version sits on `.v4-glass` over the shore; /text is a
+   * flat warm page, so the plate is the subpage card surface instead, and the
+   * thread hangs on the page's left rail rather than centring. Later than
+   * `.v4-thread` on purpose: equal specificity, so source order is what lands
+   * the margin and the width. Hale's side keeps the amber wash this page has
+   * always shown its first reply in — the parent's side is the navy the landing
+   * already gives the reader's own messages, so the two surfaces read as one
+   * thread and the two fills are never the same colour. */
+  .text-thread {
+    width: 100%;
+    max-width: 30rem;
+    margin-inline: 0;
+    background: var(--color-oat);
+    border: 1px solid var(--color-rule);
+  }
+  .text-thread .v4-bubble-in { background: var(--color-apricot-tint); }
+  /* Each side is captioned in the future tense: nothing in this thread has
+   * happened yet, and the received bubble must never read as a text already on
+   * the reader's phone. */
+  .text-thread-label {
+    align-self: flex-start;
+    margin-bottom: -0.35rem;
+    font-size: 0.78rem;
+    color: var(--color-faded-sage);
+  }
+  .text-thread-label-out { align-self: flex-end; }
+
   /* The closing shore. Same body as the hero, but it sits inside a rounded card
    * rather than a full viewport, so it carries its own (smaller) padding. */
   .v4-hero-body.v4-closing-body { padding: 2.75rem 1.25rem; }
