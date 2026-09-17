@@ -94,6 +94,11 @@ export interface PastRegistrationCycle {
   /** The instant THIS family could first have registered, so a resident head start is
    * the date that already went. */
   openedForFamilyAt: Date;
+  /** Every cycle label the fetched rows carry for this town and domain — past, upcoming,
+   * or ruled out by a child's age band alike. A posted cycle is not one Hale is still
+   * waiting on, whoever it turned out to be for, so this is what decides whether there is
+   * a next cycle left to name (lib/registration/discovery-targets nextWatchedCycle). */
+  knownCycleLabels: ReadonlySet<string>;
 }
 
 /**
@@ -116,7 +121,7 @@ export function latestPastCycle(input: {
   const covered = new Set<Municipality>(resolveMunicipalities(input.postal));
   if (covered.size === 0) return null;
 
-  const past: PastRegistrationCycle[] = [];
+  const past: Omit<PastRegistrationCycle, 'knownCycleLabels'>[] = [];
   for (const window of input.windows) {
     if (!covered.has(window.municipality)) continue;
     const { opensForFamilyAt } = resolveFamilyOpen(window, input.postal);
@@ -133,7 +138,21 @@ export function latestPastCycle(input: {
       a.window.municipality.localeCompare(b.window.municipality) ||
       a.window.cycleLabel.localeCompare(b.window.cycleLabel),
   );
-  return past[0] ?? null;
+  const latest = past[0];
+  if (!latest) return null;
+
+  // Every label the DATASET holds for this town and domain, not just the past ones: a
+  // cycle with a row is published, and publishing it is exactly what ends the wait.
+  const knownCycleLabels = new Set(
+    input.windows
+      .filter(
+        (window) =>
+          window.municipality === latest.window.municipality &&
+          window.programDomain === latest.window.programDomain,
+      )
+      .map((window) => window.cycleLabel),
+  );
+  return { ...latest, knownCycleLabels };
 }
 
 /** Whether a child's age sits inside the band, allowing `slack` months either side. */

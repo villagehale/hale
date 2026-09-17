@@ -66,27 +66,28 @@ export const DISCOVERY_TARGETS: readonly DiscoveryTarget[] = [
 ];
 
 /**
- * The cycle Hale is watching for in this town and domain, given the one that has just
- * gone. Null when nothing is registered — and then the reply says "the next dates"
- * rather than naming a season nobody published.
+ * The cycle Hale is watching for in this town and domain, given every cycle label the
+ * dataset already holds for it. Null when nothing is left to watch for — and then the
+ * reply says "the next dates" rather than naming a season.
  *
- * `alreadyOpened` is excluded because the sweep does NOT prune a target whose window
- * has since arrived (runVerifySweep walks every target unconditionally), so the list
- * keeps a gap that has closed. Handing that label back as the cycle still to come
- * would tell a parent their town's next registration is the one they have already
- * missed — the exact confusion this whole field exists to remove.
+ * Decided against the ROWS, never against the list alone, because the list is hand-kept
+ * and the weekly sweep does NOT prune a target whose window has since arrived
+ * (runVerifySweep walks every target unconditionally). A target whose cycle is posted is
+ * a closed gap the list has not noticed, and handing it back would tell a parent their
+ * town's next registration is the one they missed last season — the exact confusion this
+ * field exists to remove.
  */
 export function nextWatchedCycle(
   municipality: string,
   programDomain: string,
-  alreadyOpened: string,
+  knownCycleLabels: ReadonlySet<string>,
 ): string | null {
   return (
     DISCOVERY_TARGETS.find(
       (target) =>
         target.municipality === municipality &&
         target.programDomain === programDomain &&
-        target.cycleLabel !== alreadyOpened,
+        !knownCycleLabels.has(target.cycleLabel),
     )?.cycleLabel ?? null
   );
 }

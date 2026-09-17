@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 4,
-    "reason": "The message is plain-spoken, specific, and leads with the useful fact (registration date and time). It states facts faithfully from what was given: town (Markham), cycle (Fall 2026), opening time (Aug 11, 6:30 a.m.), and child name (Maya). It honestly acknowledges that weekendPick is null by saying \"Nothing on the weekend radar yet\" rather than padding with invented content. However, it adds a forward-looking promise (\"I'll have a pick for you soon\") that goes slightly beyond the factual scope given—this is minor but moves it from a 5, which would be purely what was known in that moment with no extra commitment."
-  }
-}

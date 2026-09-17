@@ -62,7 +62,7 @@ function registration(over = {}) {
 function absence(over = {}) {
   return {
     cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
-    lastOpenedAtLocal: 'Sep 8, 7:00 a.m.',
+    lastOpenedAtLocal: 'Sep 15, 7:00 a.m.',
     nextCycleLabel: null,
     ...over,
   };
@@ -120,14 +120,16 @@ export const RADAR_FIXTURES = [
   },
   {
     id: '1kid-between-cycles-toronto-pick-present',
-    // THE PRODUCTION CASE (2026-09-16). Toronto's fall cycle opened on Sep 8 and the
-    // next dates are not published. This family got "No registration dates on my radar
-    // yet" — which is what a family in an uncovered town gets, and their own town was
-    // never named. The message must say the reason, and must not promise a future text:
-    // the watch offer the shell appends is where the offer lives.
+    // THE PRODUCTION CASE (2026-09-16). Toronto's Fall 2026 residents' morning was
+    // Sep 15 (registration-windows-data.ts TORONTO_FALL_2026) and nothing has been
+    // published since. This family got "No registration dates on my radar yet" — which
+    // is what a family in an uncovered town gets, and their own town was never named.
+    // The message must say the reason, and must not promise a future text: the watch
+    // offer the shell appends is where the offer lives. `nextCycleLabel` is null because
+    // the Fall 2026 row exists, so nothing is left for the sweep to watch for.
     decision: decision(pick(), null, null, absence()),
     expect: {
-      mustRecall: ['Riverdale', 'Toronto', 'Sep 8'],
+      mustRecall: ['Riverdale', 'Toronto', 'Sep 15'],
       forbidden: ['radar yet', 'http', 'Winter', 'Spring', "I'll text", 'let you know'],
     },
   },

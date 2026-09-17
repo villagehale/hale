@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 1,
-    "reason": "The message states multiple facts (Sunnyside Splash Pad details, Beaches Rec Centre program, Maya's routine visit timing, registration opening time) with zero attribution to any look Hale already took. No first-person verb of finding or checking appears in the lead sentence or anywhere. The facts land flat with no indication of who found them. Additionally, the message contains invented specifics not provided to Hale: \"Etobicoke\" as a location scope, \"September 3\" as a specific date, and \"8:00\" as a specific time—none of which were in the input data. An invented scope is explicitly scored 1 per the rubric."
-  }
-}

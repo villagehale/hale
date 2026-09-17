@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message contains a first-person verb of finding (\"I checked\") in the second sentence, but this comes AFTER the registration fact has already landed flat in the first sentence with no attribution. The attribution is late, appearing only after the useful fact about Markham registration has been stated without any signal of where it came from. This is a 3 - the gesture at attribution exists but arrives too late, after the fact has already been presented.",
-    "score": 3
-  }
-}

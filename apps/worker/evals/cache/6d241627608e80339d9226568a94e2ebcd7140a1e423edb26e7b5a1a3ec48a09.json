@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 1,
-    "reason": "The message states the fact about Maya being behind on her 18-month routine visit with no attribution to any look Hale took. There is no first-person verb of checking or finding in the opening or anywhere near when this fact lands. The fact appears standalone without any phrase like \"I found,\" \"I checked,\" or \"I looked up\" that would indicate Hale performed a search. Additionally, the message contains invented specifics (references to Sunnyside Splash Pad, Beaches Rec Centre, specific times like 9:15, 8:00, 6:30, and the September 3 date) that were not provided in the input data, which constitutes invention of scope. The message also opens with promotional language (\"Great news!\") and closes with a product-style offer question, all of which score as 1 per the instructions."
-  }
-}

@@ -1,6 +1,9 @@
+import type { Municipality } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
 import { WATCH_OFFER } from './copy.js';
+import { asciiCopy } from './radar-decide.js';
 import type { RadarDecision } from './radar-decide.js';
 import {
   MAX_PAYLOAD_SEGMENTS,
@@ -359,21 +362,38 @@ describe('the between-cycles absence', () => {
    * does not fit is a message no family ever receives. The worst case is the longest
    * town, the longest cycle label the dataset actually carries, a dated open with a
    * year on it, a watched next cycle, AND a weekend pick above it.
+   *
+   * Both superlatives are DERIVED from the seed rather than pasted, because a label
+   * pasted here goes stale the day a town publishes a longer one — and a hand-picked
+   * label was already 15 characters short of the real maximum. A longer label landing
+   * in the data now fails this test instead of quietly buying a fourth segment.
    */
   it('fits the segment budget with WATCH_OFFER in its very richest shape', () => {
+    const longestCycleLabel = asciiCopy(
+      [...REGISTRATION_WINDOWS].sort((a, b) => b.cycleLabel.length - a.cycleLabel.length)[0]
+        ?.cycleLabel ?? '',
+    );
+    const longestTown = [...new Set(REGISTRATION_WINDOWS.map((seed) => seed.municipality))].sort(
+      (a, b) => townLabel(b).length - townLabel(a).length,
+    )[0] as Municipality;
     const richest: RadarDecision = {
       ...PICK_ONLY,
       registrationAbsence: {
         cycleRef: {
-          municipality: 'richmond_hill',
+          municipality: longestTown,
           programDomain: 'rec_program',
-          cycleLabel: 'After-School Recreation Care (ARC) 2026/2027 school year',
+          cycleLabel: longestCycleLabel,
         },
         lastOpenedAtLocal: 'Sep 15, 2025, 11:30 a.m.',
         nextCycleLabel: 'Winter 2027',
       },
     };
     const message = renderRadarDeterministically(richest);
+    // The positive control: a derivation that quietly yielded an empty label would make
+    // every assertion below pass on a message that costs nothing to send.
+    expect(longestCycleLabel.length).toBeGreaterThan(60);
+    expect(message).toContain(longestCycleLabel);
+    expect(message).toContain(townLabel(longestTown));
     // biome-ignore lint/suspicious/noControlCharactersInRegex: GSM-7 is the whole point
     expect(message).toMatch(/^[\x0A\x20-\x7E]*$/);
     expect(smsSegments(`${message}\n\n${WATCH_OFFER}`)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);

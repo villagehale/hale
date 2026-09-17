@@ -95,8 +95,11 @@ function match(overrides: Partial<RegistrationMatch> = {}): RegistrationMatch {
   };
 }
 
-function past(window: RegistrationWindow): PastRegistrationCycle {
-  return { window, openedForFamilyAt: window.openAt };
+function past(
+  window: RegistrationWindow,
+  knownCycleLabels: readonly string[] = [window.cycleLabel],
+): PastRegistrationCycle {
+  return { window, openedForFamilyAt: window.openAt, knownCycleLabels: new Set(knownCycleLabels) };
 }
 
 function healthChild(overrides: Partial<HealthChild> = {}): HealthChild {
@@ -643,7 +646,27 @@ describe('decideRadar — registration absence (between cycles)', () => {
       openAt: new Date('2026-09-08T11:00:00.000Z'),
     });
     const decision = decide({ windows: [], pastCycle: past(torontoFall) });
-    expect(decision.registrationAbsence?.nextCycleLabel).not.toBe('Fall 2026');
+    expect(decision.registrationAbsence?.nextCycleLabel).toBeNull();
+  });
+
+  it('names no cycle the dataset already holds a row for, whichever one just went', () => {
+    // The stale-target trap. DISCOVERY_TARGETS is hand-kept and the weekly sweep never
+    // prunes a target whose window has since landed, so asking only "which label is not
+    // the one that just opened" resurrects a season the parent already missed. Here
+    // Halton Hills has opened BOTH cycles the list is waiting on; there is nothing left
+    // to watch for, and "the next dates" is the honest phrase.
+    const winterGone = win({
+      municipality: 'halton_hills' as Municipality,
+      cycleLabel: 'Winter 2027',
+      openAt: new Date('2026-12-01T12:00:00.000Z'),
+    });
+    const decision = decide({
+      windows: [],
+      pastCycle: past(winterGone, ['Fall 2026', 'Winter 2027']),
+      now: new Date('2027-02-10T17:00:00.000Z'),
+    });
+    expect(decision.registrationAbsence?.cycleRef.cycleLabel).toBe('Winter 2027');
+    expect(decision.registrationAbsence?.nextCycleLabel).toBeNull();
   });
 
   it('stays silent for a town with no rows at all — behaviour unchanged', () => {
@@ -656,6 +679,24 @@ describe('decideRadar — registration absence (between cycles)', () => {
     const decision = decide({ windows: [match()], pastCycle: past(HALTON_FALL) });
     expect(decision.registrationLine).not.toBeNull();
     expect(decision.registrationAbsence).toBeNull();
+  });
+
+  it("folds the dataset's own typographic dash out of a cycle label, line and absence alike", () => {
+    // registration-windows-data.ts carries an em dash inside one Oshawa label, and a
+    // single non-ASCII character bills the WHOLE message as UCS-2 — halving the segment
+    // budget and silently discarding the payload (radar-voice usableRadarMessage). The
+    // label is data a town wrote, so the fold belongs where the fact is minted.
+    const oshawa = win({
+      municipality: 'oshawa' as Municipality,
+      cycleLabel: 'Holiday Camp (winter break) \u2014 registers in the Fall 2026 window',
+    });
+    const plain = 'Holiday Camp (winter break) - registers in the Fall 2026 window';
+    expect(
+      decide({ windows: [match({ window: oshawa })] }).registrationLine?.windowRef.cycleLabel,
+    ).toBe(plain);
+    expect(
+      decide({ windows: [], pastCycle: past(oshawa) }).registrationAbsence?.cycleRef.cycleLabel,
+    ).toBe(plain);
   });
 
   it('carries ASCII spacing, because one narrow no-break space doubles the SMS cost', () => {

@@ -424,6 +424,21 @@ export function asciiSpaces(text: string): string {
   return text.replace(/[   ]/g, ' ');
 }
 
+/**
+ * The same defence, for text a TOWN wrote rather than Intl: registration-windows-data.ts
+ * carries an em dash inside a cycle label, and a label leads the line it appears in. One
+ * character outside plain ASCII bills the whole message as UCS-2, which halves the
+ * segment budget and makes the payload unsendable ({@link MAX_PAYLOAD_SEGMENTS}) — so a
+ * label is folded where the fact is minted, not audited in the seed a parent never reads.
+ */
+export function asciiCopy(text: string): string {
+  return asciiSpaces(text)
+    .replace(/[\u2010-\u2015]/g, '-')
+    .replace(/[\u2018\u2019\u201b]/g, "'")
+    .replace(/[\u201c\u201d\u201f]/g, '"')
+    .replace(/\u2026/g, '...');
+}
+
 function decideRegistration(input: DecideRadarInput): RegistrationLine | null {
   // The matcher already ordered by when THIS family must act; the soonest is the one
   // worth a stranger's first text.
@@ -440,7 +455,7 @@ function decideRegistration(input: DecideRadarInput): RegistrationLine | null {
     windowRef: {
       municipality: match.window.municipality,
       programDomain: match.window.programDomain,
-      cycleLabel: match.window.cycleLabel,
+      cycleLabel: asciiCopy(match.window.cycleLabel),
     },
     opensAtLocal: asciiSpaces(
       formatWhenPhrase(match.opensForFamilyAt, input.timeZone, input.now),
@@ -466,21 +481,22 @@ function decideRegistrationAbsence(
   if (registration !== null) return null;
   const past = input.pastCycle;
   if (past === null) return null;
+  const next = nextWatchedCycle(
+    past.window.municipality,
+    past.window.programDomain,
+    past.knownCycleLabels,
+  );
 
   return {
     cycleRef: {
       municipality: past.window.municipality,
       programDomain: past.window.programDomain,
-      cycleLabel: past.window.cycleLabel,
+      cycleLabel: asciiCopy(past.window.cycleLabel),
     },
     lastOpenedAtLocal: asciiSpaces(
       formatWhenPhrase(past.openedForFamilyAt, input.timeZone, input.now),
     ),
-    nextCycleLabel: nextWatchedCycle(
-      past.window.municipality,
-      past.window.programDomain,
-      past.window.cycleLabel,
-    ),
+    nextCycleLabel: next === null ? null : asciiCopy(next),
   };
 }
 

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 4,
-    "reason": "The message is plain-spoken, specific, and leads with the useful thing (vaccine record check). It correctly states the facts provided (checkpoint task) and plainly notes what's absent (no weekend pick, no registration info yet) without padding. The tone is quiet and competent, like a neighbour who looked something up. Minor deduction from 5 because \"Nothing on the weekend or registration radar yet\" adds a slight layer of explanation/reassurance that could be considered minor padding, though it does usefully signal that information is still being sought. The offer of \"I'll have a pick for you soon\" is reasonable given offerQuestion is true."
-  }
-}

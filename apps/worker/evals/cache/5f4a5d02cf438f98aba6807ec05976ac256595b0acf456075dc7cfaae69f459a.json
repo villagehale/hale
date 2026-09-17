@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 2,
-    "reason": "The message includes details not present in the facts. The facts show a \"registrationAbsence\" field indicating registration is null/absent for the current cycle, which should be stated plainly. Instead, the message invents narrative (\"I've got Halton Hills on the radar,\" \"Still mapping what's near you\") that pads the sparse facts. It also restates the Fall 2026 registration date unprompted rather than leading with the useful thing—that Winter 2027 dates aren't posted yet. The voice is too conversational and assumes context (\"Still mapping\") rather than being plain-spoken and specific. The core useful fact (\"Your first weekend find lands in a day or two\") is buried at the end instead of leading."
-  }
-}

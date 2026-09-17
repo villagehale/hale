@@ -505,6 +505,37 @@ describe('latestPastCycle', () => {
     expect(past?.openedForFamilyAt).toEqual(resident.residentOpenAt);
   });
 
+  it('carries every cycle label the fetched rows hold for that town and domain', () => {
+    // What makes the next-cycle answer checkable against the DATASET rather than against
+    // a hand-kept list: a row still to come, and a row no child here is old enough for,
+    // both count as posted. Neither is a cycle Hale is still waiting on.
+    const fall = win({
+      id: 'w-fall',
+      cycleLabel: 'Fall 2026',
+      openAt: new Date('2026-09-01T11:00:00.000Z'),
+    });
+    const winterOutOfBand = win({
+      id: 'w-winter',
+      cycleLabel: 'Winter 2027',
+      openAt: new Date('2026-12-01T12:00:00.000Z'),
+      ageMinMonths: 144,
+      ageMaxMonths: 216,
+    });
+    const otherDomain = win({ id: 'w-swim', programDomain: 'swim' as ProgramDomain, cycleLabel: 'Swim Fall 2026' });
+    const otherTown = win({
+      id: 'w-else',
+      municipality: 'burlington' as Municipality,
+      cycleLabel: 'Burlington Fall 2026',
+    });
+    const past = latestPastCycle({
+      windows: [fall, winterOutOfBand, otherDomain, otherTown],
+      postal: 'L3R 0B4',
+      now: AFTER_FALL,
+    });
+    expect(past?.window.cycleLabel).toBe('Fall 2026');
+    expect([...(past?.knownCycleLabels ?? [])].sort()).toEqual(['Fall 2026', 'Winter 2027']);
+  });
+
   it('is null outside the covered municipalities', () => {
     expect(latestPastCycle({ windows: [win()], postal: 'X9X 9X9', now: AFTER_FALL })).toBeNull();
   });
