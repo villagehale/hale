@@ -10,10 +10,11 @@ import { matchRecMorning } from './match';
 
 /**
  * VIL-308 first-hello voice — design-locked, GSM-7, verbatim. A model does not write these.
- * VIL-320 city-switched first-hello — Markham and the other GTA strings pin below; the
- * Toronto rec line and both YMCA lines stay the 544/548 locks.
+ * VIL-320 city-switched first-hello — Markham and the other GTA strings pin below; both
+ * YMCA lines stay the 544/548 locks, and the Toronto rec line has since joined the
+ * between-cycles shape the other towns use.
  *
- * Two sentences, one link, no ladder on the first Toronto rec/swim answer. Follow only
+ * One link, no ladder on the first Toronto rec/swim answer. Follow only
  * if they need waitlist/wishlist/two phones. eFun named only if they said eFun. YMCA
  * follow only for levels or membership. Jack of Sports only if they ask. Never ActiveTO
  * (even to negate it), never "I'm an AI", never unofficial, never an app URL.
@@ -24,7 +25,20 @@ import { matchRecMorning } from './match';
 
 const INTAKE_MAX_REPLY_CHARS = 300;
 
-export const TORONTO_FIRST_REC = `Toronto rec and swim open 7:00 a.m. on your district morning: Sept 9 if you're catchment-only, Sept 15 or 16 otherwise. Sign in at ${TORONTO_REC_PORTAL} with the centre district, not your home address.`;
+/**
+ * Toronto's fall cycle has opened and the winter one is not posted, which is the same
+ * thing {@link leftoverRecHello} says for every other town between cycles.
+ *
+ * It used to name the district mornings — Sept 9 for catchment-only, Sept 15 or 16
+ * otherwise — as the ones still to come. A locked string cannot notice a date going
+ * past, so from Sept 17 it offered a registration the parent had already missed. No
+ * date replaces them: the city publishes none for winter, only a look-ahead saying
+ * registration "is anticipated to occur between December 1 to 9", and an anticipated
+ * range is not a date to hold a parent to. The district caveat goes with the mornings
+ * it qualified. The portal stays, because it is the one fact here that outlives a
+ * cycle and the one a parent chasing leftovers needs.
+ */
+export const TORONTO_FIRST_REC = `Toronto fall rec and swim already opened. Winter isn't posted. I can watch leftovers and the waitlist. Sign in at ${TORONTO_REC_PORTAL}.`;
 
 export const TORONTO_FOLLOW = `Wishlist can look frozen, so wait, don't mash refresh. Waitlist email takes about ${TORONTO_WAITLIST_HOURS} hours and there's no queue number. Two parents means two phones.`;
 

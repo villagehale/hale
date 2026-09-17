@@ -98,8 +98,15 @@ describe('rec-morning matcher', () => {
 describe('rec-morning SMS · locked first-hello strings', () => {
   it('sends the locked Toronto first-rec line for swim AND rec', () => {
     expect(TORONTO_FIRST_REC).toBe(
-      "Toronto rec and swim open 7:00 a.m. on your district morning: Sept 9 if you're catchment-only, Sept 15 or 16 otherwise. Sign in at toronto.ca/OnlineReg with the centre district, not your home address.",
+      "Toronto fall rec and swim already opened. Winter isn't posted. I can watch leftovers and the waitlist. Sign in at toronto.ca/OnlineReg.",
     );
+    // The line used to name Sept 9 and Sept 15 or 16 as the mornings still to come. They
+    // went by on Sept 16 and a locked string cannot notice, so it kept offering a
+    // registration this family had already missed. The dates leave; the portal, which is
+    // the one fact here that outlives a cycle, stays.
+    expect(TORONTO_FIRST_REC).toContain('already opened');
+    expect(TORONTO_FIRST_REC).not.toContain('Sept 9');
+    mustNotBeTorontoClock(TORONTO_FIRST_REC);
     expect(reply('When does Toronto swim registration open?')).toBe(TORONTO_FIRST_REC);
     expect(reply('when is Toronto fall recreation registration?')).toBe(TORONTO_FIRST_REC);
     expect(TORONTO_FIRST_REC).toContain(TORONTO_REC_PORTAL);
