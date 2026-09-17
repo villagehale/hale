@@ -630,30 +630,30 @@ describe('channel.message.received', () => {
   });
 
   /**
-   * A kicked run lives only as long as the kick (60s), and the platform cancels it with
-   * the kick — so a run must never hold more than one inbound turn at a time. One per
-   * fetch, and the loop keeps fetching until the queue is empty, so a burst is shared
-   * across the kicks the doors fire rather than swallowed by the first run.
+   * The inbound fetch window is the full batch. pg-boss gates singleton keys INSIDE the
+   * fetched batch, so a one-row window that lands on a blocked key returns nothing and
+   * the queue stalls behind it (seen in prod 2026-09-17). The window is what keeps the
+   * canary and every other family moving while one family's earlier turn is still active.
    */
-  it('takes inbound turns one per fetch, and keeps fetching until the queue is empty', async () => {
+  it('fetches the inbound queue with the full batch window, and drains it serially', async () => {
     const { boss, completed } = makeFakeBoss({
       [INBOUND]: [
         { id: 'i1', data: { ...inbound('SM1'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1' } },
         { id: 'i2', data: { ...inbound('SM2'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2' } },
         { id: 'i3', data: { ...inbound('SM3'), parent_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3' } },
       ],
-      [CHANNEL]: [{ id: 'c1', data: validChannelSend() }],
+    });
+    const order: string[] = [];
+    const channelMessage = vi.fn(async (payload: { provider_message_id: string }) => {
+      order.push(payload.provider_message_id);
     });
 
-    const summary = await drainHotQueues(makeDeps(boss));
+    const summary = await drainHotQueues(makeDeps(boss, { channelMessage }));
 
-    const inboundFetches = boss.fetch.mock.calls.filter(([name]) => name === INBOUND);
-    expect(inboundFetches.length).toBeGreaterThanOrEqual(3);
-    for (const call of inboundFetches) expect(call[1]).toEqual({ batchSize: 1 });
-    // Positive control: the send queue still takes a full batch.
-    expect(boss.fetch).toHaveBeenCalledWith(CHANNEL, { batchSize: 10 });
+    expect(boss.fetch).toHaveBeenCalledWith(INBOUND, { batchSize: 10 });
+    expect(order).toEqual(['SM1', 'SM2', 'SM3']);
     expect([...completed(INBOUND)].sort()).toEqual(['i1', 'i2', 'i3']);
-    expect(summary.processed).toBe(4);
+    expect(summary.processed).toBe(3);
   });
 
   it('routes a pending inbound job and completes it', async () => {
