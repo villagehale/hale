@@ -122,7 +122,81 @@ describe('createRadarComposer', () => {
     expect(payload.followUpNeeded).toBe(true);
   });
 
-  it('VIL-334: M1B still sends the Toronto pin when live lookup is empty', async () => {
+  it('names the town whose cycle has already gone, instead of an empty radar line', async () => {
+    const db = makeFakeDb();
+    // Halton Hills opened Fall 2026 on Sep 1. It is now Sep 17 and winter is not posted:
+    // the production shape of 2026-09-16, where this family was told nothing was on the
+    // radar and their own town was never named.
+    db.db
+      .insert(schema.registrationWindows)
+      .values({
+        municipality: 'halton_hills',
+        programDomain: 'rec_program',
+        cycleLabel: 'Fall 2026',
+        previewAt: null,
+        residentOpenAt: null,
+        openAt: new Date('2026-09-01T11:00:00.000Z'),
+        residentPriorityDays: null,
+        waitlistResponseHours: null,
+        ageMinMonths: 36,
+        ageMaxMonths: 72,
+        sourceUrl: 'https://www.haltonhills.ca/example',
+        verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
+        notes: null,
+      } as never);
+
+    const payload = await createRadarComposer({
+      database: db.db,
+      weather: fakeWeather([]),
+      client: null,
+      now: () => new Date('2026-09-17T15:00:00.000Z'),
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'L7G' });
+
+    expect(payload.message).toContain('Halton Hills');
+    expect(payload.message).toContain('Fall 2026');
+    expect(payload.message).toContain('already opened');
+    expect(payload.message).toContain('Winter 2027');
+    expect(payload.message).not.toContain('no registration date coming up');
+  });
+
+  it('names Toronto and its gone cycle, where the pin used to read out past dates', async () => {
+    const db = makeFakeDb();
+    db.db
+      .insert(schema.registrationWindows)
+      .values({
+        municipality: 'toronto',
+        programDomain: 'rec_program',
+        cycleLabel: 'Fall 2026',
+        previewAt: null,
+        residentOpenAt: null,
+        openAt: new Date('2026-09-08T11:00:00.000Z'),
+        residentPriorityDays: null,
+        waitlistResponseHours: null,
+        ageMinMonths: 36,
+        ageMaxMonths: 72,
+        sourceUrl: 'https://www.toronto.ca/example',
+        verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
+        notes: null,
+      } as never);
+
+    const payload = await createRadarComposer({
+      database: db.db,
+      weather: fakeWeather([]),
+      client: null,
+      now: () => new Date('2026-09-17T15:00:00.000Z'),
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'M1B' });
+
+    // The pin (VIL-334) short-circuited this family with "Sept 9 ... Sept 15 or 16" —
+    // mornings that were in the past by Sept 16, read out as though they were coming.
+    // Toronto now goes through the same between-cycles answer as every other town.
+    expect(payload.message).toContain('Toronto');
+    expect(payload.message).toContain('already opened');
+    expect(payload.message).toContain('Winter 2027');
+    expect(payload.message).not.toContain('Sept 9');
+    expect(payload.message).not.toBe(TORONTO_FIRST_REC);
+  });
+
+  it('is honest with a Toronto family whose lookup is empty, rather than reciting the pin', async () => {
     const db = makeFakeDb();
 
     const payload = await composer(db).compose({
@@ -134,15 +208,18 @@ describe('createRadarComposer', () => {
       areaCoarse: 'M1B',
     });
 
-    expect(payload.message).toBe(TORONTO_FIRST_REC);
-    expect(payload.message).not.toMatch(/still mapping|mapping what's near you/i);
-    expect(payload.message).not.toContain('Your first weekend find lands in a day or two.');
+    // Nothing read, nothing past: the honest empty-handed answer, with the first-find
+    // beat on it. A pinned city line here asserted dates this family was never checked
+    // against, and by Sept 16 they were dates that had already gone.
+    expect(payload.message).not.toBe(TORONTO_FIRST_REC);
+    expect(payload.message).not.toContain('Sept 9');
+    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
     expect(payload.message).not.toContain(WATCH_OFFER);
-    expect(payload.firstFindPromised).toBe(false);
+    expect(payload.firstFindPromised).toBe(true);
     expect(payload.followUpNeeded).toBe(true);
   });
 
-  it('VIL-334: other Toronto FSAs pin the same way — leftover mapping is not the Toronto first-hello', async () => {
+  it('treats every other Toronto FSA the same way — no town gets a hard-coded morning', async () => {
     const db = makeFakeDb();
 
     const payload = await composer(db).compose({
@@ -151,8 +228,9 @@ describe('createRadarComposer', () => {
       areaCoarse: 'M5V',
     });
 
-    expect(payload.message).toBe(TORONTO_FIRST_REC);
-    expect(payload.message).not.toMatch(/still mapping|mapping what's near you/i);
+    expect(payload.message).not.toBe(TORONTO_FIRST_REC);
+    expect(payload.message).not.toContain('Sept 9');
+    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
   });
 
   it('never lets a health checkpoint ride the pre-consent first find (ads-week audit, 2026-08-28)', async () => {
@@ -256,13 +334,12 @@ describe('createRadarComposer', () => {
     expect(payload.message).not.toContain('Teen climbing night');
     // The checkpoint block used to be the one thing a 13+ household still heard here.
     // It no longer rides the pre-consent first find (ads-week audit, 2026-08-28) — the
-    // post-consent nudge carries it in the generic wording. M5V is a Toronto FSA, so
-    // the empty-lookup first-hello is the VIL-320 pin (VIL-334), still with no teen
-    // name in it (rule #1).
-    expect(payload.message).toBe(TORONTO_FIRST_REC);
+    // post-consent nudge carries it in the generic wording. Nothing else was readable
+    // either, so the empty-handed answer goes out, with no teen name in it (rule #1).
+    expect(payload.message).not.toBe(TORONTO_FIRST_REC);
     expect(payload.message).not.toContain('A routine vaccine record check is due');
     expect(payload.message).not.toContain('Ava');
-    expect(payload.itemCount).toBe(1);
+    expect(payload.itemCount).toBe(0);
   });
 
   it('still composes when the family has no postal-derived area at all', async () => {

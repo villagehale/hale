@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message states facts (Sunnyside Splash Pad details, Beaches Rec Centre program, Maya's routine visit) with no attribution indicating that Hale looked them up. There is no first-person verb of finding or checking in the lead sentence or anywhere else that signals these are the product of a search Hale already took. The facts arrive flat and indistinguishable from information a stranger could have sent. Additionally, the message contains invented specifics (specific times like \"9:15 sharp,\" \"8:00,\" \"6:30,\" specific dollar amounts, specific dates like \"September 3\") that were not provided to Hale, which compounds the attribution failure and triggers a score of 1 for invented scope."
+  }
+}

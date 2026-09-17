@@ -8,7 +8,7 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { townLabel } from '~/lib/channel/town-label';
 import { WATCH_OFFER } from './copy';
-import type { RadarDecision } from './radar-decide';
+import type { RadarDecision, RegistrationAbsence } from './radar-decide';
 
 /** Re-exported: a town is spelled in exactly one module (town-label.ts), and every
  * caller of the radar voice already reaches for its name here. */
@@ -134,6 +134,18 @@ export function radarVoiceContext(decision: RadarDecision): unknown {
           ageApproximate: registration.ageApproximate,
         }
       : null,
+    // The silence with a reason in it. Present only where `registration` is null, so
+    // the two can never be said in the same breath, and it carries the TOWN — which a
+    // null-registration context never used to, leaving the composer unable to name the
+    // place whose season had simply gone (the 2026-09-16 defect).
+    registrationAbsence: decision.registrationAbsence
+      ? {
+          town: townLabel(decision.registrationAbsence.cycleRef.municipality),
+          lastCycle: decision.registrationAbsence.cycleRef.cycleLabel,
+          lastOpenedAtLocal: decision.registrationAbsence.lastOpenedAtLocal,
+          nextCycle: decision.registrationAbsence.nextCycleLabel,
+        }
+      : null,
     // The row id stays behind with the candidate uuid: `task` is the whole fact, and it
     // is a sentence a human reviewed, so there is nothing for the model to look up.
     checkpoint: decision.checkpoint
@@ -160,6 +172,15 @@ export function radarFactSlots(decision: RadarDecision): string[] {
       ...registration.kidNames,
     );
     if (registration.residentNote) slots.push(registration.residentNote);
+  }
+  const absence = decision.registrationAbsence;
+  if (absence) {
+    slots.push(
+      townLabel(absence.cycleRef.municipality),
+      absence.cycleRef.cycleLabel,
+      absence.lastOpenedAtLocal,
+    );
+    if (absence.nextCycleLabel) slots.push(absence.nextCycleLabel);
   }
   const checkpoint = decision.checkpoint;
   if (checkpoint) slots.push(checkpoint.task, ...checkpoint.kidNames);
@@ -210,6 +231,23 @@ const NO_WINDOW = 'Nothing has a registration date coming up just yet.';
  * and then, from {@link FIRST_FIND_BEAT}, when that changes. */
 const MAPPING_NOW =
   "I'm mapping what's near you now - nothing to point you to yet, and no registration date coming up.";
+/** The same opening without the registration half, for the shape that has a REASON to
+ * put there instead. Spelled out rather than sliced off {@link MAPPING_NOW}: both are
+ * approved copy, and one of them is pinned verbatim outside this module
+ * (lib/channel/reconcile/claims.test.ts) as a sentence the ledger need not back. */
+const MAPPING_ONLY = "I'm mapping what's near you now - nothing to point you to yet.";
+
+/**
+ * The between-cycles line: this town's season has gone, and the next dates are not up.
+ *
+ * It states two facts and promises nothing. The watch offer the state machine appends
+ * carries the offer, and the commitments ledger only ever backs {@link FIRST_FIND_BEAT} —
+ * so "I'll text you when they post" here would be a debt Hale recorded against nobody.
+ */
+function betweenCyclesLine(absence: RegistrationAbsence): string {
+  const next = absence.nextCycleLabel ? `${absence.nextCycleLabel} dates` : 'the next dates';
+  return `${townLabel(absence.cycleRef.municipality)} ${absence.cycleRef.cycleLabel} registration already opened ${absence.lastOpenedAtLocal} - ${next} are not posted yet.`;
+}
 
 /** How many blocks the render may spend, and the same ceiling the skill is written to.
  * Not a segment budget — {@link MAX_PAYLOAD_SEGMENTS} is the arithmetic one — but the
@@ -269,10 +307,24 @@ export function renderRadarDeterministically(decision: RadarDecision): string {
     blocks.push(`${who}${checkpoint.task}`);
   }
 
-  if (blocks.length === 0) return `${MAPPING_NOW} ${FIRST_FIND_BEAT}`;
+  const absence = decision.registrationAbsence;
+  if (blocks.length === 0) {
+    // Still nothing found, but the registration half is answerable: a town between
+    // cycles is a different sentence from a town that has never been on the radar, and
+    // it is the one the parent can act on knowing.
+    // The absence LEADS when it is the only real thing known about this family: it is
+    // a fact about their town, and the same cascade that puts a registration date ahead
+    // of a drop-in puts it ahead of the mapping line.
+    return absence
+      ? `${betweenCyclesLine(absence)} ${MAPPING_ONLY} ${FIRST_FIND_BEAT}`
+      : `${MAPPING_NOW} ${FIRST_FIND_BEAT}`;
+  }
   // One real fact, and room for the absence that matters: a family who got the pick is
-  // owed the registration answer, and everyone else is owed the promise of a pick.
-  if (blocks.length === 1) blocks.push(pick ? NO_WINDOW : STILL_LEARNING);
+  // owed the registration answer — with its reason when there is one — and everyone
+  // else is owed the promise of a pick.
+  if (blocks.length === 1) {
+    blocks.push(pick ? (absence ? betweenCyclesLine(absence) : NO_WINDOW) : STILL_LEARNING);
+  }
   return blocks.slice(0, MAX_BLOCKS).join('\n\n');
 }
 

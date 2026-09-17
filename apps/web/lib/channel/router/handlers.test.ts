@@ -485,7 +485,7 @@ describe('the village intro lane and the lanes behind it', () => {
 });
 
 describe('recMorningHandler', () => {
-  it('answers a Toronto swim clock question with the locked first-rec line', async () => {
+  it('answers a Toronto swim clock question with the between-cycles first-rec line', async () => {
     const verdict = await recMorningHandler().handle(
       DB,
       turn('When does Toronto swim registration open?'),
@@ -494,7 +494,7 @@ describe('recMorningHandler', () => {
     if (!verdict.claimed || verdict.reply === null) return;
     const body = verdict.reply;
     expect(body).toBe(
-      "Toronto rec and swim open 7:00 a.m. on your district morning: Sept 9 if you're catchment-only, Sept 15 or 16 otherwise. Sign in at toronto.ca/OnlineReg with the centre district, not your home address.",
+      "Toronto fall rec and swim already opened. Winter isn't posted. I can watch leftovers and the waitlist. Sign in at toronto.ca/OnlineReg.",
     );
     expect(body.toLowerCase()).not.toContain('activeto');
     expect(body.toLowerCase()).not.toContain('unofficial');

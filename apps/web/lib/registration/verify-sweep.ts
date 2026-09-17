@@ -9,6 +9,7 @@ import {
   type ProviderAlertSender,
   providerPreflight,
 } from '~/lib/monitoring/provider-health';
+import { DISCOVERY_TARGETS, type DiscoveryTarget } from './discovery-targets';
 import {
   type CycleIdentity,
   type ExtractedWindow,
@@ -185,51 +186,11 @@ export function createFetchPage(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
 }
 
 // ── the known gaps ───────────────────────────────────────────────────────────
+// The list itself lives in discovery-targets.ts, a leaf the radar can read without
+// dragging this module's model client and mail transport into a stranger's first text.
+// Re-exported here because this is where the sweep's callers already look for it.
 
-/** A cycle the dataset is MISSING, and the page that would publish it. */
-export interface DiscoveryTarget {
-  municipality: Municipality;
-  programDomain: ProgramDomain;
-  /** The cycle we are waiting on, in the words a parent would use. */
-  cycleLabel: string;
-  sourceUrl: string;
-  /** Why this is a gap — quoted in the digest so the line explains itself. */
-  gap: string;
-}
-
-const TORONTO_REGISTER =
-  'https://www.toronto.ca/explore-enjoy/parks-recreation/how-to-use-our-services/how-to-register-for-recreation-programs/';
-const HALTON_HILLS_REGISTER =
-  'https://www.haltonhills.ca/en/explore-and-play/program-registration.aspx';
-
-/**
- * The two coverage gaps M1 recorded, watched weekly so they close themselves.
- * Toronto registers swim inside its seasonal cycle rather than separately, so
- * both domains ride the same page and the same announcement.
- */
-export const DISCOVERY_TARGETS: readonly DiscoveryTarget[] = [
-  {
-    municipality: 'toronto',
-    programDomain: 'rec_program',
-    cycleLabel: 'Fall 2026',
-    sourceUrl: TORONTO_REGISTER,
-    gap: 'Toronto publishes no Fall 2026 seasonal dates ("Registration dates will be announced at a later date").',
-  },
-  {
-    municipality: 'toronto',
-    programDomain: 'swim',
-    cycleLabel: 'Fall 2026',
-    sourceUrl: TORONTO_REGISTER,
-    gap: 'Toronto registers swim inside the seasonal cycle; the same unpublished Fall 2026 date covers it.',
-  },
-  {
-    municipality: 'halton_hills',
-    programDomain: 'rec_program',
-    cycleLabel: 'Fall 2026',
-    sourceUrl: HALTON_HILLS_REGISTER,
-    gap: 'Halton Hills publishes no seasonal date table at all — the page still reads "Summer Registration On Now!".',
-  },
-];
+export { type DiscoveryTarget, DISCOVERY_TARGETS } from './discovery-targets';
 
 // ── results ──────────────────────────────────────────────────────────────────
 

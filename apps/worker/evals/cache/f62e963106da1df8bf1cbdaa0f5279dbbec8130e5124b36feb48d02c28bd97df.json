@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message states only the given facts: registration date/time from the facts, and the checkpoint task exactly as provided. It doesn't pad missing fields (no venue, no price, no age range mentioned), doesn't use hype or corporate voice, and sounds like a plain-spoken neighbour who looked something up. The mention of the vaccine schedule visit is appropriate as it's directly from the checkpoint facts provided.",
+    "score": 5
+  }
+}

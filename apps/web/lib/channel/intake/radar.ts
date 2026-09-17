@@ -2,12 +2,12 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
-import { torontoPinForPostal } from '~/lib/channel/rec-morning';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import {
+  latestPastCycle,
   matchRegistrationWindows,
   resolveMunicipalities,
 } from '~/lib/registration/match-registration-windows';
@@ -266,6 +266,10 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
             now,
           })
         : [];
+      // Read from the SAME rows the matcher just discarded: a town whose cycle has
+      // already opened is between cycles, not off the radar, and that is a different
+      // sentence. Null for a town that has published nothing.
+      const pastCycle = area ? latestPastCycle({ windows: windowRows, postal: area, now }) : null;
 
       // THE FIRST FIND IS PRE-CONSENT — the watch offer rides on this very message
       // (machine.ts appends WATCH_OFFER to it), so health-checkpoint content may not:
@@ -282,6 +286,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           children,
           candidates,
           windows,
+          pastCycle,
           weather,
           teenChildIds: roster.teenChildIds,
           healthChildren: roster.healthChildren,
@@ -293,21 +298,17 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         checkpoint: null,
       };
 
-      // VIL-334: civic/window lookup can be empty on a brand-new Toronto family
-      // (no seeded fall rec window, no civic hit yet). Leftover mapping is the
-      // unpinned-town answer — not for M1B / every other Toronto FSA that already
-      // has a Designer-locked pin. The pin is verbatim; a model must not paraphrase it.
-      const cityPin =
-        decision.weekendPick === null && decision.registrationLine === null
-          ? torontoPinForPostal(area)
-          : null;
-      const message =
-        cityPin ??
-        (await composeRadarMessage(decision, {
-          familyId: input.familyId,
-          database: deps.database,
-          client: deps.client,
-        }));
+      // Toronto used to short-circuit here on a Designer-locked city pin (VIL-334)
+      // whenever the pick and the window both came back null. The pin named two fixed
+      // September mornings, so the day they passed it began telling a Toronto family
+      // that registrations already gone were still to come — and, being a
+      // short-circuit, it hid the between-cycles answer that names the same town
+      // truthfully. Toronto composes from the decision like every other town.
+      const message = await composeRadarMessage(decision, {
+        familyId: input.familyId,
+        database: deps.database,
+        client: deps.client,
+      });
 
       // Launch-day review P0 (2026-08-11): the decision yielding at DECIDE is not
       // enough — the composer samples at temperature 1 and CAN drop the checkpoint
@@ -331,8 +332,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         itemCount:
           (decision.weekendPick ? 1 : 0) +
           (decision.registrationLine ? 1 : 0) +
-          (decision.checkpoint ? 1 : 0) +
-          (cityPin ? 1 : 0),
+          (decision.checkpoint ? 1 : 0),
         followUpNeeded: decision.followUpNeeded,
         checkpointTold,
         // Earned by the SENT TEXT, exactly as the told-marker above now is: the composer

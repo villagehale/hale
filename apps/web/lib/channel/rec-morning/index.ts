@@ -25,7 +25,6 @@ export {
   recMorningBody,
   recMorningIntakeReply,
   recMorningReply,
-  torontoPinForPostal,
 } from './copy';
 export {
   type RecHelloCity,

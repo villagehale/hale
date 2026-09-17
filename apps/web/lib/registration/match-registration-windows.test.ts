@@ -2,6 +2,7 @@ import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import {
   AGE_TOLERANCE_MONTHS,
+  latestPastCycle,
   matchRegistrationWindows,
   type RegistrationMatch,
   resolveMunicipalities,
@@ -467,5 +468,75 @@ describe('matchRegistrationWindows — cycles that open together are ONE event',
       now: BEFORE_EVERYTHING,
     });
     expect(onlyMatch(out).cycleWindows).toHaveLength(1);
+  });
+});
+
+describe('latestPastCycle', () => {
+  const AFTER_FALL = new Date('2026-09-10T00:00:00.000Z');
+
+  it('names the most recent cycle this town has already opened', () => {
+    const summer = win({ id: 'w-summer', cycleLabel: 'Summer 2026', openAt: new Date('2026-05-05T11:00:00.000Z') });
+    const fall = win({ id: 'w-fall', cycleLabel: 'Fall 2026', openAt: new Date('2026-09-01T11:00:00.000Z') });
+    const past = latestPastCycle({ windows: [summer, fall], postal: 'L3R 0B4', now: AFTER_FALL });
+    expect(past?.window.cycleLabel).toBe('Fall 2026');
+    expect(past?.openedForFamilyAt).toEqual(fall.openAt);
+  });
+
+  it('is null when the town has opened nothing yet — an upcoming window is not a past one', () => {
+    const upcoming = win({ openAt: new Date('2026-11-01T11:00:00.000Z') });
+    expect(latestPastCycle({ windows: [upcoming], postal: 'L3R 0B4', now: AFTER_FALL })).toBeNull();
+  });
+
+  it('never reaches into a town the family does not live in', () => {
+    const elsewhere = win({ municipality: 'burlington' as Municipality, openAt: new Date('2026-09-01T11:00:00.000Z') });
+    expect(latestPastCycle({ windows: [elsewhere], postal: 'L3R 0B4', now: AFTER_FALL })).toBeNull();
+  });
+
+  it("uses the date THIS family could act on, so a resident head start is the one that already went", () => {
+    const resident = win({
+      openAt: new Date('2026-09-15T11:00:00.000Z'),
+      residentOpenAt: new Date('2026-09-01T11:00:00.000Z'),
+    });
+    const past = latestPastCycle({
+      windows: [resident],
+      postal: 'L3R 0B4',
+      now: new Date('2026-09-08T00:00:00.000Z'),
+    });
+    expect(past?.openedForFamilyAt).toEqual(resident.residentOpenAt);
+  });
+
+  it('carries every cycle label the fetched rows hold for that town and domain', () => {
+    // What makes the next-cycle answer checkable against the DATASET rather than against
+    // a hand-kept list: a row still to come, and a row no child here is old enough for,
+    // both count as posted. Neither is a cycle Hale is still waiting on.
+    const fall = win({
+      id: 'w-fall',
+      cycleLabel: 'Fall 2026',
+      openAt: new Date('2026-09-01T11:00:00.000Z'),
+    });
+    const winterOutOfBand = win({
+      id: 'w-winter',
+      cycleLabel: 'Winter 2027',
+      openAt: new Date('2026-12-01T12:00:00.000Z'),
+      ageMinMonths: 144,
+      ageMaxMonths: 216,
+    });
+    const otherDomain = win({ id: 'w-swim', programDomain: 'swim' as ProgramDomain, cycleLabel: 'Swim Fall 2026' });
+    const otherTown = win({
+      id: 'w-else',
+      municipality: 'burlington' as Municipality,
+      cycleLabel: 'Burlington Fall 2026',
+    });
+    const past = latestPastCycle({
+      windows: [fall, winterOutOfBand, otherDomain, otherTown],
+      postal: 'L3R 0B4',
+      now: AFTER_FALL,
+    });
+    expect(past?.window.cycleLabel).toBe('Fall 2026');
+    expect([...(past?.knownCycleLabels ?? [])].sort()).toEqual(['Fall 2026', 'Winter 2027']);
+  });
+
+  it('is null outside the covered municipalities', () => {
+    expect(latestPastCycle({ windows: [win()], postal: 'X9X 9X9', now: AFTER_FALL })).toBeNull();
   });
 });

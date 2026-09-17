@@ -1,6 +1,9 @@
+import type { Municipality } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
 import { WATCH_OFFER } from './copy.js';
+import { asciiCopy } from './radar-decide.js';
 import type { RadarDecision } from './radar-decide.js';
 import {
   MAX_PAYLOAD_SEGMENTS,
@@ -34,6 +37,7 @@ const PICK_ONLY: RadarDecision = {
     whyFacts: ['free', 'outdoor', 'the forecast looks dry'],
   },
   registrationLine: null,
+  registrationAbsence: null,
   checkpoint: null,
   offerQuestion: true,
   followUpNeeded: false,
@@ -53,6 +57,7 @@ const BOTH: RadarDecision = {
 const NOTHING: RadarDecision = {
   weekendPick: null,
   registrationLine: null,
+  registrationAbsence: null,
   checkpoint: null,
   offerQuestion: true,
   followUpNeeded: true,
@@ -70,6 +75,26 @@ const CHECKPOINT_ONLY: RadarDecision = {
 };
 
 const ALL_THREE: RadarDecision = { ...BOTH, checkpoint: CHECKPOINT_ONLY.checkpoint };
+
+/** The 2026-09-16 shape: the town's fall cycle has gone and winter is not posted. */
+const BETWEEN_CYCLES: RadarDecision = {
+  ...NOTHING,
+  registrationAbsence: {
+    cycleRef: { municipality: 'halton_hills', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
+    lastOpenedAtLocal: 'Sep 1, 7:00 a.m.',
+    nextCycleLabel: 'Winter 2027',
+  },
+};
+
+/** The same, with a weekend pick above it and no cycle named to wait for. */
+const PICK_BETWEEN_CYCLES: RadarDecision = {
+  ...PICK_ONLY,
+  registrationAbsence: {
+    cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
+    lastOpenedAtLocal: 'Sep 8, 7:00 a.m.',
+    nextCycleLabel: null,
+  },
+};
 
 describe('radarVoiceContext', () => {
   it('hands the model the decision facts and no internal identifiers', () => {
@@ -266,5 +291,122 @@ describe('townLabel', () => {
     // Title-casing the token gives "Whitchurch Stouffville", which is neither the
     // legal name (hyphenated) nor what a parent in L4A ever says.
     expect(townLabel('whitchurch_stouffville')).toBe('Stouffville');
+  });
+});
+
+describe('the between-cycles absence', () => {
+  it('reaches the model as facts it may say, town included', () => {
+    const context = JSON.stringify(radarVoiceContext(BETWEEN_CYCLES));
+    expect(context).toContain('Halton Hills');
+    expect(context).toContain('Fall 2026');
+    expect(context).toContain('Sep 1, 7:00 a.m.');
+    expect(context).toContain('Winter 2027');
+  });
+
+  it('is a fact slot, so a message that says the town is not treated as inventing it', () => {
+    const slots = radarFactSlots(BETWEEN_CYCLES);
+    expect(slots).toContain('Halton Hills');
+    expect(slots).toContain('Fall 2026');
+    expect(slots).toContain('Sep 1, 7:00 a.m.');
+    expect(slots).toContain('Winter 2027');
+  });
+
+  it('offers no next cycle when the decision named none', () => {
+    expect(radarFactSlots(PICK_BETWEEN_CYCLES)).not.toContain('Winter 2027');
+  });
+
+  it('renders the reason rather than the shrug — the defect, in one assertion', () => {
+    const message = renderRadarDeterministically(BETWEEN_CYCLES);
+    expect(message).toContain('Halton Hills');
+    expect(message).toContain('Fall 2026');
+    expect(message).toContain('Sep 1, 7:00 a.m.');
+    expect(message).toContain('Winter 2027');
+    expect(message).not.toContain('Nothing has a registration date coming up just yet.');
+    expect(message).not.toContain('no registration date coming up');
+  });
+
+  it('leads on the town fact, not on the mapping line — it is the one real thing known', () => {
+    const message = renderRadarDeterministically(BETWEEN_CYCLES);
+    expect(message.indexOf('Halton Hills')).toBeLessThan(message.indexOf('mapping'));
+  });
+
+  it('still says when the first find lands — the absence replaces no promise', () => {
+    expect(renderRadarDeterministically(BETWEEN_CYCLES)).toContain(
+      'Your first weekend find lands in a day or two.',
+    );
+  });
+
+  it('names no season it was not given, and promises no text about one', () => {
+    const message = renderRadarDeterministically(PICK_BETWEEN_CYCLES);
+    expect(message).toContain('Toronto');
+    expect(message).not.toMatch(/Winter|Spring|Summer/);
+    expect(message).not.toMatch(/I'll (text|let you know|tell you)/i);
+  });
+
+  it('pads a lone pick with the reason, where the bare no-window line used to go', () => {
+    const message = renderRadarDeterministically(PICK_BETWEEN_CYCLES);
+    expect(message).toContain('Riverdale Farm drop-in');
+    expect(message).toContain('already opened');
+    expect(message).not.toContain('Nothing has a registration date coming up just yet.');
+  });
+
+  it('keeps the plain no-window line when there is no absence to explain', () => {
+    expect(renderRadarDeterministically(PICK_ONLY)).toContain(
+      'Nothing has a registration date coming up just yet.',
+    );
+  });
+
+  /**
+   * The budget is arithmetic, not style: `usableRadarMessage` silently discards a
+   * payload over MAX_PAYLOAD_SEGMENTS and falls back to THIS render, so a fallback that
+   * does not fit is a message no family ever receives. The worst case is the longest
+   * town, the longest cycle label the dataset actually carries, a dated open with a
+   * year on it, a watched next cycle, AND a weekend pick above it.
+   *
+   * Both superlatives are DERIVED from the seed rather than pasted, because a label
+   * pasted here goes stale the day a town publishes a longer one — and a hand-picked
+   * label was already 15 characters short of the real maximum. A longer label landing
+   * in the data now fails this test instead of quietly buying a fourth segment.
+   */
+  it('fits the segment budget with WATCH_OFFER in its very richest shape', () => {
+    const longestCycleLabel = asciiCopy(
+      [...REGISTRATION_WINDOWS].sort((a, b) => b.cycleLabel.length - a.cycleLabel.length)[0]
+        ?.cycleLabel ?? '',
+    );
+    const longestTown = [...new Set(REGISTRATION_WINDOWS.map((seed) => seed.municipality))].sort(
+      (a, b) => townLabel(b).length - townLabel(a).length,
+    )[0] as Municipality;
+    const richest: RadarDecision = {
+      ...PICK_ONLY,
+      registrationAbsence: {
+        cycleRef: {
+          municipality: longestTown,
+          programDomain: 'rec_program',
+          cycleLabel: longestCycleLabel,
+        },
+        lastOpenedAtLocal: 'Sep 15, 2025, 11:30 a.m.',
+        nextCycleLabel: 'Winter 2027',
+      },
+    };
+    const message = renderRadarDeterministically(richest);
+    // The positive control: a derivation that quietly yielded an empty label would make
+    // every assertion below pass on a message that costs nothing to send.
+    expect(longestCycleLabel.length).toBeGreaterThan(60);
+    expect(message).toContain(longestCycleLabel);
+    expect(message).toContain(townLabel(longestTown));
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: GSM-7 is the whole point
+    expect(message).toMatch(/^[\x0A\x20-\x7E]*$/);
+    expect(smsSegments(`${message}\n\n${WATCH_OFFER}`)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
+    expect(usableRadarMessage(message, richest)).toBe(true);
+  });
+
+  it('is grounded, question-free and ASCII in every between-cycles shape', () => {
+    for (const decision of [BETWEEN_CYCLES, PICK_BETWEEN_CYCLES]) {
+      const message = renderRadarDeterministically(decision);
+      expect(usableRadarMessage(message, decision)).toBe(true);
+      expect(message).not.toContain(WATCH_OFFER);
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range check IS the assertion
+      expect(message).toMatch(/^[\x0A\x20-\x7E]*$/);
+    }
   });
 });

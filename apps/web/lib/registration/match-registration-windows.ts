@@ -87,6 +87,74 @@ export function resolveFamilyOpen(
   };
 }
 
+/** A cycle this family's town has ALREADY opened — the evidence that the town is
+ * between cycles rather than off the radar. */
+export interface PastRegistrationCycle {
+  window: RegistrationWindow;
+  /** The instant THIS family could first have registered, so a resident head start is
+   * the date that already went. */
+  openedForFamilyAt: Date;
+  /** Every cycle label the fetched rows carry for this town and domain — past, upcoming,
+   * or ruled out by a child's age band alike. A posted cycle is not one Hale is still
+   * waiting on, whoever it turned out to be for, so this is what decides whether there is
+   * a next cycle left to name (lib/registration/discovery-targets nextWatchedCycle). */
+  knownCycleLabels: ReadonlySet<string>;
+}
+
+/**
+ * The most recent cycle the family's municipalities have already opened, or null.
+ *
+ * The matcher above answers "what can this family still act on"; this answers the
+ * question its empty result cannot — whether the silence means a town Hale has never
+ * had dates for, or a town whose season has simply gone and whose next dates are not
+ * posted yet. Two different sentences, and a parent can tell them apart.
+ *
+ * Deliberately NOT age-banded, unlike a match: the claim is about the TOWN's calendar
+ * ("Halton Hills' Fall registration already opened"), not about a program for this
+ * child, so narrowing it by band would silence a family whose town plainly did open.
+ */
+export function latestPastCycle(input: {
+  windows: readonly RegistrationWindow[];
+  postal: string;
+  now: Date;
+}): PastRegistrationCycle | null {
+  const covered = new Set<Municipality>(resolveMunicipalities(input.postal));
+  if (covered.size === 0) return null;
+
+  const past: Omit<PastRegistrationCycle, 'knownCycleLabels'>[] = [];
+  for (const window of input.windows) {
+    if (!covered.has(window.municipality)) continue;
+    const { opensForFamilyAt } = resolveFamilyOpen(window, input.postal);
+    if (opensForFamilyAt.getTime() > input.now.getTime()) continue;
+    past.push({ window, openedForFamilyAt: opensForFamilyAt });
+  }
+
+  // Most recent first, with the same municipality/cycle tie-breaks the matcher sorts
+  // by, so two rows that opened on the same morning never pick a different winner run
+  // to run.
+  past.sort(
+    (a, b) =>
+      b.openedForFamilyAt.getTime() - a.openedForFamilyAt.getTime() ||
+      a.window.municipality.localeCompare(b.window.municipality) ||
+      a.window.cycleLabel.localeCompare(b.window.cycleLabel),
+  );
+  const latest = past[0];
+  if (!latest) return null;
+
+  // Every label the DATASET holds for this town and domain, not just the past ones: a
+  // cycle with a row is published, and publishing it is exactly what ends the wait.
+  const knownCycleLabels = new Set(
+    input.windows
+      .filter(
+        (window) =>
+          window.municipality === latest.window.municipality &&
+          window.programDomain === latest.window.programDomain,
+      )
+      .map((window) => window.cycleLabel),
+  );
+  return { ...latest, knownCycleLabels };
+}
+
 /** Whether a child's age sits inside the band, allowing `slack` months either side. */
 function inBand(ageMonths: number, min: number | null, max: number | null, slack: number): boolean {
   if (min !== null && ageMonths < min - slack) return false;
