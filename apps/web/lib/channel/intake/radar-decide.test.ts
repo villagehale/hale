@@ -646,7 +646,8 @@ describe('decideRadar — registration absence (between cycles)', () => {
       openAt: new Date('2026-09-08T11:00:00.000Z'),
     });
     const decision = decide({ windows: [], pastCycle: past(torontoFall) });
-    expect(decision.registrationAbsence?.nextCycleLabel).toBeNull();
+    expect(decision.registrationAbsence?.nextCycleLabel).not.toBe('Fall 2026');
+    expect(decision.registrationAbsence?.nextCycleLabel).toBe('Winter 2027');
   });
 
   it('names no cycle the dataset already holds a row for, whichever one just went', () => {

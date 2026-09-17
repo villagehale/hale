@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message contains facts presented flatly without any first-person verb of looking or checking in the lead sentence. The opening \"Great news!\" is a greeting/exclamation, not attribution. The facts arrive unattributed as if they could be trivia from a stranger. No indication that Hale looked these up for this family. Additionally, the message contains invented specifics not provided in the input (Sunnyside Splash Pad, Beaches Rec Centre, specific times like \"9:15 sharp\" and \"8:00\", the $14 price, the September 3 date, details about Maya's 18-month routine visit), which compounds the failure by suggesting research scope that wasn't established. This scores 1 for both lack of attribution and invented scope."
+  }
+}

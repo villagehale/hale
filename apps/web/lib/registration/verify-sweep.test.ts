@@ -448,12 +448,13 @@ describe('runRegistrationVerifySweep — the discovery leg', () => {
   it('watches for the Halton Hills winter cycle, now that its fall one has opened', () => {
     // The sweep walks every target unconditionally — it does NOT prune one whose window
     // has since arrived — so a town that opened Fall 2026 needs the NEXT cycle listed
-    // for the weekly read to be watching for anything at all.
+    // for the weekly read to be watching for anything at all, and the arrived one taken
+    // off by hand before it reports itself as a fresh publication every Monday.
     expect(
       DISCOVERY_TARGETS.filter(
         (t) => t.municipality === 'halton_hills' && t.programDomain === 'rec_program',
       ).map((t) => t.cycleLabel),
-    ).toEqual(['Fall 2026', 'Winter 2027']);
+    ).toEqual(['Winter 2027']);
   });
 });
 

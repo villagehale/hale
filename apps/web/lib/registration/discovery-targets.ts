@@ -24,37 +24,40 @@ export interface DiscoveryTarget {
   gap: string;
 }
 
+/** The page that carries Toronto's own "Upcoming Registration Dates" table and its
+ * season look-ahead. The how-to-register page is where the Fall 2026 posting was missed:
+ * it explains the mechanics and links the dates rather than printing them. */
 const TORONTO_REGISTER =
-  'https://www.toronto.ca/explore-enjoy/parks-recreation/how-to-use-our-services/how-to-register-for-recreation-programs/';
+  'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/';
 const HALTON_HILLS_REGISTER =
   'https://www.haltonhills.ca/en/explore-and-play/program-registration.aspx';
+const WHITCHURCH_STOUFFVILLE_PLAY_BOOK = 'https://www.townofws.ca/play/recreation/programs/play-book/';
 
 /**
- * The coverage gaps M1 recorded, watched weekly so they close themselves.
- * Toronto registers swim inside its seasonal cycle rather than separately, so
- * both domains ride the same page and the same announcement.
+ * The coverage gaps, watched weekly so they close themselves. Toronto registers swim
+ * inside its seasonal cycle rather than separately, so both domains ride the same page
+ * and the same announcement; Whitchurch-Stouffville runs one window for the whole Play
+ * Book, so one target covers the town.
+ *
+ * A target LEAVES this list by hand once its row lands (the Fall 2026 entries went when
+ * Toronto's and Halton Hills' rows were seeded): the sweep walks every target
+ * unconditionally and never prunes one, so a closed gap left here is a "new window
+ * published - add?" digest line every Monday for a cycle already in the dataset.
  */
 export const DISCOVERY_TARGETS: readonly DiscoveryTarget[] = [
   {
     municipality: 'toronto',
     programDomain: 'rec_program',
-    cycleLabel: 'Fall 2026',
+    cycleLabel: 'Winter 2027',
     sourceUrl: TORONTO_REGISTER,
-    gap: 'Toronto publishes no Fall 2026 seasonal dates ("Registration dates will be announced at a later date").',
+    gap: 'Toronto prints no Winter 2027 date, only a look-ahead: registration "is anticipated to occur between December 1 to 9" with programs browsable from November 17.',
   },
   {
     municipality: 'toronto',
     programDomain: 'swim',
-    cycleLabel: 'Fall 2026',
+    cycleLabel: 'Winter 2027',
     sourceUrl: TORONTO_REGISTER,
-    gap: 'Toronto registers swim inside the seasonal cycle; the same unpublished Fall 2026 date covers it.',
-  },
-  {
-    municipality: 'halton_hills',
-    programDomain: 'rec_program',
-    cycleLabel: 'Fall 2026',
-    sourceUrl: HALTON_HILLS_REGISTER,
-    gap: 'Halton Hills publishes no seasonal date table at all — the page still reads "Summer Registration On Now!".',
+    gap: 'Toronto registers swim inside the seasonal cycle; the same unpublished Winter 2027 date covers it.',
   },
   {
     municipality: 'halton_hills',
@@ -62,6 +65,13 @@ export const DISCOVERY_TARGETS: readonly DiscoveryTarget[] = [
     cycleLabel: 'Winter 2027',
     sourceUrl: HALTON_HILLS_REGISTER,
     gap: 'Halton Hills opened Fall 2026 on Sep 1 and has posted nothing since; the winter cycle is what a family there is now waiting on.',
+  },
+  {
+    municipality: 'whitchurch_stouffville',
+    programDomain: 'rec_program',
+    cycleLabel: 'Winter 2027',
+    sourceUrl: WHITCHURCH_STOUFFVILLE_PLAY_BOOK,
+    gap: 'Whitchurch-Stouffville publishes its dates only inside the seasonal Play Book, and the page still offers the Fall 2026 one. The Town runs a single window for the whole book, so swim and the winter-break camps arrive on this date too.',
   },
 ];
 

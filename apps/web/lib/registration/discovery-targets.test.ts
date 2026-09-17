@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { nextWatchedCycle } from './discovery-targets';
+import { DISCOVERY_TARGETS, nextWatchedCycle } from './discovery-targets';
+import { REGISTRATION_WINDOWS } from './registration-windows-data';
 
 /**
  * The list is hand-maintained and the weekly sweep never prunes it, so a target whose
@@ -21,12 +22,34 @@ describe('nextWatchedCycle', () => {
     ).toBeNull();
   });
 
-  it("is silent for Toronto, whose Fall 2026 targets closed the day the row landed", () => {
-    expect(nextWatchedCycle('toronto', 'rec_program', new Set(['Fall 2026']))).toBeNull();
-    expect(nextWatchedCycle('toronto', 'swim', new Set(['Fall 2026']))).toBeNull();
+  it('names Winter 2027 for a Toronto family whose Fall 2026 cycle has gone', () => {
+    expect(nextWatchedCycle('toronto', 'rec_program', new Set(['Fall 2026']))).toBe('Winter 2027');
+    expect(nextWatchedCycle('toronto', 'swim', new Set(['Fall 2026']))).toBe('Winter 2027');
   });
 
   it('is silent for a town nobody registered a target for', () => {
     expect(nextWatchedCycle('markham', 'rec_program', new Set(['Fall 2026']))).toBeNull();
+  });
+});
+
+/**
+ * A target whose row has landed is a closed gap the hand-kept list has not noticed, and
+ * runVerifySweep never prunes one: it walks every target unconditionally, so the weekly
+ * digest would report "new window published — add?" for a cycle already seeded, every
+ * Monday, forever. The dataset is the arbiter here exactly as it is in nextWatchedCycle.
+ */
+describe('DISCOVERY_TARGETS against the dataset', () => {
+  it('names no cycle the dataset already holds a row for', () => {
+    const seeded = new Set(
+      REGISTRATION_WINDOWS.map(
+        (row) => `${row.municipality}/${row.programDomain}/${row.cycleLabel}`,
+      ),
+    );
+
+    const closed = DISCOVERY_TARGETS.filter((target) =>
+      seeded.has(`${target.municipality}/${target.programDomain}/${target.cycleLabel}`),
+    ).map((target) => `${target.municipality}/${target.programDomain}/${target.cycleLabel}`);
+
+    expect(closed).toEqual([]);
   });
 });
