@@ -53,7 +53,7 @@ function qrPath(html: string): string {
 describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
   it('leads with what Hale IS — the five-second line, both arms', () => {
     for (const html of [liveHtml, unsetHtml]) {
-      expect(html).toContain('A family assistant you text.');
+      expect(html).toContain('The family assistant you text.');
       expect(html).toContain(
         'Hale watches registration dates and the family week so you don’t have to. No app, no account — just this text thread.',
       );
@@ -90,8 +90,8 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
     expect(unsetHtml).not.toContain('Reply STOP anytime');
   });
 
-  it('is one Message Hale button — no picker, no channel names', () => {
-    expect(liveHtml).toContain('>Message Hale</a>');
+  it('is one Text Hale button — no picker, no channel names', () => {
+    expect(liveHtml).toContain('>Text Hale</a>');
     expect(liveHtml).not.toContain('Continue in Messages');
     expect(liveHtml).not.toContain('Or use Messages');
     expect(liveHtml).not.toContain('iMessage');
@@ -102,7 +102,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
   it('offers the sms: composer only where it works — desktop-other and unknown get the QR instead', () => {
     for (const platform of ['apple', 'android', 'desktop-mac'] as const) {
       const html = render({ platform });
-      expect(html).toContain('>Message Hale</a>');
+      expect(html).toContain('>Text Hale</a>');
       expect(html).toContain('href="sms:+16475551234');
       expect(html).not.toContain('wa.me');
       expect(html).not.toContain('WhatsApp');
@@ -114,7 +114,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
     for (const platform of ['desktop-other', 'unknown'] as const) {
       const html = render({ platform });
       expect(anchors(html).filter((a) => a.includes('href="sms:'))).toEqual([]);
-      expect(html).not.toContain('>Message Hale</a>');
+      expect(html).not.toContain('>Text Hale</a>');
       expect([...html.matchAll(/aria-label="QR code/g)]).toHaveLength(1);
       expect(html.indexOf('QR code')).toBeLessThan(html.indexOf('Save Hale to your contacts'));
       expect(html).not.toContain('wa.me');
@@ -140,12 +140,12 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
 describe('TextEntry — the channel matrix, rendered', () => {
   const WA = { whatsappNumber: LIVE_NUMBER };
 
-  it('apple WhatsApp dark: one Message Hale sms: CTA carrying the pre-filled body and venue token', () => {
+  it('apple WhatsApp dark: one Text Hale sms: CTA carrying the pre-filled body and venue token', () => {
     // React escapes the `&` of the cross-platform `?&body=` form into `&amp;`.
     expect(liveHtml).toContain(
       'href="sms:+16475551234?&amp;body=Hi%20Hale%20(via%20earlyon-richmondhill)"',
     );
-    expect(liveHtml).toContain('>Message Hale</a>');
+    expect(liveHtml).toContain('>Text Hale</a>');
     const primary = anchors(liveHtml).find((a) => a.includes('href="sms:')) ?? '';
     expect(primary).toContain('btn-primary');
     expect(primary).toContain('data-cta="cta_text_click"');
@@ -175,9 +175,9 @@ describe('TextEntry — the channel matrix, rendered', () => {
     expect(wa).toContain('btn-primary');
   });
 
-  it('android with WhatsApp dark: one Message Hale button, and no dead WhatsApp button anywhere', () => {
+  it('android with WhatsApp dark: one Text Hale button, and no dead WhatsApp button anywhere', () => {
     const html = render({ platform: 'android' });
-    expect(html).toContain('>Message Hale</a>');
+    expect(html).toContain('>Text Hale</a>');
     expect(html).not.toContain('Continue in Messages');
     expect(html).not.toContain('wa.me');
     expect(html).not.toContain('WhatsApp');

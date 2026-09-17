@@ -2,8 +2,7 @@
   "Common": {
     "textHale": "Text Hale",
     "emailHale": "Email Hale",
-    "skipToContent": "Skip to content",
-    "messageHale": "Message Hale"
+    "skipToContent": "Skip to content"
   },
   "HomeMeta": {
     "title": "Hale · the family assistant you text",
@@ -508,7 +507,7 @@
   "Text": {
     "metaTitle": "Text Hale",
     "metaDescription": "Start a conversation with Hale — the family assistant you text. It watches registration day where you live.",
-    "headline": "A family assistant you text.",
+    "headline": "The family assistant you text.",
     "lede": "Hale watches registration dates and the family week so you don’t have to. No app, no account — just this text thread.",
     "step1": "Say hi — the first message is already written.",
     "step2": "Answer one text: kids’ names, ages, postal code.",
