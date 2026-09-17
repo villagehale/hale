@@ -183,6 +183,30 @@ export async function resolveFamilyForUser(
   return rows[0]?.familyId ?? null;
 }
 
+/** One membership: the household, and the seat held in it. */
+export interface FamilySeat {
+  familyId: string;
+  role: (typeof schema.familyMembers.$inferSelect)['role'];
+}
+
+/**
+ * EVERY seat this user holds, keyed on users.id.
+ *
+ * `resolveFamilyForUser` is `limit(1)` with no ORDER BY, which is fine for a page that
+ * renders one household and wrong for anything irreversible: a separated parent is
+ * primary_parent of one family and co_parent of another, so the same click either
+ * scheduled their own children's deletion or departed the other household, decided by
+ * heap order (VIL-355). A caller doing something it cannot take back enumerates the
+ * seats and refuses an ambiguous one rather than inheriting that pick.
+ */
+export async function listSeatsForUser(userId: string, database: Database): Promise<FamilySeat[]> {
+  return database
+    .select({ familyId: schema.familyMembers.familyId, role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.userId, userId))
+    .orderBy(schema.familyMembers.familyId);
+}
+
 /**
  * External auth id → internal users.id. The accept flow needs the uuid (to write a
  * family_members row and stamp the invite), but the session only hands us the

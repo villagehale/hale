@@ -707,6 +707,71 @@ export async function revokeTeenAccessGrant(
   });
 }
 
+/**
+ * VIL-355 · close EVERY window this member holds on this family's teens, because they
+ * are leaving it.
+ *
+ * It lives here rather than in the departure door for a structural reason, not a
+ * stylistic one: `teen-access-outbound.test.ts` forbids `lib/channel` from naming the
+ * grant machinery at all, and that ban is load-bearing — it is what keeps an outbound
+ * path from ever reading unlocked teen content. Departure needs the opposite operation,
+ * so the module that owns the table performs it and the channel door asks for it by
+ * name. Both halves of the split are written, as every other transition here does: the
+ * enforcement row is stamped, the append-only consent ledger records the withdrawal,
+ * and one audit row per closed grant is written (rule #6).
+ *
+ * Runs inside the caller's transaction. Already-revoked grants are left at their
+ * original date — re-stamping would move the instant a PIPEDA read is taken against —
+ * so the returned count is what THIS departure closed, never a total.
+ */
+export async function revokeTeenAccessGrantsForDepartingMember(
+  tx: Database,
+  input: { familyId: string; userId: string; now: Date },
+): Promise<number> {
+  const { familyId, userId, now } = input;
+  const revoked = await tx
+    .update(schema.teenAccessGrants)
+    .set({ revokedAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(schema.teenAccessGrants.familyId, familyId),
+        eq(schema.teenAccessGrants.grantedToUserId, userId),
+        isNull(schema.teenAccessGrants.revokedAt),
+      ),
+    )
+    .returning({
+      id: schema.teenAccessGrants.id,
+      childId: schema.teenAccessGrants.childId,
+      scope: schema.teenAccessGrants.scope,
+    });
+  if (revoked.length === 0) return 0;
+
+  await tx.insert(schema.consentRecords).values(
+    revoked.map((grant) => ({
+      userId,
+      familyId,
+      consentType: 'teen_content_access' as const,
+      granted: false,
+      consentScope: grant.scope,
+      policyVersion: POLICY_VERSION,
+      grantedAt: now,
+      revokedAt: now,
+      evidence: { revokedBy: userId, teenChildId: grant.childId },
+    })),
+  );
+  await tx.insert(schema.auditLog).values(
+    revoked.map((grant) => ({
+      familyId,
+      actor: userId,
+      actionTaken: 'teen_content_access.revoked',
+      targetTable: 'teen_access_grants',
+      targetId: grant.id,
+      after: { scope: grant.scope, teenChildId: grant.childId },
+    })),
+  );
+  return revoked.length;
+}
+
 export interface TeenAccessGrantSummary {
   id: string;
   childId: string;

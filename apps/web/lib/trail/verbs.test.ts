@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { ActorResolver, AuditLogEntry } from '~/lib/dashboard/mappers';
+import { toTrailView } from '~/lib/dashboard/mappers';
 import { AUDIT_VERBS, targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
 
 /** No trail row may ever render a raw table name, a raw snake_case/dotted action
@@ -46,6 +48,69 @@ describe('trailVerb — every verb the app writes maps to a human sentence', () 
       'the reviewer raised a concern and held it',
     );
     expect(trailVerb('plan_created').sentence).toBe('you added a plan');
+  });
+});
+
+/**
+ * VIL-355 · WHO the trail's sentence is addressed to, when the person it is about has
+ * already left.
+ *
+ * A departure closes three doors that each have a verb of their own — the SMS channel,
+ * a connected assistant, a connector — and reusing those verbs looked like the right
+ * kind of thrift. It is not, because of who reads the row afterwards. The trail is one
+ * family's, the departed co-parent has no seat, and `buildActorResolver` resolves an
+ * actor with no seat to HALE. So the parent who stayed opens their receipts and finds
+ * Hale telling them "you turned off texting with Hale" and "you disconnected an outside
+ * assistant" about somebody else's doors — two claims about the reader that are false,
+ * on the surface whose whole job is to be true.
+ *
+ * `after.reason` carries 'co_parent_departed', but nothing renders `after`, so the fix
+ * is a verb of its own per effect: third-person, and it says leaving is why.
+ */
+describe('a departure’s rows never tell the parent who stayed that they did it', () => {
+  const DEPARTURE_VERBS = [
+    'co_parent_channel_sms_revoked',
+    'co_parent_mcp_grant_revoked',
+    'co_parent_integration_revoked',
+  ] as const;
+
+  it.each(DEPARTURE_VERBS)('%s reads in the third person and names the departure', (verb) => {
+    const { sentence, family } = trailVerb(verb);
+    expect(family).not.toBe('neutral');
+    expect(sentence).toContain('co-parent');
+    expect(sentence).toContain('left');
+    // 'you' as a word, not as the letters inside 'your' — the row is about someone else.
+    expect(sentence).not.toMatch(/\byou\b/);
+  });
+
+  /**
+   * Rendered through the mapper the receipts page actually uses, with the resolver's
+   * real answer for a seatless actor ('hale'), because the sentence and the attribution
+   * are only wrong TOGETHER: Hale's byline over a first-person claim.
+   */
+  it('renders the staying parent a third-person row, attributed to Hale', () => {
+    const departed = 'user-who-left-uuid';
+    const entry = {
+      id: 'log-depart-1',
+      familyId: 'f1',
+      actor: departed,
+      actionTaken: 'co_parent_channel_sms_revoked',
+      targetTable: 'parent_channels',
+      targetId: 'chan-1',
+      before: null,
+      after: { revoked: true, reason: 'co_parent_departed' },
+      occurredAt: new Date('2026-10-01T08:30:00Z'),
+      ip: null,
+      userAgent: null,
+      agentRunId: null,
+    } as AuditLogEntry;
+    // buildActorResolver's answer for an actor with no family_members row.
+    const resolveSeatless: ActorResolver = () => 'hale';
+
+    const view = toTrailView(entry, false, 'America/Toronto', resolveSeatless);
+
+    expect(view.actor).toBe('hale');
+    expect(view.summary).toBe('a co-parent’s texting with Hale ended when they left this family');
   });
 });
 

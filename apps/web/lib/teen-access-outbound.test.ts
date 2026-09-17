@@ -76,6 +76,26 @@ const OUTBOUND_TREES: Array<[string, string, string[]?]> = [
   ['app/api/rights', 'the export endpoint hands back a durable file'],
 ];
 
+/**
+ * Per-FILE exemptions, each naming the exact SYMBOL that file is allowed to use.
+ *
+ * The tree-level exemption above (lib/rights + loadTrail) widens the allowance for every
+ * file in that tree. Departure needs the opposite shape: one write-only symbol in one
+ * file. `revokeTeenAccessGrantsForDepartingMember` CLOSES a leaving member's grants and
+ * returns a count — it reads no content and hands none back — and it is owned by
+ * lib/teen-access rather than written inside lib/channel precisely so this ban keeps
+ * holding for everything else in the tree.
+ *
+ * Named here rather than passing by accident, which is what it did before: the banned
+ * token is `teenAccessGrants` and the symbol spells it with a capital T, so a
+ * case-sensitive `includes` let it through on CAPITALISATION. The check is now
+ * case-insensitive and the named symbol is stripped from the source before matching, so
+ * a second grant-reader in this file — or any other use of the table — is still caught.
+ */
+const FILE_EXEMPTIONS: Record<string, readonly string[]> = {
+  'lib/channel/coparent/depart.ts': ['revokeTeenAccessGrantsForDepartingMember'],
+};
+
 /** Individual outbound files that live inside otherwise-mixed trees. */
 const OUTBOUND_FILES = [
   ['lib/loop/ics-feed.ts', 'an ICS feed is subscribed to by whoever holds the URL'],
@@ -109,9 +129,13 @@ function walk(dir: string): string[] {
   return out;
 }
 
-function offendingTokens(file: string): string[] {
-  const source = readFileSync(file, 'utf8');
-  return GRANT_READER_TOKENS.filter((token) => source.includes(token));
+function offendingTokens(file: string, relative = ''): string[] {
+  let source = readFileSync(file, 'utf8');
+  for (const symbol of FILE_EXEMPTIONS[relative] ?? []) source = source.split(symbol).join('');
+  // Case-INSENSITIVE: a token matched on one capitalisation bans the SPELLING rather
+  // than the thing, and `teenAccessGrants` misses every `…TeenAccessGrants…` there is.
+  const lowered = source.toLowerCase();
+  return GRANT_READER_TOKENS.filter((token) => lowered.includes(token.toLowerCase()));
 }
 
 describe('teen access grants never reach an outbound channel', () => {
@@ -129,10 +153,13 @@ describe('teen access grants never reach an outbound channel', () => {
       expect(files.length).toBeGreaterThan(0);
 
       const offenders = files
-        .map((file) => ({
-          file: file.slice(WEB_ROOT.length + 1),
-          tokens: offendingTokens(file).filter((token) => !exempt.includes(token)),
-        }))
+        .map((file) => {
+          const relative = file.slice(WEB_ROOT.length + 1);
+          return {
+            file: relative,
+            tokens: offendingTokens(file, relative).filter((token) => !exempt.includes(token)),
+          };
+        })
         .filter((entry) => entry.tokens.length > 0);
 
       expect(offenders).toEqual([]);
@@ -141,11 +168,26 @@ describe('teen access grants never reach an outbound channel', () => {
 
   for (const [file, why] of OUTBOUND_FILES) {
     it(`${file} consults no grant — ${why}`, () => {
-      const source = readFileSync(`${WEB_ROOT}/${file}`, 'utf8');
-      expect(source.length).toBeGreaterThan(0);
-      expect(GRANT_READER_TOKENS.filter((token) => source.includes(token))).toEqual([]);
+      const path = `${WEB_ROOT}/${file}`;
+      expect(readFileSync(path, 'utf8').length).toBeGreaterThan(0);
+      expect(offendingTokens(path, file)).toEqual([]);
     });
   }
+
+  /**
+   * An exemption has to stay both TRUE and NEEDED. Stale in either direction is a hole:
+   * a symbol the file no longer uses is an allowance nobody is paying for, and an
+   * exemption that would not trip the check anyway is a comment pretending to be one.
+   */
+  it('keeps every per-file exemption real — still used, and still load-bearing', () => {
+    for (const [file, symbols] of Object.entries(FILE_EXEMPTIONS)) {
+      const path = `${WEB_ROOT}/${file}`;
+      const source = readFileSync(path, 'utf8');
+      for (const symbol of symbols) expect(source).toContain(symbol);
+      expect(offendingTokens(path)).not.toEqual([]);
+      expect(offendingTokens(path, file)).toEqual([]);
+    }
+  });
 
   it('the PIPEDA export calls the trail loader WITHOUT an unlock set', () => {
     // loadTrailForFamily takes `unlocks` as an optional third argument defaulting to

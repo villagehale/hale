@@ -242,7 +242,16 @@ export interface VerifiedMcpGrant {
   scopes: McpScope[];
 }
 
-/** Live DB verification makes revocation and expiry effective on the next call. */
+/**
+ * Live DB verification makes revocation and expiry effective on the next call.
+ *
+ * The membership INNER JOIN is the part no door has to remember (VIL-355): a grant is
+ * a read into a HOUSEHOLD, and it lived on its own 30-day clock, so any path that took
+ * somebody's seat away — a co-parent departing, a caregiver removed — had to also think
+ * of this table or the bearer token kept reading the children's data from a family the
+ * holder had left. Joining the seat makes every such removal fail this check closed on
+ * the very next call, which is the version of the rule that cannot be forgotten.
+ */
 export async function verifyMcpBearer(
   database: Database,
   token: string,
@@ -262,6 +271,13 @@ export async function verifyMcpBearer(
     .innerJoin(
       schema.mcpOauthClients,
       eq(schema.mcpOauthClients.clientId, schema.mcpGrants.clientId),
+    )
+    .innerJoin(
+      schema.familyMembers,
+      and(
+        eq(schema.familyMembers.familyId, schema.mcpGrants.familyId),
+        eq(schema.familyMembers.userId, schema.mcpGrants.userId),
+      ),
     )
     .where(
       and(
@@ -348,6 +364,61 @@ export async function listMcpConnectionsForUser(
 
 export type RevokeMcpGrantResult = { status: 'revoked' } | { status: 'not_found' };
 
+/** A revoked grant, as every `UPDATE … RETURNING` that closes one hands it back. */
+export interface RevokedMcpGrant {
+  clientId: string;
+  /** As STORED — narrowed to the scopes this build knows before it is written down. */
+  scopes: string[];
+}
+
+/** The stored scopes, narrowed to the ones this build knows — the shape both the
+ * consent scope and the audit row are written from. */
+function mcpGrantScopes(stored: readonly string[]): McpScope[] {
+  return MCP_SCOPES.filter((scope) => stored.includes(scope));
+}
+
+/**
+ * The consent-ledger half of closing a connected assistant, which is not optional.
+ *
+ * Stamping `mcp_grants.revoked_at` ends the ACCESS; the ledger is what a consent list
+ * and a PIPEDA access read answer from, and it is append-only with latest-row-wins — so
+ * a revocation that skips this row leaves the third-party-model consent reading as
+ * GRANTED under a grant that is closed. There are two doors that revoke (the parent's
+ * own disconnect, and a co-parent's departure), and they share this rather than each
+ * spelling the scope string out, because a second copy is how the two ledgers drift.
+ *
+ * Takes the caller's transaction: the ledger row and the grant row commit together or
+ * not at all.
+ */
+export async function appendMcpGrantWithdrawals(
+  tx: Database,
+  input: {
+    userId: string;
+    familyId: string;
+    grants: readonly RevokedMcpGrant[];
+    /** Set by the departure, which has an instant to file the withdrawal under; the
+     * in-app disconnect takes the database's clock, as it always has. */
+    grantedAt?: Date;
+    ip?: string;
+    userAgent?: string;
+  },
+): Promise<void> {
+  if (input.grants.length === 0) return;
+  await tx.insert(schema.consentRecords).values(
+    input.grants.map((grant) => ({
+      userId: input.userId,
+      familyId: input.familyId,
+      consentType: 'mcp_third_party_model' as const,
+      granted: false,
+      consentScope: consentScope(grant.clientId, mcpGrantScopes(grant.scopes)),
+      policyVersion: POLICY_VERSION,
+      ...(input.grantedAt ? { grantedAt: input.grantedAt } : {}),
+      ip: input.ip ?? null,
+      userAgent: input.userAgent ?? null,
+    })),
+  );
+}
+
 export async function revokeMcpGrant(
   database: Database,
   input: {
@@ -378,17 +449,14 @@ export async function revokeMcpGrant(
       });
     const grant = revoked[0];
     if (!grant) return { status: 'not_found' };
-    const scopes = MCP_SCOPES.filter((scope) => grant.scopes.includes(scope));
+    const scopes = mcpGrantScopes(grant.scopes);
 
-    await tx.insert(schema.consentRecords).values({
+    await appendMcpGrantWithdrawals(tx as unknown as Database, {
       userId: input.userId,
       familyId: input.familyId,
-      consentType: 'mcp_third_party_model',
-      granted: false,
-      consentScope: consentScope(grant.clientId, scopes),
-      policyVersion: POLICY_VERSION,
-      ip: input.ip ?? null,
-      userAgent: input.userAgent ?? null,
+      grants: [grant],
+      ip: input.ip,
+      userAgent: input.userAgent,
     });
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,

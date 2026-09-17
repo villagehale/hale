@@ -1455,6 +1455,63 @@ describe('intake · CASL keywords', () => {
     expect(ack?.providerMessageId).toMatch(/^fake-out-/);
   });
 
+  /**
+   * VIL-355 · departure revokes the seat AND the channel, so the revoked
+   * `parent_channels` row keeps pointing at a family the person no longer belongs to.
+   * START read that row and re-enrolled them into it — an active channel and a granted
+   * consent for a household with no seat, minutes after Hale promised to stop texting
+   * them about it. The keyword is express consent to be TEXTED; it is not a claim on a
+   * family, so the re-enrol has to be membership-gated and a seatless number is a
+   * stranger.
+   */
+  it('START from a number whose seat is gone does NOT re-enrol it into that family', async () => {
+    const { fake, transport, deps } = harness({});
+    const familyId = '00000000-0000-4000-8000-0000000000f2';
+    const userId = '00000000-0000-4000-8000-0000000000u2';
+    await fake.db.insert(schema.parentChannels).values({
+      userId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      verifiedAt: NOW,
+      revokedAt: NOW,
+    } as never);
+
+    const result = await text(fake, transport, deps, 'START');
+
+    expect(result.status).not.toBe('restarted');
+    expect(transport.bodies().at(-1)).not.toBe(START_ACK_BY_LANGUAGE.en);
+    expect(fake.rows(schema.parentChannels).filter((r) => r.revokedAt === null)).toHaveLength(0);
+    expect(fake.rows(schema.consentRecords)).toHaveLength(0);
+  });
+
+  /** The positive control for the gate above: the ordinary parent who texted STOP and
+   * then START still keeps their seat, so the re-enrol is exactly as it was. */
+  it('START from a number whose seat is intact still re-enrols it', async () => {
+    const { fake, transport, deps } = harness({});
+    const familyId = '00000000-0000-4000-8000-0000000000f3';
+    const userId = '00000000-0000-4000-8000-0000000000u3';
+    await fake.db.insert(schema.parentChannels).values({
+      userId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      verifiedAt: NOW,
+      revokedAt: NOW,
+    } as never);
+    await fake.db
+      .insert(schema.familyMembers)
+      .values({ familyId, userId, role: 'primary_parent' } as never);
+
+    const result = await text(fake, transport, deps, 'START');
+
+    expect(result).toEqual({ status: 'restarted' });
+    expect(transport.bodies().at(-1)).toBe(START_ACK_BY_LANGUAGE.en);
+    expect(fake.rows(schema.parentChannels).filter((r) => r.revokedAt === null)).toHaveLength(1);
+  });
+
   it('HELP with no open conversation still ledgers the reply when the number is an enrolled parent (rule #6)', async () => {
     const { fake, transport, deps } = harness({});
     // An enrolled household whose intake session is long gone: the no-session HELP
