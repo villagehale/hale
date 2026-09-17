@@ -36,7 +36,7 @@ export const CONTACT_EMAIL = 'aloha@villagehale.com';
  * (apps/web/lib/channel/intake/copy.ts `greeting`), and /text previews that
  * reply verbatim. The parent taps send; Hale never texts first. Verbatim.
  */
-const INTAKE_PREFILL = 'Hi Hale';
+export const INTAKE_PREFILL = "Hi Hale 👋 ready to get started";
 
 /** A `?s=` value, or null when absent, repeated, or not a venue code. */
 export function parseSourceCode(raw: string | string[] | undefined): string | null {

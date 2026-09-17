@@ -39,6 +39,28 @@ import {
 } from './copy';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 
+
+/**
+ * The /text page's prefilled first message lives in apps/site; the greeting path lives
+ * here. They have drifted before (a warmer prefill would have skipped the greeting), so
+ * the site's constant is read from disk and pushed through the classifier, with and
+ * without the venue tag the page appends.
+ */
+describe('the /text prefill and the bare-hello classifier agree', () => {
+  it('greets the exact string the site prefills, tagged or not', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const src = readFileSync(
+      fileURLToPath(new URL('../../../../site/lib/text-entry.ts', import.meta.url)),
+      'utf8',
+    );
+    const prefill = /INTAKE_PREFILL = (["'])(.*?)\1;/.exec(src)?.[2];
+    expect(prefill, 'INTAKE_PREFILL must be a single literal in apps/site/lib/text-entry.ts').toBeTruthy();
+    expect(isBareFirstHello(prefill as string)).toBe(true);
+    expect(isBareFirstHello(`${prefill} (via earlyon-richmondhill)`)).toBe(true);
+  });
+});
+
 describe('SITTING_SESSION_REMINDER', () => {
   it('is the Designer-locked next-morning line, verbatim', () => {
     expect(SITTING_SESSION_REMINDER).toBe(
@@ -102,6 +124,12 @@ describe('sourceCodeFromBody / venueForCode', () => {
 
   it('treats a greeting addressed to Hale by name as still bare (the /text page prefill)', () => {
     expect(isBareFirstHello('Hi Hale')).toBe(true);
+    expect(isBareFirstHello("Hi Hale 👋 ready to get started")).toBe(true);
+    expect(isBareFirstHello("Hi Hale 👋 let's get started")).toBe(true);
+    expect(isBareFirstHello('Hi Hale 👋 let’s get started (via earlyon-richmondhill)')).toBe(true);
+    expect(isBareFirstHello('Salut Hale 👋 on commence')).toBe(true);
+    // A greeting that carries a real question is NOT bare — the words go to the answerer.
+    expect(isBareFirstHello('Hi Hale, when does swim registration open?')).toBe(false);
     expect(isBareFirstHello('hi, hale!')).toBe(true);
     expect(isBareFirstHello('Bonjour Hale')).toBe(true);
     expect(isBareFirstHello('Hi Hale (via markham)')).toBe(true);

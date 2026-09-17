@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRATION_GUIDES } from '~/lib/registration/index.js';
-import { buildSmsHrefForBody } from '~/lib/text-entry.js';
+import { INTAKE_PREFILL, buildSmsHrefForBody } from '~/lib/text-entry.js';
 import ActivitiesHub from './[locale]/activities/page.js';
 import BramptonPage, {
   generateMetadata as bramptonMeta,
@@ -141,7 +141,7 @@ describe('city registration routes — landing chrome, not a blog', () => {
     // 'Hi Hale' — codes ride only in /text's ?s= links, never in a page body.
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
     const html = await render(BramptonPage);
-    const locked = buildSmsHrefForBody(LIVE_NUMBER, 'Hi Hale');
+    const locked = buildSmsHrefForBody(LIVE_NUMBER, INTAKE_PREFILL);
     expect(html).toContain(locked.replaceAll('&', '&amp;'));
     const body = html.replace(/<header[\s\S]*?<\/header>/, '').replace(/<footer[\s\S]*?<\/footer>/, '');
     expect(body).not.toContain('L3R');

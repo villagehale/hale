@@ -143,7 +143,7 @@ describe('TextEntry — the channel matrix, rendered', () => {
   it('apple WhatsApp dark: one Text Hale sms: CTA carrying the pre-filled body and venue token', () => {
     // React escapes the `&` of the cross-platform `?&body=` form into `&amp;`.
     expect(liveHtml).toContain(
-      'href="sms:+16475551234?&amp;body=Hi%20Hale%20(via%20earlyon-richmondhill)"',
+      'href="sms:+16475551234?&amp;body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started%20(via%20earlyon-richmondhill)"',
     );
     expect(liveHtml).toContain('>Text Hale</a>');
     const primary = anchors(liveHtml).find((a) => a.includes('href="sms:')) ?? '';
@@ -219,7 +219,7 @@ describe('TextEntry — the channel matrix, rendered', () => {
   });
 
   it('pre-fills the locked hello when no venue sent them', () => {
-    expect(liveNoSourceHtml).toContain('href="sms:+16475551234?&amp;body=Hi%20Hale"');
+    expect(liveNoSourceHtml).toContain('href="sms:+16475551234?&amp;body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started"');
   });
 
   it('keeps the dark page dark: no channel buttons on the email-fallback state even if the WhatsApp env leaks in', () => {
