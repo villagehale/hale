@@ -466,6 +466,40 @@ describe('the watched-spot proactive classes', () => {
     expect(PROACTIVE_CAP.spot_open_instant).toEqual({ max: 4, windowHours: 24 });
   });
 
+  it('never lets an email alert claim urgency — the inbox keeps until 08:00', async () => {
+    // Kills URGENCY_ALLOWED.email_alert = true, copied from the instant watch above: a
+    // classifier that fires at 02:00 would then wake a household about a school notice.
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'email_alert',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('holds the fourth email alert in a day', async () => {
+    // Kills PROACTIVE_CAP.email_alert = null: the volume of this class is set by how much
+    // mail arrives, so an uncapped one turns a busy mailbox into a feed.
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'email_alert', now: MIDDAY },
+        ports({ recentSends: 3 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'email_alert', now: MIDDAY },
+        ports({ recentSends: 2 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+  });
+
   it('holds the fifth opening in a day', async () => {
     // Kills `PROACTIVE_CAP.spot_open = null`, which the registration ladder's entry makes
     // an easy copy: a flapping portal would then be an unbounded text campaign.

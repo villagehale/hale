@@ -771,6 +771,13 @@
       "when": 1781469606000,
       "tag": "0112_co_parent_invite_category",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1781469607000,
+      "tag": "0113_email_alert_category",
+      "breakpoints": true
     }
   ]
 }

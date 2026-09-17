@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { GmailAlertEnvelope } from './email-alert';
 import type { ActiveConnectorConnection } from './store';
-import { type GoogleFetch, syncConnection } from './sync';
+import { type GmailAlertBatch, type GoogleFetch, syncConnection } from './sync';
 import type { OAuthTokens } from './token-vault';
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
@@ -32,6 +33,8 @@ interface Captured {
   cursor?: Record<string, unknown>;
   errored: boolean;
   refreshed?: OAuthTokens;
+  /** Every gmail batch handed to the alert port, in order. */
+  alerted: GmailAlertBatch[];
 }
 
 /** The single enqueued event, asserting exactly one was emitted (narrows away the
@@ -45,7 +48,7 @@ function onlyEvent(cap: Captured): EnqueuedEvent {
 
 /** Deps stub: capture enqueue + cursor/error/token writes without a real queue/db. */
 function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {}) {
-  const cap: Captured = { enqueued: [], errored: false };
+  const cap: Captured = { enqueued: [], errored: false, alerted: [] };
   const deps: Parameters<typeof syncConnection>[1] = {
     googleFetch: overrides.googleFetch ?? routedFetch([]).fetchImpl,
     enqueue: async (event) => {
@@ -62,9 +65,23 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
     saveTokens: async (_id, t) => {
       cap.refreshed = t;
     },
+    alertGmailEnvelopes: async (batch) => {
+      cap.alerted.push(batch);
+      return batch.envelopes.map(() => 'dark' as const);
+    },
     ...overrides,
   };
   return { deps, cap };
+}
+
+/** The single alerted envelope, asserting exactly one batch of exactly one. */
+function onlyEnvelope(cap: Captured): GmailAlertEnvelope {
+  expect(cap.alerted).toHaveLength(1);
+  const envelopes = cap.alerted[0]?.envelopes ?? [];
+  expect(envelopes).toHaveLength(1);
+  const [envelope] = envelopes;
+  if (!envelope) throw new Error('no alerted envelope');
+  return envelope;
 }
 
 function connection(provider: ActiveConnectorConnection['provider'], meta: Record<string, unknown> = {}, tokens = FRESH): ActiveConnectorConnection {
@@ -211,6 +228,114 @@ describe('syncConnection — Gmail', () => {
 
     onlyEvent(cap);
     expect(cap.cursor).toEqual({ historyId: '9100' });
+  });
+});
+
+describe('syncConnection — the gmail alert hand-off', () => {
+  /** A mailbox whose one message carries internalDate and a child's name. */
+  function mailbox(internalDate?: string): GoogleFetch {
+    return async (url) => {
+      if (url.includes('/messages/m2')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'm2',
+            snippet: "Mila's swim class is cancelled",
+            internalDate,
+            payload: {
+              headers: [
+                { name: 'Subject', value: 'Swim cancelled' },
+                { name: 'From', value: 'Pool <info@pool.example>' },
+              ],
+            },
+          }),
+        };
+      }
+      if (url.includes('/profile')) {
+        return { ok: true, status: 200, json: async () => ({ historyId: '9002' }) };
+      }
+      if (url.includes('/history')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            history: [{ messagesAdded: [{ message: { id: 'm2' } }] }],
+            historyId: '9100',
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'm2' }] }) };
+    };
+  }
+
+  it('hands the UNREDACTED envelope over, with internalDate as an ISO instant', async () => {
+    // The triage stage matches on the family's child NAMES, so the alert path reads the
+    // envelope before redactEventPayload masks them. Kills the mutation that reuses the
+    // redacted `events` payloads: triage would then never recognise a child.
+    const { deps, cap } = stubDeps({ googleFetch: mailbox('1789000000000') });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(onlyEnvelope(cap)).toEqual({
+      messageId: 'm2',
+      subject: 'Swim cancelled',
+      from: 'Pool <info@pool.example>',
+      snippet: "Mila's swim class is cancelled",
+      receivedAt: new Date(1789000000000).toISOString(),
+    });
+    // The ENQUEUED copy is still redacted — the alert path is an addition, not a hole.
+    expect(JSON.stringify(onlyEvent(cap).payload)).not.toContain('Mila');
+  });
+
+  it('leaves receivedAt absent when Gmail returned no internalDate', async () => {
+    // No Date header is requested, so there is nothing to fall back to. Anchoring the
+    // extraction on `now` would move an appointment rather than decline to mention it.
+    const { deps, cap } = stubDeps({ googleFetch: mailbox() });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(onlyEnvelope(cap).receivedAt).toBeUndefined();
+  });
+
+  it('marks the SEEDING run so 25 old emails never become 25 texts', async () => {
+    const { deps, cap } = stubDeps({ googleFetch: mailbox('1789000000000') });
+    await syncConnection(connection('gmail', {}), deps);
+    expect(cap.alerted[0]?.seeding).toBe(true);
+
+    const incremental = stubDeps({ googleFetch: mailbox('1789000000000') });
+    await syncConnection(connection('gmail', { historyId: '9002' }), incremental.deps);
+    expect(incremental.cap.alerted[0]?.seeding).toBe(false);
+  });
+
+  it('never calls the alert port for a provider that is not gmail', async () => {
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: { items: [{ id: 'ev1', summary: 'Swim' }], nextSyncToken: 'SYNC-2' },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+    expect(cap.alerted).toEqual([]);
+  });
+
+  it('returns the port\'s outcomes to the caller, and alerts only AFTER the cursor advanced', async () => {
+    // Ordering is the invariant: the ingest contract is what this sweep owes, and a text
+    // is a bonus on top of it. A throw from the alert port must therefore find the cursor
+    // already saved — otherwise a slow alert pass would re-enqueue the whole batch next run.
+    const ok = stubDeps({ googleFetch: mailbox('1789000000000') });
+    const result = await syncConnection(connection('gmail', { historyId: '9002' }), ok.deps);
+    expect(result.emailAlerts).toEqual(['dark']);
+
+    const { deps, cap } = stubDeps({
+      googleFetch: mailbox('1789000000000'),
+      alertGmailEnvelopes: async () => {
+        throw new Error('boom');
+      },
+    });
+    const thrown = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    expect(cap.cursor).toEqual({ historyId: '9100' });
+    expect(cap.errored).toBe(true);
+    expect(thrown.emailAlerts).toEqual([]);
   });
 });
 

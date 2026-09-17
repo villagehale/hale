@@ -179,6 +179,7 @@ export const AUDIT_VERBS = [
   // ── proactive nudges + the watch offer ──────────────────────────────────
   'proactive_nudge_sent',
   'proactive_nudge_skipped',
+  'email_alert_sent',
   'proactive_watch_granted',
   'proactive_watch_declined',
   // ── caregiver invites ───────────────────────────────────────────────────
@@ -549,6 +550,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   // ── proactive nudges + the watch offer ──────────────────────────────────
   proactive_nudge_sent: { sentence: 'Hale texted you something worth knowing', family: 'done' },
+  // Read in a connected mailbox, not guessed. The sentence says WHERE it came from,
+  // because that is the part a parent has to be able to check: the row is the receipt for
+  // Hale having looked at their email at all.
+  email_alert_sent: {
+    sentence: 'Hale texted you about something in your email',
+    family: 'done',
+  },
   proactive_nudge_skipped: {
     // The quiet-operator promise, made visible: a deliberate silence is a real
     // outcome, and a parent should be able to see Hale choosing not to interrupt.
