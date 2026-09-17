@@ -19,7 +19,7 @@ import { CONTACT_EMAIL, buildSmsHref, buildWaHref } from '~/lib/text-entry';
  *
  * THE PICKER GATE: the channel chooser exists only while WhatsApp is actually
  * live (`whatsappNumber` validates). Until the Twilio WhatsApp sender is
- * approved, production is PR 566 — one "Message Hale" button, "Hi Hale"
+ * approved, production is PR 566 — one "Text Hale" button, "Hi Hale"
  * prefill. An empty iMessage/WhatsApp chooser is a dead door.
  *
  * THE FIVE-SECOND FRAME (founder brief 2026-09-01): a stranger off a poster QR
@@ -264,7 +264,7 @@ export function TextEntry({
                 href={buildSmsHref(smsNumber, source)}
                 className="btn-primary"
               >
-                {common('messageHale')}
+                {common('textHale')}
               </LandingCta>
             )
           )}

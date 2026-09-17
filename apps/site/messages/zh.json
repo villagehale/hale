@@ -2,8 +2,7 @@
   "Common": {
     "textHale": "给 Hale 发短信",
     "emailHale": "给 Hale 发邮件",
-    "skipToContent": "跳至正文",
-    "messageHale": "给 Hale 发消息"
+    "skipToContent": "跳至正文"
   },
   "HomeMeta": {
     "title": "Hale · 发短信就能用的家庭助手",
@@ -500,7 +499,7 @@
   "Text": {
     "metaTitle": "给 Hale 发短信",
     "metaDescription": "开始和 Hale 对话——发短信就能用的家庭助手。它替你盯着你所在地区的报名日。",
-    "headline": "发短信就能用的家庭助手。",
+    "headline": "家庭助手，发短信就行。",
     "lede": "Hale 替你盯着报名日期和一家人的一周安排。不用装应用、不用注册账号——就在一条短信对话里。",
     "step1": "先打个招呼——第一条消息已经帮你写好了。",
     "step2": "回一条短信：孩子的名字、年龄和邮编。",

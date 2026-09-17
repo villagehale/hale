@@ -2,8 +2,7 @@
   "Common": {
     "textHale": "Texter Hale",
     "emailHale": "Écrire à Hale",
-    "skipToContent": "Aller au contenu",
-    "messageHale": "Écrire à Hale"
+    "skipToContent": "Aller au contenu"
   },
   "HomeMeta": {
     "title": "Hale · l’assistant familial que vous textez",
@@ -508,7 +507,7 @@
   "Text": {
     "metaTitle": "Texter Hale",
     "metaDescription": "Commencez une conversation avec Hale — l’assistant familial que vous textez. Il surveille les journées d’inscription de votre région.",
-    "headline": "Un assistant familial que vous textez.",
+    "headline": "L’assistant familial que vous textez.",
     "lede": "Hale surveille les dates d’inscription et la semaine familiale pour que vous n’ayez pas à y penser. Pas d’appli, pas de compte — un simple fil de textos.",
     "step1": "Dites bonjour — le premier message est déjà écrit.",
     "step2": "Répondez à un texto : les noms, les âges et un code postal.",
