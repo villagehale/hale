@@ -95,8 +95,13 @@ export async function sendConnectorOffer(
     // about to close. An exception escaping here would 500 the webhook and earn a
     // carrier retry of a completed conversation, which costs the parent a duplicate
     // reply to save them an optional link.
+    //
+    // The error's CLASS and nothing else (rule #1, as lib/village/intros/voice.ts): the
+    // last thing this path touches is the DB write of the body, so the likeliest error
+    // to land here is one whose own message quotes what it failed to write — which is a
+    // live sign-in link, in a log aggregator.
     console.error(
-      { familyId: args.familyId, err },
+      { familyId: args.familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
       'intake connector offer: the offer path threw - this family will not be asked (turn unaffected)',
     );
     return { status: 'not_sent', reason: 'send_failed', code: 'unexpected' };

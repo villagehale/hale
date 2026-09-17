@@ -1,3 +1,4 @@
+import { inspect } from 'node:util';
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
@@ -232,8 +233,14 @@ describe('the intake connector offer', () => {
    * Rule #1. The body carries a live sign-in capability for 15 minutes; a log line that
    * quoted it would put a session in a log aggregator, which is the one place a
    * single-use token must never be readable.
+   *
+   * READ THE WAY CONSOLE WRITES, which is `util.inspect` and not `JSON.stringify`: an
+   * Error's message and stack are non-enumerable, so a stringified assertion passes on
+   * a line that prints the link in full. The last thing this path touches is the DB
+   * write of the body, so the error most likely to reach the catch-all is exactly the
+   * one carrying the body — it is driven here on purpose.
    */
-  it('never writes the link or the token to a log', async () => {
+  it('never writes the link or the token to a log, whatever threw', async () => {
     const logged: unknown[] = [];
     for (const level of ['log', 'info', 'warn', 'error'] as const) {
       vi.spyOn(console, level).mockImplementation((...args: unknown[]) => logged.push(...args));
@@ -245,10 +252,24 @@ describe('the intake connector offer', () => {
     await offer(fake, ports(transport).ports);
     await offer(fake, ports(transport).ports, NOW_QUIET);
     await offer(seeded({ channel: false }), ports(transport).ports);
+    const threw = await sendConnectorOffer(
+      seeded().db,
+      { familyId: FAMILY, parentUserId: PARENT, phoneE164: PHONE, language: 'en', now: NOW },
+      {
+        transport: new FakeTransport(),
+        threadMessage: async (_db, input) => {
+          throw new Error(`could not record the sentence: ${input.body}`);
+        },
+      },
+    );
 
-    // A positive control: a token really was minted, so the assertion below is about
-    // discretion rather than about there being nothing to leak.
+    // Positive controls, both ways: a token really was minted, the catch-all really
+    // ran, and the reader below really can see a link inside a thrown Error.
     expect(transport.bodies()[0]).toContain('/connect?t=');
-    expect(JSON.stringify(logged)).not.toContain('connect?t=');
+    expect(threw).toEqual({ status: 'not_sent', reason: 'send_failed', code: 'unexpected' });
+    expect(inspect([new Error('https://app.villagehale.com/connect?t=leaked')])).toContain(
+      'connect?t=',
+    );
+    expect(inspect(logged, { depth: null })).not.toContain('connect?t=');
   });
 });
