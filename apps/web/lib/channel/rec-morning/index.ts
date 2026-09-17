@@ -8,24 +8,16 @@ export {
   YMCA_SWIM_OPEN,
 } from './facts';
 export {
-  BRAMPTON_REC,
-  BRAMPTON_SWIM_SKATE,
   EFUN_GONE,
-  HALTON_HILLS_FIRST,
-  MARKHAM_FIRST,
-  PICKERING_FIRST,
   REC_MORNING_COPY,
-  RICHMOND_HILL_FIRST,
-  TORONTO_FIRST_REC,
   TORONTO_FOLLOW,
-  VAUGHAN_FIRST,
   YMCA_FIRST,
   YMCA_FOLLOW,
-  leftoverRecHello,
   recMorningBody,
   recMorningIntakeReply,
   recMorningReply,
 } from './copy';
+export { cityRecLine } from './city-line';
 export {
   type RecHelloCity,
   type RecMorningTopic,

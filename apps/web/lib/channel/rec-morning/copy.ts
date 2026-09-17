@@ -1,4 +1,5 @@
 import { COLD_START_ASK, WATCH_OFFER_ASK } from '~/lib/channel/intake/copy';
+import { cityRecLine } from './city-line';
 import {
   JACK_OF_SPORTS_PAGE,
   TORONTO_REC_PORTAL,
@@ -9,10 +10,14 @@ import type { RecMorningTopic, RecMorningWhere } from './match';
 import { matchRecMorning } from './match';
 
 /**
- * VIL-308 first-hello voice — design-locked, GSM-7, verbatim. A model does not write these.
- * VIL-320 city-switched first-hello — Markham and the other GTA strings pin below; both
- * YMCA lines stay the 544/548 locks, and the Toronto rec line has since joined the
- * between-cycles shape the other towns use.
+ * VIL-308 first-hello voice — design-locked, GSM-7, verbatim. A model does not write
+ * the strings here.
+ *
+ * What is NOT here any more: a city's clock. Every dated city hello rotted in place
+ * (VIL-334, and then the whole GTA set a cycle later), so a town's line is DERIVED
+ * from the verified registration dataset and `now` in {@link cityRecLine}. This file
+ * keeps the facts that outlive a cycle — the portals, the waitlist mechanics, the
+ * YMCA lock — and hands the dates to the dataset.
  *
  * One link, no ladder on the first Toronto rec/swim answer. Follow only
  * if they need waitlist/wishlist/two phones. eFun named only if they said eFun. YMCA
@@ -25,21 +30,6 @@ import { matchRecMorning } from './match';
 
 const INTAKE_MAX_REPLY_CHARS = 300;
 
-/**
- * Toronto's fall cycle has opened and the winter one is not posted, which is the same
- * thing {@link leftoverRecHello} says for every other town between cycles.
- *
- * It used to name the district mornings — Sept 9 for catchment-only, Sept 15 or 16
- * otherwise — as the ones still to come. A locked string cannot notice a date going
- * past, so from Sept 17 it offered a registration the parent had already missed. No
- * date replaces them: the city publishes none for winter, only a look-ahead saying
- * registration "is anticipated to occur between December 1 to 9", and an anticipated
- * range is not a date to hold a parent to. The district caveat goes with the mornings
- * it qualified. The portal stays, because it is the one fact here that outlives a
- * cycle and the one a parent chasing leftovers needs.
- */
-export const TORONTO_FIRST_REC = `Toronto fall rec and swim already opened. Winter isn't posted. I can watch leftovers and the waitlist. Sign in at ${TORONTO_REC_PORTAL}.`;
-
 export const TORONTO_FOLLOW = `Wishlist can look frozen, so wait, don't mash refresh. Waitlist email takes about ${TORONTO_WAITLIST_HOURS} hours and there's no queue number. Two parents means two phones.`;
 
 export const EFUN_GONE = `eFun is gone. Rec is ${TORONTO_REC_PORTAL} now.`;
@@ -49,65 +39,49 @@ export const YMCA_FIRST = `YMCA GTA swim opened Aug 27 at 9:00 a.m. Sign in at $
 export const YMCA_FOLLOW =
   'Search Otter, Seal, Dolphin, Star, not Ultra. Membership is still needed for a lot of group classes, and kids 9 and under need an adult 16+ on deck.';
 
-/** VIL-320 leftover/waitlist hello — city name only, same sentence. */
-export function leftoverRecHello(city: string): string {
-  return `${city} fall rec already opened. Winter isn't posted. I can watch leftovers and the waitlist.`;
+const JACK_OF_SPORTS = `Jack of Sports is a swim backup if the city or YMCA lane is gone. Confirm hours and how to register on ${JACK_OF_SPORTS_PAGE} rather than from me.`;
+
+/**
+ * The topic a parent asked about, answered as of `now`. A city topic reads the
+ * dataset; everything else is a reviewed constant that no calendar can age.
+ */
+export const REC_MORNING_COPY: Record<RecMorningTopic, (now: Date) => string | null> = {
+  toronto_swim: (now) => cityRecLine('toronto', now),
+  toronto_rec: (now) => cityRecLine('toronto', now),
+  toronto_waitlist: () => TORONTO_FOLLOW,
+  toronto_wishlist: () => TORONTO_FOLLOW,
+  toronto_efun: () => EFUN_GONE,
+  ymca_gta_swim: () => YMCA_FIRST,
+  ymca_follow: () => YMCA_FOLLOW,
+  brampton_swim: (now) => cityRecLine('brampton', now),
+  brampton_rec: (now) => cityRecLine('brampton', now),
+  markham: (now) => cityRecLine('markham', now),
+  mississauga: (now) => cityRecLine('mississauga', now),
+  caledon: (now) => cityRecLine('caledon', now),
+  oakville: (now) => cityRecLine('oakville', now),
+  burlington: (now) => cityRecLine('burlington', now),
+  milton: (now) => cityRecLine('milton', now),
+  ajax: (now) => cityRecLine('ajax', now),
+  whitby: (now) => cityRecLine('whitby', now),
+  oshawa: (now) => cityRecLine('oshawa', now),
+  whitchurch_stouffville: (now) => cityRecLine('whitchurch_stouffville', now),
+  halton_hills: (now) => cityRecLine('halton_hills', now),
+  pickering: (now) => cityRecLine('pickering', now),
+  richmond_hill: (now) => cityRecLine('richmond_hill', now),
+  vaughan: (now) => cityRecLine('vaughan', now),
+  two_parents: () => TORONTO_FOLLOW,
+  jack_of_sports: () => JACK_OF_SPORTS,
+};
+
+export function recMorningBody(topic: RecMorningTopic, now: Date = new Date()): string | null {
+  return REC_MORNING_COPY[topic](now);
 }
 
-export const MARKHAM_FIRST =
-  "Markham fall rec, swim, and winter-break camps already opened Aug 11. Winter isn't posted. I can watch leftovers and the waitlist.";
-
-export const BRAMPTON_REC =
-  "Brampton rec is open for residents. Non-residents Monday Sep 7 at 7 a.m. Winter isn't posted.";
-
-export const BRAMPTON_SWIM_SKATE =
-  'Brampton swim and skate, residents Wednesday Sep 9 at 7 a.m. Non-residents Monday Sep 21 at 7 a.m. You prove residency in person.';
-
-export const HALTON_HILLS_FIRST =
-  'Halton Hills taxpayers Tuesday Sep 1 at 7 a.m. Non-taxpayers a week later.';
-
-export const PICKERING_FIRST =
-  "Pickering non-resident aquatics Wednesday Sep 3 at 7 a.m. I won't guess the resident morning.";
-
-export const RICHMOND_HILL_FIRST =
-  'Richmond Hill non-residents Tuesday Sep 1. Winter residents Nov 24, non-residents Dec 1.';
-
-export const VAUGHAN_FIRST =
-  'Vaughan winter swim Nov 17 residents / Nov 24 non-residents, 7 a.m. General winter Nov 19 / 26 at 7 a.m.';
-
-export const REC_MORNING_COPY = {
-  toronto_swim: TORONTO_FIRST_REC,
-  toronto_rec: TORONTO_FIRST_REC,
-  toronto_waitlist: TORONTO_FOLLOW,
-  toronto_wishlist: TORONTO_FOLLOW,
-  toronto_efun: EFUN_GONE,
-  ymca_gta_swim: YMCA_FIRST,
-  ymca_follow: YMCA_FOLLOW,
-  brampton_swim: BRAMPTON_SWIM_SKATE,
-  brampton_rec: BRAMPTON_REC,
-  markham: MARKHAM_FIRST,
-  mississauga: leftoverRecHello('Mississauga'),
-  caledon: leftoverRecHello('Caledon'),
-  oakville: leftoverRecHello('Oakville'),
-  burlington: leftoverRecHello('Burlington'),
-  milton: leftoverRecHello('Milton'),
-  ajax: leftoverRecHello('Ajax'),
-  whitby: leftoverRecHello('Whitby'),
-  oshawa: leftoverRecHello('Oshawa'),
-  whitchurch_stouffville: leftoverRecHello('Stouffville'),
-  halton_hills: HALTON_HILLS_FIRST,
-  pickering: PICKERING_FIRST,
-  richmond_hill: RICHMOND_HILL_FIRST,
-  vaughan: VAUGHAN_FIRST,
-  two_parents: TORONTO_FOLLOW,
-  jack_of_sports: `Jack of Sports is a swim backup if the city or YMCA lane is gone. Confirm hours and how to register on ${JACK_OF_SPORTS_PAGE} rather than from me.`,
-} as const;
-
-export function recMorningBody(topic: RecMorningTopic, _now: Date = new Date()): string {
-  return REC_MORNING_COPY[topic];
-}
-
-/** The C1 / post-intake body, or null when this text is not a rec-morning question. */
+/**
+ * The C1 / post-intake body. Null when this text is not a rec-morning question, and
+ * null when it names a town the dataset holds no window for — Hale says nothing
+ * rather than describe a season it has no record of.
+ */
 export function recMorningReply(
   body: string,
   now: Date = new Date(),

@@ -4,6 +4,7 @@ import type { Database } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
+import { cityRecLine } from '~/lib/channel/rec-morning';
 import { createTestDb, type TestDb } from '~/lib/testing/pglite';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import type {
@@ -49,6 +50,10 @@ const INBOUND_MESSAGE_ID = '44444444-4444-4444-8444-444444444444';
  * calendar write. Empty by default, which is vacuously "unambiguous" and is what the
  * pre-existing cases in this file assume.
  */
+/** The clock every handler in this spec is driven at. Named because the rec-morning
+ * lane answers from the registration dataset AS OF this instant. */
+const TURN_NOW = new Date('2026-07-30T12:00:00.000Z');
+
 const turn = (
   body: string,
   options: { resolved?: ResolvedAnswer | null; open?: OpenQuestion[] } = {},
@@ -58,7 +63,7 @@ const turn = (
   conversationId: '33333333-3333-4333-8333-333333333333',
   body,
   send: async () => ({ providerMessageId: 'prov-1', channel: 'sms' }),
-  now: new Date('2026-07-30T12:00:00.000Z'),
+  now: TURN_NOW,
   resolved: options.resolved ?? null,
   openQuestions: async () => options.open ?? [],
   inboundChannelMessageId: INBOUND_MESSAGE_ID,
@@ -485,7 +490,7 @@ describe('the village intro lane and the lanes behind it', () => {
 });
 
 describe('recMorningHandler', () => {
-  it('answers a Toronto swim clock question with the between-cycles first-rec line', async () => {
+  it("answers a Toronto swim clock question with the dataset's Toronto dates", async () => {
     const verdict = await recMorningHandler().handle(
       DB,
       turn('When does Toronto swim registration open?'),
@@ -493,9 +498,9 @@ describe('recMorningHandler', () => {
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed || verdict.reply === null) return;
     const body = verdict.reply;
-    expect(body).toBe(
-      "Toronto fall rec and swim already opened. Winter isn't posted. I can watch leftovers and the waitlist. Sign in at toronto.ca/OnlineReg.",
-    );
+    expect(body).toBe(cityRecLine('toronto', TURN_NOW));
+    expect(body).toContain('residents Tuesday Sep 15 at 7 a.m.');
+    expect(body).toContain('toronto.ca/OnlineReg');
     expect(body.toLowerCase()).not.toContain('activeto');
     expect(body.toLowerCase()).not.toContain('unofficial');
     expect(body.toLowerCase()).not.toContain('efun');
@@ -503,13 +508,12 @@ describe('recMorningHandler', () => {
     expect(body).not.toMatch(/https?:\/\//i);
   });
 
-  it('answers a named Markham rec ask with the locked leftover, not Toronto', async () => {
+  it("answers a named Markham rec ask with Markham's own cycle, not Toronto", async () => {
     const verdict = await recMorningHandler().handle(DB, turn('Markham fall rec dates?'));
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed || verdict.reply === null) return;
-    expect(verdict.reply).toBe(
-      "Markham fall rec, swim, and winter-break camps already opened Aug 11. Winter isn't posted. I can watch leftovers and the waitlist.",
-    );
+    expect(verdict.reply).toBe(cityRecLine('markham', TURN_NOW));
+    expect(verdict.reply).toContain('Tuesday Aug 11 at 6:30 a.m.');
     expect(verdict.reply).not.toContain('7:00');
     expect(verdict.reply).not.toMatch(/Sept?\s*15/i);
     expect(verdict.reply.toLowerCase()).not.toContain('activeto');
