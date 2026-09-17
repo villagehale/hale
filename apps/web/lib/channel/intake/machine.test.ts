@@ -34,7 +34,9 @@ import {
   detailsBlocked,
   followUpQuestion,
   greeting,
+  intakeConnectorOffer,
 } from './copy';
+import { INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY, connectorOfferDedupeKey } from './connector-offer';
 import type { IntakeCollected } from './extract';
 import {
   FakeAnswerComposer,
@@ -250,8 +252,11 @@ describe('intake · happy path', () => {
       intent: 'assent',
       granted: true,
       nameAsked: true,
+      connectorOffer: 'sent',
     });
-    expect(transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
+    // The ack carrying the name ask, then the optional connector offer behind it.
+    expect(transport.bodies().at(-2)).toBe(`${ASSENT_ACK} ASK`);
+    expect(transport.bodies().at(-1)).toContain('/connect?t=');
   });
 
   /**
@@ -269,7 +274,8 @@ describe('intake · happy path', () => {
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
     await text(fake, transport, deps, 'yes please');
     // The ack, plus the composed identity ask appended to it — the turn's one question.
-    expect(transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
+    // The connector offer follows it as its own message (connector-offer.ts).
+    expect(transport.bodies().at(-2)).toBe(`${ASSENT_ACK} ASK`);
     const sentDuringIntake = transport.bodies().length;
 
     // The parent answers the question the consent turn just asked. The session is
@@ -321,7 +327,7 @@ describe('intake · happy path', () => {
       await consent(h);
 
       expect(h.identityAsk.calls).toEqual([{ reason: 'getting_started', missing: ['name'] }]);
-      expect(h.transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
+      expect(h.transport.bodies().at(-2)).toBe(`${ASSENT_ACK} ASK`);
       // ONE text, not two: a parent who has just agreed to something and gets two replies
       // has been answered by a system.
       expect(h.transport.bodies().filter((b) => b.startsWith('Done -'))).toHaveLength(1);
@@ -361,8 +367,9 @@ describe('intake · happy path', () => {
         intent: 'assent',
         granted: true,
         nameAsked: false,
+        connectorOffer: 'sent',
       });
-      expect(h.transport.bodies().at(-1)).toBe(ASSENT_ACK);
+      expect(h.transport.bodies().at(-2)).toBe(ASSENT_ACK);
       // Nothing was stamped, so no stray word is captured as a name later.
       expect(
         inserts(h.fake, schema.channelMessages).filter((r) => r.templateKey === 'parent_name_ask'),
@@ -423,6 +430,7 @@ describe('intake · happy path', () => {
       intent: 'decline',
       granted: false,
       nameAsked: false,
+      connectorOffer: 'not_offered',
     });
     expect(transport.bodies().at(-1)).toBe(DECLINE_ACK);
     const watch = inserts(fake, schema.consentRecords).find(
@@ -456,14 +464,16 @@ describe("intake · the handoff into the parent's own thread", () => {
     await text(fake, transport, deps, 'Maya is 4 and Leo is 1, M5V');
     await text(fake, transport, deps, 'yes please');
 
-    // The radar + watch offer, the contact card's own line, then the consent ack
-    // carrying the name ask — the exact question the parent's first coach turn answers.
+    // The radar + watch offer, the contact card's own line, the consent ack carrying the
+    // name ask — the exact question the parent's first coach turn answers — and the
+    // connector offer behind it, which a parent may well ask about next.
     expect(threaded.map((t) => t.body)).toEqual([
-      transport.bodies().at(-3),
+      transport.bodies().at(-4),
       WELCOME_CARD_BODY,
+      transport.bodies().at(-2),
       transport.bodies().at(-1),
     ]);
-    expect(threaded.at(-1)?.body).toBe(`${ASSENT_ACK} ASK`);
+    expect(threaded.at(-2)?.body).toBe(`${ASSENT_ACK} ASK`);
     expect(threaded.every((t) => t.familyId.length > 0 && t.parentUserId.length > 0)).toBe(true);
   });
 
@@ -913,6 +923,7 @@ describe('intake · ambiguity', () => {
       intent: 'ambiguous',
       granted: false,
       nameAsked: false,
+      connectorOffer: 'not_offered',
     });
     // Only ONE clarification, ever.
     expect(transport.bodies().filter((b) => b === AMBIGUOUS_CLARIFY)).toHaveLength(1);
@@ -1769,8 +1780,8 @@ describe('intake · answers in the language the parent wrote in', () => {
     const recorded = await text(fr.fake, fr.transport, fr.deps, 'oui');
 
     expect(recorded).toMatchObject({ status: 'watch_recorded', granted: true, nameAsked: false });
-    expect(fr.transport.bodies().at(-1)).toBe(ASSENT_ACK_BY_LANGUAGE.fr);
-    expect(fr.transport.bodies().at(-1)).not.toContain('ASK');
+    expect(fr.transport.bodies().at(-2)).toBe(ASSENT_ACK_BY_LANGUAGE.fr);
+    expect(fr.transport.bodies().at(-2)).not.toContain('ASK');
 
     // The English twin still gets its tail, so the assertion above is about French and not
     // about the name ask having quietly stopped working for everybody.
@@ -1780,7 +1791,7 @@ describe('intake · answers in the language the parent wrote in', () => {
     const enRecorded = await text(en.fake, en.transport, en.deps, 'yes');
 
     expect(enRecorded).toMatchObject({ nameAsked: true });
-    expect(en.transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
+    expect(en.transport.bodies().at(-2)).toBe(`${ASSENT_ACK} ASK`);
   });
 
   /**
@@ -2094,5 +2105,175 @@ describe('intake · P1-4 the turn claim', () => {
 
     expect(redelivered).toEqual({ status: 'duplicate' });
     expect(transport.sent).toHaveLength(sentAfterFirst);
+  });
+});
+
+/**
+ * THE DAY-ONE CONNECTOR OFFER (2026-09-17). A family that has just said yes to being
+ * watched is the one moment Hale has earned the right to ask for the inbox and the
+ * calendar the daycare notices actually arrive in — so the ask rides that turn, once,
+ * as its own message, and ignoring it IS the skip.
+ *
+ * ITS OWN MESSAGE rather than a tail on the acknowledgment, for the reason the welcome
+ * card is: one message asks one question, and the acknowledgment's question is already
+ * spoken for by the name ask. It may never cost the turn — the consent is recorded and
+ * the ack has already gone out by the time this runs, so every way it declines is a
+ * named outcome on the return value and a line in the log.
+ */
+describe('intake · the connector offer on the consent turn', () => {
+  async function consent(
+    h: ReturnType<typeof harness>,
+    reply = 'yes please',
+    override?: IntakeDeps,
+  ) {
+    await text(h.fake, h.transport, h.deps, 'hi');
+    await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    return text(h.fake, h.transport, h.deps, reply, override);
+  }
+
+  it('sends the tap-to-connect link as a second message after the acknowledgment', async () => {
+    const h = harness({ intents: [assent('yes please')] });
+
+    const recorded = await consent(h);
+
+    expect(recorded).toEqual({
+      status: 'watch_recorded',
+      intent: 'assent',
+      granted: true,
+      nameAsked: true,
+      connectorOffer: 'sent',
+    });
+    // Two sends on this turn, in this order: the ack carrying the name ask, then the
+    // offer. Not one joined body — the ack's question budget is already spent.
+    expect(h.transport.bodies().at(-2)).toBe(`${ASSENT_ACK} ASK`);
+    const offerBody = h.transport.bodies().at(-1) as string;
+    expect(offerBody).toContain('/connect?t=');
+    expect(offerBody).toContain('ignore this to skip');
+
+    const offerRow = inserts(h.fake, schema.channelMessages).find(
+      (row) => row.templateKey === INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY,
+    );
+    expect(offerRow).toMatchObject({
+      direction: 'out',
+      category: 'intake',
+      dedupeKey: connectorOfferDedupeKey(String(offerRow?.familyId)),
+      status: 'queued',
+    });
+    // Rule #6: the sign-in capability this text carries has its own audit row.
+    expect(inserts(h.fake, schema.auditLog).map((a) => a.actionTaken)).toContain(
+      'connector_link_minted',
+    );
+  });
+
+  /** A parent Hale already has a name for gets no tail on the ack — and still gets the
+   * offer, because the offer is not the tail. */
+  it('still sends the offer when the acknowledgment carries no name ask', async () => {
+    const h = harness({
+      intents: [assent('yes please')],
+      identityAsk: new FakeIdentityAsk({ status: 'deferred', reason: 'model_failed' }),
+    });
+
+    const recorded = await consent(h);
+
+    expect(recorded).toMatchObject({ nameAsked: false, connectorOffer: 'sent' });
+    expect(h.transport.bodies().at(-2)).toBe(ASSENT_ACK);
+    expect(h.transport.bodies().at(-1)).toContain('/connect?t=');
+  });
+
+  /**
+   * A parent who declined the watch is not asked to open their inbox. There is no turn
+   * to ask on: they just said no to being watched, and following that with a link to
+   * connect their mail would be Hale asking the same question louder.
+   */
+  it('asks nothing of a parent who declined the watch', async () => {
+    const h = harness({ intents: [decline('no thanks')] });
+
+    const recorded = await consent(h, 'no thanks');
+
+    expect(recorded).toEqual({
+      status: 'watch_recorded',
+      intent: 'decline',
+      granted: false,
+      nameAsked: false,
+      connectorOffer: 'not_offered',
+    });
+    expect(h.transport.bodies().at(-1)).toBe(DECLINE_ACK);
+    expect(h.transport.bodies().some((b) => b.includes('/connect?t='))).toBe(false);
+    expect(inserts(h.fake, schema.auditLog).map((a) => a.actionTaken)).not.toContain(
+      'connector_link_minted',
+    );
+  });
+
+  /**
+   * A yes at 22:30 still gets its acknowledgment — it answers a text the parent just
+   * sent — but the offer beside it is an unprompted extra, and an extra at 22:30 is
+   * Hale making noise. Held and named, and the session closes anyway: the turn is not
+   * the offer's to hold open.
+   */
+  it('holds the offer through quiet hours and closes the session all the same', async () => {
+    const h = harness({ intents: [assent('yes please')] });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // 22:30 in America/Toronto, the timezone every intake-born parent row defaults to.
+    const late = new Date('2026-09-18T02:30:00.000Z');
+
+    const recorded = await consent(h, 'yes please', { ...h.deps, now: late });
+
+    expect(recorded).toMatchObject({ granted: true, connectorOffer: 'suppressed_quiet_hours' });
+    expect(h.transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
+    expect(h.transport.bodies().some((b) => b.includes('/connect?t='))).toBe(false);
+    expect(
+      inserts(h.fake, schema.channelMessages).find(
+        (row) => row.templateKey === INTAKE_CONNECTOR_OFFER_TEMPLATE_KEY,
+      ),
+    ).toMatchObject({ status: 'suppressed_quiet_hours', dedupeKey: null });
+
+    // The session closed on the ack, so the next text is the coach's turn — the held
+    // offer does not reopen intake and does not go out on a replayed yes.
+    const sent = h.transport.sent.length;
+    const replay = await text(h.fake, h.transport, h.deps, 'yes');
+    expect(replay).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    expect(h.transport.sent).toHaveLength(sent);
+    expect(h.fake.rows(schema.smsIntakeSessions)[0]).toMatchObject({ state: 'complete' });
+  });
+
+  /**
+   * The provider refusing the offer may not cost the parent their consent turn. The ack
+   * is already delivered, the consent is already written, and the session must still
+   * close — a thrown offer would hand the carrier a retry of a turn that is done.
+   */
+  it('closes the turn cleanly when the provider refuses the offer', async () => {
+    const h = harness({ intents: [assent('yes please')] });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const inner = h.transport;
+    const refusesTheOffer: IntakeDeps['transport'] = {
+      async send(input) {
+        if (input.body.includes('/connect?t=')) throw new TwilioSendError('21610', 400);
+        return inner.send(input);
+      },
+    };
+
+    const recorded = await consent(h, 'yes please', { ...h.deps, transport: refusesTheOffer });
+
+    expect(recorded).toMatchObject({ granted: true, connectorOffer: 'send_failed' });
+    expect(h.transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
+    expect(h.fake.rows(schema.smsIntakeSessions)[0]).toMatchObject({ state: 'complete' });
+    // The claimed row carries the refusal, so a family with no offer is a query rather
+    // than a guess - and the dedupe key stays spent, as a failed send must.
+    const failed = h.fake.writes.filter(
+      (w) =>
+        w.op === 'update' && w.table === schema.channelMessages && w.payload.status === 'failed',
+    );
+    expect(failed.map((w) => w.payload.errorCode)).toEqual(['21610']);
+  });
+
+  it('offers in French to a parent who answered in French', async () => {
+    const h = harness({ intents: [assent('oui')] });
+
+    const recorded = await consent(h, 'oui');
+
+    expect(recorded).toMatchObject({ connectorOffer: 'sent' });
+    const offerBody = h.transport.bodies().at(-1) as string;
+    const url = (offerBody.match(/https:\/\/\S+/) as RegExpMatchArray)[0];
+    expect(offerBody).toBe(intakeConnectorOffer('fr', url));
   });
 });
