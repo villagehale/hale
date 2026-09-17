@@ -30,7 +30,7 @@ import type { RecHelloCity } from './match';
  * `after_school_care` runs on the school-year calendar and is nobody's rec morning. */
 const DOMAIN_NOUN = { rec_program: 'rec', swim: 'swim', camp: 'camps' } as const;
 
-type RecDomain = keyof typeof DOMAIN_NOUN;
+export type RecDomain = keyof typeof DOMAIN_NOUN;
 
 const DOMAIN_ORDER = Object.keys(DOMAIN_NOUN) as readonly RecDomain[];
 
@@ -144,8 +144,8 @@ function groupIntoEvents(rows: readonly RecRow[]): CycleEvent[] {
   return [...events.values()];
 }
 
-/** The rank the general rec cycle outranks a swim or camp one by, so two cycles that
- * open at the same instant always pick the same representative run to run. */
+/** Rec, then swim, then camps — a tie-break, so two cycles opening at the same instant
+ * pick the same one of themselves run to run. */
 function domainRank(event: CycleEvent): number {
   return DOMAIN_ORDER.indexOf(event.domains[0]);
 }
@@ -161,17 +161,33 @@ function openedAtOf(event: CycleEvent): Date {
   return event.residentOpenAt ?? event.openAt;
 }
 
-function upcomingLine(city: RecHelloCity, event: CycleEvent, now: Date): string {
+/** The label says which cycle this is on its own, unless the town hangs two cycles off
+ * the same one — Vaughan runs a "Fall Session 2026" for rec and another for swim. */
+function labelNeedsNouns(event: CycleEvent, townEvents: readonly CycleEvent[]): boolean {
+  return townEvents.filter((other) => other.cycleLabel === event.cycleLabel).length > 1;
+}
+
+function upcomingLine(
+  city: RecHelloCity,
+  event: CycleEvent,
+  now: Date,
+  townEvents: readonly CycleEvent[],
+): string {
   const resident = event.residentOpenAt;
+  const residentGone = resident !== null && resident.getTime() <= now.getTime();
   const halves =
     resident === null
       ? upcomingPhrase(event.openAt)
-      : resident.getTime() > now.getTime()
-        ? `residents ${upcomingPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`
-        : `residents opened ${pastPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`;
-  return endSentence(
-    `${townLabel(city)} ${asciiCopy(event.cycleLabel)} ${joinNouns(event.domains)} registration: ${halves}`,
+      : residentGone
+        ? `residents opened ${pastPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`
+        : `residents ${upcomingPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`;
+  const nouns = labelNeedsNouns(event, townEvents) ? `${joinNouns(event.domains)} ` : '';
+  const line = endSentence(
+    `${townLabel(city)} ${asciiCopy(event.cycleLabel)} ${nouns}registration: ${halves}`,
   );
+  // The resident head start has gone: the date still to come is not this parent's, and
+  // leftovers and the waitlist are the only thing left that Hale can do for them.
+  return residentGone ? `${line} ${LEFTOVER_OFFER}` : line;
 }
 
 /** The cycle a town opened most recently, with the general rec cycle winning a tie
@@ -213,14 +229,24 @@ function betweenCyclesLine(
 /**
  * This town's rec-morning answer as of `now`, or null when the dataset holds no
  * window for it (Milton, today) and there is nothing true to say.
+ *
+ * `domain` is the program the parent named, where they named one: Brampton runs
+ * aquatics sixteen days behind general rec, so a rec ask and a swim ask are two
+ * different mornings. A domain the town has no row in answers about the whole town
+ * rather than falling silent — the dataset has nothing for that program, not nothing
+ * for that town, and those are different claims.
  */
 export function cityRecLine(
   city: RecHelloCity,
   now: Date,
+  domain: RecDomain | null = null,
   windows: readonly RegistrationWindowSeed[] = REGISTRATION_WINDOWS,
 ): string | null {
-  const rows = recRows(city, windows);
-  if (rows.length === 0) return null;
+  const townRows = recRows(city, windows);
+  if (townRows.length === 0) return null;
+
+  const asked = townRows.filter((row) => domain === null || row.programDomain === domain);
+  const rows = asked.length === 0 ? townRows : asked;
 
   const events = groupIntoEvents(rows);
   const [soonest] = events
@@ -232,7 +258,9 @@ export function cityRecLine(
         a.cycleLabel.localeCompare(b.cycleLabel),
     );
 
-  const line = soonest ? upcomingLine(city, soonest, now) : betweenCyclesLine(city, events, rows);
+  const line = soonest
+    ? upcomingLine(city, soonest, now, groupIntoEvents(townRows))
+    : betweenCyclesLine(city, events, rows);
 
   // Toronto is the one city whose login Hale names: the portal outlives every cycle,
   // and it is what a parent chasing leftovers needs either way.

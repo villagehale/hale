@@ -46,15 +46,15 @@ const JACK_OF_SPORTS = `Jack of Sports is a swim backup if the city or YMCA lane
  * dataset; everything else is a reviewed constant that no calendar can age.
  */
 export const REC_MORNING_COPY: Record<RecMorningTopic, (now: Date) => string | null> = {
-  toronto_swim: (now) => cityRecLine('toronto', now),
-  toronto_rec: (now) => cityRecLine('toronto', now),
+  toronto_swim: (now) => cityRecLine('toronto', now, 'swim'),
+  toronto_rec: (now) => cityRecLine('toronto', now, 'rec_program'),
   toronto_waitlist: () => TORONTO_FOLLOW,
   toronto_wishlist: () => TORONTO_FOLLOW,
   toronto_efun: () => EFUN_GONE,
   ymca_gta_swim: () => YMCA_FIRST,
   ymca_follow: () => YMCA_FOLLOW,
-  brampton_swim: (now) => cityRecLine('brampton', now),
-  brampton_rec: (now) => cityRecLine('brampton', now),
+  brampton_swim: (now) => cityRecLine('brampton', now, 'swim'),
+  brampton_rec: (now) => cityRecLine('brampton', now, 'rec_program'),
   markham: (now) => cityRecLine('markham', now),
   mississauga: (now) => cityRecLine('mississauga', now),
   caledon: (now) => cityRecLine('caledon', now),

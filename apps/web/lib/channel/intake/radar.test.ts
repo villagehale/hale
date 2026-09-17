@@ -7,9 +7,13 @@ import { makeFakeDb } from './fakes.js';
 import { checkpointSurvivedCompose, createRadarComposer } from './radar.js';
 
 /** The rec-morning lane's Toronto line: a different answer, from a different module,
- * that the radar must never recite back as though it had checked this family. */
-function torontoRecMorningLine(now: Date = new Date()): string | null {
-  return cityRecLine('toronto', now);
+ * that the radar must never recite back as though it had checked this family. Pinned to
+ * the instant the composer under test runs at - a wall-clock line here is a moving
+ * target for a negative assertion, and a null one would pass it for free. */
+function torontoRecMorningLine(now: Date): string {
+  const line = cityRecLine('toronto', now);
+  if (line === null) throw new Error(`no Toronto rec-morning line at ${now.toISOString()}`);
+  return line;
 }
 
 /**
@@ -122,7 +126,7 @@ describe('createRadarComposer', () => {
     // Halton Hills: no civic adapter, no windows, no Toronto pin. Leftover mapping
     // plus the first-find beat — it does not shrug, and it does not steal the 555 pin.
     expect(payload.message).toContain('Your first weekend find lands in a day or two.');
-    expect(payload.message).not.toBe(torontoRecMorningLine());
+    expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('toronto.ca/OnlineReg');
     expect(payload.itemCount).toBe(0);
     expect(payload.followUpNeeded).toBe(true);
@@ -217,7 +221,7 @@ describe('createRadarComposer', () => {
     // Nothing read, nothing past: the honest empty-handed answer, with the first-find
     // beat on it. A pinned city line here asserted dates this family was never checked
     // against, and by Sept 16 they were dates that had already gone.
-    expect(payload.message).not.toBe(torontoRecMorningLine());
+    expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('Sept 9');
     expect(payload.message).toContain('Your first weekend find lands in a day or two.');
     expect(payload.message).not.toContain(WATCH_OFFER);
@@ -234,7 +238,7 @@ describe('createRadarComposer', () => {
       areaCoarse: 'M5V',
     });
 
-    expect(payload.message).not.toBe(torontoRecMorningLine());
+    expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('Sept 9');
     expect(payload.message).toContain('Your first weekend find lands in a day or two.');
   });
@@ -342,7 +346,7 @@ describe('createRadarComposer', () => {
     // It no longer rides the pre-consent first find (ads-week audit, 2026-08-28) — the
     // post-consent nudge carries it in the generic wording. Nothing else was readable
     // either, so the empty-handed answer goes out, with no teen name in it (rule #1).
-    expect(payload.message).not.toBe(torontoRecMorningLine());
+    expect(payload.message).not.toBe(torontoRecMorningLine(NOW));
     expect(payload.message).not.toContain('A routine vaccine record check is due');
     expect(payload.message).not.toContain('Ava');
     expect(payload.itemCount).toBe(0);
