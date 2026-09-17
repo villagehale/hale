@@ -38,7 +38,7 @@ import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import type { IntakeAnswerComposer } from './answer';
-import { findRevokedChannelOwner, reenrolOnStart } from './channel-state';
+import { findReenrollableChannelOwner, reenrolOnStart } from './channel-state';
 import {
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
   ASSENT_ACK_BY_LANGUAGE,
@@ -1374,9 +1374,10 @@ async function handleKeyword(
     return { status: 'helped' };
   }
 
-  // START. If the number was unsubscribed, the keyword itself is express re-consent
-  // (see channel-state.ts) — otherwise it opens a fresh conversation.
-  const owner = await findRevokedChannelOwner(database, phoneE164);
+  // START. If the number was unsubscribed AND its owner still holds a seat, the keyword
+  // itself is express re-consent (see channel-state.ts) — otherwise it opens a fresh
+  // conversation, because a number whose seat is gone has no household to re-enter.
+  const owner = await findReenrollableChannelOwner(database, phoneE164);
   if (owner) {
     await reenrolOnStart(database, { ...owner, phoneE164, verbatimReply: inbound.body }, now);
     const { providerMessageId } = await deps.transport.send({

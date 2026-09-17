@@ -96,6 +96,8 @@ const AURORA_GUIDE =
 const WHITCHURCH_STOUFFVILLE_PLAY_BOOK =
   'https://www.townofws.ca/media/gvyjvnnq/f2026_playbook_tagged-2.pdf';
 
+const TORONTO_FALL_2026_RELEASE =
+  'https://www.toronto.ca/news/city-of-toronto-releases-listings-for-fall-recreation-activities/';
 const TORONTO_ARC =
   'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/camps-after-school/after-school-recreation-care/';
 const MARKHAM_REGISTRATION =
@@ -140,6 +142,31 @@ const TORONTO_AFTER_SCHOOL = {
 
 const TORONTO_NON_RESIDENT_RULE =
   'Toronto prints only the resident date; non-residents "can register for a recreation activity 10 days after registration starts for that activity" (plus a $54.90 per-activity surcharge), so the general open is rule-derived, not printed. Waitlist: "You\'ll have up to 36 hours to accept or decline the spot."';
+
+/**
+ * Toronto's Fall 2026 seasonal cycle — the one the discovery leg was waiting on. The city
+ * registers by district on two mornings; the row carries the FIRST general morning
+ * (Etobicoke and Toronto East York) and names the second in `notes`, because a
+ * municipality row has one date and Toronto is one municipality here. Early local
+ * registration (free centres only, September 9) is a proximity rule, not a residency one,
+ * so it is not `residentOpenAt`; the resident/non-resident split follows the city-wide
+ * ten-day rule exactly as the after-school rows do. Swim registers inside this cycle.
+ */
+const TORONTO_FALL_2026 = {
+  municipality: 'toronto',
+  cycleLabel: 'Fall 2026',
+  previewAt: '2026-08-24T00:00:00-04:00',
+  residentOpenAt: '2026-09-15T07:00:00-04:00',
+  openAt: '2026-09-25T07:00:00-04:00',
+  residentPriorityDays: 10,
+  waitlistResponseHours: 36,
+  ageMinMonths: null,
+  ageMaxMonths: null,
+  sourceUrl: TORONTO_FALL_2026_RELEASE,
+  verifiedAt: '2026-09-17T00:00:00-04:00',
+  notes: `Release of August 24, 2026: "Wednesday, September 9 at 7 a.m. – Early local registration opens to eligible residents for all free centres"; "Tuesday, September 15 at 7 a.m. – Etobicoke and Toronto East York registration"; "Wednesday, September 16 at 7 a.m. – North York and Scarborough registration"; "Week of Saturday, September 26 – Most fall programming begins". Listings were browsable from the release date (the preview). North York and Scarborough families opened one day after the date recorded here. ${TORONTO_NON_RESIDENT_RULE}`,
+  publishedWeekdays: { residentOpenAt: 'Tuesday' },
+} as const satisfies Omit<RegistrationWindowSeed, 'programDomain'>;
 
 /**
  * Markham runs ONE combined cycle covering fall programs, swim lessons and winter-break
@@ -213,9 +240,10 @@ const BURLINGTON_TABLE_NOTE =
 
 export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
   // ── Toronto ──────────────────────────────────────────────────────────────────
-  // Toronto's seasonal recreation dates for Fall 2026 are NOT published ("Registration
-  // dates will be announced at a later date"), so there is no rec_program row and no
-  // swim row — Toronto registers swim inside the seasonal cycle, never separately.
+  // The Fall 2026 seasonal dates were published on August 24, 2026 (TORONTO_FALL_2026);
+  // Toronto registers swim inside that cycle, never separately, so swim shares the row.
+  { ...TORONTO_FALL_2026, programDomain: 'rec_program' },
+  { ...TORONTO_FALL_2026, programDomain: 'swim' },
   {
     ...TORONTO_AFTER_SCHOOL,
     cycleLabel: 'After-School Recreation Care (ARC) 2026/2027 school year',

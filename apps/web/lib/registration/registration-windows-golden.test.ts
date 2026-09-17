@@ -85,13 +85,15 @@ describe('golden — Toronto After-School Recreation Care 2026/2027', () => {
     );
   });
 
-  it('has no Toronto seasonal recreation row — the City has not published Fall 2026', () => {
-    // "Registration dates will be announced at a later date." An empty result here is
-    // the correct state; a row appearing means someone loaded an unpublished date.
+  it('carries exactly the published Fall 2026 seasonal cycle and nothing unpublished', () => {
+    // Until August 24, 2026 the City printed "Registration dates will be announced at a
+    // later date" and this list was empty. Now it must hold the two Fall 2026 rows (rec
+    // and swim share one cycle) and nothing else — a Winter 2027 row appearing here
+    // before the City prints a date means someone loaded an unpublished one.
     const seasonal = REGISTRATION_WINDOWS.filter(
       (s) => s.municipality === 'toronto' && s.programDomain !== 'after_school_care',
-    );
-    expect(seasonal).toEqual([]);
+    ).map((s) => `${s.programDomain}/${s.cycleLabel}`);
+    expect(seasonal.sort()).toEqual(['rec_program/Fall 2026', 'swim/Fall 2026']);
   });
 });
 
@@ -180,6 +182,31 @@ describe('golden — Mississauga Fall 2026 Programs and Winter Camps', () => {
     const camp = toRegistrationWindowRow(seed('mississauga', 'camp', CYCLE));
     expect(camp.openAt).toEqual(row.openAt);
     expect(camp.residentOpenAt).toEqual(row.residentOpenAt);
+  });
+});
+
+/**
+ * Toronto Fall 2026, verbatim, https://www.toronto.ca/news/city-of-toronto-releases-listings-for-fall-recreation-activities/ (August 24, 2026)
+ *   "Wednesday, September 9 at 7 a.m. – Early local registration opens to eligible residents for all free centres"
+ *   "Tuesday, September 15 at 7 a.m. – Etobicoke and Toronto East York registration"
+ *   "Wednesday, September 16 at 7 a.m. – North York and Scarborough registration"
+ */
+describe('golden — Toronto Fall 2026 seasonal registration', () => {
+  const row = toRegistrationWindowRow(seed('toronto', 'rec_program', 'Fall 2026'));
+
+  it('opens for residents at 7 a.m. on Tuesday 15 September 2026 (11:00 UTC, EDT)', () => {
+    expect(row.residentOpenAt).toEqual(new Date('2026-09-15T11:00:00.000Z'));
+  });
+
+  it('opens for non-residents ten days later, per the published city-wide rule', () => {
+    expect(row.residentPriorityDays).toBe(10);
+    expect(row.openAt).toEqual(new Date('2026-09-25T11:00:00.000Z'));
+  });
+
+  it('registers swim on the same morning — Toronto has no separate swim cycle', () => {
+    const swim = toRegistrationWindowRow(seed('toronto', 'swim', 'Fall 2026'));
+    expect(swim.residentOpenAt).toEqual(row.residentOpenAt);
+    expect(swim.openAt).toEqual(row.openAt);
   });
 });
 

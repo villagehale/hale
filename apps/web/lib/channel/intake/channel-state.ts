@@ -50,6 +50,40 @@ export async function findRevokedChannelOwner(
 }
 
 /**
+ * The family a START may actually re-enter: the revoked row's owner, ONLY while they
+ * still hold a seat in that family.
+ *
+ * Two questions were being answered by one row. "Is this number unsubscribed?" is
+ * number-keyed and membership-blind, and {@link findRevokedChannelOwner} must stay that
+ * way — every proactive sender reads it to decide whom NOT to text. "Which household
+ * does this number re-enter?" is a claim on a family, and the revoked row stopped
+ * carrying that claim the moment departure took the seat (VIL-355): it kept naming a
+ * household the person had left, so START re-enrolled them into it, with an active
+ * channel and a granted consent, minutes after Hale promised to stop texting them about
+ * that family. The keyword is express consent to be TEXTED; it is not a way back in.
+ *
+ * No seat, no re-enrolment: the number is a stranger and takes the fresh-intake door.
+ */
+export async function findReenrollableChannelOwner(
+  database: Database,
+  phoneE164: string,
+): Promise<RevokedChannelOwner | null> {
+  const owner = await findRevokedChannelOwner(database, phoneE164);
+  if (!owner) return null;
+  const [seat] = await database
+    .select({ userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, owner.familyId),
+        eq(schema.familyMembers.userId, owner.userId),
+      ),
+    )
+    .limit(1);
+  return seat ? owner : null;
+}
+
+/**
  * Re-enrol a number after a STOP, on the parent's own START.
  *
  * The keyword IS the express consent, and it is the strongest kind we can get: the
