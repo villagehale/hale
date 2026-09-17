@@ -6,8 +6,13 @@ import { loadRadarVoiceSkill } from '~/lib/cron/skill';
 import { findBannedPhrases } from '~/lib/health/framing';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
+import { townLabel } from '~/lib/channel/town-label';
 import { WATCH_OFFER } from './copy';
 import type { RadarDecision } from './radar-decide';
+
+/** Re-exported: a town is spelled in exactly one module (town-label.ts), and every
+ * caller of the radar voice already reaches for its name here. */
+export { townLabel };
 
 /**
  * VIL-238 · M3 — COMPOSE: the decision object, said out loud in Hale's voice.
@@ -87,15 +92,6 @@ export interface RadarVoice {
 /** Voice fields ONLY, strict: an unknown/extra top-level key fails the parse and the
  * caller falls back to the deterministic render. */
 const radarVoiceSchema = z.object({ message: z.string() }).strict();
-
-/** 'richmond_hill' → 'Richmond Hill'. The municipality enum is an internal token; the
- * town's name is the public fact a parent recognises. */
-export function townLabel(municipality: string): string {
-  return municipality
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
 
 /** Every rung of the cascade is empty — the one shape with no family fact in it. */
 function emptyHanded(decision: RadarDecision): boolean {

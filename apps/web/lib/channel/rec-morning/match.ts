@@ -23,6 +23,7 @@ export type RecHelloCity =
   | 'pickering'
   | 'whitby'
   | 'oshawa'
+  | 'whitchurch_stouffville'
   | 'milton';
 
 export type RecMorningWhere = {
@@ -53,6 +54,7 @@ export type RecMorningTopic =
   | 'pickering'
   | 'richmond_hill'
   | 'vaughan'
+  | 'whitchurch_stouffville'
   | 'two_parents'
   | 'jack_of_sports';
 
@@ -74,6 +76,8 @@ const NAMED_CITIES: readonly { pattern: RegExp; city: RecHelloCity }[] = [
   { pattern: /\bvaughan\b/, city: 'vaughan' },
   { pattern: /\bwhitby\b/, city: 'whitby' },
   { pattern: /\boshawa\b/, city: 'oshawa' },
+  // Matches "Whitchurch-Stouffville" too - the hyphen is a word boundary.
+  { pattern: /\bstouffville\b/, city: 'whitchurch_stouffville' },
   { pattern: /\bmilton\b/, city: 'milton' },
   { pattern: /\bajax\b/, city: 'ajax' },
   { pattern: /\btoronto\b/, city: 'toronto' },

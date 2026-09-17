@@ -102,6 +102,8 @@ const CITY_TO_MUNICIPALITY: Readonly<Record<string, Municipality>> = {
   'richmond hill': 'richmond_hill',
   vaughan: 'vaughan',
   mississauga: 'mississauga',
+  stouffville: 'whitchurch_stouffville',
+  'whitchurch-stouffville': 'whitchurch_stouffville',
 };
 
 export function municipalityForCity(city: string | null): Municipality | null {

@@ -71,6 +71,8 @@ const MISSISSAUGA_VERIFIED_AT = '2026-08-02T00:00:00-04:00';
  * date was researched and then adversarially re-fetched against its source the same
  * day, per the M1 discipline. */
 const SWEEP_VERIFIED_AT = '2026-08-11T00:00:00-04:00';
+/** Whitchurch-Stouffville joined the radar on this day, read off its own Play Book PDF. */
+const WHITCHURCH_STOUFFVILLE_VERIFIED_AT = '2026-09-17T00:00:00-04:00';
 
 const BRAMPTON_REGISTERED =
   'https://www.brampton.ca/EN/residents/Recreation/Pages/Registered-Programs.aspx';
@@ -86,6 +88,13 @@ const OSHAWA_PROGRAMS =
   'https://www.oshawa.ca/explore-play/recreation/activeoshawa-registered-programs/';
 const AURORA_GUIDE =
   'https://www.aurora.ca/recreation-arts-and-culture/recreation-programs-and-drop-in-activities/program-guide/';
+/**
+ * The Town's own Fall 2026 Play Book, page 2 — the PDF linked from
+ * townofws.ca/play/recreation/programs/play-book/, not the landing page. The landing
+ * page carries no dates; the Play Book prints both, with weekdays and the clock time.
+ */
+const WHITCHURCH_STOUFFVILLE_PLAY_BOOK =
+  'https://www.townofws.ca/media/gvyjvnnq/f2026_playbook_tagged-2.pdf';
 
 const TORONTO_ARC =
   'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/camps-after-school/after-school-recreation-care/';
@@ -170,6 +179,34 @@ const BURLINGTON_FALL_YOUTH = {
   verifiedAt: VERIFIED_AT,
   publishedWeekdays: {},
 } as const;
+
+/**
+ * Whitchurch-Stouffville runs ONE window for the whole Play Book. The Swimming section
+ * (page 48) registers in it, and so do the Winter Break Camps (Dec 21–23 and Dec 29–30),
+ * which is why the camp row below carries the fall dates and a December cycle label —
+ * the radar has to fire in August, not in December.
+ *
+ * NOON, which is the outlier in this dataset: every other town here opens between 6 and
+ * 9 a.m., so a carried-over "7 a.m." would put a Stouffville parent five hours early.
+ * No waitlist window and no preview date are published anywhere in the Play Book, so
+ * both stay null rather than 0 — "not published" is a different claim from "none".
+ */
+const WHITCHURCH_STOUFFVILLE_FALL_2026 = {
+  municipality: 'whitchurch_stouffville',
+  previewAt: null,
+  residentOpenAt: '2026-08-25T12:00:00-04:00',
+  openAt: '2026-09-01T12:00:00-04:00',
+  residentPriorityDays: 7,
+  waitlistResponseHours: null,
+  ageMinMonths: null,
+  ageMaxMonths: null,
+  sourceUrl: WHITCHURCH_STOUFFVILLE_PLAY_BOOK,
+  verifiedAt: WHITCHURCH_STOUFFVILLE_VERIFIED_AT,
+  publishedWeekdays: { residentOpenAt: 'Tuesday', openAt: 'Tuesday' },
+} as const;
+
+const WHITCHURCH_STOUFFVILLE_PAGE_TWO =
+  'Play Book page 2, verbatim: "Fall 2026 Registration — Residents: Tuesday, August 25, 2026, Online and in–person at 12 PM, noon"; "Non-Residents: Tuesday, September 1, 2026, Online and in–person at 12 PM, noon"; "Non-residents are subject to a 20% surcharge to register in Town programs"; "Most programs begin September 28, 2026". Registration is at townofws.ca/active, and the Town asks for an Online Account Form plus proof of residency before the resident date — account setup takes up to 48 hours.';
 
 const BURLINGTON_TABLE_NOTE =
   'From the Town\'s registration table, columns "Program viewable online | Registration date and time (resident) | Registration date and time (non-resident)". No time is published for the viewable-online date, so the preview is the start of that day. Waitlist: "The spot will be held for only 48 hours."';
@@ -702,5 +739,25 @@ export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
     notes:
       'Aquatics / Learn to Swim: residents Wednesday August 12 at 6 a.m., non-residents Wednesday August 19 at 6 a.m.',
     publishedWeekdays: { residentOpenAt: 'Wednesday', openAt: 'Wednesday' },
+  },
+
+  // ── Whitchurch-Stouffville ───────────────────────────────────────────────────
+  {
+    ...WHITCHURCH_STOUFFVILLE_FALL_2026,
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    notes: `General registered rec programs, the whole Play Book on one window. ${WHITCHURCH_STOUFFVILLE_PAGE_TWO}`,
+  },
+  {
+    ...WHITCHURCH_STOUFFVILLE_FALL_2026,
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026',
+    notes: `Swimming (Play Book page 48) registers inside the same window as everything else — the Town publishes no separate aquatics date. ${WHITCHURCH_STOUFFVILLE_PAGE_TWO}`,
+  },
+  {
+    ...WHITCHURCH_STOUFFVILLE_FALL_2026,
+    programDomain: 'camp',
+    cycleLabel: 'Winter Break Camps December 2026',
+    notes: `Winter Break Camp (December 21–23 and December 29–30) registers in the FALL window, not in December — seeded as its own row so the radar fires in August. ${WHITCHURCH_STOUFFVILLE_PAGE_TWO}`,
   },
 ];

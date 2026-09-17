@@ -21,7 +21,8 @@ export type Municipality =
   | 'pickering'
   | 'whitby'
   | 'oshawa'
-  | 'aurora';
+  | 'aurora'
+  | 'whitchurch_stouffville';
 
 /**
  * What kind of registration the window is for. `rec_program` is the seasonal

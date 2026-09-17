@@ -182,3 +182,64 @@ describe('golden — Mississauga Fall 2026 Programs and Winter Camps', () => {
     expect(camp.residentOpenAt).toEqual(row.residentOpenAt);
   });
 });
+
+/**
+ * Whitchurch-Stouffville, verbatim, page 2 of the Fall 2026 Stouffville PLAY Book
+ * (https://www.townofws.ca/media/gvyjvnnq/f2026_playbook_tagged-2.pdf), read 2026-09-17
+ *   "Fall 2026 Registration"
+ *   "Residents:" / "Tuesday, August 25, 2026" / "Online and in–person at 12 PM, noon"
+ *   "Non-Residents:" / "Tuesday, September 1, 2026" / "Online and in–person at 12 PM, noon"
+ *   "Non-residents are subject to a 20% surcharge to register in Town programs"
+ *   "Most programs begin September 28, 2026"
+ *
+ * NOON is the outlier in this dataset — every other town in it opens between 6 and 9
+ * a.m., so a carried-over "7 a.m." would put a Stouffville parent five hours early.
+ */
+describe('golden — Whitchurch-Stouffville Fall 2026', () => {
+  const row = toRegistrationWindowRow(seed('whitchurch_stouffville', 'rec_program', 'Fall 2026'));
+
+  it('opens for residents at noon on Tuesday 25 August 2026 (16:00 UTC, EDT)', () => {
+    expect(row.residentOpenAt).toEqual(new Date('2026-08-25T16:00:00.000Z'));
+  });
+
+  it('opens for everyone else at noon a week later, as the Play Book prints both dates', () => {
+    expect(row.openAt).toEqual(new Date('2026-09-01T16:00:00.000Z'));
+    expect(row.residentPriorityDays).toBe(7);
+    const gapDays =
+      (row.openAt.getTime() - (row.residentOpenAt as Date).getTime()) / (24 * 60 * 60 * 1000);
+    expect(gapDays).toBe(7);
+  });
+
+  it('claims no preview, because the Play Book publishes no browse date', () => {
+    expect(row.previewAt).toBeNull();
+  });
+
+  it('claims no waitlist window, because the Town publishes none', () => {
+    // Null, not zero: "not published" is a different claim from "there is none".
+    expect(row.waitlistResponseHours).toBeNull();
+  });
+
+  it('quotes the 20% non-resident surcharge and the September 28 program start', () => {
+    expect(row.notes).toContain(
+      'Non-residents are subject to a 20% surcharge to register in Town programs',
+    );
+    expect(row.notes).toContain('Most programs begin September 28, 2026');
+  });
+
+  it('carries swim and the winter-break camps on the same two dates', () => {
+    const swim = toRegistrationWindowRow(seed('whitchurch_stouffville', 'swim', 'Fall 2026'));
+    const camp = toRegistrationWindowRow(
+      seed('whitchurch_stouffville', 'camp', 'Winter Break Camps December 2026'),
+    );
+    for (const other of [swim, camp]) {
+      expect(other.openAt).toEqual(row.openAt);
+      expect(other.residentOpenAt).toEqual(row.residentOpenAt);
+    }
+  });
+
+  it("cites the Town's own Play Book PDF", () => {
+    expect(row.sourceUrl).toBe(
+      'https://www.townofws.ca/media/gvyjvnnq/f2026_playbook_tagged-2.pdf',
+    );
+  });
+});

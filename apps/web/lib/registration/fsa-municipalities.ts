@@ -32,7 +32,8 @@ import type { Municipality } from '@hale/db';
  * 5. The source tabulates several FSAs under a COMMUNITY rather than its town, so a
  *    search for the town name returns nothing and the FSA looks unassigned. Georgetown
  *    (L7G) and Acton (L7J) are Halton Hills; Bolton (L7E), Caledon East and Caledon
- *    Village (L7C, L7K) are Caledon. Read the community names, not just the town ones.
+ *    Village (L7C, L7K) are Caledon; Stouffville (L4A) is Whitchurch-Stouffville. Read
+ *    the community names, not just the town ones.
  *
  * Sources: Canada Post's published FSA assignments as tabulated in
  * https://en.wikipedia.org/wiki/List_of_postal_codes_of_Canada:_L and
@@ -40,7 +41,9 @@ import type { Municipality } from '@hale/db';
  * against GeoNames for the disputed Thornhill codes. Verified 2026-07-30; Brampton,
  * Caledon, Ajax, Pickering, Whitby, Oshawa and Aurora added and verified 2026-08-12
  * against the same tables, with L7A (Brampton, not Caledon's adjacent Mayfield West)
- * and L7E (Bolton, Caledon's largest community) double-checked per-code.
+ * and L7E (Bolton, Caledon's largest community) double-checked per-code. L4A added and
+ * verified 2026-09-17 against the same L table, where it is tabulated under the
+ * community name Stouffville rather than under the Town of Whitchurch-Stouffville.
  */
 export const FSA_MUNICIPALITIES: Readonly<Record<string, readonly Municipality[]>> = {
   // ── Markham ──
@@ -157,6 +160,9 @@ export const FSA_MUNICIPALITIES: Readonly<Record<string, readonly Municipality[]
 
   // ── Aurora ──
   L4G: ['aurora'],
+
+  // ── Whitchurch-Stouffville ──
+  L4A: ['whitchurch_stouffville'],
 };
 
 /** The two M FSAs that are Canada Post facilities in Mississauga, not Toronto. Nobody
