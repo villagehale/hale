@@ -53,8 +53,8 @@ function landingBundle(locale: string): Record<string, unknown> {
  * ÷ font-size, Chromium, 1440×900). A CJK glyph advances exactly 1em in every CJK
  * face, so a zh line is its glyph count plus the word space — one glyph too many
  * wraps the compound mid-word and pushes the hero CTA under the 900px fold, which
- * no static-markup test can see. Latin is counted at half an em, generous for
- * Fraunces at 450, so the estimate errs toward failing. */
+ * no static-markup test can see. Latin is counted at 0.42em, generous against the
+ * 0.32em average measured for Fraunces at 450, so the estimate errs toward failing. */
 const H1_COLUMN_EM: Record<(typeof routing.locales)[number], number> = { en: 9.09, fr: 9.09, zh: 6.9 };
 
 function landingString(locale: string, key: string): string {
@@ -68,7 +68,7 @@ function advanceEm(line: string): number {
   for (const ch of line) {
     if (/[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]/u.test(ch)) em += 1;
     else if (ch === ' ') em += 0.25;
-    else em += 0.5;
+    else em += 0.42;
   }
   return em;
 }

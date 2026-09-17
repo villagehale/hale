@@ -61,16 +61,18 @@ describe('landing — the v4 hero', () => {
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
     const h1 = html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? '';
     expect(h1).toContain('v4-display');
-    // The H1 is the PROMISE now, not the category. "The family assistant you
-    // message." named what Hale is and left the sharper wedge — scarce local
-    // programs, gone before you wake up — to a section three screens down; the
-    // sub carries the introduction instead, in one breath, and the exchange
-    // under it proves the promise before the reader has scrolled.
-    expect(visibleText(h1)).toBe('Three texts, then quiet.');
+    // Category first, in the one verb the page uses: a cold visitor has to know
+    // WHAT this is before any promise about it lands. The wedge (scarce local
+    // programs, gone before you wake up) and the cadence promise ("three texts,
+    // then quiet") live in the sub, and the exchange under it proves them before
+    // the reader has scrolled. Every assistant with a real landing page leads the
+    // same way — category, mechanism, proof — and a cadence line up top read as
+    // a riddle.
+    expect(visibleText(h1)).toBe('The family assistant you text.');
     expect(h1).not.toContain('7:02');
-    // The sub names the wedge and the mechanism, and keeps the no-app line.
+    // The sub names the wedge, then the promise.
     expect(html).toContain('caught before the spots are gone');
-    expect(html).toContain('I watch every registration date near you');
+    expect(html).toContain('Three texts, then quiet.');
     expect(html).not.toContain('Take the family admin off your plate');
     // The accent word is amber at the heading's own weight — colour, not slant.
     expect(h1).toContain('class="v4-accent"');
@@ -126,7 +128,7 @@ describe('landing — the v4 hero', () => {
     // they are pinned as order rather than as four presence checks that a
     // re-shuffle would leave green.
     const order = [
-      'Three texts, then quiet.',
+      'The family assistant you text.',
       'Hi — Mia is 4, we’re in Halton Hills, L7G.',
       'Founding families join free — and keep the founding rate for good.',
       'Texting Hale looks like this',
@@ -442,7 +444,7 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      'Three texts, then quiet.',
+      'The family assistant you text.',
       'Texting Hale looks like this',
       'How Hale works',
       'What I watch',

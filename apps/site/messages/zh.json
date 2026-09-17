@@ -57,10 +57,10 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · 夏威夷语，意为「家」",
-    "heroH1a": "三条短信，",
-    "heroH1b": "之后便",
-    "heroH1Accent": "安静。",
-    "heroSub": "游泳、营队和报名日——在名额没了之前就替你抓住。不用装应用：Hale 就是你手机里的一个联系人，我替你盯住附近每一个报名日期。",
+    "heroH1a": "家庭助手，",
+    "heroH1b": "发短信",
+    "heroH1Accent": "就行。",
+    "heroSub": "游泳、营队和报名日，在名额没了之前就替你抓住。三条短信，之后便安静。",
     "heroThread": [
       {
         "dir": "out",
