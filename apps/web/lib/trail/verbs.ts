@@ -216,6 +216,8 @@ export const AUDIT_VERBS = [
   'co_parent_invite_blocked',
   'co_parent_sms_inbound',
   'co_parent_sms_outbound',
+  'co_parent_access_withdrawn',
+  'co_parent_departed',
   // ── the executor's own writes (internal-writes.ts) ──────────────────────
   'action.routine_pinned',
   'action.routine_pinned.skipped_duplicate',
@@ -674,6 +676,18 @@ const VERBS: Record<AuditVerb, Verb> = {
   // no). The row says which conversation it belongs to; channel_messages says who.
   co_parent_sms_inbound: { sentence: 'a message came in about your co-parent invite', family: 'note' },
   co_parent_sms_outbound: { sentence: 'Hale replied about your co-parent invite', family: 'note' },
+  // Departure, read by BOTH parents from the one trail, so neither sentence may take a
+  // side or name the person who left: the co-parent sees their own leaving, the parent
+  // who stays sees that the seat is empty. 'done' rather than 'problem' — a parent
+  // leaving is a decision Hale carried out, not a failure it should colour as one.
+  co_parent_access_withdrawn: {
+    sentence: 'a co-parent’s permission to be texted by Hale ended',
+    family: 'done',
+  },
+  co_parent_departed: {
+    sentence: 'a co-parent left your family — your family’s record was kept',
+    family: 'done',
+  },
   // ── what the executor actually did ──────────────────────────────────────
   'action.routine_pinned': { sentence: 'pinned an activity to your week', family: 'done' },
   'action.routine_pinned.skipped_duplicate': {

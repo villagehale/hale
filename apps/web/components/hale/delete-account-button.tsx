@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-type State = 'idle' | 'confirming' | 'pending' | 'scheduled' | 'error';
+type State = 'idle' | 'confirming' | 'pending' | 'scheduled' | 'departed' | 'error';
 
 /**
  * Requests deletion of the whole account/family (PIPEDA/Law 25 right-to-erasure).
@@ -12,6 +12,12 @@ type State = 'idle' | 'confirming' | 'pending' | 'scheduled' | 'error';
  * grace period — it does not erase immediately — so the success copy states the
  * effective date, and the parent can still change their mind during the window.
  * Honest states: pending in flight, the scheduled date on 202, the error surfaced.
+ *
+ * TWO 202s, TWO SENTENCES (VIL-355). The same request from a CO-PARENT erases them and
+ * leaves the household's record standing, so it comes back `departed` with no deletion
+ * date. Reading that as the scheduled answer would tell a parent their children's
+ * history is going when it is not — and, worse, that there is a window in which to
+ * cancel something nobody scheduled. The state is separate for exactly that reason.
  */
 export function DeleteAccountButton() {
   const [state, setState] = useState<State>('idle');
@@ -29,12 +35,25 @@ export function DeleteAccountButton() {
         setState('error');
         return;
       }
-      const body = (await res.json()) as { scheduledDeletionAt?: string };
+      const body = (await res.json()) as { status?: string; scheduledDeletionAt?: string };
+      if (body.status === 'departed') {
+        setState('departed');
+        return;
+      }
       setScheduledFor(body.scheduledDeletionAt ?? null);
       setState('scheduled');
     } catch {
       setState('error');
     }
+  }
+
+  if (state === 'departed') {
+    return (
+      <p className="meta text-slate-green" aria-live="polite">
+        you’ve left this family. hale won’t text you about them again, and the family’s own record
+        stays with them.
+      </p>
+    );
   }
 
   if (state === 'scheduled') {

@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const authMock = vi.fn();
 const resolveFamilyMock = vi.fn();
 const resolveUserIdMock = vi.fn();
-const scheduleMock = vi.fn();
+const erasureMock = vi.fn();
 const DB_HANDLE = { __db: true };
 const SCHEDULED_AT = new Date('2026-07-10T12:00:00.000Z');
 
@@ -22,7 +22,7 @@ vi.mock('~/lib/family', () => ({
   resolveUserIdForUser: (...a: unknown[]) => resolveUserIdMock(...a),
 }));
 vi.mock('./delete', () => ({
-  scheduleFamilyDeletion: (...a: unknown[]) => scheduleMock(...a),
+  requestErasure: (...a: unknown[]) => erasureMock(...a),
 }));
 
 function configureAuth(on: boolean) {
@@ -51,12 +51,15 @@ describe('POST /api/rights/delete', () => {
     authMock.mockReset();
     resolveFamilyMock.mockReset();
     resolveUserIdMock.mockReset();
-    scheduleMock.mockReset();
+    erasureMock.mockReset();
     configureAuth(true);
     authMock.mockResolvedValue(session('google_1'));
     resolveFamilyMock.mockResolvedValue('fam-1');
     resolveUserIdMock.mockResolvedValue('user-1');
-    scheduleMock.mockResolvedValue({ scheduledDeletionAt: SCHEDULED_AT });
+    erasureMock.mockResolvedValue({
+      outcome: 'family_scheduled',
+      scheduledDeletionAt: SCHEDULED_AT,
+    });
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -67,39 +70,65 @@ describe('POST /api/rights/delete', () => {
     const res = await callDelete({ confirm: true });
     expect(res.status).toBe(501);
     expect(authMock).not.toHaveBeenCalled();
-    expect(scheduleMock).not.toHaveBeenCalled();
+    expect(erasureMock).not.toHaveBeenCalled();
   });
 
   it('returns 401 when signed out', async () => {
     authMock.mockResolvedValue(session(null));
     const res = await callDelete({ confirm: true });
     expect(res.status).toBe(401);
-    expect(scheduleMock).not.toHaveBeenCalled();
+    expect(erasureMock).not.toHaveBeenCalled();
   });
 
   it('returns 403 when the caller belongs to no family', async () => {
     resolveFamilyMock.mockResolvedValue(null);
     const res = await callDelete({ confirm: true });
     expect(res.status).toBe(403);
-    expect(scheduleMock).not.toHaveBeenCalled();
+    expect(erasureMock).not.toHaveBeenCalled();
   });
 
-  it('is confirm-gated: a request without confirm:true is 400 and NEVER schedules', async () => {
+  it('is confirm-gated: a request without confirm:true is 400 and NEVER erases', async () => {
     const res = await callDelete({ confirm: false });
     expect(res.status).toBe(400);
-    expect(scheduleMock).not.toHaveBeenCalled();
+    expect(erasureMock).not.toHaveBeenCalled();
   });
 
   it('a confirmed request calls the audited scheduler and returns 202 with the deletion date', async () => {
     const res = await callDelete({ confirm: true });
     expect(res.status).toBe(202);
-    expect(scheduleMock).toHaveBeenCalledWith(DB_HANDLE, {
+    expect(erasureMock).toHaveBeenCalledWith(DB_HANDLE, {
       familyId: 'fam-1',
       actorUserId: 'user-1',
     });
     expect(await res.json()).toEqual({
       status: 'scheduled',
       scheduledDeletionAt: SCHEDULED_AT.toISOString(),
+    });
+  });
+
+  // VIL-355 · the departing co-parent's answer says what was undone and names no
+  // deletion date, because nothing of the household's was scheduled. A response that
+  // reused 'scheduled' would tell them their family's record is going too.
+  it('answers a departing co-parent with the tally and NO deletion date', async () => {
+    erasureMock.mockResolvedValue({
+      outcome: 'co_parent_departed',
+      departure: {
+        outcome: 'departed',
+        channelRevoked: 1,
+        membershipRemoved: true,
+        consentWithdrawn: 1,
+        threadRetained: 1,
+      },
+    });
+
+    const res = await callDelete({ confirm: true });
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({
+      status: 'departed',
+      channelRevoked: 1,
+      consentWithdrawn: 1,
+      threadRetained: 1,
     });
   });
 });
