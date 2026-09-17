@@ -10,7 +10,7 @@ import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { type ChannelId, type Platform, channelOrder, qrLeads } from '~/lib/chooser';
 import { CONTACT_CARD_PATH } from '~/lib/contact-card';
-import { CONTACT_EMAIL, buildSmsHref, buildWaHref } from '~/lib/text-entry';
+import { CONTACT_EMAIL, INTAKE_PREFILL, buildSmsHref, buildWaHref } from '~/lib/text-entry';
 
 /**
  * The /text entry surface (VIL-240 · M5) — what a QR card, a poster, a
@@ -22,14 +22,18 @@ import { CONTACT_EMAIL, buildSmsHref, buildWaHref } from '~/lib/text-entry';
  * approved, production is PR 566 — one "Text Hale" button, "Hi Hale"
  * prefill. An empty iMessage/WhatsApp chooser is a dead door.
  *
- * THE FIVE-SECOND FRAME (founder brief 2026-09-01): a stranger off a poster QR
- * must read what Hale IS (headline + lede), what to DO (three light steps),
- * and what comes BACK — a bubble carrying Hale's CURRENT first reply, byte-
- * pinned to apps/web/lib/channel/intake/copy.ts by app/text-page-copy.test.ts.
+ * THE FIVE-SECOND FRAME (founder brief 2026-09-01, redesigned 2026-09-16): a
+ * stranger off a poster QR reads what Hale IS (headline + lede) and then sees
+ * the whole transaction as an EXCHANGE — the message they are about to send
+ * beside the reply Hale really sends back, byte-pinned to
+ * apps/web/lib/channel/intake/copy.ts by app/text-page-copy.test.ts. Composer
+ * as hero: the numbered steps are folded into one line under it, because the
+ * exchange shows the first beat and the greeting asks for the second.
  * The page never invents Hale speech: ZH shows the English reply under a
  * translated label because copy.ts has no Chinese greeting. The "(via <code>)"
  * attribution token rides ONLY inside composer hrefs; on the page it is
- * disclosed in words (prefilledWithSource), never printed raw.
+ * disclosed in words (prefilledWithSource), never printed raw — the sent bubble
+ * shows INTAKE_PREFILL itself, tokenless.
  *
  * When both pipes are live, lib/chooser.ts orders them: liveness gates (a dark
  * channel renders NOTHING), and the UA hint only ORDERS. The one withholding
@@ -179,15 +183,44 @@ export function TextEntry({
     </div>
   ) : null;
 
-  /** What comes back — Hale's real first reply, honestly labeled. Only where a
-   * channel is live: the dark page promises no text back. */
-  const previewBubble = live ? (
-    <div className="mt-8">
-      <p className="meta">{t('previewLabel')}</p>
-      <p
-        className="mt-3 max-w-[30rem] rounded-[18px] rounded-bl-[4px] px-5 py-4 text-spruce"
-        style={{ background: 'var(--color-apricot-tint)', lineHeight: 1.55 }}
-      >
+  /** THE EXCHANGE — the page's hero since the 2026-09-16 redesign. What the
+   * parent is about to send (INTAKE_PREFILL verbatim, the composer's own body
+   * minus the `(via …)` token, which stays in the href) and what Hale really
+   * sends back. Both bubbles are the LANDING's primitives (v4-bubble), so the
+   * two surfaces speak one messaging idiom.
+   *
+   * Each side is captioned in the future tense: nothing here has happened yet,
+   * and a reader must never take the received bubble for a text already sitting
+   * on their phone. That caption is `aria-hidden` where it sits and repeated
+   * sr-only INSIDE its own bubble (the landing does the same with its speaker
+   * names), so the framing travels with the message rather than depending on
+   * two <p>s staying adjacent — and no reader hears it twice. The ZH
+   * previewLabel carries its own "(English original)" because copy.ts has no
+   * Chinese greeting.
+   *
+   * The sent bubble is the literal SMS body, so it is English on every locale;
+   * `sentGloss` says what it means, and is the prefill itself in EN — which is
+   * exactly the condition that leaves the line off a page that needs no gloss.
+   *
+   * Only where a channel is live: the dark page promises no text back. */
+  const sentLabel = t('sentLabel');
+  const previewLabel = t('previewLabel');
+  const sentGloss = t('sentGloss');
+  const exchange = live ? (
+    <div className="v4-thread text-thread mt-8">
+      <p className="text-thread-label text-thread-label-out" aria-hidden="true">
+        {sentLabel}
+      </p>
+      <p className="v4-bubble v4-bubble-out">
+        <span className="sr-only">{sentLabel} </span>
+        {INTAKE_PREFILL}
+      </p>
+      {sentGloss !== INTAKE_PREFILL && <p className="text-thread-gloss">{sentGloss}</p>}
+      <p className="text-thread-label" aria-hidden="true">
+        {previewLabel}
+      </p>
+      <p className="v4-bubble v4-bubble-in">
+        <span className="sr-only">{previewLabel} </span>
         {t('greeting')}
       </p>
     </div>
@@ -222,26 +255,15 @@ export function TextEntry({
             {t('lede')}
           </p>
         )}
-        {/* What to DO — three beats, a light numbered row (one-tap arm; the
-            chooser's job is picking a pipe, not re-teaching the steps). */}
+        {exchange}
+        {/* What to DO, folded to ONE line. The three numbered steps said what
+            the exchange above now SHOWS (step 1) and what the greeting itself
+            asks for (step 2); only the beat after the send was left to say. */}
         {live && !picker && (
-          <ol className="mt-8 grid gap-2.5">
-            {(['step1', 'step2', 'step3'] as const).map((key, index) => (
-              <li key={key} className="flex gap-3">
-                <span
-                  className="w-5 shrink-0 text-right font-display text-spruce"
-                  aria-hidden="true"
-                >
-                  {index + 1}
-                </span>
-                <span className="text-slate-green" style={{ lineHeight: 1.6 }}>
-                  {t(key)}
-                </span>
-              </li>
-            ))}
-          </ol>
+          <p className="mt-5 text-slate-green" style={{ lineHeight: 1.6 }}>
+            {t('afterSend')}
+          </p>
         )}
-        {previewBubble}
       </div>
 
       {live ? (
@@ -291,10 +313,12 @@ export function TextEntry({
           {qrLeads(platform) ? null : desktopCard}
 
           {/* The trust strip — the four flat facts plus the one link that backs
-              them up. Live arms only: "reply STOP" needs a number to stop. */}
+              them up. Live arms only: "reply STOP" needs a number to stop.
+              `nowrap` because ZH has no spaces: 隐私政策 otherwise breaks across
+              two lines mid-label, and half a link is not a legal link. */}
           <p className="meta mt-8">
             {t('trustLine')} ·{' '}
-            <a href={localeHref(locale, '/privacy')} className="link">
+            <a href={localeHref(locale, '/privacy')} className="link whitespace-nowrap">
               {t('privacyLink')}
             </a>
           </p>
@@ -314,7 +338,7 @@ export function TextEntry({
 
       <p className="meta mt-14 rise rise-3">
         {t('footerPre')}{' '}
-        <a href={localeHref(locale, '/privacy')} className="link">
+        <a href={localeHref(locale, '/privacy')} className="link whitespace-nowrap">
           {t('privacyLink')}
         </a>
         .{live && <> {t('termsLine')}</>}
