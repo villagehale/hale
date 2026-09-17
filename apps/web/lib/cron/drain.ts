@@ -112,19 +112,20 @@ export const HOT_QUEUE_EXPIRE_SECONDS = 900;
 const BATCH_SIZE = 10;
 
 /**
- * How many inbound turns a run takes per fetch: ONE.
+ * The inbound queue is fetched with the FULL batch window, on purpose.
  *
- * A kicked run lives only as long as the kick that started it. The door's kick aborts at
- * KICK_TIMEOUT_MS and the platform cancels the invocation with it (observed 2026-09-17:
- * two kicked runs that had taken five turns each died mid-batch, their unfinished turns
- * sat `active` until the 15-minute expiry, and the drain request logged status 0). The
- * app already defers a single turn that outgrows that window (`sms_turn_deferred`); a
- * run holding more than one turn has no such defence. So a run takes one turn per fetch,
- * and a burst of ten first texts is shared across the ten kicks the doors fire — each
- * kicked run works one turn, then fetches the next only if any is left. The scheduled
- * cron run loops the same way and is never aborted, so it still drains a backlog.
+ * pg-boss gates a singleton-policy queue per key INSIDE the fetched batch (plans.js
+ * fetchNextJob: LIMIT first, then one row per singleton_key), so a one-row window that
+ * lands on a key whose earlier job is still active returns nothing at all — and the
+ * whole queue, the canary included, sits behind it. Observed 2026-09-17 04:43–04:49 with a
+ * window of one: four turns and the canary stayed `created` while the minute cron logged
+ * processed: 0. Ten is the window that has drained this queue for months.
+ *
+ * A run works its batch one turn at a time. That is safe again because a kicked run no
+ * longer lives only as long as the kick (route.ts answers 202 and works in after()), so a
+ * ten-turn batch finishes inside maxDuration instead of dying at the kick's 60s. What a
+ * burst costs is the turns' own time, in fetch order; what it never costs is a lost turn.
  */
-const INBOUND_TURN_BATCH = 1;
 const WALL_CLOCK_BUDGET_MS = 700_000;
 
 /**
@@ -537,11 +538,7 @@ const DRAIN_PLAN = [
   // Each dead letter drains right behind its queue — an unread DLQ is a silent drop
   // with extra steps (rule #11). All are near-empty near-free reads on a healthy tick.
   { queue: CHANNEL_SEND_DLQ, process: processDeadSendJob },
-  {
-    queue: CHANNEL_MESSAGE_RECEIVED_QUEUE,
-    process: processChannelMessageJob,
-    batchSize: INBOUND_TURN_BATCH,
-  },
+  { queue: CHANNEL_MESSAGE_RECEIVED_QUEUE, process: processChannelMessageJob },
   { queue: CHANNEL_MESSAGE_RECEIVED_DLQ, process: processExpiredTurnJob },
   { queue: EVENTS_QUEUE, process: processIngestedJob },
   { queue: EVENTS_DLQ, process: processDeadJobFor(EVENTS_DLQ) },
@@ -727,7 +724,21 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
     voice: productionCalendarVoice(),
   });
 
-  const boss = new PgBoss({ connectionString, schema: 'pgboss', supervise: false });
+  // Two connections, and no scheduler. The session pooler behind DATABASE_DIRECT_URL
+  // admits 15 clients in total; pg-boss's default pool of ten per instance meant two
+  // concurrent runs could exhaust it, and on 2026-09-17 a burst of kicked runs did
+  // (EMAXCONNSESSION), killing the runs that lost the race before their first fetch. A
+  // run fetches, works, completes — sequentially — so two is enough. The scheduler is
+  // pg-boss's cron Timekeeper, which this repo never uses (vercel.json is the schedule)
+  // and which kept a poller alive past the run's end, crashing the process on the way
+  // out ("Unhandled Rejection … Timekeeper.onCron").
+  const boss = new PgBoss({
+    connectionString,
+    schema: 'pgboss',
+    supervise: false,
+    schedule: false,
+    max: 2,
+  });
   await boss.start();
   try {
     return await drainHotQueues(
