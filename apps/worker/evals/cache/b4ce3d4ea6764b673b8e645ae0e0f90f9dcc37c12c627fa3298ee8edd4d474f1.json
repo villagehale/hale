@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The message contains a first-person verb of checking (\"Checking your area now\") but it appears in its own sentence before the fact lands. The useful fact about Ontario's 18-month well-baby visit is presented in a separate sentence after this gesture at attribution. According to the scoring criteria, a 3 is appropriate when attribution gestures at the work \"late - after the fact has already landed flat, or in a sentence of its own that the fact then follows.\" The first sentence acknowledges the looking was done, but the relevant fact about the visit appears in a subsequent sentence, not folded into the same sentence as the checking verb."
+  }
+}

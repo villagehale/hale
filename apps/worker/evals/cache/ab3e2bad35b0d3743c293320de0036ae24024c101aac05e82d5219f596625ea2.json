@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The message states the vaccine checkpoint fact (\"Maya is behind on her routine visit at 18 months\") as a standalone assertion with no attribution showing Hale performed a look. There is no first-person verb of finding or checking in the lead sentence or anywhere that connects this fact to work Hale already did. The fact arrives flat and indistinguishable from general information. Additionally, the message contains invented specifics (Etobicoke location, specific times like 8:00 and 6:30, specific rec center names and splash pad price) that were not provided to Hale, which triggers the lower score for a look with unjustified scope details. The opening is also marketing-oriented (\"Great news!\") which reads as product introduction rather than service reporting back on work already done."
+  }
+}

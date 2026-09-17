@@ -8,6 +8,7 @@ import type { HealthChild } from '~/lib/health/match';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import {
+  latestPastCycle,
   matchRegistrationWindows,
   resolveMunicipalities,
 } from '~/lib/registration/match-registration-windows';
@@ -266,6 +267,10 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
             now,
           })
         : [];
+      // Read from the SAME rows the matcher just discarded: a town whose cycle has
+      // already opened is between cycles, not off the radar, and that is a different
+      // sentence. Null for a town that has published nothing.
+      const pastCycle = area ? latestPastCycle({ windows: windowRows, postal: area, now }) : null;
 
       // THE FIRST FIND IS PRE-CONSENT — the watch offer rides on this very message
       // (machine.ts appends WATCH_OFFER to it), so health-checkpoint content may not:
@@ -282,6 +287,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           children,
           candidates,
           windows,
+          pastCycle,
           weather,
           teenChildIds: roster.teenChildIds,
           healthChildren: roster.healthChildren,

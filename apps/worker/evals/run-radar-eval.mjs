@@ -41,6 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
+  JUDGE_SAMPLES_MEDIAN,
   cachedTextCall,
   lazyAnthropic,
   makeCost,
@@ -103,6 +104,17 @@ function radarVoiceContext(decision) {
           kidNames: reg.kidNames,
           residentNote: reg.residentNote,
           ageApproximate: reg.ageApproximate,
+        }
+      : null,
+    // The silence with a reason in it: this town opened a cycle before and its next
+    // dates are not posted. Carries the TOWN, which a null-registration context never
+    // used to — so a between-cycles message that names it is grounded, not inventing.
+    registrationAbsence: decision.registrationAbsence
+      ? {
+          town: townLabel(decision.registrationAbsence.cycleRef.municipality),
+          lastCycle: decision.registrationAbsence.cycleRef.cycleLabel,
+          lastOpenedAtLocal: decision.registrationAbsence.lastOpenedAtLocal,
+          nextCycle: decision.registrationAbsence.nextCycleLabel,
         }
       : null,
     // The reviewed row's own words and the names it may carry — never the row id.
@@ -262,15 +274,23 @@ function countSentences(message) {
 }
 
 /**
- * Whether this turn has a find to attribute. When all three rungs are null there is
- * nothing Hale found, and the skill hands that turn a mapping line that already says Hale
- * is out looking — scoring it for attribution would fail the honest-absence message for
- * being honest, and would push a second "I checked" onto the one message that must not
- * pad. Mirrors the `emptyHanded` branch in radarVoiceContext above.
+ * Whether this turn has something Hale LOOKED UP to attribute. When every rung is null
+ * there is nothing Hale found, and the skill hands that turn a mapping line that already
+ * says Hale is out looking — scoring it for attribution would fail the honest-absence
+ * message for being honest, and would push a second "I checked" onto the one message
+ * that must not pad.
+ *
+ * A between-cycles absence DOES count, and that is the point of typing it: "your town's
+ * fall cycle opened on the 1st and winter is not posted" is a municipal calendar someone
+ * went and read. Stone-cold it is a database row from a stranger's number; it earns its
+ * attribution exactly like a find, and the emptyHanded exemption would hide that.
  */
 function carriesAFind(decision) {
   return (
-    decision.weekendPick !== null || decision.registrationLine !== null || decision.checkpoint !== null
+    decision.weekendPick !== null ||
+    decision.registrationLine !== null ||
+    decision.registrationAbsence !== null ||
+    decision.checkpoint !== null
   );
 }
 
@@ -344,6 +364,10 @@ const JUDGE_SYSTEM = [
   'neighbour who already looked something up: quiet, plain-spoken, specific, short,',
   'leading with the useful thing. It states only the given facts, and when a fact is',
   'absent (no pick, no registration date) it says so plainly instead of padding.',
+  'A field the facts do not carry - a null venue, no price, no age range - is simply',
+  'absent. A message that names no venue because there is none IS complete, and you never',
+  'mark it down for that, ask it for a placeholder, or suggest wording that would invent',
+  'one: a stand-in like "location TBA" is a detail Hale was not given.',
   'A LOW score is hype or exclamation marks, brand/corporate voice ("We are excited to"),',
   'listing facts like a database row, restating every field, sounding like an ad, or',
   'any detail not present in the facts. Reply with ONLY the score tool.',
@@ -416,7 +440,23 @@ async function main() {
   const skill = await agent.loadSkill(RADAR_SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const judgeModel = await readJudgeModel();
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'radar', cachedOnly, getClient, cost);
+  // MEDIAN OF THREE for voice, and it is this rubric that needs it. The two judges pull
+  // against each other on the SAME sentence by construction: attribution wants the few
+  // words that make Hale the one who looked, and a voice draw in the tail reads those
+  // same words as "narrative and inference not in the facts" and returns a 3. Measured
+  // when the between-cycles skill edit re-keyed the corpus and forced a full re-sample —
+  // four consecutive live runs each failed a DIFFERENT one to three fixtures on a lone
+  // voice draw, with no message changing in any way a parent would notice. A single draw
+  // was never a measurement here; the committed cache was just a lucky one. The median
+  // accepts nothing new (two draws below the floor still fails) and sample zero keeps the
+  // historical cache key, so every verdict already committed replays unchanged.
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'radar', cachedOnly, getClient, cost, {
+    samples: JUDGE_SAMPLES_MEDIAN,
+  });
+  // Median of three here too, and for the same measured reason: this rubric's tail reads
+  // a perfectly good "I checked X for you" as a 1 about once in twenty draws, and it is a
+  // hard floor. It still fails what it should — the broken stand-in states its inventions
+  // flat, so all three draws land low — which is what the --broken calibration proves.
   const attributionJudge = makeJudge(
     judgeModel,
     ATTRIBUTION_JUDGE_SYSTEM,
@@ -424,6 +464,7 @@ async function main() {
     cachedOnly,
     getClient,
     cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
   );
 
   console.log(

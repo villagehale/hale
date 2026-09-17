@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The message leads with the useful core (free outdoor activity this Saturday) and names the kids. However, it adds a statement about registration that goes beyond the facts: the facts show registrationAbsence is null (no data on whether registration is absent), yet the message states \"Nothing has a registration date coming up just yet\"—this invents information not given. Also, the venue (High Park) is named despite the facts showing where is null, which adds a detail beyond what was provided. The tone is plain-spoken and not hyped, which is good, but the padding about registration and inclusion of the venue when it wasn't in the facts prevent a higher score."
+  }
+}

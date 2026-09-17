@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message respects the facts cleanly: it names the activity, venue (High Park playground), day (Saturday), and kids (Ada and Noor), and the two whyFacts (free, outdoor). It plainly states the absence of registration without padding. However, it adds \"Nothing has a registration date coming up just yet\"—a hedging phrase that goes beyond the given facts. The facts simply note registrationAbsence as null (no information provided), so restating an assumption about what may come \"just yet\" invents speculation not in the facts. The message is otherwise competent and plain-spoken, but this addition prevents a 5.",
+    "score": 4
+  }
+}

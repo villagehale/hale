@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Plain-spoken, specific, and leads with the useful thing (the 18-month well-baby visit fact). Correctly states what's absent (\"nothing to point you to for the weekend or registration yet\") rather than padding. The voice is quiet and neighborly. One minor issue: \"I'll have a pick soon\" doesn't strictly derive from the facts provided (the facts show weekendPick is null but don't confirm a future pick is coming). Otherwise faithful to facts and appropriately measured."
+  }
+}

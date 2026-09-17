@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message is plain-spoken, specific, and leads with the useful detail (registration date/time). It correctly states the facts provided: town, cycle, open time, and kid names. It acknowledges the age uncertainty (\"if...still in the right age bands\") rather than padding or assuming. The tone is quiet and competent. Minor deduction only because it includes a slight conditional hedge (\"still in\") that adds minimal padding, but this is appropriate given ageApproximate:true. Voice is consistent with a helpful neighbour who looked something up."
+  }
+}

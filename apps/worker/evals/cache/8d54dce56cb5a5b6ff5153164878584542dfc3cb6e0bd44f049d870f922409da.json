@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The message leads with the useful thing (Saturday activity) and states facts plainly (free, outdoor, Maya's name). However, it includes unnecessary padding: \"Looked up your Saturday\" adds editorializing, and \"Nothing has a registration date coming up right now\" restates the absence of facts in a wordy way rather than plainly saying \"No registration date.\" The message also says \"Neighbourhood skating drop-in\" without specifying the location (\"where\" is null), which a competent neighbour would acknowledge. A 5 would be more direct like \"Free outdoor skating drop-in Saturday for Maya, location TBA\" or simply omit the location if unknown. The voice is starting to sound slightly corporate with \"Looked up\" framing."
+  }
+}

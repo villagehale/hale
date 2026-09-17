@@ -5,7 +5,10 @@
 // M3 brief names, because each one changes what an honest message may say:
 //
 //   family size      1 / 2 / 3 kids   (multi-kid discipline: ONE message, one pick)
-//   registration     present / absent (an absent window must be said lightly, not implied)
+//   registration     present / absent / BETWEEN CYCLES
+//                    (absent → said lightly, not implied; between cycles → the town has
+//                     opened before and its next dates are not posted, which is a
+//                     different sentence and the one the 2026-09-16 defect could not say)
 //   weather          good / bad / unavailable
 //                    (good → the pick may claim a dry forecast; bad → the decision
 //                     already chose indoors and there is NO weather fact to state;
@@ -54,6 +57,17 @@ function registration(over = {}) {
   };
 }
 
+/** A registration silence with a reason in it: this town's last cycle has already gone.
+ * Mirrors RegistrationAbsence in apps/web/lib/channel/intake/radar-decide.ts. */
+function absence(over = {}) {
+  return {
+    cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
+    lastOpenedAtLocal: 'Sep 8, 7:00 a.m.',
+    nextCycleLabel: null,
+    ...over,
+  };
+}
+
 /** Rows lifted VERBATIM from the reviewed Ontario table (apps/web/lib/health/
  * checkpoints.ts). No wording is invented here — a fixture that softened a task would
  * be testing copy no family will ever receive. */
@@ -66,10 +80,11 @@ function checkpoint(id, task, kidNames) {
   return { checkpointRef: { id }, task, kidNames };
 }
 
-function decision(weekendPick, registrationLine, checkpointLine = null) {
+function decision(weekendPick, registrationLine, checkpointLine = null, registrationAbsence = null) {
   return {
     weekendPick,
     registrationLine,
+    registrationAbsence,
     checkpoint: checkpointLine,
     offerQuestion: true,
     followUpNeeded: weekendPick === null,
@@ -101,6 +116,34 @@ export const RADAR_FIXTURES = [
     expect: {
       mustRecall: ['Your first weekend find lands in a day or two.'],
       forbidden: ['drop-in', 'library', 'swim', 'registration opens'],
+    },
+  },
+  {
+    id: '1kid-between-cycles-toronto-pick-present',
+    // THE PRODUCTION CASE (2026-09-16). Toronto's fall cycle opened on Sep 8 and the
+    // next dates are not published. This family got "No registration dates on my radar
+    // yet" — which is what a family in an uncovered town gets, and their own town was
+    // never named. The message must say the reason, and must not promise a future text:
+    // the watch offer the shell appends is where the offer lives.
+    decision: decision(pick(), null, null, absence()),
+    expect: {
+      mustRecall: ['Riverdale', 'Toronto', 'Sep 8'],
+      forbidden: ['radar yet', 'http', 'Winter', 'Spring', "I'll text", 'let you know'],
+    },
+  },
+  {
+    id: '1kid-between-cycles-halton-hills-next-cycle-named',
+    // No pick, no checkpoint: the absence IS the message, next to the first-find beat.
+    // Halton Hills opened Fall 2026 on Sep 1 and the sweep is watching for Winter 2027,
+    // so the cycle Hale is waiting on can be named for once.
+    decision: decision(null, null, null, absence({
+      cycleRef: { municipality: 'halton_hills', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
+      lastOpenedAtLocal: 'Sep 1, 7:00 a.m.',
+      nextCycleLabel: 'Winter 2027',
+    })),
+    expect: {
+      mustRecall: ['Halton Hills', 'Fall 2026', 'Sep 1', 'Winter 2027'],
+      forbidden: ['radar yet', 'http', "I'll text", 'let you know', 'opens'],
     },
   },
   {

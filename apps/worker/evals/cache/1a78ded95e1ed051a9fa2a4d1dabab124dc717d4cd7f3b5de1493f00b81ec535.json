@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message leads with the useful thing (free outdoor skating Saturday for Maya) in plain, specific language. It states the absent fact (no registration date) plainly without padding. However, it includes \"Nothing has a registration date coming up just yet\" which slightly exceeds the given facts—the facts show registration:null and registrationAbsence:null, meaning Hale was simply not given registration information, not that there definitively is none coming. A 5 would omit that interpretive statement and stick only to what's known. The core message is competent and neighbour-like, but this addition prevents a perfect score."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message is plain-spoken and specific, leading with the useful information (vaccine record checkpoint). It correctly states facts from the facts object and plainly acknowledges what is absent (weekend picks, registration) without padding. The tone is quiet and competent. Minor deduction from 5: \"I'll have more soon\" is slightly speculative/forward-looking language that goes beyond stating current facts—a strict 5 would end after plainly stating what is and isn't available. The offerQuestion flag (true) suggests a question should follow, but none appears; however, that may be intentional structure. Overall, this avoids hype, corporate voice, and invented details."
+  }
+}

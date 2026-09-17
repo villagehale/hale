@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message presents both findings as the product of work Hale already took. The first sentence contains \"I checked\" - a first-person verb of looking that attributes the registration fact. The second sentence contains \"I found\" - another first-person verb that attributes the weekend activity. Both attributions land in the same sentences as their respective facts, meeting the criterion for a score of 5. The useful facts arrive as a service reporting back on work already done, without invented specifics like postal codes, area names, or time ranges."
+  }
+}

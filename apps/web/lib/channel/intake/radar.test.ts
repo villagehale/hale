@@ -122,6 +122,73 @@ describe('createRadarComposer', () => {
     expect(payload.followUpNeeded).toBe(true);
   });
 
+  it('names the town whose cycle has already gone, instead of an empty radar line', async () => {
+    const db = makeFakeDb();
+    // Halton Hills opened Fall 2026 on Sep 1. It is now Sep 17 and winter is not posted:
+    // the production shape of 2026-09-16, where this family was told nothing was on the
+    // radar and their own town was never named.
+    db.db
+      .insert(schema.registrationWindows)
+      .values({
+        municipality: 'halton_hills',
+        programDomain: 'rec_program',
+        cycleLabel: 'Fall 2026',
+        previewAt: null,
+        residentOpenAt: null,
+        openAt: new Date('2026-09-01T11:00:00.000Z'),
+        residentPriorityDays: null,
+        waitlistResponseHours: null,
+        ageMinMonths: 36,
+        ageMaxMonths: 72,
+        sourceUrl: 'https://www.haltonhills.ca/example',
+        verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
+        notes: null,
+      } as never);
+
+    const payload = await createRadarComposer({
+      database: db.db,
+      weather: fakeWeather([]),
+      client: null,
+      now: () => new Date('2026-09-17T15:00:00.000Z'),
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'L7G' });
+
+    expect(payload.message).toContain('Halton Hills');
+    expect(payload.message).toContain('Fall 2026');
+    expect(payload.message).toContain('already opened');
+    expect(payload.message).toContain('Winter 2027');
+    expect(payload.message).not.toContain('no registration date coming up');
+  });
+
+  it('VIL-334: the Toronto pin still wins over a cycle that has already gone', async () => {
+    const db = makeFakeDb();
+    db.db
+      .insert(schema.registrationWindows)
+      .values({
+        municipality: 'toronto',
+        programDomain: 'rec_program',
+        cycleLabel: 'Fall 2026',
+        previewAt: null,
+        residentOpenAt: null,
+        openAt: new Date('2026-09-08T11:00:00.000Z'),
+        residentPriorityDays: null,
+        waitlistResponseHours: null,
+        ageMinMonths: 36,
+        ageMaxMonths: 72,
+        sourceUrl: 'https://www.toronto.ca/example',
+        verifiedAt: new Date('2026-08-30T00:00:00.000Z'),
+        notes: null,
+      } as never);
+
+    const payload = await createRadarComposer({
+      database: db.db,
+      weather: fakeWeather([]),
+      client: null,
+      now: () => new Date('2026-09-17T15:00:00.000Z'),
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'M1B' });
+
+    expect(payload.message).toBe(TORONTO_FIRST_REC);
+  });
+
   it('VIL-334: M1B still sends the Toronto pin when live lookup is empty', async () => {
     const db = makeFakeDb();
 

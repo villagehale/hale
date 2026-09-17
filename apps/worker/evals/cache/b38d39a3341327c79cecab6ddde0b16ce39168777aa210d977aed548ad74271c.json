@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message adds padding and qualifiers not in the facts (\"I checked what I could on your end\") and explicitly restates absent facts (\"Nothing on weekend picks or registration yet, but I'll have more soon\") in a way that sounds like an apology or explanation rather than plainly omitting them. The instruction requires that absent facts simply be absent from the message—not called out. The voice is somewhat defensive rather than quiet and plain-spoken. The core fact (routine vaccine record check between 14-16) is stated directly, which is good, but the framing around it and the commitment to follow up (\"I'll have more soon\") are not in the facts and add unnecessary voice/reassurance language."
+  }
+}

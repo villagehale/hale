@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The message has some good elements (specific activity name, free/outdoor benefits, Maya's name) but includes issues that lower the score: (1) \"Looked up\" is slightly informal/casual for a first contact; (2) the second sentence stating \"Nothing has a registration date coming up right now\" is padding - it restates the absence of facts in a way a competent neighbour wouldn't, creating unnecessary length; (3) the message doesn't ask the checkpoint/offerQuestion despite offerQuestion being true. A 5 would be plainer, shorter, lead with the useful thing, and handle missing facts more naturally without drawing attention to what isn't there."
+  }
+}

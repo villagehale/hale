@@ -1,7 +1,11 @@
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
-import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
+import { nextWatchedCycle } from '~/lib/registration/discovery-targets';
+import type {
+  PastRegistrationCycle,
+  RegistrationMatch,
+} from '~/lib/registration/match-registration-windows';
 import { AGE_TOLERANCE_MONTHS } from '~/lib/registration/match-registration-windows';
 import { type Season, seasonOf } from '~/lib/village/visibility';
 import { type DailyOutlook, isOutdoorFriendly } from '~/lib/weather/open-meteo';
@@ -91,6 +95,27 @@ export interface RegistrationLine {
 }
 
 /**
+ * A registration silence with a REASON in it: this town has opened registration before,
+ * its last cycle has gone, and the next dates are not posted yet.
+ *
+ * The primitive the 2026-09-16 defect was missing. `registrationLine: null` meant two
+ * unrelated things at once — a town outside the covered set, and a town between cycles —
+ * and the composer, handed the same null for both, could not tell them apart or even
+ * name the town. Typed separately so the difference is decided here, deterministically,
+ * rather than guessed downstream in words.
+ */
+export interface RegistrationAbsence {
+  /** The town, domain and the cycle that has ALREADY opened — the same ref shape the
+   * registration line carries, so both are labelled by the one `townLabel`. */
+  cycleRef: { municipality: string; programDomain: string; cycleLabel: string };
+  /** When that cycle opened, in the family's own zone. */
+  lastOpenedAtLocal: string;
+  /** The cycle the weekly verify sweep is watching for, or null when none is
+   * registered — and then nothing names a season Hale has not been told about. */
+  nextCycleLabel: string | null;
+}
+
+/**
  * The age block: the nearest Ontario health-ADMIN window the family's youngest child is
  * inside. Administrative, never clinical — see lib/health/checkpoints.ts, whose reviewed
  * rows are the only wording this line may ever carry.
@@ -111,6 +136,9 @@ export interface CheckpointLine {
 export interface RadarDecision {
   weekendPick: WeekendPick | null;
   registrationLine: RegistrationLine | null;
+  /** Set only when `registrationLine` is null AND this town has opened a cycle before:
+   * the difference between "never on the radar" and "between cycles". */
+  registrationAbsence: RegistrationAbsence | null;
   /** The age block, or null when no reviewed window applies to this family right now. */
   checkpoint: CheckpointLine | null;
   /** Always true: the state machine appends the watch offer itself, so the composer
@@ -126,6 +154,10 @@ export interface DecideRadarInput {
   candidates: readonly RadarCandidate[];
   /** Already matched by the M1 matcher, soonest-first. */
   windows: readonly RegistrationMatch[];
+  /** The last cycle this family's town already opened, from the same rows `windows`
+   * was matched over (lib/registration latestPastCycle). Null for a town that has
+   * published nothing — and then the silence really is a silence. */
+  pastCycle: PastRegistrationCycle | null;
   /** Empty when the outlook is unavailable — then no weather claim is made at all. */
   weather: readonly DailyOutlook[];
   /** Candidates attributed to these children never leave the building (rule #1). */
@@ -422,6 +454,36 @@ function decideRegistration(input: DecideRadarInput): RegistrationLine | null {
   };
 }
 
+/**
+ * Only when there is nothing coming up. A town with an upcoming date has no absence to
+ * explain, and saying both would tell a parent their registration is open and gone in
+ * the same breath.
+ */
+function decideRegistrationAbsence(
+  input: DecideRadarInput,
+  registration: RegistrationLine | null,
+): RegistrationAbsence | null {
+  if (registration !== null) return null;
+  const past = input.pastCycle;
+  if (past === null) return null;
+
+  return {
+    cycleRef: {
+      municipality: past.window.municipality,
+      programDomain: past.window.programDomain,
+      cycleLabel: past.window.cycleLabel,
+    },
+    lastOpenedAtLocal: asciiSpaces(
+      formatWhenPhrase(past.openedForFamilyAt, input.timeZone, input.now),
+    ),
+    nextCycleLabel: nextWatchedCycle(
+      past.window.municipality,
+      past.window.programDomain,
+      past.window.cycleLabel,
+    ),
+  };
+}
+
 function decideWeekendPick(input: DecideRadarInput): WeekendPick | null {
   const weekend = upcomingWeekend(input.now, input.timeZone);
   const season = seasonOf(input.now, input.timeZone);
@@ -553,6 +615,7 @@ export function decideRadar(input: DecideRadarInput): RadarDecision {
   return {
     weekendPick,
     registrationLine,
+    registrationAbsence: decideRegistrationAbsence(input, registrationLine),
     checkpoint,
     offerQuestion: true,
     // Nothing to point at this weekend: discovery may still be running, so Hale owes

@@ -1,7 +1,10 @@
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { HealthChild } from '~/lib/health/match';
-import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
+import type {
+  PastRegistrationCycle,
+  RegistrationMatch,
+} from '~/lib/registration/match-registration-windows';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import {
   CLEARLY_BETTER_MARGIN,
@@ -92,6 +95,10 @@ function match(overrides: Partial<RegistrationMatch> = {}): RegistrationMatch {
   };
 }
 
+function past(window: RegistrationWindow): PastRegistrationCycle {
+  return { window, openedForFamilyAt: window.openAt };
+}
+
 function healthChild(overrides: Partial<HealthChild> = {}): HealthChild {
   return { id: 'kid-1', name: 'Maya', ageMonths: 18, dobPrecision: 'exact', isTeen: false, ...overrides };
 }
@@ -105,6 +112,7 @@ function decide(input: {
   healthChildren?: HealthChild[];
   areaCoarse?: string | null;
   suppressedCheckpointRefs?: Set<string>;
+  pastCycle?: PastRegistrationCycle | null;
   now?: Date;
 }) {
   return decideRadar({
@@ -116,6 +124,7 @@ function decide(input: {
     healthChildren: input.healthChildren ?? [],
     areaCoarse: input.areaCoarse ?? null,
     suppressedCheckpointRefs: input.suppressedCheckpointRefs ?? new Set(),
+    pastCycle: input.pastCycle ?? null,
     now: input.now ?? FRIDAY,
     timeZone: TZ,
   });
@@ -476,6 +485,7 @@ describe('decideRadar — honest degradation', () => {
       weekendPick: null,
       registrationLine: null,
       checkpoint: null,
+      registrationAbsence: null,
       offerQuestion: true,
       followUpNeeded: true,
     });
@@ -586,5 +596,70 @@ describe('decideRadar — the age checkpoint', () => {
     // The matcher's own ref: per child for a one-time visit. Rebuilding it downstream is
     // how the scope goes wrong (checkpoints.ts checkpointRef).
     expect(decision.checkpoint?.ref).toBe('immunization_18_months:kid-1:0');
+  });
+});
+
+/**
+ * The town is not off the radar — its season has simply gone. The production defect
+ * (2026-09-16) was that these two were the SAME null: a Halton Hills family whose Fall
+ * window opened on Sep 1 got "No registration dates on my radar yet", which is what a
+ * family in an uncovered town gets, and the message could not even name their town.
+ */
+describe('decideRadar — registration absence (between cycles)', () => {
+  const HALTON_FALL = win({
+    municipality: 'halton_hills' as Municipality,
+    cycleLabel: 'Fall 2026',
+    openAt: new Date('2026-09-01T11:00:00.000Z'),
+  });
+
+  it('names the town, the cycle that went, and the cycle the sweep is watching for', () => {
+    const decision = decide({ windows: [], pastCycle: past(HALTON_FALL) });
+    expect(decision.registrationAbsence).toEqual({
+      cycleRef: {
+        municipality: 'halton_hills',
+        programDomain: 'rec_program',
+        cycleLabel: 'Fall 2026',
+      },
+      lastOpenedAtLocal: 'Sep 1, 7:00 a.m.',
+      nextCycleLabel: 'Winter 2027',
+    });
+  });
+
+  it('leaves the next cycle null when no discovery target is watching for one', () => {
+    const uncovered = win({
+      municipality: 'markham' as Municipality,
+      cycleLabel: 'Fall 2026',
+      openAt: new Date('2026-07-07T10:30:00.000Z'),
+    });
+    const decision = decide({ windows: [], pastCycle: past(uncovered) });
+    expect(decision.registrationAbsence?.nextCycleLabel).toBeNull();
+    expect(decision.registrationAbsence?.cycleRef.municipality).toBe('markham');
+  });
+
+  it('never offers the cycle that already went back as the one still to come', () => {
+    const torontoFall = win({
+      municipality: 'toronto' as Municipality,
+      cycleLabel: 'Fall 2026',
+      openAt: new Date('2026-09-08T11:00:00.000Z'),
+    });
+    const decision = decide({ windows: [], pastCycle: past(torontoFall) });
+    expect(decision.registrationAbsence?.nextCycleLabel).not.toBe('Fall 2026');
+  });
+
+  it('stays silent for a town with no rows at all — behaviour unchanged', () => {
+    const decision = decide({ windows: [], pastCycle: null });
+    expect(decision.registrationAbsence).toBeNull();
+    expect(decision.registrationLine).toBeNull();
+  });
+
+  it('says nothing about an absence when a date IS coming up', () => {
+    const decision = decide({ windows: [match()], pastCycle: past(HALTON_FALL) });
+    expect(decision.registrationLine).not.toBeNull();
+    expect(decision.registrationAbsence).toBeNull();
+  });
+
+  it('carries ASCII spacing, because one narrow no-break space doubles the SMS cost', () => {
+    const decision = decide({ windows: [], pastCycle: past(HALTON_FALL) });
+    expect(decision.registrationAbsence?.lastOpenedAtLocal).not.toMatch(/[\u202f\u00a0\u2009]/);
   });
 });
