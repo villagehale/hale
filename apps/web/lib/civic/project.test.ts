@@ -353,6 +353,12 @@ describe('municipalityForCity', () => {
     expect(municipalityForCity('Richmond Hill')).toBe('richmond_hill');
   });
 
+  it('maps both names the Town of Whitchurch-Stouffville is filed under', () => {
+    // Feeds file the same town either way; both have to land on the one token.
+    expect(municipalityForCity('Stouffville')).toBe('whitchurch_stouffville');
+    expect(municipalityForCity('Whitchurch-Stouffville')).toBe('whitchurch_stouffville');
+  });
+
   it('returns null for a city it does not cover, rather than the nearest guess', () => {
     expect(municipalityForCity('Kingston')).toBeNull();
     expect(municipalityForCity(null)).toBeNull();

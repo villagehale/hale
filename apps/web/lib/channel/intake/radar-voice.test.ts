@@ -9,6 +9,7 @@ import {
   radarVoiceContext,
   radarVoiceStrings,
   renderRadarDeterministically,
+  townLabel,
   usableRadarMessage,
 } from './radar-voice.js';
 
@@ -251,5 +252,19 @@ describe('renderRadarDeterministically', () => {
 describe('radarVoiceStrings', () => {
   it('exposes the one user-facing string for the lint', () => {
     expect(radarVoiceStrings({ message: 'hello' })).toEqual(['hello']);
+  });
+});
+
+describe('townLabel', () => {
+  it('opens a multi-word token out into the town a parent recognises', () => {
+    expect(townLabel('richmond_hill')).toBe('Richmond Hill');
+    expect(townLabel('halton_hills')).toBe('Halton Hills');
+    expect(townLabel('toronto')).toBe('Toronto');
+  });
+
+  it('says Stouffville, the name the Town prints on its own Play Book cover', () => {
+    // Title-casing the token gives "Whitchurch Stouffville", which is neither the
+    // legal name (hyphenated) nor what a parent in L4A ever says.
+    expect(townLabel('whitchurch_stouffville')).toBe('Stouffville');
   });
 });

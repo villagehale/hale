@@ -1,6 +1,7 @@
 import type { Municipality } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
 import { nameAnywhere } from '~/lib/channel/coach/reply';
+import { townLabel } from '~/lib/channel/town-label';
 import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
 
 /**
@@ -105,16 +106,13 @@ export type ActivityDeidResult =
   | { ok: false; refusal: ActivityDeidRefusal };
 
 /**
- * `halton_hills` → `Halton Hills`. Derived from the enum value rather than looked up in
- * a second table: every one of the fifteen covered municipalities is its own display name
- * with the underscores opened out, and a hand-written map would be a second place for a
- * town to be spelled — one that can disagree with the FSA table that produced it.
+ * `halton_hills` → `Halton Hills`, and `whitchurch_stouffville` → `Stouffville`. Taken
+ * from {@link townLabel} rather than derived here, so a town has exactly one spelling:
+ * a second title-caser could disagree with the one the parent is shown, and this string
+ * is the town a web search is run against on that parent's behalf.
  */
 export function townFor(municipality: Municipality): string {
-  return municipality
-    .split('_')
-    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
-    .join(' ');
+  return townLabel(municipality);
 }
 
 /** True when `text` names any member of this household, as a whole word in any alphabet

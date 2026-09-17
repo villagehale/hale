@@ -42,6 +42,12 @@ describe('municipalitiesForFsa', () => {
     expect(municipalitiesForFsa('L7E')).toEqual(['caledon']); // Bolton
   });
 
+  it('resolves L4A to Whitchurch-Stouffville, which the source files under Stouffville', () => {
+    // Same community-name trap as Georgetown, and L4's second character is no help:
+    // L4A is Stouffville while L4B is Richmond Hill and L4G is Aurora.
+    expect(municipalitiesForFsa('L4A')).toEqual(['whitchurch_stouffville']);
+  });
+
   it('keeps L7A in Brampton - its neighbour Mayfield West is the Caledon side', () => {
     expect(municipalitiesForFsa('L7A')).toEqual(['brampton']);
     expect(municipalitiesForFsa('L7C')).toEqual(['caledon']);
@@ -74,6 +80,10 @@ describe('fsasForMunicipality', () => {
 
   it('gives Aurora its single FSA', () => {
     expect(fsasForMunicipality('aurora')).toEqual(['L4G']);
+  });
+
+  it('gives Whitchurch-Stouffville its single FSA', () => {
+    expect(fsasForMunicipality('whitchurch_stouffville')).toEqual(['L4A']);
   });
 
   it('is sorted, so a radius is stable across runs', () => {

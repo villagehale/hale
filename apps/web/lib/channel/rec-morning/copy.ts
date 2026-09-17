@@ -90,6 +90,7 @@ export const REC_MORNING_COPY = {
   ajax: leftoverRecHello('Ajax'),
   whitby: leftoverRecHello('Whitby'),
   oshawa: leftoverRecHello('Oshawa'),
+  whitchurch_stouffville: leftoverRecHello('Stouffville'),
   halton_hills: HALTON_HILLS_FIRST,
   pickering: PICKERING_FIRST,
   richmond_hill: RICHMOND_HILL_FIRST,

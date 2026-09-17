@@ -199,6 +199,7 @@ const LEFTOVER_CITIES = [
   'Ajax',
   'Whitby',
   'Oshawa',
+  'Stouffville',
 ] as const;
 
 const DATED_HELLOS = {

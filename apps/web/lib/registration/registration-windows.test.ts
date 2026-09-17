@@ -177,6 +177,7 @@ describe('the shipped verified list', () => {
       whitby: 'whitby.ca',
       oshawa: 'oshawa.ca',
       aurora: 'aurora.ca',
+      whitchurch_stouffville: 'townofws.ca',
     };
     for (const seed of REGISTRATION_WINDOWS) {
       expect(new URL(seed.sourceUrl).hostname).toContain(HOSTS[seed.municipality]);

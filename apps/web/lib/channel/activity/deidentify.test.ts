@@ -193,5 +193,7 @@ describe('the shape of what may be sent', () => {
     expect(townFor('halton_hills')).toBe('Halton Hills');
     expect(townFor('richmond_hill')).toBe('Richmond Hill');
     expect(townFor('toronto')).toBe('Toronto');
+    // The search query must not name a town by a spelling the radar never uses.
+    expect(townFor('whitchurch_stouffville')).toBe('Stouffville');
   });
 });
