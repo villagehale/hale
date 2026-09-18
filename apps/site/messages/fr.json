@@ -28,6 +28,7 @@
     "linkActivities": "Activités",
     "linkGuides": "Guides parentaux",
     "linkAbout": "À propos",
+    "linkForCentres": "Pour les centres",
     "linkContact": "Contact",
     "linkPrivacy": "Politique de confidentialité",
     "linkTerms": "Conditions d’utilisation",
@@ -368,7 +369,138 @@
         "line": "Demandes d’accès, de correction ou de suppression, et tout ce qui touche la façon dont nous traitons les données de votre famille."
       }
     },
-    "note": "Hale est conçu par Village Hale Technologies Inc., Georgetown, Ontario, Canada."
+    "note": "Hale est conçu par Village Hale Technologies Inc., Georgetown, Ontario, Canada.",
+    "centresNote": "Vous travaillez dans un centre, une bibliothèque ou un programme communautaire ?",
+    "centresLink": "Voyez ce que Hale change pour les familles que vous accueillez"
+  },
+  "ForCentres": {
+    "metaTitle": "Pour les centres et les partenaires · Hale",
+    "metaDescription": "Ce que Hale change pour les familles que votre centre accueille, et trois façons d’y orienter une famille. Un numéro que les parents textent — pas d’appli, pas de compte, et des données qui restent au Canada.",
+    "eyebrow": "Pour les centres et les partenaires",
+    "headline": [
+      {
+        "text": "Pour ceux à qui les familles"
+      },
+      {
+        "text": "font déjà confiance.",
+        "accent": true
+      }
+    ],
+    "lede": "Hale est un numéro qu’un parent texte. Il trouve des activités qui conviennent à son enfant, surveille les matins d’inscription dans {count} municipalités du Grand Toronto, et prend des nouvelles ensuite.",
+    "notLine": "Il n’y a pas d’appli à installer ni de compte à créer. Rien de ce qui touche une famille n’est vendu ni partagé, Hale est conçu en Ontario selon la LPRPDE, et les données d’une famille restent au Canada.",
+    "townsLabel": "Villes surveillées",
+    "getEyebrow": "Ce qu’une famille reçoit",
+    "getHeadline": [
+      {
+        "text": "Un texto, et une réponse"
+      },
+      {
+        "text": "dans la minute.",
+        "accent": true
+      }
+    ],
+    "getLede": "C’est le parent qui envoie le premier message — Hale ne texte jamais une famille en premier. En voici un, et ce qui est revenu.",
+    "getAfter": "Ensuite, c’est tranquille : un court plan le dimanche, le lien la veille de l’ouverture d’une inscription, et un rappel quinze minutes avant.",
+    "waysEyebrow": "Comment orienter une famille vers Hale",
+    "waysHeadline": [
+      {
+        "text": "Trois façons pour une famille"
+      },
+      {
+        "text": "de commencer.",
+        "accent": true
+      }
+    ],
+    "waysLede": "Rien à signer, rien à installer, et rien à suivre pour le personnel.",
+    "ways": {
+      "number": {
+        "tag": "Donnez-le",
+        "title": "Donnez-leur le numéro",
+        "body": "Copiez-le et mettez-le là où les parents regardent — un tableau, un feuillet, le verso d’une feuille de salle. Le parent le texte quand il est prêt."
+      },
+      "poster": {
+        "tag": "Imprimez-la",
+        "title": "Affichez une affiche",
+        "body": "Ce code ouvre la page qui rédige le premier message du parent à sa place. Nous imprimons des affiches portant le code de votre centre, pour que nous puissions vous dire combien de familles il a amenées — écrivez-nous et nous vous en enverrons une."
+      },
+      "try": {
+        "tag": "Essayez",
+        "title": "Textez-le vous-même d’abord",
+        "body": "Envoyez le premier message comme le ferait un parent, et lisez ce qui revient, pour savoir ce que vous recommandez. Répondez STOP et ça s’arrête."
+      }
+    },
+    "numberPending": "Le numéro n’est pas encore annoncé. Écrivez-nous et nous vous dirons quand il le sera.",
+    "knowEyebrow": "Ce que le personnel devrait savoir",
+    "knowHeadline": [
+      {
+        "text": "Des réponses claires sur"
+      },
+      {
+        "text": "la confidentialité.",
+        "accent": true
+      }
+    ],
+    "knowLede": "Une famille vous posera ces questions avant de nous les poser.",
+    "facts": [
+      {
+        "title": "Ce que Hale demande",
+        "body": "Les prénoms, les âges et un code postal. Les trois premiers caractères suffisent — ils nomment une ville, pas une rue."
+      },
+      {
+        "title": "Rien n’est vendu",
+        "body": "Les renseignements d’une famille ne sont jamais vendus, jamais partagés à des fins publicitaires, et jamais montrés à une autre famille."
+      },
+      {
+        "title": "STOP met fin à tout",
+        "body": "Un parent texte STOP et les messages cessent. Il peut demander ses données, ou leur suppression, à privacy@villagehale.com."
+      },
+      {
+        "title": "En français, en français",
+        "body": "Un parent peut texter Hale en français, et Hale répond en français."
+      },
+      {
+        "title": "Les mots d’un enfant restent à son parent",
+        "body": "Hale parle aux parents. Pour un enfant de 13 ans ou plus, le parent voit le sujet et un résumé plutôt que les mots — sauf s’il y a un enjeu de sécurité, et alors l’adolescent en est informé."
+      },
+      {
+        "title": "Conçu et gardé au Canada",
+        "body": "Village Hale Technologies Inc., Georgetown, Ontario. Les données des familles restent au Canada, selon la LPRPDE et la Loi 25 du Québec."
+      }
+    ],
+    "officialEyebrow": "Si une famille demande si Hale est officiel",
+    "officialLine": "Hale est indépendant. Il n’est géré ni par votre centre, ni par la ville, ni par la région, ni par la province. Il vérifie chaque date d’inscription sur la page de la ville, et si les deux divergent, c’est la page de la ville qui l’emporte.",
+    "faqEyebrow": "Les questions qu’on nous pose",
+    "faqHeadline": [
+      {
+        "text": "Quatre choses que le personnel"
+      },
+      {
+        "text": "demande en premier.",
+        "accent": true
+      }
+    ],
+    "faq": [
+      {
+        "question": "Une famille a-t-elle besoin d’un compte?",
+        "answer": "Non. Le parent texte un numéro et Hale répond. Pas d’appli à installer, pas de mot de passe, pas de page d’inscription."
+      },
+      {
+        "question": "Combien ça coûte à une famille?",
+        "answer": "Rien pour commencer. Surveiller les dates et répondre aux questions est gratuit, et les familles qui se joignent maintenant gardent le tarif fondateur pour de bon."
+      },
+      {
+        "question": "Devons-nous signer quelque chose?",
+        "answer": "Non. Il n’y a pas d’entente, et rien à déclarer ni à suivre pour le personnel. La seule chose que nous mettrions en place avec vous, c’est une affiche portant le code de votre centre."
+      },
+      {
+        "question": "Qu’est-ce que Hale refuse de faire?",
+        "answer": "Il ne pose pas de diagnostic et ne nomme jamais une dose — une question médicale retourne à votre professionnel de la santé. Il ne remplit jamais un formulaire d’inscription et ne réserve jamais une place à la place d’une famille. Il prépare et rappelle; c’est le parent qui inscrit."
+      }
+    ],
+    "ctaHeading": "Vous voulez une affiche pour votre centre?",
+    "ctaSub": "Écrivez-nous et nous vous en enverrons une portant le code de votre centre. Une vraie personne répond.",
+    "ctaButton": "Écrire à aloha@villagehale.com",
+    "ctaQuiet": "Autres façons de nous joindre"
   },
   "Faq": {
     "metaTitle": "Hale est-il gratuit, privé et fait pour votre famille? · Hale",
