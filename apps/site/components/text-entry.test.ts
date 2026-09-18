@@ -113,7 +113,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
       // strip already says it, and above the fold every restated line is a line
       // between a stranger and the button.
       expect(html).toContain(
-        'Hale watches registration dates and the family week so you don’t have to.',
+        'Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.',
       );
       expect(html).not.toContain('No app, no account — just this text thread.');
     }
@@ -141,7 +141,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
   it('shows what comes BACK — an honestly-labeled bubble, absent while no channel is live', () => {
     expect(liveHtml).toContain('The text you’ll get back:');
     expect(liveHtml).toContain('Hi, I&#x27;m Hale. I find activities that fit your little one');
-    expect(unsetHtml).not.toContain('sign-up mornings');
+    expect(unsetHtml).not.toContain('Reply with your kids');
     expect(unsetHtml).not.toContain('The text you’ll get back:');
   });
 
@@ -546,7 +546,7 @@ describe('TextEntry — the chooser arm keeps the five-second frame (WhatsApp li
   it('adds the what-is line and the preview bubble above the channel buttons', () => {
     const html = render({ whatsappNumber: LIVE_NUMBER });
     expect(html).toContain(
-      'Hale watches registration dates and the family week so you don’t have to.',
+      'Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.',
     );
     expect(html).toContain('The text you’ll get back:');
     // The bubble sits above the first channel door.

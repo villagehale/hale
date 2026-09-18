@@ -336,7 +336,12 @@
       "plus": "Pour quand vous voulez que Hale en fasse plus : une fois qu’il a gagné votre confiance, il agit avec votre accord — rappels, brouillons et votre calendrier, pour chaque enfant, à mesure que les intégrations se déploient.",
       "family": "Pour quand vous voulez que Hale s’en occupe : autonomie complète avec votre accord, achats et réservations à mesure de leur déploiement, service de conciergerie et soutien prioritaire."
     },
-    "freeFeatures": ["Textez Hale", "Dates d’inscription surveillées", "Réponses", "Tarif fondateur"]
+    "freeFeatures": [
+      "Textez Hale",
+      "Dates d’inscription surveillées",
+      "Réponses",
+      "Tarif fondateur"
+    ]
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -506,9 +511,9 @@
   },
   "Text": {
     "metaTitle": "Texter Hale",
-    "metaDescription": "Commencez une conversation avec Hale — l’assistant familial que vous textez. Il surveille les journées d’inscription de votre région.",
+    "metaDescription": "Commencez une conversation avec Hale — l’assistant familial que vous textez. Il trouve des activités pour votre enfant et surveille les journées d’inscription de votre région.",
     "headline": "L’assistant familial que vous textez.",
-    "lede": "Hale surveille les dates d’inscription et la semaine familiale pour vous.",
+    "lede": "Hale trouve des activités qui conviennent à votre tout-petit, surveille les matins d’inscription et prend de vos nouvelles.",
     "sentLabel": "Ce que vous enverrez :",
     "sentGloss": "En anglais : « Bonjour Hale 👋 prêt à commencer »",
     "previewLabel": "Le texto que vous recevrez en retour :",
