@@ -103,11 +103,18 @@ function db() {
   return {} as never;
 }
 
-function reply(body: string, sequence: AwaitingSequence | null = awaiting(), now = REPLY_AT) {
+function reply(
+  body: string,
+  sequence: AwaitingSequence | null = awaiting(),
+  now = REPLY_AT,
+  /** Who texted. Defaults to the parent who claimed the window; a co-parent answering
+   * the same check-in passes their own id. */
+  parentUserId = 'user-1',
+) {
   const fake = deps(sequence);
   return {
     recorded: fake.recorded,
-    outcome: handleSequenceReply(db(), { familyId: 'fam-1', body, now }, fake.deps),
+    outcome: handleSequenceReply(db(), { familyId: 'fam-1', parentUserId, body, now }, fake.deps),
   };
 }
 
@@ -423,5 +430,36 @@ describe('loadAwaitingSequence · the anchor', () => {
     );
 
     expect(unbound?.state.openAt).toEqual(WINDOW.openAt);
+  });
+});
+
+/**
+ * THE CHECK-IN NOW REACHES BOTH PARENTS (audit 2026-09-17), so either of them may be the
+ * one who answers "How did that go?".
+ *
+ * The SEQUENCE is the household's — one row per family per window — and nothing here
+ * changed to keep that true: the loader selects on `outcome IS NULL`, so whichever parent
+ * answers first settles it and the other's later message finds nothing open ("declines
+ * once the sequence already has an outcome", above). What DID have to change is the
+ * receipt: the outcome is attributed to the parent who typed it, not to the seat that
+ * happened to claim the window.
+ */
+describe('either parent answering the check-in', () => {
+  const CO_PARENT = 'user-2';
+
+  it('records the co-parent’s report under THEIR id, against the family’s one sequence', async () => {
+    const { outcome, recorded } = reply('we got in!', awaiting(), REPLY_AT, CO_PARENT);
+
+    const result = await outcome;
+    expect(result.status).toBe('recorded');
+    expect(recorded.outcomes).toHaveLength(1);
+    expect(recorded.outcomes[0]).toMatchObject({
+      sequenceId: 'seq-1',
+      familyId: 'fam-1',
+      // Kills stamping `sequence.parentUserId`: rule #6's trail would put the primary
+      // parent's name on a sentence the co-parent sent.
+      parentUserId: CO_PARENT,
+      outcome: 'registered',
+    });
   });
 });

@@ -456,6 +456,7 @@ export interface OpenQuestionSources {
   registrationReadiness(
     database: Database,
     familyId: string,
+    parentUserId: string,
     now: Date,
   ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
   /**
@@ -528,7 +529,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           sources.checkupOffer(database, input.familyId, input.now),
           sources.activityPromise(database, input.familyId),
           sources.founderWelcomeOffer(database, input.familyId, input.now),
-          sources.registrationReadiness(database, input.familyId, input.now),
+          sources.registrationReadiness(database, input.familyId, input.parentUserId, input.now),
           sources.coParentAssent(database, input),
           sources.emailAlertOffers(database, input),
         ]);

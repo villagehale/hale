@@ -233,7 +233,6 @@ describe('loadPreparingSequence', () => {
     expect(sequence).toMatchObject({
       sequenceId,
       familyId,
-      parentUserId,
       windowId,
       isResidentWindow: true,
       opensForFamilyAt: MARKHAM_ROW_OPEN_AT,
@@ -380,7 +379,7 @@ describe('the bind refusals', () => {
       const now = new Date(NOW.getTime() + index * BIND_READ_WINDOW_MS);
       const outcome = await handleCourseBind(
         db.database,
-        { sequence, rawUrl: drive.rawUrl, inboundChannelMessageId: inboundId, now },
+        { sequence, answeredByUserId: parentUserId, rawUrl: drive.rawUrl, inboundChannelMessageId: inboundId, now },
         deps({ fetchBody: async () => drive.page() }),
       );
 
@@ -406,7 +405,7 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: oakvilleUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: oakvilleUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: serving(fixture('oakville-course')) }),
     );
 
@@ -422,7 +421,7 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: serving(nextSeason()) }),
     );
 
@@ -440,7 +439,7 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({
         fetchBody: async () => {
           throw new Error('ETIMEDOUT');
@@ -464,7 +463,7 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -480,7 +479,7 @@ describe('the bind write', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -520,7 +519,7 @@ describe('the bind write', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({
         fetchBody: serving(fixture('open-window-open-markham')),
         recordCourseBinding: async (_database, input) => {
@@ -539,7 +538,7 @@ describe('the bind write', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -553,7 +552,7 @@ describe('the bind write', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -571,7 +570,7 @@ describe('the bind write', () => {
     const bind = (now: Date) =>
       handleCourseBind(
         db.database,
-        { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now },
+        { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now },
         deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
       );
 
@@ -588,7 +587,7 @@ describe('the bind write', () => {
   it('marks a replacement as replaced — kills an ack that says nothing changed', async () => {
     await handleCourseBind(
       db.database,
-      { sequence: await preparing(), rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence: await preparing(), answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
     // A second course on the same portal whose clock is inside the drift ceiling, a
@@ -597,6 +596,7 @@ describe('the bind write', () => {
       db.database,
       {
         sequence: await preparing(),
+        answeredByUserId: parentUserId,
         rawUrl: chessUrl,
         inboundChannelMessageId: inboundId,
         now: new Date(NOW.getTime() + BIND_READ_WINDOW_MS),
@@ -644,12 +644,12 @@ describe('the read throttle', () => {
 
     const first = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: net.fetchBody }),
     );
     const second = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: net.fetchBody }),
     );
 
@@ -681,13 +681,14 @@ describe('the read throttle', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: net.fetchBody }),
     );
     const later = await handleCourseBind(
       db.database,
       {
         sequence,
+        answeredByUserId: parentUserId,
         rawUrl: legoUrl,
         inboundChannelMessageId: inboundId,
         now: new Date(NOW.getTime() + BIND_READ_WINDOW_MS),
@@ -713,6 +714,7 @@ describe('the read throttle', () => {
       db.database,
       {
         sequence: await preparing(),
+        answeredByUserId: parentUserId,
         rawUrl: legoUrl,
         inboundChannelMessageId: inboundId,
         now: NOW,
@@ -723,6 +725,7 @@ describe('the read throttle', () => {
       db.database,
       {
         sequence: await preparing(),
+        answeredByUserId: parentUserId,
         // The address-bar form, so the raw string and the sanitized one differ: it is
         // the SANITIZED url that the bound courseUrl can be equal to, and a resend
         // carrying the portal's own embed flag is the ordinary shape of this paste.
@@ -755,12 +758,12 @@ describe('the read throttle', () => {
 
     const refused = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: oakvilleUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: oakvilleUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: net.fetchBody }),
     );
     const good = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: net.fetchBody }),
     );
 
@@ -784,7 +787,7 @@ describe('the read throttle', () => {
     const throttled = async (now: Date) => {
       const outcome = await handleCourseBind(
         db.database,
-        { sequence, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now },
+        { sequence, answeredByUserId: parentUserId, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now },
         deps({ fetchBody: net.fetchBody }),
       );
       if (outcome.status !== 'read_throttled')
@@ -794,7 +797,7 @@ describe('the read throttle', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: net.fetchBody }),
     );
     const plural = await throttled(NOW);
@@ -825,12 +828,12 @@ describe('the read throttle', () => {
 
     const first = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: timesOut }),
     );
     const second = await handleCourseBind(
       db.database,
-      { sequence, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
+      { sequence, answeredByUserId: parentUserId, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
       deps({ fetchBody: timesOut }),
     );
 
@@ -853,6 +856,7 @@ describe('the readiness writer', () => {
       db.database,
       {
         sequence,
+        answeredByUserId: parentUserId,
         ready: true,
         read: 'keyword',
         confidence: null,
@@ -870,12 +874,52 @@ describe('the readiness writer', () => {
     expect(audit?.after).toMatchObject({ sequenceId, ready: true, read: 'keyword' });
   });
 
+  /**
+   * THE CO-PARENT'S OWN NAME ON THEIR OWN SENTENCE (rule #6, audit 2026-09-17 r1).
+   *
+   * The checklist reaches every parent seat now, so the answer arrives from whichever
+   * parent is holding the laptop — and it used to be filed under the seat that CLAIMED
+   * the window, which is the primary parent in every household that has one. A trail
+   * that names the wrong parent is worse than no trail: it is a receipt asserting
+   * somebody said something they never said.
+   */
+  it('files a co-parent’s answer under the co-parent, not the seat that claimed the window', async () => {
+    const [partner] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:partner-${Math.random()}`, name: 'Sam' })
+      .returning({ id: schema.users.id });
+    const coParentUserId = partner?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: coParentUserId, role: 'co_parent' });
+
+    const outcome = await handleReadinessAnswer(
+      db.database,
+      {
+        sequence: await preparing(),
+        answeredByUserId: coParentUserId,
+        ready: true,
+        read: 'keyword',
+        confidence: null,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
+      deps(),
+    );
+
+    expect(outcome.status).toBe('readiness_recorded');
+    const [audit] = await auditRows('registration_readiness_stated');
+    expect(audit?.actor).toBe(coParentUserId);
+    expect(audit?.actor).not.toBe(parentUserId);
+  });
+
   it('answers the identical answer again without a second audit row (guarded UPDATE)', async () => {
     const answer = async () =>
       handleReadinessAnswer(
         db.database,
         {
           sequence: await preparing(),
+          answeredByUserId: parentUserId,
           ready: true,
           read: 'keyword',
           confidence: null,
@@ -899,6 +943,7 @@ describe('the readiness writer', () => {
       db.database,
       {
         sequence: await preparing(),
+        answeredByUserId: parentUserId,
         ready: true,
         read: 'keyword',
         confidence: null,
@@ -911,6 +956,7 @@ describe('the readiness writer', () => {
       db.database,
       {
         sequence: await preparing(),
+        answeredByUserId: parentUserId,
         ready: false,
         read: 'resolver',
         confidence: 'high',
@@ -930,18 +976,22 @@ describe('the readiness writer', () => {
 });
 
 describe('the readiness question is open only while the ask is Hale’s last word', () => {
-  const readinessKey = () => `registration_sequence:${familyId}:${windowId}:readiness`;
-  const battlePlanKey = () => `registration_sequence:${familyId}:${windowId}:battle_plan`;
+  // The recipient is part of the key: the ladder's legs reach every parent seat, and
+  // `channel_messages.dedupe_key` is unique (run.ts legDedupeKey).
+  const readinessKey = () =>
+    `registration_sequence:${familyId}:${windowId}:readiness:${parentUserId}`;
+  const battlePlanKey = () =>
+    `registration_sequence:${familyId}:${windowId}:battle_plan:${parentUserId}`;
   const ASKED_AT = new Date('2026-08-08T14:00:00.000Z');
 
   it('is closed with no ask row at all — the vacuous-truth guard', async () => {
-    expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toBeNull();
   });
 
   it('opens right after the ask, dated by the ask row', async () => {
     await seedOutbound({ dedupeKey: readinessKey(), createdAt: ASKED_AT });
 
-    const question = await readinessQuestion(db.database, familyId, NOW);
+    const question = await readinessQuestion(db.database, familyId, parentUserId, NOW);
 
     expect(question).toMatchObject({ id: sequenceId, askedAt: ASKED_AT });
     expect(question?.summary.length).toBeGreaterThan(10);
@@ -954,7 +1004,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
       createdAt: new Date(ASKED_AT.getTime() + 3_600_000),
     });
 
-    expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toBeNull();
   });
 
   /**
@@ -968,7 +1018,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
     await seedOutbound({ dedupeKey: readinessKey(), createdAt: ASKED_AT });
     await seedInbound('yes', new Date(ASKED_AT.getTime() + 3_600_000));
 
-    expect(await readinessQuestion(db.database, familyId, NOW)).toMatchObject({
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toMatchObject({
       askedAt: ASKED_AT,
     });
   });
@@ -978,7 +1028,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
     await seedOutbound({ dedupeKey: readinessKey(), createdAt: ASKED_AT });
     await seedOutbound({ dedupeKey: battlePlanKey(), createdAt: reaskedAt });
 
-    expect(await readinessQuestion(db.database, familyId, NOW)).toMatchObject({
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toMatchObject({
       askedAt: reaskedAt,
     });
   });
@@ -990,7 +1040,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
       .set({ readinessReady: true })
       .where(eq(schema.registrationSequences.id, sequenceId));
 
-    expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toBeNull();
   });
 
   it('is not opened by an ask that was suppressed and never reached the phone', async () => {
@@ -1000,7 +1050,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
       status: 'suppressed_quiet_hours',
     });
 
-    expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toBeNull();
   });
 });
 
