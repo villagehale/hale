@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, gt, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
@@ -185,6 +186,26 @@ export function emailAlertOfferSummary(offer: OpenEmailAlertOffer): string {
   return `An offer to put ${offer.title} on your week`;
 }
 
+/**
+ * The offer as a phrase Hale can PRINT BACK in a clarifying sentence — "Which one - …?"
+ *
+ * IT HAS TO CARRY THE TITLE, and that is a correction rather than a preference. Every
+ * other kind on the open list has one fixed phrase because a family can only ever have
+ * one of them open; the outbound gate permits three of these a day, so two offers sharing
+ * a constant would print "Which one - putting the one from your email on your week, or
+ * putting the one from your email on your week?" — a question with no answer, and a word
+ * pick that cannot land because the two subjects share every word (router/disambiguation
+ * drops anything both options say).
+ *
+ * Admissible under rule #1's strictest reading for the reason {@link
+ * emailAlertOfferSummary} gives: Hale already texted THIS parent this exact string, the
+ * offer list is per-parent, and the subject line, the snippet and the quote evidence are
+ * neither here nor on the row. A 13+ child's mail never writes an offer at all.
+ */
+export function emailAlertOfferSubject(offer: OpenEmailAlertOffer): string {
+  return `putting ${offer.title} on your week`;
+}
+
 /** What answering an offer did. Every ending is named (rule #11) — `no_open_offer` is the
  * handler declining to claim, not a silent skip. */
 export type EmailAlertOfferReplyOutcome =
@@ -194,7 +215,19 @@ export type EmailAlertOfferReplyOutcome =
   | { status: 'no_open_offer' };
 
 /**
- * A yes or a no, against the newest offer this parent has standing.
+ * A yes or a no, against the offer the answer is FOR.
+ *
+ * WHICH OFFER IS `offerId`'S QUESTION AND NOT THIS FUNCTION'S. A resolver reading, a
+ * disambiguation pick and a menu ordinal all arrive carrying the row's own id
+ * (`ResolvedAnswer.questionId` — "never a position"), and taking the newest instead would
+ * apply a parent's consent to a question they did not answer: with two alerts standing, a
+ * YES the resolver placed on this morning's swim class would have put this afternoon's
+ * picture day on the week and left the swim class open. So a named id is honoured or
+ * NOTHING is: an id that is no longer among this parent's open offers declines the turn
+ * (the question closed between the two reads) rather than falling back to a neighbour.
+ *
+ * NULL is the bare-word path — "yes" with no reading behind it — and only then is newest
+ * the answer, because the caller has already established there is exactly one.
  *
  * THE ADD IS CLAIMED BEFORE IT IS WRITTEN. `event_id` is stamped on the offer by a guarded
  * update and the `family_events` row is inserted carrying that id, so the redrive of a
@@ -208,12 +241,18 @@ export async function handleEmailAlertOfferReply(
   input: {
     familyId: string;
     parentUserId: string;
+    /** The offer this answer NAMES, or null when the parent sent a bare word. */
+    offerId: string | null;
     polarity: 'yes' | 'no';
     language: ReplyLanguage;
     now: Date;
   },
 ): Promise<EmailAlertOfferReplyOutcome> {
-  const [offer] = await loadOpenEmailAlertOffers(database, input);
+  const open = await loadOpenEmailAlertOffers(database, input);
+  const offer = input.offerId === null ? open[0] : open.find((row) => row.id === input.offerId);
+  // A named id that is not open is a closed question, never an invitation to pick another
+  // one — and the repeat branch below is for the bare word only, for the same reason.
+  if (!offer && input.offerId !== null) return { status: 'no_open_offer' };
   if (!offer) {
     if (input.polarity === 'no') return { status: 'no_open_offer' };
     const repeat = await loadRecentlyAddedOffer(database, input);
@@ -315,11 +354,22 @@ async function placeOfferedEvent(
  */
 export async function resolveEmailAlertOffer(
   database: Database,
-  input: { offerId: string; resolution: 'added' | 'declined'; now: Date },
+  input: {
+    offerId: string;
+    resolution: 'added' | 'declined';
+    /** The receipt — the outbound row that carried the answer. The table's CHECK makes a
+     * resolution without one unwritable, because there is no other way to close one. */
+    channelMessageId: string;
+    now: Date;
+  },
 ): Promise<void> {
   await database
     .update(schema.emailAlertOffers)
-    .set({ resolvedAt: input.now, resolution: input.resolution })
+    .set({
+      resolvedAt: input.now,
+      resolution: input.resolution,
+      resolvedChannelMessageId: input.channelMessageId,
+    })
     .where(
       and(
         eq(schema.emailAlertOffers.id, input.offerId),
@@ -328,18 +378,33 @@ export async function resolveEmailAlertOffer(
     );
 }
 
-/** The offer this parent's last yes already took, inside {@link EMAIL_ALERT_REPEAT_WINDOW_MS}
- * — the only thing a second yes may be about once the first one closed the question. */
+/**
+ * The offer this parent's last yes already took, and only while it is STILL THE SUBJECT.
+ *
+ * TWO BOUNDS, and the window alone is not enough. Once an offer resolves it stops being
+ * listed, so this branch claims a bare affirmative with no open question behind it — the
+ * one case `soleOpenKind` cannot protect (an empty list is vacuously unambiguous). The
+ * window says the word is recent; the LAST-WORD rule says it is still about this, by
+ * requiring the receipt to be the last thing Hale said to this parent. Without it a coach
+ * question asked two minutes after the receipt would lose its answer to a second copy of
+ * a text the parent is already holding — the registration ladder solved exactly this with
+ * exactly this rule (`readinessAskedLastAt`), off the same ledger.
+ */
 async function loadRecentlyAddedOffer(
   database: Database,
   input: { familyId: string; parentUserId: string; now: Date },
 ): Promise<{ title: string; startsAt: Date } | null> {
-  const rows = await database
+  const [row] = await database
     .select({
       title: schema.emailAlertOffers.title,
       startsAt: schema.emailAlertOffers.startsAt,
+      receiptAt: schema.channelMessages.createdAt,
     })
     .from(schema.emailAlertOffers)
+    .innerJoin(
+      schema.channelMessages,
+      eq(schema.channelMessages.id, schema.emailAlertOffers.resolvedChannelMessageId),
+    )
     .where(
       and(
         eq(schema.emailAlertOffers.familyId, input.familyId),
@@ -353,7 +418,23 @@ async function loadRecentlyAddedOffer(
     )
     .orderBy(desc(schema.emailAlertOffers.resolvedAt))
     .limit(1);
-  return rows[0] ?? null;
+  if (!row) return null;
+
+  // SENT_STATUSES rather than every row: a send that failed never reached the phone, so it
+  // did not take the word away from the receipt.
+  const [newer] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, input.parentUserId),
+        eq(schema.channelMessages.direction, 'out'),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        gt(schema.channelMessages.createdAt, row.receiptAt),
+      ),
+    )
+    .limit(1);
+  return newer ? null : { title: row.title, startsAt: row.startsAt };
 }
 
 /** The parent's wall clock, off their own users row — post-filtered by id as every reader

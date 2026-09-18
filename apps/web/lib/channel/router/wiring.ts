@@ -6,6 +6,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import {
+  emailAlertOfferSubject,
   emailAlertOfferSummary,
   loadOpenEmailAlertOffers,
 } from '~/lib/integrations/email-alert-offer';
@@ -721,6 +722,7 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
       return offers.map((offer) => ({
         id: offer.id,
         summary: emailAlertOfferSummary(offer),
+        subject: emailAlertOfferSubject(offer),
         askedAt: offer.askedAt,
       }));
     },

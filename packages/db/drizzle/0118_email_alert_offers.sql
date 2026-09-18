@@ -48,11 +48,18 @@ CREATE TABLE IF NOT EXISTS "email_alert_offers" (
 	"event_id" uuid,
 	"resolved_at" timestamp with time zone,
 	"resolution" text,
+	-- The RECEIPT: the outbound row that told the parent what their answer did. An offer is
+	-- only ever closed from afterSend, so it is present exactly when the resolution is, and
+	-- the last-word rule reads it — a second yes is still about this offer only while this
+	-- message is the last thing Hale said to this parent.
+	"resolved_channel_message_id" uuid REFERENCES "channel_messages"("id") ON DELETE cascade,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	-- A resolution is complete and named, or it did not happen. Half of one is an offer
-	-- quietly deleted, which is the one ending a ledger must never allow.
+	-- A resolution is complete, named and carried by a message the parent got, or it did
+	-- not happen. Half of one is an offer quietly deleted, which is the one ending a ledger
+	-- must never allow.
 	CONSTRAINT "email_alert_offers_resolution_check" CHECK (
 		("resolved_at" IS NULL) = ("resolution" IS NULL)
+		AND ("resolved_at" IS NULL) = ("resolved_channel_message_id" IS NULL)
 		AND ("resolution" IS NULL OR "resolution" IN ('added', 'declined'))
 	)
 );--> statement-breakpoint

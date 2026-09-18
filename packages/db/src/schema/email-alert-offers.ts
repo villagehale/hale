@@ -88,6 +88,20 @@ export const emailAlertOffers = pgTable(
     /** 'added' | 'declined' — paired with `resolved_at` by a CHECK, because half a
      * resolution is an offer quietly deleted. */
     resolution: text('resolution'),
+    /**
+     * The RECEIPT: the outbound row that told the parent what their answer did.
+     *
+     * Paired with `resolved_at` by the same CHECK, because an offer is only ever closed
+     * from `afterSend` — a turn that acted and never spoke leaves the question standing.
+     * It is read for the LAST-WORD rule: a second "yes" is still about this offer only
+     * while this message is the last thing Hale said to this parent, so a coach question
+     * asked in between takes the word back (the registration ladder's own rule,
+     * `readinessAskedLastAt`).
+     */
+    resolvedChannelMessageId: uuid('resolved_channel_message_id').references(
+      () => channelMessages.id,
+      { onDelete: 'cascade' },
+    ),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -101,10 +115,12 @@ export const emailAlertOffers = pgTable(
       table.integrationId,
       table.messageId,
     ),
-    // A resolution is complete and named, or it did not happen.
+    // A resolution is complete, named and carried by a message the parent got, or it did
+    // not happen.
     resolutionCheck: check(
       'email_alert_offers_resolution_check',
       sql`(${table.resolvedAt} IS NULL) = (${table.resolution} IS NULL)
+	AND (${table.resolvedAt} IS NULL) = (${table.resolvedChannelMessageId} IS NULL)
 	AND (${table.resolution} IS NULL OR ${table.resolution} IN ('added', 'declined'))`,
     ),
   }),

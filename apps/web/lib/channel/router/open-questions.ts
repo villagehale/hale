@@ -314,11 +314,12 @@ export function newestSolicitedKind(
 }
 
 /**
- * The printable phrase per class. Fixed, except for approvals — a family can have three
- * drafted changes open at once and telling them apart is the entire point of the
- * question, so those carry the action's own label instead.
+ * The printable phrase per class. Fixed, except for the two kinds a family can hold
+ * SEVERAL of at once — drafted approvals and email-alert offers — where telling them
+ * apart is the entire point of the question, so each carries its own row's phrase
+ * instead (`namedApprovals`, `emailAlertOfferSubject`).
  */
-const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval'>, string> = {
+const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval' | 'email_alert_add'>, string> = {
   intro_optin: 'introductions to other Hale families nearby',
   intro_proposal: 'meeting the family nearby',
   plan_offer: 'the plan I offered',
@@ -330,10 +331,6 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval'>, string> = {
   // phrase can end up in a list Hale prints back (rule #1 — nothing about the person on
   // the other end of an invite they have not answered).
   co_parent_assent: 'texting your co-parent',
-  // No title in it: this phrase goes into a list Hale prints back, and with two alerts
-  // open the parent already has both texts. "the one from your email" is what a person
-  // would say.
-  email_alert_add: 'putting the one from your email on your week',
 };
 
 /**
@@ -482,11 +479,15 @@ export interface OpenQuestionSources {
    * Per-PARENT, like the intro opt-in and the co-parent scope question: the offer was put
    * to one phone, and a co-parent who never saw the text must not be able to answer it.
    * The TTL is applied inside the reader, so a lapsed offer is never listed.
+   *
+   * Each row brings its OWN `subject` as well as its summary, for the reason approvals
+   * do: a single fixed phrase would print "Which one - X, or X?" the moment two are
+   * standing, and a word pick cannot land on a subject the other one also says.
    */
   emailAlertOffers(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<ReadonlyArray<{ id: string; summary: string; askedAt: Date }>>;
+  ): Promise<ReadonlyArray<{ id: string; summary: string; subject: string; askedAt: Date }>>;
 }
 
 /**
@@ -627,14 +628,23 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           solicited: SOLICITED.co_parent_assent,
         });
       }
-      for (const emailOffer of emailOffers) {
+      // OLDEST FIRST — the order the texts reached the phone — because a position printed
+      // against two notices about the same occasion has to mean what a parent means by
+      // "the first one".
+      const orderedOffers = [...emailOffers].sort(
+        (a, b) => a.askedAt.getTime() - b.askedAt.getTime(),
+      );
+      const offerPositions = duplicatePositions(orderedOffers.map((offer) => offer.subject));
+      for (const [index, emailOffer] of orderedOffers.entries()) {
         // The offer row's own one-line summary: the title Hale already texted this parent
         // and nothing else — never the subject line, never the snippet (rule #1).
         questions.push({
           id: emailOffer.id,
           kind: 'email_alert_add',
           description: emailOffer.summary,
-          subject: SUBJECT.email_alert_add,
+          // The offer's OWN phrase, so two standing alerts can be told apart at all — and
+          // its position when even the titles are the same.
+          subject: `${emailOffer.subject}${offerPositions[index]}`,
           answerable: KIND_ANSWERABLE.email_alert_add,
           askedAt: emailOffer.askedAt,
           solicited: SOLICITED.email_alert_add,
@@ -688,10 +698,10 @@ function namedApprovals(approvals: ReadonlyArray<PendingAction>): OpenQuestion[]
   // before sending it to a model, one while writing a sentence with an overflow count),
   // and slicing here would silently zero that count.
   const labels = approvals.map((action) => actionTypeLabel(action.actionType));
+  const positions = duplicatePositions(labels);
   return approvals.map((action, index) => {
     const label = labels[index] as string;
-    const duplicated = labels.filter((other) => other === label).length > 1;
-    const position = duplicated ? ` (the ${ORDINAL_WORD[index] ?? `${index + 1}`})` : '';
+    const position = positions[index] as string;
     return {
       id: action.actionId,
       kind: 'approval' as const,
@@ -709,6 +719,27 @@ function namedApprovals(approvals: ReadonlyArray<PendingAction>): OpenQuestion[]
 
 /** Only as many as a list can hold — {@link MAX_LISTED_APPROVALS} is 3. */
 const ORDINAL_WORD = ['first', 'second', 'third'];
+
+/**
+ * ` (the first)` for every phrase that REPEATS in this list, and '' for the rest.
+ *
+ * TWO KINDS NEED IT and the rule has to be one rule: a family can hold three drafted
+ * changes and three email-alert offers, and either pair can arrive carrying one phrase —
+ * two calendar adds share a type label, two notices about the same occasion share a
+ * title. "Which one - X, or X?" is not a question, and a word pick cannot land on a word
+ * both options say (`distinctiveWords` drops it), so a repeated phrase gets its POSITION
+ * in the list as a description a parent can answer — never as an instruction.
+ *
+ * The caller owns the ORDER, because the position only means something if the list is in
+ * the order the parent met them: oldest first, for both callers.
+ */
+function duplicatePositions(phrases: readonly string[]): string[] {
+  return phrases.map((phrase, index) =>
+    phrases.filter((other) => other === phrase).length > 1
+      ? ` (the ${ORDINAL_WORD[index] ?? `${index + 1}`})`
+      : '',
+  );
+}
 
 /**
  * The same names, for the clarifying sentence the APPROVAL grammar sends when a bare

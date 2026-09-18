@@ -484,8 +484,9 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
  * THE SECOND YES. Once the first one resolves the offer it stops being listed, so a
  * repeat reaches this handler on the keyword pass with NO open question — where
  * `soleOpenKind` is vacuously true and would let it claim any bare affirmative at all.
- * That is why the repeat branch has to find something of its own to act on, and why its
- * window is minutes rather than the offer's own day (email-alert-offer.ts).
+ * That is why the repeat branch has to find something of its own to act on, why its
+ * window is minutes rather than the offer's own day, and why inside that window it still
+ * requires the receipt to be Hale's LAST WORD to this parent (email-alert-offer.ts).
  *
  * `ctx.inboundChannelMessageId` is not read. Nothing here files a fact against the
  * parent's own words — the offer row already carries its provenance — so a spoken turn,
@@ -497,17 +498,29 @@ export function emailAlertAddHandler(): DeterministicHandler {
     name: 'email_alert_add',
     resolves: new Set<OpenQuestionKind>(['email_alert_add']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const resolved = ctx.resolved?.kind === 'email_alert_add' ? ctx.resolved.polarity : null;
+      const answer = ctx.resolved?.kind === 'email_alert_add' ? ctx.resolved : null;
       const word = readAffirmative(ctx.body);
-      const polarity = resolved ?? (word === 'unclear' ? null : word);
+      const polarity = answer?.polarity ?? (word === 'unclear' ? null : word);
       if (polarity === null) return { claimed: false };
-      if (resolved === null && !soleOpenKind(await ctx.openQuestions(), 'email_alert_add')) {
-        return { claimed: false };
+      // THE BARE WORD, and the two things that make it unambiguous. `soleOpenKind` rules
+      // out every OTHER kind; the count rules out the second offer of this one, which that
+      // function is vacuously happy with — a family may hold three alerts a day, and "yes"
+      // next to two of them names neither. Declining sends the turn to the resolver and,
+      // failing that, to the one-sentence "Which one?" the subjects are written for.
+      if (answer === null) {
+        const questions = await ctx.openQuestions();
+        const mine = questions.filter((question) => question.kind === 'email_alert_add');
+        if (mine.length > 1 || !soleOpenKind(questions, 'email_alert_add')) {
+          return { claimed: false };
+        }
       }
 
       const outcome = await handleEmailAlertOfferReply(database, {
         familyId: ctx.familyId,
         parentUserId: ctx.parentUserId,
+        // The row the answer NAMES, never a position (route.ts `ResolvedAnswer`). Null is
+        // the bare word, which the guard above has just established is unambiguous.
+        offerId: answer?.questionId ?? null,
         polarity,
         language: replyLanguage(ctx.body),
         now: ctx.now,
@@ -525,10 +538,11 @@ export function emailAlertAddHandler(): DeterministicHandler {
         // the event and then failed to answer must leave the offer standing so the redrive
         // finds it — the event insert is claimed against the offer, so the redrive places
         // nothing twice (the MEM-10 send-time discipline every other offer here keeps).
-        afterSend: () =>
+        afterSend: (channelMessageId) =>
           resolveEmailAlertOffer(database, {
             offerId: outcome.offerId,
             resolution,
+            channelMessageId,
             now: ctx.now,
           }),
       };

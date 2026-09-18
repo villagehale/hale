@@ -68,10 +68,40 @@ async function sentAlert(): Promise<string> {
       dedupeKey: `email_alert:${randomUUID()}:m1`,
       status: 'sent',
       sentAt: NOW,
+      // The alert went out BEFORE anything this suite does with it. Left to default the
+      // row would carry the wall clock and read as Hale's newest word, which is the one
+      // thing it never is.
+      createdAt: NOW,
     })
     .returning({ id: schema.channelMessages.id });
   if (!row) throw new Error('no ledger row');
   return row.id;
+}
+
+/** An outbound row Hale actually sent this parent — the receipt a resolution is closed
+ * against, or the unrelated text that takes the last word away from it. */
+async function sentOut(at: Date): Promise<string> {
+  const [row] = await db.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      status: 'sent',
+      sentAt: at,
+      createdAt: at,
+    })
+    .returning({ id: schema.channelMessages.id });
+  if (!row) throw new Error('no ledger row');
+  return row.id;
+}
+
+/** The receipt a handler's `afterSend` is handed: a real row, because the resolution is
+ * closed against the message that carried it. */
+function receipt(at: Date = NOW): Promise<string> {
+  return sentOut(at);
 }
 
 async function seedOffer(
@@ -219,7 +249,7 @@ describe('a YES puts the occasion on the family week', () => {
     if (!verdict.claimed) throw new Error('unreachable');
     await expect(offers()).resolves.toMatchObject([{ resolvedAt: null, resolution: null }]);
 
-    await verdict.afterSend?.(randomUUID());
+    await verdict.afterSend?.(await receipt());
     const [closed] = await offers();
     expect(closed?.resolution).toBe('added');
     expect(closed?.resolvedAt).not.toBeNull();
@@ -253,7 +283,7 @@ describe('a YES puts the occasion on the family week', () => {
     expect(verdict.reply).toBe('Okay - left it off.');
     await expect(events()).resolves.toHaveLength(0);
 
-    await verdict.afterSend?.(randomUUID());
+    await verdict.afterSend?.(await receipt());
     await expect(offers()).resolves.toMatchObject([{ resolution: 'declined', eventId: null }]);
   });
 
@@ -261,7 +291,7 @@ describe('a YES puts the occasion on the family week', () => {
     const offerId = await seedOffer();
     const first = await reply('yes');
     if (!first.claimed) throw new Error('unreachable');
-    await first.afterSend?.(randomUUID());
+    await first.afterSend?.(await receipt());
 
     // The offer is closed now, so nothing is listed and `soleOpenKind` is vacuously true
     // — which is exactly why the repeat branch has to find a row of its own.
@@ -281,12 +311,33 @@ describe('a YES puts the occasion on the family week', () => {
     await seedOffer();
     const first = await reply('yes');
     if (!first.claimed) throw new Error('unreachable');
-    await first.afterSend?.(randomUUID());
+    await first.afterSend?.(await receipt());
 
     const late = await turn('yes');
     const verdict = await emailAlertAddHandler().handle(db.database, {
       ...late,
       now: new Date(NOW.getTime() + 11 * 60 * 1000),
+    });
+
+    expect(verdict).toEqual({ claimed: false });
+  });
+
+  it('lets the word go to the coach once Hale has said something else', async () => {
+    // The SECOND bound on the repeat branch, and the one the window alone cannot give: a
+    // bare affirmative belongs to Hale's LAST word (the registration ladder's own rule).
+    // Two minutes after the receipt, with one unrelated text in between, "yes" is an
+    // answer to THAT — a coach question asked in the window must not lose its answer to a
+    // second copy of a receipt the parent already has.
+    await seedOffer();
+    const first = await reply('yes');
+    if (!first.claimed) throw new Error('unreachable');
+    await first.afterSend?.(await receipt());
+    await sentOut(new Date(NOW.getTime() + 60 * 1000));
+
+    const ctx = await turn('yes');
+    const verdict = await emailAlertAddHandler().handle(db.database, {
+      ...ctx,
+      now: new Date(NOW.getTime() + 2 * 60 * 1000),
     });
 
     expect(verdict).toEqual({ claimed: false });
@@ -360,6 +411,125 @@ describe('a bare YES is never stolen from another open question', () => {
 
     expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
     await expect(events()).resolves.toHaveLength(1);
+  });
+});
+
+/**
+ * TWO ALERTS IN A DAY IS THE ORDINARY CASE — the outbound gate permits three — so which
+ * offer an answer is FOR is a question this path has to be able to answer, not a corner.
+ */
+describe('two standing offers', () => {
+  const OLDER_TITLE = 'Swim class';
+  const AN_HOUR = 60 * 60 * 1000;
+
+  /** The older of the two, an hour back, about something else. */
+  function seedOlderOffer(
+    over: Partial<typeof schema.emailAlertOffers.$inferInsert> = {},
+  ): Promise<string> {
+    return seedOffer({
+      title: OLDER_TITLE,
+      location: 'the pool',
+      createdAt: new Date(NOW.getTime() - AN_HOUR),
+      ...over,
+    });
+  }
+
+  function resolvedAs(offerId: string, polarity: 'yes' | 'no'): ResolvedAnswer {
+    return { kind: 'email_alert_add', questionId: offerId, polarity, confidence: 'high' };
+  }
+
+  it('acts on the offer the resolver NAMED, never the newest one', async () => {
+    const older = await seedOlderOffer();
+    const newer = await seedOffer();
+
+    const verdict = await reply('yes, the swim one', { resolved: resolvedAs(older, 'yes') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    if (!verdict.claimed) throw new Error('unreachable');
+    expect(verdict.reply).toContain(OLDER_TITLE);
+    await expect(events()).resolves.toMatchObject([{ title: OLDER_TITLE }]);
+    // And the one they did not name is untouched: still open, still unplaced.
+    const rows = await offers();
+    expect(rows.find((row) => row.id === newer)).toMatchObject({
+      resolvedAt: null,
+      eventId: null,
+    });
+    expect(rows.find((row) => row.id === older)?.eventId).not.toBeNull();
+  });
+
+  it('declines the offer the resolver named, and leaves the other standing', async () => {
+    const older = await seedOlderOffer();
+    const newer = await seedOffer();
+
+    const verdict = await reply('not the swim one', { resolved: resolvedAs(older, 'no') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'declined' });
+    if (!verdict.claimed) throw new Error('unreachable');
+    await verdict.afterSend?.(await receipt());
+    const rows = await offers();
+    expect(rows.find((row) => row.id === older)?.resolution).toBe('declined');
+    expect(rows.find((row) => row.id === newer)?.resolvedAt).toBeNull();
+  });
+
+  it('declines to act when the offer the resolver named has stopped being open', async () => {
+    // The menu was minted against a text that is a day old now. Acting on "the one they
+    // named" by falling back to the newest would add an occasion they never answered.
+    const lapsed = await seedOlderOffer({ expiresAt: new Date(NOW.getTime() - 1000) });
+    await seedOffer();
+
+    const verdict = await reply('yes', { resolved: resolvedAs(lapsed, 'yes') });
+
+    expect(verdict).toEqual({ claimed: false });
+    await expect(events()).resolves.toHaveLength(0);
+  });
+
+  it('names them distinctly enough for a parent to pick between them', async () => {
+    // What the clarifying sentence is built from. Two questions carrying ONE phrase print
+    // "Which one - X, or X?" and no word a parent could send tells them apart.
+    await seedOlderOffer();
+    await seedOffer();
+
+    const questions = (await (await turn('yes')).openQuestions()).filter(
+      (question) => question.kind === 'email_alert_add',
+    );
+
+    expect(questions).toHaveLength(2);
+    const subjects = questions.map((question) => question.subject);
+    expect(new Set(subjects).size).toBe(2);
+    expect(subjects.some((subject) => subject.includes(TITLE))).toBe(true);
+    expect(subjects.some((subject) => subject.includes(OLDER_TITLE))).toBe(true);
+  });
+
+  it('falls back to a position when two of them carry the SAME title', async () => {
+    // A school that sends a notice and then a correction about the same occasion. The
+    // title cannot separate them, and with the bare YES going to the clarifier this is the
+    // only route left — an unpickable menu would strand BOTH offers for the whole day.
+    // The position runs oldest-first, so "the first" is the first text they got.
+    await seedOlderOffer({ title: TITLE });
+    await seedOffer();
+
+    const subjects = (await (await turn('yes')).openQuestions())
+      .filter((question) => question.kind === 'email_alert_add')
+      .map((question) => question.subject);
+
+    expect(subjects).toEqual([
+      `putting ${TITLE} on your week (the first)`,
+      `putting ${TITLE} on your week (the second)`,
+    ]);
+  });
+
+  it('sends a bare YES to the clarifier rather than binding it to the newest', async () => {
+    // `soleOpenKind` is about KINDS and is vacuously true for two of one kind, so the
+    // ambiguity between them has to be read here. A parent answering the swim text with
+    // "yes" must not get picture day on their week.
+    await seedOlderOffer();
+    await seedOffer();
+
+    const verdict = await reply('yes');
+
+    expect(verdict).toEqual({ claimed: false });
+    await expect(events()).resolves.toHaveLength(0);
+    await expect(offers()).resolves.toMatchObject([{ resolvedAt: null }, { resolvedAt: null }]);
   });
 });
 
