@@ -538,7 +538,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, founder_welcome, co_parent_assent, health, coach_plan, registration, rec_morning, name_capture, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, founder_welcome, co_parent_assent, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -558,6 +558,11 @@ describe('the shipped order', () => {
       // nothing — but it is listed so the resolver never finds a kind without an owner.
       'co_parent_assent',
       'health',
+      // Between health and the plan, by this chain's own rule: among handlers that read
+      // the same bare word, the one whose wrong answer costs most goes first. A wrong
+      // reading here writes a real entry on the week and materializes reminders off it —
+      // more than three texts of advice, less than filing a health checkpoint as handled.
+      'email_alert_add',
       'coach_plan',
       'registration',
       'rec_morning',
