@@ -40,6 +40,11 @@ import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import type { IntakeAnswerComposer } from './answer';
 import { findReenrollableChannelOwner, reenrolOnStart } from './channel-state';
 import {
+  type ConnectorOfferLabel,
+  connectorOfferLabel,
+  sendConnectorOffer,
+} from './connector-offer';
+import {
   AMBIGUOUS_CLARIFY_BY_LANGUAGE,
   ASSENT_ACK_BY_LANGUAGE,
   COLD_START_ASK_BY_LANGUAGE,
@@ -192,8 +197,18 @@ export type IntakeOutcome =
   | { status: 'provisioned'; familyId: string }
   /** `nameAsked` names what the acknowledgment actually carried: false is either a
    * parent Hale already knows the name of or a composer that deferred, and both are
-   * states an operator reading this outcome needs to be able to tell from a send. */
-  | { status: 'watch_recorded'; intent: ReplyIntent; granted: boolean; nameAsked: boolean }
+   * states an operator reading this outcome needs to be able to tell from a send.
+   *
+   * `connectorOffer` says what became of the day-one tap-to-connect ask: `not_offered`
+   * is the parent who declined the watch and was therefore never asked, and every other
+   * value is {@link sendConnectorOffer}'s own named outcome (rule #11). */
+  | {
+      status: 'watch_recorded';
+      intent: ReplyIntent;
+      granted: boolean;
+      nameAsked: boolean;
+      connectorOffer: ConnectorOfferLabel | 'not_offered';
+    }
   | { status: 'clarified' }
   /**
    * The parent asked Hale something instead of answering it, and Hale answered them —
@@ -1259,13 +1274,43 @@ async function handleWatchReply(
     recorded.transcript,
     ack.asked ? PARENT_NAME_ASK_TEMPLATE_KEY : undefined,
   );
+
+  // THE DAY-ONE CONNECTOR ASK, on the yes only and after the acknowledgment has left.
+  // A parent who declined the watch is not asked to open their mailbox: they just said
+  // no to being watched, and a link to connect Gmail would be the same question louder.
+  // Not branched on, for the reason the contact card is not: the parent already has
+  // their acknowledgment, the consent is already written, and this session closes
+  // whatever happens — every way the offer declines is a named outcome with the cost in
+  // the log (connector-offer.ts).
+  const connectorOffer: ConnectorOfferLabel | 'not_offered' = granted
+    ? connectorOfferLabel(
+        await sendConnectorOffer(
+          database,
+          {
+            familyId: session.familyId as string,
+            parentUserId: session.userId as string,
+            phoneE164: args.phoneE164,
+            language,
+            now,
+          },
+          { transport: deps.transport, threadMessage: deps.threadMessage },
+        ),
+      )
+    : 'not_offered';
+
   await saveSession(
     database,
     session,
     { state: 'complete', closedAt: now, lastProviderId: inbound.providerId },
     now,
   );
-  return { status: 'watch_recorded', intent: reading.intent, granted, nameAsked: ack.asked };
+  return {
+    status: 'watch_recorded',
+    intent: reading.intent,
+    granted,
+    nameAsked: ack.asked,
+    connectorOffer,
+  };
 }
 
 /**
