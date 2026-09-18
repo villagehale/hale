@@ -138,38 +138,124 @@ describe('city registration guides', () => {
   });
 });
 
+/**
+ * The mornings of the 2026 fall cycle that are behind us, and the ones that are
+ * not. The audit of 2026-09-17 found every guide still reading as though Sept 9,
+ * 15 and 16 were coming — "Brampton swim registration is September 9", "I'll
+ * watch Sept 9" — eight days after the last of them. Prose cannot be dated by a
+ * test, but tense can: a morning in this list may only ever appear in a sentence
+ * that says it has gone. When the cycle turns, this list moves with the copy.
+ */
+const PASSED_MORNINGS = [
+  'Aug 24',
+  'August 24',
+  'Aug 27',
+  'August 27',
+  'Sept 9',
+  'September 9',
+  'Sept 14',
+  'Sept 15',
+  'Sept 16',
+] as const;
+
+/** Verbs that put a date in the past. Bare "open" is deliberately absent — it is
+ * the word every rotted sentence used. */
+const PAST_TENSE =
+  /\b(passed|gone|opened|went|was|were|already|behind|never|ran|started|staffed|closed|published|record)\b/i;
+
+function sentences(text: string): string[] {
+  return text
+    .split(/\n|(?<=[.;!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 function requireGuide(slug: string) {
   const guide = getGuide(slug);
   if (!guide) throw new Error(`missing guide ${slug}`);
   return guide;
 }
 
+describe('the season these pages are written for', () => {
+  it('names a morning that has gone only in a sentence that says so', () => {
+    for (const guide of REGISTRATION_GUIDES) {
+      for (const sentence of sentences(allText(guide))) {
+        const named = PASSED_MORNINGS.filter((morning) => sentence.includes(morning));
+        if (named.length === 0) continue;
+        expect(
+          sentence,
+          `${guide.slug} writes ${named.join(', ')} as though it were still ahead`,
+        ).toMatch(PAST_TENSE);
+      }
+    }
+  });
+
+  it('still carries those mornings as the record, rather than deleting them', () => {
+    // Otherwise the tense gate above passes by having nothing left to say — a
+    // parent searching "brampton swim september 9" must still land on the answer.
+    const everything = REGISTRATION_GUIDES.map(allText).join('\n');
+    for (const morning of ['Aug 24', 'Sept 9', 'Sept 15', 'Sept 16', 'August 27']) {
+      expect(everything).toContain(morning);
+    }
+  });
+});
+
 describe('the rules that make parents miss', () => {
   it('teaches Toronto that the district is the centre, not the home address', () => {
-    const text = allText(requireGuide('toronto-fall-recreation-registration'));
+    const guide = requireGuide('toronto-fall-recreation-registration');
+    const text = allText(guide);
     expect(text.toLowerCase()).toContain('leslieville');
     expect(text).toContain('Sept 16');
     expect(text.toLowerCase()).toContain('welcome policy');
     expect(text).toContain('36');
     expect(text.toLowerCase()).toContain('efun');
+    // The district also decides the one Toronto morning still ahead: non-residents
+    // register ten days after their activity's own morning, so the Sept 15 wave is
+    // Sept 25 and the Sept 16 wave is Sept 26.
+    expect(guide.dateRows[0]?.when).toContain('Sept 25');
+    expect(text).toContain('Sept 26');
+    expect(text.toLowerCase()).toContain('ten days');
   });
 
   it('says Toronto swim is the same morning as rec, not a separate day', () => {
-    const text = allText(requireGuide('toronto-swim-registration'));
+    const guide = requireGuide('toronto-swim-registration');
+    const text = allText(guide);
     expect(text.toLowerCase()).toContain('not a separate day');
     expect(text).toContain('Ultra');
     expect(text).toContain('Guardian');
     expect(text.toLowerCase()).toContain('not red cross');
     expect(text.toLowerCase()).toContain('not ymca otter');
+    // What a parent arriving after the mornings can still do: the non-resident
+    // open, and the city's own third-class rule.
+    expect(guide.lede).toContain('Sept 25');
+    expect(text.toLowerCase()).toContain('third class');
   });
 
-  it('says Brampton swim is September 9, not the August 24 rec open', () => {
-    const text = allText(requireGuide('brampton-swim-registration'));
+  it('says the winter cycle is not posted, on both cities that publish a look-ahead', () => {
+    const toronto = allText(requireGuide('toronto-fall-recreation-registration'));
+    expect(toronto.toLowerCase()).toContain('not posted');
+    // Toronto's look-ahead stays a look-ahead — browse/register windows, no 7 a.m.
+    expect(toronto).toContain('Nov 17');
+    expect(toronto).toContain('Dec 1');
+    expect(toronto).not.toMatch(/Nov 17[^.]{0,40}7 a\.m\./);
+    expect(allText(requireGuide('brampton-swim-registration')).toLowerCase()).toContain(
+      'not posted',
+    );
+  });
+
+  it('keeps Brampton’s Sept 9 and Aug 24 as record while leading with Sept 21', () => {
+    const guide = requireGuide('brampton-swim-registration');
+    const text = allText(guide);
     expect(text).toContain('September 9');
     expect(text).toContain('August 24');
     expect(text).toContain('24');
     expect(text.toLowerCase()).toContain('in person');
     expect(text.toLowerCase()).toContain('account & residency validated');
+    // The morning still ahead is what the page leads with, everywhere a parent
+    // looks first: the headline, the first dates row, and the closing ask.
+    expect(guide.h1.map((s) => s.text).join(' ')).toContain('Sept 21');
+    expect(guide.dateRows[0]?.when).toContain('Sept 21');
+    expect(guide.ctaHeading).toContain('Sept 21');
   });
 
   it('sells Brampton Hale as kids-only watch, not adult Learn to Swim', () => {
@@ -177,22 +263,27 @@ describe('the rules that make parents miss', () => {
     const sell = `${guide.lede}\n${guide.ctaSub}`;
     expect(sell).toContain("Hale watches kids' swim for parents.");
     expect(sell).toContain('Adult lessons stay on the city page.');
-    expect(sell).toContain("Text your kids' names, ages, and postal and I'll watch Sept 9.");
+    expect(sell).toContain("Text your kids' names, ages, and postal and I'll watch Sept 21.");
     expect(sell).toContain('Founding families free.');
     expect(sell).not.toContain('Hale will text you the night before');
     expect(sell).not.toMatch(/Hale will run/i);
-    // City facts stay; Hale does not claim adult Learn to Swim.
-    expect(guide.lede).toContain('Aug 24');
+    // City facts stay; Hale does not claim adult Learn to Swim. Sept 9 stays on
+    // the page as the residents' record, never as the morning Hale will watch.
     expect(guide.lede).toContain('Sept 9');
+    expect(guide.lede).toContain('Sept 21');
     expect(guide.smsPrefill).toBe("Hi Hale 👋 ready to get started");
   });
 
   it('keeps YMCA on My Y at 9 a.m. with a membership gate', () => {
-    const text = allText(requireGuide('ymca-gta-swim-registration'));
+    const guide = requireGuide('ymca-gta-swim-registration');
+    const text = allText(guide);
     expect(text).toContain('August 27');
     expect(text).toContain('9');
     expect(text.toLowerCase()).toContain('membership');
     expect(text.toLowerCase()).toContain('myy');
     expect(text.toLowerCase()).toContain('otter');
+    // The open is a record now; the listing window Hale read is what is left.
+    expect(guide.lede).toContain('Oct 10');
+    expect(guide.dateRows[0]?.when).toContain('Oct 10');
   });
 });

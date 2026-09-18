@@ -101,12 +101,12 @@ const PULLED_UP: [name: string, html: string, headline: string][] = [
   [
     '/brampton-swim-registration',
     bramptonSwimHtml,
-    'Brampton swim registration is September 9, not August 24',
+    'Brampton swim registration: non-residents open Monday, Sept 21',
   ],
   [
     '/ymca-gta-swim-registration',
     ymcaSwimHtml,
-    'YMCA Greater Toronto swim registration: August 27 at 9 a.m.',
+    'YMCA Greater Toronto swim: listings still take spots to Oct 10',
   ],
 ];
 

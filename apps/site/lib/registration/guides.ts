@@ -30,35 +30,44 @@ export const TORONTO_FALL: RegistrationGuide = {
   path: '/toronto-fall-recreation-registration',
   title: 'Toronto fall recreation registration 2026: dates by district · Hale',
   description:
-    'Toronto fall recreation registration 2026 opens by district, not by your home address. Wishlist is open; Early Local Registration is Sept 9; Etobicoke, Toronto and East York go Sept 15 at 7 a.m.; North York and Scarborough go Sept 16. Hale is unofficial — confirm on toronto.ca.',
+    'Toronto’s fall 2026 resident mornings have gone — Sept 9 early local, Sept 15 Etobicoke and Toronto East York, Sept 16 North York and Scarborough. Non-residents register ten days after their district’s own morning, so Sept 25 or Sept 26 at 7 a.m. Winter is not posted yet. Hale is unofficial — confirm on toronto.ca.',
   eyebrow: 'Toronto · fall 2026',
   h1: [
     { text: 'Toronto fall recreation registration 2026:' },
     { text: 'which 7 a.m. is yours', accent: true },
   ],
-  lede: 'The morning that matters is the district of the centre you are booking, not the street you live on. I’m Barton, Sebastian’s dad. Hale is a texted GTA family assistant — no app — and founding families are free at villagehale.com.',
-  updated: '2026-08-26',
+  lede: 'The morning that mattered was the district of the centre you were booking, not the street you live on — and those mornings have gone: Sept 9, Sept 15, Sept 16. If you live outside Toronto, yours is still ahead — ten days after your activity’s own morning, so Friday, Sept 25 at 7 a.m. for the districts that opened Sept 15 and Sept 26 for the ones that opened Sept 16. I’m Barton, Sebastian’s dad. Hale is a texted GTA family assistant — no app — and founding families are free at villagehale.com.',
+  updated: '2026-09-18',
   placement: 'toronto_fall_rec',
   datesEyebrow: 'Fall 2026',
-  datesHeading: [{ text: 'Fall 2026 dates' }, { text: 'at a glance', accent: true }],
+  datesHeading: [{ text: 'What is left of' }, { text: 'the fall calendar', accent: true }],
   dateRows: [
-    { when: 'Aug 24', what: 'Wishlist open in the Registration & Booking System' },
-    { when: 'Sept 9, 7 a.m.', what: 'Early Local Registration — all Free Centres, catchment only' },
-    { when: 'Sept 14, 10 a.m.', what: 'Older adult programs (60+)' },
-    { when: 'Sept 15, 7 a.m.', what: 'Etobicoke, Toronto, and East York centres' },
-    { when: 'Sept 16, 7 a.m.', what: 'North York and Scarborough centres' },
-    { when: '36 hours', what: 'Waitlist invitations expire, then the spot is offered onward' },
     {
-      when: 'Week of Sept 26',
-      what: 'Most fall programs start (see the activity for the real dates)',
+      when: 'Sept 25, 7 a.m.',
+      what: 'Non-residents — ten days after the centre’s own morning, so Sept 26 where the district opened Sept 16',
     },
     {
-      when: 'Winter look-ahead',
-      what: 'Browse around Nov 17; register around Dec 1–9 — anticipated on the city page, not a printed clock yet',
+      when: 'Week of Sept 26',
+      what: 'Most fall programming begins (see the activity for the real dates)',
+    },
+    { when: '36 hours', what: 'Waitlist invitations expire, then the spot is offered onward' },
+    {
+      when: 'Passed — Aug 24',
+      what: 'Listings went browsable and the wish list opened in the Registration & Booking System',
+    },
+    {
+      when: 'Passed — Sept 9, 7 a.m.',
+      what: 'Early Local Registration — all Free Centres, catchment only',
+    },
+    { when: 'Passed — Sept 15, 7 a.m.', what: 'Etobicoke, Toronto, and East York centres' },
+    { when: 'Passed — Sept 16, 7 a.m.', what: 'North York and Scarborough centres' },
+    {
+      when: 'Winter 2027',
+      what: 'Not posted yet. The city’s look-ahead says browse around Nov 17 and register around Dec 1–9, starting the week of Jan 4 — a look-ahead, not a clock',
     },
   ],
   dateNote:
-    'Reconfirmed Aug 26, 2026 against the city page last modified Aug 24, 2026. Confirm on the official link — if Toronto has changed a morning, use Toronto.',
+    'Dates as the City published them in its release of August 24, 2026, re-verified against Hale’s registration dataset on Sept 17, 2026. Written Sept 18: the mornings in this table have gone, and the non-resident date is the city-wide ten-day rule applied to them rather than a date Toronto prints. Confirm on the official link — if Toronto has changed a morning, use Toronto.',
   officialUrls: [
     { href: TORONTO_REC, label: 'City of Toronto — register for recreation activities' },
     { href: TORONTO_HOW_TO, label: 'How to use the Registration & Booking System' },
@@ -71,29 +80,29 @@ export const TORONTO_FALL: RegistrationGuide = {
     {
       tag: 'District',
       title: 'The district is the centre, not your address',
-      line: 'A Leslieville parent booking a North York pool registers on Sept 16. Home address does not pick the morning.',
+      line: 'A Leslieville parent booking a North York pool went Sept 16, not Sept 15 — and a non-resident booking that same pool goes Sept 26, not Sept 25. Home address never picked the morning.',
       checks: [
         'Look up the centre on the city’s community recreation centre list',
-        'Etobicoke York includes York, Weston, and Mount Dennis — they go Sept 15',
-        'Swimming opens on these same mornings',
+        'Etobicoke York includes York, Weston, and Mount Dennis — they went Sept 15',
+        'Swimming opened on these same mornings',
       ],
       linkHref: '/toronto-swim-registration',
       linkLabel: 'Toronto swim uses this same calendar',
     },
     {
-      tag: 'Sept 9',
-      title: 'Early Local Registration is catchment only',
-      line: 'Sept 9 at 7 a.m. is not a city-wide head start. It is Free Centres, for eligible residents in that centre’s catchment.',
+      tag: 'Sept 25',
+      title: 'The non-resident clock is a rule, not a printed date',
+      line: 'Toronto prints only the resident morning. Non-residents may register ten days after registration starts for that activity, with a $54.90 per-activity surcharge — so a centre that opened Sept 15 takes them Sept 25, and one that opened Sept 16 takes them Sept 26.',
       checks: [
-        'If the program is not at a Free Centre, skip Sept 9',
-        'If you are out of catchment, skip Sept 9',
-        'Everyone else waits for their district’s 7 a.m.',
+        'Count ten days from the centre’s own morning, not from the earliest one in the city',
+        'The surcharge is per activity, not per family',
+        'Early Local Registration was proximity, not residency — it closed with its own morning',
       ],
     },
     {
       tag: '36 hours',
       title: 'The waitlist will not show your queue number',
-      line: 'If a spot opens you get an email invitation. It expires in 36 hours, then it is dropped. You never see “you are #12”.',
+      line: 'If a spot opens you get an email invitation. It expires in 36 hours, then it is dropped. You never see “you are #12”. Now that the mornings have gone, this is the live path.',
       checks: [
         'Keep the email on the Parks & Recreation account current',
         'Watch the inbox — not the live activity page — for the offer',
@@ -104,9 +113,12 @@ export const TORONTO_FALL: RegistrationGuide = {
   sections: [
     {
       id: 'wishlist-not-efun',
-      headline: [{ text: 'Wishlist is open now —' }, { text: 'not in eFun', accent: true }],
+      headline: [
+        { text: 'Registration is open —' },
+        { text: 'and eFun is still gone', accent: true },
+      ],
       paragraphs: [
-        'Fall activities are in the Registration & Booking System. Add the barcode to your wish list as soon as the activity is viewable. You register from that list when the district clock starts. Searching live at 7:00 a.m. is how people miss.',
+        'The district mornings decided the popular barcodes; what is open now is what did not fill, plus the waitlist. Fall activities live in the Registration & Booking System, and you register from your wish list rather than searching live. That is what separated the families who got a Saturday 9 a.m. from the ones who did not, and it is what will separate them again in the winter cycle.',
         'eFun family numbers and client numbers do not work. The city says they are no longer in use. You need the email account in the new system, a password you can type at 6:58 a.m., and Welcome Policy already sitting on the account if you use it — you cannot add it at checkout.',
       ],
       links: [{ href: TORONTO_HOW_TO, label: 'Wish list, Welcome Policy, and checkout' }],
@@ -125,7 +137,7 @@ export const TORONTO_FALL: RegistrationGuide = {
       id: 'night-before',
       headline: [{ text: 'Night-before' }, { text: 'checklist', accent: true }],
       paragraphs: [
-        'Do this on paper, not in your head, the evening of Sept 14 or 15 depending on the centre.',
+        'If your morning is still ahead — non-residents, then the winter cycle — do this on paper the evening before, not in your head.',
       ],
       bullets: [
         'Password that actually signs in — reset it tonight, not at 6:59 a.m.',
@@ -136,13 +148,13 @@ export const TORONTO_FALL: RegistrationGuide = {
     },
     {
       id: 'in-person-desks',
-      headline: [{ text: 'In-person desks,' }, { text: 'Sept 15 vs Sept 16', accent: true }],
+      headline: [{ text: 'Which district' }, { text: 'is your centre?', accent: true }],
       paragraphs: [
-        'If you want staff at a centre on the opening morning, the city publishes which desks open early for the 7 a.m. start. This is their list, not Hale’s — confirm it on the official page before you travel.',
+        'The city staffed these desks for the opening mornings. The list is now the fastest district lookup there is, and the district is what sets a non-resident’s Sept 25 or Sept 26. This is the city’s list, not Hale’s — confirm it on the official page before you travel.',
       ],
       groups: [
         {
-          title: 'Tuesday, Sept 15 — Toronto, East York, and Etobicoke',
+          title: 'Opened Sept 15 — Toronto, East York, and Etobicoke (non-residents Sept 25)',
           items: [
             'Etobicoke Olympium, 590 Rathburn Rd.',
             'Northwood Community Centre, 15 Clubhouse Crt.',
@@ -153,7 +165,7 @@ export const TORONTO_FALL: RegistrationGuide = {
           ],
         },
         {
-          title: 'Wednesday, Sept 16 — North York and Scarborough',
+          title: 'Opened Sept 16 — North York and Scarborough (non-residents Sept 26)',
           items: [
             'Centennial Recreation Centre – Scarborough, 1967 Ellesmere Rd.',
             'Rouge Valley Community Recreation Centre, 8450 Sheppard Ave. E.',
@@ -166,10 +178,10 @@ export const TORONTO_FALL: RegistrationGuide = {
     },
     {
       id: 'winter',
-      headline: [{ text: 'Winter look-ahead —' }, { text: 'Hale will text you', accent: true }],
+      headline: [{ text: 'Winter is not posted —' }, { text: 'Hale will text you', accent: true }],
       paragraphs: [
-        'The city currently says winter activities should be available to browse around Nov 17, with registration anticipated between Dec 1 and 9, starting the week of Jan 4, 2027. Those are look-ahead dates, not a printed 7 a.m. clock. Do not treat them as exact until the city page is specific.',
-        'Hale already knows whether Sept 15 or Sept 16 is your pool. Text Hale — founding families free. Start at villagehale.com.',
+        'Winter 2027 is not posted yet. The city’s look-ahead says winter activities should be available to browse around Nov 17, with registration anticipated between Dec 1 and 9 and programs starting the week of Jan 4, 2027. Those are look-ahead dates, not a printed clock. Do not set an alarm on them until the city page is specific.',
+        'Hale knows which morning each centre keeps and watches for the winter clock to be printed. Text Hale — founding families free. Start at villagehale.com.',
       ],
     },
   ],
@@ -177,12 +189,12 @@ export const TORONTO_FALL: RegistrationGuide = {
     {
       question: 'When does Toronto fall recreation registration open?',
       answer:
-        'Wishlist is open now. Early Local Registration for Free Centres is Sept 9 at 7 a.m. (catchment only). Etobicoke, Toronto, and East York centres open Sept 15 at 7 a.m. North York and Scarborough open Sept 16 at 7 a.m. Confirm on toronto.ca — Hale is unofficial.',
+        'Fall 2026 is already open — the mornings have gone. Early Local Registration was Sept 9 at 7 a.m. for Free Centres in catchment; Etobicoke and Toronto East York opened Sept 15 at 7 a.m.; North York and Scarborough opened Sept 16. Non-residents register ten days after their activity’s own morning, so Sept 25 or Sept 26 at 7 a.m. Confirm on toronto.ca — Hale is unofficial.',
     },
     {
       question: 'Which day is North York fall recreation registration?',
       answer:
-        'North York and Scarborough centres register Wednesday, Sept 16 at 7 a.m. The day follows the centre you are booking, not your home address. A Leslieville parent booking North York is still Sept 16.',
+        'North York and Scarborough centres opened Wednesday, Sept 16 at 7 a.m. The day follows the centre you are booking, not your home address — a Leslieville parent booking North York went Sept 16, and a non-resident booking it goes Sept 26.',
     },
     {
       question: 'Is eFun still used for Toronto rec registration?',
@@ -197,10 +209,10 @@ export const TORONTO_FALL: RegistrationGuide = {
     {
       question: 'Is Toronto swim registration a different morning from rec?',
       answer:
-        'No. Swim opens on the same district morning as the rest of rec — Sept 15 or Sept 16 at 7 a.m., with Early Local Registration on Sept 9 only if that pool is a Free Centre in catchment.',
+        'No. Swim opened on the same district mornings as the rest of rec — Sept 15 and Sept 16 at 7 a.m. — and Early Local Registration on Sept 9 applied only where that pool was a Free Centre in catchment.',
     },
   ],
-  ctaHeading: 'Hale already knows whether Sept 15 or Sept 16 is your pool.',
+  ctaHeading: 'Non-residents register Sept 25. Winter is not posted yet.',
   ctaSub:
     'Text Hale — founding families free. Start at villagehale.com. I’m Barton, Sebastian’s dad; Hale is a number you text, not an app.',
   footerNote: FOOTER,
@@ -211,32 +223,40 @@ export const TORONTO_SWIM: RegistrationGuide = {
   path: '/toronto-swim-registration',
   title: 'Toronto swim registration 2026: same mornings as rec, not a separate day · Hale',
   description:
-    'Toronto swim registration 2026 is not a separate day. Lessons open on your centre’s rec morning — Sept 15 or Sept 16 at 7 a.m. — in the Registration & Booking System, not eFun, not ActiveTO. Hale is unofficial; confirm on toronto.ca.',
+    'Toronto swim registration 2026 was never a separate day. Lessons opened on the centre’s rec morning — Sept 15 and Sept 16 at 7 a.m. Non-residents follow ten days later, Sept 25 or Sept 26, and the city lets you register up to the start of the third class, space permitting. Hale is unofficial; confirm on toronto.ca.',
   eyebrow: 'Toronto · swim 2026',
   h1: [
     { text: 'Toronto swim registration 2026:' },
     { text: 'it is not a separate day', accent: true },
   ],
-  lede: 'There is no swim-only date. Guardian, Preschool, Tiny Tots, and Ultra open on the same 7 a.m. as the centre’s district. Tell Hale the pool and the Ultra level. Founding families free — villagehale.com.',
-  updated: '2026-08-26',
+  lede: 'There was never a swim-only date, and the district mornings have gone. What is left: non-residents open Friday, Sept 25 at 7 a.m. (Sept 26 where the district opened Sept 16), and the city lets you register up to the start of the third class, space permitting. Tell Hale the pool and the Ultra level. Founding families free — villagehale.com.',
+  updated: '2026-09-18',
   placement: 'toronto_swim',
-  datesEyebrow: 'Swim mornings',
-  datesHeading: [{ text: 'Swim opens on your' }, { text: 'district’s rec morning', accent: true }],
+  datesEyebrow: 'What is left',
+  datesHeading: [{ text: 'Swim shares the' }, { text: 'district’s rec calendar', accent: true }],
   dateRows: [
     {
-      when: 'Sept 9, 7 a.m.',
-      what: 'Early Local Registration — only if this pool is a Free Centre in catchment',
+      when: 'Sept 25, 7 a.m.',
+      what: 'Non-residents — ten days after the pool’s own morning, so Sept 26 where the district opened Sept 16',
     },
-    { when: 'Sept 15, 7 a.m.', what: 'Etobicoke, Toronto, and East York pools' },
-    { when: 'Sept 16, 7 a.m.', what: 'North York and Scarborough pools' },
-    { when: '36 hours', what: 'Swim waitlist invitations expire, then the lane is offered onward' },
     {
       when: 'Until class 3',
       what: 'You can still register up to the start of the third class, space permitting',
     },
+    {
+      when: 'Week of Sept 26',
+      what: 'Most fall programming begins, so that third-class window runs into October',
+    },
+    { when: '36 hours', what: 'Swim waitlist invitations expire, then the lane is offered onward' },
+    {
+      when: 'Passed — Sept 9, 7 a.m.',
+      what: 'Early Local Registration — only where that pool was a Free Centre in catchment',
+    },
+    { when: 'Passed — Sept 15, 7 a.m.', what: 'Etobicoke, Toronto, and East York pools' },
+    { when: 'Passed — Sept 16, 7 a.m.', what: 'North York and Scarborough pools' },
   ],
   dateNote:
-    'Same calendar as fall rec. Reconfirmed Aug 26, 2026 against the city rec page (modified Aug 24) and the swim lessons page. Confirm on the official links.',
+    'Same calendar as fall rec — one cycle, no swim-only date. Dates as the City published them for fall 2026, re-verified against Hale’s registration dataset on Sept 17, 2026 and read alongside the swim lessons page. Written Sept 18: the September mornings have gone, the non-resident date has not. Confirm on the official links.',
   officialUrls: [
     { href: TORONTO_SWIM_LESSONS, label: 'City of Toronto — swim lessons and leadership' },
     { href: TORONTO_REC, label: 'Fall rec dates (swim uses these mornings)' },
@@ -249,9 +269,9 @@ export const TORONTO_SWIM: RegistrationGuide = {
     {
       tag: 'Same morning',
       title: 'No swim-only date',
-      line: 'If the centre is East York, you are in the Sept 15 7 a.m. wave with every other program at that centre. Ultra is not a different clock.',
+      line: 'If the centre is East York, lessons went in the Sept 15 7 a.m. wave with every other program at that centre. Ultra was never a different clock, and a non-resident booking that pool waits for Sept 25 — still not a swim-only date.',
       checks: [
-        'Early Local Registration on Sept 9 only if the pool itself is a Free Centre in catchment',
+        'Early Local Registration applied on Sept 9 only where the pool itself was a Free Centre in catchment',
         'ActiveTO is not this portal',
         'Fall rec uses this same district calendar',
       ],
@@ -261,7 +281,7 @@ export const TORONTO_SWIM: RegistrationGuide = {
     {
       tag: 'Wishlist',
       title: 'Wishlist the barcode. Don’t search live.',
-      line: 'At 7:00 a.m. the people who get in already have the activity on a wish list. Searching “swim” while the queue builds is how a Saturday 9 a.m. Ultra 3 disappears.',
+      line: 'At 7:00 a.m. on the district morning, the people who got in already had the activity on a wish list. Searching “swim” while the queue builds is how a Saturday 9 a.m. Ultra 3 disappears — and it is how Sept 25 will go for non-residents.',
       checks: [
         'Add the heart on the exact barcode, for the exact child',
         'Build the list in reverse — most wanted last, so it sits at the top',
@@ -274,7 +294,7 @@ export const TORONTO_SWIM: RegistrationGuide = {
       line: 'Same as the rest of rec: email invitation, no queue number on the page, then dropped. A leftover Tuesday 10 a.m. is not the Saturday you wanted — take the offer or leave it for the next family.',
       checks: [
         'The invitation is email, then gone',
-        'What fills in four minutes is Saturday morning Ultra and Guardian at the popular tanks',
+        'What filled in four minutes was Saturday morning Ultra and Guardian at the popular tanks',
         'What is left at 10 a.m. is often the awkward time, not “swim is still open”',
       ],
     },
@@ -282,14 +302,14 @@ export const TORONTO_SWIM: RegistrationGuide = {
   sections: [
     {
       id: 'which-morning',
-      headline: [{ text: 'Which morning' }, { text: 'is this pool?', accent: true }],
+      headline: [{ text: 'Which district' }, { text: 'is this pool?', accent: true }],
       lede: 'Examples only — confirm the centre on the city’s list. This is not every indoor pool.',
       paragraphs: [
-        'These names are the city’s own opening-morning desks, used here as a sketch of which wave a tank sits in. If your pool is not on this list, look up its district rather than guessing from your neighbourhood.',
+        'These names are the city’s own opening-morning desks, used here as a sketch of which wave a tank sat in. The district still decides things after the morning: it sets the non-resident date, and it is how you read what is left. If your pool is not on this list, look up its district rather than guessing from your neighbourhood.',
       ],
       groups: [
         {
-          title: 'Sept 15 examples — Etobicoke, Toronto, East York',
+          title: 'Opened Sept 15 — Etobicoke, Toronto, East York (non-residents Sept 25)',
           items: [
             'Etobicoke Olympium',
             'York Recreation Centre',
@@ -299,7 +319,7 @@ export const TORONTO_SWIM: RegistrationGuide = {
           ],
         },
         {
-          title: 'Sept 16 examples — North York, Scarborough',
+          title: 'Opened Sept 16 — North York, Scarborough (non-residents Sept 26)',
           items: [
             'Centennial Recreation Centre – Scarborough',
             'Rouge Valley Community Recreation Centre',
@@ -330,12 +350,12 @@ export const TORONTO_SWIM: RegistrationGuide = {
         { text: 'Third class, not leisure swim', accent: true },
       ],
       paragraphs: [
-        'The city lets you register for Learn to Swim up to the start of the third class, space permitting. Leisure swim and family swim are not a lesson. If the city lane is gone, the backups are a different portal: YMCA Greater Toronto on Aug 27 at 9 a.m. (membership to take many group classes), then private.',
+        'The city lets you register for Learn to Swim up to the start of the third class, space permitting. Fall programming begins the week of Sept 26, so on most tanks that window runs into October — it is the realistic path now, not a waitlist miracle. Leisure swim and family swim are not a lesson. If the city lane is gone, the backups are a different portal: YMCA Greater Toronto, whose Aug 27 open has passed but whose listings still take registrations through Oct 10, and then private.',
       ],
       links: [
         {
           href: '/ymca-gta-swim-registration',
-          label: 'YMCA Greater Toronto swim — Aug 27 at 9 a.m.',
+          label: 'YMCA Greater Toronto swim — leftovers through Oct 10',
         },
         { href: TORONTO_SWIM_LESSONS, label: 'Official swim lessons page' },
       ],
@@ -345,12 +365,12 @@ export const TORONTO_SWIM: RegistrationGuide = {
     {
       question: 'Is Toronto swim registration a different day from rec?',
       answer:
-        'No. Swim opens on the centre’s rec morning — Sept 15 or Sept 16 at 7 a.m. There is no swim-only date. Early Local Registration on Sept 9 applies only if that pool is a Free Centre in catchment.',
+        'No. Swim opened on the centre’s rec morning — Sept 15 or Sept 16 at 7 a.m. There is no swim-only date, and non-residents follow the same ten-day rule: Sept 25, or Sept 26 where the district opened Sept 16.',
     },
     {
-      question: 'How do I know if my pool is Sept 15 or Sept 16?',
+      question: 'Was my pool Sept 15 or Sept 16?',
       answer:
-        'By the district of the centre, not your home address. Etobicoke, Toronto, and East York centres (including York Recreation Centre) go Sept 15. North York and Scarborough go Sept 16. Confirm the centre on toronto.ca.',
+        'It followed the district of the centre, not your home address. Etobicoke, Toronto, and East York centres (including York Recreation Centre) went Sept 15; North York and Scarborough went Sept 16. That district still sets your non-resident date. Confirm the centre on toronto.ca.',
     },
     {
       question: 'Is eFun used for Toronto swimming lessons registration?',
@@ -376,34 +396,47 @@ export const TORONTO_SWIM: RegistrationGuide = {
 export const BRAMPTON_SWIM: RegistrationGuide = {
   slug: 'brampton-swim-registration',
   path: '/brampton-swim-registration',
-  title: 'Brampton swim registration 2026: September 9 (not August 24) · Hale',
+  title: 'Brampton swim registration 2026: non-residents Monday, Sept 21 at 7 a.m. · Hale',
   description:
-    'Brampton swim registration 2026 is Wednesday, September 9 at 7 a.m. for residents — not August 24. That earlier morning was general rec, not Learn to Swim. Resident verification is in person. Waitlist pending-confirmation is 24 hours. Hale is unofficial; confirm on brampton.ca.',
+    'Brampton Learn to Swim and Learn to Skate opened Wednesday, September 9 at 7 a.m. for residents; non-residents open Monday, September 21 at 7 a.m., and that morning is still ahead. Resident verification is in person, and an unverified account is a non-resident account. Waitlist pending-confirmation is 24 hours. Hale is unofficial; confirm on brampton.ca.',
   eyebrow: 'Brampton · swim 2026',
   h1: [
-    { text: 'Brampton swim registration is' },
-    { text: 'September 9, not August 24', accent: true },
+    { text: 'Brampton swim registration:' },
+    { text: 'non-residents open Monday, Sept 21', accent: true },
   ],
-  lede: 'General rec already opened Aug 24. That was not swim. Learn to Swim and Learn to Skate open Wednesday, Sept 9 at 7 a.m. for residents, Monday, Sept 21 at 7 a.m. for non-residents. Sept 9 is the swim morning. Hale watches kids\' swim for parents. Adult lessons stay on the city page. Text your kids\' names, ages, and postal and I\'ll watch Sept 9. Founding families free.',
-  updated: '2026-08-26',
+  lede: "Residents’ morning has gone — Learn to Swim and Learn to Skate opened Wednesday, Sept 9 at 7 a.m. Non-residents open Monday, Sept 21 at 7 a.m., and that is the morning still ahead. Hale watches kids' swim for parents. Adult lessons stay on the city page. Text your kids' names, ages, and postal and I'll watch Sept 21. Founding families free.",
+  updated: '2026-09-18',
   placement: 'brampton_swim',
   datesEyebrow: 'Split calendar',
-  datesHeading: [{ text: 'Swim is later.' }, { text: 'The calendar is split.', accent: true }],
+  datesHeading: [
+    { text: 'Swim keeps its own morning.' },
+    { text: 'The calendar is split.', accent: true },
+  ],
   dateRows: [
     {
-      when: 'Aug 24, 7 a.m.',
-      what: 'General rec, sports, STEAM, and winter-break camps — already open. Not swim.',
+      when: 'Sept 21, 7 a.m.',
+      what: 'Learn to Swim and Learn to Skate — non-residents. The morning still ahead',
     },
-    { when: 'Sept 9, 7 a.m.', what: 'Learn to Swim and Learn to Skate — residents' },
-    { when: 'Sept 21, 7 a.m.', what: 'Learn to Swim and Learn to Skate — non-residents' },
-    { when: '24 hours', what: 'Waitlist pending-confirmation window (not Toronto’s 36)' },
     {
       when: 'Sept 21 – Dec 13',
       what: 'Fall session run (Guardian and the rest of the listed season)',
     },
+    { when: '24 hours', what: 'Waitlist pending-confirmation window (not Toronto’s 36)' },
+    {
+      when: 'Passed — Aug 24, 7 a.m.',
+      what: 'General rec, sports, STEAM, and winter-break camps — never swim',
+    },
+    {
+      when: 'Passed — Sept 9, 7 a.m.',
+      what: 'Learn to Swim and Learn to Skate — residents',
+    },
+    {
+      when: 'Winter 2027',
+      what: 'Not posted yet. Brampton prints one cycle at a time, and December’s winter-break camps registered inside this fall window',
+    },
   ],
   dateNote:
-    'Reconfirmed Aug 26, 2026 on Brampton’s registered-programs page: Learn to Swim still reads Wednesday, September 9 at 7 a.m. (residents). Confirm there before you set an alarm.',
+    'As Brampton’s registered-programs page had it when it was reconfirmed on Aug 26, 2026: residents Wednesday, September 9 at 7 a.m., non-residents Monday, September 21 at 7 a.m. Written Sept 18 — the residents’ morning has gone, Monday’s has not. Confirm there before you set an alarm.',
   officialUrls: [
     { href: BRAMPTON_REGISTERED, label: 'City of Brampton — registered programs' },
     { href: BRAMPTON_VERIFY, label: 'Resident account verification' },
@@ -419,22 +452,22 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
   ruleCards: [
     {
       tag: 'Split',
-      title: 'Aug 24 already happened. It was not swim.',
-      line: 'Winter-break camps and general rec used that morning. Mixing them into swim is how you “register” for the wrong product and miss Sept 9.',
+      title: 'Swim keeps its own morning, 16 days after general rec',
+      line: 'General rec opened Aug 24 and swim did not. Aquatics and skating moved 16 days later — residents Sept 9, non-residents Sept 21 — so registering in the rec cycle never got you a swim lane.',
       checks: [
-        'Learn to Swim and Learn to Skate share Sept 9 / Sept 21',
+        'Learn to Swim and Learn to Skate never split: residents went Sept 9, non-residents go Sept 21',
         'Brampton Lifesaving Club is not Learn to Swim — stay off that product if you wanted lessons',
         'The fall session still runs ~Sept 21 to Dec 13',
       ],
     },
     {
       tag: 'In person',
-      title: 'Resident verification is in person, before Sept 9',
-      line: 'Photo ID plus a Brampton address, at a rec-centre desk. You cannot email a licence. New accounts default to non-resident, which means you get the Sept 21 clock and the non-resident rate.',
+      title: 'Resident verification is in person — unverified means Monday’s clock',
+      line: 'Photo ID plus a Brampton address, at a rec-centre desk. You cannot email a licence. New accounts default to non-resident, which is why some Brampton families are on the Sept 21 morning and the non-resident rate.',
       checks: [
         'A driver’s licence usually covers photo and address in one card',
         'Children under 18 need a verified adult on the account',
-        'Do this on a weekday before Sept 9, not at 6:50 a.m. that morning',
+        'Get validated on a weekday, not at 6:50 a.m. on the morning itself',
       ],
     },
     {
@@ -453,7 +486,7 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
       id: 'check-validated',
       headline: [{ text: 'How to check' }, { text: 'Account & Residency Validated', accent: true }],
       paragraphs: [
-        'On desktop, sign in to the Brampton recreation account, open the family member, and use the Account Validation (or Account Verification) tab. You want “Account & Residency Validated” with a checkmark and a date. If that line is missing, the city will treat you as a non-resident on Sept 9.',
+        'On desktop, sign in to the Brampton recreation account, open the family member, and use the Account Validation (or Account Verification) tab. You want “Account & Residency Validated” with a checkmark and a date. If that line is missing, the city treats you as a non-resident: Monday at 7 a.m., and the non-resident rate.',
       ],
       links: [{ href: BRAMPTON_VERIFY, label: 'Resident account verification — official steps' }],
     },
@@ -469,12 +502,12 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
       id: 'ymca-backup',
       headline: [{ text: 'City vs' }, { text: 'YMCA Brampton', accent: true }],
       paragraphs: [
-        'YMCA Greater Toronto swim registration is Thursday, Aug 27 at 9 a.m. — members and non-residents on the same clock, membership still required to take many group classes, on My Y, not Brampton’s portal. If the city lane on Sept 9 is the one you want, do not spend Aug 27 in the wrong system. If you need a backup, YMCA is a different morning and a different membership gate.',
+        'YMCA Greater Toronto opened Aug 27 at 9 a.m. — members and non-residents on the same clock. That morning has gone, but the listings Hale read still take registrations through Oct 10, on My Y, not Brampton’s portal, with membership still required to take many group classes. If the city lane is the one you want, Monday, Sept 21 is the Brampton morning; the Y is a different portal and a different membership gate.',
       ],
       links: [
         {
           href: '/ymca-gta-swim-registration',
-          label: 'YMCA Greater Toronto swim — Aug 27 at 9 a.m.',
+          label: 'YMCA Greater Toronto swim — leftovers through Oct 10',
         },
       ],
     },
@@ -483,12 +516,12 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
     {
       question: 'When is Brampton swim registration 2026?',
       answer:
-        'Learn to Swim (and Learn to Skate) open Wednesday, September 9 at 7 a.m. for residents and Monday, September 21 at 7 a.m. for non-residents. August 24 was general rec and winter-break camps, not swim.',
+        'Learn to Swim and Learn to Skate opened Wednesday, September 9 at 7 a.m. for residents. Non-residents open Monday, September 21 at 7 a.m., which is the morning still ahead. August 24 was general rec and winter-break camps, not swim.',
     },
     {
-      question: 'Why is Brampton swim later than August 24?',
+      question: 'Why was Brampton swim later than the August 24 rec open?',
       answer:
-        'Brampton splits the calendar. Most registered programs already opened Aug 24. Aquatics and skating keep their own morning so the city can run those activities on a later clock. Showing up on Aug 24 does not get you a swim lane.',
+        'Brampton splits the calendar. Most registered programs opened Aug 24; aquatics and skating keep their own morning so the city can run those activities on a later clock. Showing up on Aug 24 never got you a swim lane.',
     },
     {
       question: 'Can I email my driver’s licence for Brampton resident verification?',
@@ -503,12 +536,12 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
     {
       question: 'Is Brampton Lifesaving Club the same as Learn to Swim?',
       answer:
-        'No. Lifesaving Club is a different product. If you wanted lessons, stay on Learn to Swim for the Sept 9 open.',
+        'No. Lifesaving Club is a different product. If you wanted lessons, stay on Learn to Swim for the Sept 21 open.',
     },
   ],
-  ctaHeading: 'Sept 9 is the swim morning, not Aug 24.',
+  ctaHeading: 'Monday, Sept 21 at 7 a.m. is the morning still ahead.',
   ctaSub:
-    "Hale watches kids' swim for parents. Adult lessons stay on the city page. Text your kids' names, ages, and postal and I'll watch Sept 9. Founding families free.",
+    "Hale watches kids' swim for parents. Adult lessons stay on the city page. Text your kids' names, ages, and postal and I'll watch Sept 21. Founding families free.",
   footerNote: FOOTER,
   smsPrefill: INTAKE_PREFILL,
 };
@@ -516,33 +549,40 @@ export const BRAMPTON_SWIM: RegistrationGuide = {
 export const YMCA_GTA: RegistrationGuide = {
   slug: 'ymca-gta-swim-registration',
   path: '/ymca-gta-swim-registration',
-  title: 'YMCA Greater Toronto swim registration: August 27 at 9 a.m. · Hale',
+  title: 'YMCA Greater Toronto swim registration 2026: Aug 27 has gone, spots to Oct 10 · Hale',
   description:
-    'YMCA Greater Toronto swim registration is Thursday, August 27, 2026 at 9:00 a.m. for members and non-residents on the same clock. Portal is MyY.YMCAGTA.ORG. Membership is still required to take many group Learn to Swim classes. Confirm on My Y.',
+    'YMCA Greater Toronto swim registration opened Thursday, August 27, 2026 at 9:00 a.m. for members and non-residents on the same clock. That morning has gone; the listings Hale read still take registrations through October 10. Portal is MyY.YMCAGTA.ORG, and membership is still required to take many group Learn to Swim classes. Confirm on My Y.',
   eyebrow: 'YMCA Greater Toronto · swim',
   h1: [
-    { text: 'YMCA Greater Toronto swim registration:' },
-    { text: 'August 27 at 9 a.m.', accent: true },
+    { text: 'YMCA Greater Toronto swim:' },
+    { text: 'listings still take spots to Oct 10', accent: true },
   ],
-  lede: 'Thursday, Aug 27, 2026, 9:00 a.m. — members and non-residents, same clock. Membership still required to take many group Learn to Swim classes. Portal is My Y, not eFun, not PerfectMind, not Active Mississauga. Hale will run that morning with you. Founding families free — villagehale.com.',
-  updated: '2026-08-26',
+  lede: 'The 9:00 a.m. open on Thursday, Aug 27 has gone. What is left is leftovers: the listings Hale read run registration to Oct 10, classes started mid-September, and membership is still required to take many group Learn to Swim classes. The portal is My Y — not eFun, not PerfectMind, not Active Mississauga. Founding families free — villagehale.com.',
+  updated: '2026-09-18',
   placement: 'ymca_gta_swim',
-  datesEyebrow: 'One clock',
-  datesHeading: [{ text: 'Aug 27 at 9 a.m.,' }, { text: 'membership first', accent: true }],
+  datesEyebrow: 'After the open',
+  datesHeading: [{ text: 'What is left on My Y,' }, { text: 'membership first', accent: true }],
   dateRows: [
-    { when: 'Aug 27, 9:00 a.m.', what: 'Members and non-residents — same open on My Y' },
+    {
+      when: 'Through Oct 10',
+      what: 'Current listings still accept registration — leftover spots, not the opening morning',
+    },
     {
       when: 'Membership',
       what: 'Still required to take many group Learn to Swim classes, even if you can see the listing',
     },
-    {
-      when: 'Through Oct 10',
-      what: 'Leftover spots on current listings; classes start mid-September',
-    },
     { when: 'Kids 9 and under', what: 'An adult 16+ on deck' },
+    {
+      when: 'Passed — Aug 27, 9:00 a.m.',
+      what: 'Members and non-residents opened together on My Y',
+    },
+    {
+      when: 'Passed — mid-September',
+      what: 'Classes started, so a late spot joins a session already running',
+    },
   ],
   dateNote:
-    'Date verified Aug 26, 2026 from YMCA Greater Toronto activity listings (registration starts 2026/08/27 09:00 for members and non-residents; registration ends 2026/10/10). Confirm the timestamp on My Y for the exact class. After Oct 10 this heading will stale — that is expected.',
+    'Date verified Aug 26, 2026 from YMCA Greater Toronto activity listings (registration starts 2026/08/27 09:00 for members and non-residents; registration ends 2026/10/10). Written Sept 18: the open has gone and the Oct 10 end has not. Confirm the timestamp on My Y for the exact class — after Oct 10 this page is the record of a cycle, not a clock.',
   officialUrls: [
     { href: YMCA_HOME, label: 'YMCA of Greater Toronto' },
     { href: YMCA_PORTAL, label: 'My Y — MyY.YMCAGTA.ORG' },
@@ -553,8 +593,8 @@ export const YMCA_GTA: RegistrationGuide = {
   ruleCards: [
     {
       tag: '9 a.m.',
-      title: 'Same clock for members and non-residents',
-      line: 'City of Toronto rec is 7 a.m. by district. YMCA Greater Toronto is 9 a.m. on Aug 27 for both columns. Showing up at 7 thinking this is Toronto rec is the wrong portal.',
+      title: 'One clock for members and non-residents',
+      line: 'City of Toronto rec ran at 7 a.m. by district in September. YMCA Greater Toronto opened Aug 27 at 9 a.m. for both columns, and anyone who showed up at 7 thinking it was Toronto rec was in the wrong portal.',
       checks: [
         'Portal: MyY.YMCAGTA.ORG',
         'Not eFun, not PerfectMind, not Active Mississauga',
@@ -564,9 +604,9 @@ export const YMCA_GTA: RegistrationGuide = {
     {
       tag: 'Membership',
       title: 'Seeing the class is not the same as taking it',
-      line: 'Listings we checked on Aug 26 still say participants must have an active membership with the YMCA of Greater Toronto. Registering at 9 a.m. without the membership is how the cart fails.',
+      line: 'Listings we checked still say participants must have an active membership with the YMCA of Greater Toronto. Claiming a leftover spot without the membership is how the cart fails.',
       checks: [
-        'Sort membership before the morning, not during it',
+        'Sort membership before you claim a spot, not during checkout',
         'Confirm the prerequisite on the exact activity in My Y',
         'Leftover spots can run through Oct 10 on current listings',
       ],
@@ -574,10 +614,10 @@ export const YMCA_GTA: RegistrationGuide = {
     {
       tag: 'Backup',
       title: 'City clocks if My Y is not your tank',
-      line: 'Toronto city swim is Sept 15/16 at 7 a.m. Brampton city swim is Sept 9 at 7 a.m. Mississauga fall already opened (waitlist). Vaughan non-residents are Aug 27 at 7 a.m. on a different portal, one hour earlier — not My Y.',
+      line: 'Toronto city swim went Sept 15 and Sept 16 at 7 a.m., and its non-residents open Sept 25. Brampton residents went Sept 9; non-residents open Monday, Sept 21 at 7 a.m. Mississauga’s fall opened in August and is on waitlist. Vaughan’s non-resident morning was Aug 27 at 7 a.m. too, one hour earlier and on a different portal — not My Y.',
       checks: [
         'Toronto: district morning, Ultra/Guardian, 36-hour waitlist',
-        'Brampton: Sept 9 residents, in-person verification, 24-hour waitlist',
+        'Brampton: Sept 21 non-residents, in-person verification, 24-hour waitlist',
         'Do not invent a York Region rec system — there isn’t one',
       ],
     },
@@ -595,12 +635,18 @@ export const YMCA_GTA: RegistrationGuide = {
       id: 'confirm-my-y',
       headline: [{ text: 'Confirm the timestamp' }, { text: 'on My Y', accent: true }],
       paragraphs: [
-        'If an activity page has moved its clock, My Y wins. Hale is unofficial. Aug 27 at 9 a.m., membership first. Hale will run that morning with you. Founding families free — villagehale.com.',
+        'If an activity page has moved its clock, My Y wins. Hale is unofficial. The opening morning has gone; what is left sits on the listing until Oct 10, membership first. Tell Hale the branch and the level and Hale watches for the next open. Founding families free — villagehale.com.',
       ],
       links: [
         { href: YMCA_PORTAL, label: 'Open My Y' },
-        { href: '/toronto-swim-registration', label: 'City of Toronto swim — Sept 15/16' },
-        { href: '/brampton-swim-registration', label: 'City of Brampton swim — Sept 9' },
+        {
+          href: '/toronto-swim-registration',
+          label: 'City of Toronto swim — non-residents Sept 25',
+        },
+        {
+          href: '/brampton-swim-registration',
+          label: 'City of Brampton swim — non-residents Sept 21',
+        },
       ],
     },
   ],
@@ -608,22 +654,22 @@ export const YMCA_GTA: RegistrationGuide = {
     {
       question: 'When is YMCA Greater Toronto swim registration?',
       answer:
-        'Thursday, August 27, 2026 at 9:00 a.m. Members and non-residents open at the same time. Confirm the exact class on MyY.YMCAGTA.ORG.',
+        'It opened Thursday, August 27, 2026 at 9:00 a.m., members and non-residents together, and that morning has gone. The listings Hale read run registration to October 10, so what is left is leftover spots. Confirm the exact class on MyY.YMCAGTA.ORG.',
     },
     {
       question: 'Is YMCA GTA swim the same as Toronto swim registration?',
       answer:
-        'No. City of Toronto swim is a 7 a.m. district morning in September on toronto.ca/OnlineReg, using Ultra and Guardian. YMCA Greater Toronto is Aug 27 at 9 a.m. on My Y, using Otter / Seal / Dolphin / Star, and membership is required for many group classes.',
+        'No. City of Toronto swim ran on 7 a.m. district mornings in September on toronto.ca/OnlineReg, using Ultra and Guardian, with non-residents ten days behind. YMCA Greater Toronto opened Aug 27 at 9 a.m. on My Y, using Otter / Seal / Dolphin / Star, and membership is required for many group classes.',
     },
     {
       question: 'Do I need a YMCA membership to register for swim lessons?',
       answer:
-        'You can see the 9 a.m. open without living in a YMCA catchment — members and non-residents share the clock — but listings we checked still require an active YMCA of Greater Toronto membership to take many group Learn to Swim classes. Confirm on the activity page.',
+        'Members and non-residents shared one clock, so catchment was never the gate — but listings we checked still require an active YMCA of Greater Toronto membership to take many group Learn to Swim classes. Confirm on the activity page.',
     },
     {
       question: 'What are YMCA swim levels called?',
       answer:
-        'Otter, Seal, Dolphin, Star, and the rest of the YMCA progression — not Toronto Ultra, not Red Cross. Check the child’s current YMCA report before you join the 9 a.m. cart.',
+        'Otter, Seal, Dolphin, Star, and the rest of the YMCA progression — not Toronto Ultra, not Red Cross. Check the child’s current YMCA report before you claim a leftover spot.',
     },
     {
       question: 'Does a 9-year-old need an adult on deck?',
@@ -631,8 +677,9 @@ export const YMCA_GTA: RegistrationGuide = {
         'YMCA Greater Toronto listings we checked say children 9 and under must be accompanied by an adult over the age of 16. Confirm on the activity page for that branch.',
     },
   ],
-  ctaHeading: 'Aug 27 at 9 a.m., membership first.',
-  ctaSub: 'Hale will run that morning with you. Founding families free — villagehale.com.',
+  ctaHeading: 'Membership first, then what is left on My Y.',
+  ctaSub:
+    'Tell Hale the branch and the level — Hale watches for the next open. Founding families free — villagehale.com.',
   footerNote: FOOTER,
 };
 
