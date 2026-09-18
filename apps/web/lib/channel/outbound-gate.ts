@@ -190,9 +190,11 @@ export const PROACTIVE_CAP: Record<
   // stops after a nuisance instead of after a mailbox.
   email_alert: { max: 3, windowHours: 24 },
   // The calendar. The SAME three a day as the inbox, on its own counter: a household
-  // whose week is being rearranged gets the three soonest changes and hears the rest at
-  // the next sweep, and a connector that re-seeds and reports forty edits as new stops
-  // after a nuisance instead of after a phone full of texts.
+  // whose week is being rearranged gets the three SOONEST changes and never hears the
+  // rest — the sweep advanced the syncToken the moment it read the page, so a change this
+  // cap refuses is not offered again. That is the cap's real price, and it is the right
+  // one: a connector that re-seeds and reports forty edits as new stops after a nuisance
+  // instead of after a phone full of texts.
   calendar_alert: { max: 3, windowHours: 24 },
 };
 

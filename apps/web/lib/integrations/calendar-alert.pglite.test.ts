@@ -280,10 +280,40 @@ describe('alertParentForCalendarChanges', () => {
     ).resolves.toEqual(['outside_window']);
   });
 
-  it('names a tombstone Google sent with no start rather than counting it as far away', async () => {
-    // Google's incremental list returns a deleted single event as id + status + updated
-    // and nothing else. "We cannot place this in time" is a different fact from "this is
-    // in 40 days", and a sweep that says the second is a sweep nobody can diagnose.
+  it('texts about a cancelled recurring instance, which carries a start and nothing else', async () => {
+    // The shape Google actually sends for "Friday's class is off": id + recurringEventId +
+    // originalStartTime + status, mapped to a start with no summary and no location. The
+    // master's title is not in the response to borrow, so the sentence says what it knows.
+    const h = harness();
+    const instance: CalendarChange = {
+      eventId: 'ev-cartwheels_20260919T001500Z',
+      // No `updated` on the wire either — the sync keyed this one on the item's etag.
+      updated: '"3181161784712000"',
+      status: 'cancelled',
+      start: { dateTime: '2026-09-18T20:15:00.000Z' },
+      end: { dateTime: '2026-09-18T20:15:00.000Z' },
+    };
+
+    await expect(sweep(h, { changes: [instance] })).resolves.toEqual(['sent']);
+    expect(h.transport.sent[0]?.body).toContain('An event on Friday, Sep 18 was cancelled.');
+    // The etag keys the row like any other stamp: the same instance read twice is one text.
+    await expect(sweep(harness(), { changes: [instance] })).resolves.toEqual(['already_sent']);
+  });
+
+  it('spends nothing on a sweep with no changes at all, not even the clock read', async () => {
+    const h = harness();
+    await expect(sweep(h, { changes: [] })).resolves.toEqual([]);
+    expect(h.timeZoneReads).toEqual([]);
+    // The positive control: the SAME harness reads the clock the moment there is one
+    // change, so the assertion above is about the empty list and not about the fake.
+    await expect(sweep(h)).resolves.toEqual(['sent']);
+    expect(h.timeZoneReads).toEqual([family.parentUserId]);
+  });
+
+  it('names a deleted single event Google sent with no start rather than counting it as far away', async () => {
+    // A deleted SINGLE event is the one tombstone with nothing to place: id + status and
+    // no originalStartTime either. "We cannot place this in time" is a different fact from
+    // "this is in 40 days", and a sweep that says the second is a sweep nobody can diagnose.
     const h = harness();
     await expect(
       sweep(h, {
@@ -574,6 +604,39 @@ describe('the text itself', () => {
 
   it('calls an event with no summary Untitled rather than saying nothing', () => {
     expect(render({ ...TIMED, title: undefined })).toContain('Untitled is on your calendar');
+  });
+
+  it('calls a CANCELLED event with no summary "An event" — a tombstone has no title to find', () => {
+    // "Untitled was cancelled" reads as a bug in Hale. The recurring master's title would
+    // be the honest answer and the incremental page does not carry it, so the sentence
+    // says the one true thing instead.
+    expect(render({ ...TIMED, status: 'cancelled', title: undefined })).toBe(
+      'An event on Thursday, Sep 17 was cancelled.',
+    );
+  });
+
+  it('drops a title with a mailbox in it, exactly as the location is dropped', () => {
+    // A parent writes the person they owe a reply to into the title, and a mailbox in a
+    // text is a mailbox anyone holding the phone can write to (rule #1).
+    expect(render({ ...TIMED, title: 'Email coach@gym.ca re Leo' })).toBe(
+      'Untitled is on your calendar for Thursday, Sep 17, 4:15-5:00 p.m.',
+    );
+    expect(render({ ...TIMED, status: 'cancelled', title: 'Email coach@gym.ca re Leo' })).toBe(
+      'An event on Thursday, Sep 17 was cancelled.',
+    );
+  });
+
+  it('names the start alone for a timed event Google sent with no end', () => {
+    // `end` is absent often enough to matter, and the span collapses onto the start —
+    // which "11:00-11:00 a.m." renders as a typo rather than as the one fact there is.
+    expect(
+      render({
+        ...TIMED,
+        title: 'Pickup',
+        start: { dateTime: '2026-09-17T15:00:00.000Z' },
+        end: {},
+      }),
+    ).toBe('Pickup is on your calendar for Thursday, Sep 17, 11:00 a.m.');
   });
 
   it('carries a short, clean location and refuses a long one or one with an address in it', () => {

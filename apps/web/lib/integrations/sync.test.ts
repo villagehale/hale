@@ -308,6 +308,9 @@ describe('syncConnection — Calendar', () => {
 
     expect(result.calendarAlerts).toEqual(['dark']);
     expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
+    // The control for the drop counter below: a clean page reports nothing dropped, so
+    // `1` there cannot be a counter that is simply always on.
+    expect(result.calendarDroppedNoId).toBe(0);
   });
 
   it('a throw from the CALENDAR alert path is named, and never marks the calendar broken', async () => {
@@ -339,13 +342,13 @@ describe('syncConnection — Calendar', () => {
     expect(cap.enqueued).toHaveLength(1);
   });
 
-  it('drops an item with no id or no `updated` — the two halves of the dedupe key', async () => {
+  it('drops an item with no id and COUNTS it — the one field nothing can stand in for', async () => {
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { fetchImpl } = routedFetch([
       {
         match: 'calendar/v3',
         body: {
           items: [
-            { id: 'ev1', summary: 'no updated stamp' },
             { updated: '2026-09-17T14:55:00.000Z', summary: 'no id' },
             { id: 'ev3', updated: '2026-09-17T14:56:00.000Z', summary: 'complete' },
           ],
@@ -354,9 +357,98 @@ describe('syncConnection — Calendar', () => {
       },
     ]);
     const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
-    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+    const result = await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
 
     expect(onlyChanges(cap).map((c) => c.eventId)).toEqual(['ev3']);
+    // A silent drop is a connector going blind (rule #11): the item is still gone, but
+    // the sweep says how many and the cron summary carries it.
+    expect(result.calendarDroppedNoId).toBe(1);
+    expect(warned).toHaveBeenCalledTimes(1);
+    warned.mockRestore();
+  });
+
+  it('keys an item Google sent with no `updated` on its etag — the same page twice, the same key', async () => {
+    // events.list documents a deleted event as "only guaranteed to have the id field
+    // populated". Dropping every item without `updated` drops the cancellations, which
+    // are the single most useful thing this feature says. The etag is a VERSION, so it
+    // keys a replay to the same string and costs one text rather than two.
+    const items = [
+      {
+        id: 'ev1',
+        etag: '"3181161784712000"',
+        summary: 'Swim',
+        start: { dateTime: '2026-09-18T20:15:00-04:00' },
+      },
+    ];
+    const stamps: string[] = [];
+    for (let run = 0; run < 2; run += 1) {
+      const { fetchImpl } = routedFetch([
+        { match: 'calendar/v3', body: { items, nextSyncToken: 'SYNC-2' } },
+      ]);
+      const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+      await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+      stamps.push(onlyChanges(cap)[0]?.updated ?? 'MISSING');
+    }
+    expect(stamps).toEqual(['"3181161784712000"', '"3181161784712000"']);
+  });
+
+  it('keys an item with neither `updated` nor etag on the run\'s own clock rather than dropping it', async () => {
+    const before = Date.now();
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3',
+        body: {
+          items: [{ id: 'ev1', summary: 'Swim', start: { dateTime: '2026-09-18T20:15:00-04:00' } }],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    const [change] = onlyChanges(cap);
+    expect(change?.eventId).toBe('ev1');
+    const stamp = Date.parse(change?.updated ?? '');
+    expect(stamp).toBeGreaterThanOrEqual(before);
+    expect(stamp).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('places a cancelled recurring instance by its originalStartTime — the only time it carries', async () => {
+    // Google returns a cancelled instance of a recurring event as id + recurringEventId +
+    // originalStartTime + status, with no `start` at all. Read literally that is a change
+    // nobody can place in time; read as Google means it, it is "Friday's class is off".
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3',
+        body: {
+          items: [
+            {
+              id: 'ev2_20260918T201500Z',
+              status: 'cancelled',
+              updated: '2026-09-17T14:55:00.000Z',
+              recurringEventId: 'ev2',
+              originalStartTime: { dateTime: '2026-09-18T20:15:00-04:00' },
+            },
+          ],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(onlyChanges(cap)).toEqual([
+      {
+        eventId: 'ev2_20260918T201500Z',
+        updated: '2026-09-17T14:55:00.000Z',
+        status: 'cancelled',
+        title: undefined,
+        start: { dateTime: '2026-09-18T20:15:00-04:00', date: undefined },
+        end: { dateTime: '2026-09-18T20:15:00-04:00', date: undefined },
+        location: undefined,
+        selfOrganized: undefined,
+      },
+    ]);
   });
 });
 

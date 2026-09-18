@@ -47,15 +47,18 @@ import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
  */
 export interface CalendarChange {
   eventId: string;
-  /** Google's own last-modification stamp. It is half the dedupe key, which is what makes
-   * a MOVED event a new text and a re-read of the same page free. */
+  /** The version of this event, and half the dedupe key — which is what makes a MOVED
+   * event a new text and a re-read of the same page free. Google's `updated` where there
+   * is one; the sync falls back to the etag and then to its own clock, because the items
+   * carrying least are the cancellations (see `calendarChangeOf`). */
   updated: string;
   status: 'confirmed' | 'tentative' | 'cancelled';
-  /** `summary`, which Google permits to be absent — rendered as 'Untitled' rather than
-   * as a sentence with a hole in it. */
+  /** `summary`, which Google permits to be absent — rendered generically rather than as a
+   * sentence with a hole in it, and a tombstone never carries one at all. */
   title?: string;
-  /** `dateTime` for a timed event, `date` for an all-day one; a tombstone can carry
-   * neither, which is {@link CALENDAR_ALERT_OUTCOMES}'s `no_start`. */
+  /** `dateTime` for a timed event, `date` for an all-day one, and a cancelled recurring
+   * instance's `originalStartTime` where Google sent no `start`. A deleted SINGLE event
+   * carries none of the three, which is {@link CALENDAR_ALERT_OUTCOMES}'s `no_start`. */
   start: { dateTime?: string; date?: string };
   end: { dateTime?: string; date?: string };
   location?: string;
@@ -184,6 +187,9 @@ export async function alertParentForCalendarChanges(
   // Before the clock read below: the flag is a pure function of the family id, so a query
   // in front of it is a query per sweep for a family Hale may not speak to at all.
   if (!f14EnabledFor(familyId)) return changes.map(() => 'dark');
+  // Most sweeps are this one. A quiet calendar must not cost a clock read, the same way
+  // the email sibling refuses to pay for an empty mailbox.
+  if (changes.length === 0) return [];
 
   const timeZone = await ports.timeZone(parentUserId);
   const outcomes = new Array<CalendarAlertOutcome>(changes.length);
@@ -326,7 +332,8 @@ export interface EventSpan {
 }
 
 /** The instants this change is about, or null when Google sent neither a `dateTime` nor
- * a `date` — the shape of a deleted single event on an incremental page. Resolved ONCE
+ * a `date` nor an `originalStartTime` — the shape of a deleted SINGLE event on an
+ * incremental page, and the only shape that cannot be placed. Resolved ONCE
  * per change and handed to the renderer, so the window decision and the sentence can
  * never disagree about which day this is. */
 export function eventSpan(change: CalendarChange, timeZone: string): EventSpan | null {
@@ -413,6 +420,10 @@ function withinAlertWindow(change: CalendarChange, span: EventSpan, now: Date): 
 const TITLE_MAX = 60;
 const LOCATION_MAX = 40;
 const UNTITLED = 'Untitled';
+/** What a cancellation calls an event it has no name for. A tombstone carries no
+ * `summary` at all, and the recurring master's title is not on the incremental page to
+ * borrow — "Untitled was cancelled" reads as a bug in Hale rather than as news. */
+const UNTITLED_CANCELLED = 'An event';
 
 /**
  * The text, assembled from Google's fields and nothing else.
@@ -427,7 +438,7 @@ export function renderCalendarAlert(
   timeZone: string,
   now: Date,
 ): string {
-  const title = clampTitle(gsm7(change.title ?? '')) || UNTITLED;
+  const title = eventTitle(change);
   // One zone for everything, because an all-day span is already anchored at midnight in
   // it ({@link dayStartInZone}) — the day the parent typed IS the day this names.
   const day = asciiSpaces(formatDayHeading(new Date(span.startMs), timeZone, now));
@@ -466,6 +477,10 @@ function dayRange(span: EventSpan, startDay: string, timeZone: string, now: Date
  */
 function clockRange(span: EventSpan, timeZone: string, now: Date): string {
   const start = clockParts(span.startMs, timeZone);
+  // Google permits a timed event to carry no `end`, and {@link eventSpan} collapses such a
+  // span onto its start. "11:00-11:00 a.m." is a typo where the start alone is the one
+  // fact there is.
+  if (span.endMs === span.startMs) return `${start.clock} ${start.dayPeriod}`;
   const end = clockParts(span.endMs, timeZone);
   const endDay = asciiSpaces(formatDayHeading(new Date(span.endMs), timeZone, now));
   const startDay = asciiSpaces(formatDayHeading(new Date(span.startMs), timeZone, now));
@@ -533,6 +548,21 @@ function gsm7(text: string): string {
     if (isPrintableGsm7Basic(char)) out += char;
   }
   return out.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * What to call the event, once the parent's own words have been made safe to send.
+ *
+ * The '@' rule is the location's, for the location's reason: parents write the person
+ * they owe a reply to into a title ("Email coach@gym.ca re Leo"), and a mailbox in a text
+ * is a mailbox anyone holding the phone can write to (rule #1). Dropped whole rather than
+ * scrubbed — a title with the address cut out of it is a sentence with a hole in it.
+ */
+function eventTitle(change: CalendarChange): string {
+  const generic = change.status === 'cancelled' ? UNTITLED_CANCELLED : UNTITLED;
+  const text = gsm7(change.title ?? '');
+  if (text.includes('@')) return generic;
+  return clampTitle(text) || generic;
 }
 
 /** Cut to the budget with an explicit ellipsis, so a parent can see that the calendar

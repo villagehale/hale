@@ -101,6 +101,10 @@ export interface CalendarAlertBatch {
 export interface SyncConnectionResult {
   emailAlerts: readonly EmailAlertOutcome[];
   calendarAlerts: readonly CalendarAlertOutcome[];
+  /** Calendar items this run could not key at all, because Google sent no `id`. They have
+   * no alert outcome — they never reached the alert path — and a drop with no number
+   * beside it is a connector going blind without anyone being able to tell (rule #11). */
+  calendarDroppedNoId: number;
 }
 
 const GONE = 410;
@@ -122,7 +126,7 @@ interface ProviderResult {
   /** Calendar only: the raw changes of this run, INCLUDING the cancelled items the ingest
    * drops. A tombstone is the single most useful thing the alert path says and the one
    * thing `events` structurally cannot carry, so it rides alongside. */
-  calendar?: { seeding: boolean; changes: CalendarChange[] };
+  calendar?: { seeding: boolean; changes: CalendarChange[]; droppedNoId: number };
 }
 
 /**
@@ -136,6 +140,7 @@ export async function syncConnection(
 ): Promise<SyncConnectionResult> {
   let emailAlerts: readonly EmailAlertOutcome[] = [];
   let calendarAlerts: readonly CalendarAlertOutcome[] = [];
+  let calendarDroppedNoId = 0;
   try {
     const accessToken = await ensureFreshToken(connection, deps);
     const result = await runProviderSync(connection, accessToken, deps.googleFetch);
@@ -181,6 +186,7 @@ export async function syncConnection(
     }
     if (result.calendar) {
       const { seeding, changes } = result.calendar;
+      calendarDroppedNoId = result.calendar.droppedNoId;
       try {
         calendarAlerts = await deps.alertCalendarChanges({ connection, seeding, changes });
       } catch (err) {
@@ -206,7 +212,7 @@ export async function syncConnection(
     );
     await deps.markError(connection.id, code);
   }
-  return { emailAlerts, calendarAlerts };
+  return { emailAlerts, calendarAlerts, calendarDroppedNoId };
 }
 
 /** Refresh + persist an expiring access token; returns the token to use for this
@@ -361,6 +367,24 @@ async function syncCalendar(
         end: item.end,
       }),
     );
+  // ONE stamp for the whole run, so two items Google versioned with neither `updated` nor
+  // an etag still key apart by their ids rather than by microseconds.
+  const runStamp = new Date().toISOString();
+  const changes: CalendarChange[] = [];
+  let droppedNoId = 0;
+  for (const item of items) {
+    const change = calendarChangeOf(item, runStamp);
+    if (change === null) droppedNoId += 1;
+    else changes.push(change);
+  }
+  if (droppedNoId > 0) {
+    // The COUNT only: an item this sweep could not key is still an item off a family's
+    // calendar, and its fields do not belong in a log (rule #1).
+    console.warn(
+      { integrationId: connection.id, droppedNoId },
+      'connector sync: calendar items with no id, dropped',
+    );
+  }
   return {
     events,
     nextMetadata: { syncToken: nextSyncToken },
@@ -369,35 +393,53 @@ async function syncCalendar(
     // parent put there themselves.
     calendar: {
       seeding: startedWithToken === undefined || resynced,
-      changes: items.flatMap((item) => calendarChangeOf(item) ?? []),
+      changes,
+      droppedNoId,
     },
   };
 }
 
-/** One events.list item as the alert path needs it, or nothing when Google sent no id or
- * no modification stamp — the two halves of the dedupe key, without which a change cannot
- * be told apart from its own replay. */
-function calendarChangeOf(item: Record<string, unknown>): CalendarChange | null {
+/**
+ * One events.list item as the alert path needs it, or nothing when Google sent no `id` —
+ * the one field nothing can stand in for, and the counted drop above.
+ *
+ * Everything else has a documented fallback, because the items that carry least are the
+ * cancellations, which are the most useful thing this feature says. events.list: a deleted
+ * event "will only have the id field populated"; a cancelled instance of a recurring event
+ * carries `recurringEventId` and `originalStartTime` instead of a `start`.
+ */
+function calendarChangeOf(item: Record<string, unknown>, runStamp: string): CalendarChange | null {
   const eventId = readString(item.id);
-  const updated = readString(item.updated);
-  if (eventId === undefined || updated === undefined) return null;
+  if (eventId === undefined) return null;
   const status = readString(item.status);
+  // A cancelled instance's original start IS its start: "the 8:15 on Friday" is the thing
+  // that is not happening. On a MOVED instance `start` is present and wins, which is the
+  // new time — the one the parent needs.
+  const start = timePoint(item.start) ?? timePoint(item.originalStartTime) ?? {};
   return {
     eventId,
-    updated,
+    // Google's own version where there is one, the etag where there is not (it changes
+    // with the event, so a replay of the same page is the same key), and this run's clock
+    // as the floor — a change nobody can version is still a change, and dropping it
+    // silently is how the cancellation goes missing.
+    updated: readString(item.updated) ?? readString(item.etag) ?? runStamp,
     status: status === 'cancelled' || status === 'tentative' ? status : 'confirmed',
     title: readString(item.summary),
-    start: timePoint(item.start),
-    end: timePoint(item.end),
+    start,
+    end: timePoint(item.end) ?? start,
     location: readString(item.location),
     selfOrganized: readSelf(item.organizer),
   };
 }
 
-function timePoint(value: unknown): { dateTime?: string; date?: string } {
-  if (typeof value !== 'object' || value === null) return {};
+/** A start/end Google actually placed in time, or nothing — so a caller can fall through
+ * to the next field that might carry one. */
+function timePoint(value: unknown): { dateTime?: string; date?: string } | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
   const point = value as { dateTime?: unknown; date?: unknown };
-  return { dateTime: readString(point.dateTime), date: readString(point.date) };
+  const dateTime = readString(point.dateTime);
+  const date = readString(point.date);
+  return dateTime === undefined && date === undefined ? undefined : { dateTime, date };
 }
 
 function readSelf(organizer: unknown): boolean | undefined {

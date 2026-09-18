@@ -94,6 +94,10 @@ export interface ConnectorSyncSummary {
    * connectors fail in different ways, and a sweep where every calendar change is
    * `outside_window` reads nothing like one where every email is `not_parenting`. */
   calendarAlerts: CalendarAlertCounts;
+  /** Calendar items no sweep could key, because Google sent them with no `id`. They have
+   * no alert outcome to count — they never reached the alert path — so without this line
+   * a page of un-keyable items reads as a quiet week (rule #11). */
+  calendarDroppedNoId: number;
 }
 
 /**
@@ -110,6 +114,7 @@ export async function runConnectorSync(
   const childNamesByFamily = new Map<string, string[]>();
   const emailAlerts = emptyEmailAlertCounts();
   const calendarAlerts = emptyCalendarAlertCounts();
+  let calendarDroppedNoId = 0;
 
   for (const connection of connections) {
     try {
@@ -136,11 +141,12 @@ export async function runConnectorSync(
       const result = await deps.syncOne({ ...connection, tokens }, base, childNames);
       for (const outcome of result.emailAlerts) emailAlerts[outcome] += 1;
       for (const outcome of result.calendarAlerts) calendarAlerts[outcome] += 1;
+      calendarDroppedNoId += result.calendarDroppedNoId;
     } catch {
       // Isolate: a failure here must not stop the remaining connections.
     }
   }
-  return { connections: connections.length, emailAlerts, calendarAlerts };
+  return { connections: connections.length, emailAlerts, calendarAlerts, calendarDroppedNoId };
 }
 
 /** Wire the real DB + queue into the sync deps. */
