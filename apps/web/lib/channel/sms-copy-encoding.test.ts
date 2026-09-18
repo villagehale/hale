@@ -29,6 +29,7 @@ import {
   detailsBlocked,
   followUp,
   greeting,
+  intakeConnectorOffer,
 } from '~/lib/channel/intake/copy';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { connectorOfferReply } from '~/lib/channel/connect/copy';
@@ -292,6 +293,61 @@ describe('the connector offer stays GSM-7 and inside one segment, twins in locks
       expect(en).toContain('15');
       expect(fr).toContain('15');
     }
+  });
+});
+
+/**
+ * The day-one connector offer intake sends behind the consent acknowledgment — the same
+ * link, a longer sentence, and therefore a different ceiling.
+ *
+ * TWO SEGMENTS, not one, and the number is the point of the test rather than an
+ * allowance: 60 of these characters are a sign-in URL Hale did not write, and the copy
+ * spends the rest saying what the link is for and that ignoring it is a complete answer.
+ * A third segment is a 50% bill increase on a message every new family gets, and an
+ * amputated link is an offer nobody can accept — so both twins are measured with a
+ * realistic link inside them, and the FR twin is held to the same alphabet as the rest
+ * of the French script.
+ */
+describe('the intake connector offer stays GSM-7 and inside two segments', () => {
+  const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ';
+
+  it.each(['en', 'fr'] as const)('%s', (language) => {
+    const body = intakeConnectorOffer(language, URL);
+    expect({
+      encoding: smsEncoding(body),
+      overBudget: smsSegments(body) > 2,
+      carriesWholeLink: body.includes(URL),
+    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true });
+  });
+
+  /** The twins carry the same three facts in different words: what is being asked for,
+   * how long the link lives, and that doing nothing is the answer. */
+  it('keeps the EN and FR twins in lockstep on the facts', () => {
+    const en = intakeConnectorOffer('en', URL);
+    const fr = intakeConnectorOffer('fr', URL);
+
+    expect(en).not.toBe(fr);
+    for (const body of [en, fr]) {
+      expect(body).toContain('Gmail');
+      expect(body).toContain('15');
+      expect(body).toContain(URL);
+    }
+    expect(en).toContain('Google Calendar');
+    expect(fr).toContain('Google Agenda');
+    // The skip, in both — the offer has no NO to reply to, so the message has to say
+    // that ignoring it is a whole answer or it is not optional at all.
+    expect(en).toMatch(/ignore this to skip/);
+    expect(fr).toMatch(/ignorez pour passer/);
+  });
+
+  /** The characters the French twin may not use, named — the same refusals the rest of
+   * the French script is held to, with the same positive control under them. */
+  it('names the characters the French twin may not use', () => {
+    const fr = intakeConnectorOffer('fr', URL);
+
+    expect([...'âêîôûçœ«»’—'].filter((char) => fr.includes(char))).toEqual([]);
+    expect(smsEncoding('é è à ù')).toBe('gsm7');
+    expect(smsEncoding('â ê î ô û ç')).toBe('ucs2');
   });
 });
 
