@@ -60,7 +60,17 @@ const PORTAL_MUNICIPALITIES: Municipality[] = [
 export interface PreparingSequence {
   sequenceId: string;
   familyId: string;
-  parentUserId: string;
+  /**
+   * NO `parentUserId`, and the absence is the fix (rule #6, audit 2026-09-17 r1).
+   *
+   * The sequence row carries the seat that CLAIMED the window, and while the ladder
+   * texted one number that id was also, by accident, the only person who could answer
+   * it. Its legs now reach every parent seat (channel/family-recipients.ts), so a
+   * writer holding the claimer's id would file the co-parent's "yes, done" under the
+   * primary parent's name. The ANSWERING parent is passed to each handler instead, and
+   * the claimer's id is not in scope here at all — a stamp that cannot be reached is a
+   * stamp nobody can reach for by mistake.
+   */
   windowId: string;
   municipality: Municipality;
   /** Non-null by construction: a sequence whose municipality has no portal is not a
@@ -85,16 +95,50 @@ export interface PreparingSequence {
 }
 
 /**
+ * LIVE, OPTED IN AND STILL AHEAD — the three facts both readers in this module mean by
+ * "there is a registration morning to talk about", written once.
+ *
+ * The opt-in is read off the approval spine's own columns (an executed draft is the
+ * parent's yes, a reverted one their no, one still queued is neither), and the clock
+ * test is a SUPERSET of "the anchor is still ahead": the stored course clock where
+ * there is one, the general date otherwise, which is never EARLIER than this family's
+ * own instant. The exact anchor is resolved in code by {@link familyAnchor}, because
+ * the resident head start comes off the family's FSA.
+ *
+ * Callers must join `actions` and `registration_windows`; there is no shape in Drizzle
+ * that can make them, and every caller of this predicate is in this file.
+ */
+function liveOptedInSequence(familyId: string, now: Date) {
+  return and(
+    eq(schema.registrationSequences.familyId, familyId),
+    isNull(schema.registrationSequences.outcome),
+    sql`${schema.actions.executedAt} is not null`,
+    isNull(schema.actions.revertedAt),
+    or(
+      gt(schema.registrationSequences.courseOpensAt, now),
+      gt(schema.registrationWindows.openAt, now),
+    ),
+  );
+}
+
+/** THIS family's registration morning: the bound course's own clock where there is one,
+ * and otherwise the M1 row resolved against their postal area (a resident household
+ * registers days before the general date). */
+function familyAnchor(
+  window: typeof schema.registrationWindows.$inferSelect,
+  areaCoarse: string | null,
+  courseOpensAt: Date | null,
+): Date {
+  return courseOpensAt ?? resolveFamilyOpen(window, areaCoarse).opensForFamilyAt;
+}
+
+/**
  * THE live opted-in pre-open sequence for a portal municipality, or null.
  *
  * NOT a widening of `loadAwaitingSequence` (reply.ts), which orders by the M1 row's own
- * `open_at` and would hand back the sequence whose morning has already run. The filters
- * here are the four this feature needs, and three of them are SQL: the opt-in read off
- * the approval spine's own columns, the portal municipalities, and a superset of "the
- * anchor is still ahead" (`course_opens_at > now OR open_at > now` — the stored clock
- * where there is one, and otherwise the general date, which is never EARLIER than this
- * family's own instant). The exact anchor check is the one thing SQL cannot do, because
- * the resident head start is resolved from the family's FSA in code.
+ * `open_at` and would hand back the sequence whose morning has already run. Three of
+ * its four filters are {@link liveOptedInSequence}'s; the fourth, and the only one this
+ * reader adds, is the portal municipalities, because everything below it reads a page.
  */
 export async function loadPreparingSequence(
   database: Database,
@@ -104,7 +148,6 @@ export async function loadPreparingSequence(
   const [row] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
-      parentUserId: schema.registrationSequences.parentUserId,
       courseUrl: schema.registrationSequences.courseUrl,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       readinessReady: schema.registrationSequences.readinessReady,
@@ -122,17 +165,8 @@ export async function loadPreparingSequence(
     .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
     .where(
       and(
-        eq(schema.registrationSequences.familyId, familyId),
-        isNull(schema.registrationSequences.outcome),
+        liveOptedInSequence(familyId, now),
         inArray(schema.registrationWindows.municipality, PORTAL_MUNICIPALITIES),
-        // The approval spine's own answer, in SQL: an executed draft is the opt-in, a
-        // reverted one is a decline, and one still in the queue is neither yet.
-        sql`${schema.actions.executedAt} is not null`,
-        isNull(schema.actions.revertedAt),
-        or(
-          gt(schema.registrationSequences.courseOpensAt, now),
-          gt(schema.registrationWindows.openAt, now),
-        ),
       ),
     )
     .orderBy(
@@ -145,8 +179,9 @@ export async function loadPreparingSequence(
   if (portal === null) return null;
 
   const open = resolveFamilyOpen(row.window, row.areaCoarse);
-  const anchor = row.courseOpensAt ?? open.opensForFamilyAt;
-  if (anchor.getTime() <= now.getTime()) return null;
+  if (familyAnchor(row.window, row.areaCoarse, row.courseOpensAt).getTime() <= now.getTime()) {
+    return null;
+  }
 
   const children = await database
     .select({
@@ -177,7 +212,6 @@ export async function loadPreparingSequence(
   return {
     sequenceId: row.sequenceId,
     familyId,
-    parentUserId: row.parentUserId,
     windowId: row.window.id,
     municipality: row.window.municipality,
     portal,
@@ -326,6 +360,9 @@ export type CourseBindOutcome =
 
 export interface CourseBindInput {
   sequence: PreparingSequence;
+  /** WHO PASTED IT. The ladder reaches both parents, so this is the co-parent as often
+   * as the claimer, and it is what the audit row is stamped with. */
+  answeredByUserId: string;
   /** The link token as the parent pasted it — sanitized here, never upstream. */
   rawUrl: string;
   inboundChannelMessageId: string;
@@ -399,7 +436,7 @@ export async function handleCourseBind(
   const written = await deps.recordCourseBinding(database, {
     sequenceId: sequence.sequenceId,
     familyId: sequence.familyId,
-    parentUserId: sequence.parentUserId,
+    parentUserId: input.answeredByUserId,
     inboundChannelMessageId: input.inboundChannelMessageId,
     url: sanitized.url,
     host: sanitized.host,
@@ -507,6 +544,9 @@ function when(instant: Date, timeZone: string, now: Date): string {
 
 export interface ReadinessAnswerInput {
   sequence: PreparingSequence;
+  /** WHO SAID IT — the same rule the check-in outcome keeps (reply.ts): the checklist
+   * is asked of every parent seat, so the answer belongs to whichever one replied. */
+  answeredByUserId: string;
   ready: boolean;
   /** Whether a person typed a token or a model read a sentence — rule #6's trail has to
    * be able to answer that months later (route.ts, `ResolvedAnswer.confidence`). */
@@ -529,7 +569,7 @@ export async function handleReadinessAnswer(
   const written = await deps.recordReadinessState(database, {
     sequenceId: input.sequence.sequenceId,
     familyId: input.sequence.familyId,
-    parentUserId: input.sequence.parentUserId,
+    parentUserId: input.answeredByUserId,
     inboundChannelMessageId: input.inboundChannelMessageId,
     ready: input.ready,
     read: input.read,
@@ -611,16 +651,34 @@ export async function readinessAskedLastAt(
   );
   if (askKeys.length === 0) return null;
 
-  // SENT_STATUSES rather than the dedupe key's own CONSUMED set: a 'failed' send
-  // consumed the key but never reached the phone, and a question nobody was asked is
-  // not open.
+  return lastWordAt(database, parentUserId, askKeys);
+}
+
+/**
+ * When one of these legs last reached this parent WITH NOTHING AFTER IT, or null.
+ *
+ * The last-word rule itself, shared by the two questions in this module that depend on
+ * it — the readiness checklist and the heads-up's YES. Two copies of a two-query rule
+ * about the same ledger is two copies that can disagree about what "after" means.
+ *
+ * SENT_STATUSES rather than the dedupe key's own CONSUMED set: a 'failed' send consumed
+ * the key but never reached the phone, and a question nobody was asked is not open. The
+ * newer read is OUTBOUND ONLY — in production the parent's own reply is always a newer
+ * row (twilio/inbound.ts writes it before the turn is enqueued), so a read that forgets
+ * the direction closes every question on every real turn.
+ */
+async function lastWordAt(
+  database: Database,
+  parentUserId: string,
+  dedupeKeys: string[],
+): Promise<Date | null> {
   const [ask] = await database
     .select({ createdAt: schema.channelMessages.createdAt })
     .from(schema.channelMessages)
     .where(
       and(
         eq(schema.channelMessages.parentUserId, parentUserId),
-        inArray(schema.channelMessages.dedupeKey, askKeys),
+        inArray(schema.channelMessages.dedupeKey, dedupeKeys),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     )
@@ -641,6 +699,65 @@ export async function readinessAskedLastAt(
     )
     .limit(1);
   return newer ? null : ask.createdAt;
+}
+
+/**
+ * THE SECOND PARENT'S YES — the sequence this parent has been asked to approve and
+ * whose household already did, or null.
+ *
+ * WHY THIS EXISTS. The heads-up carries the ask ("Reply YES and I'll run the morning
+ * with you") and now reaches every parent seat, while the thing it asks about is ONE
+ * drafted action for the household. The first YES executes it and empties the queue, so
+ * the second arrives at an approval lane with nothing pending, which declines to claim
+ * it (approval.ts, decision 3) and hands a bare affirmative to the coach — whose thread
+ * with THIS parent still ends in that ask and which has no way to know their partner
+ * already answered it. The honest sentence is short and this module can prove it
+ * (audit 2026-09-17 r1).
+ *
+ * IT IS THE LAST-WORD RULE THAT KEEPS IT NARROW, exactly as the readiness question is
+ * kept narrow: the claim holds only while the heads-up is still Hale's most recent word
+ * to this parent. Anything else Hale sent them since — a later leg, a coach reply, a
+ * plan — closes it, so a "yes" that answers something newer can never land here. No
+ * portal filter and no municipality: every household gets the heads-up, and thirteen of
+ * them have no portal at all.
+ */
+export async function approvedShortlistAskedOf(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+  now: Date,
+): Promise<{ sequenceId: string } | null> {
+  const [row] = await database
+    .select({
+      sequenceId: schema.registrationSequences.id,
+      windowId: schema.registrationSequences.windowId,
+      courseOpensAt: schema.registrationSequences.courseOpensAt,
+      window: schema.registrationWindows,
+      areaCoarse: schema.families.areaCoarse,
+    })
+    .from(schema.registrationSequences)
+    .innerJoin(
+      schema.registrationWindows,
+      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
+    )
+    .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
+    .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
+    .where(liveOptedInSequence(familyId, now))
+    .orderBy(
+      sql`coalesce(${schema.registrationSequences.courseOpensAt}, ${schema.registrationWindows.openAt})`,
+    )
+    .limit(1);
+  if (!row) return null;
+  // The morning itself, resolved for THIS family: past it the ladder is asking how it
+  // went, and "I'll run the morning with you" is no longer a true sentence.
+  if (familyAnchor(row.window, row.areaCoarse, row.courseOpensAt).getTime() <= now.getTime()) {
+    return null;
+  }
+
+  const asked = await lastWordAt(database, parentUserId, [
+    legDedupeKey(familyId, row.windowId, 'heads_up', parentUserId),
+  ]);
+  return asked === null ? null : { sequenceId: row.sequenceId };
 }
 
 // ── the writers ──────────────────────────────────────────────────────────────
@@ -778,6 +895,14 @@ export interface PrepareReplyDeps {
     sequence: PreparingSequence,
     parentUserId: string,
   ): Promise<Date | null>;
+  /** The household's already-approved shortlist, while its ask is still this parent's
+   * last word from Hale — see {@link approvedShortlistAskedOf}. */
+  approvedShortlistAskedOf(
+    database: Database,
+    familyId: string,
+    parentUserId: string,
+    now: Date,
+  ): Promise<{ sequenceId: string } | null>;
   /**
    * Non-nullable (rule #11), both of them. A bind that cannot read the page refuses in
    * a sentence; a bind whose read is not this family's to take this window refuses in
@@ -799,6 +924,7 @@ export function defaultPrepareReplyDeps(): PrepareReplyDeps {
   return {
     loadPreparingSequence,
     readinessAskedLastAt,
+    approvedShortlistAskedOf,
     claimBindRead,
     fetchBody: createFetchBody(BIND_FETCH_TIMEOUT_MS),
     recordCourseBinding,

@@ -17,6 +17,7 @@ import {
   handleCourseBind,
   handleReadinessAnswer,
 } from '~/lib/registration/sequence/prepare-reply';
+import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import { type SequenceReplyDeps, handleSequenceReply } from '~/lib/registration/sequence/reply';
 import {
   type ResolvedIntroAnswer,
@@ -567,10 +568,49 @@ export function sequenceReplyHandler(
         },
         deps,
       );
-      if (outcome.status !== 'recorded') return { claimed: false };
-      return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      if (outcome.status === 'recorded') {
+        return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      }
+      return (await alreadyApprovedReply(database, ctx, prepare)) ?? { claimed: false };
     },
   };
+}
+
+/**
+ * THE OTHER PARENT'S YES to a card this household has already approved.
+ *
+ * LAST IN THIS HANDLER, after every branch that could have something to record, because
+ * it is the only one that acts on nothing: there is no state to write, and a turn that
+ * any other branch can claim is a turn this one must not. It is also why the check is a
+ * reader and not a lane — nothing here decides anything, it says what is already true.
+ *
+ * YES ONLY. A second parent's NO to an approved shortlist is a household disagreeing
+ * with itself, which is a conversation (and possibly an undo), not an acknowledgement —
+ * swallowing it with a cheerful receipt would be the worst answer available. It goes to
+ * the coach exactly as it does today.
+ *
+ * The bare-word permission is the ordinary one, asked against the kind the word is
+ * actually answering: with the card gone from the queue no approval question is open,
+ * so anything ELSE outstanding makes the word ambiguous and this declines.
+ */
+async function alreadyApprovedReply(
+  database: Database,
+  ctx: HandlerContext,
+  deps: PrepareReplyDeps,
+): Promise<HandlerVerdict | null> {
+  if (!f14EnabledFor(ctx.familyId)) return null;
+  const command = matchFastPath(ctx.body);
+  if (command === null || command.verb !== 'yes' || command.index !== null) return null;
+  if (!(await mayClaimBareWord(ctx, command, 'approval'))) return null;
+
+  const approved = await deps.approvedShortlistAskedOf(
+    database,
+    ctx.familyId,
+    ctx.parentUserId,
+    ctx.now,
+  );
+  if (approved === null) return null;
+  return { claimed: true, outcome: 'already_approved', reply: SHORTLIST_ALREADY_APPROVED_ACK };
 }
 
 /**
@@ -650,6 +690,7 @@ async function preOpenReply(
       database,
       {
         sequence,
+        answeredByUserId: ctx.parentUserId,
         ready: resolved.polarity === 'yes',
         read: 'resolver',
         confidence: resolved.confidence,
@@ -665,7 +706,13 @@ async function preOpenReply(
   if (link !== null) {
     const bind = await handleCourseBind(
       database,
-      { sequence, rawUrl: link, inboundChannelMessageId, now: ctx.now },
+      {
+        sequence,
+        answeredByUserId: ctx.parentUserId,
+        rawUrl: link,
+        inboundChannelMessageId,
+        now: ctx.now,
+      },
       deps,
     );
     // An already-registering course belongs to VIL-337's watch and to the coach.
@@ -698,6 +745,7 @@ async function preOpenReply(
         database,
         {
           sequence,
+          answeredByUserId: ctx.parentUserId,
           ready: alongside.verb === 'yes',
           read: 'keyword',
           confidence: null,
@@ -719,6 +767,7 @@ async function preOpenReply(
     database,
     {
       sequence,
+      answeredByUserId: ctx.parentUserId,
       ready: command.verb === 'yes',
       read: 'keyword',
       confidence: null,

@@ -453,9 +453,10 @@ const CO_PARENT_SEATING_SCOPES = ['sms_coparent_invite_reply', 'sms_join_origina
  * message they answered, and their yes is the row {@link CO_PARENT_SEATING_SCOPES}
  * names.
  *
- * THE FALLBACK IS ONLY FOR A PERSON WITH NO WATCH ROW AT ALL. A `proactive_watch` row
- * that says no still wins: somebody who declined the watch offer, or withdrew it, is
- * never overridden by a seat they also hold.
+ * THE FALLBACK IS ONLY FOR A PERSON WITH NO WATCH ROW AT ALL, and only inside a
+ * household whose own watch answer is a live grant. A `proactive_watch` row that says
+ * no still wins — for the person who wrote it and for the partner they share a family
+ * with, because the radar is the household's and it is armed once.
  */
 async function readWatchConsent(database: Database, parentUserId: string): Promise<boolean> {
   const [latest] = await database
@@ -477,8 +478,26 @@ async function readWatchConsent(database: Database, parentUserId: string): Promi
   return readCoParentSeatingConsent(database, parentUserId);
 }
 
-/** Their seating consent, read latest-row-wins across both doors — the same rule, and
- * the same two withdrawal conventions, as the watch row above. */
+/**
+ * Their seating consent, read latest-row-wins across both doors — the same rule, and
+ * the same two withdrawal conventions, as the watch row above.
+ *
+ * AND THE HOUSEHOLD'S OWN WATCH ANSWER, because a seat is not a second vote on it
+ * (hard rule #1, default to the most restrictive reading; audit 2026-09-17 r1). The
+ * unprompted lanes select families on `onboarding_stage = 'sms_active'`, which
+ * `recordWatchConsent` sets on a DECLINE as well as on a grant, so the watch gate is
+ * the only thing standing between "should I watch the registration dates at least?" -
+ * "no" and the full radar. Left per-user, this fallback would have handed that
+ * household the whole ladder the moment a co-parent was seated: the decline is the
+ * primary parent's row, and the co-parent has none to overrule.
+ *
+ * `proactive_watch` has ONE writer (the intake offer, answered by the parent who
+ * provisioned the household), so "the family's newest watch row" is that answer, and
+ * reading it here is reading the household's own decision rather than inventing a
+ * second one. A household nobody has asked yet is not a grant: the co-parent's seat
+ * carries their consent to be TEXTED, and the radar waits for the same yes the primary
+ * parent's does.
+ */
 async function readCoParentSeatingConsent(
   database: Database,
   parentUserId: string,
@@ -487,6 +506,7 @@ async function readCoParentSeatingConsent(
     .select({
       granted: schema.consentRecords.granted,
       revokedAt: schema.consentRecords.revokedAt,
+      familyId: schema.consentRecords.familyId,
     })
     .from(schema.consentRecords)
     .where(
@@ -498,7 +518,30 @@ async function readCoParentSeatingConsent(
     )
     .orderBy(desc(schema.consentRecords.grantedAt))
     .limit(1);
-  return latest?.granted === true && latest.revokedAt === null;
+  if (!(latest?.granted === true && latest.revokedAt === null)) return false;
+  // `consent_records.family_id` is nullable in general; BOTH seating writers stamp it
+  // (coparent/accept.ts, join/invites.ts), so a row without one did not come from a
+  // door this fallback knows about and there is no household whose watch answer could
+  // be read. Refusing is the only honest answer — guessing the family from a seat would
+  // be this gate inventing the consent it exists to check.
+  if (latest.familyId === null) return false;
+  const seatedIn = latest.familyId;
+
+  const [household] = await database
+    .select({
+      granted: schema.consentRecords.granted,
+      revokedAt: schema.consentRecords.revokedAt,
+    })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.familyId, seatedIn),
+        eq(schema.consentRecords.consentType, 'proactive_watch'),
+      ),
+    )
+    .orderBy(desc(schema.consentRecords.grantedAt))
+    .limit(1);
+  return household?.granted === true && household.revokedAt === null;
 }
 
 /** Proactive sends of this class that actually WENT OUT for the family in the window.

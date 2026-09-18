@@ -176,6 +176,38 @@ describe('who the family-scoped sweeps text', () => {
   });
 
   /**
+   * THE SEAT WITHOUT THE NUMBER — a co-parent who pressed STOP.
+   *
+   * Departure is not the only way a co-parent stops being textable, and it is the only
+   * one the case above exercises: `departCoParent` DELETES the `family_members` row as
+   * well as revoking the channel, so the role join alone would drop them and the
+   * revocation predicate could be deleted with every case here still green (mutation
+   * M4, verifier r1). A STOP revokes the channel and leaves the seat exactly where it
+   * was — the co-parent still holds the household's scope in the app — so this is the
+   * case that makes `revoked_at IS NULL` load-bearing in THIS reader rather than only
+   * in the gate behind it.
+   */
+  it('drops a co-parent who pressed STOP, seat and all', async () => {
+    const seeded = await seedFamily();
+    const coParentUserId = await seatCoParent(seeded);
+    await db.database
+      .update(schema.parentChannels)
+      .set({ revokedAt: LATER })
+      .where(eq(schema.parentChannels.userId, coParentUserId));
+
+    // The premise: the seat is untouched, so nothing but the channel can drop them.
+    const seats = await db.database
+      .select({ role: schema.familyMembers.role })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.userId, coParentUserId));
+    expect(seats).toEqual([{ role: 'co_parent' }]);
+
+    expect(await loadFamilyTextRecipients(db.database, seeded.familyId)).toEqual([
+      { parentUserId: seeded.parentUserId, timeZone: 'America/Toronto', role: 'primary_parent' },
+    ]);
+  });
+
+  /**
    * THE POSITIVE CONTROL for the role filter. A caregiver is seated on the same table,
    * with the same kind of verified channel, and must never appear — their lane is a
    * scoped slice of the week, not the household's radar. Without this the filter could
@@ -244,6 +276,42 @@ describe('the watch gate, for a seat that never saw the watch offer', () => {
 
     expect(await ports.watchConsentGranted(coParentUserId)).toBe(false);
     expect(await ports.channelEnrolled(coParentUserId)).toBe(false);
+  });
+
+  /**
+   * THE HOUSEHOLD'S ANSWER, not just the answerer's (rule #1, audit 2026-09-17 r1).
+   *
+   * Both unprompted sweeps select families on `onboarding_stage = 'sms_active'`, which
+   * a DECLINE sets exactly as a grant does, so this gate is the only thing standing
+   * between "should I watch the registration dates at least?" - "no" and the full
+   * radar. A per-user fallback would have handed that household the whole ladder the
+   * moment a co-parent was seated: the decline is the primary parent's row, and the
+   * co-parent has none of their own to be overruled.
+   */
+  it('never reaches a co-parent in a household that declined the watch', async () => {
+    const seeded = await seedFamily();
+    await grantWatch(seeded, false);
+    const coParentUserId = await seatCoParent(seeded);
+    const ports = buildOutboundGatePorts(db.database);
+
+    // Their seating consent is live — the fallback's own precondition — and it is the
+    // HOUSEHOLD's no that closes it.
+    expect(await ports.channelEnrolled(coParentUserId)).toBe(true);
+    expect(await ports.watchConsentGranted(coParentUserId)).toBe(false);
+  });
+
+  /**
+   * A household nobody has asked yet is not a yes. The primary parent is held here too
+   * (no watch row, no seating scope), so the co-parent waiting with them is the
+   * consistent answer rather than a second, quieter policy.
+   */
+  it('waits for the watch offer to be answered at all', async () => {
+    const seeded = await seedFamily();
+    const coParentUserId = await seatCoParent(seeded);
+    const ports = buildOutboundGatePorts(db.database);
+
+    expect(await ports.watchConsentGranted(seeded.parentUserId)).toBe(false);
+    expect(await ports.watchConsentGranted(coParentUserId)).toBe(false);
   });
 
   /**

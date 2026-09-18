@@ -429,6 +429,14 @@ async function runForFamily(
   // spent. Gating first keeps the cap meaning what it says — a household hears one
   // nudge a week — while both parents get their own copy of it, and next week's tick is
   // capped for both.
+  //
+  // WHAT THAT COSTS, NAMED (verifier r1): on a tick where one parent is allowed and the
+  // other is inside their own quiet hours — a split-timezone household — the send
+  // spends the week's budget and every later tick holds the second parent
+  // `frequency_cap`. They miss that week's nudge rather than get it a day late. The
+  // alternative is a per-recipient cap, which is a household hearing the same nudge
+  // twice from two directions, and that is the worse of the two. (The registration
+  // ladder has no cap, so its legs simply split across ticks instead.)
   const allowed: Array<{ recipient: FamilyTextRecipient; optOut: OptOutForm }> = [];
   const held: ProactiveHoldReason[] = [];
   for (const recipient of recipients) {
