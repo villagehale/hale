@@ -287,6 +287,16 @@ describe('townLabel', () => {
     expect(townLabel('toronto')).toBe('Toronto');
   });
 
+  it('derives the five York towns without an exception entry', () => {
+    // The exceptions map is for towns whose token does NOT open out. None of these
+    // qualify, and an entry for one would be a second place a town can be spelled.
+    expect(townLabel('newmarket')).toBe('Newmarket');
+    expect(townLabel('king')).toBe('King');
+    expect(townLabel('east_gwillimbury')).toBe('East Gwillimbury');
+    expect(townLabel('georgina')).toBe('Georgina');
+    expect(townLabel('uxbridge')).toBe('Uxbridge');
+  });
+
   it('says Stouffville, the name the Town prints on its own Play Book cover', () => {
     // Title-casing the token gives "Whitchurch Stouffville", which is neither the
     // legal name (hyphenated) nor what a parent in L4A ever says.

@@ -111,7 +111,22 @@ const CITY_LINES = {
     'Whitby Fall 2026 registration already opened Aug 18 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
   oshawa:
     'Oshawa Fall 2026 registration already opened Aug 18 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  newmarket:
+    'Newmarket Fall 2026 registration already opened Aug 19 - Winter 2027 dates are not posted yet. I can watch leftovers and the waitlist.',
+  east_gwillimbury:
+    'East Gwillimbury Fall 2026 registration already opened Aug 20 - Winter 2027 dates are not posted yet. I can watch leftovers and the waitlist.',
+  georgina:
+    'Georgina Fall 2026 registration already opened Aug 18 - Winter 2027 dates are not posted yet. I can watch leftovers and the waitlist.',
+  uxbridge: 'Uxbridge Winter 2027 registration: Tuesday Nov 10 at 9 a.m.',
 } as const satisfies Partial<Record<RecHelloCity, string>>;
+
+/**
+ * King is out of CITY_LINES because the loop below asks "when does <town> rec open?"
+ * and the matcher deliberately does NOT answer to a bare "King" - see the King entry in
+ * NAMED_CITIES. Its line is asserted in its own block, against the names a King parent
+ * actually types.
+ */
+const KING_LINE = 'King Winter 2027 rec registration: Monday Dec 7.';
 
 describe('rec-morning matcher', () => {
   it('reads Toronto swim, rec, waitlist, wishlist, and eFun', () => {
@@ -304,6 +319,49 @@ describe('rec-morning SMS · a city line is derived, never locked', () => {
     expect(body).not.toContain('Whitchurch');
   });
 
+  it('answers King by village, never by the bare word "king"', () => {
+    // "King" alone is King Street, King West and the king. The villages are the way in
+    // precisely because their L0G postal code resolves to nothing.
+    expect(reply('King City rec registration?')).toBe(KING_LINE);
+    expect(reply('Nobleton swim lessons?')).toBe(KING_LINE);
+    expect(reply('Schomberg rec dates?')).toBe(KING_LINE);
+    expect(recMorningReply('swim lessons near King and Spadina?', THIS_MORNING)).toBeNull();
+    expect(recMorningReply('any rec on King West?', THIS_MORNING)).toBeNull();
+    expect(smsEncoding(KING_LINE)).toBe('gsm7');
+    firstAnswerIsClean(KING_LINE);
+    // No clock, because King published none: a borrowed "7 a.m." would be seven hours
+    // wrong. And rec, not swim - both ride the label "Winter 2027" on different dates.
+    expect(KING_LINE).not.toMatch(/a\.m\.|p\.m\./);
+    expect(KING_LINE).toContain('rec registration');
+  });
+
+  it('does not answer a neighbouring town, or a person, as one of the five', () => {
+    // Bradford WEST Gwillimbury is not East Gwillimbury, Sutton is a surname before it
+    // is a village, and Sharon is a name before it is East Gwillimbury's village.
+    expect(recMorningReply('Bradford West Gwillimbury rec dates?', THIS_MORNING)).toBeNull();
+    expect(recMorningReply('can Sutton take him to swim?', THIS_MORNING)).toBeNull();
+    expect(recMorningReply('Sharon is doing swim pickup, when is rec?', THIS_MORNING)).toBeNull();
+    // The positive control: the qualified village names DO answer.
+    expect(reply('Sutton West rec?')).toBe(CITY_LINES.georgina);
+    expect(reply('East Gwillimbury rec?')).toBe(CITY_LINES.east_gwillimbury);
+  });
+
+  it('routes each new town by its own FSA, and the rural codes to nothing', () => {
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L3X' })).toBe(CITY_LINES.newmarket);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L3Y' })).toBe(CITY_LINES.newmarket);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L7B' })).toBe(KING_LINE);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L9N' })).toBe(
+      CITY_LINES.east_gwillimbury,
+    );
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L4P' })).toBe(CITY_LINES.georgina);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L9P' })).toBe(CITY_LINES.uxbridge);
+    // The coverage hole, named out loud: a Nobleton, Sharon or Sutton postal code is a
+    // rural aggregate spanning uncovered towns, so it resolves to nothing.
+    for (const rural of ['L0G', 'L0E', 'L0C']) {
+      expect(recMorningReply('when is fall rec?', THIS_MORNING, { postal: rural })).toBeNull();
+    }
+  });
+
   it('flips a town to between-cycles the moment its last morning goes by', () => {
     expect(reply('Brampton skate lessons?', NEXT_WEEK)).toBe(
       'Brampton Fall 2026 (Learn to Swim and Learn to Skate) registration already opened Sep 9 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
@@ -414,6 +472,11 @@ describe('rec-morning SMS · the program the parent actually named', () => {
 });
 
 const ALL_HELLO_CITIES: readonly RecHelloCity[] = [
+  'newmarket',
+  'king',
+  'east_gwillimbury',
+  'georgina',
+  'uxbridge',
   'toronto',
   'markham',
   'vaughan',
@@ -479,6 +542,19 @@ function publishedDays(city: RecHelloCity): Set<string> {
 }
 
 describe('rec-morning SMS · what a derived line may never do', () => {
+  it('enrols every town the dataset holds dates for in the checks below', () => {
+    // The property tests below walk ALL_HELLO_CITIES, which is hand-kept: a town added
+    // to the dataset and forgotten here is a town whose line nothing checks, and these
+    // absence tests would pass by never looking at it.
+    const seeded = new Set(REGISTRATION_WINDOWS.map((seed) => seed.municipality));
+    // Aurora is the one seeded town resolveHelloCity refuses (its line is not written).
+    seeded.delete('aurora');
+    const missing = [...seeded].filter(
+      (town) => !ALL_HELLO_CITIES.includes(town as RecHelloCity),
+    );
+    expect(missing).toEqual([]);
+  });
+
   it('never names a date that town did not publish, at any boundary the dataset has', () => {
     const instants = boundaryInstants();
     expect(instants.length).toBeGreaterThan(40);

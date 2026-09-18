@@ -7,6 +7,10 @@ import {
   calendarEmailAskRenderer,
   calendarInviteRenderer,
 } from './calendar-invite';
+import {
+  CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+  calendarInviteSmsRenderer,
+} from './calendar-invite/sms';
 import { reminderRenderer } from './reminder';
 import { weeklyPlanRenderer } from './weekly-plan';
 
@@ -30,6 +34,9 @@ export const loopTemplateRenderer: TemplateRenderer = {
     }
     if (message.templateKey === CALENDAR_INVITE_TEMPLATE_KEY) {
       return calendarInviteRenderer.render(message, channel, nameLevel);
+    }
+    if (message.templateKey === CALENDAR_INVITE_SMS_TEMPLATE_KEY) {
+      return calendarInviteSmsRenderer.render(message, channel, nameLevel);
     }
     if (message.templateKey === CALENDAR_EMAIL_ASK_TEMPLATE_KEY) {
       return calendarEmailAskRenderer.render(message, channel, nameLevel);

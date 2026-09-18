@@ -24,6 +24,11 @@ export type RecHelloCity =
   | 'whitby'
   | 'oshawa'
   | 'whitchurch_stouffville'
+  | 'newmarket'
+  | 'king'
+  | 'east_gwillimbury'
+  | 'georgina'
+  | 'uxbridge'
   | 'milton';
 
 export type RecMorningWhere = {
@@ -55,6 +60,11 @@ export type RecMorningTopic =
   | 'richmond_hill'
   | 'vaughan'
   | 'whitchurch_stouffville'
+  | 'newmarket'
+  | 'king'
+  | 'east_gwillimbury'
+  | 'georgina'
+  | 'uxbridge'
   | 'two_parents'
   | 'jack_of_sports';
 
@@ -66,6 +76,22 @@ function fold(body: string): string {
 const NAMED_CITIES: readonly { pattern: RegExp; city: RecHelloCity }[] = [
   { pattern: /\bhalton\s+hills\b/, city: 'halton_hills' },
   { pattern: /\brichmond\s+hill\b/, city: 'richmond_hill' },
+  // Never a bare \bgwillimbury\b: Bradford WEST Gwillimbury is a different town, and
+  // Hale holds no dates for it.
+  { pattern: /\beast\s+gwillimbury\b/, city: 'east_gwillimbury' },
+  // Never a bare \bking\b - it would eat "King West", "King St" and "the king". The
+  // villages are here because their L0G postal code resolves to nothing (see
+  // fsa-municipalities limit 2), so naming the village is the only way in.
+  {
+    pattern: /\bking\s+(?:city|township|twp)\b|\bnobleton\b|\bschomberg\b|\bkettleby\b/,
+    city: 'king',
+  },
+  // Never a bare \bsutton\b (a surname) and never \bsharon\b (a given name, and East
+  // Gwillimbury's village - "Sharon can pick up Thursday" is not a rec ask).
+  {
+    pattern: /\bgeorgina\b|\bkeswick\b|\bsutton\s+west\b|\bpefferlaw\b|\bjackson'?s\s+point\b/,
+    city: 'georgina',
+  },
   { pattern: /\bmississauga\b/, city: 'mississauga' },
   { pattern: /\bburlington\b/, city: 'burlington' },
   { pattern: /\boakville\b/, city: 'oakville' },
@@ -78,6 +104,8 @@ const NAMED_CITIES: readonly { pattern: RegExp; city: RecHelloCity }[] = [
   { pattern: /\boshawa\b/, city: 'oshawa' },
   // Matches "Whitchurch-Stouffville" too - the hyphen is a word boundary.
   { pattern: /\bstouffville\b/, city: 'whitchurch_stouffville' },
+  { pattern: /\bnewmarket\b/, city: 'newmarket' },
+  { pattern: /\buxbridge\b/, city: 'uxbridge' },
   { pattern: /\bmilton\b/, city: 'milton' },
   { pattern: /\bajax\b/, city: 'ajax' },
   { pattern: /\btoronto\b/, city: 'toronto' },

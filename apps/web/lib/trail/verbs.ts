@@ -180,6 +180,7 @@ export const AUDIT_VERBS = [
   'proactive_nudge_sent',
   'proactive_nudge_skipped',
   'email_alert_sent',
+  'email_alert_event_added',
   'calendar_alert_sent',
   'proactive_watch_granted',
   'proactive_watch_declined',
@@ -252,6 +253,7 @@ export const AUDIT_VERBS = [
   'week_plan.calendar_drafted',
   'ics_feed_shared',
   'ics_feed_revoked',
+  'ics_event_link_minted',
   'notification_pref_updated',
   // ── connected assistants (MCP) ──────────────────────────────────────────
   'mcp.authorization_approved',
@@ -558,6 +560,13 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale texted you about something in your email',
     family: 'done',
   },
+  // The parent's YES to the sentence at the end of that text. YOU, not Hale: this is the
+  // one calendar entry in the product that no reviewer passed, precisely because the
+  // parent asked for it in so many words, and the trail has to say whose decision it was.
+  email_alert_event_added: {
+    sentence: 'you put something from your email on your week',
+    family: 'done',
+  },
   // Same shape, different connector. The sentence names the calendar for the same reason
   // the one above names the inbox: the row is the receipt for Hale having read it.
   calendar_alert_sent: {
@@ -784,6 +793,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   ics_feed_shared: { sentence: 'you turned on your calendar subscription', family: 'done' },
   ics_feed_revoked: { sentence: 'you turned off your calendar subscription', family: 'done' },
+  // NOT the subscription: a per-event link is a one-way HMAC over the same secret and
+  // discloses one entry, so the sentence says the entry and never the feed (rule #1).
+  ics_event_link_minted: {
+    sentence: 'made you a tap-to-add link for a calendar entry',
+    family: 'done',
+  },
   notification_pref_updated: { sentence: 'you changed how Hale reaches you', family: 'done' },
   // ── connected assistants (MCP) ──────────────────────────────────────────
   // An MCP client is a THIRD PARTY reading family data. These sentences name that

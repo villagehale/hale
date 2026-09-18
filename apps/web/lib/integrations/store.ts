@@ -53,7 +53,11 @@ function sqlExcluded(column: string) {
  * — not select-then-insert — so two concurrent connect callbacks can't insert
  * duplicate rows (double polling / double events). The upsert and its immutable
  * connect audit row (rule #6) land in one transaction — the audit row carries
- * provider + family only, never a token or email. */
+ * provider + family only, never a token or email.
+ *
+ * Returns `connectId`: THIS connect, identified by that audit row. The integration row
+ * is upserted, so its own id says "this parent's Gmail" and cannot tell a first connect
+ * from a reconnect; the audit row is written once per connect and can. */
 export async function saveConnection(
   database: Database,
   input: {
@@ -64,9 +68,9 @@ export async function saveConnection(
     tokens: OAuthTokens;
     providerMetadata?: Record<string, unknown>;
   },
-): Promise<void> {
+): Promise<{ connectId: string }> {
   const oauthTokensEncrypted = encryptTokens(input.tokens);
-  await database.transaction(async (tx) => {
+  return database.transaction(async (tx) => {
     const upserted = await tx
       .insert(schema.integrations)
       .values({
@@ -95,14 +99,21 @@ export async function saveConnection(
         },
       })
       .returning({ id: schema.integrations.id });
-    await tx.insert(schema.auditLog).values({
-      familyId: input.familyId,
-      actor: input.userId,
-      actionTaken: AUDIT_CONNECTED,
-      targetTable: 'integrations',
-      targetId: upserted[0]?.id,
-      after: { provider: input.provider },
-    });
+    const id = upserted[0]?.id;
+    if (!id) throw new Error('saveConnection: integrations upsert returned no row');
+    const [connect] = await tx
+      .insert(schema.auditLog)
+      .values({
+        familyId: input.familyId,
+        actor: input.userId,
+        actionTaken: AUDIT_CONNECTED,
+        targetTable: 'integrations',
+        targetId: id,
+        after: { provider: input.provider },
+      })
+      .returning({ id: schema.auditLog.id });
+    if (!connect) throw new Error('saveConnection: audit_log insert returned no row');
+    return { connectId: connect.id };
   });
 }
 
