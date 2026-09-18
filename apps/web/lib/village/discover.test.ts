@@ -499,6 +499,57 @@ describe('discoverForFamily', () => {
     expect(rows[1]?.indoorOutdoor).toBeNull();
   });
 
+  it('persists a candidate whose coverage note the model omitted — the note is lost, never the family', async () => {
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    // Exactly what production returned on 2026-09-18: the forced tool came back
+    // with candidates carrying no coverageNote at all, plus the explicit-null
+    // spelling of the same thing. Neither may cost the family its first village.
+    const c = fakeClient([
+      {
+        title: 'Parent-and-tot swim',
+        description: 'A water-comfort class for toddlers at a municipal pool.',
+        confidence: 0.65,
+      },
+      {
+        title: 'Neighbourhood park and playground',
+        description: 'Unstructured outdoor play at a local park.',
+        confidence: 0.8,
+        coverageNote: null,
+      },
+    ]);
+
+    const result = await discoverForFamily(FAMILY_ID, db, deps(c.client));
+
+    expect(result).toEqual({ status: 'discovered', insertedCount: 2 });
+    const rows = capture.villageCandidates as Record<string, unknown>[];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.title).toBe('Parent-and-tot swim');
+    expect(rows[1]?.title).toBe('Neighbourhood park and playground');
+    // The missing note becomes null — the card renders no coverage line rather
+    // than a coverage claim Hale invented on the model's behalf.
+    expect(rows[0]?.coverageNote).toBeNull();
+    expect(rows[1]?.coverageNote).toBeNull();
+    // The run is a real, visible, COMPLETED run: audit row (rule #6) + agent_runs.
+    expect(capture.auditLog).toEqual([
+      expect.objectContaining({
+        actionTaken: 'village.discovery.recorded',
+        after: { areaCoarse: 'L7G', provider: 'llm_only', count: 2 },
+      }),
+    ]);
+    expect(capture.agentRuns).toHaveLength(1);
+    expect((capture.agentRuns[0] as Record<string, unknown>).status).toBe('completed');
+  });
+
   it('records a FAILED agent_runs row and rethrows when the model returns no tool call (rule #8)', async () => {
     const capture: InsertCapture = {
       villageCandidates: [],
@@ -530,6 +581,33 @@ describe('discoverForFamily', () => {
     expect(run.status).toBe('failed');
     // No candidates persisted on the failure path.
     expect(capture.villageCandidates).toEqual([]);
+  });
+
+  it('records a FAILED agent_runs row and rethrows when the tool payload fails the parse (rule #8)', async () => {
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    // A field we deliberately do NOT tolerate (a candidate with no title is not a
+    // candidate). The run still billed tokens, so it must be visible in agent_runs
+    // — not only in the Vercel log line the `after()` swallow writes.
+    const c = fakeClient([{ description: 'no title', confidence: 0.5 }]);
+
+    await expect(discoverForFamily(FAMILY_ID, db, deps(c.client))).rejects.toThrow();
+
+    expect(capture.agentRuns).toHaveLength(1);
+    const run = capture.agentRuns[0] as Record<string, unknown>;
+    expect(run.agentName).toBe('discovery');
+    expect(run.status).toBe('failed');
+    expect(capture.villageCandidates).toEqual([]);
+    expect(capture.auditLog).toEqual([]);
   });
 
   it('passes the model ONLY the coarse area + stage + interests — no precise location, no DOB', async () => {
@@ -1037,5 +1115,30 @@ describe('candidatesSchema — model null tolerance (season-search 500)', () => 
     });
     expect(parsed.candidates[0]?.priceBand ?? null).toBeNull();
     expect(JSON.stringify(parsed)).not.toContain('cheap-ish');
+  });
+
+  it('accepts a candidate with no coverageNote at all, and the explicit-null spelling', async () => {
+    const { candidatesSchema } = await import('./discover.js');
+    const parsed = candidatesSchema.parse({
+      candidates: [
+        { title: 'Library toddler time', description: 'Weekly story time.', confidence: 0.8 },
+        {
+          title: 'Splash pad',
+          description: 'Free summer water play.',
+          confidence: 0.6,
+          coverageNote: null,
+        },
+      ],
+    });
+    expect(parsed.candidates).toHaveLength(2);
+    expect(parsed.candidates[0]?.coverageNote ?? null).toBeNull();
+    expect(parsed.candidates[1]?.coverageNote ?? null).toBeNull();
+  });
+
+  it('still rejects a candidate with no title — a nameless pick is not a candidate', async () => {
+    const { candidatesSchema } = await import('./discover.js');
+    expect(() =>
+      candidatesSchema.parse({ candidates: [{ description: 'y', confidence: 0.5 }] }),
+    ).toThrow();
   });
 });
