@@ -19,19 +19,30 @@ function allText(guide: (typeof REGISTRATION_GUIDES)[number]): string {
   const parts = [
     guide.title,
     guide.description,
+    guide.eyebrow,
     guide.h1.map((s) => s.text).join(' '),
     guide.lede,
+    guide.datesEyebrow,
     guide.datesHeading.map((s) => s.text).join(' '),
     guide.dateNote,
     ...guide.dateRows.map((row) => `${row.when} ${row.what}`),
     ...guide.officialUrls.map((u) => `${u.href} ${u.label}`),
-    ...guide.ruleCards.flatMap((card) => [card.tag, card.title, card.line, ...card.checks]),
+    guide.rulesEyebrow,
+    guide.rulesHeading.map((s) => s.text).join(' '),
+    ...guide.ruleCards.flatMap((card) => [
+      card.tag,
+      card.title,
+      card.line,
+      card.linkLabel ?? '',
+      ...card.checks,
+    ]),
     ...guide.sections.flatMap((section) => [
       section.headline.map((s) => s.text).join(' '),
       section.lede ?? '',
       ...section.paragraphs,
       ...(section.bullets ?? []),
       ...(section.groups ?? []).flatMap((group) => [group.title, ...group.items]),
+      ...(section.links ?? []).map((link) => link.label),
     ]),
     ...guide.faqs.flatMap((faq) => [faq.question, faq.answer]),
     guide.ctaHeading,
@@ -159,9 +170,10 @@ const PASSED_MORNINGS = [
 ] as const;
 
 /** Verbs that put a date in the past. Bare "open" is deliberately absent — it is
- * the word every rotted sentence used. */
+ * the word every rotted sentence used, and so is "never": "registration opens
+ * Sept 9, never later" is a future claim wearing a past-tense word. */
 const PAST_TENSE =
-  /\b(passed|gone|opened|went|was|were|already|behind|never|ran|started|staffed|closed|published|record)\b/i;
+  /\b(passed|gone|opened|went|moved|got|was|were|already|behind|ran|started|staffed|closed|published|record)\b/i;
 
 function sentences(text: string): string[] {
   return text
@@ -209,11 +221,9 @@ describe('the rules that make parents miss', () => {
     expect(text.toLowerCase()).toContain('welcome policy');
     expect(text).toContain('36');
     expect(text.toLowerCase()).toContain('efun');
-    // The district also decides the one Toronto morning still ahead: non-residents
-    // register ten days after their activity's own morning, so the Sept 15 wave is
-    // Sept 25 and the Sept 16 wave is Sept 26.
+    // The district also decides the one Toronto morning still ahead, but the date
+    // itself comes from the dataset, not from this page's arithmetic.
     expect(guide.dateRows[0]?.when).toContain('Sept 25');
-    expect(text).toContain('Sept 26');
     expect(text.toLowerCase()).toContain('ten days');
   });
 
@@ -229,6 +239,36 @@ describe('the rules that make parents miss', () => {
     // open, and the city's own third-class rule.
     expect(guide.lede).toContain('Sept 25');
     expect(text.toLowerCase()).toContain('third class');
+  });
+
+  /**
+   * Toronto prints only the resident morning; the non-resident open is the city's
+   * ten-day rule applied to it, and the one date any Hale source carries for it is
+   * Sept 25 — the registration dataset's `openAt`, and what the SMS twin texts.
+   * Running the rule a second time to print Sept 26 for the districts that opened
+   * Sept 16 puts a date on the page that no source prints and that the text message
+   * contradicts (VIL-334). The rule may be taught; the arithmetic may not be done
+   * here.
+   */
+  it('prints one Toronto non-resident morning — the rule, never a second derived date', () => {
+    for (const slug of ['toronto-fall-recreation-registration', 'toronto-swim-registration']) {
+      const guide = requireGuide(slug);
+      const text = allText(guide);
+      expect(text).toContain('Sept 25');
+      expect(text.toLowerCase()).toContain('ten days');
+      for (const sentence of sentences(text)) {
+        if (!/non-resident/i.test(sentence)) continue;
+        expect(
+          sentence,
+          `${slug} derives a second non-resident morning the dataset does not carry`,
+        ).not.toMatch(/Sept(ember)? 26/);
+      }
+    }
+    // Positive control, so the gate above cannot pass by the page having deleted
+    // Sept 26 outright: the city DID print it, as the week programming begins.
+    expect(allText(requireGuide('toronto-fall-recreation-registration'))).toContain(
+      'Week of Sept 26',
+    );
   });
 
   it('says the winter cycle is not posted, on both cities that publish a look-ahead', () => {

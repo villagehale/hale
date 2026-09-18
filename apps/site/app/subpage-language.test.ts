@@ -91,7 +91,7 @@ const PULLED_UP: [name: string, html: string, headline: string][] = [
   [
     '/toronto-fall-recreation-registration',
     torontoFallHtml,
-    'Toronto fall recreation registration 2026: which 7 a.m. is yours',
+    'Toronto fall recreation registration 2026: the mornings, and what is left',
   ],
   [
     '/toronto-swim-registration',

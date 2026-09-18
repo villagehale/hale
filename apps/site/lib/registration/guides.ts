@@ -30,13 +30,13 @@ export const TORONTO_FALL: RegistrationGuide = {
   path: '/toronto-fall-recreation-registration',
   title: 'Toronto fall recreation registration 2026: dates by district · Hale',
   description:
-    'Toronto’s fall 2026 resident mornings have gone — Sept 9 early local, Sept 15 Etobicoke and Toronto East York, Sept 16 North York and Scarborough. Non-residents register ten days after their district’s own morning, so Sept 25 or Sept 26 at 7 a.m. Winter is not posted yet. Hale is unofficial — confirm on toronto.ca.',
+    'Toronto’s fall 2026 resident mornings have gone — Sept 9 early local, Sept 15 Etobicoke and Toronto East York, Sept 16 North York and Scarborough. Non-residents open Friday, Sept 25 at 7 a.m., ten days after registration starts for the activity. Winter is not posted yet. Hale is unofficial — confirm on toronto.ca.',
   eyebrow: 'Toronto · fall 2026',
   h1: [
     { text: 'Toronto fall recreation registration 2026:' },
-    { text: 'which 7 a.m. is yours', accent: true },
+    { text: 'the mornings, and what is left', accent: true },
   ],
-  lede: 'The morning that mattered was the district of the centre you were booking, not the street you live on — and those mornings have gone: Sept 9, Sept 15, Sept 16. If you live outside Toronto, yours is still ahead — ten days after your activity’s own morning, so Friday, Sept 25 at 7 a.m. for the districts that opened Sept 15 and Sept 26 for the ones that opened Sept 16. I’m Barton, Sebastian’s dad. Hale is a texted GTA family assistant — no app — and founding families are free at villagehale.com.',
+  lede: 'The morning that mattered was the district of the centre you were booking, not the street you live on — and those mornings have gone: Sept 9, Sept 15, Sept 16. If you live outside Toronto, yours is still ahead: Friday, Sept 25 at 7 a.m., ten days after registration starts for the activity you want. I’m Barton, Sebastian’s dad. Hale is a texted GTA family assistant — no app — and founding families are free at villagehale.com.',
   updated: '2026-09-18',
   placement: 'toronto_fall_rec',
   datesEyebrow: 'Fall 2026',
@@ -44,7 +44,7 @@ export const TORONTO_FALL: RegistrationGuide = {
   dateRows: [
     {
       when: 'Sept 25, 7 a.m.',
-      what: 'Non-residents — ten days after the centre’s own morning, so Sept 26 where the district opened Sept 16',
+      what: 'Non-residents — the city’s ten-day rule counted from the centre’s own morning, not a date Toronto prints',
     },
     {
       when: 'Week of Sept 26',
@@ -67,7 +67,7 @@ export const TORONTO_FALL: RegistrationGuide = {
     },
   ],
   dateNote:
-    'Dates as the City published them in its release of August 24, 2026, re-verified against Hale’s registration dataset on Sept 17, 2026. Written Sept 18: the mornings in this table have gone, and the non-resident date is the city-wide ten-day rule applied to them rather than a date Toronto prints. Confirm on the official link — if Toronto has changed a morning, use Toronto.',
+    'Dates as the City published them in its release of August 24, 2026, checked again Sept 17. Written Sept 18: the mornings in this table have gone, and the non-resident date is the city-wide ten-day rule applied to them rather than a date Toronto prints. Confirm on the official link — if Toronto has changed a morning, use Toronto.',
   officialUrls: [
     { href: TORONTO_REC, label: 'City of Toronto — register for recreation activities' },
     { href: TORONTO_HOW_TO, label: 'How to use the Registration & Booking System' },
@@ -80,7 +80,7 @@ export const TORONTO_FALL: RegistrationGuide = {
     {
       tag: 'District',
       title: 'The district is the centre, not your address',
-      line: 'A Leslieville parent booking a North York pool went Sept 16, not Sept 15 — and a non-resident booking that same pool goes Sept 26, not Sept 25. Home address never picked the morning.',
+      line: 'A Leslieville parent booking a North York pool went Sept 16, not Sept 15. Home address never picked the morning, and it does not pick the non-resident clock either — the centre does.',
       checks: [
         'Look up the centre on the city’s community recreation centre list',
         'Etobicoke York includes York, Weston, and Mount Dennis — they went Sept 15',
@@ -92,7 +92,7 @@ export const TORONTO_FALL: RegistrationGuide = {
     {
       tag: 'Sept 25',
       title: 'The non-resident clock is a rule, not a printed date',
-      line: 'Toronto prints only the resident morning. Non-residents may register ten days after registration starts for that activity, with a $54.90 per-activity surcharge — so a centre that opened Sept 15 takes them Sept 25, and one that opened Sept 16 takes them Sept 26.',
+      line: 'Toronto prints only the resident morning. Non-residents may register ten days after registration starts for that activity, with a $54.90 per-activity surcharge — which puts the Etobicoke and Toronto East York centres at Friday, Sept 25 at 7 a.m. For a centre that opened a different morning, count ten days from that morning; Toronto does not print the answer.',
       checks: [
         'Count ten days from the centre’s own morning, not from the earliest one in the city',
         'The surcharge is per activity, not per family',
@@ -150,7 +150,7 @@ export const TORONTO_FALL: RegistrationGuide = {
       id: 'in-person-desks',
       headline: [{ text: 'Which district' }, { text: 'is your centre?', accent: true }],
       paragraphs: [
-        'The city staffed these desks for the opening mornings. The list is now the fastest district lookup there is, and the district is what sets a non-resident’s Sept 25 or Sept 26. This is the city’s list, not Hale’s — confirm it on the official page before you travel.',
+        'The city staffed these desks for the opening mornings. The list is now the fastest district lookup there is, and the district is the morning a non-resident counts ten days from. This is the city’s list, not Hale’s — confirm it on the official page before you travel.',
       ],
       groups: [
         {
@@ -165,7 +165,7 @@ export const TORONTO_FALL: RegistrationGuide = {
           ],
         },
         {
-          title: 'Opened Sept 16 — North York and Scarborough (non-residents Sept 26)',
+          title: 'Opened Sept 16 — North York and Scarborough (non-residents, count ten days from that morning)',
           items: [
             'Centennial Recreation Centre – Scarborough, 1967 Ellesmere Rd.',
             'Rouge Valley Community Recreation Centre, 8450 Sheppard Ave. E.',
@@ -189,12 +189,12 @@ export const TORONTO_FALL: RegistrationGuide = {
     {
       question: 'When does Toronto fall recreation registration open?',
       answer:
-        'Fall 2026 is already open — the mornings have gone. Early Local Registration was Sept 9 at 7 a.m. for Free Centres in catchment; Etobicoke and Toronto East York opened Sept 15 at 7 a.m.; North York and Scarborough opened Sept 16. Non-residents register ten days after their activity’s own morning, so Sept 25 or Sept 26 at 7 a.m. Confirm on toronto.ca — Hale is unofficial.',
+        'Fall 2026 is already open — the mornings have gone. Early Local Registration was Sept 9 at 7 a.m. for Free Centres in catchment; Etobicoke and Toronto East York opened Sept 15 at 7 a.m.; North York and Scarborough opened Sept 16. Non-residents open Friday, Sept 25 at 7 a.m. — ten days after registration starts for the activity. Confirm on toronto.ca — Hale is unofficial.',
     },
     {
       question: 'Which day is North York fall recreation registration?',
       answer:
-        'North York and Scarborough centres opened Wednesday, Sept 16 at 7 a.m. The day follows the centre you are booking, not your home address — a Leslieville parent booking North York went Sept 16, and a non-resident booking it goes Sept 26.',
+        'North York and Scarborough centres opened Wednesday, Sept 16 at 7 a.m. The day follows the centre you are booking, not your home address — a Leslieville parent booking North York went Sept 16. A non-resident booking it counts ten days from that same morning.',
     },
     {
       question: 'Is eFun still used for Toronto rec registration?',
@@ -223,13 +223,13 @@ export const TORONTO_SWIM: RegistrationGuide = {
   path: '/toronto-swim-registration',
   title: 'Toronto swim registration 2026: same mornings as rec, not a separate day · Hale',
   description:
-    'Toronto swim registration 2026 was never a separate day. Lessons opened on the centre’s rec morning — Sept 15 and Sept 16 at 7 a.m. Non-residents follow ten days later, Sept 25 or Sept 26, and the city lets you register up to the start of the third class, space permitting. Hale is unofficial; confirm on toronto.ca.',
+    'Toronto swim registration 2026 was never a separate day. Lessons opened on the centre’s rec morning — Sept 15 and Sept 16 at 7 a.m. Non-residents follow ten days later, opening Friday, Sept 25 at 7 a.m., and the city lets you register up to the start of the third class, space permitting. Hale is unofficial; confirm on toronto.ca.',
   eyebrow: 'Toronto · swim 2026',
   h1: [
     { text: 'Toronto swim registration 2026:' },
     { text: 'it is not a separate day', accent: true },
   ],
-  lede: 'There was never a swim-only date, and the district mornings have gone. What is left: non-residents open Friday, Sept 25 at 7 a.m. (Sept 26 where the district opened Sept 16), and the city lets you register up to the start of the third class, space permitting. Tell Hale the pool and the Ultra level. Founding families free — villagehale.com.',
+  lede: 'There was never a swim-only date, and the district mornings have gone. What is left: non-residents open Friday, Sept 25 at 7 a.m., ten days after registration starts for the lesson, and the city lets you register up to the start of the third class, space permitting. Tell Hale the pool and the Ultra level. Founding families free — villagehale.com.',
   updated: '2026-09-18',
   placement: 'toronto_swim',
   datesEyebrow: 'What is left',
@@ -237,7 +237,7 @@ export const TORONTO_SWIM: RegistrationGuide = {
   dateRows: [
     {
       when: 'Sept 25, 7 a.m.',
-      what: 'Non-residents — ten days after the pool’s own morning, so Sept 26 where the district opened Sept 16',
+      what: 'Non-residents — the city’s ten-day rule counted from the pool’s own morning, not a date Toronto prints',
     },
     {
       when: 'Until class 3',
@@ -256,7 +256,7 @@ export const TORONTO_SWIM: RegistrationGuide = {
     { when: 'Passed — Sept 16, 7 a.m.', what: 'North York and Scarborough pools' },
   ],
   dateNote:
-    'Same calendar as fall rec — one cycle, no swim-only date. Dates as the City published them for fall 2026, re-verified against Hale’s registration dataset on Sept 17, 2026 and read alongside the swim lessons page. Written Sept 18: the September mornings have gone, the non-resident date has not. Confirm on the official links.',
+    'Same calendar as fall rec — one cycle, no swim-only date. Dates as the City published them for fall 2026, checked again Sept 17 alongside the swim lessons page. Written Sept 18: the September mornings have gone, the non-resident date has not. Confirm on the official links.',
   officialUrls: [
     { href: TORONTO_SWIM_LESSONS, label: 'City of Toronto — swim lessons and leadership' },
     { href: TORONTO_REC, label: 'Fall rec dates (swim uses these mornings)' },
@@ -319,7 +319,7 @@ export const TORONTO_SWIM: RegistrationGuide = {
           ],
         },
         {
-          title: 'Opened Sept 16 — North York, Scarborough (non-residents Sept 26)',
+          title: 'Opened Sept 16 — North York, Scarborough (non-residents, count ten days from that morning)',
           items: [
             'Centennial Recreation Centre – Scarborough',
             'Rouge Valley Community Recreation Centre',
@@ -365,7 +365,7 @@ export const TORONTO_SWIM: RegistrationGuide = {
     {
       question: 'Is Toronto swim registration a different day from rec?',
       answer:
-        'No. Swim opened on the centre’s rec morning — Sept 15 or Sept 16 at 7 a.m. There is no swim-only date, and non-residents follow the same ten-day rule: Sept 25, or Sept 26 where the district opened Sept 16.',
+        'No. Swim opened on the centre’s rec morning — Sept 15 or Sept 16 at 7 a.m. There is no swim-only date, and non-residents follow the same ten-day rule, counted from that centre’s morning — the pools that opened Sept 15 take them Friday, Sept 25 at 7 a.m.',
     },
     {
       question: 'Was my pool Sept 15 or Sept 16?',
@@ -389,7 +389,8 @@ export const TORONTO_SWIM: RegistrationGuide = {
     },
   ],
   ctaHeading: 'Tell Hale the pool and the Ultra level.',
-  ctaSub: 'Hale texts the night before and as it opens. Founding families free — villagehale.com.',
+  ctaSub:
+    'Hale texts the night before a morning that matters, and again when a lane opens up. Founding families free — villagehale.com.',
   footerNote: FOOTER,
 };
 
