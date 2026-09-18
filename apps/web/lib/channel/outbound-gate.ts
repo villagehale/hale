@@ -87,7 +87,17 @@ export type ProactiveSendKind =
    * volume is set by how much the household's week moves, and a September that re-syncs
    * forty edits is the week where a text per edit is the uninstall.
    */
-  | 'calendar_alert';
+  | 'calendar_alert'
+  /**
+   * VIL-353 · "How did today go?" — the one question Hale asks every evening.
+   *
+   * THE HIGHEST-FREQUENCY PROACTIVE CLASS IN THE PRODUCT, and the only one whose whole
+   * design is a rhythm rather than an event. Its real volume rail is the parent's own
+   * cadence and the stop-answering ladder (channel/checkin/cadence.ts); the counter below
+   * is the rail under a SWEEP that goes wrong, which for a class that runs nightly is the
+   * one that would be felt fastest.
+   */
+  | 'evening_check_in';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -196,6 +206,11 @@ export const PROACTIVE_CAP: Record<
   // one: a connector that re-seeds and reports forty edits as new stops after a nuisance
   // instead of after a phone full of texts.
   calendar_alert: { max: 3, windowHours: 24 },
+  // The evening question. ONE PER FAMILY PER DAY, and this entry IS that rule rather than
+  // a counter guarding it: the gate already answers "at most N of this class per family
+  // per window", which is exactly what the rail says. It also covers the step-down notice
+  // by construction, since that message is the evening's one send when it goes.
+  evening_check_in: { max: 1, windowHours: 24 },
 };
 
 /**
@@ -243,6 +258,10 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // will read at 08:00 either way. Waking a household over a change they cannot act on
   // in the dark is the whole of what this floor exists to prevent.
   calendar_alert: false,
+  // A question about a day that is over. There is no version of this message that is
+  // worth waking a house for, and the 20:00 slot it is sent in sits an hour under the
+  // floor anyway.
+  evening_check_in: false,
 };
 
 /**
@@ -289,6 +308,7 @@ export const PROACTIVE_CATEGORY: Record<
   | 'spot_open'
   | 'email_alert'
   | 'calendar_alert'
+  | 'evening_check_in'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
@@ -300,6 +320,7 @@ export const PROACTIVE_CATEGORY: Record<
   spot_open_instant: 'spot_open',
   email_alert: 'email_alert',
   calendar_alert: 'calendar_alert',
+  evening_check_in: 'evening_check_in',
 };
 
 export interface OutboundGatePorts {

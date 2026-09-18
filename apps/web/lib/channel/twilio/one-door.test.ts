@@ -56,6 +56,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/founder/reply.ts': 'records its own rows (founder category)',
   'apps/web/lib/channel/followup/run.ts': 'records its own rows (followup category)',
   'apps/web/lib/channel/plan/check-in.ts': 'records its own rows (plan_check_in category)',
+  'apps/web/lib/channel/checkin/sweep.ts':
+    'records its own rows (evening_check_in category) — both the nightly question and the step-down notice, each with its own dedupe key',
   'apps/web/lib/channel/activity/sweep.ts':
     'records via deliverFollowUp recordSend port (activity_followup category)',
   'apps/web/lib/channel/nudge/run.ts': 'records its own rows (nudge category)',

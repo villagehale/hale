@@ -1,6 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
+import { handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { connectorOfferReply } from '~/lib/channel/connect/copy';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLink } from '~/lib/channel/connect/offer';
@@ -763,6 +765,64 @@ export function recMorningHandler(): DeterministicHandler {
       const reply = recMorningReply(ctx.body, ctx.now, where);
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };
+    },
+  };
+}
+
+/**
+ * VIL-353 · the evening check-in's answer.
+ *
+ * LAST OF THE REAL CLAIMERS, ahead of the canary only, and the position is the whole
+ * safety argument. Every other handler in the chain claims a SHAPE — an approval word, an
+ * address, a link, a rec-morning question — while this one claims a SENTENCE, which makes
+ * it the broadest claimer in the product. Narrow claimers before broad ones, so it runs
+ * after all of them and a parent's "done" still reaches the health lane it belongs to.
+ *
+ * TWO INDEPENDENT PERMISSIONS, neither implying the other: Hale must actually be holding
+ * the question (the ledger says so, reply.ts), and `soleOpenKind` must say no OTHER open
+ * question could have meant these words. An empty question list is vacuously unambiguous,
+ * so without the first check any sentence at all would be filed as a day note.
+ *
+ * IT REFUSES A RESOLVED ANSWER. The kind is listed to the resolver so that a bare YES near
+ * it is treated as ambiguous, but its answer is not a polarity and there is nothing a
+ * resolved yes-or-no could write. Declining says so truthfully; without an owner at all,
+ * route.ts would log a resolution nobody claims at ERROR.
+ */
+export function eveningCheckInHandler(): DeterministicHandler {
+  return {
+    name: 'evening_check_in',
+    resolves: new Set<OpenQuestionKind>(['evening_check_in']),
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      if (ctx.resolved !== null) return { claimed: false };
+
+      const questions = await ctx.openQuestions();
+      const standing = questions.find((question) => question.kind === 'evening_check_in');
+      if (!standing) return { claimed: false };
+      if (!soleOpenKind(questions, 'evening_check_in')) return { claimed: false };
+      if (standing.askedAt === null) return { claimed: false };
+
+      if (ctx.inboundChannelMessageId === null) {
+        // A spoken turn: what the caller said is a transcription, and there is no message
+        // row to hang the note's provenance on. Named rather than assumed away — a note
+        // filed against provenance Hale invented is worse than no note.
+        console.error(
+          { familyId: ctx.familyId },
+          'evening check-in: an answer arrived with no inbound message row - not claimed',
+        );
+        return { claimed: false };
+      }
+
+      const outcome = await handleEveningCheckInReply(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        body: ctx.body,
+        askedAt: standing.askedAt,
+        timeZone: await readFamilyTimezone(database, ctx.familyId),
+        inboundChannelMessageId: ctx.inboundChannelMessageId,
+        now: ctx.now,
+      });
+      if (outcome.status === 'declined_to_claim') return { claimed: false };
+      return { claimed: true, outcome: outcome.status, reply: outcome.reply };
     },
   };
 }
