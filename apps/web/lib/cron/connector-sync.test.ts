@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { EMAIL_ALERT_OUTCOMES } from '~/lib/integrations/email-alert';
 import { googleGetFetch, runConnectorSync } from './connector-sync';
+
+const NO_ALERTS = { emailAlerts: [] as const };
 
 const FAMILY_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const FAMILY_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -33,6 +36,7 @@ describe('runConnectorSync', () => {
       buildDeps: () => ({}) as never,
       syncOne: async (connection, _deps, childNames) => {
         seen.push({ id: connection.id, childNames });
+        return NO_ALERTS;
       },
     });
 
@@ -54,6 +58,7 @@ describe('runConnectorSync', () => {
       syncOne: async (connection) => {
         if (connection.id === 'i1') throw new Error('boom');
         synced.push(connection.id);
+        return NO_ALERTS;
       },
     });
     // i2 still ran despite i1 throwing.
@@ -83,6 +88,7 @@ describe('runConnectorSync', () => {
       },
       syncOne: async (connection) => {
         synced.push(connection.id);
+        return NO_ALERTS;
       },
     });
 
@@ -91,6 +97,46 @@ describe('runConnectorSync', () => {
     // reads the same as a Google request Hale could retry its way out of.
     expect(errored).toEqual([{ id: 'bad', code: 'decrypt_failed' }]);
     expect(summary.connections).toBe(2);
+  });
+
+  it('tallies every email-alert outcome across connections, one bucket per envelope', async () => {
+    // Rule #11 in the summary: a sweep that texted nobody has to be able to say WHY, and
+    // 'dark' reads very differently from 'not_parenting'.
+    const summary = await runConnectorSync({
+      listConnections: async () => [conn('i1', FAMILY_A), conn('i2', FAMILY_B)],
+      decryptTokens: decryptOk,
+      loadChildNames: async () => [],
+      buildDeps: () => ({}) as never,
+      syncOne: async (connection) =>
+        connection.id === 'i1'
+          ? { emailAlerts: ['sent', 'not_parenting', 'not_parenting'] as const }
+          : { emailAlerts: ['dark', 'gate_refused:quiet_hours'] as const },
+    });
+
+    expect(summary.emailAlerts).toMatchObject({
+      sent: 1,
+      not_parenting: 2,
+      dark: 1,
+      'gate_refused:quiet_hours': 1,
+    });
+    // Every named outcome is present as a zero rather than absent — a missing key in a
+    // dashboard reads as "never happens", which is a different claim from "did not today".
+    expect(Object.keys(summary.emailAlerts).sort()).toEqual([...EMAIL_ALERT_OUTCOMES].sort());
+    expect(Object.values(summary.emailAlerts).reduce((a, b) => a + b, 0)).toBe(5);
+  });
+
+  it('keeps the counts of the connections that ran when one of them throws', async () => {
+    const summary = await runConnectorSync({
+      listConnections: async () => [conn('i1', FAMILY_A), conn('i2', FAMILY_B)],
+      decryptTokens: decryptOk,
+      loadChildNames: async () => [],
+      buildDeps: () => ({}) as never,
+      syncOne: async (connection) => {
+        if (connection.id === 'i2') throw new Error('boom');
+        return { emailAlerts: ['sent'] as const };
+      },
+    });
+    expect(summary.emailAlerts.sent).toBe(1);
   });
 });
 

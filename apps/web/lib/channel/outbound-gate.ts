@@ -67,7 +67,17 @@ export type ProactiveSendKind =
    * widen it, and `spot_open` is what a parent who said nothing gets.
    */
   | 'spot_open'
-  | 'spot_open_instant';
+  | 'spot_open_instant'
+  /**
+   * A parenting email landed in a connected Gmail and Hale read it as a change the
+   * parent has to act on — a cancelled class, a moved practice, a form due Friday.
+   *
+   * The parent CONNECTED the mailbox, which is consent to be watched, not consent to be
+   * texted about whatever a classifier finds interesting: the volume is set by how much
+   * mail arrives, so this class is the one where a classifier that drifts turns a
+   * mailbox into a feed. Hence a real counter below rather than a null.
+   */
+  | 'email_alert';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -163,6 +173,12 @@ export const PROACTIVE_CAP: Record<
   // volume. Both kinds also count under one category (see PROACTIVE_CATEGORY), so the
   // two entries are one budget rather than two.
   spot_open_instant: { max: 4, windowHours: 24 },
+  // The inbox. THREE A DAY, and the number is chosen against the failure mode rather
+  // than against a busy week: a household's school, daycare and two activity providers
+  // can all say something real on a Monday in September, and three is enough to carry
+  // the ones that matter while a triage stage that starts saying yes to newsletters
+  // stops after a nuisance instead of after a mailbox.
+  email_alert: { max: 3, windowHours: 24 },
 };
 
 /**
@@ -203,6 +219,9 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // that opt-in selects, and it is the only reason the exemption exists — a sweep
   // cannot reach it by setting a flag.
   spot_open_instant: true,
+  // An email Hale read at 23:40 is an email the sender wrote hours ago and did not
+  // think was worth a phone call. It keeps until 08:00.
+  email_alert: false,
 };
 
 /**
@@ -247,6 +266,7 @@ export const PROACTIVE_CATEGORY: Record<
   | 'plan_check_in'
   | 'activity_followup'
   | 'spot_open'
+  | 'email_alert'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
@@ -256,6 +276,7 @@ export const PROACTIVE_CATEGORY: Record<
   activity_followup: 'activity_followup',
   spot_open: 'spot_open',
   spot_open_instant: 'spot_open',
+  email_alert: 'email_alert',
 };
 
 export interface OutboundGatePorts {
