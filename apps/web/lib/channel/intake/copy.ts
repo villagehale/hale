@@ -487,10 +487,27 @@ export function posterLocation(code: string | null): string | null {
  * voice; VIL-321 / Designer locked the English no-venue line verbatim — the ask is
  * {@link COLD_START_ASK}. Style doctrine v1 (G6/L1, founder-gated) swapped the hook's
  * one word-pair: "rec mornings" was house coinage two strangers misread inside 48h;
- * "sign-up mornings" says the same thing in parent language. The ask is untouched.
- * Never "an AI that quietly runs the family week". The privacy
+ * "sign-up mornings" says the same thing in parent language.
+ *
+ * FOUNDER 2026-09-17 widened the hook from the wedge to the product. "I watch sign-up
+ * mornings so they don't sneak up" named ONE job, so a stranger with no registration
+ * coming read a reminder service and had no reason to answer. The sentence now names
+ * the three in the order they happen — find the activity that fits, hold the sign-up
+ * morning, come back and ask how it went — and calls the rest what it is.
+ *
+ * Two things it deliberately does NOT say. No superlative: Hale cannot verify "best",
+ * so it claims fit, which it can. And no nightly check-in, which is not built —
+ * "check in on how it goes" is true of the follow-ups that already send, and a first
+ * text that promises a feature is a first text that lies.
+ *
+ * The ask is untouched. Never "an AI that quietly runs the family week". The privacy
  * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where
  * a parent is actually asked to agree to something.
+ *
+ * COST: the longer hook puts every variant at TWO segments where the old one-job line
+ * fit in one. That was the founder's budget for a first message, and it is pinned per
+ * variant — longest registered venue name included — in sms-copy-encoding.test.ts. If
+ * a later edit needs septets back, they come out of this sentence, never the ask.
  *
  * THE VENUE VARIANT HAS NO FRENCH TWIN, and that is a decision rather than a gap. The
  * body that triggers it is the PREFILLED one a QR code wrote — "HALE LIBRARY", or
@@ -503,12 +520,12 @@ export function posterLocation(code: string | null): string | null {
  */
 export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {
-    return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+    return `Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
   }
   if (language === 'fr') {
-    return `Bonjour, je suis Hale. Je surveille les matins d'inscription pour qu'ils ne vous échappent pas. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
+    return `Bonjour, je suis Hale. Je trouve des activités qui conviennent à votre tout-petit, je surveille les matins d'inscription pour qu'ils ne vous échappent pas, et je prends de vos nouvelles - tout le chaos du quotidien. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
   }
-  return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. ${COLD_START_ASK}`;
+  return `Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. ${COLD_START_ASK}`;
 }
 
 /**
@@ -522,7 +539,7 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
  * `replyLanguage` reads it as English whatever they speak.
  */
 export function greetingWithArea(areaCoarse: string): string {
-  return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+  return `Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
 }
 
 /**

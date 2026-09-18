@@ -18,6 +18,7 @@ import {
   REGION_UNAVAILABLE_REPLY,
   REGION_UNAVAILABLE_REPLY_BY_LANGUAGE,
   SITTING_SESSION_REMINDER,
+  SOURCE_VENUES,
   START_ACK,
   START_ACK_BY_LANGUAGE,
   STOP_ACK,
@@ -29,6 +30,7 @@ import {
   detailsBlocked,
   followUp,
   greeting,
+  greetingWithArea,
   intakeConnectorOffer,
 } from '~/lib/channel/intake/copy';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
@@ -204,6 +206,47 @@ describe('the intake script stays GSM-7 once rendered', () => {
   it('keeps the consent ask, privacy link and all, inside one GSM-7 segment', () => {
     expect(WATCH_OFFER).toContain(PRIVACY_URL);
     expect(smsSegments(WATCH_OFFER)).toBe(1);
+  });
+
+  /**
+   * The greeting is the one intake body whose budget is spent BEFORE anyone chose to
+   * hear from Hale, and the 2026-09-17 rewrite spent the second segment to say what the
+   * product is. Two is the ceiling, and the variant that reaches it first is not the one
+   * a developer reads: the venue tail interpolates a name out of {@link SOURCE_VENUES},
+   * and the postering run keeps adding longer ones ("Roncesvalles & Howard Park poster"
+   * is 33 characters against "library"'s 7). So the ceiling is measured against the
+   * LONGEST name actually registered, which makes the next poster that would cost every
+   * scanner a third segment a red test rather than a line on an invoice.
+   */
+  it('keeps every greeting variant inside two segments, longest registered venue included', () => {
+    const longestVenue = Object.values(SOURCE_VENUES)
+      .map((venue) => venue.name)
+      .reduce((longest, name) => (name.length > longest.length ? name : longest));
+    // Positive control: a registry that stopped being read would make the sweep below
+    // pass on an empty-ish string.
+    expect(longestVenue.length).toBeGreaterThan(20);
+
+    const variants = {
+      'no venue': greeting(null, 'en'),
+      'no venue (fr)': greeting(null, 'fr'),
+      'venue (shortest)': greeting('library', 'en'),
+      'venue (longest registered)': greeting(longestVenue, 'en'),
+      'postal-first': greetingWithArea('M5V'),
+    };
+    expect(
+      Object.fromEntries(
+        Object.entries(variants).map(([name, body]) => [
+          name,
+          { encoding: smsEncoding(body), segments: smsSegments(body) },
+        ]),
+      ),
+    ).toEqual({
+      'no venue': { encoding: 'gsm7', segments: 2 },
+      'no venue (fr)': { encoding: 'gsm7', segments: 2 },
+      'venue (shortest)': { encoding: 'gsm7', segments: 2 },
+      'venue (longest registered)': { encoding: 'gsm7', segments: 2 },
+      'postal-first': { encoding: 'gsm7', segments: 2 },
+    });
   });
 });
 

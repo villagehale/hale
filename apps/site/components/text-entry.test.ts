@@ -113,7 +113,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
       // strip already says it, and above the fold every restated line is a line
       // between a stranger and the button.
       expect(html).toContain(
-        'Hale watches registration dates and the family week so you don’t have to.',
+        'Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.',
       );
       expect(html).not.toContain('No app, no account — just this text thread.');
     }
@@ -140,8 +140,8 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
 
   it('shows what comes BACK — an honestly-labeled bubble, absent while no channel is live', () => {
     expect(liveHtml).toContain('The text you’ll get back:');
-    expect(liveHtml).toContain('I watch sign-up mornings so they don&#x27;t sneak up.');
-    expect(unsetHtml).not.toContain('sign-up mornings');
+    expect(liveHtml).toContain('Hi, I&#x27;m Hale. I find activities that fit your little one');
+    expect(unsetHtml).not.toContain('Reply with your kids');
     expect(unsetHtml).not.toContain('The text you’ll get back:');
   });
 
@@ -538,7 +538,7 @@ describe('TextEntry (the other two locales)', () => {
     // speech — the bubble stays English, the frame label says so in Chinese.
     const zh = render({ source: null, locale: 'zh' });
     expect(zh).toContain('（英文原文）');
-    expect(zh).toContain('I watch sign-up mornings so they don&#x27;t sneak up.');
+    expect(zh).toContain('Hi, I&#x27;m Hale. I find activities that fit your little one');
   });
 });
 
@@ -546,11 +546,13 @@ describe('TextEntry — the chooser arm keeps the five-second frame (WhatsApp li
   it('adds the what-is line and the preview bubble above the channel buttons', () => {
     const html = render({ whatsappNumber: LIVE_NUMBER });
     expect(html).toContain(
-      'Hale watches registration dates and the family week so you don’t have to.',
+      'Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.',
     );
     expect(html).toContain('The text you’ll get back:');
     // The bubble sits above the first channel door.
-    expect(html.indexOf('I watch sign-up mornings')).toBeLessThan(html.indexOf('href="sms:'));
+    expect(html.indexOf('I find activities that fit your little one')).toBeLessThan(
+      html.indexOf('href="sms:'),
+    );
     // Structure kept: still the chooser headline, no numbered steps row.
     expect(html).toContain('Welcome. Pick where we talk.');
     expect(html).not.toContain('<ol');

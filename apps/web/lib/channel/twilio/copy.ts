@@ -61,13 +61,18 @@ export const VOICE_GREETING_NO_TEXT = 'Hi, this is Hale. I work by text.';
  * The AI disclosure sits in the first sentence, matching intake's discipline: honesty
  * that can be skimmed past in a closing parenthetical is not honesty.
  *
+ * It says what Hale is in the SAME words the texted greeting uses (founder, 2026-09-17),
+ * because a caller and a texter are the same stranger meeting the same product. What it
+ * keeps that the greeting has no need for is "by text" — this one arrives after a phone
+ * call, so where the conversation continues is a fact the reader is missing.
+ *
  * It carries the STOP line, which the texted cold-start greeting does not, and the
  * difference is the channel. A greeting replies to a text on the channel the parent
  * chose; this one arrives on a channel they did NOT choose, off an inquiry made by
  * phone. CASL's implied-consent-by-inquiry covers the send; the unsubscribe mechanism is
  * what makes it a message a parent can end.
  */
-export const VOICE_TEXT_OPENER = `Hi, this is Hale - you just called. I watch sign-up mornings so they don't sneak up, and I work by text. ${COLD_START_ASK} Reply STOP to unsubscribe.`;
+export const VOICE_TEXT_OPENER = `Hi, this is Hale - you just called. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - all by text. ${COLD_START_ASK} Reply STOP to unsubscribe.`;
 
 /**
  * Voice v1 — the first thing an ENROLLED caller hears, spoken by Twilio before the socket
