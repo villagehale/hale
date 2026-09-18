@@ -269,7 +269,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
       category: 'reminder',
       urgency: 'normal',
       parentUserId: 'p1',
-      dedupeKey: 'reminder:-P1D:p1:2026-07-24',
+      dedupeKey: 'reminder:-P1D:fam-1:p1:2026-07-24',
     });
     const payload = job?.payload as Record<string, unknown>;
     expect(payload.offset).toBe('-P1D');
@@ -299,7 +299,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
     expect(job).toMatchObject({
       category: 'reminder',
       urgency: 'time_sensitive',
-      dedupeKey: 'reminder:-PT1H:p1:e1',
+      dedupeKey: 'reminder:-PT1H:fam-1:p1:e1',
     });
     const payload = job?.payload as Record<string, unknown>;
     expect(payload.deepLink).toBeNull();

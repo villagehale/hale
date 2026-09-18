@@ -404,8 +404,26 @@ interface FiringRow {
   role: FamilyRole;
 }
 
-interface ParentFiring {
+/**
+ * The rows that become ONE household's message to ONE recipient.
+ *
+ * Keyed on (family, recipient) rather than the recipient alone, because neither of the
+ * two facts hanging off this group — the familyId every ledger and audit row is written
+ * under, and the role that chooses the template — is a property of the person. A sitter
+ * works for two families; a parent of one household is the nanny of another. Grouped by
+ * recipient, the first row's family and role decided the whole batch: a second
+ * household's evening merged into the first one's text (no ledger row, no audit row of
+ * its own), and a recipient's two roles collapsed to whichever row the ledger happened
+ * to return first — the parents' template for a household that only seated them as a
+ * nanny, or the caregiver's for their own teenager's appointment, teen gate and all.
+ *
+ * (family, recipient) is also the EXACT grain: `family_members` is keyed
+ * (family_id, user_id), so role — and the timezone read beside it — is single-valued
+ * here and at no coarser key.
+ */
+interface RecipientFiring {
   familyId: string;
+  parentUserId: string;
   timezone: string;
   role: FamilyRole;
   rows: FiringRow[];
@@ -577,14 +595,17 @@ export async function runReminderCron(
     }
   }
 
-  // Group firing rows by parent (one parent → one timezone) for batching.
-  const byParent = new Map<string, ParentFiring>();
+  // Group firing rows per (family, recipient) — see RecipientFiring. batchReminders then
+  // merges the evening WITHIN one household, which is the only scope a merge is true in.
+  const byRecipient = new Map<string, RecipientFiring>();
   for (const r of firing) {
-    const existing = byParent.get(r.parentUserId);
+    const key = `${r.familyId}|${r.parentUserId}`;
+    const existing = byRecipient.get(key);
     if (existing) existing.rows.push(r);
     else
-      byParent.set(r.parentUserId, {
+      byRecipient.set(key, {
         familyId: r.familyId,
+        parentUserId: r.parentUserId,
         timezone: r.timezone,
         role: r.role,
         rows: [r],
@@ -594,7 +615,8 @@ export async function runReminderCron(
   const sendEnabled = loopSendEnabled();
   let fired = 0;
 
-  for (const [parentUserId, group] of byParent) {
+  for (const group of byRecipient.values()) {
+    const parentUserId = group.parentUserId;
     const caregiver = isCaregiverRole(group.role);
     const batches = batchReminders(group.rows, group.timezone);
     const children = caregiver ? [] : await deps.loadChildren(db, group.familyId);
@@ -684,7 +706,11 @@ export async function runReminderCron(
         unsubscribeUrl: unsubscribeUrl({ userId: parentUserId, emailType: REMINDER_EMAIL_TYPE }),
         voice,
       };
-      // Batch key: the single event for T-1h, the evening for a merged T-24h.
+      // Batch key: the single event for T-1h, the evening for a merged T-24h. The family
+      // is part of it because `dedupeActive` matches on the key alone, family-blind — and
+      // an evening key is a DATE, so two households texting the same sitter tomorrow
+      // would otherwise share one key and the second one's text would be dropped as an
+      // already-attempted send.
       const batchKey = batch.offset === '-P1D' ? batch.eveningKey : firstRef;
       const job: ChannelSendJob = {
         templateKey: caregiver ? CAREGIVER_REMINDER_TEMPLATE_KEY : REMINDER_TEMPLATE_KEY,
@@ -699,7 +725,7 @@ export async function runReminderCron(
         // The pin: a caregiver has no address, so their leg cannot be left to the
         // recipient's loop_channel default (see loop/send.ts).
         ...(caregiver ? { channel: 'sms' as const } : {}),
-        dedupeKey: `reminder:${batch.offset}:${parentUserId}:${batchKey}`,
+        dedupeKey: `reminder:${batch.offset}:${group.familyId}:${parentUserId}:${batchKey}`,
       };
 
       // Compose-not-send: only reach real families once the founder flips the flag.

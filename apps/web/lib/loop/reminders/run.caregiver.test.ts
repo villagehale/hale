@@ -160,7 +160,7 @@ describe('fire — what actually reaches a caregiver', () => {
       parentUserId: 'g1',
       category: 'reminder',
       channel: 'sms',
-      dedupeKey: 'reminder:-PT1H:g1:e1',
+      dedupeKey: 'reminder:-PT1H:fam-1:g1:e1',
     });
     expect(body(enqueued[0] as ChannelSendJob)).toBe(
       'Hale: in an hour - Swim class at 10:00, Stouffville Public School',
@@ -309,4 +309,141 @@ describe('fire — what actually reaches a caregiver', () => {
     // visibly not the caregiver's, which leads with the sender and carries the address.
     expect(body(enqueued[0] as ChannelSendJob)).toBe('In an hour: Swim class at 10:00');
   });
+});
+
+/**
+ * ONE RECIPIENT, TWO HOUSEHOLDS.
+ *
+ * A sitter works for the family down the street as well, and a parent of one family is
+ * the nanny of another. `event_reminders` rows are (family, event, recipient) triples,
+ * so both of those people hold due rows under two different familyIds at the same slot —
+ * and the batching that turns rows into messages is the one place the familyId can be
+ * dropped. Every assertion below is about WHICH HOUSEHOLD each text belongs to, and the
+ * ledger + audit rows the dispatch writes from it.
+ */
+describe('one recipient, two households', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const EVE = new Date('2026-07-24T22:00:00Z'); // 18:00 EDT, the evening before
+  const NOW_EVE = new Date('2026-07-24T22:30:00Z');
+  const KID_B = { id: 'cb', name: 'Theo', dateOfBirth: '2021-03-04', gender: 'boy' };
+  const CHILDREN_BY_FAMILY = new Map([
+    ['fam-1', [TODDLER, TEEN]],
+    ['fam-2', [KID_B]],
+  ]);
+
+  const jobFor = (jobs: readonly ChannelSendJob[], familyId: string): ChannelSendJob => {
+    const job = jobs.find((j) => j.familyId === familyId);
+    if (!job) throw new Error(`no job for ${familyId}`);
+    return job;
+  };
+
+  it('texts a sitter seated in two families once per family, not one merged evening under the first', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const events = new Map<string, LiveEvent>([
+      ['e-a', event({ id: 'e-a', title: 'Swim class', location: 'Rec centre' })],
+      ['e-b', event({ id: 'e-b', title: 'Piano', childId: KID_B.id, location: 'Bayview studio' })],
+    ]);
+    const { deps, enqueued, marked } = makeDeps({
+      selectReminderCaregivers: async () => [],
+      loadDueReminders: async () => [
+        dueRow({
+          id: 'r-a',
+          familyId: 'fam-1',
+          eventRef: 'e-a',
+          parentUserId: 's1',
+          role: 'babysitter',
+          offset: '-P1D',
+          fireAt: EVE,
+        }),
+        dueRow({
+          id: 'r-b',
+          familyId: 'fam-2',
+          eventRef: 'e-b',
+          parentUserId: 's1',
+          role: 'babysitter',
+          offset: '-P1D',
+          fireAt: EVE,
+        }),
+      ],
+      loadEvent: async (_db, ref) => events.get(ref) ?? null,
+      loadChildren: async (_db, familyId) => CHILDREN_BY_FAMILY.get(familyId) ?? [],
+    });
+    await runReminderCron(db, deps, NOW_EVE);
+
+    expect(enqueued).toHaveLength(2);
+    expect(enqueued.map((j) => j.familyId).sort()).toEqual(['fam-1', 'fam-2']);
+    // Each household's evening carries its OWN event and only its own — a merged text
+    // would put the second family's child on the first family's ledger + audit row.
+    expect(body(jobFor(enqueued, 'fam-1'))).toContain('Swim class');
+    expect(body(jobFor(enqueued, 'fam-1'))).not.toContain('Piano');
+    expect(body(jobFor(enqueued, 'fam-2'))).toContain('Piano');
+    expect(body(jobFor(enqueued, 'fam-2'))).not.toContain('Swim class');
+    // And the keys differ. `dedupeActive` matches on the key alone, family-blind, so a
+    // T-24h key of recipient+evening would let the FIRST household consume the second
+    // household's idempotency and drop its text at the dispatch.
+    expect(new Set(enqueued.map((j) => j.dedupeKey)).size).toBe(2);
+    expect(marked).toEqual([
+      { id: 'r-a', status: 'sent', reason: null },
+      { id: 'r-b', status: 'sent', reason: null },
+    ]);
+  });
+
+  it.each([
+    ['the parent row first', ['fam-1', 'fam-2']],
+    ['the caregiver row first', ['fam-2', 'fam-1']],
+  ] as const)(
+    'keeps a parent-of-one/nanny-of-another on the right template for each household — %s',
+    async (_label, order) => {
+      vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+      // fam-1 is HER OWN household, and the due event is her 13-year-old's. fam-2 is the
+      // family she nannies for. One user id, two roles, two families, same slot.
+      const events = new Map<string, LiveEvent>([
+        ['e-teen', event({ id: 'e-teen', title: 'Therapy intake', childId: TEEN.id })],
+        ['e-piano', event({ id: 'e-piano', title: 'Piano', childId: KID_B.id, location: 'Bayview studio' })],
+      ]);
+      const rows: Record<string, DueReminder> = {
+        'fam-1': dueRow({
+          id: 'r-own',
+          familyId: 'fam-1',
+          eventRef: 'e-teen',
+          parentUserId: 'u1',
+          role: 'primary_parent',
+        }),
+        'fam-2': dueRow({
+          id: 'r-work',
+          familyId: 'fam-2',
+          eventRef: 'e-piano',
+          parentUserId: 'u1',
+          role: 'nanny',
+        }),
+      };
+      const { deps, enqueued } = makeDeps({
+        selectReminderCaregivers: async () => [],
+        loadDueReminders: async () => order.map((familyId) => rows[familyId] as DueReminder),
+        loadEvent: async (_db, ref) => events.get(ref) ?? null,
+        loadChildren: async (_db, familyId) => CHILDREN_BY_FAMILY.get(familyId) ?? [],
+      });
+      await runReminderCron(db, deps, NOW);
+
+      expect(enqueued).toHaveLength(2);
+      // Her own household's reminder is a PARENT's: the parents' template, on her
+      // loop_channel, and the teen gate genericizes it there (rule #1).
+      const own = jobFor(enqueued, 'fam-1');
+      expect(own.templateKey).toBe('reminder');
+      expect(own.channel).toBeUndefined();
+      expect(body(own)).toBe('In an hour: an appointment at 10:00');
+      expect(body(own)).not.toContain('Therapy intake');
+
+      // The household she works for is a CAREGIVER's: their template, pinned to sms,
+      // under THEIR familyId — and carrying nothing of her own family.
+      const work = jobFor(enqueued, 'fam-2');
+      expect(work.templateKey).toBe('reminder:caregiver');
+      expect(work.channel).toBe('sms');
+      expect(body(work)).toContain('Piano');
+      expect(body(work)).toContain('Bayview studio');
+      expect(JSON.stringify(work.payload)).not.toContain('Therapy intake');
+      expect(JSON.stringify(work.payload)).not.toContain('Noor');
+    },
+  );
 });

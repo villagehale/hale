@@ -226,11 +226,23 @@ export interface ScopeWeekInput {
  * The week a given role may actually be sent. Items only — child NAMING stays with the
  * renderer, which already resolves the family's `child_name_level`; duplicating that
  * here would give a caregiver a second, drifting answer to "what may I call this kid".
+ *
+ * TWO QUESTIONS, and the second one is not about privacy. A parent's week is the week
+ * plus what it COULD be: `compose.ts` writes a dated village activity as
+ * `needs: 'calendar_add'` — a draft the placement mint holds for their one-word YES —
+ * and the parents' renderer prints it under an approval ask that says so. Nobody else
+ * gets that ask (the caregiver templates deliberately drop it), so the same row read to
+ * a caregiver becomes a booking nobody made, on a day they may now plan to be somewhere.
+ * Only what the household has actually settled (`needs === 'none'`) leaves for a third
+ * party, and the test is written on the PARENT roles so a role with no decided scope
+ * fails closed here too.
  */
 export function scopeWeekItemsForRole(input: ScopeWeekInput): WeekPlanItem[] {
   const teenIds = teenChildIds(input.children, input.now);
   const known = new Set(input.children.map((c) => c.id));
+  const settledOnly = !isParentRole(input.role);
   return input.items.filter((item) => {
+    if (settledOnly && item.needs !== 'none') return false;
     if (item.childIds.some((id) => !known.has(id))) return roleAllows(input.role, 'teen_content');
     return roleAllows(input.role, classifyWeekItem(item, teenIds));
   });

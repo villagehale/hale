@@ -52,6 +52,15 @@ const CHECKUP = {
   privacySensitive: true,
 };
 const IDEA = { ...GYMNASTICS, kind: 'suggestion', title: 'Try the new library storytime', needs: 'decision' };
+/** A dated village activity the composer DRAFTED — it is on the plan waiting for the
+ * parents' one-word YES, and until they give it there is nothing to be somewhere for. */
+const KINDERMUSIK = {
+  ...GYMNASTICS,
+  kind: 'village',
+  title: 'Kindermusik trial',
+  startsAt: '2026-01-21T10:00',
+  needs: 'calendar_add',
+};
 
 const plan = {
   id: 'wp-1',
@@ -59,7 +68,7 @@ const plan = {
   weekStart: '2026-01-19',
   composedAt: NOW,
   summary: 'A full week.',
-  items: [GYMNASTICS, TEEN_PRACTICE, CHECKUP, IDEA],
+  items: [GYMNASTICS, TEEN_PRACTICE, CHECKUP, IDEA, KINDERMUSIK],
   status: 'composed',
 } as unknown as schema.WeekPlan;
 
@@ -181,6 +190,25 @@ describe('the caregiver weekly plan', () => {
     expect(text).not.toContain('storytime'); // a decision that is the parents' to make
   });
 
+  it('never reads a drafted activity to a caregiver as though it were booked', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const { deps, enqueued } = makeDeps();
+    await runSundaySendCron(db, deps, NOW);
+    const caregiverText = body(enqueued.find((j) => j.parentUserId === 'g1') as ChannelSendJob);
+
+    // POSITIVE CONTROL: the item that IS on the calendar is there, so the absence
+    // below is an absence and not an empty week.
+    expect(caregiverText).toContain('Gymnastics');
+    expect(caregiverText).not.toContain('Kindermusik');
+
+    // ...and the same draft still reaches the parents, with the ask that resolves it.
+    // A caregiver's plan is the week as it IS; the parents' is the week plus what it
+    // could be, which is why the filter is on the role and not on the composer.
+    const parentText = body(enqueued.find((j) => j.parentUserId === 'p1') as ChannelSendJob);
+    expect(parentText).toContain('Kindermusik');
+    expect(parentText).toContain('drafted for your calendar');
+  });
+
   it("does not put the teenager's name or date of birth on the queue at all", async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const { deps, enqueued } = makeDeps();
@@ -202,7 +230,7 @@ describe('the caregiver weekly plan', () => {
       dedupeKey: 'fam-1:2026-01-19:p1',
     });
     expect(parentJob?.channel).toBeUndefined(); // still rides their loop_channel
-    expect((parentJob?.payload as { items: unknown[] }).items).toHaveLength(4); // the WHOLE plan
+    expect((parentJob?.payload as { items: unknown[] }).items).toHaveLength(5); // the WHOLE plan
     expect(result.enqueued).toBe(1);
   });
 

@@ -169,6 +169,32 @@ describe('role-scope · scoping a week for a role', () => {
     expect(scoped).toEqual([]);
   });
 
+  it.each(CAREGIVER_ROLES)('%s is not read an activity the parents have not said yes to', (role) => {
+    // compose.ts writes a dated village activity as `needs: 'calendar_add'` — a DRAFT
+    // the placement mint holds for a texted YES, not a booking. Read to a caregiver it
+    // becomes confirmed schedule, and only the parents can make it true.
+    const confirmed = item({ title: 'Swim lesson' });
+    const draft = item({ title: 'Kindermusik trial', needs: 'calendar_add' });
+    const scoped = scopeWeekItemsForRole({
+      role,
+      items: [confirmed, draft],
+      children: CHILDREN,
+      now: NOW,
+    });
+    expect(scoped.map((i) => i.title)).toEqual(['Swim lesson']);
+  });
+
+  it('keeps that same draft on a parent\u2019s week, where the yes is theirs to give', () => {
+    const draft = item({ title: 'Kindermusik trial', needs: 'calendar_add' });
+    const scoped = scopeWeekItemsForRole({
+      role: 'primary_parent',
+      items: [draft],
+      children: CHILDREN,
+      now: NOW,
+    });
+    expect(scoped).toEqual([draft]);
+  });
+
   it('lets a family-wide item (no children) through to a caregiver', () => {
     const familyWide = item({ childIds: [], title: 'Block party' });
     const scoped = scopeWeekItemsForRole({
