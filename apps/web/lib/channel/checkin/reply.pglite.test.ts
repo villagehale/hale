@@ -433,6 +433,17 @@ describe('the handler in the chain', () => {
     expect(await readNotes(seeded.familyId)).toEqual([]);
   });
 
+  it('hands back a two-word question whose only marker is the question mark', async () => {
+    const seeded = await seedFamily();
+    const askId = await seedAsk(seeded);
+    const body = 'Swim tomorrow?';
+    const inbound = await seedInbound(seeded, body);
+    expect(
+      await handler().handle(db.database, turn(seeded, body, [evening(askId)], inbound)),
+    ).toEqual({ claimed: false });
+    expect(await readNotes(seeded.familyId)).toEqual([]);
+  });
+
   it('does not answer a text question with an email, or file the email as a day note', async () => {
     const seeded = await seedFamily();
     const askId = await seedAsk(seeded);
@@ -537,6 +548,72 @@ describe('LESS, NO and DAILY after the question has closed', () => {
       await handler().handle(db.database, turn(seeded, 'LESS', [], inbound, nextAfternoon)),
     ).toEqual({ claimed: true, outcome: 'cadence_weekly', reply: CHECK_IN_WEEKLY_ACK.en });
     expect((await readPrefs(seeded.familyId))?.cadence).toBe('weekly');
+  });
+
+  /** Another lane speaking after the evening question — the state that ends this lane's
+   * claim on the taught words. */
+  async function seedOtherLaneOutbound(seeded: Seeded, createdAt: Date) {
+    await db.database.insert(schema.channelMessages).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'nudge',
+      status: 'queued',
+      createdAt,
+    });
+  }
+
+  /** 14:00 Toronto the day after ASKED_AT: the evening has lapsed. */
+  const NEXT_AFTERNOON = new Date('2026-07-06T18:00:00.000Z');
+
+  it('gives a bare NO and a bare LESS back once another lane has had the last word', async () => {
+    for (const body of ['no', 'LESS']) {
+      const seeded = await seedFamily();
+      // Asked three weeks ago; a nudge two days ago is the last thing Hale said.
+      await seedAsk(seeded, { createdAt: new Date(ASKED_AT.getTime() - 21 * 24 * 3_600_000) });
+      await seedOtherLaneOutbound(seeded, new Date(ASKED_AT.getTime() - 2 * 24 * 3_600_000));
+      const inbound = await seedInbound(seeded, body);
+
+      expect(
+        await handler().handle(db.database, turn(seeded, body, [], inbound, NEXT_AFTERNOON)),
+        body,
+      ).toEqual({ claimed: false });
+      expect(await readPrefs(seeded.familyId), body).toBeUndefined();
+      await db.exec('truncate table families, users cascade');
+    }
+  });
+
+  it('still takes DAILY as the way back in, for thirty days after Hale slowed down', async () => {
+    for (const [askedDaysAgo, claimed] of [
+      [21, true],
+      [40, false],
+    ] as const) {
+      const seeded = await seedFamily();
+      await seedAsk(seeded, {
+        createdAt: new Date(NEXT_AFTERNOON.getTime() - askedDaysAgo * 24 * 3_600_000),
+      });
+      await seedOtherLaneOutbound(seeded, new Date(NEXT_AFTERNOON.getTime() - 2 * 24 * 3_600_000));
+      // Hale has stopped asking — which is the only state DAILY has anything to say about.
+      await db.database
+        .insert(schema.familyCheckInPrefs)
+        .values({ familyId: seeded.familyId, cadence: 'off' });
+      const inbound = await seedInbound(seeded, 'DAILY');
+
+      const verdict = await handler().handle(
+        db.database,
+        turn(seeded, 'DAILY', [], inbound, NEXT_AFTERNOON),
+      );
+      expect(verdict, `${askedDaysAgo} days`).toEqual(
+        claimed
+          ? { claimed: true, outcome: 'cadence_daily', reply: CHECK_IN_DAILY_ACK.en }
+          : { claimed: false },
+      );
+      expect((await readPrefs(seeded.familyId))?.cadence, `${askedDaysAgo} days`).toBe(
+        claimed ? 'daily' : 'off',
+      );
+      await db.exec('truncate table families, users cascade');
+    }
   });
 
   it('leaves a bare NO alone for a family Hale has never asked', async () => {

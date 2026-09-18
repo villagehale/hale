@@ -5,8 +5,8 @@ import type { CheckInCadence } from '~/lib/channel/checkin/cadence';
 import {
   answeredOnTheSameChannel,
   applyCheckInCadence,
+  checkInKeywordReach,
   handleEveningCheckInReply,
-  lastCheckInAskToParent,
   readCadenceWord,
 } from '~/lib/channel/checkin/reply';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
@@ -854,13 +854,20 @@ export function eveningCheckInHandler(): DeterministicHandler {
 }
 
 /**
- * LESS, NO or DAILY, whether or not the evening question is still standing.
+ * LESS, NO or DAILY — outlasting the standing question, but not the conversation.
  *
- * A BARE NO IS THE ONE THAT HAS TO BE CAREFUL, because it is also how a parent declines an
- * approval, an intro and a co-parent invite. It is taken only when no other question is
- * open — the same rule `soleOpenKind` applies to a bare affirmative, drawn here by hand
- * because the evening question is deliberately absent from the list most of the time this
- * runs. LESS and DAILY answer nothing else in the product, so they need no such guard.
+ * HOW FAR THE WORDS REACH IS `checkInKeywordReach`, and it is the lane's own reader
+ * because the answer is a fact about the message ledger, not about this chain. In short:
+ * while this lane has the last word to that parent, or the evening it asked about is still
+ * open, all three words are its own; afterwards only DAILY is, and only as the way back
+ * for a household Hale stopped asking.
+ *
+ * A BARE NO IS THE ONE THAT HAS TO BE CAREFUL EVEN INSIDE THAT WINDOW, because it is also
+ * how a parent declines an approval, an intro and a co-parent invite. It is taken only
+ * when no other question is open — the same rule `soleOpenKind` applies to a bare
+ * affirmative, drawn here by hand because the evening question is deliberately absent from
+ * the list most of the time this runs. LESS and DAILY answer nothing else in the product,
+ * so they need no such guard.
  */
 async function moveEveningCadence(
   database: Database,
@@ -873,13 +880,18 @@ async function moveEveningCadence(
 
   const inboundId = ctx.inboundChannelMessageId;
   if (inboundId === null) return { claimed: false };
-  const askId = await lastCheckInAskToParent(database, {
+  const reach = await checkInKeywordReach(database, {
     familyId: ctx.familyId,
     parentUserId: ctx.parentUserId,
+    now: ctx.now,
   });
-  // Never asked, so never taught the word: 'no' here belongs to whatever else is going on.
-  if (askId === null) return { claimed: false };
-  if (!(await answeredOnTheSameChannel(database, askId, inboundId))) return { claimed: false };
+  // Never asked, or asked long enough ago that these are just words: they belong to
+  // whatever else is going on, which is where they went before this lane existed.
+  if (reach.reach === 'none') return { claimed: false };
+  if (reach.reach === 'reoffer' && cadence !== 'daily') return { claimed: false };
+  if (!(await answeredOnTheSameChannel(database, reach.askId, inboundId))) {
+    return { claimed: false };
+  }
 
   const outcome = await applyCheckInCadence(database, {
     familyId: ctx.familyId,

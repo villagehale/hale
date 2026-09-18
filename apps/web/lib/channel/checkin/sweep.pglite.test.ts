@@ -39,6 +39,17 @@ afterEach(async () => {
   await db.exec('truncate table families, users cascade');
 });
 
+/**
+ * Postgres stamps `created_at` with the real wall clock while the sweep runs on an
+ * injected one, so a ledger row written under a fake evening looks minutes old rather
+ * than months. In production those two clocks are the same instant — this puts them back
+ * together, so the frequency cap's window is measured against the evening the message
+ * actually went out rather than against the moment the test ran.
+ */
+async function alignLedgerToSendClock(): Promise<void> {
+  await db.exec('update channel_messages set created_at = sent_at where sent_at is not null');
+}
+
 async function seedFamily(input: {
   primaryTz: string;
   coParentTz?: string;
@@ -159,11 +170,62 @@ describe('who the sweep actually selects, and what it may call their children', 
     expect(second?.parentUserId).toBe(vancouver.primaryUserId);
   });
 
+  it('asks again the next evening — the nightly cap is not what holds the nightly question', async () => {
+    await seedFamily({ primaryTz: 'America/Toronto' });
+    const sent: Array<{ to: string; body: string }> = [];
+    const first = await runEveningCheckInSweep(
+      db.database,
+      prodDeps(sent, { realCap: true }),
+      TORONTO_EVENING,
+    );
+    expect(first.asked).toBe(1);
+    await alignLedgerToSendClock();
+
+    // The same slot, exactly 24h on — the worst case the cap's window has to clear, since
+    // two consecutive evenings can be no further apart than this.
+    const nextEvening = new Date(TORONTO_EVENING.getTime() + 24 * 3_600_000);
+    const second = await runEveningCheckInSweep(
+      db.database,
+      prodDeps(sent, { realCap: true }),
+      nextEvening,
+    );
+    expect({ asked: second.asked, capped: second.held.frequency_cap }).toEqual({
+      asked: 1,
+      capped: 0,
+    });
+    expect(sent).toHaveLength(2);
+  });
+
+  it('puts the least recently asked household at the front of the hour', async () => {
+    // Inserted in the OPPOSITE order to the one the sweep must use, so a select that
+    // leaned on the table's own order would send these two the other way round.
+    const askedLastNight = await seedFamily({ primaryTz: 'America/Toronto' });
+    await db.database.insert(schema.familyCheckInPrefs).values({
+      familyId: askedLastNight.familyId,
+      lastAskedAt: new Date(TORONTO_EVENING.getTime() - 24 * 3_600_000),
+    });
+    const neverAsked = await seedFamily({ primaryTz: 'America/Toronto' });
+
+    const sent: Array<{ to: string; body: string }> = [];
+    const order: string[] = [];
+    const deps = prodDeps(sent);
+    const { selectFamilies } = deps;
+    deps.selectFamilies = async (database) => {
+      const rows = await selectFamilies(database);
+      order.push(...rows.map((row) => row.familyId));
+      return rows;
+    };
+
+    await runEveningCheckInSweep(db.database, deps, TORONTO_EVENING);
+    expect(order).toEqual([neverAsked.familyId, askedLastNight.familyId]);
+  });
+
   it('is stopped three separate ways from asking twice in one evening', async () => {
     const { familyId } = await seedFamily({ primaryTz: 'America/Toronto' });
     const sent: Array<{ to: string; body: string }> = [];
     await runEveningCheckInSweep(db.database, prodDeps(sent), TORONTO_EVENING);
     expect(sent).toHaveLength(1);
+    await alignLedgerToSendClock();
 
     const tenMinutesOn = new Date(TORONTO_EVENING.getTime() + 10 * 60_000);
 

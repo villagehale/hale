@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -66,14 +66,24 @@ import {
  */
 
 /** Filter first, then cap — a cap-then-filter would starve every family past the oldest N
- * of their slot forever. Most hours select nobody at all. */
-const MAX_CHECK_INS_PER_RUN = 100;
+ * of their slot forever. Most hours select nobody at all.
+ *
+ * WHICH N, when there are more, is decided by the selection's ORDER BY (least recently
+ * asked first) rather than by whatever order Postgres happens to return, so a household
+ * that overflowed tonight is at the front of tomorrow's queue instead of behind the same
+ * hundred rows every evening. `overflow` says out loud how many were left. */
+export const MAX_CHECK_INS_PER_RUN = 100;
 
 export interface EveningCheckInResult {
   /** False when neither the flag nor the allowlist armed the sweep. */
   enabled: boolean;
-  /** Families whose local clock is in the evening hour right now. */
+  /** Families whose local clock is in the evening hour right now — ALL of them, including
+   * the ones this run had no room for. */
   inSlot: number;
+  /** In the slot and left for tomorrow, because the slot held more than one run may
+   * carry. Counted rather than dropped silently: a standing overflow is the signal that
+   * the bound needs raising or the hour needs spreading. */
+  overflow: number;
   asked: number;
   /** Three lapsed asks: the parent was told Hale will ask weekly instead. */
   steppedDownToWeekly: number;
@@ -94,6 +104,7 @@ function emptyResult(enabled: boolean): EveningCheckInResult {
   return {
     enabled,
     inSlot: 0,
+    overflow: 0,
     asked: 0,
     steppedDownToWeekly: 0,
     dormant: 0,
@@ -160,11 +171,12 @@ export async function runEveningCheckInSweep(
   if (!allFamilies && allowlist.size === 0) return emptyResult(false);
 
   const result = emptyResult(true);
-  const families = (await deps.selectFamilies(database))
+  const inSlot = (await deps.selectFamilies(database))
     .filter((family) => allFamilies || allowlist.has(family.familyId))
-    .filter((family) => isEveningCheckInSlot(now, family.timeZone))
-    .slice(0, MAX_CHECK_INS_PER_RUN);
-  result.inSlot = families.length;
+    .filter((family) => isEveningCheckInSlot(now, family.timeZone));
+  const families = inSlot.slice(0, MAX_CHECK_INS_PER_RUN);
+  result.inSlot = inSlot.length;
+  result.overflow = inSlot.length - families.length;
 
   for (const family of families) {
     try {
@@ -319,7 +331,11 @@ function templateKeyFor(decision: CheckInDecision): string {
 
 /** The households an evening question could reach: settled SMS families with a primary
  * parent, minus the ones on their way out. Consent, enrolment, volume and the clock are
- * the GATE's business — selecting on them here would put the same policy in two places. */
+ * the GATE's business — selecting on them here would put the same policy in two places.
+ *
+ * LEAST RECENTLY ASKED FIRST, and a family never asked before everyone: the order is what
+ * decides who MAX_CHECK_INS_PER_RUN leaves behind, and an unordered select would leave
+ * behind whoever Postgres happened to return last — the same households every evening. */
 async function selectCheckInFamilies(database: Database): Promise<CheckInFamily[]> {
   return database
     .select({
@@ -336,11 +352,19 @@ async function selectCheckInFamilies(database: Database): Promise<CheckInFamily[
       ),
     )
     .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
+    .leftJoin(
+      schema.familyCheckInPrefs,
+      eq(schema.familyCheckInPrefs.familyId, schema.families.id),
+    )
     .where(
       and(
         eq(schema.families.onboardingStage, 'sms_active'),
         isNull(schema.families.scheduledDeletionAt),
       ),
+    )
+    .orderBy(
+      sql`${schema.familyCheckInPrefs.lastAskedAt} asc nulls first`,
+      asc(schema.families.id),
     );
 }
 

@@ -6,6 +6,7 @@ import {
   type CheckInCadence,
   askStillStanding,
   localDateKey,
+  readCheckInState,
   recordCheckInAnswer,
 } from './cadence';
 import {
@@ -139,8 +140,8 @@ const CADENCE_STATUS: Record<CheckInCadence, CheckInReplyStatus> = {
  *
  * EXPORTED, because the dial moves whether or not a question is standing. Every ack this
  * lane sends prints "Reply NO anytime" or "Reply DAILY to switch back", and a promise
- * that only holds until Hale's next outbound message is not a promise (see
- * {@link lastCheckInAskToParent}).
+ * that only holds until Hale's next outbound message is not a promise — how far it does
+ * hold is {@link checkInKeywordReach}.
  */
 export async function applyCheckInCadence(
   database: Database,
@@ -208,6 +209,10 @@ async function auditAnswer(
  *
  * PER PARENT, not per family: the question was put to the primary parent's phone, and a
  * co-parent's evening is not the one Hale asked about.
+ *
+ * WHAT CLOSES HERE IS THE QUESTION, NOT THE KEYWORDS. A SENTENCE is only an answer while
+ * this returns something; LESS, NO and DAILY reach further, because the messages that
+ * teach them promise "anytime" (checkInKeywordReach).
  */
 export async function eveningCheckInQuestion(
   database: Database,
@@ -249,39 +254,118 @@ export async function eveningCheckInQuestion(
     .limit(1);
   if (newer) return null;
 
-  const [row] = await database
-    .select({ timezone: schema.users.timezone })
-    .from(schema.users)
-    .where(eq(schema.users.id, input.parentUserId))
-    .limit(1);
-  if (!row) return null;
+  const timeZone = await parentTimeZone(database, input.parentUserId);
+  if (timeZone === null) return null;
 
-  return askStillStanding(ask.createdAt, input.now, row.timezone)
+  return askStillStanding(ask.createdAt, input.now, timeZone)
     ? { id: ask.id, askedAt: ask.createdAt }
     : null;
 }
 
+/** The clock the evening is read on — the PARENT's, since the question went to their
+ * phone. Absent only when the user row is gone, which is not a state this lane acts in. */
+async function parentTimeZone(database: Database, parentUserId: string): Promise<string | null> {
+  const [row] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.users)
+    .where(eq(schema.users.id, parentUserId))
+    .limit(1);
+  return row?.timezone ?? null;
+}
+
+/** How long after this lane last spoke DAILY is still a way back in. */
+export const CHECK_IN_REOFFER_DAYS = 30;
+
+/**
+ * HOW FAR A TAUGHT WORD REACHES — the answer to "may this lane claim LESS, NO or DAILY
+ * from this parent right now".
+ *
+ * `standing` is the lane holding the floor and the words meaning what they were taught to.
+ * `reoffer` is the narrow afterwards in which DAILY alone still means something.
+ */
+export type CheckInKeywordReach =
+  | { reach: 'standing'; askId: string }
+  | { reach: 'reoffer'; askId: string }
+  | { reach: 'none' };
+
+/**
+ * WHEN LESS, NO AND DAILY BELONG TO THIS LANE.
+ *
+ * These six words ('less', 'weekly', 'no', 'non', 'daily', 'nightly') are the broadest
+ * claim in the product and they are ordinary English, so the question is not whether Hale
+ * ever taught them but whether THIS is still the conversation it taught them in. The rule
+ * is the floor, and it is two clauses:
+ *
+ *   · THE LANE HAS THE LAST WORD — its ask or step-down notice is the most recent outbound
+ *     of any kind to this parent. Hale's last sentence to them was "How did today go?
+ *     Reply NO anytime", so 'no' is an answer to that and to nothing else, whether it
+ *     comes back in a minute or the following afternoon.
+ *   · OR THE EVENING IS STILL OPEN — `askStillStanding`, this local evening through 08:00
+ *     the next morning. This is the clause that survives Hale's own thank-you: the ack
+ *     closes the standing QUESTION (eveningCheckInQuestion is a last-word rule and the ack
+ *     is an outbound), and a NO a minute later must still work.
+ *
+ * OUTSIDE BOTH, LESS AND NO GO WHERE THEY WENT BEFORE THIS LANE EXISTED — to the coach.
+ * A bare 'no' three weeks after an ask, with another lane's message in between and nothing
+ * open, is a parent declining something else; claiming it filed a cadence change and
+ * swallowed the turn. The lane loses a keyword it had no business holding; it does not
+ * lose an opt-out, because the opt-out is STOP and that never came near here.
+ *
+ * DAILY IS THE ONE EXCEPTION, and only as a way BACK IN: a household Hale has stepped down
+ * or gone quiet on hears from this lane weekly or never, so the two clauses above can only
+ * be false for them — and a dormant family with no route back is a feature that cannot be
+ * un-quit. So DAILY is honoured while the cadence is not already daily (there is something
+ * to return from) and this lane spoke inside {@link CHECK_IN_REOFFER_DAYS}. Past that the
+ * word is stale and the coach takes it, which is also where a family who said NO last
+ * spring gets their answer.
+ */
+export async function checkInKeywordReach(
+  database: Database,
+  input: { familyId: string; parentUserId: string; now: Date },
+): Promise<CheckInKeywordReach> {
+  const last = await lastCheckInMessageToParent(database, input);
+  if (last === null) return { reach: 'none' };
+
+  const [newer] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, input.parentUserId),
+        eq(schema.channelMessages.direction, 'out'),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        gt(schema.channelMessages.createdAt, last.createdAt),
+      ),
+    )
+    .limit(1);
+  if (!newer) return { reach: 'standing', askId: last.id };
+
+  const timeZone = await parentTimeZone(database, input.parentUserId);
+  if (timeZone !== null && askStillStanding(last.createdAt, input.now, timeZone)) {
+    return { reach: 'standing', askId: last.id };
+  }
+
+  const { cadence } = await readCheckInState(database, input.familyId);
+  const sinceLastWord = input.now.getTime() - last.createdAt.getTime();
+  return cadence !== 'daily' && sinceLastWord <= CHECK_IN_REOFFER_DAYS * 24 * 3_600_000
+    ? { reach: 'reoffer', askId: last.id }
+    : { reach: 'none' };
+}
+
 /**
  * The last thing this lane said to this parent, standing question or not.
- *
- * THE WORDS OUTLIVE THE WINDOW. Every message this lane sends teaches a keyword and
- * promises it works later — "Reply NO anytime to drop these", "reply DAILY any evening to
- * switch back" — and the standing question does not: it closes the moment any other
- * outbound reaches the parent, and the ack that answered them is itself one. So a parent
- * who replied NO to a nightly message one minute after Hale's thank-you kept receiving
- * it, which is the shape of an ignored opt-out however small the feature.
  *
  * THE LEDGER IS THE RECORD OF WHAT HALE ACTUALLY SAID, which is why this reads it rather
  * than the prefs row: a prefs write that never landed would leave a family that was asked
  * looking like one that never was, and it is exactly that family whose NO must work. The
  * step-down notice counts too — it is the message that teaches DAILY.
  */
-export async function lastCheckInAskToParent(
+async function lastCheckInMessageToParent(
   database: Database,
   input: { familyId: string; parentUserId: string },
-): Promise<string | null> {
+): Promise<{ id: string; createdAt: Date } | null> {
   const [row] = await database
-    .select({ id: schema.channelMessages.id })
+    .select({ id: schema.channelMessages.id, createdAt: schema.channelMessages.createdAt })
     .from(schema.channelMessages)
     .where(
       and(
@@ -298,7 +382,7 @@ export async function lastCheckInAskToParent(
     )
     .orderBy(desc(schema.channelMessages.createdAt))
     .limit(1);
-  return row?.id ?? null;
+  return row ?? null;
 }
 
 /**

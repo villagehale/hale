@@ -16,6 +16,15 @@ describe('telling Hale about the day vs asking Hale for something', () => {
     for (const body of asks) expect(asksHaleForSomething(body), body).toBe(true);
   });
 
+  it('reads the question mark on its own, with no opener and no phrase behind it', () => {
+    // Every fixture above carries an opener or a phrase as well, so deleting the '?'
+    // rule left them all green. These four are caught by the punctuation and nothing
+    // else — a parent asking the shortest question they can type.
+    for (const body of ['Swim tomorrow?', 'Mia in the tuesday one?', 'Camp?', 'Et le camp?']) {
+      expect(asksHaleForSomething(body), body).toBe(true);
+    }
+  });
+
   it('leaves an ordinary evening alone', () => {
     const evenings = [
       'Park after daycare and both asleep by 7. Rare win.',

@@ -206,11 +206,16 @@ export const PROACTIVE_CAP: Record<
   // one: a connector that re-seeds and reports forty edits as new stops after a nuisance
   // instead of after a phone full of texts.
   calendar_alert: { max: 3, windowHours: 24 },
-  // The evening question. ONE PER FAMILY PER DAY, and this entry IS that rule rather than
-  // a counter guarding it: the gate already answers "at most N of this class per family
-  // per window", which is exactly what the rail says. It also covers the step-down notice
-  // by construction, since that message is the evening's one send when it goes.
-  evening_check_in: { max: 1, windowHours: 24 },
+  // The evening question. ONE PER FAMILY PER EVENING — and the window is 20 hours rather
+  // than 24 BECAUSE the rail is "per evening" and not "per day". Two consecutive evenings
+  // are 24 hours apart, so a 24-hour window holds tonight's question on the strength of
+  // last night's: the ledger row is written after the run's clock is read, so last night's
+  // send always sits a hair inside tonight's window and the nightly question never goes
+  // out twice in a row. The window only has to be wider than one evening's SLOT (an hour)
+  // and narrower than the gap between two slots, which a spring-forward night shortens to
+  // 22h — 20 sits in the middle of that range with room on both sides, and a family-local
+  // date would buy nothing a fixed window this far from either edge does not already have.
+  evening_check_in: { max: 1, windowHours: 20 },
 };
 
 /**

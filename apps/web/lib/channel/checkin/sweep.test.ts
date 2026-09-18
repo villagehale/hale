@@ -5,7 +5,11 @@ import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import type { CheckInState } from './cadence';
 import { CHECK_IN_ASK_TEMPLATE_KEY, CHECK_IN_STEP_DOWN } from './copy';
-import { type EveningCheckInDeps, runEveningCheckInSweep } from './sweep';
+import {
+  type EveningCheckInDeps,
+  MAX_CHECK_INS_PER_RUN,
+  runEveningCheckInSweep,
+} from './sweep';
 
 /**
  * The question Hale asks every evening.
@@ -156,6 +160,30 @@ describe('the evening slot', () => {
     expect(result.asked).toBe(1);
     expect(sent).toEqual([]);
     expect(later.sent).toHaveLength(1);
+  });
+});
+
+describe('an hour with more households in it than one run may carry', () => {
+  it('counts every one of them and says how many it left for tomorrow', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    const { deps, sent } = harness();
+    const over = MAX_CHECK_INS_PER_RUN + 2;
+    deps.selectFamilies = async () =>
+      Array.from({ length: over }, (_, index) => ({
+        familyId: `fam-${index}`,
+        parentUserId: `parent-${index}`,
+        timeZone: 'America/Toronto',
+      }));
+
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    // inSlot is the HOUR, not the batch: a bound that also shrank the number it reported
+    // would hide the one condition this counter exists to surface.
+    expect({ inSlot: result.inSlot, overflow: result.overflow, asked: result.asked }).toEqual({
+      inSlot: over,
+      overflow: 2,
+      asked: MAX_CHECK_INS_PER_RUN,
+    });
+    expect(sent).toHaveLength(MAX_CHECK_INS_PER_RUN);
   });
 });
 
