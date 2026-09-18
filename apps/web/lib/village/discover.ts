@@ -113,7 +113,13 @@ export const candidatesSchema = z.object({
       ageRange: z.string().nullable().optional(),
       indoorOutdoor: z.enum(INDOOR_OUTDOOR).nullable().optional().catch(null),
       confidence: z.number().min(0).max(1),
-      coverageNote: z.string(),
+      // The coverage caveat is an ATTRIBUTE, not the candidate: the model omits
+      // it whenever it feels it has nothing to caveat, and a strict `z.string()`
+      // here rejected the whole array — six good candidates lost to one absent
+      // sentence, so a new family's first village came back empty. Same
+      // attribute-level lesson as priceBand/indoorOutdoor: a missing note costs
+      // the NOTE, never the run.
+      coverageNote: z.string().nullable().optional(),
     }),
   ),
 });
@@ -138,7 +144,13 @@ export const candidatesJsonSchema = {
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           coverageNote: { type: 'string' },
         },
-        required: ['title', 'description', 'confidence', 'coverageNote'],
+        // `required` states what Hale actually requires, which is what the parse
+        // enforces. coverageNote is NOT here: the model omits it at will (the
+        // schema is non-strict, so `required` is advisory), and a contract that
+        // claims a field the model demonstrably skips only teaches the reader to
+        // trust it less. Everything listed is a field a candidate cannot be
+        // without, and the Zod schema rejects each one's absence.
+        required: ['title', 'description', 'confidence'],
       },
     },
   },
@@ -324,7 +336,17 @@ export async function discoverForFamily(
         await recordRun('failed');
         throw new Error(`discovery: model returned no ${DISCOVERY_TOOL} tool call`);
       }
-      const parsed = candidatesSchema.parse(toolUse.input);
+      // Rule #8: a tool payload the contract rejects is a failed run too — record
+      // it (the model billed for it) before letting the error bubble. The caller
+      // that swallows this (`after()` in trigger-discovery) logs to Vercel only,
+      // so without this the failure would be invisible in agent_runs.
+      let parsed: z.infer<typeof candidatesSchema>;
+      try {
+        parsed = candidatesSchema.parse(toolUse.input);
+      } catch (err) {
+        await recordRun('failed');
+        throw err;
+      }
 
       const candidates = parsed.candidates.slice(0, DISCOVERY_LIMIT);
       if (candidates.length === 0) {
@@ -392,7 +414,10 @@ export async function discoverForFamily(
               sourceUrl,
               source: SOURCE,
               confidence: c.confidence,
-              coverageNote: c.coverageNote,
+              // No note → null, the column's own "nothing to say" (civic picks
+              // already store it that way, and every reader hides the line on
+              // null). Hale never writes a caveat the model didn't make.
+              coverageNote: c.coverageNote ?? null,
               eventDate: c.eventDate ?? null,
               seasons: c.seasons ?? null,
               lat: coords?.lat ?? null,

@@ -153,7 +153,30 @@ describe('discoverPreview — pre-auth, no-DB value sample (rule #1)', () => {
 
     expect(activity?.title.length).toBe(200);
     expect(activity?.summary.length).toBe(600);
-    expect(activity?.coverageNote.length).toBe(300);
+    expect(activity?.coverageNote?.length).toBe(300);
+  });
+
+  it('returns a candidate whose coverage note the model omitted, with a null note', async () => {
+    // The pre-auth preview shares `candidatesSchema` with the authed path, so the
+    // same omission that emptied a family's first village would have emptied the
+    // visitor's sample too.
+    const c = fakeClient([
+      { title: 'Library story-time', description: 'a weekly story hour', confidence: 0.6 },
+    ]);
+
+    const activities = await discoverPreview(
+      { stage: 'toddler', areaCoarse: 'M5V', interests: [] },
+      deps(c.client),
+    );
+
+    expect(activities).toEqual([
+      {
+        title: 'Library story-time',
+        summary: 'a weekly story hour',
+        coverageNote: null,
+        sourceUrl: null,
+      },
+    ]);
   });
 
   it('returns an empty list WITHOUT a model call for a teenager (real discovery excludes teens, rule #1)', async () => {
