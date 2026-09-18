@@ -1,9 +1,12 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { fakeChannel, fakeRenderer } from '~/lib/channel/fakes';
 import { threadIfParent } from '~/lib/channel/thread';
+import { buildDispatchPorts } from '~/lib/channel/wiring';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { defaultReminderRunDeps } from '~/lib/loop/reminders/run';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { selectCaregiverSeats } from './caregiver-audience';
 
@@ -11,9 +14,10 @@ import { selectCaregiverSeats } from './caregiver-audience';
  * What the DATABASE says a caregiver seat is — against the real DDL, because every claim
  * here is one a fake would answer yes to with the predicate deleted.
  *
- * Two subjects, one boot: who the loop may address (the audience join), and where what it
- * says to them is written down (the thread guard). Both are the same question asked of
- * `family_members` + `parent_channels`, and pglite costs a boot per file.
+ * Three subjects, one boot: who the loop may address (the audience join), where what it
+ * says to them is written down (the thread guard, asked through the PRODUCTION binding),
+ * and what a due reminder row knows about its own recipient. All three are the same
+ * question asked of `family_members` + `parent_channels`, and pglite costs a boot per file.
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -185,5 +189,139 @@ describe('threadIfParent — whose transcript a proactive text lands in', () => 
     });
     expect(outcome).toEqual({ threaded: false, reason: 'recipient_not_parent' });
     expect(await conversationCount(a.familyId)).toBe(0);
+  });
+
+  /**
+   * THROUGH THE PRODUCTION BINDING, not the function. Every other test here calls
+   * `threadIfParent` directly and every journey test injects its own `threadMessage`, so
+   * the one line that decides which writer the real dispatch holds — `buildDispatchPorts`
+   * in channel/wiring.ts — was pinned by nothing: reverting it to the unguarded
+   * `threadProactiveMessage` left the whole suite green while production minted a
+   * grandmother a coach thread inside somebody else's family.
+   */
+  describe('buildDispatchPorts().threadMessage — the writer the real dispatch holds', () => {
+    const ports = () =>
+      buildDispatchPorts(db.database, {
+        channels: { sms: fakeChannel('sms') },
+        renderer: fakeRenderer,
+      });
+
+    it("threads a parent's proactive text (positive control)", async () => {
+      const { familyId, parentUserId } = await seedHousehold();
+      await ports().threadMessage({
+        familyId,
+        parentUserId,
+        body: 'Hale: your week - Tue 4:15 Gymnastics',
+      });
+      expect(await conversationCount(familyId)).toBe(1);
+    });
+
+    it('mints a caregiver no conversation in the household she helps with', async () => {
+      const { familyId } = await seedHousehold();
+      const grandmaId = await seatGrandma(familyId);
+      await ports().threadMessage({
+        familyId,
+        parentUserId: grandmaId,
+        body: 'Hale: this week for Mia - Tue 4:15 Gymnastics',
+      });
+      expect(await conversationCount(familyId)).toBe(0);
+    });
+  });
+});
+
+/**
+ * The fire gate's own facts, read the way production reads them.
+ *
+ * `smsChannelActive` is what a caregiver's STOP takes away, and the run asks the ROW for
+ * it rather than a fan-out list — so the join that computes it is the whole guarantee,
+ * and a fake answering `true` proves nothing about it.
+ */
+describe('defaultReminderRunDeps().loadDueReminders — what a due row knows about its recipient', () => {
+  const NOW = new Date('2026-07-25T13:00:00Z');
+
+  async function seedDueRow(familyId: string, userId: string): Promise<string> {
+    const [event] = await db.database
+      .insert(schema.familyEvents)
+      .values({
+        familyId,
+        title: 'Swim class',
+        startsAt: new Date('2026-07-25T14:00:00Z'),
+        source: 'placement',
+      })
+      .returning({ id: schema.familyEvents.id });
+    const [reminder] = await db.database
+      .insert(schema.eventReminders)
+      .values({
+        familyId,
+        eventRef: event?.id as string,
+        parentUserId: userId,
+        offset: '-PT1H',
+        fireAt: new Date('2026-07-25T13:00:00Z'),
+        status: 'scheduled',
+      })
+      .returning({ id: schema.eventReminders.id });
+    return reminder?.id as string;
+  }
+
+  it('says a seated grandparent with a live number is a grandparent whose channel is active', async () => {
+    const { familyId } = await seedHousehold();
+    const grandmaId = await seatGrandma(familyId);
+    await seedDueRow(familyId, grandmaId);
+
+    const rows = await defaultReminderRunDeps().loadDueReminders(db.database, NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ role: 'grandparent', smsChannelActive: true });
+  });
+
+  it('says her channel is inactive once it is revoked — the row carries her STOP', async () => {
+    const { familyId } = await seedHousehold();
+    const grandmaId = await seatGrandma(familyId, { revoked: true });
+    await seedDueRow(familyId, grandmaId);
+
+    const rows = await defaultReminderRunDeps().loadDueReminders(db.database, NOW);
+    expect(rows[0]).toMatchObject({ role: 'grandparent', smsChannelActive: false });
+  });
+
+  it('says her channel is inactive while it is unverified', async () => {
+    const { familyId } = await seedHousehold();
+    const grandmaId = await seatGrandma(familyId, { verified: false });
+    await seedDueRow(familyId, grandmaId);
+
+    const rows = await defaultReminderRunDeps().loadDueReminders(db.database, NOW);
+    expect(rows[0]?.smsChannelActive).toBe(false);
+  });
+
+  it('carries a null role for a recipient whose membership is gone (a departed co-parent)', async () => {
+    const { familyId, parentUserId } = await seedHousehold();
+    await seedDueRow(familyId, parentUserId);
+    // What `coparent/depart.ts` does, and all it does: the seat goes, the due row stays.
+    await db.database
+      .delete(schema.familyMembers)
+      .where(eq(schema.familyMembers.userId, parentUserId));
+
+    const rows = await defaultReminderRunDeps().loadDueReminders(db.database, NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.role).toBeNull();
+  });
+
+  it('returns ONE row per reminder however many channels its recipient has held', async () => {
+    // The join is the fan-out risk: a revoked row plus a live one for the same user must
+    // not double the reminder (and double the text).
+    const { familyId } = await seedHousehold();
+    const grandmaId = await seatGrandma(familyId);
+    await db.database.insert(schema.parentChannels).values({
+      userId: grandmaId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString('+16475550100'),
+      phoneE164Hash: phoneBlindIndex('+16475550100'),
+      verifiedAt: new Date(),
+      revokedAt: new Date(),
+    });
+    await seedDueRow(familyId, grandmaId);
+
+    const rows = await defaultReminderRunDeps().loadDueReminders(db.database, NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.smsChannelActive).toBe(true);
   });
 });

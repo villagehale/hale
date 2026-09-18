@@ -44,8 +44,18 @@ export interface CaregiverReminderEvent {
 
 export interface CaregiverReminderPayload {
   offset: '-P1D' | '-PT1H';
-  /** The family IANA timezone — the time labels are family-local, not the caregiver's,
-   * because the time they need is the time the child is expected somewhere. */
+  /**
+   * The RECIPIENT's own IANA zone (`users.timezone`), which is the one rule the whole
+   * product renders times by — a co-parent who moved to Vancouver already reads the
+   * Toronto swim class as 07:00, because there is no `families.timezone` anywhere in the
+   * schema and never has been. The caregiver leg follows that convention rather than
+   * inventing a second one for itself; making the label family-local is a product-wide
+   * decision about every reminder, not a property of this payload.
+   *
+   * Worth knowing where it bites: `ensureCaregiverUser` (channel/caregiver/invites.ts)
+   * never writes a zone, so a seat minted from a phone number sits on the column default.
+   * The zone is real only for a caregiver who also holds an account of their own.
+   */
   timeZone: string;
   events: CaregiverReminderEvent[];
 }

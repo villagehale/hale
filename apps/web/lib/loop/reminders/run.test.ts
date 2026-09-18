@@ -46,6 +46,9 @@ function dueRow(over: Partial<DueReminder> = {}): DueReminder {
     // a parent's, and every existing assertion below is the proof the new role gate did
     // not quietly stop the parents' reminders too.
     role: 'primary_parent',
+    // Irrelevant to a parent (their leg never consults it) and required so no fake can
+    // omit the fact a caregiver's leg turns on.
+    smsChannelActive: true,
     ...over,
   };
 }
@@ -278,7 +281,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
       { id: 'r2', status: 'sent', reason: null },
     ]);
     expect(captured).toEqual([
-      { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-P1D', events: 2 } },
+      { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-P1D', events: 2, audience: 'parent' } },
     ]);
     expect(result).toMatchObject({ fired: 2 });
   });
@@ -303,7 +306,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
     expect((payload.events as unknown[]).length).toBe(1);
     expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
     expect(captured).toEqual([
-      { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-PT1H', events: 1 } },
+      { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-PT1H', events: 1, audience: 'parent' } },
     ]);
     expect(result).toMatchObject({ due: 1, fired: 1 });
   });

@@ -31,6 +31,15 @@ import { CAREGIVER_ROLES, type CaregiverRole } from '~/lib/channel/role-scope';
  * time and suppresses on the live answer, which is the authoritative check; filtering here
  * is what stops a revoked seat minting a `suppressed_consent` ledger row every single week
  * for a person who already said no.
+ *
+ * AND IT CARRIES NO BOUND, deliberately, mirroring the parents' `selectReminderParents`.
+ * A `LIMIT` here would be a bound on a FAN-OUT expressed inside a DEFINITION, and the two
+ * cannot share a list: whoever reads this asking "is this person an active seat?" would
+ * get `false` for a live grandmother purely because the row ahead of her filled a cap —
+ * a refusal manufactured by a performance knob. The senders bound their own fan-out where
+ * it happens (`MAX_SEND_CAREGIVERS_PER_RUN` in loop/send.ts, after the send-moment filter,
+ * exactly as the parents' leg does), and the reminder fire gate asks the ROW about its own
+ * recipient (`DueReminder.smsChannelActive`) rather than asking this list.
  */
 
 export interface CaregiverSeat {
@@ -42,11 +51,6 @@ export interface CaregiverSeat {
   /** The caregiver's own users.week_start_day (0=Sun, the product default). */
   weekStartDay: number;
 }
-
-/** Bound on one run's fan-out, mirroring the parents' `MAX_SEND_PARENTS_PER_RUN`: a
- * household can seat several caregivers, and an unbounded sweep is how a cron tick that
- * used to take a second starts timing out. */
-export const MAX_CAREGIVER_SEATS_PER_RUN = 200;
 
 export async function selectCaregiverSeats(database: Database): Promise<CaregiverSeat[]> {
   const rows = await database
@@ -68,8 +72,7 @@ export async function selectCaregiverSeats(database: Database): Promise<Caregive
         isNull(schema.parentChannels.revokedAt),
       ),
     )
-    .where(inArray(schema.familyMembers.role, [...CAREGIVER_ROLES]))
-    .limit(MAX_CAREGIVER_SEATS_PER_RUN);
+    .where(inArray(schema.familyMembers.role, [...CAREGIVER_ROLES]));
 
   return rows.map((r) => ({
     familyId: r.familyId,

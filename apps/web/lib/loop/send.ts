@@ -41,6 +41,10 @@ export function loopSendEnabled(): boolean {
 
 const WEEKLY_PLAN_TEMPLATE_KEY = 'weekly_plan';
 export const MAX_SEND_PARENTS_PER_RUN = 200;
+/** The same bound on the caregiver leg's fan-out, applied in the same place: AFTER the
+ * send-moment filter, so it caps how many messages one tick composes and never doubles as
+ * a statement about who is a seat (see caregiver-audience.ts). */
+export const MAX_SEND_CAREGIVERS_PER_RUN = 200;
 const SEND_SLOT_MINUTES = 60;
 const MINUTES_PER_WEEK = 7 * 24 * 60;
 
@@ -143,6 +147,7 @@ export async function selectCaregiversToSend(
   const seats = await selectCaregiverSeats(db);
   const out: SendCaregiverRow[] = [];
   for (const seat of seats) {
+    if (out.length >= MAX_SEND_CAREGIVERS_PER_RUN) break;
     if (localParts(now, seat.timezone).weekday !== weeklyPlanWeekday(seat.weekStartDay)) continue;
     const view = await loadLoopPrefsView(seat.userId, db);
     if (!view.catWeeklyPlan) continue;
@@ -290,10 +295,15 @@ export async function runSundaySendCron(
     await deps.enqueue(job);
     enqueued += 1;
     // Coarse telemetry for X1 (buildEvent drops any PII key): counts + enum only.
+    // `audience` is WHO it reached. The distinct id is the recipient, and since M6 that
+    // recipient may be a caregiver — so without it the two legs are one undivided count
+    // and "how many parents got their Sunday" has no answer. (The property literal stays
+    // comment-free: loop-event-property-audit.test.ts parses this call site as text.)
     await deps.capture('loop_plan_sent', parent.userId, {
       category: 'weekly_plan',
       items: plan.items.length,
       pending: plan.items.filter((item) => item.needs !== 'none').length,
+      audience: 'parent',
     });
   }
 
@@ -357,6 +367,7 @@ export async function runSundaySendCron(
       category: 'weekly_plan',
       items: scoped.length,
       pending: 0,
+      audience: 'caregiver',
     });
   }
 

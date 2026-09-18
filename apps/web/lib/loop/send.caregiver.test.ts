@@ -82,6 +82,7 @@ const grandma: SendCaregiverRow = {
 
 function makeDeps(over: Partial<SundaySendDeps> = {}) {
   const enqueued: ChannelSendJob[] = [];
+  const captures: { event: string; distinctId: string; props: Record<string, unknown> }[] = [];
   const deps: SundaySendDeps = {
     selectParents: async () => [parent],
     selectCaregivers: async () => [grandma],
@@ -90,10 +91,13 @@ function makeDeps(over: Partial<SundaySendDeps> = {}) {
     enqueue: async (job) => {
       enqueued.push(job);
     },
-    capture: async () => 'sent',
+    capture: async (event, distinctId, props = {}) => {
+      captures.push({ event, distinctId, props });
+      return 'sent';
+    },
     ...over,
   };
-  return { deps, enqueued };
+  return { deps, enqueued, captures };
 }
 
 const db = {} as Database;
@@ -213,6 +217,23 @@ describe('the caregiver weekly plan', () => {
     expect(result.caregiverEnqueued).toBe(0);
     // And no "quiet week" filler: the household's week was not quiet.
     expect(enqueued.map((j) => j.templateKey)).not.toContain('weekly_plan:caregiver');
+  });
+
+  it('tags each plan with the audience it reached, so the two sends are separable in the metric', async () => {
+    // Both legs fire the same `loop_plan_sent` event with the RECIPIENT as the distinct
+    // id, so without this property a caregiver's week and a parent's are one undivided
+    // number — and "how many parents got their Sunday" stops being answerable.
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const { deps, captures } = makeDeps();
+    await runSundaySendCron(db, deps, NOW);
+    expect(
+      captures
+        .filter((c) => c.event === 'loop_plan_sent')
+        .map((c) => ({ distinctId: c.distinctId, audience: c.props.audience })),
+    ).toEqual([
+      { distinctId: 'p1', audience: 'parent' },
+      { distinctId: 'g1', audience: 'caregiver' },
+    ]);
   });
 
   it('composes but enqueues nothing while LOOP_SEND_ENABLED is off', async () => {

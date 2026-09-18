@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import {
@@ -105,6 +105,19 @@ export interface DueReminder {
    * it is a compile error rather than a leg that quietly stops being checked.
    */
   role: FamilyRole | null;
+  /**
+   * Whether this recipient holds a verified, non-revoked SMS channel RIGHT NOW — the
+   * other half of "active seat", and what a caregiver's STOP takes away.
+   *
+   * On the row for the same reason the role is, and it was the one fact this gate used to
+   * borrow from `selectReminderCaregivers`: a list assembled to fan CONVERGE out over
+   * seats, which may legitimately be bounded, re-ordered or (for a run with no caregiver
+   * work) empty. Read as a membership test it turns any of those into a permanent
+   * `out_of_scope` on a live seat's due reminder — a refusal manufactured by a knob that
+   * was never about this person. Only a caregiver leg consults it: a parent's reminder can
+   * ride email, and their SMS state is the dispatch's to judge.
+   */
+  smsChannelActive: boolean;
 }
 
 /** The channel.send job the A2 drain consumes (contract-validated by
@@ -271,6 +284,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           fireAt: schema.eventReminders.fireAt,
           timezone: schema.users.timezone,
           role: schema.familyMembers.role,
+          channelId: schema.parentChannels.id,
         })
         .from(schema.eventReminders)
         .innerJoin(schema.users, eq(schema.eventReminders.parentUserId, schema.users.id))
@@ -283,16 +297,29 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
             eq(schema.familyMembers.userId, schema.eventReminders.parentUserId),
           ),
         )
+        // The SAME three columns caregiver-audience.ts joins on, asked per row. At most one
+        // row can match (`parent_channels_user_kind_active_idx` is unique on (user, kind)
+        // among the non-revoked), so this widens the result set by nothing.
+        .leftJoin(
+          schema.parentChannels,
+          and(
+            eq(schema.parentChannels.userId, schema.eventReminders.parentUserId),
+            eq(schema.parentChannels.kind, 'sms'),
+            isNotNull(schema.parentChannels.verifiedAt),
+            isNull(schema.parentChannels.revokedAt),
+          ),
+        )
         .where(
           and(
             eq(schema.eventReminders.status, 'scheduled'),
             lte(schema.eventReminders.fireAt, now),
           ),
         );
-      return rows.map((r) => ({
+      return rows.map(({ channelId, ...r }) => ({
         ...r,
         offset: r.offset as ReminderOffset,
         role: (r.role as FamilyRole | null) ?? null,
+        smsChannelActive: channelId !== null,
       }));
     },
     loadEvent: async (db, eventRef) => {
@@ -408,7 +435,6 @@ export async function runReminderCron(
   // ── Phase A: converge the ledger from live placed events ─────────────────────
   const parents = await deps.selectReminderParents(db);
   const caregiverSeats = await deps.selectReminderCaregivers(db);
-  const activeCaregiverIds = new Set(caregiverSeats.map((seat) => seat.userId));
 
   const familyParents = new Map<string, ReminderParent[]>();
   for (const p of parents) {
@@ -472,12 +498,15 @@ export async function runReminderCron(
    * non-revoked channel — their STOP lands here), and the event must fall inside the
    * three classes their role allows. Anything else — a departed member, one of the two
    * legacy vague roles, a row whose seat is simply gone — fails closed.
+   *
+   * EVERY FACT COMES FROM THE ROW, none from the run's audience list. A gate that reads a
+   * fan-out list refuses whatever that list happened not to contain.
    */
   const recipientMaySee = async (row: DueReminder, event: LiveEvent): Promise<boolean> => {
     const role = row.role;
     if (role !== null && isParentRole(role)) return true;
     if (role === null || !isCaregiverRole(role)) return false;
-    if (!activeCaregiverIds.has(row.parentUserId)) return false;
+    if (!row.smsChannelActive) return false;
     return roleAllows(role, classifyFamilyEvent(event, await childrenFor(row.familyId), now));
   };
 
@@ -686,6 +715,7 @@ export async function runReminderCron(
       await deps.capture('reminder_sent', parentUserId, {
         offset: batch.offset,
         events: batch.eventRefs.length,
+        audience: caregiver ? 'caregiver' : 'parent',
       });
     }
   }

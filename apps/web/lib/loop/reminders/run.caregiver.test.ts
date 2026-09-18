@@ -61,6 +61,7 @@ function dueRow(over: Partial<DueReminder> = {}): DueReminder {
     fireAt: T1H_FIRE,
     timezone: TZ,
     role: 'grandparent',
+    smsChannelActive: true,
     ...over,
   };
 }
@@ -69,6 +70,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
   const enqueued: ChannelSendJob[] = [];
   const marked: { id: string; status: ReminderStatus; reason: SuppressReason | null }[] = [];
   const upserts: { eventRef: string; parentUserId: string; offset: string }[] = [];
+  const captures: { event: string; distinctId: string; props: Record<string, unknown> }[] = [];
   const deps: ReminderRunDeps = {
     selectReminderParents: async () => [],
     selectReminderCaregivers: async () => [GRANDMA],
@@ -88,12 +90,15 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     enqueue: async (job) => {
       enqueued.push(job);
     },
-    capture: async () => 'sent',
+    capture: async (event, distinctId, props = {}) => {
+      captures.push({ event, distinctId, props });
+      return 'sent';
+    },
     client: null,
     loadNameLevel: async () => 'first_name',
     ...over,
   };
-  return { deps, enqueued, marked, upserts };
+  return { deps, enqueued, marked, upserts, captures };
 }
 
 const db = {} as Database;
@@ -211,18 +216,32 @@ describe('fire — what actually reaches a caregiver', () => {
     expect(enqueued.map((j) => j.templateKey)).toEqual(['reminder']);
   });
 
-  it('suppresses a seat whose channel has since been revoked (it is no longer an active seat)', async () => {
+  it('suppresses a seat whose channel has since been revoked — the row carries the revocation', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const { deps, enqueued, marked } = makeDeps({
-      // Her STOP revoked the channel, so the audience reader no longer returns her — while
-      // the reminder row written last week is still sitting there, due.
-      selectReminderCaregivers: async () => [],
-      loadDueReminders: async () => [dueRow()],
+      // Her STOP revoked the channel. The reminder row written last week is still sitting
+      // there, due, and now arrives with the live join saying her number is gone.
+      loadDueReminders: async () => [dueRow({ smsChannelActive: false })],
       loadEvent: async () => event(),
     });
     await runReminderCron(db, deps, NOW);
     expect(enqueued).toEqual([]);
     expect(marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'out_of_scope' }]);
+  });
+
+  it('still fires for a seat the converge audience did not list this run — a fan-out bound is not a refusal', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const { deps, enqueued, marked } = makeDeps({
+      // The converge selector is a FAN-OUT list: it may be bounded, re-ordered or empty
+      // for reasons that say nothing about THIS row's recipient. Reading it as the fire
+      // gate's truth turns a cap into a permanent `out_of_scope` on a live seat's reminder.
+      selectReminderCaregivers: async () => [],
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => event(),
+    });
+    await runReminderCron(db, deps, NOW);
+    expect(enqueued.map((j) => j.parentUserId)).toEqual(['g1']);
+    expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
   });
 
   it('suppresses a row whose recipient holds no seat in the family any more', async () => {
@@ -234,6 +253,46 @@ describe('fire — what actually reaches a caregiver', () => {
     await runReminderCron(db, deps, NOW);
     expect(enqueued).toEqual([]);
     expect(marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'out_of_scope' }]);
+  });
+
+  it("suppresses a DEPARTED co-parent's due row while the seated parent's fires", async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    // `coparent/depart.ts` deletes the family_members row and nothing else — the
+    // event_reminders written while they were seated stay 'scheduled' and due. Before the
+    // role gate they kept firing the household's events at someone who had left; now the
+    // live seat, not the ledger row, decides. A behaviour change for the parents' leg,
+    // and the only one.
+    const { deps, enqueued, marked } = makeDeps({
+      selectReminderCaregivers: async () => [],
+      loadDueReminders: async () => [
+        dueRow({ id: 'r-gone', parentUserId: 'p-gone', role: null }),
+        dueRow({ id: 'r-here', parentUserId: 'p1', role: 'co_parent' }),
+      ],
+      loadEvent: async () => event(),
+    });
+    await runReminderCron(db, deps, NOW);
+    expect(enqueued.map((j) => j.parentUserId)).toEqual(['p1']);
+    expect(marked).toContainEqual({ id: 'r-gone', status: 'suppressed', reason: 'out_of_scope' });
+  });
+
+  it('tags the send with the audience it reached, so a caregiver ping is separable from a parent one', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const { deps, captures } = makeDeps({
+      loadDueReminders: async () => [
+        dueRow(),
+        dueRow({ id: 'r2', parentUserId: 'p1', role: 'primary_parent' }),
+      ],
+      loadEvent: async () => event(),
+    });
+    await runReminderCron(db, deps, NOW);
+    expect(
+      captures
+        .filter((c) => c.event === 'reminder_sent')
+        .map((c) => ({ distinctId: c.distinctId, audience: c.props.audience })),
+    ).toEqual([
+      { distinctId: 'g1', audience: 'caregiver' },
+      { distinctId: 'p1', audience: 'parent' },
+    ]);
   });
 
   it("leaves the parents' reminder exactly as it was (positive control)", async () => {
