@@ -12,7 +12,7 @@ import type {
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
-import { formatWhenPhrase } from '~/lib/format/datetime';
+import { formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractedEvent, ExtractionKind, InboxEnvelope, SentinelClassification } from '~/lib/sentinel';
 
 /**
@@ -372,24 +372,48 @@ export interface EmailAlertRenderInput {
   now: Date;
 }
 
-/** The two clamps that keep the composed body inside TWO GSM-7 segments once the full
+/** The clamps that keep the composed body inside TWO GSM-7 segments once the full
  * opt-out paragraph is appended (the conservative bound — the short form is cheaper).
  * Nothing else in the message is variable-length, so these are what make that arithmetic
  * a fact rather than a hope; the property test in this module's suite is the proof. */
 const SENDER_MAX = 40;
-const TITLE_MAX = 90;
-const OPENER = 'From your email: ';
-const ASK = 'I can add it to your week - reply YES.';
+const TITLE_MAX = 60;
+const LOCATION_MAX = 30;
 const TEEN_CLOSER = "I've kept the details out of this text.";
 
-/** What the extraction says when it has nothing specific, per kind — the fallback when a
+/**
+ * THERE IS NO CALL TO ACTION, and its absence is the design.
+ *
+ * This message used to end "I can add it to your week - reply YES." Nothing consumed that
+ * YES. An email alert registers no open question of any kind — `OpenQuestionKind` has
+ * nine members and none of them is this (lib/channel/router/open-questions.ts) — so a
+ * parent doing exactly what the text told them to do reached the coach with nothing
+ * drafted, or, with one unrelated action pending, APPROVED THAT ONE: consent read against
+ * a question it was never given to (rule #4).
+ *
+ * Wiring it is not a small change, and the reasons are structural rather than budgetary.
+ * A resolvable YES needs a row, the row would be an `agent_commitments` one, and that
+ * table's `commitment_kind` is a Postgres enum (a migration) under a partial unique index
+ * that permits ONE open promise of a kind per family — while `PROACTIVE_CAP.email_alert`
+ * allows three alerts a day, so the second and third would be unwritable. The row would
+ * also have to carry the title and the ISO instant, which is precisely the email-derived
+ * detail this module persists nowhere (the ledger body is NULL, the audit row carries
+ * enums only), and `topic` is a closed vocabulary that says so in its own comment.
+ *
+ * So the message ends on the fact. Ollie closes an item with "You can change or remove it
+ * anytime" because Ollie has already put it on the calendar; Hale has not, and a sentence
+ * that says otherwise is the one kind of copy this file must never ship.
+ */
+
+/** What the sentence says when it has nothing specific, per kind — the fallback when a
  * vendor title survives sanitising as nothing at all (a subject line entirely outside the
- * Latin alphabet). Hale's own words, so the message is still true. */
+ * Latin alphabet). Hale's own words, so the message is still true, and each one is
+ * written to read as the OBJECT of its kind's frame ("... has a new date on Friday"). */
 const GENERIC_TITLE: Record<ExtractionKind, string> = {
   cancellation: 'something was cancelled',
   reschedule: 'something moved',
   new_event: 'a new date',
-  reminder_only: 'a reminder',
+  reminder_only: 'there is something coming up',
   unclear: 'a possible schedule change',
 };
 
@@ -399,63 +423,175 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
  * Deterministic on purpose (rule #2): there is no prompt here and no second model call.
  * The extraction already decided what this email says; a composer would only give it a
  * chance to say something the email did not.
+ *
+ * The SENDER IS THE SUBJECT of a plain sentence and the time is a clause of it, because
+ * that is how a person relays a message: "Riverside Pool cancelled Saturday swim class -
+ * it was Saturday, Sep 19 at 9:00 a.m." No label in front of it, no dash standing in for
+ * a verb, and no offer at the end (see above).
  */
 export function renderEmailAlert(input: EmailAlertRenderInput): string {
-  const title = clamp(gsm7(input.event.title), TITLE_MAX) || GENERIC_TITLE[input.kind];
+  // Trailing punctuation off the vendor's title, because every frame below supplies the
+  // sentence's own ending and "Picture Day. on Friday" is what it reads as otherwise.
+  const title = clamp(gsm7(input.event.title), TITLE_MAX).replace(/[.,;:]+$/, '');
 
   if (input.teenContent) {
     // Category only. The pipeline has already replaced the title with its own generic
     // line; dropping the sender and the time is this renderer's half of the same rule,
     // because who wrote and when are the disclosure a 13+ child is owed protection from.
-    return `${OPENER}${title}. ${TEEN_CLOSER}`;
+    return `${title || GENERIC_TITLE[input.kind]}. ${TEEN_CLOSER}`;
   }
 
-  const sender = clamp(gsm7(senderLabel(input.from)), SENDER_MAX);
-  const when = whenPhrase(input.kind, input.event, input.timeZone, input.now);
-  const head = sender === '' ? title : `${sender} - ${title}`;
-  return `${OPENER}${head}.${when} ${ASK}`;
+  return compose(
+    input,
+    clamp(gsm7(senderLabel(input.from)), SENDER_MAX),
+    title || GENERIC_TITLE[input.kind],
+  );
 }
 
-/** `Now Sep 26, 10:00 a.m.` / `Was Sep 19, 9:00 a.m.` / `` — leading space included, so
- * an extraction with no usable time simply closes the previous sentence. */
-function whenPhrase(
-  kind: ExtractionKind,
-  event: ExtractedEvent,
-  timeZone: string,
-  now: Date,
-): string {
-  const time = alertTime(kind, event);
-  if (time === null) return '';
-  const at = new Date(time.iso);
-  // The extraction skill asks for ISO 8601 with an offset, but the field is a model's
-  // free text: an unparseable one is dropped rather than rendered as "Invalid Date".
-  if (Number.isNaN(at.getTime())) return '';
-  // `9:00 a.m.` already ends the sentence; a second period is the kind of thing nobody
-  // notices in review and everybody notices on a phone.
-  const phrase = `${time.prefix}${gsm7(formatWhenPhrase(at, timeZone, now))}`;
-  return phrase.endsWith('.') ? ` ${phrase}` : ` ${phrase}.`;
-}
+/** One sentence per kind, and they are all the same sentence: who, what, when. */
+function compose(input: EmailAlertRenderInput, sender: string, title: string): string {
+  const { event, timeZone, now } = input;
+  const at = (iso: string | null): string | null => longWhen(iso, timeZone, now);
 
-/** Which of the extraction's two times this kind of change is ABOUT — the same
- * kind→time convention correlate.ts matches on, so the text and the correlation are
- * talking about the same instant. */
-function alertTime(
-  kind: ExtractionKind,
-  event: ExtractedEvent,
-): { prefix: string; iso: string } | null {
-  switch (kind) {
-    case 'cancellation':
-      return event.originalTime === null ? null : { prefix: 'Was ', iso: event.originalTime };
-    case 'reschedule':
-      if (event.newTime !== null) return { prefix: 'Now ', iso: event.newTime };
-      return event.originalTime === null ? null : { prefix: 'Was ', iso: event.originalTime };
-    case 'new_event':
-      return event.newTime === null ? null : { prefix: '', iso: event.newTime };
-    case 'reminder_only':
-      return event.originalTime === null ? null : { prefix: '', iso: event.originalTime };
+  switch (input.kind) {
+    case 'cancellation': {
+      const head = changeHead(sender, title, CHANGE.cancellation);
+      const was = at(event.originalTime);
+      return end(was === null ? head : `${head} - it was ${was}`);
+    }
+    case 'reschedule': {
+      const head = changeHead(sender, title, CHANGE.reschedule);
+      const to = at(event.newTime);
+      if (to === null) {
+        const was = at(event.originalTime);
+        return end(was === null ? head : `${head} - it was ${was}`);
+      }
+      // The old date as a bare parenthetical: a parent scanning this needs to recognise
+      // WHICH occasion moved, and that is the date, not the hour it used to start at.
+      const from = shortDate(event.originalTime, timeZone, now);
+      return end(from === null ? `${head} to ${to}` : `${head} to ${to} (was ${from})`);
+    }
+    case 'new_event': {
+      const head = sender === '' ? title : `${sender} has ${title}`;
+      const on = at(event.newTime);
+      return end(`${head}${venue(event.location)}${on === null ? '' : ` on ${on}`}`);
+    }
+    case 'reminder_only': {
+      const head = sender === '' ? title : `${sender} says ${title}`;
+      const due = at(event.originalTime);
+      return end(due === null ? head : `${head} - ${due}`);
+    }
     case 'unclear':
-      return null;
+      return end(
+        sender === '' ? `Something about ${title}` : `${sender} sent something about ${title}`,
+      );
   }
+}
+
+/** `9:00 a.m.` already ends the sentence; a second period is the kind of thing nobody
+ * notices in review and everybody notices on a phone. */
+function end(sentence: string): string {
+  return sentence.endsWith('.') ? sentence : `${sentence}.`;
+}
+
+/** The words a vendor subject line has usually already said, per kind that has a verb. */
+interface ChangeWords {
+  /** What Hale says when the title has NOT said it. */
+  verb: string;
+  /** The word as a tail the vendor tacked on — `... - CANCELLED`, `... is cancelled`. */
+  tail: RegExp;
+  /** The same family of words anywhere at all. */
+  anywhere: RegExp;
+}
+
+/**
+ * WHY THE TITLE IS INSPECTED AT ALL.
+ *
+ * `extract-child-event.md`'s contract for `title` is the bare `"title": string` — nothing
+ * says it names the occasion rather than the change — and the shipped fixtures settle it
+ * the other way: `'Swim Class - CANCELLED'`, `'Soccer practice moved'`
+ * (lib/sentinel/correlate.test.ts). A frame that always supplies the verb would write
+ * "cancelled Swim Class - CANCELLED", and a frame that never supplies one would fail to
+ * say what happened at all for the titles that are just `'Swim lessons'`.
+ *
+ * So: take a TRAILING change word off and say it in Hale's own voice; where the word is
+ * embedded and cannot be removed cleanly ("Cancellation of Tuesday practice"), relay the
+ * title under "says" and add nothing. Hale never states the change twice, and never
+ * rewrites the middle of a sentence the school wrote.
+ */
+const CHANGE: Record<'cancellation' | 'reschedule', ChangeWords> = {
+  cancellation: {
+    verb: 'cancelled',
+    tail: /[\s\-:,]*(?:\b(?:is|has been|was|now)\s+)?\bcancell?ed\b$/i,
+    anywhere: /\bcancell?ed\b|\bcancellation\b|\bcalled off\b/i,
+  },
+  reschedule: {
+    verb: 'moved',
+    tail: /[\s\-:,]*(?:\b(?:is|has been|was|now)\s+)?\b(?:moved|rescheduled|postponed)\b$/i,
+    anywhere: /\bmoved?\b|\breschedul\w*\b|\bpostponed?\b|\bnew time\b/i,
+  },
+};
+
+function changeHead(sender: string, title: string, words: ChangeWords): string {
+  const occasion = title.replace(words.tail, '').trim();
+  if (occasion !== '' && !words.anywhere.test(occasion)) {
+    return sender === '' ? `${occasion} ${words.verb}` : `${sender} ${words.verb} ${occasion}`;
+  }
+  return sender === '' ? title : `${sender} says ${title}`;
+}
+
+/** `Saturday, Sep 19 at 9:00 a.m.`, in the parent's zone, with the year on another year's
+ * date — the weekday included because a parent reading this on a phone plans against the
+ * DAY and should not have to look the date up. Null when the extraction's time field is
+ * absent or is not a date: the skill asks for ISO 8601 with an offset, but the field is a
+ * model's free text, and "Invalid Date" on a phone is worse than no time at all. */
+function longWhen(iso: string | null, timeZone: string, now: Date): string | null {
+  const at = instant(iso);
+  if (at === null) return null;
+  const clock = new Intl.DateTimeFormat('en-CA', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone,
+  }).format(at);
+  return gsm7(`${formatDayHeading(at, timeZone, now)} at ${clock}`);
+}
+
+/** `Sep 19` — the reschedule parenthetical, same zone and same other-year rule. */
+function shortDate(iso: string | null, timeZone: string, now: Date): string | null {
+  const at = instant(iso);
+  if (at === null) return null;
+  const yearOf = (date: Date): string =>
+    new Intl.DateTimeFormat('en-CA', { year: 'numeric', timeZone }).format(date);
+  return gsm7(
+    new Intl.DateTimeFormat('en-CA', {
+      month: 'short',
+      day: 'numeric',
+      year: yearOf(at) === yearOf(now) ? undefined : 'numeric',
+      timeZone,
+    }).format(at),
+  );
+}
+
+function instant(iso: string | null): Date | null {
+  if (iso === null) return null;
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/**
+ * ` at the gym` — a short PLACE, and nothing that looks like an address.
+ *
+ * A street line or a room number is the half of a school email a text should not repeat:
+ * the parent has been there, it is the longest thing the extraction returns, and putting
+ * it on the wire is what turns an alert into a copy of the message. Any digit is the
+ * cheap, honest test for one, and losing a genuine "Studio 2" to it is the right side to
+ * err on.
+ */
+function venue(location: string | null): string {
+  if (location === null) return '';
+  const place = gsm7(location);
+  if (place === '' || place.length > LOCATION_MAX || /\d/.test(place)) return '';
+  return ` at ${place}`;
 }
 
 /**
