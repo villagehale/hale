@@ -490,6 +490,33 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(rows[0]?.body).toBeNull();
   });
 
+  /**
+   * WHAT THE MINT SAYS IT DID. The link is signed with the family's `ics_share_token`,
+   * so the first one ever sent creates that secret — and the secret's mint is also what
+   * a parent turning on the whole-calendar SUBSCRIPTION would write. They are not the
+   * same disclosure: a per-event link is a one-way HMAC over the secret and reveals
+   * nothing of the feed. A trail that said "you turned on your calendar subscription"
+   * would be telling a family, on the surface whose entire job is to be true, about a
+   * feed URL nobody was ever handed (rule #1 + rule #6).
+   */
+  it('records the mint as the link it was, not as a subscription nobody turned on', async () => {
+    const { familyId } = await textOnlyFamily();
+
+    await sender().send({
+      familyId,
+      familyEventId: await seedPlacement(familyId),
+      method: 'REQUEST',
+    });
+
+    const rows = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(
+        and(eq(schema.auditLog.familyId, familyId), eq(schema.auditLog.targetTable, 'families')),
+      );
+    expect(rows).toEqual([{ actionTaken: 'ics_event_link_minted' }]);
+  });
+
   it('gives a family with one of each BOTH the attachment and the link', async () => {
     const { familyId, parentUserId } = await seedFamily(db.database);
     const coParentId = await addCoParent(familyId, null);
@@ -510,9 +537,37 @@ describe('the tap-to-add link a text-only family gets', () => {
   });
 
   it('names no_channel for a parent with neither an address nor a live SMS channel', async () => {
-    // No parent_channels row at all — the live state a STOP leaves behind.
+    // No parent_channels row at all — a parent who never enrolled.
     const { familyId, parentUserId } = await seedFamily(db.database);
     await clearEmail(parentUserId);
+
+    const report = await sender().send({
+      familyId,
+      familyEventId: await seedPlacement(familyId),
+      method: 'REQUEST',
+    });
+
+    expect(report).toMatchObject({
+      parents: [{ parentUserId, channel: 'sms', outcome: 'no_channel' }],
+    });
+    expect(sms.calls).toHaveLength(0);
+  });
+
+  /**
+   * The state a STOP actually leaves, which is NOT the one above: the parent_channels
+   * row stays exactly where it is and takes a `revoked_at`. The consent read excludes
+   * it with a different SQL predicate than "no row", so the two arrive at the same
+   * answer down two different paths, and a family that texted STOP is the likelier of
+   * the two to have a placement in flight.
+   */
+  it('names no_channel for a parent whose SMS channel was revoked by STOP', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    await clearEmail(parentUserId);
+    await enrollSms(familyId, parentUserId);
+    await db.database
+      .update(schema.parentChannels)
+      .set({ revokedAt: new Date('2026-07-10T00:00:00.000Z') })
+      .where(eq(schema.parentChannels.userId, parentUserId));
 
     const report = await sender().send({
       familyId,
@@ -603,12 +658,45 @@ describe('the tap-to-add link a text-only family gets', () => {
       segments: 2,
     });
   });
+
+  /**
+   * The same budget at the dial that NAMES the child — the branch the childless fixture
+   * above can never reach. `eventDescriptor` attributes a title to its child with an EM
+   * DASH ("Maya — Swim class"), one character outside GSM-7, and a single one of those
+   * re-encodes the entire body as UCS-2: 67 units per part instead of 153, so the same
+   * text bills four segments instead of two. The file scan in sms-copy-encoding.test.ts
+   * cannot see it, because the character arrives at runtime from a family_events row.
+   */
+  it('still fits two GSM-7 segments at the dial that names the child', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    await db.database
+      .insert(schema.loopPrefs)
+      .values({ userId: parentUserId, childNameLevel: 'first_name' });
+    const childId = await seedChild(db.database, familyId, 'Maya', 36);
+
+    await sender().send({
+      familyId,
+      familyEventId: await seedPlacement(familyId, {
+        childId,
+        title: 'Preschool swim lessons - Level 2 (Saturdays)',
+      }),
+      method: 'REQUEST',
+    });
+
+    const body = sentText();
+    // Folded, not dropped: the parent turned names ON, so the name still arrives.
+    expect(body).toContain('Maya - Preschool swim lessons - Level 2 (Saturdays)');
+    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+      encoding: 'gsm7',
+      segments: 2,
+    });
+  });
 });
 
 describe('the one-time ask for an address', () => {
   it('asks a STOPPED family nothing, and says so', async () => {
-    // No parent_channels row at all — the same live state a STOP leaves behind
-    // (the row is revoked, so the consent read finds nothing enrolled).
+    // Unreachable on SMS: no parent_channels row at all. The consent read gives a
+    // revoked row (what a STOP leaves) the same answer, one predicate over.
     const seeded = await seedFamily(db.database);
     await clearEmail(seeded.parentUserId);
     const familyEventId = await seedPlacement(seeded.familyId);

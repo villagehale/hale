@@ -56,6 +56,15 @@ import type { CalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
  *      the email twin; only the form differs. REQUEST only: a CANCEL has nothing to
  *      link to.
  *
+ *      ITS STANDING IS THE EMAILED TWIN'S, not the "Approved" reply's — that reply is
+ *      an answer to an inbound turn and leaves through the transport with no policy
+ *      gate, while this leaves through the dispatch. So a parent who has turned
+ *      `urgent_bypass_quiet_hours` OFF and says yes at 22:30 gets the acknowledgment
+ *      and, that night, no link: the leg reports `suppressed`, and since the executor
+ *      runs once per approval nothing re-drives it in the morning. Named rather than
+ *      hidden (rule #11). The fix for it is a re-drive Hale does not have yet, not a
+ *      quieter category or a second door around the gate.
+ *
  *   3. A family that got NEITHER is asked for an address, once ever. The claim is the
  *      INSERT of the ledger row carrying the ask's dedupe key (#413's pattern): the
  *      partial unique index means exactly one concurrent placement wins it, and the

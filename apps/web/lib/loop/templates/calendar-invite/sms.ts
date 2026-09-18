@@ -1,4 +1,5 @@
 import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from '~/lib/channel/types';
+import { gsmSafe } from '../weekly-plan/core';
 
 /**
  * The calendar invite as a TEXT: one line, one link, tap to add.
@@ -16,6 +17,16 @@ import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from
  * and the email template is full of them (an em dash, a middle dot, HTML). A text is
  * billed by encoding, so the one file a carrier's alphabet applies to is kept separate
  * and scanned.
+ *
+ * THE SCAN IS NOT ENOUGH BY ITSELF, which is why the body is FOLDED through `gsmSafe`
+ * on the way out, exactly as the reminder SMS folds its own. Only the authored words
+ * are in this file; the descriptor arrives at runtime from a family_events row, and
+ * `eventDescriptor` attributes a title to its child with an EM DASH ("Maya — Swim
+ * class") at any name level above 'generic'. One character outside the alphabet
+ * re-encodes the WHOLE body as UCS-2 — 67 units a part instead of 153 — so the same
+ * text bills four segments instead of two, for a difference nobody on a phone can see.
+ * Folded, not stripped: the dash becomes a hyphen and an accent its base letter, so a
+ * parent who turned names on still reads the name.
  *
  * DETERMINISTIC, unlike its two neighbours. The email's note and the address ask are
  * COMPOSED per send (founder, 2026-08-12: no preset message bodies) because they are
@@ -53,9 +64,15 @@ export interface CalendarInviteSmsPayload {
  * The verb is "Added" for the same reason the emailed twin says it: a move rides the
  * same iTIP REQUEST and lands on the same UID, so tapping either one updates the entry
  * in place rather than adding a second.
+ *
+ * Folded once, here, over the whole assembled body — the alphabet applies to what the
+ * carrier is handed, not to the fragments, and the link is untouched by the fold (a
+ * base64url token is hyphen-minus and underscore, both GSM-7).
  */
 export function calendarInviteSmsText(payload: CalendarInviteSmsPayload): string {
-  return `Added - ${payload.summary}, ${payload.when}. Tap to put it on your phone's calendar: ${payload.url}`;
+  return gsmSafe(
+    `Added - ${payload.summary}, ${payload.when}. Tap to put it on your phone's calendar: ${payload.url}`,
+  );
 }
 
 export function asCalendarInviteSmsPayload(

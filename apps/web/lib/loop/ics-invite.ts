@@ -101,7 +101,7 @@ export async function mintEventInviteLink(
   familyId: string,
   familyEventId: string,
 ): Promise<string> {
-  const { token } = await mintIcsToken(database, familyId);
+  const { token } = await mintIcsToken(database, familyId, 'event_link');
   return eventInviteUrl(eventInviteToken(familyEventId, token));
 }
 
