@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   type InviteEventRow,
   composeEventInvite,
+  composeEventLink,
   eventInviteToken,
   eventInviteUrl,
   icsSequence,
@@ -232,6 +233,54 @@ describe('icsSequence — the revision derived from the event’s immutable audi
   it('is one above the count for a CANCEL, so a cancellation always supersedes the last invite', async () => {
     const { db } = fakeDb({ audit: [{ value: 3 }] });
     expect(await icsSequence(db, FAMILY_ID, EVENT_ID, 'CANCEL')).toBe(4);
+  });
+});
+
+describe('composeEventLink — the SMS leg’s link', () => {
+  const input = { familyId: FAMILY_ID, familyEventId: EVENT_ID, parentUserId: PARENT_ID };
+
+  it('says more in the text than the file it points at, and never the other way round', async () => {
+    const { db } = fakeDb({
+      events: [row()],
+      prefs: [{ childNameLevel: 'first_name' }],
+      families: [{ token: SHARE_TOKEN }],
+    });
+
+    const composed = await composeEventLink(input, { database: db, now: NOW });
+
+    // The TEXT goes to a number Hale verified, so it names the child at this parent’s
+    // own dial...
+    if (composed.status !== 'composed') throw new Error('the link did not compose');
+    expect(composed.summary).toContain('Maya');
+    expect(composed.url).toBe(eventInviteUrl(eventInviteToken(EVENT_ID, SHARE_TOKEN)));
+
+    // ...while the FILE behind that same link is rendered at the floor, because whoever
+    // follows a forwarded link is not an authenticated parent.
+    const token = composed.url.slice(composed.url.lastIndexOf('/') + 1);
+    const { db: readDb } = fakeDb({ events: [row()] });
+    const ics = await loadEventInvite(readDb, token, NOW);
+    expect(ics).toContain('SUMMARY:Swim class');
+    expect(ics).not.toContain('Maya');
+  });
+
+  it('refuses an event that resolves to another family, and mints nothing (rule #1)', async () => {
+    // The fake has no `update` and no `insert`, so a mint on this path would THROW
+    // rather than quietly write a token for a family the caller does not hold.
+    const { db } = fakeDb({ events: [row()], prefs: [{ childNameLevel: 'first_name' }] });
+
+    const result = await composeEventLink(
+      { ...input, familyId: '99999999-9999-4999-8999-999999999999' },
+      { database: db, now: NOW },
+    );
+
+    expect(result).toEqual({ status: 'not_found' });
+  });
+
+  it('refuses a soft-deleted event — a link to it would 404 in the parent’s hand', async () => {
+    const { db } = fakeDb({ events: [row({ deletedAt: new Date('2026-07-20T00:00:00.000Z') })] });
+    expect(await composeEventLink(input, { database: db, now: NOW })).toEqual({
+      status: 'not_found',
+    });
   });
 });
 

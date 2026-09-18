@@ -261,6 +261,66 @@ export async function loadEventInvite(
   });
 }
 
+// ── The SMS leg ──────────────────────────────────────────────────────────────
+
+export interface ComposeEventLinkInput {
+  familyId: string;
+  familyEventId: string;
+  /** The recipient parent — their child_name_level dial governs the descriptor. */
+  parentUserId: string;
+}
+
+export type ComposeEventLinkResult =
+  | {
+      status: 'composed';
+      /** The event's redacted descriptor at THIS recipient's level. */
+      summary: string;
+      startsAt: Date;
+      /** The revision, so a move sends a fresh text while a re-drive is deduped. */
+      sequence: number;
+      /** The absolute per-event link, minted (idempotently) on the family. */
+      url: string;
+    }
+  | { status: 'not_found' };
+
+/**
+ * One event as a LINK addressed to one parent — everything the SMS leg needs and
+ * nothing that sends it. The email twin's counterpart; the send is the dispatch's
+ * (lib/loop/calendar-invite.ts).
+ *
+ * TWO PRIVACY LEVELS, on purpose. The SUMMARY in the text is rendered at this parent's
+ * own dial, because a text goes to a number Hale verified. The FILE behind the link is
+ * rendered at the floor by {@link loadEventInvite}, because whoever follows a forwarded
+ * link is not an authenticated parent. The text can therefore say more than the file it
+ * points at, and never the other way round.
+ *
+ * REQUEST ONLY, and that is the shape rather than a parameter: a CANCEL has nothing to
+ * link to — `loadEventInvite` refuses a soft-deleted event, so a link minted for one
+ * would 404 in the parent's hand.
+ */
+export async function composeEventLink(
+  input: ComposeEventLinkInput,
+  deps: { database: Database; now?: Date },
+): Promise<ComposeEventLinkResult> {
+  const now = deps.now ?? new Date();
+
+  const row = await loadInviteEventRow(deps.database, input.familyEventId);
+  // Family scope (rule #1): the row's OWN family must be the one the caller claims.
+  if (!row || row.familyId !== input.familyId) return { status: 'not_found' };
+  // A link to an event that no longer exists is a 404 in a parent's hand.
+  if (row.deletedAt !== null) return { status: 'not_found' };
+
+  const [level, sequence] = await Promise.all([
+    loadLoopPrefsView(input.parentUserId, deps.database).then((view) => view.childNameLevel),
+    icsSequence(deps.database, row.familyId, row.id, 'REQUEST'),
+  ]);
+
+  const invite = toInviteEvent(row, { level, note: null, sequence }, now);
+  // Minted only once both checks have passed, so a not_found never writes a token.
+  const url = await mintEventInviteLink(deps.database, row.familyId, row.id);
+  return { status: 'composed', summary: invite.summary, startsAt: row.startsAt, sequence, url };
+}
+
 // ── The email leg ────────────────────────────────────────────────────────────
 
 export interface ComposeEventInviteInput {
