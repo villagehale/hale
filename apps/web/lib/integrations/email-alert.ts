@@ -4,7 +4,11 @@ import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
-import type { ProactiveSendRequest, ProactiveSendVerdict } from '~/lib/channel/outbound-gate';
+import type {
+  ProactiveHoldReason,
+  ProactiveSendRequest,
+  ProactiveSendVerdict,
+} from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
@@ -30,10 +34,11 @@ import type { ExtractedEvent, ExtractionKind, InboxEnvelope, SentinelClassificat
  *     by the time this sees it, and {@link renderEmailAlert} additionally drops the
  *     sender and the time, because a therapist's domain and a Thursday 4pm are the
  *     disclosure, not the title.
- *   - It never throws into the sweep. Every ending is a named outcome
- *     ({@link EmailAlertOutcome}) the cron summary counts (rule #11) — a throw here would
- *     be caught by the connector sweep's own error handling and silently mark the
- *     CONNECTION broken, which is a lie about Google told by a bug in Hale.
+ *   - Every ending is a named outcome ({@link EmailAlertOutcome}) the cron summary counts
+ *     (rule #11). A throw is the one ending this module cannot name for itself, so the
+ *     sweep holds a boundary around the call and names it `alert_failed` — because the
+ *     alternative, which this code shipped with, was Hale's own bug arriving as a broken
+ *     Gmail CONNECTION: a lie about Google that stops the ingest too.
  */
 
 /** The Gmail metadata one sweep observed for one message. `receivedAt` is Gmail's own
@@ -56,6 +61,11 @@ export interface GmailAlertEnvelope {
  * `gate_refused:not_enrolled` is what the brief's "no SMS channel" really is: the live
  * `parent_channels` read lives inside the chokepoint, and a second enrolment check here
  * would be a copy of a rule that already has one home.
+ *
+ * `alert_failed` is the one this module cannot return itself: it is what the SWEEP records
+ * for an envelope whose alert pass threw (lib/integrations/sync.ts). It exists so that a
+ * bug in Hale's own alert path has a name of its own instead of arriving as a broken
+ * Google connection.
  */
 export const EMAIL_ALERT_OUTCOMES = [
   'sent',
@@ -73,6 +83,7 @@ export const EMAIL_ALERT_OUTCOMES = [
   'classifier_failed',
   'no_send_target',
   'send_failed',
+  'alert_failed',
 ] as const;
 
 export type EmailAlertOutcome = (typeof EMAIL_ALERT_OUTCOMES)[number];
@@ -90,6 +101,18 @@ export function emptyEmailAlertCounts(): EmailAlertCounts {
 export const EMAIL_ALERT_MAX_PER_SWEEP = 10;
 
 export const EMAIL_ALERT_TEMPLATE_KEY = 'connector:email_alert';
+
+/** Which suppression the ledger records, per hold — dispatch.ts's four statuses, chosen
+ * by the gate's four reasons. */
+const HOLD_STATUS: Record<
+  ProactiveHoldReason,
+  'suppressed_quiet_hours' | 'suppressed_cap' | 'suppressed_consent'
+> = {
+  quiet_hours: 'suppressed_quiet_hours',
+  frequency_cap: 'suppressed_cap',
+  not_enrolled: 'suppressed_consent',
+  no_watch_consent: 'suppressed_consent',
+};
 
 /** Keyed on the CONNECTION and the provider's message id, so re-connecting a mailbox
  * that re-seeds the same messages mints new keys while a re-run of the same sweep does
@@ -164,8 +187,24 @@ export async function alertParentForEmail(
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
   if (!verdict.allowed) {
-    // No ledger row: a hold is not a send, and the KEY STAYS UNSPENT so the next sweep
-    // after quiet hours end can still carry this one (the welcome card's rule).
+    // A RECEIPT, not a claim. Unlike a nudge, a held email alert is not deferred: the
+    // Gmail cursor advanced past this message the moment the sweep read it, so nothing
+    // will offer it again. This row is therefore the whole lasting record that Hale read
+    // a parenting email at 23:40 and chose to stay quiet — a counter in a cron response
+    // is not something a parent or a support agent can ever be shown.
+    //
+    // The key stays NULL: the unique index is total over non-null dedupe keys, so a
+    // suppression carrying it would block the send it is a record of NOT making.
+    await database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'email_alert',
+      templateKey: EMAIL_ALERT_TEMPLATE_KEY,
+      dedupeKey: null,
+      status: HOLD_STATUS[verdict.reason],
+    });
     console.warn({ familyId, reason: verdict.reason }, 'email alert: held by the outbound gate');
     return `gate_refused:${verdict.reason}`;
   }
@@ -202,8 +241,8 @@ export async function alertParentForEmail(
   if (!to) {
     // The gate just said this parent has a live channel, so this is a contradiction
     // between two readers of the same table. Recorded on the claimed row rather than
-    // thrown: a throw from here is caught by the connector sweep and marks the Gmail
-    // CONNECTION errored, which would blame Google for a bug in Hale.
+    // thrown: the row is already claimed, and leaving it queued forever would read as a
+    // text in flight.
     await database
       .update(schema.channelMessages)
       .set({ status: 'failed', errorCode: 'no_send_target' })
@@ -425,11 +464,15 @@ function alertTime(
  *
  * NEVER the full address. `registrar.k12@yrdsb.ca` in a text is a mailbox anyone holding
  * the phone can write to, and the domain is the whole of what the parent needs to know
- * who is speaking.
+ * who is speaking. Which is why a display name containing '@' is DROPPED rather than
+ * trusted: `"noreply@school.ca" <noreply@school.ca>` is the standard header of every
+ * school and daycare system that sends from a no-reply box, and reading its display name
+ * is reading the address out loud. Any label with an '@' in it falls through to the
+ * domain — a rare "Rec @ Markham" losing its flourish is the right side to err on.
  */
 function senderLabel(from: string): string {
   const display = /^\s*"?([^"<]*?)"?\s*<[^>]*>\s*$/.exec(from)?.[1]?.trim();
-  if (display !== undefined && display !== '') return display;
+  if (display !== undefined && display !== '' && !display.includes('@')) return display;
   const address = /<([^>]*)>/.exec(from)?.[1] ?? from;
   return address.split('@')[1]?.trim() ?? '';
 }

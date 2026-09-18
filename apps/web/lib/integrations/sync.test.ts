@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { GmailAlertEnvelope } from './email-alert';
 import type { ActiveConnectorConnection } from './store';
 import { type GmailAlertBatch, type GoogleFetch, syncConnection } from './sync';
@@ -325,7 +325,17 @@ describe('syncConnection — the gmail alert hand-off', () => {
     const ok = stubDeps({ googleFetch: mailbox('1789000000000') });
     const result = await syncConnection(connection('gmail', { historyId: '9002' }), ok.deps);
     expect(result.emailAlerts).toEqual(['dark']);
+    expect(ok.cap.cursor).toEqual({ historyId: '9100' });
+  });
 
+  it('a throw from the ALERT path is named, and never marks the mailbox broken', async () => {
+    // The two halves fail for unrelated reasons and only one of them is Google's. A
+    // channel_messages insert that hits a missing enum value, a timezone read that races
+    // a deletion — anything in Hale's own alert path — would otherwise reach this
+    // module's catch, mark the CONNECTION errored and stop the INGEST too, so a bug in a
+    // bonus feature silently ends the sync it rides on. One envelope in, one named
+    // outcome out (rule #11).
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { deps, cap } = stubDeps({
       googleFetch: mailbox('1789000000000'),
       alertGmailEnvelopes: async () => {
@@ -333,9 +343,15 @@ describe('syncConnection — the gmail alert hand-off', () => {
       },
     });
     const thrown = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    // Before the restore: `mockRestore` clears the call record along with the stub.
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+
+    expect(thrown.emailAlerts).toEqual(['alert_failed']);
+    expect(cap.errored).toBe(false);
     expect(cap.cursor).toEqual({ historyId: '9100' });
-    expect(cap.errored).toBe(true);
-    expect(thrown.emailAlerts).toEqual([]);
+    // The ingest half is untouched: the message still reached the queue.
+    expect(cap.enqueued).toHaveLength(1);
   });
 });
 

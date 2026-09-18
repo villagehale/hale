@@ -219,6 +219,21 @@ describe('alertParentForEmail', () => {
     expect(h.transport.sent[0]?.body).toContain(OPT_OUT_LINE);
   });
 
+  it('carries the EXTRACTION and no line of the email — not the snippet, not the subject', async () => {
+    // Rule #1, as the only assertion that can fail when the email itself starts riding
+    // along. The positive control is the pair: the extraction's own title MUST be there,
+    // so the two `not.toContain`s cannot pass on an empty or truncated body.
+    const h = harness();
+    await expect(alert(h)).resolves.toBe('sent');
+
+    for (const body of [h.transport.sent[0]?.body, h.threaded[0]?.body]) {
+      expect(body).toContain('Saturday swim class cancelled');
+      expect(body).not.toContain(ENVELOPE.snippet);
+      expect(body).not.toContain(ENVELOPE.subject);
+      expect(body).not.toContain('Leo');
+    }
+  });
+
   it('is dark behind F14 — no classifier call, no text, nothing written', async () => {
     vi.stubEnv('F14_ENABLED', 'false');
     const h = harness();
@@ -261,25 +276,49 @@ describe('alertParentForEmail', () => {
     await expect(alert(harness())).resolves.toBe('sent');
   });
 
-  it('a gate hold does NOT consume the dedupe key — the next sweep can still carry it', async () => {
-    // The welcome card's rule: a suppression must not spend the one claim this message
-    // gets. Quiet hours end; the alert should survive them.
+  it('a gate hold leaves a RECEIPT on the ledger and does not consume the dedupe key', async () => {
+    // A held email alert is never re-offered: the Gmail cursor advanced past this message
+    // the moment the sweep read it, so "we'll catch it next time" is not true here the way
+    // it is for a nudge. The row is therefore the only record that Hale read a parenting
+    // email at 23:40 and chose to stay quiet — a console line is not a receipt (the
+    // welcome card's shape, lib/channel/intake/welcome-card.ts).
     const held = harness({ verdict: { allowed: false, reason: 'quiet_hours' } });
     await expect(alert(held)).resolves.toBe('gate_refused:quiet_hours');
     expect(held.transport.sent).toEqual([]);
-    await expect(ledgerRows()).resolves.toEqual([]);
+
+    const rows = await ledgerRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      category: 'email_alert',
+      direction: 'out',
+      templateKey: EMAIL_ALERT_TEMPLATE_KEY,
+      status: 'suppressed_quiet_hours',
+      // NEVER the key: the unique index is total over non-null keys, so a suppression
+      // carrying it would block the very send it is a record of not making.
+      dedupeKey: null,
+      providerMessageId: null,
+      body: null,
+    });
+    await expect(auditRows()).resolves.toEqual([]);
 
     const later = harness();
     await expect(alert(later)).resolves.toBe('sent');
     expect(later.transport.sent).toHaveLength(1);
   });
 
-  it('names each gate hold separately', async () => {
+  it('names each gate hold separately and records it under its own suppression status', async () => {
     for (const reason of ['not_enrolled', 'no_watch_consent', 'frequency_cap'] as const) {
       await expect(alert(harness({ verdict: { allowed: false, reason } }))).resolves.toBe(
         `gate_refused:${reason}`,
       );
     }
+    const rows = await ledgerRows();
+    expect(rows.map((r) => r.status).sort()).toEqual([
+      'suppressed_cap',
+      'suppressed_consent',
+      'suppressed_consent',
+    ]);
+    expect(rows.map((r) => r.dedupeKey)).toEqual([null, null, null]);
   });
 
   it('a classifier that throws is a named outcome, never a throw into the sweep', async () => {
@@ -425,6 +464,18 @@ describe('the text itself', () => {
     const body = renderEmailAlert({ ...RENDER, from: 'registrar.k12@yrdsb.example' });
     expect(body).toContain('From your email: yrdsb.example - ');
     expect(body).not.toContain('registrar.k12');
+  });
+
+  it('drops a display NAME that is itself an address — the commonest no-reply header', () => {
+    // `"noreply@school.example" <noreply@school.example>` is what school and daycare
+    // systems put in From, so reading the display name is reading the address out loud.
+    // Any '@' in the label means the domain is the honest half of it.
+    const body = renderEmailAlert({
+      ...RENDER,
+      from: '"noreply@school.example" <noreply@school.example>',
+    });
+    expect(body).toContain('From your email: school.example - ');
+    expect(body).not.toContain('noreply@');
   });
 
   it('says only the title when the extraction found no usable time', () => {

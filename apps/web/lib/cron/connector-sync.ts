@@ -173,15 +173,23 @@ function emailAlertPorts(
   familyId: string,
   accessToken: string,
 ): EmailAlertPorts {
-  let context: Promise<{
-    children: FamilyChildRef[];
-    candidates: Awaited<ReturnType<typeof loadCorrelationCandidates>>;
-  }>;
-  const loadContext = () => {
-    context ??= Promise.all([
-      loadFamilyChildRefs(database, familyId),
-      loadCorrelationCandidates(database, familyId),
-    ]).then(([children, candidates]) => ({ children, candidates }));
+  let context:
+    | {
+        children: FamilyChildRef[];
+        candidates: Awaited<ReturnType<typeof loadCorrelationCandidates>>;
+      }
+    | undefined;
+  // The RESULT is cached, never the promise: a cached rejection would turn one bad read
+  // into `classifier_failed` for all ten of this sweep's messages. The loop below is
+  // sequential, so there is no second caller to race the first.
+  const loadContext = async () => {
+    if (context === undefined) {
+      const [children, candidates] = await Promise.all([
+        loadFamilyChildRefs(database, familyId),
+        loadCorrelationCandidates(database, familyId),
+      ]);
+      context = { children, candidates };
+    }
     return context;
   };
 

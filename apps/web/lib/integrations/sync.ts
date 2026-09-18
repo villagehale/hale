@@ -53,8 +53,9 @@ export interface SyncDeps {
    * otherwise read an unset field and a broken wiring identically, which is how a
    * feature ships dark and nobody notices.
    *
-   * Contract: it must not throw. It is called inside this module's error boundary, so a
-   * rejection would mark the CONNECTION errored and blame Google for a bug in Hale.
+   * A rejection is HELD here rather than trusted away: it becomes one `alert_failed` per
+   * envelope and leaves the connection healthy, because a bug in Hale's alert path is not
+   * a broken mailbox and must not stop the ingest.
    */
   alertGmailEnvelopes: (input: GmailAlertBatch) => Promise<readonly EmailAlertOutcome[]>;
 }
@@ -120,13 +121,32 @@ export async function syncConnection(
     // AFTER the cursor, deliberately: the ingest contract is the thing this sweep owes,
     // and a text is a bonus on top of it. Were the order reversed, a slow alert pass
     // that timed out would re-enqueue the whole batch on the next run.
+    //
+    // And behind its OWN boundary, for the same reason it runs last: the two halves fail
+    // for unrelated reasons, and only one of those reasons is Google's. A missing enum
+    // value, a timezone read that races a deletion — anything in Hale's alert path —
+    // would otherwise reach the catch below, mark the CONNECTION errored and stop the
+    // INGEST as well, so a bug in the bonus would silently end the contract.
     if (result.gmail) {
-      emailAlerts = await deps.alertGmailEnvelopes({
-        connection,
-        accessToken,
-        seeding: result.gmail.seeding,
-        envelopes: result.gmail.envelopes,
-      });
+      const { seeding, envelopes } = result.gmail;
+      try {
+        emailAlerts = await deps.alertGmailEnvelopes({
+          connection,
+          accessToken,
+          seeding,
+          envelopes,
+        });
+      } catch (err) {
+        // The class only: an alert-path rejection can carry a subject line (rule #1).
+        console.error(
+          {
+            connectionId: connection.id,
+            err: err instanceof Error ? err.constructor.name : 'unknown',
+          },
+          'connector sync: the email alert pass threw - the mailbox is fine, the alert is not',
+        );
+        emailAlerts = envelopes.map(() => 'alert_failed' as const);
+      }
     }
   } catch {
     // No error detail is logged — a Google response can carry token/PII (rule #1).
