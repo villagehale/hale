@@ -353,6 +353,11 @@ describe('landing — sections, in the Surfaces Plan order', () => {
       'Oshawa',
       'Aurora',
       'Stouffville',
+      'Newmarket',
+      'King',
+      'East Gwillimbury',
+      'Georgina',
+      'Uxbridge',
     ];
     expect(cities).toHaveLength(MUNICIPALITY_COUNT);
     for (const city of cities) {

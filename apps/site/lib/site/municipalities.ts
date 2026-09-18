@@ -25,6 +25,11 @@ export const MUNICIPALITIES = [
   'Oshawa',
   'Aurora',
   'Stouffville',
+  'Newmarket',
+  'King',
+  'East Gwillimbury',
+  'Georgina',
+  'Uxbridge',
 ] as const;
 
 /** How many towns the radar watches — the number every surface must print. */
