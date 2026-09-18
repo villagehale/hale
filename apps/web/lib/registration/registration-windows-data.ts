@@ -73,6 +73,11 @@ const MISSISSAUGA_VERIFIED_AT = '2026-08-02T00:00:00-04:00';
 const SWEEP_VERIFIED_AT = '2026-08-11T00:00:00-04:00';
 /** Whitchurch-Stouffville joined the radar on this day, read off its own Play Book PDF. */
 const WHITCHURCH_STOUFFVILLE_VERIFIED_AT = '2026-09-17T00:00:00-04:00';
+/** The York-region round (2026-09-18): Newmarket, King, East Gwillimbury, Georgina and
+ * Uxbridge. Every row below carrying this date was read off the town's own page or PDF
+ * the same day — the two PDFs downloaded and text-extracted rather than searched for,
+ * because both towns' landing pages print no dates at all. */
+const YORK_ROUND_VERIFIED_AT = '2026-09-18T00:00:00-04:00';
 
 const BRAMPTON_REGISTERED =
   'https://www.brampton.ca/EN/residents/Recreation/Pages/Registered-Programs.aspx';
@@ -95,6 +100,31 @@ const AURORA_GUIDE =
  */
 const WHITCHURCH_STOUFFVILLE_PLAY_BOOK =
   'https://www.townofws.ca/media/gvyjvnnq/f2026_playbook_tagged-2.pdf';
+/**
+ * The Town's own Recreation & Culture FALL ACTIVITIES 2026 magazine, page 2 — the PDF,
+ * not newmarket.ca/recreation-parks/programs-camps, which prints no date anywhere. The
+ * slug is per-season (cf. `summer-seasonal-magazine`) and next year's fall guide will
+ * overwrite it in place, so a re-verify against this URL can silently read a different
+ * cycle: check the magazine's own "Fall Activities 2026" footer before trusting it.
+ */
+const NEWMARKET_FALL_MAGAZINE = 'https://www.newmarket.ca/media/file/fall-seasonal-magazine';
+/** King publishes its dates in the "Registration Start Dates" section of this page and
+ * nowhere else that a non-browser client can read: both of the Township's news releases
+ * for this cycle answer HTTP 403 to every client, and the copies that ARE reachable are
+ * the 2025 releases — the stale-year trap with the door held open. */
+const KING_RECREATION = 'https://www.king.ca/recreation';
+const EAST_GWILLIMBURY_GUIDE =
+  'https://www.eastgwillimbury.ca/en/living-in-eg/health-and-active-living-guide.aspx';
+/**
+ * Georgina's PROGRAMS page, and deliberately not its recreation-general-information
+ * page, which on the same day still carried the SPRING block ("Mar. 3 ... Mar. 10").
+ * Two Georgina pages, two different cycles, neither printing a year.
+ */
+const GEORGINA_PROGRAMS = 'https://www.georgina.ca/things-do/recreation/programs-0';
+/** The accessible PDF of Uxplore: Fall 2026 & Winter 2027 Community Guide, linked as
+ * "here" from uxbridge.ca/explore-and-play/recreation/register-for-a-program. The
+ * landing page prints no dates and its embedded flipbook is still titled Fall 2025. */
+const UXBRIDGE_UXPLORE_GUIDE = 'https://www.uxbridge.ca/public/download/files/360410';
 
 const TORONTO_FALL_2026_RELEASE =
   'https://www.toronto.ca/news/city-of-toronto-releases-listings-for-fall-recreation-activities/';
@@ -234,6 +264,125 @@ const WHITCHURCH_STOUFFVILLE_FALL_2026 = {
 
 const WHITCHURCH_STOUFFVILLE_PAGE_TWO =
   'Play Book page 2, verbatim: "Fall 2026 Registration — Residents: Tuesday, August 25, 2026, Online and in–person at 12 PM, noon"; "Non-Residents: Tuesday, September 1, 2026, Online and in–person at 12 PM, noon"; "Non-residents are subject to a 20% surcharge to register in Town programs"; "Most programs begin September 28, 2026". Registration is at townofws.ca/active, and the Town asks for an Online Account Form plus proof of residency before the resident date — account setup takes up to 48 hours.';
+
+/**
+ * Newmarket runs ONE window for the whole magazine: the Swimming section on page 26
+ * reprints the same two dates rather than publishing its own. The only weekday printed
+ * anywhere in the guide is in the Mayor's letter, beside the RESIDENT date — so that is
+ * the only field `publishedWeekdays` can guard here.
+ */
+const NEWMARKET_FALL_2026 = {
+  municipality: 'newmarket',
+  previewAt: null,
+  residentOpenAt: '2026-08-19T08:00:00-04:00',
+  openAt: '2026-08-26T08:00:00-04:00',
+  residentPriorityDays: 7,
+  waitlistResponseHours: null,
+  ageMinMonths: null,
+  ageMaxMonths: null,
+  sourceUrl: NEWMARKET_FALL_MAGAZINE,
+  verifiedAt: YORK_ROUND_VERIFIED_AT,
+  publishedWeekdays: { residentOpenAt: 'Wednesday' },
+} as const;
+
+const NEWMARKET_PAGE_TWO =
+  'Fall Activities 2026 magazine, page 2, verbatim: "2026 Fall Registration" / "Registration Dates" / "Resident Registration" "August 19 at 8 a.m." / "Non-Resident Registration" "August 26 at 8 a.m." The Mayor\'s letter on the same page carries the only weekday in the whole guide: "save the date for resident registration on Wednesday, August 19 at 8 a.m." No preview date, no waitlist window and no non-resident surcharge are published anywhere in it, so all three stay null. Registration is on Xplor at newmarket.perfectmind.com; the guide asks parents to "Have your Xplor account created and ready to go before registration opens".';
+
+/**
+ * King publishes a DATE and never a clock, so every instant here is the start of the
+ * published local day — naming a time would invent the one fact the Township withheld.
+ *
+ * The Fall 2026 RESIDENT date is not printed on any page reachable without a browser
+ * session, so there is no Fall 2026 rec_program row: the one fall date the Township
+ * prints is the non-resident AQUATICS one, and that is the only fall row below.
+ */
+const KING_SWIM_FALL_2026 = {
+  municipality: 'king',
+  programDomain: 'swim',
+  cycleLabel: 'Fall 2026',
+  previewAt: null,
+  residentOpenAt: null,
+  openAt: '2026-08-21T00:00:00-04:00',
+  residentPriorityDays: null,
+  waitlistResponseHours: null,
+  ageMinMonths: null,
+  ageMaxMonths: null,
+  sourceUrl: KING_RECREATION,
+  verifiedAt: YORK_ROUND_VERIFIED_AT,
+  publishedWeekdays: {},
+} as const;
+
+const KING_WINTER_QUOTE =
+  'king.ca/recreation, "Registration Start Dates", verbatim: "Winter 2027 Recreation & Aquatic Programs" / "Winter session: January 11 - March 31, 2027" / "Programs are viewable online as of November 23, 2026." / "Registration opens on December 7 at townshipofking.perfectmind.com" / "Aquatics program registration for non-residents opens on December 11, 2026." No clock time and no weekday are printed for any King date, so each instant is the start of the published local day.';
+
+/**
+ * Georgina publishes the fall window on its PROGRAMS page. On the same day its
+ * recreation-general-information page still carried the SPRING block, un-updated —
+ * two pages, two cycles, neither printing a year. The programs page is the citation.
+ */
+const GEORGINA_FALL_2026 = {
+  municipality: 'georgina',
+  previewAt: null,
+  residentOpenAt: '2026-08-18T08:30:00-04:00',
+  openAt: '2026-08-25T08:30:00-04:00',
+  residentPriorityDays: 7,
+  waitlistResponseHours: null,
+  ageMinMonths: null,
+  ageMaxMonths: null,
+  sourceUrl: GEORGINA_PROGRAMS,
+  verifiedAt: YORK_ROUND_VERIFIED_AT,
+  publishedWeekdays: {},
+} as const;
+
+const GEORGINA_PROGRAMS_QUOTE =
+  'georgina.ca/things-do/recreation/programs-0, verbatim: "Fall program registration" / "Aug. 18 at 8:30 a.m. - residents" / "Aug. 25 at 8:30 a.m. - non-residents". No year and no weekday are printed, so the stale-year weekday guard cannot cover this row: the year is evidenced instead by the July 2025 snapshot of the SAME page, which read "Summer program registration is now open / Resident registration will open on Tuesday, June 3 at 8:30 a.m." CITE THIS PAGE, not georgina.ca/things-do/recreation/recreation-general-information, which on 2026-09-18 still carried the Spring block ("Resident registration will open on Mar. 3 at 8:30 a.m. Non-resident registration will open on Mar. 10 at 8:30 a.m."). Waitlists are published as a practice and not a window: "Staff monitor all waitlists regularly to create availability for programs or lessons in demand when possible."';
+
+/**
+ * East Gwillimbury publishes a date and no clock, so both instants are the start of the
+ * published local day. There is no guide PDF — the page itself is the source.
+ */
+const EAST_GWILLIMBURY_FALL_2026 = {
+  municipality: 'east_gwillimbury',
+  previewAt: null,
+  residentOpenAt: '2026-08-20T00:00:00-04:00',
+  openAt: '2026-08-27T00:00:00-04:00',
+  residentPriorityDays: 7,
+  waitlistResponseHours: null,
+  ageMinMonths: null,
+  ageMaxMonths: null,
+  sourceUrl: EAST_GWILLIMBURY_GUIDE,
+  verifiedAt: YORK_ROUND_VERIFIED_AT,
+  publishedWeekdays: {},
+} as const;
+
+const EAST_GWILLIMBURY_QUOTE =
+  'eastgwillimbury.ca Health and Active Living Guide page, verbatim: "Fall 2026 and Winter 2027 Health and Active Living Guide" / "Fall Registration:" "August 20 for residents and August 27 for non-residents" / "Registration for ActiveNet users listed as an East Gwillimbury resident open a week before users not listed as a resident." THE TRAP A SHARON OR MOUNT ALBERT PARENT NEEDS: "For resident registration, the city included in your address must be \'East Gwillimbury.\' The system will not recognize Sharon, Mount Albert, Queensville, etc. as residential addresses." No clock time and no weekday are printed, so both instants are the start of the published local day; the year is evidenced by the May 2026 snapshot of the same URL, which carried the Spring and Summer guide instead. Registration is on ActiveNet ("iReg").';
+
+/**
+ * Uxbridge is DURHAM, not York — it is on the radar because the family is, not because
+ * the region is. Its rows are the best-sourced in this round: the guide prints weekday,
+ * full date AND clock for both cycles, and prints the fall/winter instants twice over
+ * (Uxpool page 20 and Youth Recreation page 43, identical).
+ *
+ * There is no resident/non-resident REGISTRATION split anywhere in the 81 pages — the
+ * only residency difference is a membership fee — so `residentOpenAt` and
+ * `residentPriorityDays` are null on every Uxbridge row. Inventing a head start here
+ * would tell an Uxbridge parent to wait for a morning that does not exist.
+ */
+const UXBRIDGE_ROW = {
+  municipality: 'uxbridge',
+  previewAt: null,
+  residentOpenAt: null,
+  residentPriorityDays: null,
+  waitlistResponseHours: null,
+  ageMinMonths: null,
+  ageMaxMonths: null,
+  sourceUrl: UXBRIDGE_UXPLORE_GUIDE,
+  verifiedAt: YORK_ROUND_VERIFIED_AT,
+} as const;
+
+const UXBRIDGE_NO_RESIDENT_SPLIT =
+  'Uxbridge publishes no resident/non-resident registration split: the only residency difference in the guide is "A $52 fee will be added to non-residents yearly membership", which is a membership fee and not a second registration morning.';
 
 const BURLINGTON_TABLE_NOTE =
   'From the Town\'s registration table, columns "Program viewable online | Registration date and time (resident) | Registration date and time (non-resident)". No time is published for the viewable-online date, so the preview is the start of that day. Waitlist: "The spot will be held for only 48 hours."';
@@ -787,5 +936,143 @@ export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
     programDomain: 'camp',
     cycleLabel: 'Winter Break Camps December 2026',
     notes: `Winter Break Camp (December 21–23 and December 29–30) registers in the FALL window, not in December — seeded as its own row so the radar fires in August. ${WHITCHURCH_STOUFFVILLE_PAGE_TWO}`,
+  },
+
+  // ── Newmarket ────────────────────────────────────────────────────────────────
+  {
+    ...NEWMARKET_FALL_2026,
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    notes: `General registered rec programs, one window for the whole magazine. ${NEWMARKET_PAGE_TWO}`,
+  },
+  {
+    ...NEWMARKET_FALL_2026,
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026',
+    notes: `Swimming (magazine page 26) registers inside the same window — the Town publishes no separate aquatics date, only the same reminder: "Program Registration begins August 19 for Newmarket residents. Non-resident registration begins August 26." / "Registration opens at 8 a.m." ${NEWMARKET_PAGE_TWO}`,
+  },
+
+  // ── King ─────────────────────────────────────────────────────────────────────
+  // The Township's ONLY published Fall 2026 date is the non-resident aquatics one, so
+  // there is no Fall 2026 rec row: a general fall date exists but is printed nowhere a
+  // client can read, and a row would have to invent it.
+  {
+    ...KING_SWIM_FALL_2026,
+    notes: `king.ca/recreation, "Registration Start Dates", verbatim: "Fall Recreation & Aquatic Programs" / "Fall session: September 14 - December 31" / "Programs are currently viewable online." / "Registration is now open at townshipofking.perfectmind.com" / "Aquatics program registration for non-residents opens on August 21." The resident/general fall date is NOT printed on any reachable page, so this row carries only the one date the Township published — the non-resident aquatics open — and residentOpenAt stays null. No clock time is printed, so the instant is the start of the published local day.`,
+  },
+  {
+    municipality: 'king',
+    programDomain: 'rec_program',
+    cycleLabel: 'Winter 2027',
+    previewAt: '2026-11-23T00:00:00-05:00',
+    // The Township prints one general Winter open and splits only AQUATICS by residency
+    // (the swim row below). For rec there is no published split, so December 7 is the
+    // general open — putting it in residentOpenAt would promise a head start nobody has.
+    residentOpenAt: null,
+    openAt: '2026-12-07T00:00:00-05:00',
+    residentPriorityDays: null,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: KING_RECREATION,
+    verifiedAt: YORK_ROUND_VERIFIED_AT,
+    notes: `General winter recreation programs. ${KING_WINTER_QUOTE}`,
+    publishedWeekdays: {},
+  },
+  {
+    municipality: 'king',
+    programDomain: 'swim',
+    cycleLabel: 'Winter 2027',
+    previewAt: '2026-11-23T00:00:00-05:00',
+    residentOpenAt: '2026-12-07T00:00:00-05:00',
+    openAt: '2026-12-11T00:00:00-05:00',
+    residentPriorityDays: 4,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: KING_RECREATION,
+    verifiedAt: YORK_ROUND_VERIFIED_AT,
+    notes: `Aquatics is the one program King splits by residency: the December 7 general open is the resident date for swim because the Township separately prints "Aquatics program registration for non-residents opens on December 11, 2026." The four-day head start is the gap between the two sentences, not a published rule. ${KING_WINTER_QUOTE}`,
+    publishedWeekdays: {},
+  },
+
+  // ── East Gwillimbury ─────────────────────────────────────────────────────────
+  {
+    ...EAST_GWILLIMBURY_FALL_2026,
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    notes: `General registered rec programs, one window for the whole Health and Active Living Guide. ${EAST_GWILLIMBURY_QUOTE}`,
+  },
+  {
+    ...EAST_GWILLIMBURY_FALL_2026,
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026',
+    notes: `Aquatics registers inside the same window — the Town publishes no separate swim date. ${EAST_GWILLIMBURY_QUOTE}`,
+  },
+
+  // ── Georgina ─────────────────────────────────────────────────────────────────
+  {
+    ...GEORGINA_FALL_2026,
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    notes: `General registered rec programs. ${GEORGINA_PROGRAMS_QUOTE}`,
+  },
+  {
+    ...GEORGINA_FALL_2026,
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026',
+    notes: `Aquatics registers inside the same window: the Town's aquatic-programs page prints no date of its own, only "Resident and non-resident registration is now open." ${GEORGINA_PROGRAMS_QUOTE}`,
+  },
+
+  // ── Uxbridge (Durham) ────────────────────────────────────────────────────────
+  {
+    ...UXBRIDGE_ROW,
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    openAt: '2026-08-20T09:00:00-04:00',
+    notes: `Uxplore: Fall 2026 & Winter 2027 Community Guide, Youth Recreation page 43, verbatim: "Fall Sessions (10 Weeks):" / "Registration Opens August 20, 2026 at 9:00 a.m." The same instant is printed again on Uxpool page 20 with its weekday: "Fall Registration Begins" / "Thursday, August 20, 2026 at 9:00 a.m." ${UXBRIDGE_NO_RESIDENT_SPLIT}`,
+    publishedWeekdays: { openAt: 'Thursday' },
+  },
+  {
+    ...UXBRIDGE_ROW,
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026',
+    openAt: '2026-08-20T09:00:00-04:00',
+    notes: `Uxpool (aquatics), page 20, verbatim: "Registration" / "Fall Registration Begins" / "Thursday, August 20, 2026 at 9:00 a.m." Aquatics and youth recreation open on the same instant; the guide prints it in both sections. ${UXBRIDGE_NO_RESIDENT_SPLIT}`,
+    publishedWeekdays: { openAt: 'Thursday' },
+  },
+  {
+    ...UXBRIDGE_ROW,
+    programDomain: 'rec_program',
+    cycleLabel: 'Winter 2027',
+    openAt: '2026-11-10T09:00:00-05:00',
+    notes: `Youth Recreation page 43, verbatim: "Winter Sessions (8 Weeks):" / "Registration Opens November 10, 2026 at 9:00 a.m." Printed again on Uxpool page 20 with its weekday: "Winter Registration Begins" / "Tuesday, November 10, 2026 at 9:00 a.m." EST, not EDT — the clock went back on 1 November 2026. ${UXBRIDGE_NO_RESIDENT_SPLIT}`,
+    publishedWeekdays: { openAt: 'Tuesday' },
+  },
+  {
+    ...UXBRIDGE_ROW,
+    programDomain: 'swim',
+    cycleLabel: 'Winter 2027',
+    openAt: '2026-11-10T09:00:00-05:00',
+    notes: `Uxpool (aquatics), page 20, verbatim: "Winter Registration Begins" / "Tuesday, November 10, 2026 at 9:00 a.m." The guide adds "Winter Session Dates and Lesson Schedule will be available online", so the sessions are unpublished but the registration morning is not. ${UXBRIDGE_NO_RESIDENT_SPLIT}`,
+    publishedWeekdays: { openAt: 'Tuesday' },
+  },
+  {
+    ...UXBRIDGE_ROW,
+    programDomain: 'camp',
+    cycleLabel: 'Winter Break Day Camps December 2026',
+    openAt: '2026-11-10T09:00:00-05:00',
+    ageMinMonths: 60,
+    ageMaxMonths: 120,
+    notes: `Winter Break Camps, page 47, verbatim: "Winter Break Day Camps" / "Registration opens November 10, 2026 at 9:00am" / "December 21-23, 2026" / "8:30 a.m. - 4:30 p.m." / "Ages: 5-9 years" (recorded 60-120 months, inclusive of the whole tenth year, as the Toronto ARC row is). Seeded as its own row because it registers in the NOVEMBER window, not in December — the radar has to fire six weeks before the camp. ${UXBRIDGE_NO_RESIDENT_SPLIT}`,
+    publishedWeekdays: { openAt: 'Tuesday' },
+  },
+  {
+    ...UXBRIDGE_ROW,
+    programDomain: 'camp',
+    cycleLabel: 'UxCamps March Break 2027',
+    openAt: '2027-01-26T12:00:00-05:00',
+    notes: `UxCamps March Break Camps, page 48, verbatim: "Registration Details" / "Registration opens January 26th, 2027, at 12:00 p.m. Limited spaces are available, register early to secure your spot!" / "Jr. Variety Camp March 15-19, 2027". NOON, and the guide prints no weekday here — the only Uxbridge date in the guide that does not carry one. ${UXBRIDGE_NO_RESIDENT_SPLIT}`,
+    publishedWeekdays: {},
   },
 ];

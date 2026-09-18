@@ -1,6 +1,10 @@
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { redactEventPayload } from '@hale/worker/redaction';
-import type { CalendarAlertOutcome, CalendarChange } from './calendar-alert';
+import type {
+  CalendarAlertOutcome,
+  CalendarAlertSweep,
+  CalendarChange,
+} from './calendar-alert';
 import type { EmailAlertOutcome, GmailAlertEnvelope } from './email-alert';
 import type { ConnectorProvider } from './google-oauth';
 import type { ActiveConnectorConnection } from './store';
@@ -71,7 +75,7 @@ export interface SyncDeps {
    * and non-nullable for the same reason: "nothing is wired to alert" is a decision a
    * caller makes out loud, never by withholding a port (rule #11).
    */
-  alertCalendarChanges: (input: CalendarAlertBatch) => Promise<readonly CalendarAlertOutcome[]>;
+  alertCalendarChanges: (input: CalendarAlertBatch) => Promise<CalendarAlertSweep>;
 }
 
 /** One connection's Gmail envelopes, as the alert path needs them. The access token is
@@ -188,7 +192,11 @@ export async function syncConnection(
       const { seeding, changes } = result.calendar;
       calendarDroppedNoId = result.calendar.droppedNoId;
       try {
-        calendarAlerts = await deps.alertCalendarChanges({ connection, seeding, changes });
+        const sweep = await deps.alertCalendarChanges({ connection, seeding, changes });
+        // Flattened for the SUMMARY, which counts by name and never by position. The two
+        // lists are kept apart inside the alert module because only the first one is
+        // positional; a re-offer answers no change on this page (rule #11).
+        calendarAlerts = [...sweep.changes, ...sweep.reoffers];
       } catch (err) {
         // The class only: an alert-path rejection can carry an event title (rule #1).
         console.error(
@@ -423,6 +431,10 @@ function calendarChangeOf(item: Record<string, unknown>, runStamp: string): Cale
     // as the floor — a change nobody can version is still a change, and dropping it
     // silently is how the cancellation goes missing.
     updated: readString(item.updated) ?? readString(item.etag) ?? runStamp,
+    // The series this item is an instance of. With singleEvents=true one edit to a weekly
+    // class comes back as one item per instance, and this is the only field that says they
+    // are the same edit — the alert path groups on it so six changes are one text.
+    recurringEventId: readString(item.recurringEventId),
     status: status === 'cancelled' || status === 'tentative' ? status : 'confirmed',
     title: readString(item.summary),
     start,

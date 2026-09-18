@@ -60,7 +60,7 @@ try {
     process.exit(0);
   }
 
-  const { token } = await mintIcsToken(db, familyId);
+  const { token } = await mintIcsToken(db, familyId, 'feed_subscription');
   const ics = await loadIcsFeed(db, token, now);
   if (ics === null) fail('loadIcsFeed returned null for the freshly-minted token.');
 

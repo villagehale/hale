@@ -11,12 +11,17 @@ import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/iden
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import {
+  handleEmailAlertOfferReply,
+  resolveEmailAlertOffer,
+} from '~/lib/integrations/email-alert-offer';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import {
   type PrepareReplyDeps,
   handleCourseBind,
   handleReadinessAnswer,
 } from '~/lib/registration/sequence/prepare-reply';
+import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import { type SequenceReplyDeps, handleSequenceReply } from '~/lib/registration/sequence/reply';
 import {
   type ResolvedIntroAnswer,
@@ -461,6 +466,92 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
 }
 
 /**
+ * The YES at the end of a Gmail alert — the occasion goes on the family's week.
+ *
+ * PLACED BETWEEN HEALTH AND PLAN, by this file's own rule: among handlers that recognise
+ * the same word, the one whose wrong answer costs most goes first. A wrong reading here
+ * writes a real entry on the week and materializes reminders off it — more than a plan's
+ * three texts, less than filing a health checkpoint as handled (which silences a records
+ * reminder for months) and far less than an approval that executes something. It cannot
+ * starve the two behind it either: with no offer row the load is one indexed read and a
+ * decline, which is every family that has not connected a mailbox.
+ *
+ * NO F14 GATE, unlike the registration handler, and the omission is the honest one: the
+ * flag decides whether Hale may START a conversation, and the offer row is proof it
+ * already did. Gating the answer would strand a question a parent was actually asked if
+ * the flag went off between the text and the reply. With the flag off no row is ever
+ * written, so the gate is the row.
+ *
+ * THE SECOND YES. Once the first one resolves the offer it stops being listed, so a
+ * repeat reaches this handler on the keyword pass with NO open question — where
+ * `soleOpenKind` is vacuously true and would let it claim any bare affirmative at all.
+ * That is why the repeat branch has to find something of its own to act on, why its
+ * window is minutes rather than the offer's own day, and why inside that window it still
+ * requires the receipt to be Hale's LAST WORD to this parent (email-alert-offer.ts).
+ *
+ * `ctx.inboundChannelMessageId` is not read. Nothing here files a fact against the
+ * parent's own words — the offer row already carries its provenance — so a spoken turn,
+ * which has no inbound row, would cost this handler nothing even if the kind were ever
+ * added to SPOKEN_QUESTION_KINDS (it is not).
+ */
+export function emailAlertAddHandler(): DeterministicHandler {
+  return {
+    name: 'email_alert_add',
+    resolves: new Set<OpenQuestionKind>(['email_alert_add']),
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const answer = ctx.resolved?.kind === 'email_alert_add' ? ctx.resolved : null;
+      const word = readAffirmative(ctx.body);
+      const polarity = answer?.polarity ?? (word === 'unclear' ? null : word);
+      if (polarity === null) return { claimed: false };
+      // THE BARE WORD, and the two things that make it unambiguous. `soleOpenKind` rules
+      // out every OTHER kind; the count rules out the second offer of this one, which that
+      // function is vacuously happy with — a family may hold three alerts a day, and "yes"
+      // next to two of them names neither. Declining sends the turn to the resolver and,
+      // failing that, to the one-sentence "Which one?" the subjects are written for.
+      if (answer === null) {
+        const questions = await ctx.openQuestions();
+        const mine = questions.filter((question) => question.kind === 'email_alert_add');
+        if (mine.length > 1 || !soleOpenKind(questions, 'email_alert_add')) {
+          return { claimed: false };
+        }
+      }
+
+      const outcome = await handleEmailAlertOfferReply(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        // The row the answer NAMES, never a position (route.ts `ResolvedAnswer`). Null is
+        // the bare word, which the guard above has just established is unambiguous.
+        offerId: answer?.questionId ?? null,
+        polarity,
+        language: replyLanguage(ctx.body),
+        now: ctx.now,
+      });
+      if (outcome.status === 'no_open_offer') return { claimed: false };
+      if (outcome.status === 'already_added') {
+        return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      }
+      const resolution = outcome.status;
+      return {
+        claimed: true,
+        outcome: resolution,
+        reply: outcome.reply,
+        // Closed by the message that told the parent, never before it. A turn that placed
+        // the event and then failed to answer must leave the offer standing so the redrive
+        // finds it — the event insert is claimed against the offer, so the redrive places
+        // nothing twice (the MEM-10 send-time discipline every other offer here keeps).
+        afterSend: (channelMessageId) =>
+          resolveEmailAlertOffer(database, {
+            offerId: outcome.offerId,
+            resolution,
+            channelMessageId,
+            now: ctx.now,
+          }),
+      };
+    },
+  };
+}
+
+/**
  * The full coaching plan a parent said YES to.
  *
  * PLACED DIRECTLY AFTER HEALTH, which puts it third among the three handlers that can
@@ -559,13 +650,57 @@ export function sequenceReplyHandler(
 
       const outcome = await handleSequenceReply(
         database,
-        { familyId: ctx.familyId, body: ctx.body, now: ctx.now },
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          now: ctx.now,
+        },
         deps,
       );
-      if (outcome.status !== 'recorded') return { claimed: false };
-      return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      if (outcome.status === 'recorded') {
+        return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      }
+      return (await alreadyApprovedReply(database, ctx, prepare)) ?? { claimed: false };
     },
   };
+}
+
+/**
+ * THE OTHER PARENT'S YES to a card this household has already approved.
+ *
+ * LAST IN THIS HANDLER, after every branch that could have something to record, because
+ * it is the only one that acts on nothing: there is no state to write, and a turn that
+ * any other branch can claim is a turn this one must not. It is also why the check is a
+ * reader and not a lane — nothing here decides anything, it says what is already true.
+ *
+ * YES ONLY. A second parent's NO to an approved shortlist is a household disagreeing
+ * with itself, which is a conversation (and possibly an undo), not an acknowledgement —
+ * swallowing it with a cheerful receipt would be the worst answer available. It goes to
+ * the coach exactly as it does today.
+ *
+ * The bare-word permission is the ordinary one, asked against the kind the word is
+ * actually answering: with the card gone from the queue no approval question is open,
+ * so anything ELSE outstanding makes the word ambiguous and this declines.
+ */
+async function alreadyApprovedReply(
+  database: Database,
+  ctx: HandlerContext,
+  deps: PrepareReplyDeps,
+): Promise<HandlerVerdict | null> {
+  if (!f14EnabledFor(ctx.familyId)) return null;
+  const command = matchFastPath(ctx.body);
+  if (command === null || command.verb !== 'yes' || command.index !== null) return null;
+  if (!(await mayClaimBareWord(ctx, command, 'approval'))) return null;
+
+  const approved = await deps.approvedShortlistAskedOf(
+    database,
+    ctx.familyId,
+    ctx.parentUserId,
+    ctx.now,
+  );
+  if (approved === null) return null;
+  return { claimed: true, outcome: 'already_approved', reply: SHORTLIST_ALREADY_APPROVED_ACK };
 }
 
 /**
@@ -645,6 +780,7 @@ async function preOpenReply(
       database,
       {
         sequence,
+        answeredByUserId: ctx.parentUserId,
         ready: resolved.polarity === 'yes',
         read: 'resolver',
         confidence: resolved.confidence,
@@ -660,7 +796,13 @@ async function preOpenReply(
   if (link !== null) {
     const bind = await handleCourseBind(
       database,
-      { sequence, rawUrl: link, inboundChannelMessageId, now: ctx.now },
+      {
+        sequence,
+        answeredByUserId: ctx.parentUserId,
+        rawUrl: link,
+        inboundChannelMessageId,
+        now: ctx.now,
+      },
       deps,
     );
     // An already-registering course belongs to VIL-337's watch and to the coach.
@@ -687,12 +829,13 @@ async function preOpenReply(
       alongside.index === null &&
       alongside.verb !== 'undo' &&
       (await mayClaimBareWord(ctx, alongside, 'registration_readiness')) &&
-      (await deps.readinessAskedLastAt(database, sequence)) !== null
+      (await deps.readinessAskedLastAt(database, sequence, ctx.parentUserId)) !== null
     ) {
       await handleReadinessAnswer(
         database,
         {
           sequence,
+          answeredByUserId: ctx.parentUserId,
           ready: alongside.verb === 'yes',
           read: 'keyword',
           confidence: null,
@@ -708,12 +851,13 @@ async function preOpenReply(
   const command = matchFastPath(ctx.body);
   if (command === null || command.verb === 'undo' || command.index !== null) return null;
   if (!(await mayClaimBareWord(ctx, command, 'registration_readiness'))) return null;
-  if ((await deps.readinessAskedLastAt(database, sequence)) === null) return null;
+  if ((await deps.readinessAskedLastAt(database, sequence, ctx.parentUserId)) === null) return null;
 
   const outcome = await handleReadinessAnswer(
     database,
     {
       sequence,
+      answeredByUserId: ctx.parentUserId,
       ready: command.verb === 'yes',
       read: 'keyword',
       confidence: null,

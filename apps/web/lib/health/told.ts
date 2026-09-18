@@ -35,6 +35,21 @@ export function checkpointToldKeyPrefix(familyId: string): string {
   return `nudge:${familyId}:health:`;
 }
 
+/**
+ * What separates the marker from the RECIPIENT a copy of it went to.
+ *
+ * `channel_messages.dedupe_key` is unique, so a household whose co-parent also gets the
+ * nudge (channel/family-recipients.ts) needs one key per number — and the marker still
+ * has to be readable off every one of them. A colon would not do: a ref is parsed by
+ * splitting on colons into exactly three parts, so a fourth would make the row
+ * unparseable and this family would be told the same checkpoint every week forever.
+ *
+ * Absent on a legacy row, and on every row `recordCheckpointTold` stamps from another
+ * surface — both parse unchanged, which is what makes this additive rather than a
+ * migration.
+ */
+export const TOLD_RECIPIENT_SEPARATOR = '#';
+
 /** This checkpoint's told-marker for this family. `ref` is the matcher's own identity
  * (checkpointRef): per child for a one-time visit, per household per school year for
  * the annual records check. Rebuilt nowhere else, so the scope cannot drift. */
@@ -123,7 +138,10 @@ export async function loadToldCheckpointRefs(
     );
   const refs = new Set<string>();
   for (const row of rows) {
-    const ref = row.dedupeKey?.slice(prefix.length);
+    // The recipient qualifier comes off before the ref is parsed: two parents told the
+    // same checkpoint is the SAME fact about the household, recorded twice because the
+    // ledger's key is unique per message.
+    const ref = row.dedupeKey?.slice(prefix.length).split(TOLD_RECIPIENT_SEPARATOR)[0];
     if (ref && parseCheckpointRef(ref)) refs.add(ref);
   }
   return refs;

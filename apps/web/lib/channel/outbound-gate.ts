@@ -419,12 +419,44 @@ async function optOutForm(
 }
 
 /**
- * The parent's proactive_watch consent as it stands NOW: the newest row wins, and it
- * only counts as a grant when it is a grant that was never revoked.
+ * The two scopes a CO-PARENT's own express consent to be texted by Hale is recorded
+ * under — one per door into the seat, and both written in the same transaction that
+ * seats them:
+ *
+ *   · `sms_coparent_invite_reply` — they answered YES to the one invite Hale sent them
+ *     (coparent/accept.ts);
+ *   · `sms_join_origination` — they texted a forwarded join link themselves
+ *     (join/invites.ts).
+ *
+ * Read rather than re-derived from the seat, because the seat is not the consent: a
+ * departure appends a `granted=false` row for every live scope AND revokes the channel
+ * (coparent/depart.ts), so both doors shut on the ledger's own terms.
+ */
+const CO_PARENT_SEATING_SCOPES = ['sms_coparent_invite_reply', 'sms_join_origination'] as const;
+
+/**
+ * The parent's watch consent as it stands NOW: the newest row wins, and it only counts
+ * as a grant when it is a grant that was never revoked.
  *
  * Both withdrawal conventions in this table are handled by that one rule — a
  * `revoked_at` stamp on the granting row, and an appended `granted=false` row that
  * supersedes it. A naive `granted = true` existence check reads "yes" under either.
+ *
+ * A SEATED CO-PARENT'S CONSENT IS THEIR SEATING CONSENT, and this is the one place that
+ * had to learn it (audit 2026-09-17). `proactive_watch` has exactly one writer — the
+ * intake watch-offer, answered by the parent who provisioned the household
+ * (intake/watch-consent.ts, called from intake/machine.ts) — so a co-parent has no row
+ * of that type and never will. Left alone, every unprompted message to them was held
+ * `no_watch_consent` while the loop's weekly plan and event reminders reached them
+ * anyway, which is two different answers to one question. What they DID give is express,
+ * verbatim and on their own account: "Say yes and you'll see their whole week" is the
+ * message they answered, and their yes is the row {@link CO_PARENT_SEATING_SCOPES}
+ * names.
+ *
+ * THE FALLBACK IS ONLY FOR A PERSON WITH NO WATCH ROW AT ALL, and only inside a
+ * household whose own watch answer is a live grant. A `proactive_watch` row that says
+ * no still wins — for the person who wrote it and for the partner they share a family
+ * with, because the radar is the household's and it is armed once.
  */
 async function readWatchConsent(database: Database, parentUserId: string): Promise<boolean> {
   const [latest] = await database
@@ -442,7 +474,74 @@ async function readWatchConsent(database: Database, parentUserId: string): Promi
     )
     .orderBy(desc(schema.consentRecords.grantedAt))
     .limit(1);
-  return latest?.granted === true && latest.revokedAt === null;
+  if (latest) return latest.granted === true && latest.revokedAt === null;
+  return readCoParentSeatingConsent(database, parentUserId);
+}
+
+/**
+ * Their seating consent, read latest-row-wins across both doors — the same rule, and
+ * the same two withdrawal conventions, as the watch row above.
+ *
+ * AND THE HOUSEHOLD'S OWN WATCH ANSWER, because a seat is not a second vote on it
+ * (hard rule #1, default to the most restrictive reading; audit 2026-09-17 r1). The
+ * unprompted lanes select families on `onboarding_stage = 'sms_active'`, which
+ * `recordWatchConsent` sets on a DECLINE as well as on a grant, so the watch gate is
+ * the only thing standing between "should I watch the registration dates at least?" -
+ * "no" and the full radar. Left per-user, this fallback would have handed that
+ * household the whole ladder the moment a co-parent was seated: the decline is the
+ * primary parent's row, and the co-parent has none to overrule.
+ *
+ * `proactive_watch` has ONE writer (the intake offer, answered by the parent who
+ * provisioned the household), so "the family's newest watch row" is that answer, and
+ * reading it here is reading the household's own decision rather than inventing a
+ * second one. A household nobody has asked yet is not a grant: the co-parent's seat
+ * carries their consent to be TEXTED, and the radar waits for the same yes the primary
+ * parent's does.
+ */
+async function readCoParentSeatingConsent(
+  database: Database,
+  parentUserId: string,
+): Promise<boolean> {
+  const [latest] = await database
+    .select({
+      granted: schema.consentRecords.granted,
+      revokedAt: schema.consentRecords.revokedAt,
+      familyId: schema.consentRecords.familyId,
+    })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.userId, parentUserId),
+        eq(schema.consentRecords.consentType, 'sms_service_messages'),
+        inArray(schema.consentRecords.consentScope, [...CO_PARENT_SEATING_SCOPES]),
+      ),
+    )
+    .orderBy(desc(schema.consentRecords.grantedAt))
+    .limit(1);
+  if (!(latest?.granted === true && latest.revokedAt === null)) return false;
+  // `consent_records.family_id` is nullable in general; BOTH seating writers stamp it
+  // (coparent/accept.ts, join/invites.ts), so a row without one did not come from a
+  // door this fallback knows about and there is no household whose watch answer could
+  // be read. Refusing is the only honest answer — guessing the family from a seat would
+  // be this gate inventing the consent it exists to check.
+  if (latest.familyId === null) return false;
+  const seatedIn = latest.familyId;
+
+  const [household] = await database
+    .select({
+      granted: schema.consentRecords.granted,
+      revokedAt: schema.consentRecords.revokedAt,
+    })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.familyId, seatedIn),
+        eq(schema.consentRecords.consentType, 'proactive_watch'),
+      ),
+    )
+    .orderBy(desc(schema.consentRecords.grantedAt))
+    .limit(1);
+  return household?.granted === true && household.revokedAt === null;
 }
 
 /** Proactive sends of this class that actually WENT OUT for the family in the window.

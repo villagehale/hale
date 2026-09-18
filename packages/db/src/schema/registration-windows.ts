@@ -22,7 +22,12 @@ export type Municipality =
   | 'whitby'
   | 'oshawa'
   | 'aurora'
-  | 'whitchurch_stouffville';
+  | 'whitchurch_stouffville'
+  | 'newmarket'
+  | 'king'
+  | 'east_gwillimbury'
+  | 'georgina'
+  | 'uxbridge';
 
 /**
  * What kind of registration the window is for. `rec_program` is the seasonal

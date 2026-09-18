@@ -178,6 +178,11 @@ describe('the shipped verified list', () => {
       oshawa: 'oshawa.ca',
       aurora: 'aurora.ca',
       whitchurch_stouffville: 'townofws.ca',
+      newmarket: 'newmarket.ca',
+      king: 'king.ca',
+      east_gwillimbury: 'eastgwillimbury.ca',
+      georgina: 'georgina.ca',
+      uxbridge: 'uxbridge.ca',
     };
     for (const seed of REGISTRATION_WINDOWS) {
       expect(new URL(seed.sourceUrl).hostname).toContain(HOSTS[seed.municipality]);
