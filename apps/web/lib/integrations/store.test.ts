@@ -35,7 +35,6 @@ function fakeDb(selectRows: unknown[]) {
      * test sets this to [] to model a no-op revoke (nothing matched the key). */
     revokedRows?: { id: string }[];
   } = {};
-  const returning = () => Promise.resolve([{ id: 'i1' }]);
   const updateReturning = () => Promise.resolve(cap.revokedRows ?? [{ id: 'i1' }]);
   const database = {
     select: () => ({
@@ -48,13 +47,17 @@ function fakeDb(selectRows: unknown[]) {
     }),
     insert: () => ({
       values: (v: Record<string, unknown>) => {
-        if ('actionTaken' in v) cap.audit = v;
+        const audit = 'actionTaken' in v;
+        if (audit) cap.audit = v;
         else cap.inserted = v;
+        // Distinct ids per table, so a caller reading one back cannot pass by reading
+        // the other.
+        const rows = () => Promise.resolve([{ id: audit ? 'a1' : 'i1' }]);
         return Object.assign(Promise.resolve(), {
-          returning,
+          returning: rows,
           onConflictDoUpdate: (c: typeof cap.conflict) => {
             cap.conflict = c;
-            return Object.assign(Promise.resolve(), { returning });
+            return Object.assign(Promise.resolve(), { returning: rows });
           },
         });
       },
@@ -95,6 +98,21 @@ describe('integrations store', () => {
     expect(cap.audit?.actor).toBe(USER);
     expect(cap.audit?.after).toEqual({ provider: 'gcal' });
     expect(JSON.stringify(cap.audit)).not.toContain('secret');
+  });
+
+  /** The caller's handle on THIS connect. The integration row is upserted, so its id
+   * comes back unchanged on a reconnect; the audit row is written once per connect, and
+   * it is the audit row's id that goes back to the caller. */
+  it('hands back the connect audit row, not the integration row', async () => {
+    const { database } = fakeDb([]);
+    const returned = await saveConnection(database, {
+      familyId: FAMILY,
+      userId: USER,
+      provider: 'gcal',
+      scopes: ['s'],
+      tokens: TOKENS,
+    });
+    expect(returned).toEqual({ connectId: 'a1' });
   });
 
   it('upserts atomically on (family,user,provider) — no select-then-insert race', async () => {

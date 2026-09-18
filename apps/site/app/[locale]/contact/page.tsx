@@ -4,6 +4,7 @@ import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { type HeadlineSegment, WordsPullUp } from '~/components/words-pull-up';
 import { buildAlternates } from '~/i18n/metadata';
+import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 
@@ -75,6 +76,15 @@ export default async function ContactPage({ params }: PageProps) {
             })}
           </div>
           <p className="meta mx-auto mt-8 max-w-3xl text-slate-green">{t('note')}</p>
+          {/* The one audience this page's two inboxes do not describe: staff at a
+              centre or a library, who want to know what Hale is before they
+              mention it to a family. */}
+          <p className="meta mx-auto mt-3 max-w-3xl text-slate-green">
+            {t('centresNote')}{' '}
+            <a href={localeHref(locale, '/for-centres')} className="link">
+              {t('centresLink')}
+            </a>
+          </p>
         </section>
       </div>
 

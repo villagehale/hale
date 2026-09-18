@@ -6,7 +6,7 @@ import type { HandlerContext } from '~/lib/channel/router/route';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { offerConnectorLink } from './offer';
+import { offerConnectorLink, offerConnectorLinks } from './offer';
 
 /**
  * The connector handoff's mint — a verified parent's "connect my calendar" becomes a
@@ -56,7 +56,10 @@ describe('offerConnectorLink', () => {
     });
 
     if (outcome.status !== 'minted') throw new Error(`expected minted, got ${outcome.status}`);
-    expect(outcome.url).toMatch(/^https:\/\/app\.villagehale\.com\/connect\?t=[A-Za-z0-9_-]+$/);
+    // The deep link is the point: `to` is what lets the redeem page skip Settings.
+    expect(outcome.url).toMatch(
+      /^https:\/\/app\.villagehale\.com\/connect\?t=[A-Za-z0-9_-]+&to=gcal$/,
+    );
 
     const tokens = await db.database.select().from(schema.channelSigninTokens);
     expect(tokens).toHaveLength(1);
@@ -74,6 +77,40 @@ describe('offerConnectorLink', () => {
     expect(audits[0]?.after).toEqual({ provider: 'gcal' });
     // Never the token, never the number (rule #1).
     expect(JSON.stringify(audits[0])).not.toContain(PHONE);
+  });
+
+  /**
+   * The intake offer names both connectors, so it carries both links — and BOTH have to
+   * still be alive when the text lands. This is the assertion that stops a mint whose
+   * second call kills its own first link.
+   */
+  it('mints a live link per provider when one message offers two', async () => {
+    const outcome = await offerConnectorLinks(db.database, {
+      familyId,
+      parentUserId,
+      providers: ['gcal', 'gmail'],
+      now: NOW,
+    });
+
+    if (outcome.status !== 'minted') throw new Error(`expected minted, got ${outcome.status}`);
+    const [calendar, gmail] = outcome.urls;
+    expect(calendar).toMatch(/^https:\/\/app\.villagehale\.com\/connect\?t=[A-Za-z0-9_-]+&to=gcal$/);
+    expect(gmail).toMatch(/^https:\/\/app\.villagehale\.com\/connect\?t=[A-Za-z0-9_-]+&to=gmail$/);
+    expect(calendar).not.toBe(gmail);
+
+    const tokens = await db.database.select().from(schema.channelSigninTokens);
+    expect(tokens).toHaveLength(2);
+    expect(tokens.map((row) => row.consumedAt)).toEqual([null, null]);
+
+    // Rule #6: two capabilities, two rows, each naming the connector it was minted for.
+    const audits = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'connector_link_minted'));
+    expect(audits.map((row) => row.after)).toEqual(
+      expect.arrayContaining([{ provider: 'gcal' }, { provider: 'gmail' }]),
+    );
+    expect(audits).toHaveLength(2);
   });
 
   it('names not_enrolled when the channel is gone, and mints nothing', async () => {

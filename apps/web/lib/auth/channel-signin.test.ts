@@ -5,7 +5,7 @@ import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   CHANNEL_SIGNIN_TTL_MS,
   consumeChannelSigninToken,
-  mintChannelSigninToken,
+  mintChannelSigninTokens,
 } from './channel-signin';
 
 /**
@@ -15,7 +15,7 @@ import {
  *
  * Over REAL Postgres because everything that matters here is SQL: the atomic
  * conditional burn that makes it single-use, the expiry read, and the
- * invalidate-prior-on-mint UPDATE.
+ * invalidate-prior-on-ask UPDATE.
  */
 
 const NOW = new Date('2026-08-31T15:00:00.000Z');
@@ -41,8 +41,15 @@ describe('channel sign-in tokens', () => {
     await db.close();
   });
 
+  /** One link's worth of the ask — what every case but the pair below needs. */
+  async function mintOne(now: Date = NOW) {
+    const [minted] = await mintChannelSigninTokens(db.database, { userId, count: 1, now });
+    if (!minted) throw new Error('no token minted');
+    return minted;
+  }
+
   it('stores only the hash, with a 15-minute expiry', async () => {
-    const minted = await mintChannelSigninToken(db.database, { userId, now: NOW });
+    const minted = await mintOne();
 
     const rows = await db.database.select().from(schema.channelSigninTokens);
     expect(rows).toHaveLength(1);
@@ -56,12 +63,9 @@ describe('channel sign-in tokens', () => {
     expect(CHANNEL_SIGNIN_TTL_MS).toBe(15 * 60 * 1000);
   });
 
-  it('invalidates the prior unconsumed token on a fresh mint', async () => {
-    const first = await mintChannelSigninToken(db.database, { userId, now: NOW });
-    await mintChannelSigninToken(db.database, {
-      userId,
-      now: new Date(NOW.getTime() + 1000),
-    });
+  it('invalidates the prior unconsumed token on a fresh ask', async () => {
+    const first = await mintOne();
+    await mintOne(new Date(NOW.getTime() + 1000));
 
     const stale = await consumeChannelSigninToken(first.token, db.database, {
       now: new Date(NOW.getTime() + 2000),
@@ -69,8 +73,47 @@ describe('channel sign-in tokens', () => {
     expect(stale.ok).toBe(false);
   });
 
+  /**
+   * The links of ONE message live alongside each other. A message that offers two
+   * connectors carries two links, and a mint that invalidated its own sibling would
+   * ship one that was dead before the text arrived.
+   */
+  it('issues a whole ask at once, each link redeemable on its own', async () => {
+    const [calendar, gmail] = await mintChannelSigninTokens(db.database, {
+      userId,
+      count: 2,
+      now: NOW,
+    });
+    if (!calendar || !gmail) throw new Error('expected two tokens');
+    const later = new Date(NOW.getTime() + 1000);
+
+    expect(calendar.token).not.toBe(gmail.token);
+    expect(calendar.tokenId).not.toBe(gmail.tokenId);
+    expect((await consumeChannelSigninToken(calendar.token, db.database, { now: later })).ok).toBe(
+      true,
+    );
+    // The sibling survives the first tap — the parent connects both from one message.
+    expect((await consumeChannelSigninToken(gmail.token, db.database, { now: later })).ok).toBe(
+      true,
+    );
+  });
+
+  /** The invalidation is per ASK, not per link: the next ask kills the whole previous
+   * message, not just its last link. */
+  it('kills every link of the prior ask, not only its last', async () => {
+    const pair = await mintChannelSigninTokens(db.database, { userId, count: 2, now: NOW });
+    await mintOne(new Date(NOW.getTime() + 1000));
+
+    for (const dead of pair) {
+      const stale = await consumeChannelSigninToken(dead.token, db.database, {
+        now: new Date(NOW.getTime() + 2000),
+      });
+      expect(stale.ok).toBe(false);
+    }
+  });
+
   it('redeems once and only once, resolving the identity the account already has', async () => {
-    const minted = await mintChannelSigninToken(db.database, { userId, now: NOW });
+    const minted = await mintOne();
     const later = new Date(NOW.getTime() + 60_000);
 
     const first = await consumeChannelSigninToken(minted.token, db.database, { now: later });
@@ -85,7 +128,7 @@ describe('channel sign-in tokens', () => {
   });
 
   it('writes the redemption audit row (rule #6) — ids only, never the token', async () => {
-    const minted = await mintChannelSigninToken(db.database, { userId, now: NOW });
+    const minted = await mintOne();
     await consumeChannelSigninToken(minted.token, db.database, {
       now: new Date(NOW.getTime() + 1000),
     });
@@ -101,14 +144,14 @@ describe('channel sign-in tokens', () => {
   });
 
   it('refuses an expired token', async () => {
-    const minted = await mintChannelSigninToken(db.database, { userId, now: NOW });
+    const minted = await mintOne();
     const past = new Date(NOW.getTime() + CHANNEL_SIGNIN_TTL_MS + 1);
 
     expect((await consumeChannelSigninToken(minted.token, db.database, { now: past })).ok).toBe(
       false,
     );
     // Positive control for the expiry read: one millisecond inside the window works.
-    const fresh = await mintChannelSigninToken(db.database, { userId, now: NOW });
+    const fresh = await mintOne();
     const inside = new Date(NOW.getTime() + CHANNEL_SIGNIN_TTL_MS - 1);
     expect((await consumeChannelSigninToken(fresh.token, db.database, { now: inside })).ok).toBe(
       true,
@@ -125,7 +168,7 @@ describe('channel sign-in tokens', () => {
       .update(schema.users)
       .set({ externalAuthId: null })
       .where(eq(schema.users.id, userId));
-    const minted = await mintChannelSigninToken(db.database, { userId, now: NOW });
+    const minted = await mintOne();
 
     const result = await consumeChannelSigninToken(minted.token, db.database, {
       now: new Date(NOW.getTime() + 1000),
