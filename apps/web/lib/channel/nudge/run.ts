@@ -27,7 +27,7 @@ import {
   recordCheckupOffer,
 } from '~/lib/health/offer';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
-import { checkpointToldKey } from '~/lib/health/told';
+import { TOLD_RECIPIENT_SEPARATOR, checkpointToldKey } from '~/lib/health/told';
 import { localParts } from '~/lib/loop/prefs';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { voiceClient } from '~/lib/loop/voice/compose';
@@ -36,7 +36,11 @@ import { matchRegistrationWindows } from '~/lib/registration/match-registration-
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type Nudge, decideNudge } from './nudge-decide';
-import { withOptOut } from '~/lib/channel/opt-out';
+import {
+  type FamilyTextRecipient,
+  loadFamilyTextRecipients,
+} from '~/lib/channel/family-recipients';
+import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import { composeNudgeMessage } from './nudge-voice';
 
 /**
@@ -155,6 +159,16 @@ export interface NudgeRunDeps {
    * for — the sequence announces those itself, on its own ladder. */
   loadClaimedWindowIds(database: Database, familyId: string): Promise<Set<string>>;
   weather: WeatherPort;
+  /**
+   * WHO THIS NUDGE IS FOR — every parent seat in the family with a live number, not the
+   * one parent a family row happens to join to.
+   *
+   * REQUIRED, for the reason `transport` is (rule #11). A sweep that could be assembled
+   * without it would decide one thing for the household, compose it once, and deliver
+   * it to whoever answered the intake — which is what it did, while the weekly plan and
+   * the event reminders beside it reached both parents (audit 2026-09-17).
+   */
+  loadRecipients(database: Database, familyId: string): Promise<FamilyTextRecipient[]>;
   /** A factory, not an instance: the gate's ports close over the db handle the sweep
    * is given, so a caller cannot accidentally gate one database against another. */
   buildGate(database: Database): OutboundGatePorts;
@@ -242,22 +256,39 @@ function cohortOf(family: NudgeFamily, now: Date): NudgeCohort {
 
 /**
  * A nudge's natural identity, so the hourly cron can fire twice in a slot (or twice in
- * a week) and send once. A registration nudge is one per family per WINDOW — the same
- * date is never announced twice, ever. A weather swap is one per family per WEEK, keyed
- * on the family-local Monday.
+ * a week) and send once PER RECIPIENT. A registration nudge is one per family per
+ * WINDOW — the same date is never announced twice to the same parent, ever. A weather
+ * swap is one per family per WEEK, keyed on the family-local Monday.
+ *
+ * THE RECIPIENT IS IN THE KEY because `channel_messages.dedupe_key` is UNIQUE where
+ * present: a household's two parents sharing one key is one send followed by a
+ * duplicate-key crash, not one duplicate text.
+ *
+ * It is APPENDED WITH A `#`, and only for the health kind does the separator matter: a
+ * health nudge's key IS its cross-surface told-marker, whose ref is parsed back out by
+ * colon-splitting into exactly three parts (health/checkpoints.ts parseCheckpointRef).
+ * A recipient appended with a colon would make the marker unparseable and the family
+ * would be told the same checkpoint forever; `#` is outside the ref grammar, and
+ * `loadToldCheckpointRefs` strips it before parsing.
  */
-export function dedupeKeyFor(nudge: Nudge, familyId: string, now: Date, timeZone: string): string {
+export function dedupeKeyFor(
+  nudge: Nudge,
+  familyId: string,
+  parentUserId: string,
+  now: Date,
+  timeZone: string,
+): string {
   if (nudge.kind === 'registration') {
-    return `nudge:${familyId}:registration:${nudge.windowRef.id}`;
+    return `nudge:${familyId}:registration:${nudge.windowRef.id}:${parentUserId}`;
   }
   if (nudge.kind === 'health_checkpoint') {
     // A health nudge's send-idempotency key IS its told-marker (lib/health/told.ts), so
     // this row tells every other surface what this family has heard. The ref the MATCHER
     // minted is carried through untouched: per child for a one-time visit, per household
     // per school year for the annual records check.
-    return checkpointToldKey(familyId, nudge.ref);
+    return `${checkpointToldKey(familyId, nudge.ref)}${TOLD_RECIPIENT_SEPARATOR}${parentUserId}`;
   }
-  return `nudge:${familyId}:weather_swap:${weekWindow(now, timeZone).startKey}`;
+  return `nudge:${familyId}:weather_swap:${weekWindow(now, timeZone).startKey}:${parentUserId}`;
 }
 
 /**
@@ -359,23 +390,56 @@ async function decideForFamily(
   });
 }
 
-type FamilyOutcome =
-  | { kind: 'held'; reason: ProactiveHoldReason }
-  | { kind: 'quiet' }
-  | { kind: 'deduped' }
-  | { kind: 'sent' };
+/**
+ * What one family's tick DID, counted per recipient rather than per family.
+ *
+ * A household is two numbers now (channel/family-recipients.ts), and a nudge can
+ * honestly reach one parent and be held for the other — the co-parent past 21:00 in
+ * their own timezone, the parent who pressed STOP. One enum per family could only
+ * report the first of those. `quiet` (nothing worth saying) stays a property of the
+ * family, because the decision is the household's.
+ */
+type FamilyTally = {
+  quiet: boolean;
+  sent: number;
+  deduped: number;
+  held: ProactiveHoldReason[];
+};
+
+function emptyTally(overrides: Partial<FamilyTally> = {}): FamilyTally {
+  return { quiet: false, sent: 0, deduped: 0, held: [], ...overrides };
+}
 
 async function runForFamily(
   database: Database,
   family: NudgeFamily,
   deps: NudgeRunDeps,
   now: Date,
-): Promise<FamilyOutcome> {
-  const verdict = await assertProactiveSendAllowed(
-    { familyId: family.familyId, parentUserId: family.parentUserId, kind: 'nudge', now },
-    deps.buildGate(database),
-  );
-  if (!verdict.allowed) return { kind: 'held', reason: verdict.reason };
+): Promise<FamilyTally> {
+  // BOTH NUMBERS. `selectFamilies` keys on the primary parent because that is what a
+  // family row joins to; who Hale actually texts is every parent seat with a live
+  // number, and the site promises the co-parent exactly this.
+  const recipients = await deps.loadRecipients(database, family.familyId);
+  if (recipients.length === 0) return emptyTally({ held: ['not_enrolled'] });
+
+  // EVERY RECIPIENT IS GATED BEFORE ANYBODY IS SENT TO, and here that ordering is what
+  // makes the feature work at all: the nudge's cap is ONE PER FAMILY PER WEEK, counted
+  // over the family's ledger (outbound-gate.ts), so a send to the first parent inside
+  // this loop would hold the second under a budget the very same message had just
+  // spent. Gating first keeps the cap meaning what it says — a household hears one
+  // nudge a week — while both parents get their own copy of it, and next week's tick is
+  // capped for both.
+  const allowed: Array<{ recipient: FamilyTextRecipient; optOut: OptOutForm }> = [];
+  const held: ProactiveHoldReason[] = [];
+  for (const recipient of recipients) {
+    const verdict = await assertProactiveSendAllowed(
+      { familyId: family.familyId, parentUserId: recipient.parentUserId, kind: 'nudge', now },
+      deps.buildGate(database),
+    );
+    if (verdict.allowed) allowed.push({ recipient, optOut: verdict.optOut });
+    else held.push(verdict.reason);
+  }
+  if (allowed.length === 0) return emptyTally({ held });
 
   const cohort = cohortOf(family, now);
   const nudge = await decideForFamily(database, family, deps, now);
@@ -390,58 +454,115 @@ async function runForFamily(
       targetId: family.familyId,
       after: { reason: 'nothing_worth_saying', cohort },
     });
-    return { kind: 'quiet' };
+    return emptyTally({ quiet: true });
   }
 
-  const dedupeKey = dedupeKeyFor(nudge, family.familyId, now, family.timeZone);
-  // Checked BEFORE the model call: a re-fired cron must cost nothing.
-  if (await deps.dedupeActive(database, dedupeKey)) return { kind: 'deduped' };
+  // Per recipient, and checked BEFORE the model call: a re-fired cron must cost nothing.
+  const pending: Array<{ recipient: FamilyTextRecipient; optOut: OptOutForm; dedupeKey: string }> =
+    [];
+  let deduped = 0;
+  for (const { recipient, optOut } of allowed) {
+    const dedupeKey = dedupeKeyFor(
+      nudge,
+      family.familyId,
+      recipient.parentUserId,
+      now,
+      family.timeZone,
+    );
+    if (await deps.dedupeActive(database, dedupeKey)) deduped += 1;
+    else pending.push({ recipient, optOut, dedupeKey });
+  }
+  if (pending.length === 0) return emptyTally({ deduped, held });
 
+  // ONE COMPOSE FOR THE HOUSEHOLD. The nudge is a fact about this family's week, not
+  // about a parent, so composing it twice would spend the model twice to say the same
+  // thing — and risk saying it two different ways to two people in one house.
   const message = await composeNudgeMessage(nudge, {
     familyId: family.familyId,
     database,
     client: deps.client,
   });
 
-  const to = await deps.resolveSendablePhone(database, family.parentUserId);
-  if (!to) {
-    // The gate just said this parent has a live channel, so there IS one — a missing
-    // number here is a contradiction, not a state to paper over.
-    throw new Error(`runNudgeCron: no send target for parent ${family.parentUserId}`);
+  let sent = 0;
+  /** The row a family-scoped ledger write points at — the first copy that actually
+   * left, in the reader's stable primary-parent-first order. */
+  let firstMessageId: string | null = null;
+
+  for (const { recipient, optOut, dedupeKey } of pending) {
+    const to = await deps.resolveSendablePhone(database, recipient.parentUserId);
+    if (!to) {
+      // The gate just said this parent has a live channel, so there IS one — a missing
+      // number here is a contradiction, not a state to paper over.
+      throw new Error(`runNudgeCron: no send target for parent ${recipient.parentUserId}`);
+    }
+
+    const { providerMessageId } = await deps.transport.send({
+      to,
+      body: withOptOut(message, optOut),
+    });
+
+    const messageId = await deps.recordSend(database, {
+      familyId: family.familyId,
+      parentUserId: recipient.parentUserId,
+      channel: 'sms',
+      category: 'nudge',
+      templateKey: `proactive_nudge:${nudge.kind}`,
+      dedupeKey,
+      status: acceptedStatus('sms'),
+      providerMessageId,
+      sentAt: now,
+    });
+    await deps.audit(database, {
+      familyId: family.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_nudge_sent',
+      targetTable: 'channel_messages',
+      targetId: messageId,
+      // Enum-shaped provenance only — never the rendered body (rule #1). A health nudge
+      // also names its checkpoint (a reviewed table constant, never PII), so the trail
+      // says WHICH errand was raised without a join back to the ledger row's dedupe key.
+      after: {
+        kind: nudge.kind,
+        cohort,
+        // Which SEAT this copy went to. The row already names the parent; this names
+        // the relationship, which is what a founder reading the trail is asking.
+        role: recipient.role,
+        ...(nudge.kind === 'health_checkpoint' ? { checkpointId: nudge.checkpointRef.id } : {}),
+      },
+    });
+
+    // THE THREAD, which is where THIS parent's answer will be read — their own, one per
+    // recipient. Unconditional and AFTER the send: a compose that never reached a
+    // transport is not something Hale said. The COMPOSED sentence, never the wire body —
+    // the CASL line belongs on the wire and nowhere else.
+    await deps.threadMessage(database, {
+      familyId: family.familyId,
+      parentUserId: recipient.parentUserId,
+      body: message,
+    });
+    if (firstMessageId === null) firstMessageId = messageId;
+    sent += 1;
   }
 
-  const { providerMessageId } = await deps.transport.send({
-    to,
-    body: withOptOut(message, verdict.optOut),
-  });
+  // ONCE PER HOUSEHOLD, not once per number: both ledgers below record a fact about the
+  // FAMILY, and a second write would be Hale asserting twice what happened once.
+  if (firstMessageId !== null) {
+    await recordFamilyLedgers(database, { family, nudge, messageId: firstMessageId, now }, deps);
+  }
+  return { quiet: false, sent, deduped, held };
+}
 
-  const messageId = await deps.recordSend(database, {
-    familyId: family.familyId,
-    parentUserId: family.parentUserId,
-    channel: 'sms',
-    category: 'nudge',
-    templateKey: `proactive_nudge:${nudge.kind}`,
-    dedupeKey,
-    status: acceptedStatus('sms'),
-    providerMessageId,
-    sentAt: now,
-  });
-  await deps.audit(database, {
-    familyId: family.familyId,
-    actor: 'system',
-    actionTaken: 'proactive_nudge_sent',
-    targetTable: 'channel_messages',
-    targetId: messageId,
-    // Enum-shaped provenance only — never the rendered body (rule #1). A health nudge
-    // also names its checkpoint (a reviewed table constant, never PII), so the trail
-    // says WHICH errand was raised without a join back to the ledger row's dedupe key.
-    after: {
-      kind: nudge.kind,
-      cohort,
-      ...(nudge.kind === 'health_checkpoint' ? { checkpointId: nudge.checkpointRef.id } : {}),
-    },
-  });
-
+/**
+ * The two family-scoped ledger writes a nudge causes, kept together because they share
+ * one rule: each is written ONCE per nudge, after the send, against the message that
+ * carried it — never once per recipient.
+ */
+async function recordFamilyLedgers(
+  database: Database,
+  args: { family: NudgeFamily; nudge: Nudge; messageId: string; now: Date },
+  deps: NudgeRunDeps,
+): Promise<void> {
+  const { family, nudge, messageId, now } = args;
   // THE OFFER IS A PROPOSAL. A health checkpoint whose task is booking closes by ASKING
   // ("want me to add booking it to your week?"), and an ask with no row behind it is a
   // question the reply resolver cannot see — so the parent's acceptance lands on whatever
@@ -471,16 +592,6 @@ async function runForFamily(
     channelMessageId: messageId,
     now,
   });
-  // THE THREAD, which is where the parent's answer will be read. Unconditional and
-  // AFTER the send, like every other post-send write here: a compose that never reached
-  // a transport is not something Hale said. The COMPOSED sentence, never the wire body —
-  // the CASL line belongs on the wire and nowhere else.
-  await deps.threadMessage(database, {
-    familyId: family.familyId,
-    parentUserId: family.parentUserId,
-    body: message,
-  });
-  return { kind: 'sent' };
 }
 
 export async function runNudgeCron(
@@ -510,8 +621,12 @@ export async function runNudgeCron(
     result.evaluated += 1;
     try {
       const outcome = await runForFamily(database, family, deps, now);
-      if (outcome.kind === 'held') result.held[outcome.reason] += 1;
-      else result[outcome.kind] += 1;
+      // The DECISION is per family and the SENDING is per recipient, so the two are
+      // added differently and deliberately.
+      if (outcome.quiet) result.quiet += 1;
+      result.sent += outcome.sent;
+      result.deduped += outcome.deduped;
+      for (const reason of outcome.held) result.held[reason] += 1;
     } catch (err) {
       // One family's bad data must not silence every family after it.
       result.failed += 1;
@@ -588,6 +703,7 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     loadSuppressedCheckpoints: (database, familyId) =>
       loadSuppressedCheckpointRefs(database, familyId),
     loadClaimedWindowIds: (database, familyId) => loadClaimedWindowIds(database, familyId),
+    loadRecipients: (database, familyId) => loadFamilyTextRecipients(database, familyId),
     weather: createOpenMeteoWeather(),
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),

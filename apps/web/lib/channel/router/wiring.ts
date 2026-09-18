@@ -692,8 +692,8 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     // The registration ladder's readiness checklist. Its whole TTL is the last-word rule
     // inside the reader — the question closes the moment anything else goes out to this
     // parent — so, unlike the offers above, there is no window to apply here.
-    registrationReadiness: (database, familyId, now) =>
-      readinessQuestion(database, familyId, now),
+    registrationReadiness: (database, familyId, parentUserId, now) =>
+      readinessQuestion(database, familyId, parentUserId, now),
     // The co-parent scope question (VIL-355), read through the invite module's own
     // `loadPendingAssent` — which also applies the 72h expiry on read, so a lapsed ask
     // is never listed. Filtered to the co-parent role here rather than in the reader: a

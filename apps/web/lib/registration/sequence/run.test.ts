@@ -4,6 +4,7 @@ import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { GO_LEAD_MINUTES } from './schedule.js';
@@ -135,6 +136,15 @@ function harness(
     unbacked?: Awaited<ReturnType<SequenceRunDeps['refuseUnbackedSend']>>;
     enrolled?: boolean;
     consented?: boolean;
+    /** The family's textable parent seats. One primary parent unless a test says
+     * otherwise (channel/family-recipients.ts is the prod reader). */
+    recipients?: FamilyTextRecipient[];
+    /** Per-parent watch consent, for the households where the two seats differ. */
+    consentedFor?: (parentUserId: string) => boolean;
+    /** Per-parent enrolment, same reason. */
+    enrolledFor?: (parentUserId: string) => boolean;
+    /** Per-parent numbers, so a two-parent household's sends are tellable apart. */
+    phones?: Record<string, string>;
     transport?: FakeTransport;
     /** VIL-338 · the send-time course read. Absent means "this test's sequences are
      * unbound", and the default THROWS so a read nobody expected is a failure rather
@@ -174,15 +184,36 @@ function harness(
       released.push(sequenceId);
     },
     loadLiveSequences: async () => options.sequences ?? [],
+    /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
+     * (channel/family-recipients.ts). The default is the ONE parent the fixture's own
+     * row names, per family — a constant here would text one household's parent about
+     * another's window the moment a case has two families. */
+    loadRecipients: async (_db, familyId) =>
+      options.recipients ?? [
+        {
+          parentUserId:
+            (options.sequences ?? []).find((sequence) => sequence.familyId === familyId)
+              ?.parentUserId ??
+            (options.families ?? [family()]).find((row) => row.familyId === familyId)
+              ?.parentUserId ??
+            'user-1',
+          timeZone: TZ,
+          role: 'primary_parent',
+        },
+      ],
     buildGate: () => ({
-      channelEnrolled: async () => options.enrolled ?? true,
-      watchConsentGranted: async () => options.consented ?? true,
+      channelEnrolled: async (parentUserId) =>
+        options.enrolledFor?.(parentUserId) ?? options.enrolled ?? true,
+      watchConsentGranted: async (parentUserId) =>
+        options.consentedFor?.(parentUserId) ?? options.consented ?? true,
       countProactiveSends: async () => 0,
       proactiveSentSince: async () => false,
-      parentTimeZone: async () => TZ,
+      parentTimeZone: async (parentUserId) =>
+        (options.recipients ?? []).find((r) => r.parentUserId === parentUserId)?.timeZone ?? TZ,
     }),
     dedupeActive: async (_db, key) => dedupeKeys.has(key),
-    resolveSendablePhone: async () => '+14165550100',
+    resolveSendablePhone: async (_db, parentUserId) =>
+      options.phones?.[parentUserId] ?? '+14165550100',
     recordSend: async (_db, write) => {
       writes.push({
         table: schema.channelMessages,
@@ -479,7 +510,7 @@ describe('the legs', () => {
     );
     expect(second).toMatchObject({ sent: 0, deduped: 1 });
     expect(h.transport.sent).toHaveLength(1);
-    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:heads_up']);
+    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:heads_up:user-1']);
   });
 
   /**
@@ -646,7 +677,7 @@ describe('the legs', () => {
       new Date('2026-09-08T10:20:00.000Z'),
     );
     expect(result.sent).toBe(1);
-    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:go']);
+    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:go:user-1']);
   });
 
   it('anchors on the general date for a family whose FSA is not that town', async () => {
@@ -689,7 +720,7 @@ describe('the legs', () => {
     );
     expect(result.sent).toBe(1);
     expect(h.transport.bodies()[0]).toContain('36h');
-    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:waitlist_half']);
+    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:waitlist_half:user-1']);
   });
 
   it('is quiet on a tick where no leg is due — the common case', async () => {
@@ -733,7 +764,7 @@ describe('the legs', () => {
       category: 'registration_sequence',
       status: 'queued',
       templateKey: 'registration_sequence:heads_up',
-      dedupeKey: 'registration_sequence:fam-1:w-1:heads_up',
+      dedupeKey: 'registration_sequence:fam-1:w-1:heads_up:user-1',
     });
     expect(
       h.writes
@@ -1180,7 +1211,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect(result.prep.page_unreadable).toBe(1);
     // The link is never withheld because Hale had a bad fetch.
     expect(h.transport.bodies()[0]).toContain(MARKHAM_SIGN_IN);
-    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:go']);
+    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:go:user-1']);
   });
 
   it('never lets a failed read cost the BATTLE PLAN either, and moves no anchor on one', async () => {
@@ -1203,7 +1234,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect(result.prep).toMatchObject({ page_unreadable: 1, anchor_moved: 0 });
     expect(h.anchors).toEqual([]);
     expect(h.transport.bodies()[0]).toContain('I could not re-read the course page tonight');
-    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:battle_plan']);
+    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:battle_plan:user-1']);
   });
 
   it('names the host of a page it could not read, never the class behind it', async () => {
@@ -1388,7 +1419,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
 
     expect(portalResult.sent).toBe(1);
     expect(portal.transport.bodies()[0]).toContain('a Markham portal account');
-    expect([...portal.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:readiness']);
+    expect([...portal.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:readiness:user-1']);
 
     // Richmond Hill sits in the same hours and still reads the heads-up, whose key was
     // spent days ago — every tick in the old tail is `deduped`, exactly as today.
@@ -1396,7 +1427,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
     const townResult = await runRegistrationSequenceCron(db(), town.deps, READINESS_TICK);
     expect(townResult.sent).toBe(1);
     expect(town.transport.bodies()[0]).toContain('registration opens');
-    expect([...town.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:heads_up']);
+    expect([...town.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:heads_up:user-1']);
   });
 
   it('wires the real page fetcher into the default deps (rule #11)', async () => {
@@ -1420,5 +1451,127 @@ describe('VIL-338 · the bound course is read at send time', () => {
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+});
+
+/**
+ * THE GAP THE 2026-09-17 AUDIT FOUND. The site promises a co-parent "the same radar and
+ * reminders, on their own number", and the loop kept it — the weekly plan and the event
+ * reminders both select `['primary_parent', 'co_parent']`. This ladder did not: it
+ * joined on `role = 'primary_parent'` and texted one number, so the household's second
+ * parent heard about the registration morning from their partner or not at all.
+ *
+ * What these cases pin is the shape of the fix rather than its mechanics: the ROW is
+ * still one per family+window (one claim, one approval, one promise), and the SEND is
+ * one per parent seat with its own key, its own gate verdict and its own thread.
+ */
+describe('the ladder reaches both parents, on their own numbers', () => {
+  const BOTH: FamilyTextRecipient[] = [
+    { parentUserId: 'user-1', timeZone: TZ, role: 'primary_parent' },
+    { parentUserId: 'user-2', timeZone: TZ, role: 'co_parent' },
+  ];
+  const PHONES = { 'user-1': '+14165550100', 'user-2': '+16475550199' };
+
+  it('sends the heads-up to both numbers under distinct keys, and promises the plan once', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()], recipients: BOTH, phones: PHONES });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(result.sent).toBe(2);
+    expect(h.transport.sent.map((sent) => sent.to)).toEqual([
+      '+14165550100',
+      '+16475550199',
+    ]);
+    // One key each. `channel_messages.dedupe_key` is UNIQUE, so a family-scoped key
+    // here is not a duplicate text — it is the second insert throwing.
+    expect([...h.dedupeKeys]).toEqual([
+      'registration_sequence:fam-1:w-1:heads_up:user-1',
+      'registration_sequence:fam-1:w-1:heads_up:user-2',
+    ]);
+    // Each parent's own thread, so each one's reply has an antecedent the coach reads.
+    expect(h.threaded.map((row) => row.parentUserId)).toEqual(['user-1', 'user-2']);
+    // ONE plan promised. "I'll send your plan the evening before" is one plan for one
+    // household; a promise per number is a debt Hale does not owe.
+    expect(h.promised.map((row) => row.kind)).toEqual(['registration_plan']);
+    expect(h.promised[0]?.channelMessageId).toBe('msg-1');
+  });
+
+  it('sends the same morning sentence to both, composed once', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()], recipients: BOTH, phones: PHONES });
+
+    await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
+
+    const [first, second] = h.transport.bodies();
+    expect(h.transport.sent).toHaveLength(2);
+    expect(first).toContain('Richmond Hill');
+    // Byte-identical: the registration morning is the household's, and two parents in
+    // one house reading two different times for it is the failure this forbids.
+    expect(second).toBe(first);
+  });
+
+  /**
+   * THE POSITIVE CONTROL. Every assertion above would also pass if the sweep had simply
+   * started texting everybody twice, so the one-parent household has to come out
+   * exactly as it did before: one send, one key, one thread, one promise.
+   */
+  it('leaves a household with one parent exactly as it was', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()] });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(result.sent).toBe(1);
+    expect(h.transport.sent).toHaveLength(1);
+    expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:heads_up:user-1']);
+    expect(h.threaded).toHaveLength(1);
+    expect(h.promised.map((row) => row.kind)).toEqual(['registration_plan']);
+  });
+
+  it('holds the parent the gate refuses and still sends to the other', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      sequences: [live()],
+      recipients: BOTH,
+      phones: PHONES,
+      // The co-parent pressed STOP an hour ago. The live channel is the gate's answer,
+      // and it is per parent — one seat leaving must not silence the other.
+      enrolledFor: (parentUserId) => parentUserId !== 'user-2',
+    });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(result.sent).toBe(1);
+    expect(result.held.not_enrolled).toBe(1);
+    expect(h.transport.sent.map((sent) => sent.to)).toEqual(['+14165550100']);
+  });
+
+  it('sends nothing, and says not_enrolled, for a household with no live number left', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()], recipients: [] });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    // NOT counted quiet: a tick with nobody to text is a different fact from a tick
+    // with nothing to say, and only one of them is a departed household.
+    expect(result).toMatchObject({ sent: 0, quiet: 0 });
+    expect(result.held.not_enrolled).toBe(1);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('dedupes per parent, so a second fire in the interval sends to nobody', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()], recipients: BOTH, phones: PHONES });
+
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    const second = await runRegistrationSequenceCron(
+      db(),
+      h.deps,
+      new Date(HEADS_UP_TICK.getTime() + 300_000),
+    );
+
+    expect(second).toMatchObject({ sent: 0, deduped: 2 });
+    expect(h.transport.sent).toHaveLength(2);
   });
 });

@@ -559,7 +559,12 @@ export function sequenceReplyHandler(
 
       const outcome = await handleSequenceReply(
         database,
-        { familyId: ctx.familyId, body: ctx.body, now: ctx.now },
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          now: ctx.now,
+        },
         deps,
       );
       if (outcome.status !== 'recorded') return { claimed: false };
@@ -687,7 +692,7 @@ async function preOpenReply(
       alongside.index === null &&
       alongside.verb !== 'undo' &&
       (await mayClaimBareWord(ctx, alongside, 'registration_readiness')) &&
-      (await deps.readinessAskedLastAt(database, sequence)) !== null
+      (await deps.readinessAskedLastAt(database, sequence, ctx.parentUserId)) !== null
     ) {
       await handleReadinessAnswer(
         database,
@@ -708,7 +713,7 @@ async function preOpenReply(
   const command = matchFastPath(ctx.body);
   if (command === null || command.verb === 'undo' || command.index !== null) return null;
   if (!(await mayClaimBareWord(ctx, command, 'registration_readiness'))) return null;
-  if ((await deps.readinessAskedLastAt(database, sequence)) === null) return null;
+  if ((await deps.readinessAskedLastAt(database, sequence, ctx.parentUserId)) === null) return null;
 
   const outcome = await handleReadinessAnswer(
     database,

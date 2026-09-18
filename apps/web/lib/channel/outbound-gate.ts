@@ -419,12 +419,43 @@ async function optOutForm(
 }
 
 /**
- * The parent's proactive_watch consent as it stands NOW: the newest row wins, and it
- * only counts as a grant when it is a grant that was never revoked.
+ * The two scopes a CO-PARENT's own express consent to be texted by Hale is recorded
+ * under — one per door into the seat, and both written in the same transaction that
+ * seats them:
+ *
+ *   · `sms_coparent_invite_reply` — they answered YES to the one invite Hale sent them
+ *     (coparent/accept.ts);
+ *   · `sms_join_origination` — they texted a forwarded join link themselves
+ *     (join/invites.ts).
+ *
+ * Read rather than re-derived from the seat, because the seat is not the consent: a
+ * departure appends a `granted=false` row for every live scope AND revokes the channel
+ * (coparent/depart.ts), so both doors shut on the ledger's own terms.
+ */
+const CO_PARENT_SEATING_SCOPES = ['sms_coparent_invite_reply', 'sms_join_origination'] as const;
+
+/**
+ * The parent's watch consent as it stands NOW: the newest row wins, and it only counts
+ * as a grant when it is a grant that was never revoked.
  *
  * Both withdrawal conventions in this table are handled by that one rule — a
  * `revoked_at` stamp on the granting row, and an appended `granted=false` row that
  * supersedes it. A naive `granted = true` existence check reads "yes" under either.
+ *
+ * A SEATED CO-PARENT'S CONSENT IS THEIR SEATING CONSENT, and this is the one place that
+ * had to learn it (audit 2026-09-17). `proactive_watch` has exactly one writer — the
+ * intake watch-offer, answered by the parent who provisioned the household
+ * (intake/watch-consent.ts, called from intake/machine.ts) — so a co-parent has no row
+ * of that type and never will. Left alone, every unprompted message to them was held
+ * `no_watch_consent` while the loop's weekly plan and event reminders reached them
+ * anyway, which is two different answers to one question. What they DID give is express,
+ * verbatim and on their own account: "Say yes and you'll see their whole week" is the
+ * message they answered, and their yes is the row {@link CO_PARENT_SEATING_SCOPES}
+ * names.
+ *
+ * THE FALLBACK IS ONLY FOR A PERSON WITH NO WATCH ROW AT ALL. A `proactive_watch` row
+ * that says no still wins: somebody who declined the watch offer, or withdrew it, is
+ * never overridden by a seat they also hold.
  */
 async function readWatchConsent(database: Database, parentUserId: string): Promise<boolean> {
   const [latest] = await database
@@ -438,6 +469,31 @@ async function readWatchConsent(database: Database, parentUserId: string): Promi
         eq(schema.consentRecords.userId, parentUserId),
         eq(schema.consentRecords.consentType, 'proactive_watch'),
         eq(schema.consentRecords.consentScope, WATCH_CONSENT_SCOPE),
+      ),
+    )
+    .orderBy(desc(schema.consentRecords.grantedAt))
+    .limit(1);
+  if (latest) return latest.granted === true && latest.revokedAt === null;
+  return readCoParentSeatingConsent(database, parentUserId);
+}
+
+/** Their seating consent, read latest-row-wins across both doors — the same rule, and
+ * the same two withdrawal conventions, as the watch row above. */
+async function readCoParentSeatingConsent(
+  database: Database,
+  parentUserId: string,
+): Promise<boolean> {
+  const [latest] = await database
+    .select({
+      granted: schema.consentRecords.granted,
+      revokedAt: schema.consentRecords.revokedAt,
+    })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.userId, parentUserId),
+        eq(schema.consentRecords.consentType, 'sms_service_messages'),
+        inArray(schema.consentRecords.consentScope, [...CO_PARENT_SEATING_SCOPES]),
       ),
     )
     .orderBy(desc(schema.consentRecords.grantedAt))

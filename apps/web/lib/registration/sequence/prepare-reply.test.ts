@@ -930,18 +930,22 @@ describe('the readiness writer', () => {
 });
 
 describe('the readiness question is open only while the ask is Hale’s last word', () => {
-  const readinessKey = () => `registration_sequence:${familyId}:${windowId}:readiness`;
-  const battlePlanKey = () => `registration_sequence:${familyId}:${windowId}:battle_plan`;
+  // The recipient is part of the key: the ladder's legs reach every parent seat, and
+  // `channel_messages.dedupe_key` is unique (run.ts legDedupeKey).
+  const readinessKey = () =>
+    `registration_sequence:${familyId}:${windowId}:readiness:${parentUserId}`;
+  const battlePlanKey = () =>
+    `registration_sequence:${familyId}:${windowId}:battle_plan:${parentUserId}`;
   const ASKED_AT = new Date('2026-08-08T14:00:00.000Z');
 
   it('is closed with no ask row at all — the vacuous-truth guard', async () => {
-    expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toBeNull();
   });
 
   it('opens right after the ask, dated by the ask row', async () => {
     await seedOutbound({ dedupeKey: readinessKey(), createdAt: ASKED_AT });
 
-    const question = await readinessQuestion(db.database, familyId, NOW);
+    const question = await readinessQuestion(db.database, familyId, parentUserId, NOW);
 
     expect(question).toMatchObject({ id: sequenceId, askedAt: ASKED_AT });
     expect(question?.summary.length).toBeGreaterThan(10);
@@ -954,7 +958,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
       createdAt: new Date(ASKED_AT.getTime() + 3_600_000),
     });
 
-    expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toBeNull();
   });
 
   /**
@@ -968,7 +972,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
     await seedOutbound({ dedupeKey: readinessKey(), createdAt: ASKED_AT });
     await seedInbound('yes', new Date(ASKED_AT.getTime() + 3_600_000));
 
-    expect(await readinessQuestion(db.database, familyId, NOW)).toMatchObject({
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toMatchObject({
       askedAt: ASKED_AT,
     });
   });
@@ -978,7 +982,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
     await seedOutbound({ dedupeKey: readinessKey(), createdAt: ASKED_AT });
     await seedOutbound({ dedupeKey: battlePlanKey(), createdAt: reaskedAt });
 
-    expect(await readinessQuestion(db.database, familyId, NOW)).toMatchObject({
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toMatchObject({
       askedAt: reaskedAt,
     });
   });
@@ -990,7 +994,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
       .set({ readinessReady: true })
       .where(eq(schema.registrationSequences.id, sequenceId));
 
-    expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toBeNull();
   });
 
   it('is not opened by an ask that was suppressed and never reached the phone', async () => {
@@ -1000,7 +1004,7 @@ describe('the readiness question is open only while the ask is Hale’s last wor
       status: 'suppressed_quiet_hours',
     });
 
-    expect(await readinessQuestion(db.database, familyId, NOW)).toBeNull();
+    expect(await readinessQuestion(db.database, familyId, parentUserId, NOW)).toBeNull();
   });
 });
 

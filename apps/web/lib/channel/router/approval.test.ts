@@ -351,3 +351,72 @@ describe('resolveApproval — undo', () => {
     expect(calls).toEqual([{ op: 'undo', actionId: 'executed-1', actor: PARENT }]);
   });
 });
+
+/**
+ * VIL-242 · the registration shortlist, now that the ladder's approval card reaches
+ * BOTH parents (channel/family-recipients.ts, audit 2026-09-17).
+ *
+ * The card is one drafted action for one household, so the two YESes that can arrive
+ * are two answers to one question. Nothing was added to make that safe — the queue is
+ * family-scoped and answered rows leave it — and these cases are here to say so out
+ * loud, because the alternative (a per-parent approval) would register a household
+ * twice for one municipal window.
+ */
+describe('two parents answering one shortlist card', () => {
+  const CO_PARENT = '33333333-3333-4333-8333-333333333333';
+
+  const answer = (body: string, parentUserId: string, options: Parameters<typeof spine>[0]) => {
+    const command = matchFastPath(body);
+    if (!command) throw new Error(`test bug: ${JSON.stringify(body)}`);
+    const built = spine(options);
+    return resolveApproval(
+      DB,
+      { familyId: FAMILY, parentUserId, command, now: NOW },
+      built.spine,
+    ).then((outcome) => ({ outcome, calls: built.calls }));
+  };
+
+  it('lets the co-parent’s YES approve the household’s shortlist, stamped with them', async () => {
+    const { outcome, calls } = await answer('yes', CO_PARENT, {
+      pending: [action('shortlist-1', 'registration_shortlist')],
+    });
+
+    expect(outcome.status).toBe('approved');
+    expect(calls).toEqual([{ op: 'approve', actionId: 'shortlist-1', actor: CO_PARENT }]);
+  });
+
+  it('does not claim the primary parent’s later YES — the queue is empty, so it is conversation', async () => {
+    // The co-parent's approval executed the row, so it is no longer pending. A bare
+    // verb with nothing pending falls through to the coach, which can say something
+    // true about a morning that is already handled — and, crucially, approves nothing
+    // a second time.
+    const { outcome, calls } = await answer('yes', PARENT, { pending: [] });
+
+    expect(outcome).toEqual({ status: 'declined_to_claim', reply: null, actionId: null });
+    expect(calls).toEqual([]);
+  });
+
+  it('answers a primary parent who NAMES the answered card with the already-resolved receipt', async () => {
+    // The resolver read the questions before the co-parent's yes landed and named this
+    // row by id. It is gone from the queue, so nothing is approved twice and the reply
+    // says what happened rather than asking them to try again.
+    const built = spine({ pending: [] });
+    const command = matchFastPath('yes');
+    if (!command) throw new Error('test bug');
+    const outcome = await resolveApproval(
+      DB,
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        command,
+        now: NOW,
+        targetActionId: 'shortlist-1',
+      },
+      built.spine,
+    );
+
+    expect(outcome.status).toBe('conflict');
+    expect(outcome.reply).toBeTruthy();
+    expect(built.calls).toEqual([]);
+  });
+});

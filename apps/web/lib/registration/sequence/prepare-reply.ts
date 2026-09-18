@@ -571,11 +571,12 @@ export async function handleReadinessAnswer(
 export async function readinessQuestion(
   database: Database,
   familyId: string,
+  parentUserId: string,
   now: Date,
 ): Promise<{ id: string; summary: string; askedAt: Date } | null> {
   const sequence = await loadPreparingSequence(database, familyId, now);
   if (sequence === null) return null;
-  const askedAt = await readinessAskedLastAt(database, sequence);
+  const askedAt = await readinessAskedLastAt(database, sequence, parentUserId);
   if (askedAt === null) return null;
   return {
     id: sequence.sequenceId,
@@ -586,19 +587,27 @@ export async function readinessQuestion(
 }
 
 /**
- * When the readiness ask last reached this parent with nothing after it, or null.
+ * When the readiness ask last reached THIS parent with nothing after it, or null.
  *
  * Exported for the handler, which already holds the sequence and must not pay for a
  * second load of it to ask the same question the resolver's source asks.
+ *
+ * THE PARENT IS AN ARGUMENT, not the sequence row's own id. The ladder is the
+ * household's and its legs reach every parent seat on it, so "has this question been
+ * put to you" is a question about the ANSWERING parent — the co-parent who was texted
+ * the checklist and the primary parent who was not must get different answers, and the
+ * dedupe key the ask was written under carries the recipient for exactly that reason
+ * (run.ts `legDedupeKey`).
  */
 export async function readinessAskedLastAt(
   database: Database,
   sequence: PreparingSequence,
+  parentUserId: string,
 ): Promise<Date | null> {
   if (sequence.readinessReady === true) return null;
 
   const askKeys = SEQUENCE_LEGS.filter((leg) => printsReadinessAsk(leg, sequence.portal)).map(
-    (leg) => legDedupeKey(sequence.familyId, sequence.windowId, leg),
+    (leg) => legDedupeKey(sequence.familyId, sequence.windowId, leg, parentUserId),
   );
   if (askKeys.length === 0) return null;
 
@@ -610,7 +619,7 @@ export async function readinessAskedLastAt(
     .from(schema.channelMessages)
     .where(
       and(
-        eq(schema.channelMessages.parentUserId, sequence.parentUserId),
+        eq(schema.channelMessages.parentUserId, parentUserId),
         inArray(schema.channelMessages.dedupeKey, askKeys),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
@@ -624,7 +633,7 @@ export async function readinessAskedLastAt(
     .from(schema.channelMessages)
     .where(
       and(
-        eq(schema.channelMessages.parentUserId, sequence.parentUserId),
+        eq(schema.channelMessages.parentUserId, parentUserId),
         eq(schema.channelMessages.direction, 'out'),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
         gt(schema.channelMessages.createdAt, ask.createdAt),
@@ -764,7 +773,11 @@ export interface PrepareReplyDeps {
     familyId: string,
     now: Date,
   ): Promise<PreparingSequence | null>;
-  readinessAskedLastAt(database: Database, sequence: PreparingSequence): Promise<Date | null>;
+  readinessAskedLastAt(
+    database: Database,
+    sequence: PreparingSequence,
+    parentUserId: string,
+  ): Promise<Date | null>;
   /**
    * Non-nullable (rule #11), both of them. A bind that cannot read the page refuses in
    * a sentence; a bind whose read is not this family's to take this window refuses in
