@@ -207,7 +207,7 @@ describe('alertParentForCalendarChanges', () => {
     expect(h.transport.sent[0]?.body).toContain(OPT_OUT_LINE);
   });
 
-  it('is dark behind F14 — no text, nothing written', async () => {
+  it('is dark behind F14 — no text and no receipt', async () => {
     vi.stubEnv('F14_ENABLED', 'false');
     const h = harness();
 
@@ -215,9 +215,79 @@ describe('alertParentForCalendarChanges', () => {
 
     expect(h.transport.sent).toEqual([]);
     await expect(ledgerRows()).resolves.toEqual([]);
-    // Dark costs NOTHING, not even the clock read: the flag is a pure function of the
-    // family id, so a query in front of it is a query for a family Hale may not text.
-    expect(h.timeZoneReads).toEqual([]);
+
+    // An EMPTY page costs nothing at all while dark, not even the clock read: the flag is
+    // a pure function of the family id, so a query in front of it is a query for a family
+    // Hale may not text.
+    const quiet = harness();
+    await expect(sweep(quiet, { changes: [] })).resolves.toEqual([]);
+    expect(quiet.timeZoneReads).toEqual([]);
+  });
+
+  it('REMEMBERS the shape while it is dark, so the first change after the flip is a move', async () => {
+    // A dark family's calendar keeps changing, and the syncToken keeps advancing past
+    // those changes. A dark sweep that wrote nothing would leave the memory holding
+    // whatever it last saw before the flag went off — so the first change AFTER the flip
+    // reads as a first sighting, or worse, names a "was" the parent's calendar left
+    // behind weeks ago. Shape only: no text, no receipt, none of the parent's words.
+    vi.stubEnv('F14_ENABLED', 'false');
+    await expect(sweep(harness())).resolves.toEqual(['dark']);
+    expect(await snapshotOf(TIMED.eventId)).toMatchObject({
+      startAt: new Date('2026-09-17T20:15:00.000Z'),
+      allDay: false,
+      status: 'confirmed',
+      pendingSince: null,
+      heldTitle: null,
+      heldLocation: null,
+    });
+
+    vi.stubEnv('F14_ENABLED', 'true');
+    const lit = harness();
+    await expect(
+      sweep(lit, {
+        changes: [
+          {
+            ...TIMED,
+            updated: '2026-09-17T14:58:00.000Z',
+            start: { dateTime: '2026-09-18T20:15:00.000Z' },
+            end: { dateTime: '2026-09-18T21:00:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['sent']);
+    expect(lit.transport.sent[0]?.body).toContain(
+      'Cartwheels Gym moved to Friday, Sep 18, 4:15-5:00 p.m. (was Thursday, Sep 17).',
+    );
+  });
+
+  it('leaves a text it still owes exactly as it is when the flag goes off', async () => {
+    // A hold outstanding when F14 goes dark ages out at CALENDAR_ALERT_PENDING_MAX_DAYS
+    // like any other — it is not sent late, and it is not silently cancelled by a dark
+    // sweep writing over the row that records it.
+    await expect(
+      sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } })),
+    ).resolves.toEqual(['gate_refused:quiet_hours']);
+    const owed = await snapshotOf(TIMED.eventId);
+
+    vi.stubEnv('F14_ENABLED', 'false');
+    await expect(
+      sweep(harness(), {
+        changes: [
+          {
+            ...TIMED,
+            updated: '2026-09-17T14:58:00.000Z',
+            start: { dateTime: '2026-09-18T20:15:00.000Z' },
+            end: { dateTime: '2026-09-18T21:00:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['dark']);
+
+    expect(await snapshotOf(TIMED.eventId)).toMatchObject({
+      pendingSince: owed?.pendingSince,
+      startAt: owed?.startAt,
+      heldTitle: 'Cartwheels Gym',
+    });
   });
 
   it('alerts NOTHING on a seeding run — a fresh connection is not 200 texts', async () => {
@@ -730,13 +800,141 @@ describe('one edit to a series is one text', () => {
     // instances read a second time cost nothing.
     const keys = (await ledgerRows()).map((row) => row.dedupeKey);
     expect(keys).toEqual([
-      calendarSeriesAlertDedupeKey(INTEGRATION, SERIES, '2026-09-17T14:00:00.000Z'),
-      calendarSeriesAlertDedupeKey(INTEGRATION, SERIES, instances()[0]!.updated),
+      calendarSeriesAlertDedupeKey(INTEGRATION, SERIES, 'live', '2026-09-17T14:00:00.000Z'),
+      calendarSeriesAlertDedupeKey(INTEGRATION, SERIES, 'live', instances()[0]!.updated),
     ]);
     await expect(sweep(harness(), { changes: instances() })).resolves.toEqual([
       'already_sent',
       ...Array.from({ length: 5 }, () => 'collapsed_into_series'),
     ]);
+  });
+
+  it('never lets a CANCELLED instance ride along inside a live series sentence', async () => {
+    // The one collapse that would be a lie. Five instances of a class were moved and the
+    // sixth was called off; grouped on the series alone they become "6 sessions now
+    // Tuesdays", which tells the parent the cancelled Tuesday is still on. The news is
+    // (series, cancelled-or-not), so the batch is two texts: the live five, and the one
+    // that is off.
+    const live = instances().slice(0, 5);
+    const gone: CalendarChange = {
+      ...instances()[5]!,
+      // The shape Google actually sends for a cancelled instance: no summary, and the
+      // sync's etag fallback in place of an `updated` stamp.
+      status: 'cancelled',
+      title: undefined,
+      updated: '"3181161784712000"',
+    };
+
+    const h = harness();
+    await expect(sweep(h, { changes: [...live, gone] })).resolves.toEqual([
+      'sent',
+      ...Array.from({ length: 4 }, () => 'collapsed_into_series'),
+      'sent',
+    ]);
+
+    expect(h.transport.sent.map((one) => one.body.split('\n')[0])).toEqual([
+      'Swim lessons: 5 sessions on your calendar, Tuesdays 5:00-5:45 p.m. starting Sep 22.',
+      'An event on Tuesday, Oct 27 was cancelled.',
+    ]);
+    // Two texts, two keys — the cancellation is not the series text's twin, so it may not
+    // be swallowed as a duplicate of it.
+    const keys = (await ledgerRows()).map((row) => row.dedupeKey);
+    expect(new Set(keys).size).toBe(2);
+    expect(keys).toContain(calendarAlertDedupeKey(INTEGRATION, gone.eventId, gone.updated));
+  });
+
+  it('sends BOTH halves when one term is rescheduled and two of its sessions are called off', async () => {
+    // The same series, the same latest stamp, two different pieces of news — which is what
+    // one save in Google Calendar looks like when the sync has no `updated` to tell the
+    // items apart. A key that did not carry the kind would make whichever text went second
+    // a duplicate of the first, and the parent would hear one of the two.
+    const live = instances().slice(0, 4);
+    const gone = instances()
+      .slice(4)
+      .map((one) => ({ ...one, status: 'cancelled' as const }));
+
+    const h = harness();
+    await expect(sweep(h, { changes: [...live, ...gone] })).resolves.toEqual([
+      'sent',
+      ...Array.from({ length: 3 }, () => 'collapsed_into_series'),
+      'sent',
+      'collapsed_into_series',
+    ]);
+    expect(h.transport.sent.map((one) => one.body.split('\n')[0])).toEqual([
+      'Swim lessons: 4 sessions on your calendar, Tuesdays 5:00-5:45 p.m. starting Sep 22.',
+      'Swim lessons: 2 sessions were cancelled from Oct 20.',
+    ]);
+    expect(new Set((await ledgerRows()).map((row) => row.dedupeKey)).size).toBe(2);
+  });
+
+  it('keeps two DIFFERENT series in one sweep as two texts', async () => {
+    // Kills the grouping that buckets every recurring instance into one group: nine
+    // changes about two classes are two things to say, not "9 sessions" of a term that
+    // does not exist.
+    const art = instances()
+      .slice(0, 3)
+      .map((one) => ({
+        ...one,
+        eventId: `art-${one.eventId}`,
+        recurringEventId: 'art-master',
+        title: 'Art club',
+        start: { dateTime: one.start.dateTime?.replace('T21:00', 'T22:00') },
+        end: { dateTime: one.end.dateTime?.replace('T21:45', 'T22:45') },
+      }));
+
+    const h = harness();
+    await expect(sweep(h, { changes: [...instances(), ...art] })).resolves.toEqual([
+      'sent',
+      ...Array.from({ length: 5 }, () => 'collapsed_into_series'),
+      'sent',
+      'collapsed_into_series',
+      'collapsed_into_series',
+    ]);
+    expect(h.transport.sent.map((one) => one.body.split('\n')[0])).toEqual([
+      'Swim lessons: 6 sessions on your calendar, Tuesdays 5:00-5:45 p.m. starting Sep 22.',
+      'Art club: 3 sessions on your calendar, Tuesdays 6:00-6:45 p.m. starting Sep 22.',
+    ]);
+  });
+
+  it('refuses to claim a weekday and a clock the instances do not actually share', async () => {
+    // "Tuesdays 5:00-5:45 p.m." is a pattern, and a pattern that is not there is the one
+    // thing this sentence must not invent. Two shapes of scatter, one per claim: the
+    // weekday moves with the clock held, then the clock moves with the weekday held —
+    // either one alone would be caught by the other's check and prove nothing.
+    const scattered = harness();
+    await sweep(scattered, {
+      changes: [
+        instances()[0]!,
+        {
+          ...instances()[1]!,
+          start: { dateTime: '2026-09-24T21:00:00.000Z' }, // Thursday, same 5 p.m.
+          end: { dateTime: '2026-09-24T21:45:00.000Z' },
+        },
+      ],
+    });
+    expect(scattered.transport.sent[0]?.body).toContain(
+      'Swim lessons: 2 sessions on your calendar, the first on Tuesday, Sep 22, 5:00-5:45 p.m.',
+    );
+    expect(scattered.transport.sent[0]?.body).not.toContain('Tuesdays');
+
+    // Same weekday, different hour: still not a pattern anyone could plan against.
+    const offHour = harness();
+    await sweep(offHour, {
+      changes: [
+        { ...instances()[0]!, eventId: 'hour-0', recurringEventId: 'hour-master' },
+        {
+          ...instances()[1]!,
+          eventId: 'hour-1',
+          recurringEventId: 'hour-master',
+          start: { dateTime: '2026-09-29T22:00:00.000Z' }, // Tuesday, but 6 p.m.
+          end: { dateTime: '2026-09-29T22:45:00.000Z' },
+        },
+      ],
+    });
+    expect(offHour.transport.sent[0]?.body).toContain(
+      'Swim lessons: 2 sessions on your calendar, the first on Tuesday, Sep 22, 5:00-5:45 p.m.',
+    );
+    expect(offHour.transport.sent[0]?.body).not.toContain('Tuesdays');
   });
 
   it('says a cancelled term is cancelled, and names an unnamed one honestly', async () => {
@@ -746,6 +944,11 @@ describe('one edit to a series is one text', () => {
     ).resolves.toHaveLength(6);
     expect(h.transport.sent[0]?.body).toContain(
       'Swim lessons: 6 sessions were cancelled from Sep 22.',
+    );
+    // Under the CANCELLED key: a term called off and a term rescheduled are two texts, so
+    // one key over both would let the second read as a duplicate of the first.
+    expect((await ledgerRows())[0]?.dedupeKey).toBe(
+      calendarSeriesAlertDedupeKey(INTEGRATION, SERIES, 'cancelled', instances()[0]!.updated),
     );
 
     // Google's cancelled instances usually carry no summary at all, and "An event: 6
@@ -799,13 +1002,23 @@ describe('one edit to a series is one text', () => {
     expect(smsSegments(body)).toBeLessThanOrEqual(2);
   });
 
-  it('leaves TWO instances of one series as two ordinary texts', async () => {
-    // Two changes about the same class on two days really are two things to say, and the
-    // control for a collapse that would otherwise swallow every pair.
+  it('collapses TWO instances of one series into one text, and leaves ONE alone', async () => {
+    // The floor is SERIES_MIN_INSTANCES = 2: a second change about the same class in one
+    // sweep is the same news said twice, and one text costs one of the five slots instead
+    // of two. A lone instance is below the floor and stays an ordinary single — which is
+    // what a cancelled Tuesday inside a live term reduces to.
     const h = harness();
     const pair = instances().slice(0, 2);
     await expect(sweep(h, { changes: pair })).resolves.toEqual(['sent', 'collapsed_into_series']);
     expect(h.transport.sent[0]?.body).toContain('2 sessions');
+
+    const alone = harness();
+    await expect(
+      sweep(alone, { changes: [{ ...instances()[0]!, eventId: 'lone-instance' }] }),
+    ).resolves.toEqual(['sent']);
+    expect(alone.transport.sent[0]?.body).toContain(
+      'Swim lessons is on your calendar for Tuesday, Sep 22, 5:00-5:45 p.m.',
+    );
   });
 
   it('spends ONE of the five per-sweep slots on a whole series', async () => {

@@ -51,10 +51,14 @@ import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
  *     that pre-dates the connection, so a run that wrote nothing would make the first
  *     edit to any of them read as a first sighting. Shape only, no words, and a text
  *     already owed is left exactly as it was.
- *   - A family Hale may not text at all — dark behind F14, or a connection with no
- *     connecting user — is not swept, debts included. A hold outstanding when the flag
- *     goes off is not sent late; it ages out at
- *     {@link CALENDAR_ALERT_PENDING_MAX_DAYS} like any other.
+ *   - A family dark behind F14 is swept the same way, and for the same reason: no text,
+ *     no receipt, nothing of the parent's kept — but the shape is written down, because
+ *     the syncToken advances whether Hale may speak or not and a month of dark that wrote
+ *     nothing would make the first change after the flip a first sighting too. A hold
+ *     outstanding when the flag goes off is not sent late and not cancelled either; it
+ *     ages out at {@link CALENDAR_ALERT_PENDING_MAX_DAYS} like any other. A connection
+ *     with no connecting user has nobody to text and nobody's clock to read, so it is not
+ *     swept at all.
  *   - Every ending is a named outcome ({@link CalendarAlertOutcome}) the cron summary
  *     counts (rule #11). `alert_failed` is the one this module cannot return for itself:
  *     the sweep holds a boundary around the call and names it, so a bug in Hale's alert
@@ -72,7 +76,8 @@ export interface CalendarChange {
   /** Google's `recurringEventId`: the SERIES this item is an instance of, absent on a
    * one-off. The request sets `singleEvents=true`, so one edit to a weekly class comes
    * back as one change per instance — this is the only field that says so, and grouping
-   * on it is what turns six changes into one text. */
+   * on it (with {@link seriesNews}, because a session called off is not the same news as
+   * the term it was part of) is what turns six changes into one text. */
   recurringEventId?: string;
   /** The version of this event, and half the dedupe key — which is what makes a MOVED
    * event a new text and a re-read of the same page free. Google's `updated` where there
@@ -173,9 +178,10 @@ export const CALENDAR_ALERT_WINDOW_DAYS = 14;
  * with its own name rather than lingering as a queue nobody drains. */
 export const CALENDAR_ALERT_PENDING_MAX_DAYS = 3;
 
-/** A group of this many instances of one series, in one sweep, is one text. Below it the
- * instances are ordinary singles: two changes about the same class on two days really are
- * two things to say. */
+/** A group of this many instances of one series, in one sweep, is one text: two changes
+ * about the same class are the same news said twice, and they spend one of the five slots
+ * rather than two. Below it — a lone instance, which is what a single cancelled session
+ * inside a live term reduces to — the change is an ordinary single. */
 const SERIES_MIN_INSTANCES = 2;
 
 export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
@@ -227,13 +233,18 @@ export function calendarAlertDedupeKey(
  * The stamp is the LATEST of the group's, which is what makes a re-offer of a held series
  * claim the key the original hold would have claimed: both groups carry the same set of
  * `updated` values, so both reduce to the same string.
+ *
+ * The KIND is in the key for the same reason it is in the grouping ({@link seriesNews}):
+ * the live half and the cancelled half of one series are two different texts, and one key
+ * over both would let whichever went second read as a duplicate of the first.
  */
 export function calendarSeriesAlertDedupeKey(
   integrationId: string,
   recurringEventId: string,
+  news: SeriesNews,
   updated: string,
 ): string {
-  return `calendar_alert:${integrationId}:series:${recurringEventId}:${updated}`;
+  return `calendar_alert:${integrationId}:series:${news}:${recurringEventId}:${updated}`;
 }
 
 export interface CalendarAlertPorts {
@@ -308,12 +319,19 @@ export async function alertParentForCalendarChanges(
   const { familyId, parentUserId, integrationId, changes, now } = input;
   if (parentUserId === null) return { changes: changes.map(() => 'no_parent_user'), reoffers: [] };
   if (input.seeding) {
-    await seedMemory(database, input, parentUserId, ports);
+    await rememberOnly(database, input, parentUserId, ports);
     return { changes: changes.map(() => 'seeding_run'), reoffers: [] };
   }
-  // Before any read below: the flag is a pure function of the family id, so a query in
-  // front of it is a query per sweep for a family Hale may not speak to at all.
-  if (!f14EnabledFor(familyId)) return { changes: changes.map(() => 'dark'), reoffers: [] };
+  // The flag is a pure function of the family id, so nothing above it costs a query and a
+  // dark sweep of an empty page is the cheapest thing this module does. A dark sweep with
+  // changes in it still REMEMBERS them: the syncToken advances whether Hale may speak or
+  // not, so a dark period that wrote nothing would leave the memory holding a calendar
+  // weeks out of date, and the first change after the flip would read as a first sighting
+  // or name a "was" nobody was ever told.
+  if (!f14EnabledFor(familyId)) {
+    await rememberOnly(database, input, parentUserId, ports);
+    return { changes: changes.map(() => 'dark'), reoffers: [] };
+  }
 
   // ONE read for both halves of the memory: what Hale last said about the events in this
   // page, and every text it still owes on this connection. A quiet calendar with no debts
@@ -402,21 +420,24 @@ export async function alertParentForCalendarChanges(
 }
 
 /**
- * A seeding run's whole job: write down the SHAPE of a calendar nobody will be texted
- * about.
+ * The whole job of a sweep that may alert nobody: write down the SHAPE of a calendar no
+ * text is going out about.
  *
- * The first sync of a connection — and the full resync Google forces after a stale
- * syncToken — is the only sighting the memory ever gets of everything that pre-dates it.
- * Skipping it costs nothing anyone can see on the day and makes the first edit to a class
- * the parent set up last spring read as a first sighting, which is the follow-up this
- * module exists to close.
+ * Two sweeps end here. The first sync of a connection — and the full resync Google forces
+ * after a stale syncToken — is the only sighting the memory ever gets of everything that
+ * pre-dates it. A sweep for a family still dark behind F14 is the same shape for a
+ * different reason: the syncToken advances past those changes regardless, so a dark month
+ * that wrote nothing leaves the memory a month stale. Either way, skipping the write costs
+ * nothing anyone can see on the day and makes the next edit read as a first sighting —
+ * which is the follow-up this module exists to close.
  *
  * A text already owed is left exactly as it was, row and words and instant. A resync is
- * Google losing its place, not Hale giving up on a text it promised — and dropping the
- * second inside the first would end a debt under an outcome that says "alerted nobody"
- * (rule #11).
+ * Google losing its place and a dark flag is Hale being told not to speak; neither is Hale
+ * giving up on a text it promised — and dropping the debt inside either would end it under
+ * an outcome that says "alerted nobody" (rule #11). A hold outstanding when the flag goes
+ * off ages out at {@link CALENDAR_ALERT_PENDING_MAX_DAYS} like any other.
  */
-async function seedMemory(
+async function rememberOnly(
   database: Database,
   input: CalendarAlertInput,
   parentUserId: string,
@@ -451,10 +472,17 @@ async function sendOffer(
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'calendar_alert', now });
   if (!verdict.allowed) {
-    // ONE receipt per text owed, written the first time it is refused — and — for a hold
-    // that is a "not yet" — half of a promise: the caller writes the other half into the
-    // memory, so the syncToken moving past this change no longer means nobody will ever
-    // offer it again.
+    // ONE receipt per piece of NEW news the gate refuses, written the moment it is
+    // refused — and, for a hold that is a "not yet", half of a promise: the caller writes
+    // the other half into the memory, so the syncToken moving past this change no longer
+    // means nobody will ever offer it again.
+    //
+    // Not one per text OWED: a change the per-sweep cap held before the gate ever saw it
+    // is already owed by the time it is offered, and its refusal writes no row at all. The
+    // ledger is the surface a parent reads, and the sweep's own answer is where every
+    // ending is named and counted (rule #11) — a receipt that says "we did not text you"
+    // for a text the cap deferred is noise on the first surface and adds nothing to the
+    // second.
     //
     // A re-offer the gate refuses again is the SAME suppressed text, and a row per attempt
     // would be forty-odd of them per held text per quiet-hours night on the surface a
@@ -596,8 +624,23 @@ function settle(
 // ── One text per series ──────────────────────────────────────────────────────
 
 /**
- * The texts a batch of changes-still-ahead becomes: one per series with two or more
- * instances in it, one per everything else.
+ * What a change about a series is NEWS of: the term as it now stands, or a session that
+ * is off.
+ *
+ * The grouping key and the sentence both read this one function, which is what makes them
+ * incapable of disagreeing. Group on the series alone and a batch of five moved instances
+ * and one cancelled one collapses into "6 sessions now Tuesdays" — a sentence that tells
+ * the parent the cancelled Tuesday is still on. Two kinds of news is two texts.
+ */
+type SeriesNews = 'live' | 'cancelled';
+
+function seriesNews(change: CalendarChange): SeriesNews {
+  return change.status === 'cancelled' ? 'cancelled' : 'live';
+}
+
+/**
+ * The texts a batch of changes-still-ahead becomes: one per series-and-kind with two or
+ * more instances in it, one per everything else.
  *
  * THE FORTNIGHT IS JUDGED ON THE GROUP, not on each instance, and that is the difference
  * between a sentence and a lie. Renaming a weekly class returns the whole year; the
@@ -615,7 +658,7 @@ function offersOf(
   writes: Map<string, SnapshotWrite>,
   tooFarOff: CalendarAlertOutcome,
 ): Offer[] {
-  const bySeries = new Map<string, Placed[]>();
+  const bySeriesNews = new Map<string, Placed[]>();
   const groups: Placed[][] = [];
   for (const one of placed) {
     const series = one.change.recurringEventId;
@@ -623,11 +666,12 @@ function offersOf(
       groups.push([one]);
       continue;
     }
-    const existing = bySeries.get(series);
+    const key = `${seriesNews(one.change)}:${series}`;
+    const existing = bySeriesNews.get(key);
     if (existing) existing.push(one);
     else {
       const started = [one];
-      bySeries.set(series, started);
+      bySeriesNews.set(key, started);
       groups.push(started);
     }
   }
@@ -683,7 +727,7 @@ function offerOf(
     .reduce((latest, one) => (one > latest ? one : latest));
   return {
     group,
-    dedupeKey: calendarSeriesAlertDedupeKey(integrationId, series, stamp),
+    dedupeKey: calendarSeriesAlertDedupeKey(integrationId, series, seriesNews(lead.change), stamp),
     pendingSince,
     startMs: lead.span.startMs,
     render: () => renderCalendarSeriesAlert(group, timeZone, now),
@@ -1121,7 +1165,9 @@ function renderCalendarSeriesAlert(
   const count = group.length;
   const from = shortDate(lead.span.startMs, timeZone, now);
 
-  if (group.every((member) => member.change.status === 'cancelled')) {
+  // The group is homogeneous by construction — {@link seriesNews} is its key — so the
+  // lead speaks for all of it.
+  if (seriesNews(lead.change) === 'cancelled') {
     return endSentence(`${title}: ${count} sessions were cancelled from ${from}`);
   }
 
