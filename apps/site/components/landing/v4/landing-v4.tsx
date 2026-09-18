@@ -28,7 +28,7 @@ import { ScrollRail } from './scroll-rail';
  * footer switch. No third-party video (the reference's CloudFront clips are not
  * ours to ship); the shore still and the glass do the work.
  *
- * All copy is keyed by locale (`Landing` namespace); the 15 municipalities are
+ * All copy is keyed by locale (`Landing` namespace); the municipalities are
  * proper nouns and stay as data.
  */
 
