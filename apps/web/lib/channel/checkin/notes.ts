@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { lte } from 'drizzle-orm';
+import { containsPhrase, foldWords, pluralOf } from './words';
 
 /**
  * VIL-353 · THE DAY NOTE — the parent's own sentence about their evening, and the two
@@ -75,6 +76,17 @@ const NOT_KEPT: Record<string, readonly string[]> = {
     'hospital',
     'emergency room',
     'urgent care',
+    'ambulance',
+    'surgery',
+    'stitches',
+    'concussion',
+    'covid',
+    'flu',
+    'influenza',
+    'cancer',
+    'pregnant',
+    'pregnancy',
+    'miscarriage',
     'doctor',
     'paediatrician',
     'pediatrician',
@@ -86,6 +98,12 @@ const NOT_KEPT: Record<string, readonly string[]> = {
     'anxiety',
     'fievre',
     'malade',
+    'grippe',
+    'chirurgie',
+    'commotion',
+    'enceinte',
+    'grossesse',
+    'fausse couche',
     'vomi',
     'diagnostic',
     'medicament',
@@ -106,6 +124,12 @@ const NOT_KEPT: Record<string, readonly string[]> = {
     'counseling',
     'psychiatrist',
     'psychologist',
+    'suicide',
+    'suicidal',
+    'self harm',
+    'self harming',
+    'suicidaire',
+    'automutilation',
     'therapie',
     'therapeute',
     'psychologue',
@@ -120,6 +144,20 @@ const NOT_KEPT: Record<string, readonly string[]> = {
     'synagogue',
     'temple',
     'baptism',
+    // The names themselves: a parent naming their household's faith is telling Hale the
+    // one thing on this list that is written into human-rights law as a protected ground.
+    'muslim',
+    'jewish',
+    'christian',
+    'catholic',
+    'hindu',
+    'sikh',
+    'buddhist',
+    'musulman',
+    'juive',
+    'chretien',
+    'catholique',
+    'hindou',
     'religieux',
     'eglise',
     'mosquee',
@@ -128,6 +166,10 @@ const NOT_KEPT: Record<string, readonly string[]> = {
   politics: ['politics', 'political', 'election', 'voted', 'voting', 'politique', 'vote'],
   gender_identity: [
     'transgender',
+    'gay',
+    'lesbian',
+    'queer',
+    'bisexual',
     'nonbinary',
     'non binary',
     'gender identity',
@@ -144,6 +186,14 @@ const NOT_KEPT: Record<string, readonly string[]> = {
     'court',
     'restraining order',
     'child protection',
+    'child protective services',
+    // "children's aid" folds to three words — the apostrophe is gone by the time this
+    // list is read (words.ts).
+    'children s aid',
+    'police',
+    'arrested',
+    'jail',
+    'probation',
     'avocat',
     'tribunal',
     'garde partagee',
@@ -153,10 +203,14 @@ const NOT_KEPT: Record<string, readonly string[]> = {
     'immigration',
     'visa',
     'permanent residency',
+    'citizenship',
+    'work permit',
     'deportation',
     'asylum',
     'refugee',
     'residence permanente',
+    'citoyennete',
+    'permis de travail',
     'refugie',
     'asile',
   ],
@@ -171,6 +225,10 @@ const NOT_KEPT: Record<string, readonly string[]> = {
     'eviction',
     'laid off',
     'fired',
+    'unemployed',
+    'welfare',
+    'food bank',
+    'employment insurance',
     'salaire',
     'loyer',
     'hypotheque',
@@ -178,30 +236,28 @@ const NOT_KEPT: Record<string, readonly string[]> = {
     'dettes',
     'licencie',
     'expulsion',
+    'chomage',
+    'aide sociale',
+    'banque alimentaire',
   ],
 };
 
-/** Every phrase in one flat list, built once. */
-const NOT_KEPT_PHRASES: readonly string[] = Object.values(NOT_KEPT).flat();
-
 /**
- * Lowercased, accent-folded, and everything that is not a letter or digit reduced to a
- * single space, with a space at each end so a phrase match is always a WHOLE-word match.
- * 'ok' must not fire on 'smoked', and 'race' must not fire on 'braces'.
+ * Every phrase in one flat list with its plural beside it, built once.
+ *
+ * THE PLURAL IS DERIVED, not typed out. A list written in the singular is defeated by one
+ * letter — 'allergy' was screened and 'allergies' was not, 'lawyer' and not 'lawyers' —
+ * and answering that with a longer list only moves the gap to the next word nobody
+ * thought of.
  */
-function normalize(body: string): string {
-  return ` ${body
-    .normalize('NFD')
-    .replace(/\p{M}+/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()} `;
-}
+const NOT_KEPT_PHRASES: readonly string[] = Object.values(NOT_KEPT)
+  .flat()
+  .flatMap((phrase) => [phrase, pluralOf(phrase)]);
 
 /** Whether this is one of the things Hale does not write down. */
 export function isNotKept(body: string): boolean {
-  const haystack = normalize(body);
-  return NOT_KEPT_PHRASES.some((phrase) => haystack.includes(` ${phrase} `));
+  const haystack = foldWords(body);
+  return NOT_KEPT_PHRASES.some((phrase) => containsPhrase(haystack, phrase));
 }
 
 /** The query surface a note write needs — satisfied by both `Database` and a tx. */

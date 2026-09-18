@@ -14,9 +14,11 @@ import {
   CHECK_IN_NOTED_ACK,
   CHECK_IN_NOT_KEPT_ACK,
   CHECK_IN_OFF_ACK,
+  CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
   CHECK_IN_WEEKLY_ACK,
 } from './copy';
 import { isNotKept, storeCheckInNote } from './notes';
+import { asksHaleForSomething } from './request';
 
 /**
  * VIL-353 · WHAT THE PARENT SAYS BACK.
@@ -37,6 +39,11 @@ const CADENCE_WORDS: Record<string, CheckInCadence> = {
   daily: 'daily',
   nightly: 'daily',
 };
+
+/** The cadence this message asks for, or null if it is not one of the words. */
+export function readCadenceWord(body: string): CheckInCadence | null {
+  return CADENCE_WORDS[body.trim().toLowerCase().replace(/[.!]+$/, '')] ?? null;
+}
 
 export type CheckInReplyStatus =
   | 'cadence_weekly'
@@ -67,23 +74,26 @@ export interface CheckInReplyInput {
 /**
  * Read the parent's reply, move what it moves, and say one sentence back.
  *
- * A BODY WITH A QUESTION MARK IS NEVER CLAIMED. "Fine, and can you find a swim class on
- * Saturdays?" is a parent asking Hale for something, and filing it as a diary entry would
- * answer the wrong half of their message — badly, since the coach never sees it. The
- * evening note is the cheap half of this exchange and the request is the expensive one,
- * so the ambiguity resolves toward the coach every time, and the standing question simply
- * lapses at 08:00.
+ * A MESSAGE ADDRESSED TO HALE IS NEVER CLAIMED (request.ts). "Fine, and can you find a
+ * swim class on Saturdays?" is a parent asking Hale for something, and filing it as a
+ * diary entry would answer the wrong half of their message — badly, since the coach never
+ * sees it. The evening note is the cheap half of this exchange and the request is the
+ * expensive one, so the ambiguity resolves toward the coach every time, and the standing
+ * question simply lapses at 08:00.
  */
 export async function handleEveningCheckInReply(
   database: Database,
   input: CheckInReplyInput,
 ): Promise<CheckInReplyOutcome> {
   const body = input.body.trim();
-  if (body === '' || body.includes('?')) return { status: 'declined_to_claim' };
+  if (body === '') return { status: 'declined_to_claim' };
 
   const language = replyLanguage(input.body);
-  const cadence = CADENCE_WORDS[body.toLowerCase().replace(/[.!]+$/, '')];
-  if (cadence !== undefined) return moveCadence(database, input, cadence, language);
+  // The taught word first, so a keyword is never mistaken for a request or a diary line.
+  const cadence = readCadenceWord(body);
+  if (cadence !== null) return applyCheckInCadence(database, { ...input, cadence, language });
+
+  if (asksHaleForSomething(body)) return { status: 'declined_to_claim' };
 
   // A sentence about the day. Screened first, because the whole point of the screen is
   // that the words never land in a store at all.
@@ -122,15 +132,28 @@ const CADENCE_STATUS: Record<CheckInCadence, CheckInReplyStatus> = {
   daily: 'cadence_daily',
 };
 
-/** The parent moved the dial. Nothing about their day is written — the word IS the whole
+/**
+ * The parent moved the dial. Nothing about their day is written — the word IS the whole
  * message, and inventing a note out of it would be Hale remembering something nobody
- * said. */
-async function moveCadence(
+ * said.
+ *
+ * EXPORTED, because the dial moves whether or not a question is standing. Every ack this
+ * lane sends prints "Reply NO anytime" or "Reply DAILY to switch back", and a promise
+ * that only holds until Hale's next outbound message is not a promise (see
+ * {@link lastCheckInAskToParent}).
+ */
+export async function applyCheckInCadence(
   database: Database,
-  input: CheckInReplyInput,
-  cadence: CheckInCadence,
-  language: ReplyLanguage,
-): Promise<CheckInReplyOutcome> {
+  input: {
+    familyId: string;
+    parentUserId: string;
+    inboundChannelMessageId: string;
+    cadence: CheckInCadence;
+    language: ReplyLanguage;
+    now: Date;
+  },
+): Promise<{ status: CheckInReplyStatus; reply: string }> {
+  const { cadence, language } = input;
   await database.transaction(async (tx) => {
     await recordCheckInAnswer(tx, { familyId: input.familyId, cadence, now: input.now });
     await tx.insert(schema.auditLog).values({
@@ -236,4 +259,68 @@ export async function eveningCheckInQuestion(
   return askStillStanding(ask.createdAt, input.now, row.timezone)
     ? { id: ask.id, askedAt: ask.createdAt }
     : null;
+}
+
+/**
+ * The last thing this lane said to this parent, standing question or not.
+ *
+ * THE WORDS OUTLIVE THE WINDOW. Every message this lane sends teaches a keyword and
+ * promises it works later — "Reply NO anytime to drop these", "reply DAILY any evening to
+ * switch back" — and the standing question does not: it closes the moment any other
+ * outbound reaches the parent, and the ack that answered them is itself one. So a parent
+ * who replied NO to a nightly message one minute after Hale's thank-you kept receiving
+ * it, which is the shape of an ignored opt-out however small the feature.
+ *
+ * THE LEDGER IS THE RECORD OF WHAT HALE ACTUALLY SAID, which is why this reads it rather
+ * than the prefs row: a prefs write that never landed would leave a family that was asked
+ * looking like one that never was, and it is exactly that family whose NO must work. The
+ * step-down notice counts too — it is the message that teaches DAILY.
+ */
+export async function lastCheckInAskToParent(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<string | null> {
+  const [row] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, input.familyId),
+        eq(schema.channelMessages.parentUserId, input.parentUserId),
+        eq(schema.channelMessages.direction, 'out'),
+        eq(schema.channelMessages.category, 'evening_check_in'),
+        inArray(schema.channelMessages.templateKey, [
+          CHECK_IN_ASK_TEMPLATE_KEY,
+          CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
+        ]),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.createdAt))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/**
+ * Did this answer arrive through the same door the question went out of?
+ *
+ * A parent reaches Hale by text, by WhatsApp and by email, and the router hands every one
+ * of them to the same chain. The evening question is a text; a forwarded school newsletter
+ * arriving by email at 21:00 is not an answer to it, and filing it as one both loses the
+ * email and writes a day note nobody dictated. The comparison is against the ASK's own
+ * row rather than a hard-coded 'sms', so the day this lane learns another door the rule
+ * still holds.
+ */
+export async function answeredOnTheSameChannel(
+  database: Database,
+  askMessageId: string,
+  inboundMessageId: string,
+): Promise<boolean> {
+  const rows = await database
+    .select({ id: schema.channelMessages.id, channel: schema.channelMessages.channel })
+    .from(schema.channelMessages)
+    .where(inArray(schema.channelMessages.id, [askMessageId, inboundMessageId]));
+  const ask = rows.find((row) => row.id === askMessageId);
+  const inbound = rows.find((row) => row.id === inboundMessageId);
+  return ask !== undefined && inbound !== undefined && ask.channel === inbound.channel;
 }

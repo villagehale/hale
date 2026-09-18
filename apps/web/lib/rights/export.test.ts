@@ -61,6 +61,12 @@ function fakeDb(args: {
     expiresAt: Date;
     revokedAt: Date | null;
   }[];
+  checkInPrefs?: {
+    cadence: 'daily' | 'weekly' | 'off';
+    lastAskedAt: Date | null;
+    lastAnsweredAt: Date | null;
+  };
+  checkInNotes?: { notedOn: string; note: string; expiresAt: Date }[];
 }) {
   const whereFamilyIds: unknown[] = [];
 
@@ -100,8 +106,21 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue(args.watches ?? []) };
   });
 
+  const checkInPrefsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return {
+      limit: vi.fn().mockResolvedValue(args.checkInPrefs ? [args.checkInPrefs] : []),
+    };
+  });
+
+  const checkInNotesWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.checkInNotes ?? []) };
+  });
+
   // Route each select to the right terminal by call order: family, children,
-  // members, the village-saves join, then this parent's assistant grants.
+  // members, the village-saves join, this parent's assistant grants, the registration
+  // preparation join, the watched spots, then the evening check-in prefs and notes.
   let selectCall = 0;
   const select = vi.fn(() => {
     const which = selectCall++;
@@ -111,7 +130,9 @@ function fakeDb(args: {
     if (which === 3) return { from: () => ({ innerJoin: () => ({ where: savesWhere }) }) };
     if (which === 4) return { from: () => ({ innerJoin: () => ({ where: assistantsWhere }) }) };
     if (which === 5) return { from: () => ({ innerJoin: () => ({ where: preparationsWhere }) }) };
-    return { from: () => ({ where: watchesWhere }) };
+    if (which === 6) return { from: () => ({ where: watchesWhere }) };
+    if (which === 7) return { from: () => ({ where: checkInPrefsWhere }) };
+    return { from: () => ({ where: checkInNotesWhere }) };
   });
 
   const values = vi.fn().mockResolvedValue(undefined);
@@ -375,12 +396,71 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Seven scoped selects (family, children, members, village saves, this parent's
-    // assistant grants, the registration preparations and the watched spots)
-    // each recorded a where-condition; none was left unscoped. (The condition
-    // objects are opaque Drizzle SQL, so we assert on arity — every select
-    // passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(7);
+    // Nine scoped selects (family, children, members, village saves, this parent's
+    // assistant grants, the registration preparations, the watched spots and the
+    // evening check-in prefs and notes) each recorded a where-condition; none was
+    // left unscoped. (The condition objects are opaque Drizzle SQL, so we assert on
+    // arity — every select passed through a where.)
+    expect(spies.whereFamilyIds).toHaveLength(9);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
+  });
+
+  /**
+   * VIL-353. The day notes are the most personal rows Hale holds and nothing else reads
+   * them, which is exactly why an access copy that omitted them would be wrong: a parent
+   * would have no way to see what Hale kept, or to ask for it to go.
+   */
+  it('includes the evening check-in cadence and this parent\'s own day notes', async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      checkInPrefs: {
+        cadence: 'weekly',
+        lastAskedAt: new Date('2026-07-06T00:17:00.000Z'),
+        lastAnsweredAt: new Date('2026-07-06T01:40:00.000Z'),
+      },
+      checkInNotes: [
+        {
+          notedOn: '2026-07-05',
+          note: 'Park after daycare and both asleep by 7',
+          expiresAt: new Date('2026-08-05T01:40:00.000Z'),
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.eveningCheckIn).toEqual({
+      cadence: 'weekly',
+      lastAskedAt: '2026-07-06T00:17:00.000Z',
+      lastAnsweredAt: '2026-07-06T01:40:00.000Z',
+      notes: [
+        {
+          notedOn: '2026-07-05',
+          note: 'Park after daycare and both asleep by 7',
+          expiresAt: '2026-08-05T01:40:00.000Z',
+        },
+      ],
+    });
+  });
+
+  it('says a household has never been asked rather than implying a default', async () => {
+    const { db } = fakeDb({ family: FAMILY, children: [], members: [] });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.eveningCheckIn).toEqual({
+      cadence: null,
+      lastAskedAt: null,
+      lastAnsweredAt: null,
+      notes: [],
+    });
   });
 });

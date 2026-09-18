@@ -288,13 +288,14 @@ async function runForFamily(
   });
 
   if (decision.kind === 'step_down') {
-    // `lastAskedAt` is deliberately NOT moved — see decideCheckIn. The weekly rhythm keeps
-    // measuring from the last real ask, so the first weekly question lands a week after
-    // the last daily one and the silence already counted is not counted twice.
+    // `lastAskedAt` is deliberately NOT moved — see decideCheckIn — so the weekly rhythm
+    // keeps measuring from the last real ask. `silentStreakSince` is what stops the lapse
+    // this rung just answered being counted again by the first weekly question.
     await deps.recordCadence(database, {
       familyId: family.familyId,
       cadence: 'weekly',
       silentStreak: 0,
+      silentStreakSince: now,
       now,
     });
     result.steppedDownToWeekly += 1;

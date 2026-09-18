@@ -86,6 +86,28 @@ export interface FamilyExportDocument {
     releasedAt: string | null;
     releasedReason: string | null;
   }[];
+  /**
+   * VIL-353 · the evening check-in: how often this household is asked how the day went,
+   * and what THIS parent wrote back.
+   *
+   * SCOPED TO THE REQUESTER, unlike every other block here, because a day note is a
+   * parent's own unedited sentence about their household — the one thing in this product
+   * that is deliberately kept off every shared surface (rule #1, checkin/notes.ts). The
+   * export is a durable file that leaves the app, so the strictest reading is the only
+   * one: a parent gets their own words, and never their co-parent's.
+   *
+   * THE RAW WORDS ARE INCLUDED, and they belong here. They are the parent's own, Hale
+   * holds them for thirty days without showing them to anyone, and a right-to-access copy
+   * that listed the dates but not the sentences would be a copy of the index rather than
+   * of the data.
+   */
+  eveningCheckIn: {
+    /** Null where the household has never been asked, which is not the same as 'daily'. */
+    cadence: 'daily' | 'weekly' | 'off' | null;
+    lastAskedAt: string | null;
+    lastAnsweredAt: string | null;
+    notes: { notedOn: string; note: string; expiresAt: string }[];
+  };
   /** The full, teen-redacted audit trail — the right-to-access record. */
   trail: TrailView[];
 }
@@ -270,6 +292,41 @@ export async function assembleFamilyExport(
     releasedReason: row.releasedReason,
   }));
 
+  const [checkInPrefs] = await database
+    .select({
+      cadence: schema.familyCheckInPrefs.cadence,
+      lastAskedAt: schema.familyCheckInPrefs.lastAskedAt,
+      lastAnsweredAt: schema.familyCheckInPrefs.lastAnsweredAt,
+    })
+    .from(schema.familyCheckInPrefs)
+    .where(eq(schema.familyCheckInPrefs.familyId, familyId))
+    .limit(1);
+
+  const noteRows = await database
+    .select({
+      notedOn: schema.familyCheckInNotes.notedOn,
+      note: schema.familyCheckInNotes.note,
+      expiresAt: schema.familyCheckInNotes.expiresAt,
+    })
+    .from(schema.familyCheckInNotes)
+    .where(
+      and(
+        eq(schema.familyCheckInNotes.familyId, familyId),
+        eq(schema.familyCheckInNotes.parentUserId, deps.actorUserId),
+      ),
+    )
+    .orderBy(schema.familyCheckInNotes.notedOn);
+  const eveningCheckIn = {
+    cadence: checkInPrefs?.cadence ?? null,
+    lastAskedAt: checkInPrefs?.lastAskedAt?.toISOString() ?? null,
+    lastAnsweredAt: checkInPrefs?.lastAnsweredAt?.toISOString() ?? null,
+    notes: noteRows.map((row) => ({
+      notedOn: row.notedOn,
+      note: row.note,
+      expiresAt: row.expiresAt.toISOString(),
+    })),
+  };
+
   await database.insert(schema.auditLog).values({
     familyId,
     actor: deps.actorUserId,
@@ -293,6 +350,7 @@ export async function assembleFamilyExport(
     assistantConnections,
     registrationPreparation,
     watchedSpots,
+    eveningCheckIn,
     trail,
   };
 }

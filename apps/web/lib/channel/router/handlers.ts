@@ -1,7 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import { handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
+import type { CheckInCadence } from '~/lib/channel/checkin/cadence';
+import {
+  answeredOnTheSameChannel,
+  applyCheckInCadence,
+  handleEveningCheckInReply,
+  lastCheckInAskToParent,
+  readCadenceWord,
+} from '~/lib/channel/checkin/reply';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { connectorOfferReply } from '~/lib/channel/connect/copy';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
@@ -28,7 +35,7 @@ import {
 import { type ApprovalSpine, resolveApproval } from './approval';
 import { checkupDraftedReply, failureReply, healthDoneReply } from './copy';
 import { matchFastPath } from './fast-path';
-import { type OpenQuestionKind, soleOpenKind } from './open-questions';
+import { type OpenQuestion, type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
 
 /**
@@ -778,10 +785,23 @@ export function recMorningHandler(): DeterministicHandler {
  * it the broadest claimer in the product. Narrow claimers before broad ones, so it runs
  * after all of them and a parent's "done" still reaches the health lane it belongs to.
  *
- * TWO INDEPENDENT PERMISSIONS, neither implying the other: Hale must actually be holding
- * the question (the ledger says so, reply.ts), and `soleOpenKind` must say no OTHER open
- * question could have meant these words. An empty question list is vacuously unambiguous,
- * so without the first check any sentence at all would be filed as a day note.
+ * IT READS TWO DIFFERENT KINDS OF MESSAGE, and their permissions are not the same.
+ *
+ *   · A TAUGHT WORD (LESS / NO / DAILY) is a decision about the product, and every
+ *     message this lane sends promises it works later — "Reply NO anytime", "reply DAILY
+ *     any evening". So the word is honoured whenever Hale has ever put the question to
+ *     this parent, standing question or not. The standing question could not carry that
+ *     promise: it closes the moment any other outbound reaches the parent, and the
+ *     thank-you Hale just sent is one, so a NO a minute later used to fall to the coach —
+ *     which has no cadence tool — and the nightly message kept coming.
+ *
+ *   · A SENTENCE is an answer to a question, so it needs Hale to actually be holding one
+ *     (the ledger says so, reply.ts) AND `soleOpenKind` to say no OTHER open question
+ *     could have meant these words. An empty question list is vacuously unambiguous, so
+ *     without the first check any sentence at all would be filed as a day note.
+ *
+ * BOTH NEED THE DOOR TO MATCH. The question is a text; an email arriving inside the
+ * window is answering something else (answeredOnTheSameChannel).
  *
  * IT REFUSES A RESOLVED ANSWER. The kind is listed to the resolver so that a bare YES near
  * it is treated as ambiguous, but its answer is not a polarity and there is nothing a
@@ -796,12 +816,15 @@ export function eveningCheckInHandler(): DeterministicHandler {
       if (ctx.resolved !== null) return { claimed: false };
 
       const questions = await ctx.openQuestions();
-      const standing = questions.find((question) => question.kind === 'evening_check_in');
-      if (!standing) return { claimed: false };
-      if (!soleOpenKind(questions, 'evening_check_in')) return { claimed: false };
-      if (standing.askedAt === null) return { claimed: false };
+      const cadence = readCadenceWord(ctx.body);
+      if (cadence !== null) return moveEveningCadence(database, ctx, questions, cadence);
 
-      if (ctx.inboundChannelMessageId === null) {
+      const standing = questions.find((question) => question.kind === 'evening_check_in');
+      if (!standing || standing.askedAt === null) return { claimed: false };
+      if (!soleOpenKind(questions, 'evening_check_in')) return { claimed: false };
+
+      const inboundId = ctx.inboundChannelMessageId;
+      if (inboundId === null) {
         // A spoken turn: what the caller said is a transcription, and there is no message
         // row to hang the note's provenance on. Named rather than assumed away — a note
         // filed against provenance Hale invented is worse than no note.
@@ -811,6 +834,9 @@ export function eveningCheckInHandler(): DeterministicHandler {
         );
         return { claimed: false };
       }
+      if (!(await answeredOnTheSameChannel(database, standing.id, inboundId))) {
+        return { claimed: false };
+      }
 
       const outcome = await handleEveningCheckInReply(database, {
         familyId: ctx.familyId,
@@ -818,11 +844,50 @@ export function eveningCheckInHandler(): DeterministicHandler {
         body: ctx.body,
         askedAt: standing.askedAt,
         timeZone: await readFamilyTimezone(database, ctx.familyId),
-        inboundChannelMessageId: ctx.inboundChannelMessageId,
+        inboundChannelMessageId: inboundId,
         now: ctx.now,
       });
       if (outcome.status === 'declined_to_claim') return { claimed: false };
       return { claimed: true, outcome: outcome.status, reply: outcome.reply };
     },
   };
+}
+
+/**
+ * LESS, NO or DAILY, whether or not the evening question is still standing.
+ *
+ * A BARE NO IS THE ONE THAT HAS TO BE CAREFUL, because it is also how a parent declines an
+ * approval, an intro and a co-parent invite. It is taken only when no other question is
+ * open — the same rule `soleOpenKind` applies to a bare affirmative, drawn here by hand
+ * because the evening question is deliberately absent from the list most of the time this
+ * runs. LESS and DAILY answer nothing else in the product, so they need no such guard.
+ */
+async function moveEveningCadence(
+  database: Database,
+  ctx: HandlerContext,
+  questions: readonly OpenQuestion[],
+  cadence: CheckInCadence,
+): Promise<HandlerVerdict> {
+  const others = questions.filter((question) => question.kind !== 'evening_check_in');
+  if (cadence === 'off' && others.length > 0) return { claimed: false };
+
+  const inboundId = ctx.inboundChannelMessageId;
+  if (inboundId === null) return { claimed: false };
+  const askId = await lastCheckInAskToParent(database, {
+    familyId: ctx.familyId,
+    parentUserId: ctx.parentUserId,
+  });
+  // Never asked, so never taught the word: 'no' here belongs to whatever else is going on.
+  if (askId === null) return { claimed: false };
+  if (!(await answeredOnTheSameChannel(database, askId, inboundId))) return { claimed: false };
+
+  const outcome = await applyCheckInCadence(database, {
+    familyId: ctx.familyId,
+    parentUserId: ctx.parentUserId,
+    inboundChannelMessageId: inboundId,
+    cadence,
+    language: replyLanguage(ctx.body),
+    now: ctx.now,
+  });
+  return { claimed: true, outcome: outcome.status, reply: outcome.reply };
 }

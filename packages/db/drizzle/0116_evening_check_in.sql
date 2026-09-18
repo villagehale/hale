@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS "family_check_in_prefs" (
 	-- lapse, and there is no third column that could disagree with it.
 	"last_asked_at" timestamp with time zone,
 	"last_answered_at" timestamp with time zone,
+	-- The evening a rung of the ladder last acted on this family's silence. An ask older
+	-- than it has already been counted by the step-down that answered it, which is the
+	-- only thing that makes "three more weekly asks" mean three and not two.
+	"silent_streak_since" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint

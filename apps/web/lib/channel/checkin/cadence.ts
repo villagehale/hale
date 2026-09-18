@@ -39,7 +39,9 @@ export const CHECK_IN_LAPSE_HOUR_LOCAL = 8;
 /** Consecutive unanswered asks before Hale says less, and then says nothing. */
 export const SILENT_ASKS_BEFORE_STEP_DOWN = 3;
 
-const WEEKLY_INTERVAL_MS = 7 * 24 * 3_600_000;
+/** Local days between one weekly question and the next. */
+export const WEEKLY_INTERVAL_DAYS = 7;
+
 const DAY_MS = 24 * 3_600_000;
 
 export type CheckInCadence = schema.FamilyCheckInPrefs['cadence'];
@@ -50,6 +52,15 @@ export interface CheckInState {
   silentStreak: number;
   lastAskedAt: Date | null;
   lastAnsweredAt: Date | null;
+  /**
+   * The instant the ladder last ACTED on this family's silence.
+   *
+   * An ask older than it has already been counted — by the step-down that answered it —
+   * and counting it again is how "three more" quietly became two. Written only by a rung
+   * of the ladder, never by an ask or an answer, so it is a floor under the counter and
+   * not a second copy of it.
+   */
+  silentStreakSince: Date | null;
 }
 
 export const DEFAULT_CHECK_IN_STATE: CheckInState = {
@@ -57,6 +68,7 @@ export const DEFAULT_CHECK_IN_STATE: CheckInState = {
   silentStreak: 0,
   lastAskedAt: null,
   lastAnsweredAt: null,
+  silentStreakSince: null,
 };
 
 /** Why a family in the slot hears nothing tonight. Enum, never free text: it is counted
@@ -81,6 +93,20 @@ export function localDateKey(now: Date, timeZone: string): string {
     month: '2-digit',
     day: '2-digit',
   }).format(now);
+}
+
+/**
+ * Whole local days from one instant to another, off the CALENDAR rather than the clock.
+ *
+ * A weekly rhythm measured in milliseconds is a rhythm that drifts: the hourly cron fires
+ * at :17 give or take a few seconds, so an interval of exactly 7 × 24h lands a fraction
+ * short about half the time and the question slips to the eighth day — and a spring
+ * forward makes it certain. Days are what the promise was made in.
+ */
+export function localDaysBetween(from: Date, to: Date, timeZone: string): number {
+  const start = Date.parse(`${localDateKey(from, timeZone)}T00:00:00Z`);
+  const end = Date.parse(`${localDateKey(to, timeZone)}T00:00:00Z`);
+  return Math.round((end - start) / DAY_MS);
 }
 
 /** The family's local hour (0-23). */
@@ -126,10 +152,16 @@ export function askStillStanding(askedAt: Date, now: Date, timeZone: string): bo
  * counter at all. Deriving it from the two timestamps at the moment Hale is about to
  * speak again makes "consecutive unanswered asks" exactly what the name says.
  *
- * THE STEP-DOWN DOES NOT MOVE `lastAskedAt`, and that is what makes "three more" mean
- * three more. The weekly rhythm keeps measuring from the last real ASK, so the first
- * weekly question lands a week after the last daily one, and the silence Hale already
- * counted is not counted a second time by the notice that announced the change.
+ * THE STEP-DOWN DOES NOT MOVE `lastAskedAt`: the weekly rhythm keeps measuring from the
+ * last real ASK, so the first weekly question lands a week after the last daily one
+ * rather than a week after an announcement.
+ *
+ * WHAT MAKES "THREE MORE" MEAN THREE MORE IS `silentStreakSince`. The evening that
+ * stepped a family down has already counted the lapse that triggered it; without a
+ * baseline the first weekly question would re-read that same unanswered ask off the
+ * timestamps and go out carrying a streak of one, and the family would fall dormant after
+ * two weekly asks instead of three. The counter needed a floor, and a floor is a fact
+ * about when the ladder last acted — not something the two timestamps can say.
  */
 export function decideCheckIn(
   state: CheckInState,
@@ -145,14 +177,16 @@ export function decideCheckIn(
   if (
     state.cadence === 'weekly' &&
     lastAskedAt !== null &&
-    now.getTime() - lastAskedAt.getTime() < WEEKLY_INTERVAL_MS
+    localDaysBetween(lastAskedAt, now, timeZone) < WEEKLY_INTERVAL_DAYS
   ) {
     return { kind: 'skip', reason: 'not_due' };
   }
 
   const lapsed =
     lastAskedAt !== null &&
-    (lastAnsweredAt === null || lastAnsweredAt.getTime() < lastAskedAt.getTime());
+    (lastAnsweredAt === null || lastAnsweredAt.getTime() < lastAskedAt.getTime()) &&
+    (state.silentStreakSince === null ||
+      lastAskedAt.getTime() >= state.silentStreakSince.getTime());
   const silentStreak = lapsed ? state.silentStreak + 1 : 0;
   if (silentStreak >= SILENT_ASKS_BEFORE_STEP_DOWN) {
     return state.cadence === 'daily' ? { kind: 'step_down' } : { kind: 'dormant', silentStreak };
@@ -173,6 +207,7 @@ export async function readCheckInState(
       silentStreak: schema.familyCheckInPrefs.silentStreak,
       lastAskedAt: schema.familyCheckInPrefs.lastAskedAt,
       lastAnsweredAt: schema.familyCheckInPrefs.lastAnsweredAt,
+      silentStreakSince: schema.familyCheckInPrefs.silentStreakSince,
     })
     .from(schema.familyCheckInPrefs)
     .where(eq(schema.familyCheckInPrefs.familyId, familyId))
@@ -205,19 +240,35 @@ export async function recordCheckInAsk(
 /** The cadence moved, by Hale's own ladder or by the parent's word. */
 export async function recordCheckInCadence(
   writer: CheckInWriter,
-  input: { familyId: string; cadence: CheckInCadence; silentStreak: number; now: Date },
+  input: {
+    familyId: string;
+    cadence: CheckInCadence;
+    silentStreak: number;
+    /** Set by a rung of the LADDER, so the silence it just acted on is not counted twice
+     * by the rung after it. A parent moving their own cadence leaves it alone. */
+    silentStreakSince?: Date;
+    now: Date;
+  },
 ): Promise<void> {
+  const baseline =
+    input.silentStreakSince === undefined ? {} : { silentStreakSince: input.silentStreakSince };
   await writer
     .insert(schema.familyCheckInPrefs)
     .values({
       familyId: input.familyId,
       cadence: input.cadence,
       silentStreak: input.silentStreak,
+      ...baseline,
       updatedAt: input.now,
     })
     .onConflictDoUpdate({
       target: schema.familyCheckInPrefs.familyId,
-      set: { cadence: input.cadence, silentStreak: input.silentStreak, updatedAt: input.now },
+      set: {
+        cadence: input.cadence,
+        silentStreak: input.silentStreak,
+        ...baseline,
+        updatedAt: input.now,
+      },
     });
 }
 

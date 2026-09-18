@@ -45,7 +45,7 @@ function harness(overrides: Overrides = {}) {
   const audits: Array<Record<string, unknown>> = [];
   const threaded: string[] = [];
   const asks: Array<{ silentStreak: number }> = [];
-  const cadences: Array<{ cadence: string; silentStreak: number }> = [];
+  const cadences: Array<{ cadence: string; silentStreak: number; silentStreakSince?: Date }> = [];
 
   const deps: EveningCheckInDeps = {
     selectFamilies: async () => [
@@ -53,10 +53,11 @@ function harness(overrides: Overrides = {}) {
     ],
     loadNamableChildren: async () => overrides.children ?? ['Mia', 'Leo'],
     readState: async () => ({
-      cadence: 'daily',
+      cadence: 'daily' as const,
       silentStreak: 0,
       lastAskedAt: null,
       lastAnsweredAt: null,
+      silentStreakSince: null,
       ...overrides.state,
     }),
     buildGate: () => ({
@@ -97,7 +98,13 @@ function harness(overrides: Overrides = {}) {
       asks.push({ silentStreak: input.silentStreak });
     },
     recordCadence: async (_db, input) => {
-      cadences.push({ cadence: input.cadence, silentStreak: input.silentStreak });
+      cadences.push({
+        cadence: input.cadence,
+        silentStreak: input.silentStreak,
+        ...(input.silentStreakSince === undefined
+          ? {}
+          : { silentStreakSince: input.silentStreakSince }),
+      });
     },
   };
   return { deps, sent, ledger, audits, threaded, asks, cadences };
@@ -247,7 +254,12 @@ describe('the ladder, end to end', () => {
     // tomorrow cannot announce the same change twice.
     expect(ledger[0]?.dedupeKey).toBe(`evening_check_in:weekly:${FAMILY}:${lastAsked.toISOString()}`);
     expect(audits[0]?.actionTaken).toBe('evening_check_in_stepped_down');
-    expect(cadences).toEqual([{ cadence: 'weekly', silentStreak: 0 }]);
+    // The counter is baselined on this evening, so the lapse this rung just answered is
+    // not read off the timestamps again by the first weekly question (which would make
+    // "three more" mean two).
+    expect(cadences).toEqual([
+      { cadence: 'weekly', silentStreak: 0, silentStreakSince: EVENING },
+    ]);
     expect(asks).toEqual([]);
   });
 

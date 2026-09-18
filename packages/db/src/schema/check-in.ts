@@ -23,7 +23,9 @@ import { users } from './users.js';
  * THE TWO TIMESTAMPS ARE THE STATE MACHINE. `lastAnsweredAt` older than `lastAskedAt` is
  * a lapse; equal-or-newer is an answer. `silentStreak` counts consecutive lapses and is
  * advanced at the NEXT ask rather than by a timer, so one lapse is counted exactly once
- * however many times the hourly cron runs.
+ * however many times the hourly cron runs. `silentStreakSince` is the floor under that
+ * counter: the evening the ladder last acted, so the lapse a step-down already answered
+ * is not read off the timestamps a second time by the weekly question after it.
  */
 export const familyCheckInPrefs = pgTable('family_check_in_prefs', {
   familyId: uuid('family_id')
@@ -33,6 +35,9 @@ export const familyCheckInPrefs = pgTable('family_check_in_prefs', {
   silentStreak: integer('silent_streak').notNull().default(0),
   lastAskedAt: timestamp('last_asked_at', { withTimezone: true }),
   lastAnsweredAt: timestamp('last_answered_at', { withTimezone: true }),
+  /** The instant a rung of the ladder last acted on this family's silence — asks older
+   * than it have already been counted and must not be counted again. */
+  silentStreakSince: timestamp('silent_streak_since', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

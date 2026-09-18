@@ -39,4 +39,29 @@ describe('the categories Hale does not write down', () => {
     expect(isNotKept('La thérapie a bien été')).toBe(true);
     expect(isNotKept('rough day. fever, again!')).toBe(true);
   });
+
+  it('is not defeated by an s, which is the whole reason the plural is derived', () => {
+    const refused = [
+      'Her allergies were awful today',
+      'Two seizures this week',
+      'Both lawyers finally called back',
+      'The therapists want another session',
+      'Waiting on the diagnoses',
+    ];
+    for (const body of refused) expect(isNotKept(body), body).toBe(true);
+  });
+
+  it('refuses the markers a parent is most likely to actually type', () => {
+    const refused = [
+      'Everyone has the flu here',
+      'Covid again, whole house down',
+      'Six stitches after the park',
+      'We told them we are Muslim and they were lovely',
+      'My sister came out as gay and the kids had questions',
+      'Police were at the door about my ex',
+      'First trip to the food bank this week',
+      'I am pregnant and exhausted',
+    ];
+    for (const body of refused) expect(isNotKept(body), body).toBe(true);
+  });
 });
