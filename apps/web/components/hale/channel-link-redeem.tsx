@@ -1,6 +1,10 @@
 'use client';
 
 import { useActionState } from 'react';
+import {
+  type TextConnectProvider,
+  textConnectButtonLabel,
+} from '~/lib/channel/connect/text-connect';
 import { type ChannelLinkRedeemState, redeemChannelLinkAction } from '~/lib/auth/channel-link-actions';
 
 /**
@@ -11,9 +15,20 @@ import { type ChannelLinkRedeemState, redeemChannelLinkAction } from '~/lib/auth
  * the button is also the interstitial that keeps a Google consent screen from
  * erupting straight out of a text message. The token is bound into the action, never
  * rendered in an input.
+ *
+ * When the link named a connector, the button says which one and this tap is the LAST
+ * one: redemption forwards straight into Google's consent. The label is the whole
+ * warning the interstitial owes — a parent about to meet a Google permissions screen
+ * should have read the word Google first.
  */
-export function ChannelLinkRedeem({ token }: { token: string }) {
-  const action = redeemChannelLinkAction.bind(null, token);
+export function ChannelLinkRedeem({
+  token,
+  provider,
+}: {
+  token: string;
+  provider: TextConnectProvider | null;
+}) {
+  const action = redeemChannelLinkAction.bind(null, token, provider);
   const [state, formAction, pending] = useActionState<ChannelLinkRedeemState, FormData>(action, {
     status: 'idle',
   });
@@ -28,9 +43,13 @@ export function ChannelLinkRedeem({ token }: { token: string }) {
 
   return (
     <form action={formAction} className="flex w-full flex-col gap-4">
-      <p className="meta">One tap signs you in and opens your connected apps.</p>
+      <p className="meta">
+        {provider
+          ? 'One tap signs you in and takes you to Google to approve it.'
+          : 'One tap signs you in and opens your connected apps.'}
+      </p>
       <button type="submit" className="btn-primary self-start" disabled={pending}>
-        {pending ? 'Signing you in…' : 'Continue'}
+        {pending ? 'Signing you in…' : provider ? textConnectButtonLabel(provider) : 'Continue'}
       </button>
     </form>
   );

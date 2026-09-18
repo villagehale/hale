@@ -98,11 +98,13 @@ describe('the intake connector offer', () => {
     expect(outcome).toEqual({ status: 'sent', channelMessageId: expect.any(String) });
     expect(transport.sent).toHaveLength(1);
     const body = transport.bodies()[0] as string;
-    expect(body).toContain('/connect?t=');
     expect(body).toContain('ignore this to skip');
-    // The whole sentence is the copy module's, link and all — never assembled here.
-    const url = (body.match(/https:\/\/\S+/) as RegExpMatchArray)[0];
-    expect(body).toBe(intakeConnectorOffer('en', url));
+    // One link per connector, each straight into that connector's Google consent.
+    const [calendarUrl, gmailUrl] = body.match(/https:\/\/\S+/g) as RegExpMatchArray;
+    expect(calendarUrl).toMatch(/\/connect\?t=[A-Za-z0-9_-]+&to=gcal$/);
+    expect(gmailUrl).toMatch(/\/connect\?t=[A-Za-z0-9_-]+&to=gmail$/);
+    // The whole sentence is the copy module's, links and all — never assembled here.
+    expect(body).toBe(intakeConnectorOffer('en', calendarUrl as string, gmailUrl as string));
     expect(threaded).toEqual([{ familyId: FAMILY, parentUserId: PARENT, body }]);
 
     const [claimed] = ledgerRows(fake);
@@ -119,8 +121,11 @@ describe('the intake connector offer', () => {
     });
     // Rule #6: minting a sign-in capability is an act, and it has its own row.
     const audits = fake.writes.filter((w) => w.table === schema.auditLog).map((w) => w.payload);
-    expect(audits.map((a) => a.actionTaken)).toEqual(['connector_link_minted']);
-    expect(audits[0]?.after).toEqual({ provider: 'gcal' });
+    expect(audits.map((a) => a.actionTaken)).toEqual([
+      'connector_link_minted',
+      'connector_link_minted',
+    ]);
+    expect(audits.map((a) => a.after)).toEqual([{ provider: 'gcal' }, { provider: 'gmail' }]);
   });
 
   it('offers once per family - a second run reaches no provider and mints no second token', async () => {
@@ -132,7 +137,8 @@ describe('the intake connector offer', () => {
 
     expect(second).toEqual({ status: 'not_sent', reason: 'already_sent' });
     expect(transport.sent).toHaveLength(1);
-    expect(fake.rows(schema.channelSigninTokens)).toHaveLength(1);
+    // Two tokens, one per link — and no third from the run that never reached a mint.
+    expect(fake.rows(schema.channelSigninTokens)).toHaveLength(2);
   });
 
   it('holds the offer through quiet hours WITHOUT spending the one key it has', async () => {
