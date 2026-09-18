@@ -63,6 +63,9 @@ interface Harness {
   ports: CalendarAlertPorts;
   transport: FakeTransport;
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+  /** Every parent the sweep asked the clock for — one read per sweep at most, and none
+   * at all for a family Hale may not speak to. */
+  timeZoneReads: string[];
 }
 
 function harness(
@@ -74,9 +77,11 @@ function harness(
 ): Harness {
   const transport = new FakeTransport();
   const threaded: Harness['threaded'] = [];
+  const timeZoneReads: string[] = [];
   return {
     transport,
     threaded,
+    timeZoneReads,
     ports: {
       gate: async () => over.verdict ?? { allowed: true, optOut: 'full' },
       resolvePhone: async () => (over.phone === undefined ? PHONE : over.phone),
@@ -91,7 +96,10 @@ function harness(
         threaded.push(input);
         return 'conv-1';
       },
-      timeZone: async () => 'America/Toronto',
+      timeZone: async (parentUserId) => {
+        timeZoneReads.push(parentUserId);
+        return 'America/Toronto';
+      },
     },
   };
 }
@@ -182,6 +190,9 @@ describe('alertParentForCalendarChanges', () => {
 
     expect(h.transport.sent).toEqual([]);
     await expect(ledgerRows()).resolves.toEqual([]);
+    // Dark costs NOTHING, not even the clock read: the flag is a pure function of the
+    // family id, so a query in front of it is a query for a family Hale may not text.
+    expect(h.timeZoneReads).toEqual([]);
   });
 
   it('alerts NOTHING on a seeding run — a fresh connection is not 200 texts', async () => {
@@ -240,6 +251,33 @@ describe('alertParentForCalendarChanges', () => {
         ],
       }),
     ).resolves.toEqual(['sent']);
+  });
+
+  it('still texts about an all-day event added for TODAY at nine at night', async () => {
+    // The parent's day, not UTC's. At 9 p.m. in Toronto it is already tomorrow in UTC, so
+    // an all-day span anchored there is OVER — and tomorrow's PA day, added tonight, is
+    // the single most ordinary thing this feature exists to say.
+    const h = harness();
+    const lateEvening = new Date('2026-09-18T01:00:00.000Z'); // Sep 17, 9 p.m. Toronto
+    const allDay = (date: string, end: string): CalendarChange => ({
+      ...TIMED,
+      eventId: `ev-${date}`,
+      title: 'PA day',
+      start: { date },
+      end: { date: end },
+    });
+
+    await expect(
+      sweep(h, { now: lateEvening, changes: [allDay('2026-09-17', '2026-09-18')] }),
+    ).resolves.toEqual(['sent']);
+    expect(h.transport.sent[0]?.body).toContain('PA day is on your calendar for Thursday, Sep 17.');
+
+    // The control for it: YESTERDAY's all-day is over in the parent's zone too, so this
+    // is a day boundary moving, not a window that stopped refusing anything.
+    const past = harness();
+    await expect(
+      sweep(past, { now: lateEvening, changes: [allDay('2026-09-16', '2026-09-17')] }),
+    ).resolves.toEqual(['outside_window']);
   });
 
   it('names a tombstone Google sent with no start rather than counting it as far away', async () => {
@@ -352,12 +390,68 @@ describe('alertParentForCalendarChanges', () => {
 
     const outcomes = await sweep(h, { changes });
 
-    expect(outcomes).toHaveLength(7);
-    expect(outcomes.filter((o) => o === 'sent')).toHaveLength(CALENDAR_ALERT_MAX_PER_SWEEP);
-    expect(outcomes.filter((o) => o === 'over_sweep_cap')).toHaveLength(2);
+    // One outcome per change, positionally — the two dropped are the two LAST, which is
+    // only visible because the answer is in input order.
+    expect(outcomes).toEqual([
+      ...Array.from({ length: CALENDAR_ALERT_MAX_PER_SWEEP }, () => 'sent'),
+      'over_sweep_cap',
+      'over_sweep_cap',
+    ]);
     const keys = new Set((await ledgerRows()).map((r) => r.dedupeKey));
     expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-0', TIMED.updated))).toBe(true);
     expect(keys.has(calendarAlertDedupeKey(INTEGRATION, 'ev-6', TIMED.updated))).toBe(false);
+  });
+
+  it('never lets stale edits to events already OVER spend the sweep', async () => {
+    // The shape that made this real: with singleEvents=true, renaming a weekly class
+    // returns every instance of the series with a fresh `updated`, the past ones
+    // included. Capped before the window is judged — and sorted soonest-first, which puts
+    // the finished ones at the front — five September Tuesdays that already happened take
+    // all five slots, and tomorrow's class is never offered again, because syncCalendar
+    // advanced the syncToken the moment it read the page.
+    const h = harness();
+    const stale = Array.from({ length: CALENDAR_ALERT_MAX_PER_SWEEP }, (_, i) => ({
+      ...TIMED,
+      eventId: `ev-past-${i}`,
+      start: { dateTime: `2026-09-0${i + 1}T20:15:00.000Z` },
+      end: { dateTime: `2026-09-0${i + 1}T21:00:00.000Z` },
+    }));
+    const tomorrow: CalendarChange = {
+      ...TIMED,
+      eventId: 'ev-tomorrow',
+      start: { dateTime: '2026-09-18T20:15:00.000Z' },
+      end: { dateTime: '2026-09-18T21:00:00.000Z' },
+    };
+
+    await expect(sweep(h, { changes: [...stale, tomorrow] })).resolves.toEqual([
+      ...stale.map(() => 'outside_window'),
+      'sent',
+    ]);
+    expect(h.transport.sent).toHaveLength(1);
+    expect(h.transport.sent[0]?.body).toContain('Friday, Sep 18');
+  });
+
+  it('answers one outcome per change, in the order the changes arrived', async () => {
+    const h = harness();
+    const far: CalendarChange = {
+      ...TIMED,
+      eventId: 'ev-far',
+      start: { dateTime: '2026-10-27T20:15:00.000Z' },
+      end: { dateTime: '2026-10-27T21:00:00.000Z' },
+    };
+    const tombstone: CalendarChange = {
+      ...TIMED,
+      eventId: 'ev-bare',
+      status: 'cancelled',
+      start: {},
+      end: {},
+    };
+
+    await expect(sweep(h, { changes: [far, TIMED, tombstone] })).resolves.toEqual([
+      'outside_window',
+      'sent',
+      'no_start',
+    ]);
   });
 
   it('carries the title and the time and NOTHING else off the event', async () => {
@@ -390,7 +484,7 @@ describe('the text itself', () => {
   /** The span is resolved ONCE per change by the sweep and handed to the renderer, so the
    * window decision and the sentence can never disagree about which day this is. */
   function render(change: CalendarChange): string {
-    const span = eventSpan(change);
+    const span = eventSpan(change, TZ);
     if (span === null) throw new Error('render: this change has no placeable start');
     return renderCalendarAlert(change, span, TZ, NOW);
   }
@@ -422,6 +516,32 @@ describe('the text itself', () => {
     ).toBe(
       'Cousins sleepover is on your calendar for Thursday, Sep 17, 10:00 p.m. to Friday, Sep 18, 7:00 a.m.',
     );
+  });
+
+  it('keeps an event that ends AT midnight on the day it started', () => {
+    // "10:00 p.m. to Saturday, Sep 19, 12:00 a.m." names a day the parent is not out for
+    // and reads as a typo.
+    expect(
+      render({
+        ...TIMED,
+        title: 'Party',
+        start: { dateTime: '2026-09-19T02:00:00.000Z' }, // Sep 18, 10 p.m.
+        end: { dateTime: '2026-09-19T04:00:00.000Z' }, // Sep 19, midnight
+      }),
+    ).toBe('Party is on your calendar for Friday, Sep 18, 10:00 p.m.-12:00 a.m.');
+  });
+
+  it('names both ends of a multi-day all-day event', () => {
+    // Google's all-day `end.date` is EXCLUSIVE: a camp written Sep 21 → Sep 26 is the
+    // 21st to the 25th, and naming only its first day loses the week.
+    expect(
+      render({
+        ...TIMED,
+        title: 'March break camp',
+        start: { date: '2026-09-21' },
+        end: { date: '2026-09-26' },
+      }),
+    ).toBe('March break camp is on your calendar for Monday, Sep 21 to Friday, Sep 25.');
   });
 
   it('says the day alone for an all-day event, in the day the calendar wrote', () => {
@@ -487,6 +607,13 @@ describe('the text itself', () => {
           end: { dateTime: '2027-01-06T05:00:00.000Z' },
         },
         { start: { date: '2027-01-05' }, end: { date: '2027-01-06' } },
+        // The two widest shapes: a week-long camp names both its ends, and an overnight
+        // names the second day as well as both clocks.
+        { start: { date: '2027-01-05' }, end: { date: '2027-01-11' } },
+        {
+          start: { dateTime: '2027-01-05T18:00:00.000Z' },
+          end: { dateTime: '2027-01-06T12:00:00.000Z' },
+        },
         {
           start: { dateTime: '2027-01-05T18:00:00.000Z' },
           end: { dateTime: '2027-01-05T19:00:00.000Z' },

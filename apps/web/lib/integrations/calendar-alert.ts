@@ -13,7 +13,7 @@ import type {
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
-import { formatDayHeading } from '~/lib/format/datetime';
+import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
 
 /**
  * A change on a connected Google Calendar becomes ONE text to the parent.
@@ -99,9 +99,11 @@ export function emptyCalendarAlertCounts(): CalendarAlertCounts {
   return Object.fromEntries(CALENDAR_ALERT_OUTCOMES.map((o) => [o, 0])) as CalendarAlertCounts;
 }
 
-/** At most this many changes per connection per sweep, SOONEST FIRST. A household that
- * rebuilds its September in one sitting produces thirty edits in one 15-minute window;
- * the ones worth a text are the ones happening next. */
+/** At most this many ALERTABLE changes per connection per sweep, soonest first. A
+ * household that rebuilds its September in one sitting produces thirty edits in one
+ * 15-minute window; the ones worth a text are the ones happening next. Counted over the
+ * changes that survive the window, never over the raw page — see
+ * {@link alertParentForCalendarChanges}. */
 export const CALENDAR_ALERT_MAX_PER_SWEEP = 5;
 
 /** How far ahead an event has to start to be worth interrupting for. A cancellation is
@@ -160,32 +162,45 @@ export interface CalendarAlertInput {
 }
 
 /**
- * One sweep's worth of calendar changes for one connection → one outcome per change.
+ * One sweep's worth of calendar changes for one connection → one outcome per change, in
+ * the order the changes arrived.
  *
- * Soonest first and bounded: the interesting failure is not a quiet calendar, it is a
- * parent rebuilding their term on a Sunday evening.
+ * ELIGIBILITY BEFORE THE CAP, which is the whole of this function's shape. A change Hale
+ * would never text about is not a slot: renaming a weekly class returns every instance of
+ * the series with a fresh `updated` stamp, the finished ones included, and capping before
+ * the window is judged lets five Tuesdays that already happened swallow the sweep while
+ * tomorrow's class goes unsaid — permanently, because syncCalendar advanced the syncToken
+ * the moment it read the page. So: decide the window for ALL of them, sort what survives
+ * soonest-first, and spend the five on those.
  */
 export async function alertParentForCalendarChanges(
   database: Database,
   input: CalendarAlertInput,
   ports: CalendarAlertPorts,
 ): Promise<readonly CalendarAlertOutcome[]> {
-  const { parentUserId, changes } = input;
+  const { familyId, parentUserId, changes, now } = input;
   if (parentUserId === null) return changes.map(() => 'no_parent_user');
   if (input.seeding) return changes.map(() => 'seeding_run');
-
-  const ordered = [...changes].sort((a, b) => startOrder(a) - startOrder(b));
-  const outcomes: CalendarAlertOutcome[] = [];
-  for (let i = CALENDAR_ALERT_MAX_PER_SWEEP; i < ordered.length; i += 1) {
-    outcomes.push('over_sweep_cap');
-  }
-
-  const considered = ordered.slice(0, CALENDAR_ALERT_MAX_PER_SWEEP);
-  if (considered.length === 0) return outcomes;
+  // Before the clock read below: the flag is a pure function of the family id, so a query
+  // in front of it is a query per sweep for a family Hale may not speak to at all.
+  if (!f14EnabledFor(familyId)) return changes.map(() => 'dark');
 
   const timeZone = await ports.timeZone(parentUserId);
-  for (const change of considered) {
-    outcomes.push(await alertOne(database, input, parentUserId, change, timeZone, ports));
+  const outcomes = new Array<CalendarAlertOutcome>(changes.length);
+  const eligible: Array<{ at: number; change: CalendarChange; span: EventSpan }> = [];
+  changes.forEach((change, at) => {
+    const span = eventSpan(change, timeZone);
+    if (span === null) outcomes[at] = 'no_start';
+    else if (!withinAlertWindow(change, span, now)) outcomes[at] = 'outside_window';
+    else eligible.push({ at, change, span });
+  });
+
+  eligible.sort((a, b) => a.span.startMs - b.span.startMs);
+  for (const [rank, { at, change, span }] of eligible.entries()) {
+    outcomes[at] =
+      rank < CALENDAR_ALERT_MAX_PER_SWEEP
+        ? await alertOne(database, input, parentUserId, change, span, timeZone, ports)
+        : 'over_sweep_cap';
   }
   return outcomes;
 }
@@ -195,16 +210,11 @@ async function alertOne(
   input: CalendarAlertInput,
   parentUserId: string,
   change: CalendarChange,
+  span: EventSpan,
   timeZone: string,
   ports: CalendarAlertPorts,
 ): Promise<CalendarAlertOutcome> {
   const { familyId, integrationId, now } = input;
-  if (!f14EnabledFor(familyId)) return 'dark';
-
-  const span = eventSpan(change);
-  if (span === null) return 'no_start';
-  if (!withinAlertWindow(change, span, now)) return 'outside_window';
-
   const dedupeKey = calendarAlertDedupeKey(integrationId, change.eventId, change.updated);
   if (await dedupeActive(dedupeKey, database)) return 'already_sent';
 
@@ -319,11 +329,11 @@ export interface EventSpan {
  * a `date` — the shape of a deleted single event on an incremental page. Resolved ONCE
  * per change and handed to the renderer, so the window decision and the sentence can
  * never disagree about which day this is. */
-export function eventSpan(change: CalendarChange): EventSpan | null {
+export function eventSpan(change: CalendarChange, timeZone: string): EventSpan | null {
   const allDay = change.start.date !== undefined;
-  const startMs = instantOf(change.start);
+  const startMs = instantOf(change.start, timeZone);
   if (startMs === null) return null;
-  const endMs = instantOf(change.end);
+  const endMs = instantOf(change.end, timeZone);
   return {
     startMs,
     endMs: endMs === null || endMs <= startMs ? startMs + (allDay ? 86_400_000 : 0) : endMs,
@@ -331,19 +341,53 @@ export function eventSpan(change: CalendarChange): EventSpan | null {
   };
 }
 
-/** A bare `date` is read as UTC midnight so the calendar day the parent typed round-trips
- * exactly, the same discipline `formatCalendarDate` keeps. */
-function instantOf(point: { dateTime?: string; date?: string }): number | null {
-  const raw = point.dateTime ?? (point.date === undefined ? undefined : `${point.date}T00:00:00Z`);
-  if (raw === undefined) return null;
-  const ms = Date.parse(raw);
-  return Number.isNaN(ms) ? null : ms;
+function instantOf(point: { dateTime?: string; date?: string }, timeZone: string): number | null {
+  if (point.dateTime !== undefined) {
+    const ms = Date.parse(point.dateTime);
+    return Number.isNaN(ms) ? null : ms;
+  }
+  return point.date === undefined ? null : dayStartInZone(point.date, timeZone);
 }
 
-/** Sort key for the per-sweep cap. A change Hale cannot place in time sorts last, so it
- * never displaces a real event from the five. */
-function startOrder(change: CalendarChange): number {
-  return eventSpan(change)?.startMs ?? Number.POSITIVE_INFINITY;
+/**
+ * The instant a bare calendar DAY begins in the parent's zone.
+ *
+ * A Google all-day event carries `date: '2026-09-17'`, which is not an instant: it is the
+ * day the parent typed. The web surfaces anchor such a value at UTC midnight so the day
+ * round-trips on screen (`formatCalendarDate`), but both questions this module asks are
+ * about the parent's wall clock, and UTC answers them a few hours early: at 9 p.m. in
+ * Toronto, today's PA day is already yesterday in UTC and would be judged over.
+ *
+ * Resolved twice because the offset depends on the instant being resolved — the first
+ * pass lands within an hour, the second is exact across a DST change.
+ */
+function dayStartInZone(day: string, timeZone: string): number | null {
+  const utcMidnight = Date.parse(`${day}T00:00:00Z`);
+  if (Number.isNaN(utcMidnight)) return null;
+  const approx = utcMidnight - zoneOffsetMs(utcMidnight, timeZone);
+  return utcMidnight - zoneOffsetMs(approx, timeZone);
+}
+
+/** How far `timeZone`'s wall clock runs from UTC at this instant. `hourCycle: 'h23'`
+ * rather than `hour12: false`, which renders local midnight as hour 24 of the PREVIOUS
+ * day under some ICU builds — a whole day of error at exactly the boundary this is for. */
+function zoneOffsetMs(instant: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(instant));
+  const pick = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? '00';
+  const wall = Date.parse(
+    `${pick('year')}-${pick('month')}-${pick('day')}T${pick('hour')}:${pick('minute')}:${pick('second')}Z`,
+  );
+  return wall - instant;
 }
 
 /**
@@ -384,22 +428,38 @@ export function renderCalendarAlert(
   now: Date,
 ): string {
   const title = clampTitle(gsm7(change.title ?? '')) || UNTITLED;
-  // A bare `date` is a calendar DAY, not an instant: rendering it in a zone west of UTC
-  // would name the day before the one the parent typed.
-  const dayZone = span.allDay ? 'UTC' : timeZone;
-  const day = asciiSpaces(formatDayHeading(new Date(span.startMs), dayZone, now));
+  // One zone for everything, because an all-day span is already anchored at midnight in
+  // it ({@link dayStartInZone}) — the day the parent typed IS the day this names.
+  const day = asciiSpaces(formatDayHeading(new Date(span.startMs), timeZone, now));
 
   if (change.status === 'cancelled') {
     return endSentence(`${title} on ${day} was cancelled`);
   }
 
-  const when = span.allDay ? day : `${day}, ${clockRange(span, timeZone, now)}`;
+  const when = span.allDay
+    ? dayRange(span, day, timeZone, now)
+    : `${day}, ${clockRange(span, timeZone, now)}`;
   return endSentence(`${title} is on your calendar for ${when}${placePhrase(change)}`);
+}
+
+/**
+ * `Monday, Sep 21`, or `Monday, Sep 21 to Friday, Sep 25` for a camp that runs a week.
+ *
+ * Google's all-day `end.date` is EXCLUSIVE, so the last day the parent is actually out is
+ * the one the final millisecond falls in. A millisecond rather than a day of arithmetic:
+ * subtracting 24h lands an hour off across a DST change and can name the wrong day.
+ */
+function dayRange(span: EventSpan, startDay: string, timeZone: string, now: Date): string {
+  const lastDay = asciiSpaces(formatDayHeading(new Date(span.endMs - 1), timeZone, now));
+  return lastDay === startDay ? startDay : `${startDay} to ${lastDay}`;
 }
 
 /**
  * `4:15-5:00 p.m.`, `11:30 a.m.-1:00 p.m.`, or — once the event crosses midnight — the
  * second day spelled out, because "10:00 p.m.-7:00 a.m." on its own reads as a typo.
+ *
+ * An event ending AT midnight is not one of those: it belongs to the day it started, and
+ * "10:00 p.m. to Saturday, Sep 19, 12:00 a.m." names a day the parent is not out for.
  *
  * The start's `a.m.`/`p.m.` is dropped when it matches the end's: two of them in seven
  * characters of clock is how a machine writes a time, not how a parent reads one.
@@ -409,12 +469,18 @@ function clockRange(span: EventSpan, timeZone: string, now: Date): string {
   const end = clockParts(span.endMs, timeZone);
   const endDay = asciiSpaces(formatDayHeading(new Date(span.endMs), timeZone, now));
   const startDay = asciiSpaces(formatDayHeading(new Date(span.startMs), timeZone, now));
-  if (endDay !== startDay) {
+  if (endDay !== startDay && !endsAtDayStart(span, timeZone)) {
     return `${start.clock} ${start.dayPeriod} to ${endDay}, ${end.clock} ${end.dayPeriod}`;
   }
   const head =
     start.dayPeriod === end.dayPeriod ? start.clock : `${start.clock} ${start.dayPeriod}`;
   return `${head}-${end.clock} ${end.dayPeriod}`;
+}
+
+/** Whether the event ends on the stroke of a local day — the one way an end can fall on
+ * the next date without the event running into it. */
+function endsAtDayStart(span: EventSpan, timeZone: string): boolean {
+  return dayStartInZone(dayKeyOf(new Date(span.endMs), timeZone), timeZone) === span.endMs;
 }
 
 function clockParts(ms: number, timeZone: string): { clock: string; dayPeriod: string } {
