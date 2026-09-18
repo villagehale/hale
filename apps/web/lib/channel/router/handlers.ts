@@ -1,9 +1,13 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import { connectorOfferReply } from '~/lib/channel/connect/copy';
-import { matchConnectorRequest } from '~/lib/channel/connect/detect';
+import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
+import {
+  matchConnectorDisconnectRequest,
+  matchConnectorRequest,
+} from '~/lib/channel/connect/detect';
 import { offerConnectorLink } from '~/lib/channel/connect/offer';
+import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
 import { replyLanguage } from '~/lib/channel/language';
 import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
@@ -288,6 +292,56 @@ export function connectorLinkHandler(
           );
           return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
       }
+    },
+  };
+}
+
+/**
+ * "disconnect my calendar" — the same door, the other way.
+ *
+ * A COMMAND, never an answer. It reads only its own explicit verb+noun shape
+ * (connect/detect.ts) and never consults the open questions, so it cannot claim a bare
+ * YES or NO and cannot take a turn that belongs to an approval, a plan or a health
+ * checkpoint. That is also why its position next to the connector link is free: the two
+ * matchers are disjoint by construction and neither shape occurs in any other handler's
+ * vocabulary.
+ *
+ * UNGATED, like the connect half it mirrors. Connect-by-text is live for every family,
+ * so gating the undo behind the F14 allowlist would leave most parents able to connect
+ * by text and unable to un-connect the same way — and the connected receipt tells all
+ * of them the words. A parent ending their own grant is an instruction they gave, not a
+ * proactive send, so the dark-launch reasoning does not reach it.
+ *
+ * Rule #11, all three ways out named and all three answered in the parent's own reply
+ * language: `revoked`, `not_connected` (nothing of theirs matched — never a false
+ * success), `revoke_failed` (nothing changed, said in French to a French parent).
+ */
+export function connectorDisconnectHandler(
+  log: Pick<Console, 'error'> = console,
+): DeterministicHandler {
+  return {
+    name: 'connector_disconnect',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const provider = matchConnectorDisconnectRequest(ctx.body);
+      if (!provider) return { claimed: false };
+
+      const outcome = await revokeConnectorByText(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        provider,
+      });
+      if (outcome.status === 'revoke_failed') {
+        // Ids and the named outcome only, never the body and never a token (rule #1).
+        log.error(
+          { familyId: ctx.familyId, provider, outcome: 'revoke_failed' },
+          'connector disconnect: revoke did not land - nothing was changed',
+        );
+      }
+      return {
+        claimed: true,
+        outcome: outcome.status,
+        reply: connectorRevokeReply(replyLanguage(ctx.body), provider, outcome.status),
+      };
     },
   };
 }

@@ -538,7 +538,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, founder_welcome, co_parent_assent, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, founder_welcome, co_parent_assent, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -549,6 +549,11 @@ describe('the shipped order', () => {
       // handlers is free; what matters is only that it is ahead of the bare-word
       // name capture, like everything else that matches something specific.
       'connector_link',
+      // The undo, beside the door it undoes. Its position is free for the same reason
+      // the link's is — the two matchers are disjoint by construction (detect.ts), and
+      // neither shape is in any other handler's vocabulary. It reads no bare word, so
+      // it can never take a turn a YES belongs to.
+      'connector_disconnect',
       // Ahead of the three handlers that read a bare affirmative for a household's OWN
       // business: this is the only one whose wrong answer texts a different household.
       'founder_welcome',
