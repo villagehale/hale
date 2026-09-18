@@ -480,6 +480,9 @@ describe('the text itself', () => {
       ['Saturday swim class cancelled', 'Riverside Pool cancelled Saturday swim class'],
       ['Swim Class - CANCELLED', 'Riverside Pool cancelled Swim Class'],
       ['Swim class is cancelled', 'Riverside Pool cancelled Swim class'],
+      // Two auxiliaries, which is how a vendor writes it: the tail has to take the whole
+      // 'is now cancelled' or it leaves a dangling 'is' behind as the occasion.
+      ['Swim class is now cancelled', 'Riverside Pool cancelled Swim class'],
       ['Swim class cancelled!', 'Riverside Pool cancelled Swim class'],
       ['Cancellation of Tuesday practice', 'Riverside Pool says Cancellation of Tuesday practice'],
       // The CONTROL. Without it every row above passes on a renderer that simply never
@@ -501,6 +504,9 @@ describe('the text itself', () => {
       // The CONTROL: a title with no verb in it at all must still say what happened.
       ['Soccer practice', 'Riverside Pool moved Soccer practice to Saturday, Sep 26'],
       ['Practice moved to 5pm', 'Riverside Pool says Practice moved to 5pm - now Saturday, Sep 26'],
+      // The PRESENT tense of the same sentence. A frame that tests for 'moved' and not
+      // 'moves' writes Hale's destination onto the vendor's, and the sentence carries two.
+      ['Practice moves to 5pm', 'Riverside Pool says Practice moves to 5pm - now Saturday, Sep 26'],
       [
         'Swim class rescheduled to Friday',
         'Riverside Pool says Swim class rescheduled to Friday - now Saturday, Sep 26',
@@ -571,9 +577,9 @@ describe('the text itself', () => {
       renderEmailAlert({ ...RENDER, ...over } as EmailAlertRenderInput);
 
     // A reschedule Hale only knows the OLD time for still says what happened.
-    expect(sentence({ kind: 'reschedule', event: { ...RENDER.event, title: 'Swim lessons' } })).toBe(
-      'Riverside Pool moved Swim lessons - it was Saturday, Sep 19 at 9:00 a.m.',
-    );
+    expect(
+      sentence({ kind: 'reschedule', event: { ...RENDER.event, title: 'Swim lessons' } }),
+    ).toBe('Riverside Pool moved Swim lessons - it was Saturday, Sep 19 at 9:00 a.m.');
     expect(
       sentence({
         kind: 'new_event',
@@ -600,6 +606,21 @@ describe('the text itself', () => {
         },
       }),
     ).toBe('Cartwheels Gym says Fall registration is open - Friday, Oct 2 at 9:00 a.m.');
+    // Ollie's canonical registration line has a finite verb and no copula — the shape a
+    // copula-only test lets through, and "has Term 1 registration opens Monday" is what
+    // that costs.
+    expect(
+      sentence({
+        kind: 'new_event',
+        from: 'Cartwheels Gym <hello@cartwheels.example>',
+        event: {
+          ...RENDER.event,
+          title: 'Term 1 registration opens Monday',
+          originalTime: null,
+          newTime: '2026-10-02T13:00:00.000Z',
+        },
+      }),
+    ).toBe('Cartwheels Gym says Term 1 registration opens Monday - Friday, Oct 2 at 9:00 a.m.');
     expect(
       sentence({
         kind: 'reminder_only',
@@ -613,6 +634,143 @@ describe('the text itself', () => {
         event: { ...RENDER.event, title: 'a possible schedule change', originalTime: null },
       }),
     ).toBe('Riverside Pool sent something about a possible schedule change.');
+  });
+
+  it('picks the frame by ONE question — does the title already carry a verb', () => {
+    // The class of bug this table exists to end: each round found another inflection the
+    // frame had not been told about ('moved' but not 'moves', 'is' but not 'opens'), and
+    // each fix named that one word. So the frame is decided ONCE, by a single question
+    // about the title, and each answer has exactly one shape:
+    //   YES, it carries a verb -> relay it whole under "says" and hang the time off a
+    //        dash. Never a second verb, never a second destination.
+    //   NO, it is a noun phrase -> Hale supplies the verb (cancelled / moved / has).
+    // A TRAILING change word comes off first, and what is left is what gets asked.
+    const MOVED_TO = '2026-09-26T14:30:00.000Z';
+    const WAS = 'it was Saturday, Sep 19 at 9:00 a.m.';
+    const NOW_AT = 'Saturday, Sep 26 at 10:30 a.m.';
+    const rows: Array<{ kind: ExtractionKind; title: string; from?: string; body: string }> = [
+      // Noun phrase: Hale's verb, and the time on Hale's preposition.
+      {
+        kind: 'cancellation',
+        title: 'Swim lessons',
+        body: `Riverside Pool cancelled Swim lessons - ${WAS}`,
+      },
+      // Past tense as a tail: taken off, then the noun phrase underneath.
+      {
+        kind: 'cancellation',
+        title: 'Saturday swim class cancelled',
+        body: `Riverside Pool cancelled Saturday swim class - ${WAS}`,
+      },
+      // 'is now' — two auxiliaries in front of the tail.
+      {
+        kind: 'cancellation',
+        title: 'Swim class is now cancelled',
+        body: `Riverside Pool cancelled Swim class - ${WAS}`,
+      },
+      // A vendor label is the sender's filing system, not a verb.
+      {
+        kind: 'cancellation',
+        title: 'Cancelled: Saturday swim class',
+        body: `Riverside Pool cancelled Saturday swim class - ${WAS}`,
+      },
+      // The change word is EMBEDDED and cannot come off cleanly: relay, no second verb.
+      {
+        kind: 'cancellation',
+        title: 'Cancellation of Tuesday practice',
+        body: `Riverside Pool says Cancellation of Tuesday practice - ${WAS}`,
+      },
+      {
+        kind: 'reschedule',
+        title: 'Soccer practice',
+        body: `Riverside Pool moved Soccer practice to ${NOW_AT} (was Sep 19).`,
+      },
+      {
+        kind: 'reschedule',
+        title: 'Soccer practice moved',
+        body: `Riverside Pool moved Soccer practice to ${NOW_AT} (was Sep 19).`,
+      },
+      // Present progressive as a tail.
+      {
+        kind: 'reschedule',
+        title: 'Swim class is moving',
+        body: `Riverside Pool moved Swim class to ${NOW_AT} (was Sep 19).`,
+      },
+      // Present tense with the vendor's OWN destination in it: relayed, dash clause, one
+      // 'to' in the whole sentence.
+      {
+        kind: 'reschedule',
+        title: 'Practice moves to 5pm',
+        body: `Riverside Pool says Practice moves to 5pm - now ${NOW_AT} (was Sep 19).`,
+      },
+      {
+        kind: 'reschedule',
+        title: 'Rescheduled: Picture day',
+        body: `Riverside Pool moved Picture day to ${NOW_AT} (was Sep 19).`,
+      },
+      {
+        kind: 'new_event',
+        title: 'Picture day',
+        body: `Riverside Pool has Picture day on ${NOW_AT}`,
+      },
+      // Ollie's registration line, present tense and no copula.
+      {
+        kind: 'new_event',
+        title: 'Term 1 registration opens Monday',
+        body: `Riverside Pool says Term 1 registration opens Monday - ${NOW_AT}`,
+      },
+      {
+        kind: 'new_event',
+        title: 'Fall registration is open',
+        body: `Riverside Pool says Fall registration is open - ${NOW_AT}`,
+      },
+      // A display name carries the sender's full stop the way a subject line does, and it
+      // lands in the middle of Hale's sentence.
+      {
+        kind: 'new_event',
+        title: 'Picture day',
+        from: 'Riverside Pool. <info@riverside.example>',
+        body: `Riverside Pool has Picture day on ${NOW_AT}`,
+      },
+      // A reminder that is a noun phrase is an occasion, not a thing to say out loud:
+      // "says Pediatric checkup - Saturday" is a dash standing in for the verb.
+      {
+        kind: 'reminder_only',
+        title: 'Pediatric checkup',
+        body: 'Riverside Pool has Pediatric checkup on Saturday, Sep 19 at 9:00 a.m.',
+      },
+      {
+        kind: 'reminder_only',
+        title: 'the field trip form is due',
+        body: 'Riverside Pool says the field trip form is due - Saturday, Sep 19 at 9:00 a.m.',
+      },
+      {
+        kind: 'reminder_only',
+        title: 'Registration opens Monday',
+        body: 'Riverside Pool says Registration opens Monday - Saturday, Sep 19 at 9:00 a.m.',
+      },
+      {
+        kind: 'unclear',
+        title: 'a possible schedule change',
+        body: 'Riverside Pool sent something about a possible schedule change.',
+      },
+    ];
+
+    for (const row of rows) {
+      const body = renderEmailAlert({
+        ...RENDER,
+        kind: row.kind,
+        from: row.from ?? RENDER.from,
+        event: {
+          ...RENDER.event,
+          title: row.title,
+          newTime: row.kind === 'reschedule' || row.kind === 'new_event' ? MOVED_TO : null,
+        },
+      });
+      expect(body).toBe(row.body);
+      // On EVERY row: one destination per sentence. Two 'to's is the vendor's verb and
+      // Hale's both carrying the new time.
+      expect(body).not.toMatch(/\bto\b[^.]*\bto\b/);
+    }
   });
 
   it('keeps a street address out of the sentence and a short place in it', () => {

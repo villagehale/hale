@@ -388,6 +388,11 @@ const TEEN_CLOSER = "I've kept the details out of this text.";
 const VENDOR_LABEL =
   /^(?:reminder|cancell?ed|rescheduled|postponed|new|update|updated|notice|fyi)\s*[:\-]\s*/i;
 
+/** The full stop that ends someone else's line and lands in the middle of Hale's — a
+ * subject line's ("Picture Day." on Friday) and a display name's alike ("Riverside Pool."
+ * as the subject of a sentence). */
+const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
+
 /**
  * THERE IS NO CALL TO ACTION, and its absence is the design.
  *
@@ -442,7 +447,7 @@ export function renderEmailAlert(input: EmailAlertRenderInput): string {
   // Reminder: the form is due" says the kind of thing twice, and "Picture Day. on Friday"
   // is what a subject line's full stop reads as inside a clause.
   const title = clamp(gsm7(input.event.title).replace(VENDOR_LABEL, ''), TITLE_MAX).replace(
-    /[.,;:!?]+$/,
+    TRAILING_PUNCTUATION,
     '',
   );
 
@@ -455,7 +460,7 @@ export function renderEmailAlert(input: EmailAlertRenderInput): string {
 
   return compose(
     input,
-    clamp(gsm7(senderLabel(input.from)), SENDER_MAX),
+    clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, ''),
     title || GENERIC_TITLE[input.kind],
   );
 }
@@ -487,20 +492,20 @@ function compose(input: EmailAlertRenderInput, sender: string, title: string): s
       const from = shortDate(event.originalTime, timeZone, now);
       return end(from === null ? destination : `${destination} (was ${from})`);
     }
-    case 'new_event': {
-      // "Fall registration is open" is a sentence already, and nothing HAS a sentence.
-      // A clause is relayed under "says" — Ollie's own frame for exactly this line — and
-      // its time becomes a dash clause rather than an "on" the vendor's verb swallows.
-      const clause = CLAUSE.test(title);
-      const head = sender === '' ? title : `${sender} ${clause ? 'says' : 'has'} ${title}`;
-      const on = at(event.newTime);
-      const when = on === null ? '' : clause ? ` - ${on}` : ` on ${on}`;
-      return end(`${head}${venue(event.location)}${when}`);
-    }
+    case 'new_event':
     case 'reminder_only': {
-      const head = sender === '' ? title : `${sender} says ${title}`;
-      const due = at(event.originalTime);
-      return end(due === null ? head : `${head} - ${due}`);
+      // One frame for both, because the only difference between them is WHICH time the
+      // extraction put the date in: a date the parent did not have, or one they did.
+      // "Fall registration is open" is a sentence already and nothing HAS a sentence, so a
+      // title carrying a verb is relayed under "says" — Ollie's own frame for that line —
+      // with its time as a dash clause; a noun phrase takes Hale's verb and an "on", never
+      // a dash standing in for the verb ("says Pediatric checkup - Saturday").
+      const relayed = VERBISH.test(title);
+      const head = sender === '' ? title : `${sender} ${relayed ? 'says' : 'has'} ${title}`;
+      const on = at(input.kind === 'new_event' ? event.newTime : event.originalTime);
+      const place = input.kind === 'new_event' ? venue(event.location) : '';
+      const when = on === null ? '' : relayed ? ` - ${on}` : ` on ${on}`;
+      return end(`${head}${place}${when}`);
     }
     case 'unclear':
       return end(
@@ -509,12 +514,26 @@ function compose(input: EmailAlertRenderInput, sender: string, title: string): s
   }
 }
 
+/**
+ * THE ONE QUESTION. Does the title already carry a verb — a finite verb or a change word,
+ * anywhere in it?
+ *
+ * Every frame in this file hangs off that single answer, and it is one regex rather than a
+ * test per frame because the alternative was found twice in review: a copula-only test
+ * ("is"/"are") let "Term 1 registration opens Monday" through as a noun phrase, and a
+ * past-tense-only test ("moved") let "Practice moves to 5pm" through, each producing the
+ * sentence with two verbs or two destinations that the frames exist to prevent. Naming the
+ * next inflection would have been the third fix of the same bug.
+ *
+ * Deliberately broad, because the two sides are not symmetric: relaying a noun phrase under
+ * "says" reads a little flat, while treating a sentence as a noun phrase welds Hale's
+ * grammar onto the vendor's. Erring towards "it has a verb" is the cheap side.
+ */
+const VERBISH =
+  /\b(?:is|are|was|were|has|have|will|opens?|starts?|begins?|returns?|resumes?|ends?|mov(?:e|es|ed|ing)|cancell?(?:s|ed|ing)?|cancellation|called off|reschedul\w*|postpon\w*|new time)\b/i;
+
 /** `9:00 a.m.` already ends the sentence; a second period is the kind of thing nobody
  * notices in review and everybody notices on a phone. */
-/** A title that is a whole clause rather than a noun phrase. Crude on purpose: the two
- * copulas are what separate "Fall registration is open" from "Picture day". */
-const CLAUSE = /\s(?:is|are)\s/i;
-
 function end(sentence: string): string {
   return sentence.endsWith('.') ? sentence : `${sentence}.`;
 }
@@ -523,10 +542,20 @@ function end(sentence: string): string {
 interface ChangeWords {
   /** What Hale says when the title has NOT said it. */
   verb: string;
-  /** The word as a tail the vendor tacked on — `... - CANCELLED`, `... is cancelled`. */
+  /** The word as a tail the vendor tacked on — `... - CANCELLED`, `... is now cancelled`. */
   tail: RegExp;
-  /** The same family of words anywhere at all. */
-  anywhere: RegExp;
+}
+
+/** `... - CANCELLED`, `... is now cancelled`, `... is moving` — the change word at the very
+ * end of the title, with however much auxiliary the vendor put in front of it. The two
+ * auxiliary slots are optional AND independent: one combined group took `is cancelled` and
+ * `now cancelled` but left the `is` of `is now cancelled` behind as the occasion Hale then
+ * named ("cancelled Swim class is"). */
+function changeTail(word: string): RegExp {
+  return new RegExp(
+    `[\\s\\-:,]*(?:\\b(?:is|are|was|were|has been|have been|will be)\\s+)?(?:\\bnow\\s+)?\\b(?:${word})\\b$`,
+    'i',
+  );
 }
 
 /**
@@ -544,17 +573,19 @@ interface ChangeWords {
  * title under "says" and add no second verb — only, for a reschedule, the new time as its
  * own clause. Hale never states the change twice, and never rewrites the middle of a
  * sentence the school wrote.
+ *
+ * What counts as "embedded" is {@link VERBISH} — the same one question every other frame
+ * here asks, rather than a per-kind list of change words, which is what caught 'moved' and
+ * let 'moves' through.
  */
 const CHANGE: Record<'cancellation' | 'reschedule', ChangeWords> = {
   cancellation: {
     verb: 'cancelled',
-    tail: /[\s\-:,]*(?:\b(?:is|has been|was|now)\s+)?\bcancell?ed\b$/i,
-    anywhere: /\bcancell?ed\b|\bcancellation\b|\bcalled off\b/i,
+    tail: changeTail('cancell?ed|cancellation'),
   },
   reschedule: {
     verb: 'moved',
-    tail: /[\s\-:,]*(?:\b(?:is|has been|was|now)\s+)?\b(?:moved|rescheduled|postponed)\b$/i,
-    anywhere: /\bmoved?\b|\breschedul\w*\b|\bpostponed?\b|\bnew time\b/i,
+    tail: changeTail('mov(?:ed|es|ing)|reschedul(?:ed|es|ing)|postpon(?:ed|es|ing)'),
   },
 };
 
@@ -573,7 +604,7 @@ interface Head {
 
 function changeHead(sender: string, title: string, words: ChangeWords): Head {
   const occasion = title.replace(words.tail, '').trim() || GENERIC_OCCASION;
-  if (!words.anywhere.test(occasion)) {
+  if (!VERBISH.test(occasion)) {
     return {
       text: sender === '' ? `${occasion} ${words.verb}` : `${sender} ${words.verb} ${occasion}`,
       relayed: false,
