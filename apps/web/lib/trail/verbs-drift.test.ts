@@ -129,6 +129,10 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'co_parent_invite_blocked',
     'co_parent_invite_blocked_prior_refusal',
   ],
+  // MINT_VERB[purpose] — the family's ics_share_token is one column behind two very
+  // different disclosures (the whole-calendar subscription, or a one-way-hashed
+  // per-event link), and the first mint says which one the caller made.
+  'apps/web/lib/loop/ics-feed.ts': ['ics_feed_shared', 'ics_event_link_minted'],
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
   // CANARY_ANSWERED_ACTION — a constant precisely because the cron's
   // verification reads the same value back (channel/canary/run.ts); a literal

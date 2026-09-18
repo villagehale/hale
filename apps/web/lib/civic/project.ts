@@ -104,6 +104,28 @@ const CITY_TO_MUNICIPALITY: Readonly<Record<string, Municipality>> = {
   mississauga: 'mississauga',
   stouffville: 'whitchurch_stouffville',
   'whitchurch-stouffville': 'whitchurch_stouffville',
+  newmarket: 'newmarket',
+  // The villages are safe HERE and nowhere else: this matches a venue's structured
+  // city field, not free text, so "Sharon" is a postal city and never a given name.
+  king: 'king',
+  'king city': 'king',
+  'king township': 'king',
+  nobleton: 'king',
+  schomberg: 'king',
+  kettleby: 'king',
+  'east gwillimbury': 'east_gwillimbury',
+  'holland landing': 'east_gwillimbury',
+  sharon: 'east_gwillimbury',
+  'mount albert': 'east_gwillimbury',
+  queensville: 'east_gwillimbury',
+  georgina: 'georgina',
+  keswick: 'georgina',
+  sutton: 'georgina',
+  'sutton west': 'georgina',
+  pefferlaw: 'georgina',
+  "jackson's point": 'georgina',
+  'jacksons point': 'georgina',
+  uxbridge: 'uxbridge',
 };
 
 export function municipalityForCity(city: string | null): Municipality | null {

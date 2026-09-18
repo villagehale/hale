@@ -9,6 +9,7 @@ import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import {
   EMAIL_ALERT_MAX_PER_SWEEP,
   EMAIL_ALERT_TEMPLATE_KEY,
@@ -450,9 +451,22 @@ describe('the text itself', () => {
       location: null,
     },
     teenContent: false,
+    matchedEventRef: null,
     timeZone: 'America/Toronto',
     now: NOW,
   };
+
+  /**
+   * The ONE clause this render may add after its sentence — see `emailAlertOfferDraft`.
+   *
+   * The frame tests below are about the SENTENCE, so they read the body with the clause
+   * taken off, in one place rather than as `+ CTA` on seventeen table rows. Whether the
+   * clause is there at all, and where it lands, is what `the offer at the end` asserts —
+   * including every shape that must NOT carry it, so stripping here cannot hide one.
+   */
+  const CTA = ' Reply YES and it goes on your week.';
+  const frame = (input: EmailAlertRenderInput): string =>
+    renderEmailAlert(input).replace(CTA, '');
 
   it('is a plain sentence: the sender did it, the time is a clause, and it ends there', () => {
     // The first cut opened "From your email:" and closed "I can add it to your week -
@@ -490,7 +504,7 @@ describe('the text itself', () => {
       ['Swim lessons', 'Riverside Pool cancelled Swim lessons'],
     ];
     for (const [title, head] of cancelled) {
-      const body = renderEmailAlert({ ...RENDER, event: { ...RENDER.event, title } });
+      const body = frame({ ...RENDER, event: { ...RENDER.event, title } });
       expect(body).toBe(`${head} - it was Saturday, Sep 19 at 9:00 a.m.`);
       expect(body).not.toMatch(/cancelled[^.]*\bcancelled\b/i);
     }
@@ -517,7 +531,7 @@ describe('the text itself', () => {
       ],
     ];
     for (const [title, head] of moved) {
-      const body = renderEmailAlert({
+      const body = frame({
         ...RENDER,
         kind: 'reschedule',
         event: { ...RENDER.event, title, newTime: '2026-09-26T14:30:00.000Z' },
@@ -534,7 +548,7 @@ describe('the text itself', () => {
     // sentence already says which kind of thing this is, so relaying the label says it
     // twice in someone else's voice.
     const sentence = (over: Partial<EmailAlertRenderInput>) =>
-      renderEmailAlert({ ...RENDER, ...over } as EmailAlertRenderInput);
+      frame({ ...RENDER, ...over } as EmailAlertRenderInput);
 
     expect(sentence({ event: { ...RENDER.event, title: 'Cancelled: Saturday swim class' } })).toBe(
       'Riverside Pool cancelled Saturday swim class - it was Saturday, Sep 19 at 9:00 a.m.',
@@ -566,7 +580,7 @@ describe('the text itself', () => {
     // 'CANCELLED' as the whole title leaves nothing to name. Relaying it under "says"
     // puts a vendor's shout in Hale's mouth; the frame keeps its verb and its own object.
     for (const title of ['CANCELLED', '']) {
-      expect(renderEmailAlert({ ...RENDER, event: { ...RENDER.event, title } })).toBe(
+      expect(frame({ ...RENDER, event: { ...RENDER.event, title } })).toBe(
         'Riverside Pool cancelled something - it was Saturday, Sep 19 at 9:00 a.m.',
       );
     }
@@ -574,7 +588,7 @@ describe('the text itself', () => {
 
   it('has a sentence for every kind the extraction can return', () => {
     const sentence = (over: Partial<EmailAlertRenderInput>) =>
-      renderEmailAlert({ ...RENDER, ...over } as EmailAlertRenderInput);
+      frame({ ...RENDER, ...over } as EmailAlertRenderInput);
 
     // A reschedule Hale only knows the OLD time for still says what happened.
     expect(
@@ -756,7 +770,7 @@ describe('the text itself', () => {
     ];
 
     for (const row of rows) {
-      const body = renderEmailAlert({
+      const body = frame({
         ...RENDER,
         kind: row.kind,
         from: row.from ?? RENDER.from,
@@ -778,7 +792,7 @@ describe('the text itself', () => {
     // repeat: it is long, it is the part a parent already knows, and it is the part that
     // makes an SMS a copy of the email.
     const newEvent = (location: string) =>
-      renderEmailAlert({
+      frame({
         ...RENDER,
         kind: 'new_event',
         event: {
@@ -798,7 +812,7 @@ describe('the text itself', () => {
   it('falls back to the bare DOMAIN as the subject, never the full address', () => {
     // An address in a text is a mailbox anyone holding the phone can write to. A domain
     // reads perfectly well as the subject of a sentence.
-    const body = renderEmailAlert({ ...RENDER, from: 'registrar.k12@yrdsb.example' });
+    const body = frame({ ...RENDER, from: 'registrar.k12@yrdsb.example' });
     expect(body).toBe(
       'yrdsb.example cancelled Saturday swim class - it was Saturday, Sep 19 at 9:00 a.m.',
     );
@@ -809,7 +823,7 @@ describe('the text itself', () => {
     // `"noreply@school.example" <noreply@school.example>` is what school and daycare
     // systems put in From, so reading the display name is reading the address out loud.
     // Any '@' in the label means the domain is the honest half of it.
-    const body = renderEmailAlert({
+    const body = frame({
       ...RENDER,
       from: '"noreply@school.example" <noreply@school.example>',
     });
@@ -819,7 +833,7 @@ describe('the text itself', () => {
 
   it('says only what happened when the extraction found no usable time', () => {
     expect(
-      renderEmailAlert({
+      frame({
         ...RENDER,
         kind: 'reminder_only',
         event: { ...RENDER.event, title: 'the field trip form is due', originalTime: null },
@@ -831,13 +845,13 @@ describe('the text itself', () => {
     // `original_time` is a model's free text. "Invalid Date" in a parent's phone is worse
     // than no time at all.
     expect(
-      renderEmailAlert({ ...RENDER, event: { ...RENDER.event, originalTime: 'this Saturday' } }),
+      frame({ ...RENDER, event: { ...RENDER.event, originalTime: 'this Saturday' } }),
     ).toBe('Riverside Pool cancelled Saturday swim class.');
   });
 
   it('carries the YEAR on a date in another year, in both halves of a reschedule', () => {
     expect(
-      renderEmailAlert({
+      frame({
         ...RENDER,
         kind: 'reschedule',
         event: {
@@ -851,7 +865,7 @@ describe('the text itself', () => {
   });
 
   it('bounds a runaway title at a word boundary and still ends the sentence', () => {
-    const body = renderEmailAlert({
+    const body = frame({
       ...RENDER,
       event: {
         ...RENDER.event,
@@ -867,7 +881,7 @@ describe('the text itself', () => {
     // The pipeline has already genericized the title by the time this sees it; dropping
     // the sender and the time is this renderer's half of rule #1, because a clinic's
     // domain and a Thursday 4pm are the disclosure.
-    const body = renderEmailAlert({
+    const body = frame({
       ...RENDER,
       kind: 'unclear',
       teenContent: true,
@@ -884,7 +898,7 @@ describe('the text itself', () => {
   it('folds a typographic subject line back into GSM-7 rather than paying UCS-2 for it', () => {
     // One curly apostrophe flips the WHOLE body to UCS-2 and halves the segment budget,
     // for a difference nobody reading it on a phone can see.
-    const body = renderEmailAlert({
+    const body = frame({
       ...RENDER,
       from: '"Riverside’s Pool" <a@b.example>',
       event: { ...RENDER.event, title: 'Leo’s class — cancelled…' },
@@ -897,7 +911,7 @@ describe('the text itself', () => {
     // `senderLabel` returns '' for a malformed From with no '@'. With no subject there is
     // no Ollie sentence to write, so the occasion becomes the subject — never a stand-in
     // sender, which would be a fact Hale invented.
-    expect(renderEmailAlert({ ...RENDER, from: 'no-at-sign-at-all' })).toBe(
+    expect(frame({ ...RENDER, from: 'no-at-sign-at-all' })).toBe(
       'Saturday swim class cancelled - it was Saturday, Sep 19 at 9:00 a.m.',
     );
   });
@@ -905,6 +919,8 @@ describe('the text itself', () => {
   it('holds two GSM-7 segments including the FULL opt-out, for every shape it can render', () => {
     // The budget is what makes the clamps load-bearing: remove SENDER_MAX or TITLE_MAX and
     // one verbose school subject line becomes a three-segment bill per family per email.
+    // The OFFER CLAUSE is inside this bound too — `renderEmailAlert` is called here, not
+    // `frame` — because the shapes that can carry it are exactly the long ones.
     const nasty = 'Registration — '.repeat(40);
     const kinds: ExtractionKind[] = [
       'cancellation',
@@ -939,6 +955,154 @@ describe('the text itself', () => {
         }
       }
     }
+  });
+});
+
+const RENDER_FOR_OFFER = {
+  from: 'Riverside Pool <info@riverside.example>',
+  kind: 'new_event' as ExtractionKind,
+  teenContent: false,
+  matchedEventRef: null,
+  timeZone: 'America/Toronto',
+  now: NOW,
+};
+
+describe('the offer at the end', () => {
+  /**
+   * The sentence Hale may end on, and the row that has to exist before it may say it.
+   *
+   * #649 removed "I can add it to your week - reply YES" because nothing consumed the YES:
+   * a parent doing what the text said reached the coach with nothing drafted, or, with one
+   * unrelated action pending, approved THAT one. So the two halves are asserted together
+   * in every test here — a text with the clause and no row is the bug coming back, and a
+   * row with no clause is a question nobody was asked that makes every bare affirmative in
+   * the household ambiguous for a day.
+   */
+  const CTA = 'Reply YES and it goes on your week.';
+
+  const future = (
+    over: Partial<ExtractedEvent> & { kind?: ExtractionKind; teenContent?: boolean } = {},
+  ) =>
+    classified({
+      kind: 'new_event',
+      title: 'Picture day',
+      originalTime: null,
+      newTime: '2026-10-02T13:00:00.000Z',
+      ...over,
+    });
+
+  function offerRows() {
+    return db.database
+      .select()
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.familyId, family.familyId));
+  }
+
+  it('writes ONE offer row against the text that carried the clause', async () => {
+    const h = harness({ classification: future({ location: 'the gym' }) });
+
+    await expect(alert(h)).resolves.toBe('sent');
+
+    expect(h.transport.sent[0]?.body).toContain(CTA);
+    const [rows, offers] = await Promise.all([ledgerRows(), offerRows()]);
+    const sent = rows.find((row) => row.dedupeKey !== null);
+    expect(offers).toHaveLength(1);
+    expect(offers[0]).toMatchObject({
+      parentUserId: family.parentUserId,
+      integrationId: INTEGRATION,
+      messageId: 'm1',
+      kind: 'new_event',
+      title: 'Picture day',
+      location: 'the gym',
+      // Against the row that carried it: an offer nobody was told about is not an offer.
+      channelMessageId: sent?.id,
+      resolvedAt: null,
+      resolution: null,
+      eventId: null,
+    });
+    const offer = offers[0];
+    if (!offer) throw new Error('no offer row');
+    expect(offer.startsAt.toISOString()).toBe('2026-10-02T13:00:00.000Z');
+    // 24h from the send, applied at the reader rather than by a sweep.
+    expect(offer.expiresAt.getTime() - NOW.getTime()).toBe(EMAIL_ALERT_OFFER_TTL_MS);
+  });
+
+  it('holds the CTA and the row to the same decision, shape by shape', async () => {
+    // Each of these is a way the sentence would be untrue. The pairing is the assertion:
+    // no row means no clause, and no clause means no row, in one table so a future shape
+    // cannot be given one without the other.
+    const silent: Array<[string, SentinelClassification]> = [
+      // A cancellation is the REMOVAL of a date; putting it on the week is the opposite.
+      ['a cancellation', classified()],
+      // Hale could not tell what the email was.
+      ['an unreadable email', classified({ kind: 'unclear' })],
+      // Nothing to put anywhere.
+      ['no usable time', future({ newTime: null })],
+      ['a time the model did not write as a date', future({ newTime: 'next Friday' })],
+      // An offer to put last Tuesday on your week is a sentence nobody would write.
+      ['a date already past', future({ newTime: '2026-09-01T13:00:00.000Z' })],
+      // The pipeline genericized the title, so there is no occasion left to add — and
+      // adding one would re-disclose what the teen gate just removed (rule #1).
+      ['a 13+ child', future({ teenContent: true })],
+      // A title that survives sanitising as nothing at all.
+      ['a title outside the alphabet', future({ title: '。。。' })],
+    ];
+
+    for (const [why, classification] of silent) {
+      family = await seedFamily(db.database);
+      INTEGRATION = randomUUID();
+      const h = harness({ classification });
+
+      await expect(alert(h), why).resolves.toBe('sent');
+
+      expect(h.transport.sent[0]?.body, why).not.toContain('YES');
+      await expect(offerRows(), why).resolves.toHaveLength(0);
+    }
+  });
+
+  it('does not offer an occasion the family already tracks', async () => {
+    // A reschedule of a class Hale already holds would be PLACED BESIDE the old one - two
+    // copies of one Saturday, from a text that promised to tidy it.
+    const matched = future({ kind: 'reschedule' });
+    const extraction = matched.extraction;
+    if (!extraction) throw new Error('fixture lost its extraction');
+    extraction.matchedEventRef = { table: 'family_events', id: randomUUID() };
+    const h = harness({ classification: matched });
+
+    await expect(alert(h)).resolves.toBe('sent');
+
+    expect(h.transport.sent[0]?.body).not.toContain('YES');
+    await expect(offerRows()).resolves.toHaveLength(0);
+  });
+
+  it('puts the clause after the sentence ends, once, and never inside a teen text', () => {
+    const body = renderEmailAlert({
+      ...RENDER_FOR_OFFER,
+      event: {
+        title: 'Picture day',
+        childRef: null,
+        originalTime: null,
+        newTime: '2026-10-02T13:00:00.000Z',
+        location: null,
+      },
+    });
+    expect(body).toBe(`Riverside Pool has Picture day on Friday, Oct 2 at 9:00 a.m. ${CTA}`);
+    expect(body.match(/Reply YES/g)).toHaveLength(1);
+
+    // The teen text is category-only and returns before the frame runs at all.
+    expect(
+      renderEmailAlert({
+        ...RENDER_FOR_OFFER,
+        teenContent: true,
+        event: {
+          title: 'a message about school',
+          childRef: null,
+          originalTime: null,
+          newTime: '2026-10-02T13:00:00.000Z',
+          location: null,
+        },
+      }),
+    ).not.toContain('YES');
   });
 });
 

@@ -13,11 +13,20 @@ export interface ConnectState {
   familyId: string;
   userId: string;
   provider: ConnectorProvider;
-  /** 'mobile' when the flow started from the retired native app's mint route
-   * (deleted in VIL-318). Nothing mints these any more; the callback rejects them
-   * (its nonce binding went with the mint), and the field stays only so a stale
-   * state still parses to a typed rejection instead of a decode error. */
-  surface?: 'mobile';
+  /**
+   * Where the parent was standing when the consent started, when it was not Settings.
+   *
+   * 'text' — the parent tapped a link in a text thread, so the return leg owes them a
+   * closeable done page and a text back rather than a dashboard. Carried INSIDE the
+   * signature: which surface answers is a decision the callback must not take from a
+   * query string a browser can edit.
+   *
+   * 'mobile' — the retired native app's mint route (deleted in VIL-318). Nothing mints
+   * these any more; the callback rejects them (its nonce binding went with the mint),
+   * and the value stays only so a stale state still parses to a typed rejection instead
+   * of a decode error.
+   */
+  surface?: 'mobile' | 'text';
 }
 
 interface SignedPayload extends ConnectState {

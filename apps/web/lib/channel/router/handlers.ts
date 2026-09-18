@@ -11,6 +11,10 @@ import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/iden
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import {
+  handleEmailAlertOfferReply,
+  resolveEmailAlertOffer,
+} from '~/lib/integrations/email-alert-offer';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import {
   type PrepareReplyDeps,
@@ -456,6 +460,92 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
         default:
           return { claimed: false };
       }
+    },
+  };
+}
+
+/**
+ * The YES at the end of a Gmail alert — the occasion goes on the family's week.
+ *
+ * PLACED BETWEEN HEALTH AND PLAN, by this file's own rule: among handlers that recognise
+ * the same word, the one whose wrong answer costs most goes first. A wrong reading here
+ * writes a real entry on the week and materializes reminders off it — more than a plan's
+ * three texts, less than filing a health checkpoint as handled (which silences a records
+ * reminder for months) and far less than an approval that executes something. It cannot
+ * starve the two behind it either: with no offer row the load is one indexed read and a
+ * decline, which is every family that has not connected a mailbox.
+ *
+ * NO F14 GATE, unlike the registration handler, and the omission is the honest one: the
+ * flag decides whether Hale may START a conversation, and the offer row is proof it
+ * already did. Gating the answer would strand a question a parent was actually asked if
+ * the flag went off between the text and the reply. With the flag off no row is ever
+ * written, so the gate is the row.
+ *
+ * THE SECOND YES. Once the first one resolves the offer it stops being listed, so a
+ * repeat reaches this handler on the keyword pass with NO open question — where
+ * `soleOpenKind` is vacuously true and would let it claim any bare affirmative at all.
+ * That is why the repeat branch has to find something of its own to act on, why its
+ * window is minutes rather than the offer's own day, and why inside that window it still
+ * requires the receipt to be Hale's LAST WORD to this parent (email-alert-offer.ts).
+ *
+ * `ctx.inboundChannelMessageId` is not read. Nothing here files a fact against the
+ * parent's own words — the offer row already carries its provenance — so a spoken turn,
+ * which has no inbound row, would cost this handler nothing even if the kind were ever
+ * added to SPOKEN_QUESTION_KINDS (it is not).
+ */
+export function emailAlertAddHandler(): DeterministicHandler {
+  return {
+    name: 'email_alert_add',
+    resolves: new Set<OpenQuestionKind>(['email_alert_add']),
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const answer = ctx.resolved?.kind === 'email_alert_add' ? ctx.resolved : null;
+      const word = readAffirmative(ctx.body);
+      const polarity = answer?.polarity ?? (word === 'unclear' ? null : word);
+      if (polarity === null) return { claimed: false };
+      // THE BARE WORD, and the two things that make it unambiguous. `soleOpenKind` rules
+      // out every OTHER kind; the count rules out the second offer of this one, which that
+      // function is vacuously happy with — a family may hold three alerts a day, and "yes"
+      // next to two of them names neither. Declining sends the turn to the resolver and,
+      // failing that, to the one-sentence "Which one?" the subjects are written for.
+      if (answer === null) {
+        const questions = await ctx.openQuestions();
+        const mine = questions.filter((question) => question.kind === 'email_alert_add');
+        if (mine.length > 1 || !soleOpenKind(questions, 'email_alert_add')) {
+          return { claimed: false };
+        }
+      }
+
+      const outcome = await handleEmailAlertOfferReply(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        // The row the answer NAMES, never a position (route.ts `ResolvedAnswer`). Null is
+        // the bare word, which the guard above has just established is unambiguous.
+        offerId: answer?.questionId ?? null,
+        polarity,
+        language: replyLanguage(ctx.body),
+        now: ctx.now,
+      });
+      if (outcome.status === 'no_open_offer') return { claimed: false };
+      if (outcome.status === 'already_added') {
+        return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      }
+      const resolution = outcome.status;
+      return {
+        claimed: true,
+        outcome: resolution,
+        reply: outcome.reply,
+        // Closed by the message that told the parent, never before it. A turn that placed
+        // the event and then failed to answer must leave the offer standing so the redrive
+        // finds it — the event insert is claimed against the offer, so the redrive places
+        // nothing twice (the MEM-10 send-time discipline every other offer here keeps).
+        afterSend: (channelMessageId) =>
+          resolveEmailAlertOffer(database, {
+            offerId: outcome.offerId,
+            resolution,
+            channelMessageId,
+            now: ctx.now,
+          }),
+      };
     },
   };
 }

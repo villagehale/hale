@@ -53,3 +53,4 @@ export * from './mcp.js';
 export * from './voice-relay-claims.js';
 export * from './pending-disambiguations.js';
 export * from './watched-spots.js';
+export * from './email-alert-offers.js';

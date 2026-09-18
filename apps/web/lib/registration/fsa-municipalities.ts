@@ -18,7 +18,20 @@ import type { Municipality } from '@hale/db';
  *    (L0P covers Halton Hills, Milton, Burlington, Caledon and Brampton; L0G covers
  *    Richmond Hill plus five York/Simcoe towns), most of them outside our coverage.
  *    Serving a Milton family Halton Hills dates is worse than serving them nothing, so
- *    they resolve to nothing. This is the main known coverage hole.
+ *    they resolve to nothing. This is the main known coverage hole, and the York
+ *    expansion widened it rather than closing it — each covered town below keeps only
+ *    its urban FSA, and its rural communities resolve to nothing:
+ *      L0G "Ontario Centre"  — Kettleby, King City, Nobleton, Schomberg (King);
+ *          Holland Landing, Mount Albert, Queensville, River Drive Park, Sharon (East
+ *          Gwillimbury); Oak Ridges, Lake Wilcox (Richmond Hill); plus Bradford, Beeton,
+ *          Bond Head, Tottenham and Loretto, which are three uncovered towns.
+ *      L0E "Lake Simcoe Southeast Shore" — Baldwin, Jackson's Point, Keswick, Pefferlaw,
+ *          Roches Point, Sutton West, Willow Beach (Georgina); Zephyr (Uxbridge);
+ *          Cannington (Brock, uncovered).
+ *      L0C "West Durham Region" — Goodwood, Leaskdale, Sandford, Udora, Uxbridge
+ *          (Uxbridge); Greenbank, Seagrave (Scugog); Sunderland (Brock).
+ *    So Nobleton, Sharon, Sutton West and Goodwood are on the radar by NAME (the
+ *    rec-morning matcher reads the town out of the text) and off it by postal code.
  *
  * 3. Two Thornhill FSAs genuinely straddle a municipal boundary and are recorded as
  *    spanning both towns. Yonge Street is the line, but postal walks are not published
@@ -32,8 +45,9 @@ import type { Municipality } from '@hale/db';
  * 5. The source tabulates several FSAs under a COMMUNITY rather than its town, so a
  *    search for the town name returns nothing and the FSA looks unassigned. Georgetown
  *    (L7G) and Acton (L7J) are Halton Hills; Bolton (L7E), Caledon East and Caledon
- *    Village (L7C, L7K) are Caledon; Stouffville (L4A) is Whitchurch-Stouffville. Read
- *    the community names, not just the town ones.
+ *    Village (L7C, L7K) are Caledon; Stouffville (L4A) is Whitchurch-Stouffville; King
+ *    City (L7B) is King, Keswick (L4P) is Georgina, and Holland Landing / River Drive
+ *    Park (L9N) is East Gwillimbury. Read the community names, not just the town ones.
  *
  * Sources: Canada Post's published FSA assignments as tabulated in
  * https://en.wikipedia.org/wiki/List_of_postal_codes_of_Canada:_L and
@@ -44,6 +58,9 @@ import type { Municipality } from '@hale/db';
  * and L7E (Bolton, Caledon's largest community) double-checked per-code. L4A added and
  * verified 2026-09-17 against the same L table, where it is tabulated under the
  * community name Stouffville rather than under the Town of Whitchurch-Stouffville.
+ * Newmarket, King, East Gwillimbury, Georgina and Uxbridge added and verified
+ * 2026-09-18 against the same table, each code read off its printed name and each town
+ * searched for a second code (there is none — every entry below is a one-town FSA).
  */
 export const FSA_MUNICIPALITIES: Readonly<Record<string, readonly Municipality[]>> = {
   // ── Markham ──
@@ -163,6 +180,22 @@ export const FSA_MUNICIPALITIES: Readonly<Record<string, readonly Municipality[]
 
   // ── Whitchurch-Stouffville ──
   L4A: ['whitchurch_stouffville'],
+
+  // ── Newmarket ──
+  L3X: ['newmarket'],
+  L3Y: ['newmarket'],
+
+  // ── King: King City only. Nobleton, Schomberg and Kettleby are L0G (see limit 2) ──
+  L7B: ['king'],
+
+  // ── East Gwillimbury: Holland Landing only. Sharon, Mount Albert and Queensville are L0G ──
+  L9N: ['east_gwillimbury'],
+
+  // ── Georgina: Keswick only. Sutton West, Pefferlaw and Jackson's Point are L0E ──
+  L4P: ['georgina'],
+
+  // ── Uxbridge: the town only. Goodwood, Leaskdale, Sandford and Udora are L0C ──
+  L9P: ['uxbridge'],
 };
 
 /** The two M FSAs that are Canada Post facilities in Mississauga, not Toronto. Nobody

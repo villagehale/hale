@@ -270,3 +270,229 @@ describe('golden — Whitchurch-Stouffville Fall 2026', () => {
     );
   });
 });
+
+/**
+ * Newmarket, verbatim, page 2 of Recreation & Culture FALL ACTIVITIES 2026
+ * (https://www.newmarket.ca/media/file/fall-seasonal-magazine), read 2026-09-18
+ *   "2026 Fall Registration" / "Registration Dates"
+ *   "Resident Registration"      "August 19 at 8 a.m."
+ *   "Non-Resident Registration"  "August 26 at 8 a.m."
+ *   Mayor's letter, same page: "save the date for resident registration on
+ *   Wednesday, August 19 at 8 a.m."
+ *   Swimming section, page 26: "Program Registration begins August 19 for Newmarket
+ *   residents. Non-resident registration begins August 26." / "Registration opens at
+ *   8 a.m."
+ */
+describe('golden — Newmarket Fall 2026', () => {
+  const row = toRegistrationWindowRow(seed('newmarket', 'rec_program', 'Fall 2026'));
+
+  it('opens for residents at 8 a.m. on Wednesday 19 August 2026 (12:00 UTC, EDT)', () => {
+    expect(row.residentOpenAt).toEqual(new Date('2026-08-19T12:00:00.000Z'));
+  });
+
+  it('opens for everyone else a week later, the second date the magazine prints', () => {
+    expect(row.openAt).toEqual(new Date('2026-08-26T12:00:00.000Z'));
+    expect(row.residentPriorityDays).toBe(7);
+  });
+
+  it('claims no preview and no waitlist window, because the magazine publishes neither', () => {
+    // Null, not zero: "not published" is a different claim from "there is none".
+    expect(row.previewAt).toBeNull();
+    expect(row.waitlistResponseHours).toBeNull();
+  });
+
+  it('carries swim on the same window, as the Swimming section reprints the same dates', () => {
+    const swim = toRegistrationWindowRow(seed('newmarket', 'swim', 'Fall 2026'));
+    expect(swim.openAt).toEqual(row.openAt);
+    expect(swim.residentOpenAt).toEqual(row.residentOpenAt);
+    expect(swim.notes).toContain(
+      'Program Registration begins August 19 for Newmarket residents. Non-resident registration begins August 26.',
+    );
+  });
+
+  it("cites the Town's own magazine PDF, not the landing page that prints no dates", () => {
+    expect(row.sourceUrl).toBe('https://www.newmarket.ca/media/file/fall-seasonal-magazine');
+  });
+});
+
+/**
+ * King Township, verbatim, https://www.king.ca/recreation ("Registration Start Dates"),
+ * read 2026-09-18
+ *   "Fall Recreation & Aquatic Programs" / "Fall session: September 14 - December 31"
+ *   "Registration is now open at townshipofking.perfectmind.com"
+ *   "Aquatics program registration for non-residents opens on August 21."
+ *   "Winter 2027 Recreation & Aquatic Programs"
+ *   "Winter session: January 11 - March 31, 2027"
+ *   "Programs are viewable online as of November 23, 2026."
+ *   "Registration opens on December 7 at townshipofking.perfectmind.com"
+ *   "Aquatics program registration for non-residents opens on December 11, 2026."
+ *
+ * NO CLOCK TIME is printed for any King date, so every instant is the start of the
+ * published local day; a borrowed "7 a.m." would be seven hours wrong. And every winter
+ * date is EST: the clock went back on 1 November 2026, so a hand-typed -04:00 would put
+ * a King parent an hour early.
+ */
+describe('golden — King Winter 2027', () => {
+  const rec = toRegistrationWindowRow(seed('king', 'rec_program', 'Winter 2027'));
+  const swim = toRegistrationWindowRow(seed('king', 'swim', 'Winter 2027'));
+
+  it('opens rec at the start of Monday 7 December 2026 (05:00 UTC, EST)', () => {
+    expect(rec.openAt).toEqual(new Date('2026-12-07T05:00:00.000Z'));
+  });
+
+  it('gives rec no resident head start, because King publishes no rec split', () => {
+    // December 7 is the GENERAL open for rec. Filing it as the resident date would
+    // promise a King parent a head start the Township never printed.
+    expect(rec.residentOpenAt).toBeNull();
+    expect(rec.residentPriorityDays).toBeNull();
+  });
+
+  it('previews on 23 November 2026, the one browse date King prints', () => {
+    expect(rec.previewAt).toEqual(new Date('2026-11-23T05:00:00.000Z'));
+    expect(swim.previewAt).toEqual(rec.previewAt);
+  });
+
+  it('splits only aquatics: residents 7 December, non-residents 11 December', () => {
+    expect(swim.residentOpenAt).toEqual(new Date('2026-12-07T05:00:00.000Z'));
+    expect(swim.openAt).toEqual(new Date('2026-12-11T05:00:00.000Z'));
+    expect(swim.residentPriorityDays).toBe(4);
+  });
+
+  it('holds the one Fall 2026 date King printed - the non-resident aquatics open', () => {
+    // The fall RESIDENT date is on no reachable page, so there is no fall rec row at
+    // all; this row carries the single sentence the Township did publish.
+    const fallSwim = toRegistrationWindowRow(seed('king', 'swim', 'Fall 2026'));
+    expect(fallSwim.openAt).toEqual(new Date('2026-08-21T04:00:00.000Z'));
+    expect(fallSwim.residentOpenAt).toBeNull();
+    expect(
+      REGISTRATION_WINDOWS.some(
+        (s) => s.municipality === 'king' && s.programDomain === 'rec_program' && s.cycleLabel === 'Fall 2026',
+      ),
+    ).toBe(false);
+  });
+
+  it('cites the one King page that prints dates at all', () => {
+    expect(rec.sourceUrl).toBe('https://www.king.ca/recreation');
+  });
+});
+
+/**
+ * East Gwillimbury, verbatim,
+ * https://www.eastgwillimbury.ca/en/living-in-eg/health-and-active-living-guide.aspx,
+ * read 2026-09-18
+ *   "Fall 2026 and Winter 2027 Health and Active Living Guide"
+ *   "Fall Registration:" "August 20 for residents and August 27 for non-residents"
+ *   "Registration for ActiveNet users listed as an East Gwillimbury resident open a
+ *   week before users not listed as a resident."
+ *   "For resident registration, the city included in your address must be 'East
+ *   Gwillimbury.' The system will not recognize Sharon, Mount Albert, Queensville,
+ *   etc. as residential addresses."
+ */
+describe('golden — East Gwillimbury Fall 2026', () => {
+  const row = toRegistrationWindowRow(seed('east_gwillimbury', 'rec_program', 'Fall 2026'));
+
+  it('opens at the start of 20 August 2026, because the Town published no clock', () => {
+    expect(row.residentOpenAt).toEqual(new Date('2026-08-20T04:00:00.000Z'));
+    expect(row.openAt).toEqual(new Date('2026-08-27T04:00:00.000Z'));
+    expect(row.residentPriorityDays).toBe(7);
+  });
+
+  it('carries the residency trap a Sharon or Mount Albert parent cannot see elsewhere', () => {
+    expect(row.notes).toContain(
+      'The system will not recognize Sharon, Mount Albert, Queensville, etc. as residential addresses.',
+    );
+  });
+
+  it('claims no preview and no waitlist window', () => {
+    expect(row.previewAt).toBeNull();
+    expect(row.waitlistResponseHours).toBeNull();
+  });
+});
+
+/**
+ * Georgina, verbatim, https://www.georgina.ca/things-do/recreation/programs-0,
+ * read 2026-09-18
+ *   "Fall program registration"
+ *   "Aug. 18 at 8:30 a.m. - residents"
+ *   "Aug. 25 at 8:30 a.m. - non-residents"
+ *   "Staff monitor all waitlists regularly to create availability for programs or
+ *   lessons in demand when possible."
+ *
+ * The sibling page georgina.ca/things-do/recreation/recreation-general-information was
+ * on the same day still printing the SPRING block, "Resident registration will open on
+ * Mar. 3 at 8:30 a.m." — two pages, two cycles, neither printing a year.
+ */
+describe('golden — Georgina Fall 2026', () => {
+  const row = toRegistrationWindowRow(seed('georgina', 'rec_program', 'Fall 2026'));
+
+  it('opens for residents at 8:30 a.m. on 18 August 2026 (12:30 UTC, EDT)', () => {
+    // The half hour is the part a rounded "8 a.m." would lose.
+    expect(row.residentOpenAt).toEqual(new Date('2026-08-18T12:30:00.000Z'));
+    expect(row.openAt).toEqual(new Date('2026-08-25T12:30:00.000Z'));
+    expect(row.residentPriorityDays).toBe(7);
+  });
+
+  it('claims no waitlist window: Georgina publishes a practice, not a deadline', () => {
+    expect(row.waitlistResponseHours).toBeNull();
+    expect(row.notes).toContain('Staff monitor all waitlists regularly');
+  });
+
+  it('cites the programs page and says why, not the page still stuck on spring', () => {
+    expect(row.sourceUrl).toBe('https://www.georgina.ca/things-do/recreation/programs-0');
+    expect(row.notes).toContain('recreation-general-information');
+  });
+});
+
+/**
+ * Uxbridge, verbatim, Uxplore: Fall 2026 & Winter 2027 Community Guide
+ * (https://www.uxbridge.ca/public/download/files/360410), read 2026-09-18
+ *   Uxpool, page 20: "Fall Registration Begins" / "Thursday, August 20, 2026 at 9:00 a.m."
+ *                    "Winter Registration Begins" / "Tuesday, November 10, 2026 at 9:00 a.m."
+ *   Youth Recreation, page 43: "Registration Opens August 20, 2026 at 9:00 a.m." /
+ *                    "Registration Opens November 10, 2026 at 9:00 a.m."
+ *   Winter Break Camps, page 47: "Registration opens November 10, 2026 at 9:00am" /
+ *                    "December 21-23, 2026" / "Ages: 5-9 years"
+ *   UxCamps, page 48: "Registration opens January 26th, 2027, at 12:00 p.m."
+ *
+ * THE -05:00 CLIFF. Three of these instants are after 1 November 2026. A hand-typed
+ * -04:00 on the November date would be an hour early, and this block is what reddens.
+ */
+describe('golden — Uxbridge Fall 2026 and Winter 2027', () => {
+  const fall = toRegistrationWindowRow(seed('uxbridge', 'rec_program', 'Fall 2026'));
+  const winter = toRegistrationWindowRow(seed('uxbridge', 'rec_program', 'Winter 2027'));
+
+  it('opens fall at 9 a.m. on Thursday 20 August 2026 (13:00 UTC, EDT)', () => {
+    expect(fall.openAt).toEqual(new Date('2026-08-20T13:00:00.000Z'));
+  });
+
+  it('opens winter at 9 a.m. on Tuesday 10 November 2026 — 14:00 UTC, EST not EDT', () => {
+    expect(winter.openAt).toEqual(new Date('2026-11-10T14:00:00.000Z'));
+  });
+
+  it('gives no Uxbridge row a resident head start, because the guide publishes none', () => {
+    // The only residency difference in 81 pages is a membership fee. A head start here
+    // would tell an Uxbridge parent to wait for a morning that does not exist.
+    for (const seedRow of REGISTRATION_WINDOWS.filter((s) => s.municipality === 'uxbridge')) {
+      expect(seedRow.residentOpenAt, seedRow.cycleLabel).toBeNull();
+      expect(seedRow.residentPriorityDays, seedRow.cycleLabel).toBeNull();
+    }
+  });
+
+  it('fires the winter-break camp in November, not in December', () => {
+    const camp = toRegistrationWindowRow(
+      seed('uxbridge', 'camp', 'Winter Break Day Camps December 2026'),
+    );
+    expect(camp.openAt).toEqual(new Date('2026-11-10T14:00:00.000Z'));
+    expect(camp.ageMinMonths).toBe(60);
+    expect(camp.ageMaxMonths).toBe(120);
+  });
+
+  it('opens the March Break camp at NOON on 26 January 2027 (17:00 UTC, EST)', () => {
+    const camp = toRegistrationWindowRow(seed('uxbridge', 'camp', 'UxCamps March Break 2027'));
+    expect(camp.openAt).toEqual(new Date('2027-01-26T17:00:00.000Z'));
+  });
+
+  it('cites the accessible guide PDF, not the landing page still titled Fall 2025', () => {
+    expect(fall.sourceUrl).toBe('https://www.uxbridge.ca/public/download/files/360410');
+  });
+});
