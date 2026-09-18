@@ -10,6 +10,12 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
 import {
+  type CalendarAlertCounts,
+  type CalendarAlertPorts,
+  alertParentForCalendarChanges,
+  emptyCalendarAlertCounts,
+} from '~/lib/integrations/calendar-alert';
+import {
   type EmailAlertCounts,
   type EmailAlertPorts,
   alertParentForGmailSweep,
@@ -32,6 +38,7 @@ import {
   loadCorrelationCandidates,
 } from '~/lib/sentinel';
 import {
+  type CalendarAlertBatch,
   type GmailAlertBatch,
   type GoogleFetch,
   type SyncConnectionResult,
@@ -83,6 +90,14 @@ export interface ConnectorSyncSummary {
    * that alerted nobody has to be able to say WHY, and "dark" reads very differently from
    * "not_parenting". */
   emailAlerts: EmailAlertCounts;
+  /** The same, for the calendar. Its own tally rather than a shared one: the two
+   * connectors fail in different ways, and a sweep where every calendar change is
+   * `outside_window` reads nothing like one where every email is `not_parenting`. */
+  calendarAlerts: CalendarAlertCounts;
+  /** Calendar items no sweep could key, because Google sent them with no `id`. They have
+   * no alert outcome to count — they never reached the alert path — so without this line
+   * a page of un-keyable items reads as a quiet week (rule #11). */
+  calendarDroppedNoId: number;
 }
 
 /**
@@ -98,6 +113,8 @@ export async function runConnectorSync(
   const base = deps.buildDeps();
   const childNamesByFamily = new Map<string, string[]>();
   const emailAlerts = emptyEmailAlertCounts();
+  const calendarAlerts = emptyCalendarAlertCounts();
+  let calendarDroppedNoId = 0;
 
   for (const connection of connections) {
     try {
@@ -123,11 +140,13 @@ export async function runConnectorSync(
       }
       const result = await deps.syncOne({ ...connection, tokens }, base, childNames);
       for (const outcome of result.emailAlerts) emailAlerts[outcome] += 1;
+      for (const outcome of result.calendarAlerts) calendarAlerts[outcome] += 1;
+      calendarDroppedNoId += result.calendarDroppedNoId;
     } catch {
       // Isolate: a failure here must not stop the remaining connections.
     }
   }
-  return { connections: connections.length, emailAlerts };
+  return { connections: connections.length, emailAlerts, calendarAlerts, calendarDroppedNoId };
 }
 
 /** Wire the real DB + queue into the sync deps. */
@@ -143,6 +162,7 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
     refreshTokens: (refreshToken) => refreshAccessToken(refreshToken),
     saveTokens: (id, tokens) => saveConnectionTokensById(database, id, tokens),
     alertGmailEnvelopes: (batch) => alertGmailSweep(database, batch),
+    alertCalendarChanges: (batch) => alertCalendarSweep(database, batch),
   };
   return {
     listConnections: () => listActiveConnectorConnections(database),
@@ -169,6 +189,43 @@ function alertGmailSweep(database: Database, batch: GmailAlertBatch) {
     },
     emailAlertPorts(database, batch.connection.familyId, batch.accessToken),
   );
+}
+
+/** The sweep's half of the calendar alert: one connection's raw changes, the real
+ * outbound chokepoint, no classifier (the calendar is the parent's own). */
+function alertCalendarSweep(database: Database, batch: CalendarAlertBatch) {
+  return alertParentForCalendarChanges(
+    database,
+    {
+      familyId: batch.connection.familyId,
+      parentUserId: batch.connection.userId,
+      integrationId: batch.connection.id,
+      seeding: batch.seeding,
+      changes: batch.changes,
+      now: new Date(),
+    },
+    proactiveSendPorts(database),
+  );
+}
+
+/**
+ * Everything a connector alert needs to ask permission and speak — the chokepoint, the
+ * number, the wire, the thread and the clock.
+ *
+ * ONE copy, spread into the email alert's ports below. Two literals would be two places
+ * a `gate:` line could drift, and the failure that drift produces is silent: an alert
+ * class wired to something that is not `assertProactiveSendAllowed` still sends.
+ */
+function proactiveSendPorts(database: Database): CalendarAlertPorts {
+  return {
+    gate: (request) => assertProactiveSendAllowed(request, buildOutboundGatePorts(database)),
+    resolvePhone: resolveSendablePhone,
+    transport: createTwilioTransport(),
+    threadMessage: threadProactiveMessage,
+    // The SAME reader the gate judges quiet hours with, so the hour in the text and the
+    // hour the gate refused at can never disagree.
+    timeZone: (parentUserId) => buildOutboundGatePorts(database).parentTimeZone(parentUserId),
+  };
 }
 
 /** The real ports. The family's children and known occasions are read ONCE per
@@ -200,6 +257,7 @@ function emailAlertPorts(
   };
 
   return {
+    ...proactiveSendPorts(database),
     classify: async (envelope, familyTimezone) => {
       const { children, candidates } = await loadContext();
       return classifyChildEventEmail(envelope, {
@@ -210,13 +268,6 @@ function emailAlertPorts(
         correlationCandidates: candidates,
       });
     },
-    gate: (request) => assertProactiveSendAllowed(request, buildOutboundGatePorts(database)),
-    resolvePhone: resolveSendablePhone,
-    transport: createTwilioTransport(),
-    threadMessage: threadProactiveMessage,
-    // The SAME reader the gate judges quiet hours with, so the hour in the text and the
-    // hour the gate refused at can never disagree.
-    timeZone: (parentUserId) => buildOutboundGatePorts(database).parentTimeZone(parentUserId),
   };
 }
 

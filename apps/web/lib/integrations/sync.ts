@@ -1,5 +1,6 @@
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { redactEventPayload } from '@hale/worker/redaction';
+import type { CalendarAlertOutcome, CalendarChange } from './calendar-alert';
 import type { EmailAlertOutcome, GmailAlertEnvelope } from './email-alert';
 import type { ConnectorProvider } from './google-oauth';
 import type { ActiveConnectorConnection } from './store';
@@ -65,6 +66,12 @@ export interface SyncDeps {
    * a broken mailbox and must not stop the ingest.
    */
   alertGmailEnvelopes: (input: GmailAlertBatch) => Promise<readonly EmailAlertOutcome[]>;
+  /**
+   * The same contract for the calendar's raw changes (lib/integrations/calendar-alert.ts),
+   * and non-nullable for the same reason: "nothing is wired to alert" is a decision a
+   * caller makes out loud, never by withholding a port (rule #11).
+   */
+  alertCalendarChanges: (input: CalendarAlertBatch) => Promise<readonly CalendarAlertOutcome[]>;
 }
 
 /** One connection's Gmail envelopes, as the alert path needs them. The access token is
@@ -78,10 +85,26 @@ export interface GmailAlertBatch {
   envelopes: readonly GmailAlertEnvelope[];
 }
 
-/** What one connection's sync produced beyond its enqueues. Empty for every provider but
- * Gmail, and for a run that failed before the alert step. */
+/** One connection's calendar changes, as the alert path needs them. No access token: the
+ * sentence is assembled from the fields the incremental list already returned, so this
+ * path makes no further Google call. */
+export interface CalendarAlertBatch {
+  connection: ActiveConnectorConnection;
+  /** This run started with no syncToken — a first sync, or the full resync Google forces
+   * after a stale one — so its changes are the calendar's whole history. */
+  seeding: boolean;
+  changes: readonly CalendarChange[];
+}
+
+/** What one connection's sync produced beyond its enqueues. Each list is empty for the
+ * providers it does not belong to, and for a run that failed before the alert step. */
 export interface SyncConnectionResult {
   emailAlerts: readonly EmailAlertOutcome[];
+  calendarAlerts: readonly CalendarAlertOutcome[];
+  /** Calendar items this run could not key at all, because Google sent no `id`. They have
+   * no alert outcome — they never reached the alert path — and a drop with no number
+   * beside it is a connector going blind without anyone being able to tell (rule #11). */
+  calendarDroppedNoId: number;
 }
 
 const GONE = 410;
@@ -100,6 +123,10 @@ interface ProviderResult {
    * `redactEventPayload` masks them — which is why this rides alongside `events`
    * rather than being recovered from them. In-process only, never logged. */
   gmail?: { seeding: boolean; envelopes: GmailAlertEnvelope[] };
+  /** Calendar only: the raw changes of this run, INCLUDING the cancelled items the ingest
+   * drops. A tombstone is the single most useful thing the alert path says and the one
+   * thing `events` structurally cannot carry, so it rides alongside. */
+  calendar?: { seeding: boolean; changes: CalendarChange[]; droppedNoId: number };
 }
 
 /**
@@ -112,6 +139,8 @@ export async function syncConnection(
   deps: SyncDeps,
 ): Promise<SyncConnectionResult> {
   let emailAlerts: readonly EmailAlertOutcome[] = [];
+  let calendarAlerts: readonly CalendarAlertOutcome[] = [];
+  let calendarDroppedNoId = 0;
   try {
     const accessToken = await ensureFreshToken(connection, deps);
     const result = await runProviderSync(connection, accessToken, deps.googleFetch);
@@ -155,6 +184,23 @@ export async function syncConnection(
         emailAlerts = envelopes.map(() => 'alert_failed' as const);
       }
     }
+    if (result.calendar) {
+      const { seeding, changes } = result.calendar;
+      calendarDroppedNoId = result.calendar.droppedNoId;
+      try {
+        calendarAlerts = await deps.alertCalendarChanges({ connection, seeding, changes });
+      } catch (err) {
+        // The class only: an alert-path rejection can carry an event title (rule #1).
+        console.error(
+          {
+            connectionId: connection.id,
+            err: err instanceof Error ? err.constructor.name : 'unknown',
+          },
+          'connector sync: the calendar alert pass threw - the calendar is fine, the alert is not',
+        );
+        calendarAlerts = changes.map(() => 'alert_failed' as const);
+      }
+    }
   } catch (err) {
     // The CODE is recorded, never the error's text — a Google response can carry a
     // token, a calendar title or an address (rule #1). Status/step only, in the row
@@ -166,7 +212,7 @@ export async function syncConnection(
     );
     await deps.markError(connection.id, code);
   }
-  return { emailAlerts };
+  return { emailAlerts, calendarAlerts, calendarDroppedNoId };
 }
 
 /** Refresh + persist an expiring access token; returns the token to use for this
@@ -270,7 +316,8 @@ async function syncCalendar(
   // legal WITH a syncToken, because this one string is what both requests send.
   const base =
     'https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&showDeleted=true';
-  let syncToken = readString(connection.providerMetadata.syncToken);
+  const startedWithToken = readString(connection.providerMetadata.syncToken);
+  let syncToken = startedWithToken;
   let resynced = false;
   let pageToken: string | undefined;
   const items: Array<Record<string, unknown>> = [];
@@ -320,7 +367,84 @@ async function syncCalendar(
         end: item.end,
       }),
     );
-  return { events, nextMetadata: { syncToken: nextSyncToken } };
+  // ONE stamp for the whole run, so two items Google versioned with neither `updated` nor
+  // an etag still key apart by their ids rather than by microseconds.
+  const runStamp = new Date().toISOString();
+  const changes: CalendarChange[] = [];
+  let droppedNoId = 0;
+  for (const item of items) {
+    const change = calendarChangeOf(item, runStamp);
+    if (change === null) droppedNoId += 1;
+    else changes.push(change);
+  }
+  if (droppedNoId > 0) {
+    // The COUNT only: an item this sweep could not key is still an item off a family's
+    // calendar, and its fields do not belong in a log (rule #1).
+    console.warn(
+      { integrationId: connection.id, droppedNoId },
+      'connector sync: calendar items with no id, dropped',
+    );
+  }
+  return {
+    events,
+    nextMetadata: { syncToken: nextSyncToken },
+    // A run that STARTED without a token saw the whole calendar, and so did the resync a
+    // 410 forced — both are seeding, and neither may text about two hundred events the
+    // parent put there themselves.
+    calendar: {
+      seeding: startedWithToken === undefined || resynced,
+      changes,
+      droppedNoId,
+    },
+  };
+}
+
+/**
+ * One events.list item as the alert path needs it, or nothing when Google sent no `id` —
+ * the one field nothing can stand in for, and the counted drop above.
+ *
+ * Everything else has a documented fallback, because the items that carry least are the
+ * cancellations, which are the most useful thing this feature says. events.list: a deleted
+ * event "will only have the id field populated"; a cancelled instance of a recurring event
+ * carries `recurringEventId` and `originalStartTime` instead of a `start`.
+ */
+function calendarChangeOf(item: Record<string, unknown>, runStamp: string): CalendarChange | null {
+  const eventId = readString(item.id);
+  if (eventId === undefined) return null;
+  const status = readString(item.status);
+  // A cancelled instance's original start IS its start: "the 8:15 on Friday" is the thing
+  // that is not happening. On a MOVED instance `start` is present and wins, which is the
+  // new time — the one the parent needs.
+  const start = timePoint(item.start) ?? timePoint(item.originalStartTime) ?? {};
+  return {
+    eventId,
+    // Google's own version where there is one, the etag where there is not (it changes
+    // with the event, so a replay of the same page is the same key), and this run's clock
+    // as the floor — a change nobody can version is still a change, and dropping it
+    // silently is how the cancellation goes missing.
+    updated: readString(item.updated) ?? readString(item.etag) ?? runStamp,
+    status: status === 'cancelled' || status === 'tentative' ? status : 'confirmed',
+    title: readString(item.summary),
+    start,
+    end: timePoint(item.end) ?? start,
+    location: readString(item.location),
+    selfOrganized: readSelf(item.organizer),
+  };
+}
+
+/** A start/end Google actually placed in time, or nothing — so a caller can fall through
+ * to the next field that might carry one. */
+function timePoint(value: unknown): { dateTime?: string; date?: string } | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const point = value as { dateTime?: unknown; date?: unknown };
+  const dateTime = readString(point.dateTime);
+  const date = readString(point.date);
+  return dateTime === undefined && date === undefined ? undefined : { dateTime, date };
+}
+
+function readSelf(organizer: unknown): boolean | undefined {
+  if (typeof organizer !== 'object' || organizer === null) return undefined;
+  return (organizer as { self?: unknown }).self === true ? true : undefined;
 }
 
 // ── Gmail ────────────────────────────────────────────────────────────────────

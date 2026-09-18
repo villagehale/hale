@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CALENDAR_ALERT_OUTCOMES } from '~/lib/integrations/calendar-alert';
 import { EMAIL_ALERT_OUTCOMES } from '~/lib/integrations/email-alert';
 import { googleGetFetch, runConnectorSync } from './connector-sync';
 
-const NO_ALERTS = { emailAlerts: [] as const };
+const NO_ALERTS = {
+  emailAlerts: [] as const,
+  calendarAlerts: [] as const,
+  calendarDroppedNoId: 0,
+};
 
 const FAMILY_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const FAMILY_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -109,8 +114,8 @@ describe('runConnectorSync', () => {
       buildDeps: () => ({}) as never,
       syncOne: async (connection) =>
         connection.id === 'i1'
-          ? { emailAlerts: ['sent', 'not_parenting', 'not_parenting'] as const }
-          : { emailAlerts: ['dark', 'gate_refused:quiet_hours'] as const },
+          ? { ...NO_ALERTS, emailAlerts: ['sent', 'not_parenting', 'not_parenting'] as const }
+          : { ...NO_ALERTS, emailAlerts: ['dark', 'gate_refused:quiet_hours'] as const },
     });
 
     expect(summary.emailAlerts).toMatchObject({
@@ -125,6 +130,46 @@ describe('runConnectorSync', () => {
     expect(Object.values(summary.emailAlerts).reduce((a, b) => a + b, 0)).toBe(5);
   });
 
+  it('tallies calendar outcomes on their OWN counter, never the inbox one', async () => {
+    // Kills the wiring that adds both connectors' outcomes to one tally: a September
+    // calendar and a September inbox fail in different ways, and one bucket for both
+    // makes each one's diagnosis unreadable.
+    const summary = await runConnectorSync({
+      listConnections: async () => [conn('i1', FAMILY_A), conn('i2', FAMILY_B)],
+      decryptTokens: decryptOk,
+      loadChildNames: async () => [],
+      buildDeps: () => ({}) as never,
+      syncOne: async (connection) =>
+        connection.id === 'i1'
+          ? { ...NO_ALERTS, calendarAlerts: ['sent', 'outside_window'] as const }
+          : { ...NO_ALERTS, emailAlerts: ['sent'] as const },
+    });
+
+    expect(summary.calendarAlerts).toMatchObject({ sent: 1, outside_window: 1 });
+    expect(summary.emailAlerts.sent).toBe(1);
+    expect(Object.keys(summary.calendarAlerts).sort()).toEqual([...CALENDAR_ALERT_OUTCOMES].sort());
+    expect(Object.values(summary.calendarAlerts).reduce((a, b) => a + b, 0)).toBe(2);
+    // Nothing was dropped here — the control for the tally below.
+    expect(summary.calendarDroppedNoId).toBe(0);
+  });
+
+  it('carries the un-keyable calendar items into the summary, summed across connections', async () => {
+    // An item with no id has no outcome to count, because it never reached the alert path.
+    // Left out of the summary entirely it is a connector going blind quietly (rule #11).
+    const summary = await runConnectorSync({
+      listConnections: async () => [conn('i1', FAMILY_A), conn('i2', FAMILY_B)],
+      decryptTokens: decryptOk,
+      loadChildNames: async () => [],
+      buildDeps: () => ({}) as never,
+      syncOne: async (connection) => ({
+        ...NO_ALERTS,
+        calendarDroppedNoId: connection.id === 'i1' ? 2 : 1,
+      }),
+    });
+
+    expect(summary.calendarDroppedNoId).toBe(3);
+  });
+
   it('keeps the counts of the connections that ran when one of them throws', async () => {
     const summary = await runConnectorSync({
       listConnections: async () => [conn('i1', FAMILY_A), conn('i2', FAMILY_B)],
@@ -133,7 +178,7 @@ describe('runConnectorSync', () => {
       buildDeps: () => ({}) as never,
       syncOne: async (connection) => {
         if (connection.id === 'i2') throw new Error('boom');
-        return { emailAlerts: ['sent'] as const };
+        return { ...NO_ALERTS, emailAlerts: ['sent'] as const };
       },
     });
     expect(summary.emailAlerts.sent).toBe(1);

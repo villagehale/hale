@@ -396,13 +396,18 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // health-digest.ts), so a new one counts as Hale making contact first until it is
   // named there.
   'co_parent_invite',
-  // A parenting email in a connected Gmail, turned into one text (migration 0113). Its
+  // A parenting email in a connected Gmail, turned into one text (migration 0114). Its
   // own category for the reason 'nudge' has one: the gate COUNTS a category, so sharing
   // 'nudge' would let a school's cancellation notice spend a household's weekly nudge
   // budget, and the nudge cap would then read as spent by a message the nudge sweep never
   // sent. It is Hale making contact first, so the loop-health digest's EXCLUSION list
   // (PARENT_STARTED_CATEGORIES, health-digest.ts) is correct to leave it out.
   'email_alert',
+  // A new, moved or cancelled event on a connected Google Calendar, turned into one text
+  // (migration 0115). Separate from 'email_alert' for the same counting reason: a
+  // September calendar and a September inbox are two volumes, and one budget shared
+  // between them would silence whichever moved second.
+  'calendar_alert',
 ]);
 
 /**
