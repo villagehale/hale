@@ -421,7 +421,7 @@
       "poster": {
         "tag": "Print it",
         "title": "Put up a poster",
-        "body": "This code opens the page that writes a parent’s first message for them. We print posters carrying your centre’s own code, so you can see how many families it brought — email us and we will send one."
+        "body": "This code opens the page that writes a parent’s first message for them. We print posters carrying your centre’s own code, so we can tell you how many families it brought — email us and we will send one."
       },
       "try": {
         "tag": "Try it",
@@ -468,7 +468,7 @@
       }
     ],
     "officialEyebrow": "If a family asks whether Hale is official",
-    "officialLine": "Hale is independent. It is not run by your centre, the town, the region, or the province. It checks every date against the town’s own registration page, and if the two ever disagree, the town’s page wins.",
+    "officialLine": "Hale is independent. It is not run by your centre, the town, the region, or the province. It checks every registration date against the town’s own page, and if the two ever disagree, the town’s page wins.",
     "faqEyebrow": "Questions we get",
     "faqHeadline": [
       {

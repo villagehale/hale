@@ -421,7 +421,7 @@
       "poster": {
         "tag": "Imprimez-la",
         "title": "Affichez une affiche",
-        "body": "Ce code ouvre la page qui rédige le premier message du parent à sa place. Nous imprimons des affiches portant le code de votre centre, pour que vous voyiez combien de familles il a amenées — écrivez-nous et nous vous en enverrons une."
+        "body": "Ce code ouvre la page qui rédige le premier message du parent à sa place. Nous imprimons des affiches portant le code de votre centre, pour que nous puissions vous dire combien de familles il a amenées — écrivez-nous et nous vous en enverrons une."
       },
       "try": {
         "tag": "Essayez",
@@ -468,7 +468,7 @@
       }
     ],
     "officialEyebrow": "Si une famille demande si Hale est officiel",
-    "officialLine": "Hale est indépendant. Il n’est géré ni par votre centre, ni par la ville, ni par la région, ni par la province. Il vérifie chaque date sur la page d’inscription de la ville, et si les deux divergent, c’est la page de la ville qui l’emporte.",
+    "officialLine": "Hale est indépendant. Il n’est géré ni par votre centre, ni par la ville, ni par la région, ni par la province. Il vérifie chaque date d’inscription sur la page de la ville, et si les deux divergent, c’est la page de la ville qui l’emporte.",
     "faqEyebrow": "Les questions qu’on nous pose",
     "faqHeadline": [
       {
