@@ -180,6 +180,7 @@ export const AUDIT_VERBS = [
   'proactive_nudge_sent',
   'proactive_nudge_skipped',
   'email_alert_sent',
+  'email_alert_event_added',
   'calendar_alert_sent',
   'proactive_watch_granted',
   'proactive_watch_declined',
@@ -557,6 +558,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   // Hale having looked at their email at all.
   email_alert_sent: {
     sentence: 'Hale texted you about something in your email',
+    family: 'done',
+  },
+  // The parent's YES to the sentence at the end of that text. YOU, not Hale: this is the
+  // one calendar entry in the product that no reviewer passed, precisely because the
+  // parent asked for it in so many words, and the trail has to say whose decision it was.
+  email_alert_event_added: {
+    sentence: 'you put something from your email on your week',
     family: 'done',
   },
   // Same shape, different connector. The sentence names the calendar for the same reason
