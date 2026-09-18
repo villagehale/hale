@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EMERGENCY_REPLY, MENTAL_CRISIS_REPLY, SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
-import { MARKHAM_FIRST, TORONTO_FIRST_REC } from '~/lib/channel/rec-morning';
+import { cityRecLine } from '~/lib/channel/rec-morning';
 import { adultLearnDoor } from './adult-learn';
 import {
   type IntakeAnswerInput,
@@ -27,6 +27,15 @@ const INPUT: IntakeAnswerInput = {
 };
 
 const RETURN = 'Still want me watching the registration dates?';
+
+/** The composer reads the clock itself, and a city's rec line is derived against it,
+ * so the rec-morning specs below pin the clock rather than the sentence. */
+const REC_MORNING_NOW = new Date('2026-09-17T14:00:00.000Z');
+
+function atRecMorningNow(): void {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(REC_MORNING_NOW);
+}
 
 function problems(answer: string, returnLine = RETURN, input = INPUT) {
   return refusals(answer, returnLine, input);
@@ -134,6 +143,10 @@ describe('intake answer · reading the pair', () => {
 });
 
 describe('intake answer · the emergency tripwire', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('answers an emergency with no model in the loop at all', async () => {
     // Intake has never had the router's screened safety lane. A client that throws on
     // use proves the token check runs BEFORE anything reaches a provider.
@@ -166,13 +179,15 @@ describe('intake answer · the emergency tripwire', () => {
       },
     } as never;
     const composer = createIntakeAnswerComposer(exploding);
+    atRecMorningNow();
     const outcome = await composer.compose({
       ...INPUT,
       parentWords: 'When does Toronto swim registration open?',
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe(`${TORONTO_FIRST_REC} Still want me watching?`);
+    expect(outcome.body).toBe(`${cityRecLine('toronto', REC_MORNING_NOW)} Still want me watching?`);
+    expect(outcome.body).toContain('non-residents Friday Sep 25 at 7 a.m.');
     expect(outcome.body.toLowerCase()).not.toContain('activeto');
     expect(outcome.body.toLowerCase()).not.toContain('unofficial');
     expect(outcome.body.toLowerCase()).not.toContain('efun');
@@ -190,13 +205,15 @@ describe('intake answer · the emergency tripwire', () => {
       },
     } as never;
     const composer = createIntakeAnswerComposer(exploding);
+    atRecMorningNow();
     const outcome = await composer.compose({
       ...INPUT,
       parentWords: 'Markham fall rec dates?',
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe(`${MARKHAM_FIRST} Still want me watching?`);
+    expect(outcome.body).toBe(`${cityRecLine('markham', REC_MORNING_NOW)} Still want me watching?`);
+    expect(outcome.body).toContain('Markham');
     expect(outcome.body).not.toContain('7:00');
     expect(outcome.body).not.toMatch(/Sept?\s*15/i);
     expect(outcome.body.toLowerCase()).not.toContain('activeto');
@@ -212,6 +229,7 @@ describe('intake answer · the emergency tripwire', () => {
       },
     } as never;
     const composer = createIntakeAnswerComposer(exploding);
+    atRecMorningNow();
     const outcome = await composer.compose({
       ...INPUT,
       parentWords: 'when is fall rec?',
@@ -219,7 +237,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe(`${MARKHAM_FIRST} Still want me watching?`);
+    expect(outcome.body).toBe(`${cityRecLine('markham', REC_MORNING_NOW)} Still want me watching?`);
   });
 
   it("answers adult-learn / I wanna learn swimming with the kids-only door, never I don't do that", async () => {
