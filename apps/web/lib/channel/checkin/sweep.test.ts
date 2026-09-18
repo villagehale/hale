@@ -185,6 +185,40 @@ describe('an hour with more households in it than one run may carry', () => {
     });
     expect(sent).toHaveLength(MAX_CHECK_INS_PER_RUN);
   });
+
+  it('spends the bound on households that are due, not on the ones at the front', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    const { deps, sent } = harness();
+    const over = MAX_CHECK_INS_PER_RUN + 2;
+    deps.selectFamilies = async () =>
+      Array.from({ length: over }, (_, index) => ({
+        familyId: `fam-${index}`,
+        parentUserId: `parent-${index}`,
+        timeZone: 'America/Toronto',
+      }));
+    // The selection is ordered least-recently-asked first, and the two at the very front
+    // of that queue are exactly the households the ladder has nothing to send: a family
+    // that switched the question off is never asked again, so its last_asked_at never
+    // moves and it sits at the head of the order forever. A bound applied before the
+    // ladder spends two of its hundred on them every evening.
+    const quiet = new Set(['fam-0', 'fam-1']);
+    deps.readState = async (_db, familyId) => ({
+      cadence: quiet.has(familyId) ? ('off' as const) : ('daily' as const),
+      silentStreak: 0,
+      lastAskedAt: null,
+      lastAnsweredAt: null,
+      silentStreakSince: null,
+    });
+
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    expect({
+      inSlot: result.inSlot,
+      overflow: result.overflow,
+      asked: result.asked,
+      off: result.skipped.cadence_off,
+    }).toEqual({ inSlot: over, overflow: 0, asked: MAX_CHECK_INS_PER_RUN, off: 2 });
+    expect(sent).toHaveLength(MAX_CHECK_INS_PER_RUN);
+  });
 });
 
 describe('what goes out', () => {

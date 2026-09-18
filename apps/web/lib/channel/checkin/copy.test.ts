@@ -84,6 +84,24 @@ describe('the acknowledgments', () => {
     }
   });
 
+  it('offer the keywords without promising a window the rule does not keep', () => {
+    // A taught word is this lane's for thirty days after it last spoke and no longer
+    // (CHECK_IN_REOFFER_DAYS), so a sentence saying "anytime" is a sentence Hale stops
+    // honouring while the parent still believes it. The instruction stays; the duration
+    // goes. The opt-out that IS unconditional is STOP, and it rides on the wire.
+    const promises = /anytime|any evening|whenever you like|quand vous voulez/i;
+    for (const line of [CHECK_IN_STEP_DOWN, ...ACKS.flatMap((ack) => Object.values(ack))]) {
+      // The exception, and the only one: the off ack's "text me whenever you like" is
+      // about reaching Hale at all, which never expires.
+      if (line === CHECK_IN_OFF_ACK.en || line === CHECK_IN_OFF_ACK.fr) continue;
+      expect(line, line).not.toMatch(promises);
+    }
+    // The positive control: the words themselves are still printed, or this test would
+    // pass on a lane that stopped telling parents how to leave.
+    expect(CHECK_IN_NOTED_ACK.en).toContain('NO');
+    expect(CHECK_IN_STEP_DOWN).toContain('DAILY');
+  });
+
   it('never repeats the sensitive thing back at the parent', () => {
     // The refusal says what happened and names no category — the one sentence in this
     // lane that could otherwise put the withheld subject on a lock screen.

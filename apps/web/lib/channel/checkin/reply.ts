@@ -10,6 +10,7 @@ import {
   recordCheckInAnswer,
 } from './cadence';
 import {
+  CHECK_IN_ACK_TEMPLATE_KEY,
   CHECK_IN_ASK_TEMPLATE_KEY,
   CHECK_IN_DAILY_ACK,
   CHECK_IN_NOTED_ACK,
@@ -138,10 +139,11 @@ const CADENCE_STATUS: Record<CheckInCadence, CheckInReplyStatus> = {
  * message, and inventing a note out of it would be Hale remembering something nobody
  * said.
  *
- * EXPORTED, because the dial moves whether or not a question is standing. Every ack this
- * lane sends prints "Reply NO anytime" or "Reply DAILY to switch back", and a promise
- * that only holds until Hale's next outbound message is not a promise — how far it does
- * hold is {@link checkInKeywordReach}.
+ * EXPORTED, because the dial moves whether or not a question is standing. Every message
+ * this lane sends prints "Reply NO to drop these" or "reply DAILY to switch back", and a
+ * word that only worked until Hale's next sentence — its own thank-you included — would be
+ * a word the parent was taught and then quietly denied. How far it does reach is
+ * {@link checkInKeywordReach}.
  */
 export async function applyCheckInCadence(
   database: Database,
@@ -212,7 +214,7 @@ async function auditAnswer(
  *
  * WHAT CLOSES HERE IS THE QUESTION, NOT THE KEYWORDS. A SENTENCE is only an answer while
  * this returns something; LESS, NO and DAILY reach further, because the messages that
- * teach them promise "anytime" (checkInKeywordReach).
+ * teach them are still the last thing Hale said (checkInKeywordReach).
  */
 export async function eveningCheckInQuestion(
   database: Database,
@@ -273,8 +275,17 @@ async function parentTimeZone(database: Database, parentUserId: string): Promise
   return row?.timezone ?? null;
 }
 
-/** How long after this lane last spoke DAILY is still a way back in. */
+/**
+ * How long after this lane last spoke its taught words still mean what it taught them to.
+ *
+ * It bounds BOTH clauses below. The last-word clause is a statement about the shape of the
+ * conversation, and a conversation nobody has added to in a month is not one — a household
+ * Hale asked once and then never texted again would otherwise have 'no' claimed by this
+ * lane for the rest of their life.
+ */
 export const CHECK_IN_REOFFER_DAYS = 30;
+
+const REOFFER_MS = CHECK_IN_REOFFER_DAYS * 24 * 3_600_000;
 
 /**
  * HOW FAR A TAUGHT WORD REACHES — the answer to "may this lane claim LESS, NO or DAILY
@@ -296,14 +307,21 @@ export type CheckInKeywordReach =
  * ever taught them but whether THIS is still the conversation it taught them in. The rule
  * is the floor, and it is two clauses:
  *
- *   · THE LANE HAS THE LAST WORD — its ask or step-down notice is the most recent outbound
- *     of any kind to this parent. Hale's last sentence to them was "How did today go?
- *     Reply NO anytime", so 'no' is an answer to that and to nothing else, whether it
+ *   · THE LANE HAS THE LAST WORD — its ask, its step-down notice or ONE OF ITS OWN ACKS is
+ *     the most recent outbound of any kind to this parent, and it spoke inside
+ *     {@link CHECK_IN_REOFFER_DAYS}. Hale's last sentence to them was "How did today go?"
+ *     or "Noted - thanks", so 'no' is an answer to that and to nothing else, whether it
  *     comes back in a minute or the following afternoon.
+ *
+ *     THE ACKS ARE IN THAT LIST BECAUSE THE FLOOR IS NOT A QUESTION. A parent who answers
+ *     the evening question gets a thank-you, and a thank-you is an outbound — so without
+ *     it, every ANSWERED evening ended this lane's claim on its own words the moment it
+ *     said thank you, and the NO that came the next afternoon went to the coach while the
+ *     nightly message kept arriving. Hale hearing a parent out must not cost the parent
+ *     the way to stop being asked.
  *   · OR THE EVENING IS STILL OPEN — `askStillStanding`, this local evening through 08:00
- *     the next morning. This is the clause that survives Hale's own thank-you: the ack
- *     closes the standing QUESTION (eveningCheckInQuestion is a last-word rule and the ack
- *     is an outbound), and a NO a minute later must still work.
+ *     the next morning. The narrow clause the one above cannot cover: a household Hale
+ *     texts about something else at 21:00 still gets to say NO to tonight's question.
  *
  * OUTSIDE BOTH, LESS AND NO GO WHERE THEY WENT BEFORE THIS LANE EXISTED — to the coach.
  * A bare 'no' three weeks after an ask, with another lane's message in between and nothing
@@ -325,6 +343,7 @@ export async function checkInKeywordReach(
 ): Promise<CheckInKeywordReach> {
   const last = await lastCheckInMessageToParent(database, input);
   if (last === null) return { reach: 'none' };
+  const spokeRecently = input.now.getTime() - last.createdAt.getTime() <= REOFFER_MS;
 
   const [newer] = await database
     .select({ id: schema.channelMessages.id })
@@ -338,7 +357,7 @@ export async function checkInKeywordReach(
       ),
     )
     .limit(1);
-  if (!newer) return { reach: 'standing', askId: last.id };
+  if (!newer && spokeRecently) return { reach: 'standing', askId: last.id };
 
   const timeZone = await parentTimeZone(database, input.parentUserId);
   if (timeZone !== null && askStillStanding(last.createdAt, input.now, timeZone)) {
@@ -346,8 +365,7 @@ export async function checkInKeywordReach(
   }
 
   const { cadence } = await readCheckInState(database, input.familyId);
-  const sinceLastWord = input.now.getTime() - last.createdAt.getTime();
-  return cadence !== 'daily' && sinceLastWord <= CHECK_IN_REOFFER_DAYS * 24 * 3_600_000
+  return cadence !== 'daily' && spokeRecently
     ? { reach: 'reoffer', askId: last.id }
     : { reach: 'none' };
 }
@@ -357,8 +375,14 @@ export async function checkInKeywordReach(
  *
  * THE LEDGER IS THE RECORD OF WHAT HALE ACTUALLY SAID, which is why this reads it rather
  * than the prefs row: a prefs write that never landed would leave a family that was asked
- * looking like one that never was, and it is exactly that family whose NO must work. The
- * step-down notice counts too — it is the message that teaches DAILY.
+ * looking like one that never was, and it is exactly that family whose NO must work.
+ *
+ * ALL THREE OF THIS LANE'S TEMPLATE KEYS, and the set is what "this lane" MEANS here — the
+ * question, the step-down notice that teaches DAILY, and the acks, which is how the lane
+ * keeps the floor after thanking a parent for answering. The keys are namespaced, so they
+ * identify the sender on their own; the category is not asked for, because an ack is a
+ * `reply` row written by the router and matching on `evening_check_in` would find only the
+ * proactive half.
  */
 async function lastCheckInMessageToParent(
   database: Database,
@@ -372,10 +396,10 @@ async function lastCheckInMessageToParent(
         eq(schema.channelMessages.familyId, input.familyId),
         eq(schema.channelMessages.parentUserId, input.parentUserId),
         eq(schema.channelMessages.direction, 'out'),
-        eq(schema.channelMessages.category, 'evening_check_in'),
         inArray(schema.channelMessages.templateKey, [
           CHECK_IN_ASK_TEMPLATE_KEY,
           CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
+          CHECK_IN_ACK_TEMPLATE_KEY,
         ]),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),

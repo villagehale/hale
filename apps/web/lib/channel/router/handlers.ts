@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import type { CheckInCadence } from '~/lib/channel/checkin/cadence';
+import { CHECK_IN_ACK_TEMPLATE_KEY } from '~/lib/channel/checkin/copy';
 import {
   answeredOnTheSameChannel,
   applyCheckInCadence,
@@ -787,13 +788,13 @@ export function recMorningHandler(): DeterministicHandler {
  *
  * IT READS TWO DIFFERENT KINDS OF MESSAGE, and their permissions are not the same.
  *
- *   · A TAUGHT WORD (LESS / NO / DAILY) is a decision about the product, and every
- *     message this lane sends promises it works later — "Reply NO anytime", "reply DAILY
- *     any evening". So the word is honoured whenever Hale has ever put the question to
- *     this parent, standing question or not. The standing question could not carry that
- *     promise: it closes the moment any other outbound reaches the parent, and the
- *     thank-you Hale just sent is one, so a NO a minute later used to fall to the coach —
- *     which has no cadence tool — and the nightly message kept coming.
+ *   · A TAUGHT WORD (LESS / NO / DAILY) is a decision about the product, and it outlives
+ *     the standing question — which closes the moment ANY outbound reaches the parent,
+ *     Hale's own thank-you included, so a NO a minute later would otherwise fall to the
+ *     coach, which has no cadence tool, and the nightly message would keep coming. How far
+ *     it outlives it is `checkInKeywordReach`, and the floor is this lane's own voice: its
+ *     ask, its step-down notice or one of its acks being the last thing Hale said to that
+ *     parent, inside thirty days.
  *
  *   · A SENTENCE is an answer to a question, so it needs Hale to actually be holding one
  *     (the ledger says so, reply.ts) AND `soleOpenKind` to say no OTHER open question
@@ -848,7 +849,12 @@ export function eveningCheckInHandler(): DeterministicHandler {
         now: ctx.now,
       });
       if (outcome.status === 'declined_to_claim') return { claimed: false };
-      return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      return {
+        claimed: true,
+        outcome: outcome.status,
+        reply: outcome.reply,
+        templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
+      };
     },
   };
 }
@@ -901,5 +907,10 @@ async function moveEveningCadence(
     language: replyLanguage(ctx.body),
     now: ctx.now,
   });
-  return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+  return {
+    claimed: true,
+    outcome: outcome.status,
+    reply: outcome.reply,
+    templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
+  };
 }

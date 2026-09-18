@@ -18,6 +18,7 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   type CheckInDecision,
   type CheckInSkipReason,
+  type CheckInState,
   isEveningCheckInSlot,
   localDateKey,
   decideCheckIn,
@@ -68,10 +69,17 @@ import {
 /** Filter first, then cap — a cap-then-filter would starve every family past the oldest N
  * of their slot forever. Most hours select nobody at all.
  *
- * WHICH N, when there are more, is decided by the selection's ORDER BY (least recently
- * asked first) rather than by whatever order Postgres happens to return, so a household
- * that overflowed tonight is at the front of tomorrow's queue instead of behind the same
- * hundred rows every evening. `overflow` says out loud how many were left. */
+ * THE LADDER IS PART OF THE FILTER, and it has to be: the selection is ordered least
+ * recently asked first, and the households the ladder has nothing to send are exactly the
+ * ones that sit at the head of that order forever — a family who replied NO is never asked
+ * again, so their `last_asked_at` never moves. Capping before the decision would spend the
+ * bound on them every evening and leave a household that is actually due behind the same
+ * wall each night. So every family in the slot is decided, and only the ones with something
+ * to send are counted against this bound.
+ *
+ * WHICH N, when there are still more, is the selection's ORDER BY, so a household that
+ * overflowed tonight is at the front of tomorrow's queue. `overflow` says how many were
+ * left. */
 export const MAX_CHECK_INS_PER_RUN = 100;
 
 export interface EveningCheckInResult {
@@ -80,9 +88,9 @@ export interface EveningCheckInResult {
   /** Families whose local clock is in the evening hour right now — ALL of them, including
    * the ones this run had no room for. */
   inSlot: number;
-  /** In the slot and left for tomorrow, because the slot held more than one run may
-   * carry. Counted rather than dropped silently: a standing overflow is the signal that
-   * the bound needs raising or the hour needs spreading. */
+  /** Due tonight and left for tomorrow, because the slot held more households with
+   * something to send than one run may carry. Counted rather than dropped silently: a
+   * standing overflow is the signal that the bound needs raising or the hour spreading. */
   overflow: number;
   asked: number;
   /** Three lapsed asks: the parent was told Hale will ask weekly instead. */
@@ -174,37 +182,57 @@ export async function runEveningCheckInSweep(
   const inSlot = (await deps.selectFamilies(database))
     .filter((family) => allFamilies || allowlist.has(family.familyId))
     .filter((family) => isEveningCheckInSlot(now, family.timeZone));
-  const families = inSlot.slice(0, MAX_CHECK_INS_PER_RUN);
   result.inSlot = inSlot.length;
-  result.overflow = inSlot.length - families.length;
 
-  for (const family of families) {
+  const due: DueTonight[] = [];
+  for (const family of inSlot) {
     try {
-      await runForFamily(database, deps, family, result, now);
+      const state = await deps.readState(database, family.familyId);
+      const decision = decideCheckIn(state, now, family.timeZone);
+      if (decision.kind === 'skip') result.skipped[decision.reason] += 1;
+      else due.push({ family, state, decision });
+    } catch (err) {
+      result.failed += 1;
+      console.error({ err, familyId: family.familyId }, 'evening check-in: state read failed');
+    }
+  }
+  const carried = due.slice(0, MAX_CHECK_INS_PER_RUN);
+  result.overflow = due.length - carried.length;
+
+  for (const each of carried) {
+    try {
+      await runForFamily(database, deps, each, result, now);
     } catch (err) {
       result.failed += 1;
       // One family's bad data must not silence every family after it. Ids and enums only,
       // never the body and never the answer (rule #1).
-      console.error({ err, familyId: family.familyId }, 'evening check-in: family sweep failed');
+      console.error(
+        { err, familyId: each.family.familyId },
+        'evening check-in: family sweep failed',
+      );
     }
   }
   return result;
 }
 
+/** A household in its evening slot that the ladder has something to do about — the unit
+ * MAX_CHECK_INS_PER_RUN is counted in. A skip never becomes one, which is the whole of
+ * why the bound is applied after the decision and not before it. */
+interface DueTonight {
+  family: CheckInFamily;
+  state: CheckInState;
+  decision: Exclude<CheckInDecision, { kind: 'skip' }>;
+}
+
 async function runForFamily(
   database: Database,
   deps: EveningCheckInDeps,
-  family: CheckInFamily,
+  due: DueTonight,
   result: EveningCheckInResult,
   now: Date,
 ): Promise<void> {
-  const state = await deps.readState(database, family.familyId);
-  const decision = decideCheckIn(state, now, family.timeZone);
+  const { family, state, decision } = due;
 
-  if (decision.kind === 'skip') {
-    result.skipped[decision.reason] += 1;
-    return;
-  }
   if (decision.kind === 'dormant') {
     // Nothing is sent, so nothing is gated: going quiet is not a message.
     await deps.recordCadence(database, {

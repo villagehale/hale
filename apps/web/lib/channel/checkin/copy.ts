@@ -28,13 +28,25 @@ import { withOptOut } from '~/lib/channel/opt-out';
  */
 
 /**
- * The ledger's `template_key` for each of the two messages this lane sends, and the one
- * thing that tells them apart afterwards. `checkin:ask` OPENS a standing question;
+ * The ledger's `template_key` for each of the two messages this lane sends UNPROMPTED, and
+ * the one thing that tells them apart afterwards. `checkin:ask` OPENS a standing question;
  * `checkin:weekly` announces a cadence change and asks nothing. The reply lane reads the
  * key, so a parent's next text is never filed against a notice.
  */
 export const CHECK_IN_ASK_TEMPLATE_KEY = 'checkin:ask';
 export const CHECK_IN_STEP_DOWN_TEMPLATE_KEY = 'checkin:weekly';
+
+/**
+ * The ledger's `template_key` for every ACK this lane sends back — the thank-you, the
+ * refusal, and the three cadence receipts.
+ *
+ * A reply row is written by the router and not by this lane, so without a name on it the
+ * lane's own last word is indistinguishable from the coach's: `lastCheckInMessageToParent`
+ * would see the ask, see the ack sitting on top of it, and conclude that somebody else had
+ * the floor. One key for all five, because the only question anyone asks of it is "was the
+ * last thing this parent heard from Hale ours".
+ */
+export const CHECK_IN_ACK_TEMPLATE_KEY = 'checkin:ack';
 
 /** What the question calls the children when it cannot name them. */
 export const GENERIC_CHILD_PHRASE = 'the kids';
@@ -97,9 +109,13 @@ export function composeCheckInAsk(input: {
  *
  * A product that simply stopped asking would be indistinguishable from one that broke,
  * and a parent who was only busy would never learn they could have it back.
+ *
+ * IT SAYS "REPLY DAILY", NOT "ANY EVENING", because the second is a duration and the
+ * duration is not unlimited: this lane holds its own words for thirty days after it last
+ * spoke (CHECK_IN_REOFFER_DAYS), and a household that goes dormant after this notice
+ * eventually falls outside that. The sentence gives the word without the promise.
  */
-export const CHECK_IN_STEP_DOWN =
-  "I'll check in weekly instead - reply DAILY any evening to switch back.";
+export const CHECK_IN_STEP_DOWN = "I'll check in weekly instead - reply DAILY to switch back.";
 
 /** The parent asked for less. */
 export const CHECK_IN_WEEKLY_ACK: Record<ReplyLanguage, string> = {
@@ -115,8 +131,8 @@ export const CHECK_IN_OFF_ACK: Record<ReplyLanguage, string> = {
 
 /** The parent asked for it back. */
 export const CHECK_IN_DAILY_ACK: Record<ReplyLanguage, string> = {
-  en: 'Back to nightly then. Reply LESS or NO whenever you like.',
-  fr: 'De retour tous les soirs. Répondez LESS ou NO quand vous voulez.',
+  en: 'Back to nightly then. Reply LESS or NO to change that.',
+  fr: 'De retour tous les soirs. Répondez LESS ou NO pour changer.',
 };
 
 /**
@@ -127,8 +143,8 @@ export const CHECK_IN_DAILY_ACK: Record<ReplyLanguage, string> = {
  * message a parent reads most often.
  */
 export const CHECK_IN_NOTED_ACK: Record<ReplyLanguage, string> = {
-  en: "Noted - thanks. I'll keep it in mind for the weekend picks. Reply NO anytime to drop these.",
-  fr: "Noté - merci. J'y penserai pour les suggestions du week-end. Répondez NO quand vous voulez.",
+  en: "Noted - thanks. I'll keep it in mind for the weekend picks. Reply NO to drop these.",
+  fr: "Noté - merci. J'y penserai pour les suggestions du week-end. Répondez NO pour ne plus en recevoir.",
 };
 
 /**
