@@ -2,13 +2,14 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { mintChannelSigninToken } from '~/lib/auth/channel-signin';
 import { isParentRole } from '~/lib/channel/role-scope';
+import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 
 /**
  * The connector handoff's mint: a verified parent's plain "connect my calendar"
- * becomes a single-use, 15-minute sign-in link to the settings connections surface.
+ * becomes a single-use, 15-minute sign-in link into that provider's Google consent.
  *
  * SCOPE IS THE ROUTED TURN'S, by construction: `parentUserId`/`familyId` come from the
  * router's job — the same forged-scope-impossible invariant the connector read tools
@@ -29,10 +30,12 @@ export type ConnectorOfferOutcome =
   | { status: 'mint_failed' };
 
 /** Where the link lands: the redeem page, which signs the parent in and forwards them
- * to Settings -> Connected apps. Always the app host (appBaseUrl), never the
- * marketing site — this is an app door. */
-function connectUrl(token: string): string {
-  return `${appBaseUrl()}/connect?t=${token}`;
+ * straight into this provider's Google consent — no Settings, no Connect button to
+ * find. Always the app host (appBaseUrl), never the marketing site: this is an app door.
+ * A provider with no text-back path carries no `to` and keeps the Settings landing. */
+function connectUrl(token: string, provider: ConnectorProvider): string {
+  const deepLink = asTextConnectProvider(provider);
+  return `${appBaseUrl()}/connect?t=${token}${deepLink ? `&to=${deepLink}` : ''}`;
 }
 
 export async function offerConnectorLink(
@@ -89,7 +92,7 @@ export async function offerConnectorLink(
       return minted.token;
     });
 
-    return { status: 'minted', url: connectUrl(token) };
+    return { status: 'minted', url: connectUrl(token, input.provider) };
   } catch {
     // Named rather than thrown (rule #11): a thrown handler would defer the whole turn
     // into hours of queue backoff for a link the parent asked for NOW, and the honest

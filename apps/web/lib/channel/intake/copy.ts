@@ -705,22 +705,27 @@ export const AMBIGUOUS_CLARIFY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
  * answer. There is no NO to reply: ignoring it IS the no, which is the only refusal
  * that costs a parent nothing.
  *
- * Both providers in one sentence because one link serves both — the redeem page lands
- * on Settings -> Connected apps, where the Calendar and Gmail buttons sit side by side.
- * Two texts for two buttons would be two asks for one decision.
+ * ONE LINK, AND IT IS THE CALENDAR'S. The link carries a sign-in token, and
+ * `mintChannelSigninToken` invalidates a user's prior unconsumed tokens on every mint —
+ * so two links means the first one is already dead when the text arrives, and one token
+ * in two links means whichever the parent taps kills the other. Both providers are still
+ * named, because the ask is about both; the second one is a sentence away rather than a
+ * tap away, which is the messaging-first answer and the one the detector already
+ * understands (connect/detect.ts matches "connect my gmail").
  *
- * TWO SEGMENTS, not one, and deliberately: 60 of its characters are a URL Hale did not
+ * TWO SEGMENTS, not one, and deliberately: 68 of its characters are a URL Hale did not
  * write, and cutting the sentence to fit would cost either the reason or the skip. The
  * ceiling is held mechanically in sms-copy-encoding.test.ts with a realistic link
  * inside it. The fifteen minutes is CHANNEL_SIGNIN_TTL_MS said out loud.
  */
 const CONNECTOR_OFFER_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
   en: (url) =>
-    `Optional: I can also watch your Google Calendar and Gmail for daycare and school notices. Tap to connect: ${url} Good for 15 minutes - ignore this to skip.`,
+    `Optional: I can also watch your Google Calendar and Gmail for daycare and school notices. Tap to connect Calendar: ${url} For Gmail, text connect my gmail. Good for 15 minutes - ignore this to skip.`,
   // 'Google Agenda' is the product's own French name. 'l'école' keeps its accent — é is
-  // in GSM-7; the circumflexes and the cedilla that are not never appear here.
+  // in GSM-7; the circumflexes and the cedilla that are not never appear here. The words
+  // offered back are the ones the detector's French branch matches.
   fr: (url) =>
-    `Optionnel : je peux aussi surveiller votre Google Agenda et Gmail pour les avis de la garderie et de l'école. Touchez pour connecter : ${url} Bon pour 15 minutes - ignorez pour passer.`,
+    `Optionnel : je peux aussi surveiller votre Google Agenda et Gmail pour les avis de la garderie et de l'école. Touchez pour connecter Agenda : ${url} Pour Gmail, textez connecter mon Gmail. Bon pour 15 minutes - ignorez pour passer.`,
 };
 
 /** The whole message, link included — composed here and nowhere else, so no later

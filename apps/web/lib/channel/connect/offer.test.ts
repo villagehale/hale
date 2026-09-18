@@ -56,7 +56,10 @@ describe('offerConnectorLink', () => {
     });
 
     if (outcome.status !== 'minted') throw new Error(`expected minted, got ${outcome.status}`);
-    expect(outcome.url).toMatch(/^https:\/\/app\.villagehale\.com\/connect\?t=[A-Za-z0-9_-]+$/);
+    // The deep link is the point: `to` is what lets the redeem page skip Settings.
+    expect(outcome.url).toMatch(
+      /^https:\/\/app\.villagehale\.com\/connect\?t=[A-Za-z0-9_-]+&to=gcal$/,
+    );
 
     const tokens = await db.database.select().from(schema.channelSigninTokens);
     expect(tokens).toHaveLength(1);

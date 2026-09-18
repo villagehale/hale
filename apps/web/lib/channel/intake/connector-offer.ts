@@ -25,9 +25,11 @@ import type { ChannelTransport } from './transport';
  * which is why it consults quiet hours by hand — the parent's own answer is exempt at
  * 22:30, an unprompted permissions link is not.
  *
- * ONE LINK FOR BOTH PROVIDERS: the redeem page signs the parent in and lands on
- * Settings -> Connected apps, where both Connect buttons live. `gcal` on the audit row
- * records what was offered first, not what can be connected.
+ * ONE LINK, AND IT GOES STRAIGHT TO GOOGLE: the redeem page signs the parent in and
+ * forwards them into Calendar's consent, so the portal is not in the path. Gmail is
+ * named in the same sentence and reached by texting for it — a sign-in token
+ * invalidates its predecessor on mint, so a second live link is not a thing that
+ * exists (see the copy's note). `gcal` on the audit row is what was offered.
  *
  * Rule #11: every way this declines is NAMED and logged. Nothing here may fail the
  * turn — the consent is written and the acknowledgment is delivered before this runs,

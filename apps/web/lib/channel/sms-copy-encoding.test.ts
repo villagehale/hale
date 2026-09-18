@@ -33,6 +33,8 @@ import {
 } from '~/lib/channel/intake/copy';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { connectorOfferReply } from '~/lib/channel/connect/copy';
+import { matchConnectorRequest } from '~/lib/channel/connect/detect';
+import { CONNECTOR_CONNECTED_TEXT } from '~/lib/channel/connect/text-connect';
 import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
@@ -97,6 +99,7 @@ const SMS_COPY_SOURCES = [
   'lib/channel/caregiver/copy.ts',
   'lib/channel/join/copy.ts',
   'lib/channel/connect/copy.ts',
+  'lib/channel/connect/text-connect.ts',
   'lib/channel/twilio/copy.ts',
   'lib/channel/founder/copy.ts',
   'lib/health/copy.ts',
@@ -265,8 +268,9 @@ describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
  * segment here would be pure ceremony.
  */
 describe('the connector offer stays GSM-7 and inside one segment, twins in lockstep', () => {
-  // Representative of the real mint: 16 bytes base64url is 22 characters.
-  const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ';
+  // Representative of the real mint: 16 bytes base64url is 22 characters, plus the
+  // `&to=` deep link the redeem page needs to skip Settings.
+  const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gmail';
   const PROVIDERS = ['gcal', 'gmail', 'gdrive'] as const;
   const LANGUAGES = ['en', 'fr'] as const;
 
@@ -309,7 +313,7 @@ describe('the connector offer stays GSM-7 and inside one segment, twins in locks
  * of the French script.
  */
 describe('the intake connector offer stays GSM-7 and inside two segments', () => {
-  const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ';
+  const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gcal';
 
   it.each(['en', 'fr'] as const)('%s', (language) => {
     const body = intakeConnectorOffer(language, URL);
@@ -340,6 +344,22 @@ describe('the intake connector offer stays GSM-7 and inside two segments', () =>
     expect(fr).toMatch(/ignorez pour passer/);
   });
 
+  /**
+   * EXACTLY ONE LINK, and the second provider reached by texting for it. A sign-in mint
+   * invalidates the user's prior unconsumed token, so a message carrying two links would
+   * ship one that was dead before it arrived — this is the assertion that stops a future
+   * edit "improving" the offer back into that.
+   */
+  it('carries one link and names the words that fetch the other connector', () => {
+    for (const language of ['en', 'fr'] as const) {
+      const body = intakeConnectorOffer(language, URL);
+      expect(body.match(/https:\/\//g)).toHaveLength(1);
+      expect(body).toMatch(/gmail/i);
+    }
+    expect(matchConnectorRequest('connect my gmail')).toBe('gmail');
+    expect(matchConnectorRequest('connecter mon Gmail')).toBe('gmail');
+  });
+
   /** The characters the French twin may not use, named — the same refusals the rest of
    * the French script is held to, with the same positive control under them. */
   it('names the characters the French twin may not use', () => {
@@ -348,6 +368,34 @@ describe('the intake connector offer stays GSM-7 and inside two segments', () =>
     expect([...'âêîôûçœ«»’—'].filter((char) => fr.includes(char))).toEqual([]);
     expect(smsEncoding('é è à ù')).toBe('gsm7');
     expect(smsEncoding('â ê î ô û ç')).toBe('ucs2');
+  });
+});
+
+/**
+ * The receipt Hale texts the second a connector is live — the last message in the texted
+ * connect, and the only one the parent gets while standing in a browser tab.
+ *
+ * ONE SEGMENT EACH, and that is the whole budget question: it carries no link (the work
+ * is already done), so anything over one segment is ceremony on a message whose only job
+ * is to say a thing landed. Each also names the way out in the same breath as the way in,
+ * which is the assertion below — a connection a parent cannot remember how to undo is one
+ * Hale should not have asked for.
+ */
+describe('the connector receipt stays one GSM-7 segment and says how to undo it', () => {
+  it.each(Object.entries(CONNECTOR_CONNECTED_TEXT))('%s', (_provider, body) => {
+    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+      encoding: 'gsm7',
+      segments: 1,
+    });
+    // The receipt is a text, so it never hands the parent back to a screen.
+    expect(body).not.toMatch(/https?:/i);
+    expect(body).not.toMatch(/\bthe app\b/i);
+  });
+
+  it('tells the parent what each connector will and will not be used for', () => {
+    expect(CONNECTOR_CONNECTED_TEXT.gcal).toContain('disconnect my calendar');
+    // Gmail is the alarming one: the promise has to be bounded out loud.
+    expect(CONNECTOR_CONNECTED_TEXT.gmail).toContain('Nothing else.');
   });
 });
 

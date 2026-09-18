@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
+import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { signConnectState } from '~/lib/integrations/connect-state';
@@ -37,8 +38,19 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
   if (!familyId || !userId) {
     return NextResponse.json({ error: 'no_family' }, { status: 403 });
   }
-  const origin = process.env.APP_URL ?? new URL(req.url).origin;
-  const state = signConnectState({ familyId, userId, provider });
+  const url = new URL(req.url);
+  const origin = process.env.APP_URL ?? url.origin;
+  // `from=text` is the redeem page saying the parent is standing in a thread. It only
+  // counts for a provider Hale can text about — a text surface for any other would
+  // promise a receipt (connect/text-connect.ts) that never arrives.
+  const fromText =
+    url.searchParams.get('from') === 'text' && asTextConnectProvider(provider) !== null;
+  const state = signConnectState({
+    familyId,
+    userId,
+    provider,
+    ...(fromText ? { surface: 'text' as const } : {}),
+  });
   const authUrl = buildGoogleAuthUrl({
     provider,
     state,

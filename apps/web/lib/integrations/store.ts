@@ -64,9 +64,9 @@ export async function saveConnection(
     tokens: OAuthTokens;
     providerMetadata?: Record<string, unknown>;
   },
-): Promise<void> {
+): Promise<string> {
   const oauthTokensEncrypted = encryptTokens(input.tokens);
-  await database.transaction(async (tx) => {
+  return database.transaction(async (tx) => {
     const upserted = await tx
       .insert(schema.integrations)
       .values({
@@ -95,14 +95,17 @@ export async function saveConnection(
         },
       })
       .returning({ id: schema.integrations.id });
+    const id = upserted[0]?.id;
+    if (!id) throw new Error('saveConnection: integrations upsert returned no row');
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,
       actor: input.userId,
       actionTaken: AUDIT_CONNECTED,
       targetTable: 'integrations',
-      targetId: upserted[0]?.id,
+      targetId: id,
       after: { provider: input.provider },
     });
+    return id;
   });
 }
 
