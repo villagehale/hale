@@ -2273,7 +2273,7 @@ describe('intake · the connector offer on the consent turn', () => {
 
     expect(recorded).toMatchObject({ connectorOffer: 'sent' });
     const offerBody = h.transport.bodies().at(-1) as string;
-    const url = (offerBody.match(/https:\/\/\S+/) as RegExpMatchArray)[0];
-    expect(offerBody).toBe(intakeConnectorOffer('fr', url));
+    const [calendarUrl, gmailUrl] = offerBody.match(/https:\/\/\S+/g) as RegExpMatchArray;
+    expect(offerBody).toBe(intakeConnectorOffer('fr', calendarUrl as string, gmailUrl as string));
   });
 });

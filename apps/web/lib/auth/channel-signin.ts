@@ -14,8 +14,10 @@ import { MAGIC_LINK_TTL_MS } from './magic-link';
  * anti-fork property, link-shaped).
  *
  * Hash-only at rest, single-use via an atomic conditional burn, 15-minute TTL, and
- * invalidate-prior-on-mint — each one the magic-link convention, kept deliberately
- * byte-for-byte in behaviour so there is one story about what a Hale sign-in link is.
+ * invalidate-prior — each one the magic-link convention, kept deliberately byte-for-byte
+ * in behaviour so there is one story about what a Hale sign-in link is. The unit of
+ * "prior" is the ASK, not the link: one message may offer two connectors, and its two
+ * links must outlive each other for as long as the message does.
  */
 
 /** Same window as the email magic link — one product promise about what "a sign-in
@@ -39,15 +41,24 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+export interface MintedChannelSigninToken {
+  token: string;
+  tokenId: string;
+  expiresAt: Date;
+}
+
 /**
- * Issue a sign-in token for a user we already hold. Invalidates the user's prior
- * unconsumed tokens first — only the newest link works — and returns the raw token
- * exactly once, for the SMS that carries it; the DB keeps only the digest.
+ * Issue the sign-in tokens of ONE ask for a user we already hold — `count` of them,
+ * one per link the message will carry. The user's prior unconsumed tokens are
+ * invalidated once, up front, so only the newest ask works; the tokens of that ask
+ * coexist, because a message offering Calendar and Gmail must not hand the parent a
+ * link its own sibling killed. Each raw token is returned exactly once, for the SMS
+ * that carries it; the DB keeps only the digests.
  */
-export async function mintChannelSigninToken(
+export async function mintChannelSigninTokens(
   database: Database,
-  input: { userId: string; now: Date },
-): Promise<{ token: string; tokenId: string; expiresAt: Date }> {
+  input: { userId: string; count: number; now: Date },
+): Promise<MintedChannelSigninToken[]> {
   await database
     .update(schema.channelSigninTokens)
     .set({ consumedAt: input.now })
@@ -58,17 +69,29 @@ export async function mintChannelSigninToken(
       ),
     );
 
-  const token = newToken();
   const expiresAt = new Date(input.now.getTime() + CHANNEL_SIGNIN_TTL_MS);
-  const [row] = await database
-    .insert(schema.channelSigninTokens)
-    .values({ userId: input.userId, tokenHash: hashToken(token), expiresAt, createdAt: input.now })
-    .returning({ id: schema.channelSigninTokens.id });
-  if (!row) {
-    throw new Error('mintChannelSigninToken: channel_signin_tokens insert returned no row');
+  const minted: MintedChannelSigninToken[] = [];
+  // One INSERT per token rather than one multi-row INSERT: the id a token is paired
+  // with is an audit row's target (rule #6), and pairing by RETURNING order would rest
+  // on an ordering Postgres does not promise.
+  for (let i = 0; i < input.count; i += 1) {
+    const token = newToken();
+    const [row] = await database
+      .insert(schema.channelSigninTokens)
+      .values({
+        userId: input.userId,
+        tokenHash: hashToken(token),
+        expiresAt,
+        createdAt: input.now,
+      })
+      .returning({ id: schema.channelSigninTokens.id });
+    if (!row) {
+      throw new Error('mintChannelSigninTokens: channel_signin_tokens insert returned no row');
+    }
+    minted.push({ token, tokenId: row.id, expiresAt });
   }
 
-  return { token, tokenId: row.id, expiresAt };
+  return minted;
 }
 
 export type ChannelSigninConsumeResult =
