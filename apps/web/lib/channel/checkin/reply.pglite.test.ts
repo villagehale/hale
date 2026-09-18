@@ -29,7 +29,7 @@ import {
   CHECK_IN_WEEKLY_ACK,
 } from './copy';
 import { NOTE_RETENTION_DAYS, purgeExpiredCheckInNotes } from './notes';
-import { eveningCheckInQuestion, handleEveningCheckInReply } from './reply';
+import { CHECK_IN_REOFFER_DAYS, eveningCheckInQuestion, handleEveningCheckInReply } from './reply';
 
 /**
  * The evening answer, against real Postgres and through the PRODUCTION reader.
@@ -84,7 +84,7 @@ async function seedFamily(): Promise<Seeded> {
 
 async function seedAsk(
   seeded: Seeded,
-  overrides: { templateKey?: string; createdAt?: Date } = {},
+  overrides: { templateKey?: string; createdAt?: Date; status?: 'queued' | 'failed' } = {},
 ): Promise<string> {
   const [row] = await db.database
     .insert(schema.channelMessages)
@@ -95,7 +95,7 @@ async function seedAsk(
       direction: 'out',
       category: 'evening_check_in',
       templateKey: overrides.templateKey ?? CHECK_IN_ASK_TEMPLATE_KEY,
-      status: 'queued',
+      status: overrides.status ?? 'queued',
       createdAt: overrides.createdAt ?? ASKED_AT,
     })
     .returning({ id: schema.channelMessages.id });
@@ -615,9 +615,11 @@ describe('LESS, NO and DAILY after the question has closed', () => {
   });
 
   it('still takes DAILY as the way back in, for thirty days after Hale slowed down', async () => {
+    // Off the constant, a day either side of it: 21-vs-40 would hold with the window at
+    // any length in between, and the window IS the rule here.
     for (const [askedDaysAgo, claimed] of [
-      [21, true],
-      [40, false],
+      [CHECK_IN_REOFFER_DAYS - 1, true],
+      [CHECK_IN_REOFFER_DAYS + 1, false],
     ] as const) {
       const seeded = await seedFamily();
       await seedAsk(seeded, {
@@ -656,8 +658,8 @@ describe('LESS, NO and DAILY after the question has closed', () => {
     // household Hale asked once and then never texted again would otherwise have 'no'
     // claimed for the rest of their life.
     for (const [askedDaysAgo, claimed] of [
-      [21, true],
-      [40, false],
+      [CHECK_IN_REOFFER_DAYS - 1, true],
+      [CHECK_IN_REOFFER_DAYS + 1, false],
     ] as const) {
       const seeded = await seedFamily();
       await seedAsk(seeded, {
@@ -712,6 +714,55 @@ describe('LESS, NO and DAILY after the question has closed', () => {
     expect(await readPrefs(seeded.familyId)).toBeUndefined();
   });
 
+  it('is a way back in and nothing more: DAILY returns, a bare NO does not', async () => {
+    // A stepped-down household, another lane speaking since: the reoffer window is open,
+    // and it is open for exactly one word. Without that narrowing a bare NO out here
+    // would be a cadence change filed off a word the parent meant for somebody else.
+    for (const [body, claimed, cadence] of [
+      ['no', false, 'weekly'],
+      ['DAILY', true, 'daily'],
+    ] as const) {
+      const seeded = await seedFamily();
+      await seedAsk(seeded, {
+        templateKey: CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
+        createdAt: new Date(NEXT_AFTERNOON.getTime() - 21 * 24 * 3_600_000),
+      });
+      await seedOtherLaneOutbound(seeded, new Date(NEXT_AFTERNOON.getTime() - 2 * 24 * 3_600_000));
+      await db.database
+        .insert(schema.familyCheckInPrefs)
+        .values({ familyId: seeded.familyId, cadence: 'weekly' });
+      const inbound = await seedInbound(seeded, body);
+
+      expect(
+        await handler().handle(db.database, turn(seeded, body, [], inbound, NEXT_AFTERNOON)),
+        body,
+      ).toEqual(
+        claimed
+          ? {
+              claimed: true,
+              outcome: 'cadence_daily',
+              reply: CHECK_IN_DAILY_ACK.en,
+              templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
+            }
+          : { claimed: false },
+      );
+      expect((await readPrefs(seeded.familyId))?.cadence, body).toBe(cadence);
+      await db.exec('truncate table families, users cascade');
+    }
+  });
+
+  it('holds no floor on an ask that never reached the phone', async () => {
+    // A 'failed' row consumed the dedupe key and sent nothing. The parent was never
+    // asked, so there is no conversation for their 'no' to be the end of.
+    const seeded = await seedFamily();
+    await seedAsk(seeded, { status: 'failed' });
+    const inbound = await seedInbound(seeded, 'no');
+    expect(
+      await handler().handle(db.database, turn(seeded, 'no', [], inbound, NEXT_AFTERNOON)),
+    ).toEqual({ claimed: false });
+    expect(await readPrefs(seeded.familyId)).toBeUndefined();
+  });
+
   it('does not read a keyword off the wrong door', async () => {
     const seeded = await seedFamily();
     await seedAsk(seeded);
@@ -738,6 +789,12 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
   const NEXT_AFTERNOON = new Date('2026-07-06T18:00:00.000Z');
   /** 22:00 the evening of the ask — another turn, after the ack. */
   const LATER_THAT_EVENING = new Date('2026-07-06T02:00:00.000Z');
+  /** 07:30 the next morning: inside the window by half an hour, so the answer still
+   * lands and Hale thanks the parent for it. An ACK sent at breakfast. */
+  const NEXT_MORNING = new Date('2026-07-06T11:30:00.000Z');
+  /** 10:00 and 10:05 that same morning — the coach takes a turn, then one bare word. */
+  const MID_MORNING = new Date('2026-07-06T14:00:00.000Z');
+  const FIVE_MINUTES_LATER = new Date('2026-07-06T14:05:00.000Z');
 
   let transport: FakeReplyTransport;
 
@@ -879,6 +936,52 @@ describe("the floor after Hale's own thank-you, through the real router", () => 
     const declined = await text(seeded, 'NO', NEXT_AFTERNOON, 'Say more?');
     expect(declined.handler).not.toBe('evening_check_in');
     expect((await readPrefs(seeded.familyId))?.cadence).toBe('daily');
+  });
+
+  it('does not stretch an evening out of a breakfast thank-you', async () => {
+    // The parent answered at 07:30, so the ack went out at 07:30 — and an ack has no
+    // evening. If the open window were measured from it, the whole of this local day
+    // would belong to this lane, and the 'no' the parent typed at the coach five minutes
+    // after the coach answered them would be filed as a cadence change.
+    const seeded = await seedReachable();
+    await seedAsk(seeded);
+
+    const answered = await text(seeded, 'quiet one', NEXT_MORNING);
+    expect(answered.handler).toBe('evening_check_in');
+    expect(await outboundKeys(seeded.familyId)).toEqual([
+      CHECK_IN_ASK_TEMPLATE_KEY,
+      CHECK_IN_ACK_TEMPLATE_KEY,
+    ]);
+
+    const asked = await text(seeded, 'what is on saturday?', MID_MORNING, 'Swim at 10.');
+    expect(asked.status).toBe('agent_replied');
+
+    const declined = await text(seeded, 'no', FIVE_MINUTES_LATER, 'Say more?');
+    expect(declined.handler).not.toBe('evening_check_in');
+    expect((await readPrefs(seeded.familyId))?.cadence).toBe('daily');
+  });
+
+  it("still takes NO on the evening it asked, with another lane's nudge in between", async () => {
+    // The positive control for the case above, and the clause the ASK earns: 20:17 the
+    // question, 20:30 a nudge from somewhere else, 21:40 the parent's NO. Hale does not
+    // hold the floor, but the evening it asked about is still tonight.
+    const seeded = await seedReachable();
+    await seedAsk(seeded);
+    await db.database.insert(schema.channelMessages).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'nudge',
+      status: 'queued',
+      createdAt: new Date(ASKED_AT.getTime() + 13 * 60_000),
+    });
+    expect(await openQuestions(seeded, ANSWERED_AT)).toEqual([]);
+
+    const dropped = await text(seeded, 'NO', ANSWERED_AT);
+    expect(dropped.handler).toBe('evening_check_in');
+    expect(transport.bodies()).toEqual([CHECK_IN_OFF_ACK.en]);
+    expect((await readPrefs(seeded.familyId))?.cadence).toBe('off');
   });
 });
 

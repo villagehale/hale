@@ -319,9 +319,18 @@ export type CheckInKeywordReach =
  *     said thank you, and the NO that came the next afternoon went to the coach while the
  *     nightly message kept arriving. Hale hearing a parent out must not cost the parent
  *     the way to stop being asked.
- *   · OR THE EVENING IS STILL OPEN — `askStillStanding`, this local evening through 08:00
- *     the next morning. The narrow clause the one above cannot cover: a household Hale
- *     texts about something else at 21:00 still gets to say NO to tonight's question.
+ *   · OR THE EVENING IT ASKED ABOUT IS STILL OPEN — `askStillStanding` measured from
+ *     THE ASK, this local evening through 08:00 the next morning. The narrow clause the
+ *     one above cannot cover: a household Hale texts about something else at 21:00 still
+ *     gets to say NO to tonight's question.
+ *
+ *     FROM THE ASK, BECAUSE ONLY AN ASK HAS AN EVENING. An ack goes out whenever the
+ *     parent happens to write, breakfast included, and `askStillStanding` holds for the
+ *     whole local calendar day of what it is given — so measuring this clause from an ack
+ *     would widen "the evening" to "the rest of today, whoever has spoken since", and a
+ *     bare NO typed at the coach at 10:05 would be filed as a cadence change. The ack
+ *     keeps the floor under the clause above, where the test is who spoke LAST; it does
+ *     not open a window of its own.
  *
  * OUTSIDE BOTH, LESS AND NO GO WHERE THEY WENT BEFORE THIS LANE EXISTED — to the coach.
  * A bare 'no' three weeks after an ask, with another lane's message in between and nothing
@@ -359,9 +368,11 @@ export async function checkInKeywordReach(
     .limit(1);
   if (!newer && spokeRecently) return { reach: 'standing', askId: last.id };
 
-  const timeZone = await parentTimeZone(database, input.parentUserId);
-  if (timeZone !== null && askStillStanding(last.createdAt, input.now, timeZone)) {
-    return { reach: 'standing', askId: last.id };
+  if (last.templateKey === CHECK_IN_ASK_TEMPLATE_KEY) {
+    const timeZone = await parentTimeZone(database, input.parentUserId);
+    if (timeZone !== null && askStillStanding(last.createdAt, input.now, timeZone)) {
+      return { reach: 'standing', askId: last.id };
+    }
   }
 
   const { cadence } = await readCheckInState(database, input.familyId);
@@ -387,9 +398,15 @@ export async function checkInKeywordReach(
 async function lastCheckInMessageToParent(
   database: Database,
   input: { familyId: string; parentUserId: string },
-): Promise<{ id: string; createdAt: Date } | null> {
+): Promise<{ id: string; createdAt: Date; templateKey: string | null } | null> {
   const [row] = await database
-    .select({ id: schema.channelMessages.id, createdAt: schema.channelMessages.createdAt })
+    .select({
+      id: schema.channelMessages.id,
+      createdAt: schema.channelMessages.createdAt,
+      // WHICH of the three it was, because the two clauses do not want the same thing:
+      // holding the floor is any of them speaking, and an open evening is an ASK.
+      templateKey: schema.channelMessages.templateKey,
+    })
     .from(schema.channelMessages)
     .where(
       and(
