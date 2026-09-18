@@ -37,9 +37,10 @@ export const calendarEventSnapshots = pgTable(
     /** The series this instance belongs to, or null for a one-off. The grouping key that
      * turns six instance changes into one text. */
     recurringEventId: text('recurring_event_id'),
-    /** The start the parent was last told about — the only thing that can make the next
-     * sighting a MOVE rather than a first sight. Null only for a shape nothing could
-     * place. */
+    /** The start Hale last SAW — what makes the next sighting a MOVE rather than a first
+     * sight. Not always the start the parent was TOLD: while a text is owed this is the
+     * held, untold one, and `heldMovedFromAt` is what they last heard. Null only for a
+     * shape nothing could place. */
     startAt: timestamp('start_at', { withTimezone: true }),
     endAt: timestamp('end_at', { withTimezone: true }),
     allDay: boolean('all_day').notNull().default(false),
@@ -56,11 +57,14 @@ export const calendarEventSnapshots = pgTable(
      * and vetted by the renderer — a mailbox or a pasted address never reaches here,
      * because it never reached the text either. `heldMovedFromAt` is the start the held
      * text said the event moved FROM, so a move refused at 11 p.m. is still a move at 8
-     * a.m. rather than a bare "is on your calendar". All three are null unless a text is
-     * owed, and the table's CHECK is what makes that a fact rather than a habit. */
+     * a.m. rather than a bare "is on your calendar" — and `heldMovedFromAllDay` is that
+     * start's own shape, because an instant without it is a local midnight a re-offer
+     * would read back out as a clock. All of them are null unless a text is owed, and the
+     * table's two CHECKs are what make that a fact rather than a habit. */
     heldTitle: text('held_title'),
     heldLocation: text('held_location'),
     heldMovedFromAt: timestamp('held_moved_from_at', { withTimezone: true }),
+    heldMovedFromAllDay: boolean('held_moved_from_all_day'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

@@ -44,9 +44,17 @@ import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
  *   - The memory holds the SHAPE of an event (when, all-day, which series) always, and
  *     the parent's own words — the clamped title, the vetted location — only while a text
  *     is owed and not one sweep longer. A table CHECK enforces that, not a habit.
- *   - A SEEDING run alerts nobody. The first sync of a connection sees the whole
- *     calendar; so does the full resync Google forces after a stale syncToken. Either
- *     one would be two hundred texts about events the parent already knows about.
+ *   - A SEEDING run alerts nobody, and remembers everybody. The first sync of a
+ *     connection sees the whole calendar; so does the full resync Google forces after a
+ *     stale syncToken. Either one would be two hundred texts about events the parent
+ *     already knows about — but it is also the ONLY sighting Hale ever gets of an event
+ *     that pre-dates the connection, so a run that wrote nothing would make the first
+ *     edit to any of them read as a first sighting. Shape only, no words, and a text
+ *     already owed is left exactly as it was.
+ *   - A family Hale may not text at all — dark behind F14, or a connection with no
+ *     connecting user — is not swept, debts included. A hold outstanding when the flag
+ *     goes off is not sent late; it ages out at
+ *     {@link CALENDAR_ALERT_PENDING_MAX_DAYS} like any other.
  *   - Every ending is a named outcome ({@link CalendarAlertOutcome}) the cron summary
  *     counts (rule #11). `alert_failed` is the one this module cannot return for itself:
  *     the sweep holds a boundary around the call and names it, so a bug in Hale's alert
@@ -299,7 +307,10 @@ export async function alertParentForCalendarChanges(
 ): Promise<CalendarAlertSweep> {
   const { familyId, parentUserId, integrationId, changes, now } = input;
   if (parentUserId === null) return { changes: changes.map(() => 'no_parent_user'), reoffers: [] };
-  if (input.seeding) return { changes: changes.map(() => 'seeding_run'), reoffers: [] };
+  if (input.seeding) {
+    await seedMemory(database, input, parentUserId, ports);
+    return { changes: changes.map(() => 'seeding_run'), reoffers: [] };
+  }
   // Before any read below: the flag is a pure function of the family id, so a query in
   // front of it is a query per sweep for a family Hale may not speak to at all.
   if (!f14EnabledFor(familyId)) return { changes: changes.map(() => 'dark'), reoffers: [] };
@@ -390,6 +401,42 @@ export async function alertParentForCalendarChanges(
   return { changes: changeOutcomes, reoffers: reofferOutcomes };
 }
 
+/**
+ * A seeding run's whole job: write down the SHAPE of a calendar nobody will be texted
+ * about.
+ *
+ * The first sync of a connection — and the full resync Google forces after a stale
+ * syncToken — is the only sighting the memory ever gets of everything that pre-dates it.
+ * Skipping it costs nothing anyone can see on the day and makes the first edit to a class
+ * the parent set up last spring read as a first sighting, which is the follow-up this
+ * module exists to close.
+ *
+ * A text already owed is left exactly as it was, row and words and instant. A resync is
+ * Google losing its place, not Hale giving up on a text it promised — and dropping the
+ * second inside the first would end a debt under an outcome that says "alerted nobody"
+ * (rule #11).
+ */
+async function seedMemory(
+  database: Database,
+  input: CalendarAlertInput,
+  parentUserId: string,
+  ports: CalendarAlertPorts,
+): Promise<void> {
+  const { integrationId, changes, now } = input;
+  if (changes.length === 0) return;
+  const owed = new Set((await readSnapshots(database, integrationId, [])).map((row) => row.eventId));
+  const timeZone = await ports.timeZone(parentUserId);
+  const writes = new Map<string, SnapshotWrite>();
+  for (const change of changes) {
+    if (owed.has(change.eventId)) continue;
+    const span = eventSpan(change, timeZone);
+    // Nothing to remember about a shape nothing can place: it cannot make the next
+    // sighting a move, and it cannot be re-offered either.
+    if (span !== null) remember(writes, { change, span }, null);
+  }
+  await writeSnapshots(database, integrationId, writes, now);
+}
+
 async function sendOffer(
   database: Database,
   input: CalendarAlertInput,
@@ -404,23 +451,34 @@ async function sendOffer(
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'calendar_alert', now });
   if (!verdict.allowed) {
-    // A RECEIPT, and — for a hold that is a "not yet" — half of a promise: the caller
-    // writes the other half into the memory, so the syncToken moving past this change no
-    // longer means nobody will ever offer it again.
+    // ONE receipt per text owed, written the first time it is refused — and — for a hold
+    // that is a "not yet" — half of a promise: the caller writes the other half into the
+    // memory, so the syncToken moving past this change no longer means nobody will ever
+    // offer it again.
+    //
+    // A re-offer the gate refuses again is the SAME suppressed text, and a row per attempt
+    // would be forty-odd of them per held text per quiet-hours night on the surface a
+    // parent reads. Logged instead, never silent (rule #11) — and the outcome is named in
+    // the sweep's answer either way.
     //
     // The key stays NULL: the unique index is total over non-null dedupe keys, so a
     // suppression carrying it would block the send it is a record of NOT making.
-    await database.insert(schema.channelMessages).values({
-      familyId,
-      parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'calendar_alert',
-      templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
-      dedupeKey: null,
-      status: HOLD_STATUS[verdict.reason],
-    });
-    console.warn({ familyId, reason: verdict.reason }, 'calendar alert: held by the outbound gate');
+    if (offer.pendingSince === null) {
+      await database.insert(schema.channelMessages).values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'calendar_alert',
+        templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
+        dedupeKey: null,
+        status: HOLD_STATUS[verdict.reason],
+      });
+    }
+    console.warn(
+      { familyId, reason: verdict.reason, owedSince: offer.pendingSince?.toISOString() ?? null },
+      'calendar alert: held by the outbound gate',
+    );
     return `gate_refused:${verdict.reason}`;
   }
 
@@ -530,7 +588,7 @@ function settle(
       since,
       title: offer.heldTitle,
       location: offer.heldLocation,
-      movedFrom: member.previous === null ? null : new Date(member.previous.startMs),
+      movedFrom: member.previous,
     });
   }
 }
@@ -654,6 +712,7 @@ interface SnapshotWrite {
   heldTitle: string | null;
   heldLocation: string | null;
   heldMovedFromAt: Date | null;
+  heldMovedFromAllDay: boolean | null;
 }
 
 export interface PriorStart {
@@ -719,6 +778,7 @@ async function writeSnapshots(
         heldTitle: sql`excluded.held_title`,
         heldLocation: sql`excluded.held_location`,
         heldMovedFromAt: sql`excluded.held_moved_from_at`,
+        heldMovedFromAllDay: sql`excluded.held_moved_from_all_day`,
         updatedAt: sql`excluded.updated_at`,
       },
     });
@@ -726,9 +786,15 @@ async function writeSnapshots(
 
 function remember(
   writes: Map<string, SnapshotWrite>,
-  placed: Placed,
-  hold: { since: Date; title: string; location: string | null; movedFrom: Date | null } | null,
+  placed: { change: CalendarChange; span: EventSpan },
+  hold: {
+    since: Date;
+    title: string;
+    location: string | null;
+    movedFrom: PriorStart | null;
+  } | null,
 ): void {
+  const movedFrom = hold?.movedFrom ?? null;
   writes.set(placed.change.eventId, {
     eventId: placed.change.eventId,
     recurringEventId: placed.change.recurringEventId ?? null,
@@ -740,7 +806,10 @@ function remember(
     pendingSince: hold?.since ?? null,
     heldTitle: hold?.title ?? null,
     heldLocation: hold?.location ?? null,
-    heldMovedFromAt: hold?.movedFrom ?? null,
+    // The instant and its shape travel together or not at all, which the table's second
+    // CHECK is the enforcement of.
+    heldMovedFromAt: movedFrom === null ? null : new Date(movedFrom.startMs),
+    heldMovedFromAllDay: movedFrom === null ? null : movedFrom.allDay,
   });
 }
 
@@ -757,10 +826,30 @@ function movedFrom(
   change: CalendarChange,
   span: EventSpan,
 ): PriorStart | null {
-  if (prior === undefined || prior.startAt === null) return null;
+  if (prior === undefined) return null;
   if (change.status === 'cancelled') return null;
-  const startMs = prior.startAt.getTime();
-  return startMs === span.startMs ? null : { startMs, allDay: prior.allDay };
+  const told = lastTold(prior);
+  if (told === null) return null;
+  return told.startMs === span.startMs ? null : told;
+}
+
+/**
+ * The start the parent actually HEARD, which is not always the last one Hale saw.
+ *
+ * While a text is owed, the row's own `start_at` is the HELD start — true of the calendar
+ * and never said to anybody. So a second move arriving before the hold clears has to
+ * reach past it to the start the held text was going to say it moved FROM, or the
+ * parenthetical names a time the parent was never told. A hold that was not about a move
+ * (a first sighting the cap or quiet hours refused) means they have heard nothing at all,
+ * and the next sighting is a first sighting again.
+ */
+function lastTold(prior: SnapshotRow): PriorStart | null {
+  if (prior.pendingSince !== null) {
+    return prior.heldMovedFromAt === null || prior.heldMovedFromAllDay === null
+      ? null
+      : { startMs: prior.heldMovedFromAt.getTime(), allDay: prior.heldMovedFromAllDay };
+  }
+  return prior.startAt === null ? null : { startMs: prior.startAt.getTime(), allDay: prior.allDay };
 }
 
 /** A held text, rebuilt from the memory into the shape the renderer takes. Nothing is
@@ -788,10 +877,13 @@ function revive(
       location: row.heldLocation ?? undefined,
     },
     span: { startMs: startAt.getTime(), endMs: endAt.getTime(), allDay: row.allDay },
+    // The prior's OWN shape, never this row's: an all-day start is a local midnight, and
+    // read back under the current row's flag it renders as a clock of twelve that the
+    // calendar never had.
     previous:
-      row.heldMovedFromAt === null
+      row.heldMovedFromAt === null || row.heldMovedFromAllDay === null
         ? null
-        : { startMs: row.heldMovedFromAt.getTime(), allDay: row.allDay },
+        : { startMs: row.heldMovedFromAt.getTime(), allDay: row.heldMovedFromAllDay },
     pendingSince: row.pendingSince,
     write,
   };
@@ -946,9 +1038,14 @@ export function renderCalendarAlert(
  *
  * The parenthetical is the whole point: an edit the parent made is a fact they already
  * know, and an edit the OTHER parent (or the gym) made is only legible as news if the
- * sentence says what changed. Same-day time-only moves say the clock twice instead of the
- * date twice — "moved to 5:00-5:45 p.m. today (was Thursday, Sep 17)" names a day that did
- * not move.
+ * sentence says what changed. So when the DAY did not move the sentence must not be about
+ * the day — "PA day moved to Friday, Sep 18 (was Friday, Sep 18)" names the one thing
+ * that stayed the same, twice, and says nothing at all. Same-day edits say what actually
+ * changed instead: the clock, or the loss or gain of one.
+ *
+ *   `Cartwheels Gym moved to 5:00-5:45 p.m. today (was 4:15).`
+ *   `PA day moved to 9:00-10:00 a.m. on Friday, Sep 18 (was all day).`
+ *   `PA day is now all day on Friday, Sep 18 (was 9:00 a.m.).`
  */
 function movedSentence(
   change: CalendarChange,
@@ -961,15 +1058,20 @@ function movedSentence(
 ): string {
   const sameDay =
     dayKeyOf(new Date(span.startMs), timeZone) === dayKeyOf(new Date(previous.startMs), timeZone);
-  if (sameDay && !span.allDay && !previous.allDay) {
-    const was = clockParts(previous.startMs, timeZone);
-    const start = clockParts(span.startMs, timeZone);
-    const wasClock = was.dayPeriod === start.dayPeriod ? was.clock : `${was.clock} ${was.dayPeriod}`;
-    const when = dayKeyOf(new Date(span.startMs), timeZone) === dayKeyOf(now, timeZone)
-      ? 'today'
-      : `on ${day}`;
+  if (sameDay) {
+    const was = previousWhen(previous, span, timeZone);
+    if (span.allDay) {
+      // Never "today": "is now all day today" spends two words on the day it just said.
+      return endSentence(
+        `${title} is now all day on ${dayRange(span, day, timeZone, now)}${placePhrase(change)} (was ${was})`,
+      );
+    }
+    const when =
+      dayKeyOf(new Date(span.startMs), timeZone) === dayKeyOf(now, timeZone)
+        ? 'today'
+        : `on ${day}`;
     return endSentence(
-      `${title} moved to ${clockRange(span, timeZone, now)} ${when}${placePhrase(change)} (was ${wasClock})`,
+      `${title} moved to ${clockRange(span, timeZone, now)} ${when}${placePhrase(change)} (was ${was})`,
     );
   }
   const when = span.allDay
@@ -977,6 +1079,23 @@ function movedSentence(
     : `${day}, ${clockRange(span, timeZone, now)}`;
   const wasDay = asciiSpaces(formatDayHeading(new Date(previous.startMs), timeZone, now));
   return endSentence(`${title} moved to ${when}${placePhrase(change)} (was ${wasDay})`);
+}
+
+/**
+ * What the parenthetical calls the start the parent was last told, on a day that did not
+ * move: a clock, or the words for a start that never had one.
+ *
+ * An all-day start is a local midnight, so a clock is exactly what it must not be given —
+ * "(was 12:00)" is a time the calendar never held. The a.m./p.m. is dropped only when the
+ * new start is a clock too and says the same one: two of them in seven characters is how
+ * a machine writes a time, not how a parent reads one.
+ */
+function previousWhen(previous: PriorStart, span: EventSpan, timeZone: string): string {
+  if (previous.allDay) return 'all day';
+  const was = clockParts(previous.startMs, timeZone);
+  if (span.allDay) return `${was.clock} ${was.dayPeriod}`;
+  const start = clockParts(span.startMs, timeZone);
+  return was.dayPeriod === start.dayPeriod ? was.clock : `${was.clock} ${was.dayPeriod}`;
 }
 
 /**

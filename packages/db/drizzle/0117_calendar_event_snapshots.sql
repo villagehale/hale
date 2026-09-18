@@ -24,8 +24,9 @@ CREATE TABLE IF NOT EXISTS "calendar_event_snapshots" (
 	"event_id" text NOT NULL,
 	-- The series this instance belongs to, or null for a one-off.
 	"recurring_event_id" text,
-	-- The start the parent was last told about - the only thing that can make the next
-	-- sighting a MOVE rather than a first sight.
+	-- The start Hale last SAW, which is what makes the next sighting a MOVE rather than a
+	-- first sight. Not always the start the parent was told: while a text is owed this is
+	-- the held (untold) one, and `held_moved_from_at` is what they last heard.
 	"start_at" timestamp with time zone,
 	"end_at" timestamp with time zone,
 	"all_day" boolean DEFAULT false NOT NULL,
@@ -38,11 +39,12 @@ CREATE TABLE IF NOT EXISTS "calendar_event_snapshots" (
 	-- Everything a re-offer needs to say the same sentence again, and the only
 	-- parent-authored content here: the clamped title and the vetted location the renderer
 	-- already passed for sending, plus the start the held text said the event moved FROM
-	-- (null when the held text was not about a move). All three are null unless a text is
-	-- owed.
+	-- and whether THAT start was an all-day one (both null when the held text was not
+	-- about a move). All of them are null unless a text is owed.
 	"held_title" text,
 	"held_location" text,
 	"held_moved_from_at" timestamp with time zone,
+	"held_moved_from_all_day" boolean,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "calendar_event_snapshots_integration_id_event_id_pk" PRIMARY KEY ("integration_id", "event_id"),
 	-- A hold is complete - dated, placed in time, and named - or it is not a hold. Half of
@@ -54,6 +56,12 @@ CREATE TABLE IF NOT EXISTS "calendar_event_snapshots" (
 			"pending_since" IS NULL AND "held_title" IS NULL
 			AND "held_location" IS NULL AND "held_moved_from_at" IS NULL
 		)
+	),
+	-- The old start and its shape are ONE fact in two columns. An instant with no shape is
+	-- what makes a re-offered "it used to be all day" come back out as "(was 12:00)" - a
+	-- clock read off a local midnight that the calendar never had.
+	CONSTRAINT "calendar_event_snapshots_moved_from_check" CHECK (
+		("held_moved_from_at" IS NULL) = ("held_moved_from_all_day" IS NULL)
 	)
 );--> statement-breakpoint
 

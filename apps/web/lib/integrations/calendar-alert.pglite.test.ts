@@ -229,6 +229,42 @@ describe('alertParentForCalendarChanges', () => {
     await expect(ledgerRows()).resolves.toEqual([]);
   });
 
+  it('REMEMBERS the whole calendar while it seeds, so the first edit to it is a move', async () => {
+    // The seeding run is the only sighting Hale ever gets of an event the parent set up
+    // before connecting, and there are two hundred of them. A run that alerted nobody and
+    // remembered nobody would make the next edit to any of them read as a first
+    // sighting — which is follow-up (a) again, for every event that pre-dates the
+    // connection and for everything after a 410 full resync.
+    const seeded = harness();
+    await expect(sweep(seeded, { seeding: true })).resolves.toEqual(['seeding_run']);
+    expect(await snapshotOf(TIMED.eventId)).toMatchObject({
+      startAt: new Date('2026-09-17T20:15:00.000Z'),
+      allDay: false,
+      status: 'confirmed',
+      // Nothing is owed, so nothing of the parent's is kept (rule #1).
+      pendingSince: null,
+      heldTitle: null,
+      heldLocation: null,
+    });
+
+    const moved = harness();
+    await expect(
+      sweep(moved, {
+        changes: [
+          {
+            ...TIMED,
+            updated: '2026-09-17T14:58:00.000Z',
+            start: { dateTime: '2026-09-18T20:15:00.000Z' },
+            end: { dateTime: '2026-09-18T21:00:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['sent']);
+    expect(moved.transport.sent[0]?.body).toContain(
+      'Cartwheels Gym moved to Friday, Sep 18, 4:15-5:00 p.m. (was Thursday, Sep 17).',
+    );
+  });
+
   it('a calendar with no connecting user has nobody to text, and says so', async () => {
     const h = harness();
     await expect(sweep(h, { parentUserId: null })).resolves.toEqual(['no_parent_user']);
@@ -586,6 +622,44 @@ describe('a change that MOVED says so', () => {
     );
   });
 
+  it('says what changed when an event gains a clock, and when it loses one', async () => {
+    // The day did not move, so the day is not the news — and "PA day moved to Friday,
+    // Sep 18 (was Friday, Sep 18)" says the one thing that stayed the same, twice.
+    const paDay: CalendarChange = {
+      ...TIMED,
+      eventId: 'ev-pa',
+      title: 'PA day',
+      start: { date: '2026-09-18' },
+      end: { date: '2026-09-19' },
+    };
+    await expect(sweep(harness(), { changes: [paDay] })).resolves.toEqual(['sent']);
+
+    const timed = harness();
+    await expect(
+      sweep(timed, {
+        changes: [
+          {
+            ...paDay,
+            updated: '2026-09-17T14:58:00.000Z',
+            start: { dateTime: '2026-09-18T13:00:00.000Z' },
+            end: { dateTime: '2026-09-18T14:00:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['sent']);
+    expect(timed.transport.sent[0]?.body).toContain(
+      'PA day moved to 9:00-10:00 a.m. on Friday, Sep 18 (was all day).',
+    );
+
+    const back = harness();
+    await expect(
+      sweep(back, { changes: [{ ...paDay, updated: '2026-09-17T14:59:00.000Z' }] }),
+    ).resolves.toEqual(['sent']);
+    expect(back.transport.sent[0]?.body).toContain(
+      'PA day is now all day on Friday, Sep 18 (was 9:00 a.m.).',
+    );
+  });
+
   it('a FIRST sighting is not a move, and a cancellation is never one', async () => {
     // The control for both cases above: without it a renderer that always says "moved"
     // would pass them. And a cancellation Hale has seen before still reads as a
@@ -812,6 +886,109 @@ describe('a change the gate held is offered again', () => {
     );
   });
 
+  it('re-offers a held SHAPE change as the shape change it was, not as an invented clock', async () => {
+    // The worst of the three all-day cases: the revived prior start took its all-day flag
+    // from the row's CURRENT one, so a held "this is 9 a.m. now, it used to be all day"
+    // came back out as "(was 12:00)" — a clock read off a local midnight that the calendar
+    // never had.
+    const paDay: CalendarChange = {
+      ...TIMED,
+      eventId: 'ev-pa',
+      title: 'PA day',
+      start: { date: '2026-09-18' },
+      end: { date: '2026-09-19' },
+    };
+    await sweep(harness(), { changes: [paDay] });
+    await expect(
+      sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
+        changes: [
+          {
+            ...paDay,
+            updated: '2026-09-17T14:58:00.000Z',
+            start: { dateTime: '2026-09-18T13:00:00.000Z' },
+            end: { dateTime: '2026-09-18T14:00:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['gate_refused:quiet_hours']);
+
+    const daylight = harness();
+    const later = await sweepBoth(daylight, {
+      changes: [],
+      now: new Date('2026-09-17T16:00:00.000Z'),
+    });
+    expect(later.reoffers).toEqual(['sent']);
+    const body = daylight.transport.sent[0]?.body ?? '';
+    expect(body).toContain('PA day moved to 9:00-10:00 a.m. on Friday, Sep 18 (was all day).');
+    expect(body).not.toContain('12:00');
+  });
+
+  it('names the start the parent was TOLD when a second move lands before the hold clears', async () => {
+    // While a text is owed the row's own start is the HELD one — true of the calendar and
+    // never heard by anybody — so "(was Friday)" would name a Friday nobody was told about.
+    await expect(sweep(harness())).resolves.toEqual(['sent']); // Thursday, 4:15 p.m.
+    await expect(
+      sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
+        changes: [
+          {
+            ...TIMED,
+            updated: '2026-09-17T14:58:00.000Z',
+            start: { dateTime: '2026-09-18T20:15:00.000Z' },
+            end: { dateTime: '2026-09-18T21:00:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['gate_refused:quiet_hours']);
+
+    const second = harness();
+    await expect(
+      sweep(second, {
+        changes: [
+          {
+            ...TIMED,
+            updated: '2026-09-17T14:59:00.000Z',
+            start: { dateTime: '2026-09-19T20:15:00.000Z' },
+            end: { dateTime: '2026-09-19T21:00:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['sent']);
+    const body = second.transport.sent[0]?.body ?? '';
+    expect(body).toContain(
+      'Cartwheels Gym moved to Saturday, Sep 19, 4:15-5:00 p.m. (was Thursday, Sep 17).',
+    );
+    expect(body).not.toContain('Friday');
+  });
+
+  it('writes ONE receipt for a text it owes, however many sweeps refuse it again', async () => {
+    const night = { verdict: { allowed: false, reason: 'quiet_hours' } } as const;
+    await expect(sweep(harness(night))).resolves.toEqual(['gate_refused:quiet_hours']);
+    const owedSince = (await snapshotOf(TIMED.eventId))?.pendingSince;
+
+    for (const minutes of [15, 30]) {
+      const again = await sweepBoth(harness(night), {
+        changes: [],
+        now: new Date(NOW.getTime() + minutes * 60_000),
+      });
+      expect(again.reoffers).toEqual(['gate_refused:quiet_hours']);
+    }
+
+    // One text owed, one receipt. At a 15-minute sweep the alternative is forty-odd
+    // identical rows per held text per quiet-hours night, on the surface a parent reads.
+    const rows = await ledgerRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: 'suppressed_quiet_hours', dedupeKey: null });
+    // ...and the debt itself is untouched: the same instant, still owed.
+    expect((await snapshotOf(TIMED.eventId))?.pendingSince).toEqual(owedSince);
+
+    const daylight = harness();
+    const paid = await sweepBoth(daylight, {
+      changes: [],
+      now: new Date(NOW.getTime() + 45 * 60_000),
+    });
+    expect(paid.reoffers).toEqual(['sent']);
+  });
+
   /** A hold on an event far enough ahead that the AGE is the only thing that can end it.
    * `pending_outside_window` would otherwise fire first and prove nothing about expiry. */
   const AHEAD: CalendarChange = {
@@ -937,14 +1114,42 @@ describe('the memory itself', () => {
     });
   });
 
-  it('keeps the parent\'s words ONLY while a text is owed', async () => {
+  it("keeps the parent's words ONLY while a text is owed, and only the words it would say", async () => {
+    // The same positive control the body test carries, against the memory: a description
+    // written here is a description one re-offer away from being on a wire, and `toBe`
+    // rather than `toMatchObject` is what makes that a test rather than a hope.
     await sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
-      changes: [{ ...TIMED, location: 'Stouffville Leisure Centre' }],
+      changes: [
+        {
+          ...TIMED,
+          location: 'Stouffville Leisure Centre',
+          description: 'Bring Leo. Questions to coach@cartwheels.example',
+          attendees: ['parent@example.test'],
+        } as CalendarChange & { description: string; attendees: string[] },
+      ],
     });
-    expect(await snapshotOf(TIMED.eventId)).toMatchObject({
-      heldTitle: 'Cartwheels Gym',
-      heldLocation: 'Stouffville Leisure Centre',
+    const held = await snapshotOf(TIMED.eventId);
+    expect(held?.heldTitle).toBe('Cartwheels Gym');
+    expect(held?.heldLocation).toBe('Stouffville Leisure Centre');
+  });
+
+  it('a full resync re-reads the calendar without dropping a text it still owes', async () => {
+    // Google forces a seeding run whenever the syncToken goes stale, and a seeding write
+    // that clobbered the pending columns would cancel a text nobody ever heard — under an
+    // outcome that means "alerted nobody", not "gave up on one" (rule #11).
+    await expect(
+      sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } })),
+    ).resolves.toEqual(['gate_refused:quiet_hours']);
+
+    await expect(sweep(harness(), { seeding: true })).resolves.toEqual(['seeding_run']);
+    expect((await snapshotOf(TIMED.eventId))?.pendingSince).toBeInstanceOf(Date);
+
+    const daylight = harness();
+    const later = await sweepBoth(daylight, {
+      changes: [],
+      now: new Date('2026-09-17T16:00:00.000Z'),
     });
+    expect(later.reoffers).toEqual(['sent']);
   });
 
   it('keeps one memory per connection, so two calendars never read each other', async () => {
@@ -1139,9 +1344,14 @@ describe('the text itself', () => {
         },
       ]) {
         const change = { ...TIMED, ...when, status, title: nasty, location: `${nasty} hall` };
-        // The MOVED shape too, and from the widest `(was …)` there is: another year, so
-        // the parenthetical carries the weekday, the month, the day AND the year.
-        for (const previous of [null, { startMs: Date.parse('2026-12-30T18:00:00.000Z'), allDay: false }]) {
+        // The MOVED shapes too: the widest `(was …)` there is — another year, so the
+        // parenthetical carries the weekday, the month, the day AND the year — and the
+        // SAME-DAY prior, which is what turns an all-day shape into "is now all day on".
+        for (const previous of [
+          null,
+          { startMs: Date.parse('2026-12-30T18:00:00.000Z'), allDay: false },
+          { startMs: Date.parse('2027-01-05T17:00:00.000Z'), allDay: false },
+        ]) {
           const body = render(change, previous);
           expect(isPrintableGsm7Basic(body)).toBe(true);
           expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBeLessThanOrEqual(2);
