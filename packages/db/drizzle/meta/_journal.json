@@ -799,6 +799,13 @@
       "when": 1781469610000,
       "tag": "0116_email_alert_offers",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1781469611000,
+      "tag": "0117_calendar_event_snapshots",
+      "breakpoints": true
     }
   ]
 }

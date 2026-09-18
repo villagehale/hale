@@ -141,14 +141,31 @@ describe('runConnectorSync', () => {
       buildDeps: () => ({}) as never,
       syncOne: async (connection) =>
         connection.id === 'i1'
-          ? { ...NO_ALERTS, calendarAlerts: ['sent', 'outside_window'] as const }
+          ? {
+              ...NO_ALERTS,
+              // Including the three the snapshot memory added: a sweep that collapsed a
+              // series and paid off a debt has to be readable as that in the summary.
+              calendarAlerts: [
+                'sent',
+                'outside_window',
+                'collapsed_into_series',
+                'pending_expired',
+                'pending_outside_window',
+              ] as const,
+            }
           : { ...NO_ALERTS, emailAlerts: ['sent'] as const },
     });
 
-    expect(summary.calendarAlerts).toMatchObject({ sent: 1, outside_window: 1 });
+    expect(summary.calendarAlerts).toMatchObject({
+      sent: 1,
+      outside_window: 1,
+      collapsed_into_series: 1,
+      pending_expired: 1,
+      pending_outside_window: 1,
+    });
     expect(summary.emailAlerts.sent).toBe(1);
     expect(Object.keys(summary.calendarAlerts).sort()).toEqual([...CALENDAR_ALERT_OUTCOMES].sort());
-    expect(Object.values(summary.calendarAlerts).reduce((a, b) => a + b, 0)).toBe(2);
+    expect(Object.values(summary.calendarAlerts).reduce((a, b) => a + b, 0)).toBe(5);
     // Nothing was dropped here — the control for the tally below.
     expect(summary.calendarDroppedNoId).toBe(0);
   });
