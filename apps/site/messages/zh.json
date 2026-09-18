@@ -264,14 +264,22 @@
         "tag": "推荐",
         "title": "Hale 来建议",
         "line": "这一周值得知道的那件事，以及为什么现在要紧。",
-        "checks": ["周日的一份简报", "报名开放那一周的提前知会", "其余时间安安静静"],
+        "checks": [
+          "周日的一份简报",
+          "报名开放那一周的提前知会",
+          "其余时间安安静静"
+        ],
         "linkLabel": "育儿指南"
       },
       {
         "tag": "准备",
         "title": "Hale 来备好",
         "line": "精选清单、链接、时间——在窗口打开之前，而不是之后。",
-        "checks": ["前一晚的方案", "开放上线时的一记提醒", "链接和时间"],
+        "checks": [
+          "前一晚的方案",
+          "开放上线时的一记提醒",
+          "链接和时间"
+        ],
         "linkLabel": "价格几何"
       },
       {
@@ -328,7 +336,12 @@
       "plus": "为那些你想让 Hale 多做一些的时候：一旦它赢得了你的信任，就会在你的批准下行动——提醒、草稿，还有你的日历，覆盖每个孩子，随集成陆续上线。",
       "family": "为那些你想让 Hale 直接搞定的时候：在你的批准下拥有完全自主权，随着上线开放消费和代订服务，还有专属礼宾和优先支持。"
     },
-    "freeFeatures": ["给 Hale 发短信", "报名日期有人盯着", "有问必答", "创始价"]
+    "freeFeatures": [
+      "给 Hale 发短信",
+      "报名日期有人盯着",
+      "有问必答",
+      "创始价"
+    ]
   },
   "Contact": {
     "metaTitle": "联系我们 · Hale",
@@ -498,13 +511,13 @@
   },
   "Text": {
     "metaTitle": "给 Hale 发短信",
-    "metaDescription": "开始和 Hale 对话——发短信就能用的家庭助手。它替你盯着你所在地区的报名日。",
+    "metaDescription": "开始和 Hale 对话——发短信就能用的家庭助手。它帮你找到适合孩子的活动，替你盯着你所在地区的报名日。",
     "headline": "家庭助手，发短信就行。",
-    "lede": "Hale 替你盯着报名日期和一家人的一周安排。",
+    "lede": "Hale 帮你找到适合小朋友的活动，替你盯着报名日，还会回头问问进展如何。",
     "sentLabel": "你会发出的内容：",
     "sentGloss": "英文：“你好 Hale 👋 我准备好开始了”",
     "previewLabel": "你会收到的第一条回复（英文原文）：",
-    "greeting": "Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+    "greeting": "Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     "afterSend": "你的第一份关注同一分钟就会回来。",
     "trustLine": "免费 · 不用装应用 · 不用注册 · 随时回复 STOP 退出",
     "saveContact": "把 Hale 存入通讯录",

@@ -336,7 +336,12 @@
       "plus": "For when you want Hale to do more: once it has earned your trust, it acts on your approval — reminders, drafts, and your calendar, every child, as integrations roll out.",
       "family": "For when you want Hale to handle it: full autonomy on your approval, commerce and booking as they roll out, concierge and priority support."
     },
-    "freeFeatures": ["Text Hale", "Rec dates watched", "Answers", "Founding rate"]
+    "freeFeatures": [
+      "Text Hale",
+      "Rec dates watched",
+      "Answers",
+      "Founding rate"
+    ]
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -506,13 +511,13 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Start a conversation with Hale — the family assistant you text. It watches registration day where you live.",
+    "metaDescription": "Start a conversation with Hale — the family assistant you text. It finds activities that fit your child and watches registration day where you live.",
     "headline": "The family assistant you text.",
-    "lede": "Hale watches registration dates and the family week so you don’t have to.",
+    "lede": "Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.",
     "sentLabel": "What you’ll send:",
     "sentGloss": "Hi Hale 👋 ready to get started",
     "previewLabel": "The text you’ll get back:",
-    "greeting": "Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+    "greeting": "Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     "afterSend": "Your first watch comes back the same minute.",
     "trustLine": "Free · No app · No account · Reply STOP anytime",
     "saveContact": "Save Hale to your contacts",
