@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import { CONNECTOR_PROVIDERS, type ConnectorProvider } from './google-oauth';
+import type { ConnectorErrorCode } from './sync-error';
 import { decryptTokens, encryptTokens, type OAuthTokens } from './token-vault';
 
 /**
@@ -23,6 +24,10 @@ export interface ConnectionSummary {
    * sets it — the web loader folds it into `ownedByViewer` and never ships the raw
    * id to the client. */
   userId?: string | null;
+  /** Why the last sync failed, as a short PII-free class — null once it recovers,
+   * and absent on a row that errored before we recorded reasons. Only listConnections
+   * sets it (the Settings surface is the only reader). */
+  lastErrorCode?: string | null;
 }
 
 /** audit_log.action_taken values for a connector connect/disconnect (rule #6). */
@@ -132,6 +137,7 @@ export async function listConnections(
       lastSyncAt: schema.integrations.lastSyncAt,
       connectedAt: schema.integrations.createdAt,
       userId: schema.integrations.userId,
+      lastErrorCode: schema.integrations.lastErrorCode,
     })
     .from(schema.integrations)
     .where(eq(schema.integrations.familyId, familyId));
@@ -239,7 +245,13 @@ export async function saveConnectionCursor(
 ): Promise<void> {
   await database
     .update(schema.integrations)
-    .set({ providerMetadata, lastSyncAt: new Date(), status: 'active', updatedAt: new Date() })
+    .set({
+      providerMetadata,
+      lastSyncAt: new Date(),
+      status: 'active',
+      lastErrorCode: null,
+      updatedAt: new Date(),
+    })
     .where(eq(schema.integrations.id, id));
 }
 
@@ -256,13 +268,19 @@ export async function saveConnectionTokensById(
     .where(eq(schema.integrations.id, id));
 }
 
-/** Mark a connection errored after a failed sync. Deliberately does NOT advance
- * the cursor: the next run re-fetches from the last good cursor, so no item is
- * emitted twice and none is lost. */
-export async function markConnectionError(database: Database, id: string): Promise<void> {
+/** Mark a connection errored after a failed sync, RECORDING why. Deliberately does
+ * NOT advance the cursor: the next run re-fetches from the last good cursor, so no
+ * item is emitted twice and none is lost. The code is required and PII-free (see
+ * sync-error.ts) — a row cannot be parked in 'error' without naming what stopped it
+ * (rule #11), which is how one connector stayed broken for fifteen days unread. */
+export async function markConnectionError(
+  database: Database,
+  id: string,
+  code: ConnectorErrorCode,
+): Promise<void> {
   await database
     .update(schema.integrations)
-    .set({ status: 'error', updatedAt: new Date() })
+    .set({ status: 'error', lastErrorCode: code, updatedAt: new Date() })
     .where(eq(schema.integrations.id, id));
 }
 

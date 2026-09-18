@@ -181,12 +181,16 @@ describe('integrations store', () => {
     expect(cap.updated?.providerMetadata).toEqual(meta);
     expect(cap.updated?.lastSyncAt).toBeInstanceOf(Date);
     expect(cap.updated?.status).toBe('active');
+    // A recovered connection must not keep showing the reason it used to fail.
+    expect(cap.updated?.lastErrorCode).toBeNull();
   });
 
-  it('marks a connection errored WITHOUT touching the cursor', async () => {
+  it('marks a connection errored WITHOUT touching the cursor, and RECORDS why', async () => {
     const { database, cap } = fakeDb([]);
-    await markConnectionError(database, 'i1');
+    await markConnectionError(database, 'i1', 'google_400');
     expect(cap.updated?.status).toBe('error');
+    // Rule #11: 'error' on its own is the state this row sat in for fifteen days.
+    expect(cap.updated?.lastErrorCode).toBe('google_400');
     // No cursor advance on error — providerMetadata/lastSyncAt untouched.
     expect(cap.updated).not.toHaveProperty('providerMetadata');
     expect(cap.updated).not.toHaveProperty('lastSyncAt');

@@ -57,6 +57,13 @@ function landingBundle(locale: string): Record<string, unknown> {
  * 0.32em average measured for Fraunces at 450, so the estimate errs toward failing. */
 const H1_COLUMN_EM: Record<(typeof routing.locales)[number], number> = { en: 9.09, fr: 9.09, zh: 6.9 };
 
+/** The town Hale's hero reply names back, per locale — zh transliterates it. */
+const HERO_TOWN: Record<(typeof routing.locales)[number], string> = {
+  en: 'Stouffville',
+  fr: 'Stouffville',
+  zh: '斯托夫维尔',
+};
+
 function landingString(locale: string, key: string): string {
   const value = landingBundle(locale)[key];
   if (typeof value !== 'string') throw new Error(`${locale}.Landing.${key} is not a string`);
@@ -137,6 +144,18 @@ describe('the registration loop renders in every locale', () => {
       );
     },
   );
+
+  it.each(routing.locales)('%s answers about the town the hero asked about', (locale) => {
+    // Every other assertion over the hero is structural, so a translator could
+    // leave one language answering about a town — and a cycle — the en copy has
+    // moved off, and the suite would stay green. Reverting fr's reply to the
+    // closed Halton Hills sentence is exactly that, and this is what sees it.
+    const reply =
+      /<p class="v4-bubble v4-bubble-in">([\s\S]*?)<\/p>/.exec(heroExchange(HTML[locale]))?.[1] ??
+      '';
+    expect(reply, 'the hero reply must render').not.toBe('');
+    expect(reply, locale).toContain(HERO_TOWN[locale]);
+  });
 
   it('carries every Landing key in all three bundles — no locale silently renders a key name', () => {
     const keys = (locale: string) => Object.keys(landingBundle(locale)).sort();

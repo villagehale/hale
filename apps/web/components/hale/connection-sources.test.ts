@@ -87,6 +87,25 @@ describe('ConnectionSources — a connected row is honest about its state', () =
     expect(html).toContain('reconnect');
   });
 
+  it('names WHY a sync is failing, from the code the row carries', () => {
+    const html = render([connection({ status: 'error', lastErrorCode: 'google_400' })]);
+    expect(html).toContain('Sync failing');
+    expect(html).toContain('A request Google refused');
+  });
+
+  it('a grant that has to be redone does not also promise a retry', () => {
+    const html = render([connection({ status: 'error', lastErrorCode: 'no_refresh_token' })]);
+    expect(html).toContain('Google asked us to reconnect');
+    expect(html).not.toContain('Hale retries on its own');
+  });
+
+  it('claims no reason for a row that carries none (positive control for the line above)', () => {
+    const html = render([connection({ status: 'error', lastErrorCode: null })]);
+    expect(html).toContain('Sync failing');
+    expect(html).toContain('Hale retries on its own');
+    expect(html).not.toContain('A temporary problem');
+  });
+
   it('renders revoked (tokens purged) as the connect invitation again', () => {
     const html = render([connection({ status: 'revoked' })]);
     expect(html).toContain('href="/api/integrations/gcal/connect"');

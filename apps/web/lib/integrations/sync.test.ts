@@ -32,6 +32,8 @@ interface Captured {
   enqueued: EnqueuedEvent[];
   cursor?: Record<string, unknown>;
   errored: boolean;
+  /** The PII-free reason markError was given (rule #11 — 'error' alone says nothing). */
+  errorCode?: string;
   refreshed?: OAuthTokens;
   /** Every gmail batch handed to the alert port, in order. */
   alerted: GmailAlertBatch[];
@@ -58,8 +60,9 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
     saveCursor: async (_id, meta) => {
       cap.cursor = meta;
     },
-    markError: async () => {
+    markError: async (_id, code) => {
       cap.errored = true;
+      cap.errorCode = code;
     },
     refreshTokens: overrides.refreshTokens ?? (async () => ({ accessToken: 'ya29.refreshed' })),
     saveTokens: async (_id, t) => {
@@ -131,6 +134,72 @@ describe('syncConnection — Calendar', () => {
     expect(calls).toBe(2); // stale (410) then full resync
     expect(cap.errored).toBe(false);
     expect(cap.cursor).toEqual({ syncToken: 'SYNC-FULL' });
+  });
+
+  it('the incremental URL carries nothing events.list forbids alongside syncToken', async () => {
+    // events.list, syncToken: "All events deleted since the previous list request
+    // will always be in the result set and it is not allowed to set showDeleted to
+    // False. There are several query parameters that cannot be specified together
+    // with nextSyncToken ... iCalUID, orderBy, privateExtendedProperty, q,
+    // sharedExtendedProperty, timeMin, timeMax, updatedMin."
+    const { fetchImpl, calls } = routedFetch([
+      { match: 'calendar/v3/calendars/primary/events', body: { items: [], nextSyncToken: 'SYNC-2' } },
+    ]);
+    const { deps } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    const query = new URLSearchParams(new URL(calls[0]?.url ?? 'https://x.invalid/').search);
+    expect(query.get('syncToken')).toBe('SYNC-1');
+    for (const forbidden of [
+      'iCalUID',
+      'orderBy',
+      'privateExtendedProperty',
+      'q',
+      'sharedExtendedProperty',
+      'timeMin',
+      'timeMax',
+      'updatedMin',
+    ]) {
+      expect(query.has(forbidden)).toBe(false);
+    }
+    expect(query.get('showDeleted')).not.toBe('false');
+  });
+
+  it('survives a Google that enforces the syncToken contract (the full sync is legal, the incremental must be too)', async () => {
+    // The prod shape: a base carrying showDeleted=false passes the FULL sync and
+    // 400s every incremental, so a connection syncs once at connect and never
+    // again -- last_sync_at frozen seconds after created_at.
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('syncToken=') && url.includes('showDeleted=false')) {
+        return { ok: false, status: 400, json: async () => ({ error: { code: 400 } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [], nextSyncToken: 'SYNC-2' }) };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
+  });
+
+  it('does not ingest a cancelled event (showDeleted=true is forced on us; a tombstone is not an event)', async () => {
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: {
+          items: [
+            { id: 'ev1', summary: 'swim class', status: 'confirmed' },
+            { id: 'ev2', summary: 'swim class', status: 'cancelled' },
+          ],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(cap.enqueued.map((e) => e.payload.id)).toEqual(['ev1']);
+    expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
   });
 });
 
@@ -411,6 +480,7 @@ describe('syncConnection — pagination (drain all pages before advancing)', () 
     await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
 
     expect(cap.errored).toBe(true);
+    expect(cap.errorCode).toBe('cursor_missing');
     expect(cap.cursor).toBeUndefined();
     expect(cap.enqueued).toHaveLength(0);
   });
@@ -458,8 +528,40 @@ describe('syncConnection — failure isolation & token refresh', () => {
     await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
 
     expect(cap.errored).toBe(true);
+    // The status Google answered with, never a line of its body (rule #1/#11).
+    expect(cap.errorCode).toBe('google_500');
     expect(cap.cursor).toBeUndefined(); // cursor untouched
     expect(cap.enqueued).toHaveLength(0);
+  });
+
+  it('an expiring token with NO refresh grant is a NAMED failure, not a stale-token retry', async () => {
+    // Returning the expired token instead would 401 on every run from the first hour
+    // on, under a status that says only "error" — the exact shape rule #11 forbids.
+    const stranded: OAuthTokens = { accessToken: 'ya29.old', expiresAt: Date.now() - 1000 };
+    const { fetchImpl, calls } = routedFetch([
+      { match: 'calendar/v3', body: { items: [], nextSyncToken: 'S' } },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', {}, stranded), deps);
+
+    expect(calls).toHaveLength(0); // a dead token is never spent on Google
+    expect(cap.errored).toBe(true);
+    expect(cap.errorCode).toBe('no_refresh_token');
+    expect(cap.cursor).toBeUndefined();
+  });
+
+  it('a rejected refresh grant is named apart from a failed request', async () => {
+    const expired: OAuthTokens = { accessToken: 'ya29.old', refreshToken: '1//revoked', expiresAt: Date.now() - 1000 };
+    const { fetchImpl } = routedFetch([{ match: 'calendar/v3', body: { items: [], nextSyncToken: 'S' } }]);
+    const { deps, cap } = stubDeps({
+      googleFetch: fetchImpl,
+      refreshTokens: async () => {
+        throw new Error('invalid_grant');
+      },
+    });
+    await syncConnection(connection('gcal', {}, expired), deps);
+
+    expect(cap.errorCode).toBe('token_refresh_failed');
   });
 
   it('refreshes an expired access token before fetching, then persists it', async () => {

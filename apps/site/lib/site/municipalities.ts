@@ -24,6 +24,7 @@ export const MUNICIPALITIES = [
   'Whitby',
   'Oshawa',
   'Aurora',
+  'Stouffville',
 ] as const;
 
 /** How many towns the radar watches — the number every surface must print. */

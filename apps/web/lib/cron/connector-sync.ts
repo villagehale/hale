@@ -106,8 +106,14 @@ export async function runConnectorSync(
         tokens = deps.decryptTokens(connection.enc);
       } catch {
         // A tampered / key-rotation-leftover blob: err THIS row (so it stops
-        // being swept as healthy) and move on — never reject the work-list.
-        await base.markError(connection.id).catch(() => {});
+        // being swept as healthy) and move on — never reject the work-list. It
+        // carries its OWN code: no Google call was ever made, so it must not read
+        // like a request Hale can retry its way out of (rule #11).
+        console.error(
+          { integrationId: connection.id, provider: connection.provider, code: 'decrypt_failed' },
+          'connector sync: stored token blob unreadable',
+        );
+        await base.markError(connection.id, 'decrypt_failed').catch(() => {});
         continue;
       }
       let childNames = childNamesByFamily.get(connection.familyId);
@@ -133,7 +139,7 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
     googleFetch: googleGetFetch,
     enqueue,
     saveCursor: (id, meta) => saveConnectionCursor(database, id, meta),
-    markError: (id) => markConnectionError(database, id),
+    markError: (id, code) => markConnectionError(database, id, code),
     refreshTokens: (refreshToken) => refreshAccessToken(refreshToken),
     saveTokens: (id, tokens) => saveConnectionTokensById(database, id, tokens),
     alertGmailEnvelopes: (batch) => alertGmailSweep(database, batch),

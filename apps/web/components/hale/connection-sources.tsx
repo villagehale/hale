@@ -1,6 +1,7 @@
 import { Calendar, FolderOpen, Mail } from 'lucide-react';
 import type { FamilyConnectorView } from '~/lib/integrations/load';
 import { describeScope } from '~/lib/integrations/scope-copy';
+import { describeSyncError } from '~/lib/integrations/sync-error';
 import { ConnectorDisconnectForm } from './connector-disconnect-form';
 import { SettingsCard, SettingsRow } from './settings-card';
 
@@ -49,7 +50,15 @@ function viewerLine(c: FamilyConnectorView): string {
   }
   if (c.status === 'error') {
     const lastGood = c.lastSyncAt ? `last synced ${formatDate(c.lastSyncAt)}` : 'never synced';
-    return `${connected} · Sync failing (${lastGood}) — Hale retries on its own.`;
+    // From the CODE the row stores, never the provider's own words (rule #1). A row
+    // carrying no code errored before we recorded reasons, and says only that much.
+    // A grant that has to be redone drops the retry promise: the reconnect link
+    // beside it is the only thing that fixes it.
+    const why = describeSyncError(c.lastErrorCode);
+    const tail = why
+      ? `${why.reason}.${why.retries ? ' Hale retries on its own.' : ''}`
+      : 'Hale retries on its own.';
+    return `${connected} · Sync failing (${lastGood}) — ${tail}`;
   }
   return `${connected} · Not syncing right now.`;
 }

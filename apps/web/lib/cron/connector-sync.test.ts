@@ -71,12 +71,17 @@ describe('runConnectorSync', () => {
     // key-rotation-leftover blob may cost its own row, never the whole work-list.
     const connections = [sweepConn('bad', FAMILY_A, 'BLOB-BAD'), sweepConn('good', FAMILY_B, 'BLOB-GOOD')];
     const synced: string[] = [];
-    const errored: string[] = [];
+    const errored: Array<{ id: string; code: string }> = [];
 
     const summary = await runConnectorSync({
       listConnections: async () => connections,
       loadChildNames: async () => [],
-      buildDeps: () => ({ markError: async (id: string) => { errored.push(id); } }) as never,
+      buildDeps: () =>
+        ({
+          markError: async (id: string, code: string) => {
+            errored.push({ id, code });
+          },
+        }) as never,
       decryptTokens: (enc) => {
         if (enc === 'BLOB-BAD') throw new Error('bad auth tag');
         return { accessToken: 'ya29.ok' };
@@ -88,7 +93,9 @@ describe('runConnectorSync', () => {
     });
 
     expect(synced).toEqual(['good']);
-    expect(errored).toEqual(['bad']);
+    // Rule #11: an unreadable blob is its OWN named outcome, not a bare 'error' that
+    // reads the same as a Google request Hale could retry its way out of.
+    expect(errored).toEqual([{ id: 'bad', code: 'decrypt_failed' }]);
     expect(summary.connections).toBe(2);
   });
 
