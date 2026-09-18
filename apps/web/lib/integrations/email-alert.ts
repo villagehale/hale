@@ -381,6 +381,13 @@ const TITLE_MAX = 60;
 const LOCATION_MAX = 30;
 const TEEN_CLOSER = "I've kept the details out of this text.";
 
+/** `Reminder:`, `CANCELLED -`, `New:` — the label a vendor files its own subject line
+ * under. Hale's sentence already says who and what happened, so relaying the label says it
+ * a second time in someone else's voice. Only a label followed by a colon or a dash: the
+ * words are ordinary English otherwise ("New time for swim class" is the title). */
+const VENDOR_LABEL =
+  /^(?:reminder|cancell?ed|rescheduled|postponed|new|update|updated|notice|fyi)\s*[:\-]\s*/i;
+
 /**
  * THERE IS NO CALL TO ACTION, and its absence is the design.
  *
@@ -430,9 +437,14 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
  * a verb, and no offer at the end (see above).
  */
 export function renderEmailAlert(input: EmailAlertRenderInput): string {
-  // Trailing punctuation off the vendor's title, because every frame below supplies the
-  // sentence's own ending and "Picture Day. on Friday" is what it reads as otherwise.
-  const title = clamp(gsm7(input.event.title), TITLE_MAX).replace(/[.,;:]+$/, '');
+  // The vendor's own filing label off the front and its punctuation off the back, because
+  // every frame below supplies the sentence's own subject and its own ending: "YRDSB says
+  // Reminder: the form is due" says the kind of thing twice, and "Picture Day. on Friday"
+  // is what a subject line's full stop reads as inside a clause.
+  const title = clamp(gsm7(input.event.title).replace(VENDOR_LABEL, ''), TITLE_MAX).replace(
+    /[.,;:!?]+$/,
+    '',
+  );
 
   if (input.teenContent) {
     // Category only. The pipeline has already replaced the title with its own generic
@@ -455,26 +467,35 @@ function compose(input: EmailAlertRenderInput, sender: string, title: string): s
 
   switch (input.kind) {
     case 'cancellation': {
-      const head = changeHead(sender, title, CHANGE.cancellation);
+      const { text: head } = changeHead(sender, title, CHANGE.cancellation);
       const was = at(event.originalTime);
       return end(was === null ? head : `${head} - it was ${was}`);
     }
     case 'reschedule': {
-      const head = changeHead(sender, title, CHANGE.reschedule);
+      const { text: head, relayed } = changeHead(sender, title, CHANGE.reschedule);
       const to = at(event.newTime);
       if (to === null) {
         const was = at(event.originalTime);
         return end(was === null ? head : `${head} - it was ${was}`);
       }
+      // The destination hangs off Hale's own verb when Hale supplied it, and off a dash
+      // when the head is the vendor's sentence — "moved Practice to Saturday" against
+      // "says Practice moved to 5pm - now Saturday", never the two spliced into one.
+      const destination = relayed ? `${head} - now ${to}` : `${head} to ${to}`;
       // The old date as a bare parenthetical: a parent scanning this needs to recognise
       // WHICH occasion moved, and that is the date, not the hour it used to start at.
       const from = shortDate(event.originalTime, timeZone, now);
-      return end(from === null ? `${head} to ${to}` : `${head} to ${to} (was ${from})`);
+      return end(from === null ? destination : `${destination} (was ${from})`);
     }
     case 'new_event': {
-      const head = sender === '' ? title : `${sender} has ${title}`;
+      // "Fall registration is open" is a sentence already, and nothing HAS a sentence.
+      // A clause is relayed under "says" — Ollie's own frame for exactly this line — and
+      // its time becomes a dash clause rather than an "on" the vendor's verb swallows.
+      const clause = CLAUSE.test(title);
+      const head = sender === '' ? title : `${sender} ${clause ? 'says' : 'has'} ${title}`;
       const on = at(event.newTime);
-      return end(`${head}${venue(event.location)}${on === null ? '' : ` on ${on}`}`);
+      const when = on === null ? '' : clause ? ` - ${on}` : ` on ${on}`;
+      return end(`${head}${venue(event.location)}${when}`);
     }
     case 'reminder_only': {
       const head = sender === '' ? title : `${sender} says ${title}`;
@@ -490,6 +511,10 @@ function compose(input: EmailAlertRenderInput, sender: string, title: string): s
 
 /** `9:00 a.m.` already ends the sentence; a second period is the kind of thing nobody
  * notices in review and everybody notices on a phone. */
+/** A title that is a whole clause rather than a noun phrase. Crude on purpose: the two
+ * copulas are what separate "Fall registration is open" from "Picture day". */
+const CLAUSE = /\s(?:is|are)\s/i;
+
 function end(sentence: string): string {
   return sentence.endsWith('.') ? sentence : `${sentence}.`;
 }
@@ -516,8 +541,9 @@ interface ChangeWords {
  *
  * So: take a TRAILING change word off and say it in Hale's own voice; where the word is
  * embedded and cannot be removed cleanly ("Cancellation of Tuesday practice"), relay the
- * title under "says" and add nothing. Hale never states the change twice, and never
- * rewrites the middle of a sentence the school wrote.
+ * title under "says" and add no second verb — only, for a reschedule, the new time as its
+ * own clause. Hale never states the change twice, and never rewrites the middle of a
+ * sentence the school wrote.
  */
 const CHANGE: Record<'cancellation' | 'reschedule', ChangeWords> = {
   cancellation: {
@@ -532,12 +558,28 @@ const CHANGE: Record<'cancellation' | 'reschedule', ChangeWords> = {
   },
 };
 
-function changeHead(sender: string, title: string, words: ChangeWords): string {
-  const occasion = title.replace(words.tail, '').trim();
-  if (occasion !== '' && !words.anywhere.test(occasion)) {
-    return sender === '' ? `${occasion} ${words.verb}` : `${sender} ${words.verb} ${occasion}`;
+/** A title that is ONLY the change word ('CANCELLED') leaves no occasion to name. Under
+ * "says" it would put a vendor's shout in Hale's mouth, so the frame keeps its own verb
+ * and takes Hale's own object instead. */
+const GENERIC_OCCASION = 'something';
+
+interface Head {
+  text: string;
+  /** True when the title was RELAYED whole under "says" — the change word is inside it, so
+   * the head is the VENDOR's sentence and a clause welded straight onto it continues
+   * someone else's grammar ("says Practice moved to 5pm to Saturday, Sep 26"). */
+  relayed: boolean;
+}
+
+function changeHead(sender: string, title: string, words: ChangeWords): Head {
+  const occasion = title.replace(words.tail, '').trim() || GENERIC_OCCASION;
+  if (!words.anywhere.test(occasion)) {
+    return {
+      text: sender === '' ? `${occasion} ${words.verb}` : `${sender} ${words.verb} ${occasion}`,
+      relayed: false,
+    };
   }
-  return sender === '' ? title : `${sender} says ${title}`;
+  return { text: sender === '' ? title : `${sender} says ${title}`, relayed: true };
 }
 
 /** `Saturday, Sep 19 at 9:00 a.m.`, in the parent's zone, with the year on another year's
