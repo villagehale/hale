@@ -833,7 +833,7 @@ export function renderShortlistRationale(
   ];
   if (shortlist.isResidentWindow && shortlist.residentPriorityDays !== null) {
     lines.push(
-      `Your postal code gets the residents-first date, ${shortlist.residentPriorityDays} days ahead of the general open.`,
+      `Your postal code gets the residents-first date, ${shortlist.residentPriorityDays} day${shortlist.residentPriorityDays === 1 ? '' : 's'} ahead of the general open.`,
     );
   }
   // An unpublished band is a fact about the WINDOW, not about each child, so it is

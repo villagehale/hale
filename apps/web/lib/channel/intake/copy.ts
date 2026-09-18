@@ -773,16 +773,17 @@ export const START_ACK = "You're back - I'll text you when something needs doing
  * The French keyword replies — now the answer to a keyword rather than a line waiting
  * for one.
  *
- * WHAT CANADIAN CARRIERS REQUIRE, verified against the Canadian Telecommunications
- * Association's "Canadian Common Short Code Compliance Policies" v2.1 (January 2026,
- * §3.1): five keywords are mandatory for every program — STOP, ARRET, HELP, AIDE, INFO —
- * "regardless of the intended audience", and texting AIDE or ARRET "must return a French
- * response" while a French-only program must still answer English STOP and HELP. Twilio
- * recognises NONE of the French ones by default: its built-in set is English only
- * (STOP/STOPALL/UNSUBSCRIBE/CANCEL/END/REVOKE/OPTOUT/QUIT, START/YES/UNSTOP, HELP/INFO),
- * and localised keywords exist only as explicit entries on a Messaging Service with
- * Advanced Opt-Out configured. CASL itself is silent on the language of the unsubscribe
- * mechanism; the carrier policy is the binding requirement here, not the statute.
+ * THE STANDARD HALE HOLDS ITSELF TO. The Canadian Telecommunications Association's
+ * "Canadian Common Short Code Compliance Policies" v2.1 (January 2026, §3.1) makes five
+ * keywords mandatory for every program — STOP, ARRET, HELP, AIDE, INFO — "regardless of
+ * the intended audience", and requires that texting AIDE or ARRET "must return a French
+ * response" while a French-only program must still answer English STOP and HELP. That
+ * document governs SHORT CODES and Hale sends from a Canadian long code
+ * (twilio/config.ts), so it does not bind this program: Hale adopts it VOLUNTARILY,
+ * because a francophone parent typing ARRET at a Canadian number means it whatever the
+ * sender's numbering plan is. CASL itself is silent on the language of the unsubscribe
+ * mechanism, so neither the statute nor the policy compels these words — the product
+ * does (VIL-348).
  *
  * HALE MEETS IT NOW. `matchKeyword` (keywords.ts) claims ARRET, AIDE and DEBUT with the
  * same CASL semantics as their English twins, and hands the language along WITH the

@@ -49,6 +49,7 @@ import {
   dueLeg,
   legIsUrgent,
   openLegWindows,
+  openTimeIsPublished,
   waitlistDeadline,
 } from './schedule.js';
 import {
@@ -300,6 +301,18 @@ const PREP_FATES: readonly PrepFate[] = [
   'unbound',
 ];
 
+/**
+ * Why a leg that WAS due did not go out (VIL-347). Not a hold — nothing is deferred and
+ * no later tick will send it — and not `quiet`, which means nothing was due at all.
+ *
+ * `open_time_unpublished`: the go leg is a claim about a minute, and this window's
+ * source published only a date, so there is no minute to claim. See
+ * `openTimeIsPublished`.
+ */
+export type SequenceSkipReason = 'open_time_unpublished';
+
+const SKIP_REASONS: readonly SequenceSkipReason[] = ['open_time_unpublished'];
+
 export interface SequenceRunResult {
   /** False when neither the flag nor the allowlist armed the sweep (D21). */
   enabled: boolean;
@@ -320,6 +333,13 @@ export interface SequenceRunResult {
   refused: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
+  /**
+   * Legs that were DUE and deliberately not sent, by reason (VIL-347). Its own count
+   * beside `held`, because a hold is a deferral the next tick resolves and this is a
+   * message that will never go: a non-zero here is a town whose published data cannot
+   * support the leg, which is a data signal, not a delivery one (rule #11).
+   */
+  skipped: Record<SequenceSkipReason, number>;
   /**
    * VIL-338 · every fate a send-time course read produced, by name. A degraded reading
    * is never folded into `failed` (nothing broke) or into `sent` alone (the parent got a
@@ -352,6 +372,10 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     refused: 0,
     failed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    skipped: Object.fromEntries(SKIP_REASONS.map((reason) => [reason, 0])) as Record<
+      SequenceSkipReason,
+      number
+    >,
     prep: Object.fromEntries(PREP_FATES.map((fate) => [fate, 0])) as Record<PrepFate, number>,
     read: 0,
     readSkipped: 0,
@@ -489,6 +513,7 @@ type LegOutcome = (
   | { kind: 'quiet' }
   | { kind: 'deduped' }
   | { kind: 'refused' }
+  | { kind: 'skipped'; reason: SequenceSkipReason }
   | { kind: 'sent' }
 ) &
   LegReadEffects;
@@ -608,6 +633,15 @@ async function runLegForSequence(
     now,
   );
   if (leg === null) return { kind: 'quiet' };
+  // VIL-347 · THE 23:45 TEXT. The go leg is the one rung that names a MINUTE, and it
+  // spends the quiet-hours exemption to do it. Where the town published a date and no
+  // hour the row holds the start of that local day, and fifteen minutes before it is
+  // 23:45 the night before — a text at the hour the exemption exists to protect, naming
+  // a midnight nobody printed. The battle plan already carried the date that evening, so
+  // what is lost is a sentence that was never true.
+  if (leg === 'go' && !openTimeIsPublished(anchor, sequence.timeZone)) {
+    return { kind: 'skipped', reason: 'open_time_unpublished' };
+  }
 
   const dedupeKey = legDedupeKey(sequence.familyId, sequence.window.id, leg);
   // Checked BEFORE the gate: a leg that already went out costs one indexed read on
@@ -981,6 +1015,7 @@ export async function runRegistrationSequenceCron(
       if (outcome.anchorMoved) result.prep.anchor_moved += 1;
       if (outcome.noFit) result.noFit += 1;
       if (outcome.kind === 'held') result.held[outcome.reason] += 1;
+      else if (outcome.kind === 'skipped') result.skipped[outcome.reason] += 1;
       else result[outcome.kind] += 1;
     } catch (err) {
       // One family's bad data must not silence every family after it.

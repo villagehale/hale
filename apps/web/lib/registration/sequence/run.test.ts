@@ -1422,3 +1422,70 @@ describe('VIL-338 · the bound course is read at send time', () => {
     }
   });
 });
+
+/**
+ * VIL-347 · THE 23:45 TEXT. Oakville publishes a non-resident DATE and no hour ("14 days
+ * after Oakville resident registration begins"), so the row stores the start of that
+ * local day — the date-only rule every such row follows. The go leg fires fifteen
+ * minutes before its anchor and is one of the two legs exempt from quiet hours, so a
+ * start-of-day anchor put "registration opens 12:00 a.m." on a parent's phone at 23:45
+ * the night before: a minute nobody published, at the hour the exemption exists to
+ * protect, four and three-quarter hours after the battle plan said the same thing.
+ */
+describe('a town that published a date and no hour (VIL-347)', () => {
+  /** Oakville's non-resident open as the row stores it: 2026-08-25, 00:00 Toronto. */
+  const START_OF_DAY = new Date('2026-08-25T04:00:00.000Z');
+  /** The same morning with the hour the Town actually prints for residents, 7 a.m. */
+  const SEVEN_AM = new Date('2026-08-25T11:00:00.000Z');
+  const goTickFor = (openAt: Date) => new Date(openAt.getTime() - GO_LEAD_MINUTES * 60_000);
+  const oakville = (openAt: Date) =>
+    live({
+      window: win({
+        id: 'w-oakville',
+        municipality: 'oakville',
+        openAt,
+        sourceUrl:
+          'https://www.oakville.ca/parks-recreation-culture/programs-activities/registered-programs/',
+      }),
+    });
+
+  it('says nothing at 23:45 rather than naming a midnight nobody published', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [oakville(START_OF_DAY)] });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, goTickFor(START_OF_DAY));
+
+    expect(h.transport.sent).toEqual([]);
+    expect(result.sent).toBe(0);
+    expect(result.skipped.open_time_unpublished).toBe(1);
+    // Named, never folded into the bucket that means "nothing was due" (rule #11): a leg
+    // WAS due, and Hale declined to send it.
+    expect(result.quiet).toBe(0);
+  });
+
+  it('still sends the go leg where the town DID print the hour', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [oakville(SEVEN_AM)] });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, goTickFor(SEVEN_AM));
+
+    expect(result.sent).toBe(1);
+    expect(result.skipped.open_time_unpublished).toBe(0);
+    expect(h.transport.bodies()[0]).toContain('7:00');
+  });
+
+  it('leaves the evening-before plan alone — it names a date, not a minute', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [oakville(START_OF_DAY)] });
+
+    // 19:00 Toronto on 24 Aug, the battle-plan slot.
+    const result = await runRegistrationSequenceCron(
+      db(),
+      h.deps,
+      new Date('2026-08-24T23:00:00.000Z'),
+    );
+
+    expect(result.sent).toBe(1);
+    expect(result.skipped.open_time_unpublished).toBe(0);
+  });
+});

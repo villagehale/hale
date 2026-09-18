@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   type ExtractedWindow,
   type StoredWindow,
+  type VerifyField,
+  type VerifyOutcome,
   compareWindow,
   corroborationFailure,
   parseExtraction,
   publishedInstant,
+  withoutInferredEvidence,
 } from './verify-window';
 
 /**
@@ -107,6 +110,110 @@ describe('compareWindow — confirmed', () => {
       }),
     );
     expect(outcome).toEqual({ kind: 'confirmed', fields: ['residentOpenAt'] });
+  });
+});
+
+/**
+ * VIL-347 — Markham's shape: the course pages tier the cycle (residents Aug 11, everyone
+ * else Aug 12) and the city page a parent is sent to prints ONE unlabelled date, "Register
+ * starting Aug. 11 at 6:30 AM". Read naively that single date is the general open, so the
+ * row disagrees with its own source every Monday, forever, and `verified_at` freezes while
+ * the founder digest repeats the same diff.
+ *
+ * The rule that resolves it names no municipality and keeps no list: it is the doctrine
+ * already written above ("only the fields the page states are compared") applied to a page
+ * that MISLABELS rather than omits.
+ */
+describe('compareWindow — a page that states one unlabelled date', () => {
+  /** Stored as the course pages publish it; the page still prints only Aug 11. */
+  const tiered = (overrides: Partial<StoredWindow> = {}) =>
+    markhamStored({
+      residentOpenAt: new Date('2026-08-11T06:30:00-04:00'),
+      openAt: new Date('2026-08-12T06:30:00-04:00'),
+      ...overrides,
+    });
+
+  it('reads it as the RESIDENT date when that is what it matches', () => {
+    const outcome = compareWindow(tiered(), extracted());
+    expect(outcome).toEqual({ kind: 'confirmed', fields: ['previewAt', 'residentOpenAt'] });
+  });
+
+  // The control, and the whole reason this is not an exemption list: the rule fires only
+  // on a date that MATCHES something stored. A row whose resident date is genuinely wrong
+  // still alarms, and the page's date is still reported against the field it was read as.
+  it('still alarms when the single date matches neither stored date', () => {
+    const outcome = compareWindow(
+      tiered({ residentOpenAt: new Date('2026-08-10T06:30:00-04:00') }),
+      extracted(),
+    );
+    expect(outcome.kind).toBe('discrepancy');
+    if (outcome.kind !== 'discrepancy') throw new Error('expected a discrepancy');
+    expect(outcome.diffs).toEqual([
+      {
+        field: 'openAt',
+        stored: new Date('2026-08-12T06:30:00-04:00'),
+        published: new Date('2026-08-11T06:30:00-04:00'),
+      },
+    ]);
+  });
+
+  it('leaves a page that labels both dates alone', () => {
+    const outcome = compareWindow(
+      tiered(),
+      extracted({
+        residentOpen: { date: '2026-08-11', time: '06:30' },
+        generalOpen: { date: '2026-08-12', time: '06:30' },
+      }),
+    );
+    expect(outcome).toEqual({
+      kind: 'confirmed',
+      fields: ['previewAt', 'residentOpenAt', 'openAt'],
+    });
+  });
+});
+
+/**
+ * VIL-347 — the other half of the unlabelled-date rule. That rule reads the page's single
+ * date as the resident one on the strength of a match; the dataset separately knows which
+ * rows hold a field they never read off their own source (Markham's swim and camp rows
+ * carry the head start from the REC: Programs course pages of the same cycle). Those two
+ * together could otherwise launder an inference into a confirmation: a page silent about
+ * the tier would "confirm" a tier nobody ever read for that domain.
+ */
+describe('withoutInferredEvidence', () => {
+  const confirmed = (...fields: VerifyField[]): VerifyOutcome => ({ kind: 'confirmed', fields });
+
+  it('leaves an outcome alone when the row inferred nothing — the ordinary row', () => {
+    const outcome = confirmed('previewAt', 'residentOpenAt');
+    expect(withoutInferredEvidence(outcome, [])).toEqual(outcome);
+  });
+
+  it('drops an inferred field from the evidence, keeping what the page really said', () => {
+    expect(withoutInferredEvidence(confirmed('previewAt', 'residentOpenAt'), ['residentOpenAt'])).toEqual(
+      confirmed('previewAt'),
+    );
+  });
+
+  it('is not a confirmation at all when the inference was the only evidence', () => {
+    expect(withoutInferredEvidence(confirmed('residentOpenAt'), ['residentOpenAt'])).toEqual({
+      kind: 'unverified',
+      reason: 'inferred_unconfirmed',
+    });
+  });
+
+  it('never softens a discrepancy — a page that contradicts an inference still alarms', () => {
+    const outcome: VerifyOutcome = {
+      kind: 'discrepancy',
+      diffs: [
+        {
+          field: 'residentOpenAt',
+          stored: new Date('2026-08-11T06:30:00-04:00'),
+          published: new Date('2026-08-10T06:30:00-04:00'),
+        },
+      ],
+      evidence: 'Residents register Aug. 10',
+    };
+    expect(withoutInferredEvidence(outcome, ['residentOpenAt'])).toEqual(outcome);
   });
 });
 

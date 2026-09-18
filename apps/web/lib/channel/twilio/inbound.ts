@@ -6,7 +6,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { type IntakeKeyword, matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -68,7 +68,7 @@ export interface TwilioInboundDeps {
   /** Required, not optional: the one thing that must never happen quietly here is a
    * text Hale accepted and never queued (rule #11). `info` carries the one routed-
    * outcome line every authentic request ends with — ids and enums, never a body. */
-  log: Pick<Console, 'info' | 'error'>;
+  log: Pick<Console, 'info' | 'warn' | 'error'>;
   /** Count one authentic request's FINAL outcome (PostHog, no PII — see
    * captureInboundRouted). Required (rule #11): the silence outcomes — rate_limited,
    * ignored, not_a_parent, malformed — are only distinguishable from "nobody texts
@@ -110,6 +110,45 @@ export type TwilioInboundOutcome =
 function mediaCount(params: Record<string, string>): number {
   const parsed = Number.parseInt(params.NumMedia ?? '0', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+/** Twilio's own name for each keyword it answered, as `OptOutType` carries it. */
+const OPT_OUT_TYPES: Record<string, IntakeKeyword> = {
+  STOP: 'stop',
+  START: 'start',
+  HELP: 'help',
+};
+
+/**
+ * VIL-348 — whether the provider already answered this message itself.
+ *
+ * Twilio's Advanced Opt-Out, when it is configured on the Messaging Service, matches its
+ * own keyword list, sends its own reply, and tags the forwarded inbound `OptOutType`.
+ * Reading it here is the ONLY way that fact enters Hale: nothing else in the system can
+ * see the account's configuration, which is precisely how the comment this ticket
+ * deleted managed to be wrong for four weeks.
+ *
+ * ABSENT IS A NAMED ANSWER, not an unknown (rule #11): the provider answered nothing.
+ * That is also what an unrecognised value resolves to — Hale suppressing its own CASL
+ * reply on the strength of a token it does not understand is the worse failure of the
+ * two. The value itself is never logged, only the fact that one arrived: it rides beside
+ * a phone number and a message body on this request (rule #1).
+ */
+function providerAnsweredKeyword(
+  params: Record<string, string>,
+  log: Pick<Console, 'warn'>,
+): IntakeKeyword | null {
+  const raw = params.OptOutType;
+  if (!raw) return null;
+  const known = OPT_OUT_TYPES[raw.trim().toUpperCase()];
+  if (!known) {
+    log.warn(
+      { length: raw.length },
+      'twilio inbound: unrecognised OptOutType — answering the keyword ourselves',
+    );
+    return null;
+  }
+  return known;
 }
 
 /**
@@ -409,6 +448,7 @@ export async function handleTwilioInboundRequest(
       body: params.Body ?? '',
       providerId,
       receivedAt: deps.now?.() ?? new Date(),
+      providerAnsweredKeyword: providerAnsweredKeyword(params, deps.log),
     },
     mediaCount(params),
   );
