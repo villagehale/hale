@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { CalendarChange } from './calendar-alert';
 import type { GmailAlertEnvelope } from './email-alert';
 import type { ActiveConnectorConnection } from './store';
-import { type GmailAlertBatch, type GoogleFetch, syncConnection } from './sync';
+import {
+  type CalendarAlertBatch,
+  type GmailAlertBatch,
+  type GoogleFetch,
+  syncConnection,
+} from './sync';
 import type { OAuthTokens } from './token-vault';
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
@@ -37,6 +43,8 @@ interface Captured {
   refreshed?: OAuthTokens;
   /** Every gmail batch handed to the alert port, in order. */
   alerted: GmailAlertBatch[];
+  /** Every calendar batch handed to the alert port, in order. */
+  calendarAlerted: CalendarAlertBatch[];
 }
 
 /** The single enqueued event, asserting exactly one was emitted (narrows away the
@@ -50,7 +58,7 @@ function onlyEvent(cap: Captured): EnqueuedEvent {
 
 /** Deps stub: capture enqueue + cursor/error/token writes without a real queue/db. */
 function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {}) {
-  const cap: Captured = { enqueued: [], errored: false, alerted: [] };
+  const cap: Captured = { enqueued: [], errored: false, alerted: [], calendarAlerted: [] };
   const deps: Parameters<typeof syncConnection>[1] = {
     googleFetch: overrides.googleFetch ?? routedFetch([]).fetchImpl,
     enqueue: async (event) => {
@@ -72,9 +80,21 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
       cap.alerted.push(batch);
       return batch.envelopes.map(() => 'dark' as const);
     },
+    alertCalendarChanges: async (batch) => {
+      cap.calendarAlerted.push(batch);
+      return batch.changes.map(() => 'dark' as const);
+    },
     ...overrides,
   };
   return { deps, cap };
+}
+
+/** The changes of the single calendar batch, asserting exactly one batch was handed over. */
+function onlyChanges(cap: Captured): readonly CalendarChange[] {
+  expect(cap.calendarAlerted).toHaveLength(1);
+  const batch = cap.calendarAlerted[0];
+  if (!batch) throw new Error('no alerted calendar batch');
+  return batch.changes;
 }
 
 /** The single alerted envelope, asserting exactly one batch of exactly one. */
@@ -200,6 +220,143 @@ describe('syncConnection — Calendar', () => {
 
     expect(cap.enqueued.map((e) => e.payload.id)).toEqual(['ev1']);
     expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
+  });
+
+  it('hands the cancelled event to the ALERT path even though the ingest drops it', async () => {
+    // The two halves disagree on purpose: Hale holds no event store to delete from, so a
+    // tombstone is not an appointment — but "your Thursday class was cancelled" is the
+    // single most useful thing this feature says, and the ingest events structurally
+    // cannot carry it.
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: {
+          items: [
+            {
+              id: 'ev2',
+              summary: 'Cartwheels Gym',
+              status: 'cancelled',
+              updated: '2026-09-17T14:55:00.000Z',
+              start: { dateTime: '2026-09-17T20:15:00-04:00' },
+              end: { dateTime: '2026-09-17T21:00:00-04:00' },
+              location: 'Stouffville Leisure Centre',
+              organizer: { self: true },
+            },
+          ],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(cap.enqueued).toEqual([]);
+    expect(onlyChanges(cap)).toEqual([
+      {
+        eventId: 'ev2',
+        updated: '2026-09-17T14:55:00.000Z',
+        status: 'cancelled',
+        title: 'Cartwheels Gym',
+        start: { dateTime: '2026-09-17T20:15:00-04:00', date: undefined },
+        end: { dateTime: '2026-09-17T21:00:00-04:00', date: undefined },
+        location: 'Stouffville Leisure Centre',
+        selfOrganized: true,
+      },
+    ]);
+  });
+
+  it('marks a first sync and a 410 resync as SEEDING, and an ordinary incremental as not', async () => {
+    // Both read the whole calendar. A seeding run that alerted would text a new family
+    // about every event they have ever put in it.
+    const full = stubDeps({
+      googleFetch: routedFetch([
+        { match: 'calendar/v3', body: { items: [], nextSyncToken: 'SYNC-1' } },
+      ]).fetchImpl,
+    });
+    await syncConnection(connection('gcal', {}), full.deps);
+    expect(full.cap.calendarAlerted[0]?.seeding).toBe(true);
+
+    const gone: GoogleFetch = async (url) =>
+      url.includes('syncToken=STALE')
+        ? { ok: false, status: 410, json: async () => ({ error: 'gone' }) }
+        : { ok: true, status: 200, json: async () => ({ items: [], nextSyncToken: 'SYNC-FULL' }) };
+    const resynced = stubDeps({ googleFetch: gone });
+    await syncConnection(connection('gcal', { syncToken: 'STALE' }), resynced.deps);
+    expect(resynced.cap.calendarAlerted[0]?.seeding).toBe(true);
+
+    const incremental = stubDeps({
+      googleFetch: routedFetch([
+        { match: 'calendar/v3', body: { items: [], nextSyncToken: 'SYNC-2' } },
+      ]).fetchImpl,
+    });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), incremental.deps);
+    expect(incremental.cap.calendarAlerted[0]?.seeding).toBe(false);
+  });
+
+  it('returns the calendar port outcomes, and alerts only AFTER the cursor advanced', async () => {
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3',
+        body: {
+          items: [{ id: 'ev1', updated: '2026-09-17T14:55:00.000Z', summary: 'Swim' }],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    const result = await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(result.calendarAlerts).toEqual(['dark']);
+    expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
+  });
+
+  it('a throw from the CALENDAR alert path is named, and never marks the calendar broken', async () => {
+    // Mirrors the Gmail case: the two halves fail for unrelated reasons and only one of
+    // them is Google's. A bug in Hale's own alert path must not stop the ingest.
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3',
+        body: {
+          items: [{ id: 'ev1', updated: '2026-09-17T14:55:00.000Z', summary: 'Swim' }],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps, cap } = stubDeps({
+      googleFetch: fetchImpl,
+      alertCalendarChanges: async () => {
+        throw new Error('boom');
+      },
+    });
+    const thrown = await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+
+    expect(thrown.calendarAlerts).toEqual(['alert_failed']);
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
+    expect(cap.enqueued).toHaveLength(1);
+  });
+
+  it('drops an item with no id or no `updated` — the two halves of the dedupe key', async () => {
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3',
+        body: {
+          items: [
+            { id: 'ev1', summary: 'no updated stamp' },
+            { updated: '2026-09-17T14:55:00.000Z', summary: 'no id' },
+            { id: 'ev3', updated: '2026-09-17T14:56:00.000Z', summary: 'complete' },
+          ],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(onlyChanges(cap).map((c) => c.eventId)).toEqual(['ev3']);
   });
 });
 
@@ -375,7 +532,7 @@ describe('syncConnection — the gmail alert hand-off', () => {
     expect(incremental.cap.alerted[0]?.seeding).toBe(false);
   });
 
-  it('never calls the alert port for a provider that is not gmail', async () => {
+  it('never calls the GMAIL alert port for a provider that is not gmail', async () => {
     const { fetchImpl } = routedFetch([
       {
         match: 'calendar/v3/calendars/primary/events',

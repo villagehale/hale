@@ -180,6 +180,7 @@ export const AUDIT_VERBS = [
   'proactive_nudge_sent',
   'proactive_nudge_skipped',
   'email_alert_sent',
+  'calendar_alert_sent',
   'proactive_watch_granted',
   'proactive_watch_declined',
   // ── caregiver invites ───────────────────────────────────────────────────
@@ -555,6 +556,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   // Hale having looked at their email at all.
   email_alert_sent: {
     sentence: 'Hale texted you about something in your email',
+    family: 'done',
+  },
+  // Same shape, different connector. The sentence names the calendar for the same reason
+  // the one above names the inbox: the row is the receipt for Hale having read it.
+  calendar_alert_sent: {
+    sentence: 'Hale texted you about a change on your calendar',
     family: 'done',
   },
   proactive_nudge_skipped: {

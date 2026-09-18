@@ -785,6 +785,13 @@
       "when": 1781469608000,
       "tag": "0114_email_alert_category",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1781469609000,
+      "tag": "0115_calendar_alert_category",
+      "breakpoints": true
     }
   ]
 }

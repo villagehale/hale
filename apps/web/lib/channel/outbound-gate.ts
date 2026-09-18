@@ -77,7 +77,17 @@ export type ProactiveSendKind =
    * mail arrives, so this class is the one where a classifier that drifts turns a
    * mailbox into a feed. Hence a real counter below rather than a null.
    */
-  | 'email_alert';
+  | 'email_alert'
+  /**
+   * An event appeared, moved or was cancelled on a connected Google Calendar.
+   *
+   * The sibling of `email_alert` and deliberately not the same class: this one needs no
+   * classifier, because the calendar is the parent's OWN and every change on it is a
+   * change they are entitled to hear about. What it shares is the failure mode — the
+   * volume is set by how much the household's week moves, and a September that re-syncs
+   * forty edits is the week where a text per edit is the uninstall.
+   */
+  | 'calendar_alert';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -179,6 +189,11 @@ export const PROACTIVE_CAP: Record<
   // the ones that matter while a triage stage that starts saying yes to newsletters
   // stops after a nuisance instead of after a mailbox.
   email_alert: { max: 3, windowHours: 24 },
+  // The calendar. The SAME three a day as the inbox, on its own counter: a household
+  // whose week is being rearranged gets the three soonest changes and hears the rest at
+  // the next sweep, and a connector that re-seeds and reports forty edits as new stops
+  // after a nuisance instead of after a phone full of texts.
+  calendar_alert: { max: 3, windowHours: 24 },
 };
 
 /**
@@ -222,6 +237,10 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // An email Hale read at 23:40 is an email the sender wrote hours ago and did not
   // think was worth a phone call. It keeps until 08:00.
   email_alert: false,
+  // An event that moved at 23:50 is an event on tomorrow's calendar, which the parent
+  // will read at 08:00 either way. Waking a household over a change they cannot act on
+  // in the dark is the whole of what this floor exists to prevent.
+  calendar_alert: false,
 };
 
 /**
@@ -267,6 +286,7 @@ export const PROACTIVE_CATEGORY: Record<
   | 'activity_followup'
   | 'spot_open'
   | 'email_alert'
+  | 'calendar_alert'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
@@ -277,6 +297,7 @@ export const PROACTIVE_CATEGORY: Record<
   spot_open: 'spot_open',
   spot_open_instant: 'spot_open',
   email_alert: 'email_alert',
+  calendar_alert: 'calendar_alert',
 };
 
 export interface OutboundGatePorts {

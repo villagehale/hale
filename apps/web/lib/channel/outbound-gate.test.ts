@@ -500,6 +500,47 @@ describe('the watched-spot proactive classes', () => {
     ).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
 
+  it('never lets a calendar alert claim urgency — a moved Thursday keeps until 08:00', async () => {
+    // Kills URGENCY_ALLOWED.calendar_alert = true: a connector sweep runs every fifteen
+    // minutes, so an exemption here would let a 02:00 edit wake the household.
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'calendar_alert',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('holds the fourth calendar alert in a day, on a counter of its own', async () => {
+    // Kills PROACTIVE_CAP.calendar_alert = null: the volume is set by how much a family
+    // rearranges its week, and a Sunday-evening rebuild is thirty edits in one sweep.
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'calendar_alert', now: MIDDAY },
+        ports({ recentSends: 3 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'frequency_cap' });
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'calendar_alert', now: MIDDAY },
+        ports({ recentSends: 2 }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+  });
+
+  it('counts the calendar apart from the inbox', () => {
+    // Kills PROACTIVE_CATEGORY.calendar_alert = 'email_alert', which would make three
+    // school emails silence the calendar for the rest of the day.
+    expect(PROACTIVE_CATEGORY.calendar_alert).toBe('calendar_alert');
+    expect(PROACTIVE_CATEGORY.email_alert).toBe('email_alert');
+  });
+
   it('holds the fifth opening in a day', async () => {
     // Kills `PROACTIVE_CAP.spot_open = null`, which the registration ladder's entry makes
     // an easy copy: a flapping portal would then be an unbounded text campaign.
