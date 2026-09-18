@@ -198,6 +198,8 @@ export const AUDIT_VERBS = [
   'caregiver_invite_blocked',
   'caregiver_sms_inbound',
   'caregiver_sms_outbound',
+  // The scoped week / an event's logistics actually leaving for a caregiver's phone.
+  'caregiver_schedule_sent',
   // ── the co-parent join link ─────────────────────────────────────────────
   'co_parent_join_link_minted',
   'co_parent_join_link_revoked',
@@ -630,6 +632,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   caregiver_sms_inbound: { sentence: 'a caregiver texted Hale', family: 'note' },
   caregiver_sms_outbound: { sentence: 'Hale texted a caregiver', family: 'note' },
+  // Its own verb rather than the generic `channel_sent`, because on this row WHO
+  // received it is the whole content: it is a disclosure of the household's week to a
+  // third party, and "Hale sent you a message" would be the one sentence that is false.
+  caregiver_schedule_sent: {
+    sentence: 'Hale sent a caregiver the part of your schedule they help with',
+    family: 'done',
+  },
   // ── the co-parent join link ─────────────────────────────────────────────
   co_parent_join_link_minted: {
     sentence: 'you asked for a link to add your co-parent',

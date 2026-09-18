@@ -2,6 +2,11 @@ import { defaultLoopRenderer } from '~/lib/channel/renderer';
 import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from '~/lib/channel/types';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import {
+  CAREGIVER_REMINDER_TEMPLATE_KEY,
+  CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY,
+} from './caregiver/keys';
+import { caregiverPlanRenderer, caregiverReminderRenderer } from './caregiver';
+import {
   CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
   CALENDAR_INVITE_TEMPLATE_KEY,
   calendarEmailAskRenderer,
@@ -40,6 +45,15 @@ export const loopTemplateRenderer: TemplateRenderer = {
     }
     if (message.templateKey === CALENDAR_EMAIL_ASK_TEMPLATE_KEY) {
       return calendarEmailAskRenderer.render(message, channel, nameLevel);
+    }
+    // The caregiver twins. Registered rather than left to the fallback on purpose: an
+    // unregistered key renders `defaultLoopRenderer`, which would text a grandmother a
+    // generic shell and report it as a successful send.
+    if (message.templateKey === CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY) {
+      return caregiverPlanRenderer.render(message, channel, nameLevel);
+    }
+    if (message.templateKey === CAREGIVER_REMINDER_TEMPLATE_KEY) {
+      return caregiverReminderRenderer.render(message, channel, nameLevel);
     }
     return defaultLoopRenderer.render(message, channel, nameLevel);
   },

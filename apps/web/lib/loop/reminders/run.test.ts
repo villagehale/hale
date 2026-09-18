@@ -42,6 +42,13 @@ function dueRow(over: Partial<DueReminder> = {}): DueReminder {
     offset: '-PT1H',
     fireAt: T1H_FIRE,
     timezone: TZ,
+    // The POSITIVE CONTROL for every caregiver gate added in VIL-241 · M6: these rows are
+    // a parent's, and every existing assertion below is the proof the new role gate did
+    // not quietly stop the parents' reminders too.
+    role: 'primary_parent',
+    // Irrelevant to a parent (their leg never consults it) and required so no fake can
+    // omit the fact a caregiver's leg turns on.
+    smsChannelActive: true,
     ...over,
   };
 }
@@ -54,6 +61,7 @@ function liveEvent(over: Partial<LiveEvent> = {}): LiveEvent {
     title: 'Checkup',
     childId: 'c1',
     sensitive: false,
+    location: null,
     ...over,
   };
 }
@@ -67,6 +75,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
 
   const deps: ReminderRunDeps = {
     selectReminderParents: async () => [],
+    selectReminderCaregivers: async () => [],
     loadHorizonEvents: async () => [],
     upsertReminder: async (_db, row) => {
       upserts.push({
@@ -228,6 +237,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
           title: 'Checkup',
           childId: 'c1',
           sensitive: false,
+          location: null,
         },
       ],
       [
@@ -239,6 +249,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
           title: 'Swim',
           childId: 'c2',
           sensitive: false,
+          location: null,
         },
       ],
     ]);
@@ -258,7 +269,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
       category: 'reminder',
       urgency: 'normal',
       parentUserId: 'p1',
-      dedupeKey: 'reminder:-P1D:p1:2026-07-24',
+      dedupeKey: 'reminder:-P1D:fam-1:p1:2026-07-24',
     });
     const payload = job?.payload as Record<string, unknown>;
     expect(payload.offset).toBe('-P1D');
@@ -270,7 +281,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
       { id: 'r2', status: 'sent', reason: null },
     ]);
     expect(captured).toEqual([
-      { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-P1D', events: 2 } },
+      { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-P1D', events: 2, audience: 'parent' } },
     ]);
     expect(result).toMatchObject({ fired: 2 });
   });
@@ -288,14 +299,14 @@ describe('runReminderCron — batching + compose-not-send', () => {
     expect(job).toMatchObject({
       category: 'reminder',
       urgency: 'time_sensitive',
-      dedupeKey: 'reminder:-PT1H:p1:e1',
+      dedupeKey: 'reminder:-PT1H:fam-1:p1:e1',
     });
     const payload = job?.payload as Record<string, unknown>;
     expect(payload.deepLink).toBeNull();
     expect((payload.events as unknown[]).length).toBe(1);
     expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
     expect(captured).toEqual([
-      { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-PT1H', events: 1 } },
+      { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-PT1H', events: 1, audience: 'parent' } },
     ]);
     expect(result).toMatchObject({ due: 1, fired: 1 });
   });

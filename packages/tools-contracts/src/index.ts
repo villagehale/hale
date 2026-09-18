@@ -97,6 +97,16 @@ export const channelSendJobPayloadSchema = z.object({
   relatedActionId: z.string().uuid().optional(),
   relatedConversationId: z.string().uuid().optional(),
   deepLink: z.string().optional(),
+  // The PINNED delivery leg (LoopMessage.channel), for a message whose content exists
+  // on one channel or whose recipient holds one. Absent = the recipient's loop_channel.
+  //
+  // It was missing here while `LoopMessage` carried it, which made the pin expressible
+  // in the domain and unrepresentable on the wire: zod stripped it, and a queued message
+  // silently took the recipient's default leg instead. That is invisible for a parent who
+  // has both addresses and fatal for one who does not — a texted caregiver has
+  // `users.email = null`, so the dropped pin routed their schedule to the email adapter
+  // and produced a `no_address` failure every week instead of a text.
+  channel: z.enum(['email', 'sms', 'whatsapp']).optional(),
 });
 export type ChannelSendJobPayload = z.infer<typeof channelSendJobPayloadSchema>;
 
