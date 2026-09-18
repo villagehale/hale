@@ -14,6 +14,7 @@ import {
   EMAIL_ALERT_TEMPLATE_KEY,
   type EmailAlertOutcome,
   type EmailAlertPorts,
+  type EmailAlertRenderInput,
   type GmailAlertEnvelope,
   alertParentForEmail,
   alertParentForGmailSweep,
@@ -227,7 +228,7 @@ describe('alertParentForEmail', () => {
     await expect(alert(h)).resolves.toBe('sent');
 
     for (const body of [h.transport.sent[0]?.body, h.threaded[0]?.body]) {
-      expect(body).toContain('Saturday swim class cancelled');
+      expect(body).toContain('Saturday swim class');
       expect(body).not.toContain(ENVELOPE.snippet);
       expect(body).not.toContain(ENVELOPE.subject);
       expect(body).not.toContain('Leo');
@@ -453,16 +454,354 @@ describe('the text itself', () => {
     now: NOW,
   };
 
-  it('leads with the sender and the change, and closes with the offer', () => {
-    expect(renderEmailAlert(RENDER)).toBe(
-      'From your email: Riverside Pool - Saturday swim class cancelled. Was Sep 19, 9:00 a.m. I can add it to your week - reply YES.',
+  it('is a plain sentence: the sender did it, the time is a clause, and it ends there', () => {
+    // The first cut opened "From your email:" and closed "I can add it to your week -
+    // reply YES", and the founder's note on both was the same one: a person telling you
+    // about a text does not narrate where they read it, and does not offer what they
+    // cannot do. NOTHING consumes that YES — an email alert registers no open question of
+    // any kind (lib/channel/router/open-questions.ts: nine kinds, none of them this), so
+    // a parent who replied YES either got the coach or, with one unrelated draft pending,
+    // approved THAT. The offer is gone until something can keep it.
+    const body = renderEmailAlert(RENDER);
+    expect(body).toBe(
+      'Riverside Pool cancelled Saturday swim class - it was Saturday, Sep 19 at 9:00 a.m.',
+    );
+    expect(body).not.toContain('From your email');
+    expect(body).not.toContain('YES');
+  });
+
+  it('never says the change twice, whatever the extraction put in the title', () => {
+    // The skill's contract for `title` is bare (`"title": string`) and the shipped
+    // fixtures carry the verb — 'Swim Class - CANCELLED', 'Soccer practice moved'
+    // (lib/sentinel/correlate.test.ts). So Hale takes the vendor's trailing verb off and
+    // says it itself; where the word is EMBEDDED and cannot be cleanly removed, it
+    // relays the title under "says" and adds no second verb.
+    const cancelled: Array<[string, string]> = [
+      ['Saturday swim class cancelled', 'Riverside Pool cancelled Saturday swim class'],
+      ['Swim Class - CANCELLED', 'Riverside Pool cancelled Swim Class'],
+      ['Swim class is cancelled', 'Riverside Pool cancelled Swim class'],
+      // Two auxiliaries, which is how a vendor writes it: the tail has to take the whole
+      // 'is now cancelled' or it leaves a dangling 'is' behind as the occasion.
+      ['Swim class is now cancelled', 'Riverside Pool cancelled Swim class'],
+      ['Swim class cancelled!', 'Riverside Pool cancelled Swim class'],
+      ['Cancellation of Tuesday practice', 'Riverside Pool says Cancellation of Tuesday practice'],
+      // The CONTROL. Without it every row above passes on a renderer that simply never
+      // says "cancelled" — which is the other way to lose the sentence.
+      ['Swim lessons', 'Riverside Pool cancelled Swim lessons'],
+    ];
+    for (const [title, head] of cancelled) {
+      const body = renderEmailAlert({ ...RENDER, event: { ...RENDER.event, title } });
+      expect(body).toBe(`${head} - it was Saturday, Sep 19 at 9:00 a.m.`);
+      expect(body).not.toMatch(/cancelled[^.]*\bcancelled\b/i);
+    }
+
+    // A reschedule's destination is the half that doubles: a title carrying the verb in
+    // its MIDDLE is relayed under "says", and "says Practice moved to 5pm TO Saturday" is
+    // the vendor's sentence and Hale's welded into one. Relayed titles get the same dash
+    // clause a relayed cancellation gets.
+    const moved: Array<[string, string]> = [
+      ['Soccer practice moved', 'Riverside Pool moved Soccer practice to Saturday, Sep 26'],
+      // The CONTROL: a title with no verb in it at all must still say what happened.
+      ['Soccer practice', 'Riverside Pool moved Soccer practice to Saturday, Sep 26'],
+      ['Practice moved to 5pm', 'Riverside Pool says Practice moved to 5pm - now Saturday, Sep 26'],
+      // The PRESENT tense of the same sentence. A frame that tests for 'moved' and not
+      // 'moves' writes Hale's destination onto the vendor's, and the sentence carries two.
+      ['Practice moves to 5pm', 'Riverside Pool says Practice moves to 5pm - now Saturday, Sep 26'],
+      [
+        'Swim class rescheduled to Friday',
+        'Riverside Pool says Swim class rescheduled to Friday - now Saturday, Sep 26',
+      ],
+      [
+        'New time for swim class',
+        'Riverside Pool says New time for swim class - now Saturday, Sep 26',
+      ],
+    ];
+    for (const [title, head] of moved) {
+      const body = renderEmailAlert({
+        ...RENDER,
+        kind: 'reschedule',
+        event: { ...RENDER.event, title, newTime: '2026-09-26T14:30:00.000Z' },
+      });
+      expect(body).toBe(`${head} at 10:30 a.m. (was Sep 19).`);
+      // One destination per sentence, whichever frame carried it.
+      expect(body).not.toMatch(/\bto\b[^.]*\bto\b/);
+      expect(body).not.toMatch(/moved[^.]*\bmoved\b/i);
+    }
+  });
+
+  it('drops the vendor label in front of a subject line, and keeps a real colon', () => {
+    // 'Reminder:', 'Cancelled -', 'New:' are the sender's own filing system. Hale's
+    // sentence already says which kind of thing this is, so relaying the label says it
+    // twice in someone else's voice.
+    const sentence = (over: Partial<EmailAlertRenderInput>) =>
+      renderEmailAlert({ ...RENDER, ...over } as EmailAlertRenderInput);
+
+    expect(sentence({ event: { ...RENDER.event, title: 'Cancelled: Saturday swim class' } })).toBe(
+      'Riverside Pool cancelled Saturday swim class - it was Saturday, Sep 19 at 9:00 a.m.',
+    );
+    expect(
+      sentence({
+        kind: 'reschedule',
+        event: {
+          ...RENDER.event,
+          title: 'Rescheduled: Picture day',
+          newTime: '2026-09-26T14:30:00.000Z',
+        },
+      }),
+    ).toBe('Riverside Pool moved Picture day to Saturday, Sep 26 at 10:30 a.m. (was Sep 19).');
+    expect(
+      sentence({
+        kind: 'reminder_only',
+        from: 'YRDSB <registrar@yrdsb.example>',
+        event: { ...RENDER.event, title: 'Reminder: the field trip form is due' },
+      }),
+    ).toBe('YRDSB says the field trip form is due - Saturday, Sep 19 at 9:00 a.m.');
+    // The CONTROL: a colon that is part of what the school actually said stays.
+    expect(sentence({ event: { ...RENDER.event, title: 'Swim class: bring goggles' } })).toBe(
+      'Riverside Pool cancelled Swim class: bring goggles - it was Saturday, Sep 19 at 9:00 a.m.',
     );
   });
 
-  it('falls back to the bare DOMAIN, never the full address', () => {
-    // An address in a text is a mailbox anyone holding the phone can write to.
+  it("names the occasion in Hale's own word when the title is only the change", () => {
+    // 'CANCELLED' as the whole title leaves nothing to name. Relaying it under "says"
+    // puts a vendor's shout in Hale's mouth; the frame keeps its verb and its own object.
+    for (const title of ['CANCELLED', '']) {
+      expect(renderEmailAlert({ ...RENDER, event: { ...RENDER.event, title } })).toBe(
+        'Riverside Pool cancelled something - it was Saturday, Sep 19 at 9:00 a.m.',
+      );
+    }
+  });
+
+  it('has a sentence for every kind the extraction can return', () => {
+    const sentence = (over: Partial<EmailAlertRenderInput>) =>
+      renderEmailAlert({ ...RENDER, ...over } as EmailAlertRenderInput);
+
+    // A reschedule Hale only knows the OLD time for still says what happened.
+    expect(
+      sentence({ kind: 'reschedule', event: { ...RENDER.event, title: 'Swim lessons' } }),
+    ).toBe('Riverside Pool moved Swim lessons - it was Saturday, Sep 19 at 9:00 a.m.');
+    expect(
+      sentence({
+        kind: 'new_event',
+        event: {
+          ...RENDER.event,
+          title: 'Picture day',
+          originalTime: null,
+          newTime: '2026-10-02T13:00:00.000Z',
+          location: 'the gym',
+        },
+      }),
+    ).toBe('Riverside Pool has Picture day at the gym on Friday, Oct 2 at 9:00 a.m.');
+    // A title that is already a CLAUSE cannot be the object of "has". Ollie's own frame
+    // for this exact line is "Cartwheels says Fall/Term 1 registration is open".
+    expect(
+      sentence({
+        kind: 'new_event',
+        from: 'Cartwheels Gym <hello@cartwheels.example>',
+        event: {
+          ...RENDER.event,
+          title: 'Fall registration is open',
+          originalTime: null,
+          newTime: '2026-10-02T13:00:00.000Z',
+        },
+      }),
+    ).toBe('Cartwheels Gym says Fall registration is open - Friday, Oct 2 at 9:00 a.m.');
+    // Ollie's canonical registration line has a finite verb and no copula — the shape a
+    // copula-only test lets through, and "has Term 1 registration opens Monday" is what
+    // that costs.
+    expect(
+      sentence({
+        kind: 'new_event',
+        from: 'Cartwheels Gym <hello@cartwheels.example>',
+        event: {
+          ...RENDER.event,
+          title: 'Term 1 registration opens Monday',
+          originalTime: null,
+          newTime: '2026-10-02T13:00:00.000Z',
+        },
+      }),
+    ).toBe('Cartwheels Gym says Term 1 registration opens Monday - Friday, Oct 2 at 9:00 a.m.');
+    expect(
+      sentence({
+        kind: 'reminder_only',
+        from: 'YRDSB <registrar@yrdsb.example>',
+        event: { ...RENDER.event, title: 'the field trip permission form is due' },
+      }),
+    ).toBe('YRDSB says the field trip permission form is due - Saturday, Sep 19 at 9:00 a.m.');
+    expect(
+      sentence({
+        kind: 'unclear',
+        event: { ...RENDER.event, title: 'a possible schedule change', originalTime: null },
+      }),
+    ).toBe('Riverside Pool sent something about a possible schedule change.');
+  });
+
+  it('picks the frame by ONE question — does the title already carry a verb', () => {
+    // The class of bug this table exists to end: each round found another inflection the
+    // frame had not been told about ('moved' but not 'moves', 'is' but not 'opens'), and
+    // each fix named that one word. So the frame is decided ONCE, by a single question
+    // about the title, and each answer has exactly one shape:
+    //   YES, it carries a verb -> relay it whole under "says" and hang the time off a
+    //        dash. Never a second verb, never a second destination.
+    //   NO, it is a noun phrase -> Hale supplies the verb (cancelled / moved / has).
+    // A TRAILING change word comes off first, and what is left is what gets asked.
+    const MOVED_TO = '2026-09-26T14:30:00.000Z';
+    const WAS = 'it was Saturday, Sep 19 at 9:00 a.m.';
+    const NOW_AT = 'Saturday, Sep 26 at 10:30 a.m.';
+    const rows: Array<{ kind: ExtractionKind; title: string; from?: string; body: string }> = [
+      // Noun phrase: Hale's verb, and the time on Hale's preposition.
+      {
+        kind: 'cancellation',
+        title: 'Swim lessons',
+        body: `Riverside Pool cancelled Swim lessons - ${WAS}`,
+      },
+      // Past tense as a tail: taken off, then the noun phrase underneath.
+      {
+        kind: 'cancellation',
+        title: 'Saturday swim class cancelled',
+        body: `Riverside Pool cancelled Saturday swim class - ${WAS}`,
+      },
+      // 'is now' — two auxiliaries in front of the tail.
+      {
+        kind: 'cancellation',
+        title: 'Swim class is now cancelled',
+        body: `Riverside Pool cancelled Swim class - ${WAS}`,
+      },
+      // A vendor label is the sender's filing system, not a verb.
+      {
+        kind: 'cancellation',
+        title: 'Cancelled: Saturday swim class',
+        body: `Riverside Pool cancelled Saturday swim class - ${WAS}`,
+      },
+      // The change word is EMBEDDED and cannot come off cleanly: relay, no second verb.
+      {
+        kind: 'cancellation',
+        title: 'Cancellation of Tuesday practice',
+        body: `Riverside Pool says Cancellation of Tuesday practice - ${WAS}`,
+      },
+      {
+        kind: 'reschedule',
+        title: 'Soccer practice',
+        body: `Riverside Pool moved Soccer practice to ${NOW_AT} (was Sep 19).`,
+      },
+      {
+        kind: 'reschedule',
+        title: 'Soccer practice moved',
+        body: `Riverside Pool moved Soccer practice to ${NOW_AT} (was Sep 19).`,
+      },
+      // Present progressive as a tail.
+      {
+        kind: 'reschedule',
+        title: 'Swim class is moving',
+        body: `Riverside Pool moved Swim class to ${NOW_AT} (was Sep 19).`,
+      },
+      // Present tense with the vendor's OWN destination in it: relayed, dash clause, one
+      // 'to' in the whole sentence.
+      {
+        kind: 'reschedule',
+        title: 'Practice moves to 5pm',
+        body: `Riverside Pool says Practice moves to 5pm - now ${NOW_AT} (was Sep 19).`,
+      },
+      {
+        kind: 'reschedule',
+        title: 'Rescheduled: Picture day',
+        body: `Riverside Pool moved Picture day to ${NOW_AT} (was Sep 19).`,
+      },
+      {
+        kind: 'new_event',
+        title: 'Picture day',
+        body: `Riverside Pool has Picture day on ${NOW_AT}`,
+      },
+      // Ollie's registration line, present tense and no copula.
+      {
+        kind: 'new_event',
+        title: 'Term 1 registration opens Monday',
+        body: `Riverside Pool says Term 1 registration opens Monday - ${NOW_AT}`,
+      },
+      {
+        kind: 'new_event',
+        title: 'Fall registration is open',
+        body: `Riverside Pool says Fall registration is open - ${NOW_AT}`,
+      },
+      // A display name carries the sender's full stop the way a subject line does, and it
+      // lands in the middle of Hale's sentence.
+      {
+        kind: 'new_event',
+        title: 'Picture day',
+        from: 'Riverside Pool. <info@riverside.example>',
+        body: `Riverside Pool has Picture day on ${NOW_AT}`,
+      },
+      // A reminder that is a noun phrase is an occasion, not a thing to say out loud:
+      // "says Pediatric checkup - Saturday" is a dash standing in for the verb.
+      {
+        kind: 'reminder_only',
+        title: 'Pediatric checkup',
+        body: 'Riverside Pool has Pediatric checkup on Saturday, Sep 19 at 9:00 a.m.',
+      },
+      {
+        kind: 'reminder_only',
+        title: 'the field trip form is due',
+        body: 'Riverside Pool says the field trip form is due - Saturday, Sep 19 at 9:00 a.m.',
+      },
+      {
+        kind: 'reminder_only',
+        title: 'Registration opens Monday',
+        body: 'Riverside Pool says Registration opens Monday - Saturday, Sep 19 at 9:00 a.m.',
+      },
+      {
+        kind: 'unclear',
+        title: 'a possible schedule change',
+        body: 'Riverside Pool sent something about a possible schedule change.',
+      },
+    ];
+
+    for (const row of rows) {
+      const body = renderEmailAlert({
+        ...RENDER,
+        kind: row.kind,
+        from: row.from ?? RENDER.from,
+        event: {
+          ...RENDER.event,
+          title: row.title,
+          newTime: row.kind === 'reschedule' || row.kind === 'new_event' ? MOVED_TO : null,
+        },
+      });
+      expect(body).toBe(row.body);
+      // On EVERY row: one destination per sentence. Two 'to's is the vendor's verb and
+      // Hale's both carrying the new time.
+      expect(body).not.toMatch(/\bto\b[^.]*\bto\b/);
+    }
+  });
+
+  it('keeps a street address out of the sentence and a short place in it', () => {
+    // A room number or a street line is the one thing in a school email a text should not
+    // repeat: it is long, it is the part a parent already knows, and it is the part that
+    // makes an SMS a copy of the email.
+    const newEvent = (location: string) =>
+      renderEmailAlert({
+        ...RENDER,
+        kind: 'new_event',
+        event: {
+          ...RENDER.event,
+          title: 'Picture day',
+          originalTime: null,
+          newTime: '2026-10-02T13:00:00.000Z',
+          location,
+        },
+      });
+    expect(newEvent('the gym')).toContain('at the gym on');
+    expect(newEvent('120 Main St W, Markham ON L3P 1X4')).toBe(
+      'Riverside Pool has Picture day on Friday, Oct 2 at 9:00 a.m.',
+    );
+  });
+
+  it('falls back to the bare DOMAIN as the subject, never the full address', () => {
+    // An address in a text is a mailbox anyone holding the phone can write to. A domain
+    // reads perfectly well as the subject of a sentence.
     const body = renderEmailAlert({ ...RENDER, from: 'registrar.k12@yrdsb.example' });
-    expect(body).toContain('From your email: yrdsb.example - ');
+    expect(body).toBe(
+      'yrdsb.example cancelled Saturday swim class - it was Saturday, Sep 19 at 9:00 a.m.',
+    );
     expect(body).not.toContain('registrar.k12');
   });
 
@@ -474,42 +813,18 @@ describe('the text itself', () => {
       ...RENDER,
       from: '"noreply@school.example" <noreply@school.example>',
     });
-    expect(body).toContain('From your email: school.example - ');
+    expect(body).toContain('school.example cancelled ');
     expect(body).not.toContain('noreply@');
   });
 
-  it('says only the title when the extraction found no usable time', () => {
+  it('says only what happened when the extraction found no usable time', () => {
     expect(
       renderEmailAlert({
         ...RENDER,
         kind: 'reminder_only',
-        event: { ...RENDER.event, title: 'Field trip form due', originalTime: null },
+        event: { ...RENDER.event, title: 'the field trip form is due', originalTime: null },
       }),
-    ).toBe(
-      'From your email: Riverside Pool - Field trip form due. I can add it to your week - reply YES.',
-    );
-  });
-
-  it('reads a reschedule off the NEW time and a new event off its own', () => {
-    expect(
-      renderEmailAlert({
-        ...RENDER,
-        kind: 'reschedule',
-        event: { ...RENDER.event, title: 'Swim moved', newTime: '2026-09-26T14:30:00.000Z' },
-      }),
-    ).toContain('Now Sep 26, 10:30 a.m.');
-    expect(
-      renderEmailAlert({
-        ...RENDER,
-        kind: 'new_event',
-        event: {
-          ...RENDER.event,
-          title: 'Picture day',
-          originalTime: null,
-          newTime: '2026-10-02T13:00:00.000Z',
-        },
-      }),
-    ).toContain('Picture day. Oct 2, 9:00 a.m.');
+    ).toBe('Riverside Pool says the field trip form is due.');
   });
 
   it('drops a time the model did not write as a date', () => {
@@ -517,8 +832,34 @@ describe('the text itself', () => {
     // than no time at all.
     expect(
       renderEmailAlert({ ...RENDER, event: { ...RENDER.event, originalTime: 'this Saturday' } }),
-    ).toBe(
-      'From your email: Riverside Pool - Saturday swim class cancelled. I can add it to your week - reply YES.',
+    ).toBe('Riverside Pool cancelled Saturday swim class.');
+  });
+
+  it('carries the YEAR on a date in another year, in both halves of a reschedule', () => {
+    expect(
+      renderEmailAlert({
+        ...RENDER,
+        kind: 'reschedule',
+        event: {
+          ...RENDER.event,
+          title: 'Swim lessons',
+          originalTime: '2026-12-30T14:00:00.000Z',
+          newTime: '2027-01-05T14:00:00.000Z',
+        },
+      }),
+    ).toBe('Riverside Pool moved Swim lessons to Tuesday, Jan 5, 2027 at 9:00 a.m. (was Dec 30).');
+  });
+
+  it('bounds a runaway title at a word boundary and still ends the sentence', () => {
+    const body = renderEmailAlert({
+      ...RENDER,
+      event: {
+        ...RENDER.event,
+        title: 'Saturday swim class for beginners and improvers at the west end pool this term',
+      },
+    });
+    expect(body).toBe(
+      'Riverside Pool cancelled Saturday swim class for beginners and improvers at the west - it was Saturday, Sep 19 at 9:00 a.m.',
     );
   });
 
@@ -534,9 +875,7 @@ describe('the text itself', () => {
       event: { ...RENDER.event, title: 'A possible schedule change' },
     });
 
-    expect(body).toBe(
-      "From your email: A possible schedule change. I've kept the details out of this text.",
-    );
+    expect(body).toBe("A possible schedule change. I've kept the details out of this text.");
     expect(body).not.toContain('maplecounselling');
     expect(body).not.toContain('Maple Counselling');
     expect(body).not.toContain('Sep 19');
@@ -550,8 +889,17 @@ describe('the text itself', () => {
       from: '"Riverside’s Pool" <a@b.example>',
       event: { ...RENDER.event, title: 'Leo’s class — cancelled…' },
     });
-    expect(body).toContain("Riverside's Pool - Leo's class - cancelled...");
+    expect(body).toContain("Riverside's Pool cancelled Leo's class");
     expect(isPrintableGsm7Basic(body)).toBe(true);
+  });
+
+  it('still names the change when the header carries no sender at all', () => {
+    // `senderLabel` returns '' for a malformed From with no '@'. With no subject there is
+    // no Ollie sentence to write, so the occasion becomes the subject — never a stand-in
+    // sender, which would be a fact Hale invented.
+    expect(renderEmailAlert({ ...RENDER, from: 'no-at-sign-at-all' })).toBe(
+      'Saturday swim class cancelled - it was Saturday, Sep 19 at 9:00 a.m.',
+    );
   });
 
   it('holds two GSM-7 segments including the FULL opt-out, for every shape it can render', () => {
