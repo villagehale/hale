@@ -40,6 +40,9 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // The loop dispatch names its send by WHO received it: a caregiver leg is a disclosure
+  // to a third party, everything else is the generic channel send.
+  'apps/web/lib/channel/dispatch.ts': ['caregiver_schedule_sent', 'channel_sent'],
   // `${auditAction}` / `${auditAction}.skipped_duplicate` over the five executor
   // constants (ROUTINE_PIN / DIGEST_NOTE / CALENDAR_PLACED / _MOVED / _CANCELLED).
   'apps/worker/src/services/internal-writes.ts': [

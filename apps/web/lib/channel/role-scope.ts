@@ -18,10 +18,19 @@ import { deriveStage } from '@hale/types';
  *   outbound-gate  — MAY a message leave at all? (enrolment, consent, cap, quiet hours)
  *   role-scope     — HOW MUCH of the household may THIS recipient see?
  *
- * So the caregiver content senders that follow M6 must call BOTH: add a caregiver kind
- * to `ProactiveSendKind` + `PROACTIVE_CAP` for the volume budget, and filter the
- * artifact through `scopeWeekItemsForRole` for the content. A sender that passes the
- * gate and skips this one sends a grandmother a teenager's week.
+ * So the caregiver content senders that follow M6 must call BOTH: a volume budget for
+ * whether the message may leave, and this file for how much of the household it may
+ * carry. A sender that passes the budget and skips this one sends a grandmother a
+ * teenager's week.
+ *
+ * WHICH BUDGET depends on which pipe the sender rides, and the first two senders ride the
+ * LOOP: the caregiver weekly plan and the caregiver event reminders go through the A2
+ * dispatch (channel/dispatch.ts), whose `CATEGORY_CAPS` + quiet hours + live-consent gate
+ * + ledger + audit are per RECIPIENT and therefore already meter a caregiver. They do not
+ * add a `ProactiveSendKind`, and adding one would have given them a second, differently
+ * shaped meter for the same texts. A future caregiver sender on the F14 outbound-gate
+ * path (outbound-gate.ts) still takes `PROACTIVE_CAP` — the rule is one meter per pipe,
+ * not one meter per role.
  *
  * The M6 invite exchange itself does NOT route through the gate, and the reason is
  * structural rather than an exemption: every check the gate makes is about an ENROLLED
@@ -164,6 +173,44 @@ export function classifyWeekItem(item: WeekPlanItem, teenIds: ReadonlySet<string
   if (item.kind === 'appointment' || item.privacySensitive) return 'health';
   if (item.kind === 'suggestion') return 'village_suggestion';
   return 'schedule';
+}
+
+/**
+ * The fields a `family_events` row must show before this file will say who may see it.
+ * Declared narrowly (the reminder run's `LiveEvent` satisfies it structurally) so a
+ * caller holding a live event does not have to build a fake week item to ask.
+ */
+export interface ScopeEvent {
+  /** The one child the event concerns, or null for a family-wide one. */
+  childId: string | null;
+  /** family_events.sensitive — the health flag the calendar_add executor sets. */
+  sensitive: boolean;
+}
+
+/**
+ * The content class of a placed `family_events` row — the sibling of
+ * {@link classifyWeekItem} for the pipeline that does not go through a week plan.
+ *
+ * It lives here rather than in the reminder run for the reason the module header gives:
+ * the matrix is only auditable while every classification is on one page. Same policy
+ * order as the week-item classifier, so the two cannot drift: teen involvement decides
+ * first, then health, and what is left is logistics (a child's event) or the household's
+ * plain schedule (a family-wide one).
+ *
+ * FAIL CLOSED, identically: an event naming a child the caller did not load is an event
+ * we cannot prove is safe, so it is treated as a teen's.
+ */
+export function classifyFamilyEvent(
+  event: ScopeEvent,
+  children: readonly ScopeChild[],
+  now: Date,
+): ContentClass {
+  if (event.childId !== null) {
+    const child = children.find((c) => c.id === event.childId);
+    if (!child || deriveStage(child.dateOfBirth, now) === 'teenager') return 'teen_content';
+  }
+  if (event.sensitive) return 'health';
+  return event.childId === null ? 'schedule' : 'event_logistics';
 }
 
 export interface ScopeWeekInput {

@@ -42,6 +42,10 @@ function dueRow(over: Partial<DueReminder> = {}): DueReminder {
     offset: '-PT1H',
     fireAt: T1H_FIRE,
     timezone: TZ,
+    // The POSITIVE CONTROL for every caregiver gate added in VIL-241 · M6: these rows are
+    // a parent's, and every existing assertion below is the proof the new role gate did
+    // not quietly stop the parents' reminders too.
+    role: 'primary_parent',
     ...over,
   };
 }
@@ -54,6 +58,7 @@ function liveEvent(over: Partial<LiveEvent> = {}): LiveEvent {
     title: 'Checkup',
     childId: 'c1',
     sensitive: false,
+    location: null,
     ...over,
   };
 }
@@ -67,6 +72,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
 
   const deps: ReminderRunDeps = {
     selectReminderParents: async () => [],
+    selectReminderCaregivers: async () => [],
     loadHorizonEvents: async () => [],
     upsertReminder: async (_db, row) => {
       upserts.push({
@@ -228,6 +234,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
           title: 'Checkup',
           childId: 'c1',
           sensitive: false,
+          location: null,
         },
       ],
       [
@@ -239,6 +246,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
           title: 'Swim',
           childId: 'c2',
           sensitive: false,
+          location: null,
         },
       ],
     ]);

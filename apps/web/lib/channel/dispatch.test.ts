@@ -163,7 +163,10 @@ describe('email CASL dual-write + audit', () => {
     expect(ledger.filter((r) => r.channel === 'email' && r.status === 'sent')).toHaveLength(1);
     expect(emailSends).toEqual([{ emailType: 'weekly_plan', recipient: 'parent@example.com' }]);
     expect(audits).toEqual([
-      { actionTaken: 'channel_sent', after: { channel: 'email', category: 'weekly_plan' } },
+      {
+        actionTaken: 'channel_sent',
+        after: { channel: 'email', category: 'weekly_plan', templateKey: 'weekly-plan-v1' },
+      },
     ]);
   });
 

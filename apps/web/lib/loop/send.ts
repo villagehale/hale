@@ -2,8 +2,10 @@ import { type Database, schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
+import { scopeWeekItemsForRole } from '~/lib/channel/role-scope';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { appBaseUrl, unsubscribeUrl } from '~/lib/cron/email-compliance';
+import { type CaregiverSeat, selectCaregiverSeats } from '~/lib/loop/caregiver-audience';
 import {
   type LoopPrefsView,
   loadLoopPrefsView,
@@ -11,6 +13,8 @@ import {
   weeklyPlanWeekday,
 } from '~/lib/loop/prefs';
 import { readWeekPlan } from '~/lib/loop/queries';
+import { CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
+import type { CaregiverPlanPayload } from '~/lib/loop/templates/caregiver/payload';
 import type { PlanChild, WeeklyPlanPayload } from '~/lib/loop/templates/weekly-plan/payload';
 import { weekWindow } from '~/lib/plan/spine';
 import { getQueue } from '~/lib/queue';
@@ -116,6 +120,37 @@ export async function selectParentsToSend(db: Database, now: Date): Promise<Send
   return out;
 }
 
+/**
+ * Every ACTIVE caregiver seat at its own local send moment — the audience the M6 welcome
+ * ("I'll text you the week's schedule and pickup reminders") promised and that no sender
+ * has ever selected.
+ *
+ * The seat predicate itself lives in caregiver-audience.ts; what happens here is the same
+ * filtering the parents get, applied to the caregiver's OWN row: their timezone, their
+ * week_start_day, their loop prefs. A caregiver has no loop_prefs row, so
+ * `DEFAULT_LOOP_PREFS` applies — Sunday 08:00 local, weekly plan on — which is the
+ * documented absent-row state and not a default invented here.
+ *
+ * No email-with-no-address drop, and its absence is the point rather than an oversight:
+ * a caregiver ALWAYS has `users.email = null` (their account is minted from a phone
+ * number), so the parents' guard would silently drop every seat there is. The leg is
+ * pinned to SMS at enqueue instead.
+ */
+export async function selectCaregiversToSend(
+  db: Database,
+  now: Date,
+): Promise<SendCaregiverRow[]> {
+  const seats = await selectCaregiverSeats(db);
+  const out: SendCaregiverRow[] = [];
+  for (const seat of seats) {
+    if (localParts(now, seat.timezone).weekday !== weeklyPlanWeekday(seat.weekStartDay)) continue;
+    const view = await loadLoopPrefsView(seat.userId, db);
+    if (!view.catWeeklyPlan) continue;
+    if (isSendMoment(view, now, seat.timezone, seat.weekStartDay)) out.push({ ...seat, view });
+  }
+  return out;
+}
+
 /** The channel.send job the A2 drain consumes (LoopMessage-shaped, contract-validated
  * by `channelSendJobPayloadSchema`). */
 export interface ChannelSendJob {
@@ -126,10 +161,20 @@ export interface ChannelSendJob {
   urgency: 'normal';
   payload: Record<string, unknown>;
   dedupeKey: string;
+  /** Pins the leg (contracts `channelSendJobPayloadSchema.channel`). The parents' plan
+   * leaves it unset and rides their loop_channel; a caregiver has no address other than
+   * their phone, so their leg is pinned rather than defaulted. */
+  channel?: 'sms';
+}
+
+/** One caregiver seat at its own send moment, with the prefs the dispatch will re-read. */
+export interface SendCaregiverRow extends CaregiverSeat {
+  view: LoopPrefsView;
 }
 
 export interface SundaySendDeps {
   selectParents: (db: Database, now: Date) => Promise<SendParentRow[]>;
+  selectCaregivers: (db: Database, now: Date) => Promise<SendCaregiverRow[]>;
   readPlan: (db: Database, familyId: string, weekStart: string) => Promise<schema.WeekPlan | null>;
   loadChildren: (db: Database, familyId: string) => Promise<PlanChild[]>;
   enqueue: (job: ChannelSendJob) => Promise<void>;
@@ -139,6 +184,7 @@ export interface SundaySendDeps {
 export function defaultSundaySendDeps(): SundaySendDeps {
   return {
     selectParents: selectParentsToSend,
+    selectCaregivers: selectCaregiversToSend,
     readPlan: readWeekPlan,
     loadChildren: async (db, familyId) =>
       db
@@ -163,6 +209,21 @@ export interface SundaySendResult {
   enqueued: number;
   skippedNoPlan: number;
   sendEnabled: boolean;
+  /** Caregiver seats at their own send moment this run. */
+  caregiversMatched: number;
+  caregiverEnqueued: number;
+  /**
+   * Seats whose family HAS a composed week but whose scoped view of it is empty — every
+   * item was health, a teenager's, or a suggestion (rule #11: the absence is an outcome
+   * with a name, not a zero that could equally mean the leg never ran).
+   *
+   * They are sent NOTHING, which is where this leg deliberately parts company with the
+   * parents' one. The parents' renderer fills an empty week with "A quiet week - nothing
+   * scheduled yet. Want ideas for Saturday? Reply IDEAS." Said to a caregiver that is two
+   * untruths: the household may be having anything but a quiet week, and IDEAS is a
+   * conversation they were promised they would not be drawn into.
+   */
+  caregiversNothingInScope: number;
 }
 
 /**
@@ -236,5 +297,76 @@ export async function runSundaySendCron(
     });
   }
 
-  return { matched: parents.length, enqueued, skippedNoPlan, sendEnabled };
+  const caregivers = await deps.selectCaregivers(db, now);
+  let caregiverEnqueued = 0;
+  let caregiversNothingInScope = 0;
+
+  for (const seat of caregivers) {
+    // Same key as the parents', for the same reason: the composer writes every artifact
+    // on a Monday, and a Sunday-start recipient's week is tomorrow's key.
+    const weekStart = weekWindow(now, seat.timezone, 1, seat.weekStartDay === 0 ? 1 : 0).startKey;
+    const plan = await deps.readPlan(db, seat.familyId, weekStart);
+    if (!plan) {
+      skippedNoPlan += 1;
+      continue;
+    }
+
+    const children = await deps.loadChildren(db, seat.familyId);
+    // BOTH GATES, in the order role-scope.ts requires: the role scope decides which
+    // classes of the household this seat may see, and the deterministic teen age gate
+    // (composed inside the same call, from date of birth) removes a 13+ child's items
+    // outright — not genericized, absent. `children` is the whole family's, deliberately:
+    // the filter needs every child an item could reference to be able to age them, and an
+    // item naming a child it was not given fails closed.
+    const scoped = scopeWeekItemsForRole({ role: seat.role, items: plan.items, children, now });
+    if (scoped.length === 0) {
+      caregiversNothingInScope += 1;
+      continue;
+    }
+
+    // Only the children the SURVIVING items reference reach the payload — a teenager
+    // whose every item the gate removed must not ride the queue as a name and a DOB.
+    const referenced = new Set(scoped.flatMap((item) => item.childIds));
+    const payload: CaregiverPlanPayload = {
+      weekStart: plan.weekStart,
+      items: scoped,
+      children: children
+        .filter((child) => referenced.has(child.id))
+        .map((child) => ({ id: child.id, name: child.name })),
+    };
+    const job: ChannelSendJob = {
+      templateKey: CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY,
+      familyId: seat.familyId,
+      parentUserId: seat.userId,
+      category: 'weekly_plan',
+      urgency: 'normal',
+      // The pin. Without it the dispatch takes `DEFAULT_LOOP_PREFS.loopChannel` ('email')
+      // for a recipient who has no email, and the week becomes a `no_address` row.
+      channel: 'sms',
+      payload: payload as unknown as Record<string, unknown>,
+      // Same shape as the parents' key — the recipient id is what separates them, and the
+      // dispatch suffixes the channel, so a re-drain can re-send no leg.
+      dedupeKey: `${seat.familyId}:${weekStart}:${seat.userId}`,
+    };
+
+    if (!sendEnabled) continue;
+
+    await deps.enqueue(job);
+    caregiverEnqueued += 1;
+    await deps.capture('loop_plan_sent', seat.userId, {
+      category: 'weekly_plan',
+      items: scoped.length,
+      pending: 0,
+    });
+  }
+
+  return {
+    matched: parents.length,
+    enqueued,
+    skippedNoPlan,
+    sendEnabled,
+    caregiversMatched: caregivers.length,
+    caregiverEnqueued,
+    caregiversNothingInScope,
+  };
 }
