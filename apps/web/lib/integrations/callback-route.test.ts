@@ -36,6 +36,7 @@ vi.mock('~/lib/integrations/store', () => ({
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const MINTER = '22222222-2222-4222-8222-222222222222';
 const ATTACKER = '99999999-9999-4999-8999-999999999999';
+const CONNECT_ID = '44444444-4444-4444-8444-444444444444';
 
 async function callCallback(state: string, code = 'auth-code') {
   const { GET } = await import('~/app/api/integrations/callback/route');
@@ -62,7 +63,7 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     exchangeMock.mockResolvedValue({ accessToken: 'ya29.x', scope: 'https://www.googleapis.com/auth/calendar.readonly' });
-    saveConnectionMock.mockResolvedValue(undefined);
+    saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID });
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -110,6 +111,27 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
     expect(location(res)).toContain('connect=gcal');
   });
 
+  /** An unreadable state cannot name a surface, so it keeps the answer the web dead end
+   * has always given: Google's own denial flag still says what happened. */
+  it('WEB: a denial carrying an unreadable state is still a denial', async () => {
+    const { GET } = await import('~/app/api/integrations/callback/route');
+    const res = (await GET(
+      new Request(
+        'http://localhost/api/integrations/callback?error=access_denied&state=not-a-signed-state',
+      ) as never,
+    )) as Response;
+
+    expect(location(res)).toBe('https://app.example.com/settings?connect=denied');
+    // The positive control: the same unreadable state WITHOUT a denial is invalid.
+    const forged = (await GET(
+      new Request(
+        'http://localhost/api/integrations/callback?code=auth-code&state=not-a-signed-state',
+      ) as never,
+    )) as Response;
+    expect(location(forged)).toBe('https://app.example.com/settings?connect=invalid');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
   it('MOBILE: rejects any mobile-surface state — the native mint was retired (VIL-318), so none is bindable', async () => {
     const res = await callCallback(await mobileState());
 
@@ -129,7 +151,7 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
  * the route calls it for the right connect and never lets its outcome reach the parent.
  */
 describe('GET /api/integrations/callback — the text surface', () => {
-  const INTEGRATION = '33333333-3333-4333-8333-333333333333';
+  const CONNECT = '33333333-3333-4333-8333-333333333333';
 
   beforeEach(() => {
     vi.resetModules();
@@ -142,7 +164,7 @@ describe('GET /api/integrations/callback — the text surface', () => {
       accessToken: 'ya29.x',
       scope: 'https://www.googleapis.com/auth/calendar.readonly',
     });
-    saveConnectionMock.mockResolvedValue(INTEGRATION);
+    saveConnectionMock.mockResolvedValue({ connectId: CONNECT });
     noticeMock.mockResolvedValue({ status: 'sent', channelMessageId: 'cm-1' });
     authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
     resolveUserIdMock.mockResolvedValue(MINTER);
@@ -163,7 +185,7 @@ describe('GET /api/integrations/callback — the text surface', () => {
       familyId: FAMILY,
       parentUserId: MINTER,
       provider: 'gcal',
-      integrationId: INTEGRATION,
+      connectId: CONNECT,
     });
   });
 
@@ -225,7 +247,7 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     }
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
-    saveConnectionMock.mockResolvedValue(undefined);
+    saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID });
     authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
     resolveUserIdMock.mockResolvedValue(MINTER);
   });

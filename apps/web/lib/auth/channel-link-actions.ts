@@ -4,16 +4,20 @@ import { AuthError } from 'next-auth';
 import { redirect } from 'next/navigation';
 import { signIn } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
-import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
+import {
+  type TextConnectProvider,
+  asTextConnectProvider,
+} from '~/lib/channel/connect/text-connect';
 
 /**
  * Server action for the /connect redeem page — the magic-link action's shape with a
  * destination the CALLER cannot write. The link was texted for exactly one reason
  * (connecting an account), so redemption lands either on that connector's Google
  * consent or, when the link named none, on Settings -> Connected apps. There is still
- * no callbackUrl input: the provider arrives as an allowlisted token
- * (connect/text-connect.ts), and the path is built from it rather than taken from it,
- * so there is no redirect surface to clamp.
+ * no callbackUrl input: the provider is narrowed to the allowlist HERE, at the
+ * boundary, because a bound server-action argument round-trips through the client and
+ * arrives as whatever the browser sends back. The path is then built from the narrowed
+ * value rather than taken from it, so there is no redirect surface to clamp.
  *
  * A token that is invalid / expired / already consumed makes authorize return null,
  * which Auth.js surfaces as a CredentialsSignin AuthError → one generic error the
@@ -38,7 +42,7 @@ function destination(provider: TextConnectProvider | null): string {
 
 export async function redeemChannelLinkAction(
   token: string,
-  provider: TextConnectProvider | null,
+  provider: string | null,
   _prev: ChannelLinkRedeemState,
   _formData: FormData,
 ): Promise<ChannelLinkRedeemState> {
@@ -46,7 +50,7 @@ export async function redeemChannelLinkAction(
     return { status: 'error', message: 'Sign-in is not available right now.' };
   }
 
-  const redirectTo = destination(provider);
+  const redirectTo = destination(asTextConnectProvider(provider));
   try {
     await signIn('channel-link', { token, redirectTo });
   } catch (err) {

@@ -17,7 +17,7 @@ vi.mock('~/lib/auth-config', () => ({ authConfigured: () => true }));
 
 /** signIn redirects on success; here it resolves, so the action falls through to its
  * own `redirect` — which throws. The assertion subject is the call, not the throw. */
-async function redeem(token: string, provider: 'gcal' | 'gmail' | null) {
+async function redeem(token: string, provider: string | null) {
   const { redeemChannelLinkAction } = await import('./channel-link-actions');
   await redeemChannelLinkAction(token, provider, { status: 'idle' }, new FormData()).catch(
     () => undefined,
@@ -49,5 +49,22 @@ describe('redeemChannelLinkAction — the destination the tap earns', () => {
 
   it('keeps the old Settings destination when the link names no provider', async () => {
     expect(await redeem('tok-3', null)).toEqual({ token: 'tok-3', redirectTo: '/settings#apps' });
+  });
+
+  /**
+   * THE ALLOWLIST LIVES HERE, not only on the page that renders the button. A bound
+   * server-action argument round-trips through the client, so `provider` arrives as
+   * whatever the browser sends it back as — and the destination is built by string
+   * concatenation. The narrowing at this boundary is what keeps that a closed set
+   * rather than a path a caller writes.
+   */
+  it('refuses to build a destination out of anything but a known connector', async () => {
+    for (const probe of ['../../sign-out', 'gdrive', '//evil.com', 'gcal ', 'GCAL', '']) {
+      signInMock.mockClear();
+      expect(await redeem('tok-4', probe)).toEqual({
+        token: 'tok-4',
+        redirectTo: '/settings#apps',
+      });
+    }
   });
 });

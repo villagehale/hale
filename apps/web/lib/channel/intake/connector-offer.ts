@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { offerConnectorLink } from '~/lib/channel/connect/offer';
+import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
@@ -11,8 +11,8 @@ import { intakeConnectorOffer } from './copy';
 import type { ChannelTransport } from './transport';
 
 /**
- * The day-one ask: one optional, tap-to-connect link for Google Calendar and Gmail,
- * sent right after a parent says yes to being watched.
+ * The day-one ask: one optional message with a tap-to-connect link for Google Calendar
+ * and one for Gmail, sent right after a parent says yes to being watched.
  *
  * IT RIDES THE CONSENT TURN because that turn is the only place the ask is honest. A
  * parent has just agreed to Hale watching for them; the notices they want watched
@@ -25,11 +25,10 @@ import type { ChannelTransport } from './transport';
  * which is why it consults quiet hours by hand — the parent's own answer is exempt at
  * 22:30, an unprompted permissions link is not.
  *
- * ONE LINK, AND IT GOES STRAIGHT TO GOOGLE: the redeem page signs the parent in and
- * forwards them into Calendar's consent, so the portal is not in the path. Gmail is
- * named in the same sentence and reached by texting for it — a sign-in token
- * invalidates its predecessor on mint, so a second live link is not a thing that
- * exists (see the copy's note). `gcal` on the audit row is what was offered.
+ * ONE LINK PER CONNECTOR, AND BOTH GO STRAIGHT TO GOOGLE: the redeem page signs the
+ * parent in and forwards them into that provider's consent, so the portal is not in the
+ * path for either. The two tokens are minted in one ask so both are alive when the text
+ * lands (channel-signin.ts), and each gets its own audit row naming what was offered.
  *
  * Rule #11: every way this declines is NAMED and logged. Nothing here may fail the
  * turn — the consent is written and the acknowledgment is delivered before this runs,
@@ -161,10 +160,10 @@ async function offerConnector(
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
 
-  const minted = await offerConnectorLink(database, {
+  const minted = await offerConnectorLinks(database, {
     familyId,
     parentUserId,
-    provider: 'gcal',
+    providers: ['gcal', 'gmail'],
     now,
   });
   if (minted.status !== 'minted') {
@@ -176,7 +175,8 @@ async function offerConnector(
     return { status: 'not_sent', reason: minted.status };
   }
 
-  const body = intakeConnectorOffer(args.language, minted.url);
+  const [calendarUrl, gmailUrl] = minted.urls;
+  const body = intakeConnectorOffer(args.language, calendarUrl, gmailUrl);
   let providerMessageId: string;
   try {
     ({ providerMessageId } = await ports.transport.send({ to: args.phoneE164, body }));

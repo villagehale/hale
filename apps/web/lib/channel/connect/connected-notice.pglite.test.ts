@@ -35,7 +35,7 @@ describe('sendConnectorConnectedText', () => {
   let db: TestDb;
   let familyId: string;
   let parentUserId: string;
-  let integrationId: string;
+  let connectId: string;
   let transport: FakeTransport;
   let threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
   let ports: ConnectedNoticePorts;
@@ -57,7 +57,7 @@ describe('sendConnectorConnectedText', () => {
     const seeded = await seedFamily(db.database);
     familyId = seeded.familyId;
     parentUserId = seeded.parentUserId;
-    integrationId = randomUUID();
+    connectId = randomUUID();
     transport = new FakeTransport();
     threaded = [];
     ports = {
@@ -77,7 +77,7 @@ describe('sendConnectorConnectedText', () => {
   function send(provider: 'gcal' | 'gmail' = 'gcal') {
     return sendConnectorConnectedText(
       db.database,
-      { familyId, parentUserId, provider, integrationId, now: NOW },
+      { familyId, parentUserId, provider, connectId, now: NOW },
       ports,
     );
   }
@@ -119,7 +119,7 @@ describe('sendConnectorConnectedText', () => {
       direction: 'out',
       category: 'reply',
       templateKey: CONNECTOR_CONNECTED_TEMPLATE_KEY,
-      dedupeKey: connectorConnectedDedupeKey(integrationId),
+      dedupeKey: connectorConnectedDedupeKey(connectId),
       status: 'queued',
       providerMessageId: 'fake-out-1',
     });
@@ -129,7 +129,7 @@ describe('sendConnectorConnectedText', () => {
     ]);
   });
 
-  it('is a no-op on a replayed callback: the same integration is never texted twice', async () => {
+  it('is a no-op on a replayed callback: the same connect is never texted twice', async () => {
     await seedChannel();
 
     const first = await send('gcal');
@@ -141,6 +141,28 @@ describe('sendConnectorConnectedText', () => {
     ]);
     expect(transport.sent).toHaveLength(1);
     expect(threaded).toHaveLength(1);
+  });
+
+  /**
+   * A RECONNECT IS A SECOND CONNECT, and it earns its own receipt. The integration row
+   * is upserted on (family, user, provider), so its id survives a disconnect and comes
+   * back on the reconnect — keying the receipt on it would leave a parent who reconnects
+   * from a text staring at a Connected page that never texts back. The key is the
+   * connect itself, so the replay guard above and this both hold.
+   */
+  it('texts again when the parent disconnects and reconnects', async () => {
+    await seedChannel();
+
+    const first = await send('gcal');
+    connectId = randomUUID();
+    const reconnect = await send('gcal');
+
+    expect([connectedNoticeLabel(first), connectedNoticeLabel(reconnect)]).toEqual([
+      'sent',
+      'sent',
+    ]);
+    expect(transport.sent).toHaveLength(2);
+    expect(threaded).toHaveLength(2);
   });
 
   it('names the missing number rather than pretending it sent (rule #11)', async () => {
@@ -178,7 +200,7 @@ describe('sendConnectorConnectedText', () => {
     expect(row).toEqual({
       status: 'failed',
       errorCode: '21610',
-      dedupeKey: connectorConnectedDedupeKey(integrationId),
+      dedupeKey: connectorConnectedDedupeKey(connectId),
     });
     expect(threaded).toEqual([]);
   });

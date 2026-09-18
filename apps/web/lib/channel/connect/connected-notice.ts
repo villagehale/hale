@@ -27,12 +27,13 @@ import { CONNECTOR_CONNECTED_TEXT, type TextConnectProvider } from './text-conne
 
 export const CONNECTOR_CONNECTED_TEMPLATE_KEY = 'connector:connected';
 
-/** At most one receipt per connection, enforced by the partial unique index on
- * `channel_messages.dedupe_key`. The integration row is upserted on
- * (family, user, provider), so its id is what makes "this connect" a thing a replayed
- * callback can be recognised against. */
-export function connectorConnectedDedupeKey(integrationId: string): string {
-  return `${CONNECTOR_CONNECTED_TEMPLATE_KEY}:${integrationId}`;
+/** At most one receipt per CONNECT, enforced by the partial unique index on
+ * `channel_messages.dedupe_key`. The id is the connect's own audit row (rule #6), not
+ * the integration's: the integration row is upserted on (family, user, provider) and
+ * survives a disconnect, so keying on it would silence the receipt for every parent
+ * who ever reconnects. */
+export function connectorConnectedDedupeKey(connectId: string): string {
+  return `${CONNECTOR_CONNECTED_TEMPLATE_KEY}:${connectId}`;
 }
 
 export interface ConnectedNoticePorts {
@@ -79,7 +80,8 @@ export interface ConnectedNoticeArgs {
   familyId: string;
   parentUserId: string;
   provider: TextConnectProvider;
-  integrationId: string;
+  /** This connect, as `saveConnection` recorded it — the audit row's id. */
+  connectId: string;
   now: Date;
 }
 
@@ -113,7 +115,7 @@ async function sendReceipt(
   args: ConnectedNoticeArgs,
   ports: ConnectedNoticePorts,
 ): Promise<ConnectedNoticeOutcome> {
-  const { familyId, parentUserId, provider, integrationId, now } = args;
+  const { familyId, parentUserId, provider, connectId, now } = args;
 
   const phone = await resolveSendablePhone(database, parentUserId);
   if (!phone) {
@@ -138,7 +140,7 @@ async function sendReceipt(
       // spends none of a family's nudge budget.
       category: 'reply',
       templateKey: CONNECTOR_CONNECTED_TEMPLATE_KEY,
-      dedupeKey: connectorConnectedDedupeKey(integrationId),
+      dedupeKey: connectorConnectedDedupeKey(connectId),
       status: acceptedStatus('sms'),
       sentAt: now,
     })

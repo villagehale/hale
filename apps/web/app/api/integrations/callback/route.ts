@@ -57,16 +57,17 @@ export async function GET(req: NextRequest) {
 
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
-  // No state at all binds to nothing and says nothing about where the parent came
-  // from — the web dead end. Google echoes the state even on a denial, so every other
-  // outcome below can answer on the surface the consent started from.
+  // Google echoes the state even on a denial, so a denial that CAN be read still
+  // answers on the surface its consent started from. One that cannot is the web dead
+  // end, and keeps the word it has always had.
+  const declined = Boolean(url.searchParams.get('error')) || !code;
   if (!state) return back('denied');
 
   let bound: ReturnType<typeof verifyConnectState>;
   try {
     bound = verifyConnectState(state);
   } catch {
-    return back('invalid');
+    return back(declined ? 'denied' : 'invalid');
   }
 
   // Bind the completing party to the state's minter (consent-fixation guard, rule #1).
@@ -82,7 +83,7 @@ export async function GET(req: NextRequest) {
   if (bound.surface === 'text' && !textProvider) return back('invalid');
   const surface = bound.surface;
 
-  if (url.searchParams.get('error') || !code) return back('denied', surface, bound.provider);
+  if (declined) return back('denied', surface, bound.provider);
 
   const database = db();
   const session = await auth();
@@ -94,7 +95,7 @@ export async function GET(req: NextRequest) {
     return back('invalid', surface, bound.provider);
   }
 
-  let integrationId: string;
+  let connectId: string;
   try {
     const tokens = await exchangeCodeForTokens({
       code,
@@ -114,13 +115,13 @@ export async function GET(req: NextRequest) {
     if (!grantedOk) {
       return back('denied', surface, bound.provider);
     }
-    integrationId = await saveConnection(database, {
+    ({ connectId } = await saveConnection(database, {
       familyId: bound.familyId,
       userId: bound.userId,
       provider: bound.provider,
       scopes,
       tokens,
-    });
+    }));
   } catch {
     return back('error', surface, bound.provider);
   }
@@ -136,7 +137,7 @@ export async function GET(req: NextRequest) {
         familyId: bound.familyId,
         parentUserId: bound.userId,
         provider: textProvider,
-        integrationId,
+        connectId,
         now: new Date(),
       },
       defaultConnectedNoticePorts(),

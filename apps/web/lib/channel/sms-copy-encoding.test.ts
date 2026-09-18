@@ -301,40 +301,45 @@ describe('the connector offer stays GSM-7 and inside one segment, twins in locks
 });
 
 /**
- * The day-one connector offer intake sends behind the consent acknowledgment — the same
- * link, a longer sentence, and therefore a different ceiling.
+ * The day-one connector offer intake sends behind the consent acknowledgment — two
+ * links, a longer sentence, and therefore a different ceiling.
  *
  * TWO SEGMENTS, not one, and the number is the point of the test rather than an
- * allowance: 60 of these characters are a sign-in URL Hale did not write, and the copy
- * spends the rest saying what the link is for and that ignoring it is a complete answer.
+ * allowance: 137 of these characters are sign-in URLs Hale did not write, and the copy
+ * spends the rest saying what they are for and that ignoring them is a complete answer.
  * A third segment is a 50% bill increase on a message every new family gets, and an
- * amputated link is an offer nobody can accept — so both twins are measured with a
- * realistic link inside them, and the FR twin is held to the same alphabet as the rest
+ * amputated link is an offer nobody can accept — so both twins are measured with
+ * realistic links inside them, and the FR twin is held to the same alphabet as the rest
  * of the French script.
  */
 describe('the intake connector offer stays GSM-7 and inside two segments', () => {
-  const URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gcal';
+  /** The real shapes, measured rather than approximated: appBaseUrl() in production is
+   * `https://app.villagehale.com`, and a channel sign-in token is 16 random bytes in
+   * base64url — 22 characters. 137 of this message is therefore URL Hale did not write. */
+  const CALENDAR_URL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gcal';
+  const GMAIL_URL = 'https://app.villagehale.com/connect?t=RkFDRUZFRURGQUNFRkVFRA&to=gmail';
 
   it.each(['en', 'fr'] as const)('%s', (language) => {
-    const body = intakeConnectorOffer(language, URL);
+    const body = intakeConnectorOffer(language, CALENDAR_URL, GMAIL_URL);
     expect({
       encoding: smsEncoding(body),
       overBudget: smsSegments(body) > 2,
-      carriesWholeLink: body.includes(URL),
-    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLink: true });
+      carriesWholeLinks: body.includes(CALENDAR_URL) && body.includes(GMAIL_URL),
+    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeLinks: true });
   });
 
   /** The twins carry the same three facts in different words: what is being asked for,
-   * how long the link lives, and that doing nothing is the answer. */
+   * how long the links live, and that doing nothing is the answer. */
   it('keeps the EN and FR twins in lockstep on the facts', () => {
-    const en = intakeConnectorOffer('en', URL);
-    const fr = intakeConnectorOffer('fr', URL);
+    const en = intakeConnectorOffer('en', CALENDAR_URL, GMAIL_URL);
+    const fr = intakeConnectorOffer('fr', CALENDAR_URL, GMAIL_URL);
 
     expect(en).not.toBe(fr);
     for (const body of [en, fr]) {
       expect(body).toContain('Gmail');
       expect(body).toContain('15');
-      expect(body).toContain(URL);
+      expect(body).toContain(CALENDAR_URL);
+      expect(body).toContain(GMAIL_URL);
     }
     expect(en).toContain('Google Calendar');
     expect(fr).toContain('Google Agenda');
@@ -345,17 +350,19 @@ describe('the intake connector offer stays GSM-7 and inside two segments', () =>
   });
 
   /**
-   * EXACTLY ONE LINK, and the second provider reached by texting for it. A sign-in mint
-   * invalidates the user's prior unconsumed token, so a message carrying two links would
-   * ship one that was dead before it arrived — this is the assertion that stops a future
-   * edit "improving" the offer back into that.
+   * ONE LINK PER CONNECTOR, each landing on its own Google consent — the whole founder
+   * ask is that neither tap passes through the portal, and a single link would leave
+   * Gmail behind a round trip. The links are also the reason the ceiling above is the
+   * real gate: two of them is 137 characters of the budget before a word is written.
    */
-  it('carries one link and names the words that fetch the other connector', () => {
+  it('carries a live link for each connector it names', () => {
     for (const language of ['en', 'fr'] as const) {
-      const body = intakeConnectorOffer(language, URL);
-      expect(body.match(/https:\/\//g)).toHaveLength(1);
-      expect(body).toMatch(/gmail/i);
+      const body = intakeConnectorOffer(language, CALENDAR_URL, GMAIL_URL);
+      expect(body.match(/https:\/\//g)).toHaveLength(2);
+      expect(body).toMatch(/&to=gcal\b/);
+      expect(body).toMatch(/&to=gmail\b/);
     }
+    // The words still work for a parent who ignored the message and asks later.
     expect(matchConnectorRequest('connect my gmail')).toBe('gmail');
     expect(matchConnectorRequest('connecter mon Gmail')).toBe('gmail');
   });
@@ -363,7 +370,7 @@ describe('the intake connector offer stays GSM-7 and inside two segments', () =>
   /** The characters the French twin may not use, named — the same refusals the rest of
    * the French script is held to, with the same positive control under them. */
   it('names the characters the French twin may not use', () => {
-    const fr = intakeConnectorOffer('fr', URL);
+    const fr = intakeConnectorOffer('fr', CALENDAR_URL, GMAIL_URL);
 
     expect([...'âêîôûçœ«»’—'].filter((char) => fr.includes(char))).toEqual([]);
     expect(smsEncoding('é è à ù')).toBe('gsm7');
