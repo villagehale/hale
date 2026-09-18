@@ -24,6 +24,9 @@ export const integrations = pgTable(
       .default({}),
     status: integrationStatusEnum('status').notNull().default('connecting'),
     lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
+    /** Why the last sync failed, as a short PII-free class ('google_400',
+     * 'no_refresh_token'). Never a line of the provider response. Cleared on success. */
+    lastErrorCode: text('last_error_code'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

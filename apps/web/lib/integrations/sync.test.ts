@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { GmailAlertEnvelope } from './email-alert';
 import type { ActiveConnectorConnection } from './store';
-import { type GoogleFetch, syncConnection } from './sync';
+import { type GmailAlertBatch, type GoogleFetch, syncConnection } from './sync';
 import type { OAuthTokens } from './token-vault';
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
@@ -31,7 +32,11 @@ interface Captured {
   enqueued: EnqueuedEvent[];
   cursor?: Record<string, unknown>;
   errored: boolean;
+  /** The PII-free reason markError was given (rule #11 — 'error' alone says nothing). */
+  errorCode?: string;
   refreshed?: OAuthTokens;
+  /** Every gmail batch handed to the alert port, in order. */
+  alerted: GmailAlertBatch[];
 }
 
 /** The single enqueued event, asserting exactly one was emitted (narrows away the
@@ -45,7 +50,7 @@ function onlyEvent(cap: Captured): EnqueuedEvent {
 
 /** Deps stub: capture enqueue + cursor/error/token writes without a real queue/db. */
 function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {}) {
-  const cap: Captured = { enqueued: [], errored: false };
+  const cap: Captured = { enqueued: [], errored: false, alerted: [] };
   const deps: Parameters<typeof syncConnection>[1] = {
     googleFetch: overrides.googleFetch ?? routedFetch([]).fetchImpl,
     enqueue: async (event) => {
@@ -55,16 +60,31 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
     saveCursor: async (_id, meta) => {
       cap.cursor = meta;
     },
-    markError: async () => {
+    markError: async (_id, code) => {
       cap.errored = true;
+      cap.errorCode = code;
     },
     refreshTokens: overrides.refreshTokens ?? (async () => ({ accessToken: 'ya29.refreshed' })),
     saveTokens: async (_id, t) => {
       cap.refreshed = t;
     },
+    alertGmailEnvelopes: async (batch) => {
+      cap.alerted.push(batch);
+      return batch.envelopes.map(() => 'dark' as const);
+    },
     ...overrides,
   };
   return { deps, cap };
+}
+
+/** The single alerted envelope, asserting exactly one batch of exactly one. */
+function onlyEnvelope(cap: Captured): GmailAlertEnvelope {
+  expect(cap.alerted).toHaveLength(1);
+  const envelopes = cap.alerted[0]?.envelopes ?? [];
+  expect(envelopes).toHaveLength(1);
+  const [envelope] = envelopes;
+  if (!envelope) throw new Error('no alerted envelope');
+  return envelope;
 }
 
 function connection(provider: ActiveConnectorConnection['provider'], meta: Record<string, unknown> = {}, tokens = FRESH): ActiveConnectorConnection {
@@ -114,6 +134,72 @@ describe('syncConnection — Calendar', () => {
     expect(calls).toBe(2); // stale (410) then full resync
     expect(cap.errored).toBe(false);
     expect(cap.cursor).toEqual({ syncToken: 'SYNC-FULL' });
+  });
+
+  it('the incremental URL carries nothing events.list forbids alongside syncToken', async () => {
+    // events.list, syncToken: "All events deleted since the previous list request
+    // will always be in the result set and it is not allowed to set showDeleted to
+    // False. There are several query parameters that cannot be specified together
+    // with nextSyncToken ... iCalUID, orderBy, privateExtendedProperty, q,
+    // sharedExtendedProperty, timeMin, timeMax, updatedMin."
+    const { fetchImpl, calls } = routedFetch([
+      { match: 'calendar/v3/calendars/primary/events', body: { items: [], nextSyncToken: 'SYNC-2' } },
+    ]);
+    const { deps } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    const query = new URLSearchParams(new URL(calls[0]?.url ?? 'https://x.invalid/').search);
+    expect(query.get('syncToken')).toBe('SYNC-1');
+    for (const forbidden of [
+      'iCalUID',
+      'orderBy',
+      'privateExtendedProperty',
+      'q',
+      'sharedExtendedProperty',
+      'timeMin',
+      'timeMax',
+      'updatedMin',
+    ]) {
+      expect(query.has(forbidden)).toBe(false);
+    }
+    expect(query.get('showDeleted')).not.toBe('false');
+  });
+
+  it('survives a Google that enforces the syncToken contract (the full sync is legal, the incremental must be too)', async () => {
+    // The prod shape: a base carrying showDeleted=false passes the FULL sync and
+    // 400s every incremental, so a connection syncs once at connect and never
+    // again -- last_sync_at frozen seconds after created_at.
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('syncToken=') && url.includes('showDeleted=false')) {
+        return { ok: false, status: 400, json: async () => ({ error: { code: 400 } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [], nextSyncToken: 'SYNC-2' }) };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
+  });
+
+  it('does not ingest a cancelled event (showDeleted=true is forced on us; a tombstone is not an event)', async () => {
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: {
+          items: [
+            { id: 'ev1', summary: 'swim class', status: 'confirmed' },
+            { id: 'ev2', summary: 'swim class', status: 'cancelled' },
+          ],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(cap.enqueued.map((e) => e.payload.id)).toEqual(['ev1']);
+    expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
   });
 });
 
@@ -214,6 +300,130 @@ describe('syncConnection — Gmail', () => {
   });
 });
 
+describe('syncConnection — the gmail alert hand-off', () => {
+  /** A mailbox whose one message carries internalDate and a child's name. */
+  function mailbox(internalDate?: string): GoogleFetch {
+    return async (url) => {
+      if (url.includes('/messages/m2')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'm2',
+            snippet: "Mila's swim class is cancelled",
+            internalDate,
+            payload: {
+              headers: [
+                { name: 'Subject', value: 'Swim cancelled' },
+                { name: 'From', value: 'Pool <info@pool.example>' },
+              ],
+            },
+          }),
+        };
+      }
+      if (url.includes('/profile')) {
+        return { ok: true, status: 200, json: async () => ({ historyId: '9002' }) };
+      }
+      if (url.includes('/history')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            history: [{ messagesAdded: [{ message: { id: 'm2' } }] }],
+            historyId: '9100',
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'm2' }] }) };
+    };
+  }
+
+  it('hands the UNREDACTED envelope over, with internalDate as an ISO instant', async () => {
+    // The triage stage matches on the family's child NAMES, so the alert path reads the
+    // envelope before redactEventPayload masks them. Kills the mutation that reuses the
+    // redacted `events` payloads: triage would then never recognise a child.
+    const { deps, cap } = stubDeps({ googleFetch: mailbox('1789000000000') });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(onlyEnvelope(cap)).toEqual({
+      messageId: 'm2',
+      subject: 'Swim cancelled',
+      from: 'Pool <info@pool.example>',
+      snippet: "Mila's swim class is cancelled",
+      receivedAt: new Date(1789000000000).toISOString(),
+    });
+    // The ENQUEUED copy is still redacted — the alert path is an addition, not a hole.
+    expect(JSON.stringify(onlyEvent(cap).payload)).not.toContain('Mila');
+  });
+
+  it('leaves receivedAt absent when Gmail returned no internalDate', async () => {
+    // No Date header is requested, so there is nothing to fall back to. Anchoring the
+    // extraction on `now` would move an appointment rather than decline to mention it.
+    const { deps, cap } = stubDeps({ googleFetch: mailbox() });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(onlyEnvelope(cap).receivedAt).toBeUndefined();
+  });
+
+  it('marks the SEEDING run so 25 old emails never become 25 texts', async () => {
+    const { deps, cap } = stubDeps({ googleFetch: mailbox('1789000000000') });
+    await syncConnection(connection('gmail', {}), deps);
+    expect(cap.alerted[0]?.seeding).toBe(true);
+
+    const incremental = stubDeps({ googleFetch: mailbox('1789000000000') });
+    await syncConnection(connection('gmail', { historyId: '9002' }), incremental.deps);
+    expect(incremental.cap.alerted[0]?.seeding).toBe(false);
+  });
+
+  it('never calls the alert port for a provider that is not gmail', async () => {
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: { items: [{ id: 'ev1', summary: 'Swim' }], nextSyncToken: 'SYNC-2' },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+    expect(cap.alerted).toEqual([]);
+  });
+
+  it('returns the port\'s outcomes to the caller, and alerts only AFTER the cursor advanced', async () => {
+    // Ordering is the invariant: the ingest contract is what this sweep owes, and a text
+    // is a bonus on top of it. A throw from the alert port must therefore find the cursor
+    // already saved — otherwise a slow alert pass would re-enqueue the whole batch next run.
+    const ok = stubDeps({ googleFetch: mailbox('1789000000000') });
+    const result = await syncConnection(connection('gmail', { historyId: '9002' }), ok.deps);
+    expect(result.emailAlerts).toEqual(['dark']);
+    expect(ok.cap.cursor).toEqual({ historyId: '9100' });
+  });
+
+  it('a throw from the ALERT path is named, and never marks the mailbox broken', async () => {
+    // The two halves fail for unrelated reasons and only one of them is Google's. A
+    // channel_messages insert that hits a missing enum value, a timezone read that races
+    // a deletion — anything in Hale's own alert path — would otherwise reach this
+    // module's catch, mark the CONNECTION errored and stop the INGEST too, so a bug in a
+    // bonus feature silently ends the sync it rides on. One envelope in, one named
+    // outcome out (rule #11).
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { deps, cap } = stubDeps({
+      googleFetch: mailbox('1789000000000'),
+      alertGmailEnvelopes: async () => {
+        throw new Error('boom');
+      },
+    });
+    const thrown = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    // Before the restore: `mockRestore` clears the call record along with the stub.
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+
+    expect(thrown.emailAlerts).toEqual(['alert_failed']);
+    expect(cap.errored).toBe(false);
+    expect(cap.cursor).toEqual({ historyId: '9100' });
+    // The ingest half is untouched: the message still reached the queue.
+    expect(cap.enqueued).toHaveLength(1);
+  });
+});
+
 describe('syncConnection — Drive', () => {
   it('first run: getStartPageToken then changes.list; advances pageToken', async () => {
     const fetchImpl: GoogleFetch = async (url) => {
@@ -270,6 +480,7 @@ describe('syncConnection — pagination (drain all pages before advancing)', () 
     await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
 
     expect(cap.errored).toBe(true);
+    expect(cap.errorCode).toBe('cursor_missing');
     expect(cap.cursor).toBeUndefined();
     expect(cap.enqueued).toHaveLength(0);
   });
@@ -317,8 +528,40 @@ describe('syncConnection — failure isolation & token refresh', () => {
     await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
 
     expect(cap.errored).toBe(true);
+    // The status Google answered with, never a line of its body (rule #1/#11).
+    expect(cap.errorCode).toBe('google_500');
     expect(cap.cursor).toBeUndefined(); // cursor untouched
     expect(cap.enqueued).toHaveLength(0);
+  });
+
+  it('an expiring token with NO refresh grant is a NAMED failure, not a stale-token retry', async () => {
+    // Returning the expired token instead would 401 on every run from the first hour
+    // on, under a status that says only "error" — the exact shape rule #11 forbids.
+    const stranded: OAuthTokens = { accessToken: 'ya29.old', expiresAt: Date.now() - 1000 };
+    const { fetchImpl, calls } = routedFetch([
+      { match: 'calendar/v3', body: { items: [], nextSyncToken: 'S' } },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', {}, stranded), deps);
+
+    expect(calls).toHaveLength(0); // a dead token is never spent on Google
+    expect(cap.errored).toBe(true);
+    expect(cap.errorCode).toBe('no_refresh_token');
+    expect(cap.cursor).toBeUndefined();
+  });
+
+  it('a rejected refresh grant is named apart from a failed request', async () => {
+    const expired: OAuthTokens = { accessToken: 'ya29.old', refreshToken: '1//revoked', expiresAt: Date.now() - 1000 };
+    const { fetchImpl } = routedFetch([{ match: 'calendar/v3', body: { items: [], nextSyncToken: 'S' } }]);
+    const { deps, cap } = stubDeps({
+      googleFetch: fetchImpl,
+      refreshTokens: async () => {
+        throw new Error('invalid_grant');
+      },
+    });
+    await syncConnection(connection('gcal', {}, expired), deps);
+
+    expect(cap.errorCode).toBe('token_refresh_failed');
   });
 
   it('refreshes an expired access token before fetching, then persists it', async () => {

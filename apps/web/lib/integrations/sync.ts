@@ -1,7 +1,13 @@
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { redactEventPayload } from '@hale/worker/redaction';
+import type { EmailAlertOutcome, GmailAlertEnvelope } from './email-alert';
 import type { ConnectorProvider } from './google-oauth';
 import type { ActiveConnectorConnection } from './store';
+import {
+  type ConnectorErrorCode,
+  ConnectorSyncError,
+  classifyConnectorError,
+} from './sync-error';
 import type { OAuthTokens } from './token-vault';
 
 /**
@@ -36,13 +42,46 @@ export interface SyncDeps {
   childNames: readonly string[];
   /** Persist the advanced cursor + lastSyncAt on success. */
   saveCursor: (id: string, providerMetadata: Record<string, unknown>) => Promise<void>;
-  /** Mark the connection errored on failure (cursor left untouched). */
-  markError: (id: string) => Promise<void>;
+  /** Mark the connection errored on failure (cursor left untouched), naming the
+   * reason. The code is REQUIRED: a row that stops syncing without saying why is the
+   * fifteen-day silence this argument exists to end (rule #11). */
+  markError: (id: string, code: ConnectorErrorCode) => Promise<void>;
   /** Refresh an expired access token (Google refresh_token grant). Returns a token
    * set whose refreshToken may be absent — Google omits it on refresh. */
   refreshTokens: (refreshToken: string) => Promise<OAuthTokens>;
   /** Persist a refreshed token set (re-encrypted) by connection id. */
   saveTokens: (id: string, tokens: OAuthTokens) => Promise<void>;
+  /**
+   * Hand this run's Gmail envelopes to whatever may text the parent about one, and
+   * return one named outcome per envelope (lib/integrations/email-alert.ts).
+   *
+   * NON-NULLABLE (rule #11): "nothing is wired to alert" is a decision a caller makes
+   * out loud by passing a port that says so, never by withholding one — the sweep would
+   * otherwise read an unset field and a broken wiring identically, which is how a
+   * feature ships dark and nobody notices.
+   *
+   * A rejection is HELD here rather than trusted away: it becomes one `alert_failed` per
+   * envelope and leaves the connection healthy, because a bug in Hale's alert path is not
+   * a broken mailbox and must not stop the ingest.
+   */
+  alertGmailEnvelopes: (input: GmailAlertBatch) => Promise<readonly EmailAlertOutcome[]>;
+}
+
+/** One connection's Gmail envelopes, as the alert path needs them. The access token is
+ * the one this run refreshed, so the alert's on-demand body fetch does not have to
+ * re-derive it (and no token leaves this module). */
+export interface GmailAlertBatch {
+  connection: ActiveConnectorConnection;
+  accessToken: string;
+  /** This run had no stored historyId, so its messages are the mailbox's existing 25. */
+  seeding: boolean;
+  envelopes: readonly GmailAlertEnvelope[];
+}
+
+/** What one connection's sync produced beyond its enqueues. Empty for every provider but
+ * Gmail, and for a run that failed before the alert step. */
+export interface SyncConnectionResult {
+  emailAlerts: readonly EmailAlertOutcome[];
 }
 
 const GONE = 410;
@@ -56,6 +95,11 @@ const MAX_PAGES = 50;
 interface ProviderResult {
   events: IngestedEventPayload[];
   nextMetadata: Record<string, unknown>;
+  /** Gmail only: the same messages, unredacted, for the alert path. The triage stage
+   * matches on the family's child NAMES, so it reads the envelope before
+   * `redactEventPayload` masks them — which is why this rides alongside `events`
+   * rather than being recovered from them. In-process only, never logged. */
+  gmail?: { seeding: boolean; envelopes: GmailAlertEnvelope[] };
 }
 
 /**
@@ -66,7 +110,8 @@ interface ProviderResult {
 export async function syncConnection(
   connection: ActiveConnectorConnection,
   deps: SyncDeps,
-): Promise<void> {
+): Promise<SyncConnectionResult> {
+  let emailAlerts: readonly EmailAlertOutcome[] = [];
   try {
     const accessToken = await ensureFreshToken(connection, deps);
     const result = await runProviderSync(connection, accessToken, deps.googleFetch);
@@ -80,10 +125,48 @@ export async function syncConnection(
     }
     // Advance the cursor ONLY after the whole batch is enqueued (no partial cursor).
     await deps.saveCursor(connection.id, result.nextMetadata);
-  } catch {
-    // No error detail is logged — a Google response can carry token/PII (rule #1).
-    await deps.markError(connection.id);
+    // AFTER the cursor, deliberately: the ingest contract is the thing this sweep owes,
+    // and a text is a bonus on top of it. Were the order reversed, a slow alert pass
+    // that timed out would re-enqueue the whole batch on the next run.
+    //
+    // And behind its OWN boundary, for the same reason it runs last: the two halves fail
+    // for unrelated reasons, and only one of those reasons is Google's. A missing enum
+    // value, a timezone read that races a deletion — anything in Hale's alert path —
+    // would otherwise reach the catch below, mark the CONNECTION errored and stop the
+    // INGEST as well, so a bug in the bonus would silently end the contract.
+    if (result.gmail) {
+      const { seeding, envelopes } = result.gmail;
+      try {
+        emailAlerts = await deps.alertGmailEnvelopes({
+          connection,
+          accessToken,
+          seeding,
+          envelopes,
+        });
+      } catch (err) {
+        // The class only: an alert-path rejection can carry a subject line (rule #1).
+        console.error(
+          {
+            connectionId: connection.id,
+            err: err instanceof Error ? err.constructor.name : 'unknown',
+          },
+          'connector sync: the email alert pass threw - the mailbox is fine, the alert is not',
+        );
+        emailAlerts = envelopes.map(() => 'alert_failed' as const);
+      }
+    }
+  } catch (err) {
+    // The CODE is recorded, never the error's text — a Google response can carry a
+    // token, a calendar title or an address (rule #1). Status/step only, in the row
+    // and in one log line, so a stalled connector is diagnosable without prod access.
+    const code = classifyConnectorError(err);
+    console.error(
+      { integrationId: connection.id, provider: connection.provider, code },
+      'connector sync: failed',
+    );
+    await deps.markError(connection.id, code);
   }
+  return { emailAlerts };
 }
 
 /** Refresh + persist an expiring access token; returns the token to use for this
@@ -95,10 +178,24 @@ async function ensureFreshToken(
   const { tokens } = connection;
   const expiringSoon =
     tokens.expiresAt !== undefined && tokens.expiresAt - EXPIRY_SKEW_MS <= Date.now();
-  if (!expiringSoon || !tokens.refreshToken) {
+  if (!expiringSoon) {
     return tokens.accessToken;
   }
-  const refreshed = await deps.refreshTokens(tokens.refreshToken);
+  if (!tokens.refreshToken) {
+    // The refresh grant is what keeps a background sync alive once the first hour is
+    // up. Handing Google the expired token instead would 401 on every run forever
+    // under a reason nobody could read (rule #11): absence is an OUTCOME, not a
+    // fallback to the dead value.
+    throw new ConnectorSyncError('no_refresh_token');
+  }
+  let refreshed: OAuthTokens;
+  try {
+    refreshed = await deps.refreshTokens(tokens.refreshToken);
+  } catch {
+    // A rejected grant (the parent revoked access) needs a reconnect, not a retry —
+    // it must not read the same as a failed calendar request.
+    throw new ConnectorSyncError('token_refresh_failed');
+  }
   // Google omits refresh_token on refresh — preserve the stored one.
   const merged: OAuthTokens = { ...refreshed, refreshToken: refreshed.refreshToken ?? tokens.refreshToken };
   await deps.saveTokens(connection.id, merged);
@@ -133,7 +230,7 @@ async function getJson<T>(
     // 410 treated as empty success would advance the cursor to undefined and
     // trigger a re-seed double-enqueue — so it throws like any other non-ok.
     if (res.status === GONE && opts?.allowGone) return { status: GONE, data: {} as T };
-    throw new Error(`google api ${res.status}`);
+    throw new ConnectorSyncError(`google_${res.status}`);
   }
   return { status: res.status, data: (await res.json()) as T };
 }
@@ -163,8 +260,16 @@ async function syncCalendar(
   accessToken: string,
   googleFetch: GoogleFetch,
 ): Promise<ProviderResult> {
+  // showDeleted is TRUE, and the same base serves both the full sync and the
+  // incremental. events.list documents the syncToken contract as "All events deleted
+  // since the previous list request will always be in the result set and it is not
+  // allowed to set showDeleted to False", and the sync guide as "Each list request
+  // should use the same set of query parameters, including the initial request".
+  // showDeleted=false is legal on a full sync and 400s on EVERY incremental — which
+  // syncs a connection once at connect and never again. Every param here must be
+  // legal WITH a syncToken, because this one string is what both requests send.
   const base =
-    'https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&showDeleted=false';
+    'https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&showDeleted=true';
   let syncToken = readString(connection.providerMetadata.syncToken);
   let resynced = false;
   let pageToken: string | undefined;
@@ -178,7 +283,7 @@ async function syncCalendar(
 
     const { status, data } = await getJson<CalendarEventsResponse>(googleFetch, url, accessToken, { allowGone: true });
     if (status === GONE) {
-      if (resynced) throw new Error('calendar: syncToken gone during full resync');
+      if (resynced) throw new ConnectorSyncError('google_410');
       // Stale syncToken → restart a full resync from scratch (drop the token/page).
       resynced = true;
       syncToken = undefined;
@@ -198,19 +303,23 @@ async function syncCalendar(
     // No terminal token after draining the pages → do NOT advance the cursor.
     // Throwing marks the connection errored and leaves the old cursor, so nothing
     // is dropped or re-emitted; the next run retries from the last good point.
-    throw new Error('calendar: no nextSyncToken on the final page');
+    throw new ConnectorSyncError('cursor_missing');
   }
 
-  const events = items.map((item) =>
-    ingested('gcal', connection.familyId, {
-      id: item.id,
-      summary: item.summary,
-      description: item.description,
-      location: item.location,
-      start: item.start,
-      end: item.end,
-    }),
-  );
+  // Google forces the deleted events on us (above); Hale holds no event store to
+  // delete from, so a tombstone is dropped rather than ingested as an appointment.
+  const events = items
+    .filter((item) => item.status !== 'cancelled')
+    .map((item) =>
+      ingested('gcal', connection.familyId, {
+        id: item.id,
+        summary: item.summary,
+        description: item.description,
+        location: item.location,
+        start: item.start,
+        end: item.end,
+      }),
+    );
   return { events, nextMetadata: { syncToken: nextSyncToken } };
 }
 
@@ -234,6 +343,10 @@ interface GmailHistoryResponse {
 interface GmailMessageResponse {
   id?: string;
   snippet?: string;
+  /** Epoch milliseconds, as a string. Gmail returns it on `format=metadata` without
+   * being asked, and it is the ONLY timestamp this sync has: the metadata GET requests
+   * Subject and From alone, so there is no `Date` header to fall back to. */
+  internalDate?: string;
   payload?: { headers?: Array<{ name?: string; value?: string }> };
 }
 
@@ -269,7 +382,7 @@ async function syncGmail(
     if (nextHistoryId === undefined) {
       // Mirrors the calendar/drive terminal-cursor guard: advancing the cursor to
       // {historyId: undefined} would make the next run re-seed and double-enqueue.
-      throw new Error('gmail history drained without a terminal historyId');
+      throw new ConnectorSyncError('cursor_missing');
     }
   } else {
     // First run: seed the historyId cursor from getProfile (the mailbox's current
@@ -293,11 +406,12 @@ async function syncGmail(
     if (nextHistoryId === undefined) {
       // No mailbox historyId means no safe incremental cursor to resume from — err
       // rather than persist {} and re-seed forever.
-      throw new Error('gmail getProfile returned no historyId');
+      throw new ConnectorSyncError('cursor_missing');
     }
   }
 
   const events: IngestedEventPayload[] = [];
+  const envelopes: GmailAlertEnvelope[] = [];
   for (const id of messageIds) {
     const { data } = await getJson<GmailMessageResponse>(
       googleFetch,
@@ -305,16 +419,29 @@ async function syncGmail(
       accessToken,
     );
     const headers = data.payload?.headers ?? [];
+    const subject = headers.find((h) => h.name === 'Subject')?.value;
+    const from = headers.find((h) => h.name === 'From')?.value;
     events.push(
       ingested('gmail', connection.familyId, {
         id: data.id,
-        subject: headers.find((h) => h.name === 'Subject')?.value,
-        from: headers.find((h) => h.name === 'From')?.value,
+        subject,
+        from,
         snippet: data.snippet,
       }),
     );
+    envelopes.push({
+      messageId: id,
+      subject: subject ?? '',
+      from: from ?? '',
+      snippet: data.snippet ?? '',
+      receivedAt: epochMsToIso(data.internalDate),
+    });
   }
-  return { events, nextMetadata: { historyId: nextHistoryId } };
+  return {
+    events,
+    nextMetadata: { historyId: nextHistoryId },
+    gmail: { seeding: startHistoryId === undefined, envelopes },
+  };
 }
 
 // ── Drive ────────────────────────────────────────────────────────────────────
@@ -370,7 +497,7 @@ async function syncDrive(
     break;
   }
   if (!newStartPageToken) {
-    throw new Error('drive: no newStartPageToken on the final page');
+    throw new ConnectorSyncError('cursor_missing');
   }
 
   const events = files.map((file) =>
@@ -382,6 +509,16 @@ async function syncDrive(
     }),
   );
   return { events, nextMetadata: { pageToken: newStartPageToken } };
+}
+
+/** Gmail's `internalDate` as an ISO instant, or undefined when it is absent or not a
+ * number — the extraction anchors relative dates ("this Saturday") on it, so a guessed
+ * one would move an appointment rather than fail to mention it. */
+function epochMsToIso(internalDate: string | undefined): string | undefined {
+  if (internalDate === undefined) return undefined;
+  const ms = Number(internalDate);
+  if (!Number.isFinite(ms)) return undefined;
+  return new Date(ms).toISOString();
 }
 
 function readString(value: unknown): string | undefined {

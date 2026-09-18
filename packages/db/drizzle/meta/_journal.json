@@ -771,6 +771,20 @@
       "when": 1781469606000,
       "tag": "0112_co_parent_invite_category",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1781469607000,
+      "tag": "0113_integration_last_error_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1781469608000,
+      "tag": "0114_email_alert_category",
+      "breakpoints": true
     }
   ]
 }

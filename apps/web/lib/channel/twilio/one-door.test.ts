@@ -60,6 +60,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'records via deliverFollowUp recordSend port (activity_followup category)',
   'apps/web/lib/channel/nudge/run.ts': 'records its own rows (nudge category)',
   'apps/web/lib/channel/spots/sweep.ts': 'records its own rows (spot_open category)',
+  'apps/web/lib/cron/connector-sync.ts':
+    'the connector sweep wires the email-alert ports; every send is claimed and recorded by alertParentForEmail (email_alert category) before it reaches the transport',
   'apps/web/lib/channel/intake/first-reply-recovery.ts':
     'pre-family by eligibility (family_id IS NULL); session transcript, replayed at provisioning',
   'apps/web/lib/channel/intake/sitting-reminder.ts':

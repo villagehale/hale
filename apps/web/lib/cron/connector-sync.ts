@@ -1,9 +1,20 @@
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
+import { ageInMonths } from '@hale/types';
 import type PgBoss from 'pg-boss';
 import { eq } from 'drizzle-orm';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
+import {
+  type EmailAlertCounts,
+  type EmailAlertPorts,
+  alertParentForGmailSweep,
+  emptyEmailAlertCounts,
+} from '~/lib/integrations/email-alert';
 import { decryptTokens } from '~/lib/integrations/token-vault';
 import {
   type ActiveConnectorConnection,
@@ -13,7 +24,20 @@ import {
   saveConnectionCursor,
   saveConnectionTokensById,
 } from '~/lib/integrations/store';
-import { type GoogleFetch, type SyncDeps, syncConnection } from '~/lib/integrations/sync';
+import { pipelineClient } from '~/lib/pipeline/client';
+import {
+  type FamilyChildRef,
+  classifyChildEventEmail,
+  fetchGmailMessageBody,
+  loadCorrelationCandidates,
+} from '~/lib/sentinel';
+import {
+  type GmailAlertBatch,
+  type GoogleFetch,
+  type SyncConnectionResult,
+  type SyncDeps,
+  syncConnection,
+} from '~/lib/integrations/sync';
 import { HOT_QUEUE_EXPIRE_SECONDS } from './drain';
 
 /**
@@ -49,11 +73,16 @@ export interface RunConnectorSyncDeps {
     connection: ActiveConnectorConnection,
     deps: BaseSyncDeps,
     childNames: readonly string[],
-  ) => Promise<void>;
+  ) => Promise<SyncConnectionResult>;
 }
 
 export interface ConnectorSyncSummary {
   connections: number;
+  /** One count per named email-alert outcome (rule #11). Every envelope the sweep looked
+   * at lands in exactly one bucket, including the ones it declined to look at — a sweep
+   * that alerted nobody has to be able to say WHY, and "dark" reads very differently from
+   * "not_parenting". */
+  emailAlerts: EmailAlertCounts;
 }
 
 /**
@@ -68,6 +97,7 @@ export async function runConnectorSync(
   const connections = await deps.listConnections();
   const base = deps.buildDeps();
   const childNamesByFamily = new Map<string, string[]>();
+  const emailAlerts = emptyEmailAlertCounts();
 
   for (const connection of connections) {
     try {
@@ -76,8 +106,14 @@ export async function runConnectorSync(
         tokens = deps.decryptTokens(connection.enc);
       } catch {
         // A tampered / key-rotation-leftover blob: err THIS row (so it stops
-        // being swept as healthy) and move on — never reject the work-list.
-        await base.markError(connection.id).catch(() => {});
+        // being swept as healthy) and move on — never reject the work-list. It
+        // carries its OWN code: no Google call was ever made, so it must not read
+        // like a request Hale can retry its way out of (rule #11).
+        console.error(
+          { integrationId: connection.id, provider: connection.provider, code: 'decrypt_failed' },
+          'connector sync: stored token blob unreadable',
+        );
+        await base.markError(connection.id, 'decrypt_failed').catch(() => {});
         continue;
       }
       let childNames = childNamesByFamily.get(connection.familyId);
@@ -85,12 +121,13 @@ export async function runConnectorSync(
         childNames = await deps.loadChildNames(connection.familyId);
         childNamesByFamily.set(connection.familyId, childNames);
       }
-      await deps.syncOne({ ...connection, tokens }, base, childNames);
+      const result = await deps.syncOne({ ...connection, tokens }, base, childNames);
+      for (const outcome of result.emailAlerts) emailAlerts[outcome] += 1;
     } catch {
       // Isolate: a failure here must not stop the remaining connections.
     }
   }
-  return { connections: connections.length };
+  return { connections: connections.length, emailAlerts };
 }
 
 /** Wire the real DB + queue into the sync deps. */
@@ -102,9 +139,10 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
     googleFetch: googleGetFetch,
     enqueue,
     saveCursor: (id, meta) => saveConnectionCursor(database, id, meta),
-    markError: (id) => markConnectionError(database, id),
+    markError: (id, code) => markConnectionError(database, id, code),
     refreshTokens: (refreshToken) => refreshAccessToken(refreshToken),
     saveTokens: (id, tokens) => saveConnectionTokensById(database, id, tokens),
+    alertGmailEnvelopes: (batch) => alertGmailSweep(database, batch),
   };
   return {
     listConnections: () => listActiveConnectorConnections(database),
@@ -113,6 +151,94 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
     buildDeps: () => base,
     syncOne: (connection, deps, childNames) => syncConnection(connection, { ...deps, childNames }),
   };
+}
+
+/** The sweep's half of the email alert: one connection's Gmail envelopes, the real
+ * sentinel, and the real outbound chokepoint. Everything below this line is
+ * production-only I/O, which is why the alert module itself takes ports. */
+function alertGmailSweep(database: Database, batch: GmailAlertBatch) {
+  return alertParentForGmailSweep(
+    database,
+    {
+      familyId: batch.connection.familyId,
+      parentUserId: batch.connection.userId,
+      integrationId: batch.connection.id,
+      seeding: batch.seeding,
+      envelopes: batch.envelopes,
+      now: new Date(),
+    },
+    emailAlertPorts(database, batch.connection.familyId, batch.accessToken),
+  );
+}
+
+/** The real ports. The family's children and known occasions are read ONCE per
+ * connection rather than once per message: ten messages would otherwise be twenty
+ * queries answering the same two questions. */
+function emailAlertPorts(
+  database: Database,
+  familyId: string,
+  accessToken: string,
+): EmailAlertPorts {
+  let context:
+    | {
+        children: FamilyChildRef[];
+        candidates: Awaited<ReturnType<typeof loadCorrelationCandidates>>;
+      }
+    | undefined;
+  // The RESULT is cached, never the promise: a cached rejection would turn one bad read
+  // into `classifier_failed` for all ten of this sweep's messages. The loop below is
+  // sequential, so there is no second caller to race the first.
+  const loadContext = async () => {
+    if (context === undefined) {
+      const [children, candidates] = await Promise.all([
+        loadFamilyChildRefs(database, familyId),
+        loadCorrelationCandidates(database, familyId),
+      ]);
+      context = { children, candidates };
+    }
+    return context;
+  };
+
+  return {
+    classify: async (envelope, familyTimezone) => {
+      const { children, candidates } = await loadContext();
+      return classifyChildEventEmail(envelope, {
+        client: pipelineClient(),
+        children,
+        fetchBody: (messageId) => fetchGmailMessageBody(messageId, accessToken, googleGetFetch),
+        familyTimezone,
+        correlationCandidates: candidates,
+      });
+    },
+    gate: (request) => assertProactiveSendAllowed(request, buildOutboundGatePorts(database)),
+    resolvePhone: resolveSendablePhone,
+    transport: createTwilioTransport(),
+    threadMessage: threadProactiveMessage,
+    // The SAME reader the gate judges quiet hours with, so the hour in the text and the
+    // hour the gate refused at can never disagree.
+    timeZone: (parentUserId) => buildOutboundGatePorts(database).parentTimeZone(parentUserId),
+  };
+}
+
+/** This family's children with their ages — the sentinel's matching context (rule #1:
+ * one family's children only). */
+async function loadFamilyChildRefs(
+  database: Database,
+  familyId: string,
+): Promise<FamilyChildRef[]> {
+  const rows = await database
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    ageInMonths: ageInMonths(row.dateOfBirth),
+  }));
 }
 
 /** The family's known child names, for rule-#1 redaction. Family-scoped. */

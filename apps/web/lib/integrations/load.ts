@@ -32,6 +32,9 @@ export interface FamilyConnectorView {
   scopes: string[];
   lastSyncAt: Date | null;
   connectedAt?: Date;
+  /** Why the last sync failed, as the short PII-free class the row stores — null once
+   * it recovers, absent on a row that errored before we recorded reasons. */
+  lastErrorCode?: string | null;
   ownedByViewer: boolean;
 }
 

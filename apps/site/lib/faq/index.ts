@@ -66,7 +66,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'Is Hale free?',
     answer:
-      'Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same radar and reminders on their own number, never a second household to pay for.',
+      'Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same week and reminders on their own number, never a second household to pay for.',
   },
   {
     question: 'Do I need to use the website?',

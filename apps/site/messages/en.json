@@ -63,11 +63,11 @@
     "heroThread": [
       {
         "dir": "out",
-        "text": "Hi — Mia is 4, we’re in Halton Hills, L7G. Swim and the fall programs."
+        "text": "Hi — Mia is 4, we’re in Stouffville, L4A. Swim and the fall programs."
       },
       {
         "dir": "in",
-        "text": "Got it. Halton Hills fall recreation opens Tuesday at 7:00 a.m., and L7G is inside the residents-first window. Say YES and I’ll send your link the night before, then again fifteen minutes out."
+        "text": "Got it. Stouffville’s fall registration already opened, and the winter dates aren’t posted yet. Say YES and I’ll watch for them, then send your link the night before and again fifteen minutes out."
       },
       {
         "dir": "out",
@@ -150,7 +150,7 @@
       }
     ],
     "howRail": "How Hale works, in three steps",
-    "consentLine": "I suggest, I prepare — and with your ok, I handle it. Receipts for everything: a yes becomes a real calendar invite.",
+    "consentLine": "I suggest, I prepare — and with your ok, I handle it. Receipts for everything, and nothing happens without your yes.",
     "watchEyebrow": "What I watch",
     "watchH2Count": "{count} municipalities,",
     "watchH2Accent": "by name.",
@@ -210,11 +210,11 @@
     "caregivers": [
       {
         "title": "Grandparents and the nanny",
-        "body": "They get just the schedule — who’s where, when to be there."
+        "body": "Added by one text, with just the schedule in scope — nothing else of yours."
       },
       {
         "title": "Your co-parent",
-        "body": "Always free. The same radar and reminders, on their own number."
+        "body": "Always free. The same week and reminders, on their own number."
       }
     ],
     "helpersRail": "Your helpers",
@@ -287,7 +287,7 @@
         "title": "With your ok, Hale handles it",
         "line": "Nothing reaches the outside world until you say so.",
         "checks": [
-          "A calendar invite for a date you say yes to",
+          "An emailed calendar invite for a date you say yes to",
           "Every message names exactly what was done",
           "Consent you grant in a text and withdraw in a text"
         ],
@@ -404,7 +404,7 @@
       },
       {
         "question": "What does Hale actually watch?",
-        "answer": "Municipal registration across 15 GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others."
+        "answer": "Municipal registration across 16 GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others."
       },
       {
         "question": "How often will Hale text me?",
@@ -416,7 +416,7 @@
       },
       {
         "question": "Is Hale free?",
-        "answer": "Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same radar and reminders on their own number, never a second household to pay for."
+        "answer": "Hale is free while it is new, and families who start now keep their founding rate. A co-parent is always free — the same week and reminders on their own number, never a second household to pay for."
       },
       {
         "question": "Do I need to use the website?",
@@ -445,7 +445,7 @@
     "registrationLead": "Fall rec registration, by city — not this weekend’s outings:",
     "linkTorontoFall": "Toronto fall rec",
     "linkTorontoSwim": "Toronto swim",
-    "linkBramptonSwim": "Brampton swim (Sept 9)",
+    "linkBramptonSwim": "Brampton swim (non-residents Sept 21)",
     "ctaHeading": "Ask Hale what’s worth doing this weekend",
     "ctaSub": "Text Hale a question about your week and get an answer pitched at your kids’ ages. Registration-day watching is the GTA for now. Free to start — your data stays in Canada."
   },

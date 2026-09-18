@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { impactNumbers } from '~/lib/landing/impact.js';
+import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities.js';
 import LandingPage from './[locale]/page.js';
 
 /**
@@ -129,7 +130,7 @@ describe('landing — the v4 hero', () => {
     // re-shuffle would leave green.
     const order = [
       'The family assistant you text.',
-      'Hi — Mia is 4, we’re in Halton Hills, L7G.',
+      'Hi — Mia is 4, we’re in Stouffville, L4A.',
       'Founding families join free — and keep the founding rate for good.',
       'Texting Hale looks like this',
     ].map((marker) => text.indexOf(marker));
@@ -331,8 +332,11 @@ describe('landing — sections, in the Surfaces Plan order', () => {
   const html = render();
   const text = visibleText(html);
 
-  it('names all fifteen seeded municipalities it watches', () => {
-    for (const city of [
+  it('names every seeded municipality it watches', () => {
+    // A hand-kept copy of the `Municipality` union in packages/db (apps/site
+    // cannot import @hale/db), held against lib/site/municipalities so a town
+    // added to one and not the other is a red test rather than a silent gap.
+    const cities = [
       'Toronto',
       'Mississauga',
       'Brampton',
@@ -348,16 +352,17 @@ describe('landing — sections, in the Surfaces Plan order', () => {
       'Whitby',
       'Oshawa',
       'Aurora',
-    ]) {
+      'Stouffville',
+    ];
+    expect(cities).toHaveLength(MUNICIPALITY_COUNT);
+    for (const city of cities) {
       expect(text).toContain(city);
     }
-    expect(text).toContain('15 municipalities');
+    expect(text).toContain(`${MUNICIPALITY_COUNT} municipalities`);
   });
 
-  it('renders the fifteen cities as glass pills, one per municipality', () => {
-    // The city list is a hand-kept copy of the `Municipality` union in
-    // packages/db (apps/site cannot import @hale/db); the count catches a drift.
-    expect([...html.matchAll(/class="v4-pill v4-glass"/g)]).toHaveLength(15);
+  it('renders the cities as glass pills, one per municipality', () => {
+    expect([...html.matchAll(/class="v4-pill v4-glass"/g)]).toHaveLength(MUNICIPALITY_COUNT);
   });
 
   it('watches only what registration-windows-data.ts actually holds', () => {
@@ -420,13 +425,19 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text).not.toContain('Monday morning');
   });
 
-  it('names the calendar invite as the receipt an approval actually produces', () => {
-    expect(text.toLowerCase()).toContain('calendar');
-    expect(text.toLowerCase()).toContain('invite');
+  it('promises the consent, not an invite a texting family never receives', () => {
+    // The .ics goes out by email; a family that only ever texts gets the
+    // approval and no invite, so the landing claims the yes and the receipt.
+    expect(text).toContain('Receipts for everything');
+    expect(text).toContain('nothing happens without your yes');
+    expect(text.toLowerCase()).not.toContain('calendar invite');
   });
 
   it('covers the caregivers and the co-parent, and keeps the roles honest', () => {
-    expect(text).toContain('just the schedule');
+    // Nothing in the product texts a grandparent their schedule yet — the
+    // invite and the scope are what ship, so that is all the landing offers.
+    expect(text).toContain('just the schedule in scope');
+    expect(text).not.toContain('They get just the schedule');
     expect(text).toContain('co-parent');
     // "Village" is reserved for the family-to-family intros product; this section
     // is scoped caregiver access.
@@ -572,7 +583,7 @@ describe('landing — number not provisioned', () => {
 
   it('still shows the thread demo and the sections — neither needs the number', () => {
     expect(html).toContain('Your thread with Hale');
-    expect(visibleText(html)).toContain('15 municipalities');
+    expect(visibleText(html)).toContain(`${MUNICIPALITY_COUNT} municipalities`);
   });
 });
 
