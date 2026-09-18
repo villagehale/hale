@@ -28,6 +28,7 @@
     "linkActivities": "Activities",
     "linkGuides": "Parenting guides",
     "linkAbout": "About",
+    "linkForCentres": "For centres",
     "linkContact": "Contact",
     "linkPrivacy": "Privacy policy",
     "linkTerms": "Terms of service",
@@ -368,7 +369,138 @@
         "line": "Access, correction, or deletion requests, and anything about how we handle your family’s data."
       }
     },
-    "note": "Hale is built by Village Hale Technologies Inc., Georgetown, Ontario, Canada."
+    "note": "Hale is built by Village Hale Technologies Inc., Georgetown, Ontario, Canada.",
+    "centresNote": "Work at a centre, a library, or a community program?",
+    "centresLink": "See what Hale means for the families you serve"
+  },
+  "ForCentres": {
+    "metaTitle": "For centres and community partners · Hale",
+    "metaDescription": "What Hale means for the families your centre serves, and three ways to point a family at it. A number parents text — no app, no account, and data that stays in Canada.",
+    "eyebrow": "For centres and partners",
+    "headline": [
+      {
+        "text": "For the people families"
+      },
+      {
+        "text": "already trust.",
+        "accent": true
+      }
+    ],
+    "lede": "Hale is a number a parent texts. It finds activities that fit their child, watches sign-up mornings in {count} GTA municipalities, and checks in on how it went.",
+    "notLine": "There is no app to install and no account to make. Nothing about a family is sold or shared, Hale is built in Ontario under PIPEDA, and a family’s data stays in Canada.",
+    "townsLabel": "Towns watched",
+    "getEyebrow": "What a family gets",
+    "getHeadline": [
+      {
+        "text": "One text, and an answer"
+      },
+      {
+        "text": "the same minute.",
+        "accent": true
+      }
+    ],
+    "getLede": "A parent sends the first message — Hale never texts a family first. This is one of them, and what came back.",
+    "getAfter": "Then it goes quiet: a short plan on Sunday, the link the night before a registration opens, and a nudge fifteen minutes out.",
+    "waysEyebrow": "How to point a family at Hale",
+    "waysHeadline": [
+      {
+        "text": "Three ways a family"
+      },
+      {
+        "text": "can start.",
+        "accent": true
+      }
+    ],
+    "waysLede": "Nothing to sign, nothing to install, and nothing for staff to keep track of.",
+    "ways": {
+      "number": {
+        "tag": "Hand it over",
+        "title": "Give them the number",
+        "body": "Copy it and put it where parents look — a whiteboard, a handout, the back of a room sheet. A parent texts it when they are ready."
+      },
+      "poster": {
+        "tag": "Print it",
+        "title": "Put up a poster",
+        "body": "This code opens the page that writes a parent’s first message for them. We print posters carrying your centre’s own code, so we can tell you how many families it brought — email us and we will send one."
+      },
+      "try": {
+        "tag": "Try it",
+        "title": "Text it yourself first",
+        "body": "Send the first message the way a parent would, and read what comes back, so you know what you are recommending. Reply STOP and it ends."
+      }
+    },
+    "numberPending": "The number is not announced yet. Email us and we will tell you when it is.",
+    "knowEyebrow": "What staff should know",
+    "knowHeadline": [
+      {
+        "text": "Plain answers about"
+      },
+      {
+        "text": "privacy.",
+        "accent": true
+      }
+    ],
+    "knowLede": "A family will ask you these before they ask us.",
+    "facts": [
+      {
+        "title": "What Hale asks for",
+        "body": "First names, ages, and a postal code. The first three characters are enough — they name a town, not a street."
+      },
+      {
+        "title": "Nothing is sold",
+        "body": "A family’s information is never sold, never shared for advertising, and never shown to another family."
+      },
+      {
+        "title": "STOP ends it",
+        "body": "A parent texts STOP and the messages stop. They can ask for their data, or for it to be deleted, at privacy@villagehale.com."
+      },
+      {
+        "title": "French, in French",
+        "body": "A parent can text Hale in French, and Hale answers in French."
+      },
+      {
+        "title": "A child’s words stay with their parent",
+        "body": "Hale talks to parents. For a child of 13 or older, a parent sees the topic and a summary rather than the words — unless there is a safety concern, and then the teen is told."
+      },
+      {
+        "title": "Built and kept in Canada",
+        "body": "Village Hale Technologies Inc., Georgetown, Ontario. Family data stays in Canada, under PIPEDA and Quebec’s Law 25."
+      }
+    ],
+    "officialEyebrow": "If a family asks whether Hale is official",
+    "officialLine": "Hale is independent. It is not run by your centre, the town, the region, or the province. It checks every registration date against the town’s own page, and if the two ever disagree, the town’s page wins.",
+    "faqEyebrow": "Questions we get",
+    "faqHeadline": [
+      {
+        "text": "Four things staff"
+      },
+      {
+        "text": "ask first.",
+        "accent": true
+      }
+    ],
+    "faq": [
+      {
+        "question": "Does a family need an account?",
+        "answer": "No. A parent texts a number and Hale replies. There is no app to install, no password, and no sign-up page."
+      },
+      {
+        "question": "What does it cost a family?",
+        "answer": "Nothing to start. Watching the dates and answering questions is free, and families who join now keep the founding rate for good."
+      },
+      {
+        "question": "Do we have to sign anything?",
+        "answer": "No. There is no agreement, and nothing for staff to report or track. The only thing we would set up with you is a poster carrying your centre’s code."
+      },
+      {
+        "question": "What does Hale refuse to do?",
+        "answer": "It does not diagnose and it never names a dose — a medical question goes back to your care provider. It also never fills a registration form or holds a spot on a family’s behalf. It prepares and reminds; the parent registers."
+      }
+    ],
+    "ctaHeading": "Want a poster for your centre?",
+    "ctaSub": "Email us and we will send one with your centre’s own code on it. A real person answers.",
+    "ctaButton": "Email aloha@villagehale.com",
+    "ctaQuiet": "Other ways to reach us"
   },
   "Faq": {
     "metaTitle": "Is Hale free, private, and right for your family? · Hale",
@@ -409,7 +541,7 @@
       },
       {
         "question": "What does Hale actually watch?",
-        "answer": "Municipal registration across 16 GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others."
+        "answer": "Municipal registration across 21 GTA municipalities — recreation programs, swim lessons, camps and after-school care — including the resident head start, the towns that register swimming on their own date, and the winter-break camps that open back in August. It also watches the waitlist clock, which is a day in some towns and two in others."
       },
       {
         "question": "How often will Hale text me?",

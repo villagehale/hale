@@ -48,6 +48,28 @@ describe('municipalitiesForFsa', () => {
     expect(municipalitiesForFsa('L4A')).toEqual(['whitchurch_stouffville']);
   });
 
+  it('resolves the York codes the source files under a community, not the town', () => {
+    // Same trap again, four times over: searching "King", "Georgina" or "East
+    // Gwillimbury" in the L table finds L7B, L4P and L9N under King City, Keswick and
+    // Holland Landing instead. L4's second character is no help - L4A is Stouffville,
+    // L4G is Aurora and L4P is Georgina.
+    expect(municipalitiesForFsa('L7B')).toEqual(['king']);
+    expect(municipalitiesForFsa('L4P')).toEqual(['georgina']);
+    expect(municipalitiesForFsa('L9N')).toEqual(['east_gwillimbury']);
+    expect(municipalitiesForFsa('L9P')).toEqual(['uxbridge']);
+  });
+
+  it('leaves the three rural codes these towns share resolving to nothing', () => {
+    // The likeliest wrong extension of this table: L0G looks like King's code because
+    // Nobleton, Schomberg and Kettleby are printed in it - but so are East
+    // Gwillimbury's villages, Richmond Hill's Oak Ridges, and Bradford, Beeton and
+    // Loretto, which are three towns Hale holds no dates for. Adding it would hand a
+    // Bradford family King's registration mornings.
+    expect(municipalitiesForFsa('L0G')).toEqual([]);
+    expect(municipalitiesForFsa('L0E')).toEqual([]); // Georgina + Uxbridge + Brock
+    expect(municipalitiesForFsa('L0C')).toEqual([]); // Uxbridge + Scugog + Brock
+  });
+
   it('keeps L7A in Brampton - its neighbour Mayfield West is the Caledon side', () => {
     expect(municipalitiesForFsa('L7A')).toEqual(['brampton']);
     expect(municipalitiesForFsa('L7C')).toEqual(['caledon']);
@@ -84,6 +106,19 @@ describe('fsasForMunicipality', () => {
 
   it('gives Whitchurch-Stouffville its single FSA', () => {
     expect(fsasForMunicipality('whitchurch_stouffville')).toEqual(['L4A']);
+  });
+
+  it('gives Newmarket both halves of the town, sorted', () => {
+    expect(fsasForMunicipality('newmarket')).toEqual(['L3X', 'L3Y']);
+  });
+
+  it('gives each new York town exactly the one urban FSA it has', () => {
+    // One code each, and the rural rest of the township is deliberately absent: this
+    // is the coverage hole named in limit 2, not a table that lost an entry.
+    expect(fsasForMunicipality('king')).toEqual(['L7B']);
+    expect(fsasForMunicipality('east_gwillimbury')).toEqual(['L9N']);
+    expect(fsasForMunicipality('georgina')).toEqual(['L4P']);
+    expect(fsasForMunicipality('uxbridge')).toEqual(['L9P']);
   });
 
   it('is sorted, so a radius is stable across runs', () => {

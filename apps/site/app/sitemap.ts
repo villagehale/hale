@@ -9,14 +9,19 @@ import { REGISTRATION_GUIDES } from '~/lib/registration/index';
 // route must never be advertised for indexing.
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
-  const staticRoutes: MetadataRoute.Sitemap = ['', '/about', '/contact', '/faq', '/pricing'].map(
-    (path) => ({
-      url: `${SITE_URL}${path}`,
-      lastModified,
-      changeFrequency: 'monthly',
-      priority: path === '' ? 1 : 0.7,
-    }),
-  );
+  const staticRoutes: MetadataRoute.Sitemap = [
+    '',
+    '/about',
+    '/contact',
+    '/faq',
+    '/for-centres',
+    '/pricing',
+  ].map((path) => ({
+    url: `${SITE_URL}${path}`,
+    lastModified,
+    changeFrequency: 'monthly',
+    priority: path === '' ? 1 : 0.7,
+  }));
 
   // City-registration landings are English-first municipal calendars. They rot in
   // about six weeks, so they carry weekly change frequency and their own
