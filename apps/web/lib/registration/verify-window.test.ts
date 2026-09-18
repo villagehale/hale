@@ -157,6 +157,34 @@ describe('compareWindow — a page that states one unlabelled date', () => {
     ]);
   });
 
+  /**
+   * THE RULE IS THE ROW'S, NOT MARKHAM'S. Every other fixture in this file is a Markham
+   * one, so a rule quietly gated on the municipality would pass all of them — this is a
+   * different town, on dates of its own, in the identical shape. It fails the moment the
+   * rule consults anything but `stored.residentOpenAt` and the page's own two fields.
+   * (The dates are a shape, not a published claim about Vaughan.)
+   */
+  it('fires for any town whose page prints one date, not a named list of them', () => {
+    const outcome = compareWindow(
+      markhamStored({
+        id: 'win-vaughan-winter',
+        municipality: 'vaughan',
+        cycleLabel: '2027 Winter Programs',
+        previewAt: new Date('2027-01-05T00:00:00-05:00'),
+        residentOpenAt: new Date('2027-01-12T09:00:00-05:00'),
+        openAt: new Date('2027-01-14T09:00:00-05:00'),
+      }),
+      extracted({
+        cycleOnPage: '2027 Winter Programs',
+        yearEvidence: '2027 Winter Programs',
+        preview: { date: '2027-01-05', time: null },
+        generalOpen: { date: '2027-01-12', time: '09:00' },
+        evidence: 'Registration opens Jan. 12 at 9 a.m.',
+      }),
+    );
+    expect(outcome).toEqual({ kind: 'confirmed', fields: ['previewAt', 'residentOpenAt'] });
+  });
+
   it('leaves a page that labels both dates alone', () => {
     const outcome = compareWindow(
       tiered(),

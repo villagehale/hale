@@ -9,6 +9,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { TwilioSendError } from './transport';
 import {
   type ChannelMessageReceivedJob,
   type TwilioInboundDeps,
@@ -729,7 +730,11 @@ describe('routing outcomes are logged and counted (rule #11)', () => {
     expect(h.counted).toEqual(['not_a_parent']);
     expect(h.infos).toEqual([
       [
-        { outcome: 'not_a_parent', providerMessageId: 'SM11111111111111111111111111111111' },
+        {
+          outcome: 'not_a_parent',
+          providerMessageId: 'SM11111111111111111111111111111111',
+          optOutTypePresent: false,
+        },
         'twilio inbound: routed',
       ],
     ]);
@@ -991,9 +996,29 @@ describe('the provider already answered the keyword (VIL-348)', () => {
       .map((w) => w.payload as { consentType?: string; granted?: boolean })
       .filter((c) => c.consentType === 'sms_service_messages' && c.granted === false);
 
-  async function post(h: Harness, params: Record<string, string>) {
+  const grants = (h: Harness) =>
+    h.fake.writes
+      .filter((w) => w.op === 'insert' && w.table === schema.consentRecords)
+      .map((w) => w.payload as { consentType?: string; granted?: boolean })
+      .filter((c) => c.consentType === 'sms_service_messages' && c.granted === true);
+
+  const auditVerbs = (h: Harness) =>
+    h.fake.writes
+      .filter((w) => w.op === 'insert' && w.table === schema.auditLog)
+      .map((w) => (w.payload as { actionTaken?: string }).actionTaken);
+
+  const channelRows = (h: Harness) =>
+    h.fake.writes
+      .filter((w) => w.op === 'insert' && w.table === schema.parentChannels)
+      .map((w) => w.payload as { revokedAt?: Date | null });
+
+  /** The shell's one routed line, as an operator reads it back off the request. */
+  const routed = (h: Harness) =>
+    h.infos.at(-1)?.[0] as { outcome?: string; optOutTypePresent?: boolean } | undefined;
+
+  async function post(h: Harness, params: Record<string, string>, deps = h.deps) {
     const body = twilioParams(params);
-    return handleTwilioInboundRequest(twilioRequest(body), h.deps);
+    return handleTwilioInboundRequest(twilioRequest(body), deps);
   }
 
   it('answers ARRET in French itself when Twilio forwarded no OptOutType', async () => {
@@ -1007,6 +1032,12 @@ describe('the provider already answered the keyword (VIL-348)', () => {
     expect(outRows(h)).toHaveLength(1);
     expect(revoked(h).length).toBeGreaterThan(0);
     expect(withdrawals(h).length).toBeGreaterThan(0);
+    expect(auditVerbs(h)).toContain('channel_sms_revoked');
+    // And what an operator can read back afterwards: no tag arrived on this request, so
+    // Hale was the only answerer. That pair is the ONLY place the live configuration
+    // shows up — nothing else in the system can see it (the live-probe gate reads it).
+    expect(routed(h)).toMatchObject({ outcome: 'intake', optOutTypePresent: false });
+    expect(h.counted).toEqual(['intake']);
   });
 
   it('does the whole ledger and stays silent when OptOutType says Twilio answered it', async () => {
@@ -1023,6 +1054,14 @@ describe('the provider already answered the keyword (VIL-348)', () => {
     // Every legal effect is unchanged — the opt-out list is not Hale's consent record.
     expect(revoked(h).length).toBeGreaterThan(0);
     expect(withdrawals(h).length).toBeGreaterThan(0);
+    expect(auditVerbs(h)).toContain('channel_sms_revoked');
+    // "Hale sent nothing because the provider had already answered" is its own outcome,
+    // never folded into the bucket that means Hale answered (rule #11).
+    expect(routed(h)).toMatchObject({
+      outcome: 'keyword_provider_answered',
+      optOutTypePresent: true,
+    });
+    expect(h.counted).toEqual(['keyword_provider_answered']);
   });
 
   it('re-enrols on a DEBUT Twilio answered, writing no acknowledgment of its own', async () => {
@@ -1039,11 +1078,53 @@ describe('the provider already answered the keyword (VIL-348)', () => {
     expect(res.status).toBe(200);
     expect(h.transport.sent).toEqual([]);
     expect(outRows(h)).toEqual([]);
-    const granted = h.fake.writes
-      .filter((w) => w.op === 'insert' && w.table === schema.consentRecords)
-      .map((w) => w.payload as { consentType?: string; granted?: boolean })
-      .filter((c) => c.consentType === 'sms_service_messages' && c.granted === true);
-    expect(granted.length).toBeGreaterThan(0);
+    expect(grants(h).length).toBeGreaterThan(0);
+    // A re-enrolment is a NEW channel row, never an un-revoke of the withdrawn one: the
+    // withdrawal has to stay readable in a right-to-access export.
+    expect(channelRows(h)).toHaveLength(2);
+    expect(channelRows(h).at(-1)?.revokedAt ?? null).toBeNull();
+    expect(h.counted.at(-1)).toBe('keyword_provider_answered');
+  });
+
+  /**
+   * THE STOP → DEBUT ASYMMETRY, at the door. An opt-out list holding STOP but not the
+   * word this parent sent refuses every send to the number — 21610 — although Hale has
+   * just re-enrolled them. The machine names that rather than throwing; before this the
+   * door then flattened it to `intake`, so the webhook answered 200 and NOTHING said a
+   * live-looking ledger row now points at an unreachable number (rule #11).
+   */
+  it('names a re-enrolment the provider permanently refused, rather than counting an ordinary turn', async () => {
+    const h = harness();
+    enrol(h.fake);
+    await post(h, { Body: 'ARRET' });
+    const refusing: TwilioInboundDeps = {
+      ...h.deps,
+      intake: (inboundTransport) => ({
+        ...h.deps.intake(inboundTransport),
+        transport: {
+          async send(): Promise<{ providerMessageId: string }> {
+            throw new TwilioSendError('21610', 400);
+          },
+        },
+      }),
+    };
+
+    const res = await post(
+      h,
+      { Body: 'DEBUT', MessageSid: 'SM33333333333333333333333333333333' },
+      refusing,
+    );
+
+    // Still a 200: the refusal is permanent, so a 500 only earns a webhook retry into
+    // the same wall — after the consent write has already landed.
+    expect(res.status).toBe(200);
+    expect(grants(h).length).toBeGreaterThan(0);
+    // The three places an operator could find out, and all three say it.
+    expect(routed(h)).toMatchObject({ outcome: 'keyword_ack_refused' });
+    expect(h.counted.at(-1)).toBe('keyword_ack_refused');
+    expect(h.errors).toHaveLength(1);
+    // Ids and enums only — never the number it could not reach (rule #1).
+    expect(JSON.stringify(h.errors)).not.toContain(PHONE);
   });
 
   it('stays silent on an AIDE Twilio answered', async () => {
@@ -1068,5 +1149,10 @@ describe('the provider already answered the keyword (VIL-348)', () => {
     expect(h.warns).toHaveLength(1);
     // Field presence, never the value — it rides beside a number and a body (rule #1).
     expect(JSON.stringify(h.warns)).not.toContain('DESABONNEMENT');
+    // The third cell of the pair the live probe reads, and the only one that is
+    // ambiguous from either half alone: a tag DID arrive and Hale answered anyway. Read
+    // with the two above — no tag/Hale answered, tag/Hale silent — it is what tells an
+    // operator which keyword set the Messaging Service is really carrying.
+    expect(routed(h)).toMatchObject({ outcome: 'intake', optOutTypePresent: true });
   });
 });

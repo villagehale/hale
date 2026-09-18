@@ -58,11 +58,15 @@ import type { ReplyLanguage } from '~/lib/channel/language';
  * exception for exactly this reason; the remedy itself is configuration — the provider's
  * localized keyword set has to hold every word Hale prints.
  *
- * OBSERVED, NOT ASSUMED: on 2026-08-18 Twilio's built-in set was English only
+ * OBSERVED, NOT ASSUMED — and observed of the PRODUCT, not of this account: as
+ * documented on 2026-08-18, Twilio's built-in set is English only
  * (STOP/STOPALL/UNSUBSCRIBE/CANCEL/END/QUIT/REVOKE/OPTOUT, START/YES/UNSTOP, HELP/INFO)
- * and localized keywords existed only as explicit entries on a Messaging Service with
- * Advanced Opt-Out configured. That is a dated reading of someone else's product, not a
- * premise anything below depends on.
+ * and localized keywords exist only as explicit entries on a Messaging Service with
+ * Advanced Opt-Out configured. WHAT HALE'S OWN MESSAGING SERVICE HOLDS HAS NOT BEEN READ
+ * BY ANYONE: it needs console or API credentials this checkout does not have, which is
+ * the whole reason nothing here is allowed to depend on it. VIL-348's first probe step is
+ * that reading — `use_inbound_webhook_on_number`, the opt-out state and the full keyword
+ * sets, verbatim and dated — and it replaces this paragraph when it lands.
  */
 
 export type IntakeKeyword = 'stop' | 'help' | 'start';
