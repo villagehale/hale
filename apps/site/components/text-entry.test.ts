@@ -140,7 +140,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
 
   it('shows what comes BACK — an honestly-labeled bubble, absent while no channel is live', () => {
     expect(liveHtml).toContain('The text you’ll get back:');
-    expect(liveHtml).toContain('I watch sign-up mornings so they don&#x27;t sneak up.');
+    expect(liveHtml).toContain('Hi, I&#x27;m Hale. I find activities that fit your little one');
     expect(unsetHtml).not.toContain('sign-up mornings');
     expect(unsetHtml).not.toContain('The text you’ll get back:');
   });
@@ -538,7 +538,7 @@ describe('TextEntry (the other two locales)', () => {
     // speech — the bubble stays English, the frame label says so in Chinese.
     const zh = render({ source: null, locale: 'zh' });
     expect(zh).toContain('（英文原文）');
-    expect(zh).toContain('I watch sign-up mornings so they don&#x27;t sneak up.');
+    expect(zh).toContain('Hi, I&#x27;m Hale. I find activities that fit your little one');
   });
 });
 
@@ -550,7 +550,9 @@ describe('TextEntry — the chooser arm keeps the five-second frame (WhatsApp li
     );
     expect(html).toContain('The text you’ll get back:');
     // The bubble sits above the first channel door.
-    expect(html.indexOf('I watch sign-up mornings')).toBeLessThan(html.indexOf('href="sms:'));
+    expect(html.indexOf('I find activities that fit your little one')).toBeLessThan(
+      html.indexOf('href="sms:'),
+    );
     // Structure kept: still the chooser headline, no numbered steps row.
     expect(html).toContain('Welcome. Pick where we talk.');
     expect(html).not.toContain('<ol');
