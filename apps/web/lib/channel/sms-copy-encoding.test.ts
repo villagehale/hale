@@ -116,6 +116,7 @@ const SMS_COPY_SOURCES = [
   // here and cannot be: that file's whole job includes a fold table of the characters
   // GSM-7 lacks.
   'lib/integrations/email-alert-offer.ts',
+  'lib/loop/templates/calendar-invite/sms.ts',
   'lib/format/labels.ts',
   // Not copy itself, but SPLICED into copy: the intake consent ask now carries the
   // privacy URL from here, so a typographic character in a policy path would ride out
