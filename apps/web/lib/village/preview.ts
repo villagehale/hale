@@ -40,8 +40,9 @@ import { loadDiscoveryPrompt } from './discovery-prompt';
 export interface PreviewActivity {
   title: string;
   summary: string;
-  /** The model's coverage caveat — what it can and can't stand behind. */
-  coverageNote: string;
+  /** The model's coverage caveat — what it can and can't stand behind. Null when
+   * it offered none; the preview shows no caveat line rather than invent one. */
+  coverageNote: string | null;
   /** An absolute http(s) link the model offered, or null. Validated before use. */
   sourceUrl: string | null;
 }
@@ -138,7 +139,7 @@ export async function discoverPreview(
   return parsed.candidates.slice(0, DISCOVERY_LIMIT).map((c) => ({
     title: c.title.slice(0, TITLE_MAX),
     summary: c.description.slice(0, SUMMARY_MAX),
-    coverageNote: c.coverageNote.slice(0, COVERAGE_MAX),
+    coverageNote: c.coverageNote?.slice(0, COVERAGE_MAX) ?? null,
     sourceUrl: safeSourceUrl(c.sourceUrl ?? undefined),
   }));
 }
