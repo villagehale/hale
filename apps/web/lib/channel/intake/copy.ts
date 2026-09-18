@@ -722,28 +722,39 @@ export const AMBIGUOUS_CLARIFY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
  * answer. There is no NO to reply: ignoring it IS the no, which is the only refusal
  * that costs a parent nothing.
  *
- * Both providers in one sentence because one link serves both — the redeem page lands
- * on Settings -> Connected apps, where the Calendar and Gmail buttons sit side by side.
- * Two texts for two buttons would be two asks for one decision.
+ * ONE LINK PER CONNECTOR, each landing on its own Google consent. Both are minted in
+ * the same ask so both are alive when the text arrives (channel-signin.ts), and neither
+ * tap goes near the portal — which is the whole point: a second connector reached by
+ * "text me again" is a second chance to lose a parent who was willing ten seconds ago.
  *
- * TWO SEGMENTS, not one, and deliberately: 60 of its characters are a URL Hale did not
+ * TWO SEGMENTS, not one, and deliberately: 137 of its characters are URLs Hale did not
  * write, and cutting the sentence to fit would cost either the reason or the skip. The
- * ceiling is held mechanically in sms-copy-encoding.test.ts with a realistic link
+ * ceiling is held mechanically in sms-copy-encoding.test.ts with realistic links
  * inside it. The fifteen minutes is CHANNEL_SIGNIN_TTL_MS said out loud.
  */
-const CONNECTOR_OFFER_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
-  en: (url) =>
-    `Optional: I can also watch your Google Calendar and Gmail for daycare and school notices. Tap to connect: ${url} Good for 15 minutes - ignore this to skip.`,
+const CONNECTOR_OFFER_BY_LANGUAGE: Record<
+  ReplyLanguage,
+  (calendarUrl: string, gmailUrl: string) => string
+> = {
+  en: (calendarUrl, gmailUrl) =>
+    `Optional: I can also watch your Google Calendar and Gmail for daycare and school notices. Calendar: ${calendarUrl} Gmail: ${gmailUrl} Good for 15 minutes - ignore this to skip.`,
   // 'Google Agenda' is the product's own French name. 'l'école' keeps its accent — é is
-  // in GSM-7; the circumflexes and the cedilla that are not never appear here.
-  fr: (url) =>
-    `Optionnel : je peux aussi surveiller votre Google Agenda et Gmail pour les avis de la garderie et de l'école. Touchez pour connecter : ${url} Bon pour 15 minutes - ignorez pour passer.`,
+  // in GSM-7; the circumflexes and the cedilla that are not never appear here. The
+  // possessive goes where English keeps it ('your Google Calendar'): French spends four
+  // characters more on every other word, and with two links in the body those four are
+  // the difference between two segments and three.
+  fr: (calendarUrl, gmailUrl) =>
+    `Optionnel : je peux aussi surveiller Google Agenda et Gmail pour les avis de la garderie et de l'école. Agenda : ${calendarUrl} Gmail : ${gmailUrl} Bon pour 15 minutes - ignorez pour passer.`,
 };
 
-/** The whole message, link included — composed here and nowhere else, so no later
- * fitting can split the sentence from the URL it is about. */
-export function intakeConnectorOffer(language: ReplyLanguage, url: string): string {
-  return CONNECTOR_OFFER_BY_LANGUAGE[language](url);
+/** The whole message, links included — composed here and nowhere else, so no later
+ * fitting can split the sentence from the URLs it is about. */
+export function intakeConnectorOffer(
+  language: ReplyLanguage,
+  calendarUrl: string,
+  gmailUrl: string,
+): string {
+  return CONNECTOR_OFFER_BY_LANGUAGE[language](calendarUrl, gmailUrl);
 }
 
 /**

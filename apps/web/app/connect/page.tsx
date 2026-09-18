@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ChannelLinkRedeem } from '~/components/hale/channel-link-redeem';
 import { authConfigured } from '~/lib/auth-config';
+import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,17 +12,22 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ t?: string }>;
+  searchParams: Promise<{ t?: string; to?: string }>;
 }
 
 /**
- * Redeem landing for the texted connect link (/connect?t=…). The token is spent only
- * when the client component's button submits it, in the server action — this page
+ * Redeem landing for the texted connect link (/connect?t=…&to=gcal). The token is spent
+ * only when the client component's button submits it, in the server action — this page
  * render never consumes it, so a carrier link-scanner's GET costs the parent nothing.
  * A missing token gets the calm dead-end: the fresh link is one text away.
+ *
+ * `to` names which connector the link was texted for, so the one tap it already asks for
+ * is also the last one: the redemption forwards straight into Google's consent instead
+ * of into Settings. It is read through the allowlist, never used as a path — an
+ * unrecognised value is not an error a parent has to read, just the flow as it was.
  */
 export default async function ConnectPage({ searchParams }: PageProps) {
-  const { t } = await searchParams;
+  const { t, to } = await searchParams;
 
   if (!authConfigured() || !t) {
     return (
@@ -36,7 +42,7 @@ export default async function ConnectPage({ searchParams }: PageProps) {
 
   return (
     <AuthShell heading="Connect your apps">
-      <ChannelLinkRedeem token={t} />
+      <ChannelLinkRedeem token={t} provider={asTextConnectProvider(to)} />
     </AuthShell>
   );
 }
