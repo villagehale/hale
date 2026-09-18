@@ -89,7 +89,20 @@ export type OpenQuestionKind =
    * on a phone belonging to somebody who has never heard of Hale, which is why the
    * co-parent start now consults `soleOpenKind` before claiming a bare affirmative.
    */
-  | 'co_parent_assent';
+  | 'co_parent_assent'
+  /**
+   * "Reply YES and it goes on your week." — the offer at the end of a Gmail alert
+   * (lib/integrations/email-alert-offer.ts). Its YES writes a `family_events` row that
+   * the reminder scheduler and the weekly plan both read, so the parent gets a text the
+   * day before something they only ever saw in an email.
+   *
+   * IT IS THE ONE THAT WAS MISSING. The alert shipped that sentence once with nothing
+   * behind it and #649 took it away, because a parent answering it reached the coach with
+   * nothing drafted — or, with one unrelated action pending, APPROVED THAT ONE. This
+   * member is the other half of putting the sentence back: the question is written down
+   * at send time, on a row of its own, and a YES can only ever mean it.
+   */
+  | 'email_alert_add';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -132,6 +145,11 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // whoever replies with the whole family surface. The same class of cost as an
   // introduction and then some — so the same grade.
   co_parent_assent: 'consequential',
+  // Writes a real entry on the family's week and materializes reminders off it. Nothing
+  // is executed and nothing is disclosed, but this Record's own line is "a change to a
+  // real calendar" — the grade an approval carries for exactly this — and a wrong reading
+  // costs a text the day before something that is not happening.
+  email_alert_add: 'consequential',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
@@ -174,6 +192,11 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // its own terminal state rather than leaving it to lapse — a parent who changes their
   // mind about texting their partner should not have to wait 72 hours for it.
   co_parent_assent: { yes: true, no: true },
+  // BOTH polarities, unlike the offers above: the no RESOLVES the offer as declined and
+  // says so, rather than leaving it to lapse. A parent who says no to a school email they
+  // are not interested in should not go on having it counted as a question Hale is
+  // waiting on for the rest of the day.
+  email_alert_add: { yes: true, no: true },
 };
 
 export interface Answerable {
@@ -258,6 +281,9 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   registration_readiness: true,
   // The scope question prints "Reply YES and I'll text them once." (coparent/copy.ts).
   co_parent_assent: true,
+  // The alert prints "Reply YES and it goes on your week." verbatim, and it is the last
+  // thing Hale said (integrations/email-alert.ts).
+  email_alert_add: true,
 };
 
 /**
@@ -304,6 +330,10 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval'>, string> = {
   // phrase can end up in a list Hale prints back (rule #1 — nothing about the person on
   // the other end of an invite they have not answered).
   co_parent_assent: 'texting your co-parent',
+  // No title in it: this phrase goes into a list Hale prints back, and with two alerts
+  // open the parent already has both texts. "the one from your email" is what a person
+  // would say.
+  email_alert_add: 'putting the one from your email on your week',
 };
 
 /**
@@ -443,6 +473,20 @@ export interface OpenQuestionSources {
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
   ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
+   * The email alerts this parent has not answered — a LIST, unlike every other offer
+   * here, because the outbound gate permits three a day and each one asks about a
+   * different occasion. Listing them all is what makes a bare affirmative ambiguous
+   * between two of them rather than silently binding to one.
+   *
+   * Per-PARENT, like the intro opt-in and the co-parent scope question: the offer was put
+   * to one phone, and a co-parent who never saw the text must not be able to answer it.
+   * The TTL is applied inside the reader, so a lapsed offer is never listed.
+   */
+  emailAlertOffers(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<ReadonlyArray<{ id: string; summary: string; askedAt: Date }>>;
 }
 
 /**
@@ -461,8 +505,18 @@ export interface OpenQuestionSources {
 export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQuestionReader {
   return {
     async open(database, input) {
-      const [approvals, optIn, proposal, offer, checkup, promise, welcome, readiness, assent] =
-        await Promise.all([
+      const [
+        approvals,
+        optIn,
+        proposal,
+        offer,
+        checkup,
+        promise,
+        welcome,
+        readiness,
+        assent,
+        emailOffers,
+      ] = await Promise.all([
           sources.pendingApprovals(database, input.familyId),
           sources.introOptInOpen(database, {
             familyId: input.familyId,
@@ -475,6 +529,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           sources.founderWelcomeOffer(database, input.familyId, input.now),
           sources.registrationReadiness(database, input.familyId, input.now),
           sources.coParentAssent(database, input),
+          sources.emailAlertOffers(database, input),
         ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(
@@ -570,6 +625,19 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.co_parent_assent,
           askedAt: assent.askedAt,
           solicited: SOLICITED.co_parent_assent,
+        });
+      }
+      for (const emailOffer of emailOffers) {
+        // The offer row's own one-line summary: the title Hale already texted this parent
+        // and nothing else — never the subject line, never the snippet (rule #1).
+        questions.push({
+          id: emailOffer.id,
+          kind: 'email_alert_add',
+          description: emailOffer.summary,
+          subject: SUBJECT.email_alert_add,
+          answerable: KIND_ANSWERABLE.email_alert_add,
+          askedAt: emailOffer.askedAt,
+          solicited: SOLICITED.email_alert_add,
         });
       }
       if (promise) {

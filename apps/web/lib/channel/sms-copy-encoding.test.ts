@@ -56,6 +56,7 @@ import {
   whichOneReply,
 } from '~/lib/channel/router/copy';
 import { mediaUnsupportedReply } from '~/lib/channel/twilio/copy';
+import { emailAlertOfferReplies } from '~/lib/integrations/email-alert-offer';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
 
@@ -108,6 +109,10 @@ const SMS_COPY_SOURCES = [
   'lib/party/tally.ts',
   'lib/village/intros/copy.ts',
   'lib/channel/rec-morning/copy.ts',
+  // The three receipts a Gmail alert's YES/NO gets. Its sibling email-alert.ts is NOT
+  // here and cannot be: that file's whole job includes a fold table of the characters
+  // GSM-7 lacks.
+  'lib/integrations/email-alert-offer.ts',
   'lib/format/labels.ts',
   // Not copy itself, but SPLICED into copy: the intake consent ask now carries the
   // privacy URL from here, so a typographic character in a policy path would ride out
@@ -246,6 +251,30 @@ describe('the intake script stays GSM-7 once rendered', () => {
       'venue (shortest)': { encoding: 'gsm7', segments: 2 },
       'venue (longest registered)': { encoding: 'gsm7', segments: 2 },
       'postal-first': { encoding: 'gsm7', segments: 2 },
+    });
+  });
+});
+
+/**
+ * The email alert's receipts, rendered in both twins.
+ *
+ * The file scan cannot see these: the occasion's title comes from a school's subject line
+ * (already folded by the alert's own `gsm7`, and pinned here as the assertion that it
+ * stays folded), and the French twin carries the accents GSM-7 does have. One segment,
+ * because these are replies to a text the parent just answered and nothing about an
+ * acknowledgement is worth two.
+ */
+describe('the email-alert offer receipts stay GSM-7 and inside one segment', () => {
+  const RENDERED = (['en', 'fr'] as const).flatMap((language) =>
+    emailAlertOfferReplies(language).map(
+      (body, index) => [`${language}[${index}]`, body] as const,
+    ),
+  );
+
+  it.each(RENDERED)('%s', (_name, body) => {
+    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+      encoding: 'gsm7',
+      segments: 1,
     });
   });
 });
