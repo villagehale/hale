@@ -792,6 +792,13 @@
       "when": 1781469609000,
       "tag": "0115_calendar_alert_category",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1781469611000,
+      "tag": "0117_calendar_event_snapshots",
+      "breakpoints": true
     }
   ]
 }

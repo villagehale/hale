@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,15 +6,19 @@ import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
   CALENDAR_ALERT_MAX_PER_SWEEP,
+  CALENDAR_ALERT_PENDING_MAX_DAYS,
   CALENDAR_ALERT_TEMPLATE_KEY,
   type CalendarAlertOutcome,
   type CalendarAlertPorts,
+  type CalendarAlertSweep,
   type CalendarChange,
+  type PriorStart,
   alertParentForCalendarChanges,
   calendarAlertDedupeKey,
+  calendarSeriesAlertDedupeKey,
   eventSpan,
   renderCalendarAlert,
 } from './calendar-alert';
@@ -44,7 +47,8 @@ afterAll(async () => {
 });
 
 /** Fresh per test: the dedupe key is (connection, event, updated-stamp) and the pglite
- * instance is shared across the file. */
+ * instance is shared across the file. A REAL integrations row, because the snapshot
+ * memory hangs off it by a cascading foreign key. */
 let INTEGRATION: string;
 const NOW = new Date('2026-09-17T15:00:00.000Z'); // 11:00 a.m. in Toronto
 const PHONE = '+14165551234';
@@ -104,10 +108,10 @@ function harness(
   };
 }
 
-function sweep(
+function sweepBoth(
   h: Harness,
   over: Partial<Parameters<typeof alertParentForCalendarChanges>[1]> = {},
-): Promise<readonly CalendarAlertOutcome[]> {
+): Promise<CalendarAlertSweep> {
   return alertParentForCalendarChanges(
     db.database,
     {
@@ -121,6 +125,27 @@ function sweep(
     },
     h.ports,
   );
+}
+
+/** The positional half — one outcome per change — which is what almost every case here
+ * is about. The re-offer cases use {@link sweepBoth}. */
+async function sweep(
+  h: Harness,
+  over: Partial<Parameters<typeof alertParentForCalendarChanges>[1]> = {},
+): Promise<readonly CalendarAlertOutcome[]> {
+  return (await sweepBoth(h, over)).changes;
+}
+
+function snapshotRows() {
+  return db.database
+    .select()
+    .from(schema.calendarEventSnapshots)
+    .where(eq(schema.calendarEventSnapshots.integrationId, INTEGRATION));
+}
+
+async function snapshotOf(eventId: string) {
+  const rows = await snapshotRows();
+  return rows.find((row) => row.eventId === eventId);
 }
 
 function ledgerRows() {
@@ -139,7 +164,7 @@ function auditRows() {
 
 beforeEach(async () => {
   family = await seedFamily(db.database);
-  INTEGRATION = randomUUID();
+  INTEGRATION = await seedIntegration(db.database, family.familyId, family.parentUserId);
   vi.stubEnv('F14_ENABLED', 'true');
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -508,15 +533,446 @@ describe('alertParentForCalendarChanges', () => {
   });
 });
 
+describe('a change that MOVED says so', () => {
+  /** Tuesday Sep 15, 11 a.m. Toronto — both Sep 16 and Sep 17 are still ahead of it. */
+  const EARLY = new Date('2026-09-15T15:00:00.000Z');
+  const wednesday: CalendarChange = {
+    ...TIMED,
+    updated: '2026-09-15T14:00:00.000Z',
+    start: { dateTime: '2026-09-16T20:15:00.000Z' },
+    end: { dateTime: '2026-09-16T21:00:00.000Z' },
+  };
+
+  it('names the new time AND the old one, once it has seen the event before', async () => {
+    await expect(sweep(harness(), { now: EARLY, changes: [wednesday] })).resolves.toEqual(['sent']);
+
+    const moved = harness();
+    await expect(
+      sweep(moved, {
+        now: EARLY,
+        changes: [
+          {
+            ...wednesday,
+            updated: '2026-09-15T14:30:00.000Z',
+            start: { dateTime: '2026-09-17T20:15:00.000Z' },
+            end: { dateTime: '2026-09-17T21:00:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['sent']);
+    expect(moved.transport.sent[0]?.body).toContain(
+      'Cartwheels Gym moved to Thursday, Sep 17, 4:15-5:00 p.m. (was Wednesday, Sep 16).',
+    );
+  });
+
+  it('says the clock twice, not the date twice, when only the time moved', async () => {
+    await expect(sweep(harness())).resolves.toEqual(['sent']);
+
+    const moved = harness();
+    await expect(
+      sweep(moved, {
+        changes: [
+          {
+            ...TIMED,
+            updated: '2026-09-17T14:58:00.000Z',
+            start: { dateTime: '2026-09-17T21:00:00.000Z' },
+            end: { dateTime: '2026-09-17T21:45:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['sent']);
+    expect(moved.transport.sent[0]?.body).toContain(
+      'Cartwheels Gym moved to 5:00-5:45 p.m. today (was 4:15).',
+    );
+  });
+
+  it('a FIRST sighting is not a move, and a cancellation is never one', async () => {
+    // The control for both cases above: without it a renderer that always says "moved"
+    // would pass them. And a cancellation Hale has seen before still reads as a
+    // cancellation — "(was Thursday)" on top of it is a fact nobody asked about.
+    const first = harness();
+    await expect(sweep(first)).resolves.toEqual(['sent']);
+    expect(first.transport.sent[0]?.body).toContain(
+      'Cartwheels Gym is on your calendar for Thursday, Sep 17, 4:15-5:00 p.m.',
+    );
+
+    const cancelled = harness();
+    await expect(
+      sweep(cancelled, {
+        changes: [
+          {
+            ...TIMED,
+            updated: '2026-09-17T14:59:00.000Z',
+            status: 'cancelled',
+            start: { dateTime: '2026-09-18T20:15:00.000Z' },
+            end: { dateTime: '2026-09-18T21:00:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['sent']);
+    expect(cancelled.transport.sent[0]?.body).toContain(
+      'Cartwheels Gym on Friday, Sep 18 was cancelled.',
+    );
+    expect(cancelled.transport.sent[0]?.body).not.toContain('was Thursday');
+  });
+});
+
+describe('one edit to a series is one text', () => {
+  const SERIES = 'swim-master';
+  /** Six Tuesdays at 5:00-5:45 p.m. Toronto from Sep 22 — the shape `singleEvents=true`
+   * turns one edit to a weekly class into. */
+  function instances(over: Partial<CalendarChange> = {}): CalendarChange[] {
+    return Array.from({ length: 6 }, (_, i) => ({
+      ...TIMED,
+      eventId: `swim-${i}`,
+      recurringEventId: SERIES,
+      title: 'Swim lessons',
+      updated: '2026-09-17T14:55:00.000Z',
+      start: { dateTime: `2026-${i < 2 ? '09' : '10'}-${String(i < 2 ? 22 + i * 7 : i * 7 - 8).padStart(2, '0')}T21:00:00.000Z` },
+      end: { dateTime: `2026-${i < 2 ? '09' : '10'}-${String(i < 2 ? 22 + i * 7 : i * 7 - 8).padStart(2, '0')}T21:45:00.000Z` },
+      ...over,
+    }));
+  }
+
+  it('sends ONE text for six moved instances and names the other five as collapsed', async () => {
+    // Every instance is seen once at its old hour, so the second sweep is a real move.
+    const before = instances({ updated: '2026-09-17T14:00:00.000Z' }).map((one) => ({
+      ...one,
+      start: { dateTime: one.start.dateTime?.replace('T21:00', 'T20:15') },
+      end: { dateTime: one.end.dateTime?.replace('T21:45', 'T21:00') },
+    }));
+    await sweep(harness(), { changes: before });
+
+    const h = harness();
+    await expect(sweep(h, { changes: instances() })).resolves.toEqual([
+      'sent',
+      ...Array.from({ length: 5 }, () => 'collapsed_into_series'),
+    ]);
+    expect(h.transport.sent).toHaveLength(1);
+    expect(h.transport.sent[0]?.body).toContain(
+      'Swim lessons moved: 6 sessions now Tuesdays 5:00-5:45 p.m. starting Sep 22.',
+    );
+    // ONE claim for the whole series, keyed on the series and its stamp — so the same six
+    // instances read a second time cost nothing.
+    const keys = (await ledgerRows()).map((row) => row.dedupeKey);
+    expect(keys).toEqual([
+      calendarSeriesAlertDedupeKey(INTEGRATION, SERIES, '2026-09-17T14:00:00.000Z'),
+      calendarSeriesAlertDedupeKey(INTEGRATION, SERIES, instances()[0]!.updated),
+    ]);
+    await expect(sweep(harness(), { changes: instances() })).resolves.toEqual([
+      'already_sent',
+      ...Array.from({ length: 5 }, () => 'collapsed_into_series'),
+    ]);
+  });
+
+  it('says a cancelled term is cancelled, and names an unnamed one honestly', async () => {
+    const h = harness();
+    await expect(
+      sweep(h, { changes: instances({ status: 'cancelled' }) }),
+    ).resolves.toHaveLength(6);
+    expect(h.transport.sent[0]?.body).toContain(
+      'Swim lessons: 6 sessions were cancelled from Sep 22.',
+    );
+
+    // Google's cancelled instances usually carry no summary at all, and "An event: 6
+    // sessions" is a disagreement inside one sentence.
+    const bare = harness();
+    await sweep(bare, {
+      changes: instances({ status: 'cancelled', title: undefined }).map((one) => ({
+        ...one,
+        eventId: `bare-${one.eventId}`,
+        recurringEventId: 'bare-master',
+      })),
+    });
+    expect(bare.transport.sent[0]?.body).toContain(
+      'A repeating event: 6 sessions were cancelled from Sep 22.',
+    );
+  });
+
+  it('counts the sessions still AHEAD, never the ones already behind', async () => {
+    // The whole reason the fortnight is judged on the group and the past is judged per
+    // instance. Renaming a weekly class returns the finished Tuesdays too, and "8 sessions
+    // now Tuesdays" describes a term nobody is going to.
+    const past = Array.from({ length: 2 }, (_, i) => ({
+      ...TIMED,
+      eventId: `swim-past-${i}`,
+      recurringEventId: SERIES,
+      title: 'Swim lessons',
+      start: { dateTime: `2026-09-0${i + 1}T21:00:00.000Z` },
+      end: { dateTime: `2026-09-0${i + 1}T21:45:00.000Z` },
+    }));
+
+    const h = harness();
+    await expect(sweep(h, { changes: [...past, ...instances()] })).resolves.toEqual([
+      'outside_window',
+      'outside_window',
+      'sent',
+      ...Array.from({ length: 5 }, () => 'collapsed_into_series'),
+    ]);
+    expect(h.transport.sent[0]?.body).toContain('6 sessions');
+  });
+
+  it('holds two GSM-7 segments with the FULL opt-out, however long the class is called', async () => {
+    // The series sentence has its own widest shape — a count, a weekday, a clock range and
+    // a starting date on top of the clamped title — so the budget the singles' property
+    // test proves does not carry over to it for free.
+    const nasty = 'Registration — 秋の遠足 '.repeat(30);
+    const h = harness();
+    await sweep(h, { changes: instances({ title: nasty }) });
+    const body = h.transport.sent[0]?.body ?? '';
+    expect(body).not.toBe('');
+    expect(isPrintableGsm7Basic(body.replace(`\n\n${OPT_OUT_LINE}`, ''))).toBe(true);
+    expect(smsSegments(body)).toBeLessThanOrEqual(2);
+  });
+
+  it('leaves TWO instances of one series as two ordinary texts', async () => {
+    // Two changes about the same class on two days really are two things to say, and the
+    // control for a collapse that would otherwise swallow every pair.
+    const h = harness();
+    const pair = instances().slice(0, 2);
+    await expect(sweep(h, { changes: pair })).resolves.toEqual(['sent', 'collapsed_into_series']);
+    expect(h.transport.sent[0]?.body).toContain('2 sessions');
+  });
+
+  it('spends ONE of the five per-sweep slots on a whole series', async () => {
+    // Before the collapse, one edit to a weekly class spent the entire budget on itself
+    // and everything else that sweep went unsaid for good.
+    const h = harness();
+    const others = Array.from({ length: 4 }, (_, i) => ({
+      ...TIMED,
+      eventId: `other-${i}`,
+      updated: '2026-09-17T14:55:00.000Z',
+      start: { dateTime: `2026-09-${18 + i}T18:00:00.000Z` },
+      end: { dateTime: `2026-09-${18 + i}T19:00:00.000Z` },
+    }));
+    const outcomes = await sweep(h, { changes: [...instances(), ...others] });
+    expect(outcomes.filter((one) => one === 'sent')).toHaveLength(5);
+    expect(outcomes.filter((one) => one === 'over_sweep_cap')).toEqual([]);
+    expect(h.transport.sent).toHaveLength(5);
+  });
+});
+
+describe('a change the gate held is offered again', () => {
+  it('keeps a quiet-hours hold and sends it on a later sweep with no new Google change', async () => {
+    const held = harness({ verdict: { allowed: false, reason: 'quiet_hours' } });
+    await expect(sweep(held)).resolves.toEqual(['gate_refused:quiet_hours']);
+
+    const pending = await snapshotOf(TIMED.eventId);
+    expect(pending?.pendingSince).toBeInstanceOf(Date);
+    expect(pending?.heldTitle).toBe('Cartwheels Gym');
+
+    // Daylight, and Google has nothing new to say — the sweep's own memory is the only
+    // thing that can produce this text.
+    const daylight = harness();
+    const later = await sweepBoth(daylight, { changes: [], now: new Date('2026-09-17T16:00:00.000Z') });
+    expect(later).toEqual({ changes: [], reoffers: ['sent'] });
+    expect(daylight.transport.sent).toHaveLength(1);
+    expect(daylight.transport.sent[0]?.body).toContain(
+      'Cartwheels Gym is on your calendar for Thursday, Sep 17, 4:15-5:00 p.m.',
+    );
+
+    // The debt is settled: the hold is cleared and the parent's words are gone with it.
+    const settled = await snapshotOf(TIMED.eventId);
+    expect(settled?.pendingSince).toBeNull();
+    expect(settled?.heldTitle).toBeNull();
+    expect(settled?.heldLocation).toBeNull();
+  });
+
+  it('re-offers a held MOVE as a move, not as a bare "is on your calendar"', async () => {
+    const EARLY = new Date('2026-09-15T15:00:00.000Z');
+    const wednesday: CalendarChange = {
+      ...TIMED,
+      updated: '2026-09-15T14:00:00.000Z',
+      start: { dateTime: '2026-09-16T20:15:00.000Z' },
+      end: { dateTime: '2026-09-16T21:00:00.000Z' },
+    };
+    await sweep(harness(), { now: EARLY, changes: [wednesday] });
+    await expect(
+      sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
+        now: EARLY,
+        changes: [
+          {
+            ...wednesday,
+            updated: '2026-09-15T14:30:00.000Z',
+            start: { dateTime: '2026-09-17T20:15:00.000Z' },
+            end: { dateTime: '2026-09-17T21:00:00.000Z' },
+          },
+        ],
+      }),
+    ).resolves.toEqual(['gate_refused:quiet_hours']);
+
+    const daylight = harness();
+    const later = await sweepBoth(daylight, {
+      changes: [],
+      now: new Date('2026-09-15T16:00:00.000Z'),
+    });
+    expect(later.reoffers).toEqual(['sent']);
+    expect(daylight.transport.sent[0]?.body).toContain(
+      'Cartwheels Gym moved to Thursday, Sep 17, 4:15-5:00 p.m. (was Wednesday, Sep 16).',
+    );
+  });
+
+  /** A hold on an event far enough ahead that the AGE is the only thing that can end it.
+   * `pending_outside_window` would otherwise fire first and prove nothing about expiry. */
+  const AHEAD: CalendarChange = {
+    ...TIMED,
+    eventId: 'ev-ahead',
+    start: { dateTime: '2026-09-25T20:15:00.000Z' },
+    end: { dateTime: '2026-09-25T21:00:00.000Z' },
+  };
+  const afterDays = (days: number) => new Date(NOW.getTime() + days * 86_400_000 + 60_000);
+
+  it('gives up on a hold older than three days, by name', async () => {
+    await expect(
+      sweep(harness({ verdict: { allowed: false, reason: 'frequency_cap' } }), {
+        changes: [AHEAD],
+      }),
+    ).resolves.toEqual(['gate_refused:frequency_cap']);
+
+    const tooLate = harness();
+    const past = await sweepBoth(tooLate, {
+      changes: [],
+      now: afterDays(CALENDAR_ALERT_PENDING_MAX_DAYS),
+    });
+    expect(past.reoffers).toEqual(['pending_expired']);
+    expect(tooLate.transport.sent).toEqual([]);
+    expect((await snapshotOf(AHEAD.eventId))?.pendingSince).toBeNull();
+  });
+
+  it('is still owed one day inside the limit — the control for the expiry above', async () => {
+    await sweep(harness({ verdict: { allowed: false, reason: 'frequency_cap' } }), {
+      changes: [AHEAD],
+    });
+
+    const inTime = harness();
+    const owed = await sweepBoth(inTime, {
+      changes: [],
+      now: afterDays(CALENDAR_ALERT_PENDING_MAX_DAYS - 1),
+    });
+    expect(owed.reoffers).toEqual(['sent']);
+    expect(inTime.transport.sent).toHaveLength(1);
+  });
+
+  it('drops a hold the calendar overtook, under its own name', async () => {
+    await expect(
+      sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } })),
+    ).resolves.toEqual(['gate_refused:quiet_hours']);
+
+    const afterwards = harness();
+    const later = await sweepBoth(afterwards, {
+      changes: [],
+      now: new Date('2026-09-17T22:00:00.000Z'), // 6 p.m. Toronto: the class is over
+    });
+    expect(later.reoffers).toEqual(['pending_outside_window']);
+    expect(afterwards.transport.sent).toEqual([]);
+  });
+
+  it('puts the oldest debt first, and spends the SAME five slots on debts and new news', async () => {
+    // Four debts, four fresh changes, five slots: the debts go first and one fresh change
+    // is held over. A cap that counted them separately would send eight.
+    for (let i = 0; i < 4; i += 1) {
+      await sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
+        now: new Date(NOW.getTime() + i * 1000),
+        changes: [
+          {
+            ...TIMED,
+            eventId: `owed-${i}`,
+            start: { dateTime: `2026-09-2${5 - i}T20:15:00.000Z` },
+            end: { dateTime: `2026-09-2${5 - i}T21:00:00.000Z` },
+          },
+        ],
+      });
+    }
+
+    const h = harness();
+    const both = await sweepBoth(h, {
+      changes: Array.from({ length: 4 }, (_, i) => ({
+        ...TIMED,
+        eventId: `new-${i}`,
+        start: { dateTime: `2026-09-${18 + i}T18:00:00.000Z` },
+        end: { dateTime: `2026-09-${18 + i}T19:00:00.000Z` },
+      })),
+    });
+
+    expect(both.reoffers).toEqual(['sent', 'sent', 'sent', 'sent']);
+    expect(both.changes).toEqual(['sent', 'over_sweep_cap', 'over_sweep_cap', 'over_sweep_cap']);
+    expect(h.transport.sent).toHaveLength(5);
+    // The debts were paid in the order they were owed, not soonest-event-first: owed-0 is
+    // the LATEST event and still went first.
+    expect(h.transport.sent[0]?.body).toContain('Friday, Sep 25');
+    // ...and the three that lost the cap are owed now, so nothing was dropped.
+    const carried = (await snapshotRows()).filter((row) => row.pendingSince !== null);
+    expect(carried.map((row) => row.eventId).sort()).toEqual(['new-1', 'new-2', 'new-3']);
+  });
+});
+
+describe('the memory itself', () => {
+  it('writes a snapshot for every change it placed, whatever the ending', async () => {
+    const far: CalendarChange = {
+      ...TIMED,
+      eventId: 'ev-far',
+      start: { dateTime: '2026-10-27T20:15:00.000Z' },
+      end: { dateTime: '2026-10-27T21:00:00.000Z' },
+    };
+    const bare: CalendarChange = { ...TIMED, eventId: 'ev-bare', start: {}, end: {} };
+
+    await expect(sweep(harness(), { changes: [TIMED, far, bare] })).resolves.toEqual([
+      'sent',
+      'outside_window',
+      'no_start',
+    ]);
+
+    const rows = await snapshotRows();
+    expect(rows.map((row) => row.eventId).sort()).toEqual([TIMED.eventId, 'ev-far'].sort());
+    expect(await snapshotOf(TIMED.eventId)).toMatchObject({
+      startAt: new Date('2026-09-17T20:15:00.000Z'),
+      endAt: new Date('2026-09-17T21:00:00.000Z'),
+      allDay: false,
+      updatedStamp: TIMED.updated,
+      status: 'confirmed',
+      pendingSince: null,
+      // Rule #1: a sent text owes nothing, so the parent's words are not kept.
+      heldTitle: null,
+      heldLocation: null,
+    });
+  });
+
+  it('keeps the parent\'s words ONLY while a text is owed', async () => {
+    await sweep(harness({ verdict: { allowed: false, reason: 'quiet_hours' } }), {
+      changes: [{ ...TIMED, location: 'Stouffville Leisure Centre' }],
+    });
+    expect(await snapshotOf(TIMED.eventId)).toMatchObject({
+      heldTitle: 'Cartwheels Gym',
+      heldLocation: 'Stouffville Leisure Centre',
+    });
+  });
+
+  it('keeps one memory per connection, so two calendars never read each other', async () => {
+    const other = await seedIntegration(db.database, family.familyId, family.parentUserId, 'gdrive');
+    await sweep(harness());
+    const rows = await db.database
+      .select()
+      .from(schema.calendarEventSnapshots)
+      .where(eq(schema.calendarEventSnapshots.integrationId, other));
+    expect(rows).toEqual([]);
+  });
+
+  it('costs one query and no clock read on a quiet calendar with nothing owed', async () => {
+    const h = harness();
+    await expect(sweepBoth(h, { changes: [] })).resolves.toEqual({ changes: [], reoffers: [] });
+    expect(h.timeZoneReads).toEqual([]);
+  });
+});
+
 describe('the text itself', () => {
   const TZ = 'America/Toronto';
 
   /** The span is resolved ONCE per change by the sweep and handed to the renderer, so the
    * window decision and the sentence can never disagree about which day this is. */
-  function render(change: CalendarChange): string {
+  function render(change: CalendarChange, previous: PriorStart | null = null): string {
     const span = eventSpan(change, TZ);
     if (span === null) throw new Error('render: this change has no placeable start');
-    return renderCalendarAlert(change, span, TZ, NOW);
+    return renderCalendarAlert(change, span, TZ, NOW, previous);
   }
 
   it('names the day and the clock range for a timed event', () => {
@@ -682,9 +1138,14 @@ describe('the text itself', () => {
           end: { dateTime: '2027-01-05T19:00:00.000Z' },
         },
       ]) {
-        const body = render({ ...TIMED, ...when, status, title: nasty, location: `${nasty} hall` });
-        expect(isPrintableGsm7Basic(body)).toBe(true);
-        expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBeLessThanOrEqual(2);
+        const change = { ...TIMED, ...when, status, title: nasty, location: `${nasty} hall` };
+        // The MOVED shape too, and from the widest `(was …)` there is: another year, so
+        // the parenthetical carries the weekday, the month, the day AND the year.
+        for (const previous of [null, { startMs: Date.parse('2026-12-30T18:00:00.000Z'), allDay: false }]) {
+          const body = render(change, previous);
+          expect(isPrintableGsm7Basic(body)).toBe(true);
+          expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBeLessThanOrEqual(2);
+        }
       }
     }
   });

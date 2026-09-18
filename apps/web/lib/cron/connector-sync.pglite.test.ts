@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import type PgBoss from 'pg-boss';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,7 +13,7 @@ import {
   emailAlertDedupeKey,
 } from '~/lib/integrations/email-alert';
 import type { ActiveConnectorConnection } from '~/lib/integrations/store';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import { connectorSyncDeps } from './connector-sync';
 
 /**
@@ -33,6 +32,9 @@ import { connectorSyncDeps } from './connector-sync';
 
 let db: TestDb;
 let family: { familyId: string; parentUserId: string };
+/** A REAL integrations row per test: the calendar alert's snapshot memory hangs off it by
+ * a cascading foreign key, so a fabricated uuid is rejected by the production DDL. */
+let CONNECTION: string;
 
 beforeAll(async () => {
   db = await createTestDb();
@@ -44,6 +46,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   family = await seedFamily(db.database);
+  CONNECTION = await seedIntegration(db.database, family.familyId, family.parentUserId);
   vi.stubEnv('F14_ENABLED', 'true');
   // Belt and braces for a wiring that regresses PAST the early outcomes: the alert would
   // then reach the real classifier. Both make that a loud failure rather than a live call.
@@ -62,7 +65,7 @@ afterEach(() => {
 
 function connection(over: Partial<ActiveConnectorConnection> = {}): ActiveConnectorConnection {
   return {
-    id: randomUUID(),
+    id: CONNECTION,
     familyId: family.familyId,
     userId: family.parentUserId,
     provider: 'gmail',
@@ -158,21 +161,21 @@ describe('connectorSyncDeps — the email alert wiring', () => {
 
 describe('connectorSyncDeps — the calendar alert wiring', () => {
   it('reads the parent to text off the CONNECTION, so a calendar with no user texts nobody', async () => {
-    const outcomes = await calendarAlertPort()({
+    const sweep = await calendarAlertPort()({
       connection: connection({ provider: 'gcal', userId: null }),
       seeding: false,
       changes: [change('ev1'), change('ev2')],
     });
-    expect(outcomes).toEqual(['no_parent_user', 'no_parent_user']);
+    expect(sweep).toEqual({ changes: ['no_parent_user', 'no_parent_user'], reoffers: [] });
   });
 
   it("passes the sweep's SEEDING flag through, so a first sync stays silent", async () => {
-    const outcomes = await calendarAlertPort()({
+    const sweep = await calendarAlertPort()({
       connection: connection({ provider: 'gcal' }),
       seeding: true,
       changes: [change('ev1')],
     });
-    expect(outcomes).toEqual(['seeding_run']);
+    expect(sweep).toEqual({ changes: ['seeding_run'], reoffers: [] });
   });
 
   it('keys the dedupe read on THIS connection, THIS event and Google\'s own stamp', async () => {
@@ -194,7 +197,7 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
 
     await expect(
       calendarAlertPort()({ connection: conn, seeding: false, changes: [moved] }),
-    ).resolves.toEqual(['already_sent']);
+    ).resolves.toEqual({ changes: ['already_sent'], reoffers: [] });
     // ...and the SAME event with a new stamp is a new key, so a move is heard. The
     // concrete outcome rather than `not.toEqual('already_sent')`: an absence assertion
     // passes just as happily on a wiring that stopped producing outcomes at all. This
@@ -205,6 +208,6 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
         seeding: false,
         changes: [{ ...moved, updated: '2026-09-17T15:40:00.000Z' }],
       }),
-    ).resolves.toEqual(['gate_refused:not_enrolled']);
+    ).resolves.toEqual({ changes: ['gate_refused:not_enrolled'], reoffers: [] });
   });
 });

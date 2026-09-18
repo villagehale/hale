@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { asciiCopy, asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -25,11 +25,25 @@ import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
  * (is this soon enough to be worth interrupting for?) and the sentence is assembled from
  * Google's own fields.
  *
+ * THE SWEEP HAS A MEMORY (calendar_event_snapshots), which is the whole of the second
+ * pass on this module. events.list is a delta reader: it hands a change over once and the
+ * syncToken advances past it the same instant, so anything that could not be answered
+ * from one change in isolation could not be answered at all. Three follow-ups off #650
+ * were all that one gap:
+ *   - a moved event read "is on your calendar for <new time>" — nothing held the OLD time;
+ *   - one edit to a weekly class arrived as one change per instance and spent the whole
+ *     per-sweep budget on itself — nothing grouped them;
+ *   - a change refused by quiet hours was never offered again — nothing remembered that
+ *     Hale still owed the text.
+ *
  * WHAT IT MAY NOT DO:
  *   - The description and the attendees never leave this module. A calendar description
  *     is where a parent keeps the doctor's reason and the other family's address, and an
  *     attendee list is other people's email addresses (rule #1). The text carries the
  *     summary, the time, and a short clean location.
+ *   - The memory holds the SHAPE of an event (when, all-day, which series) always, and
+ *     the parent's own words — the clamped title, the vetted location — only while a text
+ *     is owed and not one sweep longer. A table CHECK enforces that, not a habit.
  *   - A SEEDING run alerts nobody. The first sync of a connection sees the whole
  *     calendar; so does the full resync Google forces after a stale syncToken. Either
  *     one would be two hundred texts about events the parent already knows about.
@@ -47,6 +61,11 @@ import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
  */
 export interface CalendarChange {
   eventId: string;
+  /** Google's `recurringEventId`: the SERIES this item is an instance of, absent on a
+   * one-off. The request sets `singleEvents=true`, so one edit to a weekly class comes
+   * back as one change per instance — this is the only field that says so, and grouping
+   * on it is what turns six changes into one text. */
+  recurringEventId?: string;
   /** The version of this event, and half the dedupe key — which is what makes a MOVED
    * event a new text and a re-read of the same page free. Google's `updated` where there
    * is one; the sync falls back to the etag and then to its own clock, because the items
@@ -74,7 +93,9 @@ export interface CalendarChange {
  * `outside_window` and `no_start` are two facts, not one. "This is in forty days" is a
  * quiet week; "Google sent a tombstone with no date on it" is a sweep that cannot see —
  * and folding the second into the first is how a connector goes blind without anyone
- * being able to tell (rule #11).
+ * being able to tell (rule #11). The three added with the memory keep that discipline:
+ * `collapsed_into_series` is an instance a text DID go out about, `pending_expired` is a
+ * text Hale gave up owing, and `pending_outside_window` is one the calendar overtook.
  */
 export const CALENDAR_ALERT_OUTCOMES = [
   'sent',
@@ -92,6 +113,17 @@ export const CALENDAR_ALERT_OUTCOMES = [
   'no_send_target',
   'send_failed',
   'alert_failed',
+  /** This instance was spoken for by the ONE text its series got. Not `already_sent`,
+   * which means a previous sweep covered it: a sweep where a class moved reads as five of
+   * these and one `sent`, and that is the shape the collapse is working. */
+  'collapsed_into_series',
+  /** A held change Hale stopped owing: the re-offer never got past the gate inside
+   * {@link CALENDAR_ALERT_PENDING_MAX_DAYS}, and a three-day-old "it moved" is noise. */
+  'pending_expired',
+  /** A held change the calendar overtook — the event happened, or its cancellation is now
+   * in the past — so there is nothing left to say. Distinct from `outside_window`, which
+   * is about a change that arrived this sweep. */
+  'pending_outside_window',
 ] as const;
 
 export type CalendarAlertOutcome = (typeof CALENDAR_ALERT_OUTCOMES)[number];
@@ -102,17 +134,41 @@ export function emptyCalendarAlertCounts(): CalendarAlertCounts {
   return Object.fromEntries(CALENDAR_ALERT_OUTCOMES.map((o) => [o, 0])) as CalendarAlertCounts;
 }
 
-/** At most this many ALERTABLE changes per connection per sweep, soonest first. A
- * household that rebuilds its September in one sitting produces thirty edits in one
- * 15-minute window; the ones worth a text are the ones happening next. Counted over the
- * changes that survive the window, never over the raw page — see
- * {@link alertParentForCalendarChanges}. */
+/**
+ * One sweep's answer, in two lists rather than one.
+ *
+ * `changes` is positional — one outcome per change, in the order they arrived — because
+ * that is the only way a caller can tell WHICH change was dropped. The re-offers are not
+ * in that input at all, so appending them to it would make position meaningless and hide
+ * them in a bucket that means something else (rule #11). The summary counts both.
+ */
+export interface CalendarAlertSweep {
+  changes: readonly CalendarAlertOutcome[];
+  /** One per pending snapshot this sweep picked back up, oldest debt first. */
+  reoffers: readonly CalendarAlertOutcome[];
+}
+
+/** At most this many ALERTABLE texts per connection per sweep, oldest debt first and then
+ * soonest first. A household that rebuilds its September in one sitting produces thirty
+ * edits in one 15-minute window; the ones worth a text are the ones happening next. A
+ * series collapsed into one text spends ONE of these, and a re-offer spends one too —
+ * which is what keeps the budget a budget rather than two of them. */
 export const CALENDAR_ALERT_MAX_PER_SWEEP = 5;
 
 /** How far ahead an event has to start to be worth interrupting for. A cancellation is
  * exempt from the ceiling (see {@link withinAlertWindow}) — a March camp that just went
  * away is news in September. */
 export const CALENDAR_ALERT_WINDOW_DAYS = 14;
+
+/** How long Hale keeps owing a text the gate refused. Past this the news is stale — a
+ * three-day-old "it moved to Thursday" is worse than silence — and the hold is dropped
+ * with its own name rather than lingering as a queue nobody drains. */
+export const CALENDAR_ALERT_PENDING_MAX_DAYS = 3;
+
+/** A group of this many instances of one series, in one sweep, is one text. Below it the
+ * instances are ordinary singles: two changes about the same class on two days really are
+ * two things to say. */
+const SERIES_MIN_INSTANCES = 2;
 
 export const CALENDAR_ALERT_TEMPLATE_KEY = 'connector:calendar_alert';
 
@@ -125,6 +181,20 @@ const HOLD_STATUS: Record<
   not_enrolled: 'suppressed_consent',
   no_watch_consent: 'suppressed_consent',
 };
+
+/**
+ * The endings that mean "not yet", as opposed to "no".
+ *
+ * These three are the whole of the pending mechanism: the text was worth sending, Hale
+ * declined to send it THIS minute, and the syncToken has already moved past the change —
+ * so unless the sweep writes down that it still owes one, the news is gone for good. A
+ * consent refusal is deliberately not here: `not_enrolled` is not a wait, it is an answer.
+ */
+const HELD_OUTCOMES = new Set<CalendarAlertOutcome>([
+  'gate_refused:quiet_hours',
+  'gate_refused:frequency_cap',
+  'over_sweep_cap',
+]);
 
 /**
  * Keyed on the CONNECTION, the event and Google's `updated` stamp.
@@ -140,6 +210,22 @@ export function calendarAlertDedupeKey(
   updated: string,
 ): string {
   return `calendar_alert:${integrationId}:${eventId}:${updated}`;
+}
+
+/**
+ * The same key for a SERIES, so one edit to a weekly class is one text however many
+ * instances carried it.
+ *
+ * The stamp is the LATEST of the group's, which is what makes a re-offer of a held series
+ * claim the key the original hold would have claimed: both groups carry the same set of
+ * `updated` values, so both reduce to the same string.
+ */
+export function calendarSeriesAlertDedupeKey(
+  integrationId: string,
+  recurringEventId: string,
+  updated: string,
+): string {
+  return `calendar_alert:${integrationId}:series:${recurringEventId}:${updated}`;
 }
 
 export interface CalendarAlertPorts {
@@ -164,71 +250,163 @@ export interface CalendarAlertInput {
   now: Date;
 }
 
+/** One change placed in time, with everything the sweep knows about it: where its outcome
+ * goes, what Hale last said about it, and how long it has been owed. */
+interface Placed {
+  change: CalendarChange;
+  span: EventSpan;
+  /** The start the parent was last told, when it differs from this one. Null on a first
+   * sighting and on a cancellation, both of which read as today's sentence. */
+  previous: PriorStart | null;
+  /** When Hale started owing this text, or null for a change that arrived this sweep. */
+  pendingSince: Date | null;
+  write(outcome: CalendarAlertOutcome): void;
+}
+
+/** One text, and the one to five instances it speaks for. The first member is the one it
+ * is derived from and the one that receives the real outcome. */
+interface Offer {
+  group: readonly Placed[];
+  dedupeKey: string;
+  pendingSince: Date | null;
+  startMs: number;
+  render(): string;
+  /** What the memory has to keep if this one is held — the whole of the re-offer. */
+  heldTitle: string;
+  heldLocation: string | null;
+}
+
 /**
- * One sweep's worth of calendar changes for one connection → one outcome per change, in
- * the order the changes arrived.
+ * One sweep's worth of calendar changes for one connection → one outcome per change, plus
+ * one per pending text this sweep picked back up.
  *
- * ELIGIBILITY BEFORE THE CAP, which is the whole of this function's shape. A change Hale
- * would never text about is not a slot: renaming a weekly class returns every instance of
- * the series with a fresh `updated` stamp, the finished ones included, and capping before
- * the window is judged lets five Tuesdays that already happened swallow the sweep while
- * tomorrow's class goes unsaid — permanently, because syncCalendar advanced the syncToken
- * the moment it read the page. So: decide the window for ALL of them, sort what survives
- * soonest-first, and spend the five on those.
+ * WHAT HALE ALREADY OWED COMES FIRST, then eligibility, then the cap — and that order is
+ * the whole of this function's shape.
+ *
+ * Eligibility before the cap, because a change Hale would never text about is not a slot:
+ * renaming a weekly class returns every instance of the series with a fresh `updated`
+ * stamp, the finished ones included, and capping before the window is judged lets five
+ * Tuesdays that already happened swallow the sweep while tomorrow's class goes unsaid.
+ *
+ * Debts before new news, because a debt is already late. A text quiet hours refused at
+ * 11:40 p.m. is offered again at 8 a.m., and it would never survive a queue that always
+ * put this minute's edits in front of it.
  */
 export async function alertParentForCalendarChanges(
   database: Database,
   input: CalendarAlertInput,
   ports: CalendarAlertPorts,
-): Promise<readonly CalendarAlertOutcome[]> {
-  const { familyId, parentUserId, changes, now } = input;
-  if (parentUserId === null) return changes.map(() => 'no_parent_user');
-  if (input.seeding) return changes.map(() => 'seeding_run');
-  // Before the clock read below: the flag is a pure function of the family id, so a query
-  // in front of it is a query per sweep for a family Hale may not speak to at all.
-  if (!f14EnabledFor(familyId)) return changes.map(() => 'dark');
-  // Most sweeps are this one. A quiet calendar must not cost a clock read, the same way
-  // the email sibling refuses to pay for an empty mailbox.
-  if (changes.length === 0) return [];
+): Promise<CalendarAlertSweep> {
+  const { familyId, parentUserId, integrationId, changes, now } = input;
+  if (parentUserId === null) return { changes: changes.map(() => 'no_parent_user'), reoffers: [] };
+  if (input.seeding) return { changes: changes.map(() => 'seeding_run'), reoffers: [] };
+  // Before any read below: the flag is a pure function of the family id, so a query in
+  // front of it is a query per sweep for a family Hale may not speak to at all.
+  if (!f14EnabledFor(familyId)) return { changes: changes.map(() => 'dark'), reoffers: [] };
 
+  // ONE read for both halves of the memory: what Hale last said about the events in this
+  // page, and every text it still owes on this connection. A quiet calendar with no debts
+  // costs this one indexed query and nothing else — not even the clock read.
+  const memory = await readSnapshots(database, integrationId, changes);
+  const arrived = new Set(changes.map((change) => change.eventId));
+  const debts = memory
+    .filter((row): row is PendingSnapshot => isPending(row) && !arrived.has(row.eventId))
+    .sort((a, b) => a.pendingSince.getTime() - b.pendingSince.getTime());
+  if (changes.length === 0 && debts.length === 0) return { changes: [], reoffers: [] };
+
+  const priorByEvent = new Map(memory.map((row) => [row.eventId, row]));
   const timeZone = await ports.timeZone(parentUserId);
-  const outcomes = new Array<CalendarAlertOutcome>(changes.length);
-  const eligible: Array<{ at: number; change: CalendarChange; span: EventSpan }> = [];
+  const changeOutcomes = new Array<CalendarAlertOutcome>(changes.length);
+  const reofferOutcomes = new Array<CalendarAlertOutcome>(debts.length);
+  const writes = new Map<string, SnapshotWrite>();
+
+  const fresh: Placed[] = [];
   changes.forEach((change, at) => {
+    const write = (outcome: CalendarAlertOutcome) => {
+      changeOutcomes[at] = outcome;
+    };
     const span = eventSpan(change, timeZone);
-    if (span === null) outcomes[at] = 'no_start';
-    else if (!withinAlertWindow(change, span, now)) outcomes[at] = 'outside_window';
-    else eligible.push({ at, change, span });
+    // Nothing to remember about a shape nothing can place: a snapshot with no start
+    // cannot make the next sighting a move, and cannot be re-offered either.
+    if (span === null) {
+      write('no_start');
+      return;
+    }
+    const placed: Placed = {
+      change,
+      span,
+      previous: movedFrom(priorByEvent.get(change.eventId), change, span),
+      pendingSince: priorByEvent.get(change.eventId)?.pendingSince ?? null,
+      write,
+    };
+    if (isOver(span, now)) {
+      write('outside_window');
+      // Remembered anyway, and deliberately: an event Hale stayed quiet about is still an
+      // event whose time it now knows, so the edit that pulls it back into the fortnight
+      // reads as the move it is.
+      remember(writes, placed, null);
+      return;
+    }
+    fresh.push(placed);
   });
 
-  eligible.sort((a, b) => a.span.startMs - b.span.startMs);
-  for (const [rank, { at, change, span }] of eligible.entries()) {
-    outcomes[at] =
+  const owed: Placed[] = [];
+  debts.forEach((row, at) => {
+    const write = (outcome: CalendarAlertOutcome) => {
+      reofferOutcomes[at] = outcome;
+    };
+    const placed = revive(row, timeZone, write);
+    const ageMs = now.getTime() - row.pendingSince.getTime();
+    if (ageMs > CALENDAR_ALERT_PENDING_MAX_DAYS * 86_400_000) {
+      write('pending_expired');
+      remember(writes, placed, null);
+      return;
+    }
+    if (isOver(placed.span, now)) {
+      write('pending_outside_window');
+      remember(writes, placed, null);
+      return;
+    }
+    owed.push(placed);
+  });
+
+  const offers = [
+    ...offersOf(owed, integrationId, timeZone, now, writes, 'pending_outside_window').sort(
+      (a, b) => (a.pendingSince?.getTime() ?? 0) - (b.pendingSince?.getTime() ?? 0),
+    ),
+    ...offersOf(fresh, integrationId, timeZone, now, writes, 'outside_window').sort(
+      (a, b) => a.startMs - b.startMs,
+    ),
+  ];
+  for (const [rank, offer] of offers.entries()) {
+    const outcome =
       rank < CALENDAR_ALERT_MAX_PER_SWEEP
-        ? await alertOne(database, input, parentUserId, change, span, timeZone, ports)
+        ? await sendOffer(database, input, parentUserId, offer, ports)
         : 'over_sweep_cap';
+    settle(offer, outcome, writes, now);
   }
-  return outcomes;
+
+  await writeSnapshots(database, integrationId, writes, now);
+  return { changes: changeOutcomes, reoffers: reofferOutcomes };
 }
 
-async function alertOne(
+async function sendOffer(
   database: Database,
   input: CalendarAlertInput,
   parentUserId: string,
-  change: CalendarChange,
-  span: EventSpan,
-  timeZone: string,
+  offer: Offer,
   ports: CalendarAlertPorts,
 ): Promise<CalendarAlertOutcome> {
-  const { familyId, integrationId, now } = input;
-  const dedupeKey = calendarAlertDedupeKey(integrationId, change.eventId, change.updated);
-  if (await dedupeActive(dedupeKey, database)) return 'already_sent';
+  const { familyId, now } = input;
+  const lead = offer.group[0];
+  if (lead === undefined) throw new Error('sendOffer: an offer with no instances');
+  if (await dedupeActive(offer.dedupeKey, database)) return 'already_sent';
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'calendar_alert', now });
   if (!verdict.allowed) {
-    // A RECEIPT, not a claim. The syncToken advanced past this change the moment the
-    // sweep read it, so nothing will offer it again — this row is the whole lasting
-    // record that Hale saw a cancellation at 23:40 and chose to stay quiet.
+    // A RECEIPT, and — for a hold that is a "not yet" — half of a promise: the caller
+    // writes the other half into the memory, so the syncToken moving past this change no
+    // longer means nobody will ever offer it again.
     //
     // The key stays NULL: the unique index is total over non-null dedupe keys, so a
     // suppression carrying it would block the send it is a record of NOT making.
@@ -246,7 +424,7 @@ async function alertOne(
     return `gate_refused:${verdict.reason}`;
   }
 
-  const message = renderCalendarAlert(change, span, timeZone, now);
+  const message = offer.render();
 
   // CLAIM FIRST, by the insert rather than by a read a concurrent sweep can race.
   const [claimed] = await database
@@ -258,7 +436,7 @@ async function alertOne(
       direction: 'out',
       category: 'calendar_alert',
       templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
-      dedupeKey,
+      dedupeKey: offer.dedupeKey,
       status: acceptedStatus('sms'),
       sentAt: now,
     })
@@ -313,12 +491,310 @@ async function alertOne(
     actionTaken: 'calendar_alert_sent',
     targetTable: 'channel_messages',
     targetId: claimed.id,
-    // Enums and flags only. Not the title, not the location: an audit row a support
-    // agent can read is a copy of the calendar in a table that is never redacted.
-    after: { status: change.status, allDay: span.allDay },
+    // Enums, flags and counts only. Not the title, not the location: an audit row a
+    // support agent can read is a copy of the calendar in a table that is never redacted.
+    after: {
+      status: lead.change.status,
+      allDay: lead.span.allDay,
+      instances: offer.group.length,
+      moved: lead.previous !== null,
+    },
   });
 
   return 'sent';
+}
+
+/**
+ * The outcome reaches the instances it speaks for, and the memory reaches the next sweep.
+ *
+ * A held text keeps its ORIGINAL `pending_since` — the instant Hale first owed it, not
+ * the instant it was refused again — because that is what makes the re-offer queue drain
+ * in the order the news arrived instead of shuffling on every sweep.
+ */
+function settle(
+  offer: Offer,
+  outcome: CalendarAlertOutcome,
+  writes: Map<string, SnapshotWrite>,
+  now: Date,
+): void {
+  offer.group.forEach((member, index) => {
+    member.write(index === 0 ? outcome : 'collapsed_into_series');
+  });
+  if (!HELD_OUTCOMES.has(outcome)) {
+    for (const member of offer.group) remember(writes, member, null);
+    return;
+  }
+  const since = offer.pendingSince ?? now;
+  for (const member of offer.group) {
+    remember(writes, member, {
+      since,
+      title: offer.heldTitle,
+      location: offer.heldLocation,
+      movedFrom: member.previous === null ? null : new Date(member.previous.startMs),
+    });
+  }
+}
+
+// ── One text per series ──────────────────────────────────────────────────────
+
+/**
+ * The texts a batch of changes-still-ahead becomes: one per series with two or more
+ * instances in it, one per everything else.
+ *
+ * THE FORTNIGHT IS JUDGED ON THE GROUP, not on each instance, and that is the difference
+ * between a sentence and a lie. Renaming a weekly class returns the whole year; the
+ * sessions already behind are dropped one by one before this (they are not sessions
+ * anybody is going to), but the ones ahead are all still true, and "2 sessions now
+ * Tuesdays" — because only two of the six fall inside the next fourteen days — describes a
+ * term that does not exist. So the LEAD decides whether the news is soon enough to
+ * interrupt for, and the count is everything the batch said was coming.
+ */
+function offersOf(
+  placed: readonly Placed[],
+  integrationId: string,
+  timeZone: string,
+  now: Date,
+  writes: Map<string, SnapshotWrite>,
+  tooFarOff: CalendarAlertOutcome,
+): Offer[] {
+  const bySeries = new Map<string, Placed[]>();
+  const groups: Placed[][] = [];
+  for (const one of placed) {
+    const series = one.change.recurringEventId;
+    if (series === undefined) {
+      groups.push([one]);
+      continue;
+    }
+    const existing = bySeries.get(series);
+    if (existing) existing.push(one);
+    else {
+      const started = [one];
+      bySeries.set(series, started);
+      groups.push(started);
+    }
+  }
+  const offers: Offer[] = [];
+  for (const group of groups) {
+    group.sort((a, b) => a.span.startMs - b.span.startMs);
+    const lead = group[0];
+    if (lead === undefined) continue;
+    if (!withinAlertWindow(lead.change, lead.span, now)) {
+      for (const member of group) {
+        member.write(tooFarOff);
+        remember(writes, member, null);
+      }
+      continue;
+    }
+    offers.push(offerOf(group, integrationId, timeZone, now));
+  }
+  return offers;
+}
+
+function offerOf(
+  group: readonly Placed[],
+  integrationId: string,
+  timeZone: string,
+  now: Date,
+): Offer {
+  const lead = group[0];
+  if (lead === undefined) throw new Error('offerOf: an empty group');
+  const series = lead.change.recurringEventId;
+  const pendingSince = group.reduce<Date | null>(
+    (oldest, member) =>
+      member.pendingSince === null || (oldest !== null && oldest <= member.pendingSince)
+        ? oldest
+        : member.pendingSince,
+    null,
+  );
+  if (series === undefined || group.length < SERIES_MIN_INSTANCES) {
+    return {
+      group,
+      dedupeKey: calendarAlertDedupeKey(integrationId, lead.change.eventId, lead.change.updated),
+      pendingSince,
+      startMs: lead.span.startMs,
+      render: () => renderCalendarAlert(lead.change, lead.span, timeZone, now, lead.previous),
+      heldTitle: eventTitle(lead.change),
+      heldLocation: vettedLocation(lead.change),
+    };
+  }
+  // The LATEST stamp in the group, so the same set of instances always reduces to the same
+  // key — which is how a held series re-offered two sweeps later claims the key its hold
+  // never spent, rather than minting a second one.
+  const stamp = group
+    .map((member) => member.change.updated)
+    .reduce((latest, one) => (one > latest ? one : latest));
+  return {
+    group,
+    dedupeKey: calendarSeriesAlertDedupeKey(integrationId, series, stamp),
+    pendingSince,
+    startMs: lead.span.startMs,
+    render: () => renderCalendarSeriesAlert(group, timeZone, now),
+    heldTitle: seriesTitle(group),
+    // Deliberately none: one sentence about six sessions cannot honestly carry the
+    // location of one of them.
+    heldLocation: null,
+  };
+}
+
+// ── The memory ───────────────────────────────────────────────────────────────
+
+type SnapshotRow = typeof schema.calendarEventSnapshots.$inferSelect;
+/** A row the table's CHECK guarantees is complete: dated, placed in time, and named. */
+type PendingSnapshot = SnapshotRow & { pendingSince: Date; startAt: Date; heldTitle: string };
+
+interface SnapshotWrite {
+  eventId: string;
+  recurringEventId: string | null;
+  startAt: Date;
+  endAt: Date;
+  allDay: boolean;
+  updatedStamp: string;
+  status: string;
+  pendingSince: Date | null;
+  heldTitle: string | null;
+  heldLocation: string | null;
+  heldMovedFromAt: Date | null;
+}
+
+export interface PriorStart {
+  startMs: number;
+  allDay: boolean;
+}
+
+function isPending(row: SnapshotRow): row is PendingSnapshot {
+  // The three travel together or not at all — `calendar_event_snapshots_held_check`. The
+  // narrowing is the database's guarantee restated in the type system, not a filter that
+  // could quietly drop work.
+  return row.pendingSince !== null && row.startAt !== null && row.heldTitle !== null;
+}
+
+/** What Hale last said about the events on this page, and every text it still owes on this
+ * connection — in one round trip, because the second half has to be read even when the
+ * page is empty. */
+async function readSnapshots(
+  database: Database,
+  integrationId: string,
+  changes: readonly CalendarChange[],
+): Promise<SnapshotRow[]> {
+  const onThisPage = [...new Set(changes.map((change) => change.eventId))];
+  const owed = isNotNull(schema.calendarEventSnapshots.pendingSince);
+  return database
+    .select()
+    .from(schema.calendarEventSnapshots)
+    .where(
+      and(
+        eq(schema.calendarEventSnapshots.integrationId, integrationId),
+        onThisPage.length === 0
+          ? owed
+          : or(owed, inArray(schema.calendarEventSnapshots.eventId, onThisPage)),
+      ),
+    );
+}
+
+/** One upsert for the whole sweep. Keyed by event, so a page that mentions an event twice
+ * writes the last thing the sweep decided about it rather than conflicting with itself. */
+async function writeSnapshots(
+  database: Database,
+  integrationId: string,
+  writes: Map<string, SnapshotWrite>,
+  now: Date,
+): Promise<void> {
+  if (writes.size === 0) return;
+  await database
+    .insert(schema.calendarEventSnapshots)
+    .values([...writes.values()].map((write) => ({ integrationId, ...write, updatedAt: now })))
+    .onConflictDoUpdate({
+      target: [
+        schema.calendarEventSnapshots.integrationId,
+        schema.calendarEventSnapshots.eventId,
+      ],
+      set: {
+        recurringEventId: sql`excluded.recurring_event_id`,
+        startAt: sql`excluded.start_at`,
+        endAt: sql`excluded.end_at`,
+        allDay: sql`excluded.all_day`,
+        updatedStamp: sql`excluded.updated_stamp`,
+        status: sql`excluded.status`,
+        pendingSince: sql`excluded.pending_since`,
+        heldTitle: sql`excluded.held_title`,
+        heldLocation: sql`excluded.held_location`,
+        heldMovedFromAt: sql`excluded.held_moved_from_at`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    });
+}
+
+function remember(
+  writes: Map<string, SnapshotWrite>,
+  placed: Placed,
+  hold: { since: Date; title: string; location: string | null; movedFrom: Date | null } | null,
+): void {
+  writes.set(placed.change.eventId, {
+    eventId: placed.change.eventId,
+    recurringEventId: placed.change.recurringEventId ?? null,
+    startAt: new Date(placed.span.startMs),
+    endAt: new Date(placed.span.endMs),
+    allDay: placed.span.allDay,
+    updatedStamp: placed.change.updated,
+    status: placed.change.status,
+    pendingSince: hold?.since ?? null,
+    heldTitle: hold?.title ?? null,
+    heldLocation: hold?.location ?? null,
+    heldMovedFromAt: hold?.movedFrom ?? null,
+  });
+}
+
+/**
+ * Whether this sighting is a MOVE, and what it moved from.
+ *
+ * A cancellation never is: "the Friday class was cancelled" is the whole of the news, and
+ * "(was Thursday)" on top of it is a second fact the parent did not ask about. Neither is
+ * a first sighting, which is what makes the snapshot read load-bearing rather than
+ * decorative — remove it and every changed event reads as new.
+ */
+function movedFrom(
+  prior: SnapshotRow | undefined,
+  change: CalendarChange,
+  span: EventSpan,
+): PriorStart | null {
+  if (prior === undefined || prior.startAt === null) return null;
+  if (change.status === 'cancelled') return null;
+  const startMs = prior.startAt.getTime();
+  return startMs === span.startMs ? null : { startMs, allDay: prior.allDay };
+}
+
+/** A held text, rebuilt from the memory into the shape the renderer takes. Nothing is
+ * fetched from Google: the syncToken moved on long ago, and re-reading would only find a
+ * calendar that has since changed again. */
+function revive(
+  row: PendingSnapshot,
+  timeZone: string,
+  write: (outcome: CalendarAlertOutcome) => void,
+): Placed {
+  const startAt = row.startAt;
+  const endAt = row.endAt ?? startAt;
+  const point = (at: Date) =>
+    row.allDay ? { date: dayKeyOf(at, timeZone) } : { dateTime: at.toISOString() };
+  return {
+    change: {
+      eventId: row.eventId,
+      recurringEventId: row.recurringEventId ?? undefined,
+      updated: row.updatedStamp,
+      status:
+        row.status === 'cancelled' || row.status === 'tentative' ? row.status : 'confirmed',
+      title: row.heldTitle,
+      start: point(startAt),
+      end: point(endAt),
+      location: row.heldLocation ?? undefined,
+    },
+    span: { startMs: startAt.getTime(), endMs: endAt.getTime(), allDay: row.allDay },
+    previous:
+      row.heldMovedFromAt === null
+        ? null
+        : { startMs: row.heldMovedFromAt.getTime(), allDay: row.allDay },
+    pendingSince: row.pendingSince,
+    write,
+  };
 }
 
 // ── When it is ───────────────────────────────────────────────────────────────
@@ -406,9 +882,16 @@ function zoneOffsetMs(instant: number, timeZone: string): number {
  * to know is that it is not happening, and that does not get less true in March.
  */
 function withinAlertWindow(change: CalendarChange, span: EventSpan, now: Date): boolean {
-  if (span.endMs <= now.getTime()) return false;
+  if (isOver(span, now)) return false;
   if (change.status === 'cancelled') return true;
   return span.startMs <= now.getTime() + CALENDAR_ALERT_WINDOW_DAYS * 86_400_000;
+}
+
+/** An event that already finished, which is never worth a text whatever else is true of
+ * it. Judged per INSTANCE and before anything is grouped: renaming a weekly class returns
+ * the whole year, and last Tuesday is not a session anybody is going to. */
+function isOver(span: EventSpan, now: Date): boolean {
+  return span.endMs <= now.getTime();
 }
 
 // ── The sentence ─────────────────────────────────────────────────────────────
@@ -424,6 +907,9 @@ const UNTITLED = 'Untitled';
  * `summary` at all, and the recurring master's title is not on the incremental page to
  * borrow — "Untitled was cancelled" reads as a bug in Hale rather than as news. */
 const UNTITLED_CANCELLED = 'An event';
+/** And what a SERIES with nothing named in it is called. "An event: 6 sessions" is a
+ * disagreement inside one sentence. */
+const UNTITLED_SERIES = 'A repeating event';
 
 /**
  * The text, assembled from Google's fields and nothing else.
@@ -437,6 +923,7 @@ export function renderCalendarAlert(
   span: EventSpan,
   timeZone: string,
   now: Date,
+  previous: PriorStart | null = null,
 ): string {
   const title = eventTitle(change);
   // One zone for everything, because an all-day span is already anchored at midnight in
@@ -446,11 +933,145 @@ export function renderCalendarAlert(
   if (change.status === 'cancelled') {
     return endSentence(`${title} on ${day} was cancelled`);
   }
+  if (previous !== null) return movedSentence(change, span, previous, title, day, timeZone, now);
 
   const when = span.allDay
     ? dayRange(span, day, timeZone, now)
     : `${day}, ${clockRange(span, timeZone, now)}`;
   return endSentence(`${title} is on your calendar for ${when}${placePhrase(change)}`);
+}
+
+/**
+ * `Swim lessons moved to Thursday, Sep 17, 4:15-5:00 p.m. (was Wednesday, Sep 16).`
+ *
+ * The parenthetical is the whole point: an edit the parent made is a fact they already
+ * know, and an edit the OTHER parent (or the gym) made is only legible as news if the
+ * sentence says what changed. Same-day time-only moves say the clock twice instead of the
+ * date twice — "moved to 5:00-5:45 p.m. today (was Thursday, Sep 17)" names a day that did
+ * not move.
+ */
+function movedSentence(
+  change: CalendarChange,
+  span: EventSpan,
+  previous: PriorStart,
+  title: string,
+  day: string,
+  timeZone: string,
+  now: Date,
+): string {
+  const sameDay =
+    dayKeyOf(new Date(span.startMs), timeZone) === dayKeyOf(new Date(previous.startMs), timeZone);
+  if (sameDay && !span.allDay && !previous.allDay) {
+    const was = clockParts(previous.startMs, timeZone);
+    const start = clockParts(span.startMs, timeZone);
+    const wasClock = was.dayPeriod === start.dayPeriod ? was.clock : `${was.clock} ${was.dayPeriod}`;
+    const when = dayKeyOf(new Date(span.startMs), timeZone) === dayKeyOf(now, timeZone)
+      ? 'today'
+      : `on ${day}`;
+    return endSentence(
+      `${title} moved to ${clockRange(span, timeZone, now)} ${when}${placePhrase(change)} (was ${wasClock})`,
+    );
+  }
+  const when = span.allDay
+    ? dayRange(span, day, timeZone, now)
+    : `${day}, ${clockRange(span, timeZone, now)}`;
+  const wasDay = asciiSpaces(formatDayHeading(new Date(previous.startMs), timeZone, now));
+  return endSentence(`${title} moved to ${when}${placePhrase(change)} (was ${wasDay})`);
+}
+
+/**
+ * `Swim lessons moved: 6 sessions now Tuesdays 5:00-5:45 p.m. starting Sep 22.`
+ *
+ * With `singleEvents=true` one edit to a weekly class is one change per instance, so the
+ * only alternative to this sentence is six texts — or, once the per-sweep cap bites, five
+ * texts and a silently dropped Tuesday. The count is the instances still AHEAD in this
+ * batch, because the ones already behind are not sessions anybody is going to.
+ *
+ * The weekday-and-clock shape is claimed only when every instance really does share one.
+ * A series whose instances scatter says the first one instead — a pattern that is not
+ * there is the one thing this sentence must not invent.
+ */
+function renderCalendarSeriesAlert(
+  group: readonly Placed[],
+  timeZone: string,
+  now: Date,
+): string {
+  const lead = group[0];
+  if (lead === undefined) throw new Error('renderCalendarSeriesAlert: an empty group');
+  const title = seriesTitle(group);
+  const count = group.length;
+  const from = shortDate(lead.span.startMs, timeZone, now);
+
+  if (group.every((member) => member.change.status === 'cancelled')) {
+    return endSentence(`${title}: ${count} sessions were cancelled from ${from}`);
+  }
+
+  const moved = group.some((member) => member.previous !== null);
+  const pattern = seriesPattern(group, timeZone, now);
+  if (pattern !== null) {
+    return endSentence(
+      moved
+        ? `${title} moved: ${count} sessions now ${pattern} starting ${from}`
+        : `${title}: ${count} sessions on your calendar, ${pattern} starting ${from}`,
+    );
+  }
+  const day = asciiSpaces(formatDayHeading(new Date(lead.span.startMs), timeZone, now));
+  const first = lead.span.allDay ? day : `${day}, ${clockRange(lead.span, timeZone, now)}`;
+  return endSentence(
+    moved
+      ? `${title} moved: ${count} sessions, the first on ${first}`
+      : `${title}: ${count} sessions on your calendar, the first on ${first}`,
+  );
+}
+
+/** `Tuesdays 5:00-5:45 p.m.`, `Tuesdays` for an all-day series, or nothing when the
+ * instances do not actually share a weekday and a clock. */
+function seriesPattern(
+  group: readonly Placed[],
+  timeZone: string,
+  now: Date,
+): string | null {
+  const lead = group[0];
+  if (lead === undefined) return null;
+  const weekday = weekdayIn(lead.span.startMs, timeZone);
+  const clock = lead.span.allDay ? '' : clockRange(lead.span, timeZone, now);
+  for (const member of group) {
+    if (member.span.allDay !== lead.span.allDay) return null;
+    if (weekdayIn(member.span.startMs, timeZone) !== weekday) return null;
+    if (!lead.span.allDay && clockRange(member.span, timeZone, now) !== clock) return null;
+  }
+  return clock === '' ? `${weekday}s` : `${weekday}s ${clock}`;
+}
+
+/** What to call a series: the first instance in it that carries a usable name. A
+ * cancelled instance carries none at all, so a cancelled series often falls through every
+ * member to the generic — which is the honest answer, not a hole in the sentence. */
+function seriesTitle(group: readonly Placed[]): string {
+  for (const member of group) {
+    const named = usableTitle(member.change);
+    if (named !== null) return named;
+  }
+  return UNTITLED_SERIES;
+}
+
+function weekdayIn(ms: number, timeZone: string): string {
+  return asciiSpaces(
+    new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone }).format(new Date(ms)),
+  );
+}
+
+/** `Sep 22`, or `Jan 5, 2027` once the date leaves this year — the same other-year rule
+ * `formatDayHeading` applies, without the weekday the surrounding sentence already said. */
+function shortDate(ms: number, timeZone: string, now: Date): string {
+  const yearOf = (at: Date) => dayKeyOf(at, timeZone).slice(0, 4);
+  return asciiSpaces(
+    new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: yearOf(new Date(ms)) === yearOf(now) ? undefined : 'numeric',
+      timeZone,
+    }).format(new Date(ms)),
+  );
 }
 
 /**
@@ -522,10 +1143,17 @@ function clockParts(ms: number, timeZone: string): { clock: string; dayPeriod: s
  * long one is dropped rather than truncated, because half a street address helps nobody.
  */
 function placePhrase(change: CalendarChange): string {
-  if (change.location === undefined) return '';
+  const place = vettedLocation(change);
+  return place === null ? '' : ` at ${place}`;
+}
+
+/** The location the sentence is willing to say, and so the only form of it the memory is
+ * allowed to keep. */
+function vettedLocation(change: CalendarChange): string | null {
+  if (change.location === undefined) return null;
   const place = gsm7(change.location);
-  if (place === '' || place.length > LOCATION_MAX || place.includes('@')) return '';
-  return ` at ${place}`;
+  if (place === '' || place.length > LOCATION_MAX || place.includes('@')) return null;
+  return place;
 }
 
 /** `7 a.m.` and `Sep 17` both already end a sentence; a second full stop reads as a typo. */
@@ -559,10 +1187,16 @@ function gsm7(text: string): string {
  * scrubbed — a title with the address cut out of it is a sentence with a hole in it.
  */
 function eventTitle(change: CalendarChange): string {
-  const generic = change.status === 'cancelled' ? UNTITLED_CANCELLED : UNTITLED;
+  return (
+    usableTitle(change) ?? (change.status === 'cancelled' ? UNTITLED_CANCELLED : UNTITLED)
+  );
+}
+
+/** The event's own name, or nothing when it has none Hale may say. */
+function usableTitle(change: CalendarChange): string | null {
   const text = gsm7(change.title ?? '');
-  if (text.includes('@')) return generic;
-  return clampTitle(text) || generic;
+  if (text.includes('@')) return null;
+  return clampTitle(text) || null;
 }
 
 /** Cut to the budget with an explicit ellipsis, so a parent can see that the calendar
