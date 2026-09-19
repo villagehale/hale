@@ -14,13 +14,16 @@ import type { ReplyLanguage } from '~/lib/channel/language';
  * it as one would silently drop a family who was still talking to us. A parent who
  * means STOP sends STOP; that is the convention carriers train them on.
  *
- * IT IS BILINGUAL, because Canadian carriers require it to be. The CTA's Canadian
- * Common Short Code Compliance Policies (v2.1, January 2026, §3.1) make five keywords
- * mandatory for every program — STOP, ARRET, HELP, AIDE, INFO — "regardless of the
- * intended audience", and texting ARRET or AIDE "must return a French response". DEBUT
- * is here for symmetry rather than obligation: START is the word the STOP acknowledgment
- * offers back, and a French acknowledgment offering an English-only word would be the
- * same broken promise the French half of copy.ts exists to end.
+ * IT IS BILINGUAL. The CTA's Canadian Common Short Code Compliance Policies (v2.1,
+ * January 2026, §3.1) make five keywords mandatory for every program — STOP, ARRET,
+ * HELP, AIDE, INFO — "regardless of the intended audience", and texting ARRET or AIDE
+ * "must return a French response". That document is SHORT-CODE policy and Hale sends
+ * from a Canadian long code (twilio/config.ts), so it does not bind this program; Hale
+ * adopts its standard voluntarily, because a francophone parent typing ARRET at a
+ * Canadian number means it whatever the sender's numbering plan is. DEBUT is here for
+ * the same reason and not even by that standard: START is the word the STOP
+ * acknowledgment offers back, and a French acknowledgment offering an English-only word
+ * would be the same broken promise the French half of copy.ts exists to end.
  *
  * WHICH LANGUAGE TO ANSWER IN IS DECIDED HERE, and that is the point of returning it
  * rather than a bare keyword. `replyLanguage` (lib/channel/language.ts) reads a message
@@ -31,16 +34,39 @@ import type { ReplyLanguage } from '~/lib/channel/language';
  * language is not evidence to be weighed, it is a fact about the word, so it travels
  * WITH the match and no second reader can disagree with it.
  *
- * WHAT TWILIO DOES NOT DO, verified against the platform's own configuration in this
- * repo: `createTwilioTransport` sends with a bare `From` number and no
- * `MessagingServiceSid` (twilio/transport.ts), and localised keywords exist ONLY as
- * explicit entries on a Messaging Service with Advanced Opt-Out configured. Twilio's
- * built-in set is English (STOP/STOPALL/UNSUBSCRIBE/CANCEL/END/QUIT/REVOKE/OPTOUT,
- * START/YES/UNSTOP, HELP/INFO). So ARRET, AIDE and DEBUT reach the webhook untouched —
- * nothing intercepts them, nothing double-answers them, and nothing but the revocation
- * this file's `stop` triggers stands between an ARRET and the next send. That last part
- * is the asymmetry worth knowing: an English STOP is additionally caught by Twilio's own
- * opt-out list, a French ARRET is enforced by Hale alone.
+ * WHAT THIS FILE DOES NOT ASSERT (VIL-348). It used to open a paragraph with "verified
+ * against the platform's own configuration in this repo" and then describe a Twilio
+ * account — which senders the transport names, whether the opt-out list is on, which
+ * words are in it. That sentence was true when it was written and false three days
+ * later, when the Messaging Service landed (#516), and nobody noticed for four weeks,
+ * because NOTHING IN THE SYSTEM CAN SEE THAT CONFIGURATION. A comment is the one place a
+ * claim can rot without a test going red.
+ *
+ * So the contract is only about this code: Hale matches the six words below
+ * deterministically and answers each in its own language. Where the PROVIDER has already
+ * matched and already answered, the inbound arrives carrying
+ * `providerAnsweredKeyword` (intake/transport.ts) and Hale does every piece of its
+ * ledger work and stays quiet — two confirmations for one STOP is one too many to a
+ * parent who asked to be left alone. Where it does not, Hale answers. Both behaviours
+ * are tested, so neither depends on knowing which one is live.
+ *
+ * THE ONE ASYMMETRY A CONFIGURATION CAN STILL CREATE, named because code cannot close
+ * it: an opt-out list that holds STOP but not DEBUT will keep refusing sends to a number
+ * whose owner has since texted DEBUT and been re-enrolled here. Hale's ledger would say
+ * enrolled and nothing would arrive. `handleKeyword`'s re-enrolment branch treats a
+ * permanent refusal of its own acknowledgment as a named outcome rather than an
+ * exception for exactly this reason; the remedy itself is configuration — the provider's
+ * localized keyword set has to hold every word Hale prints.
+ *
+ * OBSERVED, NOT ASSUMED — and observed of the PRODUCT, not of this account: as
+ * documented on 2026-08-18, Twilio's built-in set is English only
+ * (STOP/STOPALL/UNSUBSCRIBE/CANCEL/END/QUIT/REVOKE/OPTOUT, START/YES/UNSTOP, HELP/INFO)
+ * and localized keywords exist only as explicit entries on a Messaging Service with
+ * Advanced Opt-Out configured. WHAT HALE'S OWN MESSAGING SERVICE HOLDS HAS NOT BEEN READ
+ * BY ANYONE: it needs console or API credentials this checkout does not have, which is
+ * the whole reason nothing here is allowed to depend on it. VIL-348's first probe step is
+ * that reading — `use_inbound_webhook_on_number`, the opt-out state and the full keyword
+ * sets, verbatim and dated — and it replaces this paragraph when it lands.
  */
 
 export type IntakeKeyword = 'stop' | 'help' | 'start';

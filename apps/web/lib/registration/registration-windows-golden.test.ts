@@ -23,6 +23,15 @@ import { toRegistrationWindowRow } from './registration-windows.js';
  *   "Preview starting Aug, 3"      (the comma is a typo in the source)
  *   "Register starting Aug. 11 at 6:30 AM"
  *   "You will have 48 hours to decide…"
+ * and Markham's own PerfectMind course pages for that cycle, checked in whole under
+ * lib/channel/spots/fixtures/ — where the city page's single unlabelled date turns out
+ * to be the RESIDENT one (VIL-347). open-window-markham.html ("Chess: Preschool",
+ * categories "REC: Programs - Specialty 1 - Resident / - Non-Resident") and
+ * open-window-open-markham.html ("LEGO: Preschool", "REC: Programs - Variety 1 -
+ * Resident / - Non-Resident") both carry, verbatim:
+ *   "ResidentsRegistrationDateValue":"2026-08-11T06:30:00"
+ *   "PublicRegistrationStartDateValue":"2026-08-12T06:30:00"
+ * corroborated on a different cycle by markham-course.html (2026-02-24 / 2026-02-25).
  */
 
 function seed(municipality: string, programDomain: string, cycleLabel: string) {
@@ -101,8 +110,13 @@ describe('golden — Markham 2026 Fall Programs, Swim Lessons and Winter Break C
   const CYCLE = '2026 Fall Programs, Swim Lessons and Winter Break Camps';
   const row = toRegistrationWindowRow(seed('markham', 'rec_program', CYCLE));
 
-  it('opens at 6:30 a.m. on 11 August 2026 (10:30 UTC, EDT)', () => {
-    expect(row.openAt).toEqual(new Date('2026-08-11T10:30:00.000Z'));
+  it('opens for residents at 6:30 a.m. on 11 August 2026 (10:30 UTC, EDT)', () => {
+    expect(row.residentOpenAt).toEqual(new Date('2026-08-11T10:30:00.000Z'));
+  });
+
+  it('opens for everyone else at 6:30 a.m. the NEXT morning, one day behind', () => {
+    expect(row.openAt).toEqual(new Date('2026-08-12T10:30:00.000Z'));
+    expect(row.residentPriorityDays).toBe(1);
   });
 
   it('previews from 3 August 2026', () => {
@@ -113,11 +127,6 @@ describe('golden — Markham 2026 Fall Programs, Swim Lessons and Winter Break C
     expect(row.waitlistResponseHours).toBe(48);
   });
 
-  it('claims no resident head start, because Markham publishes none', () => {
-    expect(row.residentOpenAt).toBeNull();
-    expect(row.residentPriorityDays).toBeNull();
-  });
-
   it('covers all three domains the one combined cycle registers, on identical dates', () => {
     const domains = REGISTRATION_WINDOWS.filter(
       (s) => s.municipality === 'markham' && s.cycleLabel === CYCLE,
@@ -125,7 +134,19 @@ describe('golden — Markham 2026 Fall Programs, Swim Lessons and Winter Break C
     expect(domains.map((s) => s.programDomain).sort()).toEqual(['camp', 'rec_program', 'swim']);
     for (const other of domains) {
       expect(toRegistrationWindowRow(other).openAt).toEqual(row.openAt);
+      expect(toRegistrationWindowRow(other).residentOpenAt).toEqual(row.residentOpenAt);
     }
+  });
+
+  // The tier above is read off two REC: Programs course pages. No swim or camp course
+  // page for this cycle is checked in, so those two rows hold it on the strength of the
+  // shared cycle label alone — which is an inference, and has to be one the code can
+  // read rather than a sentence in `notes`.
+  it('names the resident tier as inferred on swim and camp, and only there', () => {
+    const inferredBy = (domain: string) => seed('markham', domain, CYCLE).inferredFields ?? [];
+    expect(inferredBy('swim')).toEqual(['residentOpenAt']);
+    expect(inferredBy('camp')).toEqual(['residentOpenAt']);
+    expect(inferredBy('rec_program')).toEqual([]);
   });
 
   it('cites the City of Markham registration page it was read from', () => {

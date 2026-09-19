@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTwilioSmsChannel } from '~/lib/channel/adapters/twilio-sms';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
+import { CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
 import { SEND_RETRIES_EXHAUSTED } from './config';
 import {
   ChannelRetryableError,
@@ -163,8 +164,39 @@ describe('email CASL dual-write + audit', () => {
     expect(ledger.filter((r) => r.channel === 'email' && r.status === 'sent')).toHaveLength(1);
     expect(emailSends).toEqual([{ emailType: 'weekly_plan', recipient: 'parent@example.com' }]);
     expect(audits).toEqual([
-      { actionTaken: 'channel_sent', after: { channel: 'email', category: 'weekly_plan' } },
+      {
+        actionTaken: 'channel_sent',
+        after: { channel: 'email', category: 'weekly_plan', templateKey: 'weekly-plan-v1' },
+      },
     ]);
+  });
+
+  it("names a caregiver leg by WHO received it — the trail must not say 'Hale sent you a message'", async () => {
+    // A caregiver's week is a DISCLOSURE of the household to a third party, and the verb
+    // is how a PIPEDA read finds it later. Pinned here because the templateKey is the
+    // only thing that distinguishes the two rows: with the branch collapsed back to
+    // `channel_sent`, every other dispatch assertion stays green.
+    const { ports, audits } = makePorts({ prefs: { loopChannel: 'sms' } });
+    await dispatchLoopMessage(
+      message({ templateKey: CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY, category: 'weekly_plan' }),
+      ports,
+    );
+    expect(audits).toEqual([
+      {
+        actionTaken: 'caregiver_schedule_sent',
+        after: {
+          channel: 'sms',
+          category: 'weekly_plan',
+          templateKey: CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY,
+        },
+      },
+    ]);
+  });
+
+  it('keeps the generic verb for the same category sent to a parent (positive control)', async () => {
+    const { ports, audits } = makePorts({ prefs: { loopChannel: 'sms' } });
+    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    expect(audits.map((a) => a.actionTaken)).toEqual(['channel_sent']);
   });
 
   it('does NOT write email_sends for a non-email leg', async () => {

@@ -205,6 +205,25 @@ export function openLegWindows(openAt: Date, timeZone: string): OpenLegWindows {
   };
 }
 
+/**
+ * Whether this anchor carries a MINUTE the source actually published (VIL-347).
+ *
+ * Where a municipality prints a date and no hour — Richmond Hill's whole calendar,
+ * Oakville's rule-derived non-resident date, every preview — the row stores the start of
+ * that local day, and the dataset's own rule says why: "start-of-day asserts no time the
+ * town did not publish". Every leg but one is content with that, because every leg but
+ * one names a DAY. The go leg is the single sentence in this ladder that is a claim
+ * about a minute, and it fires fifteen minutes before the anchor with the quiet-hours
+ * exemption in its pocket: on a start-of-day anchor that is a 23:45 text naming midnight.
+ *
+ * So the question is asked of the anchor's own value rather than of a list of towns, and
+ * in the FAMILY's zone rather than UTC — the zone the start-of-day rule was applied in is
+ * the only one that can recognise its own midnight.
+ */
+export function openTimeIsPublished(openAt: Date, timeZone: string): boolean {
+  return zonedInstant(dayKeyIn(openAt, timeZone), 0, timeZone).getTime() !== openAt.getTime();
+}
+
 /** When a waitlist offer reported at `startedAt` runs out, or null where the
  * municipality publishes no response window and Hale may not invent one. */
 export function waitlistDeadline(startedAt: Date, responseHours: number | null): Date | null {

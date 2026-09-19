@@ -6,8 +6,8 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
-import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
+import { type IntakeKeyword, matchKeyword } from '~/lib/channel/intake/keywords';
+import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { type MessageTransport, parseTransportAddress } from '~/lib/channel/transport-address';
@@ -68,7 +68,7 @@ export interface TwilioInboundDeps {
   /** Required, not optional: the one thing that must never happen quietly here is a
    * text Hale accepted and never queued (rule #11). `info` carries the one routed-
    * outcome line every authentic request ends with — ids and enums, never a body. */
-  log: Pick<Console, 'info' | 'error'>;
+  log: Pick<Console, 'info' | 'warn' | 'error'>;
   /** Count one authentic request's FINAL outcome (PostHog, no PII — see
    * captureInboundRouted). Required (rule #11): the silence outcomes — rate_limited,
    * ignored, not_a_parent, malformed — are only distinguishable from "nobody texts
@@ -101,6 +101,18 @@ export type TwilioInboundOutcome =
   | 'duplicate'
   /** The machine handled it; its own outcome is the detail. */
   | 'intake'
+  /** VIL-348 — a CASL keyword turn the machine did in full while sending NOTHING,
+   * because the provider's own keyword handling had already answered the sender. Kept
+   * out of `intake` because that value says Hale replied: the rate of this one is the
+   * only measure, anywhere, of how much of the French/English keyword experience the
+   * provider's configuration is actually carrying. */
+  | 'keyword_provider_answered'
+  /** VIL-348 — the machine did every consent write and the provider then PERMANENTLY
+   * refused Hale's own acknowledgment (21610 above all: an opt-out list that still holds
+   * a number whose owner has just re-enrolled). The ledger says reachable and the number
+   * is not. Never folded into `intake` (rule #11): before this it was, and a webhook that
+   * answers 200 was then the only trace of a household Hale can no longer text. */
+  | 'keyword_ack_refused'
   /** No live channel to route to (never enrolled, or unsubscribed). */
   | 'ignored'
   /** A verified channel, but not a parent's — never handed to a household agent. */
@@ -110,6 +122,45 @@ export type TwilioInboundOutcome =
 function mediaCount(params: Record<string, string>): number {
   const parsed = Number.parseInt(params.NumMedia ?? '0', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+/** Twilio's own name for each keyword it answered, as `OptOutType` carries it. */
+const OPT_OUT_TYPES: Record<string, IntakeKeyword> = {
+  STOP: 'stop',
+  START: 'start',
+  HELP: 'help',
+};
+
+/**
+ * VIL-348 — whether the provider already answered this message itself.
+ *
+ * Twilio's Advanced Opt-Out, when it is configured on the Messaging Service, matches its
+ * own keyword list, sends its own reply, and tags the forwarded inbound `OptOutType`.
+ * Reading it here is the ONLY way that fact enters Hale: nothing else in the system can
+ * see the account's configuration, which is precisely how the comment this ticket
+ * deleted managed to be wrong for four weeks.
+ *
+ * ABSENT IS A NAMED ANSWER, not an unknown (rule #11): the provider answered nothing.
+ * That is also what an unrecognised value resolves to — Hale suppressing its own CASL
+ * reply on the strength of a token it does not understand is the worse failure of the
+ * two. The value itself is never logged, only the fact that one arrived: it rides beside
+ * a phone number and a message body on this request (rule #1).
+ */
+function providerAnsweredKeyword(
+  params: Record<string, string>,
+  log: Pick<Console, 'warn'>,
+): IntakeKeyword | null {
+  const raw = params.OptOutType;
+  if (!raw) return null;
+  const known = OPT_OUT_TYPES[raw.trim().toUpperCase()];
+  if (!known) {
+    log.warn(
+      { length: raw.length },
+      'twilio inbound: unrecognised OptOutType — answering the keyword ourselves',
+    );
+    return null;
+  }
+  return known;
 }
 
 /**
@@ -133,7 +184,44 @@ export async function routeTwilioInbound(
   if (outcome.status === 'ignored' && outcome.reason === 'no_open_conversation') {
     return handOffToConversation(deps, inbound);
   }
-  return outcome.status === 'ignored' ? 'ignored' : 'intake';
+  if (outcome.status === 'ignored') return 'ignored';
+  if (
+    outcome.status === 'stopped' ||
+    outcome.status === 'helped' ||
+    outcome.status === 'restarted'
+  ) {
+    return keywordOutcome(deps, inbound, outcome.ack);
+  }
+  return 'intake';
+}
+
+/**
+ * VIL-348 — what became of HALE'S OWN acknowledgment, carried out through the door.
+ *
+ * The machine names it (`KeywordAck`), and this is the only place that name can reach an
+ * operator: the webhook answers Twilio with an empty document whatever happens, so the
+ * routed line and its counter are the entire observable surface of an inbound text. A
+ * `provider_refused` flattened to `intake` — which is what this door did before — is a
+ * household whose ledger says enrolled, whose number the provider will not accept, and
+ * whose only trace is a 200 (rule #11).
+ *
+ * The refusal is also the one of the three that is ACTIONABLE, and the action is not in
+ * this codebase: the provider's localized keyword set has to hold every word Hale prints
+ * (intake/keywords.ts). So it is logged at error level beside the enqueue failure, the
+ * other outcome that means a parent is owed something Hale has not delivered.
+ */
+function keywordOutcome(
+  deps: TwilioInboundDeps,
+  inbound: InboundMessage,
+  ack: KeywordAck,
+): TwilioInboundOutcome {
+  if (ack === 'provider_answered') return 'keyword_provider_answered';
+  if (ack === 'sent') return 'intake';
+  deps.log.error(
+    { providerMessageId: inbound.providerId },
+    'twilio inbound: re-enrolled this number and the provider permanently refused the acknowledgment — its opt-out list still holds a number our ledger now says is reachable',
+  );
+  return 'keyword_ack_refused';
 }
 
 /**
@@ -409,13 +497,23 @@ export async function handleTwilioInboundRequest(
       body: params.Body ?? '',
       providerId,
       receivedAt: deps.now?.() ?? new Date(),
+      providerAnsweredKeyword: providerAnsweredKeyword(params, deps.log),
     },
     mediaCount(params),
   );
   // The one line every authentic text ends with, and its counter twin. The provider
   // message id is Twilio's envelope handle, already the id every other log line here
   // carries — never the number, never the body (rule #1).
-  deps.log.info({ outcome, providerMessageId: providerId }, 'twilio inbound: routed');
+  //
+  // `optOutTypePresent` is the fact that no code can otherwise establish (VIL-348):
+  // whether the provider's own keyword handling tagged this request at all. PRESENCE,
+  // including a value Hale did not recognise — the outcome above says what was DONE with
+  // it, and the two together are what the live probe reads back to learn which
+  // configuration is really running.
+  deps.log.info(
+    { outcome, providerMessageId: providerId, optOutTypePresent: Boolean(params.OptOutType) },
+    'twilio inbound: routed',
+  );
   await deps.countOutcome(outcome);
   return emptyTwiml();
 }

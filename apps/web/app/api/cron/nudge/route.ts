@@ -5,6 +5,7 @@ import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
+import { runEveningCheckInSweep } from '~/lib/channel/checkin/sweep';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
 import { runVillageIntroSweep } from '~/lib/village/intros/run';
 
@@ -43,6 +44,12 @@ export const maxDuration = 300;
  * rather than being dropped. It shares F14's dark-launch flag: this message only exists
  * for a family already texting Hale.
  *
+ * THE EVENING CHECK-IN rides here too (VIL-353) and runs before the activity follow-up,
+ * because it CHOOSES to interrupt rather than discharging a debt — the same ordering rule
+ * the paragraph above states. It is also the one leg whose slot is a legal constraint
+ * rather than a preference (20:00 local, see EVENING_CHECK_IN_HOUR_LOCAL), so in any
+ * given hour it selects a single band of timezones and does nothing for everyone else.
+ *
  * THE FOLLOW-UP SWEEP rides here for the same reason and runs LAST, which is also its
  * priority. It is the only stage that asks about something already over, so it is the
  * one whose deferral costs a family nothing — and running after the others means a
@@ -55,9 +62,18 @@ export const GET = cronRoute('nudge', async () => {
     const villageIntros = await runVillageIntroSweep(db());
     const followups = await runFollowupSweep(db());
     const planCheckIns = await runPlanCheckInSweep(db());
+    const eveningCheckIns = await runEveningCheckInSweep(db());
     const activityFollowUps = await runActivityFollowUpSweep(db());
     return NextResponse.json(
-      { ok: true, ...summary, villageIntros, followups, planCheckIns, activityFollowUps },
+      {
+        ok: true,
+        ...summary,
+        villageIntros,
+        followups,
+        planCheckIns,
+        eveningCheckIns,
+        activityFollowUps,
+      },
       { status: 200 },
     );
   } finally {

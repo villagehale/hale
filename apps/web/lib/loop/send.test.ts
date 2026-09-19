@@ -81,6 +81,7 @@ describe('runSundaySendCron', () => {
     let readPlanWeekStart = '';
     const deps: SundaySendDeps = {
       selectParents: async () => [parent],
+      selectCaregivers: async () => [],
       // KEY-STRICT, like the real store: the composer keys the artifact on the
       // week's Monday. NOW is Mon 08:00 Toronto Jan 19 — the brief sends the
       // morning the week starts, so the only findable key is TODAY, 2026-01-19.

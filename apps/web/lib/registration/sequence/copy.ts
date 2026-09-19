@@ -809,6 +809,24 @@ export function renderReadinessAck(input: ReadinessAckInput): string {
   return `No problem. The four: ${input.portal.accountLabel}, ${whoPhrase(input.fitNotes)} added with their birthday(s), address complete, a card saved. I will ask again the evening before.`;
 }
 
+/**
+ * THE SECOND PARENT'S YES, to a card the household has already approved.
+ *
+ * The heads-up ends "Reply YES and I'll run the morning with you" and now reaches both
+ * numbers, so one of the two answers arrives at an approvals queue the other parent has
+ * already emptied. Before this sentence existed that turn fell through to the coach,
+ * whose thread still ended in that ask and which knows nothing about the partner's
+ * approval — the one shape of turn where a model is most likely to invent a
+ * confirmation (audit 2026-09-17 r1).
+ *
+ * It states the household's state and asks nothing: the ladder is already running, and
+ * a second consent for one registration morning is not a thing to collect. Tense-free
+ * on purpose, because the same sentence has to be true whether the plan leg has gone
+ * out yet or not.
+ */
+export const SHORTLIST_ALREADY_APPROVED_ACK =
+  "That is already a yes - I have this one, and I'll run the morning with you.";
+
 const CONSENT_THREE_TEXTS =
   'Approving this asks me to text you a week ahead, the evening before, and 15 minutes before it opens. I never register for you.';
 
@@ -833,7 +851,7 @@ export function renderShortlistRationale(
   ];
   if (shortlist.isResidentWindow && shortlist.residentPriorityDays !== null) {
     lines.push(
-      `Your postal code gets the residents-first date, ${shortlist.residentPriorityDays} days ahead of the general open.`,
+      `Your postal code gets the residents-first date, ${shortlist.residentPriorityDays} day${shortlist.residentPriorityDays === 1 ? '' : 's'} ahead of the general open.`,
     );
   }
   // An unpublished band is a fact about the WINDOW, not about each child, so it is

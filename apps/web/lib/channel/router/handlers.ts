@@ -1,6 +1,16 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
+import type { CheckInCadence } from '~/lib/channel/checkin/cadence';
+import { CHECK_IN_ACK_TEMPLATE_KEY } from '~/lib/channel/checkin/copy';
+import {
+  answeredOnTheSameChannel,
+  applyCheckInCadence,
+  checkInKeywordReach,
+  handleEveningCheckInReply,
+  readCadenceWord,
+} from '~/lib/channel/checkin/reply';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
 import {
   matchConnectorDisconnectRequest,
@@ -25,6 +35,7 @@ import {
   handleCourseBind,
   handleReadinessAnswer,
 } from '~/lib/registration/sequence/prepare-reply';
+import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import { type SequenceReplyDeps, handleSequenceReply } from '~/lib/registration/sequence/reply';
 import {
   type ResolvedIntroAnswer,
@@ -34,7 +45,7 @@ import {
 import { type ApprovalSpine, resolveApproval } from './approval';
 import { checkupDraftedReply, failureReply, healthDoneReply } from './copy';
 import { matchFastPath } from './fast-path';
-import { type OpenQuestionKind, soleOpenKind } from './open-questions';
+import { type OpenQuestion, type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
 
 /**
@@ -703,13 +714,57 @@ export function sequenceReplyHandler(
 
       const outcome = await handleSequenceReply(
         database,
-        { familyId: ctx.familyId, body: ctx.body, now: ctx.now },
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          now: ctx.now,
+        },
         deps,
       );
-      if (outcome.status !== 'recorded') return { claimed: false };
-      return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      if (outcome.status === 'recorded') {
+        return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+      }
+      return (await alreadyApprovedReply(database, ctx, prepare)) ?? { claimed: false };
     },
   };
+}
+
+/**
+ * THE OTHER PARENT'S YES to a card this household has already approved.
+ *
+ * LAST IN THIS HANDLER, after every branch that could have something to record, because
+ * it is the only one that acts on nothing: there is no state to write, and a turn that
+ * any other branch can claim is a turn this one must not. It is also why the check is a
+ * reader and not a lane — nothing here decides anything, it says what is already true.
+ *
+ * YES ONLY. A second parent's NO to an approved shortlist is a household disagreeing
+ * with itself, which is a conversation (and possibly an undo), not an acknowledgement —
+ * swallowing it with a cheerful receipt would be the worst answer available. It goes to
+ * the coach exactly as it does today.
+ *
+ * The bare-word permission is the ordinary one, asked against the kind the word is
+ * actually answering: with the card gone from the queue no approval question is open,
+ * so anything ELSE outstanding makes the word ambiguous and this declines.
+ */
+async function alreadyApprovedReply(
+  database: Database,
+  ctx: HandlerContext,
+  deps: PrepareReplyDeps,
+): Promise<HandlerVerdict | null> {
+  if (!f14EnabledFor(ctx.familyId)) return null;
+  const command = matchFastPath(ctx.body);
+  if (command === null || command.verb !== 'yes' || command.index !== null) return null;
+  if (!(await mayClaimBareWord(ctx, command, 'approval'))) return null;
+
+  const approved = await deps.approvedShortlistAskedOf(
+    database,
+    ctx.familyId,
+    ctx.parentUserId,
+    ctx.now,
+  );
+  if (approved === null) return null;
+  return { claimed: true, outcome: 'already_approved', reply: SHORTLIST_ALREADY_APPROVED_ACK };
 }
 
 /**
@@ -789,6 +844,7 @@ async function preOpenReply(
       database,
       {
         sequence,
+        answeredByUserId: ctx.parentUserId,
         ready: resolved.polarity === 'yes',
         read: 'resolver',
         confidence: resolved.confidence,
@@ -804,7 +860,13 @@ async function preOpenReply(
   if (link !== null) {
     const bind = await handleCourseBind(
       database,
-      { sequence, rawUrl: link, inboundChannelMessageId, now: ctx.now },
+      {
+        sequence,
+        answeredByUserId: ctx.parentUserId,
+        rawUrl: link,
+        inboundChannelMessageId,
+        now: ctx.now,
+      },
       deps,
     );
     // An already-registering course belongs to VIL-337's watch and to the coach.
@@ -831,12 +893,13 @@ async function preOpenReply(
       alongside.index === null &&
       alongside.verb !== 'undo' &&
       (await mayClaimBareWord(ctx, alongside, 'registration_readiness')) &&
-      (await deps.readinessAskedLastAt(database, sequence)) !== null
+      (await deps.readinessAskedLastAt(database, sequence, ctx.parentUserId)) !== null
     ) {
       await handleReadinessAnswer(
         database,
         {
           sequence,
+          answeredByUserId: ctx.parentUserId,
           ready: alongside.verb === 'yes',
           read: 'keyword',
           confidence: null,
@@ -852,12 +915,13 @@ async function preOpenReply(
   const command = matchFastPath(ctx.body);
   if (command === null || command.verb === 'undo' || command.index !== null) return null;
   if (!(await mayClaimBareWord(ctx, command, 'registration_readiness'))) return null;
-  if ((await deps.readinessAskedLastAt(database, sequence)) === null) return null;
+  if ((await deps.readinessAskedLastAt(database, sequence, ctx.parentUserId)) === null) return null;
 
   const outcome = await handleReadinessAnswer(
     database,
     {
       sequence,
+      answeredByUserId: ctx.parentUserId,
       ready: command.verb === 'yes',
       read: 'keyword',
       confidence: null,
@@ -908,5 +972,143 @@ export function recMorningHandler(): DeterministicHandler {
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };
     },
+  };
+}
+
+/**
+ * VIL-353 · the evening check-in's answer.
+ *
+ * LAST OF THE REAL CLAIMERS, ahead of the canary only, and the position is the whole
+ * safety argument. Every other handler in the chain claims a SHAPE — an approval word, an
+ * address, a link, a rec-morning question — while this one claims a SENTENCE, which makes
+ * it the broadest claimer in the product. Narrow claimers before broad ones, so it runs
+ * after all of them and a parent's "done" still reaches the health lane it belongs to.
+ *
+ * IT READS TWO DIFFERENT KINDS OF MESSAGE, and their permissions are not the same.
+ *
+ *   · A TAUGHT WORD (LESS / NO / DAILY) is a decision about the product, and it outlives
+ *     the standing question — which closes the moment ANY outbound reaches the parent,
+ *     Hale's own thank-you included, so a NO a minute later would otherwise fall to the
+ *     coach, which has no cadence tool, and the nightly message would keep coming. How far
+ *     it outlives it is `checkInKeywordReach`, and the floor is this lane's own voice: its
+ *     ask, its step-down notice or one of its acks being the last thing Hale said to that
+ *     parent, inside thirty days.
+ *
+ *   · A SENTENCE is an answer to a question, so it needs Hale to actually be holding one
+ *     (the ledger says so, reply.ts) AND `soleOpenKind` to say no OTHER open question
+ *     could have meant these words. An empty question list is vacuously unambiguous, so
+ *     without the first check any sentence at all would be filed as a day note.
+ *
+ * BOTH NEED THE DOOR TO MATCH. The question is a text; an email arriving inside the
+ * window is answering something else (answeredOnTheSameChannel).
+ *
+ * IT REFUSES A RESOLVED ANSWER. The kind is listed to the resolver so that a bare YES near
+ * it is treated as ambiguous, but its answer is not a polarity and there is nothing a
+ * resolved yes-or-no could write. Declining says so truthfully; without an owner at all,
+ * route.ts would log a resolution nobody claims at ERROR.
+ */
+export function eveningCheckInHandler(): DeterministicHandler {
+  return {
+    name: 'evening_check_in',
+    resolves: new Set<OpenQuestionKind>(['evening_check_in']),
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      if (ctx.resolved !== null) return { claimed: false };
+
+      const questions = await ctx.openQuestions();
+      const cadence = readCadenceWord(ctx.body);
+      if (cadence !== null) return moveEveningCadence(database, ctx, questions, cadence);
+
+      const standing = questions.find((question) => question.kind === 'evening_check_in');
+      if (!standing || standing.askedAt === null) return { claimed: false };
+      if (!soleOpenKind(questions, 'evening_check_in')) return { claimed: false };
+
+      const inboundId = ctx.inboundChannelMessageId;
+      if (inboundId === null) {
+        // A spoken turn: what the caller said is a transcription, and there is no message
+        // row to hang the note's provenance on. Named rather than assumed away — a note
+        // filed against provenance Hale invented is worse than no note.
+        console.error(
+          { familyId: ctx.familyId },
+          'evening check-in: an answer arrived with no inbound message row - not claimed',
+        );
+        return { claimed: false };
+      }
+      if (!(await answeredOnTheSameChannel(database, standing.id, inboundId))) {
+        return { claimed: false };
+      }
+
+      const outcome = await handleEveningCheckInReply(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        body: ctx.body,
+        askedAt: standing.askedAt,
+        timeZone: await readFamilyTimezone(database, ctx.familyId),
+        inboundChannelMessageId: inboundId,
+        now: ctx.now,
+      });
+      if (outcome.status === 'declined_to_claim') return { claimed: false };
+      return {
+        claimed: true,
+        outcome: outcome.status,
+        reply: outcome.reply,
+        templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
+      };
+    },
+  };
+}
+
+/**
+ * LESS, NO or DAILY — outlasting the standing question, but not the conversation.
+ *
+ * HOW FAR THE WORDS REACH IS `checkInKeywordReach`, and it is the lane's own reader
+ * because the answer is a fact about the message ledger, not about this chain. In short:
+ * while this lane has the last word to that parent, or the evening it asked about is still
+ * open, all three words are its own; afterwards only DAILY is, and only as the way back
+ * for a household Hale stopped asking.
+ *
+ * A BARE NO IS THE ONE THAT HAS TO BE CAREFUL EVEN INSIDE THAT WINDOW, because it is also
+ * how a parent declines an approval, an intro and a co-parent invite. It is taken only
+ * when no other question is open — the same rule `soleOpenKind` applies to a bare
+ * affirmative, drawn here by hand because the evening question is deliberately absent from
+ * the list most of the time this runs. LESS and DAILY answer nothing else in the product,
+ * so they need no such guard.
+ */
+async function moveEveningCadence(
+  database: Database,
+  ctx: HandlerContext,
+  questions: readonly OpenQuestion[],
+  cadence: CheckInCadence,
+): Promise<HandlerVerdict> {
+  const others = questions.filter((question) => question.kind !== 'evening_check_in');
+  if (cadence === 'off' && others.length > 0) return { claimed: false };
+
+  const inboundId = ctx.inboundChannelMessageId;
+  if (inboundId === null) return { claimed: false };
+  const reach = await checkInKeywordReach(database, {
+    familyId: ctx.familyId,
+    parentUserId: ctx.parentUserId,
+    now: ctx.now,
+  });
+  // Never asked, or asked long enough ago that these are just words: they belong to
+  // whatever else is going on, which is where they went before this lane existed.
+  if (reach.reach === 'none') return { claimed: false };
+  if (reach.reach === 'reoffer' && cadence !== 'daily') return { claimed: false };
+  if (!(await answeredOnTheSameChannel(database, reach.askId, inboundId))) {
+    return { claimed: false };
+  }
+
+  const outcome = await applyCheckInCadence(database, {
+    familyId: ctx.familyId,
+    parentUserId: ctx.parentUserId,
+    inboundChannelMessageId: inboundId,
+    cadence,
+    language: replyLanguage(ctx.body),
+    now: ctx.now,
+  });
+  return {
+    claimed: true,
+    outcome: outcome.status,
+    reply: outcome.reply,
+    templateKey: CHECK_IN_ACK_TEMPLATE_KEY,
   };
 }
