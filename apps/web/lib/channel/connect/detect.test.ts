@@ -109,6 +109,18 @@ describe('matchConnectorDisconnectRequest', () => {
     ['please remove the calendar hold for swim'],
     ['remove the calendar event for friday'],
     ['could you unlink the calendar invite'],
+    // CONTENT WEARING A CUSTODY VERB. The verb really is "disconnect"/"unlink", so no
+    // verb list can decline these — what makes them content is the article in front of
+    // the noun (nobody ends THEIR OWN grant by calling it "the calendar") and the tail
+    // behind it. Each one of these deleted a token in review.
+    ['unlink the calendar invite'],
+    ['disconnect the calendar event for friday'],
+    ['revoke my calendar access for the nanny'],
+    ['we are unhooking the calendar from the fridge lol'],
+    // Somebody ELSE's connector, and a plan about a phone — neither is an instruction
+    // about the grant this thread's parent holds.
+    ['my husband will disconnect his calendar'],
+    ["I'm disconnecting my email from my phone this weekend"],
     // The OPPOSITE instruction.
     ['dont disconnect my calendar'],
     ["don't disconnect my calendar"],

@@ -125,6 +125,25 @@ describe('GET /api/integrations/[provider]/connect - one host, never the request
     );
   });
 
+  /**
+   * THE KILL CASE for the pin above, which on its own is not one.
+   *
+   * `wrong_host` compares HOSTS, so a request whose host already equals appBaseUrl()'s
+   * passes it — and every other case in this suite arrives on exactly that host. A
+   * `redirect_uri` rebuilt from `url.origin` would therefore agree with appBaseUrl() in
+   * all of them and the suite would stay green through the exact regression it exists
+   * to stop. A request on the same host over http is the one shape the guard lets
+   * through while the origins still differ: the consent must carry the https string
+   * Google has registered, not the scheme this request happened to arrive on.
+   */
+  it('sends the registered scheme even when the request arrived on another one', async () => {
+    const res = await callConnect('gcal', '', 'http://app.example.com');
+
+    expect(new URL(res.headers.get('location') ?? '').searchParams.get('redirect_uri')).toBe(
+      'https://app.example.com/api/integrations/callback',
+    );
+  });
+
   /** The marketing host is a different site with a different door. If it ever became
    * the base for an app URL the consent would be registered nowhere. */
   it('never reaches for the marketing host', async () => {

@@ -331,7 +331,16 @@ export async function markConnectionError(
  * time and writes no second audit row. Rule #6's trail is a record of acts, and a
  * disconnect that disconnected nothing is not one. Before the texted surface existed
  * this was invisible — Settings hides the button on a revoked card — and by text there
- * is no such gate. */
+ * is no such gate.
+ *
+ * THAT RESTS ON AN INVARIANT, so it is written down: a row whose tokens are gone is a
+ * row whose status is 'revoked'. Every path that nulls the column sets the status in
+ * the same statement (here, and coparent/depart.ts). A future path that purged tokens
+ * while leaving the status 'error' — an invalid_grant cleanup, say — would leave the
+ * Settings card showing its Disconnect button (it renders for any status but 'revoked')
+ * over a row this predicate can no longer match, and the button would answer "nothing
+ * to disconnect". Keep the two in one statement, or teach both surfaces the third
+ * state. SWEEPABLE_STATUSES above is the same invariant read the other way. */
 export async function revokeConnection(
   database: Database,
   familyId: string,
