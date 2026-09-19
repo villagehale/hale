@@ -1,6 +1,10 @@
 import { type Database, type NewRegistrationWindow, schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
-import { REGISTRATION_WINDOWS, type RegistrationWindowSeed } from './registration-windows-data.js';
+import {
+  REGISTRATION_WINDOWS,
+  type RegistrationWindowDateField,
+  type RegistrationWindowSeed,
+} from './registration-windows-data.js';
 
 /**
  * The registration radar's seed sync (VIL-236 · M1). Turns the hand-verified date
@@ -68,6 +72,26 @@ export function toRegistrationWindowRow(seed: RegistrationWindowSeed): NewRegist
     verifiedAt: parseInstant('verifiedAt', seed.verifiedAt),
     notes: seed.notes,
   };
+}
+
+/**
+ * What the DATASET knows about a stored row that the table does not carry: which of its
+ * dated fields were never read off its own source (VIL-347). Keyed on the same natural
+ * key `syncRegistrationWindows` upserts on, so a row and its seed entry cannot drift.
+ *
+ * A row with no seed entry infers nothing — a row that exists outside this file was put
+ * there by hand, and this file has no standing to call any of its fields unverified.
+ */
+export function inferredFieldsFor(
+  row: Pick<RegistrationWindowSeed, 'municipality' | 'programDomain' | 'cycleLabel'>,
+): readonly RegistrationWindowDateField[] {
+  const seed = REGISTRATION_WINDOWS.find(
+    (entry) =>
+      entry.municipality === row.municipality &&
+      entry.programDomain === row.programDomain &&
+      entry.cycleLabel === row.cycleLabel,
+  );
+  return seed?.inferredFields ?? [];
 }
 
 /**

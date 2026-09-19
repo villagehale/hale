@@ -70,7 +70,7 @@ import { parseCanadianPostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
 import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
-import { type IntakeKeywordMatch, matchKeyword } from './keywords';
+import { type IntakeKeyword, type IntakeKeywordMatch, matchKeyword } from './keywords';
 import {
   cheerUpIntakeReply,
   isCheerUpAsk,
@@ -189,6 +189,8 @@ export interface IntakeDeps {
   now?: Date;
 }
 
+export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused';
+
 export type IntakeOutcome =
   | { status: 'greeted' }
   | { status: 'follow_up_asked' }
@@ -220,9 +222,25 @@ export type IntakeOutcome =
    * the answer, `safety` is the fixed 811/911 line with no signup question after it.
    */
   | { status: 'question_answered'; source: 'composed' | 'safety' }
-  | { status: 'stopped' }
-  | { status: 'helped' }
-  | { status: 'restarted' }
+  /**
+   * VIL-348 — the three CASL keyword turns, each carrying what became of HALE'S OWN
+   * acknowledgment. The ledger work is identical in every case; only the reply differs,
+   * so the reply is what the outcome names (rule #11):
+   *
+   *   `sent`              — Hale answered, as it does whenever it is the only answerer.
+   *   `provider_answered` — the provider matched this keyword and replied first, so
+   *                         Hale's ack is suppressed and no outbound row is written.
+   *                         Two confirmations for one STOP is one too many.
+   *   `provider_refused`  — Hale tried and the provider permanently refused to deliver.
+   *                         Only reachable on the re-enrolment ack, and it means the
+   *                         provider's own opt-out list still holds this number while
+   *                         Hale's ledger says enrolled. Named rather than thrown: it is
+   *                         a configuration fact about someone else's product, and a
+   *                         500 here just earns a webhook retry that fails the same way.
+   */
+  | { status: 'stopped'; ack: KeywordAck }
+  | { status: 'helped'; ack: KeywordAck }
+  | { status: 'restarted'; ack: KeywordAck }
   | { status: 'region_unavailable' }
   | { status: 'rate_limited' }
   | { status: 'duplicate' }
@@ -245,6 +263,12 @@ interface Inbound {
   body: string;
   providerId: string;
   receivedAt: Date;
+  /** VIL-348 — the provider already answered this keyword itself; see
+   * `InboundMessage.providerAnsweredKeyword` (intake/transport.ts) for what that means
+   * and what it does NOT suppress. Optional here for the same reason it is optional
+   * there: a caller written before the provider could answer a keyword means "it
+   * answered nothing", which is exactly what absent resolves to. */
+  providerAnsweredKeyword?: IntakeKeyword | null;
 }
 
 export async function handleInboundSms(
@@ -880,7 +904,7 @@ async function handleDetails(
       transcript,
     ));
     await saveSession(database, session, { ...base, transcript }, now);
-    return { status: 'helped' };
+    return { status: 'helped', ack: 'sent' };
   }
 
   const location = resolveLocation(collected, session.sourceCode);
@@ -1375,48 +1399,74 @@ async function handleKeyword(
   // deliberately refuses to decide on it — it is also an English noun) and DEBUT is a word
   // it has never heard of, which is exactly what CTA v2.1 §3.1 forbids.
   const { keyword, language } = match;
+  // VIL-348 · WHO ANSWERS. The provider's own keyword handling may have matched this
+  // exact word and already replied to the sender; where it did, the inbound says so and
+  // Hale's acknowledgment would be the second confirmation of one instruction. Every
+  // ledger write below runs either way — the provider's opt-out list is not Hale's
+  // consent record, and a STOP that revoked nothing because a carrier answered first is
+  // the CASL failure, not the extra text.
+  const providerAnswered = inbound.providerAnsweredKeyword === keyword;
 
   if (keyword === 'stop') {
-    return handleStop(database, { phoneE164, inbound, session, now, language }, deps);
+    return handleStop(
+      database,
+      { phoneE164, inbound, session, now, language, providerAnswered },
+      deps,
+    );
   }
 
   if (keyword === 'help') {
+    const ack: KeywordAck = providerAnswered ? 'provider_answered' : 'sent';
     if (!session) {
-      const { providerMessageId } = await deps.transport.send({
-        to: phoneE164,
-        body: HELP_REPLY_BY_LANGUAGE[language],
-      });
       // No session to transcribe against, but the number may still be an ENROLLED
       // parent's (intake long over) — their ledger must show this send (rule #6). A
       // stranger's HELP stays unrecorded by structural necessity, not omission:
       // channel_messages.family_id is NOT NULL, so there is no row it could occupy.
-      const enrolled = await resolveVerifiedChannelByPhone(database, phoneE164);
-      if (enrolled) {
-        await writeChannelMessage(
-          database,
-          { familyId: enrolled.familyId, parentUserId: enrolled.userId },
-          {
-            direction: 'out',
-            body: HELP_REPLY_BY_LANGUAGE[language],
-            providerId: providerMessageId,
-            at: now.toISOString(),
-          },
-          now,
-        );
+      //
+      // The send and its ledger row go TOGETHER or not at all: a suppressed reply that
+      // still wrote an outbound row would put a message in a parent's receipts that
+      // Hale never sent.
+      if (!providerAnswered) {
+        const { providerMessageId } = await deps.transport.send({
+          to: phoneE164,
+          body: HELP_REPLY_BY_LANGUAGE[language],
+        });
+        const enrolled = await resolveVerifiedChannelByPhone(database, phoneE164);
+        if (enrolled) {
+          await writeChannelMessage(
+            database,
+            { familyId: enrolled.familyId, parentUserId: enrolled.userId },
+            {
+              direction: 'out',
+              body: HELP_REPLY_BY_LANGUAGE[language],
+              providerId: providerMessageId,
+              at: now.toISOString(),
+            },
+            now,
+          );
+        }
       }
-      return { status: 'helped' };
+      return { status: 'helped', ack };
     }
     const ctx: SendContext = { session, phoneE164, now };
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    const { transcript } = await sendAndRecord(
-      database,
-      ctx,
-      HELP_REPLY_BY_LANGUAGE[language],
-      deps,
-      recorded.transcript,
-    );
+    // Suppressed at THIS call site rather than inside `sendAndRecord`: that helper is
+    // shared with fourteen other turns and has no business learning about keywords. The
+    // inbound is still recorded and the session still closed on this turn's provider id,
+    // so a carrier retry is still a duplicate rather than a second HELP.
+    const transcript = providerAnswered
+      ? recorded.transcript
+      : (
+          await sendAndRecord(
+            database,
+            ctx,
+            HELP_REPLY_BY_LANGUAGE[language],
+            deps,
+            recorded.transcript,
+          )
+        ).transcript;
     await saveSession(database, session, { transcript, lastProviderId: inbound.providerId }, now);
-    return { status: 'helped' };
+    return { status: 'helped', ack };
   }
 
   // START. If the number was unsubscribed AND its owner still holds a seat, the keyword
@@ -1425,23 +1475,40 @@ async function handleKeyword(
   const owner = await findReenrollableChannelOwner(database, phoneE164);
   if (owner) {
     await reenrolOnStart(database, { ...owner, phoneE164, verbatimReply: inbound.body }, now);
-    const { providerMessageId } = await deps.transport.send({
-      to: phoneE164,
-      body: START_ACK_BY_LANGUAGE[language],
-    });
-    // The re-enrolment ack is a real outbound to a known family: ledger it (rule #6).
-    await writeChannelMessage(
-      database,
-      { familyId: owner.familyId, parentUserId: owner.userId },
-      {
-        direction: 'out',
+    if (providerAnswered) return { status: 'restarted', ack: 'provider_answered' };
+    try {
+      const { providerMessageId } = await deps.transport.send({
+        to: phoneE164,
         body: START_ACK_BY_LANGUAGE[language],
-        providerId: providerMessageId,
-        at: now.toISOString(),
-      },
-      now,
-    );
-    return { status: 'restarted' };
+      });
+      // The re-enrolment ack is a real outbound to a known family: ledger it (rule #6).
+      // Inside the try with its own send, so a refused ack writes no row claiming one.
+      await writeChannelMessage(
+        database,
+        { familyId: owner.familyId, parentUserId: owner.userId },
+        {
+          direction: 'out',
+          body: START_ACK_BY_LANGUAGE[language],
+          providerId: providerMessageId,
+          at: now.toISOString(),
+        },
+        now,
+      );
+    } catch (error) {
+      // VIL-348 · THE STOP → DEBUT ASYMMETRY, where it actually bites. An opt-out list
+      // that holds STOP but not the word this parent just sent will refuse every send to
+      // this number — 21610 — although Hale has just re-enrolled them. The refusal is
+      // permanent, so there is nothing to retry: 500ing here would only earn a webhook
+      // retry that fails identically, and it would do it AFTER the consent write.
+      //
+      // The outcome says so rather than swallowing it. Hale cannot fix this from here —
+      // the remedy is that the provider's keyword set has to hold every word Hale prints
+      // (keywords.ts) — but a re-enrolment nobody can be told about must not read the
+      // same as one that landed. A TRANSIENT failure still throws and is still retried.
+      if (!(error instanceof TwilioSendError && error.permanent)) throw error;
+      return { status: 'restarted', ack: 'provider_refused' };
+    }
+    return { status: 'restarted', ack: 'sent' };
   }
   if (session) {
     return { status: 'ignored', reason: 'no_open_conversation' };
@@ -1458,10 +1525,13 @@ async function handleStop(
     now: Date;
     /** The language of the keyword that got here — ARRET is answered in French. */
     language: ReplyLanguage;
+    /** VIL-348 — the provider matched this STOP and already confirmed it to the sender.
+     * Suppresses HALE'S ack and nothing else: every revocation below still runs. */
+    providerAnswered: boolean;
   },
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
-  const { phoneE164, inbound, session, now, language } = args;
+  const { phoneE164, inbound, session, now, language, providerAnswered } = args;
 
   // VIL-241 · "Reply STOP anytime" is printed on the invite, so it has to reach the
   // invite: a STOP from someone we asked but who never accepted closes the invitation
@@ -1498,7 +1568,11 @@ async function handleStop(
     );
   }
 
-  // The one final confirmation carriers expect, and then silence.
+  // The one final confirmation carriers expect, and then silence. ONE — so where the
+  // provider has already sent it, Hale sends nothing and writes no outbound row: a
+  // parent who asked to be left alone should not be told twice that they will be.
+  if (providerAnswered) return { status: 'stopped', ack: 'provider_answered' };
+
   try {
     const { providerMessageId } = await deps.transport.send({
       to: phoneE164,
@@ -1532,7 +1606,7 @@ async function handleStop(
     // sends the ack again.
     if (!(error instanceof TwilioSendError && error.permanent)) throw error;
   }
-  return { status: 'stopped' };
+  return { status: 'stopped', ack: 'sent' };
 }
 
 export type { IntakeState };
