@@ -1,4 +1,6 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { and, eq } from 'drizzle-orm';
+import { isParentRole } from '~/lib/channel/role-scope';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 
@@ -40,4 +42,52 @@ export async function threadProactiveMessage(
   );
   await appendMessage(conversationId, 'assistant', input.body, database);
   return conversationId;
+}
+
+/**
+ * The same write, refused when the recipient is not a parent of the family.
+ *
+ * `threadProactiveMessage` above is named for who it is FOR, and until the loop could
+ * address a third party that was documentation. It isn't any more: the caregiver weekly
+ * plan and the caregiver event reminders ride the same A2 dispatch as the parents', and
+ * the dispatch threads every SMS leg it sends. Left alone it would resolve-or-CREATE a
+ * coach conversation for a grandmother inside somebody else's family, holding the
+ * household's schedule under her user id — a thread nobody can answer, in a transcript
+ * she is not part of. The caregiver lane refuses the same thing at its own door and says
+ * why (caregiver/route.ts `reply` vs `replyToParent`); this is that rule where the loop
+ * can reach it.
+ *
+ * A NAMED ABSENCE, not a silent skip (rule #11): the caller gets `threaded: false` with
+ * the reason, and the line is logged, so "Hale texted them and nothing was threaded" is
+ * a fact somebody can find rather than a gap in the transcript.
+ *
+ * READ FROM MEMBERSHIP, not from the message. The role is the live `family_members` row
+ * for (family, recipient), so a seat that has since gone leaves nothing behind for this
+ * to trust — the same reason the reminder fire path re-reads its event.
+ */
+export async function threadIfParent(
+  database: Database,
+  input: { familyId: string; parentUserId: string; body: string },
+): Promise<
+  { threaded: true; conversationId: string } | { threaded: false; reason: 'recipient_not_parent' }
+> {
+  const rows = await database
+    .select({ role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, input.familyId),
+        eq(schema.familyMembers.userId, input.parentUserId),
+      ),
+    )
+    .limit(1);
+  const role = rows[0]?.role ?? null;
+  if (role === null || !isParentRole(role)) {
+    console.info(
+      { familyId: input.familyId, recipientUserId: input.parentUserId, role },
+      'loop dispatch: recipient is not a parent of this family - sent, not threaded',
+    );
+    return { threaded: false, reason: 'recipient_not_parent' };
+  }
+  return { threaded: true, conversationId: await threadProactiveMessage(database, input) };
 }

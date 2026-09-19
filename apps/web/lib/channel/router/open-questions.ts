@@ -102,7 +102,16 @@ export type OpenQuestionKind =
    * member is the other half of putting the sentence back: the question is written down
    * at send time, on a row of its own, and a YES can only ever mean it.
    */
-  | 'email_alert_add';
+  | 'email_alert_add'
+  /**
+   * "How did today go with Mia and Leo?" — the evening check-in (VIL-353,
+   * channel/checkin/reply.ts). The only question on this list whose answer is not a
+   * polarity at all but a sentence, which is why it is unanswerable below and why its
+   * own handler reads it. Like the readiness checklist, its openness is derived from the
+   * MESSAGE LEDGER rather than a row: it stands while its ask is Hale's last word to
+   * that parent, and lapses at 08:00 whatever happens.
+   */
+  | 'evening_check_in';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -150,6 +159,10 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // real calendar" — the grade an approval carries for exactly this — and a wrong reading
   // costs a text the day before something that is not happening.
   email_alert_add: 'consequential',
+  // Never reached — nothing resolves an evening check-in (see KIND_ANSWERABLE). The
+  // Record forces a choice anyway, and `ordinary` is the honest one: a wrong reading
+  // could at most cost one acknowledgment nobody wanted.
+  evening_check_in: 'ordinary',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
@@ -197,6 +210,13 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // are not interested in should not go on having it counted as a question Hale is
   // waiting on for the rest of the day.
   email_alert_add: { yes: true, no: true },
+  // NEITHER POLARITY, the `activity_followup` reading for a different reason: the answer
+  // to "how did today go" is a sentence, and a yes-or-no resolver could only ever
+  // mis-read one. The keywords that DO move something (LESS, NO, DAILY) are read by the
+  // handler as exact words, which needs no model. It is LISTED anyway, because the list
+  // is what `soleOpenKind` reads: a question Hale is holding makes a bare affirmative
+  // ambiguous whether or not it is the thing being answered.
+  evening_check_in: { yes: false, no: false },
 };
 
 export interface Answerable {
@@ -284,6 +304,13 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // The alert prints "Reply YES and it goes on your week." verbatim, and it is the last
   // thing Hale said (integrations/email-alert.ts).
   email_alert_add: true,
+  // FALSE, and the entry matters more here than anywhere else on this list. The FIRST ask
+  // a family ever gets prints LESS and NO, but every ask after it prints nothing at all —
+  // and this flag is per CLASS. Marking it solicited would hand `newestSolicitedKind` the
+  // newest question in the product on most evenings, so a bare YES meant for an approval
+  // draft would be claimed by a diary entry. None of the words this lane reads is an
+  // affirmative anyway.
+  evening_check_in: false,
 };
 
 /**
@@ -331,6 +358,9 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval' | 'email_alert_add'>,
   // phrase can end up in a list Hale prints back (rule #1 — nothing about the person on
   // the other end of an invite they have not answered).
   co_parent_assent: 'texting your co-parent',
+  // No child name, deliberately: this phrase can end up in a list Hale prints back, and
+  // the ask itself is the only place the names belong (rule #1).
+  evening_check_in: 'how today went',
 };
 
 /**
@@ -489,6 +519,17 @@ export interface OpenQuestionSources {
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
   ): Promise<ReadonlyArray<{ id: string; summary: string; subject: string; askedAt: Date }>>;
+  /**
+   * The evening check-in, while its ask is Hale's last word to this parent and the
+   * morning has not come — or null (VIL-353, channel/checkin/reply.ts).
+   *
+   * Per-PARENT like the intro opt-in and the co-parent assent: the question went to one
+   * phone, and a co-parent's evening is not the one Hale asked about.
+   */
+  eveningCheckIn(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ id: string; askedAt: Date } | null>;
 }
 
 /**
@@ -518,6 +559,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         readiness,
         assent,
         emailOffers,
+        evening,
       ] = await Promise.all([
           sources.pendingApprovals(database, input.familyId),
           sources.introOptInOpen(database, {
@@ -532,6 +574,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           sources.registrationReadiness(database, input.familyId, input.parentUserId, input.now),
           sources.coParentAssent(database, input),
           sources.emailAlertOffers(database, input),
+          sources.eveningCheckIn(database, input),
         ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(
@@ -649,6 +692,19 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.email_alert_add,
           askedAt: emailOffer.askedAt,
           solicited: SOLICITED.email_alert_add,
+        });
+      }
+      if (evening) {
+        // Hale's own words about its own ask, with no child name in them — the names are
+        // in the text the parent is holding, and this line goes to a model (rule #1).
+        questions.push({
+          id: evening.id,
+          kind: 'evening_check_in',
+          description: 'How the day went at home',
+          subject: SUBJECT.evening_check_in,
+          answerable: KIND_ANSWERABLE.evening_check_in,
+          askedAt: evening.askedAt,
+          solicited: SOLICITED.evening_check_in,
         });
       }
       if (promise) {
