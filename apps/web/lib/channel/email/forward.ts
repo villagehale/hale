@@ -19,6 +19,7 @@ import {
   forwardBlocked,
   forwardLocale,
   forwardUnclear,
+  forwardUnknownRef,
 } from './forward-copy';
 import { parseForwardedMessage } from './forward-parse';
 import { resolveEmailSender } from './identity';
@@ -42,24 +43,32 @@ import { assessSenderTrust } from './trust';
  *   1. TOKEN. A tag that resolves to no family stops here. It never falls through to the
  *      reply door, where `From` would quietly become an identity again.
  *   2. THE FLAG. Dark by default (D21), per family.
- *   3. MACHINE MAIL, and a DIFFERENT policy from the reply door's — see below.
+ *   3. MACHINE MAIL, per BRANCH rather than per door — see below.
  *   4. THE ANSWERABLE PARENT, resolved BEFORE the claim, because `parent_user_id` is NOT
  *      NULL on the ledger row and because a family with no reachable address is
  *      `forward_unroutable` rather than silence (rule #11).
- *   5. THE FAMILY-KEYED LIMIT, before the claim, so a throttled message is redelivered
- *      rather than marked seen.
+ *   5. THE FAMILY-KEYED LIMIT, before the claim, so a throttled forward costs nothing and
+ *      leaves no row claiming it was handled.
  *   6. THE LEDGER CLAIM, before any spend, any ask and any insert. This is the
  *      idempotency: the same partial unique index the reply door uses, so a Resend
  *      redelivery cannot buy a second ask — and, once PR2 lands, cannot buy a second
  *      model call or a second summary.
  *   7. The `.ref` decides ANSWER from DOCUMENT. The address is the state machine.
  *
- * TWO DOORS, TWO MACHINE-MAIL POLICIES, both written down. `automated.ts` refuses bulk
- * and auto-reply mail because ANSWERING THE SENDER is how a mail loop starts. This door
- * never answers the sender: the reply goes to a verified parent's own address, resolved
- * from the token. So only `self` and `bounce` disqualify here, and `bulk` — school
- * newsletters, camp confirmations, registration receipts — is the highest-value class on
- * this door rather than the one to drop.
+ * TWO MACHINE-MAIL POLICIES, and the line between them is the BRANCH, not the door.
+ * `automated.ts` refuses bulk and auto-reply mail because ANSWERING THE SENDER is how a
+ * mail loop starts.
+ *   - A forwarded DOCUMENT is answered to a verified parent resolved from the TOKEN,
+ *     never to the message's sender, so no loop is possible: only `self` and `bounce`
+ *     disqualify, and `bulk` — school newsletters, camp confirmations, registration
+ *     receipts — is the highest-value class here rather than the one to drop.
+ *   - An ANSWER is different in exactly the way that matters: the address that just wrote
+ *     to Hale is the address Hale writes back to. A parent's out-of-office replying to
+ *     the ask is a loop, every hop carrying a fresh Message-ID that nothing dedupes. So
+ *     the answer branch keeps the reply door's policy in full. An instruction needs a
+ *     person, and an auto-reply is not one.
+ * The backstop under both, for a responder that sets no marker at all: an unclear answer
+ * is re-asked ONCE and then met with silence, counted from the sender's own trail.
  *
  * PRIVACY (rule #1). No branch logs a body, a subject, a domain or an address. Outcomes
  * are an enum and ids. The domain reaches copy and a consent evidence field; the subject
@@ -81,8 +90,12 @@ export type EmailForwardOutcome =
   | 'forward_unknown_token'
   /** The family is not armed for F14 yet (D21). */
   | 'forward_family_dark'
-  /** Our own address, or a bounce. The only two machine verdicts that disqualify here. */
+  /** Our own address, or a bounce: the only two machine verdicts that disqualify a
+   * forwarded DOCUMENT, which is answered to a parent rather than to its sender. */
   | 'forward_machine'
+  /** Machine mail addressed to the ANSWER address. An instruction needs a person, and
+   * this is the branch where Hale would be writing back to whoever just wrote to it. */
+  | 'forward_answer_machine'
   /** Nobody in the household has a usable address, so there is no one to answer. Named,
    * never silence (rule #11). */
   | 'forward_unroutable'
@@ -93,8 +106,9 @@ export type EmailForwardOutcome =
   | 'forward_sender_pending'
   /** A sender already asked about: held, and deliberately NOT asked again. */
   | 'forward_sender_pending_again'
-  /** The transport refused the ask, so nothing was stored — an un-asked ask must never
-   * sit in the database waiting to be purged. The next forward asks again. */
+  /** The question could not be put — the transport refused it — so nothing was stored:
+   * an un-asked ask must never sit in the database waiting to be purged. The next
+   * forward from that sender asks again. */
   | 'forward_ask_failed'
   /** A sender the family said no to. Nothing stored, nothing sent. */
   | 'forward_sender_blocked'
@@ -108,8 +122,11 @@ export type EmailForwardOutcome =
   | 'forward_answer_unauthorised'
   | 'forward_sender_allowed'
   | 'forward_sender_refused'
-  /** Neither yes nor no. One re-ask, then silence. */
-  | 'forward_answer_unclear';
+  /** Neither yes nor no, and the one re-ask this sender gets. */
+  | 'forward_answer_unclear'
+  /** Neither yes nor no, again. The re-ask is spent, so this one is answered with
+   * silence — named and counted, because a deliberate silence is an outcome. */
+  | 'forward_answer_unclear_again';
 
 export interface EmailForwardDeps {
   database: Database;
@@ -147,23 +164,80 @@ export async function routeEmailForward(
 ): Promise<EmailForwardOutcome> {
   const { event } = input;
 
+  // The only refusal with no family behind it, and therefore the only one that can leave
+  // no trail: there is no household to write the row against.
   const familyId = await familyForForwardToken(deps.database, input.token);
   if (!familyId) return 'forward_unknown_token';
-  if (!f14EnabledFor(familyId)) return 'forward_family_dark';
-  if (input.machine === 'self' || input.machine === 'bounce') return 'forward_machine';
+
+  if (!f14EnabledFor(familyId)) return refuse(deps, { familyId }, 'forward_family_dark');
+
+  const machine = machineRefusal(input);
+  if (machine) return refuse(deps, { familyId }, machine);
 
   const parent = await answerableParent(deps.database, familyId, event.from);
-  if (!parent) return 'forward_unroutable';
+  if (!parent) return refuse(deps, { familyId }, 'forward_unroutable');
 
   const decision = await deps.limiter.check(familyId, FORWARD_ROUTE, RATE_LIMITS[FORWARD_ROUTE]);
-  if (!decision.allowed) return 'forward_rate_limited';
+  if (!decision.allowed) {
+    return refuse(deps, { familyId, actor: parent.userId }, 'forward_rate_limited');
+  }
 
   const claimed = await claim(deps.database, { familyId, parent, event });
+  // Not a refusal: another delivery of this Message-ID won the right to act, and its
+  // trail row is the one that describes what happened to this message.
   if (!claimed) return 'forward_duplicate';
 
   return input.ref
     ? answer(deps, config, { ...input, familyId, parent })
     : document(deps, config, { ...input, familyId, parent });
+}
+
+/**
+ * Which machine verdicts disqualify THIS message — see the two policies in the module
+ * note. The asymmetry is the whole of it: a document is answered to somebody the token
+ * named, an answer is answered to whoever sent it.
+ */
+function machineRefusal(
+  input: Pick<EmailForwardInput, 'machine' | 'ref'>,
+): 'forward_machine' | 'forward_answer_machine' | null {
+  if (!input.machine) return null;
+  if (input.ref) return 'forward_answer_machine';
+  return input.machine === 'self' || input.machine === 'bounce' ? 'forward_machine' : null;
+}
+
+/**
+ * Every way this door says no, and the trail row that says so (rule #6). A rejected
+ * instruction against a household is a thing that happened to that household, and the
+ * reason is the outcome token itself — never a subject, a body or an address (rule #1).
+ */
+type ForwardRefusal = Extract<
+  EmailForwardOutcome,
+  | 'forward_family_dark'
+  | 'forward_machine'
+  | 'forward_answer_machine'
+  | 'forward_unroutable'
+  | 'forward_rate_limited'
+  | 'forward_ask_failed'
+  | 'forward_sender_blocked'
+  | 'forward_answer_unknown'
+  | 'forward_answer_unauthorised'
+  | 'forward_answer_unclear_again'
+>;
+
+async function refuse<Reason extends ForwardRefusal>(
+  deps: EmailForwardDeps,
+  args: { familyId: string; actor?: string },
+  reason: Reason,
+): Promise<Reason> {
+  await deps.database.insert(schema.auditLog).values({
+    familyId: args.familyId,
+    // 'system' when the refusal is precisely that nobody was identified — an
+    // unauthenticated answer, or a household with no reachable parent.
+    actor: args.actor ?? 'system',
+    actionTaken: 'email_forward_refused',
+    after: { reason },
+  });
+  return reason;
 }
 
 /** The parent this door answers, with the address to answer them at. */
@@ -280,43 +354,61 @@ async function document(
   // A filter auto-forward carries no banner, so the envelope sender IS the school. The
   // router has already refused an unparseable `From`, so one of the two always resolves.
   const originalFrom = parsed.originalFrom ?? parseEmailAddress(input.event.from)?.address;
-  if (!originalFrom) return 'forward_unroutable';
+  if (!originalFrom) return refuse(deps, { familyId: input.familyId }, 'forward_unroutable');
   const domain = domainOf(originalFrom);
 
-  const existing = await senderByDomain(deps.database, input.familyId, domain);
-  if (existing?.state === 'blocked') return 'forward_sender_blocked';
-  if (existing?.state === 'allowed') return 'forward_ready';
-
-  const subject = parsed.originalSubject ?? input.event.subject;
   const held = {
     familyId: input.familyId,
     providerMessageId: input.event.messageId,
     originalFrom,
-    subject,
+    subject: parsed.originalSubject ?? input.event.subject,
     rawBody: parsed.body,
     receivedAt: input.event.receivedAt,
   };
 
-  if (existing) {
-    // Already asked about. A second forward is held, and deliberately NOT a second ask.
-    await hold(deps.database, { ...held, senderId: existing.id });
-    return 'forward_sender_pending_again';
+  const existing = await senderByDomain(deps.database, input.familyId, domain);
+  if (existing) return settled(deps, input, held, existing);
+
+  // THE DOMAIN IS CLAIMED BEFORE THE ASK, and this is the ordering the ask's `Reply-To`
+  // depends on. Two first forwards from one new school can race here; if the ask went
+  // first, both would send one, the loser's INSERT would violate the domain index, and
+  // the parent would hold a `.ref` that resolves to nothing — their YES answered by
+  // silence. Claiming first makes the ref in a parent's hand always a ref Hale knows.
+  // `DO UPDATE` on a column that is already that value, rather than `DO NOTHING`, so the
+  // conflicting row comes back and the loser can hold against the winner's question.
+  const ref = mintForwardRef();
+  const [sender] = await deps.database
+    .insert(schema.familyForwardSenders)
+    .values({ familyId: input.familyId, senderDomain: domain, ref, state: 'pending' })
+    .onConflictDoUpdate({
+      target: [schema.familyForwardSenders.familyId, schema.familyForwardSenders.senderDomain],
+      set: { senderDomain: domain },
+    })
+    .returning({
+      id: schema.familyForwardSenders.id,
+      ref: schema.familyForwardSenders.ref,
+      state: schema.familyForwardSenders.state,
+    });
+  // An upsert always hands a row back, so this is the impossible branch — named anyway,
+  // because the alternative is a throw that svix would redeliver into a duplicate.
+  if (!sender) return refuse(deps, { familyId: input.familyId }, 'forward_ask_failed');
+  if (sender.ref !== ref) {
+    // Somebody else's row came back: another delivery asked about this domain first.
+    return settled(deps, input, held, { id: sender.id, state: sender.state as SenderState });
   }
 
-  // THE ASK GOES FIRST, and nothing is written until the transport accepts it (the
-  // send-time discipline `email_alert_offers` keeps). A pending row behind an ask that was
-  // never sent is a held document waiting for an answer to a question nobody was asked —
-  // which the 72h sweep would then purge in silence.
-  const ref = mintForwardRef();
   const locale = forwardLocale(input.parent.locale);
   try {
     await sendEmailReply(deps.reply(), {
       to: input.parent.address,
-      body: forwardAsk(locale, { subject, domain }),
+      body: forwardAsk(locale, { subject: held.subject, domain }),
       inReplyTo: input.event.messageId,
       replyTo: forwardAnswerAddress(input.token, ref, config),
     });
   } catch (err) {
+    // The claim is given back. Nothing may be left holding a document against a question
+    // nobody was asked — the 72h sweep would then purge it in silence — so the next
+    // forward from this school asks again. The held row is not written at all.
     deps.log.error(
       {
         familyId: input.familyId,
@@ -325,15 +417,13 @@ async function document(
       },
       'email forward: the ask could not be sent — nothing was stored, the next forward asks again',
     );
-    return 'forward_ask_failed';
+    await deps.database
+      .delete(schema.familyForwardSenders)
+      .where(eq(schema.familyForwardSenders.id, sender.id));
+    return refuse(deps, { familyId: input.familyId, actor: input.parent.userId }, 'forward_ask_failed');
   }
 
   await deps.database.transaction(async (tx) => {
-    const [sender] = await tx
-      .insert(schema.familyForwardSenders)
-      .values({ familyId: input.familyId, senderDomain: domain, ref, state: 'pending' })
-      .returning({ id: schema.familyForwardSenders.id });
-    if (!sender) return;
     await tx
       .insert(schema.emailForwardsPending)
       .values({ ...held, senderId: sender.id })
@@ -350,6 +440,23 @@ async function document(
   return 'forward_sender_pending';
 }
 
+/** What happens to a document whose sender the family has already met — reached from the
+ * read before the claim, and again from losing the claim to a racing delivery. */
+async function settled(
+  deps: EmailForwardDeps,
+  input: Branch,
+  held: Omit<typeof schema.emailForwardsPending.$inferInsert, 'senderId'>,
+  sender: { id: string; state: SenderState },
+): Promise<EmailForwardOutcome> {
+  if (sender.state === 'blocked') {
+    return refuse(deps, { familyId: input.familyId }, 'forward_sender_blocked');
+  }
+  if (sender.state === 'allowed') return 'forward_ready';
+  // Already asked about. A second forward is held, and deliberately NOT a second ask.
+  await hold(deps.database, { ...held, senderId: sender.id });
+  return 'forward_sender_pending_again';
+}
+
 /**
  * AN ANSWER about one pending sender. Unlike a document, this is an INSTRUCTION, so it
  * needs a person: the DKIM-aligned `From` must resolve to a parent of the family the token
@@ -360,22 +467,8 @@ async function answer(
   config: EmailInboundConfig,
   input: Branch,
 ): Promise<EmailForwardOutcome> {
-  const [sender] = await deps.database
-    .select({
-      id: schema.familyForwardSenders.id,
-      senderDomain: schema.familyForwardSenders.senderDomain,
-      state: schema.familyForwardSenders.state,
-    })
-    .from(schema.familyForwardSenders)
-    .where(
-      and(
-        eq(schema.familyForwardSenders.familyId, input.familyId),
-        eq(schema.familyForwardSenders.ref, input.ref as string),
-      ),
-    )
-    .limit(1);
-  if (!sender) return 'forward_answer_unknown';
-
+  // THE PERSON FIRST, before the question is even looked up: this branch writes back to
+  // the address that wrote to it, so who that is decides whether Hale may speak at all.
   // A DOCUMENT needs only the family, because the TOKEN is the credential. An
   // INSTRUCTION needs a person, and a `From` is a claim until DKIM says otherwise — so
   // this branch, and only this branch, runs the reply door's trust gate (trust.ts).
@@ -390,7 +483,33 @@ async function answer(
   const owner =
     from && trust.trusted ? await resolveEmailSender(deps.database, from.address) : null;
   if (!owner || owner.familyId !== input.familyId || !PARENT_ROLES.includes(owner.role)) {
-    return 'forward_answer_unauthorised';
+    return refuse(deps, { familyId: input.familyId }, 'forward_answer_unauthorised');
+  }
+
+  const locale = forwardLocale(input.parent.locale);
+  const [sender] = await deps.database
+    .select({
+      id: schema.familyForwardSenders.id,
+      senderDomain: schema.familyForwardSenders.senderDomain,
+      state: schema.familyForwardSenders.state,
+    })
+    .from(schema.familyForwardSenders)
+    .where(
+      and(
+        eq(schema.familyForwardSenders.familyId, input.familyId),
+        eq(schema.familyForwardSenders.ref, input.ref as string),
+      ),
+    )
+    .limit(1);
+  if (!sender) {
+    // A `.ref` Hale no longer holds — the three-day purge took the question with the
+    // document it was about. A verified parent hears why rather than nothing (rule #11).
+    await sendEmailReply(deps.reply(), {
+      to: input.parent.address,
+      body: forwardUnknownRef(locale),
+      inReplyTo: input.event.messageId,
+    });
+    return refuse(deps, { familyId: input.familyId, actor: owner.userId }, 'forward_answer_unknown');
   }
 
   // STRIPPED BEFORE IT IS READ. `readAffirmative` is an exact-phrase lookup over the whole
@@ -399,26 +518,44 @@ async function answer(
   // and reads as unclear. Every real YES would fail.
   const verdict = readAffirmative(extractReply(input.text ?? '').text);
   const domain = sender.senderDomain;
-  const locale = forwardLocale(input.parent.locale);
 
   if (verdict === 'unclear') {
+    // ONE re-ask, counted from the sender's own trail rather than a column: the ask and
+    // the re-ask are the only two rows this verb writes about this sender, so a third
+    // question would be the first one nobody bounded. The machine check above catches an
+    // auto-responder that announces itself; this catches one that does not.
+    if ((await timesAsked(deps.database, input.familyId, sender.id)) >= 2) {
+      return refuse(
+        deps,
+        { familyId: input.familyId, actor: owner.userId },
+        'forward_answer_unclear_again',
+      );
+    }
     await sendEmailReply(deps.reply(), {
       to: input.parent.address,
       body: forwardUnclear(locale, { domain }),
       inReplyTo: input.event.messageId,
     });
+    // Written after the send, as the first ask is: a question Hale is recorded as having
+    // asked must be one a transport really accepted.
+    await deps.database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: owner.userId,
+      actionTaken: 'email_forward_sender_asked',
+      targetTable: 'family_forward_senders',
+      targetId: sender.id,
+      after: { senderDomain: domain },
+    });
     return 'forward_answer_unclear';
   }
 
   const allowed = verdict === 'yes';
-  await sendEmailReply(deps.reply(), {
-    to: input.parent.address,
-    body: allowed
-      ? forwardAllowed(locale, { domain })
-      : forwardBlocked(locale, { domain }),
-    inReplyTo: input.event.messageId,
-  });
-
+  // THE DECISION COMMITS BEFORE THE ACKNOWLEDGEMENT, and the ask's ordering is inverted
+  // here on purpose. A question must exist in the world before it is recorded; a parent's
+  // own decision must be durable before anything else happens to it. Acknowledging first
+  // would mean a DB failure leaving a household told "from now on I'll read…" over a
+  // sender still pending, and a transport failure losing the YES to a redelivery the
+  // ledger claim then dismisses as a duplicate.
   await deps.database.transaction(async (tx) => {
     await tx
       .update(schema.familyForwardSenders)
@@ -480,7 +617,37 @@ async function answer(
     }
   });
 
+  await sendEmailReply(deps.reply(), {
+    to: input.parent.address,
+    body: allowed ? forwardAllowed(locale, { domain }) : forwardBlocked(locale, { domain }),
+    inReplyTo: input.event.messageId,
+  });
+
   return allowed ? 'forward_sender_allowed' : 'forward_sender_refused';
+}
+
+/**
+ * How many times this sender has been asked about. The audit trail is the count, not a
+ * column: the verb is written exactly once per question actually sent, so the trail
+ * already IS the state — and a bound that reads the same rows a parent can read is a
+ * bound nobody has to keep in sync.
+ */
+async function timesAsked(
+  database: Database,
+  familyId: string,
+  senderId: string,
+): Promise<number> {
+  const rows = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, 'email_forward_sender_asked'),
+        eq(schema.auditLog.targetId, senderId),
+      ),
+    );
+  return rows.length;
 }
 
 async function senderByDomain(

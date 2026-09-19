@@ -106,8 +106,12 @@ export const RATE_LIMITS = {
   // spend this bounds — each forward from an allowed sender costs a triage and an
   // extraction — so it is also the only honest key. 20/hour sits far above a parent
   // clearing a morning's mail while stopping a misconfigured filter from pointing a whole
-  // mailbox at us. Checked BEFORE the ledger claim, so a throttled message is redelivered
-  // rather than marked seen.
+  // mailbox at us. Checked BEFORE the ledger claim, so a throttled forward costs nothing
+  // and leaves no row claiming it was handled — it is REFUSED, not deferred: the webhook
+  // answers 200 and the message is dropped, because a 5xx would turn a spend cap into a
+  // delay (svix would redeliver it inside the same hour) and a sustained 5xx is how a
+  // provider disables the whole inbound endpoint. Named and counted as
+  // `forward_rate_limited` instead.
   'email-forward': { limit: 20, windowSec: 3600 },
   // VIL-245 · rsvp (20/hour/IP): the PUBLIC, unauthenticated RSVP write — the one
   // endpoint in Hale a stranger can POST to with no account. An HOUR window, not a

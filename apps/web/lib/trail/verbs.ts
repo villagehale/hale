@@ -190,6 +190,7 @@ export const AUDIT_VERBS = [
   'email_forward_sender_allowed',
   'email_forward_sender_blocked',
   'email_forward_raw_purged',
+  'email_forward_refused',
   'proactive_watch_granted',
   'proactive_watch_declined',
   // ── caregiver invites ───────────────────────────────────────────────────
@@ -610,6 +611,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   email_forward_raw_purged: {
     sentence: 'the forwarded message was deleted',
     family: 'done',
+  },
+  // Every way the door says no, under one sentence: the reason lives in `after` as the
+  // outcome token, which is an operator's word rather than a parent's. What a parent
+  // needs to see is that something reached Hale and Hale did not act on it.
+  email_forward_refused: {
+    sentence: 'Hale did not act on something forwarded to it',
+    family: 'problem',
   },
   proactive_nudge_skipped: {
     // The quiet-operator promise, made visible: a deliberate silence is a real

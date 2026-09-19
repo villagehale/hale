@@ -67,12 +67,29 @@ export function forwardBlocked(locale: ForwardLocale, args: { domain: string }):
     : `Understood — I won't read mail from ${args.domain}, and I've deleted the message you forwarded. I won't ask again.`;
 }
 
-/** One re-ask, then silence. A parent who forwards a fresh document to the answer address
- * lands here, which is why the sentence names the two words it can read. */
+/**
+ * The ONE re-ask, and the door counts them: a sender that has already been asked twice is
+ * met with silence rather than a third question (forward.ts). A parent who forwards a
+ * fresh document to the answer address lands here, which is why the sentence names the
+ * two words it can read — and an auto-responder that carries no machine marker at all
+ * lands here too, which is why there is a bound.
+ */
 export function forwardUnclear(locale: ForwardLocale, args: { domain: string }): string {
   return locale === 'fr'
     ? `Désolé — était-ce oui ou non pour lire le courrier de ${args.domain}? Répondez OUI ou NON.`
     : `Sorry — was that a yes or a no about reading mail from ${args.domain}? Reply YES or NO.`;
+}
+
+/**
+ * An answer to a question Hale can no longer find: a `.ref` whose sender row lapsed with
+ * the three-day purge, or one from an ask that never reached the database. A verified
+ * parent hears a sentence rather than nothing (rule #11), and it names no domain —
+ * not knowing which one it was is the whole state.
+ */
+export function forwardUnknownRef(locale: ForwardLocale): string {
+  return locale === 'fr'
+    ? `Je ne retrouve plus le message dont il s'agit — il a peut-être expiré. Transférez-le-moi de nouveau et je vous poserai la question.`
+    : `I've lost track of which message that was about — it may have expired. Forward it to me again and I'll ask.`;
 }
 
 /**

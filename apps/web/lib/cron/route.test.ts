@@ -13,6 +13,7 @@ const runDiscoveryCronMock = vi.fn();
 const runInferenceCronMock = vi.fn();
 const runWeekPlanCronMock = vi.fn();
 const sweepAttachmentsMock = vi.fn();
+const sweepForwardsMock = vi.fn();
 const runNudgeCronMock = vi.fn();
 const runSittingReminderCronMock = vi.fn();
 const runFirstReplyRecoveryCronMock = vi.fn();
@@ -42,6 +43,9 @@ vi.mock('~/lib/loop/cron', () => ({
 }));
 vi.mock('~/lib/coach/attachments', () => ({
   sweepUnlinkedAttachments: (...a: unknown[]) => sweepAttachmentsMock(...a),
+}));
+vi.mock('~/lib/channel/email/forward-purge', () => ({
+  sweepExpiredForwards: (...a: unknown[]) => sweepForwardsMock(...a),
 }));
 vi.mock('~/lib/channel/nudge/run', () => ({
   runNudgeCron: (...a: unknown[]) => runNudgeCronMock(...a),
@@ -86,6 +90,7 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     runInferenceCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runWeekPlanCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });
+    sweepForwardsMock.mockReset().mockResolvedValue({ purged: 0, senders: 0 });
     runNudgeCronMock.mockReset().mockResolvedValue({ enabled: false, evaluated: 0 });
     runSittingReminderCronMock
       .mockReset()
@@ -145,5 +150,36 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     if (path.includes('intake-sitting-reminder')) {
       expect(runFirstReplyRecoveryCronMock).toHaveBeenCalledTimes(1);
     }
+  });
+});
+
+/**
+ * THE LIFECYCLE ROUTE SWEEPS BOTH STORES. A second bounded store riding one existing
+ * schedule (VIL-352's forwarded mail, beside the unlinked attachments) is only ever swept
+ * if it is really wired into the route — and the sweep is what makes the ask's written
+ * three-day promise true, so an unwired one is a privacy claim nothing keeps.
+ */
+describe('GET /api/cron/attachment-sweep — the whole lifecycle sweep', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });
+    sweepForwardsMock.mockReset().mockResolvedValue({ purged: 0, senders: 0 });
+    dbMock.mockReset().mockReturnValue({});
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('purges unlinked attachments AND forwarded mail held past the three-day promise', async () => {
+    vi.stubEnv('CRON_SECRET', SECRET);
+    const { GET } = await import('~/app/api/cron/attachment-sweep/route');
+
+    const res = await GET(request(`Bearer ${SECRET}`));
+
+    expect(res.status).toBe(200);
+    expect(sweepAttachmentsMock).toHaveBeenCalledTimes(1);
+    expect(sweepForwardsMock).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toMatchObject({ ok: true, forwards: { purged: 0, senders: 0 } });
   });
 });

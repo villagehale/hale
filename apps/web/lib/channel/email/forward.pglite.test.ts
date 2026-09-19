@@ -1,14 +1,28 @@
+import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { EmailInboundConfig } from './config';
 import { FakeContentReader } from './content';
-import { forwardAddress, forwardAnswerAddress, mintForwardToken } from './forward-address';
+import {
+  familyForForwardToken,
+  forwardAddress,
+  forwardAnswerAddress,
+  mintForwardToken,
+  revokeForwardToken,
+} from './forward-address';
 import { type EmailForwardDeps, routeEmailForward } from './forward';
-import { type EmailInboundDeps, type EmailInboundOutcome, routeEmailInbound } from './inbound';
+import { PENDING_FORWARD_TTL_MS, sweepExpiredForwards } from './forward-purge';
+import {
+  type EmailInboundDeps,
+  type EmailInboundOutcome,
+  handleEmailInboundRequest,
+  routeEmailInbound,
+} from './inbound';
 import type { ResendTransport } from '~/lib/channel/resend-transport';
 
 /**
@@ -64,26 +78,36 @@ interface RouteArgs {
   text?: string;
   messageId?: string;
   headers?: Record<string, string>;
+  /** Runs INSIDE the transport, so a test can ask what the database looked like at the
+   * moment Hale spoke — which is the only way to pin an ordering. */
+  onSend?: () => Promise<void>;
+  /** A provider that refuses the send, the shape `sendEmailReply` turns into a throw. */
+  sendFails?: boolean;
+  limiter?: RateLimiter;
 }
 
-async function route(args: RouteArgs): Promise<EmailInboundOutcome> {
+function inboundDeps(args: RouteArgs): EmailInboundDeps {
   const queued: ChannelMessageReceivedJob[] = [];
   const from = args.from ?? `Bayview School <${SCHOOL}>`;
   const domain = from.slice(from.lastIndexOf('@') + 1).replace(/[>\s]/g, '');
-  const deps: EmailInboundDeps = {
+  return {
     database: db.database,
     content: () =>
       FakeContentReader.ok({
         text: args.text ?? FORWARDED,
         headers: { 'authentication-results': authPass(domain), ...args.headers },
       }),
-    limiter: new FakeRateLimiter(),
+    limiter: args.limiter ?? new FakeRateLimiter(),
     enqueue: async (job) => {
       queued.push(job);
     },
     reply: () => ({
       transport: {
         send: async (msg) => {
+          await args.onSend?.();
+          if (args.sendFails) {
+            return { id: null, error: { name: 'application_error', message: 'refused' } };
+          }
           sent.push(msg);
           return { id: `prov-${sent.length}`, error: null };
         },
@@ -97,15 +121,22 @@ async function route(args: RouteArgs): Promise<EmailInboundOutcome> {
       counted.push(outcome);
     },
   };
-  return routeEmailInbound(deps, CONFIG, {
+}
+
+function inboundEvent(args: RouteArgs) {
+  return {
     emailId: `email-${nonce}-${args.messageId ?? '1'}`,
-    from,
+    from: args.from ?? `Bayview School <${SCHOOL}>`,
     to: [args.to],
     messageId: `<${nonce}${args.messageId ?? '-msg-1@bcs.on.ca'}>`,
     subject: 'Fwd: Spring concert',
     attachmentCount: 0,
     receivedAt: NOW,
-  });
+  };
+}
+
+async function route(args: RouteArgs): Promise<EmailInboundOutcome> {
+  return routeEmailInbound(inboundDeps(args), CONFIG, inboundEvent(args));
 }
 
 async function senders() {
@@ -125,6 +156,44 @@ async function inboundRows() {
     .select()
     .from(schema.channelMessages)
     .where(eq(schema.channelMessages.familyId, family.familyId));
+}
+async function verbs(): Promise<string[]> {
+  const rows = await db.database
+    .select({ verb: schema.auditLog.actionTaken })
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.familyId, family.familyId));
+  return rows.map((row) => row.verb).sort();
+}
+/** The reasons Hale wrote down for refusing — the trail entry a rejected instruction
+ * against a family leaves behind (rule #6). */
+async function refusals(): Promise<unknown[]> {
+  const rows = await db.database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, family.familyId),
+        eq(schema.auditLog.actionTaken, 'email_forward_refused'),
+      ),
+    );
+  return rows.map((row) => row.after);
+}
+
+/** One forward from an undecided school, and the `ref` its ask was addressed by. */
+async function ask(): Promise<string> {
+  await route({ to: forwardAddress(token, CONFIG) });
+  const [sender] = await senders();
+  return sender?.ref as string;
+}
+
+/** A real Gmail reply: one word, then the ask quoted underneath an attribution. */
+function quotedYes(word: string): string {
+  return [
+    word,
+    '',
+    'On Tue, 3 Jun 2026 at 09:12, Hale <hale@mail.villagehale.com> wrote:',
+    '> You forwarded "Spring concert" from bcs.on.ca. I haven\'t read it.',
+  ].join('\n');
 }
 
 beforeAll(async () => {
@@ -285,22 +354,6 @@ describe('the forwarding door · a document from a sender nobody has decided abo
 });
 
 describe('the forwarding door · the answer', () => {
-  async function ask(): Promise<string> {
-    await route({ to: forwardAddress(token, CONFIG) });
-    const [sender] = await senders();
-    return sender?.ref as string;
-  }
-
-  /** A real Gmail reply: one word, then the ask quoted underneath an attribution. */
-  function quotedYes(word: string): string {
-    return [
-      word,
-      '',
-      'On Tue, 3 Jun 2026 at 09:12, Hale <hale@mail.villagehale.com> wrote:',
-      '> You forwarded "Spring concert" from bcs.on.ca. I haven\'t read it.',
-    ].join('\n');
-  }
-
   it('a quoted YES from the parent allows the sender, records the consent, and purges the raw', async () => {
     const ref = await ask();
     const outcome = await route({
@@ -359,6 +412,7 @@ describe('the forwarding door · the answer', () => {
       await route({ to: forwardAddress(token, CONFIG), messageId: '<msg-3@bcs.on.ca>' }),
     ).toBe('forward_sender_blocked');
     expect(sent).toHaveLength(2);
+    expect(await refusals()).toEqual([{ reason: 'forward_sender_blocked' }]);
 
     // POSITIVE CONTROL: the door is not simply dead — a different school still asks.
     expect(
@@ -421,6 +475,358 @@ describe('the forwarding door · the answer', () => {
   });
 });
 
+describe('the forwarding door · an instruction needs a person', () => {
+  /**
+   * THE MAIL LOOP, on the one branch that really can have one. The door relaxes the
+   * loop guard because it answers the token's parent rather than the sender — true of a
+   * forwarded DOCUMENT, and false of an ANSWER, where the address that just wrote to
+   * Hale is the address Hale writes back to. A parent's out-of-office replying to the
+   * ask is exactly that, and every hop carries a fresh Message-ID, so nothing downstream
+   * dedupes it.
+   */
+  for (const [what, headers] of [
+    ['an out-of-office', { 'Auto-Submitted': 'auto-replied' }],
+    ['an auto-reply precedence', { Precedence: 'auto_reply' }],
+    ['a vendor autoresponder', { 'X-Autoreply': 'yes' }],
+  ] as const) {
+    it(`${what} answering the ask is refused, and Hale says nothing back`, async () => {
+      const ref = await ask();
+      for (const hop of [1, 2, 3]) {
+        expect(
+          await route({
+            to: forwardAnswerAddress(token, ref, CONFIG),
+            from: `Sam <${parentEmail}>`,
+            text: 'I am out of the office until Monday.',
+            messageId: `<ooo-${what}-${hop}@example.test>`,
+            headers,
+          }),
+        ).toBe('forward_answer_machine');
+      }
+      // The ask, and not one word after it.
+      expect(sent).toHaveLength(1);
+      expect(await senders()).toMatchObject([{ state: 'pending' }]);
+      expect(await refusals()).toHaveLength(3);
+    });
+  }
+
+  it('POSITIVE CONTROL: the same bulk marker on a forwarded DOCUMENT is still read', async () => {
+    expect(
+      await route({
+        to: forwardAddress(token, CONFIG),
+        headers: { Precedence: 'auto_reply' },
+      }),
+    ).toBe('forward_sender_pending');
+    expect(sent).toHaveLength(1);
+  });
+
+  it('one unclear answer is re-asked, and the next one is met with silence', async () => {
+    const ref = await ask();
+    const unclear = (n: number): Promise<EmailInboundOutcome> =>
+      route({
+        to: forwardAnswerAddress(token, ref, CONFIG),
+        from: `Sam <${parentEmail}>`,
+        text: 'what is this about?',
+        messageId: `<unclear-${n}@example.test>`,
+      });
+
+    expect(await unclear(1)).toBe('forward_answer_unclear');
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.text).toContain('was that a yes or a no');
+
+    // The bound the ask copy promises. Without it a responder that sets no machine
+    // marker at all still trades messages with Hale until the hourly cap stops it.
+    expect(await unclear(2)).toBe('forward_answer_unclear_again');
+    expect(await unclear(3)).toBe('forward_answer_unclear_again');
+    expect(sent).toHaveLength(2);
+    expect(await senders()).toMatchObject([{ state: 'pending' }]);
+  });
+
+  it('an answer to a ref Hale no longer holds tells the parent, instead of nothing', async () => {
+    await ask();
+    const outcome = await route({
+      to: forwardAnswerAddress(token, 'deadbeef', CONFIG),
+      from: `Sam <${parentEmail}>`,
+      text: quotedYes('Yes'),
+      messageId: '<stale-ref@example.test>',
+    });
+
+    expect(outcome).toBe('forward_answer_unknown');
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.text).toContain('Forward it to me again');
+    expect(await refusals()).toEqual([{ reason: 'forward_answer_unknown' }]);
+  });
+
+  it('a stranger holding the token still gets nothing back, and leaves a reason', async () => {
+    const ref = await ask();
+    expect(
+      await route({
+        to: forwardAnswerAddress(token, ref, CONFIG),
+        from: 'Stranger <nobody@elsewhere.test>',
+        text: 'Yes',
+        messageId: '<unauth-trail@elsewhere.test>',
+      }),
+    ).toBe('forward_answer_unauthorised');
+    expect(sent).toHaveLength(1);
+    expect(await refusals()).toEqual([{ reason: 'forward_answer_unauthorised' }]);
+  });
+});
+
+describe('the forwarding door · the ask and the ref it hands out', () => {
+  it('THE DOMAIN IS CLAIMED BEFORE THE ASK, so the ref a parent is handed always resolves', async () => {
+    // The orphan this forbids: two first forwards from one new domain racing, both
+    // sending an ask, one of the two refs never reaching the database — and that
+    // parent's YES landing on a ref nobody knows. Claiming first makes it impossible.
+    let refsAtSendTime: string[] = [];
+    await route({
+      to: forwardAddress(token, CONFIG),
+      onSend: async () => {
+        refsAtSendTime = (await senders()).map((row) => row.ref);
+      },
+    });
+    const [sender] = await senders();
+    expect(refsAtSendTime).toEqual([sender?.ref]);
+    expect(sent[0]?.replyTo).toBe(forwardAnswerAddress(token, sender?.ref as string, CONFIG));
+  });
+
+  it('TWO FIRST FORWARDS FROM ONE SCHOOL, racing: one question, two held documents', async () => {
+    // Both deliveries read an empty allowlist before either writes one. Without a
+    // conflict-tolerant claim the loser raises a unique violation, the webhook 500s, and
+    // the ask it already sent names a ref that does not exist.
+    const deps = inboundDeps({ to: forwardAddress(token, CONFIG) });
+    const one = routeEmailInbound(deps, CONFIG, inboundEvent({ to: forwardAddress(token, CONFIG), messageId: '<race-a@bcs.on.ca>' }));
+    const two = routeEmailInbound(deps, CONFIG, inboundEvent({ to: forwardAddress(token, CONFIG), messageId: '<race-b@bcs.on.ca>' }));
+    const outcomes = (await Promise.all([one, two])).sort();
+
+    expect(outcomes).toEqual(['forward_sender_pending', 'forward_sender_pending_again']);
+    expect(await senders()).toHaveLength(1);
+    expect(await held()).toHaveLength(2);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('a transport that refuses the ask leaves NOTHING behind, and the next forward asks again', async () => {
+    expect(await route({ to: forwardAddress(token, CONFIG), sendFails: true })).toBe(
+      'forward_ask_failed',
+    );
+    // An un-asked question must never sit in the database waiting to be purged.
+    expect(await senders()).toEqual([]);
+    expect(await held()).toEqual([]);
+    expect(await refusals()).toEqual([{ reason: 'forward_ask_failed' }]);
+
+    expect(
+      await route({ to: forwardAddress(token, CONFIG), messageId: '<after-failure@bcs.on.ca>' }),
+    ).toBe('forward_sender_pending');
+    expect(sent).toHaveLength(1);
+  });
+
+  it('THE DECISION COMMITS BEFORE THE ACKNOWLEDGEMENT, so a dead transport cannot lose a YES', async () => {
+    const ref = await ask();
+    await expect(
+      route({
+        to: forwardAnswerAddress(token, ref, CONFIG),
+        from: `Sam <${parentEmail}>`,
+        text: quotedYes('Yes'),
+        messageId: '<yes-with-transport-down@example.test>',
+        sendFails: true,
+      }),
+    ).rejects.toThrow();
+
+    // The parent's own word survived the failure to say thank you for it. Send the ack
+    // first and this is still `pending`, with the YES recoverable only from a webhook
+    // alert.
+    expect(await senders()).toMatchObject([{ state: 'allowed' }]);
+    expect(await held()).toEqual([]);
+  });
+
+  it('a parent whose locale is French is asked in French', async () => {
+    // Proves the SWITCH, not the product: nothing in apps/web writes users.locale today,
+    // so every parent in production is en-CA and this column is one row away from live.
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'fr-CA' })
+      .where(eq(schema.users.id, family.parentUserId));
+
+    await route({ to: forwardAddress(token, CONFIG) });
+    expect(sent[0]?.text).toContain("Vous m'avez transféré « Spring concert »");
+  });
+});
+
+describe('the forwarding address · minted once, revoked once', () => {
+  it('a second mint returns the same token and writes no second row, and a revoke is idempotent', async () => {
+    expect((await mintForwardToken(db.database, family.familyId)).token).toBe(token);
+
+    expect(await revokeForwardToken(db.database, family.familyId)).toBe(true);
+    expect(await revokeForwardToken(db.database, family.familyId)).toBe(false);
+    expect(await familyForForwardToken(db.database, token)).toBeNull();
+
+    expect(await verbs()).toEqual([
+      'email_forward_address_minted',
+      'email_forward_address_revoked',
+    ]);
+  });
+
+  it('a revoked address stops resolving, and the forward is refused by name', async () => {
+    await revokeForwardToken(db.database, family.familyId);
+    expect(await route({ to: forwardAddress(token, CONFIG) })).toBe('forward_unknown_token');
+    expect(sent).toEqual([]);
+  });
+});
+
+describe('the forwarding door · two families, one school', () => {
+  it('do not share a rate-limit bucket at either gate', async () => {
+    const other = await seedFamily(db.database, 'Other Family');
+    const otherToken = (await mintForwardToken(db.database, other.familyId)).token;
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', `${family.familyId},${other.familyId}`);
+
+    const keys: Array<[string, string]> = [];
+    const limiter: RateLimiter = {
+      check: async (key, routeName) => {
+        keys.push([routeName, key]);
+        return { allowed: true, retryAfterSec: 0 };
+      },
+    };
+
+    await route({ to: forwardAddress(token, CONFIG), limiter });
+    await route({
+      to: forwardAddress(otherToken, CONFIG),
+      messageId: '<other-family@bcs.on.ca>',
+      limiter,
+    });
+
+    // The same school forwarded by two households: one bucket each, at BOTH gates. The
+    // pre-fetch key is the tag (not the sender, who is the school); the post-fetch key is
+    // the family.
+    const inbound = keys.filter(([routeName]) => routeName === 'email-inbound');
+    const forward = keys.filter(([routeName]) => routeName === 'email-forward');
+    expect(new Set(inbound.map(([, key]) => key)).size).toBe(2);
+    expect(forward.map(([, key]) => key)).toEqual([family.familyId, other.familyId]);
+  });
+});
+
+describe('the forwarding door · the three-day promise', () => {
+  // The sweep is global, as a lifecycle sweep has to be, and the pglite instance is
+  // shared across this file — so the earlier tests' households are cleared first and the
+  // summary below is exactly this test's own work.
+  beforeEach(async () => {
+    await db.database.delete(schema.emailForwardsPending);
+    await db.database.delete(schema.familyForwardSenders);
+  });
+
+  it('a held forward past the TTL is purged, its pending sender with it, and the next forward asks again', async () => {
+    await route({ to: forwardAddress(token, CONFIG) });
+    expect(await held()).toHaveLength(1);
+
+    const later = new Date(Date.now() + PENDING_FORWARD_TTL_MS + 60_000);
+    expect(await sweepExpiredForwards(db.database, later)).toEqual({ purged: 1, senders: 1 });
+    expect(await held()).toEqual([]);
+    // The sender goes back to undecided, so a later forward asks rather than sitting
+    // silently against a question nobody answered.
+    expect(await senders()).toEqual([]);
+    expect(await verbs()).toContain('email_forward_raw_purged');
+
+    expect(
+      await route({ to: forwardAddress(token, CONFIG), messageId: '<after-sweep@bcs.on.ca>' }),
+    ).toBe('forward_sender_pending');
+    expect(sent).toHaveLength(2);
+  });
+
+  it('POSITIVE CONTROL: a forward inside the window is left alone', async () => {
+    await route({ to: forwardAddress(token, CONFIG) });
+    const soon = new Date(Date.now() + PENDING_FORWARD_TTL_MS - 60_000);
+    expect(await sweepExpiredForwards(db.database, soon)).toEqual({ purged: 0, senders: 0 });
+    expect(await held()).toHaveLength(1);
+    expect(await senders()).toHaveLength(1);
+  });
+
+  it('a DECIDED sender is never swept — only an unanswered question lapses', async () => {
+    const ref = await ask();
+    await route({
+      to: forwardAnswerAddress(token, ref, CONFIG),
+      from: `Sam <${parentEmail}>`,
+      text: quotedYes('Yes'),
+      messageId: '<sweep-allowed@example.test>',
+    });
+
+    const later = new Date(Date.now() + PENDING_FORWARD_TTL_MS + 60_000);
+    expect(await sweepExpiredForwards(db.database, later)).toEqual({ purged: 0, senders: 0 });
+    expect(await senders()).toMatchObject([{ state: 'allowed' }]);
+  });
+});
+
+describe('the forwarding door · through the signed webhook', () => {
+  const SVIX_ID = 'msg_forward_test';
+  const SECRET = `whsec_${Buffer.from('inbound-email-test-secret-32byte').toString('base64')}`;
+
+  beforeEach(() => {
+    vi.stubEnv('RESEND_API_KEY', CONFIG.apiKey);
+    vi.stubEnv('RESEND_INBOUND_WEBHOOK_SECRET', SECRET);
+    vi.stubEnv('HALE_INBOUND_EMAIL_DOMAIN', CONFIG.inboundDomain);
+    vi.stubEnv('HALE_INBOUND_AUTHSERV_ID', CONFIG.authservId);
+  });
+
+  function signed(args: RouteArgs): Request {
+    const event = inboundEvent(args);
+    const raw = JSON.stringify({
+      type: 'email.received',
+      created_at: NOW.toISOString(),
+      data: {
+        email_id: event.emailId,
+        created_at: NOW.toISOString(),
+        from: event.from,
+        to: event.to,
+        message_id: event.messageId,
+        subject: event.subject,
+        attachments: [],
+      },
+    });
+    const timestamp = String(Math.floor(NOW.getTime() / 1000));
+    const digest = createHmac('sha256', Buffer.from(SECRET.replace(/^whsec_/, ''), 'base64'))
+      .update(`${SVIX_ID}.${timestamp}.${raw}`, 'utf8')
+      .digest('base64');
+    return new Request('https://app.villagehale.com/api/channels/email/inbound', {
+      method: 'POST',
+      headers: {
+        'svix-id': SVIX_ID,
+        'svix-timestamp': timestamp,
+        'svix-signature': `v1,${digest}`,
+      },
+      body: raw,
+    });
+  }
+
+  it('an unroutable forward is COUNTED — the silence outcomes are only visible as a rate', async () => {
+    await db.database
+      .update(schema.users)
+      .set({ email: null })
+      .where(eq(schema.users.id, family.parentUserId));
+
+    const args: RouteArgs = { to: forwardAddress(token, CONFIG) };
+    const res = await handleEmailInboundRequest(signed(args), inboundDeps(args));
+
+    expect(res.status).toBe(200);
+    expect(counted).toEqual(['forward_unroutable']);
+  });
+
+  it('a throttled forward is answered 200 and counted — the cap is a cap, not a delay', async () => {
+    const args: RouteArgs = {
+      to: forwardAddress(token, CONFIG),
+      limiter: {
+        check: async (_key, routeName) => ({
+          allowed: routeName !== 'email-forward',
+          retryAfterSec: 60,
+        }),
+      },
+    };
+    const res = await handleEmailInboundRequest(signed(args), inboundDeps(args));
+
+    // NOT 503: redelivering a throttled forward would turn a spend cap into a delay, and
+    // a sustained 5xx is how a provider disables the whole inbound endpoint.
+    expect(res.status).toBe(200);
+    expect(counted).toEqual(['forward_rate_limited']);
+    expect(await inboundRows()).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+});
+
 describe('the forwarding door · refusals and erasure', () => {
   it('a tag that resolves to no family STOPS — it never falls through to the reply door', async () => {
     const outcome = await route({ to: forwardAddress('f'.repeat(30), CONFIG) });
@@ -457,6 +863,7 @@ describe('the forwarding door · refusals and erasure', () => {
     expect(await route({ to: forwardAddress(token, CONFIG) })).toBe('forward_family_dark');
     expect(await inboundRows()).toEqual([]);
     expect(sent).toEqual([]);
+    expect(await refusals()).toEqual([{ reason: 'forward_family_dark' }]);
   });
 
   it('a household with no reachable address is UNROUTABLE, never silence', async () => {
@@ -468,7 +875,10 @@ describe('the forwarding door · refusals and erasure', () => {
     expect(await route({ to: forwardAddress(token, CONFIG) })).toBe('forward_unroutable');
     expect(await inboundRows()).toEqual([]);
     expect(await held()).toEqual([]);
-    expect(counted).toEqual([]);
+    // Named in the trail as well as in the return value: a household Hale could not
+    // answer is a thing that happened to them (rule #6). The COUNTER is asserted at the
+    // handler below, which is the only place countOutcome is actually called.
+    expect(await refusals()).toEqual([{ reason: 'forward_unroutable' }]);
   });
 
   it('a bounce is refused on this door, though ordinary bulk mail is not', async () => {
