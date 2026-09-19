@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS "family_forward_senders" (
 	-- what makes a bare YES unambiguous without an open-question row: the reply address
 	-- names the sender it is about.
 	"ref" text NOT NULL,
+	-- The ask exactly as it was sent, held while the question is open and nulled on the
+	-- answer: by then the consent record carries it, and a settled sender must not keep a
+	-- second copy of a parent's subject line past the three-day promise.
+	"ask_body" text,
 	"state" text NOT NULL,
 	-- WHO decided, when there was a decision. Its own SET NULL rather than a cascade: a
 	-- parent leaving the household does not un-decide what the household decided.

@@ -101,7 +101,10 @@ export async function sweepExpiredForwards(
         familyId,
         actor: 'system',
         actionTaken: 'email_forward_raw_purged',
-        targetTable: 'email_forwards_pending',
+        // One row per HOUSEHOLD swept, so the target is the household: the counts in
+        // `after` are an aggregate over many rows and there is no single
+        // `email_forwards_pending` id this row could honestly point at.
+        targetTable: 'families',
         targetId: familyId,
         after: { purged: rawGone.length, senders: sendersGone },
       });

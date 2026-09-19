@@ -3,9 +3,10 @@ import { and, eq, sql } from 'drizzle-orm';
 import { POLICY_VERSION } from '~/lib/consent';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { readAffirmative } from '~/lib/channel/affirmative';
+import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import { domainOf, parseEmailAddress } from './address';
+import { type ParsedAddress, domainOf } from './address';
 import type { AutomationKind } from './automated';
 import type { EmailInboundConfig } from './config';
 import {
@@ -28,6 +29,7 @@ import { extractReply } from './reply-extract';
 import { type EmailReplyDeps, sendEmailReply } from './reply-send';
 import { resolveSendableEmail } from './sendable';
 import { assessSenderTrust } from './trust';
+import { honourEmailUnsubscribe } from './unsubscribe';
 
 /**
  * THE FORWARDING DOOR — what happens when a parent forwards somebody else's mail to their
@@ -106,9 +108,11 @@ export type EmailForwardOutcome =
   | 'forward_sender_pending'
   /** A sender already asked about: held, and deliberately NOT asked again. */
   | 'forward_sender_pending_again'
-  /** The question could not be put — the transport refused it — so nothing was stored:
-   * an un-asked ask must never sit in the database waiting to be purged. The next
-   * forward from that sender asks again. */
+  /** The question could not be put — the transport refused it — so the QUESTION is given
+   * back: an un-asked ask must never sit in the database waiting to be purged, and no
+   * document may be held against one. The ledger claim is not given back, so this
+   * delivery is spent and the document it carried is dropped; the next forward from that
+   * sender asks again. */
   | 'forward_ask_failed'
   /** A sender the family said no to. Nothing stored, nothing sent. */
   | 'forward_sender_blocked'
@@ -128,6 +132,14 @@ export type EmailForwardOutcome =
    * silence — named and counted, because a deliberate silence is an outcome. */
   | 'forward_answer_unclear_again';
 
+/**
+ * What this door can return, which is its own outcomes PLUS the one word that belongs to
+ * neither door: a CASL unsubscribe means the same thing at every local part on the
+ * inbound domain, so it keeps the reply door's name and the reply door's row rather than
+ * becoming a forwarding state (unsubscribe.ts).
+ */
+export type EmailForwardResult = EmailForwardOutcome | 'unsubscribed';
+
 export interface EmailForwardDeps {
   database: Database;
   limiter: RateLimiter;
@@ -144,6 +156,14 @@ export interface EmailForwardDeps {
 
 export interface EmailForwardInput {
   event: InboundEmailEvent;
+  /**
+   * The envelope sender, ALREADY PARSED by the router — which is the only reason this
+   * door has no "the From could not be read" state of its own. An unparseable `From` is
+   * `invalid_sender` before the fork, so passing the parse down rather than redoing it
+   * makes that absence unexpressible here instead of foldable into another name
+   * (rule #11).
+   */
+  sender: ParsedAddress;
   /** The tag the recipient carried. `ref` present means this is an ANSWER. */
   token: string;
   ref: string | null;
@@ -161,7 +181,7 @@ export async function routeEmailForward(
   deps: EmailForwardDeps,
   config: EmailInboundConfig,
   input: EmailForwardInput,
-): Promise<EmailForwardOutcome> {
+): Promise<EmailForwardResult> {
   const { event } = input;
 
   // The only refusal with no family behind it, and therefore the only one that can leave
@@ -174,7 +194,7 @@ export async function routeEmailForward(
   const machine = machineRefusal(input);
   if (machine) return refuse(deps, { familyId }, machine);
 
-  const parent = await answerableParent(deps.database, familyId, event.from);
+  const parent = await answerableParent(deps.database, familyId, input.sender);
   if (!parent) return refuse(deps, { familyId }, 'forward_unroutable');
 
   const decision = await deps.limiter.check(familyId, FORWARD_ROUTE, RATE_LIMITS[FORWARD_ROUTE]);
@@ -259,7 +279,7 @@ interface AnswerableParent {
 async function answerableParent(
   database: Database,
   familyId: string,
-  from: string,
+  sender: ParsedAddress,
 ): Promise<AnswerableParent | null> {
   const members = await database
     .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
@@ -269,8 +289,7 @@ async function answerableParent(
   const parents = members.filter((row) => PARENT_ROLES.includes(row.role));
   if (parents.length === 0) return null;
 
-  const sender = parseEmailAddress(from);
-  const owner = sender ? await resolveEmailSender(database, sender.address) : null;
+  const owner = await resolveEmailSender(database, sender.address);
   const forwarder =
     owner && owner.familyId === familyId && PARENT_ROLES.includes(owner.role)
       ? owner.userId
@@ -351,10 +370,17 @@ async function document(
   input: Branch,
 ): Promise<EmailForwardOutcome> {
   const parsed = parseForwardedMessage(input.text ?? '');
-  // A filter auto-forward carries no banner, so the envelope sender IS the school. The
-  // router has already refused an unparseable `From`, so one of the two always resolves.
-  const originalFrom = parsed.originalFrom ?? parseEmailAddress(input.event.from)?.address;
-  if (!originalFrom) return refuse(deps, { familyId: input.familyId }, 'forward_unroutable');
+  // A filter auto-forward carries no banner, so the envelope sender IS the school —
+  // already parsed by the router, which is why there is no unreadable-From state here.
+  //
+  // WHAT THE BANNER IS AND IS NOT. `originalFrom` comes out of the forwarded BODY, which
+  // is unauthenticated text: nothing signs it, and a crafted banner can therefore choose
+  // which domain the ask NAMES. On this rung that buys nothing — an unknown domain is
+  // held and asked about either way, and the parent reading the ask is the one who knows
+  // whether they forwarded a school or a stranger. It stops being harmless the moment a
+  // summariser trusts this key, so PR2 owes this line a decision rather than an
+  // inheritance.
+  const originalFrom = parsed.originalFrom ?? input.sender.address;
   const domain = domainOf(originalFrom);
 
   const held = {
@@ -377,9 +403,17 @@ async function document(
   // `DO UPDATE` on a column that is already that value, rather than `DO NOTHING`, so the
   // conflicting row comes back and the loser can hold against the winner's question.
   const ref = mintForwardRef();
+  // THE ASK IS RENDERED BEFORE IT IS CLAIMED, and stored with the question it puts. The
+  // consent record this becomes the evidence for has to hold the sentence the parent
+  // actually read; a re-render at answer time is only ever as good as the copy table on
+  // the day the answer arrives, and "they agreed" to a conversational consent is
+  // unfalsifiable without the words. It is nulled when the question is answered — by
+  // then the ledger holds it (rule #1: held exactly as long as it is needed).
+  const locale = forwardLocale(input.parent.locale);
+  const askBody = forwardAsk(locale, { subject: held.subject, domain });
   const [sender] = await deps.database
     .insert(schema.familyForwardSenders)
-    .values({ familyId: input.familyId, senderDomain: domain, ref, state: 'pending' })
+    .values({ familyId: input.familyId, senderDomain: domain, ref, state: 'pending', askBody })
     .onConflictDoUpdate({
       target: [schema.familyForwardSenders.familyId, schema.familyForwardSenders.senderDomain],
       set: { senderDomain: domain },
@@ -397,18 +431,21 @@ async function document(
     return settled(deps, input, held, { id: sender.id, state: sender.state as SenderState });
   }
 
-  const locale = forwardLocale(input.parent.locale);
   try {
     await sendEmailReply(deps.reply(), {
       to: input.parent.address,
-      body: forwardAsk(locale, { subject: held.subject, domain }),
+      body: askBody,
       inReplyTo: input.event.messageId,
       replyTo: forwardAnswerAddress(input.token, ref, config),
     });
   } catch (err) {
-    // The claim is given back. Nothing may be left holding a document against a question
-    // nobody was asked — the 72h sweep would then purge it in silence — so the next
-    // forward from this school asks again. The held row is not written at all.
+    // THE QUESTION is given back — not the ledger claim. Nothing may be left holding a
+    // document against a question nobody was asked (the 72h sweep would purge it in
+    // silence), so the sender row goes and the next forward from this school asks again,
+    // and the held row is never written. The claim stands, because it is what makes a
+    // redelivery of this Message-ID a duplicate rather than a second ask: this delivery
+    // is spent, and the document it carried is dropped. Named as `forward_ask_failed`
+    // and counted, which is the difference between a dropped document and a silent one.
     deps.log.error(
       {
         familyId: input.familyId,
@@ -466,24 +503,45 @@ async function answer(
   deps: EmailForwardDeps,
   config: EmailInboundConfig,
   input: Branch,
-): Promise<EmailForwardOutcome> {
+): Promise<EmailForwardResult> {
   // THE PERSON FIRST, before the question is even looked up: this branch writes back to
   // the address that wrote to it, so who that is decides whether Hale may speak at all.
   // A DOCUMENT needs only the family, because the TOKEN is the credential. An
   // INSTRUCTION needs a person, and a `From` is a claim until DKIM says otherwise — so
   // this branch, and only this branch, runs the reply door's trust gate (trust.ts).
-  const from = parseEmailAddress(input.event.from);
-  const trust = from
-    ? assessSenderTrust({
-        headers: input.headers,
-        authservId: config.authservId,
-        fromDomain: from.domain,
-      })
-    : { trusted: false as const, reason: 'no_trusted_verdict' as const, observedAuthservIds: [] };
-  const owner =
-    from && trust.trusted ? await resolveEmailSender(deps.database, from.address) : null;
+  const trust = assessSenderTrust({
+    headers: input.headers,
+    authservId: config.authservId,
+    fromDomain: input.sender.domain,
+  });
+  const owner = trust.trusted
+    ? await resolveEmailSender(deps.database, input.sender.address)
+    : null;
   if (!owner || owner.familyId !== input.familyId || !PARENT_ROLES.includes(owner.role)) {
     return refuse(deps, { familyId: input.familyId }, 'forward_answer_unauthorised');
+  }
+
+  // STRIPPED BEFORE IT IS READ, once, and read by both of the things that read it.
+  // `readAffirmative` is an exact-phrase lookup over the whole normalized body, and every
+  // quoting client ships the ask back underneath a one-word reply — so an unstripped
+  // "Yes" normalizes to "yes on tue hale wrote you forwarded …" and reads as unclear.
+  // Every real YES would fail.
+  const body = extractReply(input.text ?? '').text;
+
+  // CASL FIRST, and this is the reply door's ordering kept identical (inbound.ts), for a
+  // reason that bites harder here: the ask is the one message Hale sends to a parent who
+  // did not write to it first, its footer promises "Reply STOP and Hale will stop
+  // emailing you", and its Reply-To is this address rather than the plain one. `stop` is
+  // deliberately not a NO (affirmative.ts), so without this gate the word would read as
+  // `unclear` — and the answer to an unsubscribe would be another email. Before the ref
+  // lookup too, because a stale ref replies as well.
+  //
+  // ONLY ON THIS BRANCH, and that asymmetry is the door's thesis rather than an omission:
+  // a DOCUMENT is not an instruction. The word in a forwarded body belongs to the school
+  // that wrote it, and reading a third party's "cancel" as a parent's unsubscribe would
+  // silence a household nobody asked.
+  if (matchKeyword(body)?.keyword === 'stop') {
+    return honourEmailUnsubscribe(deps.database, owner);
   }
 
   const locale = forwardLocale(input.parent.locale);
@@ -492,6 +550,7 @@ async function answer(
       id: schema.familyForwardSenders.id,
       senderDomain: schema.familyForwardSenders.senderDomain,
       state: schema.familyForwardSenders.state,
+      askBody: schema.familyForwardSenders.askBody,
     })
     .from(schema.familyForwardSenders)
     .where(
@@ -512,11 +571,7 @@ async function answer(
     return refuse(deps, { familyId: input.familyId, actor: owner.userId }, 'forward_answer_unknown');
   }
 
-  // STRIPPED BEFORE IT IS READ. `readAffirmative` is an exact-phrase lookup over the whole
-  // normalized body, and every quoting client ships the ask back underneath a one-word
-  // reply — so an unstripped "Yes" normalizes to "yes on tue hale wrote you forwarded …"
-  // and reads as unclear. Every real YES would fail.
-  const verdict = readAffirmative(extractReply(input.text ?? '').text);
+  const verdict = readAffirmative(body);
   const domain = sender.senderDomain;
 
   if (verdict === 'unclear') {
@@ -563,6 +618,10 @@ async function answer(
         state: (allowed ? 'allowed' : 'blocked') satisfies SenderState,
         decidedBy: owner.userId,
         decidedAt: deps.now(),
+        // The question is over, and its words are in the consent row below. Holding a
+        // second copy of a parent's subject line on a settled sender would outlive the
+        // three-day promise the ask itself makes (rule #1).
+        askBody: null,
       })
       .where(eq(schema.familyForwardSenders.id, sender.id));
 
@@ -577,9 +636,11 @@ async function answer(
       granted: allowed,
       policyVersion: POLICY_VERSION,
       evidence: {
-        verbatimReply: extractReply(input.text ?? '').text,
+        verbatimReply: body,
         interpretation: verdict,
-        ask: forwardAsk(locale, { subject: '', domain }),
+        // The ask AS IT WAS SENT, carried on the sender row since the moment it was put,
+        // rather than re-rendered from today's copy table.
+        ask: sender.askBody,
       },
     });
 

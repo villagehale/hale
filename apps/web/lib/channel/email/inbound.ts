@@ -1,17 +1,16 @@
 import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
-import { type EmailType, recordOptOut } from '~/lib/cron/email-compliance';
-import { UNSUBSCRIBABLE_STREAMS } from './streams';
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { parseEmailAddress } from './address';
 import { automationKind } from './automated';
-import { forwardAddress, forwardRecipient } from './forward-address';
+import { familyForForwardToken, forwardAddress, forwardRecipient } from './forward-address';
 import { type EmailForwardOutcome, routeEmailForward } from './forward';
 import type { EmailReplyDeps } from './reply-send';
 import { type EmailInboundConfig, emailInboundConfig } from './config';
+import { honourEmailUnsubscribe } from './unsubscribe';
 import type { InboundContentReader } from './content';
 import { resolveEmailSender } from './identity';
 import { type InboundEmailEvent, parseInboundEmailEvent } from './payload';
@@ -161,13 +160,23 @@ export async function routeEmailInbound(
   // the sender is the parent. On the forwarding door the sender is the school, so one busy
   // newsletter forwarded by several families would share a single bucket and the noisiest
   // household would silence the rest — the tag is keyed instead whenever `data.to` already
-  // carries one. Residual, named: when the tag is only recoverable from the headers (which
-  // arrive with the fetch), this key stays the sender.
+  // carries one.
+  //
+  // A TAG IS ONLY A BUDGET'S NAME ONCE IT NAMES A FAMILY. Reading a tag costs a regex and
+  // proves nothing: 30 hex characters is a well-formed tag whoever wrote it, so keying on
+  // an unverified one would let a single sender rotate guesses and draw a fresh bucket
+  // for each — every one of them costing the content fetch this limit exists to bound.
+  // One indexed lookup settles it, and a tag that resolves to nothing falls back to the
+  // sender's own bucket rather than minting its own. Residual, named: when the tag is
+  // only recoverable from the headers (which arrive with the fetch), this key stays the
+  // sender.
   const tagged = forwardRecipient({ to: event.to, headers: {} }, config);
+  const budgetKey =
+    tagged.kind === 'forward' && (await familyForForwardToken(deps.database, tagged.token))
+      ? forwardAddress(tagged.token, config)
+      : sender.address;
   const decision = await deps.limiter.check(
-    emailBlindIndex(
-      tagged.kind === 'forward' ? forwardAddress(tagged.token, config) : sender.address,
-    ),
+    emailBlindIndex(budgetKey),
     INBOUND_ROUTE,
     RATE_LIMITS[INBOUND_ROUTE],
   );
@@ -208,7 +217,7 @@ export async function routeEmailInbound(
         log: deps.log,
       },
       config,
-      { event, token: recipient.token, ref: recipient.ref, text, machine, headers },
+      { event, sender, token: recipient.token, ref: recipient.ref, text, machine, headers },
     );
   }
 
@@ -246,7 +255,7 @@ export async function routeEmailInbound(
   // not read here: this path unsubscribes and replies with nothing, so ARRET and STOP
   // have the same one job.
   if (matchKeyword(body)?.keyword === 'stop') {
-    return unsubscribe(deps, owner);
+    return honourEmailUnsubscribe(deps.database, owner);
   }
 
   if (!body) return 'empty_after_extraction';
@@ -272,59 +281,6 @@ async function alreadyRecorded(database: Database, messageId: string): Promise<b
     .where(eq(schema.channelMessages.providerMessageId, messageId))
     .limit(1);
   return seen.some((row) => row.providerMessageId === messageId);
-}
-
-/**
- * A CASL unsubscribe arriving by email.
- *
- * It writes to `email_opt_outs`, the store the app ALREADY treats as the live answer to
- * "may we email this person" — the absence of a row is the consent. Minting a second
- * store for the same question would create two readers that can disagree, and the wrong
- * one would email a parent who asked us to stop.
- *
- * It opts the sender out of EVERY stream, which is what the word means when a person
- * types it: a parent who writes "unsubscribe" has not asked to be removed from one
- * category and kept on five others. That is the same scope a texted STOP has, which
- * revokes the channel outright rather than one message class.
- *
- * Nothing is sent back. SMS answers a STOP because carriers require one final
- * confirmation; email has no such rule, and emailing someone who just asked not to be
- * emailed is the thing they asked us not to do.
- *
- * The write goes through `recordOptOut`, the same function the unsubscribe LINK and the
- * settings toggle call, rather than a second inline insert that could drift from it. It
- * is idempotent on the unique (user, stream) index and reports whether THIS call was the
- * one that changed anything.
- *
- * That report is used, because an unsubscribe writes no `channel_messages` row and is
- * therefore invisible to the Message-ID dedupe above — every redelivery re-runs this. The
- * audit row is written only when a stream ACTUALLY changed, so a retried webhook does not
- * make the trail read as a parent unsubscribing over and over. Rule #6 asks for a row per
- * ACTION, and opting out something already opted out is not one; this is the same
- * reasoning as X1's STOP alert firing once per unsubscribe rather than once per click.
- */
-async function unsubscribe(
-  deps: EmailInboundDeps,
-  args: { userId: string; familyId: string },
-): Promise<EmailInboundOutcome> {
-  await deps.database.transaction(async (tx) => {
-    const changed: EmailType[] = [];
-    for (const emailType of UNSUBSCRIBABLE_STREAMS) {
-      const first = await recordOptOut(tx as unknown as Database, args.userId, emailType);
-      if (first) changed.push(emailType);
-    }
-    if (changed.length === 0) return;
-
-    await tx.insert(schema.auditLog).values({
-      familyId: args.familyId,
-      actor: args.userId,
-      actionTaken: 'email_unsubscribe_received',
-      targetTable: 'email_opt_outs',
-      targetId: args.userId,
-      after: { streams: changed, via: 'inbound_email' },
-    });
-  });
-  return 'unsubscribed';
 }
 
 /**

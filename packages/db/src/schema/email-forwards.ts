@@ -30,6 +30,11 @@ export const familyForwardSenders = pgTable(
     senderDomain: text('sender_domain').notNull(),
     /** The per-sender sub-tag that addresses the ask: 8 lowercase hex characters. */
     ref: text('ref').notNull(),
+    /** THE ASK AS IT WAS SENT, held exactly while the question is open and nulled when it
+     * is answered — by then the `consent_records` row carries it as the evidence of what
+     * the parent was actually asked. Stored rather than re-rendered because a consent
+     * record reconstructed from today's copy table is not the sentence anybody read. */
+    askBody: text('ask_body'),
     /** 'pending' | 'allowed' | 'blocked' — text under a CHECK rather than an enum, so a
      * vocabulary change never needs an ALTER TYPE in a transaction that also writes it. */
     state: text('state').notNull(),

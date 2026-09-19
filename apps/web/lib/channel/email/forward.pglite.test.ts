@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { emailBlindIndex } from '~/lib/crypto/blind-index';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
@@ -17,6 +18,7 @@ import {
 } from './forward-address';
 import { type EmailForwardDeps, routeEmailForward } from './forward';
 import { PENDING_FORWARD_TTL_MS, sweepExpiredForwards } from './forward-purge';
+import { UNSUBSCRIBABLE_STREAMS } from './streams';
 import {
   type EmailInboundDeps,
   type EmailInboundOutcome,
@@ -321,6 +323,8 @@ describe('the forwarding door · a document from a sender nobody has decided abo
         attachmentCount: 0,
         receivedAt: NOW,
       },
+      // The router's own parse, handed down rather than redone — see EmailForwardInput.
+      sender: { address: SCHOOL, domain: SCHOOL_DOMAIN, displayName: 'Bayview School' },
       token,
       ref: null,
       text: FORWARDED,
@@ -382,6 +386,14 @@ describe('the forwarding door · the answer', () => {
       granted: true,
     });
     expect(consent?.evidence).toMatchObject({ verbatimReply: 'Yes', interpretation: 'yes' });
+    // THE EVIDENCE IS THE ASK THAT WAS SENT, not a re-render of it. A reconstruction is
+    // only as good as the copy table on the day the answer arrives; what a consent record
+    // has to hold is the sentence the parent actually read.
+    const askAsSent = (consent?.evidence as { ask?: string }).ask;
+    expect(askAsSent).toContain('You forwarded "Spring concert" from bcs.on.ca');
+    expect(sent[0]?.text).toContain(askAsSent as string);
+    // And it does not outlive the question: the ledger holds it now.
+    expect(await senders()).toMatchObject([{ askBody: null }]);
 
     expect(sent).toHaveLength(2);
     expect(sent[1]?.text).toContain("from now on I'll read what bcs.on.ca sends you");
@@ -392,6 +404,81 @@ describe('the forwarding door · the answer', () => {
     const { extractReply } = await import('./reply-extract');
     expect(readAffirmative(quotedYes('Yes'))).toBe('unclear');
     expect(readAffirmative(extractReply(quotedYes('Yes')).text)).toBe('yes');
+  });
+
+  it('CASL: a STOP at the ask address unsubscribes, and is not answered with another email', async () => {
+    // The ask is the ONE message on this door that Hale sends first, and its footer
+    // promises "Reply STOP and Hale will stop emailing you" — over a Reply-To that is
+    // NOT the plain address. `stop` is deliberately not a NO (affirmative.ts), so
+    // without the keyword gate it reads as `unclear` and is answered with a further
+    // email to somebody who just asked not to be emailed.
+    const ref = await ask();
+    const outcome = await route({
+      to: forwardAnswerAddress(token, ref, CONFIG),
+      from: `Sam <${parentEmail}>`,
+      text: 'STOP',
+      messageId: '<stop-at-the-ask@example.test>',
+    });
+
+    expect(outcome).toBe('unsubscribed');
+    const optOuts = await db.database
+      .select()
+      .from(schema.emailOptOuts)
+      .where(eq(schema.emailOptOuts.userId, family.parentUserId));
+    expect(optOuts.map((row) => row.emailType).sort()).toEqual([...UNSUBSCRIBABLE_STREAMS].sort());
+    // The ask, and not one word after it.
+    expect(sent).toHaveLength(1);
+    // A STOP is not an answer to the question: the sender is left undecided.
+    expect(await senders()).toMatchObject([{ state: 'pending' }]);
+    expect(await verbs()).toContain('email_unsubscribe_received');
+  });
+
+  it('CASL: a STOP at a ref Hale no longer holds is still an unsubscribe, not a reply', async () => {
+    // The stale-ref branch answers with an email of its own, so the keyword has to win
+    // before the question is even looked up — the reply door's ordering exactly.
+    await ask();
+    expect(
+      await route({
+        to: forwardAnswerAddress(token, 'deadbeef', CONFIG),
+        from: `Sam <${parentEmail}>`,
+        text: 'unsubscribe',
+        messageId: '<stop-at-a-stale-ref@example.test>',
+      }),
+    ).toBe('unsubscribed');
+    expect(sent).toHaveLength(1);
+  });
+
+  it('a keyword inside a forwarded DOCUMENT is the school\'s word, not the parent\'s', async () => {
+    // The asymmetry the door is built on, pinned: an instruction needs a person, and the
+    // body of a forwarded document is written by somebody who is not one. Reading it for
+    // keywords would let a one-word school email unsubscribe a household.
+    expect(
+      await route({
+        to: forwardAddress(token, CONFIG),
+        text: 'cancel',
+        messageId: '<document-says-cancel@bcs.on.ca>',
+      }),
+    ).toBe('forward_sender_pending');
+    expect(
+      await db.database
+        .select()
+        .from(schema.emailOptOuts)
+        .where(eq(schema.emailOptOuts.userId, family.parentUserId)),
+    ).toEqual([]);
+  });
+
+  it('POSITIVE CONTROL: a word that is not a keyword still reaches the affirmative reader', async () => {
+    // Without this, the test above would pass just as well if the door answered
+    // EVERYTHING with an unsubscribe.
+    const ref = await ask();
+    expect(
+      await route({
+        to: forwardAnswerAddress(token, ref, CONFIG),
+        from: `Sam <${parentEmail}>`,
+        text: quotedYes('Yes'),
+        messageId: '<not-a-keyword@example.test>',
+      }),
+    ).toBe('forward_sender_allowed');
   });
 
   it('a NO blocks the sender, deletes the raw, and later forwards from it go nowhere', async () => {
@@ -603,14 +690,19 @@ describe('the forwarding door · the ask and the ref it hands out', () => {
     expect(sent).toHaveLength(1);
   });
 
-  it('a transport that refuses the ask leaves NOTHING behind, and the next forward asks again', async () => {
+  it('a transport that refuses the ask gives the QUESTION back, and keeps the claim', async () => {
     expect(await route({ to: forwardAddress(token, CONFIG), sendFails: true })).toBe(
       'forward_ask_failed',
     );
-    // An un-asked question must never sit in the database waiting to be purged.
+    // An un-asked question must never sit in the database waiting to be purged, and no
+    // document may be held against one.
     expect(await senders()).toEqual([]);
     expect(await held()).toEqual([]);
     expect(await refusals()).toEqual([{ reason: 'forward_ask_failed' }]);
+    // What is NOT given back, pinned so nobody reads the sentence above as more than it
+    // says: the ledger claim stands, so this delivery is spent and THIS document is
+    // dropped. Only the next forward from the school asks again.
+    expect(await inboundRows()).toHaveLength(1);
 
     expect(
       await route({ to: forwardAddress(token, CONFIG), messageId: '<after-failure@bcs.on.ca>' }),
@@ -702,6 +794,36 @@ describe('the forwarding door · two families, one school', () => {
   });
 });
 
+describe('the forwarding door · the pre-fetch budget', () => {
+  it('a tag that names no family does NOT mint a bucket of its own', async () => {
+    // The pre-fetch limit bounds the Resend content fetch, which is the amplifier the
+    // signature gate exists for. A well-formed tag is 30 hex characters and nothing
+    // more, so keying on one before it is known to name a family would hand a single
+    // sender a fresh budget per guess.
+    const keys: string[] = [];
+    const limiter: RateLimiter = {
+      check: async (key, routeName) => {
+        if (routeName === 'email-inbound') keys.push(key);
+        return { allowed: true, retryAfterSec: 0 };
+      },
+    };
+
+    await route({
+      to: forwardAddress('a'.repeat(30), CONFIG),
+      messageId: '<guess-1@bcs.on.ca>',
+      limiter,
+    });
+    await route({
+      to: forwardAddress('b'.repeat(30), CONFIG),
+      messageId: '<guess-2@bcs.on.ca>',
+      limiter,
+    });
+
+    expect(new Set(keys).size).toBe(1);
+    expect(keys[0]).toBe(emailBlindIndex(SCHOOL));
+  });
+});
+
 describe('the forwarding door · the three-day promise', () => {
   // The sweep is global, as a lifecycle sweep has to be, and the pglite instance is
   // shared across this file — so the earlier tests' households are cleared first and the
@@ -722,6 +844,25 @@ describe('the forwarding door · the three-day promise', () => {
     // silently against a question nobody answered.
     expect(await senders()).toEqual([]);
     expect(await verbs()).toContain('email_forward_raw_purged');
+    // A summary over many rows has one honest target: the household it was swept for.
+    const [purge] = await db.database
+      .select({
+        targetTable: schema.auditLog.targetTable,
+        targetId: schema.auditLog.targetId,
+        after: schema.auditLog.after,
+      })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, family.familyId),
+          eq(schema.auditLog.actionTaken, 'email_forward_raw_purged'),
+        ),
+      );
+    expect(purge).toMatchObject({
+      targetTable: 'families',
+      targetId: family.familyId,
+      after: { purged: 1, senders: 1 },
+    });
 
     expect(
       await route({ to: forwardAddress(token, CONFIG), messageId: '<after-sweep@bcs.on.ca>' }),
@@ -804,6 +945,21 @@ describe('the forwarding door · through the signed webhook', () => {
 
     expect(res.status).toBe(200);
     expect(counted).toEqual(['forward_unroutable']);
+  });
+
+  it('a REDELIVERED signed webhook is answered 200 and buys nothing', async () => {
+    const args: RouteArgs = {
+      to: forwardAddress(token, CONFIG),
+      messageId: '<signed-redelivery@bcs.on.ca>',
+    };
+    const first = await handleEmailInboundRequest(signed(args), inboundDeps(args));
+    const second = await handleEmailInboundRequest(signed(args), inboundDeps(args));
+
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect(counted).toEqual(['forward_sender_pending', 'duplicate']);
+    expect(sent).toHaveLength(1);
+    expect(await held()).toHaveLength(1);
+    expect(await inboundRows()).toHaveLength(1);
   });
 
   it('a throttled forward is answered 200 and counted — the cap is a cap, not a delay', async () => {
