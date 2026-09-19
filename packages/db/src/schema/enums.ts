@@ -408,6 +408,15 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // September calendar and a September inbox are two volumes, and one budget shared
   // between them would silence whichever moved second.
   'calendar_alert',
+  // VIL-352 · a document a parent FORWARDED to their Hale address, and the answer to it
+  // (migration 0120). Its own category and not 'reply': the inbound row files a third
+  // party's message rather than the parent's own words, and a PIPEDA right-to-access read
+  // that called a school's newsletter a reply would describe the opposite of what
+  // happened. It is parent-started, so the loop-health digest's EXCLUSION list
+  // (PARENT_STARTED_CATEGORIES, health-digest.ts) is where it belongs if it is ever
+  // counted; the outbound gate's INCLUSION map leaves it unmetered, which is correct —
+  // every message on this door answers something the parent just sent.
+  'forwarded_mail',
 ]);
 
 /**

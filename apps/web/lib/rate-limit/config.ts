@@ -99,6 +99,16 @@ export const RATE_LIMITS = {
   // and a reply. Email is cheaper to send in bulk than SMS, which argues for a cap, not
   // a looser one; a parent writing a few emails an hour stays far clear.
   'email-inbound': { limit: 30, windowSec: 3600 },
+  // VIL-352 · the FORWARDING door, per FAMILY. Stacked on top of 'email-inbound' above and
+  // keyed differently on purpose: that one keys on the sender, which on this door is the
+  // SCHOOL, so one busy sender forwarded by several families would share a single bucket
+  // and the noisiest household would silence the rest. The family is the only party whose
+  // spend this bounds — each forward from an allowed sender costs a triage and an
+  // extraction — so it is also the only honest key. 20/hour sits far above a parent
+  // clearing a morning's mail while stopping a misconfigured filter from pointing a whole
+  // mailbox at us. Checked BEFORE the ledger claim, so a throttled message is redelivered
+  // rather than marked seen.
+  'email-forward': { limit: 20, windowSec: 3600 },
   // VIL-245 · rsvp (20/hour/IP): the PUBLIC, unauthenticated RSVP write — the one
   // endpoint in Hale a stranger can POST to with no account. An HOUR window, not a
   // minute, because this is a genuine cap rather than a bot guard: the damage is a real

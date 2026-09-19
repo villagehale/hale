@@ -4,6 +4,7 @@ import { db as defaultDb } from '~/lib/db';
 import { enqueueChannelMessageReceived } from '~/lib/channel/twilio/deps';
 import { requireEmailInboundConfig } from './config';
 import { createResendContentReader } from './content';
+import { productionEmailReply } from './reply-send';
 import type { EmailInboundDeps } from './inbound';
 
 /**
@@ -27,6 +28,17 @@ export function emailInboundDeps(): EmailInboundDeps {
   return {
     database,
     content: () => createResendContentReader({ apiKey: requireEmailInboundConfig().apiKey }),
+    // A THUNK for the same reason the content reader is one, and it REFUSES BY NAME
+    // rather than degrading: `productionEmailReply` returns null only when the leg is
+    // unprovisioned, and the handler has already answered 503 by the time anything on the
+    // forwarding door reaches for this (rule #11 — no silent no-op send).
+    reply: () => {
+      const reply = productionEmailReply();
+      if (!reply) {
+        throw new Error('email inbound: the reply sender is not provisioned');
+      }
+      return reply;
+    },
     limiter: new PostgresRateLimiter(database),
     enqueue: enqueueChannelMessageReceived,
     now: () => new Date(),

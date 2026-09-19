@@ -799,6 +799,13 @@
       "when": 1781469610000,
       "tag": "0116_email_alert_offers",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1781469614000,
+      "tag": "0120_email_forward_rung",
+      "breakpoints": true
     }
   ]
 }

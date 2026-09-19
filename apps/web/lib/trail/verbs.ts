@@ -182,6 +182,14 @@ export const AUDIT_VERBS = [
   'email_alert_sent',
   'email_alert_event_added',
   'calendar_alert_sent',
+  // ── the forwarding door (VIL-352) ───────────────────────────────────────
+  'email_forward_address_minted',
+  'email_forward_address_revoked',
+  'email_forward_received',
+  'email_forward_sender_asked',
+  'email_forward_sender_allowed',
+  'email_forward_sender_blocked',
+  'email_forward_raw_purged',
   'proactive_watch_granted',
   'proactive_watch_declined',
   // ── caregiver invites ───────────────────────────────────────────────────
@@ -570,6 +578,37 @@ const VERBS: Record<AuditVerb, Verb> = {
   // the one above names the inbox: the row is the receipt for Hale having read it.
   calendar_alert_sent: {
     sentence: 'Hale texted you about a change on your calendar',
+    family: 'done',
+  },
+  // The forwarding door. Every sentence says WHOSE decision it was, because the whole
+  // rung is about a family deciding what Hale may read: only the arrival and the address
+  // are Hale's, and the three allowlist rows are the parent's own word.
+  email_forward_address_minted: {
+    sentence: 'your forwarding address was set up',
+    family: 'done',
+  },
+  email_forward_address_revoked: {
+    sentence: 'you turned off your forwarding address',
+    family: 'done',
+  },
+  email_forward_received: {
+    sentence: 'you forwarded something to Hale',
+    family: 'note',
+  },
+  email_forward_sender_asked: {
+    sentence: 'Hale asked whether it may read mail from that sender',
+    family: 'awaiting',
+  },
+  email_forward_sender_allowed: {
+    sentence: 'you let Hale read mail from that sender',
+    family: 'done',
+  },
+  email_forward_sender_blocked: {
+    sentence: 'you told Hale not to read mail from that sender',
+    family: 'done',
+  },
+  email_forward_raw_purged: {
+    sentence: 'the forwarded message was deleted',
     family: 'done',
   },
   proactive_nudge_skipped: {

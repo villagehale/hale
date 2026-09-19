@@ -8,6 +8,9 @@ import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { parseEmailAddress } from './address';
 import { automationKind } from './automated';
+import { forwardAddress, forwardRecipient } from './forward-address';
+import { type EmailForwardOutcome, routeEmailForward } from './forward';
+import type { EmailReplyDeps } from './reply-send';
 import { type EmailInboundConfig, emailInboundConfig } from './config';
 import type { InboundContentReader } from './content';
 import { resolveEmailSender } from './identity';
@@ -92,6 +95,14 @@ export interface EmailInboundDeps {
    * only distinguishable from "nobody emails us" if every one is written down as a
    * rate. Wired to a counter that never throws. */
   countOutcome: (outcome: EmailInboundOutcome) => Promise<void>;
+  /**
+   * How Hale answers on the FORWARDING door (forward.ts). A thunk for the same reason
+   * `content` is one: building it reaches for a provider client, and a forged request
+   * must never cause one. Required, never nullable (rule #11) — a door that asks a
+   * family whether it may read a school's mail and cannot send the question is a door
+   * that holds their document and says nothing.
+   */
+  reply: () => EmailReplyDeps;
 }
 
 export type EmailInboundOutcome =
@@ -127,7 +138,11 @@ export type EmailInboundOutcome =
   /** Filed, but the queue refused it: the row is left unmarked for the reconciler, and
    * the parent is owed a reply Hale has not yet given. Never folded into `handed_off` —
    * that value is a claim that C1 has the email. */
-  | 'enqueue_failed';
+  | 'enqueue_failed'
+  /** The forwarding door's own outcomes (forward.ts). Folded into this union rather than
+   * mapped onto it, because every one of them names a state the reply door has no word
+   * for, and collapsing them would make the counter read as something it is not. */
+  | EmailForwardOutcome;
 
 /**
  * Route one authenticated inbound email. Exported so every routing decision is testable
@@ -142,8 +157,17 @@ export async function routeEmailInbound(
   const sender = parseEmailAddress(event.from);
   if (!sender) return 'invalid_sender';
 
+  // THE PRE-FETCH BUDGET, and whose it is. Keyed on the SENDER on the reply door, where
+  // the sender is the parent. On the forwarding door the sender is the school, so one busy
+  // newsletter forwarded by several families would share a single bucket and the noisiest
+  // household would silence the rest — the tag is keyed instead whenever `data.to` already
+  // carries one. Residual, named: when the tag is only recoverable from the headers (which
+  // arrive with the fetch), this key stays the sender.
+  const tagged = forwardRecipient({ to: event.to, headers: {} }, config);
   const decision = await deps.limiter.check(
-    emailBlindIndex(sender.address),
+    emailBlindIndex(
+      tagged.kind === 'forward' ? forwardAddress(tagged.token, config) : sender.address,
+    ),
     INBOUND_ROUTE,
     RATE_LIMITS[INBOUND_ROUTE],
   );
@@ -163,8 +187,32 @@ export async function routeEmailInbound(
     return fetched.transient ? 'content_fetch_transient' : 'content_unavailable';
   }
   const { headers, text } = fetched.content;
+  const machine = automationKind({ from: event.from, headers }, config.inboundDomain);
 
-  if (automationKind({ from: event.from, headers }, config.inboundDomain)) {
+  // THE FORK, and it sits here because three of the four places a forward tag can hide are
+  // headers, which only exist after the fetch. Everything above — sender parse, the
+  // sender-keyed limit, the pre-fetch dedupe, the fetch itself — is unchanged.
+  //
+  // A `hale+` tag STOPS here whatever happens next, including one we cannot read. Falling
+  // through would hand the message to the reply door, where `From` silently becomes the
+  // identity again — and on a filter auto-forward that `From` is the school.
+  const recipient = forwardRecipient({ to: event.to, headers }, config);
+  if (recipient.kind === 'malformed') return 'forward_unknown_token';
+  if (recipient.kind === 'forward') {
+    return routeEmailForward(
+      {
+        database: deps.database,
+        limiter: deps.limiter,
+        reply: deps.reply,
+        now: deps.now ?? ((): Date => new Date()),
+        log: deps.log,
+      },
+      config,
+      { event, token: recipient.token, ref: recipient.ref, text, machine, headers },
+    );
+  }
+
+  if (machine) {
     return 'automated';
   }
 
