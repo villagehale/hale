@@ -169,6 +169,15 @@ async function discoveryFinallyLands(fake: FakeDb, familyId: string): Promise<vo
 
 function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): NudgeRunDeps {
   return {
+    /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
+     * (channel/family-recipients.ts) — joins the fake cannot express. One parent here. */
+    loadRecipients: async () => [
+      {
+        parentUserId: fake.rows(schema.users)[0]?.id as string,
+        timeZone: TZ,
+        role: 'primary_parent' as const,
+      },
+    ],
     /** SEAM: prod selects families ⋈ family_members ⋈ users (run.ts
      * selectNudgeFamilies) — two INNER JOINs the fake cannot express. */
     selectFamilies: async () => {

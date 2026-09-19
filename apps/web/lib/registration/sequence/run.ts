@@ -6,9 +6,13 @@ import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type SpotPortal, portalForMunicipality } from '~/lib/channel/spots/url';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import {
+  type FamilyTextRecipient,
+  loadFamilyTextRecipients,
+} from '~/lib/channel/family-recipients';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
-import { withOptOut } from '~/lib/channel/opt-out';
+import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import {
   type OutboundGatePorts,
@@ -208,6 +212,19 @@ export interface SequenceRunDeps {
   /** Undo a claim whose shortlist could not be drafted. */
   releaseClaim(database: Database, sequenceId: string): Promise<void>;
   loadLiveSequences(database: Database, now: Date): Promise<LiveSequence[]>;
+  /**
+   * WHO THIS LADDER IS FOR — every parent seat in the family with a live number, not
+   * the one parent whose id happens to sit on the sequence row.
+   *
+   * REQUIRED, for the reason `transport` is (rule #11). The row is the HOUSEHOLD's
+   * ladder: one claim, one shortlist, one approval, one registration morning. A sweep
+   * that could be assembled without this would compose the flagship 6:15 a.m. text and
+   * deliver it to whichever parent happened to answer the intake, with the other
+   * hearing about their child's registration morning from their partner — which is what
+   * it did, against a site that promises them "the same radar and reminders, on their
+   * own number".
+   */
+  loadRecipients(database: Database, familyId: string): Promise<FamilyTextRecipient[]>;
   buildGate(database: Database): OutboundGatePorts;
   /** The reconciliation primitive's send-boundary gate (VIL-293). REQUIRED (rule #11):
    * a lane that could silently skip it would send exactly the claims it exists to stop. */
@@ -384,12 +401,23 @@ function emptyResult(enabled: boolean): SequenceRunResult {
 }
 
 /**
- * A leg's natural identity: one send per family per window per leg, ever. The ledger
- * carries it, so an interval that spans a hundred ticks still produces one message and
- * a re-fired cron costs one indexed read.
+ * A leg's natural identity: one send per RECIPIENT per family per window per leg, ever.
+ * The ledger carries it, so an interval that spans a hundred ticks still produces one
+ * message per parent and a re-fired cron costs one indexed read each.
+ *
+ * THE RECIPIENT IS IN THE KEY, and it has to be rather than merely ought to be:
+ * `channel_messages.dedupe_key` is UNIQUE where present, so a family-scoped key for a
+ * two-parent household is not "one duplicate text" — it is one send and then a
+ * duplicate-key crash on the second, which is how the ladder would have failed the
+ * moment a co-parent was added to it (audit 2026-09-17).
  */
-export function legDedupeKey(familyId: string, windowId: string, leg: SequenceLeg): string {
-  return `registration_sequence:${familyId}:${windowId}:${leg}`;
+export function legDedupeKey(
+  familyId: string,
+  windowId: string,
+  leg: SequenceLeg,
+  parentUserId: string,
+): string {
+  return `registration_sequence:${familyId}:${windowId}:${leg}:${parentUserId}`;
 }
 
 // ── phase A: propose a shortlist ─────────────────────────────────────────────
@@ -508,15 +536,36 @@ interface LegReadEffects {
   noFit?: boolean;
 }
 
-type LegOutcome = (
-  | { kind: 'held'; reason: ProactiveHoldReason }
-  | { kind: 'quiet' }
-  | { kind: 'deduped' }
-  | { kind: 'refused' }
-  | { kind: 'skipped'; reason: SequenceSkipReason }
-  | { kind: 'sent' }
-) &
-  LegReadEffects;
+/**
+ * What one leg DID, counted per recipient rather than per sequence.
+ *
+ * A household is two numbers now, and a leg can honestly be sent to one parent and held
+ * for the other — the co-parent whose local clock is past 21:00, the parent who pressed
+ * STOP this morning. One enum per sequence could only report the first of those and
+ * would silently lose the second, so every field here is a COUNT and `quiet` (no leg
+ * due, or nothing honest left to say about the window) is the one that stays a property
+ * of the sequence.
+ */
+type LegTally = LegReadEffects & {
+  quiet: boolean;
+  sent: number;
+  deduped: number;
+  refused: number;
+  /** One entry per recipient the gate held, so two parents held for two different
+   * reasons are counted as two different reasons. */
+  held: ProactiveHoldReason[];
+  /**
+   * VIL-347 · the leg was DUE and was composed for nobody, because the window's own
+   * published data cannot support the sentence. A property of the SEQUENCE, like
+   * `quiet`, rather than a per-recipient count: the window is read before the household
+   * is, so the answer is the same for one parent and for two.
+   */
+  skipped?: SequenceSkipReason;
+};
+
+function emptyTally(overrides: Partial<LegTally> = {}): LegTally {
+  return { quiet: false, sent: 0, deduped: 0, refused: 0, held: [], ...overrides };
+}
 
 /**
  * VIL-338 · the run's ONE course reader: one GET per distinct URL, one wall-clock budget
@@ -604,7 +653,7 @@ async function runLegForSequence(
   deps: SequenceRunDeps,
   reader: CourseReader,
   now: Date,
-): Promise<LegOutcome> {
+): Promise<LegTally> {
   // THIS family's open instant, not the general one. A resident household in a town
   // that publishes a head start registers a week early, and a ladder anchored on the
   // general date would tap them on the shoulder days after their doors had opened.
@@ -632,33 +681,75 @@ async function runLegForSequence(
     },
     now,
   );
-  if (leg === null) return { kind: 'quiet' };
+  if (leg === null) return emptyTally({ quiet: true });
   // VIL-347 · THE 23:45 TEXT. The go leg is the one rung that names a MINUTE, and it
   // spends the quiet-hours exemption to do it. Where the town published a date and no
   // hour the row holds the start of that local day, and fifteen minutes before it is
   // 23:45 the night before — a text at the hour the exemption exists to protect, naming
   // a midnight nobody printed. The battle plan already carried the date that evening, so
   // what is lost is a sentence that was never true.
+  //
+  // DECIDED BEFORE THE HOUSEHOLD IS READ, above the recipient fan-out: there is no
+  // honest version of this leg for anybody, so it is composed for nobody and sent to
+  // nobody rather than held for each parent in turn.
   if (leg === 'go' && !openTimeIsPublished(anchor, sequence.timeZone)) {
-    return { kind: 'skipped', reason: 'open_time_unpublished' };
+    return emptyTally({ skipped: 'open_time_unpublished' });
   }
 
-  const dedupeKey = legDedupeKey(sequence.familyId, sequence.window.id, leg);
-  // Checked BEFORE the gate: a leg that already went out costs one indexed read on
-  // every one of the hundreds of ticks its interval spans.
-  if (await deps.dedupeActive(database, dedupeKey)) return { kind: 'deduped' };
+  // BOTH NUMBERS. The sequence row carries one parent id — the seat that was claimed —
+  // and it is the ladder's owner, never its audience: one household, one registration
+  // morning, one approval, and every parent on it hears the same six texts.
+  const recipients = await deps.loadRecipients(database, sequence.familyId);
+  if (recipients.length === 0) {
+    // Nobody in this household can be texted right now. `not_enrolled` is exactly what
+    // the gate would have said about the one parent it used to ask about, so it is what
+    // is counted rather than a silence that looks like a quiet tick.
+    return emptyTally({ held: ['not_enrolled'] });
+  }
 
-  const verdict = await assertProactiveSendAllowed(
-    {
-      familyId: sequence.familyId,
-      parentUserId: sequence.parentUserId,
-      kind: 'registration_sequence',
-      now,
-      urgent: legIsUrgent(leg),
-    },
-    deps.buildGate(database),
-  );
-  if (!verdict.allowed) return { kind: 'held', reason: verdict.reason };
+  // Per recipient, and checked BEFORE the gate: a leg that already went out costs one
+  // indexed read on every one of the hundreds of ticks its interval spans.
+  const pending: Array<{ recipient: FamilyTextRecipient; dedupeKey: string }> = [];
+  let deduped = 0;
+  for (const recipient of recipients) {
+    const dedupeKey = legDedupeKey(
+      sequence.familyId,
+      sequence.window.id,
+      leg,
+      recipient.parentUserId,
+    );
+    if (await deps.dedupeActive(database, dedupeKey)) deduped += 1;
+    else pending.push({ recipient, dedupeKey });
+  }
+  if (pending.length === 0) return emptyTally({ deduped });
+
+  // EVERY RECIPIENT IS GATED BEFORE ANYBODY IS SENT TO, and the ordering is the design
+  // rather than tidiness. The frequency cap is counted per FAMILY (outbound-gate.ts),
+  // because a household is one audience — so gating and sending in one pass would let
+  // the first parent's message spend the budget and hold the second under it. This
+  // class is uncapped, and the nudge sweep beside it is not; the shape is the same in
+  // both so that a cap added here later cannot quietly halve the household.
+  const allowed: Array<{
+    recipient: FamilyTextRecipient;
+    dedupeKey: string;
+    optOut: OptOutForm;
+  }> = [];
+  const held: ProactiveHoldReason[] = [];
+  for (const { recipient, dedupeKey } of pending) {
+    const verdict = await assertProactiveSendAllowed(
+      {
+        familyId: sequence.familyId,
+        parentUserId: recipient.parentUserId,
+        kind: 'registration_sequence',
+        now,
+        urgent: legIsUrgent(leg),
+      },
+      deps.buildGate(database),
+    );
+    if (verdict.allowed) allowed.push({ recipient, dedupeKey, optOut: verdict.optOut });
+    else held.push(verdict.reason);
+  }
+  if (allowed.length === 0) return emptyTally({ deduped, held });
 
   const children = await deps.loadChildren(database, sequence.familyId);
   const match = matchForSequence(sequence, { isResidentWindow, opensForFamilyAt: anchor });
@@ -683,7 +774,7 @@ async function runLegForSequence(
   // mid-sentence for the household this feature is for. Nothing changes for an unbound
   // ladder, which is every one of the thirteen municipalities Hale cannot read.
   const boundSpeaks = bound !== null && leg !== 'heads_up' && leg !== 'readiness';
-  if (fitted === null && !boundSpeaks) return { kind: 'quiet' };
+  if (fitted === null && !boundSpeaks) return emptyTally({ quiet: true, deduped, held });
   const shortlist = fitted ?? windowShortlist(match);
   const effects: LegReadEffects = fitted === null ? { noFit: true } : {};
 
@@ -737,91 +828,126 @@ async function runLegForSequence(
     },
   });
 
-  const to = await deps.resolveSendablePhone(database, sequence.parentUserId);
-  if (!to) {
-    // The gate just said this parent has a live channel, so there IS one — a missing
-    // number here is a contradiction, not a state to paper over.
-    throw new Error(`runRegistrationSequenceCron: no send target for ${sequence.parentUserId}`);
+  // ONE COMPOSED LEG, TWO ENVELOPES. The sentence is about the household's morning and
+  // is rendered once, on the LADDER's clock (the sequence row's), so both parents read
+  // the same time for the same registration. Only the CASL line differs per recipient:
+  // whether this parent has been texted first before is a fact about them, and the gate
+  // answered it for each of them above.
+  let sent = 0;
+  let refused = 0;
+  /** The row a family-scoped promise is opened and discharged against — the first leg
+   * that actually left, in the reader's stable primary-parent-first order. */
+  let promiseMessageId: string | null = null;
+
+  for (const { recipient, dedupeKey, optOut } of allowed) {
+    const to = await deps.resolveSendablePhone(database, recipient.parentUserId);
+    if (!to) {
+      // The gate just said this parent has a live channel, so there IS one — a missing
+      // number here is a contradiction, not a state to paper over.
+      throw new Error(`runRegistrationSequenceCron: no send target for ${recipient.parentUserId}`);
+    }
+
+    // THE GATE, ON THE STRING THAT ACTUALLY LEAVES (VIL-293) — after `withOptOut`, and
+    // once per recipient because the string is per recipient: everything between a gate
+    // and the transport is unchecked by construction. The ladder's own legs are the one
+    // template set that DOES claim a registration watch, and they are true because a
+    // live sequence is what is sending them: the reconcile matches on that row rather
+    // than on the sentence. What it stops is a leg rendered for a household whose
+    // sequence has gone (a claim nothing backs) and any future copy change that asserts
+    // a booking or a promise about Hale itself.
+    const wireBody = withOptOut(body, optOut);
+    const unbacked = await deps.refuseUnbackedSend(database, {
+      familyId: sequence.familyId,
+      body: wireBody,
+      now,
+    });
+    if (unbacked.length > 0) {
+      console.error(
+        { sequenceId: sequence.sequenceId, leg, reasons: unbacked },
+        'registration sequence: the wire body claims a row that does not exist - leg refused',
+      );
+      refused += 1;
+      continue;
+    }
+
+    const { providerMessageId } = await deps.transport.send({ to, body: wireBody });
+    const messageId = await deps.recordSend(database, {
+      familyId: sequence.familyId,
+      parentUserId: recipient.parentUserId,
+      channel: 'sms',
+      category: 'registration_sequence',
+      templateKey: `registration_sequence:${leg}`,
+      dedupeKey,
+      status: acceptedStatus('sms'),
+      providerMessageId,
+      sentAt: now,
+    });
+    await deps.audit(database, {
+      familyId: sequence.familyId,
+      actor: 'system',
+      actionTaken: 'registration_sequence_leg_sent',
+      targetTable: 'channel_messages',
+      targetId: messageId,
+      // Enum-shaped provenance only, never the rendered body (rule #1). The three
+      // VIL-338 fields are the whole receipt for a send-time read: WHICH sentence the
+      // page earned, how far the page's clock sat from the anchor, and whether the
+      // anchor was moved. The M1 row's own disagreement rides here rather than in an
+      // audit verb of its own — a fact about public reference data is not an event in a
+      // family's history.
+      after: {
+        leg,
+        windowId: sequence.window.id,
+        municipality: sequence.window.municipality,
+        cycleLabel: sequence.window.cycleLabel,
+        urgent: legIsUrgent(leg),
+        // Which SEAT this copy went to. The row already names the parent; this names
+        // the relationship, which is what a founder reading the trail is asking.
+        role: recipient.role,
+        // `prep` alone on the leg that had a portal and nothing bound: there was no
+        // read, so there is no drift to report and no anchor that could have moved.
+        ...(effects.prep === undefined ? {} : { prep: effects.prep }),
+        ...(prep === null
+          ? {}
+          : {
+              driftMinutes: driftOf(prep.verdict),
+              anchorMovedMinutes: effects.anchorMoved === true ? driftOf(prep.verdict) : null,
+            }),
+      },
+    });
+
+    // THE THREAD, which is where THIS parent's answer will be read — their own, one per
+    // recipient. Unconditional and AFTER the send: a leg that never reached a transport
+    // is not something Hale said. The COMPOSED leg, never the wire body — the CASL line
+    // belongs on the wire and nowhere else.
+    await deps.threadMessage(database, {
+      familyId: sequence.familyId,
+      parentUserId: recipient.parentUserId,
+      body,
+    });
+    if (promiseMessageId === null) promiseMessageId = messageId;
+    sent += 1;
   }
 
-  // THE GATE, ON THE STRING THAT ACTUALLY LEAVES (VIL-293) — after `withOptOut`, because
-  // everything between a gate and the transport is unchecked by construction. The ladder's
-  // own legs are the one template set that DOES claim a registration watch, and they are
-  // true because a live sequence is what is sending them: the reconcile matches on that
-  // row rather than on the sentence. What it stops is a leg rendered for a household whose
-  // sequence has gone (a claim nothing backs) and any future copy change that asserts a
-  // booking or a promise about Hale itself.
-  const wireBody = withOptOut(body, verdict.optOut);
-  const unbacked = await deps.refuseUnbackedSend(database, {
-    familyId: sequence.familyId,
-    body: wireBody,
-    now,
-  });
-  if (unbacked.length > 0) {
-    console.error(
-      { sequenceId: sequence.sequenceId, leg, reasons: unbacked },
-      'registration sequence: the wire body claims a row that does not exist - leg refused',
+  // MEM-10 · ONCE PER LEG, not once per number. The promise is the HOUSEHOLD's — "I'll
+  // send your plan the evening before" is one plan — so a second recordCommitment would
+  // report a debt Hale does not owe, and a second fulfillCommitment would close a
+  // promise that was never opened twice.
+  if (promiseMessageId !== null) {
+    await recordLegPromise(
+      database,
+      {
+        sequence,
+        shortlist,
+        leg,
+        messageId: promiseMessageId,
+        anchor,
+        prep: prep?.verdict ?? null,
+      },
+      deps,
+      now,
     );
-    return { kind: 'refused', ...effects };
   }
-
-  const { providerMessageId } = await deps.transport.send({ to, body: wireBody });
-  const messageId = await deps.recordSend(database, {
-    familyId: sequence.familyId,
-    parentUserId: sequence.parentUserId,
-    channel: 'sms',
-    category: 'registration_sequence',
-    templateKey: `registration_sequence:${leg}`,
-    dedupeKey,
-    status: acceptedStatus('sms'),
-    providerMessageId,
-    sentAt: now,
-  });
-  await deps.audit(database, {
-    familyId: sequence.familyId,
-    actor: 'system',
-    actionTaken: 'registration_sequence_leg_sent',
-    targetTable: 'channel_messages',
-    targetId: messageId,
-    // Enum-shaped provenance only, never the rendered body (rule #1). The three VIL-338
-    // fields are the whole receipt for a send-time read: WHICH sentence the page earned,
-    // how far the page's clock sat from the anchor, and whether the anchor was moved.
-    // The M1 row's own disagreement rides here rather than in an audit verb of its own —
-    // a fact about public reference data is not an event in a family's history.
-    after: {
-      leg,
-      windowId: sequence.window.id,
-      municipality: sequence.window.municipality,
-      cycleLabel: sequence.window.cycleLabel,
-      urgent: legIsUrgent(leg),
-      // `prep` alone on the leg that had a portal and nothing bound: there was no read,
-      // so there is no drift to report and no anchor that could have moved.
-      ...(effects.prep === undefined ? {} : { prep: effects.prep }),
-      ...(prep === null
-        ? {}
-        : {
-            driftMinutes: driftOf(prep.verdict),
-            anchorMovedMinutes: effects.anchorMoved === true ? driftOf(prep.verdict) : null,
-          }),
-    },
-  });
-
-  await recordLegPromise(
-    database,
-    { sequence, shortlist, leg, messageId, anchor, prep: prep?.verdict ?? null },
-    deps,
-    now,
-  );
-  // THE THREAD, which is where the parent's answer will be read. Unconditional and
-  // AFTER the send, like the promise write above: a leg that never reached a transport
-  // is not something Hale said. The COMPOSED leg, never the wire body — the CASL line
-  // belongs on the wire and nowhere else.
-  await deps.threadMessage(database, {
-    familyId: sequence.familyId,
-    parentUserId: sequence.parentUserId,
-    body,
-  });
-  return { kind: 'sent', ...effects };
+  return { sent, deduped, refused, held, quiet: false, ...effects };
 }
 
 /** THIS tick's reading of the bound course. Pure once the bytes are in hand: the verdict
@@ -1014,9 +1140,14 @@ export async function runRegistrationSequenceCron(
       if (outcome.prep) result.prep[outcome.prep] += 1;
       if (outcome.anchorMoved) result.prep.anchor_moved += 1;
       if (outcome.noFit) result.noFit += 1;
-      if (outcome.kind === 'held') result.held[outcome.reason] += 1;
-      else if (outcome.kind === 'skipped') result.skipped[outcome.reason] += 1;
-      else result[outcome.kind] += 1;
+      // The reading is per SEQUENCE (one course page, one leg) and the sending is per
+      // RECIPIENT, so the two are added differently and deliberately.
+      if (outcome.skipped) result.skipped[outcome.skipped] += 1;
+      if (outcome.quiet) result.quiet += 1;
+      result.sent += outcome.sent;
+      result.deduped += outcome.deduped;
+      result.refused += outcome.refused;
+      for (const reason of outcome.held) result.held[reason] += 1;
     } catch (err) {
       // One family's bad data must not silence every family after it.
       result.failed += 1;
@@ -1195,6 +1326,7 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
         .where(eq(schema.registrationSequences.id, sequenceId));
     },
     loadLiveSequences: (database) => loadLiveSequences(database),
+    loadRecipients: (database, familyId) => loadFamilyTextRecipients(database, familyId),
     buildGate: buildOutboundGatePorts,
     refuseUnbackedSend,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),

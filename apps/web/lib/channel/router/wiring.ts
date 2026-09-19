@@ -5,6 +5,11 @@ import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
+import {
+  emailAlertOfferSubject,
+  emailAlertOfferSummary,
+  loadOpenEmailAlertOffers,
+} from '~/lib/integrations/email-alert-offer';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { resolveSendableEmail } from '~/lib/channel/email/sendable';
 import { productionEmailReply } from '~/lib/channel/email/reply-send';
@@ -56,6 +61,7 @@ import {
   approvalHandler,
   coParentAssentHandler,
   connectorLinkHandler,
+  emailAlertAddHandler,
   emailCaptureHandler,
   founderWelcomeHandler,
   healthReplyHandler,
@@ -334,6 +340,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     // handler's own note. Listed so the router never resolves a kind nobody owns.
     coParentAssentHandler(),
     healthReplyHandler(defaultHealthReplyDeps()),
+    emailAlertAddHandler(),
     planReplyHandler(defaultPlanReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
@@ -692,8 +699,8 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     // The registration ladder's readiness checklist. Its whole TTL is the last-word rule
     // inside the reader — the question closes the moment anything else goes out to this
     // parent — so, unlike the offers above, there is no window to apply here.
-    registrationReadiness: (database, familyId, now) =>
-      readinessQuestion(database, familyId, now),
+    registrationReadiness: (database, familyId, parentUserId, now) =>
+      readinessQuestion(database, familyId, parentUserId, now),
     // The co-parent scope question (VIL-355), read through the invite module's own
     // `loadPendingAssent` — which also applies the 72h expiry on read, so a lapsed ask
     // is never listed. Filtered to the co-parent role here rather than in the reader: a
@@ -706,6 +713,18 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
       // The ask went out with the invite, so the invite's own clock is when it was put to
       // them: `expiresAt` is 72h after that, by construction.
       return { id: pending.id, askedAt: new Date(pending.expiresAt.getTime() - INVITE_SILENCE_MS) };
+    },
+    // The Gmail alerts this parent has not answered. Its TTL is applied inside the reader,
+    // the same discipline the three offers above keep — and `askedAt` is the row's own mint
+    // time, which is the moment the text went out, because the row is written at send.
+    emailAlertOffers: async (database, input) => {
+      const offers = await loadOpenEmailAlertOffers(database, input);
+      return offers.map((offer) => ({
+        id: offer.id,
+        summary: emailAlertOfferSummary(offer),
+        subject: emailAlertOfferSubject(offer),
+        askedAt: offer.askedAt,
+      }));
     },
   });
 }

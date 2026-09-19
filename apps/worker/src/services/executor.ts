@@ -78,8 +78,11 @@ export type CalendarInviteOutcome =
   | 'sent'
   /** This exact revision already went out (a re-drive of the same placement). */
   | 'already_sent'
-  /** No address to send to — the gap the just-in-time ask exists to close. */
+  /** No address to send a CANCEL to. A REQUEST for an addressless parent goes as a
+   * tap-to-add LINK by text instead, so this is now the cancellation path alone. */
   | 'no_email_on_file'
+  /** No address AND no live SMS channel — Hale cannot reach this parent at all. */
+  | 'no_channel'
   /** No email provider wired in this environment. */
   | 'not_configured'
   /** Dispatch policy refused the leg (pref / consent / cap / quiet hours). */
@@ -93,7 +96,8 @@ export type CalendarInviteOutcome =
 
 export interface CalendarInviteParentOutcome {
   parentUserId: string;
-  channel: 'email';
+  /** Which form this parent was sent: the iTIP attachment, or the tap-to-add link. */
+  channel: 'email' | 'sms';
   outcome: CalendarInviteOutcome;
   /** The dispatch's own ledger status behind a 'suppressed' or 'send_failed'. */
   reason?: string;
