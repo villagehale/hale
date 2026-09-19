@@ -64,6 +64,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/spots/sweep.ts': 'records its own rows (spot_open category)',
   'apps/web/lib/cron/connector-sync.ts':
     'the connector sweep wires both alert paths off one proactiveSendPorts(); every send is claimed and recorded before it reaches the transport — alertParentForEmail (email_alert category) and alertParentForCalendarChanges (calendar_alert category)',
+  'apps/web/lib/channel/connect/connected-notice.ts':
+    'records its own row BEFORE the send and claims the dedupe key with it (reply category, connector:connected) — the connect callback awaits this inside the redirect Google hands back',
   'apps/web/lib/channel/intake/first-reply-recovery.ts':
     'pre-family by eligibility (family_id IS NULL); session transcript, replayed at provisioning',
   'apps/web/lib/channel/intake/sitting-reminder.ts':

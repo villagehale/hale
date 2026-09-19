@@ -40,6 +40,9 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // The loop dispatch names its send by WHO received it: a caregiver leg is a disclosure
+  // to a third party, everything else is the generic channel send.
+  'apps/web/lib/channel/dispatch.ts': ['caregiver_schedule_sent', 'channel_sent'],
   // `${auditAction}` / `${auditAction}.skipped_duplicate` over the five executor
   // constants (ROUTINE_PIN / DIGEST_NOTE / CALENDAR_PLACED / _MOVED / _CANCELLED).
   'apps/worker/src/services/internal-writes.ts': [
@@ -129,6 +132,10 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'co_parent_invite_blocked',
     'co_parent_invite_blocked_prior_refusal',
   ],
+  // MINT_VERB[purpose] — the family's ics_share_token is one column behind two very
+  // different disclosures (the whole-calendar subscription, or a one-way-hashed
+  // per-event link), and the first mint says which one the caller made.
+  'apps/web/lib/loop/ics-feed.ts': ['ics_feed_shared', 'ics_event_link_minted'],
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
   // One send, two meanings: the evening question, or the notice that Hale is stepping
   // down to weekly after three silent evenings (VIL-353). The verb is picked from the

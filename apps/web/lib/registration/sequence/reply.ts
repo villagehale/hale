@@ -130,6 +130,15 @@ export function matchCheckInReply(body: string): CheckInIntent | null {
 export interface AwaitingSequence {
   sequenceId: string;
   familyId: string;
+  /**
+   * The seat that claimed this window — the ladder's OWNER, never its audience.
+   *
+   * Deliberately NOT who the outcome is attributed to: the ladder's legs reach every
+   * parent seat (channel/family-recipients.ts), so "we got in" can arrive from either
+   * number, and filing it under this id would put the primary parent's name on a
+   * sentence the co-parent typed. The ANSWERING parent is passed in and stamped
+   * instead; this stays because it is the row's own provenance.
+   */
   parentUserId: string;
   state: SequenceState;
   shortlist: Shortlist;
@@ -166,7 +175,7 @@ export type SequenceReplyOutcome =
 
 export async function handleSequenceReply(
   database: Database,
-  input: { familyId: string; body: string; now: Date },
+  input: { familyId: string; parentUserId: string; body: string; now: Date },
   deps: SequenceReplyDeps,
 ): Promise<SequenceReplyOutcome> {
   const sequence = await deps.loadAwaitingSequence(database, input.familyId, input.now);
@@ -205,7 +214,12 @@ export async function handleSequenceReply(
   await deps.recordOutcome(database, {
     sequenceId: sequence.sequenceId,
     familyId: sequence.familyId,
-    parentUserId: sequence.parentUserId,
+    // THE PARENT WHO ANSWERED, not the one who claimed the window. The check-in reaches
+    // both numbers and either may report the morning; rule #6's trail has to name the
+    // person who actually said it. The SEQUENCE is still resolved once — it is the
+    // family's row, and the loader's `outcome IS NULL` filter is what makes the other
+    // parent's later message find nothing open.
+    parentUserId: input.parentUserId,
     windowRef: sequence.shortlist.windowRef,
     outcome: intent.outcome,
     position: waitlisted ? intent.position : null,

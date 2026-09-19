@@ -37,6 +37,7 @@ describe('sitemap', () => {
     expect(urls).toContain(SITE_URL);
     expect(urls).toContain(`${SITE_URL}/about`);
     expect(urls).toContain(`${SITE_URL}/contact`);
+    expect(urls).toContain(`${SITE_URL}/for-centres`);
     expect(urls).toContain(`${SITE_URL}/pricing`);
   });
 

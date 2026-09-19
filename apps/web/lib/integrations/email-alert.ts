@@ -13,7 +13,14 @@ import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { formatDayHeading } from '~/lib/format/datetime';
-import type { ExtractedEvent, ExtractionKind, InboxEnvelope, SentinelClassification } from '~/lib/sentinel';
+import type {
+  CorrelatedEventRef,
+  ExtractedEvent,
+  ExtractionKind,
+  InboxEnvelope,
+  SentinelClassification,
+} from '~/lib/sentinel';
+import { type EmailAlertOfferDraft, recordEmailAlertOffer } from './email-alert-offer';
 
 /**
  * A parenting email in a connected Gmail becomes ONE text to the parent.
@@ -214,7 +221,17 @@ export async function alertParentForEmail(
     kind: extraction.kind,
     event: extraction.event,
     teenContent: extraction.teenContent,
+    matchedEventRef: extraction.matchedEventRef,
     timeZone: input.timeZone,
+    now,
+  });
+  // The same pure decision the sentence above just made. Two calls of one function rather
+  // than a flag threaded between them: the CTA and the row it promises cannot disagree.
+  const offer = emailAlertOfferDraft({
+    kind: extraction.kind,
+    event: extraction.event,
+    teenContent: extraction.teenContent,
+    matchedEventRef: extraction.matchedEventRef,
     now,
   });
 
@@ -274,6 +291,24 @@ export async function alertParentForEmail(
     .update(schema.channelMessages)
     .set({ providerMessageId })
     .where(eq(schema.channelMessages.id, claimed.id));
+
+  // AFTER THE SEND, and that order is the rule rather than convenience: an offer nobody
+  // was told about is not an offer, and a row minted for a text the transport refused
+  // would make every bare affirmative in this household ambiguous for a day against a
+  // question that was never asked. The exposure runs the other way too — a throw between
+  // here and the send leaves a CTA with nothing behind it — which is why this sits with
+  // the thread and the audit row, in the stretch the sweep names `alert_failed`.
+  if (offer !== null) {
+    await recordEmailAlertOffer(database, {
+      familyId,
+      parentUserId,
+      integrationId,
+      messageId,
+      channelMessageId: claimed.id,
+      draft: offer,
+      now,
+    });
+  }
 
   // The composed sentence, not the wire body — the CASL line belongs on the wire, and
   // the coach re-reads this row next turn (channel/thread.ts).
@@ -368,6 +403,9 @@ export interface EmailAlertRenderInput {
   kind: ExtractionKind;
   event: ExtractedEvent;
   teenContent: boolean;
+  /** The family occasion this email already matched, or null. It decides whether the text
+   * may END with an offer — see {@link emailAlertOfferDraft}. */
+  matchedEventRef: CorrelatedEventRef | null;
   timeZone: string;
   now: Date;
 }
@@ -394,28 +432,74 @@ const VENDOR_LABEL =
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 /**
- * THERE IS NO CALL TO ACTION, and its absence is the design.
+ * THE ONE OFFER THIS TEXT MAY MAKE, and the row that has to exist before it may be made.
  *
- * This message used to end "I can add it to your week - reply YES." Nothing consumed that
- * YES. An email alert registers no open question of any kind — `OpenQuestionKind` has
- * nine members and none of them is this (lib/channel/router/open-questions.ts) — so a
- * parent doing exactly what the text told them to do reached the coach with nothing
- * drafted, or, with one unrelated action pending, APPROVED THAT ONE: consent read against
- * a question it was never given to (rule #4).
+ * The sentence used to be here with nothing behind it. An email alert registered no open
+ * question of any kind, so a parent doing exactly what the text told them to do reached
+ * the coach with nothing drafted — or, with one unrelated action pending, APPROVED THAT
+ * ONE: consent read against a question it was never given to (rule #4). The line was
+ * removed in #649 and the module's note said what it would take to bring it back: a row
+ * of its own, because `agent_commitments` permits ONE open promise of a kind per family
+ * while the gate allows three alerts a day, and because the row has to carry a title and
+ * an instant that the ledger's parent-safe `summary` and closed-vocabulary `topic` cannot
+ * hold. That row is `email_alert_offers` (lib/integrations/email-alert-offer.ts), and
+ * this function is the single decision both it and the sentence are derived from.
  *
- * Wiring it is not a small change, and the reasons are structural rather than budgetary.
- * A resolvable YES needs a row, the row would be an `agent_commitments` one, and that
- * table's `commitment_kind` is a Postgres enum (a migration) under a partial unique index
- * that permits ONE open promise of a kind per family — while `PROACTIVE_CAP.email_alert`
- * allows three alerts a day, so the second and third would be unwritable. The row would
- * also have to carry the title and the ISO instant, which is precisely the email-derived
- * detail this module persists nowhere (the ledger body is NULL, the audit row carries
- * enums only), and `topic` is a closed vocabulary that says so in its own comment.
+ * FIVE CONDITIONS, and each one is a way the sentence would otherwise be untrue:
+ *   · A 13+ child's mail is genericised by the time this sees it, so there is no occasion
+ *     left to add and nothing that could be added without re-disclosing what the teen
+ *     gate just removed (rule #1). No row, and — since the teen text is category-only —
+ *     no sentence either.
+ *   · A CANCELLATION is the removal of a date. Putting it on the week is the opposite of
+ *     what the email said. `unclear` means Hale could not tell what the email was.
+ *   · The occasion must have a CONCRETE time: the destination for a move or a new date,
+ *     the stated one for a reminder. "Invalid Date" is the model's free text failing, and
+ *     a week entry at the epoch is worse than no offer.
+ *   · It must be in the FUTURE. An offer to put last Tuesday on your week is a sentence
+ *     nobody would write.
+ *   · The family must not already TRACK it (`matchedEventRef`). A reschedule of a class
+ *     Hale already holds would be placed beside the old one — two copies of one Saturday,
+ *     from a text that promised to tidy it.
  *
- * So the message ends on the fact. Ollie closes an item with "You can change or remove it
- * anytime" because Ollie has already put it on the calendar; Hale has not, and a sentence
- * that says otherwise is the one kind of copy this file must never ship.
+ * Everything else ends with today's sentence, and that is still the common case.
  */
+export function emailAlertOfferDraft(input: {
+  kind: ExtractionKind;
+  event: ExtractedEvent;
+  teenContent: boolean;
+  matchedEventRef: CorrelatedEventRef | null;
+  now: Date;
+}): EmailAlertOfferDraft | null {
+  if (input.teenContent || input.matchedEventRef !== null) return null;
+  const startsAt = instant(OFFERED_TIME[input.kind](input.event));
+  if (startsAt === null || startsAt.getTime() <= input.now.getTime()) return null;
+  const title = sanitizedTitle(input.event.title);
+  if (title === '') return null;
+  // The extraction's own place, folded and clamped like everything else this file keeps:
+  // the row's strings reach a wire later, in a reminder. Unlike {@link venue}, a digit is
+  // allowed — a room number on your own calendar is the useful half of an address, and
+  // that rule is about what goes out in a text, not about what the family holds.
+  const place = clamp(gsm7(input.event.location ?? ''), TITLE_MAX);
+  return { kind: input.kind, title, startsAt, location: place === '' ? null : place };
+}
+
+/** WHICH time field is the occasion, per kind. A move's destination, a new date's date,
+ * and the stated time of something the parent already has — the same choice the sentence
+ * itself makes when it decides which instant to name. */
+const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | null> = {
+  new_event: (event) => event.newTime,
+  reschedule: (event) => event.newTime,
+  reminder_only: (event) => event.originalTime,
+  cancellation: () => null,
+  unclear: () => null,
+};
+
+/** The sentence the offer prints, and it is printed if and only if a row will exist to
+ * keep it. English only: an alert is outbound-first and there is no inbound body to read
+ * a language off (`replyLanguage` takes one), and `families.primary_language` is a column
+ * nothing in this product reads yet. The REPLIES to this sentence do have a French twin,
+ * because by then the parent has written (email-alert-offer.ts). */
+const OFFER_CTA = 'Reply YES and it goes on your week.';
 
 /** What the sentence says when it has nothing specific, per kind — the fallback when a
  * vendor title survives sanitising as nothing at all (a subject line entirely outside the
@@ -442,14 +526,7 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
  * a verb, and no offer at the end (see above).
  */
 export function renderEmailAlert(input: EmailAlertRenderInput): string {
-  // The vendor's own filing label off the front and its punctuation off the back, because
-  // every frame below supplies the sentence's own subject and its own ending: "YRDSB says
-  // Reminder: the form is due" says the kind of thing twice, and "Picture Day. on Friday"
-  // is what a subject line's full stop reads as inside a clause.
-  const title = clamp(gsm7(input.event.title).replace(VENDOR_LABEL, ''), TITLE_MAX).replace(
-    TRAILING_PUNCTUATION,
-    '',
-  );
+  const title = sanitizedTitle(input.event.title);
 
   if (input.teenContent) {
     // Category only. The pipeline has already replaced the title with its own generic
@@ -458,11 +535,29 @@ export function renderEmailAlert(input: EmailAlertRenderInput): string {
     return `${title || GENERIC_TITLE[input.kind]}. ${TEEN_CLOSER}`;
   }
 
-  return compose(
+  const body = compose(
     input,
     clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, ''),
     title || GENERIC_TITLE[input.kind],
   );
+  // The offer, decided by the one function that also decides whether the row gets
+  // written. Appended AFTER `compose`, never inside it: every frame in there ends through
+  // `end()`, and a clause spliced before that would put Hale's own offer inside the
+  // vendor's sentence.
+  return emailAlertOfferDraft(input) === null ? body : `${body} ${OFFER_CTA}`;
+}
+
+/**
+ * The vendor's own filing label off the front and its punctuation off the back, because
+ * every frame supplies the sentence's own subject and its own ending: "YRDSB says
+ * Reminder: the form is due" says the kind of thing twice, and "Picture Day. on Friday"
+ * is what a subject line's full stop reads as inside a clause.
+ *
+ * ONE function, two readers — the sentence and the row it offers to write. A second copy
+ * of this fold would be a week entry titled differently from the text that offered it.
+ */
+function sanitizedTitle(raw: string): string {
+  return clamp(gsm7(raw).replace(VENDOR_LABEL, ''), TITLE_MAX).replace(TRAILING_PUNCTUATION, '');
 }
 
 /** One sentence per kind, and they are all the same sentence: who, what, when. */

@@ -180,6 +180,7 @@ export const AUDIT_VERBS = [
   'proactive_nudge_sent',
   'proactive_nudge_skipped',
   'email_alert_sent',
+  'email_alert_event_added',
   'calendar_alert_sent',
   'proactive_watch_granted',
   'proactive_watch_declined',
@@ -197,6 +198,8 @@ export const AUDIT_VERBS = [
   'caregiver_invite_blocked',
   'caregiver_sms_inbound',
   'caregiver_sms_outbound',
+  // The scoped week / an event's logistics actually leaving for a caregiver's phone.
+  'caregiver_schedule_sent',
   // ── the co-parent join link ─────────────────────────────────────────────
   'co_parent_join_link_minted',
   'co_parent_join_link_revoked',
@@ -252,6 +255,7 @@ export const AUDIT_VERBS = [
   'week_plan.calendar_drafted',
   'ics_feed_shared',
   'ics_feed_revoked',
+  'ics_event_link_minted',
   'notification_pref_updated',
   // ── connected assistants (MCP) ──────────────────────────────────────────
   'mcp.authorization_approved',
@@ -564,6 +568,13 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale texted you about something in your email',
     family: 'done',
   },
+  // The parent's YES to the sentence at the end of that text. YOU, not Hale: this is the
+  // one calendar entry in the product that no reviewer passed, precisely because the
+  // parent asked for it in so many words, and the trail has to say whose decision it was.
+  email_alert_event_added: {
+    sentence: 'you put something from your email on your week',
+    family: 'done',
+  },
   // Same shape, different connector. The sentence names the calendar for the same reason
   // the one above names the inbox: the row is the receipt for Hale having read it.
   calendar_alert_sent: {
@@ -627,6 +638,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   caregiver_sms_inbound: { sentence: 'a caregiver texted Hale', family: 'note' },
   caregiver_sms_outbound: { sentence: 'Hale texted a caregiver', family: 'note' },
+  // Its own verb rather than the generic `channel_sent`, because on this row WHO
+  // received it is the whole content: it is a disclosure of the household's week to a
+  // third party, and "Hale sent you a message" would be the one sentence that is false.
+  caregiver_schedule_sent: {
+    sentence: 'Hale sent a caregiver the part of your schedule they help with',
+    family: 'done',
+  },
   // ── the co-parent join link ─────────────────────────────────────────────
   co_parent_join_link_minted: {
     sentence: 'you asked for a link to add your co-parent',
@@ -790,6 +808,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   ics_feed_shared: { sentence: 'you turned on your calendar subscription', family: 'done' },
   ics_feed_revoked: { sentence: 'you turned off your calendar subscription', family: 'done' },
+  // NOT the subscription: a per-event link is a one-way HMAC over the same secret and
+  // discloses one entry, so the sentence says the entry and never the feed (rule #1).
+  ics_event_link_minted: {
+    sentence: 'made you a tap-to-add link for a calendar entry',
+    family: 'done',
+  },
   notification_pref_updated: { sentence: 'you changed how Hale reaches you', family: 'done' },
   // ── connected assistants (MCP) ──────────────────────────────────────────
   // An MCP client is a THIRD PARTY reading family data. These sentences name that

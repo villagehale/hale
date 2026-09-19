@@ -188,7 +188,7 @@ describe('intake · happy path', () => {
 
     expect(await text(fake, transport, deps, 'hi')).toEqual({ status: 'greeted' });
     expect(transport.bodies()[0]).toBe(
-      "Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+      "Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     );
     expect(transport.bodies()[0]).not.toContain('an AI that quietly runs the family week');
     expect(transport.bodies()[0]).not.toMatch(/I'm an AI/i);
@@ -2273,7 +2273,7 @@ describe('intake · the connector offer on the consent turn', () => {
 
     expect(recorded).toMatchObject({ connectorOffer: 'sent' });
     const offerBody = h.transport.bodies().at(-1) as string;
-    const url = (offerBody.match(/https:\/\/\S+/) as RegExpMatchArray)[0];
-    expect(offerBody).toBe(intakeConnectorOffer('fr', url));
+    const [calendarUrl, gmailUrl] = offerBody.match(/https:\/\/\S+/g) as RegExpMatchArray;
+    expect(offerBody).toBe(intakeConnectorOffer('fr', calendarUrl as string, gmailUrl as string));
   });
 });

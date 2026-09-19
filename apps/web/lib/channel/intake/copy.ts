@@ -487,10 +487,27 @@ export function posterLocation(code: string | null): string | null {
  * voice; VIL-321 / Designer locked the English no-venue line verbatim — the ask is
  * {@link COLD_START_ASK}. Style doctrine v1 (G6/L1, founder-gated) swapped the hook's
  * one word-pair: "rec mornings" was house coinage two strangers misread inside 48h;
- * "sign-up mornings" says the same thing in parent language. The ask is untouched.
- * Never "an AI that quietly runs the family week". The privacy
+ * "sign-up mornings" says the same thing in parent language.
+ *
+ * FOUNDER 2026-09-17 widened the hook from the wedge to the product. "I watch sign-up
+ * mornings so they don't sneak up" named ONE job, so a stranger with no registration
+ * coming read a reminder service and had no reason to answer. The sentence now names
+ * the three in the order they happen — find the activity that fits, hold the sign-up
+ * morning, come back and ask how it went — and calls the rest what it is.
+ *
+ * Two things it deliberately does NOT say. No superlative: Hale cannot verify "best",
+ * so it claims fit, which it can. And no nightly check-in, which is not built —
+ * "check in on how it goes" is true of the follow-ups that already send, and a first
+ * text that promises a feature is a first text that lies.
+ *
+ * The ask is untouched. Never "an AI that quietly runs the family week". The privacy
  * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where
  * a parent is actually asked to agree to something.
+ *
+ * COST: the longer hook puts every variant at TWO segments where the old one-job line
+ * fit in one. That was the founder's budget for a first message, and it is pinned per
+ * variant — longest registered venue name included — in sms-copy-encoding.test.ts. If
+ * a later edit needs septets back, they come out of this sentence, never the ask.
  *
  * THE VENUE VARIANT HAS NO FRENCH TWIN, and that is a decision rather than a gap. The
  * body that triggers it is the PREFILLED one a QR code wrote — "HALE LIBRARY", or
@@ -503,12 +520,12 @@ export function posterLocation(code: string | null): string | null {
  */
 export function greeting(venue: string | null, language: ReplyLanguage): string {
   if (venue) {
-    return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+    return `Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
   }
   if (language === 'fr') {
-    return `Bonjour, je suis Hale. Je surveille les matins d'inscription pour qu'ils ne vous échappent pas. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
+    return `Bonjour, je suis Hale. Je trouve des activités qui conviennent à votre tout-petit, je surveille les matins d'inscription pour qu'ils ne vous échappent pas, et je prends de vos nouvelles - tout le chaos du quotidien. ${COLD_START_ASK_BY_LANGUAGE.fr}`;
   }
-  return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. ${COLD_START_ASK}`;
+  return `Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. ${COLD_START_ASK}`;
 }
 
 /**
@@ -522,7 +539,7 @@ export function greeting(venue: string | null, language: ReplyLanguage): string 
  * `replyLanguage` reads it as English whatever they speak.
  */
 export function greetingWithArea(areaCoarse: string): string {
-  return `Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
+  return `Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. Got ${areaCoarse}, so I already know the area. Kids' names and ages, and I'll look up what's coming.`;
 }
 
 /**
@@ -705,28 +722,39 @@ export const AMBIGUOUS_CLARIFY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
  * answer. There is no NO to reply: ignoring it IS the no, which is the only refusal
  * that costs a parent nothing.
  *
- * Both providers in one sentence because one link serves both — the redeem page lands
- * on Settings -> Connected apps, where the Calendar and Gmail buttons sit side by side.
- * Two texts for two buttons would be two asks for one decision.
+ * ONE LINK PER CONNECTOR, each landing on its own Google consent. Both are minted in
+ * the same ask so both are alive when the text arrives (channel-signin.ts), and neither
+ * tap goes near the portal — which is the whole point: a second connector reached by
+ * "text me again" is a second chance to lose a parent who was willing ten seconds ago.
  *
- * TWO SEGMENTS, not one, and deliberately: 60 of its characters are a URL Hale did not
+ * TWO SEGMENTS, not one, and deliberately: 137 of its characters are URLs Hale did not
  * write, and cutting the sentence to fit would cost either the reason or the skip. The
- * ceiling is held mechanically in sms-copy-encoding.test.ts with a realistic link
+ * ceiling is held mechanically in sms-copy-encoding.test.ts with realistic links
  * inside it. The fifteen minutes is CHANNEL_SIGNIN_TTL_MS said out loud.
  */
-const CONNECTOR_OFFER_BY_LANGUAGE: Record<ReplyLanguage, (url: string) => string> = {
-  en: (url) =>
-    `Optional: I can also watch your Google Calendar and Gmail for daycare and school notices. Tap to connect: ${url} Good for 15 minutes - ignore this to skip.`,
+const CONNECTOR_OFFER_BY_LANGUAGE: Record<
+  ReplyLanguage,
+  (calendarUrl: string, gmailUrl: string) => string
+> = {
+  en: (calendarUrl, gmailUrl) =>
+    `Optional: I can also watch your Google Calendar and Gmail for daycare and school notices. Calendar: ${calendarUrl} Gmail: ${gmailUrl} Good for 15 minutes - ignore this to skip.`,
   // 'Google Agenda' is the product's own French name. 'l'école' keeps its accent — é is
-  // in GSM-7; the circumflexes and the cedilla that are not never appear here.
-  fr: (url) =>
-    `Optionnel : je peux aussi surveiller votre Google Agenda et Gmail pour les avis de la garderie et de l'école. Touchez pour connecter : ${url} Bon pour 15 minutes - ignorez pour passer.`,
+  // in GSM-7; the circumflexes and the cedilla that are not never appear here. The
+  // possessive goes where English keeps it ('your Google Calendar'): French spends four
+  // characters more on every other word, and with two links in the body those four are
+  // the difference between two segments and three.
+  fr: (calendarUrl, gmailUrl) =>
+    `Optionnel : je peux aussi surveiller Google Agenda et Gmail pour les avis de la garderie et de l'école. Agenda : ${calendarUrl} Gmail : ${gmailUrl} Bon pour 15 minutes - ignorez pour passer.`,
 };
 
-/** The whole message, link included — composed here and nowhere else, so no later
- * fitting can split the sentence from the URL it is about. */
-export function intakeConnectorOffer(language: ReplyLanguage, url: string): string {
-  return CONNECTOR_OFFER_BY_LANGUAGE[language](url);
+/** The whole message, links included — composed here and nowhere else, so no later
+ * fitting can split the sentence from the URLs it is about. */
+export function intakeConnectorOffer(
+  language: ReplyLanguage,
+  calendarUrl: string,
+  gmailUrl: string,
+): string {
+  return CONNECTOR_OFFER_BY_LANGUAGE[language](calendarUrl, gmailUrl);
 }
 
 /**

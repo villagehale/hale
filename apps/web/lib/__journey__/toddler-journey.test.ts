@@ -583,6 +583,11 @@ async function runToddlerJourney(): Promise<Journey> {
 
   const nudgeDeps: NudgeRunDeps = {
     selectFamilies: async () => nudgeFamilies(),
+    /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
+     * (channel/family-recipients.ts). This household has one parent. */
+    loadRecipients: async () => [
+      { parentUserId: parentUser.id, timeZone: TZ, role: 'primary_parent' as const },
+    ],
     // SEAM: one family in the store, so the fake's unfiltered read IS this family's.
     loadChildren: async () =>
       storedChildren(fake, NUDGE_AT).map((child) => ({
@@ -647,6 +652,11 @@ async function runToddlerJourney(): Promise<Journey> {
   const claimed = new Set<string>();
   const sequenceDeps: SequenceRunDeps = {
     refuseUnbackedSend: async () => [],
+    /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
+     * (channel/family-recipients.ts). This household has one parent. */
+    loadRecipients: async () => [
+      { parentUserId: parentUser.id, timeZone: TZ, role: 'primary_parent' as const },
+    ],
     /** SEAM: prod's selector is the same two INNER JOINs as the nudge's. */
     selectFamilies: async (): Promise<SequenceFamily[]> => {
       const family = fake.rows(schema.families)[0] as Record<string, unknown>;
@@ -1148,9 +1158,9 @@ describe('6 · the registration sequence claims the window and prepares the morn
       .filter((row) => row.category === 'registration_sequence')
       .map((row) => row.dedupeKey);
     expect(keys).toEqual([
-      legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'heads_up'),
-      legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'readiness'),
-      legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'battle_plan'),
+      legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'heads_up', journey.parentUserId),
+      legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'readiness', journey.parentUserId),
+      legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'battle_plan', journey.parentUserId),
     ]);
   });
 

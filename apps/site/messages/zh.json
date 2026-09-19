@@ -28,6 +28,7 @@
     "linkActivities": "活动",
     "linkGuides": "育儿指南",
     "linkAbout": "关于",
+    "linkForCentres": "给中心",
     "linkContact": "联系我们",
     "linkPrivacy": "隐私政策",
     "linkTerms": "服务条款",
@@ -264,14 +265,22 @@
         "tag": "推荐",
         "title": "Hale 来建议",
         "line": "这一周值得知道的那件事，以及为什么现在要紧。",
-        "checks": ["周日的一份简报", "报名开放那一周的提前知会", "其余时间安安静静"],
+        "checks": [
+          "周日的一份简报",
+          "报名开放那一周的提前知会",
+          "其余时间安安静静"
+        ],
         "linkLabel": "育儿指南"
       },
       {
         "tag": "准备",
         "title": "Hale 来备好",
         "line": "精选清单、链接、时间——在窗口打开之前，而不是之后。",
-        "checks": ["前一晚的方案", "开放上线时的一记提醒", "链接和时间"],
+        "checks": [
+          "前一晚的方案",
+          "开放上线时的一记提醒",
+          "链接和时间"
+        ],
         "linkLabel": "价格几何"
       },
       {
@@ -328,7 +337,12 @@
       "plus": "为那些你想让 Hale 多做一些的时候：一旦它赢得了你的信任，就会在你的批准下行动——提醒、草稿，还有你的日历，覆盖每个孩子，随集成陆续上线。",
       "family": "为那些你想让 Hale 直接搞定的时候：在你的批准下拥有完全自主权，随着上线开放消费和代订服务，还有专属礼宾和优先支持。"
     },
-    "freeFeatures": ["给 Hale 发短信", "报名日期有人盯着", "有问必答", "创始价"]
+    "freeFeatures": [
+      "给 Hale 发短信",
+      "报名日期有人盯着",
+      "有问必答",
+      "创始价"
+    ]
   },
   "Contact": {
     "metaTitle": "联系我们 · Hale",
@@ -355,7 +369,138 @@
         "line": "访问、更正或删除请求，以及任何关于我们如何处理你家数据的事。"
       }
     },
-    "note": "Hale 由 Village Hale Technologies Inc. 打造，位于加拿大安大略省乔治敦。"
+    "note": "Hale 由 Village Hale Technologies Inc. 打造，位于加拿大安大略省乔治敦。",
+    "centresNote": "你在中心、图书馆或社区项目工作？",
+    "centresLink": "看看 Hale 对你服务的家庭意味着什么"
+  },
+  "ForCentres": {
+    "metaTitle": "给中心与社区伙伴 · Hale",
+    "metaDescription": "Hale 对你们服务的家庭意味着什么，以及把一个家庭指向 Hale 的三种做法。一个家长可以发短信的号码——不用装应用，不用注册账号，数据留在加拿大。",
+    "eyebrow": "给中心与伙伴",
+    "headline": [
+      {
+        "text": "写给家长们"
+      },
+      {
+        "text": "已经信任的人。",
+        "accent": true
+      }
+    ],
+    "lede": "Hale 是一个家长可以发短信的号码。它找适合孩子的活动，盯住大多伦多 {count} 个市镇的报名早晨，事后还会问一句进行得怎么样。",
+    "notLine": "不用装应用，也不用注册账号。一个家庭的任何信息都不会被出售或共享，Hale 在安大略省按 PIPEDA 构建，家庭数据留在加拿大。",
+    "townsLabel": "盯着的市镇",
+    "getEyebrow": "一个家庭会得到什么",
+    "getHeadline": [
+      {
+        "text": "一条短信，"
+      },
+      {
+        "text": "同一分钟内就有回复。",
+        "accent": true
+      }
+    ],
+    "getLede": "第一条消息总是家长发的——Hale 从不先给一个家庭发短信。这是其中一条，以及回来的话。",
+    "getAfter": "之后就安静下来：周日一份简短的计划，报名开放前一晚的链接，以及提前十五分钟的一句提醒。",
+    "waysEyebrow": "怎么把一个家庭指向 Hale",
+    "waysHeadline": [
+      {
+        "text": "三种让一个家庭"
+      },
+      {
+        "text": "开始的做法。",
+        "accent": true
+      }
+    ],
+    "waysLede": "不用签什么，不用装什么，工作人员也不用跟进什么。",
+    "ways": {
+      "number": {
+        "tag": "直接给",
+        "title": "把号码给他们",
+        "body": "复制下来，放在家长会看的地方——白板、一张页子、活动室表格的背面。家长准备好了就发。"
+      },
+      "poster": {
+        "tag": "打印出来",
+        "title": "贴一张海报",
+        "body": "这个码打开的页面，会把家长的第一条消息先写好。我们会印带有你们中心专属代码的海报，这样我们就能告诉你们它带来了多少个家庭——发封邮件，我们就寄一张过去。"
+      },
+      "try": {
+        "tag": "自己试试",
+        "title": "先自己发一条",
+        "body": "像家长那样发出第一条消息，读一读回来的话，你就知道自己在推荐什么。回复 STOP 就结束。"
+      }
+    },
+    "numberPending": "号码还没对外公布。发封邮件给我们，它公布时我们会告诉你。",
+    "knowEyebrow": "工作人员需要知道的",
+    "knowHeadline": [
+      {
+        "text": "关于隐私的"
+      },
+      {
+        "text": "大白话回答。",
+        "accent": true
+      }
+    ],
+    "knowLede": "家庭会先问你们这几件事，然后才来问我们。",
+    "facts": [
+      {
+        "title": "Hale 会问什么",
+        "body": "孩子的名字、年龄，和一个邮编。前三位就够了——它指的是一个市镇，而不是一条街。"
+      },
+      {
+        "title": "什么都不出售",
+        "body": "一个家庭的信息从不出售，从不用于广告共享，也从不展示给另一个家庭。"
+      },
+      {
+        "title": "STOP 就能结束",
+        "body": "家长发一条 STOP，消息就停。他们可以向 privacy@villagehale.com 要回自己的数据，或者要求删除。"
+      },
+      {
+        "title": "法语，用法语回",
+        "body": "家长可以用法语给 Hale 发短信，Hale 也用法语回。"
+      },
+      {
+        "title": "孩子说的话只属于他的家长",
+        "body": "Hale 是和家长说话的。对 13 岁及以上的孩子，家长看到的是话题和摘要，而不是原话——除非涉及安全，而那时会告知这位青少年。"
+      },
+      {
+        "title": "在加拿大构建，也留在加拿大",
+        "body": "Village Hale Technologies Inc.，安大略省乔治敦。家庭数据留在加拿大，遵循 PIPEDA 和魁北克第 25 号法案。"
+      }
+    ],
+    "officialEyebrow": "如果家长问 Hale 是不是官方的",
+    "officialLine": "Hale 是独立的。它不属于你们中心，也不属于市、区或省。每一个报名日期它都会对照市政府自己的页面核实；若两者不一致，以市政府的页面为准。",
+    "faqEyebrow": "我们常被问到的",
+    "faqHeadline": [
+      {
+        "text": "工作人员最先问的"
+      },
+      {
+        "text": "四件事。",
+        "accent": true
+      }
+    ],
+    "faq": [
+      {
+        "question": "家庭需要注册账号吗？",
+        "answer": "不需要。家长给一个号码发短信，Hale 就回。不用装应用，没有密码，也没有注册页。"
+      },
+      {
+        "question": "对一个家庭来说要花多少钱？",
+        "answer": "开始是免费的。盯日期、答问题都不收费，而且现在加入的家庭可以永久保留创始价。"
+      },
+      {
+        "question": "我们需要签什么吗？",
+        "answer": "不需要。没有协议，工作人员也没有需要上报或跟进的东西。我们唯一会和你们一起安排的，是一张带有你们中心代码的海报。"
+      },
+      {
+        "question": "Hale 不会做什么？",
+        "answer": "它不做诊断，也从不说用药剂量——医疗问题会回到你自己的医护人员那里。它也从不替家庭填报名表、占位子。它只负责备好和提醒；报名的是家长。"
+      }
+    ],
+    "ctaHeading": "想给你们中心要一张海报吗？",
+    "ctaSub": "发封邮件给我们，我们会寄一张带有你们中心专属代码的过去。回信的是真人。",
+    "ctaButton": "发邮件至 aloha@villagehale.com",
+    "ctaQuiet": "其他联系方式"
   },
   "Faq": {
     "metaTitle": "Hale 是否免费、私密，又是否适合你家？ · Hale",
@@ -396,7 +541,7 @@
       },
       {
         "question": "Hale 到底盯着什么？",
-        "answer": "大多伦多地区 16 个城镇的市政报名——康乐项目、游泳课、营队和课后托管——包括本地居民的提前报名、那些另挑日子来放游泳报名的城镇，以及早在八月就开放的寒假营。它还盯着候补名单的时钟，有的城镇是一天，有的是两天。"
+        "answer": "大多伦多地区 21 个城镇的市政报名——康乐项目、游泳课、营队和课后托管——包括本地居民的提前报名、那些另挑日子来放游泳报名的城镇，以及早在八月就开放的寒假营。它还盯着候补名单的时钟，有的城镇是一天，有的是两天。"
       },
       {
         "question": "Hale 会多久给我发一次短信？",
@@ -498,13 +643,13 @@
   },
   "Text": {
     "metaTitle": "给 Hale 发短信",
-    "metaDescription": "开始和 Hale 对话——发短信就能用的家庭助手。它替你盯着你所在地区的报名日。",
+    "metaDescription": "开始和 Hale 对话——发短信就能用的家庭助手。它帮你找到适合孩子的活动，替你盯着你所在地区的报名日。",
     "headline": "家庭助手，发短信就行。",
-    "lede": "Hale 替你盯着报名日期和一家人的一周安排。",
+    "lede": "Hale 帮你找到适合小朋友的活动，替你盯着报名日，还会回头问问进展如何。",
     "sentLabel": "你会发出的内容：",
     "sentGloss": "英文：“你好 Hale 👋 我准备好开始了”",
     "previewLabel": "你会收到的第一条回复（英文原文）：",
-    "greeting": "Hi, I'm Hale. I watch sign-up mornings so they don't sneak up. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
+    "greeting": "Hi, I'm Hale. I find activities that fit your little one, keep sign-up mornings from sneaking up, and check in on how it goes - the whole parenting chaos. Reply with your kids' names, ages, and postal code and I'll text back what's coming.",
     "afterSend": "你的第一份关注同一分钟就会回来。",
     "trustLine": "免费 · 不用装应用 · 不用注册 · 随时回复 STOP 退出",
     "saveContact": "把 Hale 存入通讯录",

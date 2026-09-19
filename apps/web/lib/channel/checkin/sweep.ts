@@ -265,7 +265,7 @@ async function runForFamily(
     return;
   }
 
-  if ((await deps.readinessStanding(database, family.familyId, now)) !== null) {
+  if ((await deps.readinessStanding(database, family.familyId, family.parentUserId, now)) !== null) {
     result.heldForRegistration += 1;
     return;
   }

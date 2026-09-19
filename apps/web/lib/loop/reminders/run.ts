@@ -1,12 +1,22 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
+import {
+  type FamilyRole,
+  classifyFamilyEvent,
+  isCaregiverRole,
+  isParentRole,
+  roleAllows,
+} from '~/lib/channel/role-scope';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { appBaseUrl, unsubscribeUrl } from '~/lib/cron/email-compliance';
+import { type CaregiverSeat, selectCaregiverSeats } from '~/lib/loop/caregiver-audience';
 import { type ChildNameLevel, loadLoopPrefsView } from '~/lib/loop/prefs';
 import { loopSendEnabled } from '~/lib/loop/send';
+import { CAREGIVER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
+import type { CaregiverReminderPayload } from '~/lib/loop/templates/caregiver/payload';
 import type {
   ReminderChild,
   ReminderEventView,
@@ -67,8 +77,12 @@ export interface ReminderParent {
 export interface LiveEvent extends EventSnapshot {
   title: string;
   childId: string | null;
-  /** family_events.sensitive — the reminder templates genericize a sensitive event. */
+  /** family_events.sensitive — the reminder templates genericize a sensitive event, and
+   * `classifyFamilyEvent` refuses it to a caregiver outright. */
   sensitive: boolean;
+  /** Where to be. Unused by the parents' copy (they know), and half of what a caregiver's
+   * `event_logistics` scope is FOR. */
+  location: string | null;
 }
 
 /** A materialized reminder that is due (status 'scheduled', fire_at ≤ now), joined to
@@ -81,6 +95,29 @@ export interface DueReminder {
   offset: ReminderOffset;
   fireAt: Date;
   timezone: string;
+  /**
+   * The recipient's LIVE role in this family, or null when they no longer hold a seat.
+   *
+   * Carried on the row rather than inferred from the converge audience, for the reason
+   * phase B re-reads its event: a scheduled row can outlive the reason it was written. A
+   * caregiver who was seated a week ago may have left, and the audience they were selected
+   * into no longer exists to be asked. It is required (not optional) so a fake that omits
+   * it is a compile error rather than a leg that quietly stops being checked.
+   */
+  role: FamilyRole | null;
+  /**
+   * Whether this recipient holds a verified, non-revoked SMS channel RIGHT NOW — the
+   * other half of "active seat", and what a caregiver's STOP takes away.
+   *
+   * On the row for the same reason the role is, and it was the one fact this gate used to
+   * borrow from `selectReminderCaregivers`: a list assembled to fan CONVERGE out over
+   * seats, which may legitimately be bounded, re-ordered or (for a run with no caregiver
+   * work) empty. Read as a membership test it turns any of those into a permanent
+   * `out_of_scope` on a live seat's due reminder — a refusal manufactured by a knob that
+   * was never about this person. Only a caregiver leg consults it: a parent's reminder can
+   * ride email, and their SMS state is the dispatch's to judge.
+   */
+  smsChannelActive: boolean;
 }
 
 /** The channel.send job the A2 drain consumes (contract-validated by
@@ -93,10 +130,23 @@ export interface ChannelSendJob {
   urgency: 'normal' | 'time_sensitive';
   payload: Record<string, unknown>;
   dedupeKey: string;
+  /** Pins a caregiver's leg to SMS — they have no address (see loop/send.ts). */
+  channel?: 'sms';
 }
 
 export interface ReminderRunDeps {
   selectReminderParents: (db: Database) => Promise<ReminderParent[]>;
+  /**
+   * The family's ACTIVE caregiver seats (caregiver-audience.ts) — the second audience,
+   * added by VIL-241 · M6.
+   *
+   * No per-category pre-filter, unlike the parents' selector, and that is a fact about
+   * the data rather than a gap: nothing writes a `loop_prefs` row for a caregiver (there
+   * is no settings surface they can reach), so every seat sits on the documented default
+   * and there is nothing to filter on. The dispatch's `categoryEnabled` remains the
+   * enforcement if one ever appears.
+   */
+  selectReminderCaregivers: (db: Database) => Promise<CaregiverSeat[]>;
   loadHorizonEvents: (db: Database, familyId: string, now: Date) => Promise<LiveEvent[]>;
   upsertReminder: (
     db: Database,
@@ -139,6 +189,7 @@ function sqlExcluded(column: string) {
 
 export function defaultReminderRunDeps(): ReminderRunDeps {
   return {
+    selectReminderCaregivers: selectCaregiverSeats,
     selectReminderParents: async (db) => {
       // Left-join loop_prefs: a parent with no row keeps the column default (cat_reminder
       // on), so `!== false` reads "no row OR explicitly on" — never a magic default here.
@@ -167,6 +218,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           title: schema.familyEvents.title,
           childId: schema.familyEvents.childId,
           sensitive: schema.familyEvents.sensitive,
+          location: schema.familyEvents.location,
         })
         .from(schema.familyEvents)
         .where(
@@ -231,16 +283,44 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           offset: schema.eventReminders.offset,
           fireAt: schema.eventReminders.fireAt,
           timezone: schema.users.timezone,
+          role: schema.familyMembers.role,
+          channelId: schema.parentChannels.id,
         })
         .from(schema.eventReminders)
         .innerJoin(schema.users, eq(schema.eventReminders.parentUserId, schema.users.id))
+        // LEFT, so a row whose recipient has left the family still arrives — with a null
+        // role, which the fire path reads as "prove nothing" and suppresses.
+        .leftJoin(
+          schema.familyMembers,
+          and(
+            eq(schema.familyMembers.familyId, schema.eventReminders.familyId),
+            eq(schema.familyMembers.userId, schema.eventReminders.parentUserId),
+          ),
+        )
+        // The SAME three columns caregiver-audience.ts joins on, asked per row. At most one
+        // row can match (`parent_channels_user_kind_active_idx` is unique on (user, kind)
+        // among the non-revoked), so this widens the result set by nothing.
+        .leftJoin(
+          schema.parentChannels,
+          and(
+            eq(schema.parentChannels.userId, schema.eventReminders.parentUserId),
+            eq(schema.parentChannels.kind, 'sms'),
+            isNotNull(schema.parentChannels.verifiedAt),
+            isNull(schema.parentChannels.revokedAt),
+          ),
+        )
         .where(
           and(
             eq(schema.eventReminders.status, 'scheduled'),
             lte(schema.eventReminders.fireAt, now),
           ),
         );
-      return rows.map((r) => ({ ...r, offset: r.offset as ReminderOffset }));
+      return rows.map(({ channelId, ...r }) => ({
+        ...r,
+        offset: r.offset as ReminderOffset,
+        role: (r.role as FamilyRole | null) ?? null,
+        smsChannelActive: channelId !== null,
+      }));
     },
     loadEvent: async (db, eventRef) => {
       // No deleted_at filter: the live snapshot must carry deletedAt so classify can
@@ -253,6 +333,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           title: schema.familyEvents.title,
           childId: schema.familyEvents.childId,
           sensitive: schema.familyEvents.sensitive,
+          location: schema.familyEvents.location,
         })
         .from(schema.familyEvents)
         .where(eq(schema.familyEvents.id, eventRef))
@@ -316,11 +397,35 @@ interface FiringRow {
   startsAt: Date;
   childId: string | null;
   sensitive: boolean;
+  location: string | null;
+  /** Proven non-null by the fire gate: a row whose recipient holds no seat never gets
+   * here. Non-parent roles other than the three caregiver ones are suppressed too, so
+   * this is either a parent role or a caregiver one. */
+  role: FamilyRole;
 }
 
-interface ParentFiring {
+/**
+ * The rows that become ONE household's message to ONE recipient.
+ *
+ * Keyed on (family, recipient) rather than the recipient alone, because neither of the
+ * two facts hanging off this group — the familyId every ledger and audit row is written
+ * under, and the role that chooses the template — is a property of the person. A sitter
+ * works for two families; a parent of one household is the nanny of another. Grouped by
+ * recipient, the first row's family and role decided the whole batch: a second
+ * household's evening merged into the first one's text (no ledger row, no audit row of
+ * its own), and a recipient's two roles collapsed to whichever row the ledger happened
+ * to return first — the parents' template for a household that only seated them as a
+ * nanny, or the caregiver's for their own teenager's appointment, teen gate and all.
+ *
+ * (family, recipient) is also the EXACT grain: `family_members` is keyed
+ * (family_id, user_id), so role — and the timezone read beside it — is single-valued
+ * here and at no coarser key.
+ */
+interface RecipientFiring {
   familyId: string;
+  parentUserId: string;
   timezone: string;
+  role: FamilyRole;
   rows: FiringRow[];
 }
 
@@ -334,37 +439,94 @@ export async function runReminderCron(
   deps: ReminderRunDeps = defaultReminderRunDeps(),
   now: Date = new Date(),
 ): Promise<ReminderRunResult> {
+  // The family's children, read at most once per run per family — the deterministic teen
+  // age gate needs them, and both phases ask.
+  const childCache = new Map<string, ReminderChild[]>();
+  const childrenFor = async (familyId: string): Promise<ReminderChild[]> => {
+    const hit = childCache.get(familyId);
+    if (hit) return hit;
+    const loaded = await deps.loadChildren(db, familyId);
+    childCache.set(familyId, loaded);
+    return loaded;
+  };
+
   // ── Phase A: converge the ledger from live placed events ─────────────────────
   const parents = await deps.selectReminderParents(db);
+  const caregiverSeats = await deps.selectReminderCaregivers(db);
+
   const familyParents = new Map<string, ReminderParent[]>();
   for (const p of parents) {
     const existing = familyParents.get(p.familyId);
     if (existing) existing.push(p);
     else familyParents.set(p.familyId, [p]);
   }
+  const familyCaregivers = new Map<string, CaregiverSeat[]>();
+  for (const seat of caregiverSeats) {
+    const existing = familyCaregivers.get(seat.familyId);
+    if (existing) existing.push(seat);
+    else familyCaregivers.set(seat.familyId, [seat]);
+  }
 
   let converged = 0;
-  for (const [familyId, famParents] of familyParents) {
+  for (const familyId of new Set([...familyParents.keys(), ...familyCaregivers.keys()])) {
     const events = await deps.loadHorizonEvents(db, familyId, now);
-    for (const parent of famParents) {
-      for (const event of events) {
-        for (const offset of REMINDER_OFFSETS) {
-          const fireAt = reminderFireAt(event.startsAt, offset, parent.timezone);
-          await deps.upsertReminder(db, {
-            familyId,
-            eventRef: event.id,
-            parentUserId: parent.userId,
-            offset,
-            fireAt,
-          });
-          converged += 1;
+    const materialize = async (userId: string, timezone: string, event: LiveEvent) => {
+      for (const offset of REMINDER_OFFSETS) {
+        await deps.upsertReminder(db, {
+          familyId,
+          eventRef: event.id,
+          parentUserId: userId,
+          offset,
+          fireAt: reminderFireAt(event.startsAt, offset, timezone),
+        });
+        converged += 1;
+      }
+    };
+
+    for (const parent of familyParents.get(familyId) ?? []) {
+      for (const event of events) await materialize(parent.userId, parent.timezone, event);
+    }
+
+    // The caregiver seats, scoped. Materializing only what the role may see is what keeps
+    // the fan-out honest AND small — a household whose week is mostly a teenager's writes
+    // no rows for a grandparent instead of writing them and suppressing them at fire.
+    // The gate is re-applied at fire regardless: a child has a birthday.
+    const seats = familyCaregivers.get(familyId) ?? [];
+    if (seats.length > 0) {
+      const children = await childrenFor(familyId);
+      for (const seat of seats) {
+        for (const event of events) {
+          if (!roleAllows(seat.role, classifyFamilyEvent(event, children, now))) continue;
+          await materialize(seat.userId, seat.timezone, event);
         }
       }
     }
+
     // Belt-and-suspenders: the check-at-send below is the real guard, but a scheduled
     // row for a soft-deleted event is cancelled here so the ledger reads true.
     await deps.cancelDeletedEventReminders(db, familyId);
   }
+
+  /**
+   * MAY THIS RECIPIENT BE TOLD ABOUT THIS EVENT, right now — the role half of the trust
+   * gate, asked of the LIVE row the way the classify above asks about the live event.
+   *
+   * A parent's answer is unchanged and unconditional. Everyone else has to prove it: a
+   * caregiver must still hold an active seat (an accepted membership AND a verified,
+   * non-revoked channel — their STOP lands here), and the event must fall inside the
+   * three classes their role allows. Anything else — a departed member, one of the two
+   * legacy vague roles, a row whose seat is simply gone — fails closed.
+   *
+   * EVERY FACT COMES FROM THE ROW, none from the run's audience list. A gate that reads a
+   * fan-out list refuses whatever that list happened not to contain.
+   */
+  const recipientMaySee = async (row: DueReminder, event: LiveEvent): Promise<boolean> => {
+    const role = row.role;
+    if (role !== null && isParentRole(role)) return true;
+    if (role === null || !isCaregiverRole(role)) return false;
+    if (!row.smsChannelActive) return false;
+    return roleAllows(role, classifyFamilyEvent(event, await childrenFor(row.familyId), now));
+  };
 
   // ── Phase B: fire — classify each due row against the LIVE event ──────────────
   const due = await deps.loadDueReminders(db, now);
@@ -405,6 +567,11 @@ export async function runReminderCron(
         break;
       case 'fire':
         if (event) {
+          if (!(await recipientMaySee(row, event))) {
+            await deps.markStatus(db, row.id, 'suppressed', 'out_of_scope');
+            suppressed += 1;
+            break;
+          }
           firing.push({
             reminderId: row.id,
             familyId: row.familyId,
@@ -417,6 +584,9 @@ export async function runReminderCron(
             startsAt: event.startsAt,
             childId: event.childId,
             sensitive: event.sensitive,
+            location: event.location,
+            // Non-null past the gate above: role null never survives it.
+            role: row.role as FamilyRole,
           });
         }
         break;
@@ -425,25 +595,47 @@ export async function runReminderCron(
     }
   }
 
-  // Group firing rows by parent (one parent → one timezone) for batching.
-  const byParent = new Map<string, ParentFiring>();
+  // Group firing rows per (family, recipient) — see RecipientFiring. batchReminders then
+  // merges the evening WITHIN one household, which is the only scope a merge is true in.
+  const byRecipient = new Map<string, RecipientFiring>();
   for (const r of firing) {
-    const existing = byParent.get(r.parentUserId);
+    const key = `${r.familyId}|${r.parentUserId}`;
+    const existing = byRecipient.get(key);
     if (existing) existing.rows.push(r);
-    else byParent.set(r.parentUserId, { familyId: r.familyId, timezone: r.timezone, rows: [r] });
+    else
+      byRecipient.set(key, {
+        familyId: r.familyId,
+        parentUserId: r.parentUserId,
+        timezone: r.timezone,
+        role: r.role,
+        rows: [r],
+      });
   }
 
   const sendEnabled = loopSendEnabled();
   let fired = 0;
 
-  for (const [parentUserId, group] of byParent) {
+  for (const group of byRecipient.values()) {
+    const parentUserId = group.parentUserId;
+    const caregiver = isCaregiverRole(group.role);
     const batches = batchReminders(group.rows, group.timezone);
-    const children = await deps.loadChildren(db, group.familyId);
+    const children = caregiver ? [] : await deps.loadChildren(db, group.familyId);
     const rowByRef = new Map(group.rows.map((r) => [r.eventRef, r] as const));
     // VIL-229 · resolve the parent's name-level dial ONCE per parent (not per batch) —
     // only when voice can actually run, so a disabled or compose-not-send run skips
     // the read entirely (rule #8, cost discipline).
-    const nameLevel = sendEnabled && deps.client ? await deps.loadNameLevel(db, parentUserId) : null;
+    //
+    // NEITHER for a caregiver, and both omissions are deliberate. The children ride the
+    // parents' payload so the renderer can apply that PARENT's name dial; a caregiver's
+    // payload carries no child roster at all (templates/caregiver/payload.ts), so loading
+    // one would put a teenager's name and date of birth on a queue for nothing. And the
+    // voice stage is a real model call composed in the recipient's own register — a
+    // caregiver's reminder is deterministic logistics, and paying for a sentence in
+    // somebody else's voice is the wrong spend twice over (rule #8).
+    const nameLevel =
+      !caregiver && sendEnabled && deps.client
+        ? await deps.loadNameLevel(db, parentUserId)
+        : null;
 
     for (const batch of batches) {
       const [firstRef] = batch.eventRefs;
@@ -485,8 +677,27 @@ export async function runReminderCron(
           : null;
 
       // Rule #6: no deep link on the glanceable T-1h; /plan on the evening-before T-24h.
-      const deepLink = batch.offset === '-P1D' ? `${appBaseUrl()}/plan` : null;
-      const payload: ReminderPayload = {
+      // Never for a caregiver on either offset — /plan is behind an account they do not
+      // have, so the link would be a door with no key.
+      const deepLink = !caregiver && batch.offset === '-P1D' ? `${appBaseUrl()}/plan` : null;
+      const caregiverPayload: CaregiverReminderPayload = {
+        offset: batch.offset,
+        timeZone: group.timezone,
+        events: batch.eventRefs.flatMap((ref) => {
+          const r = rowByRef.get(ref);
+          return r
+            ? [
+                {
+                  eventRef: r.eventRef,
+                  title: r.title,
+                  startsAt: r.startsAt.toISOString(),
+                  location: r.location,
+                },
+              ]
+            : [];
+        }),
+      };
+      const parentPayload: ReminderPayload = {
         offset: batch.offset,
         timeZone: group.timezone,
         events,
@@ -495,16 +706,26 @@ export async function runReminderCron(
         unsubscribeUrl: unsubscribeUrl({ userId: parentUserId, emailType: REMINDER_EMAIL_TYPE }),
         voice,
       };
-      // Batch key: the single event for T-1h, the evening for a merged T-24h.
+      // Batch key: the single event for T-1h, the evening for a merged T-24h. The family
+      // is part of it because `dedupeActive` matches on the key alone, family-blind — and
+      // an evening key is a DATE, so two households texting the same sitter tomorrow
+      // would otherwise share one key and the second one's text would be dropped as an
+      // already-attempted send.
       const batchKey = batch.offset === '-P1D' ? batch.eveningKey : firstRef;
       const job: ChannelSendJob = {
-        templateKey: REMINDER_TEMPLATE_KEY,
+        templateKey: caregiver ? CAREGIVER_REMINDER_TEMPLATE_KEY : REMINDER_TEMPLATE_KEY,
         familyId: group.familyId,
         parentUserId,
         category: 'reminder',
         urgency: offsetUrgency(batch.offset),
-        payload: payload as unknown as Record<string, unknown>,
-        dedupeKey: `reminder:${batch.offset}:${parentUserId}:${batchKey}`,
+        payload: (caregiver ? caregiverPayload : parentPayload) as unknown as Record<
+          string,
+          unknown
+        >,
+        // The pin: a caregiver has no address, so their leg cannot be left to the
+        // recipient's loop_channel default (see loop/send.ts).
+        ...(caregiver ? { channel: 'sms' as const } : {}),
+        dedupeKey: `reminder:${batch.offset}:${group.familyId}:${parentUserId}:${batchKey}`,
       };
 
       // Compose-not-send: only reach real families once the founder flips the flag.
@@ -520,6 +741,7 @@ export async function runReminderCron(
       await deps.capture('reminder_sent', parentUserId, {
         offset: batch.offset,
         events: batch.eventRefs.length,
+        audience: caregiver ? 'caregiver' : 'parent',
       });
     }
   }

@@ -111,6 +111,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       activityPromise: async () => ({ id: 'promise-1', summary: 'a promise', askedAt: T0 }),
       registrationReadiness: async () => null,
       coParentAssent: async () => null,
+      emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
     });
 
@@ -186,6 +187,7 @@ describe('the registration-readiness question on the open list', () => {
         askedAt: T1,
       }),
       coParentAssent: async () => null,
+      emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
     });
 
@@ -219,6 +221,7 @@ describe('the registration-readiness question on the open list', () => {
       activityPromise: async () => null,
       registrationReadiness: async () => null,
       coParentAssent: async () => null,
+      emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
     });
 

@@ -82,7 +82,7 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
     },
     alertCalendarChanges: async (batch) => {
       cap.calendarAlerted.push(batch);
-      return batch.changes.map(() => 'dark' as const);
+      return { changes: batch.changes.map(() => 'dark' as const), reoffers: [] };
     },
     ...overrides,
   };
@@ -440,6 +440,10 @@ describe('syncConnection — Calendar', () => {
     expect(onlyChanges(cap)).toEqual([
       {
         eventId: 'ev2_20260918T201500Z',
+        // The SERIES this instance belongs to, carried through because it is the only
+        // field that says six changes are one edit. Drop it and one moved weekly class is
+        // six texts, or five texts and a silently dropped Tuesday.
+        recurringEventId: 'ev2',
         updated: '2026-09-17T14:55:00.000Z',
         status: 'cancelled',
         title: undefined,
@@ -449,6 +453,43 @@ describe('syncConnection — Calendar', () => {
         selfOrganized: undefined,
       },
     ]);
+    // ...and a one-off carries none, so nothing groups two unrelated events together.
+    const { fetchImpl: plain } = routedFetch([
+      {
+        match: 'calendar/v3',
+        body: {
+          items: [{ id: 'ev9', updated: '2026-09-17T14:55:00.000Z', summary: 'Dentist' }],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const single = stubDeps({ googleFetch: plain });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), single.deps);
+    expect(onlyChanges(single.cap)[0]?.recurringEventId).toBeUndefined();
+  });
+
+  it('counts a RE-OFFERED text in the sweep outcomes, not only the changes on the page', async () => {
+    // The alert answers in two lists because only the first is positional; a re-offer
+    // answers no change on this page. A summary that counted the first alone would report
+    // a sweep that texted three parents as a sweep that did nothing (rule #11).
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3',
+        body: {
+          items: [{ id: 'ev1', updated: '2026-09-17T14:55:00.000Z', summary: 'Swim' }],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps } = stubDeps({
+      googleFetch: fetchImpl,
+      alertCalendarChanges: async () => ({
+        changes: ['outside_window'] as const,
+        reoffers: ['sent', 'pending_expired'] as const,
+      }),
+    });
+    const result = await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+    expect(result.calendarAlerts).toEqual(['outside_window', 'sent', 'pending_expired']);
   });
 });
 

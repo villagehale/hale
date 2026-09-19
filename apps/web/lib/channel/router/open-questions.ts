@@ -91,6 +91,19 @@ export type OpenQuestionKind =
    */
   | 'co_parent_assent'
   /**
+   * "Reply YES and it goes on your week." — the offer at the end of a Gmail alert
+   * (lib/integrations/email-alert-offer.ts). Its YES writes a `family_events` row that
+   * the reminder scheduler and the weekly plan both read, so the parent gets a text the
+   * day before something they only ever saw in an email.
+   *
+   * IT IS THE ONE THAT WAS MISSING. The alert shipped that sentence once with nothing
+   * behind it and #649 took it away, because a parent answering it reached the coach with
+   * nothing drafted — or, with one unrelated action pending, APPROVED THAT ONE. This
+   * member is the other half of putting the sentence back: the question is written down
+   * at send time, on a row of its own, and a YES can only ever mean it.
+   */
+  | 'email_alert_add'
+  /**
    * "How did today go with Mia and Leo?" — the evening check-in (VIL-353,
    * channel/checkin/reply.ts). The only question on this list whose answer is not a
    * polarity at all but a sentence, which is why it is unanswerable below and why its
@@ -141,6 +154,11 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // whoever replies with the whole family surface. The same class of cost as an
   // introduction and then some — so the same grade.
   co_parent_assent: 'consequential',
+  // Writes a real entry on the family's week and materializes reminders off it. Nothing
+  // is executed and nothing is disclosed, but this Record's own line is "a change to a
+  // real calendar" — the grade an approval carries for exactly this — and a wrong reading
+  // costs a text the day before something that is not happening.
+  email_alert_add: 'consequential',
   // Never reached — nothing resolves an evening check-in (see KIND_ANSWERABLE). The
   // Record forces a choice anyway, and `ordinary` is the honest one: a wrong reading
   // could at most cost one acknowledgment nobody wanted.
@@ -187,6 +205,11 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // its own terminal state rather than leaving it to lapse — a parent who changes their
   // mind about texting their partner should not have to wait 72 hours for it.
   co_parent_assent: { yes: true, no: true },
+  // BOTH polarities, unlike the offers above: the no RESOLVES the offer as declined and
+  // says so, rather than leaving it to lapse. A parent who says no to a school email they
+  // are not interested in should not go on having it counted as a question Hale is
+  // waiting on for the rest of the day.
+  email_alert_add: { yes: true, no: true },
   // NEITHER POLARITY, the `activity_followup` reading for a different reason: the answer
   // to "how did today go" is a sentence, and a yes-or-no resolver could only ever
   // mis-read one. The keywords that DO move something (LESS, NO, DAILY) are read by the
@@ -278,6 +301,9 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   registration_readiness: true,
   // The scope question prints "Reply YES and I'll text them once." (coparent/copy.ts).
   co_parent_assent: true,
+  // The alert prints "Reply YES and it goes on your week." verbatim, and it is the last
+  // thing Hale said (integrations/email-alert.ts).
+  email_alert_add: true,
   // FALSE, and the entry matters more here than anywhere else on this list. The FIRST ask
   // a family ever gets prints LESS and NO, but every ask after it prints nothing at all —
   // and this flag is per CLASS. Marking it solicited would hand `newestSolicitedKind` the
@@ -315,11 +341,12 @@ export function newestSolicitedKind(
 }
 
 /**
- * The printable phrase per class. Fixed, except for approvals — a family can have three
- * drafted changes open at once and telling them apart is the entire point of the
- * question, so those carry the action's own label instead.
+ * The printable phrase per class. Fixed, except for the two kinds a family can hold
+ * SEVERAL of at once — drafted approvals and email-alert offers — where telling them
+ * apart is the entire point of the question, so each carries its own row's phrase
+ * instead (`namedApprovals`, `emailAlertOfferSubject`).
  */
-const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval'>, string> = {
+const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval' | 'email_alert_add'>, string> = {
   intro_optin: 'introductions to other Hale families nearby',
   intro_proposal: 'meeting the family nearby',
   plan_offer: 'the plan I offered',
@@ -459,6 +486,7 @@ export interface OpenQuestionSources {
   registrationReadiness(
     database: Database,
     familyId: string,
+    parentUserId: string,
     now: Date,
   ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
   /**
@@ -473,6 +501,24 @@ export interface OpenQuestionSources {
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
   ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
+   * The email alerts this parent has not answered — a LIST, unlike every other offer
+   * here, because the outbound gate permits three a day and each one asks about a
+   * different occasion. Listing them all is what makes a bare affirmative ambiguous
+   * between two of them rather than silently binding to one.
+   *
+   * Per-PARENT, like the intro opt-in and the co-parent scope question: the offer was put
+   * to one phone, and a co-parent who never saw the text must not be able to answer it.
+   * The TTL is applied inside the reader, so a lapsed offer is never listed.
+   *
+   * Each row brings its OWN `subject` as well as its summary, for the reason approvals
+   * do: a single fixed phrase would print "Which one - X, or X?" the moment two are
+   * standing, and a word pick cannot land on a subject the other one also says.
+   */
+  emailAlertOffers(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<ReadonlyArray<{ id: string; summary: string; subject: string; askedAt: Date }>>;
   /**
    * The evening check-in, while its ask is Hale's last word to this parent and the
    * morning has not come — or null (VIL-353, channel/checkin/reply.ts).
@@ -512,6 +558,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         welcome,
         readiness,
         assent,
+        emailOffers,
         evening,
       ] = await Promise.all([
           sources.pendingApprovals(database, input.familyId),
@@ -524,8 +571,9 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           sources.checkupOffer(database, input.familyId, input.now),
           sources.activityPromise(database, input.familyId),
           sources.founderWelcomeOffer(database, input.familyId, input.now),
-          sources.registrationReadiness(database, input.familyId, input.now),
+          sources.registrationReadiness(database, input.familyId, input.parentUserId, input.now),
           sources.coParentAssent(database, input),
+          sources.emailAlertOffers(database, input),
           sources.eveningCheckIn(database, input),
         ]);
 
@@ -624,6 +672,28 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           solicited: SOLICITED.co_parent_assent,
         });
       }
+      // OLDEST FIRST — the order the texts reached the phone — because a position printed
+      // against two notices about the same occasion has to mean what a parent means by
+      // "the first one".
+      const orderedOffers = [...emailOffers].sort(
+        (a, b) => a.askedAt.getTime() - b.askedAt.getTime(),
+      );
+      const offerPositions = duplicatePositions(orderedOffers.map((offer) => offer.subject));
+      for (const [index, emailOffer] of orderedOffers.entries()) {
+        // The offer row's own one-line summary: the title Hale already texted this parent
+        // and nothing else — never the subject line, never the snippet (rule #1).
+        questions.push({
+          id: emailOffer.id,
+          kind: 'email_alert_add',
+          description: emailOffer.summary,
+          // The offer's OWN phrase, so two standing alerts can be told apart at all — and
+          // its position when even the titles are the same.
+          subject: `${emailOffer.subject}${offerPositions[index]}`,
+          answerable: KIND_ANSWERABLE.email_alert_add,
+          askedAt: emailOffer.askedAt,
+          solicited: SOLICITED.email_alert_add,
+        });
+      }
       if (evening) {
         // Hale's own words about its own ask, with no child name in them — the names are
         // in the text the parent is holding, and this line goes to a model (rule #1).
@@ -685,10 +755,10 @@ function namedApprovals(approvals: ReadonlyArray<PendingAction>): OpenQuestion[]
   // before sending it to a model, one while writing a sentence with an overflow count),
   // and slicing here would silently zero that count.
   const labels = approvals.map((action) => actionTypeLabel(action.actionType));
+  const positions = duplicatePositions(labels);
   return approvals.map((action, index) => {
     const label = labels[index] as string;
-    const duplicated = labels.filter((other) => other === label).length > 1;
-    const position = duplicated ? ` (the ${ORDINAL_WORD[index] ?? `${index + 1}`})` : '';
+    const position = positions[index] as string;
     return {
       id: action.actionId,
       kind: 'approval' as const,
@@ -706,6 +776,27 @@ function namedApprovals(approvals: ReadonlyArray<PendingAction>): OpenQuestion[]
 
 /** Only as many as a list can hold — {@link MAX_LISTED_APPROVALS} is 3. */
 const ORDINAL_WORD = ['first', 'second', 'third'];
+
+/**
+ * ` (the first)` for every phrase that REPEATS in this list, and '' for the rest.
+ *
+ * TWO KINDS NEED IT and the rule has to be one rule: a family can hold three drafted
+ * changes and three email-alert offers, and either pair can arrive carrying one phrase —
+ * two calendar adds share a type label, two notices about the same occasion share a
+ * title. "Which one - X, or X?" is not a question, and a word pick cannot land on a word
+ * both options say (`distinctiveWords` drops it), so a repeated phrase gets its POSITION
+ * in the list as a description a parent can answer — never as an instruction.
+ *
+ * The caller owns the ORDER, because the position only means something if the list is in
+ * the order the parent met them: oldest first, for both callers.
+ */
+function duplicatePositions(phrases: readonly string[]): string[] {
+  return phrases.map((phrase, index) =>
+    phrases.filter((other) => other === phrase).length > 1
+      ? ` (the ${ORDINAL_WORD[index] ?? `${index + 1}`})`
+      : '',
+  );
+}
 
 /**
  * The same names, for the clarifying sentence the APPROVAL grammar sends when a bare

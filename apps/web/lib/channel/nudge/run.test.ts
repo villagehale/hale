@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -130,6 +131,27 @@ function harness(
     children?: NudgeChildRow[];
     doneCheckpoints?: Set<string>;
     claimedWindowIds?: Set<string>;
+    /** The family's textable parent seats. One primary parent unless a test says
+     * otherwise (channel/family-recipients.ts is the prod reader). */
+    recipients?: FamilyTextRecipient[];
+    /** Per-parent watch consent, for the households where the two seats differ. */
+    consentedFor?: (parentUserId: string) => boolean;
+    /** Per-parent enrolment, same reason. */
+    enrolledFor?: (parentUserId: string) => boolean;
+    /** Per-parent numbers, so a two-parent household's sends are tellable apart. */
+    phones?: Record<string, string>;
+    /**
+     * Count the family's cap off THIS RUN'S OWN LEDGER WRITES, the way prod counts it
+     * (outbound-gate.ts `countFamilyProactiveSends`), instead of the flat zero the rest
+     * of this suite is written against.
+     *
+     * Opt-in rather than the default because it is a stricter world: prod's second cron
+     * fire inside one slot is held by the CAP, not by the dedupe key, and the cases
+     * below that pin the dedupe guard would stop reaching it. It is what makes the
+     * two-parent cases real — with a flat zero, a sweep that sent to the first parent
+     * before gating the second would pass them.
+     */
+    familyCapCountsLedger?: boolean;
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -141,6 +163,19 @@ function harness(
 
   const deps: NudgeRunDeps = {
     selectFamilies: async () => options.families ?? [family()],
+    /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
+     * (channel/family-recipients.ts). The default is the ONE parent the fixture's own
+     * family row names. */
+    loadRecipients: async (_db, familyId) =>
+      options.recipients ?? [
+        {
+          parentUserId:
+            (options.families ?? [family()]).find((row) => row.familyId === familyId)
+              ?.parentUserId ?? 'user-1',
+          timeZone: TZ,
+          role: 'primary_parent',
+        },
+      ],
     // 36 months: deliberately inside the registration window under test and OUTSIDE
     // every M8 health checkpoint band, so these M4 cases keep testing M4.
     loadChildren: async () =>
@@ -154,22 +189,38 @@ function harness(
     // DONE. Faking only the latter would hide the fall-through this feature depends on.
     loadSuppressedCheckpoints: async (_db, familyId) => {
       const prefix = `nudge:${familyId}:health:`;
+      // SEAM: prod's reader strips the recipient qualifier before parsing the ref
+      // (health/told.ts loadToldCheckpointRefs) — two parents told the same checkpoint
+      // is one fact about the household, written twice because the key is unique.
       const told = [...dedupeKeys]
         .filter((key) => key.startsWith(prefix))
-        .map((key) => key.slice(prefix.length));
+        .map((key) => key.slice(prefix.length).split('#')[0] as string);
       return new Set([...told, ...(options.doneCheckpoints ?? [])]);
     },
     loadClaimedWindowIds: async () => options.claimedWindowIds ?? new Set<string>(),
     weather: { getDailyOutlook: async () => options.weather ?? [] },
     buildGate: () => ({
-      channelEnrolled: async () => options.enrolled ?? true,
-      watchConsentGranted: async () => options.consented ?? true,
-      countProactiveSends: async () => options.recentSends ?? 0,
+      channelEnrolled: async (parentUserId) =>
+        options.enrolledFor?.(parentUserId) ?? options.enrolled ?? true,
+      watchConsentGranted: async (parentUserId) =>
+        options.consentedFor?.(parentUserId) ?? options.consented ?? true,
+      countProactiveSends: async (familyId) =>
+        options.recentSends ??
+        (options.familyCapCountsLedger
+          ? writes.filter(
+              (write) =>
+                write.table === schema.channelMessages &&
+                write.payload.familyId === familyId &&
+                write.payload.category === 'nudge',
+            ).length
+          : 0),
       proactiveSentSince: async () => false,
-      parentTimeZone: async () => TZ,
+      parentTimeZone: async (parentUserId) =>
+        (options.recipients ?? []).find((r) => r.parentUserId === parentUserId)?.timeZone ?? TZ,
     }),
     dedupeActive: async (_db, key) => dedupeKeys.has(key),
-    resolveSendablePhone: async () => '+14165550100',
+    resolveSendablePhone: async (_db, parentUserId) =>
+      options.phones?.[parentUserId] ?? '+14165550100',
     recordSend: async (_db, write) => {
       writes.push({ table: schema.channelMessages, payload: write as unknown as Record<string, unknown> });
       dedupeKeys.add(write.dedupeKey);
@@ -421,11 +472,11 @@ describe('runNudgeCron — idempotency', () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const registration = harness({ windows: [win()] });
     await runNudgeCron(db(), registration.deps, FRIDAY_10AM);
-    expect([...registration.dedupeKeys][0]).toBe('nudge:fam-1:registration:w-1');
+    expect([...registration.dedupeKeys][0]).toBe('nudge:fam-1:registration:w-1:user-1');
 
     const swap = harness({ candidates: [candidate()], weather: WET });
     await runNudgeCron(db(), swap.deps, FRIDAY_10AM);
-    expect([...swap.dedupeKeys][0]).toBe('nudge:fam-1:weather_swap:2026-07-27');
+    expect([...swap.dedupeKeys][0]).toBe('nudge:fam-1:weather_swap:2026-07-27:user-1');
   });
 
   /**
@@ -517,7 +568,7 @@ describe('runNudgeCron — the prod send path (VIL-260)', () => {
       category: 'nudge',
       status: 'queued',
       templateKey: 'proactive_nudge:registration',
-      dedupeKey: 'nudge:fam-1:registration:w-1',
+      dedupeKey: 'nudge:fam-1:registration:w-1:user-1',
     });
     expect(auditActions(h.writes)).toContain('proactive_nudge_sent');
   });
@@ -673,7 +724,9 @@ describe('runNudgeCron — health checkpoints (M8)', () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ children: SIX_MONTH_OLD });
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    expect([...h.dedupeKeys]).toEqual(['nudge:fam-1:health:immunization_6_months:child-1:0']);
+    expect([...h.dedupeKeys]).toEqual([
+      'nudge:fam-1:health:immunization_6_months:child-1:0#user-1',
+    ]);
   });
 
   it('sends once across two cron fires in the same slot', async () => {
@@ -804,5 +857,120 @@ describe('runNudgeCron — health checkpoints (M8)', () => {
     const exact = harness({ children: [{ ...child, dobPrecision: 'exact' }] });
     expect(await runNudgeCron(db(), exact.deps, FRIDAY_10AM)).toMatchObject({ sent: 0, quiet: 1 });
     expect(exact.transport.sent).toHaveLength(0);
+  });
+});
+
+/**
+ * THE SAME GAP, on the other flagship sweep (audit 2026-09-17). The nudge decided one
+ * thing for the household and delivered it to whoever answered the intake.
+ *
+ * The decision stays the household's — one read of the village, one weather call, one
+ * model turn — and only the DELIVERY fans out.
+ */
+describe('the nudge reaches both parents, on their own numbers', () => {
+  const BOTH: FamilyTextRecipient[] = [
+    { parentUserId: 'user-1', timeZone: TZ, role: 'primary_parent' },
+    { parentUserId: 'user-2', timeZone: TZ, role: 'co_parent' },
+  ];
+  const PHONES = { 'user-1': '+14165550100', 'user-2': '+16475550199' };
+
+  it('texts both numbers once, and discharges the first-find promise once', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      windows: [win()],
+      recipients: BOTH,
+      phones: PHONES,
+      familyCapCountsLedger: true,
+    });
+
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result.sent).toBe(2);
+    expect(h.transport.sent.map((sent) => sent.to)).toEqual([
+      '+14165550100',
+      '+16475550199',
+    ]);
+    expect([...h.dedupeKeys]).toEqual([
+      'nudge:fam-1:registration:w-1:user-1',
+      'nudge:fam-1:registration:w-1:user-2',
+    ]);
+    expect(h.threaded.map((row) => row.parentUserId)).toEqual(['user-1', 'user-2']);
+    // ONE promise closed. `first_find` is what Hale owes the HOUSEHOLD, and two
+    // discharges against one debt is the ledger saying something untrue twice.
+    expect(h.closed.map((row) => row.kind)).toEqual(['first_find']);
+    expect(h.closed[0]?.channelMessageId).toBe('msg-1');
+  });
+
+  /**
+   * THE MUTATION THIS SUITE EXISTS FOR, and the reason `familyCapCountsLedger` is on:
+   * the cap is counted per FAMILY, so a sweep that sent to the first parent before
+   * gating the second would hold the co-parent under a budget the same message had just
+   * spent — and the household's second number would never hear anything, silently, with
+   * `frequency_cap` in the trail looking like a healthy week.
+   */
+  it('spends the household’s weekly budget once, and holds BOTH parents next tick', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      windows: [win()],
+      recipients: BOTH,
+      phones: PHONES,
+      familyCapCountsLedger: true,
+    });
+
+    const first = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(first.sent).toBe(2);
+
+    const second = await runNudgeCron(db(), h.deps, new Date('2026-07-31T14:30:00.000Z'));
+    expect(second.sent).toBe(0);
+    expect(second.held.frequency_cap).toBe(2);
+    expect(h.transport.sent).toHaveLength(2);
+  });
+
+  /** THE POSITIVE CONTROL: a one-parent household is byte-for-byte what it was. */
+  it('leaves a household with one parent exactly as it was', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ windows: [win()], familyCapCountsLedger: true });
+
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result.sent).toBe(1);
+    expect([...h.dedupeKeys]).toEqual(['nudge:fam-1:registration:w-1:user-1']);
+    expect(h.closed.map((row) => row.kind)).toEqual(['first_find']);
+  });
+
+  it('sends nothing, and says not_enrolled, for a household with no live number left', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ windows: [win()], recipients: [] });
+
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result).toMatchObject({ sent: 0, quiet: 0 });
+    expect(result.held.not_enrolled).toBe(1);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  /**
+   * A health checkpoint told to both parents is ONE fact about the household. The
+   * told-marker is read back by prefix and parsed by colon-splitting into three parts
+   * (health/checkpoints.ts), so the recipient rides on a `#` and the reader strips it —
+   * without that, every co-parent household would be told the same checkpoint forever.
+   */
+  it('keeps the checkpoint told-marker readable on both copies', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      children: SIX_MONTH_OLD,
+      recipients: BOTH,
+      phones: PHONES,
+      familyCapCountsLedger: true,
+    });
+
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect([...h.dedupeKeys]).toEqual([
+      'nudge:fam-1:health:immunization_6_months:child-1:0#user-1',
+      'nudge:fam-1:health:immunization_6_months:child-1:0#user-2',
+    ]);
+    // ONE offer registered — the standing question is the household's, and two rows
+    // would be two questions one YES could not tell apart.
+    expect(h.offers).toHaveLength(1);
   });
 });

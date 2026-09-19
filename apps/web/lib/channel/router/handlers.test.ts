@@ -15,6 +15,7 @@ import type {
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
 import type { OpenCheckupOffer } from '~/lib/health/offer';
 import type { HealthReplyDeps } from '~/lib/health/reply';
+import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
@@ -81,6 +82,9 @@ const NO_PREPARE: PrepareReplyDeps = {
     throw new Error('the pre-open branch must not run for a dark household');
   },
   readinessAskedLastAt: async () => {
+    throw new Error('the pre-open branch must not run for a dark household');
+  },
+  approvedShortlistAskedOf: async () => {
     throw new Error('the pre-open branch must not run for a dark household');
   },
   claimBindRead: async () => {
@@ -538,7 +542,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, founder_welcome, co_parent_assent, health, coach_plan, registration, rec_morning, name_capture, evening_check_in, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, founder_welcome, co_parent_assent, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -558,6 +562,11 @@ describe('the shipped order', () => {
       // nothing — but it is listed so the resolver never finds a kind without an owner.
       'co_parent_assent',
       'health',
+      // Between health and the plan, by this chain's own rule: among handlers that read
+      // the same bare word, the one whose wrong answer costs most goes first. A wrong
+      // reading here writes a real entry on the week and materializes reminders off it —
+      // more than three texts of advice, less than filing a health checkpoint as handled.
+      'email_alert_add',
       'coach_plan',
       'registration',
       'rec_morning',
@@ -714,7 +723,6 @@ const LEGO_URL =
 const PREPARING: PreparingSequence = {
   sequenceId: 'seq-1',
   familyId: FAMILY,
-  parentUserId: PARENT,
   windowId: 'win-1',
   municipality: 'markham',
   portal: MARKHAM_PORTAL,
@@ -746,10 +754,13 @@ function prepareDeps(
     askedAt?: Date | null;
     page?: string | null;
     claim?: BindReadClaimResult;
+    /** The household's already-approved shortlist, while its ask is still this
+     * parent's last word — null (the default) is every household but that one. */
+    approved?: { sequenceId: string } | null;
   } = {},
 ) {
   const bound: Array<{ url: string; courseOpensAt: Date; inbound: string }> = [];
-  const readiness: Array<{ ready: boolean; inbound: string; read: string }> = [];
+  const readiness: Array<{ ready: boolean; inbound: string; read: string; actor: string }> = [];
   return {
     bound,
     readiness,
@@ -757,6 +768,7 @@ function prepareDeps(
       options.sequence === undefined ? PREPARING : options.sequence,
     readinessAskedLastAt: async () =>
       options.askedAt === undefined ? READINESS_QUESTION.askedAt : options.askedAt,
+    approvedShortlistAskedOf: async () => options.approved ?? null,
     claimBindRead: async () => options.claim ?? { status: 'claimed' as const },
     fetchBody: async () => {
       if (options.page === null) throw new Error('ETIMEDOUT');
@@ -775,12 +787,15 @@ function prepareDeps(
         ready: input.ready,
         inbound: input.inboundChannelMessageId,
         read: input.read,
+        // WHO the answer is filed under. The ladder asks both parents, so this is the
+        // turn's own parent and never the seat that claimed the window (rule #6).
+        actor: input.parentUserId,
       });
       return 'recorded' as const;
     },
   } satisfies PrepareReplyDeps & {
     bound: Array<{ url: string; courseOpensAt: Date; inbound: string }>;
-    readiness: Array<{ ready: boolean; inbound: string; read: string }>;
+    readiness: Array<{ ready: boolean; inbound: string; read: string; actor: string }>;
   };
 }
 
@@ -850,7 +865,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     if (!verdict.claimed) throw new Error('unreachable');
     expect(verdict.outcome).toBe('readiness_recorded');
     expect(prepare.readiness).toEqual([
-      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword' },
+      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword', actor: PARENT },
     ]);
   });
 
@@ -862,7 +877,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     );
 
     expect(prepare.readiness).toEqual([
-      { ready: false, inbound: INBOUND_MESSAGE_ID, read: 'keyword' },
+      { ready: false, inbound: INBOUND_MESSAGE_ID, read: 'keyword', actor: PARENT },
     ]);
   });
 
@@ -905,7 +920,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     if (!verdict.claimed) throw new Error('unreachable');
     expect(prepare.bound).toHaveLength(1);
     expect(prepare.readiness).toEqual([
-      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword' },
+      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword', actor: PARENT },
     ]);
     // ONE ack, and it is the bind's: two receipts for one message is two messages.
     expect(verdict.reply).toContain("Markham's portal");
@@ -929,7 +944,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
 
     expect(verdict.claimed).toBe(true);
     expect(prepare.readiness).toEqual([
-      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword' },
+      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword', actor: PARENT },
     ]);
   });
 
@@ -1036,7 +1051,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
 
     expect(verdict.claimed).toBe(true);
     expect(prepare.readiness).toEqual([
-      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'resolver' },
+      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'resolver', actor: PARENT },
     ]);
   });
 
@@ -1056,7 +1071,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
 
     expect(verdict.claimed).toBe(true);
     expect(prepare.readiness).toEqual([
-      { ready: false, inbound: INBOUND_MESSAGE_ID, read: 'resolver' },
+      { ready: false, inbound: INBOUND_MESSAGE_ID, read: 'resolver', actor: PARENT },
     ]);
   });
 
@@ -1135,6 +1150,100 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     ]);
     expect(prepare.bound).toEqual([]);
     expect(prepare.readiness).toEqual([]);
+  });
+});
+
+/**
+ * THE SECOND PARENT'S YES — the heads-up asks both numbers, and one household action
+ * answers both (audit 2026-09-17 r1).
+ *
+ * The first YES empties the approvals queue, so the second reaches this handler with
+ * nothing pending anywhere ahead of it. What it must NOT do is fall through to a coach
+ * whose thread with this parent still ends in "Reply YES and I'll run the morning with
+ * you" and which knows nothing about their partner's answer.
+ */
+describe('sequenceReplyHandler · a yes to a card the household already approved', () => {
+  beforeEach(() => {
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', FAMILY);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  /** The pre-open branch declines this turn — no readiness ask has reached THIS parent
+   * — which is exactly the state the second parent is in. */
+  const secondParent = (options: { approved?: { sequenceId: string } | null } = {}) =>
+    prepareDeps({
+      askedAt: null,
+      approved: options.approved === undefined ? { sequenceId: 'seq-1' } : options.approved,
+    });
+
+  it('answers it with the household’s state instead of handing it to the coach', async () => {
+    const prepare = secondParent();
+
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn('yes'),
+    );
+
+    expect(verdict.claimed).toBe(true);
+    if (!verdict.claimed) throw new Error('unreachable');
+    expect(verdict.outcome).toBe('already_approved');
+    expect(verdict.reply).toBe(SHORTLIST_ALREADY_APPROVED_ACK);
+    // It acted on nothing: no second approval, no readiness fact invented out of a
+    // word that was answering the card.
+    expect(prepare.readiness).toEqual([]);
+  });
+
+  /**
+   * THE POSITIVE CONTROL. Same turn, same handler, no approved shortlist behind it —
+   * the ordinary bare "yes" that has always belonged to the coach. Without this the
+   * reader could be deleted and the case above would be the only thing that noticed.
+   */
+  it('leaves an ordinary bare yes alone', async () => {
+    const prepare = secondParent({ approved: null });
+
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+      DB,
+      preOpenTurn('yes'),
+    );
+
+    expect(verdict.claimed).toBe(false);
+  });
+
+  /** A NO is a household disagreeing with itself. That is a conversation — possibly an
+   * undo — and a cheerful receipt would be the worst answer available. */
+  it('never answers a NO', async () => {
+    const verdict = await sequenceReplyHandler(
+      sequenceDeps({ open: false }),
+      secondParent(),
+    ).handle(DB, preOpenTurn('no'));
+
+    expect(verdict.claimed).toBe(false);
+  });
+
+  /** Something else is open, so the word is ambiguous and the resolver gets the turn —
+   * the same permission every bare affirmative in this chain needs. */
+  it('declines while another question is open', async () => {
+    const verdict = await sequenceReplyHandler(
+      sequenceDeps({ open: false }),
+      secondParent(),
+    ).handle(DB, preOpenTurn('yes', { open: [APPROVAL_QUESTION, READINESS_QUESTION] }));
+
+    expect(verdict.claimed).toBe(false);
+  });
+
+  it('is inert while F14 is dark for this household (D21)', async () => {
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
+
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), {
+      ...secondParent(),
+      approvedShortlistAskedOf: async () => {
+        throw new Error('a dark household must not be read');
+      },
+    }).handle(DB, turn('yes'));
+
+    expect(verdict.claimed).toBe(false);
   });
 });
 
