@@ -1,8 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildGoogleAuthUrl,
   CONNECTOR_SCOPES,
   type ConnectorProvider,
+  connectorClientSource,
+  connectorRedirectUri,
   exchangeCodeForTokens,
   refreshAccessToken,
 } from './google-oauth';
@@ -140,5 +142,96 @@ describe('refreshAccessToken', () => {
   it('throws on a non-ok refresh response (never returns partial tokens)', async () => {
     const fakeFetch = async () => ({ ok: false, status: 400, json: async () => ({ error: 'invalid_grant' }) });
     await expect(refreshAccessToken('1//revoked', fakeFetch)).rejects.toThrow(/400/);
+  });
+});
+
+/**
+ * WHICH Google Cloud PROJECT the connector grant belongs to.
+ *
+ * Verification state, the brand review and the 100-new-user unverified cap all attach
+ * to a project's OAuth consent screen, so "the connector has its own client" is only
+ * true if that client lives in its own project. The code cannot check that from here —
+ * a project id is not in the env — so what it CAN do is refuse to be silent about which
+ * pair it used (rule #11), and never break when the connector pair is absent.
+ */
+describe('connectorClientSource', () => {
+  const prev = { ...process.env };
+  beforeEach(() => {
+    process.env.GOOGLE_OAUTH_CLIENT_ID = 'signin-id.apps.googleusercontent.com';
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'signin-secret';
+    process.env.GOOGLE_CONNECTOR_CLIENT_ID = '';
+    process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = '';
+  });
+  afterEach(() => {
+    process.env = { ...prev };
+  });
+
+  it('names the sign-in project when the connector pair is unset - and still mints a consent', () => {
+    expect(connectorClientSource()).toBe('signin_project');
+    expect(
+      new URL(buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT })).searchParams.get(
+        'client_id',
+      ),
+    ).toBe('signin-id.apps.googleusercontent.com');
+  });
+
+  it('prefers the connector project when both of its vars are set', () => {
+    process.env.GOOGLE_CONNECTOR_CLIENT_ID = 'connector-id.apps.googleusercontent.com';
+    process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = 'connector-secret';
+
+    expect(connectorClientSource()).toBe('connector_project');
+    expect(
+      new URL(buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT })).searchParams.get(
+        'client_id',
+      ),
+    ).toBe('connector-id.apps.googleusercontent.com');
+  });
+
+  /** An id from one project with a secret from another is a token exchange that fails
+   * at Google and nothing in our data saying why. Half-set is the sign-in pair, whole. */
+  it.each([
+    ['id only', 'connector-id.apps.googleusercontent.com', ''],
+    ['secret only', '', 'connector-secret'],
+  ])('treats a half-set connector pair (%s) as the sign-in project, never a mix', (_n, id, secret) => {
+    process.env.GOOGLE_CONNECTOR_CLIENT_ID = id;
+    process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = secret;
+
+    expect(connectorClientSource()).toBe('signin_project');
+    expect(
+      new URL(buildGoogleAuthUrl({ provider: 'gcal', state: 's', redirectUri: REDIRECT })).searchParams.get(
+        'client_id',
+      ),
+    ).toBe('signin-id.apps.googleusercontent.com');
+  });
+
+  it('exchanges the code with the SAME project that granted the consent', async () => {
+    process.env.GOOGLE_CONNECTOR_CLIENT_ID = 'connector-id.apps.googleusercontent.com';
+    process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = 'connector-secret';
+    let sentBody = '';
+    const fetchImpl = async (_url: string, init: { body: string }) => {
+      sentBody = init.body;
+      return { ok: true, status: 200, json: async () => ({ access_token: 'ya29.x' }) };
+    };
+
+    await exchangeCodeForTokens({ code: 'c', redirectUri: REDIRECT }, fetchImpl);
+
+    const sent = new URLSearchParams(sentBody);
+    expect(sent.get('client_id')).toBe('connector-id.apps.googleusercontent.com');
+    expect(sent.get('client_secret')).toBe('connector-secret');
+  });
+});
+
+describe('connectorRedirectUri', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('is built from APP_URL - one string, registered with Google once', () => {
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    expect(connectorRedirectUri()).toBe('https://app.example.com/api/integrations/callback');
+  });
+
+  it('falls back to the production app host, never the marketing one', () => {
+    vi.stubEnv('NEXT_PUBLIC_MARKETING_URL', 'https://villagehale.com');
+    vi.stubEnv('APP_URL', undefined);
+    expect(connectorRedirectUri()).toBe('https://app.villagehale.com/api/integrations/callback');
   });
 });

@@ -1,8 +1,12 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
-import { CONNECTOR_PROVIDERS, type ConnectorProvider } from './google-oauth';
+import {
+  CONNECTOR_PROVIDERS,
+  type ConnectorProvider,
+  connectorClientSource,
+} from './google-oauth';
 import type { ConnectorErrorCode } from './sync-error';
-import { decryptTokens, encryptTokens, type OAuthTokens } from './token-vault';
+import { decryptTokens, encryptTokens, type OAuthTokens, tokenCustody } from './token-vault';
 
 /**
  * Persistence for connector connections over the existing `integrations` table.
@@ -33,6 +37,10 @@ export interface ConnectionSummary {
 /** audit_log.action_taken values for a connector connect/disconnect (rule #6). */
 const AUDIT_CONNECTED = 'integration_connected';
 const AUDIT_REVOKED = 'integration_revoked';
+
+/** WHICH surface a disconnect came from. One verb for both (rule #6's trail reads the
+ * same sentence either way); the surface is a field on the row, not a second verb. */
+export type ConnectorRevokeVia = 'settings' | 'sms';
 
 function byFamilyUserProvider(familyId: string, userId: string, provider: ConnectorProvider) {
   return and(
@@ -109,7 +117,15 @@ export async function saveConnection(
         actionTaken: AUDIT_CONNECTED,
         targetTable: 'integrations',
         targetId: id,
-        after: { provider: input.provider },
+        // WHERE the keys now live and WHICH Google project granted them — facts, not
+        // prose, so a PIPEDA access request and a residency question are answerable
+        // from the row itself. Never a token, never an email, never a client id
+        // (rule #1): the custody descriptor names the key and the column only.
+        after: {
+          provider: input.provider,
+          custody: tokenCustody(),
+          oauthClient: connectorClientSource(),
+        },
       })
       .returning({ id: schema.auditLog.id });
     if (!connect) throw new Error('saveConnection: audit_log insert returned no row');
@@ -296,21 +312,52 @@ export async function markConnectionError(
 }
 
 /** Disconnect: purge the encrypted tokens and mark revoked (stops sync). The
- * revoke and its immutable audit row (rule #6) land in one transaction; the audit
- * row carries provider + family only. Returns the number of rows revoked, so a
- * no-op revoke (no matching row — nothing was disconnected, no audit row written)
- * is surfaced to the caller as 'not_found' rather than a false 'revoked'. */
+ * revoke and its immutable audit row (rule #6) land in one transaction. Returns the
+ * number of rows revoked, so a no-op revoke (no matching row — nothing was
+ * disconnected, no audit row written) is surfaced to the caller as 'not_found'
+ * rather than a false 'revoked'.
+ *
+ * `via` is REQUIRED rather than defaulted: a row that cannot say which surface asked
+ * for the disconnect is a row that reads as Settings whether or not anyone opened
+ * Settings, and the two surfaces are the whole reason this field exists.
+ *
+ * SCOPE IS THE KEY. The predicate is (family, user, provider) — the same triple the
+ * connect wrote under — so a caregiver, or a parent naming the other parent's
+ * connector, matches no row and gets 0 rather than reaching anyone else's grant.
+ *
+ * AND IT ONLY MATCHES A ROW THAT STILL HOLDS KEYS. Holding tokens is what "connected"
+ * means here (the sweep's work list is the same predicate, listActiveConnectorConnections),
+ * so a row already purged matches nothing: saying it twice answers honestly the second
+ * time and writes no second audit row. Rule #6's trail is a record of acts, and a
+ * disconnect that disconnected nothing is not one. Before the texted surface existed
+ * this was invisible — Settings hides the button on a revoked card — and by text there
+ * is no such gate.
+ *
+ * THAT RESTS ON AN INVARIANT, so it is written down: a row whose tokens are gone is a
+ * row whose status is 'revoked'. Every path that nulls the column sets the status in
+ * the same statement (here, and coparent/depart.ts). A future path that purged tokens
+ * while leaving the status 'error' — an invalid_grant cleanup, say — would leave the
+ * Settings card showing its Disconnect button (it renders for any status but 'revoked')
+ * over a row this predicate can no longer match, and the button would answer "nothing
+ * to disconnect". Keep the two in one statement, or teach both surfaces the third
+ * state. SWEEPABLE_STATUSES above is the same invariant read the other way. */
 export async function revokeConnection(
   database: Database,
   familyId: string,
   userId: string,
   provider: ConnectorProvider,
+  via: ConnectorRevokeVia,
 ): Promise<number> {
   return database.transaction(async (tx) => {
     const revoked = await tx
       .update(schema.integrations)
       .set({ oauthTokensEncrypted: null, status: 'revoked', updatedAt: new Date() })
-      .where(byFamilyUserProvider(familyId, userId, provider))
+      .where(
+        and(
+          byFamilyUserProvider(familyId, userId, provider),
+          isNotNull(schema.integrations.oauthTokensEncrypted),
+        ),
+      )
       .returning({ id: schema.integrations.id });
     if (revoked.length === 0) return 0;
     await tx.insert(schema.auditLog).values({
@@ -319,7 +366,9 @@ export async function revokeConnection(
       actionTaken: AUDIT_REVOKED,
       targetTable: 'integrations',
       targetId: revoked[0]?.id,
-      after: { provider },
+      // The custody the tokens HAD, kept on the row that ended it: "Hale deleted its
+      // keys" is only checkable if the row says which keys and where they were.
+      after: { provider, custody: tokenCustody(), via },
     });
     return revoked.length;
   });

@@ -867,8 +867,18 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you signed in with a link texted to your phone',
     family: 'done',
   },
-  integration_connected: { sentence: 'you connected an account to Hale', family: 'done' },
-  integration_revoked: { sentence: 'you disconnected an account', family: 'done' },
+  // Custody, in the sentence a parent reads on their own trail. "Never hands them to
+  // another service" is exactly true and no more: the token goes to the provider that
+  // issued it and to nobody else - no broker holds it (the connector audit row carries
+  // the same fact as data, integrations/token-vault.ts tokenCustody).
+  integration_connected: {
+    sentence: 'you connected an account - Hale keeps its keys encrypted and never hands them to another service',
+    family: 'done',
+  },
+  integration_revoked: {
+    sentence: 'you disconnected an account and Hale deleted its keys',
+    family: 'done',
+  },
   user_preferences_updated: { sentence: 'you updated your preferences', family: 'done' },
   // Started, not finished: the row is written before checkout completes.
   billing_checkout_started: { sentence: 'you started an upgrade', family: 'note' },

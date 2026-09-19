@@ -61,6 +61,7 @@ import { eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import {
   approvalHandler,
   coParentAssentHandler,
+  connectorDisconnectHandler,
   connectorLinkHandler,
   emailAlertAddHandler,
   emailCaptureHandler,
@@ -337,6 +338,10 @@ export function defaultHandlers(): DeterministicHandler[] {
     approvalHandler(defaultApprovalSpine()),
     emailCaptureHandler(defaultEmailCaptureDeps()),
     connectorLinkHandler(),
+    // Beside the connect half, and the position is free rather than load-bearing: the
+    // two matchers are disjoint by construction (connect/detect.ts), so neither can
+    // shadow the other wherever they sit. It is here so the pair reads as a pair.
+    connectorDisconnectHandler(),
     founderWelcomeHandler(defaultFounderReplyDeps()),
     // Owns the co-parent scope question and declines every reading of it — see the
     // handler's own note. Listed so the router never resolves a kind nobody owns.
