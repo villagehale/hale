@@ -57,12 +57,14 @@ import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
+import { eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import {
   approvalHandler,
   coParentAssentHandler,
   connectorLinkHandler,
   emailAlertAddHandler,
   emailCaptureHandler,
+  eveningCheckInHandler,
   founderWelcomeHandler,
   healthReplyHandler,
   nameCaptureHandler,
@@ -345,6 +347,10 @@ export function defaultHandlers(): DeterministicHandler[] {
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
     nameCaptureHandler(defaultNameCaptureDeps()),
+    // BEHIND EVERY SHAPE MATCHER, because it is the only handler that claims a whole
+    // sentence — see its own note. It still runs ahead of the canary, so every decline
+    // path above it is exercised before the probe turn.
+    eveningCheckInHandler(),
     // LAST, and that placement is the mechanism rather than a tidy tail: the
     // probe turn is only evidence if it runs every handler's decline path
     // first — including the registration reader, which is where every turn
@@ -707,6 +713,11 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     // caregiver invite awaiting the same parent's yes is answered by the caregiver lane
     // before a router turn exists, and listing it would make every bare affirmative in
     // the household ambiguous for a question nothing on this list can resolve.
+    // The evening check-in, read through the lane's own last-word reader — the same
+    // discipline the readiness question keeps, and for the same reason: openness is
+    // already implied by the message ledger, so a stored flag would be a second answer
+    // every other sender in the product would have to remember to clear.
+    eveningCheckIn: (database, input) => eveningCheckInQuestion(database, input),
     coParentAssent: async (database, { parentUserId, familyId, now }) => {
       const pending = await loadPendingAssent(database, parentUserId, now);
       if (!pending || pending.role !== 'co_parent' || pending.familyId !== familyId) return null;

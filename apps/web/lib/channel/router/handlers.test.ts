@@ -542,7 +542,7 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, founder_welcome, co_parent_assent, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, founder_welcome, co_parent_assent, health, email_alert_add, coach_plan, registration, rec_morning, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -571,6 +571,10 @@ describe('the shipped order', () => {
       'registration',
       'rec_morning',
       'name_capture',
+      // Behind even the bare-word capture, because it is the one handler that claims a
+      // whole SENTENCE rather than a shape (VIL-353). Ahead of it, a parent's "done" or
+      // "yes" would be filed as a diary entry instead of reaching the lane that owns it.
+      'evening_check_in',
       // Behind even the bare-word capture, and that is the mechanism rather
       // than a tidy tail: the canary turn is worth its rows only if it runs
       // every other handler's DECLINE path first — including the registration

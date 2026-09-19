@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
+import { purgeExpiredCheckInNotes } from '~/lib/channel/checkin/notes';
 import { runDeletionSweep } from '~/lib/rights/delete';
 
 // Node runtime: the sweep deletes via the postgres driver (not edge).
@@ -13,6 +14,12 @@ export const runtime = 'nodejs';
  * Until the grace lapses the stamp can be cleared to cancel, so this sweep only
  * ever erases families that have been scheduled AND waited out the window.
  *
+ * IT ALSO DESTROYS EXPIRED RAW CONTENT, which is the other half of the same obligation
+ * (Law 25: destroy once the purpose is achieved). The evening check-in's day notes carry
+ * a thirty-day stamp and are purged here rather than on their own feature's cron for one
+ * reason: that cron is behind the F14 dark-launch flag, and a retention promise that
+ * stops being kept when a feature flag flips is not a retention promise.
+ *
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING — no DB read,
  * no delete. The erased + purged-object counts are logged so the erasure (rows AND
@@ -21,11 +28,12 @@ export const runtime = 'nodejs';
  */
 export const GET = cronRoute('delete-sweep', async () => {
   const summary = await runDeletionSweep(db());
+  const checkInNotesPurged = await purgeExpiredCheckInNotes(db());
   if (summary.erased > 0) {
     console.info(
       { erased: summary.erased, purgedObjects: summary.purgedObjects },
       'cron/delete-sweep: erased families past grace',
     );
   }
-  return NextResponse.json({ ok: true, ...summary }, { status: 200 });
+  return NextResponse.json({ ok: true, ...summary, checkInNotesPurged }, { status: 200 });
 });

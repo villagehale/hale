@@ -319,6 +319,12 @@ export const AUDIT_VERBS = [
   'village_intro_proposed',
   'coach_plan_message_sent',
   'coach_plan_check_in_sent',
+  // ── the evening check-in (VIL-353) ──────────────────────────────────────
+  'evening_check_in_sent',
+  'evening_check_in_stepped_down',
+  'evening_check_in_stopped',
+  'evening_check_in_answered',
+  'evening_check_in_cadence_changed',
   'activity_followup_sent',
   'activity_followup_shared',
   'village_intro_card_sent',
@@ -956,6 +962,25 @@ const VERBS: Record<AuditVerb, Verb> = {
   coach_plan_check_in_sent: {
     sentence: 'Hale checked in on your plan',
     family: 'note',
+  },
+  // 'awaiting' because the question is genuinely outstanding until the morning: the
+  // trail should show an evening Hale asked about and nobody answered as exactly that.
+  evening_check_in_sent: { sentence: 'Hale asked how your day went', family: 'awaiting' },
+  // Hale's own ladder moving, said out loud to the parent in the same breath.
+  evening_check_in_stepped_down: {
+    sentence: 'Hale moved to a weekly check-in',
+    family: 'note',
+  },
+  // The end of the ladder. No message goes with it, which is exactly why the row has to:
+  // going quiet without a receipt is indistinguishable from the feature breaking.
+  evening_check_in_stopped: { sentence: 'Hale stopped the evening check-ins', family: 'note' },
+  // The parent answered. Whether anything was KEPT is in the row's payload, never here —
+  // a sentence that claimed a note was filed would be wrong every time the screen
+  // refused one (channel/checkin/notes.ts).
+  evening_check_in_answered: { sentence: 'you told Hale how your day went', family: 'done' },
+  evening_check_in_cadence_changed: {
+    sentence: 'you changed how often Hale checks in',
+    family: 'done',
   },
   // Hale coming back on an activity search it promised to finish. 'done' rather than
   // 'note' because the row IS the promise being discharged, and it is written whether the

@@ -218,6 +218,17 @@ export type HandlerVerdict =
       outcome: string;
       reply: string | null;
       /**
+       * The ledger name for the message this reply goes out as — written onto its
+       * `channel_messages` row exactly as a proactive send's is.
+       *
+       * Most receipts need none: nothing ever reads them back. A lane needs one when its
+       * own reader has to recognise its own voice later. The evening check-in is the
+       * case: whether LESS, NO and DAILY still mean what that lane taught them turns on
+       * whether the last thing this parent heard from Hale was ITS message, and a reply
+       * row with no name on it is indistinguishable from the coach's.
+       */
+      templateKey?: string;
+      /**
        * Work that may only happen once the receipt has actually reached the parent,
        * handed the `channel_messages` id of the message that carried it.
        *
@@ -618,6 +629,7 @@ export async function routeChannelMessage(
     body: string,
     medicalSource: MedicalReplySource | null = null,
     replySource: ReplySource | null = null,
+    templateKey: string | null = null,
   ) =>
     sendReply(deps, {
       route,
@@ -627,6 +639,7 @@ export async function routeChannelMessage(
       claim: claimAnswer,
       medicalSource,
       replySource,
+      templateKey,
     });
 
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
@@ -1014,10 +1027,15 @@ async function resolveNaturalReply(
  */
 async function deliver(
   verdict: Extract<HandlerVerdict, { claimed: true }>,
-  answer: (body: string) => Promise<string>,
+  answer: (
+    body: string,
+    medicalSource?: MedicalReplySource | null,
+    replySource?: ReplySource | null,
+    templateKey?: string | null,
+  ) => Promise<string>,
 ): Promise<void> {
   if (verdict.reply === null) return;
-  const channelMessageId = await answer(verdict.reply);
+  const channelMessageId = await answer(verdict.reply, null, null, verdict.templateKey ?? null);
   await verdict.afterSend?.(channelMessageId);
 }
 
@@ -1590,6 +1608,9 @@ async function sendReply(
      * papercut digest split real answers from ANSWER_UNAVAILABLE sends; it is a closed
      * vocabulary and never a word of what was said (rule #1). */
     replySource?: ReplySource | null;
+    /** The lane's own name for this receipt, or null for a reply nothing reads back
+     * (see {@link HandlerVerdict.templateKey}). */
+    templateKey?: string | null;
   },
 ): Promise<string> {
   const sent = await deps.transport.send({ route: args.route, body: args.body });
@@ -1608,6 +1629,7 @@ async function sendReply(
       channel: carriedBy,
       direction: 'out',
       category: 'reply',
+      templateKey: args.templateKey ?? null,
       providerMessageId: sent.providerMessageId,
       // Accepted by Twilio, not yet on a phone — the receipt advances it
       // (channel/ledger.ts acceptedStatus, channel/twilio/status.ts).
