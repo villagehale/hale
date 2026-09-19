@@ -88,7 +88,7 @@ export async function sendWelcomeContactCard(
     });
     console.warn(
       { familyId },
-      'intake welcome card: held for quiet hours - this family gets no contact card tonight (no re-drive exists yet)',
+      'intake welcome card: held for quiet hours - this receipt is what the 08:00 re-drive reads (welcome-card-redrive.ts)',
     );
     return { status: 'not_sent', reason: 'suppressed_quiet_hours' };
   }

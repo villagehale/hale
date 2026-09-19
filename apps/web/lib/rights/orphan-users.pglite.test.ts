@@ -148,6 +148,7 @@ describe('the orphan-user sweep', () => {
       consentWithdrawn: 1,
       scopedRowsDeleted: 4,
       identitiesAnonymised: 1,
+      sweptWithoutTrail: 0,
     });
     // The orphan: no live channel, nothing user-scoped, no identity.
     const [channel] = await db.database
@@ -210,6 +211,7 @@ describe('the orphan-user sweep', () => {
       consentWithdrawn: 0,
       scopedRowsDeleted: 0,
       identitiesAnonymised: 0,
+      sweptWithoutTrail: 0,
     });
   });
 
@@ -255,12 +257,55 @@ describe('the orphan-user sweep', () => {
       consentWithdrawn: 0,
       scopedRowsDeleted: 4,
       identitiesAnonymised: 1,
+      // The departure left their household standing, so the audit row has a home.
+      sweptWithoutTrail: 0,
     });
     expect(await identity(leaving.userId)).toEqual({
       email: null,
       name: null,
       externalAuthId: null,
     });
+  });
+
+  /**
+   * The case the module's own header claims and could not reach: the household was
+   * ERASED, so `parent_channels` cascaded away with it and the person who held the
+   * channel became invisible to a candidate set built from channel rows. Their name,
+   * their address and their sign-in identity survived the erasure they asked for.
+   */
+  it('reaches the parent whose household was erased on this very tick', async () => {
+    const doomed = await seedFamily();
+    const erased = await seedUser(doomed, { role: 'primary_parent' });
+    const living = await seedFamily();
+    const stays = await seedUser(living, { role: 'primary_parent' });
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: new Date(NOW.getTime() - 1_000) })
+      .where(eq(schema.families.id, doomed));
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary).toMatchObject({
+      erased: 1,
+      orphans: {
+        swept: 1,
+        scopedRowsDeleted: 4,
+        identitiesAnonymised: 1,
+        // No household is left to hold their audit row — named, never folded into the
+        // rest of the tally (rule #11). The cron logs it.
+        sweptWithoutTrail: 1,
+      },
+    });
+    expect(await identity(erased.userId)).toEqual({
+      email: null,
+      name: null,
+      externalAuthId: null,
+    });
+    expect(await userScopedRowCount(erased.userId)).toBe(0);
+
+    // THE POSITIVE CONTROL: a parent whose household was not due is untouched.
+    expect(await identity(stays.userId)).toMatchObject({ name: 'Sam' });
+    expect(await userScopedRowCount(stays.userId)).toBe(4);
   });
 
   it('is part of the lifecycle sweep, not a second cron', async () => {

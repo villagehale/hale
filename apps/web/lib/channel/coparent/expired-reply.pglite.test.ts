@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LAPSED_REPLY_WINDOW_MS,
   declineOpenInviteOnStop,
@@ -99,8 +99,10 @@ async function seedAskedInvite(seeded: { familyId: string; parentUserId: string 
 
 function deps(transport: FakeTransport) {
   const threaded: Array<{ familyId: string; parentUserId: string; body: string }> = [];
+  const openQuestions = vi.fn(async () => []);
   return {
     threaded,
+    openQuestions,
     deps: {
       transport,
       threadMessage: async (
@@ -110,7 +112,7 @@ function deps(transport: FakeTransport) {
         threaded.push(input);
         return 'conv-1';
       },
-      openQuestions: async () => [],
+      openQuestions,
     },
   };
 }
@@ -141,7 +143,7 @@ describe('a late answer to an invitation that has lapsed', () => {
     const lapsed = await loadLapsedInviteByPhone(db.database, PARTNER_PHONE, LATE);
     if (!lapsed) throw new Error('expected a lapsed invite');
     const transport = new FakeTransport();
-    const { deps: replyDeps, threaded } = deps(transport);
+    const { deps: replyDeps, threaded, openQuestions } = deps(transport);
 
     const outcome = await handleLapsedInviteReply(
       db.database,
@@ -172,6 +174,11 @@ describe('a late answer to an invitation that has lapsed', () => {
     expect(invite?.state).toBe('expired');
     // Rule #6: the answer is a named outcome on the invite, not just an outbound row.
     expect(await auditVerbs()).toContain('co_parent_invite_expired_answered');
+    // THE CONSTRAINT: this YES belongs to the invitation and to nothing else. The lapsed
+    // reply never opens the open-question reader, so it cannot consume an answer one of
+    // the other eleven kinds is waiting for. (Above it, the machine only reaches this
+    // branch for a number with no channel at all — a stranger has no open questions.)
+    expect(openQuestions).not.toHaveBeenCalled();
   });
 
   it('answers a French late yes in French', async () => {

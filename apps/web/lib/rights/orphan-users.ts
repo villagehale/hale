@@ -13,6 +13,15 @@ import { POLICY_VERSION } from '../consent.js';
  * case this exists for, a LIVE verified phone channel that no household stands behind.
  * `departCoParent` names this gap in its own header; this is the change it points at.
  *
+ * THE ERASED HOUSEHOLD CANNOT BE FOUND FROM HERE, and that is why {@link
+ * selectOrphanedUsers} takes `strandedUserIds`. `parent_channels` cascades from
+ * `families`, so by the time a family erasure has committed, the channel row that is
+ * this sweep's evidence somebody HELD one is gone with it and the ex-parent is invisible
+ * — invisible with their name, their address and their sign-in identity intact, which is
+ * the PIPEDA right-to-erasure gap, not a tidiness one. `runDeletionSweep` reads those
+ * user ids BEFORE it deletes and hands them over; nothing else may pass them, because
+ * "had a channel once" is a fact only the caller who watched it disappear can vouch for.
+ *
  * WHAT IT DOES, AND WHAT IT DELIBERATELY DOES NOT. It closes every door and empties
  * every user-scoped table, then ANONYMISES the users row rather than deleting it. The
  * deletion is the tempting version and it is wrong: `parent_channels` cascades from
@@ -44,6 +53,20 @@ export interface OrphanSweepSummary {
   scopedRowsDeleted: number;
   /** `users` rows stripped of name, address and sign-in identity. */
   identitiesAnonymised: number;
+  /**
+   * How many of `swept` left NO audit row, because the only household they belonged to
+   * was erased on this same run.
+   *
+   * `audit_log.family_id` is NOT NULL and cascades from `families`, so for these people
+   * there is no row that can outlive the erasure — a row written under the doomed family
+   * a millisecond before the DELETE would be removed by the same cascade that hid them.
+   * Rather than write a row that deletes itself, or park one under some other household
+   * they never belonged to, the count is reported and the cron logs it (counts only, no
+   * ids — rule #1), which is the convention `runDeletionSweep` already keeps for the
+   * family erasure's own execution. Named and never folded into `swept` (rule #11): a
+   * person erased with no trail is a different fact from one erased with one.
+   */
+  sweptWithoutTrail: number;
 }
 
 export function emptyOrphanSweepSummary(): OrphanSweepSummary {
@@ -53,6 +76,7 @@ export function emptyOrphanSweepSummary(): OrphanSweepSummary {
     consentWithdrawn: 0,
     scopedRowsDeleted: 0,
     identitiesAnonymised: 0,
+    sweptWithoutTrail: 0,
   };
 }
 
@@ -61,8 +85,10 @@ export interface OrphanedUser {
   /** The household whose channel record they still hold — the audit row's home, because
    * `audit_log.family_id` is NOT NULL and a person with no seat has no other address in
    * the trail. Their newest channel's family, so a separated parent's row lands in the
-   * household the evidence belongs to. */
-  familyId: string;
+   * household the evidence belongs to. NULL for the person whose only household was
+   * erased: the cascade took the channel row and the trail's home with it, and the
+   * sweep counts that case rather than inventing an address for it. */
+  familyId: string | null;
 }
 
 /** The four tables keyed on `users.id` with no family column of their own, so nothing a
@@ -83,7 +109,12 @@ const USER_SCOPED_TABLES = [
  * populations are small (a household's parents), the predicate is the whole point of the
  * function, and one readable pass is worth more here than a query plan.
  */
-export async function selectOrphanedUsers(database: Database): Promise<OrphanedUser[]> {
+export async function selectOrphanedUsers(
+  database: Database,
+  /** People the caller WATCHED lose their channel row to a family cascade on this run —
+   * see the module header. Empty on every path but the deletion sweep's. */
+  strandedUserIds: readonly string[] = [],
+): Promise<OrphanedUser[]> {
   const channels = (
     await database
       .select({
@@ -99,7 +130,7 @@ export async function selectOrphanedUsers(database: Database): Promise<OrphanedU
     // channel evidence belongs to. Sorted here rather than in SQL because the whole
     // read is already in memory and the ordering is part of the predicate, not a plan.
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  if (channels.length === 0) return [];
+  if (channels.length === 0 && strandedUserIds.length === 0) return [];
 
   const seated = new Set(
     (await database.select({ userId: schema.familyMembers.userId }).from(schema.familyMembers)).map(
@@ -107,11 +138,20 @@ export async function selectOrphanedUsers(database: Database): Promise<OrphanedU
     ),
   );
 
-  const candidates = new Map<string, { familyId: string; liveChannel: boolean }>();
+  const candidates = new Map<string, { familyId: string | null; liveChannel: boolean }>();
+  // The stranded go in FIRST with no household, so a channel row in a household that
+  // SURVIVED still wins the audit home below — a separated parent who lost one family
+  // keeps their trail in the other.
+  for (const userId of strandedUserIds) {
+    if (seated.has(userId)) continue;
+    candidates.set(userId, { familyId: null, liveChannel: false });
+  }
   for (const row of channels) {
     if (seated.has(row.userId)) continue;
     const held = candidates.get(row.userId);
-    if (!held) candidates.set(row.userId, { familyId: row.familyId, liveChannel: false });
+    if (!held || held.familyId === null) {
+      candidates.set(row.userId, { familyId: row.familyId, liveChannel: held?.liveChannel ?? false });
+    }
     if (row.revokedAt === null) {
       const entry = candidates.get(row.userId);
       if (entry) entry.liveChannel = true;
@@ -249,6 +289,13 @@ async function sweepOne(
       .returning({ id: schema.users.id });
     result.identitiesAnonymised = anonymised.length;
 
+    if (familyId === null) {
+      // Nowhere to write it: their only household was erased on this run and
+      // `audit_log.family_id` cascades from it. Counted instead — see the field.
+      result.sweptWithoutTrail = 1;
+      return result;
+    }
+
     await tx.insert(schema.auditLog).values({
       familyId,
       actor: 'system',
@@ -260,7 +307,10 @@ async function sweepOne(
         channelsRevoked: result.channelsRevoked,
         consentWithdrawn: result.consentWithdrawn,
         scopedRowsDeleted: result.scopedRowsDeleted,
-        identityRetained: true,
+        // The ROW survives (the channel below it is the CASL evidence and cascades from
+        // it); what it holds does not. Named for the row, not for the person — an
+        // `identityRetained` here would read as the opposite of what just happened.
+        usersRowRetained: true,
       },
     });
 
@@ -271,15 +321,25 @@ async function sweepOne(
 export async function runOrphanUserSweep(
   database: Database,
   now: Date = new Date(),
+  strandedUserIds: readonly string[] = [],
 ): Promise<OrphanSweepSummary> {
   const total = emptyOrphanSweepSummary();
-  for (const orphan of await selectOrphanedUsers(database)) {
+  for (const orphan of await selectOrphanedUsers(database, strandedUserIds)) {
     const one = await sweepOne(database, orphan, now);
     total.swept += one.swept;
     total.channelsRevoked += one.channelsRevoked;
     total.consentWithdrawn += one.consentWithdrawn;
     total.scopedRowsDeleted += one.scopedRowsDeleted;
     total.identitiesAnonymised += one.identitiesAnonymised;
+    total.sweptWithoutTrail += one.sweptWithoutTrail;
+  }
+  if (total.sweptWithoutTrail > 0) {
+    // The missing audit rows, said out loud where they can still be read (rule #11).
+    // Counts only, no ids — the people this line is about are the ones being erased.
+    console.info(
+      { sweptWithoutTrail: total.sweptWithoutTrail },
+      'orphan sweep: accounts closed with no surviving household to hold their audit row',
+    );
   }
   return total;
 }

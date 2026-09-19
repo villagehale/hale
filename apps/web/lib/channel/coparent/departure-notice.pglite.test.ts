@@ -46,10 +46,14 @@ afterAll(async () => {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  // ARMED, because this is a proactive class and F14 gates every one of them (D21).
+  // Every send below is a send a household is armed for; the dark case is its own test.
+  vi.stubEnv('F14_ENABLED', 'true');
 });
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users cascade');
 });
 
@@ -313,6 +317,39 @@ describe('telling the parent who stayed', () => {
     );
 
     expect(transport.sent[0]?.body).toContain(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.fr);
+  });
+
+  /**
+   * D21 · the dark-launch gate every other proactive surface reads. Without it the
+   * notice's arming predicate is implicit — "whoever happens to hold watch consent" —
+   * and the day a non-SMS path grants that consent this message starts going out to
+   * households F14 was never flipped on for.
+   */
+  it('sends nothing while the household is dark, and sends once it is armed', async () => {
+    vi.stubEnv('F14_ENABLED', 'false');
+    const household = await seedHousehold();
+    await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.departedUserId,
+      now: MORNING,
+    });
+    const transport = new FakeTransport();
+    const args = {
+      familyId: household.familyId,
+      departedUserId: household.departedUserId,
+      now: MORNING,
+    };
+
+    expect(await tellStayingParent(db.database, args, ports(transport).ports)).toBe('dark');
+    expect(transport.sent).toEqual([]);
+    // Nothing claimed and nothing suppressed: a household Hale is not live for has no
+    // message to have a receipt about.
+    expect(await noticeRows(household.familyId)).toEqual([]);
+
+    // THE POSITIVE CONTROL: armed for this one household, the same departure sends.
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', household.familyId);
+    expect(await tellStayingParent(db.database, args, ports(transport).ports)).toBe('sent');
+    expect(transport.sent).toHaveLength(1);
   });
 
   it('names a household with nobody left to tell instead of sending into the void', async () => {

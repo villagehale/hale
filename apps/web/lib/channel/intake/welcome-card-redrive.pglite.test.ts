@@ -6,6 +6,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { FakeTransport } from './transport';
 import {
+  MAX_REDRIVE_FAMILIES_PER_RUN,
   WELCOME_CARD_REDRIVE_HOUR_LOCAL,
   isWelcomeCardRedriveSlot,
   runWelcomeCardRedrive,
@@ -143,6 +144,72 @@ async function cardRows(familyId: string) {
 }
 
 describe('the 08:00 re-drive of a contact card quiet hours held', () => {
+  /**
+   * The per-run cap used to be a bare `slice`: every family past it was dropped with no
+   * counter and no log, and which families those were came out of heap order, because
+   * the read had no ORDER BY. Both halves are here — the overflow is COUNTED (rule #11)
+   * and the family held LONGEST is the one served, so a household cannot be starved by
+   * the same accident twice.
+   */
+  it('serves the longest-held families first and COUNTS the overflow its cap defers', async () => {
+    const over = MAX_REDRIVE_FAMILIES_PER_RUN + 1;
+    const families = await db.database
+      .insert(schema.families)
+      .values(
+        Array.from({ length: over }, (_, i) => ({
+          displayName: `Held ${i}`,
+          provinceOrState: 'ON',
+        })),
+      )
+      .returning({ id: schema.families.id });
+    const users = await db.database
+      .insert(schema.users)
+      .values(
+        Array.from({ length: over }, (_, i) => ({
+          externalAuthId: `sms:capped-${i}`,
+          name: 'Ana',
+          timezone: 'America/Toronto',
+        })),
+      )
+      .returning({ id: schema.users.id });
+    // Inserted newest-first, so a read that trusts heap order serves the wrong end.
+    await db.database.insert(schema.channelMessages).values(
+      families.map((family, i) => ({
+        familyId: family.id,
+        parentUserId: users[i]?.id as string,
+        channel: 'sms' as const,
+        direction: 'out' as const,
+        category: 'intake' as const,
+        templateKey: WELCOME_CARD_TEMPLATE_KEY,
+        dedupeKey: null,
+        status: 'suppressed_quiet_hours' as const,
+        createdAt: new Date(HELD_AT.getTime() - i * 60_000),
+      })),
+    );
+    const transport = new FakeTransport();
+    const { deps: runDeps } = deps(transport);
+
+    const result = await runWelcomeCardRedrive(
+      db.database,
+      { ...runDeps, resolvePhone: async () => '+14165550000' },
+      MORNING_0812,
+    );
+
+    expect(result).toMatchObject({
+      held: over,
+      due: over,
+      sent: MAX_REDRIVE_FAMILIES_PER_RUN,
+      deferred: 1,
+    });
+    expect(transport.sent).toHaveLength(MAX_REDRIVE_FAMILIES_PER_RUN);
+    // The one left over is the one held SHORTEST — nothing claimed for them, so the
+    // next tick still owes them their card.
+    const shortest = families[0]?.id as string;
+    expect((await cardRows(shortest)).filter((r) => r.dedupeKey !== null)).toEqual([]);
+    const longest = families[over - 1]?.id as string;
+    expect((await cardRows(longest)).filter((r) => r.dedupeKey !== null)).toHaveLength(1);
+  });
+
   it('matches the whole 08:00 local HOUR, not the minute the cron happens to fire', () => {
     expect(WELCOME_CARD_REDRIVE_HOUR_LOCAL).toBe(8);
     expect(isWelcomeCardRedriveSlot(MORNING_0812, 'America/Toronto')).toBe(true);

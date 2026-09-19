@@ -153,5 +153,18 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     if (path.includes('intake-sitting-reminder')) {
       expect(runFirstReplyRecoveryCronMock).toHaveBeenCalledTimes(1);
     }
+    // THE 08:00 CARD RE-DRIVE IS A LEG OF THE NUDGE ROUTE, pinned here because this is
+    // its only production call site: mocking the module without asserting the call left
+    // "the cron stopped re-driving the card" a green change. The negative arm is the
+    // control — no other cron may quietly acquire it.
+    if (path.includes('cron/nudge')) {
+      expect(runWelcomeCardRedriveMock).toHaveBeenCalledTimes(1);
+      expect(runWelcomeCardRedriveMock).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ ports: expect.anything() }),
+      );
+    } else {
+      expect(runWelcomeCardRedriveMock).not.toHaveBeenCalled();
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
@@ -50,8 +50,13 @@ export const WELCOME_CARD_REDRIVE_HOUR_LOCAL = Number(PROACTIVE_QUIET_HOURS.end.
  */
 export const WELCOME_CARD_REDRIVE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Filter first, then cap, so no family is starved out of their slot forever. */
-const MAX_REDRIVE_FAMILIES_PER_RUN = 100;
+/**
+ * How many held cards one tick will send, so an hourly cron leg cannot turn into a
+ * hundreds-of-MMS run. The overflow is DEFERRED, not dropped: it is counted, logged and
+ * still owed, and {@link selectHeldWelcomeCards} reads oldest-held first so the families
+ * this cap leaves behind are the ones who have waited least.
+ */
+export const MAX_REDRIVE_FAMILIES_PER_RUN = 100;
 
 /** Whether `now` sits in this family's re-drive hour, on the PARENT's own clock. */
 export function isWelcomeCardRedriveSlot(now: Date, timeZone: string): boolean {
@@ -74,6 +79,10 @@ export interface WelcomeCardRedriveResult {
   held: number;
   due: number;
   sent: number;
+  /** Families this run's cap left for the next tick — still owed, nothing spent, and
+   * counted here because a slice that drops them silently is the shape rule #11 exists
+   * to forbid. */
+  deferred: number;
   alreadySent: number;
   noSendTarget: number;
   heldAgain: number;
@@ -81,7 +90,16 @@ export interface WelcomeCardRedriveResult {
 }
 
 function emptyResult(): WelcomeCardRedriveResult {
-  return { held: 0, due: 0, sent: 0, alreadySent: 0, noSendTarget: 0, heldAgain: 0, sendFailed: 0 };
+  return {
+    held: 0,
+    due: 0,
+    sent: 0,
+    deferred: 0,
+    alreadySent: 0,
+    noSendTarget: 0,
+    heldAgain: 0,
+    sendFailed: 0,
+  };
 }
 
 interface HeldCard {
@@ -98,6 +116,11 @@ interface HeldCard {
  * at 08:00 would be overruling the reason they were refused. The key check is what keeps
  * a FAILED send out: a provider refusal consumes the key on purpose (ledger.ts), and a
  * family whose MMS Twilio rejected must not be retried from here.
+ *
+ * OLDEST HELD FIRST, and that ordering is the per-run cap's fairness: with no ORDER BY
+ * the families a capped run serves are whichever hundred the heap handed back, which can
+ * be the same wrong hundred every morning until the seven-day bound ages the rest out
+ * unserved.
  */
 export async function selectHeldWelcomeCards(
   database: Database,
@@ -119,7 +142,8 @@ export async function selectHeldWelcomeCards(
           new Date(now.getTime() - WELCOME_CARD_REDRIVE_MAX_AGE_MS),
         ),
       ),
-    );
+    )
+    .orderBy(asc(schema.channelMessages.createdAt));
 
   const byFamily = new Map<string, HeldCard>();
   for (const row of held) byFamily.set(row.familyId, row);
@@ -161,6 +185,13 @@ export async function runWelcomeCardRedrive(
     due.push({ ...card, phoneE164: await resolvePhone(database, card.parentUserId) });
   }
   result.due = due.length;
+  result.deferred = Math.max(0, due.length - MAX_REDRIVE_FAMILIES_PER_RUN);
+  if (result.deferred > 0) {
+    console.warn(
+      { deferred: result.deferred, cap: MAX_REDRIVE_FAMILIES_PER_RUN },
+      'welcome card re-drive: more held cards than one run sends - the rest keep their place',
+    );
+  }
 
   for (const card of due.slice(0, MAX_REDRIVE_FAMILIES_PER_RUN)) {
     if (card.phoneE164 === null) {

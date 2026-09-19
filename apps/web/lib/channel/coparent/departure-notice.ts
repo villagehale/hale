@@ -14,6 +14,7 @@ import {
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { f14EnabledFor } from '~/lib/channel/f14';
 import { CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE } from './copy';
 
 /**
@@ -63,6 +64,7 @@ const HOLD_STATUS: Record<
  */
 export type DepartureNoticeOutcome =
   | 'sent'
+  | 'dark'
   | 'already_sent'
   | 'no_staying_parent'
   | 'no_send_target'
@@ -137,6 +139,17 @@ export async function tellStayingParent(
   ports: DepartureNoticePorts,
 ): Promise<DepartureNoticeOutcome> {
   const { familyId, departedUserId, now } = input;
+
+  // DARK BY DEFAULT (D21), like every other class Hale may send unprompted. This one
+  // reaches its recipient through a WEB door — the erasure route — so without the flag
+  // its arming predicate is only "somebody in this household holds watch consent", and
+  // the day a non-SMS path grants that consent the notice starts leaving for households
+  // F14 was never flipped on for. Named rather than silent (rule #11), and nothing is
+  // written: a household Hale is not live for has no message to keep a receipt about.
+  if (!f14EnabledFor(familyId)) {
+    console.info({ familyId }, 'co-parent departure notice: household is dark, nothing sent');
+    return 'dark';
+  }
 
   const parentUserId = await stayingParent(database, familyId);
   if (parentUserId === null) return 'no_staying_parent';
