@@ -27,5 +27,11 @@ export const GET = cronRoute('delete-sweep', async () => {
       'cron/delete-sweep: erased families past grace',
     );
   }
+  if (summary.orphans.swept > 0) {
+    // Counts only, never an id of the person the row is about (rule #1). Logged on its
+    // own line because it is a different erasure with a different subject: the family
+    // sweep above answers a REQUEST, and this one closes doors nobody asked about.
+    console.info(summary.orphans, 'cron/delete-sweep: closed accounts no household holds');
+  }
   return NextResponse.json({ ok: true, ...summary }, { status: 200 });
 });

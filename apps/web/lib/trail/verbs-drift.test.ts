@@ -109,6 +109,8 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // prefix from the invite's own role (VIL-355), so every suffix below exists twice.
   'apps/web/lib/channel/caregiver/invites.ts': [
     'caregiver_invite_expired',
+    // `recordLapsedInviteAnswered` — the late answer, on whichever lane was asked.
+    'caregiver_invite_expired_answered',
     'caregiver_invite_superseded',
     'caregiver_invite_superseded_by_join',
     'caregiver_invite_superseded_by_enrollment',
@@ -117,6 +119,7 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'caregiver_invite_blocked_prior_refusal',
     'caregiver_invite_blocked',
     'co_parent_invite_expired',
+    'co_parent_invite_expired_answered',
     'co_parent_invite_superseded',
     'co_parent_invite_superseded_by_join',
     'co_parent_invite_superseded_by_enrollment',

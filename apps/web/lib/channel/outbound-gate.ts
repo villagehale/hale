@@ -87,7 +87,17 @@ export type ProactiveSendKind =
    * volume is set by how much the household's week moves, and a September that re-syncs
    * forty edits is the week where a text per edit is the uninstall.
    */
-  | 'calendar_alert';
+  | 'calendar_alert'
+  /**
+   * The co-parent left, and the parent who STAYED is told once (VIL-355 follow-up).
+   *
+   * Unprompted by construction — the departing parent acted, the staying one did not —
+   * so it belongs here rather than beside the departure receipt. It is also the class
+   * where being held is least bad: the household's trail carries the same fact
+   * (`co_parent_departed`), so a text quiet hours refuse costs the parent a night's
+   * notice, not the notice.
+   */
+  | 'co_parent_departed';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -196,6 +206,12 @@ export const PROACTIVE_CAP: Record<
   // one: a connector that re-seeds and reports forty edits as new stops after a nuisance
   // instead of after a phone full of texts.
   calendar_alert: { max: 3, windowHours: 24 },
+  // THE BOUND IS THE EVENT, not a counter, and `null` says so out loud. A seat can be
+  // vacated exactly once per (family, departed parent) — the DELETE that claims the
+  // departure is what makes that true (coparent/depart.ts) — and the dedupe key is keyed
+  // on that same pair. A counter over it could do only one thing the index cannot: drop
+  // the notice for a household that had already heard something else this week.
+  co_parent_departed: null,
 };
 
 /**
@@ -243,6 +259,10 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // will read at 08:00 either way. Waking a household over a change they cannot act on
   // in the dark is the whole of what this floor exists to prevent.
   calendar_alert: false,
+  // Nothing here is worth less at 08:00. The seat is already gone, the week is already
+  // theirs, and waking somebody at 23:00 to tell them their co-parent left is the
+  // cruellest hour this message could pick.
+  co_parent_departed: false,
 };
 
 /**
@@ -289,6 +309,7 @@ export const PROACTIVE_CATEGORY: Record<
   | 'spot_open'
   | 'email_alert'
   | 'calendar_alert'
+  | 'co_parent_departed'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
@@ -300,6 +321,7 @@ export const PROACTIVE_CATEGORY: Record<
   spot_open_instant: 'spot_open',
   email_alert: 'email_alert',
   calendar_alert: 'calendar_alert',
+  co_parent_departed: 'co_parent_departed',
 };
 
 export interface OutboundGatePorts {

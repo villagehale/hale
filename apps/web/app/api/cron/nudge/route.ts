@@ -7,6 +7,8 @@ import { flushTelemetry } from '~/lib/telemetry/langfuse';
 import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
 import { runVillageIntroSweep } from '~/lib/village/intros/run';
+import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
+import { welcomeCardRedrivePorts } from '~/lib/channel/twilio/deps';
 
 // Node runtime: the sweep reaches the voice client and the channel seam, neither of
 // which runs on the edge runtime.
@@ -43,6 +45,13 @@ export const maxDuration = 300;
  * rather than being dropped. It shares F14's dark-launch flag: this message only exists
  * for a family already texting Hale.
  *
+ * THE 08:00 CONTACT-CARD RE-DRIVE rides here last of all, and it is the one leg that
+ * carries no dark-launch flag of its own. It is not a class of message: it is the card
+ * `sendWelcomeContactCard` already owed a family whose intake landed inside quiet hours,
+ * and the only thing this route adds is a second chance to leave. It reaches the same
+ * function, spends the same key, and writes the same audit verb — see
+ * lib/channel/intake/welcome-card-redrive.ts.
+ *
  * THE FOLLOW-UP SWEEP rides here for the same reason and runs LAST, which is also its
  * priority. It is the only stage that asks about something already over, so it is the
  * one whose deferral costs a family nothing — and running after the others means a
@@ -56,8 +65,17 @@ export const GET = cronRoute('nudge', async () => {
     const followups = await runFollowupSweep(db());
     const planCheckIns = await runPlanCheckInSweep(db());
     const activityFollowUps = await runActivityFollowUpSweep(db());
+    const welcomeCards = await runWelcomeCardRedrive(db(), { ports: welcomeCardRedrivePorts() });
     return NextResponse.json(
-      { ok: true, ...summary, villageIntros, followups, planCheckIns, activityFollowUps },
+      {
+        ok: true,
+        ...summary,
+        villageIntros,
+        followups,
+        planCheckIns,
+        activityFollowUps,
+        welcomeCards,
+      },
       { status: 200 },
     );
   } finally {

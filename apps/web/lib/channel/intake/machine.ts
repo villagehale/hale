@@ -1,13 +1,20 @@
 import { type Database, schema } from '@hale/db';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
+import { readAffirmative } from '~/lib/channel/affirmative';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
-import { declineOpenInviteOnStop, loadOpenInviteByPhone } from '~/lib/channel/caregiver/invites';
+import {
+  declineOpenInviteOnStop,
+  loadLapsedInviteByPhone,
+  loadOpenInviteByPhone,
+} from '~/lib/channel/caregiver/invites';
 import {
   type CaregiverOutcome,
   type CoParentOutcome,
+  type LapsedInviteOutcome,
   type OpenQuestionsForParent,
   handleInviteReply,
   handleKnownNumberInbound,
+  handleLapsedInviteReply,
 } from '~/lib/channel/caregiver/route';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
@@ -235,6 +242,9 @@ export type IntakeOutcome =
   // the reason the whole ticket exists: the two lanes text different people about
   // different things, and one bucket would make an operator read the wrong story.
   | CoParentOutcome
+  // VIL-355 follow-up · a late answer to an invitation that lapsed. Its own outcome
+  // because it is neither lane's: nothing was invited, refused or seated.
+  | LapsedInviteOutcome
   // The co-parent join link's two ends. Kept OUT of `ignored` deliberately: that
   // outcome's `no_open_conversation` reason is what hands the turn to C1
   // (twilio/inbound.ts), and a redemption has already been answered.
@@ -355,6 +365,25 @@ export async function handleInboundSms(
       );
       return outcome ?? { status: 'ignored', reason: 'no_open_conversation' };
     }
+    // VIL-355 follow-up · the YES that came on day four. `loadOpenInviteByPhone` above
+    // applied the 72h bound on read — it closed the row as 'expired' and answered null —
+    // and the fall-through below then greeted the stranger Hale had cold-texted once,
+    // asking them for their children's names.
+    //
+    // It sits HERE, after the channel lookup, so a number that now has an account of its
+    // own keeps its own path. And it is gated on the message actually BEING an answer:
+    // the same person texting Hale months later to sign up their own family is not
+    // answering anything, and must still reach the greeting (`loadLapsedInviteByPhone`
+    // bounds the same shadow by time).
+    if (!invite && readAffirmative(inbound.body) !== 'unclear') {
+      const lapsed = await loadLapsedInviteByPhone(database, phoneE164, now);
+      if (lapsed) {
+        return claimedTurn(database, inbound, now, () =>
+          handleLapsedInviteReply(database, { invite: lapsed, phoneE164, inbound, now }, deps),
+        );
+      }
+    }
+
     // The pre-session greet is the double-welcome bug's home: no session exists, so
     // nothing remembered the sid at all and a >15s first turn greeted twice.
     return claimedTurn(database, inbound, now, () =>

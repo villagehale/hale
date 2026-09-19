@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNotNull, lte } from 'drizzle-orm';
 import { type CoParentDeparted, departCoParent } from '../channel/coparent/depart.js';
 import { removeDocument } from '../docs/storage.js';
+import { type OrphanSweepSummary, runOrphanUserSweep } from './orphan-users.js';
 
 /**
  * PIPEDA / Law 25 right-to-erasure, REVERSIBLE BY GRACE. A confirm-gated request
@@ -172,6 +173,10 @@ export async function selectFamiliesDueForDeletion(
 
 export interface DeletionSweepSummary {
   erased: number;
+  /** What the same run did about people no household holds a seat for any more. Nested
+   * rather than flattened so a zero here reads as "nobody was orphaned", never as a
+   * count somebody forgot to add (rule #11). */
+  orphans: OrphanSweepSummary;
   /** How many storage objects (chat attachments + child avatars) had their bytes
    * purged from the private bucket across the run — the caller logs it so the
    * byte-level erasure is recorded durably (rule #6 note below). */
@@ -254,5 +259,9 @@ export async function runDeletionSweep(
     purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
     await database.delete(schema.families).where(eq(schema.families.id, familyId));
   }
-  return { erased: familyIds.length, purgedObjects };
+  // AFTER the families, and on the same tick rather than a cron of its own: an erasure
+  // that just removed a household is the commonest way a person is orphaned, so running
+  // second means this run cleans up after itself instead of leaving it for the next hour.
+  const orphans = await runOrphanUserSweep(database, now);
+  return { erased: familyIds.length, purgedObjects, orphans };
 }

@@ -141,7 +141,10 @@ export const REFERRER_UNNAMED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
  */
 export const CO_PARENT_UNAVAILABLE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: CANNOT_TEXT_THAT_NUMBER,
-  fr: "Je ne peux pas écrire à ce numéro pour vous. S'ils veulent être ici, ils peuvent m'écrire en premier.",
+  // `être` is NOT in the GSM-7 basic alphabet (only `é è à ù ì ò Ç` are), so this line
+  // shipped as UCS-2 — 70 units a part, three parts for a sentence budgeted as one.
+  // Caught the moment this file joined the repo-wide encoding scan (2026-09-18).
+  fr: "Je ne peux pas écrire à ce numéro pour vous. S'ils veulent se joindre à vous ici, ils peuvent m'écrire en premier.",
 };
 
 /**
@@ -152,6 +155,47 @@ export const CO_PARENT_UNAVAILABLE_BY_LANGUAGE: Record<ReplyLanguage, string> = 
 export const CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: "Thanks for answering - somebody else was added as the co-parent in the meantime, so there's no spot for you here. I won't text you again.",
   fr: "Merci d'avoir répondu - quelqu'un d'autre a été ajouté comme co-parent entre-temps, donc il n'y a plus de place ici. Je ne vous écrirai plus.",
+};
+
+/**
+ * What the parent who STAYS is told, once, when their co-parent leaves.
+ *
+ * IT NAMES NOBODY. Not the person who left — the trail's own departure sentences are
+ * third-person and byline-safe for exactly this reason (trail/verbs.ts), and the actor
+ * has no seat here any more — and no child, which sidesteps the teen-name question
+ * entirely rather than redacting its way past it (rule #1).
+ *
+ * THREE FACTS AND NO ASK: the seat is empty, the week is unchanged, and the door back in
+ * still works. No question, so it can never claim a bare YES that belongs to another
+ * open question (router/open-questions.ts). "the join link still works" is the only
+ * forward-looking half, and it is deliberately not a link: minting one unasked would be
+ * Hale proposing a replacement co-parent on the day somebody left.
+ */
+export const CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'Your co-parent has left Hale. Your week is yours alone now - nothing in it changed, and the join link still works if you want to add someone.',
+  fr: "Votre co-parent a quitté Hale. Votre semaine est à vous seul maintenant - rien n'y a changé, et le lien d'invitation fonctionne toujours.",
+};
+
+/**
+ * The answer that arrived after the invitation had already lapsed.
+ *
+ * ONE SENTENCE, AND NO ASK. Before this the late YES fell through every branch of the
+ * intake machine and landed on the greeting, so a stranger Hale had texted once was
+ * answered by being asked for their children's names. It carries no yes/no question on
+ * purpose: a question needs an `OpenQuestionKind` and a `soleOpenKind` gate, and a
+ * statement that quietly claimed a bare YES would steal one meant for another question
+ * (router/open-questions.ts).
+ *
+ * IT NAMES NOBODY — not the parent who asked, not the household. The person reading it
+ * has consented to nothing and is no longer being invited to anything, so the only facts
+ * it is entitled to state are that the invitation ended and how to get another.
+ *
+ * It does not say "3 days" either: the number lives in `INVITE_SILENCE_MS`, and a copy
+ * file that restated it would be the second place it is written.
+ */
+export const INVITE_EXPIRED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: "Thanks for answering - that invitation has expired, so there's nothing for me to add you to. Ask them to send it again and I'll be right here.",
+  fr: "Merci d'avoir répondu - cette invitation a expiré, donc je ne peux pas vous ajouter. Demandez-leur de la renvoyer et je serai là.",
 };
 
 /** The number already has a Hale account IN THIS HOUSEHOLD. Deliberately does not say

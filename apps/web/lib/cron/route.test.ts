@@ -16,6 +16,7 @@ const sweepAttachmentsMock = vi.fn();
 const runNudgeCronMock = vi.fn();
 const runSittingReminderCronMock = vi.fn();
 const runFirstReplyRecoveryCronMock = vi.fn();
+const runWelcomeCardRedriveMock = vi.fn();
 const dbMock = vi.fn();
 
 vi.mock('~/lib/db', () => ({ db: () => dbMock() }));
@@ -52,6 +53,12 @@ vi.mock('~/lib/channel/intake/sitting-reminder', () => ({
 vi.mock('~/lib/channel/intake/first-reply-recovery', () => ({
   runFirstReplyRecoveryCron: (...a: unknown[]) => runFirstReplyRecoveryCronMock(...a),
 }));
+// The nudge route's other riders each read a dark-launch flag and return before they
+// touch a handle; the 08:00 card re-drive deliberately has none (it finishes an intake
+// step a family already earned), so it is the one that would reach the stub db here.
+vi.mock('~/lib/channel/intake/welcome-card-redrive', () => ({
+  runWelcomeCardRedrive: (...a: unknown[]) => runWelcomeCardRedriveMock(...a),
+}));
 
 const SECRET = 'cron-secret-xyz';
 
@@ -87,6 +94,7 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     runWeekPlanCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });
     runNudgeCronMock.mockReset().mockResolvedValue({ enabled: false, evaluated: 0 });
+    runWelcomeCardRedriveMock.mockReset().mockResolvedValue({ held: 0, due: 0, sent: 0 });
     runSittingReminderCronMock
       .mockReset()
       .mockResolvedValue({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });

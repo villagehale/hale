@@ -3,6 +3,8 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 import {
   CO_PARENT_ANSWER_PROMPT_BY_LANGUAGE,
+  CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE,
+  INVITE_EXPIRED_BY_LANGUAGE,
   CO_PARENT_DECLINE_ACK_BY_LANGUAGE,
   CO_PARENT_NUMBER_IN_USE_BY_LANGUAGE,
   CO_PARENT_SEAT_TAKEN_BY_LANGUAGE,
@@ -116,6 +118,36 @@ describe('co-parent copy · what it promises', () => {
       expect(map.fr).not.toBe(map.en);
       expect(isGsm7(map.fr)).toBe(true);
       expect(smsSegments(map.fr)).toBeLessThanOrEqual(2);
+    }
+  });
+});
+
+describe('co-parent copy · the two sentences nobody asked for (VIL-355 follow-up)', () => {
+  /**
+   * Both are read by somebody who did not write to Hale this turn, so neither may cost
+   * more than the invite itself. One segment each is the standard: the expired reply is
+   * the whole of what a stranger gets, and the departure notice still has to fit the
+   * CASL opt-out line the gate appends on the wire.
+   */
+  it.each(LANGUAGES)('keeps the expired-invite reply to one GSM-7 segment in %s', (language) => {
+    const body = INVITE_EXPIRED_BY_LANGUAGE[language];
+    expect(isGsm7(body)).toBe(true);
+    expect(smsSegments(body)).toBe(1);
+  });
+
+  it.each(LANGUAGES)('keeps the departure notice to one GSM-7 segment in %s', (language) => {
+    const body = CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE[language];
+    expect(isGsm7(body)).toBe(true);
+    expect(smsSegments(body)).toBe(1);
+  });
+
+  it('names nobody in the departure notice — no person, no household, no child', () => {
+    for (const language of LANGUAGES) {
+      const body = CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE[language];
+      // A template that ever grew an interpolation would show up as a placeholder here.
+      expect(body).not.toMatch(/\$\{|\{\{/);
+      // The only person-shaped word it may carry is the role itself.
+      expect(body.toLowerCase()).toContain('co-parent');
     }
   });
 });

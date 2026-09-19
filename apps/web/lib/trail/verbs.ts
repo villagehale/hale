@@ -189,6 +189,7 @@ export const AUDIT_VERBS = [
   'caregiver_access_granted',
   'caregiver_invite_accepted',
   'caregiver_invite_expired',
+  'caregiver_invite_expired_answered',
   'caregiver_invite_superseded',
   'caregiver_invite_superseded_by_join',
   'caregiver_invite_superseded_by_enrollment',
@@ -209,6 +210,7 @@ export const AUDIT_VERBS = [
   'co_parent_access_granted',
   'co_parent_invite_accepted',
   'co_parent_invite_expired',
+  'co_parent_invite_expired_answered',
   'co_parent_invite_superseded',
   'co_parent_invite_superseded_by_join',
   'co_parent_invite_superseded_by_enrollment',
@@ -221,6 +223,7 @@ export const AUDIT_VERBS = [
   'co_parent_sms_outbound',
   'co_parent_access_withdrawn',
   'co_parent_departed',
+  'co_parent_departure_notice_sent',
   // The three doors a departure closes on its way out. They have house verbs of their
   // own (`channel_sms_revoked`, `mcp.grant_revoked`, `integration_revoked`) whose
   // sentences are written to the person who did it — and the person who did it has no
@@ -231,6 +234,9 @@ export const AUDIT_VERBS = [
   'co_parent_integration_revoked',
   // A seat that has no erasure of its own asked for one anyway.
   'erasure_refused',
+  // The orphan sweep: a users row with no seat left anywhere, and its last live doors
+  // closed. One row per person, in the household whose channel record they still hold.
+  'orphan_user_erased',
   // ── the executor's own writes (internal-writes.ts) ──────────────────────
   'action.routine_pinned',
   'action.routine_pinned.skipped_duplicate',
@@ -597,6 +603,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'a caregiver invite expired unanswered',
     family: 'note',
   },
+  caregiver_invite_expired_answered: {
+    sentence: 'somebody answered a caregiver invite after it had expired, and Hale told them',
+    family: 'note',
+  },
   caregiver_invite_superseded: {
     sentence: 'you replaced an earlier caregiver invite',
     family: 'note',
@@ -664,6 +674,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'a co-parent invite expired unanswered',
     family: 'note',
   },
+  // Says that the person came back, never what they said: they answered a question Hale
+  // asked and have consented to nothing, so their words are not this household's.
+  co_parent_invite_expired_answered: {
+    sentence: 'somebody answered a co-parent invite after it had expired, and Hale told them',
+    family: 'note',
+  },
   co_parent_invite_superseded: {
     sentence: 'you replaced an earlier co-parent invite',
     family: 'note',
@@ -721,6 +737,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'a co-parent left your family — your family’s record was kept',
     family: 'done',
   },
+  // The one text the parent who STAYS gets. Third person like every sentence in this
+  // block, and it names nobody — not the person who left, and no child.
+  co_parent_departure_notice_sent: {
+    sentence: 'Hale let you know your co-parent had left',
+    family: 'done',
+  },
   // Third person, and each names LEAVING as the reason. The house verbs for these three
   // doors say 'you turned off texting with Hale' and 'you disconnected an outside
   // assistant' — true of a parent closing their own door, and a false claim about the
@@ -741,6 +763,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   // Third person for the same reason as the three above: a scoped caregiver reads as
   // 'co-parent' on this surface, so a first-person sentence would tell the parent that
   // THEY asked. 'note' — nothing was done, which is the point of the row.
+  // The orphan sweep's row. Third person and role-free: by the time it is written the
+  // person holds no seat here, so it is read by whoever is left.
+  orphan_user_erased: {
+    sentence: 'Hale closed the last of an account that no longer belongs to any family',
+    family: 'done',
+  },
   erasure_refused: {
     sentence: 'someone asked Hale to delete this family and was told no',
     family: 'note',

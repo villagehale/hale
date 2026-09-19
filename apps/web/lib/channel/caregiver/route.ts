@@ -7,6 +7,7 @@ import {
   CO_PARENT_DECLINE_ACK_BY_LANGUAGE,
   CO_PARENT_REFUSAL_COPY,
   CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE,
+  INVITE_EXPIRED_BY_LANGUAGE,
   REFERRER_UNNAMED_BY_LANGUAGE,
   coParentInviteDroppedAck,
   coParentInviteSentAck,
@@ -50,6 +51,7 @@ import {
   declineInvite,
   loadPendingAssent,
   recordCoParentAssent,
+  recordLapsedInviteAnswered,
   recordInviteRefusal,
   recordParentAssent,
   startCaregiverInvite,
@@ -108,6 +110,16 @@ export interface CaregiverDeps {
   threadMessage: typeof threadProactiveMessage;
   openQuestions: OpenQuestionsForParent;
 }
+
+/**
+ * A late answer, answered. Its own outcome rather than a member of either lane's union
+ * (rule #11): nothing was invited, refused or seated, and folding it into
+ * `caregiver_prompted` would tell an operator Hale had asked the question again.
+ */
+export type LapsedInviteOutcome = {
+  status: 'invite_expired_answered';
+  role: CaregiverInvite['role'];
+};
 
 export type CaregiverOutcome =
   | { status: 'caregiver_invite_started' }
@@ -406,6 +418,52 @@ export async function handleInviteReply(
   return args.invite.role === 'co_parent'
     ? handleCoParentInviteReply(database, { ...args, invite: args.invite }, deps)
     : handleCaregiverInviteReply(database, { ...args, invite: args.invite }, deps);
+}
+
+/**
+ * The answer that arrived after the invitation had already lapsed (VIL-355 follow-up).
+ *
+ * WHAT IT REPLACES. `loadOpenInviteByPhone` applies the 72h bound on READ: it closes the
+ * row as 'expired' and answers null. Downstream of that null the intake machine found no
+ * verified channel either and fell through to `greet` — so the stranger Hale had cold-
+ * texted once, answering the question Hale asked them, was met with an intake greeting
+ * and asked for their children's names. One honest sentence instead.
+ *
+ * NOTHING CHANGES BUT THE TRAIL. No seat, no reopened clock, no session: the invitation
+ * is over, and the parent's own re-issue (`startCoParentInvite`, which blocks on OPEN
+ * invites and on refusals — never on an expired row) is the door back in.
+ *
+ * `reply`, not `replyToParent`: this goes to the third party, and what Hale says to them
+ * is not the inviting parent's conversation.
+ */
+export async function handleLapsedInviteReply(
+  database: Database,
+  args: { invite: CaregiverInvite; phoneE164: string; inbound: InboundMessage; now: Date },
+  deps: CaregiverDeps,
+): Promise<LapsedInviteOutcome> {
+  const { invite, inbound, now } = args;
+  const lane: Lane = invite.role === 'co_parent' ? 'co_parent' : 'caregiver';
+  await record(database, {
+    familyId: invite.familyId,
+    parentUserId: invite.invitedByUserId,
+    lane,
+    direction: 'in',
+    providerId: inbound.providerId,
+    // The co-parent lane's rule (see the note on `record`): a non-member's words are not
+    // this household's to keep. The caregiver lane keeps its own convention.
+    body: lane === 'co_parent' ? null : inbound.body,
+    now,
+  });
+  await reply(database, deps, {
+    to: args.phoneE164,
+    body: INVITE_EXPIRED_BY_LANGUAGE[replyLanguage(inbound.body)],
+    familyId: invite.familyId,
+    parentUserId: invite.invitedByUserId,
+    lane,
+    now,
+  });
+  await recordLapsedInviteAnswered(database, invite);
+  return { status: 'invite_expired_answered', role: invite.role };
 }
 
 async function handleCaregiverInviteReply(

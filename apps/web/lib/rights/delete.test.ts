@@ -126,22 +126,40 @@ function fakeSweepDb(
   });
   const deleteFn = vi.fn(() => ({ where: deletedWhere }));
 
+  /** `.from(t)` answers a `.where(...)` AND awaits on its own — the orphan sweep that
+   * rides this same run reads whole tables with no predicate, and a chain that only
+   * spoke `where` would fail on it rather than answer "nobody". */
+  const unfiltered = <T>(rows: T[]) => ({
+    where: async () => rows,
+    // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
+    then: <R>(resolve: (value: T[]) => R) => Promise.resolve(rows).then(resolve),
+  });
+
   const select = vi.fn(() => ({
     from: (table: unknown) => {
       if (table === schema.chatAttachments) {
-        const rows = (attachmentQueue.shift() ?? []).map((storagePath) => ({ storagePath }));
-        return { where: async () => rows };
+        return unfiltered((attachmentQueue.shift() ?? []).map((storagePath) => ({ storagePath })));
       }
       if (table === schema.children) {
-        const rows = (avatarQueue.shift() ?? []).map((storagePath) => ({ storagePath }));
-        return { where: async () => rows };
+        return unfiltered((avatarQueue.shift() ?? []).map((storagePath) => ({ storagePath })));
       }
-      return { where: async () => dueIds.map((id) => ({ id })) };
+      if (table === schema.families) {
+        return unfiltered(dueIds.map((id) => ({ id })));
+      }
+      // Every table the orphan sweep reads: no rows, so it finds nobody and this file
+      // stays about family erasure. Its own behaviour is pinned in
+      // lib/rights/orphan-users.pglite.test.ts, against the real DDL.
+      return unfiltered([]);
     },
   }));
 
+  /** The orphan sweep finds nobody here, so it never opens one — but `runDeletionSweep`
+   * still holds the handle, and a fake that lacked it would fail on the shape rather
+   * than on the behaviour. */
+  const transaction = vi.fn(async (run: (tx: unknown) => Promise<unknown>) => run(null));
+
   return {
-    db: { select, delete: deleteFn } as never,
+    db: { select, delete: deleteFn, transaction } as never,
     removeObject,
     spies: { deleteFn, deletedWhere, events },
   };
@@ -161,7 +179,7 @@ describe('runDeletionSweep', () => {
 
     const summary = await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), removeObject);
 
-    expect(summary).toEqual({ erased: DUE_IDS.length, purgedObjects: 0 });
+    expect(summary).toMatchObject({ erased: DUE_IDS.length, purgedObjects: 0 });
     expect(spies.deleteFn).toHaveBeenCalledTimes(DUE_IDS.length);
     expect(spies.deletedWhere).toHaveBeenCalledTimes(DUE_IDS.length);
   });
@@ -169,7 +187,7 @@ describe('runDeletionSweep', () => {
   it('erases nothing when no family is past its grace window', async () => {
     const { db, removeObject, spies } = fakeSweepDb([]);
     const summary = await runDeletionSweep(db, new Date(), removeObject);
-    expect(summary).toEqual({ erased: 0, purgedObjects: 0 });
+    expect(summary).toMatchObject({ erased: 0, purgedObjects: 0 });
     expect(spies.deleteFn).not.toHaveBeenCalled();
     expect(removeObject).not.toHaveBeenCalled();
   });
@@ -189,7 +207,7 @@ describe('runDeletionSweep', () => {
     const deleteAt = spies.events.indexOf('delete-family');
     expect(deleteAt).toBe(2);
     expect(spies.events.slice(0, deleteAt).every((e) => e.startsWith('remove:'))).toBe(true);
-    expect(summary).toEqual({ erased: 1, purgedObjects: 2 });
+    expect(summary).toMatchObject({ erased: 1, purgedObjects: 2 });
   });
 
   it('purges each child AVATAR object from the bucket too — a second path source erasure must not miss (rule #1 / PIPEDA, child photos are the most sensitive asset)', async () => {

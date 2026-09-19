@@ -408,6 +408,14 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // September calendar and a September inbox are two volumes, and one budget shared
   // between them would silence whichever moved second.
   'calendar_alert',
+  // VIL-355 follow-up (migration 0122) · the one text the parent who STAYS gets when
+  // their co-parent leaves. Its own category and NOT 'co_parent_invite': that lane is
+  // the invite exchange the parent themselves started, and this is Hale making contact
+  // first about a seat that has ended. Filing them together would make a PIPEDA
+  // right-to-access read describe a departure as part of an invitation. Unmetered by
+  // choice rather than by omission — the bound is the departure event itself, one per
+  // (family, departed parent), held by the dedupe key (PROACTIVE_CAP says so).
+  'co_parent_departed',
 ]);
 
 /**

@@ -1,3 +1,4 @@
+import type { Database } from '@hale/db';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type QueueCreateOptions, createQueueWithPolicy } from '@hale/tools-contracts';
@@ -15,6 +16,11 @@ import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
+import {
+  type DepartureNoticePorts,
+  departureNoticeReaders,
+} from '~/lib/channel/coparent/departure-notice';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
@@ -79,6 +85,32 @@ export function buildIntakeDeps(inboundTransport: MessageTransport = 'sms'): Int
     answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),
     limiter: new PostgresRateLimiter(database),
+  };
+}
+
+/**
+ * The two ports the 08:00 contact-card re-drive needs, and nothing else.
+ *
+ * Built here rather than by the sweep so the Twilio construction stays inside the one
+ * wiring module that already owns it (twilio/one-door.test.ts), and narrow rather than
+ * `buildIntakeDeps()` because that one constructs a model client: a leg whose whole job
+ * is re-sending a vCard must not warm an Anthropic client on every hourly tick.
+ */
+export function welcomeCardRedrivePorts(): WelcomeCardPorts {
+  return { transport: createTwilioTransport(), threadMessage: threadProactiveMessage };
+}
+
+/**
+ * The ports the co-parent departure notice needs. Built here for the same reason as the
+ * card re-drive's: `departure-notice.ts` deliberately constructs no transport, so it
+ * stays off the Twilio one-door allowlist and the wiring stays in the module that owns
+ * the door.
+ */
+export function departureNoticePorts(database: Database): DepartureNoticePorts {
+  return {
+    ...departureNoticeReaders(database),
+    transport: createTwilioTransport(),
+    threadMessage: threadProactiveMessage,
   };
 }
 

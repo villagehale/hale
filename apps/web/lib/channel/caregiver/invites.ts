@@ -74,8 +74,17 @@ export type CaregiverInviteState =
    * would also bar them from ever being asked again, see {@link priorRefusal}) nor
    * 'superseded' (they WERE texted, and the meter has to keep counting it). */
   | 'seat_taken'
-  /** 72h of silence on whichever side we were waiting for. Terminal. */
-  | 'expired';
+  /** 72h of silence from the person who was TEXTED. Terminal, and the state a late
+   * answer is read against — somebody was asked something and came back too slowly. */
+  | 'expired'
+  /** 72h of silence from the PARENT, before they confirmed. Terminal, and kept distinct
+   * from 'expired' for the reason `superseded` is kept distinct from `declined`: NOBODY
+   * WAS EVER TEXTED under this row. A message from that number is therefore a stranger
+   * writing to Hale for the first time, not a late answer — and telling them their
+   * invitation expired would disclose that somebody had named their number to us, which
+   * is the one thing this whole command is built not to do
+   * ({@link loadLapsedInviteByPhone}, CO_PARENT_UNAVAILABLE_BY_LANGUAGE). */
+  | 'expired_unsent';
 
 /** Either side silent for this long and the invite lapses. */
 export const INVITE_SILENCE_MS = 72 * 60 * 60 * 1000;
@@ -184,7 +193,17 @@ async function openInvites(database: Database): Promise<InviteRow[]> {
   return (rows as InviteRow[]).filter((r) => r.closedAt === null);
 }
 
-/** Close a lapsed invite and return null, so every read is also the sweep. */
+/**
+ * Close a lapsed invite and return null, so every read is also the sweep.
+ *
+ * WHICH SILENCE IT WAS is recorded in the state, because nothing else can recover it
+ * later: the row that lapsed waiting on the PARENT never reached a phone, and the row
+ * that lapsed waiting on the invitee did. One 'expired' for both made a late "yes" from
+ * a number Hale had never texted indistinguishable from a late "yes" to a question it
+ * had asked. The audit verb stays the same for both — the trail sentence ("an invite
+ * expired unanswered") is true either way, and which side went quiet is not the parent's
+ * business to be told twice.
+ */
 async function throughExpiry(
   database: Database,
   row: InviteRow,
@@ -192,7 +211,8 @@ async function throughExpiry(
 ): Promise<CaregiverInvite | null> {
   if (new Date(row.expiresAt).getTime() > now.getTime()) return toInvite(row);
   const invite = toInvite(row);
-  await closeInvite(database, invite, 'expired', now, inviteVerb(invite.role, 'expired'));
+  const state = invite.state === 'awaiting_parent_assent' ? 'expired_unsent' : 'expired';
+  await closeInvite(database, invite, state, now, inviteVerb(invite.role, 'expired'));
   return null;
 }
 
@@ -819,6 +839,7 @@ async function closeInvite(
     CaregiverInviteState,
     | 'declined'
     | 'expired'
+    | 'expired_unsent'
     | 'superseded'
     | 'superseded_by_join'
     | 'superseded_by_enrollment'
@@ -1067,6 +1088,71 @@ export async function declineOpenInviteOnStop(
   if (!invite) return false;
   await declineInvite(database, { invite, by: 'caregiver', now });
   return true;
+}
+
+/**
+ * How long after a lapse a late answer is still ANSWERED rather than greeted.
+ *
+ * The bound exists because the reader below shadows `greet` for this number: without
+ * it, somebody invited once in March who texts Hale in August wanting an account of
+ * their own would be told their invitation expired, forever, and could never start an
+ * intake. A week is long enough to cover the answer that came on Monday to Friday's
+ * text and short enough that the shadow ends.
+ */
+export const LAPSED_REPLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The invitation this number is answering LATE — read raw, like the STOP reader next
+ * door and for the same reason: `loadOpenInviteByPhone` sweeps a lapsed row to 'expired'
+ * and answers null, which is precisely the state this one is looking for.
+ *
+ * Two filters, both load-bearing. 'expired' ONLY — never 'declined' (that number
+ * pressed STOP, and their no is the whole point of the promise printed on the invite)
+ * and never 'expired_unsent' (nobody was ever texted under that row, so its number is a
+ * stranger and saying otherwise would disclose that somebody had named them). And
+ * {@link LAPSED_REPLY_WINDOW_MS}, so the answer stops shadowing the greeting once it is
+ * no longer plausibly an answer.
+ */
+export async function loadLapsedInviteByPhone(
+  database: Database,
+  phoneE164: string,
+  now: Date,
+): Promise<CaregiverInvite | null> {
+  const hash = phoneBlindIndex(phoneE164);
+  const rows = (await database
+    .select(INVITE_COLUMNS)
+    .from(schema.caregiverInvites)
+    .where(eq(schema.caregiverInvites.phoneE164Hash, hash))) as InviteRow[];
+  const lapsed = rows
+    .filter(
+      (r) =>
+        r.phoneE164Hash === hash &&
+        r.state === 'expired' &&
+        now.getTime() - new Date(r.expiresAt).getTime() <= LAPSED_REPLY_WINDOW_MS,
+    )
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const row = lapsed[0];
+  return row ? toInvite(row) : null;
+}
+
+/**
+ * The trail row for a late answer. Nothing about the invite CHANGES — it stays expired,
+ * nobody is seated, and no clock restarts — so the only thing to record is that the
+ * person came back and was told (rule #6 + #11: the outcome is named, not inferred from
+ * the absence of a seat).
+ */
+export async function recordLapsedInviteAnswered(
+  database: Database,
+  invite: CaregiverInvite,
+): Promise<void> {
+  await database.insert(schema.auditLog).values({
+    familyId: invite.familyId,
+    actor: invite.invitedByUserId,
+    actionTaken: inviteVerb(invite.role, 'expired_answered'),
+    targetTable: 'caregiver_invites',
+    targetId: invite.id,
+    after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
+  });
 }
 
 /**

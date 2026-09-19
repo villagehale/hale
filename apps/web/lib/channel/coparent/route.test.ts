@@ -21,6 +21,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   CO_PARENT_OWN_NUMBER_BY_LANGUAGE,
+  INVITE_EXPIRED_BY_LANGUAGE,
   CO_PARENT_SEAT_TAKEN_BY_LANGUAGE,
   PREVIOUSLY_DECLINED_BY_LANGUAGE,
   REFERRER_UNNAMED_BY_LANGUAGE,
@@ -839,5 +840,70 @@ describe('co-parent invite · arbitrating the bare YES', () => {
 
     expect(outcome).toEqual({ status: 'co_parent_invite_sent' });
     expect(toPartner(transport)).toHaveLength(1);
+  });
+});
+
+/**
+ * VIL-355 follow-up · item 1 — the answer that comes on day four.
+ *
+ * Driven through `handleInboundSms`, because the bug was never in the invite module: the
+ * 72h bound is applied on READ, so the lapsed row answered null and the turn fell all
+ * the way through to `greet`. What the stranger Hale had cold-texted once actually got,
+ * for answering, was an intake greeting asking for their children's names.
+ */
+describe('co-parent invite · a yes that arrives after the 72h bound', () => {
+  /** One hour past the invitee's own window, which starts when they are texted. */
+  const LATE = new Date(NOW.getTime() + 74 * 3_600_000);
+
+  it('answers the late yes honestly, opens no session, and seats nobody', async () => {
+    const { fake, transport, deps } = harness();
+    const seeded = await upToInvite(fake, transport, deps);
+    const beforeReply = transport.sent.length;
+
+    const outcome = await text(
+      fake,
+      transport,
+      { ...deps, now: LATE },
+      PARTNER_PHONE,
+      'yes please',
+    );
+
+    expect(outcome).toEqual({ status: 'invite_expired_answered', role: 'co_parent' });
+    expect(transport.sent.slice(beforeReply).map((s) => s.body)).toEqual([
+      INVITE_EXPIRED_BY_LANGUAGE.en,
+    ]);
+    // The greeting is what this replaces — it must not be anywhere in the reply.
+    expect(transport.sent.at(-1)?.body).not.toContain('Hale');
+    // No session was opened, so their next word is not read as intake details.
+    expect(inserts(fake, schema.smsIntakeSessions)).toEqual([]);
+    // One seat, still: the primary parent's.
+    const seats = inserts(fake, schema.familyMembers);
+    expect(seats).toHaveLength(1);
+    expect(seats[0]).toMatchObject({ familyId: seeded.familyId, role: 'primary_parent' });
+    expect(auditActions(fake)).toContain('co_parent_invite_expired_answered');
+  });
+
+  /**
+   * THE POSITIVE CONTROL, and the reason the reader is gated on the message being an
+   * ANSWER at all: the same number, later, wanting Hale for their own family. A shadow
+   * that swallowed this would lock a person out of the product for having been invited.
+   */
+  it('still greets the same number when they are starting their own intake', async () => {
+    const { fake, transport, deps } = harness();
+    await upToInvite(fake, transport, deps);
+    const beforeReply = transport.sent.length;
+
+    const outcome = await text(
+      fake,
+      transport,
+      { ...deps, now: LATE },
+      PARTNER_PHONE,
+      'hi, I heard about you from a friend',
+    );
+
+    expect(outcome).toEqual({ status: 'greeted' });
+    expect(transport.sent.slice(beforeReply).map((s) => s.body)).not.toContain(
+      INVITE_EXPIRED_BY_LANGUAGE.en,
+    );
   });
 });
