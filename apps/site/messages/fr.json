@@ -233,7 +233,7 @@
         "title": "Hale suggère",
         "line": "Ce qui vaut la peine d’être su cette semaine, et pourquoi ça compte maintenant.",
         "checks": [
-          "Un topo le dimanche",
+          "Trois choses à faire près de chez vous, pas trente",
           "Un avis la semaine où une inscription ouvre"
         ],
         "linkLabel": "Guides parentaux"
@@ -293,7 +293,7 @@
   "PricingSection": {
     "eyebrow": "Trois tailles d’aide",
     "headline": "Tout l’essentiel est gratuit. Les forfaits payants, c’est pour l’action, jamais pour la surveillance.",
-    "lede": "Tout ce que Hale fait aujourd’hui — la surveillance, les plans, les réponses — est gratuit, à chaque étape et pour chaque enfant. Les forfaits payants n’ouvriront que lorsque Hale pourra faire une plus grande part du travail lui-même. Les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Un coparent est toujours gratuit.",
+    "lede": "Tout ce que Hale fait aujourd’hui — la recherche, la surveillance, les plans, les réponses — est gratuit, à chaque étape et pour chaque enfant. Les forfaits payants n’ouvriront que lorsque Hale pourra faire une plus grande part du travail lui-même. Les familles qui commencent maintenant gardent leur tarif fondateur pour toujours. Un coparent est toujours gratuit.",
     "foundingTitle": "Les familles fondatrices adhèrent gratuitement.",
     "foundingNote": "Les 100 premières familles reçoivent un insigne de fondateur permanent — et un accès prioritaire à l’ouverture de Plus et Famille.",
     "annualNote": "facturé à l’année — environ trois mois gratuits",
@@ -366,7 +366,7 @@
       }
     ],
     "getLede": "C’est le parent qui envoie le premier message — Hale ne texte jamais une famille en premier. En voici un, et ce qui est revenu.",
-    "getAfter": "Un court plan le dimanche, le lien la veille de l’ouverture d’une inscription, et un rappel quinze minutes avant.",
+    "getAfter": "Entre les choses qui comptent, il se fait discret : le lien la veille de l’ouverture d’une inscription, un rappel quinze minutes avant, et une ligne le soir pour demander comment la journée s’est passée.",
     "waysEyebrow": "Comment orienter une famille vers Hale",
     "waysHeadline": [
       {
@@ -487,7 +487,7 @@
     "items": [
       {
         "question": "Qu’est-ce que Hale?",
-        "answer": "Un numéro de téléphone que votre famille texte. Hale surveille les dates d’inscription et les programmes de votre région, planifie la semaine, répond aux questions de parentalité et s’occupe de l’administratif une fois que vous dites oui — le tout dans un seul fil de textos. Il n’y a aucune appli à installer ni aucun compte à créer."
+        "answer": "Un numéro de téléphone que votre famille texte. Il trouve ce qui se donne vraiment près de vos enfants — natation, camps, haltes-jeux, le centre ON y va du quartier — surveille les matins d’inscription là où vous habitez, vous remet le lien de votre ville la veille au soir, et revient vous demander comment ça s’est passé. Il répond aussi aux questions de parentalité, et s’occupe de l’administratif une fois que vous dites oui. Il n’y a aucune appli à installer ni aucun compte à créer."
       },
       {
         "question": "Comment est-ce que je commence?",
@@ -507,15 +507,15 @@
       },
       {
         "question": "Que surveille Hale, au juste?",
-        "answer": "Les inscriptions municipales dans 21 municipalités de la région du Grand Toronto — programmes de loisirs, cours de natation, camps et service de garde parascolaire — y compris la longueur d’avance réservée aux résidents, les villes qui ouvrent la natation à leur propre date, et les camps du congé des Fêtes dont les inscriptions ouvrent dès le mois d’août. Il surveille aussi le chrono des listes d’attente, qui est d’une journée dans certaines villes et de deux dans d’autres."
+        "answer": "Les inscriptions municipales dans 21 municipalités de la région du Grand Toronto — programmes de loisirs, cours de natation, camps et service de garde parascolaire — y compris la longueur d’avance réservée aux résidents, les villes qui ouvrent la natation à leur propre date, et les camps du congé des Fêtes dont les inscriptions ouvrent dès le mois d’août. Il surveille aussi le chrono des listes d’attente, qui est d’une journée dans certaines villes et de deux dans d’autres. Et quand le cours que vous vouliez est déjà complet, Hale continue de le surveiller et vous texte à la minute où une place se libère."
       },
       {
         "question": "À quelle fréquence Hale va-t-il me texter?",
-        "answer": "Un topo le dimanche, puis seulement quand quelque chose a besoin de vous : un avis la semaine où une inscription ouvre, le plan la veille au soir, et une relance dès l’ouverture. STOP fonctionne en tout temps."
+        "answer": "Un avis la semaine où une inscription ouvre, le plan la veille au soir, et une relance dès l’ouverture. Le soir, Hale demande en une ligne comment la journée s’est passée — répondez LESS et ça devient hebdomadaire, NO et ça s’arrête. STOP fonctionne en tout temps."
       },
       {
         "question": "Est-ce que Hale peut répondre aux questions de parentalité, ou seulement à celles d’horaire?",
-        "answer": "Les deux. Posez une question sur le sommeil, l’introduction des solides, l’apprentissage de la propreté, les repas difficiles, les crises de colère, le temps d’écran ou les routines, et vous obtenez une réponse ajustée à l’âge de votre enfant, en plus de l’offre du plan complet — deux ou trois textos que vous pouvez commencer ce soir. Trois jours plus tard, Hale demande comment ça s’est passé. Il ne pose jamais de diagnostic et ne nomme jamais de dose."
+        "answer": "Les deux. Posez une question sur le sommeil, l’introduction des solides, l’apprentissage de la propreté, les repas difficiles, les crises de colère, le temps d’écran ou les routines, et vous obtenez une réponse ajustée à l’âge de votre enfant, en plus de l’offre du plan complet — deux ou trois textos que vous pouvez commencer ce soir. Quelques jours plus tard, Hale demande comment ça s’est passé. Il ne pose jamais de diagnostic et ne nomme jamais de dose."
       },
       {
         "question": "Est-ce que Hale est gratuit?",
@@ -524,6 +524,14 @@
       {
         "question": "Est-ce que je dois utiliser le site Web?",
         "answer": "Non. Tout se passe dans le fil de textos, et Hale ne vous enverra jamais sur un site Web pour terminer une tâche que vous lui avez demandée par texto. Le dossier complet de ce que Hale a fait est à vous quand vous le voulez — demandez-le dans le fil, ou connectez-vous avec votre numéro de téléphone pour le consulter."
+      },
+      {
+        "question": "Est-ce que vous me direz si un cours est bon?",
+        "answer": "Pas encore. Aujourd’hui, Hale demande comment ça s’est passé pour que ses prochaines suggestions conviennent mieux à votre famille. Dire au prochain parent ce que d’autres familles en ont pensé, c’est ce que nous voulons bâtir ensuite — et quand nous le ferons, ce sera un nombre et un verdict, jamais les mots de qui que ce soit."
+      },
+      {
+        "question": "Pouvez-vous nous aider en voyage?",
+        "answer": "Pas encore. Aujourd’hui, je surveille les inscriptions et ce qui se passe là où vous habitez, dans la région du Grand Toronto."
       },
       {
         "question": "Est-ce que Hale est offert à l’extérieur du Canada?",
@@ -550,7 +558,7 @@
     "linkTorontoSwim": "Natation à Toronto",
     "linkBramptonSwim": "Natation à Brampton (non-résidents 21 sept.)",
     "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end",
-    "ctaSub": "Textez à Hale une question sur votre semaine et obtenez une réponse ajustée à l’âge de vos enfants. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
+    "ctaSub": "Textez à Hale l’âge de vos enfants et un code postal, et recevez trois choses à faire près de chez vous, pas trente. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
   },
   "ActivityCity": {
     "metaTitle": "Activités à faire avec les enfants à {city} · Hale",
@@ -560,7 +568,7 @@
     "commonQuestions": "Questions fréquentes sur {city}",
     "disclaimer": "Les programmes et les lieux changent — voyez ceci comme un point de départ et confirmez les détails directement auprès de votre ville ou du programme. Dernière révision le {date, date, long}.",
     "ctaHeading": "Demandez à Hale ce qui vaut le coup ce week-end à {city}",
-    "ctaSub": "Textez à Hale une question sur votre semaine et obtenez une réponse ajustée à l’âge de vos enfants. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
+    "ctaSub": "Textez à Hale l’âge de vos enfants et un code postal, et recevez trois choses à faire près de chez vous, pas trente. La surveillance des jours d’inscription se limite pour l’instant à la région du Grand Toronto. Gratuit pour commencer — vos données restent au Canada."
   },
   "Answers": {
     "metaTitle": "Guides parentaux · Hale",

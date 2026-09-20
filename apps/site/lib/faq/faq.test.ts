@@ -67,12 +67,44 @@ describe('the FAQ this build serves', () => {
     expect([...answers.matchAll(/never texts a number that hasn’t texted it first/g)]).toHaveLength(
       2,
     );
-    // Positive control: the proactive brief the old claim contradicted is still
-    // described, so this passes because the claim was scoped, not because the
-    // page went quiet about what Hale sends.
-    expect(answers).toContain('A brief on Sunday');
-    expect(answers).not.toContain('A brief on Monday');
-    expect(answers).not.toContain('Monday morning');
+    // Positive control: the proactive message the old claim contradicted is
+    // still described, so this passes because the claim was scoped, not because
+    // the page went quiet about what Hale sends.
+    expect(answers.toLowerCase()).toContain('a heads-up the week a registration opens');
+  });
+
+  it('claims no Sunday brief — that one needs a SECOND flag, not F14', () => {
+    // The registration ladder, the watched spots and the evening check-in are all
+    // one F14_ENABLED flip from sending, and the founder has ruled that
+    // merged-and-tested is claimable. The Sunday text is not in that set: the
+    // send is additionally gated by LOOP_SEND_ENABLED, which defaults OFF
+    // ("compose-not-send until the founder flips it"), so flipping F14 alone
+    // would not make it true. The site was claiming it anyway.
+    const all = FAQ.map((item) => `${item.question} ${item.answer}`).join(' ');
+    expect(all).not.toContain('Sunday');
+    expect(all).not.toContain('A brief on Monday');
+    expect(all).not.toContain('Monday morning');
+  });
+
+  it('answers the two roadmap questions with "Not yet." and claims nothing else', () => {
+    // This is where the roadmap honestly lives: a landing page that advertises
+    // what it has not built teaches a reader to discount everything else on it.
+    const find = (q: string) => FAQ.find((item) => item.question === q)?.answer ?? '';
+    const reviews = find('Will you tell me whether a class is any good?');
+    const travel = find('Can you help when we travel?');
+    for (const answer of [reviews, travel]) expect(answer.startsWith('Not yet.')).toBe(true);
+    // The travel answer STOPS. `find_activities` takes { subject, window?, childId? }
+    // and nothing else, and its own description forbids a location in `subject`
+    // — the town is the family's on-file GTA one, attached from their record. A
+    // parent who asks what is on in another city gets a search run against their
+    // own town, so "ask me about another city" would be a claim with no code
+    // under it.
+    expect(travel).toBe('Not yet. Today I watch registration and what’s on where you live, in the GTA.');
+    // Reviews may say what is real today (the asking) and what is wanted next,
+    // and must promise no corpus: there is no table, no verdict vocabulary, no
+    // k-threshold, and a web find has no stable id to hang a review on.
+    expect(reviews).toContain('asks how it went');
+    expect(reviews).toContain('never anyone’s words');
   });
 
   it('promises no quiet between the legs — the evening check-in asks every night', () => {
@@ -85,7 +117,7 @@ describe('the FAQ this build serves', () => {
     expect(answers).not.toContain('then quiet');
     // Positive control: the cadence answer is still here and still names what
     // Hale sends, so the absence above is a promise withheld, not a lost answer.
-    expect(answers).toContain('a heads-up the week a registration opens');
+    expect(answers.toLowerCase()).toContain('a heads-up the week a registration opens');
     expect(answers).toContain('STOP works at any time');
   });
 

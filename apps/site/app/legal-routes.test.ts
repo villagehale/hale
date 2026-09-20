@@ -344,6 +344,51 @@ describe('privacy — the scaffold the template supplies, in PIPEDA vocabulary',
     expect(privacyHtml).toContain('id="your-choices"');
   });
 
+  it('names what is read from each connected source, and what it is read for', () => {
+    // PIPEDA purpose limitation is per-source and per-use, not one paragraph: a
+    // parent connecting Gmail is owed the fields Hale reads off a message and the
+    // reason, in the same breath.
+    expect(privacyHtml).toContain('the subject, the sender, the first line');
+    expect(privacyHtml).toContain('an event’s title, start, end, place');
+    // The one retention rule the code actually keeps, stated because it is kept:
+    // NOTE_RETENTION_DAYS = 30, purged on the delete sweep.
+    expect(privacyHtml).toContain('for thirty days');
+  });
+
+  it('states no retention promise for the Gmail envelope, because nothing purges it', () => {
+    // Checked against the code before this block was written: `syncGmail` reads
+    // messageId, subject, from, snippet and receivedAt into `events.payload`, a
+    // jsonb column with no TTL, and NOTHING in apps/web or packages issues a
+    // delete against the events table — the only erasure is the families cascade
+    // when an account is erased. A retention sentence a public privacy page makes
+    // and the code does not keep is a worse defect than any wording above it, so
+    // the Gmail block says what is read and why, and says nothing about how long
+    // it is held. (The account-level erasure is stated where it is true, under
+    // residency and retention.)
+    // Scoped to the Gmail <li> alone: the two blocks beside it legitimately say
+    // "thirty days", because that IS the rule the code keeps for a day note.
+    const gmail = /<li><strong>Gmail \(optional\)\.<\/strong>([\s\S]*?)<\/li>/.exec(privacyHtml)?.[1] ?? '';
+    expect(gmail, 'the Gmail purpose block must render').toContain('the subject, the sender, the first line');
+    expect(gmail, 'the Gmail purpose block must say what it is read for').toContain('Why:');
+    for (const promise of ['deleted', 'discarded', 'kept', 'retain', 'days', 'as long as']) {
+      expect(gmail, `${promise} must not appear in the Gmail block`).not.toContain(promise);
+    }
+    // Positive control: a retention promise IS made elsewhere on this page, for
+    // the one thing the code purges — so the absence above is a claim withheld
+    // rather than a page that never mentions retention.
+    expect(privacyHtml).toContain('for thirty days');
+  });
+
+  it('opens no purpose block for a purpose nothing serves', () => {
+    // A purpose statement for an unbuilt feature is the same defect as a landing
+    // claim for one. Travel and shared reviews arrive with their code.
+    for (const unbuilt of ['Travel', 'shared reviews', 'what other families thought']) {
+      expect(privacyHtml, `${unbuilt} must not have a purpose block`).not.toContain(unbuilt);
+    }
+    // Positive control: the page DOES carry per-source purpose blocks.
+    expect(privacyHtml).toContain('Calendar (optional)');
+  });
+
   it('states plainly that no decision is made by machine alone (Law 25)', () => {
     expect(privacyHtml).toContain('No decision about your family is made by automated processing');
   });
