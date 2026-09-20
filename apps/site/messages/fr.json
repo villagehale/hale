@@ -675,7 +675,7 @@
     ]
   },
   "Jsonld": {
-    "orgDescription": "Hale est un numéro que vous textez — il trouve ce qui se passe près de vos enfants, surveille les fenêtres d’inscription des villes, planifie la semaine et s’occupe de l’administratif avec votre accord. Les données de chaque famille restent au Canada.",
-    "appDescription": "Un numéro que votre famille texte : Hale surveille les dates d’inscription dans toute la région du Grand Toronto, planifie la semaine et exécute avec votre accord — des preuves pour tout, et les données de votre famille ne quittent jamais le Canada."
+    "orgDescription": "Hale est un numéro que vous textez — il trouve ce qui se passe près de vos enfants, surveille les fenêtres d’inscription des villes, revient prendre des nouvelles et s’occupe de l’administratif avec votre accord. Les données de chaque famille restent au Canada.",
+    "appDescription": "Un numéro que votre famille texte : Hale surveille les dates d’inscription dans toute la région du Grand Toronto, revient prendre des nouvelles et exécute avec votre accord — des preuves pour tout, et les données de votre famille ne quittent jamais le Canada."
   }
 }

@@ -655,7 +655,7 @@
     ]
   },
   "Jsonld": {
-    "orgDescription": "Hale is a number you text — it finds what’s on near your kids, watches city registration windows, plans the week, and handles the admin with your say-so. Every family’s data stays in Canada.",
-    "appDescription": "A number your family texts: Hale watches registration dates across the GTA, plans the week, and executes with your approval — receipts for everything, and your family’s data never leaves Canada."
+    "orgDescription": "Hale is a number you text — it finds what’s on near your kids, watches city registration windows, comes back to ask how it went, and handles the admin with your say-so. Every family’s data stays in Canada.",
+    "appDescription": "A number your family texts: Hale watches registration dates across the GTA, comes back to ask how it went, and executes with your approval — receipts for everything, and your family’s data never leaves Canada."
   }
 }

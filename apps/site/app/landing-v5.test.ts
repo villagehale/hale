@@ -663,6 +663,13 @@ describe('T4 · no claim the code cannot back', () => {
     expect(html).toContain('application/ld+json');
     expect(html).toContain('A number your family texts');
     expect(html).not.toContain('passive household assistant');
+    // The graph is the answer-engine copy of the same claims, so it is held to
+    // the same flags. "plans the week" outlived the Sunday plan's removal from
+    // every human surface, and that leg needs LOOP_SEND_ENABLED as well as F14
+    // (`apps/web/lib/loop/send.ts:38-40`) — a second release event the page
+    // cannot see. It describes the F14 beats instead.
+    expect(html).not.toContain('plans the week');
+    expect(html).toContain('comes back to ask how it went');
   });
 });
 
