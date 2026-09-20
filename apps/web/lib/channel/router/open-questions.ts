@@ -111,7 +111,16 @@ export type OpenQuestionKind =
    * MESSAGE LEDGER rather than a row: it stands while its ask is Hale's last word to
    * that parent, and lapses at 08:00 whatever happens.
    */
-  | 'evening_check_in';
+  | 'evening_check_in'
+  /**
+   * "Is Mia home with you during the week, or at daycare?" — the weekday-care ask
+   * (VIL-360, channel/weekday-care). Listed for the reason `evening_check_in` is: its
+   * answer is not a polarity at all, so nothing here can resolve it, and a bare "yes"
+   * near it is AMBIGUOUS and must not be spent on an unrelated drafted action. Its
+   * openness is derived from the MESSAGE LEDGER — it stands while its ask is Hale's
+   * last word to that parent and lapses 48h later.
+   */
+  | 'weekday_care';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -163,6 +172,10 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // Record forces a choice anyway, and `ordinary` is the honest one: a wrong reading
   // could at most cost one acknowledgment nobody wanted.
   evening_check_in: 'ordinary',
+  // Never reached either (see KIND_ANSWERABLE): the answer is an either/or, not a
+  // polarity. `ordinary` is the honest choice — the write it stands in front of is a
+  // memory fact about this household's own week, disclosed to nobody.
+  weekday_care: 'ordinary',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
@@ -217,6 +230,13 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // is what `soleOpenKind` reads: a question Hale is holding makes a bare affirmative
   // ambiguous whether or not it is the thing being answered.
   evening_check_in: { yes: false, no: false },
+  // NEITHER POLARITY, and here it is the whole point rather than a consequence. The ask
+  // is an EITHER/OR - "home with you during the week, or at daycare?" - so a bare "yes"
+  // means nothing, and a resolver that bound one to this kind would be guessing at a
+  // fact that changes what Hale offers a household for months. The words that DO settle
+  // it are read by a deterministic grammar at a non-claiming gate, which needs no model.
+  // It is LISTED so a bare affirmative near it is ambiguous for everything else.
+  weekday_care: { yes: false, no: false },
 };
 
 export interface Answerable {
@@ -311,6 +331,8 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // draft would be claimed by a diary entry. None of the words this lane reads is an
   // affirmative anyway.
   evening_check_in: false,
+  // The ask prints no keyword at all - it ends in a question mark, not an instruction.
+  weekday_care: false,
 };
 
 /**
@@ -361,6 +383,9 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval' | 'email_alert_add'>,
   // No child name, deliberately: this phrase can end up in a list Hale prints back, and
   // the ask itself is the only place the names belong (rule #1).
   evening_check_in: 'how today went',
+  // No child name, deliberately: this phrase can end up in a list Hale prints back, and
+  // the ask itself is the only place the name belongs (rule #1).
+  weekday_care: 'how your weeks are covered',
 };
 
 /**
@@ -530,6 +555,17 @@ export interface OpenQuestionSources {
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
   ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
+   * The weekday-care ask, while it is Hale's last word to this parent and inside its
+   * 48h window — or null (VIL-360, channel/weekday-care/question.ts).
+   *
+   * Per-PARENT like the evening check-in and for the same reason: the question went to
+   * one phone. Ledger-derived like it too, so there is no row to keep in step.
+   */
+  weekdayCare(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ id: string; askedAt: Date } | null>;
 }
 
 /**
@@ -560,6 +596,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         assent,
         emailOffers,
         evening,
+        weekdayCare,
       ] = await Promise.all([
           sources.pendingApprovals(database, input.familyId),
           sources.introOptInOpen(database, {
@@ -575,6 +612,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           sources.coParentAssent(database, input),
           sources.emailAlertOffers(database, input),
           sources.eveningCheckIn(database, input),
+          sources.weekdayCare(database, input),
         ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(
@@ -705,6 +743,19 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.evening_check_in,
           askedAt: evening.askedAt,
           solicited: SOLICITED.evening_check_in,
+        });
+      }
+      if (weekdayCare) {
+        // Hale's own words about its own ask, with no child name in them — the name is
+        // in the text the parent is holding, and this line goes to a model (rule #1).
+        questions.push({
+          id: weekdayCare.id,
+          kind: 'weekday_care',
+          description: 'How this household covers its weekdays',
+          subject: SUBJECT.weekday_care,
+          answerable: KIND_ANSWERABLE.weekday_care,
+          askedAt: weekdayCare.askedAt,
+          solicited: SOLICITED.weekday_care,
         });
       }
       if (promise) {

@@ -38,6 +38,8 @@ import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { recordStatedState } from '~/lib/channel/stated-state';
+import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
+import { recordWeekdayCare } from '~/lib/care/weekday';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
@@ -57,10 +59,11 @@ import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
-import { eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
+import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import {
   approvalHandler,
   coParentAssentHandler,
+  weekdayCareHandler,
   connectorDisconnectHandler,
   connectorLinkHandler,
   emailAlertAddHandler,
@@ -346,6 +349,10 @@ export function defaultHandlers(): DeterministicHandler[] {
     // Owns the co-parent scope question and declines every reading of it — see the
     // handler's own note. Listed so the router never resolves a kind nobody owns.
     coParentAssentHandler(),
+    // Beside it, and for the same reason: it claims nothing, so its POSITION in this
+    // chain is free rather than load-bearing. Said out loud so a reader does not have to
+    // work out what it is shadowing (nothing).
+    weekdayCareHandler(),
     healthReplyHandler(defaultHealthReplyDeps()),
     emailAlertAddHandler(),
     planReplyHandler(defaultPlanReplyDeps()),
@@ -617,6 +624,18 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // handled (health/reply.ts), so a natural statement and the word "done" land on the
     // same row through the same audited transaction.
     recordStatedState: (db, input) => recordStatedState(db, input, defaultHealthReplyDeps()),
+    // VIL-360 · the ask's own last-word reader, plus the same-door rule the evening
+    // check-in keeps. Composed HERE rather than in the router because both halves are
+    // ledger reads and the router's question is the single one they answer together.
+    weekdayCareAnswerTarget: async (db, input) => {
+      const ask = await weekdayCareQuestion(db, input);
+      if (!ask) return { status: 'no_open_ask' as const };
+      const sameDoor = await answeredOnTheSameChannel(db, ask.id, input.inboundChannelMessageId);
+      return sameDoor
+        ? { status: 'open' as const, childId: ask.childId }
+        : { status: 'wrong_channel' as const };
+    },
+    recordWeekdayCare,
     // VIL-293. The view is read beside the model call, and the mint is bound here for
     // the same reason the two writers above it are: the row is minted against the SENT
     // message, and the router is the only thing that knows which row that was.
@@ -723,6 +742,10 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     // already implied by the message ledger, so a stored flag would be a second answer
     // every other sender in the product would have to remember to clear.
     eveningCheckIn: (database, input) => eveningCheckInQuestion(database, input),
+    // VIL-360 · the weekday-care ask, through the same kind of last-word reader. It has
+    // a 48h clock of its own rather than the evening's 08:00 lapse, because a household
+    // arrangement does not go stale by breakfast.
+    weekdayCare: (database, input) => weekdayCareQuestion(database, input),
     coParentAssent: async (database, { parentUserId, familyId, now }) => {
       const pending = await loadPendingAssent(database, parentUserId, now);
       if (!pending || pending.role !== 'co_parent' || pending.familyId !== familyId) return null;

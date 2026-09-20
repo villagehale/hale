@@ -791,6 +791,30 @@ export function coParentAssentHandler(): DeterministicHandler {
   };
 }
 
+/**
+ * VIL-360 · the weekday-care question's OWNER, and it claims nothing.
+ *
+ * The question is listed to the router (open-questions.ts) so that every OTHER handler
+ * treats a bare affirmative as ambiguous while Hale is waiting to hear how a household
+ * covers its weekdays. The answer itself is read one gate later, by a deterministic
+ * grammar that writes a fact and lets the coach reply — because the answer is an
+ * either/or in ordinary English, not a polarity anything here could resolve.
+ *
+ * WITHOUT AN OWNER the resolver could read a sentence as this kind and find nobody to
+ * hand it to, which `route.ts` logs at ERROR as an impossible state. Declining here says
+ * the same thing truthfully: the kind has an owner, and its owner does not act on a
+ * reading.
+ */
+export function weekdayCareHandler(): DeterministicHandler {
+  return {
+    name: 'weekday_care',
+    resolves: new Set<OpenQuestionKind>(['weekday_care']),
+    async handle(): Promise<HandlerVerdict> {
+      return { claimed: false };
+    },
+  };
+}
+
 /** Anything a handset made a link of. Loose on purpose: an `http://` paste is CLAIMED
  * and refused by name, rather than falling through to a coach that cannot bind it. */
 const LINK_TOKEN = /https?:\/\/\S+/i;

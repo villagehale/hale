@@ -30,6 +30,8 @@ import {
 } from '~/lib/channel/reconcile/reconcile';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
+import type { WeekdayCare } from '~/lib/care/weekday';
+import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
 import type { ApologyFallback, TurnApology } from './apology';
 import {
   type ChannelCoachRuntime,
@@ -369,6 +371,43 @@ export interface ChannelRouterDeps {
     database: Database,
     input: { familyId: string; parentUserId: string; body: string; now: Date },
   ): Promise<StatedStateOutcome>;
+  /**
+   * IS THIS MESSAGE AN ANSWER TO THE WEEKDAY-CARE ASK, AND ABOUT WHICH CHILD? (VIL-360)
+   *
+   * One dep rather than two, because the two questions behind it are one question: an
+   * ask that is open and an answer that came through a DIFFERENT door are both "not an
+   * answer to this", and the router has nothing useful to do with either half alone.
+   * Both refusals are named rather than folded into a null (rule #11) — `wrong_channel`
+   * is a forwarded email landing inside the window, and it is a different thing to know
+   * than a question nobody asked.
+   *
+   * Non-nullable, and paired with the writer below: a router that could be assembled
+   * without either would hear "she's home with me" in answer to a question Hale asked
+   * yesterday and write nothing, while looking exactly like an ordinary coach turn.
+   */
+  weekdayCareAnswerTarget(
+    database: Database,
+    input: {
+      familyId: string;
+      parentUserId: string;
+      inboundChannelMessageId: string;
+      now: Date;
+    },
+  ): Promise<
+    { status: 'open'; childId: string } | { status: 'no_open_ask' } | { status: 'wrong_channel' }
+  >;
+  /** Write down how this household covers its weekdays (lib/care/weekday.ts). */
+  recordWeekdayCare(
+    database: Database,
+    input: {
+      familyId: string;
+      parentUserId: string;
+      childId: string;
+      care: WeekdayCare;
+      provider: string | null;
+      now: Date;
+    },
+  ): Promise<unknown>;
   /**
    * What this family's ledger says, read beside the model call — the reconciliation
    * primitive's view (VIL-293). Non-nullable (rule #11): a router that could not read
@@ -733,6 +772,24 @@ export async function routeChannelMessage(
     );
   }
 
+  // GATE 2c-bis — HOW DOES THIS HOUSEHOLD COVER ITS WEEKDAYS? (VIL-360)
+  //
+  // GATE 2c's shape exactly, and for its reasons: it runs after every deterministic
+  // handler and after the resolver, writes at most one fact, and DOES NOT CLAIM THE
+  // TURN. The coach composes the reply, with the fact already in its context
+  // (coach/context.ts reads live memory facts), so "reply like a friend" is satisfied by
+  // subtraction rather than by a new template or a twelfth coach tool.
+  //
+  // IT IS HANDED THE OPEN-QUESTION ARRAY, not asked to load one. `readOpenQuestions` is
+  // memoised per turn and GATE 2b has already awaited it on any turn where anything is
+  // standing, so the common case — nothing open — costs zero selects here. Only a turn
+  // where Hale is genuinely holding this question pays for the reader, and the reader is
+  // what supplies the CHILD: the parent's words say "she's home with me" and name
+  // nobody, so the subject comes from the ask's own dedupe key.
+  if ((await turn.openQuestions()).some((question) => question.kind === 'weekday_care')) {
+    await recordWeekdayCareAnswer(deps, turn);
+  }
+
   // GATE 3 — can we afford to think. Counted only here, so a deterministic answer never
   // spends a parent's hourly budget — and counted once per TEXT, because `check` COUNTS
   // as it decides: a turn deferred through an outage would otherwise come back over a
@@ -962,6 +1019,65 @@ interface UnplacedAnswer {
  *   CARRY ON. Everything else, including a handler that declined the resolution because
  *   the row moved underneath it. Logged, named, never silent (rule #11).
  */
+/**
+ * What GATE 2c-bis did. Every outcome is NAMED (rule #11), and `unreadable` is the one
+ * that earns its place: it means Hale asked an either/or and the words that came back
+ * settle neither side, which is the signal the grammar has drifted from how parents
+ * actually answer. It is invisible any other way — the turn looks like every other
+ * coach turn.
+ */
+type WeekdayCareReplyOutcome =
+  | { status: 'recorded' }
+  | { status: 'unreadable' }
+  | { status: 'not_recorded'; reason: 'no_open_ask' | 'wrong_channel' };
+
+/**
+ * Read the answer, write the fact, say nothing.
+ *
+ * The child comes from the ASK, never from the words: "she's home with me" names
+ * nobody, and a reader that let the message choose its own subject would be a reader any
+ * sentence could aim at any child.
+ */
+async function recordWeekdayCareAnswer(
+  deps: ChannelRouterDeps,
+  turn: HandlerContext,
+): Promise<WeekdayCareReplyOutcome> {
+  // NO INBOUND ROW, NO ANSWER. The same-door rule is a comparison between two ledger
+  // rows, and a turn with no row of its own is one the rule cannot be applied to.
+  if (turn.inboundChannelMessageId === null) {
+    return { status: 'not_recorded', reason: 'wrong_channel' };
+  }
+  const target = await deps.weekdayCareAnswerTarget(deps.database, {
+    familyId: turn.familyId,
+    parentUserId: turn.parentUserId,
+    inboundChannelMessageId: turn.inboundChannelMessageId,
+    now: turn.now,
+  });
+  if (target.status !== 'open') return { status: 'not_recorded', reason: target.status };
+
+  const reading = readWeekdayCare(turn.body);
+  if (reading.status === 'nothing_stated') {
+    // {familyId, status} and NOTHING else — GATE 2c's own logger is the precedent, and
+    // the body of a message about a child's care arrangement is the last thing that
+    // belongs in a log line.
+    deps.log.error(
+      { familyId: turn.familyId, status: 'unreadable' },
+      'channel router: the weekday-care ask is standing and the reply settles neither side',
+    );
+    return { status: 'unreadable' };
+  }
+
+  await deps.recordWeekdayCare(deps.database, {
+    familyId: turn.familyId,
+    parentUserId: turn.parentUserId,
+    childId: target.childId,
+    care: reading.care,
+    provider: reading.provider,
+    now: turn.now,
+  });
+  return { status: 'recorded' };
+}
+
 async function resolveNaturalReply(
   deps: ChannelRouterDeps,
   turn: HandlerContext,

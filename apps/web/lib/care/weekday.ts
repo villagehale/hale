@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
 import { CONSUMED_SEND_STATUSES, SENT_STATUSES } from '~/lib/channel/ledger';
 import { proactiveNudgeTemplateKey } from '~/lib/channel/nudge/shell';
+import { writeFact } from '~/lib/memory/facts';
 
 /**
  * HOW THIS HOUSEHOLD'S WEEKDAYS ARE COVERED — the fact, its flag, and its one
@@ -199,4 +200,69 @@ export async function loadWeekdayCareContext(
     ),
   ]);
   return { stated, askedBefore, weekendFindSent };
+}
+
+/** What the write did. One shape, and the audit row's `after` is built from it. */
+export interface WeekdayCareWriteOutcome {
+  status: 'recorded';
+  care: WeekdayCare;
+  /** Whether a provider was named, and NEVER the name. `audit_log` is immutable and
+   * PIPEDA-exportable and has none of the teen redaction a fact read has. */
+  providerNamed: boolean;
+}
+
+/**
+ * THE ONE WRITER. Audit row FIRST, then the fact, in ONE transaction — the shape
+ * `recordCheckpointDone` uses, for the reason it states: a permanent state change that
+ * landed without its trail is what rule #6 admits no exception to.
+ *
+ * THE AUDIT TARGET IS THE FAMILY, NOT THE FACT. `writeFact` returns its id only after
+ * the insert, so "audit first" and "point the audit at the new fact" cannot both be
+ * true. `recordCheckpointDone` resolved this before us and its answer is the one to
+ * copy: `targetTable` names the table, `targetId` names the family. Atomicity is the
+ * invariant; the ORDER inside one transaction is not, and the row an audit points at
+ * does not have to be a row that did not exist yet. The child is recoverable from the
+ * fact, and the ask cannot name a teen in the first place.
+ *
+ * `confidence: 1` — the parent said it in these words, which is what the
+ * `CONFIDENCE_FLOOR` exists to distinguish from a hunch.
+ */
+export async function recordWeekdayCare(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    childId: string;
+    care: WeekdayCare;
+    provider: string | null;
+    now: Date;
+  },
+): Promise<WeekdayCareWriteOutcome> {
+  const providerNamed = input.provider !== null;
+  await database.transaction(async (tx) => {
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      actionTaken: 'weekday_care_recorded',
+      targetTable: 'family_memory_facts',
+      targetId: input.familyId,
+      // Enum-shaped provenance only. The provider string stays in the one family-scoped
+      // fact row it was written to.
+      after: { care: input.care, providerNamed, source: 'sms_reply' },
+    });
+    // A parent can answer twice, and a child moves from home to daycare in September.
+    // Superseding rather than appending is what keeps one live row per child and what
+    // records WHEN it became true.
+    await writeFact(tx, {
+      familyId: input.familyId,
+      childId: input.childId,
+      factType: 'logistic',
+      factKey: WEEKDAY_CARE_FACT_KEY,
+      factValue: { care: input.care, provider: input.provider },
+      confidence: 1,
+      inferredBy: WEEKDAY_CARE_FACT_WRITER,
+      validFrom: input.now,
+    });
+  });
+  return { status: 'recorded', care: input.care, providerNamed };
 }
