@@ -247,7 +247,7 @@ describe('the FAQ translation source mirrors the canonical English list', () => 
   });
 });
 
-describe('VIL-325 designer-locked intake copy — homepage steps and About.cta', () => {
+describe('VIL-325 designer-locked intake copy — the first-text sentence and About.cta', () => {
   const bundles = Object.fromEntries(
     (['en', 'fr', 'zh'] as const).map((locale) => [
       locale,
@@ -257,35 +257,43 @@ describe('VIL-325 designer-locked intake copy — homepage steps and About.cta',
     ]),
   );
 
-  it('pins English Landing.steps[0] and About.cta exactly', () => {
-    expect(bundles.en.Landing.steps[0]).toEqual({
-      when: 'Right now',
-      step: 'You text names, ages, and a postal code',
-      body: 'One text. No app, no account.',
-    });
+  /**
+   * The founder locked a SENTENCE, not an array index.
+   *
+   * It was pinned as `Landing.steps[0]`, an object in a three-step card grid that
+   * v5 retired — the sequence is the hero's spine now. So the pin follows the
+   * words into the how-it-works prose rather than dying with the array: what is
+   * locked is that the first text is names, ages and a postal code (never "hi"),
+   * that there is no app and no account, and that the thread has no menus. A pin
+   * on where the sentence sat would have made a layout change look like a
+   * founder decision being overturned.
+   */
+  const LOCKED: Record<string, string[]> = {
+    en: ['You text names, ages, and a postal code', 'No app, no account.', 'no menus'],
+    fr: ['les noms, les âges et un code postal', 'Pas d’appli, pas de compte.', 'pas de menus'],
+    zh: ['名字、年龄和一个邮编', '不用装应用，不用注册账号。', '没有菜单'],
+  };
+
+  it('keeps the locked words in the Landing namespace of every locale', () => {
+    for (const locale of ['en', 'fr', 'zh'] as const) {
+      const landing = JSON.stringify(bundles[locale].Landing);
+      for (const phrase of LOCKED[locale] ?? []) {
+        expect(landing, `${locale}.Landing must still say "${phrase}"`).toContain(phrase);
+      }
+      expect(landing, `${locale} must not reopen "you say hi"`).not.toMatch(/You say hi|dites bonjour/i);
+    }
+    expect(JSON.stringify(bundles.en.Landing)).not.toMatch(/no forms/i);
+  });
+
+  it('pins About.cta exactly, in all three locales', () => {
     expect(bundles.en.About.cta).toBe(
       'It starts with names, ages, and a postal code. No app, no account.',
     );
-    expect(bundles.en.Landing.threadLede).toContain('no menus');
-    expect(JSON.stringify(bundles.en.Landing.steps[0])).not.toMatch(/You say hi|no forms/i);
-    expect(bundles.en.About.cta).not.toMatch(/no form/i);
-  });
-
-  it('mirrors the same keys in FR and ZH without inventing extra English', () => {
-    expect(bundles.fr.Landing.steps[0]).toEqual({
-      when: 'Tout de suite',
-      step: 'Vous textez les noms, les âges et un code postal',
-      body: 'Un texto. Pas d’appli, pas de compte.',
-    });
     expect(bundles.fr.About.cta).toBe(
       'Ça commence par les noms, les âges et un code postal. Pas d’appli, pas de compte.',
     );
-    expect(bundles.zh.Landing.steps[0]).toEqual({
-      when: '现在就可以',
-      step: '你发来名字、年龄和一个邮编',
-      body: '一条短信就行。不用装应用，不用注册账号。',
-    });
     expect(bundles.zh.About.cta).toBe('一切从名字、年龄和一个邮编开始。不用装应用，不用注册账号。');
+    expect(bundles.en.About.cta).not.toMatch(/no form/i);
   });
 
   it('renders the locked About.cta on /about', async () => {

@@ -587,7 +587,7 @@ describe('the body and UI face is Figtree', () => {
 
   it('sets body copy at 400 and the interactive chrome at 500–600', () => {
     expect(CSS).toMatch(/body \{[\s\S]*?font-weight: 400;[\s\S]*?\}/);
-    for (const selector of ['.v4-navlink', '.v4-bubble', '.v4-chip']) {
+    for (const selector of ['.v4-navlink', '.v4-bubble']) {
       const weight = Number(only(selector, 'font-weight'));
       expect(weight, `${selector} asks for ${weight}`).toBeGreaterThanOrEqual(500);
       expect(weight, `${selector} asks for ${weight}`).toBeLessThanOrEqual(600);
@@ -681,7 +681,7 @@ describe('the wordmark is drawn art, not set type', () => {
       'site-footer',
       'legal-layout',
       'text-entry',
-      'landing/v4/landing-v4',
+      'landing/v5/landing-v5',
     ].map((name) => readFileSync(fileURLToPath(new URL(`../components/${name}.tsx`, import.meta.url)), 'utf8'));
     const drawn = components.flatMap((source) => [...source.matchAll(/<Wordmark\b/g)]);
     expect(drawn).toHaveLength(5);
@@ -733,9 +733,13 @@ describe('the accent is neither slant nor colour', () => {
       }
     });
     expect(amberDisplay).toEqual([]);
-    // Positive control: amber is still painted, on what it is reserved to — the
-    // 01/02/03 numerals, 2.4rem of display serif, plus the CTA/link family.
-    expect(only('.v4-card-n', 'color')).toBe('var(--color-amber)');
+    // Positive control: amber is still painted, on what it is reserved to. The
+    // 01/02/03 numerals were the large-decorative example until v5 retired the
+    // numbered card grid (the sequence is the hero's spine now, and numbering it
+    // twice printed the same conversation twice); the solid CTA is the one that
+    // remains, and it is the reason the reservation exists.
+    expect(only('.v4-btn-solid', 'background')).toBe('var(--color-navy)');
+    expect(CSS).toContain('var(--color-amber)');
   });
 
   it('never paints the small letterspaced caps in amber, which they fail AA in', () => {
@@ -744,7 +748,9 @@ describe('the accent is neither slant nor colour', () => {
     // screenshot of this page. So the eight landing kickers take navy in light and
     // keep the amber only in dark, where it clears (8.4:1 on the navy ground).
     // Amber is left where it is large or decorative: the numerals above.
-    for (const kicker of ['.v4-eyebrow', '.v4-when']) {
+    // One kicker left: v5 labels two sections rather than seven, and the card
+    // numeral's own kicker went with the grid it rode on.
+    for (const kicker of ['.v4-eyebrow']) {
       const color = only(kicker, 'color');
       expect(color, kicker).not.toContain('--color-amber');
       expect(color, `${kicker} keeps the amber in dark only`).toMatch(
@@ -764,31 +770,18 @@ describe('the accent is neither slant nor colour', () => {
 });
 
 describe('the pronunciation line is quieter than the labels that share its style', () => {
-  it('drops 15–20% of its size, and none of its contrast', () => {
-    // The founder asked for it quieter by 15–20%, in size and/or contrast.
-    // Contrast was not available: at 9.8px a tint would have bought the quiet by
-    // pushing the line under the 4.5:1 floor small caps answer to. So the whole
-    // reduction is size, and the class itself is asserted to paint no colour at
-    // all rather than left unstated (the hero's own deepening rides the
-    // `.v4-hero-top` descendant, which reads against the sky, not the canvas).
-    const eyebrow = Number(only('.v4-eyebrow', 'font-size').replace('rem', ''));
-    const pronounce = Number(only('.v4-pronounce', 'font-size').replace('rem', ''));
-    expect(pronounce / eyebrow).toBeLessThanOrEqual(0.85);
-    expect(pronounce / eyebrow).toBeGreaterThanOrEqual(0.8);
-    expect(declarations('.v4-pronounce', 'color')).toEqual([]);
-    expect(declarations('.v4-pronounce', 'opacity')).toEqual([]);
-  });
-
-  it('quiets the pronunciation only — every other eyebrow keeps its size', () => {
-    // The class exists so the reduction lands on the one line the founder named.
-    // A change to .v4-eyebrow itself would have shrunk the seven section labels
-    // that carry the page's structure.
-    const landing = readFileSync(
-      fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
-      'utf8',
-    );
-    expect([...landing.matchAll(/v4-pronounce/g)]).toHaveLength(1);
-    expect([...landing.matchAll(/className="v4-eyebrow/g)].length).toBeGreaterThanOrEqual(5);
+  it('has no size rung left for a hero pronunciation — it lives in the footer now', () => {
+    // .v4-pronounce existed so the founder's 15% reduction landed on the ONE
+    // eyebrow that labelled nothing: the middle-dot name string over the shore.
+    // v5 took that string out of the hero and left it in the footer, which sets
+    // the name in its own markup — so the rung has nothing to size and is gone
+    // rather than kept for a caller that no longer exists. The eyebrow COUNT is
+    // a landing concern and is pinned in landing-v5.test.ts.
+    expect(CSS).not.toContain('.v4-pronounce');
+    // Positive control: the section eyebrow the reduction was measured against
+    // is untouched, and still the letterspaced small-caps rung it was.
+    expect(only('.v4-eyebrow', 'text-transform')).toBe('uppercase');
+    expect(only('.v4-eyebrow', 'letter-spacing')).toBe('0.24em');
   });
 });
 
@@ -807,12 +800,16 @@ describe('type set over the shore art carries its own veil, in both bands', () =
       declarations('.v4-hero-top .v4-hero-body::before', 'background'),
       'the veil must not be re-scoped to the hero',
     ).toEqual([]);
-    // Positive control: both bands really do wear that class over the art.
+    // Positive control: the band that still sets type over the shore wears that
+    // class. v5 took the photograph out of the hero — the argument up there is
+    // the loop, not the name — so the closing band is the only one left, and the
+    // veil must stay a property of setting type on the shore rather than being
+    // re-scoped to whichever band happens to have it this year.
     const landing = readFileSync(
-      fileURLToPath(new URL('../components/landing/v4/landing-v4.tsx', import.meta.url)),
+      fileURLToPath(new URL('../components/landing/v5/landing-v5.tsx', import.meta.url)),
       'utf8',
     );
-    expect([...landing.matchAll(/className="v4-hero-body/g)]).toHaveLength(2);
+    expect([...landing.matchAll(/className="v4-hero-body/g)]).toHaveLength(1);
   });
 
   it('fades the trailing edge of every phone card rail, so the cut reads as a carousel', () => {
@@ -821,7 +818,9 @@ describe('type set over the shore art carries its own veil, in both bands', () =
     // hard slice reads as a rendering bug; the fade is what says the cut is
     // deliberate. Asserted on all three rail classes, under the phone query only
     // — a mask at desktop width would fade a grid that does not scroll.
-    for (const rail of ['.v4-cardgrid', '.v4-cardgrid-4', '.v4-cardgrid-2']) {
+    // One rail left: v5 ships a single card grid, so the other two variants went
+    // with the sections that used them.
+    for (const rail of ['.v4-cardgrid-4']) {
       const masked: { value: string; query: string }[] = [];
       root.walkRules((rule) => {
         if (!selectorList(rule.selector).includes(rail)) return;
