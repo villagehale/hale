@@ -157,14 +157,31 @@ describe('the memory-inference window (the 06:00Z cron that failed on 2026-08-01
   it('aborts before inferring for a single family', async () => {
     const { database, capture } = fakeDb();
     const { client, create } = brokeClient();
+    const synthesize = vi.fn(async () => ({ applied: false, families: 1, results: [] }));
 
-    const result = await runInferenceCron(database, { client }, NOW);
+    const result = await runInferenceCron(database, { client, synthesize }, NOW);
 
     expect(result.aborted?.failure).toBe('billing');
     expect(result.aborted?.skipped).toBe(1);
     expect(result.processed).toBe(0);
     expect(create).toHaveBeenCalledTimes(1);
     assertNoFamilyWork(capture);
+  });
+
+  it('still runs the memory pass, which the provider does not own (VIL-354)', async () => {
+    // The pass rides this slot but makes zero model calls, so the LLM kill switch is
+    // not its gate: stopping memory-integrity work because Anthropic's balance is low
+    // would be an unrelated dependency. Asserted here, on the abort path, because that
+    // is the only place the two can be told apart.
+    const { database } = fakeDb();
+    const { client } = brokeClient();
+    const synthesize = vi.fn(async () => ({ applied: false, families: 1, results: [] }));
+
+    const result = await runInferenceCron(database, { client, synthesize }, NOW);
+
+    expect(synthesize).toHaveBeenCalledWith(database, [FAMILY_ID], NOW);
+    expect(result.synthesis.families).toBe(1);
+    expect(result.aborted?.failure).toBe('billing');
   });
 });
 

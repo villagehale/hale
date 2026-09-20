@@ -6,6 +6,7 @@ import { buildDistillTools, buildInferenceTools } from '~/lib/cron/inference-too
 import { recordCheckpointDone } from '~/lib/health/reply';
 import { recordRegistrationOutcome } from '~/lib/registration/sequence/reply';
 import { createTestDb, seedChild, seedFamily, type TestDb } from '~/lib/testing/pglite';
+import { closeFacts, writeFact } from './facts';
 
 /**
  * MEM-2 / MEM-3 — what a memory WRITE is obliged to record.
@@ -246,5 +247,111 @@ describe('the non-agent fact writers', () => {
 
     const live = (await liveFacts(familyId)).filter((f) => f.validUntil === null);
     expect(live).toHaveLength(1);
+  });
+});
+
+describe('closeFacts — retiring a fact by id', () => {
+  const WRITTEN_AT = new Date('2026-04-01T09:00:00.000Z');
+  const CLOSED_AT = new Date('2026-09-15T02:00:00.000Z');
+
+  async function seedLive(familyId: string, factKey: string, validFrom = WRITTEN_AT) {
+    const { factId } = await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'routine',
+      factKey,
+      factValue: { summary: factKey },
+      confidence: 0.9,
+      inferredBy: 'chat_distiller',
+      validFrom,
+    });
+    return factId;
+  }
+
+  async function factById(id: string) {
+    const [row] = await db.database
+      .select()
+      .from(schema.familyMemoryFacts)
+      .where(eq(schema.familyMemoryFacts.id, id));
+    if (!row) throw new Error(`no fact ${id}`);
+    return row;
+  }
+
+  it('closes the ids it was given and leaves every other live fact alone', async () => {
+    const { familyId } = await seedFamily(db.database);
+    const doomed = await seedLive(familyId, 'naps_at_one');
+    const spared = await seedLive(familyId, 'dinner_at_six');
+
+    const result = await closeFacts(db.database, {
+      factIds: [doomed],
+      closedAt: CLOSED_AT,
+      supersededBy: null,
+    });
+
+    expect(result).toEqual({ closedFactIds: [doomed], alreadyClosedFactIds: [] });
+    expect((await factById(doomed)).validUntil).toEqual(CLOSED_AT);
+    expect((await factById(doomed)).supersededBy).toBeNull();
+    expect((await factById(spared)).validUntil).toBeNull();
+  });
+
+  it('names the ids it did NOT close rather than reporting a silent success', async () => {
+    const { familyId } = await seedFamily(db.database);
+    const factId = await seedLive(familyId, 'naps_at_one');
+    await closeFacts(db.database, { factIds: [factId], closedAt: CLOSED_AT, supersededBy: null });
+    const afterFirst = await factById(factId);
+
+    const second = await closeFacts(db.database, {
+      factIds: [factId],
+      closedAt: new Date('2026-09-16T02:00:00.000Z'),
+      supersededBy: null,
+    });
+
+    expect(second).toEqual({ closedFactIds: [], alreadyClosedFactIds: [factId] });
+    // A second run is not just reported as a no-op, it IS one: the first close's
+    // instant stands, so a nightly pass cannot walk a retirement date forward.
+    expect(await factById(factId)).toEqual(afterFirst);
+  });
+
+  it('points the losers of a merge at the winner, and the winner stays live', async () => {
+    const { familyId } = await seedFamily(db.database);
+    const winner = await seedLive(familyId, 'bedtime_routine');
+    const loserA = await seedLive(familyId, 'bedtime-routine');
+    const loserB = await seedLive(familyId, 'Bedtime Routine');
+
+    const result = await closeFacts(db.database, {
+      factIds: [loserA, loserB],
+      closedAt: CLOSED_AT,
+      supersededBy: winner,
+    });
+
+    expect(result.closedFactIds.sort()).toEqual([loserA, loserB].sort());
+    expect((await factById(loserA)).supersededBy).toBe(winner);
+    expect((await factById(loserB)).supersededBy).toBe(winner);
+    const survivor = await factById(winner);
+    expect(survivor.validUntil).toBeNull();
+    expect(survivor.factKey).toBe('bedtime_routine');
+    expect(survivor.inferredBy).toBe('chat_distiller');
+  });
+
+  it('never ends an interval before it opened — a close older than the fact clamps', async () => {
+    const { familyId } = await seedFamily(db.database);
+    const factId = await seedLive(familyId, 'naps_at_one', new Date('2026-06-01T00:00:00.000Z'));
+
+    await closeFacts(db.database, {
+      factIds: [factId],
+      closedAt: new Date('2026-01-01T00:00:00.000Z'),
+      supersededBy: null,
+    });
+
+    expect((await factById(factId)).validUntil).toEqual(new Date('2026-06-01T00:00:00.000Z'));
+  });
+
+  it('asked for nothing, closes nothing — and does not go to the database to find out', async () => {
+    const { familyId } = await seedFamily(db.database);
+    const spared = await seedLive(familyId, 'dinner_at_six');
+
+    expect(await closeFacts(db.database, { factIds: [], closedAt: CLOSED_AT, supersededBy: null }))
+      .toEqual({ closedFactIds: [], alreadyClosedFactIds: [] });
+    expect((await factById(spared)).validUntil).toBeNull();
   });
 });
