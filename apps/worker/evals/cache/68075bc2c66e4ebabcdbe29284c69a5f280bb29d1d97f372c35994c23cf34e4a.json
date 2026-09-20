@@ -1,0 +1,7 @@
+{
+  "value": {
+    "verdict": "none",
+    "tags": []
+  },
+  "stopReason": "tool_use"
+}

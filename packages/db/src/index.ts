@@ -33,6 +33,21 @@ export type {
   CivicVenueKind,
 } from './schema/civic.js';
 export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';
+export {
+  ACTIVITY_REVIEW_AGE_BANDS,
+  ACTIVITY_REVIEW_TAGS,
+  ACTIVITY_VERDICTS,
+  MAX_ACTIVITY_REVIEW_TAGS,
+  REVIEW_SUBJECT_SOURCES,
+} from './schema/activity-reviews.js';
+export type {
+  ActivityReview,
+  ActivityReviewAgeBand,
+  ActivityReviewTag,
+  ActivityVerdict,
+  NewActivityReview,
+  ReviewSubjectSource,
+} from './schema/activity-reviews.js';
 export type {
   WatchedSpot,
   NewWatchedSpot,

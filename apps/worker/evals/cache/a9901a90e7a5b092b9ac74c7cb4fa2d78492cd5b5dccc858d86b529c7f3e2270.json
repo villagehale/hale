@@ -1,0 +1,10 @@
+{
+  "value": {
+    "verdict": "not_worth_it",
+    "tags": [
+      "too old for age",
+      "boredom"
+    ]
+  },
+  "stopReason": "tool_use"
+}

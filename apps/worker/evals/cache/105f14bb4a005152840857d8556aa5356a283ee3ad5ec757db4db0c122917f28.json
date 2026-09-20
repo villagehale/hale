@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "not_worth_it",
+    "tags": [
+      "wrong_age_fit"
+    ]
+  },
+  "stopReason": "tool_use"
+}

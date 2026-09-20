@@ -55,3 +55,4 @@ export * from './pending-disambiguations.js';
 export * from './watched-spots.js';
 export * from './email-alert-offers.js';
 export * from './check-in.js';
+export * from './activity-reviews.js';
