@@ -32,6 +32,16 @@ afterAll(async () => {
 const SEPTEMBER = new Date('2026-09-01T12:00:00.000Z');
 const OCTOBER = new Date('2026-10-01T12:00:00.000Z');
 
+/**
+ * Chosen uuids, so `id ASC` is a known order and not a coin flip (see below). Every
+ * row whose place a tiebreak decides gets one: with a random id, deleting a leg of the
+ * ORDER BY leaves the outcome to chance and the test passes half the time.
+ */
+const ID_SMALLEST = '00000000-0000-4000-8000-00000000000a';
+const ID_SMALL = '11111111-0000-4000-8000-00000000000b';
+const ID_LARGE = 'eeeeeeee-0000-4000-8000-00000000000c';
+const ID_LARGEST = 'ffffffff-0000-4000-8000-00000000000d';
+
 async function preference(
   familyId: string,
   childId: string | null,
@@ -43,6 +53,38 @@ async function preference(
   return writeFact(db.database, {
     familyId,
     childId,
+    factType: 'preference',
+    factKey,
+    factValue: { summary },
+    confidence,
+    inferredBy: 'chat_distiller',
+    validFrom,
+  });
+}
+
+/**
+ * A live preference under a CHOSEN id, inserted directly.
+ *
+ * `writeFact` mints a random uuid, and a random uuid proves nothing about a tiebreak:
+ * with a leg of the ORDER BY deleted the tied rows fall back to scan order, which a
+ * random id matches about half the time — that is how the first version of this test
+ * stayed green against the unordered query. These ids are picked so id order is the
+ * reverse of both the insertion order and the fact_key the lookup index scans by.
+ * Nothing is superseded here (every key is fresh), so skipping the write primitive
+ * costs the test nothing.
+ */
+async function preferenceWithId(
+  familyId: string,
+  id: string,
+  factKey: string,
+  summary: string,
+  confidence: number,
+  validFrom: Date,
+) {
+  await db.database.insert(schema.familyMemoryFacts).values({
+    id,
+    familyId,
+    childId: null,
     factType: 'preference',
     factKey,
     factValue: { summary },
@@ -85,19 +127,33 @@ describe('loadPlanFacts', () => {
   });
 
   it('when more facts are live than fit, keeps the ones the coach would already be seeing', async () => {
-    // Six live family-wide preferences for five slots, written WEAKEST FIRST so an
-    // unordered LIMIT 5 returns the wrong five. The coach's order is
-    // confidence DESC, valid_from DESC, id ASC — so `dropped` is the row that loses.
-    await preference(familyId, null, 'f', 'dropped', 0.75);
-    await preference(familyId, null, 'e', 'low', 0.8);
-    await preference(familyId, null, 'd', 'mid-early', 0.9, SEPTEMBER);
-    await preference(familyId, null, 'c', 'mid-late', 0.9, OCTOBER);
-    await preference(familyId, null, 'b', 'high', 0.95);
-    await preference(familyId, null, 'a', 'top', 1);
+    // Six live family-wide preferences for five slots, seeded so that every order the
+    // database would fall into ON ITS OWN is wrong. `memory_facts_lookup_idx` is
+    // (family_id, fact_type, fact_key) WHERE valid_until IS NULL, so a LIMIT 5 with no
+    // ORDER BY comes back by fact_key — and the keys here run in the exact REVERSE of
+    // the wanted rank, so that scan drops the strongest fact and keeps the weakest.
+    // Insertion order is the same reverse, so a seq scan is wrong in the same way.
+    // Each leg of the coach’s order (confidence DESC, valid_from DESC, id ASC) is the
+    // only thing deciding one pair below, so deleting any one leg changes the answer.
+    await preference(familyId, null, 'a', 'dropped', 0.7);
+    await preferenceWithId(familyId, ID_LARGEST, 'b', 'tie-late-id', 0.85, SEPTEMBER);
+    await preferenceWithId(familyId, ID_SMALLEST, 'c', 'tie-early-id', 0.85, SEPTEMBER);
+    await preferenceWithId(familyId, ID_SMALL, 'd', 'conf-tie-earlier', 0.9, SEPTEMBER);
+    await preferenceWithId(familyId, ID_LARGE, 'e', 'conf-tie-later', 0.9, OCTOBER);
+    await preference(familyId, null, 'f', 'top', 1);
 
     const facts = await loadPlanFacts(db.database, familyId);
 
-    expect(facts).toEqual(['top', 'high', 'mid-late', 'mid-early', 'low']);
+    expect(facts).toEqual([
+      // confidence alone
+      'top',
+      // tied on confidence — valid_from breaks it
+      'conf-tie-later',
+      'conf-tie-earlier',
+      // tied on confidence AND valid_from — id breaks it
+      'tie-early-id',
+      'tie-late-id',
+    ]);
   });
 
   it('a household with nothing remembered grounds the plan on nothing, not on another family', async () => {
