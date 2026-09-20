@@ -21,6 +21,7 @@ import type {
   SentinelClassification,
 } from '~/lib/sentinel';
 import { bookedDetectionEnabledFor } from './booked';
+import { bookingDraft, recordActivityBooking } from './booking';
 import { type EmailAlertOfferDraft, recordEmailAlertOffer } from './email-alert-offer';
 
 /**
@@ -102,6 +103,51 @@ export function emptyEmailAlertCounts(): EmailAlertCounts {
   return Object.fromEntries(EMAIL_ALERT_OUTCOMES.map((o) => [o, 0])) as EmailAlertCounts;
 }
 
+/**
+ * Every way one envelope can end as a BOOKING (rule #11) — a second, independent axis
+ * beside the outcome above, because "the alert never got that far" and "the booking was
+ * refused" are two facts about one envelope.
+ *
+ * `booked_dark` and not `dark`: `EmailAlertOutcome.dark` already means F14, and two
+ * counters called `dark` in one cron summary is a number nobody can read.
+ *
+ * `record_failed` is a CAUGHT write failure — the text went out, the row did not. It is
+ * NOT the same as an uncaught throw in the post-send stretch, which the sweep records as
+ * `alert_failed` and which would skip the thread and the alert's own audit row, leaving a
+ * parent's thread the coach reads a reply to with nothing above it.
+ */
+export const BOOKING_OUTCOMES = [
+  'recorded',
+  'already_recorded',
+  'booked_dark',
+  'not_a_booking',
+  'teen_content',
+  'no_first_session',
+  'below_confidence',
+  'record_failed',
+] as const;
+
+export type BookingOutcome = (typeof BOOKING_OUTCOMES)[number];
+
+export type BookingCounts = Record<BookingOutcome, number>;
+
+export function emptyBookingCounts(): BookingCounts {
+  return Object.fromEntries(BOOKING_OUTCOMES.map((o) => [o, 0])) as BookingCounts;
+}
+
+/**
+ * One envelope's two answers.
+ *
+ * `booking: null` for every envelope that never reached the booking decision — `dark`,
+ * `already_sent`, `not_parenting`, the four holds, `no_send_target`, `send_failed`. NOT a
+ * booking outcome meaning "n/a": a bucket that means two things is the counter rule #11
+ * exists to prevent.
+ */
+export interface EmailAlertResult {
+  alert: EmailAlertOutcome;
+  booking: BookingOutcome | null;
+}
+
 /** At most this many messages per connection per sweep reach the classifier, newest
  * first. A 15-minute cron over a mailbox that just received a hundred messages is the
  * shape this bounds: the cap on what may be SENT is the outbound gate's, and this is the
@@ -157,15 +203,15 @@ export async function alertParentForEmail(
   database: Database,
   input: EmailAlertInput,
   ports: EmailAlertPorts,
-): Promise<EmailAlertOutcome> {
+): Promise<EmailAlertResult> {
   const { familyId, parentUserId, integrationId, messageId, now } = input;
-  if (!f14EnabledFor(familyId)) return 'dark';
+  if (!f14EnabledFor(familyId)) return { alert: 'dark', booking: null };
 
   const dedupeKey = emailAlertDedupeKey(integrationId, messageId);
   // Read BEFORE the classifier, not only via the claim below: a re-fired sweep over a
   // mailbox it has already read must cost nothing, and the claim happens after two model
   // calls have already been paid for.
-  if (await dedupeActive(dedupeKey, database)) return 'already_sent';
+  if (await dedupeActive(dedupeKey, database)) return { alert: 'already_sent', booking: null };
 
   let classification: SentinelClassification;
   try {
@@ -187,11 +233,13 @@ export async function alertParentForEmail(
       { familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
       'email alert: the sentinel could not read this message - no text, and the key is unspent',
     );
-    return 'classifier_failed';
+    return { alert: 'classifier_failed', booking: null };
   }
 
   const extraction = classification.extraction;
-  if (classification.status !== 'classified' || extraction === null) return 'not_parenting';
+  if (classification.status !== 'classified' || extraction === null) {
+    return { alert: 'not_parenting', booking: null };
+  }
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
   if (!verdict.allowed) {
@@ -214,7 +262,7 @@ export async function alertParentForEmail(
       status: HOLD_STATUS[verdict.reason],
     });
     console.warn({ familyId, reason: verdict.reason }, 'email alert: held by the outbound gate');
-    return `gate_refused:${verdict.reason}`;
+    return { alert: `gate_refused:${verdict.reason}`, booking: null };
   }
 
   // ONE read of the flag per envelope, threaded into both calls below rather than read
@@ -258,7 +306,7 @@ export async function alertParentForEmail(
     })
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
-  if (!claimed) return 'already_sent';
+  if (!claimed) return { alert: 'already_sent', booking: null };
 
   const to = await ports.resolvePhone(database, parentUserId);
   if (!to) {
@@ -274,7 +322,7 @@ export async function alertParentForEmail(
       { familyId, parentUserId },
       'email alert: the gate allowed a parent with no sendable number',
     );
-    return 'no_send_target';
+    return { alert: 'no_send_target', booking: null };
   }
 
   let providerMessageId: string;
@@ -290,7 +338,7 @@ export async function alertParentForEmail(
       .set({ status: 'failed', errorCode: code })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error({ familyId, code }, 'email alert: the provider refused the text');
-    return 'send_failed';
+    return { alert: 'send_failed', booking: null };
   }
 
   await database
@@ -316,6 +364,28 @@ export async function alertParentForEmail(
     });
   }
 
+  // THE BOOKING, in the same post-send stretch and for the same reason: the evidence is
+  // the provider's receipt, not the parent's reply, so it is written at DETECTION rather
+  // than on the YES — a parent who keeps their own calendar says NO and is still booked.
+  //
+  // IN ITS OWN CATCH, and that is the difference between `record_failed` being a real
+  // outcome and an unreachable one. An uncaught throw here becomes `alert_failed` at the
+  // sweep's boundary and SKIPS the thread and the audit below — leaving a parent's thread
+  // that the coach reads a reply to with nothing above it. The text went out; the row not
+  // landing must not take the two receipts for it down as well.
+  const booking = await recordBooking(database, {
+    familyId,
+    parentUserId,
+    integrationId,
+    messageId,
+    channelMessageId: claimed.id,
+    from: input.envelope.from,
+    extraction,
+    message,
+    booked,
+    now,
+  });
+
   // The composed sentence, not the wire body — the CASL line belongs on the wire, and
   // the coach re-reads this row next turn (channel/thread.ts).
   await ports.threadMessage(database, { familyId, parentUserId, body: message });
@@ -331,7 +401,90 @@ export async function alertParentForEmail(
     after: { kind: extraction.kind, teenContent: extraction.teenContent },
   });
 
-  return 'sent';
+  return { alert: 'sent', booking };
+}
+
+/**
+ * The booking decision, the write and its own audit row — everything after the send that
+ * belongs to this feature, behind one boundary.
+ *
+ * THE AUDIT ROW CARRIES ONE BOOLEAN. `provider_host` is the sender's domain, and this
+ * module's own rule for `after` is "enums and flags only — not the title, NOT THE SENDER,
+ * not the subject", because an audit row a support agent can read is a copy of the email
+ * in a table that is never redacted. `markham.ca` beside a family id is the sender in that
+ * table, and it is the provider identity D13 calls the family's business. `offered` is the
+ * one fact the trail actually needs: did the parent get a CTA with this. `targetId`
+ * already points at the row that holds the host.
+ */
+async function recordBooking(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    integrationId: string;
+    messageId: string;
+    channelMessageId: string;
+    from: string;
+    extraction: NonNullable<SentinelClassification['extraction']>;
+    message: string;
+    booked: boolean;
+    now: Date;
+  },
+): Promise<BookingOutcome> {
+  if (!input.booked) return 'booked_dark';
+  const { extraction } = input;
+  const draft = bookingDraft({
+    kind: extraction.kind,
+    event: extraction.event,
+    from: input.from,
+    teenContent: extraction.teenContent,
+    sourceConfidence: extraction.sourceConfidence,
+    matchedEventRef: extraction.matchedEventRef,
+    // The string the TEXT said, through the renderer's own fold and its own fallback, so
+    // the row and the message can never name the class differently.
+    title: renderedTitle(extraction.event.title, extraction.kind),
+    now: input.now,
+  });
+  if (!draft.ok) return draft.reason;
+
+  try {
+    const { outcome, bookingId } = await recordActivityBooking(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      integrationId: input.integrationId,
+      messageId: input.messageId,
+      channelMessageId: input.channelMessageId,
+      draft: draft.draft,
+    });
+    // Rule #6, and only for the pass that actually wrote it: a conflicted redrive changed
+    // nothing, and audit_log is append-only, so a second row would be a second claim.
+    if (bookingId !== null) {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'activity_booking_recorded',
+        targetTable: 'activity_bookings',
+        targetId: bookingId,
+        after: { offered: input.message.endsWith(BOOKING_CTA) },
+      });
+    }
+    return outcome;
+  } catch (err) {
+    // The CLASS only — a rejection here can carry a title or an address in its message
+    // (rule #1).
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
+      'email alert: the text went out and the booking row did not - the ask will not happen',
+    );
+    return 'record_failed';
+  }
+}
+
+/** The title the renderer put on the wire: the vendor's own, folded, or Hale's words when
+ * that survives sanitising as nothing at all. ONE definition, read by the sentence and by
+ * the row. */
+function renderedTitle(raw: string, kind: ExtractionKind): string {
+  return sanitizedTitle(raw) || GENERIC_TITLE[kind];
 }
 
 export interface GmailSweepAlertInput {
@@ -359,19 +512,23 @@ export async function alertParentForGmailSweep(
   database: Database,
   input: GmailSweepAlertInput,
   ports: EmailAlertPorts,
-): Promise<readonly EmailAlertOutcome[]> {
+): Promise<readonly EmailAlertResult[]> {
   const { parentUserId, envelopes } = input;
-  if (parentUserId === null) return envelopes.map(() => 'no_parent_user');
-  if (input.seeding) return envelopes.map(() => 'seeding_run');
+  if (parentUserId === null) {
+    return envelopes.map(() => ({ alert: 'no_parent_user', booking: null }));
+  }
+  if (input.seeding) return envelopes.map(() => ({ alert: 'seeding_run', booking: null }));
 
-  const outcomes: EmailAlertOutcome[] = [];
+  const outcomes: EmailAlertResult[] = [];
   const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];
   for (const envelope of envelopes) {
-    if (envelope.receivedAt === undefined) outcomes.push('no_received_at');
+    if (envelope.receivedAt === undefined) outcomes.push({ alert: 'no_received_at', booking: null });
     else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
   }
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-  for (let i = EMAIL_ALERT_MAX_PER_SWEEP; i < dated.length; i += 1) outcomes.push('over_sweep_cap');
+  for (let i = EMAIL_ALERT_MAX_PER_SWEEP; i < dated.length; i += 1) {
+    outcomes.push({ alert: 'over_sweep_cap', booking: null });
+  }
 
   const considered = dated.slice(0, EMAIL_ALERT_MAX_PER_SWEEP);
   if (considered.length === 0) return outcomes;
@@ -596,21 +753,21 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
  * a verb, and no offer at the end (see above).
  */
 export function renderEmailAlert(input: EmailAlertRenderInput): string {
-  const title = sanitizedTitle(input.event.title);
   const kind = effectiveKind(input.kind, input.booked);
+  const title = renderedTitle(input.event.title, kind);
 
   if (input.teenContent) {
     // Category only. The pipeline has already replaced the title with its own generic
     // line; dropping the sender and the time is this renderer's half of the same rule,
     // because who wrote and when are the disclosure a 13+ child is owed protection from.
-    return `${title || GENERIC_TITLE[kind]}. ${TEEN_CLOSER}`;
+    return `${title}. ${TEEN_CLOSER}`;
   }
 
   const body = compose(
     input,
     kind,
     clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, ''),
-    title || GENERIC_TITLE[kind],
+    title,
   );
   // The offer, decided by the one function that also decides whether the row gets
   // written. Appended AFTER `compose`, never inside it: every frame in there ends through

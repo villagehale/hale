@@ -17,6 +17,7 @@ import {
   type EmailAlertOutcome,
   type EmailAlertPorts,
   type EmailAlertRenderInput,
+  type EmailAlertResult,
   type GmailAlertEnvelope,
   alertParentForEmail,
   alertParentForGmailSweep,
@@ -145,7 +146,11 @@ function harness(
   return h;
 }
 
-function alert(h: Harness, messageId = 'm1') {
+function alertPair(
+  h: Harness,
+  messageId = 'm1',
+  over: Partial<Parameters<typeof alertParentForEmail>[1]> = {},
+): Promise<EmailAlertResult> {
   return alertParentForEmail(
     db.database,
     {
@@ -156,9 +161,17 @@ function alert(h: Harness, messageId = 'm1') {
       envelope: ENVELOPE,
       timeZone: 'America/Toronto',
       now: NOW,
+      ...over,
     },
     h.ports,
   );
+}
+
+/** The ALERT axis alone, which is what nearly every test in this file is about. The
+ * BOOKING axis is a second, independent answer with its own describe and its own reads —
+ * kept apart here so a change to one never silently rewrites the other's assertions. */
+async function alert(h: Harness, messageId = 'm1'): Promise<EmailAlertOutcome> {
+  return (await alertPair(h, messageId)).alert;
 }
 
 function ledgerRows() {
@@ -366,6 +379,13 @@ describe('alertParentForGmailSweep', () => {
     h: Harness,
     over: Partial<Parameters<typeof alertParentForGmailSweep>[1]> = {},
   ): Promise<readonly EmailAlertOutcome[]> {
+    return sweepPairs(h, over).then((results) => results.map((r) => r.alert));
+  }
+
+  function sweepPairs(
+    h: Harness,
+    over: Partial<Parameters<typeof alertParentForGmailSweep>[1]> = {},
+  ): Promise<readonly EmailAlertResult[]> {
     return alertParentForGmailSweep(
       db.database,
       {

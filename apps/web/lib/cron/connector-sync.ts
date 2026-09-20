@@ -16,9 +16,11 @@ import {
   emptyCalendarAlertCounts,
 } from '~/lib/integrations/calendar-alert';
 import {
+  type BookingCounts,
   type EmailAlertCounts,
   type EmailAlertPorts,
   alertParentForGmailSweep,
+  emptyBookingCounts,
   emptyEmailAlertCounts,
 } from '~/lib/integrations/email-alert';
 import { decryptTokens } from '~/lib/integrations/token-vault';
@@ -90,6 +92,12 @@ export interface ConnectorSyncSummary {
    * that alerted nobody has to be able to say WHY, and "dark" reads very differently from
    * "not_parenting". */
   emailAlerts: EmailAlertCounts;
+  /** One count per named BOOKING outcome, for the envelopes that reached the booking
+   * decision at all (rule #11). Its own tally and not a widening of the one above,
+   * because an envelope has two independent answers: whether a text went, and whether a
+   * place the family now holds was written down. `booked_dark` is this flag's off state -
+   * never `dark`, which is F14's. */
+  bookings: BookingCounts;
   /** The same, for the calendar. Its own tally rather than a shared one: the two
    * connectors fail in different ways, and a sweep where every calendar change is
    * `outside_window` reads nothing like one where every email is `not_parenting`. */
@@ -113,6 +121,7 @@ export async function runConnectorSync(
   const base = deps.buildDeps();
   const childNamesByFamily = new Map<string, string[]>();
   const emailAlerts = emptyEmailAlertCounts();
+  const bookings = emptyBookingCounts();
   const calendarAlerts = emptyCalendarAlertCounts();
   let calendarDroppedNoId = 0;
 
@@ -139,14 +148,25 @@ export async function runConnectorSync(
         childNamesByFamily.set(connection.familyId, childNames);
       }
       const result = await deps.syncOne({ ...connection, tokens }, base, childNames);
-      for (const outcome of result.emailAlerts) emailAlerts[outcome] += 1;
+      for (const outcome of result.emailAlerts) {
+        emailAlerts[outcome.alert] += 1;
+        // Only the envelopes that actually reached the decision. A null is "the alert
+        // never got that far", which is already counted by name on the line above.
+        if (outcome.booking !== null) bookings[outcome.booking] += 1;
+      }
       for (const outcome of result.calendarAlerts) calendarAlerts[outcome] += 1;
       calendarDroppedNoId += result.calendarDroppedNoId;
     } catch {
       // Isolate: a failure here must not stop the remaining connections.
     }
   }
-  return { connections: connections.length, emailAlerts, calendarAlerts, calendarDroppedNoId };
+  return {
+    connections: connections.length,
+    emailAlerts,
+    bookings,
+    calendarAlerts,
+    calendarDroppedNoId,
+  };
 }
 
 /** Wire the real DB + queue into the sync deps. */

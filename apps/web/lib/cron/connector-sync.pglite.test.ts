@@ -119,7 +119,9 @@ describe('connectorSyncDeps — the email alert wiring', () => {
       seeding: false,
       envelopes: [envelope('m1'), envelope('m2')],
     });
-    expect(outcomes).toEqual(['no_parent_user', 'no_parent_user']);
+    expect(outcomes.map((o) => o.alert)).toEqual(['no_parent_user', 'no_parent_user']);
+    // The booking axis is untouched by an envelope that never reached the decision.
+    expect(outcomes.map((o) => o.booking)).toEqual([null, null]);
   });
 
   it("passes the sweep's SEEDING flag through, so a first sync stays silent", async () => {
@@ -129,7 +131,7 @@ describe('connectorSyncDeps — the email alert wiring', () => {
       seeding: true,
       envelopes: [envelope('m1')],
     });
-    expect(outcomes).toEqual(['seeding_run']);
+    expect(outcomes).toEqual([{ alert: 'seeding_run', booking: null }]);
   });
 
   it('keys the dedupe read on THIS connection and THIS message id', async () => {
@@ -155,7 +157,7 @@ describe('connectorSyncDeps — the email alert wiring', () => {
       seeding: false,
       envelopes: [envelope('m1')],
     });
-    expect(outcomes).toEqual(['already_sent']);
+    expect(outcomes).toEqual([{ alert: 'already_sent', booking: null }]);
   });
 });
 

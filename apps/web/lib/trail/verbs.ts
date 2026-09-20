@@ -181,6 +181,7 @@ export const AUDIT_VERBS = [
   'proactive_nudge_skipped',
   'email_alert_sent',
   'email_alert_event_added',
+  'activity_booking_recorded',
   'calendar_alert_sent',
   'proactive_watch_granted',
   'proactive_watch_declined',
@@ -583,6 +584,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   email_alert_event_added: {
     sentence: 'you put something from your email on your week',
     family: 'done',
+  },
+  // A provider's receipt, written down so Hale can check back on it. 'note', not 'done':
+  // Hale did not put the family in the class and must not read as though it had - it
+  // noticed, and the noticing is what the trail records.
+  activity_booking_recorded: {
+    sentence: 'Hale noted a class you signed up for',
+    family: 'note',
   },
   // Same shape, different connector. The sentence names the calendar for the same reason
   // the one above names the inbox: the row is the receipt for Hale having read it.
@@ -1136,6 +1144,7 @@ const TARGET_NOUNS: Record<string, string> = {
   family_memory_facts: 'something I remembered',
   village_candidates: 'village suggestion',
   consent_records: 'consent',
+  activity_bookings: 'a class you signed up for',
   teen_access_grants: 'teen privacy request',
   conversations: 'Hale',
   messages: 'Hale',

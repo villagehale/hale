@@ -5,6 +5,7 @@ import { SENT_STATUSES } from '~/lib/channel/ledger';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
+import { stampBookingEvent } from './booking';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT — the row it lands in, and what it does.
@@ -126,6 +127,12 @@ export interface OpenEmailAlertOffer {
   title: string;
   startsAt: Date;
   location: string | null;
+  /** WHICH EMAIL this offer came from — the pair that is also the identity of the
+   * `activity_bookings` row born from the same message, which is how the placement stamps
+   * the event onto the booking without a third id threaded through the router. The select
+   * below was already a full-row `select()`; these two were simply dropped by the mapper. */
+  integrationId: string;
+  messageId: string;
   /** The event this offer already placed, or null — see the column's own note. */
   eventId: string | null;
   /** When the alert that carried the offer went out. The open-question reader's recency
@@ -169,6 +176,8 @@ export async function loadOpenEmailAlertOffers(
     title: row.title,
     startsAt: row.startsAt,
     location: row.location,
+    integrationId: row.integrationId,
+    messageId: row.messageId,
     eventId: row.eventId,
     askedAt: row.createdAt,
   }));
@@ -343,6 +352,26 @@ async function placeOfferedEvent(
       // never redacted (the alert's own audit row keeps the same rule).
       after: { kind: offer.kind },
     });
+  }
+
+  // THE BOOKING THIS EMAIL ALSO WROTE, now on the calendar. Two rows from one email, so
+  // the (connection, message) pair addresses both and no third id crosses the router.
+  //
+  // `no_booking` is the ORDINARY answer for the other five kinds and for a booking the
+  // flag was dark for — nothing to stamp. For a `booking_confirmation` offer it is an
+  // inconsistency: the same post-send stretch wrote both rows, so the booking should be
+  // there. Logged rather than swallowed, and never thrown: the parent's event is already
+  // placed and the receipt is already owed (rule #11).
+  const stamped = await stampBookingEvent(database, {
+    integrationId: offer.integrationId,
+    messageId: offer.messageId,
+    eventId,
+  });
+  if (stamped === 'no_booking' && offer.kind === 'booking_confirmation') {
+    console.error(
+      { familyId: input.familyId, offerId: offer.id },
+      'email alert offer: a booking offer was placed with no booking row to stamp - the follow-up ask will not happen',
+    );
   }
 }
 
