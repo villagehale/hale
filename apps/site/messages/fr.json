@@ -5,10 +5,10 @@
     "skipToContent": "Aller au contenu"
   },
   "HomeMeta": {
-    "title": "Hale · l’assistant familial que vous textez",
-    "description": "Hale est un assistant familial que vous textez — pas d’appli, pas de compte. Il surveille les journées d’inscription du Grand Toronto — natation municipale, camps, garde parascolaire — prépare tout la veille au soir et vous relance à la minute où une fenêtre s’ouvre. Rien n’est envoyé sans votre accord. Vos données restent au Canada.",
-    "ogDescription": "L’assistant familial que vous textez. Il surveille les journées d’inscription du Grand Toronto — natation, camps, garde parascolaire — prépare tout la veille au soir et vous relance à la minute où une fenêtre s’ouvre. Rien n’est envoyé sans votre accord. Vos données restent au Canada.",
-    "twitterDescription": "L’assistant familial que vous textez. Les journées d’inscription surveillées, tout préparé la veille au soir, rien d’envoyé sans votre accord. Vos données restent au Canada."
+    "title": "Hale · un numéro à texter pour ce qui se passe près de vos enfants",
+    "description": "Textez à Hale votre code postal et l’âge de vos enfants. Il trouve ce qui se donne vraiment près de chez vous — natation, camps, haltes-jeux, le centre ON y va du quartier — surveille les matins d’inscription dans {count} municipalités du Grand Toronto, vous remet le lien de votre ville la veille au soir, et revient vous demander comment ça s’est passé. Pas d’appli, pas de compte. Vos données restent au Canada.",
+    "ogDescription": "Textez à Hale votre code postal et l’âge de vos enfants. Il trouve ce qui se donne vraiment près de chez vous et surveille les matins d’inscription dans {count} municipalités du Grand Toronto, puis revient vous demander comment ça s’est passé. Pas d’appli, pas de compte. Vos données restent au Canada.",
+    "twitterDescription": "Ce qui se passe près de vos enfants, trouvé. Le matin d’inscription, attrapé. Et quelqu’un qui demande comment ça s’est passé. Pas d’appli, pas de compte. Vos données restent au Canada."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -17,7 +17,7 @@
     "signIn": "Se connecter"
   },
   "Footer": {
-    "blurb": "Hale est l’assistant familial que vous textez — toujours préparé, jamais en action sans vous.",
+    "blurb": "Hale est un numéro que vous textez — toujours préparé, jamais en action sans vous.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— hawaïen pour « maison ».",
@@ -57,9 +57,9 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · hawaïen pour « maison »",
-    "heroH1a": "L’assistant familial",
-    "heroH1b": "que vous",
-    "heroH1Accent": "textez.",
+    "heroH1a": "Je le trouve.",
+    "heroH1b": "Vous ne le",
+    "heroH1Accent": "manquez pas.",
     "heroSub": "Natation, camps et jour d’inscription, attrapés avant que les places soient parties.",
     "heroThread": [
       {
@@ -232,7 +232,7 @@
   },
   "About": {
     "metaTitle": "À propos · Hale",
-    "metaDescription": "Hale est un numéro que votre famille texte — un assistant familial discret pour les dates, les formulaires et les petites choses qui passent entre les mailles. Conçu par Anzhe Dong chez Village Hale Technologies Inc. à Georgetown, en Ontario.",
+    "metaDescription": "Hale est un numéro que votre famille texte — pour les dates, les formulaires et les petites choses qui passent entre les mailles. Conçu par Anzhe Dong chez Village Hale Technologies Inc. à Georgetown, en Ontario.",
     "eyebrow": "À propos de Hale",
     "headline": [
       {
@@ -248,7 +248,7 @@
     ],
     "lede": "Autrefois, une famille avait un village — des aînés qui savaient quel cours en valait la peine, des voisins qui portaient les petites choses, une grand-mère qui disait c’est normal, tu fais bien ça. Ce savoir n’a pas disparu. Il n’a simplement plus nulle part où vivre, sauf dans la mémoire d’un parent — et aucune appli ne règle un problème de mémoire en réclamant encore plus de votre attention. Alors Hale est un numéro que vous textez.",
     "missionEyebrow": "Notre mission",
-    "mission": "Chaque parent mérite un assistant familial — quelqu’un qui garde en tête les dates, les formulaires et les petites choses qui passent entre les mailles, et qui vous rend votre soirée. À chaque étape de l’enfance, des premiers mois jusqu’à presque adulte.",
+    "mission": "Chaque parent devrait avoir quelqu’un qui sait ce qui se passe près de chez lui, qui se souvient de la date qui se remplit en deux minutes, et qui demande comment ça s’est passé. À chaque étape de l’enfance, des premiers mois jusqu’à presque adulte.",
     "howEyebrow": "Comment Hale fonctionne",
     "howHeadline": [
       {
@@ -642,9 +642,9 @@
   },
   "Text": {
     "metaTitle": "Texter Hale",
-    "metaDescription": "Commencez une conversation avec Hale — l’assistant familial que vous textez. Il trouve des activités pour votre enfant et surveille les journées d’inscription de votre région.",
-    "headline": "L’assistant familial que vous textez.",
-    "lede": "Hale trouve des activités qui conviennent à votre tout-petit, surveille les matins d’inscription et prend de vos nouvelles.",
+    "metaDescription": "Commencez une conversation avec Hale — un numéro à texter pour ce qui se passe près de vos enfants. Il trouve des activités pour votre enfant et surveille les journées d’inscription de votre région.",
+    "headline": "Un numéro à texter pour ce qui se passe près de vos enfants.",
+    "lede": "Envoyez l’âge de vos enfants et un code postal. Hale vous texte ce qui se donne vraiment près de chez vous, et empêche les matins d’inscription de vous filer entre les doigts.",
     "sentLabel": "Ce que vous enverrez :",
     "sentGloss": "En anglais : « Bonjour Hale 👋 prêt à commencer »",
     "previewLabel": "Le texto que vous recevrez en retour :",
@@ -694,7 +694,7 @@
     ]
   },
   "Jsonld": {
-    "orgDescription": "Hale est l’assistant familial que vous textez — il surveille les fenêtres d’inscription des villes, planifie la semaine et s’occupe de l’administratif avec votre accord. Les données de chaque famille restent au Canada.",
+    "orgDescription": "Hale est un numéro que vous textez — il trouve ce qui se passe près de vos enfants, surveille les fenêtres d’inscription des villes, planifie la semaine et s’occupe de l’administratif avec votre accord. Les données de chaque famille restent au Canada.",
     "appDescription": "Un numéro que votre famille texte : Hale surveille les dates d’inscription dans toute la région du Grand Toronto, planifie la semaine et exécute avec votre accord — des preuves pour tout, et les données de votre famille ne quittent jamais le Canada."
   }
 }

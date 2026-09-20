@@ -198,6 +198,46 @@ describe('no bundle promises quiet, in any locale', () => {
   });
 });
 
+describe('the positioning noun is gone from every bundle', () => {
+  const files = (['en', 'fr', 'zh'] as const).map((locale) => ({
+    locale,
+    raw: readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8'),
+  }));
+
+  /**
+   * "Family assistant" is the category the pre-F14 site sold. It is not what the
+   * product says about itself: the live intake greeting and /for-centres both
+   * describe the loop — it finds what is on, it watches the sign-up morning, it
+   * comes back and asks how it went — with no "assistant" in them. The site was
+   * behind its own machine, not ahead of it.
+   *
+   * The ban is on the POSITIONING PHRASE, never on the word: the anti-scam
+   * disclosure ("Hale is an AI assistant, and it never pretends otherwise") is a
+   * different sentence doing a different job, and it survives. A phrase-level ban
+   * is what lets one gate hold both facts at once.
+   */
+  const BANNED: Record<string, string[]> = {
+    en: ['family assistant'],
+    fr: ['assistant familial'],
+    zh: ['家庭助手', '家庭助理'],
+  };
+
+  it('never sells a "family assistant" in any locale', () => {
+    for (const { locale, raw } of files) {
+      for (const phrase of BANNED[locale] ?? []) {
+        expect(raw.toLowerCase(), `${locale}.json must not say "${phrase}"`).not.toContain(
+          phrase.toLowerCase(),
+        );
+      }
+    }
+  });
+
+  it('positive control: the AI disclosure the ban must not reach is still there', () => {
+    const en = files.find((f) => f.locale === 'en')?.raw ?? '';
+    expect(en).toContain('Hale is an AI assistant, and it never pretends otherwise.');
+  });
+});
+
 describe('the FAQ translation source mirrors the canonical English list', () => {
   it('en.json Faq.items matches lib/faq so translations descend from the shipped copy', () => {
     const en = JSON.parse(

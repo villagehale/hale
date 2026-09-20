@@ -112,8 +112,8 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
     >
       <LegalSectionBlock id="who-we-are" title="Who we are">
         <p>
-          Hale is an AI assistant for families that you reach by text message. You (a parent or
-          legal guardian) text the number and tell Hale about your children; there is no account to
+          Hale is a phone number families text — an AI service you reach by text message. You (a
+          parent or legal guardian) text the number and tell Hale about your children; there is no account to
           create, though you may sign in to the web app, and you may optionally connect tools you
           already use. Hale watches for things that matter, drafts helpful suggestions, and — only
           with your approval — helps carry them out. Hale is operated by Village Hale Technologies Inc., a

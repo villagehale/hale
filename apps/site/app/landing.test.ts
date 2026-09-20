@@ -69,7 +69,7 @@ describe('landing — the v4 hero', () => {
     // the reader has scrolled. Every assistant with a real landing page leads the
     // same way — category, mechanism, proof — and a cadence line up top read as
     // a riddle.
-    expect(visibleText(h1)).toBe('The family assistant you text.');
+    expect(visibleText(h1)).toBe('I find it. You don’t miss it.');
     expect(h1).not.toContain('7:02');
     // The sub names the wedge, and stops there. It used to promise "Three texts,
     // then quiet" — a cadence the product cannot keep: the evening check-in is
@@ -135,7 +135,7 @@ describe('landing — the v4 hero', () => {
     // they are pinned as order rather than as four presence checks that a
     // re-shuffle would leave green.
     const order = [
-      'The family assistant you text.',
+      'I find it. You don’t miss it.',
       'Hi — Mia is 4, we’re in Stouffville, L4A.',
       'Founding families join free — and keep the founding rate for good.',
       'Texting Hale looks like this',
@@ -469,7 +469,7 @@ describe('landing — sections, in the Surfaces Plan order', () => {
 
   it('orders the sections the way the Surfaces Plan does', () => {
     const order = [
-      'The family assistant you text.',
+      'I find it. You don’t miss it.',
       'Texting Hale looks like this',
       'How Hale works',
       'What I watch',

@@ -5,10 +5,10 @@
     "skipToContent": "Skip to content"
   },
   "HomeMeta": {
-    "title": "Hale · the family assistant you text",
-    "description": "Hale is a family assistant you text — no app, no account. It watches registration day across the GTA — city swim, camps, after-school care — preps everything the night before, and nudges you the minute a window opens. Nothing sent without your say-so. Your data stays in Canada.",
-    "ogDescription": "The family assistant you text. It watches GTA registration day — swim, camps, after-school care — preps everything the night before, and nudges you the minute a window opens. Nothing sent without your say-so. Your data stays in Canada.",
-    "twitterDescription": "The family assistant you text. Registration day watched, everything prepped the night before, nothing sent without your say-so. Your data stays in Canada."
+    "title": "Hale · a number you text for what’s on near your kids",
+    "description": "Text Hale your postal code and your kids’ ages. It finds what’s actually running near you — swim, camps, drop-ins, the EarlyON down the road — watches the sign-up mornings across {count} GTA municipalities, hands you the town’s own link the night before, and comes back to ask how it went. No app, no account. Your data stays in Canada.",
+    "ogDescription": "Text Hale your postal code and your kids’ ages. It finds what’s actually running near you and watches the sign-up mornings across {count} GTA municipalities, then comes back to ask how it went. No app, no account. Your data stays in Canada.",
+    "twitterDescription": "What’s on near your kids, found. The sign-up morning, caught. And someone who asks how it went. No app, no account. Your data stays in Canada."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -17,7 +17,7 @@
     "signIn": "Sign in"
   },
   "Footer": {
-    "blurb": "Hale is the family assistant you text — always prepared, never acting without you.",
+    "blurb": "Hale is a number you text — always prepared, never acting without you.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— Hawaiian for home.",
@@ -57,9 +57,9 @@
   },
   "Landing": {
     "eyebrow": "Hale · /HAH-leh/ · Hawaiian for home",
-    "heroH1a": "The family assistant",
-    "heroH1b": "you",
-    "heroH1Accent": "text.",
+    "heroH1a": "I find it.",
+    "heroH1b": "You don’t",
+    "heroH1Accent": "miss it.",
     "heroSub": "Swim, camps and registration day, caught before the spots are gone.",
     "heroThread": [
       {
@@ -232,7 +232,7 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale is a number your family texts — the family assistant for the dates, the forms, and the small things that slip. Built by Anzhe Dong at Village Hale Technologies Inc. in Georgetown, Ontario.",
+    "metaDescription": "Hale is a number your family texts — for the dates, the forms, and the small things that slip. Built by Anzhe Dong at Village Hale Technologies Inc. in Georgetown, Ontario.",
     "eyebrow": "About Hale",
     "headline": [
       {
@@ -248,7 +248,7 @@
     ],
     "lede": "Once, a family had a village — elders who knew which class was worth it, neighbors who carried the small things, a grandmother who said this is normal, you are doing fine. That knowing hasn’t disappeared. It just has nowhere to live now except one parent’s memory — and no app fixes a memory problem by asking for more of your attention. So Hale is a number you text.",
     "missionEyebrow": "Our mission",
-    "mission": "Every parent deserves a family assistant — someone who holds the dates, the forms, and the small things that slip, and hands back the evening. Across every stage of childhood, from the first months to almost grown.",
+    "mission": "Every parent should have someone who knows what’s on near them, remembers the date that fills in two minutes, and asks how it went. Across every stage of childhood, from the first months to almost grown.",
     "howEyebrow": "How Hale works",
     "howHeadline": [
       {
@@ -642,9 +642,9 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Start a conversation with Hale — the family assistant you text. It finds activities that fit your child and watches registration day where you live.",
-    "headline": "The family assistant you text.",
-    "lede": "Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.",
+    "metaDescription": "Start a conversation with Hale — a number you text for what’s on near your kids. It finds activities that fit your child and watches registration day where you live.",
+    "headline": "A number you text for what’s on near your kids.",
+    "lede": "Send your kids’ ages and a postal code. Hale texts back what’s actually running near you, and keeps the sign-up mornings from sneaking past.",
     "sentLabel": "What you’ll send:",
     "sentGloss": "Hi Hale 👋 ready to get started",
     "previewLabel": "The text you’ll get back:",
@@ -694,7 +694,7 @@
     ]
   },
   "Jsonld": {
-    "orgDescription": "Hale is the family assistant you text — it watches city registration windows, plans the week, and handles the admin with your say-so. Every family’s data stays in Canada.",
+    "orgDescription": "Hale is a number you text — it finds what’s on near your kids, watches city registration windows, plans the week, and handles the admin with your say-so. Every family’s data stays in Canada.",
     "appDescription": "A number your family texts: Hale watches registration dates across the GTA, plans the week, and executes with your approval — receipts for everything, and your family’s data never leaves Canada."
   }
 }

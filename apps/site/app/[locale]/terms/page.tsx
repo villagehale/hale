@@ -41,7 +41,7 @@ import type { Locale } from '~/i18n/routing';
 
 const TITLE = 'Terms of Service · Hale';
 const DESCRIPTION =
-  'The terms that govern your use of Hale — what Hale is, who can use it, the approval model, and the limits of an AI assistant.';
+  'The terms that govern your use of Hale — what Hale is, who can use it, the approval model, and the limits of an AI service.';
 
 export async function generateMetadata({
   params,
@@ -105,9 +105,9 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
     >
       <LegalSectionBlock id="what-hale-is" title="What Hale is">
         <p>
-          Hale is an AI assistant for families across every stage of childhood, and you reach it by
-          text message: it is a phone number your family texts, not an app you install. Email and
-          the web app are available too, and carry the same record.
+          Hale is a phone number your family texts, not an app you install — an AI service for
+          families across every stage of childhood, reached by text message. Email and the web app
+          are available too, and carry the same record.
         </p>
         <p>
           Hale watches for things that matter in your family&rsquo;s day — including municipal
