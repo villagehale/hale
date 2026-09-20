@@ -108,6 +108,10 @@ const SMS_COPY_SOURCES = [
   'lib/channel/intake/live-lookup.ts',
   'lib/channel/off-domain/copy.ts',
   'lib/channel/caregiver/copy.ts',
+  // VIL-355's bilingual half. Its own copy.test.ts asserts GSM-7 per string by hand,
+  // which only ever covers the strings somebody remembered to list there; this scan is
+  // what makes a NEW French sentence with a `ç` or a `ê` in it a failing test.
+  'lib/channel/coparent/copy.ts',
   'lib/channel/join/copy.ts',
   'lib/channel/connect/copy.ts',
   'lib/channel/connect/text-connect.ts',

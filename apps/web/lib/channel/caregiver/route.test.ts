@@ -16,6 +16,7 @@ import {
   OWN_NUMBER,
   TOO_MANY_INVITES,
 } from './copy';
+import { INVITE_EXPIRED_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
 import { INVITE_DAILY_CAP, INVITE_SILENCE_MS, loadOpenInviteByPhone } from './invites';
 
 /**
@@ -582,10 +583,13 @@ describe('caregiver invite · the ways it does not happen', () => {
 
     const outcome = await text(fake, transport, lateDeps, GRAN_PHONE, 'yes');
 
-    // The invite is gone, so a late yes is a stranger texting Hale — greeted, never
-    // silently accepted into a family.
-    expect(outcome).toEqual({ status: 'greeted' });
+    // The invite is gone, so the yes buys them nothing — and since VIL-355's follow-up
+    // they are TOLD that, in one sentence, instead of being handed an intake greeting
+    // and asked for their children's names (the shared reader, caregiver lane).
+    expect(outcome).toEqual({ status: 'invite_expired_answered', role: 'grandparent' });
+    expect(transport.sent.at(-1)?.body).toBe(INVITE_EXPIRED_BY_LANGUAGE.en);
     expect(auditActions(fake)).toContain('caregiver_invite_expired');
+    expect(auditActions(fake)).toContain('caregiver_invite_expired_answered');
     expect(inserts(fake, schema.familyMembers).some((r) => r.role === 'grandparent')).toBe(false);
     expect(transport.sent.slice(sentByInvite).every((s) => s.body !== CAREGIVER_WELCOME)).toBe(
       true,

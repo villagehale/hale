@@ -1,7 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNotNull, lte } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm';
 import { type CoParentDeparted, departCoParent } from '../channel/coparent/depart.js';
 import { removeDocument } from '../docs/storage.js';
+import { type OrphanSweepSummary, runOrphanUserSweep } from './orphan-users.js';
 
 /**
  * PIPEDA / Law 25 right-to-erasure, REVERSIBLE BY GRACE. A confirm-gated request
@@ -172,6 +173,10 @@ export async function selectFamiliesDueForDeletion(
 
 export interface DeletionSweepSummary {
   erased: number;
+  /** What the same run did about people no household holds a seat for any more. Nested
+   * rather than flattened so a zero here reads as "nobody was orphaned", never as a
+   * count somebody forgot to add (rule #11). */
+  orphans: OrphanSweepSummary;
   /** How many storage objects (chat attachments + child avatars) had their bytes
    * purged from the private bucket across the run — the caller logs it so the
    * byte-level erasure is recorded durably (rule #6 note below). */
@@ -249,10 +254,39 @@ export async function runDeletionSweep(
   removeObject: RemoveObject = removeDocument,
 ): Promise<DeletionSweepSummary> {
   const familyIds = await selectFamiliesDueForDeletion(database, now);
+  // READ BEFORE THE DELETES, because the delete is what destroys it. `parent_channels`
+  // cascades from `families`, and that row is the orphan sweep's whole evidence that a
+  // person ever held a channel — so a parent erased below is invisible to a sweep that
+  // runs afterwards, and their name, address and sign-in identity survive the erasure
+  // they asked for. These ids are that evidence, carried across the cascade by hand.
+  const stranded =
+    familyIds.length === 0
+      ? []
+      : [
+          ...new Set(
+            (
+              await database
+                .select({ userId: schema.parentChannels.userId })
+                .from(schema.parentChannels)
+                .where(inArray(schema.parentChannels.familyId, familyIds))
+            ).map((row) => row.userId),
+          ),
+        ];
+
   let purgedObjects = 0;
   for (const familyId of familyIds) {
     purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
     await database.delete(schema.families).where(eq(schema.families.id, familyId));
   }
-  return { erased: familyIds.length, purgedObjects };
+  // AFTER the families, and on the same tick rather than a cron of its own: an erasure
+  // that just removed a household is the commonest way a person is orphaned, so running
+  // second means this run cleans up after itself instead of leaving it for the next hour.
+  //
+  // After rather than before is also the safe half of the ordering: the sweep ANONYMISES
+  // a users row, which nothing undoes, and a purge that throws leaves its family standing
+  // for the next run to retry. Sweeping first would strip a parent whose household is
+  // still there. The cost is that these people's audit rows have nowhere to live — see
+  // `sweptWithoutTrail`, which is counted and logged rather than quietly skipped.
+  const orphans = await runOrphanUserSweep(database, now, stranded);
+  return { erased: familyIds.length, purgedObjects, orphans };
 }
