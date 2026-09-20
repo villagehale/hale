@@ -59,8 +59,9 @@ function toddler(overrides: Partial<ReminderChild> = {}): ReminderChild {
 
 function activity(overrides: Partial<DueActivity> = {}): DueActivity {
   return {
-    eventId: 'event-1',
+    ref: { table: 'family_events', id: 'event-1' },
     familyId: FAM_A,
+    parentUserId: `user-${FAM_A}`,
     title: 'Swim class',
     startsAt: new Date(NOW.getTime() - 1.5 * DAY_MS),
     childId: null,
@@ -147,7 +148,7 @@ function harness(
     selectFamilies: async () => families,
     loadDueIntros: async () => overrides.intros ?? [],
     discoverableUserIds: async (_db, userIds) => overrides.discoverable ?? new Set(userIds),
-    loadDueActivities: async (_db, familyId) => overrides.activities?.[familyId] ?? [],
+    loadDueActivities: async (_db, fam) => overrides.activities?.[fam.familyId] ?? [],
     loadChildren: async (_db, familyId) => overrides.children?.[familyId] ?? [toddler()],
     loadInboundSince: async (_db, familyId, since) => {
       scans.push([familyId, since]);
@@ -216,7 +217,13 @@ describe('the dark-launch flag', () => {
     const h = harness({
       activities: {
         [FAM_A]: [activity()],
-        [FAM_B]: [activity({ familyId: FAM_B, eventId: 'event-2' })],
+        [FAM_B]: [
+          activity({
+            familyId: FAM_B,
+            parentUserId: `user-${FAM_B}`,
+            ref: { table: 'family_events', id: 'event-2' },
+          }),
+        ],
       },
     });
 
