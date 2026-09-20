@@ -357,9 +357,7 @@ describe('only a YES to the question Hale asked revokes', () => {
       .insert(schema.familyMembers)
       .values({ familyId: seeded.familyId, userId: coParentUserId, role: 'co_parent' });
 
-    expect(
-      await openKinds({ ...seeded, parentUserId: coParentUserId }, ANSWERED_AT),
-    ).toEqual([]);
+    expect(await openKinds({ ...seeded, parentUserId: coParentUserId }, ANSWERED_AT)).toEqual([]);
 
     await text({ ...seeded, parentUserId: coParentUserId }, 'yes', ANSWERED_AT);
     expect(await tokenOf(seeded.familyId)).toBe(seeded.token);

@@ -41,7 +41,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
  * revoke that nobody asked for. That is the direction this matcher always errs in.
  *
  * AND THEN A FOURTH, WHICH IS NOT A SUBTRACTION FROM THE NOUN BUT A REQUIREMENT ON THE
- * SENTENCE: an ask has an ASK SHAPE ({@link ASKS_FOR_ONE}). The three guards above all
+ * SENTENCE: an ask has an ASK SHAPE ({@link asksForOne}). The three guards above all
  * ask what the NOUN is doing, and a declarative clears every one of them — "I already set
  * up a canada post forwarding address.", "the school has a new forwarding address." both
  * end at the noun, own it in the first person or no person, and each one MINTED a token
@@ -326,7 +326,7 @@ export function forwardRevokeReply(language: ReplyLanguage, outcome: ForwardRevo
  */
 const REVOKE_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: 'Turn off your forwarding address? Mail sent to it would be ignored from then on. Reply YES to turn it off, or ignore this.',
-  fr: "Désactiver votre adresse de transfert? Le courrier qui y arrive serait ignoré. Répondez OUI pour la désactiver, ou ignorez ce message.",
+  fr: 'Désactiver votre adresse de transfert? Le courrier qui y arrive serait ignoré. Répondez OUI pour la désactiver, ou ignorez ce message.',
 };
 
 export function forwardRevokeAskReply(language: ReplyLanguage): string {

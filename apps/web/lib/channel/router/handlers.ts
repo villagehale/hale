@@ -528,7 +528,10 @@ async function readRevokeAnswer(
   const questions = await ctx.openQuestions();
   const standing = questions.find((question) => question.kind === 'forward_address_revoke');
   if (!standing) return null;
-  if (resolved === null && !questions.every((question) => question.kind === 'forward_address_revoke')) {
+  if (
+    resolved === null &&
+    !questions.every((question) => question.kind === 'forward_address_revoke')
+  ) {
     return null;
   }
 
