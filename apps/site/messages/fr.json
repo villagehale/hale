@@ -60,7 +60,7 @@
     "heroH1a": "L’assistant familial",
     "heroH1b": "que vous",
     "heroH1Accent": "textez.",
-    "heroSub": "Natation, camps et jour d’inscription, attrapés avant que les places soient parties. Trois textos, puis le silence.",
+    "heroSub": "Natation, camps et jour d’inscription, attrapés avant que les places soient parties.",
     "heroThread": [
       {
         "dir": "out",
@@ -267,8 +267,7 @@
         "line": "Ce qui vaut la peine d’être su cette semaine, et pourquoi ça compte maintenant.",
         "checks": [
           "Un topo le dimanche",
-          "Un avis la semaine où une inscription ouvre",
-          "Le silence entre les deux"
+          "Un avis la semaine où une inscription ouvre"
         ],
         "linkLabel": "Guides parentaux"
       },
@@ -400,7 +399,7 @@
       }
     ],
     "getLede": "C’est le parent qui envoie le premier message — Hale ne texte jamais une famille en premier. En voici un, et ce qui est revenu.",
-    "getAfter": "Ensuite, c’est tranquille : un court plan le dimanche, le lien la veille de l’ouverture d’une inscription, et un rappel quinze minutes avant.",
+    "getAfter": "Un court plan le dimanche, le lien la veille de l’ouverture d’une inscription, et un rappel quinze minutes avant.",
     "waysEyebrow": "Comment orienter une famille vers Hale",
     "waysHeadline": [
       {
@@ -545,7 +544,7 @@
       },
       {
         "question": "À quelle fréquence Hale va-t-il me texter?",
-        "answer": "Un topo le dimanche, puis seulement quand quelque chose a besoin de vous : un avis la semaine où une inscription ouvre, le plan la veille au soir, et une relance dès l’ouverture. Il est silencieux entre les deux, et STOP fonctionne en tout temps."
+        "answer": "Un topo le dimanche, puis seulement quand quelque chose a besoin de vous : un avis la semaine où une inscription ouvre, le plan la veille au soir, et une relance dès l’ouverture. STOP fonctionne en tout temps."
       },
       {
         "question": "Est-ce que Hale peut répondre aux questions de parentalité, ou seulement à celles d’horaire?",

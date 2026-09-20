@@ -71,9 +71,15 @@ describe('landing — the v4 hero', () => {
     // a riddle.
     expect(visibleText(h1)).toBe('The family assistant you text.');
     expect(h1).not.toContain('7:02');
-    // The sub names the wedge, then the promise.
+    // The sub names the wedge, and stops there. It used to promise "Three texts,
+    // then quiet" — a cadence the product cannot keep: the evening check-in is
+    // merged and asks EVERY night at 20:00 local, stepping down to weekly only
+    // after three unanswered evenings, and today it is one F14 flag from sending.
+    // The page under-describes the cadence until the founder rules on naming the
+    // evening ask; it must never over-describe it. The line above is the positive
+    // control — the sub still says something.
     expect(html).toContain('caught before the spots are gone');
-    expect(html).toContain('Three texts, then quiet.');
+    expect(html).not.toContain('Three texts, then quiet.');
     expect(html).not.toContain('Take the family admin off your plate');
     // The accent word is amber at the heading's own weight — colour, not slant.
     expect(h1).toContain('class="v4-accent"');
@@ -428,6 +434,9 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect(text).not.toContain('Silence is the normal state');
     expect(text).not.toContain('A brief on Monday');
     expect(text).not.toContain('Monday morning');
+    // …and no promise of quiet between the legs. The ladder above is the
+    // positive control: the page still tells the reader when Hale speaks.
+    expect(text).not.toContain('then quiet');
   });
 
   it('promises the consent, not an invite a texting family never receives', () => {
@@ -475,8 +484,10 @@ describe('landing — sections, in the Surfaces Plan order', () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     // The hero TOOK that line from how-it-works, which then took a new one; a
     // page that says it in both places has an H2 arguing with its own H1. The
-    // pin is the count, not the replacement wording.
-    expect([...text.matchAll(/Three texts/g)]).toHaveLength(1);
+    // count is now ZERO: the promise came off the page entirely rather than
+    // moving, because a nightly ask is not three texts. The order pins above are
+    // the positive control that the sections it lived between still render.
+    expect([...text.matchAll(/Three texts/g)]).toHaveLength(0);
   });
 });
 
@@ -785,11 +796,16 @@ describe('landing — the first-week contract, folded into How Hale works', () =
     expect(text).not.toContain('Monday morning');
   });
 
-  it('claims no signup duration nobody measured', () => {
+  it('claims no signup duration nobody measured, and no message count either', () => {
     for (const invented of ['2 minutes', 'two minutes', '90 seconds', 'in under a minute']) {
       expect(text, `${invented} must not appear`).not.toContain(invented);
     }
-    // What IS countable: hi, the details, the yes.
-    expect(text).toContain('Three texts');
+    // A count of texts is the same invention with a different unit: nothing in
+    // the product bounds how many messages a first week holds, and the evening
+    // check-in asks nightly, so "Three texts" is withheld too.
+    expect(text).not.toContain('Three texts');
+    // Positive control: the page DOES say what the first text contains, so the
+    // absences above are claims withheld rather than a missing section.
+    expect(text).toContain('You text names, ages, and a postal code');
   });
 });
