@@ -52,7 +52,9 @@ function anchors(html: string): string[] {
  * sr-only caption comes off FIRST: it is said to the reader the layout does not
  * reach, and what is left is the message a sighted reader sees. */
 function bubbleText(html: string, dir: 'out' | 'in'): string | null {
-  const match = new RegExp(`<p class="v4-bubble v4-bubble-${dir}"[^>]*>([\\s\\S]*?)</p>`).exec(html);
+  const match = new RegExp(`<p class="v4-bubble v4-bubble-${dir}"[^>]*>([\\s\\S]*?)</p>`).exec(
+    html,
+  );
   if (match?.[1] === undefined) return null;
   return match[1]
     .replace(/<span class="sr-only">[\s\S]*?<\/span>/, '')
@@ -113,7 +115,7 @@ describe('TextEntry (566 one-tap — WhatsApp dark)', () => {
       // strip already says it, and above the fold every restated line is a line
       // between a stranger and the button.
       expect(html).toContain(
-        'Send your kids’ ages and a postal code. Hale texts back what’s actually running near you, and keeps the sign-up mornings from sneaking past.',
+        'Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.',
       );
       expect(html).not.toContain('No app, no account — just this text thread.');
     }
@@ -391,7 +393,9 @@ describe('TextEntry — the channel matrix, rendered', () => {
   });
 
   it('pre-fills the locked hello when no venue sent them', () => {
-    expect(liveNoSourceHtml).toContain('href="sms:+16475551234?&amp;body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started"');
+    expect(liveNoSourceHtml).toContain(
+      'href="sms:+16475551234?&amp;body=Hi%20Hale%20%F0%9F%91%8B%20ready%20to%20get%20started"',
+    );
   });
 
   it('keeps the dark page dark: no channel buttons on the email-fallback state even if the WhatsApp env leaks in', () => {
@@ -546,7 +550,7 @@ describe('TextEntry — the chooser arm keeps the five-second frame (WhatsApp li
   it('adds the what-is line and the preview bubble above the channel buttons', () => {
     const html = render({ whatsappNumber: LIVE_NUMBER });
     expect(html).toContain(
-      'Send your kids’ ages and a postal code. Hale texts back what’s actually running near you, and keeps the sign-up mornings from sneaking past.',
+      'Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.',
     );
     expect(html).toContain('The text you’ll get back:');
     // The bubble sits above the first channel door.

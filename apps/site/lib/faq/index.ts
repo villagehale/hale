@@ -76,7 +76,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     question: 'Will you tell me whether a class is any good?',
     answer:
-      'Not yet. Today Hale asks how it went so your next suggestions get better for your family. Telling the next parent what other families thought is what we want to build next, and when we do it will be a count and a verdict — never anyone’s words.',
+      'Not yet. Today Hale asks how it went. Telling the next parent what other families thought is what Hale wants to build next, and when it does it will be a count and a verdict — never anyone’s words.',
   },
   {
     question: 'Can you help when we travel?',

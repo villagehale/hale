@@ -177,7 +177,7 @@
       "Your co-parent gets the same dates and nudges on their own number. Always free.",
       "A grandparent or a sitter can be added by one text, with just the schedule in scope — nothing else of yours."
     ],
-    "howConnectors": "If you connect Gmail, I read the subject, the sender and the first line of each new message — enough to notice a date your family has to be somewhere — and I only open a message when it looks like one. From your calendar I read an event’s title, time and place. That is all I ask for, and it is all I use it for.",
+    "howConnectors": "If you connect Gmail, I read the subject, the sender and the first line of each new message — enough to notice a date your family has to be somewhere — and I only open a message when it looks like one. From your calendar I read what an event says about itself: its title, its notes, where it is and when. That is all I ask for, and it is all I use it for.",
     "privacyLink": "How I handle your data",
     "consentLine": "I suggest, I prepare — and with your ok, I handle it. Receipts for everything, and nothing happens without your yes.",
     "centresLine": "Run an EarlyON, a library branch or a centre? Here is what to tell a parent about Hale.",
@@ -513,7 +513,7 @@
       },
       {
         "question": "Will you tell me whether a class is any good?",
-        "answer": "Not yet. Today Hale asks how it went so your next suggestions get better for your family. Telling the next parent what other families thought is what we want to build next, and when we do it will be a count and a verdict — never anyone’s words."
+        "answer": "Not yet. Today Hale asks how it went. Telling the next parent what other families thought is what Hale wants to build next, and when it does it will be a count and a verdict — never anyone’s words."
       },
       {
         "question": "Can you help when we travel?",
@@ -605,7 +605,7 @@
     "metaTitle": "Text Hale",
     "metaDescription": "Start a conversation with Hale — a number you text for what’s on near your kids. It finds activities that fit your child and watches registration day where you live.",
     "headline": "A number you text for what’s on near your kids.",
-    "lede": "Send your kids’ ages and a postal code. Hale texts back what’s actually running near you, and keeps the sign-up mornings from sneaking past.",
+    "lede": "Hale finds activities that fit your little one, keeps sign-up mornings from sneaking up, and checks in on how it goes.",
     "sentLabel": "What you’ll send:",
     "sentGloss": "Hi Hale 👋 ready to get started",
     "previewLabel": "The text you’ll get back:",

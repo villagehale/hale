@@ -191,9 +191,9 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
             that does not look like a family date.
           </li>
           <li>
-            <strong>Calendar (optional).</strong> What is read: an event&rsquo;s title, start, end,
-            place, and whether it was cancelled or moved. Why: so a change to your week reaches you
-            as a text rather than as a surprise.
+            <strong>Calendar (optional).</strong> What is read: an event&rsquo;s title, its notes,
+            start, end, place, and whether it was cancelled or moved. Why: so a change to your
+            week reaches you as a text rather than as a surprise.
           </li>
           <li>
             <strong>How it went.</strong> What is stored: your one-line answer to Hale&rsquo;s

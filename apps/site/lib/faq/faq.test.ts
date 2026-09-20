@@ -25,9 +25,7 @@ describe('product FAQ', () => {
 
 describe('the FAQ this build serves', () => {
   it('describes a number you text rather than an app you sign up for', () => {
-    const answers = FAQ
-      .map((item) => item.answer)
-      .join(' ');
+    const answers = FAQ.map((item) => item.answer).join(' ');
     expect(answers).toContain('text');
     expect(answers).toContain('no account to create');
     // The homepage offers no signup and nothing to browse, so the FAQ must not
@@ -39,9 +37,7 @@ describe('the FAQ this build serves', () => {
   });
 
   it('keeps every claim inside what ships — no named method, no outcome promise', () => {
-    const all = FAQ
-      .map((item) => `${item.question} ${item.answer}`)
-      .join(' ');
+    const all = FAQ.map((item) => `${item.question} ${item.answer}`).join(' ');
     for (const overclaim of ['Ferber', 'guaranteed', 'will fix', 'March break', 'PA day']) {
       expect(all).not.toContain(overclaim);
     }
@@ -51,9 +47,7 @@ describe('the FAQ this build serves', () => {
   it('offers the record by a door a texting family has (claim-by-phone must ship first)', () => {
     // Same merge-order dependency as the landing's receipts line: web sign-in is
     // Google + magic link today, and a texted family has no email address.
-    const answers = FAQ
-      .map((item) => item.answer)
-      .join(' ');
+    const answers = FAQ.map((item) => item.answer).join(' ');
     expect(answers).toContain('sign in with your phone number');
   });
 
@@ -99,12 +93,31 @@ describe('the FAQ this build serves', () => {
     // parent who asks what is on in another city gets a search run against their
     // own town, so "ask me about another city" would be a claim with no code
     // under it.
-    expect(travel).toBe('Not yet. Today I watch registration and what’s on where you live, in the GTA.');
+    expect(travel).toBe(
+      'Not yet. Today I watch registration and what’s on where you live, in the GTA.',
+    );
     // Reviews may say what is real today (the asking) and what is wanted next,
     // and must promise no corpus: there is no table, no verdict vocabulary, no
     // k-threshold, and a web find has no stable id to hang a review on.
     expect(reviews).toContain('asks how it went');
     expect(reviews).toContain('never anyone’s words');
+    // And it claims no EFFECT for the asking. `family_check_in_notes` carries
+    // "NOTHING READS THIS TODAY" in its own schema comment, the only reader
+    // outside the writer is the rights export, and the activity follow-up reply
+    // is deliberately unhandled — so "your next suggestions get better" is the
+    // same unbuilt-claim shape the landing bans in §3, moved to the page a
+    // doubting parent reads second. The answer may say what Hale DOES (ask) and
+    // what it WANTS to build; it may not say what the asking achieves.
+    for (const effect of [
+      'get better',
+      'gets better',
+      'better for your family',
+      'learns',
+      'remembers',
+      'improve',
+    ]) {
+      expect(reviews.toLowerCase(), `${effect} must not appear`).not.toContain(effect);
+    }
   });
 
   it('promises no quiet between the legs — the evening check-in asks every night', () => {
@@ -141,9 +154,7 @@ describe('the FAQ this build serves', () => {
   });
 
   it('carries the Canadian residency and teen-redaction posture (hard rule #1)', () => {
-    const answers = FAQ
-      .map((item) => item.answer)
-      .join(' ');
+    const answers = FAQ.map((item) => item.answer).join(' ');
     expect(answers).toContain('PIPEDA');
     expect(answers).toContain('Law 25');
     expect(answers).toContain('redacted from parents by default');

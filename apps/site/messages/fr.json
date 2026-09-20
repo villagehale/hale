@@ -192,7 +192,7 @@
       "Votre coparent reçoit les mêmes dates et les mêmes rappels sur son propre numéro. Toujours gratuit.",
       "Un grand-parent ou une gardienne s’ajoute par un texto, avec seulement l’horaire dans sa portée — rien d’autre de ce qui est à vous."
     ],
-    "howConnectors": "Si vous connectez Gmail, je lis l’objet, l’expéditeur et la première ligne de chaque nouveau message — assez pour repérer une date où votre famille doit être quelque part — et je n’ouvre un message que lorsqu’il en a l’air. De votre calendrier, je lis le titre, l’heure et le lieu d’un événement. C’est tout ce que je demande, et c’est tout ce que j’en fais.",
+    "howConnectors": "Si vous connectez Gmail, je lis l’objet, l’expéditeur et la première ligne de chaque nouveau message — assez pour repérer une date où votre famille doit être quelque part — et je n’ouvre un message que lorsqu’il en a l’air. De votre calendrier, je lis ce qu’un événement dit de lui-même : son titre, ses notes, où il a lieu et quand. C’est tout ce que je demande, et c’est tout ce que j’en fais.",
     "privacyLink": "Comment je traite vos données",
     "consentLine": "Je suggère, je prépare — et avec votre accord, je m’en occupe. Des preuves pour tout, et rien ne se passe sans votre oui.",
     "centresLine": "Vous dirigez un centre ON y va, une succursale de bibliothèque ou un centre? Voici quoi dire à un parent au sujet de Hale.",
@@ -533,7 +533,7 @@
       },
       {
         "question": "Est-ce que vous me direz si un cours est bon?",
-        "answer": "Pas encore. Aujourd’hui, Hale demande comment ça s’est passé pour que ses prochaines suggestions conviennent mieux à votre famille. Dire au prochain parent ce que d’autres familles en ont pensé, c’est ce que nous voulons bâtir ensuite — et quand nous le ferons, ce sera un nombre et un verdict, jamais les mots de qui que ce soit."
+        "answer": "Pas encore. Aujourd’hui, Hale demande comment ça s’est passé. Dire au prochain parent ce que d’autres familles en ont pensé, c’est ce que Hale veut bâtir ensuite — et quand ce sera fait, ce sera un nombre et un verdict, jamais les mots de qui que ce soit."
       },
       {
         "question": "Pouvez-vous nous aider en voyage?",
@@ -625,7 +625,7 @@
     "metaTitle": "Texter Hale",
     "metaDescription": "Commencez une conversation avec Hale — un numéro à texter pour ce qui se passe près de vos enfants. Il trouve des activités pour votre enfant et surveille les journées d’inscription de votre région.",
     "headline": "Un numéro à texter pour ce qui se passe près de vos enfants.",
-    "lede": "Envoyez l’âge de vos enfants et un code postal. Hale vous texte ce qui se donne vraiment près de chez vous, et empêche les matins d’inscription de vous filer entre les doigts.",
+    "lede": "Hale trouve des activités qui conviennent à votre tout-petit, surveille les matins d’inscription et prend de vos nouvelles.",
     "sentLabel": "Ce que vous enverrez :",
     "sentGloss": "En anglais : « Bonjour Hale 👋 prêt à commencer »",
     "previewLabel": "Le texto que vous recevrez en retour :",

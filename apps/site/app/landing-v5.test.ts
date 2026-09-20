@@ -567,6 +567,54 @@ describe('T4 · no claim the code cannot back', () => {
     expect(text).toContain('You text names, ages, and a postal code');
   });
 
+  it('names every field a connector ingests — understating collection is the same defect', () => {
+    // The landing makes the short version of the promise /privacy makes at
+    // length, and it shipped one field short: "an event's title, time and place"
+    // over a sync that also ingests `description`, the field that routinely
+    // carries meeting links and other people's names. So the field list is read
+    // out of the sync rather than typed, and a new ingested field fails here
+    // until someone decides what to call it. (Same read, same reason, in
+    // `legal-routes.test.ts`, against the /privacy purpose blocks.)
+    const sync = readFileSync(
+      fileURLToPath(new URL('../../web/lib/integrations/sync.ts', import.meta.url)),
+      'utf8',
+    );
+    const payloadKeys = (source: 'gcal' | 'gmail'): string[] => {
+      const body = new RegExp(
+        `ingested\\('${source}', connection\\.familyId, \\{([\\s\\S]*?)\\}`,
+      ).exec(sync)?.[1];
+      if (body === undefined) throw new Error(`apps/web moved the ${source} ingest payload`);
+      return [...body.matchAll(/^\s{6,}(\w+)[,:]/gm)].map((m) => m[1] as string);
+    };
+    /** `id` is the provider's handle for the row and names no new fact about a
+     * family, so it is deliberately unnamed rather than accidentally missing. */
+    const NAMED: Record<'gcal' | 'gmail', Record<string, string | null>> = {
+      gcal: {
+        id: null,
+        summary: 'its title',
+        description: 'its notes',
+        location: 'where it is',
+        start: 'and when',
+        end: 'and when',
+      },
+      gmail: { id: null, subject: 'the subject', from: 'the sender', snippet: 'the first line' },
+    };
+    const sentence = text.slice(
+      text.indexOf('If you connect Gmail'),
+      text.indexOf('That is all I ask for'),
+    );
+    expect(sentence, 'the connector sentence must render').toContain('From your calendar');
+    for (const source of ['gcal', 'gmail'] as const) {
+      expect(payloadKeys(source).sort(), `${source} ingest`).toEqual(
+        Object.keys(NAMED[source]).sort(),
+      );
+      for (const [field, words] of Object.entries(NAMED[source])) {
+        if (words === null) continue;
+        expect(sentence, `${source}.${field} is collected and must be named`).toContain(words);
+      }
+    }
+  });
+
   it('invents no urgency around the founding rate', () => {
     expect(text).toContain('Founding families');
     for (const pressure of ['Only', 'spots left', 'Hurry', 'ends soon', 'Limited time']) {
