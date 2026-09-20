@@ -57,6 +57,7 @@ function candidate(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
     seasons: null,
     childId: null,
     confidence: 0.8,
+    source: null,
     ...overrides,
   };
 }
@@ -101,7 +102,8 @@ function outlook(date: string, overrides: Partial<DailyOutlook> = {}): DailyOutl
 const WET = { precipitationChancePct: 90 };
 const FREEZING = { highTempC: -20 };
 
-function decide(overrides: Partial<Parameters<typeof decideNudge>[0]> = {}) {
+/** The whole decision, including the reasons a leg had nothing (VIL-360). */
+function decideAll(overrides: Partial<Parameters<typeof decideNudge>[0]> = {}) {
   return decideNudge({
     children: [child()],
     candidates: [],
@@ -115,10 +117,18 @@ function decide(overrides: Partial<Parameters<typeof decideNudge>[0]> = {}) {
     suppressedCheckpointRefs: new Set<string>(),
     // VIL-242 · no M7 sequence has claimed anything by default.
     claimedWindowIds: new Set<string>(),
+    // VIL-360 · the weekday legs are off unless a case arms them, so every case
+    // below decides between exactly the three classes it was written for.
+    weekdayCare: 'disarmed' as const,
     now: FRIDAY,
     timeZone: TZ,
     ...overrides,
   });
+}
+
+/** Just the nudge, for the cases whose whole subject is which one wins. */
+function decide(overrides: Partial<Parameters<typeof decideNudge>[0]> = {}) {
+  return decideAll(overrides).nudge;
 }
 
 describe('decideNudge — priority 1: a registration window', () => {
@@ -449,5 +459,227 @@ describe('decideNudge — health checkpoints', () => {
     expect(
       decide({ healthChildren: [healthChild()], areaCoarse: 'L4C', suppressedCheckpointRefs: done }),
     ).toBeNull();
+  });
+});
+
+/**
+ * VIL-360 · priority 4 — the WEEKDAY civic drop-in.
+ *
+ * Expectations come from the brief's rules, not from the code: a weekday time claim
+ * may rest ONLY on a civic_registry row (R4); a row the weekly sweep dated to a day
+ * that has already gone may never be offered (R8); and the three care states are
+ * three DIFFERENT skip reasons, because "they said daycare" and "nobody told us" call
+ * for opposite next moves (R9, rule #11).
+ */
+describe('decideNudge — priority 4: a weekday civic drop-in', () => {
+  /** A Toronto-local Friday, so "today" is 2026-07-31 in the family's own zone. */
+  const homeCare = {
+    stated: [
+      { childId: 'child-1', care: 'home' as const, provider: null, validFrom: FRIDAY },
+    ],
+  };
+
+  function civic(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
+    return candidate({
+      id: 'civic-1',
+      title: 'EarlyON drop-in',
+      venueName: 'Armour Heights',
+      source: 'civic_registry',
+      // The Tuesday after FRIDAY.
+      eventDate: '2026-08-04',
+      ...overrides,
+    });
+  }
+
+  it('picks the soonest upcoming Mon-Fri civic session and names the weekday', () => {
+    const nudge = decide({
+      weekdayCare: homeCare,
+      candidates: [
+        civic({ id: 'thu', title: 'Thursday storytime', eventDate: '2026-08-06' }),
+        civic({ id: 'tue', title: 'Tuesday drop-in', eventDate: '2026-08-04' }),
+      ],
+    });
+    if (nudge?.kind !== 'weekday_dropin') throw new Error('expected a weekday drop-in');
+    expect(nudge.candidateRef.title).toBe('Tuesday drop-in');
+    expect(nudge.eventDate).toBe('2026-08-04');
+    expect(nudge.weekday).toBe('tuesday');
+    expect(nudge.kidNames).toEqual(['Maya']);
+  });
+
+  it('R4 — never an LLM-discovered row, even when it is nearer and more confident', () => {
+    const decision = decideAll({
+      weekdayCare: homeCare,
+      candidates: [
+        candidate({
+          id: 'llm',
+          title: 'Tuesday music circle',
+          source: 'llm',
+          eventDate: '2026-08-03',
+          confidence: 1,
+        }),
+      ],
+    });
+    expect(decision.nudge).toBeNull();
+    expect(decision.skips).toEqual({ no_civic_candidate: 1 });
+  });
+
+  it('never a weekend-dated civic row — that is the weekend pick, not this', () => {
+    const decision = decideAll({
+      weekdayCare: homeCare,
+      candidates: [civic({ eventDate: SATURDAY }), civic({ id: 'sun', eventDate: SUNDAY })],
+    });
+    expect(decision.nudge).toBeNull();
+    expect(decision.skips).toEqual({ no_weekday_date: 1 });
+  });
+
+  it('R5 — drops a candidate whose renderable strings are not GSM-7, and COUNTS it', () => {
+    const decision = decideAll({
+      weekdayCare: homeCare,
+      candidates: [
+        // The em dash the civic sweep used to persist. It is dated sooner, so a decide
+        // that did not drop it would pick it and double the bill.
+        civic({ id: 'dashed', title: 'Story time — babies', eventDate: '2026-08-03' }),
+        civic({ id: 'clean', title: 'Story time for babies', eventDate: '2026-08-04' }),
+      ],
+    });
+    if (decision.nudge?.kind !== 'weekday_dropin') throw new Error('expected a drop-in');
+    expect(decision.nudge.candidateRef.title).toBe('Story time for babies');
+    expect(decision.skips).toEqual({ not_gsm7_printable: 1 });
+  });
+
+  it('R5 — an unprintable VENUE is dropped too, and then there is nothing to offer', () => {
+    const decision = decideAll({
+      weekdayCare: homeCare,
+      candidates: [civic({ venueName: 'Café – north branch' })],
+    });
+    expect(decision.nudge).toBeNull();
+    expect(decision.skips).toEqual({ not_gsm7_printable: 1 });
+  });
+
+  describe('R8 — a Mon-Fri row the weekly sweep has not re-dated yet', () => {
+    // The production shape: the civic sweep runs Mondays, dates a Tuesday session to
+    // THAT Tuesday, and the row stays live and unchanged all week.
+    const SATURDAY_NOW = new Date('2026-08-01T15:00:00.000Z');
+    const TUESDAY_GONE = '2026-07-28';
+    const TUESDAY_COMING = '2026-08-04';
+
+    it('picks the Tuesday coming, not the Tuesday just gone', () => {
+      const nudge = decide({
+        now: SATURDAY_NOW,
+        weekdayCare: homeCare,
+        candidates: [
+          civic({ id: 'gone', title: 'Last Tuesday', eventDate: TUESDAY_GONE }),
+          civic({ id: 'coming', title: 'Next Tuesday', eventDate: TUESDAY_COMING }),
+        ],
+      });
+      if (nudge?.kind !== 'weekday_dropin') throw new Error('expected a weekday drop-in');
+      expect(nudge.candidateRef.title).toBe('Next Tuesday');
+    });
+
+    it('with only the stale row, refuses and says WHY', () => {
+      const decision = decideAll({
+        now: SATURDAY_NOW,
+        weekdayCare: homeCare,
+        candidates: [civic({ id: 'gone', eventDate: TUESDAY_GONE })],
+      });
+      expect(decision.nudge).toBeNull();
+      expect(decision.skips).toEqual({ weekday_date_past: 1 });
+    });
+
+    it('holds across a DST boundary, because the comparison is on the day KEY', () => {
+      // Toronto leaves DST on 2026-11-01. `now` is the Friday before; the stale row is
+      // the Tuesday before that, and the live one is the Monday AFTER the clocks change.
+      const BEFORE_FALL_BACK = new Date('2026-10-30T15:00:00.000Z');
+      const decision = decideAll({
+        now: BEFORE_FALL_BACK,
+        weekdayCare: homeCare,
+        candidates: [
+          civic({ id: 'gone', title: 'Gone Tuesday', eventDate: '2026-10-27' }),
+          civic({ id: 'after', title: 'Post-DST Monday', eventDate: '2026-11-02' }),
+        ],
+      });
+      if (decision.nudge?.kind !== 'weekday_dropin') throw new Error('expected a drop-in');
+      expect(decision.nudge.candidateRef.title).toBe('Post-DST Monday');
+      expect(decision.nudge.weekday).toBe('monday');
+    });
+
+    it('a session dated TODAY is still offerable', () => {
+      const nudge = decide({
+        weekdayCare: homeCare,
+        // FRIDAY is 2026-07-31 in Toronto.
+        candidates: [civic({ eventDate: '2026-07-31' })],
+      });
+      if (nudge?.kind !== 'weekday_dropin') throw new Error('expected a weekday drop-in');
+      expect(nudge.weekday).toBe('friday');
+    });
+  });
+
+  describe('R9 — the three care states are three different answers', () => {
+    it('a starting_soon fact still produces the find', () => {
+      const nudge = decide({
+        weekdayCare: {
+          stated: [
+            {
+              childId: 'child-1',
+              care: 'starting_soon' as const,
+              provider: null,
+              validFrom: FRIDAY,
+            },
+          ],
+        },
+        candidates: [civic()],
+      });
+      expect(nudge?.kind).toBe('weekday_dropin');
+    });
+
+    it('a daycare fact skips as care_is_daycare', () => {
+      const decision = decideAll({
+        weekdayCare: {
+          stated: [
+            { childId: 'child-1', care: 'daycare' as const, provider: 'Little Sprouts', validFrom: FRIDAY },
+          ],
+        },
+        candidates: [civic()],
+      });
+      expect(decision.nudge).toBeNull();
+      expect(decision.skips).toEqual({ care_is_daycare: 1 });
+    });
+
+    it('no fact at all skips as care_unstated — a DIFFERENT state, not a quieter no', () => {
+      const decision = decideAll({ weekdayCare: { stated: [] }, candidates: [civic()] });
+      expect(decision.nudge).toBeNull();
+      expect(decision.skips).toEqual({ care_unstated: 1 });
+    });
+
+    it("a 13+ child's fact never unlocks a find (rule #1)", () => {
+      const decision = decideAll({
+        teenChildIds: ['teen-1'],
+        weekdayCare: {
+          stated: [
+            { childId: 'teen-1', care: 'home' as const, provider: null, validFrom: FRIDAY },
+          ],
+        },
+        candidates: [civic()],
+      });
+      expect(decision.nudge).toBeNull();
+      expect(decision.skips).toEqual({ care_unstated: 1 });
+    });
+  });
+
+  it('the flag being off is SILENT, not a zeroed counter', () => {
+    const decision = decideAll({ weekdayCare: 'disarmed', candidates: [civic()] });
+    expect(decision.nudge).toBeNull();
+    expect(decision.skips).toEqual({});
+  });
+
+  it('R3 — a weather swap outranks the find, and a registration window outranks both', () => {
+    const wetWeekend = [outlook(SATURDAY, WET), outlook(SUNDAY, WET)];
+    const both = {
+      weekdayCare: homeCare,
+      candidates: [civic(), candidate({ id: 'indoor', eventDate: SATURDAY })],
+      weather: wetWeekend,
+    };
+    expect(decide(both)?.kind).toBe('weather_swap');
+    expect(decide({ ...both, windows: [match()] })?.kind).toBe('registration');
   });
 });

@@ -613,6 +613,7 @@ async function runToddlerJourney(): Promise<Journey> {
     },
     loadClaimedWindowIds: async () =>
       new Set(fake.rows(schema.registrationSequences).map((row) => row.windowId as string)),
+    loadWeekdayCareContext: async () => ({ stated: [] }),
     weather: fakeWeather([]),
     buildGate: gatePorts,
     // SEAM: the ledger's dedupe predicate (channel/ledger.ts dedupeActive).

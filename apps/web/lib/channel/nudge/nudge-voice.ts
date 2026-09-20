@@ -66,6 +66,18 @@ export function nudgeVoiceContext(nudge: VoicedNudge): unknown {
       ageApproximate: nudge.ageApproximate,
     };
   }
+  if (nudge.kind === 'weekday_dropin') {
+    // NO TIME OF DAY. The candidate row the decide read carries no clock time (the
+    // reader does not select `summary`), so `day` is the only time-shaped fact there
+    // is, and the skill's rule is to reuse the one it was given or say nothing.
+    return {
+      kind: nudge.kind,
+      what: nudge.candidateRef.title,
+      where: nudge.candidateRef.venueName,
+      day: nudge.weekday,
+      kidNames: nudge.kidNames,
+    };
+  }
   return {
     kind: nudge.kind,
     what: nudge.candidateRef.title,
@@ -87,6 +99,11 @@ export function nudgeFactSlots(nudge: VoicedNudge): string[] {
       ...nudge.kidNames,
     ];
     if (nudge.residentNote) slots.push(nudge.residentNote);
+    return slots;
+  }
+  if (nudge.kind === 'weekday_dropin') {
+    const slots = [nudge.candidateRef.title, nudge.weekday, ...nudge.kidNames];
+    if (nudge.candidateRef.venueName) slots.push(nudge.candidateRef.venueName);
     return slots;
   }
   const slots = [
@@ -172,6 +189,12 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
     // asserting something Hale does not know.
     const hedge = nudge.ageApproximate ? ' Worth a look if they are still in that band.' : '';
     return `${townLabel(nudge.windowRef.municipality)} ${nudge.windowRef.cycleLabel} registration opens ${nudge.opensAtLocal}${who}${resident}.${hedge}`;
+  }
+
+  if (nudge.kind === 'weekday_dropin') {
+    const venue = nudge.candidateRef.venueName ? ` at ${nudge.candidateRef.venueName}` : '';
+    const kids = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
+    return `${dayLabel(nudge.weekday)} weekday drop-in: ${nudge.candidateRef.title}${venue}${kids}.`;
   }
 
   const where = nudge.candidateRef.venueName ? ` at ${nudge.candidateRef.venueName}` : '';

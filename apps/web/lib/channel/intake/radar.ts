@@ -200,6 +200,14 @@ export async function readCandidates(database: Database, familyId: string): Prom
       seasons: schema.villageCandidates.seasons,
       childId: schema.villageCandidates.childId,
       confidence: schema.villageCandidates.confidence,
+      // WHICH DISCOVERY LAYER WROTE THE ROW. Selected because a claim about a
+      // WEEKDAY session's day rests on it and on nothing else: the civic sweep
+      // dates its rows from a feed it verified, while an LLM-discovered row's
+      // date and url are model output (village/discover.ts). `summary` is
+      // deliberately NOT selected alongside it - nothing renders one today, and
+      // an unread column on this hot path is a field the next reader assumes is
+      // checked.
+      source: schema.villageCandidates.source,
     })
     .from(schema.villageCandidates)
     .where(

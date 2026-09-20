@@ -337,14 +337,14 @@ function occurrenceFor(
   }
   return {
     day: nextOccurrenceDay(session.dayOfWeek, session.endMinute, now, timeZone),
-    label: `${formatMinuteOfDay(session.startMinute)}–${formatMinuteOfDay(session.endMinute)}`,
+    label: `${formatMinuteOfDay(session.startMinute)}-${formatMinuteOfDay(session.endMinute)}`,
   };
 }
 
 function summaryFor(session: CivicSessionForFamily, timeLabel: string): string {
   const access = session.registrationRequired ? 'Registration required' : 'Free drop-in';
   const where = session.venueCity === null ? session.venueName : `${session.venueName}, ${session.venueCity}`;
-  return `${access} at ${where} — ${timeLabel}.`;
+  return `${access} at ${where} - ${timeLabel}.`;
 }
 
 /** Below this a band is only legible in months: rendering "birth to 12 months"
