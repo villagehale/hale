@@ -65,7 +65,10 @@
       {
         "elapsed": "Le premier texto",
         "rows": [
-          { "dir": "out", "text": "Mia a 3 ans, on est à Stouffville. La natation, et ce qu’il y a autour." },
+          {
+            "dir": "out",
+            "text": "Mia a 3 ans, on est à Vaughan. La natation, et ce qu’il y a autour."
+          },
           {
             "dir": "in",
             "text": "Trois près de chez vous. Natation parent-enfant, 2 à 4 ans, les samedis à 9 h 15, d’après le guide des loisirs de la ville. Jeu libre préscolaire, 18 mois à 4 ans, sans inscription, d’après la page de la bibliothèque. Petits bougeurs, 2 à 5 ans — le centre communautaire l’annonce, mais les horaires d’hiver ne sont pas encore affichés. Voulez-vous que je garde un oeil sur tout cela pour vous? (comment je traite les infos de votre famille : villagehale.com/privacy)"
@@ -78,7 +81,7 @@
         "rows": [
           {
             "dir": "in",
-            "text": "Demain : la natation d’hiver de Stouffville ouvre à 7 h 00 pour Mia. Connectez-vous ce soir et gardez ceci ouvert : townofws.ca/play/recreation/programs/play-book"
+            "text": "Demain : les cours de natation de Vaughan ouvrent à 7 h 00 pour Mia. Connectez-vous ce soir et gardez ceci ouvert : vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs"
           }
         ]
       },
@@ -87,7 +90,7 @@
         "rows": [
           {
             "dir": "in",
-            "text": "La natation d’hiver de Stouffville ouvre à 7 h 00. Votre lien : townofws.ca/play/recreation/programs/play-book"
+            "text": "Les cours de natation de Vaughan ouvrent à 7 h 00. Votre lien : vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs"
           }
         ]
       },
@@ -96,10 +99,13 @@
         "rows": [
           {
             "dir": "in",
-            "text": "Comment s’est passée la natation d’hiver de Stouffville? Répondez « inscrit », « liste d’attente #12 » ou « manqué »."
+            "text": "Comment se sont passés les cours de natation de Vaughan? Répondez « got in », « waitlisted #12 » ou « missed it »."
           },
-          { "dir": "out", "text": "inscrit" },
-          { "dir": "in", "text": "C’est une place. Noté : natation d’hiver de Stouffville, inscription faite." }
+          { "dir": "out", "text": "got in" },
+          {
+            "dir": "in",
+            "text": "C’est une place. Noté : cours de natation de Vaughan, inscription faite."
+          }
         ]
       },
       {

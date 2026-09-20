@@ -65,7 +65,7 @@
       {
         "elapsed": "The first text",
         "rows": [
-          { "dir": "out", "text": "Mia’s 3, we’re in Stouffville. Swim, and anything nearby." },
+          { "dir": "out", "text": "Mia’s 3, we’re in Vaughan. Swim, and anything nearby." },
           {
             "dir": "in",
             "text": "Three near you. Parent & tot swim, ages 2 - 4, Saturdays 9:15 a.m., off the town’s rec guide. Preschool playtime, ages 18 months - 4 years, drop-in, off the library’s page. Little movers, ages 2 - 5 — the community centre lists it, but the winter times aren’t posted yet. Want me to keep an eye on all of this for you? (how I handle your family’s info: villagehale.com/privacy)"
@@ -78,7 +78,7 @@
         "rows": [
           {
             "dir": "in",
-            "text": "Tomorrow: Stouffville winter swim opens 7:00 a.m. for Mia. Sign in tonight and have this open: townofws.ca/play/recreation/programs/play-book"
+            "text": "Tomorrow: Vaughan swim lessons opens 7:00 a.m. for Mia. Sign in tonight and have this open: vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs"
           }
         ]
       },
@@ -87,7 +87,7 @@
         "rows": [
           {
             "dir": "in",
-            "text": "Stouffville winter swim opens 7:00 a.m. Your link: townofws.ca/play/recreation/programs/play-book"
+            "text": "Vaughan swim lessons opens 7:00 a.m. Your link: vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs"
           }
         ]
       },
@@ -96,10 +96,10 @@
         "rows": [
           {
             "dir": "in",
-            "text": "How did Stouffville winter swim go? Reply “got in”, “waitlisted #12” or “missed it”."
+            "text": "How did Vaughan swim lessons go? Reply “got in”, “waitlisted #12” or “missed it”."
           },
           { "dir": "out", "text": "got in" },
-          { "dir": "in", "text": "That’s a spot. Noted: Stouffville winter swim registered." }
+          { "dir": "in", "text": "That’s a spot. Noted: Vaughan swim lessons registered." }
         ]
       },
       {
@@ -294,12 +294,7 @@
       "plus": "For when you want Hale to do more: once it has earned your trust, it acts on your approval — reminders, drafts, and your calendar, every child, as integrations roll out.",
       "family": "For when you want Hale to handle it: full autonomy on your approval, commerce and booking as they roll out, concierge and priority support."
     },
-    "freeFeatures": [
-      "Text Hale",
-      "Rec dates watched",
-      "Answers",
-      "Founding rate"
-    ]
+    "freeFeatures": ["Text Hale", "Rec dates watched", "Answers", "Founding rate"]
   },
   "Contact": {
     "metaTitle": "Contact · Hale",

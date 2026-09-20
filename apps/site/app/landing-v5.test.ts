@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { impactNumbers } from '~/lib/landing/impact.js';
@@ -102,6 +104,205 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+/* ── apps/web, read as SOURCE BYTES ───────────────────────────────────────────
+ * The precedent is `text-page-copy.test.ts`, which pins the /text greeting to
+ * `intake/copy.ts` by regex over the file rather than by an import: the pin is a
+ * byte comparison against what is written there, and a restructure THROWS rather
+ * than passing vacuously. The loop makes the same promise five times over, so it
+ * is held the same way. Reading rather than importing also keeps apps/site free
+ * of apps/web's module graph, which is the process boundary this repo works.
+ *
+ * A throw here is a cross-brief signal — apps/web moved a sentence the landing
+ * quotes — and never a test to loosen. */
+function webSource(path: string): string {
+  return readFileSync(fileURLToPath(new URL(`../../web/${path}`, import.meta.url)), 'utf8');
+}
+
+function extract(src: string, re: RegExp, what: string): string {
+  const hit = re.exec(src)?.[1];
+  if (hit === undefined) {
+    throw new Error(`apps/web moved ${what} — read the source and re-pin the loop with it`);
+  }
+  return hit;
+}
+
+const SEQUENCE_COPY = webSource('lib/registration/sequence/copy.ts');
+const INTAKE_COPY = webSource('lib/channel/intake/copy.ts');
+const CHECKIN_COPY = webSource('lib/channel/checkin/copy.ts');
+const WINDOWS_DATA = webSource('lib/registration/registration-windows-data.ts');
+const TOWN_LABEL_TS = webSource('lib/channel/town-label.ts');
+const SHORTLIST_TS = webSource('lib/registration/sequence/shortlist.ts');
+const LEGAL_LINKS = webSource('lib/legal-links.ts');
+
+/** The seeded window the hero's ladder is drawn from. Vaughan registers swim
+ * lessons on its own date, two days after general programs, at 7 a.m. for
+ * residents and 7 a.m. for everyone else — one clock, printed twice, on the
+ * Town's own recreation page. */
+const MUNICIPALITY = 'vaughan';
+const PROGRAM_DOMAIN = 'swim';
+const CHILD = 'Mia';
+
+const ROW = extract(
+  WINDOWS_DATA,
+  new RegExp(
+    `municipality: '${MUNICIPALITY}',\\s*programDomain: '${PROGRAM_DOMAIN}',([\\s\\S]*?)\\n\\s*\\},`,
+  ),
+  `the seeded ${MUNICIPALITY}/${PROGRAM_DOMAIN} window`,
+);
+const OPENS_AT = new Date(extract(ROW, /residentOpenAt: '([^']+)'/, 'residentOpenAt'));
+const SOURCE_URL = extract(
+  WINDOWS_DATA,
+  new RegExp(`const ${extract(ROW, /sourceUrl: (\w+),/, 'sourceUrl')} =\\s*'([^']+)';`),
+  "the row's sourceUrl constant",
+);
+
+/** `timeOfDay(anchor, timeZone)` — the same `Intl` call the two ladder legs make
+ * (`en-CA`, hour + 2-digit minute, the family's zone). */
+const TIME_OF_DAY = new Intl.DateTimeFormat('en-CA', {
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'America/Toronto',
+}).format(OPENS_AT);
+const LADDER_HOUR_24 = Number(
+  new Intl.DateTimeFormat('en-CA', {
+    hour: '2-digit',
+    hour12: false,
+    timeZone: 'America/Toronto',
+  }).format(OPENS_AT),
+);
+
+/** `townLabel()` is one function with one exceptions table; anything absent from
+ * the table is the token Title-Cased. Mirrored rather than imported, and the
+ * table is READ, so a town that later earns an exception moves the page with it. */
+const TOWN = (() => {
+  const exceptions = extract(
+    TOWN_LABEL_TS,
+    /TOWN_LABEL_EXCEPTIONS[^=]*=\s*\{([\s\S]*?)\};/,
+    'TOWN_LABEL_EXCEPTIONS',
+  );
+  return (
+    new RegExp(`${MUNICIPALITY}: '([^']+)'`).exec(exceptions)?.[1] ??
+    MUNICIPALITY.split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  );
+})();
+
+/**
+ * THE ONE DEPARTURE IN THE LADDER LEGS, and it is deliberate.
+ *
+ * `windowPhrase` is `${townLabel} ${cyclePhrase}`, and `cyclePhrase` carries the
+ * published cycle NAME — "Fall Session 2026 swim lessons" — which is a dated
+ * string that would make this page wrong the morning the next cycle is seeded.
+ * The page prints the two halves of that phrase which cannot go stale: the town,
+ * from `townLabel`, and the program, from `PROGRAM_DOMAIN_LABEL`. Both are read
+ * out of apps/web here, so neither can drift; what is subtracted is the year.
+ */
+const PROGRAM = extract(
+  SHORTLIST_TS,
+  new RegExp(`PROGRAM_DOMAIN_LABEL[\\s\\S]*?${PROGRAM_DOMAIN}: '([^']+)'`),
+  'PROGRAM_DOMAIN_LABEL',
+);
+const WINDOW_PHRASE = `${TOWN} ${PROGRAM}`;
+/** Stripped of `https://www.` exactly as v4 printed a municipal link. */
+const LINK = SOURCE_URL.replace(/^https:\/\/www\./, '');
+
+/** The wire's ASCII set as the site's typography: the straight apostrophe, the
+ * straight quotes around the three answer tokens, and the hyphen the SMS uses
+ * where prose takes an em dash. Presentation only — no word changes.
+ *
+ * And ONE punctuation repair, which is a cross-brief signal rather than a
+ * licence: the go leg composes `${...timeOfDay}. Your link:` over a `timeOfDay`
+ * that already ends in the period of "a.m.", so the wire really does send
+ * "opens 6:30 a.m.. Your link:" — pinned, double stop and all, at
+ * `apps/web/lib/registration/sequence/copy.test.ts:1292`. The landing sets one
+ * period and the typo is filed against the voice brief; reproducing it would put
+ * a product bug in 84px type, and silently rewriting the WORDS is what this
+ * whole derivation exists to prevent. */
+function asPageTypography(wire: string): string {
+  return wire
+    .replaceAll('.m..', '.m.')
+    .replaceAll(' - ', ' — ')
+    .replaceAll(/"([^"]*)"/g, '“$1”')
+    .replaceAll("'", '’');
+}
+
+/** A renderer's template literal, with its interpolations filled from the row. */
+function fill(frame: string): string {
+  const filled = frame
+    .replaceAll('${windowPhrase(shortlist)}', WINDOW_PHRASE)
+    .replaceAll('${windowPhrase(input.shortlist)}', WINDOW_PHRASE)
+    .replaceAll('${timeOfDay(input.anchor, input.timeZone)}', TIME_OF_DAY)
+    .replaceAll('${whoPhrase(shortlist.fitNotes)}', CHILD)
+    .replaceAll('${shortlist.sourceUrl}', LINK)
+    .replaceAll('${phrase}', CHILD);
+  if (filled.includes('${')) {
+    throw new Error(`apps/web added an interpolation this fill does not know: ${filled}`);
+  }
+  return asPageTypography(filled);
+}
+
+const BATTLE_PLAN = fill(
+  extract(SEQUENCE_COPY, /const municipal = `(Tomorrow: [^`]+)`;/, 'the battle-plan leg'),
+);
+const GO_LEG = fill(
+  extract(
+    SEQUENCE_COPY,
+    /const municipal = `(\$\{windowPhrase\(shortlist\)\} opens[^`]*Your link: [^`]+)`;/,
+    'the go leg',
+  ),
+);
+const ANSWER_MENU = extract(SEQUENCE_COPY, /const ANSWER_MENU = '([^']+)';/, 'ANSWER_MENU');
+const CHECK_IN_LEG = fill(
+  `${extract(SEQUENCE_COPY, /return `(How did \$\{windowPhrase\(input\.shortlist\)\} go\?) \$\{ANSWER_MENU\}`;/, 'the check-in leg')} ${ANSWER_MENU}`,
+);
+const REGISTERED_REPLY = fill(
+  `${extract(
+    SEQUENCE_COPY,
+    /return `(That's a spot\. Noted: )\$\{town\} \$\{shortlist\.windowRef\.cycleLabel\} registered\.`;/,
+    'renderCheckInReply',
+  )}${WINDOW_PHRASE} registered.`,
+);
+const LATER_CHECK_IN_ASK = fill(
+  extract(
+    CHECKIN_COPY,
+    /function laterCheckInAsk\(phrase: string\): string \{\s*return `([^`]+)`;/,
+    'laterCheckInAsk',
+  ),
+);
+/** `WATCH_OFFER` is `${WATCH_OFFER_ASK}${frame}` with `${PRIVACY_URL}` inside the
+ * frame — the one message in intake that carries a link, and the reason it is the
+ * best frame on the page: a parent sees the privacy URL arrive unprompted, at the
+ * turn where consent is asked. */
+const WATCH_OFFER = (() => {
+  const privacyUrl =
+    extract(LEGAL_LINKS, /export const MARKETING_SITE_URL = '([^']+)';/, 'MARKETING_SITE_URL') +
+    extract(
+      LEGAL_LINKS,
+      /export const PRIVACY_URL = `\$\{MARKETING_SITE_URL\}([^`]+)`;/,
+      'PRIVACY_URL',
+    );
+  const ask = extract(INTAKE_COPY, /export const WATCH_OFFER_ASK = '([^']+)';/, 'WATCH_OFFER_ASK');
+  const frame = extract(
+    INTAKE_COPY,
+    /export const WATCH_OFFER = `\$\{WATCH_OFFER_ASK\}([^`]+)`;/,
+    'WATCH_OFFER',
+  );
+  return asPageTypography(
+    ask + frame.replace('${PRIVACY_URL}', privacyUrl.replace(/^https:\/\/www\./, '')),
+  );
+})();
+/** The ack, first and last clauses — see the elision note in T2. */
+const NOTED_ACK = (() => {
+  const wire = extract(
+    CHECKIN_COPY,
+    /export const CHECK_IN_NOTED_ACK[\s\S]*?en: "([^"]+)",/,
+    'CHECK_IN_NOTED_ACK.en',
+  ).split('. ');
+  if (wire.length !== 3) throw new Error(`CHECK_IN_NOTED_ACK is no longer three clauses: ${wire}`);
+  return asPageTypography(`${wire[0]}. ${wire[2]}`);
+})();
+
 describe('T1 · the loop is one conversation, in firing order', () => {
   const text = prose(render());
 
@@ -140,12 +341,17 @@ describe('T2 · every bubble quotes a string apps/web actually renders', () => {
   const text = prose(render());
 
   /**
-   * The provenance table (brief R1). Two deliberate departures, both inherited
-   * from v4 so a page that outlives one registration cycle stays true: a bare
-   * season where the renderer prints a cycle label, and a published weekday
-   * where it prints a calendar date. Two presentation departures on top: the
-   * site sets the wire's ASCII apostrophes, quotes and hyphen-dashes as
-   * typography, and strips `https://www.` from a URL exactly as v4 did.
+   * The provenance table (brief R1), DERIVED rather than transcribed.
+   *
+   * Rev 1 of this suite pinned the bubbles as literals typed out of the brief,
+   * which is a copy of apps/web living in apps/site: it cannot go red when the
+   * wire changes, and — the defect that actually shipped — it cannot go red when
+   * the SENTENCE is right and the VALUES in it are invented. The hero said
+   * "Stouffville winter swim opens 7:00 a.m." against a dataset row that opens at
+   * NOON, five hours later, with that landmine called out in a comment directly
+   * above the row. So both halves are read out of apps/web now: the sentence
+   * FRAMES out of the renderers, and the town, the clock and the link out of the
+   * seeded window the ladder would fire from.
    *
    * ONE ELISION, marked here because an unmarked one is how a quotation rule
    * launders a product defect onto a marketing page: the evening ack ships as
@@ -155,25 +361,35 @@ describe('T2 · every bubble quotes a string apps/web actually renders', () => {
    * thirty-day purge (VIL-354) — so the page quotes the first and last clauses
    * and the ack's own wording is filed against the voice brief.
    */
-  const QUOTED = [
-    // find → the watch offer, WHOLE, privacy link included (intake/copy.ts WATCH_OFFER)
-    'Want me to keep an eye on all of this for you? (how I handle your family’s info: villagehale.com/privacy)',
-    // battle plan (registration/sequence/copy.ts)
-    'Sign in tonight and have this open:',
-    // go
-    'Your link:',
-    // check-in leg + ANSWER_MENU, quoted verbatim so a parent who copies one back matches
-    'Reply “got in”, “waitlisted #12” or “missed it”.',
-    // renderCheckInReply, registered
-    'That’s a spot. Noted:',
-    // laterCheckInAsk (checkin/copy.ts)
-    'How did today go with Mia? One line is plenty.',
-    // CHECK_IN_NOTED_ACK, first and last clauses (see the elision above)
-    'Reply NO to drop these.',
+  const QUOTED: [what: string, sentence: string][] = [
+    ['WATCH_OFFER, whole, privacy link included', WATCH_OFFER],
+    ['the battle-plan leg, the night before', BATTLE_PLAN],
+    ['the go leg, as it opens', GO_LEG],
+    ['the check-in leg and its ANSWER_MENU', CHECK_IN_LEG],
+    ['renderCheckInReply, registered', REGISTERED_REPLY],
+    ['laterCheckInAsk, the evening ask', LATER_CHECK_IN_ASK],
+    ['CHECK_IN_NOTED_ACK, first and last clauses', NOTED_ACK],
   ];
 
-  it.each(QUOTED)('renders the shipped sentence: %s', (sentence) => {
+  it.each(QUOTED)('renders the shipped sentence — %s', (_what, sentence) => {
     expect(text).toContain(sentence);
+  });
+
+  it('opens the ladder at the hour the dataset row really opens', () => {
+    // THE ASSERTION THAT WOULD HAVE CAUGHT THE SHIPPED DEFECT. The two ladder
+    // legs print `timeOfDay(anchor)`, so the page's clock is the row's clock or
+    // it is fiction — and the dataset's own comment on the row this hero used to
+    // be set in says why it matters: "NOON, which is the outlier in this dataset:
+    // every other town here opens between 6 and 9 a.m., so a carried-over '7 a.m.'
+    // would put a Stouffville parent five hours early."
+    //
+    // The two legs above already pin the clock BY VALUE (they are filled with
+    // `timeOfDay(anchor)` and asserted whole). What this adds is the claim the
+    // STAMP over them makes: the go leg is stamped "The next morning", which is
+    // false of a noon window however faithfully the sentence is quoted.
+    expect(LADDER_HOUR_24).toBeLessThan(12);
+    expect(text).toContain('The next morning');
+    expect(text).toContain(`opens ${TIME_OF_DAY}`);
   });
 
   it('hands over the municipality’s own page, and only on the ladder legs', () => {
@@ -183,10 +399,10 @@ describe('T2 · every bubble quotes a string apps/web actually renders', () => {
     // dataset-verified string. So the page renders the distinction: no link in
     // the find beat, the town's own link in the two legs that carry one.
     const rendered = loop(render());
-    expect([...rendered.matchAll(/townofws\.ca\/play\/recreation\/programs\/play-book/g)]).toHaveLength(2);
+    expect([...rendered.matchAll(new RegExp(LINK.replaceAll('.', '\\.'), 'g'))]).toHaveLength(2);
     const findBeat = rendered.split('A week later')[0] ?? '';
     expect(findBeat, 'the find beat must render').toContain('Three near you');
-    expect(findBeat).not.toContain('townofws.ca');
+    expect(findBeat).not.toContain(new URL(SOURCE_URL).hostname);
   });
 
   it('never re-says a product sentence the machine does not send', () => {
@@ -240,7 +456,14 @@ describe('T4 · no claim the code cannot back', () => {
   const text = prose(html);
 
   it('says nothing about travel — there is no trip concept anywhere in the product', () => {
-    for (const word of ['New York', 'travel', 'trip', 'vacation', 'destination', 'away from home']) {
+    for (const word of [
+      'New York',
+      'travel',
+      'trip',
+      'vacation',
+      'destination',
+      'away from home',
+    ]) {
       expect(text.toLowerCase(), `${word} must not appear`).not.toContain(word.toLowerCase());
     }
     // Positive control: the page DOES name where it works — twenty-one towns by
@@ -519,7 +742,12 @@ describe('the page’s own shape — two eyebrows, one card grid, no arrow', () 
       expect(img, 'every image is hidden from assistive tech').toContain('aria-hidden="true"');
       expect(img, `unexpected asset: ${img.slice(0, 90)}`).toMatch(/hale-logo|hale-shore-hero/);
     }
-    for (const mascot of ['hale-turtle', 'village-illustration', 'diamondhead', 'shore-ultrawide']) {
+    for (const mascot of [
+      'hale-turtle',
+      'village-illustration',
+      'diamondhead',
+      'shore-ultrawide',
+    ]) {
       expect(html, `${mascot} must not appear`).not.toContain(mascot);
     }
     // The one priority image left the critical path with it.

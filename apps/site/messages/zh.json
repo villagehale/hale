@@ -65,7 +65,7 @@
       {
         "elapsed": "第一条短信",
         "rows": [
-          { "dir": "out", "text": "Mia 三岁，我们住在斯托夫维尔。想找游泳课，附近有什么都行。" },
+          { "dir": "out", "text": "Mia 三岁，我们住在 Vaughan。想找游泳课，附近有什么都行。" },
           {
             "dir": "in",
             "text": "附近有三个。亲子游泳，2 至 4 岁，周六上午 9:15，来自本市的康乐活动指南。学前自由玩，18 个月至 4 岁，随到随玩，来自图书馆的页面。小小运动家，2 至 5 岁——社区中心有这个项目，但冬季时间还没公布。要不要我帮你把这些都盯着？（我如何处理你家的信息：villagehale.com/privacy）"
@@ -78,7 +78,7 @@
         "rows": [
           {
             "dir": "in",
-            "text": "明天：斯托夫维尔冬季游泳课上午 7:00 为 Mia 开放。今晚先登录，并把这个页面开着：townofws.ca/play/recreation/programs/play-book"
+            "text": "明天：Vaughan 游泳课上午 7:00 为 Mia 开放。今晚先登录，并把这个页面开着：vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs"
           }
         ]
       },
@@ -87,7 +87,7 @@
         "rows": [
           {
             "dir": "in",
-            "text": "斯托夫维尔冬季游泳课上午 7:00 开放。你的链接：townofws.ca/play/recreation/programs/play-book"
+            "text": "Vaughan 游泳课上午 7:00 开放。你的链接：vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs"
           }
         ]
       },
@@ -96,10 +96,10 @@
         "rows": [
           {
             "dir": "in",
-            "text": "斯托夫维尔冬季游泳课报得怎么样？回复「报上了」「候补 #12」或「没抢到」。"
+            "text": "Vaughan 游泳课报得怎么样？回复「got in」「waitlisted #12」或「missed it」。"
           },
-          { "dir": "out", "text": "报上了" },
-          { "dir": "in", "text": "位置到手。已记下：斯托夫维尔冬季游泳课，报名完成。" }
+          { "dir": "out", "text": "got in" },
+          { "dir": "in", "text": "位置到手。已记下：Vaughan 游泳课，报名完成。" }
         ]
       },
       {
@@ -232,21 +232,14 @@
         "tag": "推荐",
         "title": "Hale 来建议",
         "line": "这一周值得知道的那件事，以及为什么现在要紧。",
-        "checks": [
-          "你家附近值得去的三件事，而不是三十件",
-          "报名开放那一周的提前知会"
-        ],
+        "checks": ["你家附近值得去的三件事，而不是三十件", "报名开放那一周的提前知会"],
         "linkLabel": "育儿指南"
       },
       {
         "tag": "准备",
         "title": "Hale 来备好",
         "line": "精选清单、链接、时间——在窗口打开之前，而不是之后。",
-        "checks": [
-          "前一晚的方案",
-          "开放上线时的一记提醒",
-          "链接和时间"
-        ],
+        "checks": ["前一晚的方案", "开放上线时的一记提醒", "链接和时间"],
         "linkLabel": "价格几何"
       },
       {
@@ -303,12 +296,7 @@
       "plus": "为那些你想让 Hale 多做一些的时候：一旦它赢得了你的信任，就会在你的批准下行动——提醒、草稿，还有你的日历，覆盖每个孩子，随集成陆续上线。",
       "family": "为那些你想让 Hale 直接搞定的时候：在你的批准下拥有完全自主权，随着上线开放消费和代订服务，还有专属礼宾和优先支持。"
     },
-    "freeFeatures": [
-      "给 Hale 发短信",
-      "报名日期有人盯着",
-      "有问必答",
-      "创始价"
-    ]
+    "freeFeatures": ["给 Hale 发短信", "报名日期有人盯着", "有问必答", "创始价"]
   },
   "Contact": {
     "metaTitle": "联系我们 · Hale",
