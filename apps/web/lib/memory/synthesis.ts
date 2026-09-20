@@ -56,6 +56,23 @@ export function memorySynthesisApplies(): boolean {
 const SYNTHESIS_WRITERS = ['ask-hale', 'memory_inferencer', 'chat_distiller'] as const;
 
 /**
+ * Rule A's writer, and it is ONE of the three — narrower than the set Rule B elects
+ * over, deliberately.
+ *
+ * Retiring is the only thing this pass does that discards a belief rather than
+ * choosing between two spellings of one, and "the child crossed a boundary" is not
+ * Hale's licence to forget something a parent SAID. `ask-hale` rows are written from a
+ * parent's own message and `memory_inferencer` rows from the household's events; only
+ * `chat_distiller` rows are Hale's own reading of a conversation, which is the only
+ * thing it may quietly change its mind about. Rule B keeps the full allowlist because
+ * an election discards no belief — the winner still says it.
+ *
+ * `satisfies` rather than a bare string so this cannot drift out of the allowlist: a
+ * Rule A writer the candidate query never returns is a rule that silently does nothing.
+ */
+const STALE_ROUTINE_WRITER = 'chat_distiller' satisfies (typeof SYNTHESIS_WRITERS)[number];
+
+/**
  * How old a belief must be before "it predates the child's current stage" is a claim
  * about the belief rather than about the calendar. The preschool band is only twelve
  * months wide, so "most recent crossing" can be days away: without this, a routine
@@ -120,6 +137,9 @@ interface Candidate {
   factType: MemoryFactType;
   factKey: string;
   confidence: number;
+  /** Non-null by construction: the candidate query's allowlist is an `IN`, which no
+   *  NULL satisfies. Carried because Rule A reads a narrower set than Rule B. */
+  inferredBy: string | null;
   validFrom: Date;
   createdAt: Date;
 }
@@ -199,6 +219,7 @@ export async function runFamilySynthesis(
       factType: schema.familyMemoryFacts.factType,
       factKey: schema.familyMemoryFacts.factKey,
       confidence: schema.familyMemoryFacts.confidence,
+      inferredBy: schema.familyMemoryFacts.inferredBy,
       validFrom: schema.familyMemoryFacts.validFrom,
       createdAt: schema.familyMemoryFacts.createdAt,
     })
@@ -251,6 +272,10 @@ export async function runFamilySynthesis(
   const minAgeMs = MIN_STALE_FACT_AGE_DAYS * DAY_MS;
   for (const fact of candidates) {
     if (fact.childId === null || fact.factType !== 'routine') continue;
+    // …and only what Hale read for itself. See STALE_ROUTINE_WRITER: a routine the
+    // parent stated is not Hale's to let go of. The row stays a Rule B candidate —
+    // being told something twice is still worth tidying.
+    if (fact.inferredBy !== STALE_ROUTINE_WRITER) continue;
     const dateOfBirth = dobByChild.get(fact.childId);
     // `child_id` is an FK that cascades on delete, so a live child-scoped fact always
     // has its child row; this narrows the map read.

@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { STAGE_BOUNDARIES_MONTHS, TEENAGER_START_MONTHS } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { defaultInferenceCronDeps } from '~/lib/cron/inference';
 import { loadSuppressedCheckpointRefs, recordCheckpointDone } from '~/lib/health/reply';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { writeFact } from './facts';
@@ -282,6 +283,47 @@ describe('rule A — a routine the child has outgrown', () => {
     expect((await factById(medical)).validUntil).toBeNull();
   });
 
+  it('lets go of what Hale read for itself, and never of what the parent said', async () => {
+    const [boundary] = STAGE_BOUNDARIES_MONTHS;
+    const { familyId } = await seedFamily(db.database);
+    const child = await seedChildAged(familyId, 'Sam', dobAged(boundary + 2));
+    // Three identical situations — same child, same type, same age, all well past
+    // MIN_STALE_FACT_AGE_DAYS and all one band below the child's stage. The ONLY thing
+    // separating them is who wrote them, and distinct keys keep Rule B out of it.
+    const distilled = await seedFact(familyId, {
+      childId: child,
+      factKey: 'naps_after_lunch',
+      inferredBy: 'chat_distiller',
+      validFrom: daysBefore(90),
+    });
+    const stated = await seedFact(familyId, {
+      childId: child,
+      factKey: 'quiet_time_before_bed',
+      inferredBy: 'ask-hale',
+      validFrom: daysBefore(90),
+    });
+    const observed = await seedFact(familyId, {
+      childId: child,
+      factKey: 'walks_the_long_way_home',
+      inferredBy: 'memory_inferencer',
+      validFrom: daysBefore(90),
+    });
+
+    const result = await runFamilySynthesis(db.database, familyId, NOW, true);
+
+    // The positive control, in the same run: the rule DID fire, so the two survivals
+    // below are the writer narrowing and not a rule that has stopped working.
+    expect(result.retired).toBe(1);
+    expect((await factById(distilled)).validUntil).toEqual(NOW);
+    // A parent's own words. Outgrowing a stage is not Hale's licence to forget them.
+    expect((await factById(stated)).validUntil).toBeNull();
+    expect((await factById(observed)).validUntil).toBeNull();
+    // Not "held back as too new" either — they were never Rule A's to hold.
+    expect(result.tooYoungToRetire).toBe(0);
+    // Still in scope for the election, which discards no belief.
+    expect(result.candidates).toBe(3);
+  });
+
   it('never reaches a household-wide routine, which no boundary can outgrow', async () => {
     const [boundary] = STAGE_BOUNDARIES_MONTHS;
     const { familyId } = await seedFamily(db.database);
@@ -507,6 +549,47 @@ describe('the dark flag', () => {
     for (const id of [stale, winner, loser]) {
       expect((await factById(id)).validUntil).toBeNull();
     }
+  });
+
+  it('the cron reaches the pass with the flag unset: decided, recorded, nothing moved', async () => {
+    // The PRODUCTION path. Every other case in this file calls `runFamilySynthesis`
+    // with a literal boolean, so the only place the env is actually read —
+    // `runMemorySynthesis` — and the cron binding that reaches it had no coverage at
+    // all: replacing `const applied = memorySynthesisApplies()` with `const applied =
+    // true` left the whole apps/web suite green, which is to say the dark flag was
+    // untested in the one function that consults it.
+    vi.stubEnv(MEMORY_SYNTHESIS_APPLY_ENV, undefined);
+    // `defaultInferenceCronDeps` builds the AGENT leg's client eagerly and that
+    // constructor throws on a missing key. Nothing calls it here: the synthesis leg
+    // makes no model call, which is why it runs outside the provider pre-flight.
+    vi.stubEnv('ANTHROPIC_API_KEY', 'unused-this-leg-calls-no-model');
+    const [boundary] = STAGE_BOUNDARIES_MONTHS;
+    const { familyId } = await seedFamily(db.database);
+    const child = await seedChildAged(familyId, 'Sam', dobAged(boundary + 2));
+    const stale = await seedFact(familyId, { childId: child, factKey: 'naps_after_lunch' });
+
+    const { synthesize } = defaultInferenceCronDeps();
+    const run = await synthesize(db.database, [familyId], NOW);
+
+    expect(run.applied).toBe(false);
+    expect(run.families).toBe(1);
+    // It decided — the positive control. "Nothing moved" is green against a binding
+    // that points at nothing and a pass that never ran.
+    expect(run.results).toEqual([
+      { familyId, result: expect.objectContaining({ applied: false, retired: 1 }) },
+    ]);
+    // It wrote down what it would have done.
+    const rows = await auditRows(familyId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.actionTaken).toBe('memory_fact_retired');
+    expect(rows[0]?.after).toEqual({
+      factType: 'routine',
+      reason: 'stage_crossed',
+      factIds: [stale],
+      applied: false,
+    });
+    // And it moved nothing.
+    expect((await factById(stale)).validUntil).toBeNull();
   });
 });
 
