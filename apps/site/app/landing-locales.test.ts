@@ -178,9 +178,18 @@ describe('the loop renders in every locale', () => {
       // REGISTERED_WORDS / MISSED_WORDS). A translated « inscrit » is a reply Hale
       // cannot read, printed as an instruction — so the tokens stay English in
       // every locale, and so does the turn where the parent copies one back.
+      //
+      // COUNTED, not merely present: "got in" is printed twice — once in the menu
+      // and once as the parent's copied reply — and a containment check alone
+      // stays green when a locale translates the MENU and leaves the reply, which
+      // is the half that breaks the parser's promise.
       const block = loop(HTML[locale]);
-      for (const token of ['got in', 'waitlisted #12', 'missed it']) {
-        expect(block, `${locale} · ${token}`).toContain(token);
+      for (const [token, times] of [
+        ['got in', 2],
+        ['waitlisted #12', 1],
+        ['missed it', 1],
+      ] as const) {
+        expect(block.split(token).length - 1, `${locale} · ${token}`).toBe(times);
       }
     },
   );
