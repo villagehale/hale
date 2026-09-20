@@ -324,6 +324,20 @@ describe('renderShortlistRationale', () => {
     );
     expect(text).toContain('7 days');
   });
+
+  // Markham's head start is ONE day (VIL-347), and every other town's is six or more —
+  // which is why "1 days" survived a year of review. The 7 above is kept as the positive
+  // control: a plural that stopped working would pass a singular-only check.
+  it('says "1 day" where the head start is a single morning', () => {
+    const text = renderShortlistRationale(
+      shortlist({ isResidentWindow: true, residentPriorityDays: 1 }),
+      TZ,
+      NOW,
+      null,
+    );
+    expect(text).toContain('1 day ahead');
+    expect(text).not.toContain('1 days');
+  });
 });
 
 /**

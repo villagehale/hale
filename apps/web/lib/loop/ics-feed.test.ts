@@ -72,7 +72,7 @@ describe('mintIcsToken', () => {
   it('mints a base64url token, persists it, and writes the ics_feed_shared audit row', async () => {
     const { db, spies } = fakeMintDb([{ token: null }]);
 
-    const { token } = await mintIcsToken(db, FAMILY_ID);
+    const { token } = await mintIcsToken(db, FAMILY_ID, 'feed_subscription');
 
     // crypto.randomBytes(18).toString('base64url') → 24 url-safe chars, no padding.
     expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
@@ -96,7 +96,7 @@ describe('mintIcsToken', () => {
   it('is idempotent: a family that already has a token returns it unchanged, no update, no audit row', async () => {
     const { db, spies } = fakeMintDb([{ token: TOKEN }]);
 
-    const { token } = await mintIcsToken(db, FAMILY_ID);
+    const { token } = await mintIcsToken(db, FAMILY_ID, 'feed_subscription');
 
     expect(token).toBe(TOKEN);
     expect(spies.update).not.toHaveBeenCalled();

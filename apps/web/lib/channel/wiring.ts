@@ -5,7 +5,7 @@ import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { hasOptedOut, recordEmailSend } from '~/lib/cron/email-compliance';
 import { loadLoopPrefsView } from '~/lib/loop/prefs';
 import type { DispatchPorts } from './dispatch';
-import { threadProactiveMessage } from './thread';
+import { threadIfParent } from './thread';
 import { countRecentSends, dedupeActive, recordChannelMessage } from './ledger';
 import type { Channel, ChannelKind, TemplateRenderer } from './types';
 
@@ -58,8 +58,11 @@ export function buildDispatchPorts(
     audit: async (r) => {
       await database.insert(schema.auditLog).values(r);
     },
+    // The loop is the one pipe that can address someone who is not a parent of the
+    // family (a caregiver seat), so the thread write goes through the guarded writer —
+    // see thread.ts `threadIfParent`.
     threadMessage: async (input) => {
-      await threadProactiveMessage(database, input);
+      await threadIfParent(database, input);
     },
     channels: opts.channels,
     renderer: opts.renderer,

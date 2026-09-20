@@ -100,6 +100,11 @@ export type UnverifiedReason =
   | 'low_confidence'
   | 'uncorroborated'
   | 'no_dates_for_cycle'
+  /** Every field the page backed is one the DATASET marks as inferred, so there is
+   * nothing here that was actually read for this row. Distinct from
+   * `no_dates_for_cycle`, which means the page said nothing: this page did speak, and
+   * what it said is not evidence for a value nobody read off it. */
+  | 'inferred_unconfirmed'
   | 'fetch_failed'
   | 'extract_failed';
 
@@ -203,11 +208,34 @@ export function compareWindow(stored: StoredWindow, extracted: ExtractedWindow):
     return { kind: 'unverified', reason: 'low_confidence' };
   }
 
+  // VIL-347 · A PAGE THAT STATES ONE UNLABELLED DATE. Some municipalities tier a cycle on
+  // their course pages and print a single date on the page a parent is actually sent to:
+  // Markham's "Register starting Aug. 11 at 6:30 AM" is the RESIDENT morning, and everyone
+  // else registers on the 12th. Read as a general open it disagrees with the row forever.
+  //
+  // So: where the page names NO resident date, and the one date it does name is the date
+  // stored as this row's resident open, that is which date it is. The general open — which
+  // this page never states — goes back to being a field the page is silent about.
+  //
+  // This is the doctrine directly above, applied to a page that mislabels rather than
+  // omits, and it is deliberately not a list of towns whose page is known to do this: a
+  // list is a per-cycle chore that re-alarms every season until someone tops it up. It
+  // fires only on a date that MATCHES something already stored and still has to produce a
+  // `matched` field, so it cannot quiet a row whose resident date is wrong — that row
+  // matches nothing and reports its diff exactly as before.
+  const reading =
+    extracted.residentOpen === null &&
+    extracted.generalOpen !== null &&
+    stored.residentOpenAt !== null &&
+    publishedInstant(extracted.generalOpen).getTime() === stored.residentOpenAt.getTime()
+      ? { ...extracted, residentOpen: extracted.generalOpen, generalOpen: null }
+      : extracted;
+
   const matched: VerifyField[] = [];
   const diffs: FieldDiff[] = [];
 
   for (const [source, field] of FIELD_MAP) {
-    const published = extracted[source] as PublishedDate | null;
+    const published = reading[source] as PublishedDate | null;
     if (published === null) continue;
     const publishedAt = publishedInstant(published);
     const storedAt = stored[field];
@@ -225,6 +253,29 @@ export function compareWindow(stored: StoredWindow, extracted: ExtractedWindow):
     return { kind: 'discrepancy', diffs, evidence: extracted.evidence ?? '' };
   }
   return { kind: 'confirmed', fields: matched };
+}
+
+/**
+ * VIL-347 — an inferred field is not evidence, so it cannot be confirmed.
+ *
+ * Some rows hold a value they did not read off their own source: Markham's swim and camp
+ * rows carry the one-day resident head start from the REC: Programs course pages of the
+ * same combined cycle, because no swim or camp course page for it is checked in. The
+ * dataset says so in `inferredFields`, and this is where that marker bites — otherwise
+ * the unlabelled-single-date rule above would hand those rows a `residentOpenAt` match off
+ * a page that never tiers anything, turning an inference into a confirmation by arithmetic.
+ *
+ * A DISCREPANCY IS NEVER SOFTENED. A page that contradicts an inference is exactly the
+ * evidence that would retire it, and it has to reach the founder digest intact.
+ */
+export function withoutInferredEvidence(
+  outcome: VerifyOutcome,
+  inferred: readonly VerifyField[],
+): VerifyOutcome {
+  if (outcome.kind !== 'confirmed' || inferred.length === 0) return outcome;
+  const fields = outcome.fields.filter((field) => !inferred.includes(field));
+  if (fields.length === 0) return { kind: 'unverified', reason: 'inferred_unconfirmed' };
+  return { kind: 'confirmed', fields };
 }
 
 // ── the model read ───────────────────────────────────────────────────────────

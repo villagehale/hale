@@ -5,8 +5,11 @@ import {
   latestPastCycle,
   matchRegistrationWindows,
   type RegistrationMatch,
+  resolveFamilyOpen,
   resolveMunicipalities,
 } from './match-registration-windows.js';
+import { REGISTRATION_WINDOWS } from './registration-windows-data.js';
+import { toRegistrationWindowRow } from './registration-windows.js';
 
 /**
  * The registration radar's matcher. Expectations here are derived from the M1 spec,
@@ -276,6 +279,30 @@ describe('matchRegistrationWindows — resident priority', () => {
       expect(match.isResidentWindow).toBe(false);
       expect(match.opensForFamilyAt).toEqual(new Date('2026-09-08T13:00:00.000Z'));
     }
+  });
+
+  // Against the REAL row rather than a hand-typed copy of it: VIL-347 is a dataset
+  // correction, and the thing worth pinning is what the dataset now does to a household.
+  // Thornhill is the case the correction created — before it, Markham stored no resident
+  // date and every postal code collapsed onto one morning.
+  it("puts Thornhill on Markham's public morning and an unambiguous Markham FSA on the resident one", () => {
+    const seed = REGISTRATION_WINDOWS.find(
+      (s) =>
+        s.municipality === 'markham' &&
+        s.programDomain === 'rec_program' &&
+        s.cycleLabel.startsWith('2026 Fall'),
+    );
+    if (!seed) throw new Error('the Markham Fall 2026 seed row is gone');
+    const window = win(toRegistrationWindowRow(seed));
+
+    expect(resolveFamilyOpen(window, 'L3T 1A1')).toEqual({
+      isResidentWindow: false,
+      opensForFamilyAt: new Date('2026-08-12T10:30:00.000Z'),
+    });
+    expect(resolveFamilyOpen(window, 'L3P 1A1')).toEqual({
+      isResidentWindow: true,
+      opensForFamilyAt: new Date('2026-08-11T10:30:00.000Z'),
+    });
   });
 });
 

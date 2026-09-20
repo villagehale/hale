@@ -120,6 +120,6 @@ export async function revokeFamilyConnector(provider: string): Promise<RevokeCon
   ]);
   if (!familyId || !userId) return { status: 'no_family' };
 
-  const revokedCount = await revokeConnection(database, familyId, userId, provider);
+  const revokedCount = await revokeConnection(database, familyId, userId, provider, 'settings');
   return revokedCount > 0 ? { status: 'revoked' } : { status: 'not_found' };
 }

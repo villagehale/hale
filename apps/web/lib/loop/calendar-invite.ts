@@ -18,13 +18,17 @@ import {
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
 import { unsubscribeUrl } from '~/lib/cron/email-compliance';
-import { composeEventInvite, inviteAttachment } from '~/lib/loop/ics-invite';
+import { composeEventInvite, composeEventLink, inviteAttachment } from '~/lib/loop/ics-invite';
 import {
   CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
   CALENDAR_INVITE_TEMPLATE_KEY,
   type CalendarInvitePayload,
   inviteWhenLabel,
 } from '~/lib/loop/templates/calendar-invite';
+import {
+  CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+  type CalendarInviteSmsPayload,
+} from '~/lib/loop/templates/calendar-invite/sms';
 import type { CalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
 
 /**
@@ -36,24 +40,49 @@ import type { CalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
  * email_sends CASL row and the audit row all happen there, exactly once, for this
  * message like every other. Nothing here talks to Resend.
  *
- * TWO HALVES, because a family that never gave Hale an address cannot be sent to:
+ * THREE HALVES, per recipient, because the invite exists in two forms:
  *
- *   1. EVERY parent with an address gets the invite, pinned to the email leg (the
+ *   1. EVERY parent with an address gets the iTIP object, pinned to the email leg (the
  *      attachment has no SMS or push form) and marked time_sensitive — the parent
  *      approved this seconds ago, so the receipt of their own decision must not be
  *      dropped by a quiet-hours window that exists to stop unsolicited pings. Their
  *      own `urgent_bypass_quiet_hours` pref still governs; the dispatch decides.
  *
- *   2. A family where NO parent has one is ASKED, once ever. The claim is the INSERT
- *      of the ledger row carrying the ask's dedupe key (#413's pattern): the partial
- *      unique index means exactly one concurrent placement wins it, and the dispatch
- *      then settles that same row rather than writing a second. A SUPPRESSED ask
- *      releases the key — a message the parent never received is not an ask, and the
- *      next placement may try again, which is the dispatch's own rule for its own
+ *   2. A parent with NO address gets the same placement as a LINK, by text: one line
+ *      and a per-event ICS URL their phone opens in Calendar. Until this existed the
+ *      invite lived on one channel, so every SMS-intake family (users.email null) said
+ *      YES and got an acknowledgment with no artifact — the event was on Hale's
+ *      calendar and nowhere near theirs. Same category, same urgency, same dispatch as
+ *      the email twin; only the form differs. REQUEST only: a CANCEL has nothing to
+ *      link to.
+ *
+ *      ITS STANDING IS THE EMAILED TWIN'S, not the "Approved" reply's — that reply is
+ *      an answer to an inbound turn and leaves through the transport with no policy
+ *      gate, while this leaves through the dispatch. So a parent who has turned
+ *      `urgent_bypass_quiet_hours` OFF and says yes at 22:30 gets the acknowledgment
+ *      and, that night, no link: the leg reports `suppressed`, and since the executor
+ *      runs once per approval nothing re-drives it in the morning. Named rather than
+ *      hidden (rule #11). The fix for it is a re-drive Hale does not have yet, not a
+ *      quieter category or a second door around the gate.
+ *
+ *   3. A family that got NEITHER is asked for an address, once ever. The claim is the
+ *      INSERT of the ledger row carrying the ask's dedupe key (#413's pattern): the
+ *      partial unique index means exactly one concurrent placement wins it, and the
+ *      dispatch then settles that same row rather than writing a second. A SUPPRESSED
+ *      ask releases the key — a message the parent never received is not an ask, and
+ *      the next placement may try again, which is the dispatch's own rule for its own
  *      keys.
  *
- * Every outcome is NAMED back to the executor (rule #11). "No address on file" is a
- * first-class result of a successful placement, not a silence inside one.
+ *      IT IS NOW A LAST RESORT AND VERY NEARLY DEAD, which is worth saying out loud:
+ *      the ask itself rides SMS, so a family that can receive it can receive the link
+ *      instead, and a family that cannot receive the link cannot receive the ask
+ *      either. Collecting an address Hale no longer needs for this is also a privacy
+ *      regression (rule #1). Removing it — with `composeAsk`, the ask template, the
+ *      email-capture reply and `sendPendingInvite` — is a subtraction of its own and
+ *      is deliberately not bundled here.
+ *
+ * Every outcome is NAMED back to the executor (rule #11). "Reachable on no channel" is
+ * a first-class result of a successful placement, not a silence inside one.
  */
 
 /** Roles that receive a family's calendar invites. Caregivers never do (rule #1). */
@@ -180,6 +209,12 @@ function outcomeFromLeg(leg: LegResult | undefined): {
   return { outcome: 'send_failed', reason: leg.reason };
 }
 
+/** The dedupe key for ONE parent's copy of ONE revision of the tap-to-add text. The
+ * method is not in it because only a REQUEST is ever texted. */
+function linkDedupeKey(familyEventId: string, sequence: number, parentUserId: string): string {
+  return `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:${sequence}:${parentUserId}`;
+}
+
 /** One invite to compose and send: the placed row, and which way it goes. */
 interface InviteJob {
   familyId: string;
@@ -267,6 +302,62 @@ async function inviteOneParent(
 
   const { legs } = await dispatchLoopMessage(message, ports);
   return { parentUserId: parent.userId, channel: 'email', ...outcomeFromLeg(legs[0]) };
+}
+
+/**
+ * Text one parent the placement as a tap-to-add link.
+ *
+ * NO COMPOSER. The email twin pays for a model because its note is prose; this is a
+ * receipt plus a URL, locked and segment-tested at the authoring site like every other
+ * deterministic line Hale texts (templates/calendar-invite/sms.ts).
+ */
+async function textOneParent(
+  database: Database,
+  ports: DispatchPorts,
+  job: InviteJob,
+  parent: InvitedParent,
+  now: Date,
+): Promise<CalendarInviteParentOutcome> {
+  const composed = await composeEventLink(
+    {
+      familyId: job.familyId,
+      familyEventId: job.familyEventId,
+      parentUserId: parent.userId,
+    },
+    { database, now },
+  );
+  if (composed.status === 'not_found') {
+    return { parentUserId: parent.userId, channel: 'sms', outcome: 'event_not_found' };
+  }
+
+  const payload: CalendarInviteSmsPayload = {
+    summary: composed.summary,
+    when: inviteWhenLabel(composed.startsAt, parent.timezone),
+    url: composed.url,
+  };
+  const message: LoopMessage = {
+    templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+    familyId: job.familyId,
+    parentUserId: parent.userId,
+    category: 'approval',
+    urgency: 'time_sensitive',
+    channel: 'sms',
+    dedupeKey: linkDedupeKey(job.familyEventId, composed.sequence, parent.userId),
+    payload: payload as unknown as Record<string, unknown>,
+  };
+
+  const { legs } = await dispatchLoopMessage(message, ports);
+  const leg = legs[0];
+  const result = outcomeFromLeg(leg);
+  // The dispatch's SMS consent gate is the live-state read (an active verified
+  // parent_channels row), so a suppression here on a parent who also has no address is
+  // not a preference — it is a parent Hale has no way to reach at all. Naming it that
+  // way is the difference between "policy said no" and "there is nobody to send to",
+  // and folding the two would hide whichever is real (rule #11).
+  if (leg?.outcome === 'suppressed_consent') {
+    return { parentUserId: parent.userId, channel: 'sms', outcome: 'no_channel' };
+  }
+  return { parentUserId: parent.userId, channel: 'sms', ...result };
 }
 
 /**
@@ -411,30 +502,43 @@ export function createCalendarInviteSender(
         return { status: 'reported', parents: [], ask: 'no_parent_to_ask' };
       }
 
+      const job: InviteJob = {
+        familyId: request.familyId,
+        familyEventId: request.familyEventId,
+        method: request.method,
+      };
       const outcomes: CalendarInviteParentOutcome[] = [];
       for (const parent of parents) {
-        outcomes.push(
-          parent.email
-            ? await inviteOneParent(
-                database,
-                ports,
-                deps.voice,
-                {
-                  familyId: request.familyId,
-                  familyEventId: request.familyEventId,
-                  method: request.method,
-                },
-                { ...parent, email: parent.email },
-                now,
-              )
-            : { parentUserId: parent.userId, channel: 'email', outcome: 'no_email_on_file' },
-        );
+        if (parent.email) {
+          outcomes.push(
+            await inviteOneParent(
+              database,
+              ports,
+              deps.voice,
+              job,
+              { ...parent, email: parent.email },
+              now,
+            ),
+          );
+        } else if (request.method === 'REQUEST') {
+          // No address, but the placement still exists — it goes as a link they can tap.
+          outcomes.push(await textOneParent(database, ports, job, parent, now));
+        } else {
+          // A CANCEL has no link form, so an addressless parent is told nothing and
+          // that is said rather than swallowed.
+          outcomes.push({ parentUserId: parent.userId, channel: 'email', outcome: 'no_email_on_file' });
+        }
       }
 
-      // The ask follows an event the family can still put on a calendar. After a
-      // CANCEL there is nothing to add, and "want this in your real calendar?" about
-      // a cancellation is a question with no good answer.
-      const needsAsk = request.method === 'REQUEST' && parents.every((parent) => !parent.email);
+      // The ask is the LAST resort now, not the second half of the fan-out: a family
+      // that was handed the invite on either channel has nothing left to be asked for.
+      // After a CANCEL there is nothing to add either, and "want this in your real
+      // calendar?" about a cancellation is a question with no good answer.
+      const delivered = outcomes.some(
+        (outcome) => outcome.outcome === 'sent' || outcome.outcome === 'already_sent',
+      );
+      const needsAsk =
+        request.method === 'REQUEST' && !delivered && parents.every((parent) => !parent.email);
       const ask = needsAsk
         ? await askForEmail(database, ports, deps.voice, request.familyId, parents)
         : 'not_needed';

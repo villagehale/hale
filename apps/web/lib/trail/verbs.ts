@@ -207,6 +207,8 @@ export const AUDIT_VERBS = [
   'caregiver_invite_blocked',
   'caregiver_sms_inbound',
   'caregiver_sms_outbound',
+  // The scoped week / an event's logistics actually leaving for a caregiver's phone.
+  'caregiver_schedule_sent',
   // ── the co-parent join link ─────────────────────────────────────────────
   'co_parent_join_link_minted',
   'co_parent_join_link_revoked',
@@ -262,6 +264,7 @@ export const AUDIT_VERBS = [
   'week_plan.calendar_drafted',
   'ics_feed_shared',
   'ics_feed_revoked',
+  'ics_event_link_minted',
   'notification_pref_updated',
   // ── connected assistants (MCP) ──────────────────────────────────────────
   'mcp.authorization_approved',
@@ -325,6 +328,12 @@ export const AUDIT_VERBS = [
   'village_intro_proposed',
   'coach_plan_message_sent',
   'coach_plan_check_in_sent',
+  // ── the evening check-in (VIL-353) ──────────────────────────────────────
+  'evening_check_in_sent',
+  'evening_check_in_stepped_down',
+  'evening_check_in_stopped',
+  'evening_check_in_answered',
+  'evening_check_in_cadence_changed',
   'activity_followup_sent',
   'activity_followup_shared',
   'village_intro_card_sent',
@@ -676,6 +685,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   caregiver_sms_inbound: { sentence: 'a caregiver texted Hale', family: 'note' },
   caregiver_sms_outbound: { sentence: 'Hale texted a caregiver', family: 'note' },
+  // Its own verb rather than the generic `channel_sent`, because on this row WHO
+  // received it is the whole content: it is a disclosure of the household's week to a
+  // third party, and "Hale sent you a message" would be the one sentence that is false.
+  caregiver_schedule_sent: {
+    sentence: 'Hale sent a caregiver the part of your schedule they help with',
+    family: 'done',
+  },
   // ── the co-parent join link ─────────────────────────────────────────────
   co_parent_join_link_minted: {
     sentence: 'you asked for a link to add your co-parent',
@@ -839,6 +855,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   ics_feed_shared: { sentence: 'you turned on your calendar subscription', family: 'done' },
   ics_feed_revoked: { sentence: 'you turned off your calendar subscription', family: 'done' },
+  // NOT the subscription: a per-event link is a one-way HMAC over the same secret and
+  // discloses one entry, so the sentence says the entry and never the feed (rule #1).
+  ics_event_link_minted: {
+    sentence: 'made you a tap-to-add link for a calendar entry',
+    family: 'done',
+  },
   notification_pref_updated: { sentence: 'you changed how Hale reaches you', family: 'done' },
   // ── connected assistants (MCP) ──────────────────────────────────────────
   // An MCP client is a THIRD PARTY reading family data. These sentences name that
@@ -892,8 +914,18 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you signed in with a link texted to your phone',
     family: 'done',
   },
-  integration_connected: { sentence: 'you connected an account to Hale', family: 'done' },
-  integration_revoked: { sentence: 'you disconnected an account', family: 'done' },
+  // Custody, in the sentence a parent reads on their own trail. "Never hands them to
+  // another service" is exactly true and no more: the token goes to the provider that
+  // issued it and to nobody else - no broker holds it (the connector audit row carries
+  // the same fact as data, integrations/token-vault.ts tokenCustody).
+  integration_connected: {
+    sentence: 'you connected an account - Hale keeps its keys encrypted and never hands them to another service',
+    family: 'done',
+  },
+  integration_revoked: {
+    sentence: 'you disconnected an account and Hale deleted its keys',
+    family: 'done',
+  },
   user_preferences_updated: { sentence: 'you updated your preferences', family: 'done' },
   // Started, not finished: the row is written before checkout completes.
   billing_checkout_started: { sentence: 'you started an upgrade', family: 'note' },
@@ -987,6 +1019,25 @@ const VERBS: Record<AuditVerb, Verb> = {
   coach_plan_check_in_sent: {
     sentence: 'Hale checked in on your plan',
     family: 'note',
+  },
+  // 'awaiting' because the question is genuinely outstanding until the morning: the
+  // trail should show an evening Hale asked about and nobody answered as exactly that.
+  evening_check_in_sent: { sentence: 'Hale asked how your day went', family: 'awaiting' },
+  // Hale's own ladder moving, said out loud to the parent in the same breath.
+  evening_check_in_stepped_down: {
+    sentence: 'Hale moved to a weekly check-in',
+    family: 'note',
+  },
+  // The end of the ladder. No message goes with it, which is exactly why the row has to:
+  // going quiet without a receipt is indistinguishable from the feature breaking.
+  evening_check_in_stopped: { sentence: 'Hale stopped the evening check-ins', family: 'note' },
+  // The parent answered. Whether anything was KEPT is in the row's payload, never here —
+  // a sentence that claimed a note was filed would be wrong every time the screen
+  // refused one (channel/checkin/notes.ts).
+  evening_check_in_answered: { sentence: 'you told Hale how your day went', family: 'done' },
+  evening_check_in_cadence_changed: {
+    sentence: 'you changed how often Hale checks in',
+    family: 'done',
   },
   // Hale coming back on an activity search it promised to finish. 'done' rather than
   // 'note' because the row IS the promise being discharged, and it is written whether the

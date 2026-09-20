@@ -112,6 +112,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       registrationReadiness: async () => null,
       coParentAssent: async () => null,
       emailAlertOffers: async () => [],
+      eveningCheckIn: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -187,6 +188,7 @@ describe('the registration-readiness question on the open list', () => {
       }),
       coParentAssent: async () => null,
       emailAlertOffers: async () => [],
+      eveningCheckIn: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -220,6 +222,7 @@ describe('the registration-readiness question on the open list', () => {
       registrationReadiness: async () => null,
       coParentAssent: async () => null,
       emailAlertOffers: async () => [],
+      eveningCheckIn: async () => null,
     });
 
     const questions = await reader.open({} as never, {

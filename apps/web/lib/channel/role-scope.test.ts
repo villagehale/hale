@@ -5,6 +5,7 @@ import {
   CONTENT_CLASSES,
   type ContentClass,
   type FamilyRole,
+  classifyFamilyEvent,
   classifyWeekItem,
   isCaregiverRole,
   roleAllows,
@@ -168,6 +169,32 @@ describe('role-scope · scoping a week for a role', () => {
     expect(scoped).toEqual([]);
   });
 
+  it.each(CAREGIVER_ROLES)('%s is not read an activity the parents have not said yes to', (role) => {
+    // compose.ts writes a dated village activity as `needs: 'calendar_add'` — a DRAFT
+    // the placement mint holds for a texted YES, not a booking. Read to a caregiver it
+    // becomes confirmed schedule, and only the parents can make it true.
+    const confirmed = item({ title: 'Swim lesson' });
+    const draft = item({ title: 'Kindermusik trial', needs: 'calendar_add' });
+    const scoped = scopeWeekItemsForRole({
+      role,
+      items: [confirmed, draft],
+      children: CHILDREN,
+      now: NOW,
+    });
+    expect(scoped.map((i) => i.title)).toEqual(['Swim lesson']);
+  });
+
+  it('keeps that same draft on a parent\u2019s week, where the yes is theirs to give', () => {
+    const draft = item({ title: 'Kindermusik trial', needs: 'calendar_add' });
+    const scoped = scopeWeekItemsForRole({
+      role: 'primary_parent',
+      items: [draft],
+      children: CHILDREN,
+      now: NOW,
+    });
+    expect(scoped).toEqual([draft]);
+  });
+
   it('lets a family-wide item (no children) through to a caregiver', () => {
     const familyWide = item({ childIds: [], title: 'Block party' });
     const scoped = scopeWeekItemsForRole({
@@ -177,5 +204,57 @@ describe('role-scope · scoping a week for a role', () => {
       now: NOW,
     });
     expect(scoped).toEqual([familyWide]);
+  });
+});
+
+/**
+ * The sibling classifier, for the pipeline that never builds a week plan: the reminder
+ * run holds `family_events` rows, and until VIL-241 · M6 nothing could say who may be
+ * told about one.
+ */
+describe('classifyFamilyEvent — a placed event, for a role', () => {
+  const event = (over: Partial<{ childId: string | null; sensitive: boolean }> = {}) => ({
+    childId: TODDLER.id,
+    sensitive: false,
+    ...over,
+  });
+
+  it('is event_logistics for a non-teen child, which a caregiver may see', () => {
+    expect(classifyFamilyEvent(event(), CHILDREN, NOW)).toBe('event_logistics');
+    expect(roleAllows('nanny', 'event_logistics')).toBe(true);
+  });
+
+  it('is schedule for a family-wide event', () => {
+    expect(classifyFamilyEvent(event({ childId: null }), CHILDREN, NOW)).toBe('schedule');
+  });
+
+  it("is teen_content for a 13+ child's event, ahead of every other signal", () => {
+    expect(classifyFamilyEvent(event({ childId: TEEN.id }), CHILDREN, NOW)).toBe('teen_content');
+    // Teen outranks health, the same order classifyWeekItem uses.
+    expect(classifyFamilyEvent(event({ childId: TEEN.id, sensitive: true }), CHILDREN, NOW)).toBe(
+      'teen_content',
+    );
+    for (const role of CAREGIVER_ROLES) expect(roleAllows(role, 'teen_content')).toBe(false);
+  });
+
+  it('is health for a sensitive event, which no caregiver may see', () => {
+    expect(classifyFamilyEvent(event({ sensitive: true }), CHILDREN, NOW)).toBe('health');
+    for (const role of CAREGIVER_ROLES) expect(roleAllows(role, 'health')).toBe(false);
+  });
+
+  it('fails closed on a child the caller did not load', () => {
+    expect(classifyFamilyEvent(event({ childId: 'c-unknown' }), CHILDREN, NOW)).toBe('teen_content');
+  });
+
+  it('ages the child at `now`, so a birthday closes the door on its own', () => {
+    const thirteenth = { id: 'c-turning', name: 'Sam', dateOfBirth: '2013-08-01' };
+    const before = new Date('2026-07-31T12:00:00.000Z');
+    const after = new Date('2026-08-02T12:00:00.000Z');
+    expect(classifyFamilyEvent(event({ childId: thirteenth.id }), [thirteenth], before)).toBe(
+      'event_logistics',
+    );
+    expect(classifyFamilyEvent(event({ childId: thirteenth.id }), [thirteenth], after)).toBe(
+      'teen_content',
+    );
   });
 });

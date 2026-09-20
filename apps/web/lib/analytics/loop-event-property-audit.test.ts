@@ -25,6 +25,14 @@ const ALLOWED_LOOP_EVENT_PROPERTY_KEYS = new Set([
   'items',
   'pending',
   'actionType',
+  // The reminder leg's two: the ISO offset enum and a count of events in the batch.
+  'offset',
+  'events',
+  // 'parent' | 'caregiver'. The loop now addresses two kinds of recipient with the same
+  // events and the RECIPIENT as the distinct id, so without this the two are one number.
+  // (`recipient` would have been the obvious name and is silently dropped by
+  // `buildEvent` — "recIPient" matches the forbidden `ip` fragment.)
+  'audience',
 ]);
 
 interface AuditTarget {
@@ -45,6 +53,19 @@ const TARGETS: AuditTarget[] = [
     file: '../loop/send.ts',
     event: 'loop_plan_sent',
     pattern: /deps\.capture\(\s*'loop_plan_sent'\s*,\s*parent\.userId\s*,\s*\{([\s\S]*?)\}\s*\)/,
+  },
+  {
+    // The SAME event from the caregiver leg. Its own target because the pattern is keyed
+    // on the distinct id, and a second call site the audit does not know about is exactly
+    // the hole this file exists to close.
+    file: '../loop/send.ts',
+    event: 'loop_plan_sent (caregiver)',
+    pattern: /deps\.capture\(\s*'loop_plan_sent'\s*,\s*seat\.userId\s*,\s*\{([\s\S]*?)\}\s*\)/,
+  },
+  {
+    file: '../loop/reminders/run.ts',
+    event: 'reminder_sent',
+    pattern: /deps\.capture\(\s*'reminder_sent'\s*,\s*parentUserId\s*,\s*\{([\s\S]*?)\}\s*\)/,
   },
   {
     file: '../actions/reverse-calendar.ts',

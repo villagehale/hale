@@ -408,8 +408,15 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // September calendar and a September inbox are two volumes, and one budget shared
   // between them would silence whichever moved second.
   'calendar_alert',
+  // VIL-353 · the evening check-in — Hale asking, once a day, how the day went, and the
+  // acknowledgment of what the parent says back. Its own category for the counting reason
+  // every class above has one, plus a sharper one: this is the highest-frequency proactive
+  // class in the product, so folding it into any other budget would silence that class
+  // within a day. It is Hale making contact first, so the loop-health digest EXCLUSION
+  // list (PARENT_STARTED_CATEGORIES, health-digest.ts) is correct to leave it out.
+  'evening_check_in',
   // VIL-352 · a document a parent FORWARDED to their Hale address, and the answer to it
-  // (migration 0120). Its own category and not 'reply': the inbound row files a third
+  // (migration 0119). Its own category and not 'reply': the inbound row files a third
   // party's message rather than the parent's own words, and a PIPEDA right-to-access read
   // that called a school's newsletter a reply would describe the opposite of what
   // happened. It is parent-started, so the loop-health digest's EXCLUSION list
@@ -418,6 +425,13 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // every message on this door answers something the parent just sent.
   'forwarded_mail',
 ]);
+
+/**
+ * VIL-353 · how often a household hears the evening check-in. `off` is dormant rather
+ * than deleted: a parent who said no is honoured forever, and a household that simply
+ * stopped answering is in the same state, which is what stops the ladder re-offering it.
+ */
+export const checkInCadenceEnum = pgEnum('check_in_cadence', ['daily', 'weekly', 'off']);
 
 /**
  * VIL-242 · M7 — what a family reported about a registration window they were prepared

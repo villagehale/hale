@@ -2,13 +2,14 @@ import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
-import { STOP_ACK } from '~/lib/channel/intake/copy';
+import { STOP_ACK, STOP_ACK_BY_LANGUAGE } from '~/lib/channel/intake/copy';
 import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, fakeNoOpenQuestions, fakeSilentAnswerComposer, makeFakeDb } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { TwilioSendError } from './transport';
 import {
   type ChannelMessageReceivedJob,
   type TwilioInboundDeps,
@@ -82,6 +83,8 @@ interface Harness {
   jobs: ChannelMessageReceivedJob[];
   /** Every operator line the webhook wrote, as its argument arrays. */
   errors: unknown[][];
+  /** The warn lines — today only the unrecognised-`OptOutType` one (VIL-348). */
+  warns: unknown[][];
   /** The routed-outcome lines — the shell's one info line per authentic request. */
   infos: unknown[][];
   /** Every outcome the shell counted, in order (rule #11's rate). */
@@ -97,6 +100,7 @@ function harness(): Harness {
   const transport = new FakeTransport();
   const jobs: ChannelMessageReceivedJob[] = [];
   const errors: unknown[][] = [];
+  const warns: unknown[][] = [];
   const infos: unknown[][] = [];
   const counted: TwilioInboundOutcome[] = [];
   const state = { intakeBuilds: 0 };
@@ -122,6 +126,7 @@ function harness(): Harness {
     transport,
     jobs,
     errors,
+    warns,
     infos,
     counted,
     intakeBuilds: 0,
@@ -131,6 +136,9 @@ function harness(): Harness {
       log: {
         info: (...args: unknown[]) => {
           infos.push(args);
+        },
+        warn: (...args: unknown[]) => {
+          warns.push(args);
         },
         error: (...args: unknown[]) => {
           errors.push(args);
@@ -722,7 +730,11 @@ describe('routing outcomes are logged and counted (rule #11)', () => {
     expect(h.counted).toEqual(['not_a_parent']);
     expect(h.infos).toEqual([
       [
-        { outcome: 'not_a_parent', providerMessageId: 'SM11111111111111111111111111111111' },
+        {
+          outcome: 'not_a_parent',
+          providerMessageId: 'SM11111111111111111111111111111111',
+          optOutTypePresent: false,
+        },
         'twilio inbound: routed',
       ],
     ]);
@@ -948,5 +960,199 @@ describe('WhatsApp continuity — whatsapp:+1416… IS +1416… (one person, one
     expect(h.fake.writes).toHaveLength(0);
     expect(h.transport.sent).toHaveLength(0);
     expect(h.jobs).toHaveLength(0);
+  });
+});
+
+/**
+ * VIL-348 — the provider's own keyword handling, read at this boundary and nowhere else.
+ *
+ * Twilio's Advanced Opt-Out, when it is configured, answers STOP/START/HELP itself and
+ * forwards the inbound tagged `OptOutType`. Whether it IS configured is invisible from
+ * inside Hale, so these drive the real webhook — signature, form parse and all — with
+ * the tag present and absent, and pin the same behaviour under both.
+ *
+ * ROW 1 IS THE POSITIVE CONTROL for the rest: an absence test passes against a webhook
+ * that stopped sending anything at all, so the same body with no tag has to produce the
+ * ack and its ledger row.
+ */
+describe('the provider already answered the keyword (VIL-348)', () => {
+  /** Outbound ledger rows. Counted, never matched on the body: an outbound row stores
+   * `body: null` by design (rule #1), so the count is the only thing that can tell a
+   * suppressed send from one the ledger claims went out. */
+  const outRows = (h: Harness) =>
+    h.fake.writes
+      .filter((w) => w.op === 'insert' && w.table === schema.channelMessages)
+      .map((w) => w.payload as { direction?: string })
+      .filter((m) => m.direction === 'out');
+
+  const revoked = (h: Harness) =>
+    h.fake.writes.filter(
+      (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
+    );
+
+  const withdrawals = (h: Harness) =>
+    h.fake.writes
+      .filter((w) => w.op === 'insert' && w.table === schema.consentRecords)
+      .map((w) => w.payload as { consentType?: string; granted?: boolean })
+      .filter((c) => c.consentType === 'sms_service_messages' && c.granted === false);
+
+  const grants = (h: Harness) =>
+    h.fake.writes
+      .filter((w) => w.op === 'insert' && w.table === schema.consentRecords)
+      .map((w) => w.payload as { consentType?: string; granted?: boolean })
+      .filter((c) => c.consentType === 'sms_service_messages' && c.granted === true);
+
+  const auditVerbs = (h: Harness) =>
+    h.fake.writes
+      .filter((w) => w.op === 'insert' && w.table === schema.auditLog)
+      .map((w) => (w.payload as { actionTaken?: string }).actionTaken);
+
+  const channelRows = (h: Harness) =>
+    h.fake.writes
+      .filter((w) => w.op === 'insert' && w.table === schema.parentChannels)
+      .map((w) => w.payload as { revokedAt?: Date | null });
+
+  /** The shell's one routed line, as an operator reads it back off the request. */
+  const routed = (h: Harness) =>
+    h.infos.at(-1)?.[0] as { outcome?: string; optOutTypePresent?: boolean } | undefined;
+
+  async function post(h: Harness, params: Record<string, string>, deps = h.deps) {
+    const body = twilioParams(params);
+    return handleTwilioInboundRequest(twilioRequest(body), deps);
+  }
+
+  it('answers ARRET in French itself when Twilio forwarded no OptOutType', async () => {
+    const h = harness();
+    enrol(h.fake);
+
+    const res = await post(h, { Body: 'ARRET' });
+
+    expect(res.status).toBe(200);
+    expect(h.transport.bodies()).toEqual([STOP_ACK_BY_LANGUAGE.fr]);
+    expect(outRows(h)).toHaveLength(1);
+    expect(revoked(h).length).toBeGreaterThan(0);
+    expect(withdrawals(h).length).toBeGreaterThan(0);
+    expect(auditVerbs(h)).toContain('channel_sms_revoked');
+    // And what an operator can read back afterwards: no tag arrived on this request, so
+    // Hale was the only answerer. That pair is the ONLY place the live configuration
+    // shows up — nothing else in the system can see it (the live-probe gate reads it).
+    expect(routed(h)).toMatchObject({ outcome: 'intake', optOutTypePresent: false });
+    expect(h.counted).toEqual(['intake']);
+  });
+
+  it('does the whole ledger and stays silent when OptOutType says Twilio answered it', async () => {
+    const h = harness();
+    enrol(h.fake);
+
+    const res = await post(h, { Body: 'ARRET', OptOutType: 'STOP' });
+
+    expect(res.status).toBe(200);
+    // Not one text: the parent already has Twilio's confirmation, and two for one STOP
+    // is one too many to someone who asked to be left alone.
+    expect(h.transport.sent).toEqual([]);
+    expect(outRows(h)).toEqual([]);
+    // Every legal effect is unchanged — the opt-out list is not Hale's consent record.
+    expect(revoked(h).length).toBeGreaterThan(0);
+    expect(withdrawals(h).length).toBeGreaterThan(0);
+    expect(auditVerbs(h)).toContain('channel_sms_revoked');
+    // "Hale sent nothing because the provider had already answered" is its own outcome,
+    // never folded into the bucket that means Hale answered (rule #11).
+    expect(routed(h)).toMatchObject({
+      outcome: 'keyword_provider_answered',
+      optOutTypePresent: true,
+    });
+    expect(h.counted).toEqual(['keyword_provider_answered']);
+  });
+
+  it('re-enrols on a DEBUT Twilio answered, writing no acknowledgment of its own', async () => {
+    const h = harness();
+    enrol(h.fake);
+    await post(h, { Body: 'ARRET', OptOutType: 'STOP' });
+
+    const res = await post(h, {
+      Body: 'DEBUT',
+      OptOutType: 'START',
+      MessageSid: 'SM22222222222222222222222222222222',
+    });
+
+    expect(res.status).toBe(200);
+    expect(h.transport.sent).toEqual([]);
+    expect(outRows(h)).toEqual([]);
+    expect(grants(h).length).toBeGreaterThan(0);
+    // A re-enrolment is a NEW channel row, never an un-revoke of the withdrawn one: the
+    // withdrawal has to stay readable in a right-to-access export.
+    expect(channelRows(h)).toHaveLength(2);
+    expect(channelRows(h).at(-1)?.revokedAt ?? null).toBeNull();
+    expect(h.counted.at(-1)).toBe('keyword_provider_answered');
+  });
+
+  /**
+   * THE STOP → DEBUT ASYMMETRY, at the door. An opt-out list holding STOP but not the
+   * word this parent sent refuses every send to the number — 21610 — although Hale has
+   * just re-enrolled them. The machine names that rather than throwing; before this the
+   * door then flattened it to `intake`, so the webhook answered 200 and NOTHING said a
+   * live-looking ledger row now points at an unreachable number (rule #11).
+   */
+  it('names a re-enrolment the provider permanently refused, rather than counting an ordinary turn', async () => {
+    const h = harness();
+    enrol(h.fake);
+    await post(h, { Body: 'ARRET' });
+    const refusing: TwilioInboundDeps = {
+      ...h.deps,
+      intake: (inboundTransport) => ({
+        ...h.deps.intake(inboundTransport),
+        transport: {
+          async send(): Promise<{ providerMessageId: string }> {
+            throw new TwilioSendError('21610', 400);
+          },
+        },
+      }),
+    };
+
+    const res = await post(
+      h,
+      { Body: 'DEBUT', MessageSid: 'SM33333333333333333333333333333333' },
+      refusing,
+    );
+
+    // Still a 200: the refusal is permanent, so a 500 only earns a webhook retry into
+    // the same wall — after the consent write has already landed.
+    expect(res.status).toBe(200);
+    expect(grants(h).length).toBeGreaterThan(0);
+    // The three places an operator could find out, and all three say it.
+    expect(routed(h)).toMatchObject({ outcome: 'keyword_ack_refused' });
+    expect(h.counted.at(-1)).toBe('keyword_ack_refused');
+    expect(h.errors).toHaveLength(1);
+    // Ids and enums only — never the number it could not reach (rule #1).
+    expect(JSON.stringify(h.errors)).not.toContain(PHONE);
+  });
+
+  it('stays silent on an AIDE Twilio answered', async () => {
+    const h = harness();
+    enrol(h.fake);
+
+    await post(h, { Body: 'AIDE', OptOutType: 'HELP' });
+
+    expect(h.transport.sent).toEqual([]);
+    expect(outRows(h)).toEqual([]);
+  });
+
+  it('answers the keyword itself on an OptOutType it does not recognise, and warns', async () => {
+    const h = harness();
+    enrol(h.fake);
+
+    await post(h, { Body: 'ARRET', OptOutType: 'DESABONNEMENT' });
+
+    // Suppressing a CASL reply on the strength of a token Hale cannot read is the worse
+    // of the two failures, so an unknown value means "the provider answered nothing".
+    expect(h.transport.bodies()).toEqual([STOP_ACK_BY_LANGUAGE.fr]);
+    expect(h.warns).toHaveLength(1);
+    // Field presence, never the value — it rides beside a number and a body (rule #1).
+    expect(JSON.stringify(h.warns)).not.toContain('DESABONNEMENT');
+    // The third cell of the pair the live probe reads, and the only one that is
+    // ambiguous from either half alone: a tag DID arrive and Hale answered anyway. Read
+    // with the two above — no tag/Hale answered, tag/Hale silent — it is what tells an
+    // operator which keyword set the Messaging Service is really carrying.
+    expect(routed(h)).toMatchObject({ outcome: 'intake', optOutTypePresent: true });
   });
 });

@@ -24,13 +24,34 @@ const WINDOW_FORWARD_DAYS = 90;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
+ * What the family actually got, for the one immutable row the first mint writes.
+ *
+ * The secret is one column and two very different disclosures. Handing over the
+ * SUBSCRIPTION means handing over a URL that serves the family's whole near-term
+ * calendar for as long as the token lives. A per-event LINK is a one-way HMAC over the
+ * same secret (lib/loop/ics-invite.ts) and discloses one event, revealing nothing of
+ * the feed. The trail is the surface whose whole job is to be true, so the caller says
+ * which one happened rather than letting the column's older name speak for both.
+ */
+export type IcsTokenPurpose = 'feed_subscription' | 'event_link';
+
+const MINT_VERB: Record<IcsTokenPurpose, string> = {
+  feed_subscription: 'ics_feed_shared',
+  event_link: 'ics_event_link_minted',
+};
+
+/**
  * Ensures the family carries an ICS feed token, minting one on first call. Idempotent:
  * a family that already has a token returns it unchanged — no write, no new audit row —
  * so the subscription URL is stable. Family-scoped UPDATE; the first mint writes one
- * immutable audit row (rule #6). The opaque token (randomBytes(18) → base64url) names
- * no child or parent.
+ * immutable audit row (rule #6), naming the disclosure the caller is making. The opaque
+ * token (randomBytes(18) → base64url) names no child or parent.
  */
-export async function mintIcsToken(db: Database, familyId: string): Promise<{ token: string }> {
+export async function mintIcsToken(
+  db: Database,
+  familyId: string,
+  purpose: IcsTokenPurpose,
+): Promise<{ token: string }> {
   const rows = await db
     .select({ token: schema.families.icsShareToken })
     .from(schema.families)
@@ -52,7 +73,7 @@ export async function mintIcsToken(db: Database, familyId: string): Promise<{ to
   await db.insert(schema.auditLog).values({
     familyId,
     actor: 'system',
-    actionTaken: 'ics_feed_shared',
+    actionTaken: MINT_VERB[purpose],
     targetTable: 'families',
     targetId: familyId,
   });

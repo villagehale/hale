@@ -21,7 +21,9 @@ import {
   corroborationFailure,
   extractPublishedWindow,
   isTrustworthyFind,
+  withoutInferredEvidence,
 } from './verify-window';
+import { inferredFieldsFor } from './registration-windows';
 
 /**
  * VIL-259 — the weekly registration re-verify sweep. M1 (VIL-236) specified this
@@ -585,7 +587,12 @@ async function verifyRow(
     return { ...base, outcome: { kind: 'unverified', reason: failure } };
   }
 
-  return { ...base, outcome: compareWindow(row, reading) };
+  // The dataset's own marker has the last word (VIL-347): a field this row never read off
+  // its own source is not evidence, however neatly the page's dates line up with it.
+  return {
+    ...base,
+    outcome: withoutInferredEvidence(compareWindow(row, reading), inferredFieldsFor(row)),
+  };
 }
 
 async function discoverTarget(

@@ -1,5 +1,6 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
+import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { CATEGORY_CAPS, SEND_RETRIES_EXHAUSTED } from './config';
@@ -301,13 +302,20 @@ async function dispatchLeg(
         providerMessageId: result.providerMessageId,
       });
     }
+    // THE VERB IS WHO IT WENT TO, not what it was. A caregiver leg is a DISCLOSURE of
+    // the household's week to a third party the parents authorised, and the generic row
+    // renders on the family's trail as "Hale sent you a message" — which is false about
+    // the one send where who received it is the whole point (rule #6, and the same
+    // reasoning that gave the caregiver lane its own channel_messages category).
     await ports.audit({
       familyId: msg.familyId,
       actor: 'system',
-      actionTaken: 'channel_sent',
+      actionTaken: isCaregiverTemplateKey(msg.templateKey)
+        ? 'caregiver_schedule_sent'
+        : 'channel_sent',
       targetTable: 'channel_messages',
       targetId: id,
-      after: { channel, category: msg.category },
+      after: { channel, category: msg.category, templateKey: msg.templateKey },
     });
     // THE THREAD, which is where the parent's answer will be read. AFTER the send, like
     // every other post-send write here: a leg that a suppression or a refusal stopped is

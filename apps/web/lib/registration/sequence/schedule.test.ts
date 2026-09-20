@@ -9,6 +9,7 @@ import {
   dueLeg,
   legIsUrgent,
   openLegWindows,
+  openTimeIsPublished,
   waitlistDeadline,
   waitlistLegWindows,
 } from './schedule.js';
@@ -376,6 +377,38 @@ describe('awaitingOutcome', () => {
 
   it('is false for a family that never opted in', () => {
     expect(awaitingOutcome(state({ optIn: 'pending' }), new Date('2026-09-15T14:30:00.000Z'))).toBe(
+      false,
+    );
+  });
+});
+
+/**
+ * VIL-347 — where a municipality published a DATE and no time, the row carries the start
+ * of that local day (registration-windows-data.ts's date-only rule). That instant is a
+ * date wearing a clock, and the go leg is the one sentence in the ladder that is a claim
+ * about a MINUTE.
+ */
+describe('openTimeIsPublished', () => {
+  it('is false for the start of the family-local day — a date, not a time', () => {
+    // Oakville's non-resident open: "14 days after resident registration begins", no hour
+    // printed anywhere on the Town's page.
+    expect(openTimeIsPublished(new Date('2026-08-25T04:00:00.000Z'), TZ)).toBe(false);
+  });
+
+  it('is true for an hour the town actually printed', () => {
+    // Oakville's resident open, "Opens Tuesday, August 11 at 7 a.m."
+    expect(openTimeIsPublished(new Date('2026-08-11T11:00:00.000Z'), TZ)).toBe(true);
+    expect(openTimeIsPublished(OPEN_AT, TZ)).toBe(true);
+  });
+
+  it('reads midnight in the FAMILY\'s zone, not the server\'s or UTC', () => {
+    // The same instant is midnight in Toronto and 9 p.m. the evening before in Vancouver.
+    // A Vancouver household would be told about a 9 p.m. open, which the town did print
+    // no more than it printed midnight — but the zone the row was written in is the one
+    // the start-of-day rule was applied in, so only that zone can recognise it.
+    const torontoMidnight = new Date('2026-08-25T04:00:00.000Z');
+    expect(openTimeIsPublished(torontoMidnight, 'America/Vancouver')).toBe(true);
+    expect(openTimeIsPublished(new Date('2026-08-25T07:00:00.000Z'), 'America/Vancouver')).toBe(
       false,
     );
   });
