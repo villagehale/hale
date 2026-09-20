@@ -39,6 +39,7 @@ import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { recordStatedState } from '~/lib/channel/stated-state';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
+import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { recordWeekdayCare } from '~/lib/care/weekday';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
@@ -64,6 +65,7 @@ import {
   approvalHandler,
   coParentAssentHandler,
   weekdayCareHandler,
+  daycareFollowupHandler,
   connectorDisconnectHandler,
   connectorLinkHandler,
   emailAlertAddHandler,
@@ -353,6 +355,9 @@ export function defaultHandlers(): DeterministicHandler[] {
     // chain is free rather than load-bearing. Said out loud so a reader does not have to
     // work out what it is shadowing (nothing).
     weekdayCareHandler(),
+    // And its sibling, for the same reason and with the same freedom of position: it
+    // owns the daycare check-in's kind and claims nothing.
+    daycareFollowupHandler(),
     healthReplyHandler(defaultHealthReplyDeps()),
     emailAlertAddHandler(),
     planReplyHandler(defaultPlanReplyDeps()),
@@ -746,6 +751,10 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     // a 48h clock of its own rather than the evening's 08:00 lapse, because a household
     // arrangement does not go stale by breakfast.
     weekdayCare: (database, input) => weekdayCareQuestion(database, input),
+    // VIL-360 · the daycare check-in. The follow-up lane registers nothing when it
+    // sends, so this reader is the only thing that makes its ask a question the router
+    // can see - and a bare "yes" near it safe.
+    daycareFollowup: (database, input) => daycareFollowupQuestion(database, input),
     coParentAssent: async (database, { parentUserId, familyId, now }) => {
       const pending = await loadPendingAssent(database, parentUserId, now);
       if (!pending || pending.role !== 'co_parent' || pending.familyId !== familyId) return null;

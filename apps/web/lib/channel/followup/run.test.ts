@@ -16,9 +16,12 @@ import {
   INTRO_FOLLOWUP_MAX_AGE_DAYS,
   INTRO_FOLLOWUP_MIN_AGE_DAYS,
   activityFollowupWindow,
+  daycareFollowupWindow,
   introFollowupWindow,
   runFollowupSweep,
 } from './run';
+import { WEEKDAY_CARE_ENABLED_ENV } from '~/lib/care/weekday';
+import type { DaycareSubject, WeekdayCareFact } from '~/lib/care/weekday';
 import type { ComposeDeferral, FollowupVoiceRequest } from './voice';
 
 const DB = {} as Database;
@@ -42,9 +45,15 @@ const FAM_B = 'fam-b';
  * tests own is what the SWEEP does with each outcome.
  */
 function composedAsk(request: FollowupVoiceRequest): string {
-  return request.kind === 'intro'
-    ? 'Did you end up connecting with the other family? No pressure either way.'
-    : `How was ${request.activity}? No pressure to reply.`;
+  if (request.kind === 'intro') {
+    return 'Did you end up connecting with the other family? No pressure either way.';
+  }
+  if (request.kind === 'daycare') {
+    return request.provider === null
+      ? 'How is daycare going? No pressure to reply.'
+      : `How is ${request.provider} going? No pressure to reply.`;
+  }
+  return `How was ${request.activity}? No pressure to reply.`;
 }
 
 const INTRO_ASK = composedAsk({ kind: 'intro' });
@@ -123,6 +132,10 @@ function harness(
     /** What the reconciliation gate says about the wire body (VIL-293). Empty is the
      * ordinary answer: a follow-up ASK claims nothing by design. */
     unbacked?: Awaited<ReturnType<FollowupSweepDeps['refuseUnbackedSend']>>;
+    /** VIL-360 · the daycare answers in the window, superseded ones included. */
+    daycareSubjects?: Record<string, DaycareSubject[]>;
+    /** ...and what is LIVE now, which is how `care_changed` becomes visible. */
+    weekdayCare?: Record<string, WeekdayCareFact[]>;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -148,6 +161,15 @@ function harness(
     loadDueIntros: async () => overrides.intros ?? [],
     discoverableUserIds: async (_db, userIds) => overrides.discoverable ?? new Set(userIds),
     loadDueActivities: async (_db, familyId) => overrides.activities?.[familyId] ?? [],
+    loadDaycareSubjects: async (_db, familyId) => overrides.daycareSubjects?.[familyId] ?? [],
+    loadWeekdayCare: async (_db, familyId) =>
+      overrides.weekdayCare?.[familyId] ??
+      (overrides.daycareSubjects?.[familyId] ?? []).map((subject) => ({
+        childId: subject.childId,
+        care: 'daycare' as const,
+        provider: subject.provider,
+        validFrom: subject.validFrom,
+      })),
     loadChildren: async (_db, familyId) => overrides.children?.[familyId] ?? [toddler()],
     loadInboundSince: async (_db, familyId, since) => {
       scans.push([familyId, since]);
@@ -197,6 +219,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env[FOLLOWUP_ASKS_ENABLED_ENV];
   delete process.env[FOLLOWUP_ASKS_ALLOWLIST_ENV];
+  delete process.env[WEEKDAY_CARE_ENABLED_ENV];
 });
 
 describe('the dark-launch flag', () => {
@@ -614,5 +637,168 @@ describe('the due windows', () => {
 
     expect(floor.getTime()).toBeLessThan(earliest.getTime());
     expect(earliest.getTime()).toBeLessThan(latest.getTime());
+  });
+});
+
+/**
+ * VIL-360 · stage 3 — "how is it going?", days after a parent said their child had
+ * started daycare.
+ *
+ * Once per child ever, so the two things that matter most are the refusals: a household
+ * whose answer has MOVED ON since the window opened must not be asked, and the ask must
+ * never go twice.
+ */
+describe('the daycare follow-up', () => {
+  const CHILD = 'child-mia';
+  /** Five days before NOW - inside the 3-to-10-day window. */
+  const SAID_AT = new Date(NOW.getTime() - 5 * 24 * 3_600_000);
+
+  function subject(overrides: Partial<DaycareSubject> = {}): DaycareSubject {
+    return {
+      factId: 'fact-1',
+      childId: CHILD,
+      provider: 'Little Sprouts',
+      validFrom: SAID_AT,
+      ...overrides,
+    };
+  }
+
+  function armed(overrides: Parameters<typeof harness>[0] = {}) {
+    process.env[WEEKDAY_CARE_ENABLED_ENV] = 'true';
+    return harness({ families: [family(FAM_A)], ...overrides });
+  }
+
+  it('asks once, naming the place the parent named', async () => {
+    const h = armed({ daycareSubjects: { [FAM_A]: [subject()] } });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result.daycareAsked).toBe(1);
+    expect(h.transport.bodies()[0]).toContain('Little Sprouts');
+    expect(h.recorded[0]).toMatchObject({
+      templateKey: 'followup:daycare',
+      dedupeKey: `followup:daycare:${CHILD}`,
+    });
+    // The trail points at the fact it asked about and carries neither the provider nor
+    // the child (rule #1).
+    const trail = h.audits.find((row) => row.actionTaken === 'followup_daycare_asked');
+    expect(trail?.targetId).toBe('fact-1');
+    expect(JSON.stringify(trail?.after)).not.toContain('Little Sprouts');
+  });
+
+  it('asks generically when no provider was captured, and invents none', async () => {
+    const h = armed({ daycareSubjects: { [FAM_A]: [subject({ provider: null })] } });
+
+    await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(h.transport.bodies()[0]).toContain('daycare');
+    expect(h.transport.bodies()[0]).not.toContain('Little Sprouts');
+  });
+
+  it('never asks twice - the key carries no date', async () => {
+    const h = armed({ daycareSubjects: { [FAM_A]: [subject()] } });
+
+    await runFollowupSweep(DB, h.deps, NOW);
+    const again = await runFollowupSweep(DB, h.deps, new Date(NOW.getTime() + 86_400_000));
+
+    expect(again.daycareAsked).toBe(0);
+    expect(again.skipped.already_claimed).toBe(1);
+  });
+
+  /** THE REFUSAL THIS STAGE EXISTS TO BE ABLE TO NAME. "How is daycare going?" to a
+   * household that has just told Hale their child is home again is the worst message
+   * this lane could send — and a reader that only saw live rows would drop it in
+   * silence rather than count it. */
+  it('refuses when the answer moved on, and says why', async () => {
+    const h = armed({
+      daycareSubjects: { [FAM_A]: [subject()] },
+      weekdayCare: {
+        [FAM_A]: [{ childId: CHILD, care: 'home', provider: null, validFrom: NOW }],
+      },
+    });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result.daycareAsked).toBe(0);
+    expect(result.skipped.care_changed).toBe(1);
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
+  it('a home answer never produces a follow-up at all', async () => {
+    // No daycare subject, because the reader only returns daycare answers - the
+    // positive control is every case above, which uses the identical harness.
+    const h = armed({ daycareSubjects: { [FAM_A]: [] } });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result.daycareAsked).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
+  it('counts a subject that aged out, once, rather than dropping it', async () => {
+    const window = daycareFollowupWindow(NOW);
+    const h = armed({
+      daycareSubjects: {
+        [FAM_A]: [subject({ validFrom: new Date(window.earliest.getTime() - 60_000) })],
+      },
+    });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result.skipped.window_passed).toBe(1);
+    expect(result.daycareAsked).toBe(0);
+  });
+
+  /** The sentence that CREATED this subject said the provider's name, and the scan is
+   * inclusive at its lower bound — so an anchor at `validFrom` would screen every ask
+   * against the answer that earned it and the follow-up would reach nobody. Found by
+   * the journey test; pinned here. */
+  it('does not screen itself against the message that created the subject', async () => {
+    const h = armed({
+      daycareSubjects: { [FAM_A]: [subject()] },
+      inbound: { [FAM_A]: ["she's at Little Sprouts now"] },
+    });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result.daycareAsked).toBe(1);
+    // ...and the scan it DID run started past that instant.
+    expect(h.scans[0]?.[1].getTime()).toBeGreaterThan(SAID_AT.getTime());
+  });
+
+  it('does not ask a family that already told Hale how it is going', async () => {
+    const h = armed({
+      daycareSubjects: { [FAM_A]: [subject()] },
+      inbound: { [FAM_A]: ['drop off was rough again this morning'] },
+    });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result.daycareAsked).toBe(0);
+    expect(result.skipped.already_discussed).toBe(1);
+  });
+
+  it('leaves the claim unspent when the voice defers', async () => {
+    const h = armed({ daycareSubjects: { [FAM_A]: [subject()] }, voiceDefers: 'model_failed' });
+
+    const first = await runFollowupSweep(DB, h.deps, NOW);
+    expect(first.composeDeferred).toBe(1);
+    expect(h.recorded).toEqual([]);
+
+    // The next tick composes again, because nothing was claimed.
+    const h2 = armed({ daycareSubjects: { [FAM_A]: [subject()] } });
+    expect((await runFollowupSweep(DB, h2.deps, NOW)).daycareAsked).toBe(1);
+  });
+
+  it('is dark until its own flag is set', async () => {
+    const h = harness({
+      families: [family(FAM_A)],
+      daycareSubjects: { [FAM_A]: [subject()] },
+    });
+
+    const result = await runFollowupSweep(DB, h.deps, NOW);
+
+    expect(result.daycareAsked).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
   });
 });

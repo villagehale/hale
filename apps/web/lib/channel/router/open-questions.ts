@@ -120,7 +120,18 @@ export type OpenQuestionKind =
    * openness is derived from the MESSAGE LEDGER — it stands while its ask is Hale's
    * last word to that parent and lapses 48h later.
    */
-  | 'weekday_care';
+  | 'weekday_care'
+  /**
+   * "How is Little Sprouts going?" — the daycare check-in (VIL-360,
+   * channel/followup/question.ts). Listed for the reason `weekday_care` and
+   * `evening_check_in` are: its answer is a sentence, not a polarity.
+   *
+   * IT IS ALSO THE ONE THAT WAS MISSING. `sendFollowup` writes a ledger row and threads
+   * the message and registers NOTHING, so before this member a bare "yes" arriving
+   * after "how is daycare going?" with one drafted action pending would have executed
+   * that action.
+   */
+  | 'daycare_followup';
 
 /**
  * How much certainty an answer to this class needs before it is acted on.
@@ -176,6 +187,9 @@ const GRADE: Record<OpenQuestionKind, QuestionGrade> = {
   // polarity. `ordinary` is the honest choice — the write it stands in front of is a
   // memory fact about this household's own week, disclosed to nobody.
   weekday_care: 'ordinary',
+  // Never reached either: nothing resolves it. `ordinary` is the honest choice - the
+  // answer is a sentence the coach reads, and nothing is written from a polarity.
+  daycare_followup: 'ordinary',
 };
 
 export function questionGrade(kind: OpenQuestionKind): QuestionGrade {
@@ -237,6 +251,11 @@ const KIND_ANSWERABLE: Record<OpenQuestionKind, Answerable> = {
   // it are read by a deterministic grammar at a non-claiming gate, which needs no model.
   // It is LISTED so a bare affirmative near it is ambiguous for everything else.
   weekday_care: { yes: false, no: false },
+  // NEITHER POLARITY, the `activity_followup` reading exactly: a check-in is Hale
+  // asking how something went, which has no yes that makes it more true and no no with
+  // a writer behind it. Listed so a bare affirmative near it is ambiguous - which is
+  // the whole reason this member exists.
+  daycare_followup: { yes: false, no: false },
 };
 
 export interface Answerable {
@@ -333,6 +352,9 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   evening_check_in: false,
   // The ask prints no keyword at all - it ends in a question mark, not an instruction.
   weekday_care: false,
+  // The ask prints no keyword; the composer is forbidden a second sentence, let alone
+  // an instruction.
+  daycare_followup: false,
 };
 
 /**
@@ -386,6 +408,9 @@ const SUBJECT: Record<Exclude<OpenQuestionKind, 'approval' | 'email_alert_add'>,
   // No child name, deliberately: this phrase can end up in a list Hale prints back, and
   // the ask itself is the only place the name belongs (rule #1).
   weekday_care: 'how your weeks are covered',
+  // No provider name and no child name: this phrase can end up in a list Hale prints
+  // back, and the ask itself is the only place either belongs (rule #1).
+  daycare_followup: 'how daycare is going',
 };
 
 /**
@@ -566,6 +591,16 @@ export interface OpenQuestionSources {
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
   ): Promise<{ id: string; askedAt: Date } | null>;
+  /**
+   * The daycare follow-up, while its ask is Hale's last word to this parent and inside
+   * its window — or null (VIL-360, channel/followup/question.ts).
+   *
+   * Per-PARENT, because the follow-up lane sends to one seat.
+   */
+  daycareFollowup(
+    database: Database,
+    input: { familyId: string; parentUserId: string; now: Date },
+  ): Promise<{ id: string; askedAt: Date } | null>;
 }
 
 /**
@@ -597,6 +632,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
         emailOffers,
         evening,
         weekdayCare,
+        daycareFollowup,
       ] = await Promise.all([
           sources.pendingApprovals(database, input.familyId),
           sources.introOptInOpen(database, {
@@ -613,6 +649,7 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           sources.emailAlertOffers(database, input),
           sources.eveningCheckIn(database, input),
           sources.weekdayCare(database, input),
+          sources.daycareFollowup(database, input),
         ]);
 
       const questions: OpenQuestion[] = namedApprovals(approvals).slice(
@@ -756,6 +793,19 @@ export function createOpenQuestionReader(sources: OpenQuestionSources): OpenQues
           answerable: KIND_ANSWERABLE.weekday_care,
           askedAt: weekdayCare.askedAt,
           solicited: SOLICITED.weekday_care,
+        });
+      }
+      if (daycareFollowup) {
+        // Hale's own words about its own ask, with neither the provider nor the child
+        // in them — both are in the text the parent is holding (rule #1).
+        questions.push({
+          id: daycareFollowup.id,
+          kind: 'daycare_followup',
+          description: 'How the daycare they told me about is going',
+          subject: SUBJECT.daycare_followup,
+          answerable: KIND_ANSWERABLE.daycare_followup,
+          askedAt: daycareFollowup.askedAt,
+          solicited: SOLICITED.daycare_followup,
         });
       }
       if (promise) {

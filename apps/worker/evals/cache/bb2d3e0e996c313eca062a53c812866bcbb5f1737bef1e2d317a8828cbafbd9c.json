@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a exemplary check-in message. It asks one warm question about the named activity (\"Ari swim meet\"), explicitly removes pressure with \"no need to write back if you don't feel like it,\" contains no assumptions about how it went, avoids any invented specifics, has no greeting or exclamation marks, is short and plain, uses first person (\"How did...\"), and stops after the question. It treats the activity title as a simple label without elaborating on the child or adding any other context or requests."
+  }
+}

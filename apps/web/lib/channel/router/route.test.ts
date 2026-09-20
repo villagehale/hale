@@ -3476,6 +3476,7 @@ describe('the weekday-care answer', () => {
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
       weekdayCare: async () => null,
+      daycareFollowup: async () => null,
       ...overrides,
     };
     return createOpenQuestionReader(sources);
@@ -3630,6 +3631,95 @@ describe('the weekday-care answer', () => {
       context: { body: 'yes' },
       handlers: [approvalHandler(queue.spine as never)],
       questions: questionsFrom({ pendingApprovals: async () => queue.pending as never }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(queue.approved).toEqual(['a-1']);
+  });
+});
+
+/**
+ * VIL-360 · THE THEFT TEST, for the daycare check-in.
+ *
+ * `sendFollowup` writes a ledger row, threads the message, and registers nothing. So
+ * until the thirteenth kind existed, "how is Little Sprouts going?" plus one drafted
+ * action plus a bare "yes" executed that action: `questions.every(q => q.kind ===
+ * 'approval')` was true, `mayClaimBareWord` returned true, and a calendar write the
+ * parent never picked went through.
+ *
+ * This is the one test in this file whose absence has already cost a live incident on
+ * another kind.
+ */
+describe('a bare yes while the daycare check-in is standing', () => {
+  const ASK_ID = 'eeee1111-1111-4111-8111-111111111111';
+
+  function sources(overrides: Partial<OpenQuestionSources>): OpenQuestionReader {
+    return createOpenQuestionReader({
+      pendingApprovals: async () => [],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [],
+      eveningCheckIn: async () => null,
+      weekdayCare: async () => null,
+      daycareFollowup: async () => null,
+      ...overrides,
+    });
+  }
+
+  function draftQueue() {
+    const approved: string[] = [];
+    const pending = [{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }];
+    return {
+      approved,
+      pending,
+      spine: {
+        listPending: async () => pending,
+        latestUndoable: async () => null,
+        approve: async (_db: unknown, args: { actionId: string }) => {
+          approved.push(args.actionId);
+          return true;
+        },
+        decline: async () => true,
+        undo: async () => true,
+      },
+    };
+  }
+
+  it('does not approve the draft', async () => {
+    const queue = draftQueue();
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'yes' },
+      coach,
+      handlers: [approvalHandler(queue.spine as never)],
+      questions: sources({
+        pendingApprovals: async () => queue.pending as never,
+        daycareFollowup: async () => ({ id: ASK_ID, askedAt: NOW }),
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(queue.approved).toEqual([]);
+    // ...and the turn is not lost: the coach answers, having been told what is standing.
+    expect(coach.calls).toBe(1);
+  });
+
+  it('still approves it when the check-in is the only thing NOT standing', async () => {
+    // The positive control, through the identical handler and spine. An absence test
+    // that cannot tell "blocked" from "nothing happened" is not a test.
+    const queue = draftQueue();
+    const h = harness({
+      context: { body: 'yes' },
+      handlers: [approvalHandler(queue.spine as never)],
+      questions: sources({ pendingApprovals: async () => queue.pending as never }),
     });
 
     await routeChannelMessage(h.deps, job());

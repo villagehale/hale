@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
 import { CONSUMED_SEND_STATUSES, SENT_STATUSES } from '~/lib/channel/ledger';
 import { proactiveNudgeTemplateKey } from '~/lib/channel/nudge/shell';
@@ -265,4 +265,63 @@ export async function recordWeekdayCare(
     });
   });
   return { status: 'recorded', care: input.care, providerNamed };
+}
+
+/** A `daycare` answer old enough to ask about. The fact's OWN id, because the follow-up's
+ * audit row points at the row it asked about — that row exists before the ask does, so
+ * unlike the write above, this one can name it. */
+export interface DaycareSubject {
+  factId: string;
+  childId: string;
+  provider: string | null;
+  /** When the parent said it — the follow-up window's anchor. */
+  validFrom: Date;
+}
+
+/**
+ * The daycare answers this family gave inside a window, SUPERSEDED ONES INCLUDED.
+ *
+ * Deliberately not filtered to live rows, and that is what makes `care_changed`
+ * observable: a parent who said "daycare" on Monday and "she's home again" on Thursday
+ * has a candidate whose window is open and whose answer has moved on, and a reader that
+ * only returned live rows would drop it silently. The caller compares against
+ * {@link loadWeekdayCare} and counts the difference.
+ */
+export async function loadDaycareSubjects(
+  database: Database,
+  familyId: string,
+  window: { floor: Date; latest: Date },
+): Promise<DaycareSubject[]> {
+  const rows = await database
+    .select({
+      factId: schema.familyMemoryFacts.id,
+      childId: schema.familyMemoryFacts.childId,
+      factValue: schema.familyMemoryFacts.factValue,
+      validFrom: schema.familyMemoryFacts.validFrom,
+    })
+    .from(schema.familyMemoryFacts)
+    .where(
+      and(
+        eq(schema.familyMemoryFacts.familyId, familyId),
+        eq(schema.familyMemoryFacts.factKey, WEEKDAY_CARE_FACT_KEY),
+        eq(schema.familyMemoryFacts.inferredBy, WEEKDAY_CARE_FACT_WRITER),
+        gte(schema.familyMemoryFacts.validFrom, window.floor),
+        lte(schema.familyMemoryFacts.validFrom, window.latest),
+      ),
+    )
+    .orderBy(asc(schema.familyMemoryFacts.validFrom));
+
+  return rows.flatMap((row) => {
+    if (row.childId === null) return [];
+    const parsed = parseFactValue(row.factValue);
+    if (parsed === null || parsed.care !== 'daycare') return [];
+    return [
+      {
+        factId: row.factId,
+        childId: row.childId,
+        provider: parsed.provider,
+        validFrom: row.validFrom,
+      },
+    ];
+  });
 }

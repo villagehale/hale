@@ -114,6 +114,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
       weekdayCare: async () => null,
+      daycareFollowup: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -191,6 +192,7 @@ describe('the registration-readiness question on the open list', () => {
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
       weekdayCare: async () => null,
+      daycareFollowup: async () => null,
     });
 
     const questions = await reader.open({} as never, {
@@ -226,6 +228,7 @@ describe('the registration-readiness question on the open list', () => {
       emailAlertOffers: async () => [],
       eveningCheckIn: async () => null,
       weekdayCare: async () => null,
+      daycareFollowup: async () => null,
     });
 
     const questions = await reader.open({} as never, {

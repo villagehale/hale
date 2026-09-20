@@ -815,6 +815,25 @@ export function weekdayCareHandler(): DeterministicHandler {
   };
 }
 
+/**
+ * VIL-360 · the daycare check-in's OWNER, and it claims nothing either.
+ *
+ * The answer is a sentence the coach reads and the coach's own memory tools persist —
+ * this lane has deliberately never had an inbound surface. What the kind needs is an
+ * owner, so that a resolver reading a sentence as this kind finds somebody to decline
+ * rather than producing the "no handler owns this kind" ERROR on a path that is neither
+ * impossible nor an error.
+ */
+export function daycareFollowupHandler(): DeterministicHandler {
+  return {
+    name: 'daycare_followup',
+    resolves: new Set<OpenQuestionKind>(['daycare_followup']),
+    async handle(): Promise<HandlerVerdict> {
+      return { claimed: false };
+    },
+  };
+}
+
 /** Anything a handset made a link of. Loose on purpose: an `http://` paste is CLAIMED
  * and refused by name, rather than falling through to a coach that cannot bind it. */
 const LINK_TOKEN = /https?:\/\/\S+/i;
