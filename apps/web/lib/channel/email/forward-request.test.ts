@@ -41,7 +41,17 @@ const CLAIMS: ReadonlyArray<[string, ForwardAddressAsk]> = [
   ['quelle est mon adresse de transfert', 'address'],
   ['adresse pour transférer', 'address'],
   ['je veux mon adresse de transfert', 'address'],
+  // The greeting in front of the ask, which is how half of them arrive, and the want
+  // whose noun comes straight after the verb (round 7 — the shape that separates it from
+  // "I want to keep my forwarding address." two tables down).
+  ["hi what's my forwarding address", 'address'],
+  ['bonjour, quelle est mon adresse de transfert', 'address'],
+  ['I want my forwarding address', 'address'],
   ['turn off my forwarding address', 'turn_off'],
+  // Addressed to Hale, whose address it is — the reading SOMEBODY_ELSES already takes of
+  // the asking half ("what's your forwarding address" mints), now taken by both halves.
+  ['turn off your forwarding address', 'turn_off'],
+  ['désactiver votre adresse de transfert', 'turn_off'],
   ['please disable the forwarding address', 'turn_off'],
   ['revoke my forwarding address', 'turn_off'],
   ['please turn off my email forwarding address', 'turn_off'],
@@ -107,6 +117,19 @@ const DECLINES: readonly string[] = [
   'I set up a filter to my forwarding address.',
   'Sam is asking about the forwarding address.',
   "J'ai configuré une adresse de transfert.",
+  // A PROMISE SOMEBODY ELSE MADE (round 7). `send|text|give me/us` was tested anywhere in
+  // the body, so a sentence whose subject is the school, the camp or Canada Post read as
+  // an imperative addressed to Hale and handed the parent a credential in answer to news
+  // about a third party. An imperative starts a clause; these three start with a subject.
+  'Canada Post will give us a forwarding address.',
+  'the school will send us a forwarding address.',
+  "the camp said they'd text me the forwarding address.",
+  // THE WANT WHOSE OBJECT IS NOT THE ADDRESS. "I want/need" used to be evidence on its
+  // own, so a sentence about giving one away or hanging onto one minted. A parent who
+  // wants the address asks for it ("I want my forwarding address", in the table above),
+  // and one who reaches the coach is told how by the reply's own closing line.
+  'I need to give the daycare my forwarding address.',
+  'I want to keep my forwarding address.',
 ];
 
 describe('asking for the forwarding address', () => {

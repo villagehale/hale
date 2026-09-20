@@ -139,15 +139,47 @@ const INTERROGATIVE_LEAD = new RegExp(
 );
 
 /**
- * AN IMPERATIVE ADDRESSED TO HALE, or the want that stands in for one.
+ * AN IMPERATIVE ADDRESSED TO HALE, AND IT HAS TO OPEN A CLAUSE.
  *
  * `send|text|give|share|resend` only with an object pronoun after them, because "forward
  * the invite to grandma" is an instruction about somebody else's mail and this lane must
  * never read one. `forward` is deliberately absent from the verb list for the same
  * reason.
+ *
+ * THE ANCHOR IS ROUND 7's BLOCKER. Tested anywhere in the body, a verb and a pronoun are
+ * not an imperative — they are a two-word substring, and the subject in front of them is
+ * the whole difference between an instruction and news. "the school will send us a
+ * forwarding address.", "Canada Post will give us a forwarding address." and "the camp
+ * said they'd text me the forwarding address." each minted a token and texted a parent
+ * their own credential in answer to a sentence about somebody else. An imperative has no
+ * subject: it opens the message, or it opens a clause inside it — the same anchor
+ * {@link INTERROGATIVE_LEAD} uses, for the same reason. `please` and the `can you` frame
+ * live INSIDE the anchor because they are what a parent puts between the clause start and
+ * the verb, and nothing else may stand there.
  */
-const ASK_VERB =
-  /\b(?:(?:send|text|give|share|resend)\s+(?:me|us)|(?:i|we)\s+(?:want|need)|je\s+veux|j['’]?ai\s+besoin|envoyez?[-\s]moi|donnez?[-\s]moi)\b/i;
+const ASK_VERB = new RegExp(
+  `(?:^|[.,;:!?]\\s*)(?:${GREETING})?(?:please\\s+|(?:can|could|will|would)\\s+you\\s+(?:please\\s+)?)?(?:(?:send|text|give|share|resend)\\s+(?:me|us)|(?:envoyez?|donnez?)[-\\s]moi)\\b`,
+  'i',
+);
+
+/**
+ * THE WANT WHOSE OBJECT IS THE ADDRESS ITSELF, and no other want.
+ *
+ * "I want" and "I need" used to be evidence on their own, which made every sentence that
+ * merely CONTAINED one a request: "I need to give the daycare my forwarding address." and
+ * "I want to keep my forwarding address." both minted. The noun has to come directly
+ * after the verb, with nothing but a determiner between them, because anything else in
+ * that gap is a second verb — and the address is then ITS object, not the thing being
+ * asked for.
+ *
+ * A parent who wants theirs writes "I want my forwarding address" and gets it. A parent
+ * whose sentence falls through here reaches the coach, and the address reply's own
+ * closing line is what taught them the words that do work.
+ */
+const WANT_VERB = String.raw`(?:(?:i|we)\s+(?:want|need)|je\s+veux|j['’]?ai\s+besoin\s+d[e'’]?)`;
+const WANT_DETERMINER = String.raw`(?:(?:my|our|the|a|mon|ma|notre|le|la|une?)\s+|l['’]\s*)`;
+
+const WANT_ONE = new RegExp(`\\b${WANT_VERB}\\s*${WANT_DETERMINER}(?:${ADDRESS_NOUN})\\b`, 'i');
 
 /** The whole message IS the noun — "forwarding address", the way a parent who has been
  * told to text it writes it. A determiner and one politeness word are allowed; anything
@@ -160,7 +192,7 @@ const BARE_NOUN_ONLY = new RegExp(
 /**
  * IS THIS SENTENCE ASKING FOR ONE — the guard that stops a statement minting a credential.
  *
- * Four shapes, and a declarative is none of them. The residual cost is honest: "Do you
+ * Five shapes, and a declarative is none of them. The residual cost is honest: "Do you
  * know if the school has a new forwarding address?" is a question about somebody else's
  * address that no possessive marks, and it still mints. That is one address handed to the
  * family it belongs to, which the reply then explains — the cheap side of this matcher's
@@ -170,6 +202,7 @@ function asksForOne(body: string): boolean {
   return (
     INTERROGATIVE_LEAD.test(body) ||
     ASK_VERB.test(body) ||
+    WANT_ONE.test(body) ||
     BARE_NOUN_ONLY.test(body) ||
     /\?\s*$/.test(body)
   );
@@ -226,7 +259,7 @@ const TURN_OFF_NEGATION = /\b(?:don['’]?t|do not|never|ne\s+pas|jamais)\b/i;
  * credential, and it is the same call connect/detect.ts's disconnect half makes.
  */
 const TURN_OFF_PATTERN = new RegExp(
-  `\\b${TURN_OFF_VERB}(?:\\s+(?:my|our|the|mon|ma|notre|le|la|les))?\\s+(?:${ADDRESS_NOUN})\\b${ENDS_THE_ASK}`,
+  `\\b${TURN_OFF_VERB}(?:\\s+(?:my|our|your|the|mon|ma|notre|votre|le|la|les))?\\s+(?:${ADDRESS_NOUN})\\b${ENDS_THE_ASK}`,
   'i',
 );
 
@@ -337,11 +370,11 @@ export function forwardRevokeAskReply(language: ReplyLanguage): string {
  * THE NO, ANSWERED — and it is answered rather than passed over for a reason that is not
  * manners.
  *
- * The confirm question is derived from the message ledger and closes when Hale next
- * speaks (see {@link forwardRevokeQuestion}). A NO that produced no outbound would leave
- * the question STANDING for the rest of its window, so the parent's next unrelated
- * "yeah, sounds good" would land on a revoke they had just declined. Saying one sentence
- * is what closes it.
+ * The confirm question is derived from the message ledger, and what closes it is one of
+ * its own two receipts (see {@link forwardRevokeAsk}). A NO that produced no outbound
+ * would leave the question STANDING for the rest of its window, so the parent's next
+ * unrelated "yeah, sounds good" would land on a revoke they had just declined. Saying
+ * this one sentence, under its own template key, is what closes it.
  */
 const REVOKE_DECLINED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
   en: 'Okay - your forwarding address is still on.',
@@ -359,6 +392,19 @@ export function forwardRevokeDeclinedReply(language: ReplyLanguage): string {
 export const FORWARD_REVOKE_ASK_TEMPLATE_KEY = 'forward_address:revoke_ask';
 
 /**
+ * THE TWO RECEIPTS, NAMED — because the ledger has to be able to see that the question was
+ * ANSWERED, which is a different fact from Hale having spoken.
+ *
+ * Round 6 derived both from the same fact: the question stood while its ask was Hale's
+ * last word, so the receipt closed it by being newer. That conflated "answered" with
+ * "spoke since", and Hale's own clarifying turn — a sentence whose entire subject is this
+ * question — closed it as thoroughly as the answer would have. These two names are what
+ * let the two be told apart with no row and no column added.
+ */
+export const FORWARD_REVOKE_TEMPLATE_KEY = 'forward_address:revoked';
+export const FORWARD_REVOKE_DECLINED_TEMPLATE_KEY = 'forward_address:revoke_declined';
+
+/**
  * How long the confirm stands. FIFTEEN MINUTES — the connector sign-in link's window
  * (connect/offer.ts), and for its reason: it is the span in which "the thing Hale just
  * asked me" is still one identifiable thing. Long enough for a parent to put the kettle
@@ -368,20 +414,32 @@ export const FORWARD_REVOKE_ASK_TEMPLATE_KEY = 'forward_address:revoke_ask';
 export const FORWARD_REVOKE_ASK_TTL_MS = 15 * 60 * 1000;
 
 /**
- * THE STANDING CONFIRM, or null — the open question behind the turn-off half.
+ * THE CONFIRM THIS PARENT HAS NOT ANSWERED, or null — the ask itself, read off the ledger.
  *
  * NO ROW AND NO COLUMN BEHIND IT, the evening check-in's and the registration ladder's
  * pattern (checkin/reply.ts, registration/sequence/prepare-reply.ts), for their reason:
  * both facts are already in `channel_messages`. When the ask went out is the row's own
- * `created_at`; whether it is still the question is whether anything has gone out since.
- * A stored `pending` flag would be a second answer to that, and every other sender in the
- * product would have to remember to clear it.
+ * `created_at`; whether it has been answered is whether one of its two receipts has gone
+ * out since. A stored `pending` flag would be a second answer to that, and every other
+ * sender in the product would have to remember to clear it.
  *
- * THE LAST-WORD RULE IS ALSO WHAT CLOSES IT. The revoke receipt, and the receipt for a no,
- * are both outbounds — so answering the question is what ends it, with no second write and
- * no row to leave half-resolved. The direction it fails in is the safe one: any other
- * message Hale sends in the window closes the question too, and a YES then revokes
- * nothing.
+ * TWO CONDITIONS, AND THE SECOND ONE IS ROUND 7. It stands while it is inside its window
+ * and while NEITHER RECEIPT has followed it. Round 6 closed it on any newer outbound
+ * instead, which is a rule about who spoke rather than about what was answered — and the
+ * message it closed the question with was, in the case the round-6 verifier found, Hale's
+ * own clarifying menu ASKING WHICH QUESTION THE PARENT MEANT. Hale offered the revoke on
+ * that menu, the parent picked it, and the pick answered a question that had stopped
+ * existing the moment the menu was sent. Answering is what ends a question; saying
+ * something else is not.
+ *
+ * The last-word rule did not go away, it MOVED — to the bare-word door, which is the only
+ * place it was ever doing work (handlers.ts `forwardAddressHandler`). A word with no
+ * target in it can only mean the last thing that was said; a reading that names its
+ * question does not need to be the last thing at all.
+ *
+ * BY ID, when the caller has one. `askMessageId` is the resolved answer's `questionId` —
+ * the ask's own row — so the door that acts on a model's or a menu's reading acts on the
+ * question that reading actually named, never on whatever the newest ask happens to be.
  *
  * PER PARENT, like the intro opt-in and the co-parent scope question: the confirm went to
  * one phone, and a co-parent who never saw it must not be able to spend it.
@@ -389,9 +447,9 @@ export const FORWARD_REVOKE_ASK_TTL_MS = 15 * 60 * 1000;
  * SENT_STATUSES rather than the dedupe set, for the reason the check-in reader gives: a
  * send that failed never reached the phone, and a question nobody was asked is not open.
  */
-export async function forwardRevokeQuestion(
+export async function forwardRevokeAsk(
   database: Database,
-  input: { familyId: string; parentUserId: string; now: Date },
+  input: { familyId: string; parentUserId: string; now: Date; askMessageId?: string },
 ): Promise<{ id: string; askedAt: Date } | null> {
   const [ask] = await database
     .select({ id: schema.channelMessages.id, createdAt: schema.channelMessages.createdAt })
@@ -407,12 +465,46 @@ export async function forwardRevokeQuestion(
           schema.channelMessages.createdAt,
           new Date(input.now.getTime() - FORWARD_REVOKE_ASK_TTL_MS),
         ),
+        ...(input.askMessageId ? [eq(schema.channelMessages.id, input.askMessageId)] : []),
       ),
     )
     .orderBy(desc(schema.channelMessages.createdAt))
     .limit(1);
   if (!ask) return null;
 
+  const [receipt] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, input.parentUserId),
+        eq(schema.channelMessages.direction, 'out'),
+        inArray(schema.channelMessages.templateKey, [
+          FORWARD_REVOKE_TEMPLATE_KEY,
+          FORWARD_REVOKE_DECLINED_TEMPLATE_KEY,
+        ]),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        gt(schema.channelMessages.createdAt, ask.createdAt),
+      ),
+    )
+    .limit(1);
+  return receipt ? null : { id: ask.id, askedAt: ask.createdAt };
+}
+
+/**
+ * HAS HALE SAID ANYTHING TO THIS PARENT SINCE — the last-word rule, on its own, for the
+ * one door that needs it.
+ *
+ * A bare YES carries no target, so the only question it can possibly be answering is the
+ * one Hale asked last. Anything Hale has said since — a coach turn, a nudge, its own
+ * clarifying menu — makes the word ambiguous in a way no reader can fix, and this lane
+ * would be spending a credential on the guess. The resolved door does not consult it,
+ * because a reading that names the question has already said which one it means.
+ */
+export async function nothingSaidSince(
+  database: Database,
+  input: { parentUserId: string; askedAt: Date },
+): Promise<boolean> {
   const [newer] = await database
     .select({ id: schema.channelMessages.id })
     .from(schema.channelMessages)
@@ -421,11 +513,11 @@ export async function forwardRevokeQuestion(
         eq(schema.channelMessages.parentUserId, input.parentUserId),
         eq(schema.channelMessages.direction, 'out'),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
-        gt(schema.channelMessages.createdAt, ask.createdAt),
+        gt(schema.channelMessages.createdAt, input.askedAt),
       ),
     )
     .limit(1);
-  return newer ? null : { id: ask.id, askedAt: ask.createdAt };
+  return newer === undefined;
 }
 
 /**

@@ -58,7 +58,7 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import { eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
-import { forwardRevokeQuestion } from '~/lib/channel/email/forward-request';
+import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
 import {
   approvalHandler,
   coParentAssentHandler,
@@ -750,8 +750,12 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     },
     // The forwarding-address revoke confirm (VIL-352 round 6), read through the lane's own
     // ledger reader — the evening check-in's discipline for the same reason, with the
-    // fifteen-minute window applied inside it so a lapsed confirm is never listed.
-    forwardAddressRevoke: (database, input) => forwardRevokeQuestion(database, input),
+    // fifteen-minute window applied inside it so a lapsed confirm is never listed. It
+    // stands until one of its own receipts answers it, NOT until Hale next speaks: the
+    // clarifying menu Hale sends about this very question is a thing Hale said, and it
+    // used to close the question it was asking about (round 7). The last-word rule lives
+    // on the bare-word door in handlers.ts, which is the only reader it protects.
+    forwardAddressRevoke: (database, input) => forwardRevokeAsk(database, input),
   });
 }
 

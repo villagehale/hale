@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
 import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
+import type { ReplyResolver } from '~/lib/channel/router/resolve';
 import type { ChannelRouterDeps } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
 import {
@@ -101,7 +102,40 @@ async function seedReachableFamily(): Promise<Seeded> {
   return { ...family, token };
 }
 
-function deps(now: Date, coachReply = 'Say more?'): ChannelRouterDeps {
+/**
+ * The resolver, never a model (rule #8's sibling discipline for this file): every claim
+ * under test is made by a free reader, or by a reading this test states outright so that
+ * what the chain does WITH it is the thing being measured.
+ */
+const NEVER_PLACES: ReplyResolver = {
+  read: async () => ({ status: 'unresolved', reason: 'no_target' }),
+};
+
+/** Two things open and the answer fits both - the reading that sends the turn to the
+ * coach and mints the clarifying menu (route.ts GATE 2b). */
+const CANNOT_PLACE: ReplyResolver = {
+  read: async () => ({ status: 'unresolved', reason: 'ambiguous' }),
+};
+
+/** The parent's own words, read onto THIS ask at the confidence a consequential question
+ * demands. The id is the ask's own message row, which is the whole point of the door. */
+function placesTheRevoke(questionId: string, polarity: 'yes' | 'no' = 'yes'): ReplyResolver {
+  return {
+    read: async () => ({
+      status: 'resolved',
+      kind: 'forward_address_revoke',
+      questionId,
+      polarity,
+      confidence: 'high',
+    }),
+  };
+}
+
+function deps(
+  now: Date,
+  coachReply = 'Say more?',
+  replyResolver: ReplyResolver = NEVER_PLACES,
+): ChannelRouterDeps {
   return {
     database: db.database,
     loadContext: loadInboundContext,
@@ -122,10 +156,7 @@ function deps(now: Date, coachReply = 'Say more?'): ChannelRouterDeps {
       status: 'recorded',
       commitmentId: '77777777-7777-4777-8777-777777777777',
     }),
-    // NEVER a model in this file. Every claim under test has to be made by the free
-    // readers — the matcher, `soleOpenKind` and the ledger question — or it is not the
-    // thing being tested.
-    replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
+    replyResolver,
     disambiguation: createDisambiguationStore(),
     reconcileView: loadReconcileView,
     recordStatedState: async () => ({ status: 'nothing_stated' }),
@@ -144,14 +175,22 @@ function deps(now: Date, coachReply = 'Say more?'): ChannelRouterDeps {
  * router wrote is moved onto it afterwards — the question reader orders by created_at and
  * measures its window from it.
  */
-async function text(seeded: Seeded, body: string, at: Date, coachReply = 'Say more?') {
+interface TextOptions {
+  /** The door this message came in by. The confirm went out on the parent's SMS route, so
+   * an inbound arriving by email is not an answer to it however it reads. */
+  channel?: 'sms' | 'email';
+  coachReply?: string;
+  resolver?: ReplyResolver;
+}
+
+async function text(seeded: Seeded, body: string, at: Date, options: TextOptions = {}) {
   const providerMessageId = `SM-${at.getTime()}-${Math.random()}`;
   const [row] = await db.database
     .insert(schema.channelMessages)
     .values({
       familyId: seeded.familyId,
       parentUserId: seeded.parentUserId,
-      channel: 'sms',
+      channel: options.channel ?? 'sms',
       direction: 'in',
       category: 'reply',
       providerMessageId,
@@ -161,13 +200,16 @@ async function text(seeded: Seeded, body: string, at: Date, coachReply = 'Say mo
       sentAt: at,
     })
     .returning({ id: schema.channelMessages.id });
-  const result = await routeChannelMessage(deps(at, coachReply), {
-    family_id: seeded.familyId,
-    parent_user_id: seeded.parentUserId,
-    channel_message_id: row?.id as string,
-    provider_message_id: providerMessageId,
-    received_at: at.toISOString(),
-  });
+  const result = await routeChannelMessage(
+    deps(at, options.coachReply ?? 'Say more?', options.resolver ?? NEVER_PLACES),
+    {
+      family_id: seeded.familyId,
+      parent_user_id: seeded.parentUserId,
+      channel_message_id: row?.id as string,
+      provider_message_id: providerMessageId,
+      received_at: at.toISOString(),
+    },
+  );
   await db.database
     .update(schema.channelMessages)
     .set({ createdAt: at })
@@ -223,6 +265,54 @@ async function seedOutbound(seeded: Seeded, at: Date): Promise<string> {
     })
     .returning({ id: schema.channelMessages.id });
   return row?.id as string;
+}
+
+/** A drafted action waiting for this family's approval — the neighbour that carries NO
+ * ask time, so it can never win a recency race and is only ever a second open question. */
+async function seedApprovalDraft(seeded: Seeded): Promise<void> {
+  const [event] = await db.database
+    .insert(schema.events)
+    .values({
+      familyId: seeded.familyId,
+      source: 'test',
+      eventType: 'calendar',
+      dedupHash: randomUUID(),
+    })
+    .returning({ id: schema.events.id });
+  await db.database.insert(schema.actions).values({
+    eventId: event?.id as string,
+    familyId: seeded.familyId,
+    actionType: 'calendar.place',
+    payload: {},
+    reviewerVerdict: 'approved',
+    userVisibleState: 'drafted_for_approval',
+  });
+}
+
+/** The outbound row the confirm went out on — the id the menu's option points at, and the
+ * id the resolved door looks the ask up by. */
+async function askMessageId(seeded: Seeded): Promise<string> {
+  const [row] = await db.database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, seeded.familyId),
+        eq(schema.channelMessages.templateKey, FORWARD_REVOKE_ASK_TEMPLATE_KEY),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.createdAt))
+    .limit(1);
+  return row?.id as string;
+}
+
+/** What Hale printed on its clarifying menu, in the order it printed it. */
+async function menuKinds(seeded: Seeded): Promise<string[]> {
+  const [row] = await db.database
+    .select({ options: schema.pendingDisambiguations.options })
+    .from(schema.pendingDisambiguations)
+    .where(eq(schema.pendingDisambiguations.parentUserId, seeded.parentUserId));
+  return (row?.options ?? []).map((option) => option.kind);
 }
 
 describe('the six sentences that used to revoke now open a question', () => {
@@ -374,26 +464,6 @@ describe('only a YES to the question Hale asked revokes', () => {
  * recent thing Hale said, so the handler's check is stricter than that helper.
  */
 describe('a bare yes beside somebody else s question', () => {
-  async function seedApprovalDraft(seeded: Seeded): Promise<void> {
-    const [event] = await db.database
-      .insert(schema.events)
-      .values({
-        familyId: seeded.familyId,
-        source: 'test',
-        eventType: 'calendar',
-        dedupHash: randomUUID(),
-      })
-      .returning({ id: schema.events.id });
-    await db.database.insert(schema.actions).values({
-      eventId: event?.id as string,
-      familyId: seeded.familyId,
-      actionType: 'calendar.place',
-      payload: {},
-      reviewerVerdict: 'approved',
-      userVisibleState: 'drafted_for_approval',
-    });
-  }
-
   async function seedEmailAlertOffer(seeded: Seeded, at: Date): Promise<void> {
     const channelMessageId = await seedOutbound(seeded, at);
     await db.database.insert(schema.emailAlertOffers).values({
@@ -464,12 +534,152 @@ describe('a bare yes beside somebody else s question', () => {
   });
 });
 
+/**
+ * HALE'S OWN CLARIFYING TURN DOES NOT CLOSE THE QUESTION (round 7, B2).
+ *
+ * The shape the round-6 verifier found: with any other question open, a bare YES to the
+ * confirm cannot be placed by the free readers, so the turn goes to the coach and Hale
+ * prints a menu — a menu whose second option IS this revoke. That menu is an outbound, so
+ * under a pure last-word rule it closed the very question it was asking about, and the
+ * parent's pick then answered nothing. Hale offered it and could not honour it: a dropped
+ * consent turn behind a false offer.
+ *
+ * So the derivation is split. The ASK stands while it is inside its window and no receipt
+ * has answered it; the LAST-WORD rule stays on the bare-word door, where it belongs — a
+ * word with no target may only ever land on the thing Hale said last.
+ */
+describe('the confirm survives Hale s own clarifying turn', () => {
+  /** Four minutes after the ask, and two after the menu. */
+  const PICKED_AT = new Date(ASKED_AT.getTime() + 4 * 60 * 1000);
+
+  async function askThenMenu(seeded: Seeded): Promise<void> {
+    await seedApprovalDraft(seeded);
+    await text(seeded, 'turn off my forwarding address', ASKED_AT);
+    await text(seeded, 'yes', ANSWERED_AT, {
+      resolver: CANNOT_PLACE,
+      coachReply: 'Which one did you mean?',
+    });
+    expect(await menuKinds(seeded)).toEqual(['approval', 'forward_address_revoke']);
+  }
+
+  it('offers the revoke on the menu and then honours the pick - once, with both rows', async () => {
+    const seeded = await seedReachableFamily();
+    await askThenMenu(seeded);
+
+    const pick = await text(seeded, 'the forwarding address one', PICKED_AT, {
+      resolver: CANNOT_PLACE,
+    });
+
+    expect(pick.handler).toBe('forward_address');
+    expect(transport.bodies().at(-1)).toBe(forwardRevokeReply('en', 'revoked'));
+    expect(await tokenOf(seeded.familyId)).toBeNull();
+    const trail = await verbs(seeded.familyId);
+    expect(trail.filter((verb) => verb === 'email_forward_address_revoke_asked')).toHaveLength(1);
+    expect(trail.filter((verb) => verb === 'email_forward_address_revoked')).toHaveLength(1);
+  });
+
+  it('but not past the ask s own window - the menu outlives the confirm, the confirm still lapses', async () => {
+    const seeded = await seedReachableFamily();
+    await askThenMenu(seeded);
+
+    // The menu's window is three hours; the confirm's is fifteen minutes, and it is the
+    // shorter one that decides whether a credential may still be destroyed.
+    const late = await text(seeded, 'the forwarding address one', TOO_LATE, {
+      resolver: CANNOT_PLACE,
+    });
+
+    expect(late.handler).not.toBe('forward_address');
+    expect(await tokenOf(seeded.familyId)).toBe(seeded.token);
+    expect(await verbs(seeded.familyId)).not.toContain('email_forward_address_revoked');
+  });
+
+  it('and not after the parent already said no - the declined receipt closes it for both doors', async () => {
+    const seeded = await seedReachableFamily();
+    await text(seeded, 'turn off my forwarding address', ASKED_AT);
+    const askId = await askMessageId(seeded);
+    await text(seeded, 'no', ANSWERED_AT);
+    expect(transport.bodies().at(-1)).toBe(forwardRevokeDeclinedReply('en'));
+    // Something else open, so the resolver stage runs at all (route.ts GATE 2b).
+    await seedApprovalDraft(seeded);
+
+    const later = await text(seeded, 'the forwarding address one', PICKED_AT, {
+      resolver: placesTheRevoke(askId),
+      coachReply: 'Say more?',
+    });
+
+    expect(later.handler).not.toBe('forward_address');
+    expect(transport.bodies().at(-1)).toBe('Say more?');
+    expect(await tokenOf(seeded.familyId)).toBe(seeded.token);
+    expect(await verbs(seeded.familyId)).not.toContain('email_forward_address_revoked');
+  });
+
+  it('and revokes once - a second reading of the same ask takes nothing more', async () => {
+    const seeded = await seedReachableFamily();
+    await text(seeded, 'turn off my forwarding address', ASKED_AT);
+    const askId = await askMessageId(seeded);
+    await text(seeded, 'yes', ANSWERED_AT);
+    expect(await tokenOf(seeded.familyId)).toBeNull();
+    await seedApprovalDraft(seeded);
+
+    const again = await text(seeded, 'the forwarding address one', PICKED_AT, {
+      resolver: placesTheRevoke(askId),
+      coachReply: 'Say more?',
+    });
+
+    // The receipt answered the question. A second reading of it is not a second answer,
+    // and must not reach the parent as "you have no forwarding address" either.
+    expect(again.handler).not.toBe('forward_address');
+    expect(transport.bodies().at(-1)).toBe('Say more?');
+    expect(
+      (await verbs(seeded.familyId)).filter((verb) => verb === 'email_forward_address_revoked'),
+    ).toHaveLength(1);
+  });
+});
+
+/**
+ * THE BARE WORD KEEPS ROUND 6'S STRICTER RULE. A yes with no target in it may only ever
+ * answer the thing Hale said LAST, on the door it said it through — everything the split
+ * above loosened is loosened for readings that name their question, and for nothing else.
+ */
+describe('a bare yes, and the three things it still has to clear', () => {
+  it('is not an answer to an ask Hale has already spoken past', async () => {
+    const seeded = await seedReachableFamily();
+    await text(seeded, 'turn off my forwarding address', ASKED_AT);
+    // An ordinary turn in between: Hale's last word is the coach's, not the confirm.
+    await text(seeded, 'what time does the library open', new Date(ASKED_AT.getTime() + 60_000), {
+      coachReply: 'Ten, most days.',
+    });
+
+    await text(seeded, 'yes', ANSWERED_AT);
+
+    expect(await tokenOf(seeded.familyId)).toBe(seeded.token);
+    expect(await verbs(seeded.familyId)).not.toContain('email_forward_address_revoked');
+  });
+
+  it('is not an answer arriving through a door the question never went out of', async () => {
+    const seeded = await seedReachableFamily();
+    await text(seeded, 'turn off my forwarding address', ASKED_AT);
+
+    const wrongDoor = await text(seeded, 'yes', ANSWERED_AT, { channel: 'email' });
+
+    expect(wrongDoor.handler).not.toBe('forward_address');
+    expect(await tokenOf(seeded.familyId)).toBe(seeded.token);
+    expect(await verbs(seeded.familyId)).not.toContain('email_forward_address_revoked');
+  });
+});
+
 describe('a statement about a forwarding address mints nothing', () => {
   const DECLARATIVES = [
     'I already set up a canada post forwarding address.',
     'the school has a new forwarding address.',
     'We already have a forwarding address.',
     'I set up a filter to my forwarding address.',
+    // The same class one verb along (round 7): the subject is the school, the camp or
+    // Canada Post, and each of these minted a token and texted the parent the address in
+    // answer to news about somebody else.
+    'Canada Post will give us a forwarding address.',
+    'the school will send us a forwarding address.',
+    "the camp said they'd text me the forwarding address.",
   ];
 
   it.each(DECLARATIVES)('%s - no token, no audit row, no address in the reply', async (body) => {

@@ -27,11 +27,15 @@ import {
 } from '~/lib/channel/email/forward-address';
 import {
   FORWARD_REVOKE_ASK_TEMPLATE_KEY,
+  FORWARD_REVOKE_DECLINED_TEMPLATE_KEY,
+  FORWARD_REVOKE_TEMPLATE_KEY,
   forwardAddressReply,
+  forwardRevokeAsk,
   forwardRevokeAskReply,
   forwardRevokeDeclinedReply,
   forwardRevokeReply,
   matchForwardAddressRequest,
+  nothingSaidSince,
   recordForwardRevokeAsked,
 } from '~/lib/channel/email/forward-request';
 import { replyLanguage } from '~/lib/channel/language';
@@ -431,12 +435,21 @@ export function forwardAddressHandler(
           claimed: true,
           outcome: 'revoke_declined',
           reply: forwardRevokeDeclinedReply(language),
+          // The name that tells the ledger this question was ANSWERED rather than merely
+          // spoken past. Drop it and a no leaves the confirm standing for the rest of its
+          // window (forward-request.ts `forwardRevokeAsk`).
+          templateKey: FORWARD_REVOKE_DECLINED_TEMPLATE_KEY,
         };
       }
       if (answer === 'yes') {
         const revoked = await revokeForwardToken(database, ctx.familyId);
         const outcome = revoked ? 'revoked' : 'not_configured';
-        return { claimed: true, outcome, reply: forwardRevokeReply(language, outcome) };
+        return {
+          claimed: true,
+          outcome,
+          reply: forwardRevokeReply(language, outcome),
+          templateKey: FORWARD_REVOKE_TEMPLATE_KEY,
+        };
       }
 
       const ask = matchForwardAddressRequest(ctx.body);
@@ -499,15 +512,30 @@ export function forwardAddressHandler(
 /**
  * IS THIS TURN AN ANSWER TO THE STANDING REVOKE CONFIRM — and may it be acted on?
  *
- * Two doors in, and both end at the same three conditions.
+ * Two doors in, and they do NOT ask the same question of the ledger, which is round 7.
  *
- *   THE RESOLVER'S. `ctx.resolved` means the router has already read the parent's own
- *   words against the list and named this kind, at a confidence the `consequential` grade
- *   demands (resolve.ts `meetsGrade`). Its `questionId` IS the ask's own message row.
+ *   THE RESOLVER'S. `ctx.resolved` means the parent's own words were read against the
+ *   list and this kind was named, at the confidence the `consequential` grade demands
+ *   (resolve.ts `meetsGrade`) — or that the parent picked this option off a menu Hale
+ *   printed (disambiguation.ts). Either way the reading NAMES ITS QUESTION, and
+ *   `questionId` is the ask's own message row, so the ask is looked up BY THAT ID and has
+ *   to clear only its window and its receipts.
  *
- *   A BARE WORD, which costs nothing to read (affirmative.ts) and is refused unless EVERY
- *   open question is this one. Stricter than `soleOpenKind` on purpose — see the handler's
- *   own note.
+ *   WHY THAT DOOR MAY ACT ON A QUESTION THE READER NO LONGER LISTS. It cannot act on one
+ *   the reader never listed: a menu's options are minted from the open list (route.ts),
+ *   and the resolver is only ever shown that list, so a `questionId` naming this kind
+ *   exists because the reader listed it at the moment the question was put to the parent.
+ *   What may have happened since is that Hale spoke — including, in the case that made
+ *   this a blocker, Hale's own sentence ASKING WHICH QUESTION THE PARENT MEANT. The id is
+ *   what ties the pick to the ask it was offered for, and the TTL and the receipts are
+ *   what stop it reaching an ask that has lapsed or already been answered.
+ *
+ *   A BARE WORD, which costs nothing to read (affirmative.ts) and keeps round 6's rule
+ *   exactly: EVERY open question must be this one — stricter than `soleOpenKind`, see the
+ *   handler's own note — and the ask must still be Hale's LAST WORD to this parent. A word
+ *   with no target in it can only mean the thing said last; if Hale has said anything
+ *   since, nobody can know what the word answers, and this lane will not guess with a
+ *   credential.
  *
  * And then the condition neither door supplies: THE SAME DOOR THE QUESTION WENT OUT OF. A
  * parent reaches Hale by text, by WhatsApp and by email, and a "yes" arriving by a channel
@@ -525,15 +553,15 @@ async function readRevokeAnswer(
   const polarity = resolved?.polarity ?? (word === 'unclear' ? null : word);
   if (polarity === null) return null;
 
-  const questions = await ctx.openQuestions();
-  const standing = questions.find((question) => question.kind === 'forward_address_revoke');
-  if (!standing) return null;
-  if (
-    resolved === null &&
-    !questions.every((question) => question.kind === 'forward_address_revoke')
-  ) {
-    return null;
-  }
+  const ask = resolved
+    ? await forwardRevokeAsk(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        now: ctx.now,
+        askMessageId: resolved.questionId,
+      })
+    : await bareWordAsk(database, ctx);
+  if (!ask) return null;
 
   const inboundId = ctx.inboundChannelMessageId;
   if (inboundId === null) {
@@ -543,7 +571,25 @@ async function readRevokeAnswer(
     );
     return null;
   }
-  return (await answeredOnTheSameChannel(database, standing.id, inboundId)) ? polarity : null;
+  return (await answeredOnTheSameChannel(database, ask.id, inboundId)) ? polarity : null;
+}
+
+/** The ask a bare affirmative may answer: the one the reader is listing, with nothing else
+ * open beside it and nothing said after it. */
+async function bareWordAsk(
+  database: Database,
+  ctx: HandlerContext,
+): Promise<{ id: string; askedAt: Date } | null> {
+  const questions = await ctx.openQuestions();
+  const standing = questions.find((question) => question.kind === 'forward_address_revoke');
+  if (!standing?.askedAt) return null;
+  if (!questions.every((question) => question.kind === 'forward_address_revoke')) return null;
+  return (await nothingSaidSince(database, {
+    parentUserId: ctx.parentUserId,
+    askedAt: standing.askedAt,
+  }))
+    ? { id: standing.id, askedAt: standing.askedAt }
+    : null;
 }
 
 /**

@@ -47,6 +47,7 @@ import {
   forwardRevokeReply,
   matchForwardAddressRequest,
 } from '~/lib/channel/email/forward-request';
+import { replyLanguage } from '~/lib/channel/language';
 import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
@@ -631,6 +632,18 @@ describe('the forwarding address reply stays GSM-7 and carries the whole address
     expect(matchForwardAddressRequest('forwarding address')).toBe('address');
     expect(forwardRevokeReply('fr', 'revoked')).toContain('adresse de transfert');
     expect(matchForwardAddressRequest('adresse de transfert')).toBe('address');
+  });
+
+  /**
+   * AND IN THE LANGUAGE IT TAUGHT THEM. A taught phrase the matcher hears but the language
+   * detector does not is only half a working instruction: the French reply tells a parent
+   * to text "desactiver mon adresse de transfert", and every word of that sentence was
+   * either an English word or an accented one the fold strips, so the confirm that came
+   * back said "Reply YES". Hale must answer its own French in French.
+   */
+  it('hears its own taught phrases as the language it taught them in', () => {
+    expect(replyLanguage('désactiver mon adresse de transfert')).toBe('fr');
+    expect(replyLanguage('adresse de transfert')).toBe('fr');
   });
 });
 

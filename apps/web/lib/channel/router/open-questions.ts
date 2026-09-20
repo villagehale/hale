@@ -573,6 +573,12 @@ export interface OpenQuestionSources {
    * confirm went to one phone. Its fifteen-minute window is applied INSIDE the reader, so
    * a lapsed confirm is never listed, never named in a clarifying sentence and never
    * resolved — the discipline every offer on this list keeps.
+   *
+   * UNLIKE the two above it, what ends it is one of its own two receipts rather than
+   * Hale's next sentence (round 7). The list is what a clarifying menu is built from, so
+   * a question that closed when Hale asked WHICH QUESTION THE PARENT MEANT was offered on
+   * a menu and then could not be picked. The last-word rule still guards the bare word,
+   * inside the handler that reads one (handlers.ts).
    */
   forwardAddressRevoke(
     database: Database,
