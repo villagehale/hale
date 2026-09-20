@@ -325,15 +325,33 @@ describe('T1 · the loop is one conversation, in firing order', () => {
     // at 0.65). One conversation designs that whole class of defect out — so the
     // pin is that there is exactly ONE loop and exactly ONE spine on the page.
     expect([...html.matchAll(/class="v5-loop"/g)]).toHaveLength(1);
-    expect([...html.matchAll(/class="v5-spine"/g)]).toHaveLength(1);
+    expect([...html.matchAll(/class="v5-beats"/g)]).toHaveLength(1);
     expect(html).not.toContain('v4-hero-thread');
     expect(html).not.toContain('v4-thread-cap');
   });
 
-  it('marks every beat and names the whole thread as an example', () => {
+  it('hangs the beats off an ol that contains nothing but beats', () => {
+    // The spine shipped as a <span> child of the <ol>, which is not a content
+    // model any browser owes us anything for: an ol takes li, script and
+    // template. It is a decorative rule, so it is drawn by the list itself.
+    const list = render().match(/<ol class="v5-beats">([\s\S]*?)<\/ol>/)?.[1] ?? '';
+    expect(list, 'the beats must render').toContain('class="v5-beat"');
+    expect(list.replace(/<li class="v5-beat">[\s\S]*?<\/li>/g, '').trim()).toBe('');
+    // …and the rule is still drawn, off the one token, in the stylesheet.
+    const css = readFileSync(fileURLToPath(new URL('./globals.css', import.meta.url)), 'utf8');
+    expect(css).toMatch(/\.v5-beats::before \{[^}]*background: var\(--v5-spine\)/);
+  });
+
+  it('marks every beat and tells a sighted reader the thread is an example', () => {
+    // The cap was sr-only, which told the reader who cannot see the bubbles that
+    // this is one family's thread and left the reader who CAN to take invented
+    // parent lines for a transcript. It is a plate now — the same small, faded
+    // type the stamps wear — so the disclosure reaches everybody once.
     const html = render();
     expect([...html.matchAll(/class="v5-stamp"/g)]).toHaveLength(5);
-    expect(visibleText(html)).toContain('One family’s thread with Hale, start to finish');
+    expect(html).toContain(
+      '<p class="v5-loop-cap">One family’s thread with Hale, start to finish</p>',
+    );
   });
 });
 
@@ -645,6 +663,177 @@ describe('T4 · no claim the code cannot back', () => {
     expect(html).toContain('application/ld+json');
     expect(html).toContain('A number your family texts');
     expect(html).not.toContain('passive household assistant');
+  });
+});
+
+/**
+ * T4b · THE POSITIVE-CLAIM AUDIT — the inverse of T4, and the half that catches
+ * what nobody thought to forbid.
+ *
+ * A negative set only ever bans a sentence somebody already imagined. Both of
+ * this page's real copy defects walked straight past one: "what you tell me
+ * shapes what I suggest next week" (nothing reads the note) and "an event's
+ * title, time and place" (the sync reads five fields). Neither contains a
+ * forbidden string, and both are first-person present-tense capability claims —
+ * which is a grammar a test can enumerate.
+ *
+ * So every sentence the page says in the first person is listed here with the
+ * `file:line` that makes it true and its R2 class, and the test asserts the list
+ * COVERS the page. A new claim with no citation is a red test rather than a
+ * missed review. The reviewer's job is the citations; the test's job is that
+ * there are no uncited sentences left.
+ *
+ * Scope: the page's own prose. The five loop bubbles are quotations and are
+ * pinned against apps/web's source bytes in T2 — a stricter gate than a citation
+ * a human reads — so they are excluded here rather than cited twice.
+ */
+describe('T4b · every first-person claim on the page has a line of code under it', () => {
+  type Klass = 'LIVE' | 'BUILT-DARK (F14)';
+  const CLAIMS: [sentence: string, source: string, klass: Klass][] = [
+    [
+      'I find it.',
+      'apps/web/lib/channel/activity/tools.ts:62-70 find_activities — the h1’s first half is the finder',
+      'LIVE',
+    ],
+    [
+      'What I’d send you tonight',
+      'apps/web/lib/channel/activity/lane.ts:155 ActivityPick — the §1 eyebrow, and the picks below it are that shape',
+      'LIVE',
+    ],
+    [
+      'Then I come back and ask.',
+      'apps/web/lib/registration/sequence/copy.ts:575 (check_in) + apps/web/lib/channel/checkin/copy.ts:86 (the evening ask)',
+      'BUILT-DARK (F14)',
+    ],
+    [
+      'How I handle your data.',
+      'the link label on the connector sentence — it goes to /privacy, which states the same collection field by field',
+      'LIVE',
+    ],
+    [
+      'Send me your kids’ ages and a postal code; I’ll take it from there.',
+      'apps/web/lib/channel/intake/copy.ts COLD_START_ASK — the greeting asks for exactly this and nothing else',
+      'LIVE',
+    ],
+    [
+      'You tell me the ages and the postal code.',
+      'apps/web/lib/channel/intake/copy.ts COLD_START_ASK',
+      'LIVE',
+    ],
+    [
+      'I go and look at what is actually running near you this season — the city’s rec guide, the EarlyON, the library, the Y, the studio two streets over — and I come back with three, not a list.',
+      'apps/web/lib/channel/activity/tools.ts:62-70 find_activities — a web search returning three picks',
+      'LIVE',
+    ],
+    [
+      'If a page hasn’t posted its winter times yet, I tell you that instead of guessing one.',
+      'apps/web/lib/channel/activity/tools.ts:64 — the tool contract forbids inventing a `when`',
+      'LIVE',
+    ],
+    [
+      'The morning it opens, I’m already awake.',
+      'apps/web/lib/registration/sequence/schedule.ts SEQUENCE_LEGS — the go leg fires 15 minutes out',
+      'BUILT-DARK (F14)',
+    ],
+    [
+      'I run the morning with you, and your link is in your hand before it opens.',
+      'apps/web/lib/registration/sequence/copy.ts:378,:514 — battle plan and go, both carrying sourceUrl',
+      'BUILT-DARK (F14)',
+    ],
+    [
+      'And when the class you wanted is already full, I keep watching it and text you the minute a place opens.',
+      'VIL-337 watched spots — apps/web/lib/registration/watch/',
+      'BUILT-DARK (F14)',
+    ],
+    [
+      'Four hours after the window opens I ask whether you got in.',
+      'apps/web/lib/registration/sequence/copy.ts:575 check_in leg',
+      'BUILT-DARK (F14)',
+    ],
+    [
+      'A few days after the first class I ask how it went.',
+      'apps/web/lib/channel/followup/run.ts:102-103 — 1-4 days after the first session',
+      'BUILT-DARK (F14)',
+    ],
+    [
+      'And in the evening, one line — how was today.',
+      'apps/web/lib/channel/checkin/cadence.ts:27 EVENING_CHECK_IN_HOUR_LOCAL = 20',
+      'BUILT-DARK (F14)',
+    ],
+    [
+      'What you tell me stays between us: no other family sees it, and the words themselves are gone in thirty days.',
+      'apps/web/lib/channel/checkin/notes.ts:25-26 NOTE_RETENTION_DAYS = 30, purged at :312-321',
+      'BUILT-DARK (F14)',
+    ],
+    [
+      'You text it first — no menus, and I never text a number that hasn’t texted me.',
+      'apps/web/lib/channel/intake — intake is inbound-first; CASL',
+      'LIVE',
+    ],
+    [
+      'If you connect Gmail, I read the subject, the sender and the first line of each new message — enough to notice a date your family has to be somewhere — and I only open a message when it looks like one.',
+      'apps/web/lib/integrations/sync.ts:552-574 (metadata headers + snippet); apps/web/lib/sentinel/fetch-body.ts:70 (the one full read)',
+      'LIVE',
+    ],
+    [
+      'From your calendar I read what an event says about itself: its title, its notes, where it is and when.',
+      'apps/web/lib/integrations/sync.ts:369-377 — summary, description, location, start, end',
+      'LIVE',
+    ],
+    [
+      'That is all I ask for, and it is all I use it for.',
+      'apps/web/lib/integrations/sync.ts — the two payloads above are the whole ingest',
+      'LIVE',
+    ],
+    [
+      'I suggest, I prepare — and with your ok, I handle it.',
+      'hard rule #4 — the approval ladder; nothing executes without an explicit yes',
+      'LIVE',
+    ],
+    [
+      'Free while I’m new — and families who start now keep their founding rate for good.',
+      'apps/site/lib/site/pricing — free-first, founding rate held',
+      'LIVE',
+    ],
+  ];
+
+  /** The page's own voice, sentence by sentence.
+   *
+   * Read per BLOCK — one heading, paragraph or list item at a time — because a
+   * flattened page glues a heading with no full stop onto the sentence after it
+   * and the two arrive as one uncitable string. The quoted bubbles come out
+   * first: they are pinned against apps/web's source bytes in T2. */
+  function authoredSentences(html: string): string[] {
+    const stripped = html.replace(/<p class="v4-bubble[^"]*">[\s\S]*?<\/p>/g, ' ');
+    return [...stripped.matchAll(/<(p|h1|h2|h3|li)\b[^>]*>([\s\S]*?)<\/\1>/g)]
+      .map((block) => visibleText(block[2] ?? '').replace(/\s+([.,;:])/g, '$1'))
+      .flatMap((block) => block.split(/(?<=[.?!])\s+/))
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => sentence.length > 0);
+  }
+
+  const authored = authoredSentences(render());
+
+  it('renders every sentence on the list, so the list cannot rot', () => {
+    for (const [sentence] of CLAIMS) expect(authored, sentence).toContain(sentence);
+  });
+
+  it('cites every sentence it renders — an uncited first-person claim is a red test', () => {
+    const listed = new Set(CLAIMS.map(([sentence]) => sentence));
+    const uncited = authored
+      .filter((sentence) => /\bI\b|\bI’/.test(sentence))
+      .filter((sentence) => !listed.has(sentence));
+    expect(uncited).toEqual([]);
+  });
+
+  it('cites a merged commit for every claim, and classes it', () => {
+    // The two classes the founder cleared: sending today, and merged-and-tested
+    // behind F14. Nothing on this page may be UNBUILT — that is what /faq's
+    // three "Not yet." answers are for.
+    for (const [sentence, source, klass] of CLAIMS) {
+      expect(source.length, sentence).toBeGreaterThan(20);
+      expect(['LIVE', 'BUILT-DARK (F14)']).toContain(klass);
+    }
   });
 });
 

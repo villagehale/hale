@@ -2214,11 +2214,23 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     font-optical-sizing: auto;
     font-synthesis-weight: none;
     letter-spacing: -0.035em;
-    /* UNDER the face's worst lowercase extent, by 0.0339em — 2.84px at the 84px
-     * ceiling — and the one rung allowed to be. Only reachable where a descender
-     * sits over a TALL ascender, which the real stacks are nowhere near: 'y' over
-     * 't' in "The family assistant / you text." clears by 13.5px, because 't' is
-     * 0.55em where 'b' is 0.74em. A poster headline leads tighter than a page of
+    /* UNDER the face's worst lowercase extent, by 0.053em, and the one rung
+     * allowed to be. Re-measured for v5's h1 off the shipped woff2 at wght 450 /
+     * opsz 84 (fontTools, glyph bounds ÷ 2000 upm): the worst pair the face can
+     * make is 'g' (−0.2458em) over the apostrophe (0.7572em) = 1.003em, which
+     * 0.95 would overlap — but the shipped stacks are nowhere near it, because
+     * the line that hands a descender down carries none.
+     *
+     *   en  "I find it." / "You don't miss it."      — line 1's deepest ink is
+     *       'd' at −0.0103em (an overshoot, not a descender) under line 2's
+     *       tallest, the apostrophe at 0.7572em: 0.1825em clear, 15.3px at the
+     *       84px ceiling.
+     *   fr  "Je le trouve." / "Vous ne le manquez pas." — 'J' is −0.012em here,
+     *       not a descender either, under 'l' at 0.7374em: 0.1984em clear.
+     *
+     * A headline that DOES stack g/y/p over an ascender needs this rung raised;
+     * landing-locales.test.ts holds each line inside the 15ch column, and this
+     * comment holds the leading. A poster headline leads tighter than a page of
      * them. */
     line-height: 0.95;
   }
@@ -2531,13 +2543,24 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
    * show elapsed time, so the page draws it. One ornament, load-bearing, and
    * nothing else on this page draws a line. */
   .v5-loop { width: 100%; max-width: 32rem; }
+  /* The thread is a demo and it says so, in the stamps' own voice: small, faded,
+   * one line, above the first bubble rather than under the last. */
+  .v5-loop-cap {
+    margin-bottom: 0.8rem;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    color: var(--color-faded-sage);
+  }
   .v5-beats {
     position: relative;
     list-style: none;
     margin: 0;
     padding: 0;
   }
-  .v5-spine {
+  /* Drawn by the list, not by an element: an <ol> takes li, script and template,
+   * and a 1px decorative rule has no business being a child of one. */
+  .v5-beats::before {
+    content: '';
     position: absolute;
     top: 0.6rem;
     bottom: 0.6rem;
@@ -2669,6 +2692,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   @media (prefers-reduced-motion: reduce) {
     /* Removed, not frozen — the house rule. A paused draw would be a timeline
      * that stops halfway down, which is worse than no motion at all. */
-    .v5-spine { animation: none; }
+    .v5-beats::before { animation: none; }
   }
 }

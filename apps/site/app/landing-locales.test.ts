@@ -268,6 +268,6 @@ describe('the loop renders in every locale', () => {
     const bubbles = [...html.matchAll(/<p class="v4-bubble[^"]*">(.*?)<\/p>/g)].map((m) => m[1]);
     expect(bubbles.length, 'the bubbles must render').toBe(11);
     for (const bubble of bubbles) expect(bubble).toMatch(/^<span class="sr-only">[^<]+ <\/span>/);
-    expect(loop(html)).toMatch(/^<div class="v5-loop"><p class="sr-only">[^<]+</);
+    expect(loop(html)).toMatch(/^<div class="v5-loop"><p class="v5-loop-cap">[^<]+</);
   });
 });

@@ -55,12 +55,16 @@ export function LoopThread({
 
   return (
     <div className="v5-loop">
-      {/* The thread is a demo, and a reader who can see the bubbles knows that.
-          The caption says so to the reader who cannot, and spends no fold
-          height saying it. */}
-      <p className="sr-only">{cap}</p>
+      {/* The thread is a demo and the parent's lines are invented, so the page
+          says so — to every reader, not only the one the layout does not reach.
+          It was sr-only, which left a sighted reader to take three made-up
+          turns for a transcript; a plate in the stamps' own small faded type
+          costs one line of fold height and buys the disclosure. */}
+      <p className="v5-loop-cap">{cap}</p>
+      {/* The spine is drawn by the list itself (`.v5-beats::before`). It used to
+          be a <span> child of this <ol>, which is not a content model an ol has
+          — li, script and template — and a decorative rule needs no element. */}
       <ol className="v5-beats">
-        <span className="v5-spine" aria-hidden="true" />
         {beats.map((beat) => (
           <li key={beat.elapsed} className="v5-beat">
             <p className="v5-stamp">{beat.elapsed}</p>
