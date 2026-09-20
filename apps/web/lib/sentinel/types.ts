@@ -28,7 +28,17 @@ export interface FamilyChildRef {
   ageInMonths: number;
 }
 
-export type ExtractionKind = 'cancellation' | 'reschedule' | 'new_event' | 'reminder_only' | 'unclear';
+export type ExtractionKind =
+  | 'cancellation'
+  | 'reschedule'
+  | 'new_event'
+  | 'reminder_only'
+  | 'unclear'
+  /** A provider confirming this family now HOLDS a place — a registration receipt, an
+   * enrolment confirmation. Distinguished from `new_event` by who is being told what: an
+   * announcement tells a community that a thing exists, a confirmation tells one family
+   * that they are in it. */
+  | 'booking_confirmation';
 
 /** The typed extraction event fields (ticket's `event` sub-object). */
 export interface ExtractedEvent {

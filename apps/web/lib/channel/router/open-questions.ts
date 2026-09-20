@@ -302,7 +302,11 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
   // The scope question prints "Reply YES and I'll text them once." (coparent/copy.ts).
   co_parent_assent: true,
   // The alert prints "Reply YES and it goes on your week." verbatim, and it is the last
-  // thing Hale said (integrations/email-alert.ts).
+  // thing Hale said (integrations/email-alert.ts). A BOOKING alert ends differently —
+  // "Want it on your calendar?" — and the flag's value is still correct, because
+  // `newestSolicitedKind` reads this boolean rather than the string and `readAffirmative`
+  // covers sure/ok/sounds good/oui. The comment is the evidence for the value, so it has
+  // to name both endings rather than only the one it was written for.
   email_alert_add: true,
   // FALSE, and the entry matters more here than anywhere else on this list. The FIRST ask
   // a family ever gets prints LESS and NO, but every ask after it prints nothing at all —

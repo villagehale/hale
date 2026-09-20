@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "Preschool Swim Level 2",
+      "child_ref": "child-leo",
+      "original_time": null,
+      "new_time": "2026-08-01T09:00:00-04:00",
+      "location": "Brookfield Leisure Centre, Pool 2"
+    },
+    "kind": "booking_confirmation",
+    "source_confidence": 0.95,
+    "quote_evidence": "Sessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026",
+    "teen_content": false
+  },
+  "latencyMs": 2422
+}

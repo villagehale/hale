@@ -47,6 +47,7 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
   new_event: 'A new event was mentioned',
   reminder_only: 'A reminder about a scheduled activity',
   unclear: 'A possible schedule change',
+  booking_confirmation: 'A registration notice',
 };
 
 /**

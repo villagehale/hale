@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.98,
+    "rationale": "School picture day reminder with specific dated occasion (Friday, July 24th) and direct reference to child by name (Leo)"
+  },
+  "latencyMs": 933
+}

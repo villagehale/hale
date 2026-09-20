@@ -53,7 +53,7 @@
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
-    "sha256": "99be20c3915b05a6a6aeab67dffd877c0769b42655beba75bb317509e96b046b"
+    "sha256": "4989569d42cf0eb4ce3950082b53e3920a0fe002bec774c2a23e00a731a17dd6"
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
@@ -145,7 +145,7 @@
   },
   "triage-child-event.md": {
     "file": "triage-child-event.md",
-    "sha256": "da61a03c350cead4b23749a00ae1c688612298a387dcbef9ca0356447256b497"
+    "sha256": "ce3f8ff46de970ba2df1937720f9ed57bd65aacea13c70dc33726f603de5cbb4"
   },
   "turn-apology.md": {
     "file": "turn-apology.md",

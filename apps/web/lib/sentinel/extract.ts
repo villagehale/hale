@@ -25,6 +25,7 @@ const EXTRACTION_KINDS = [
   'new_event',
   'reminder_only',
   'unclear',
+  'booking_confirmation',
 ] as const satisfies readonly ExtractionKind[];
 const extractionKindSchema = z.enum(EXTRACTION_KINDS);
 

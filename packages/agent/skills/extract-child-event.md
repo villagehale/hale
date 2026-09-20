@@ -23,7 +23,7 @@ Return strict JSON matching this shape (via the forced extraction tool):
 
 ```
 {
-  "kind": "cancellation" | "reschedule" | "new_event" | "reminder_only" | "unclear",
+  "kind": "cancellation" | "reschedule" | "new_event" | "reminder_only" | "unclear" | "booking_confirmation",
   "event": {
     "title": string,
     "child_ref": string | null,        // see "Child attribution"
@@ -48,6 +48,13 @@ Return strict JSON matching this shape (via the forced extraction tool):
 - `reminder_only` — a notice about an occasion already known, with no change
   (e.g. "reminder: checkup Tuesday at 2pm"). Set `original_time` to the
   reminded time; leave `new_time` null.
+- `booking_confirmation` — a provider confirming that THIS family now holds a
+  place: a registration receipt, an enrolment confirmation, "you're registered
+  / you're in / your spot is confirmed". Set `new_time` to the FIRST SESSION;
+  leave `original_time` null. What separates it from `new_event` is who is
+  being told what: an announcement tells a community that a thing exists, a
+  confirmation tells one family that they are in it. A waitlist placement is
+  NOT one — nothing is held yet.
 - `unclear` — the email plausibly concerns a child's schedule but you cannot
   confidently determine what changed or when. Prefer this over guessing.
 
@@ -83,6 +90,14 @@ LOGISTICS notice about a scheduled occasion (a practice cancelled, a picture
 day, a class party) that happens to name a teenager is NOT teen content — those
 are fine to surface with full detail. When genuinely unsure which this is,
 prefer `true` (rule #1: default to the more restrictive read).
+
+## title
+
+The name of the OCCASION, as the provider names it: "Swim Level 2", "Picture
+Day", "Fall soccer". Never fold a child's name, a confirmation number, an order
+id, or an amount into it — a title outlives this call by weeks and is read back
+to the family in a later text, so anything you put here is something Hale will
+say out loud when the email itself is long gone.
 
 ## What NOT to do
 

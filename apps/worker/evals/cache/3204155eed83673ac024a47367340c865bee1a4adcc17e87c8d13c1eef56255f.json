@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.98,
+    "rationale": "Class reschedule confirmation — specific dated change (Saturday, time moved from 10:00 to 11:30 AM) for named child's activity"
+  },
+  "latencyMs": 1128
+}

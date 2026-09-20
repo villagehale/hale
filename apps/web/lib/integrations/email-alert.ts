@@ -20,6 +20,7 @@ import type {
   InboxEnvelope,
   SentinelClassification,
 } from '~/lib/sentinel';
+import { bookedDetectionEnabledFor } from './booked';
 import { type EmailAlertOfferDraft, recordEmailAlertOffer } from './email-alert-offer';
 
 /**
@@ -216,12 +217,16 @@ export async function alertParentForEmail(
     return `gate_refused:${verdict.reason}`;
   }
 
+  // ONE read of the flag per envelope, threaded into both calls below rather than read
+  // twice: the sentence and the row it promises must be built from the same answer.
+  const booked = bookedDetectionEnabledFor(familyId);
   const message = renderEmailAlert({
     from: input.envelope.from,
     kind: extraction.kind,
     event: extraction.event,
     teenContent: extraction.teenContent,
     matchedEventRef: extraction.matchedEventRef,
+    booked,
     timeZone: input.timeZone,
     now,
   });
@@ -232,6 +237,7 @@ export async function alertParentForEmail(
     event: extraction.event,
     teenContent: extraction.teenContent,
     matchedEventRef: extraction.matchedEventRef,
+    booked,
     now,
   });
 
@@ -406,8 +412,26 @@ export interface EmailAlertRenderInput {
   /** The family occasion this email already matched, or null. It decides whether the text
    * may END with an offer — see {@link emailAlertOfferDraft}. */
   matchedEventRef: CorrelatedEventRef | null;
+  /** Whether BOOKED DETECTION is armed for this family (lib/integrations/booked.ts).
+   * Dark, a `booking_confirmation` is rendered and offered as a `new_event` in every
+   * respect — see {@link effectiveKind}. */
+  booked: boolean;
   timeZone: string;
   now: Date;
+}
+
+/**
+ * THE KIND THE SENTENCE AND THE OFFER ARE BUILT FROM.
+ *
+ * One subtraction rather than three gates. Dark, `booking_confirmation` simply IS
+ * `new_event` here: it picks the same frame, the same CTA, the same generic title and
+ * the same offered instant, so the flag-off body is byte-identical to what that email
+ * produces today by construction rather than by three branches that have to agree. The
+ * kind itself never changes — it stays in `EXTRACTION_KINDS` in both states, because a
+ * flag that changed what the model may return would re-key the eval cache on every flip.
+ */
+function effectiveKind(kind: ExtractionKind, booked: boolean): ExtractionKind {
+  return kind === 'booking_confirmation' && !booked ? 'new_event' : kind;
 }
 
 /** The clamps that keep the composed body inside TWO GSM-7 segments once the full
@@ -459,7 +483,9 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  *     nobody would write.
  *   · The family must not already TRACK it (`matchedEventRef`). A reschedule of a class
  *     Hale already holds would be placed beside the old one — two copies of one Saturday,
- *     from a text that promised to tidy it.
+ *     from a text that promised to tidy it. This is also what stops a REGISTRATION
+ *     RECEIPT for a class the family already has being offered a second time, and it is
+ *     reachable for a booking only because `correlate.ts` maps the kind to a time.
  *
  * Everything else ends with today's sentence, and that is still the common case.
  */
@@ -468,10 +494,12 @@ export function emailAlertOfferDraft(input: {
   event: ExtractedEvent;
   teenContent: boolean;
   matchedEventRef: CorrelatedEventRef | null;
+  booked: boolean;
   now: Date;
 }): EmailAlertOfferDraft | null {
   if (input.teenContent || input.matchedEventRef !== null) return null;
-  const startsAt = instant(OFFERED_TIME[input.kind](input.event));
+  const kind = effectiveKind(input.kind, input.booked);
+  const startsAt = instant(OFFERED_TIME[kind](input.event));
   if (startsAt === null || startsAt.getTime() <= input.now.getTime()) return null;
   const title = sanitizedTitle(input.event.title);
   if (title === '') return null;
@@ -480,7 +508,10 @@ export function emailAlertOfferDraft(input: {
   // allowed — a room number on your own calendar is the useful half of an address, and
   // that rule is about what goes out in a text, not about what the family holds.
   const place = clamp(gsm7(input.event.location ?? ''), TITLE_MAX);
-  return { kind: input.kind, title, startsAt, location: place === '' ? null : place };
+  // The EFFECTIVE kind on the row too, so a dark booking is a `new_event` offer in the
+  // ledger exactly as it is on the wire — and so a lit one is the thing `stampBookingEvent`
+  // can recognise when the parent says yes.
+  return { kind, title, startsAt, location: place === '' ? null : place };
 }
 
 /** WHICH time field is the occasion, per kind. A move's destination, a new date's date,
@@ -490,6 +521,9 @@ const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | n
   new_event: (event) => event.newTime,
   reschedule: (event) => event.newTime,
   reminder_only: (event) => event.originalTime,
+  // The first session. This entry is the whole of what makes the YES path work for a
+  // booking: the offer, the row and the placement are the ones that already exist.
+  booking_confirmation: (event) => event.newTime,
   cancellation: () => null,
   unclear: () => null,
 };
@@ -501,6 +535,38 @@ const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | n
  * because by then the parent has written (email-alert-offer.ts). */
 const OFFER_CTA = 'Reply YES and it goes on your week.';
 
+/**
+ * The booking's own ending. A receipt has already told the parent they are in, so
+ * "Reply YES and it goes on your week" would answer a question they did not ask; what is
+ * genuinely open is the calendar.
+ *
+ * IT CLEARS THE CLAIM TAXONOMY, and that is checked rather than assumed:
+ * `SCHEDULED_ASSERTION` (channel/reconcile/claims.ts) matches `is/are/'s/'re on your
+ * calendar` — a copula immediately before the phrase — and this sentence has none. The
+ * email-alert path does not run `refuseUnbackedSend`, so this is a copy discipline the
+ * module's suite pins rather than a gate that would catch it.
+ */
+const BOOKING_CTA = 'Want it on your calendar?';
+
+/**
+ * WHICH ENDING, per kind — and the reason this is a Record and not a constant.
+ *
+ * `renderEmailAlert` appends a CTA if and only if `emailAlertOfferDraft` returned a
+ * draft, which is exactly when a row will be written. That single line is what stops a
+ * question ever being asked with nothing behind it (#649), so the booking's question
+ * lives HERE and never inside `compose`: a frame that carried it would ask it in every
+ * draft-null case, and after the correlation fix the most common such case is precisely
+ * the booking for a class the family already holds.
+ */
+const CTA: Record<ExtractionKind, string> = {
+  cancellation: OFFER_CTA,
+  reschedule: OFFER_CTA,
+  new_event: OFFER_CTA,
+  reminder_only: OFFER_CTA,
+  unclear: OFFER_CTA,
+  booking_confirmation: BOOKING_CTA,
+};
+
 /** What the sentence says when it has nothing specific, per kind — the fallback when a
  * vendor title survives sanitising as nothing at all (a subject line entirely outside the
  * Latin alphabet). Hale's own words, so the message is still true, and each one is
@@ -511,6 +577,10 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
   new_event: 'a new date',
   reminder_only: 'there is something coming up',
   unclear: 'a possible schedule change',
+  // A lowercase noun phrase, not the pipeline's standalone sentence of the same name:
+  // this one is written to read as the OBJECT of its frame — "Riverside Pool says you're
+  // in for a spot - first one Saturday, Sep 26 at 9:00 a.m."
+  booking_confirmation: 'a spot',
 };
 
 /**
@@ -527,24 +597,27 @@ const GENERIC_TITLE: Record<ExtractionKind, string> = {
  */
 export function renderEmailAlert(input: EmailAlertRenderInput): string {
   const title = sanitizedTitle(input.event.title);
+  const kind = effectiveKind(input.kind, input.booked);
 
   if (input.teenContent) {
     // Category only. The pipeline has already replaced the title with its own generic
     // line; dropping the sender and the time is this renderer's half of the same rule,
     // because who wrote and when are the disclosure a 13+ child is owed protection from.
-    return `${title || GENERIC_TITLE[input.kind]}. ${TEEN_CLOSER}`;
+    return `${title || GENERIC_TITLE[kind]}. ${TEEN_CLOSER}`;
   }
 
   const body = compose(
     input,
+    kind,
     clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, ''),
-    title || GENERIC_TITLE[input.kind],
+    title || GENERIC_TITLE[kind],
   );
   // The offer, decided by the one function that also decides whether the row gets
   // written. Appended AFTER `compose`, never inside it: every frame in there ends through
   // `end()`, and a clause spliced before that would put Hale's own offer inside the
-  // vendor's sentence.
-  return emailAlertOfferDraft(input) === null ? body : `${body} ${OFFER_CTA}`;
+  // vendor's sentence. The ENDING is per kind (see {@link CTA}) and the condition is not:
+  // a question is asked if and only if a row will exist to keep it.
+  return emailAlertOfferDraft(input) === null ? body : `${body} ${CTA[kind]}`;
 }
 
 /**
@@ -561,11 +634,16 @@ function sanitizedTitle(raw: string): string {
 }
 
 /** One sentence per kind, and they are all the same sentence: who, what, when. */
-function compose(input: EmailAlertRenderInput, sender: string, title: string): string {
+function compose(
+  input: EmailAlertRenderInput,
+  kind: ExtractionKind,
+  sender: string,
+  title: string,
+): string {
   const { event, timeZone, now } = input;
   const at = (iso: string | null): string | null => longWhen(iso, timeZone, now);
 
-  switch (input.kind) {
+  switch (kind) {
     case 'cancellation': {
       const { text: head } = changeHead(sender, title, CHANGE.cancellation);
       const was = at(event.originalTime);
@@ -597,10 +675,28 @@ function compose(input: EmailAlertRenderInput, sender: string, title: string): s
       // a dash standing in for the verb ("says Pediatric checkup - Saturday").
       const relayed = VERBISH.test(title);
       const head = sender === '' ? title : `${sender} ${relayed ? 'says' : 'has'} ${title}`;
-      const on = at(input.kind === 'new_event' ? event.newTime : event.originalTime);
-      const place = input.kind === 'new_event' ? venue(event.location) : '';
+      const on = at(kind === 'new_event' ? event.newTime : event.originalTime);
+      const place = kind === 'new_event' ? venue(event.location) : '';
       const when = on === null ? '' : relayed ? ` - ${on}` : ` on ${on}`;
       return end(`${head}${place}${when}`);
+    }
+    case 'booking_confirmation': {
+      // THE PROVIDER IS THE SUBJECT, as in every other frame here, and that is what keeps
+      // Hale from asserting a thing it did not see: the receipt says the family is in, so
+      // the sentence says the receipt says it. "you're in" clears SCHEDULED_ASSERTION
+      // where "you're registered" and "is confirmed" do not (claims.ts).
+      //
+      // IT ENDS WITH A PERIOD AND CONTAINS NO QUESTION. The question is the CTA, appended
+      // one level up and only when a row will exist behind it.
+      //
+      // The title is relayed flat — no "says X is open" grammar to weld onto — because a
+      // confirmation's title is the CLASS ("Swim Level 2"), not a sentence about it.
+      const head = sender === '' ? title : `${sender} says you're in for ${title}`;
+      const first = at(event.newTime);
+      if (first === null) return end(head);
+      // The place LAST, after the instant, unlike the new_event frame: what a parent
+      // reading a receipt needs first is which session is the first one.
+      return end(`${head} - first one ${first}${venue(event.location)}`);
     }
     case 'unclear':
       return end(
