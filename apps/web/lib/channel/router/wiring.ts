@@ -58,6 +58,7 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import { eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
+import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import {
   approvalHandler,
   coParentAssentHandler,
@@ -723,6 +724,11 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
     // already implied by the message ledger, so a stored flag would be a second answer
     // every other sender in the product would have to remember to clear.
     eveningCheckIn: (database, input) => eveningCheckInQuestion(database, input),
+    // The activity follow-up ask, read through the followup lane's own last-word reader
+    // — the same discipline the readiness question and the evening check-in keep, and
+    // the line that stops a bare "yes" meant for "how did swim go?" approving a drafted
+    // calendar write.
+    activityFollowupAsk: (database, input) => activityFollowupAskOpen(database, input),
     coParentAssent: async (database, { parentUserId, familyId, now }) => {
       const pending = await loadPendingAssent(database, parentUserId, now);
       if (!pending || pending.role !== 'co_parent' || pending.familyId !== familyId) return null;
