@@ -23,6 +23,7 @@ import { familyForForwardToken, mintForwardToken } from './forward-address';
 import {
   FORWARD_REVOKE_ASK_TEMPLATE_KEY,
   FORWARD_REVOKE_ASK_TTL_MS,
+  FORWARD_REVOKE_TEMPLATE_KEY,
   forwardRevokeAskReply,
   forwardRevokeDeclinedReply,
   forwardRevokeReply,
@@ -633,6 +634,72 @@ describe('the confirm survives Hale s own clarifying turn', () => {
     expect(
       (await verbs(seeded.familyId)).filter((verb) => verb === 'email_forward_address_revoked'),
     ).toHaveLength(1);
+  });
+
+  /** The parent asks again past the first ask's own window, so one confirm is lapsed and
+   * one is live at the moment they answer. */
+  const RE_ASKED_AT = new Date(ASKED_AT.getTime() + FORWARD_REVOKE_ASK_TTL_MS + 60_000);
+  /** A minute after the second ask — the answer arrives. */
+  const ANSWERED_THE_ASK_AT = new Date(RE_ASKED_AT.getTime() + 60_000);
+
+  /** Two confirms this parent was sent, and something else open beside them: the bare-word
+   * door declines with a second kind standing (handlers.ts `bareWordAsk`), which is both
+   * what makes the resolver stage run at all (route.ts GATE 2b) and what leaves the
+   * resolution as the only thing naming which ask the YES is for. */
+  async function askTwice(seeded: Seeded): Promise<{ lapsed: string; live: string }> {
+    await text(seeded, 'turn off my forwarding address', ASKED_AT);
+    const lapsed = await askMessageId(seeded);
+    await text(seeded, 'turn off my forwarding address', RE_ASKED_AT);
+    const live = await askMessageId(seeded);
+    expect(live).not.toBe(lapsed);
+    await seedApprovalDraft(seeded);
+    return { lapsed, live };
+  }
+
+  it('honours only the ask the resolution names, never the newest one', async () => {
+    const seeded = await seedReachableFamily();
+    const { lapsed } = await askTwice(seeded);
+
+    const named = await text(seeded, 'yes', ANSWERED_THE_ASK_AT, {
+      resolver: placesTheRevoke(lapsed),
+      coachReply: 'Say more?',
+    });
+
+    // The reading named the confirm that has lapsed. Reading past it to whichever ask
+    // happens to be newest would spend a live credential on a question the parent was
+    // never answering.
+    expect(named.handler).not.toBe('forward_address');
+    expect(transport.bodies().at(-1)).toBe('Say more?');
+    expect(await tokenOf(seeded.familyId)).toBe(seeded.token);
+    expect(await verbs(seeded.familyId)).not.toContain('email_forward_address_revoked');
+    expect(
+      await db.database
+        .select({ id: schema.channelMessages.id })
+        .from(schema.channelMessages)
+        .where(
+          and(
+            eq(schema.channelMessages.familyId, seeded.familyId),
+            eq(schema.channelMessages.templateKey, FORWARD_REVOKE_TEMPLATE_KEY),
+          ),
+        ),
+    ).toEqual([]);
+  });
+
+  it('POSITIVE CONTROL - the same yes, naming the ask that is still standing, revokes once', async () => {
+    const seeded = await seedReachableFamily();
+    const { live } = await askTwice(seeded);
+
+    const named = await text(seeded, 'yes', ANSWERED_THE_ASK_AT, {
+      resolver: placesTheRevoke(live),
+      coachReply: 'Say more?',
+    });
+
+    expect(named.handler).toBe('forward_address');
+    expect(transport.bodies().at(-1)).toBe(forwardRevokeReply('en', 'revoked'));
+    expect(await tokenOf(seeded.familyId)).toBeNull();
+    const trail = await verbs(seeded.familyId);
+    expect(trail.filter((verb) => verb === 'email_forward_address_revoke_asked')).toHaveLength(2);
+    expect(trail.filter((verb) => verb === 'email_forward_address_revoked')).toHaveLength(1);
   });
 });
 
