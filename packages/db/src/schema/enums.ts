@@ -415,6 +415,14 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // within a day. It is Hale making contact first, so the loop-health digest EXCLUSION
   // list (PARENT_STARTED_CATEGORIES, health-digest.ts) is correct to leave it out.
   'evening_check_in',
+  // VIL-355 follow-up (migration 0119) · the one text the parent who STAYS gets when
+  // their co-parent leaves. Its own category and NOT 'co_parent_invite': that lane is
+  // the invite exchange the parent themselves started, and this is Hale making contact
+  // first about a seat that has ended. Filing them together would make a PIPEDA
+  // right-to-access read describe a departure as part of an invitation. Unmetered by
+  // choice rather than by omission — the bound is the departure event itself, one per
+  // (family, departed parent), held by the dedupe key (PROACTIVE_CAP says so).
+  'co_parent_departed',
 ]);
 
 /**

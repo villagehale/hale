@@ -12,7 +12,10 @@ const authMock = vi.fn();
 const listSeatsMock = vi.fn();
 const resolveUserIdMock = vi.fn();
 const erasureMock = vi.fn();
+const tellStayingParentMock = vi.fn();
+const departureNoticePortsMock = vi.fn();
 const DB_HANDLE = { __db: true };
+const NOTICE_PORTS = { __ports: true };
 const SCHEDULED_AT = new Date('2026-07-10T12:00:00.000Z');
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
@@ -23,6 +26,16 @@ vi.mock('~/lib/family', () => ({
 }));
 vi.mock('./delete', () => ({
   requestErasure: (...a: unknown[]) => erasureMock(...a),
+}));
+// Mocked so the CALL ITSELF is assertable. Without these two the route could stop
+// telling the staying parent entirely and every test here would still pass — the
+// departure notice's own suite drives the function directly, and this route is its only
+// production caller (the house rule: pin the wiring, not just the unit).
+vi.mock('~/lib/channel/coparent/departure-notice', () => ({
+  tellStayingParent: (...a: unknown[]) => tellStayingParentMock(...a),
+}));
+vi.mock('~/lib/channel/twilio/deps', () => ({
+  departureNoticePorts: (...a: unknown[]) => departureNoticePortsMock(...a),
 }));
 
 function configureAuth(on: boolean) {
@@ -52,6 +65,8 @@ describe('POST /api/rights/delete', () => {
     listSeatsMock.mockReset();
     resolveUserIdMock.mockReset();
     erasureMock.mockReset();
+    tellStayingParentMock.mockReset().mockResolvedValue('sent');
+    departureNoticePortsMock.mockReset().mockReturnValue(NOTICE_PORTS);
     configureAuth(true);
     authMock.mockResolvedValue(session('google_1'));
     listSeatsMock.mockResolvedValue([{ familyId: 'fam-1', role: 'primary_parent' }]);
@@ -104,6 +119,8 @@ describe('POST /api/rights/delete', () => {
       status: 'scheduled',
       scheduledDeletionAt: SCHEDULED_AT.toISOString(),
     });
+    // Nobody is told anything: a scheduled family has not lost a co-parent.
+    expect(tellStayingParentMock).not.toHaveBeenCalled();
   });
 
   // VIL-355 · the departing co-parent's answer says what was undone and names no
@@ -130,6 +147,15 @@ describe('POST /api/rights/delete', () => {
     const res = await callDelete({ confirm: true });
 
     expect(res.status).toBe(202);
+    // THE WIRING, pinned: this route is the only production caller of the notice, so
+    // without this assertion deleting the call ships a silent regression.
+    expect(departureNoticePortsMock).toHaveBeenCalledWith(DB_HANDLE);
+    expect(tellStayingParentMock).toHaveBeenCalledTimes(1);
+    expect(tellStayingParentMock).toHaveBeenCalledWith(
+      DB_HANDLE,
+      { familyId: 'fam-1', departedUserId: 'user-1', now: expect.any(Date) },
+      NOTICE_PORTS,
+    );
     // Every line of the tally reaches the person who asked — what ended AND what was
     // kept. A body that named only the revocations would answer an erasure request by
     // listing the good news (rule #11).
@@ -146,6 +172,25 @@ describe('POST /api/rights/delete', () => {
       inviteRecordRetained: 1,
       identityRetained: true,
     });
+  });
+
+  /**
+   * The erasure has already COMMITTED when the notice is attempted, so a transport that
+   * throws may not turn into a 500: that would tell somebody their request failed when
+   * it did not, and their retry would be refused for want of a seat.
+   */
+  it('still answers the departing co-parent 202 when the staying parent cannot be told', async () => {
+    erasureMock.mockResolvedValue({
+      outcome: 'co_parent_departed',
+      departure: { outcome: 'departed', membershipRemoved: true },
+    });
+    tellStayingParentMock.mockRejectedValue(new Error('twilio down'));
+
+    const res = await callDelete({ confirm: true });
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({ status: 'departed', membershipRemoved: true });
+    expect(tellStayingParentMock).toHaveBeenCalledTimes(1);
   });
 
   /**

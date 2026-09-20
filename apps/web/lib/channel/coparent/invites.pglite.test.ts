@@ -448,9 +448,10 @@ describe('STOP, and what it leaves behind', () => {
     const seeded = await seedFamily();
     await start(seeded, PARTNER_PHONE);
     const late = new Date(NOW.getTime() + 73 * 3_600_000);
-    // Any read is also the sweep: this one closes the row as 'expired' before the STOP.
+    // Any read is also the sweep: this one closes the row before the STOP. The parent
+    // never confirmed, so nobody was texted — 'expired_unsent', not 'expired'.
     expect(await loadPendingAssent(db.database, seeded.parentUserId, late)).toBeNull();
-    expect(await inviteStates()).toEqual([{ state: 'expired', closed: true }]);
+    expect(await inviteStates()).toEqual([{ state: 'expired_unsent', closed: true }]);
 
     expect(
       await declineOpenInviteOnStop(db.database, PARTNER_PHONE, new Date(late.getTime() + 60_000)),
@@ -499,7 +500,8 @@ describe('the 72h silence bound, applied on read', () => {
       new Date(NOW.getTime() + 73 * 3_600_000),
     );
     expect(lapsed).toBeNull();
-    expect(await inviteStates()).toEqual([{ state: 'expired', closed: true }]);
+    // Nobody had been texted yet, so the silence was the PARENT's.
+    expect(await inviteStates()).toEqual([{ state: 'expired_unsent', closed: true }]);
     expect(await auditVerbs()).toContain('co_parent_invite_expired');
     expect(await auditVerbs()).not.toContain('caregiver_invite_expired');
   });

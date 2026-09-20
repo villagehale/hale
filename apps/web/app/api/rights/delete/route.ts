@@ -4,6 +4,8 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 import { listSeatsForUser, resolveUserIdForUser } from '~/lib/family';
+import { tellStayingParent } from '~/lib/channel/coparent/departure-notice';
+import { departureNoticePorts } from '~/lib/channel/twilio/deps';
 import { requestErasure } from '~/lib/rights/delete';
 
 // Node runtime: the scheduler uses the Drizzle client and writes the audit row.
@@ -71,6 +73,33 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   if (result.outcome === 'co_parent_departed') {
+    // THE PARENT WHO STAYED IS TOLD, once (VIL-355 follow-up). After the transaction,
+    // never inside it: the departure's correctness is that it is all-or-nothing, and a
+    // network round trip has no business inside that.
+    //
+    // Its outcome is LOGGED and never returned. The person reading this response is the
+    // one who left, and "not_enrolled" or "quiet_hours" about the other parent is that
+    // parent's channel state, which is not theirs to be told (rule #1). The absence is
+    // named where it belongs: the suppressed `channel_messages` receipt and this line.
+    //
+    // Caught at the controller boundary, which is the one place rule #8 allows it: the
+    // erasure has already COMMITTED, so a 500 here would tell somebody their request
+    // failed when it did not — and their retry would be refused, the seat being gone.
+    let notice: string;
+    try {
+      notice = await tellStayingParent(
+        database,
+        { familyId, departedUserId: actorUserId, now: new Date() },
+        departureNoticePorts(database),
+      );
+    } catch (err) {
+      notice = 'notice_failed';
+      console.error(
+        { familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
+        'rights/delete: the co-parent departed but the staying parent could not be told',
+      );
+    }
+    console.info({ familyId, notice }, 'rights/delete: co-parent departed');
     // The WHOLE tally, not the revocations alone: what ended and what was deliberately
     // kept both reach the person who asked to be erased (rule #11).
     const { outcome: _outcome, ...tally } = result.departure;

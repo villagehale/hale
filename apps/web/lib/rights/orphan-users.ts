@@ -1,0 +1,425 @@
+import { type Database, schema } from '@hale/db';
+import { and, eq, isNull } from 'drizzle-orm';
+import { POLICY_VERSION } from '../consent.js';
+
+/**
+ * VIL-355 follow-up · the account that outlived every household it belonged to.
+ *
+ * `runDeletionSweep` erases FAMILIES and lets the FK cascade do the rest, which is right
+ * for everything keyed on a family and covers nothing that is not. A `users` row is not:
+ * it has no family FK at all. So a co-parent who left, a caregiver whose grant was
+ * revoked and a parent whose household was erased all ended in the same place — a row
+ * nothing would ever remove, holding a name, an address, a sign-in secret and, in the
+ * case this exists for, a LIVE verified phone channel that no household stands behind.
+ * `departCoParent` names this gap in its own header; this is the change it points at.
+ *
+ * THE ERASED HOUSEHOLD CANNOT BE FOUND FROM HERE, and that is why {@link
+ * selectOrphanedUsers} takes `strandedUserIds`. `parent_channels` cascades from
+ * `families`, so by the time a family erasure has committed, the channel row that is
+ * this sweep's evidence somebody HELD one is gone with it and the ex-parent is invisible
+ * — invisible with their name, their address and their sign-in identity intact, which is
+ * the PIPEDA right-to-erasure gap, not a tidiness one. `runDeletionSweep` reads those
+ * user ids BEFORE it deletes and hands them over; nothing else may pass them, because
+ * "had a channel once" is a fact only the caller who watched it disappear can vouch for.
+ *
+ * WHAT IT DOES, AND WHAT IT DELIBERATELY DOES NOT. It closes every door and empties
+ * every user-scoped table, then ANONYMISES the users row rather than deleting it. The
+ * deletion is the tempting version and it is wrong: `parent_channels` cascades from
+ * `users`, and that row's encrypted number is the evidence of express consent CASL
+ * requires be producible for three years after it ends. Deleting the person would
+ * destroy the only proof that the message Hale sent them was lawful.
+ *
+ * WHO IT CAN REACH, and why a brand-new signup cannot be one of them: the subject has to
+ * HAVE HELD a channel. "No seat" alone would match every account between sign-up and
+ * creating a family. There is no race with provisioning either — `provisionFromIntake`
+ * and `acceptInvite` both write the seat and the channel in ONE transaction, so a
+ * half-built member never exists to be seen.
+ *
+ * IT IS OBSERVE-ONLY UNTIL IT IS ARMED ({@link orphanUserSweepEnabled}). Every other
+ * sweep in this product can be wrong for an hour; this one cannot be wrong at all, and
+ * its FIRST tick is its largest — every co-parent who ever departed and every caregiver
+ * whose grant was revoked, all at once. So off by default it selects and counts exactly
+ * what it would close and writes nothing, and the number is in the summary and the log.
+ *
+ * IT NEEDS NO DONE-MARKER COLUMN. The work it does is exactly what makes a row stop
+ * matching {@link selectOrphanedUsers}: no live channel, no identity, no user-scoped
+ * rows. A second pass is a no-op because there is nothing left to do, not because a flag
+ * says so — which is also the only definition of "finished" that stays true if a pass
+ * dies halfway through.
+ */
+
+export interface OrphanSweepSummary {
+  /** People whose last doors were closed on this run. */
+  swept: number;
+  /** Live SMS channels revoked — the ones a household no longer stands behind. */
+  channelsRevoked: number;
+  /** `granted=false` rows appended, one per messaging scope still standing. */
+  consentWithdrawn: number;
+  /** Rows removed from the four tables that hang off `users.id` alone. */
+  scopedRowsDeleted: number;
+  /** `users` rows stripped of name, address and sign-in identity. */
+  identitiesAnonymised: number;
+  /**
+   * How many of `swept` left NO audit row, because the only household they belonged to
+   * was erased on this same run.
+   *
+   * `audit_log.family_id` is NOT NULL and cascades from `families`, so for these people
+   * there is no row that can outlive the erasure — a row written under the doomed family
+   * a millisecond before the DELETE would be removed by the same cascade that hid them.
+   * Rather than write a row that deletes itself, or park one under some other household
+   * they never belonged to, the count is reported and the cron logs it (counts only, no
+   * ids — rule #1), which is the convention `runDeletionSweep` already keeps for the
+   * family erasure's own execution. Named and never folded into `swept` (rule #11): a
+   * person erased with no trail is a different fact from one erased with one.
+   */
+  sweptWithoutTrail: number;
+  /**
+   * Accounts this run WOULD have closed and did not, because the sweep is observe-only.
+   *
+   * The OFF state's whole output, and the reason it is a count rather than a silence:
+   * `swept: 0` on its own reads identically to "there was nothing to do", which is the
+   * one thing the founder needs to be able to tell apart before arming this.
+   */
+  observedOnly: number;
+  /**
+   * `email_opt_outs` rows this run left standing, for the people it swept.
+   *
+   * A kept thing, counted, on the discipline `departCoParent` set: a tally that reports
+   * only what was destroyed lets a deliberate retention read as an oversight. See
+   * {@link USER_SCOPED_TABLES}.
+   */
+  emailSuppressionRetained: number;
+}
+
+export function emptyOrphanSweepSummary(): OrphanSweepSummary {
+  return {
+    swept: 0,
+    channelsRevoked: 0,
+    consentWithdrawn: 0,
+    scopedRowsDeleted: 0,
+    identitiesAnonymised: 0,
+    sweptWithoutTrail: 0,
+    observedOnly: 0,
+    emailSuppressionRetained: 0,
+  };
+}
+
+export const ORPHAN_USER_SWEEP_ENABLED_ENV = 'ORPHAN_USER_SWEEP_ENABLED';
+
+/**
+ * Whether the sweep may WRITE. Off by default, and off is the whole point.
+ *
+ * Everything this sweep does is irreversible — a name, an address and a sign-in identity
+ * set to null — and its first production tick does not meet a handful of accounts, it
+ * meets every co-parent who ever departed and every caregiver whose grant was revoked
+ * since the product existed. So the default is observe-only: the candidates are selected
+ * and counted exactly as they would be, the count is logged, and nothing is written, so
+ * the founder can read one night's number before the first row changes.
+ *
+ * STRICT equality on the literal 'true', the house rule: `vercel env add` from a piped
+ * `echo` stores a TRAILING NEWLINE, so a value that prints as `true` is really `'true\n'`
+ * and a truthiness check reads that as ON.
+ */
+export function orphanUserSweepEnabled(): boolean {
+  return process.env[ORPHAN_USER_SWEEP_ENABLED_ENV] === 'true';
+}
+
+export interface OrphanedUser {
+  userId: string;
+  /** The household whose channel record they still hold — the audit row's home, because
+   * `audit_log.family_id` is NOT NULL and a person with no seat has no other address in
+   * the trail. Their newest channel's family, so a separated parent's row lands in the
+   * household the evidence belongs to. NULL for the person whose only household was
+   * erased: the cascade took the channel row and the trail's home with it, and the
+   * sweep counts that case rather than inventing an address for it. */
+  familyId: string | null;
+}
+
+/**
+ * The tables keyed on `users.id` with no family column of their own — nothing a family
+ * cascade will ever reach — whose rows this sweep DELETES. One list because every place
+ * below has to agree about it.
+ *
+ * IT IS NOT EVERY USER-SCOPED TABLE, and the difference is the point. `email_opt_outs`
+ * is keyed on `user_id` alone too, and it is KEPT: it is a suppression record, and the
+ * only thing deleting one can ever do is make a future send lawful-looking that was not.
+ * CASL's withdrawal of consent does not expire, so the row is evidence the unsubscribe
+ * was honoured, in the same class as the revoked `parent_channels` row and the
+ * `caregiver_invites` row that `departCoParent` keeps for the same reason. Named here
+ * rather than absent (rule #11), and `emailSuppressionRetained` in the summary is what
+ * says so out loud. `email_sends` is the sibling ledger and is kept on the same grounds.
+ */
+const USER_SCOPED_TABLES = [
+  schema.channelSigninTokens,
+  schema.phoneVerifications,
+  schema.loopPrefs,
+  schema.notificationPrefs,
+] as const;
+
+/**
+ * Everyone with a channel record, no seat anywhere, and something still open.
+ *
+ * Read wholesale and joined in memory rather than as three SQL anti-joins: the
+ * populations are small (a household's parents), the predicate is the whole point of the
+ * function, and one readable pass is worth more here than a query plan.
+ */
+export async function selectOrphanedUsers(
+  database: Database,
+  /** People the caller WATCHED lose their channel row to a family cascade on this run —
+   * see the module header. Empty on every path but the deletion sweep's. */
+  strandedUserIds: readonly string[] = [],
+): Promise<OrphanedUser[]> {
+  const channels = (
+    await database
+      .select({
+        userId: schema.parentChannels.userId,
+        familyId: schema.parentChannels.familyId,
+        revokedAt: schema.parentChannels.revokedAt,
+        createdAt: schema.parentChannels.createdAt,
+      })
+      .from(schema.parentChannels)
+  )
+    .slice()
+    // Newest first, so the first row a user contributes names the household their
+    // channel evidence belongs to. Sorted here rather than in SQL because the whole
+    // read is already in memory and the ordering is part of the predicate, not a plan.
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  if (channels.length === 0 && strandedUserIds.length === 0) return [];
+
+  const seated = new Set(
+    (await database.select({ userId: schema.familyMembers.userId }).from(schema.familyMembers)).map(
+      (r) => r.userId,
+    ),
+  );
+
+  const candidates = new Map<string, { familyId: string | null; liveChannel: boolean }>();
+  // The stranded go in FIRST with no household, so a channel row in a household that
+  // SURVIVED still wins the audit home below — a separated parent who lost one family
+  // keeps their trail in the other.
+  for (const userId of strandedUserIds) {
+    if (seated.has(userId)) continue;
+    candidates.set(userId, { familyId: null, liveChannel: false });
+  }
+  for (const row of channels) {
+    if (seated.has(row.userId)) continue;
+    const held = candidates.get(row.userId);
+    if (!held || held.familyId === null) {
+      candidates.set(row.userId, { familyId: row.familyId, liveChannel: held?.liveChannel ?? false });
+    }
+    if (row.revokedAt === null) {
+      const entry = candidates.get(row.userId);
+      if (entry) entry.liveChannel = true;
+    }
+  }
+  if (candidates.size === 0) return [];
+
+  const identities = await database
+    .select({
+      id: schema.users.id,
+      email: schema.users.email,
+      name: schema.users.name,
+      externalAuthId: schema.users.externalAuthId,
+    })
+    .from(schema.users);
+  const identified = new Set(
+    identities
+      .filter((u) => u.email !== null || u.name !== null || u.externalAuthId !== null)
+      .map((u) => u.id),
+  );
+
+  const scoped = new Set<string>();
+  for (const table of USER_SCOPED_TABLES) {
+    for (const row of await database.select({ userId: table.userId }).from(table)) {
+      scoped.add(row.userId);
+    }
+  }
+
+  return [...candidates.entries()]
+    .filter(([userId, c]) => c.liveChannel || identified.has(userId) || scoped.has(userId))
+    .map(([userId, c]) => ({ userId, familyId: c.familyId }))
+    .sort((a, b) => a.userId.localeCompare(b.userId));
+}
+
+/**
+ * The messaging consents this person still holds, latest row per (family, scope).
+ *
+ * The same latest-row-wins convention `departCoParent` reads by, for the same reason: a
+ * withdrawal is an APPENDED `granted=false` row, so the ledger carries both answers and
+ * only the newest one is true. Appending a withdrawal for a scope that was never granted
+ * would be a false row; leaving a standing one would be a worse one.
+ */
+async function standingMessagingConsents(
+  tx: Database,
+  userId: string,
+): Promise<Array<{ familyId: string | null; consentScope: string | null }>> {
+  const rows = await tx
+    .select({
+      familyId: schema.consentRecords.familyId,
+      consentScope: schema.consentRecords.consentScope,
+      granted: schema.consentRecords.granted,
+      grantedAt: schema.consentRecords.grantedAt,
+    })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.userId, userId),
+        eq(schema.consentRecords.consentType, 'sms_service_messages'),
+      ),
+    );
+
+  const latest = new Map<
+    string,
+    { granted: boolean; grantedAt: Date; familyId: string | null; consentScope: string | null }
+  >();
+  for (const row of rows) {
+    const key = `${row.familyId ?? ''}|${row.consentScope ?? ''}`;
+    const held = latest.get(key);
+    if (!held || row.grantedAt >= held.grantedAt) latest.set(key, row);
+  }
+  return [...latest.values()]
+    .filter((v) => v.granted)
+    .map((v) => ({ familyId: v.familyId, consentScope: v.consentScope }));
+}
+
+async function sweepOne(
+  database: Database,
+  orphan: OrphanedUser,
+  now: Date,
+): Promise<OrphanSweepSummary> {
+  const { userId, familyId } = orphan;
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const result = emptyOrphanSweepSummary();
+    result.swept = 1;
+
+    const revoked = await tx
+      .update(schema.parentChannels)
+      .set({ revokedAt: now, updatedAt: now })
+      .where(
+        and(eq(schema.parentChannels.userId, userId), isNull(schema.parentChannels.revokedAt)),
+      )
+      .returning({ id: schema.parentChannels.id });
+    result.channelsRevoked = revoked.length;
+
+    const standing = await standingMessagingConsents(tx, userId);
+    if (standing.length > 0) {
+      const appended = await tx
+        .insert(schema.consentRecords)
+        .values(
+          standing.map((held) => ({
+            userId,
+            familyId: held.familyId,
+            consentType: 'sms_service_messages' as const,
+            granted: false,
+            consentScope: held.consentScope,
+            policyVersion: POLICY_VERSION,
+            grantedAt: now,
+            evidence: {
+              interpretation:
+                'no household holds a seat for this person any more; their messaging consent ends',
+            },
+          })),
+        )
+        .returning({ id: schema.consentRecords.id });
+      result.consentWithdrawn = appended.length;
+    }
+
+    for (const table of USER_SCOPED_TABLES) {
+      const removed = await tx
+        .delete(table)
+        .where(eq(table.userId, userId))
+        .returning({ userId: table.userId });
+      result.scopedRowsDeleted += removed.length;
+    }
+
+    // Counted, not deleted — see USER_SCOPED_TABLES for why a suppression record is the
+    // one user-scoped row an erasure must leave alone.
+    result.emailSuppressionRetained = (
+      await tx
+        .select({ id: schema.emailOptOuts.id })
+        .from(schema.emailOptOuts)
+        .where(eq(schema.emailOptOuts.userId, userId))
+    ).length;
+
+    // ANONYMISED, not deleted — the channel row below them is the CASL evidence, and it
+    // cascades from this row. What goes is everything that names a person: the address,
+    // the name, and the sign-in identity (which for an SMS account is a blind index of
+    // their number).
+    const anonymised = await tx
+      .update(schema.users)
+      .set({ email: null, name: null, externalAuthId: null, updatedAt: now })
+      .where(eq(schema.users.id, userId))
+      .returning({ id: schema.users.id });
+    result.identitiesAnonymised = anonymised.length;
+
+    if (familyId === null) {
+      // Nowhere to write it: their only household was erased on this run and
+      // `audit_log.family_id` cascades from it. Counted instead — see the field.
+      result.sweptWithoutTrail = 1;
+      return result;
+    }
+
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'orphan_user_erased',
+      targetTable: 'users',
+      targetId: userId,
+      // Counts only. Nothing that names the person the row is about (rule #1).
+      after: {
+        channelsRevoked: result.channelsRevoked,
+        consentWithdrawn: result.consentWithdrawn,
+        scopedRowsDeleted: result.scopedRowsDeleted,
+        // The ROW survives (the channel below it is the CASL evidence and cascades from
+        // it); what it holds does not. Named for the row, not for the person — an
+        // `identityRetained` here would read as the opposite of what just happened.
+        usersRowRetained: true,
+      },
+    });
+
+    return result;
+  });
+}
+
+export async function runOrphanUserSweep(
+  database: Database,
+  now: Date = new Date(),
+  strandedUserIds: readonly string[] = [],
+): Promise<OrphanSweepSummary> {
+  const total = emptyOrphanSweepSummary();
+  const candidates = await selectOrphanedUsers(database, strandedUserIds);
+
+  if (!orphanUserSweepEnabled()) {
+    // OBSERVE ONLY. The selection ran in full — the same predicate, over the same rows —
+    // and the write did not. Counts only, never an id of the person the row is about
+    // (rule #1), which is also why this is the whole of the OFF state's output.
+    total.observedOnly = candidates.length;
+    if (candidates.length > 0) {
+      console.info(
+        { observedOnly: candidates.length, flag: ORPHAN_USER_SWEEP_ENABLED_ENV },
+        'orphan sweep: observe-only - accounts that WOULD be closed, nothing written',
+      );
+    }
+    return total;
+  }
+
+  for (const orphan of candidates) {
+    const one = await sweepOne(database, orphan, now);
+    total.swept += one.swept;
+    total.channelsRevoked += one.channelsRevoked;
+    total.consentWithdrawn += one.consentWithdrawn;
+    total.scopedRowsDeleted += one.scopedRowsDeleted;
+    total.identitiesAnonymised += one.identitiesAnonymised;
+    total.sweptWithoutTrail += one.sweptWithoutTrail;
+    total.emailSuppressionRetained += one.emailSuppressionRetained;
+  }
+  if (total.sweptWithoutTrail > 0) {
+    // The missing audit rows, said out loud where they can still be read (rule #11).
+    // Counts only, no ids — the people this line is about are the ones being erased.
+    console.info(
+      { sweptWithoutTrail: total.sweptWithoutTrail },
+      'orphan sweep: accounts closed with no surviving household to hold their audit row',
+    );
+  }
+  return total;
+}
