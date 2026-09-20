@@ -350,6 +350,9 @@ export const AUDIT_VERBS = [
   // ── the founder's welcome note ──────────────────────────────────────────
   'founder_welcome_offered',
   'founder_welcome_sent',
+  // ── nightly memory synthesis (VIL-354) ──────────────────────────────────
+  'memory_fact_retired',
+  'memory_facts_merged',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -901,6 +904,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   child_avatar_removed: { sentence: 'you removed a child’s photo', family: 'done' },
   quick_log_diaper: { sentence: 'you logged a diaper change', family: 'done' },
   quick_log_measurement: { sentence: 'you logged a measurement', family: 'done' },
+  memory_fact_retired: {
+    sentence: 'let go of something it had outgrown',
+    family: 'note',
+  },
+  memory_facts_merged: { sentence: 'tidied up something it knew twice', family: 'note' },
   health_checkpoint_marked_done: {
     sentence: 'you confirmed a health checkpoint is done',
     family: 'done',
@@ -1144,6 +1152,7 @@ const TARGET_NOUNS: Record<string, string> = {
   family_members: 'household',
   family_invites: 'invite',
   family_memory_episodes: 'logged moment',
+  family_memory_facts: 'something I remembered',
   village_candidates: 'village suggestion',
   consent_records: 'consent',
   teen_access_grants: 'teen privacy request',

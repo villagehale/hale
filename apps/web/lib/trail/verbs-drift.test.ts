@@ -147,6 +147,10 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // CANARY_ANSWERED_ACTION — a constant precisely because the cron's
   // verification reads the same value back (channel/canary/run.ts); a literal
   // here would let the two halves drift apart silently.
+  // One pass, two decisions: a routine the child outgrew, or the losers of a
+  // near-duplicate election. The verb is picked from the decision itself, so the two
+  // can never be filed under each other's sentence (VIL-354).
+  'apps/web/lib/memory/synthesis.ts': ['memory_fact_retired', 'memory_facts_merged'],
   'apps/web/lib/channel/canary/handler.ts': ['sms_canary_answered'],
   // `REPLY_SENT_ACTION[carriedBy]` — one verb per door the router can answer
   // through (whatsapp audits under the phone verb), because the trail has to be able

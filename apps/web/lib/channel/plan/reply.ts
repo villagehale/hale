@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { type CoachingPlaybook, type FamilyStage, ageInMonths, deriveStage, playbookFor } from '@hale/types';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import type { ReplySent } from '~/lib/channel/router/reply-route';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
@@ -464,9 +464,16 @@ export async function loadPlanChild(
 /**
  * A few things Hale already knows about this household, as plain sentences.
  *
- * Teen-scoped facts are excluded at the QUERY, not filtered after: this stage never
- * needs one, and the cheapest way to keep a 13-year-old's detail out of a composed plan
- * is never to load it (rule #1).
+ * Child-scoped facts are excluded at the QUERY, not filtered after: this stage writes
+ * for the house, and the cheapest way to keep a 13-year-old's detail out of a composed
+ * plan is never to load it (rule #1). `child_id IS NULL` is strictly narrower than a
+ * teen filter and needs no age read, so there is no third private copy of
+ * `teenChildIdsForFamily` here.
+ *
+ * Only what is still true: without `valid_until IS NULL` a plan speaks from beliefs a
+ * later write already contradicted, and retiring a fact would have no effect here.
+ * The ORDER BY is the coach's (`lib/coach/context.ts`) so the handful that survives
+ * `MAX_PLAN_FACTS` is the handful Hale is already reasoning from, not an arbitrary five.
  */
 export async function loadPlanFacts(database: Database, familyId: string): Promise<string[]> {
   const rows = await database
@@ -476,7 +483,14 @@ export async function loadPlanFacts(database: Database, familyId: string): Promi
       and(
         eq(schema.familyMemoryFacts.familyId, familyId),
         eq(schema.familyMemoryFacts.factType, 'preference'),
+        isNull(schema.familyMemoryFacts.validUntil),
+        isNull(schema.familyMemoryFacts.childId),
       ),
+    )
+    .orderBy(
+      desc(schema.familyMemoryFacts.confidence),
+      desc(schema.familyMemoryFacts.validFrom),
+      schema.familyMemoryFacts.id,
     )
     .limit(MAX_PLAN_FACTS);
   return rows
