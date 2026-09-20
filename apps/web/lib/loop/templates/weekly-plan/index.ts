@@ -18,7 +18,7 @@ export const weeklyPlanRenderer: TemplateRenderer = {
       case 'email':
         return renderWeeklyPlanEmail(payload, nameLevel, now);
       case 'sms':
-        return renderWeeklyPlanSms(payload, nameLevel, now);
+        return renderWeeklyPlanSms(payload, nameLevel, now, message.familyId);
       // A reply pipe, not a proactive one: the dispatch refuses a whatsapp leg
       // before any render (channel/dispatch.ts), so reaching here is a routing bug.
       case 'whatsapp':

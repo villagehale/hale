@@ -4,7 +4,17 @@ import type { LoopMessage, RenderedContent } from '~/lib/channel/types';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { weeklyPlanRenderer } from './index';
+import { bareYesNoQuestions } from '~/lib/testing/pool-copy';
 import type { PlanChild, WeeklyPlanPayload } from './payload';
+import { foldWeeklyVoice } from './sms';
+
+/** The three ways a fully-placed week can close. Restated here rather than imported:
+ * these words are the spec, and a copy change should be a diff read in two places. */
+const PLACED_LINES = [
+  'All on your calendar.',
+  'Nothing needs you this week.',
+  "That's the whole week, already placed.",
+] as const;
 
 /**
  * VIL-218 · B2 — the per-channel renderers, exercised through the A2 seam
@@ -156,9 +166,12 @@ describe('SMS — segment budget + GSM-7 output', () => {
     expect(sms(fullWeek, 'first_name')).not.toContain('\u{1f389}');
   });
 
-  it('opens with the possessive header and the reply invitation', () => {
+  it('opens with the possessive header and the reply invitation, and no broadcast prefix', () => {
     const text = sms(fullWeek, 'first_name');
-    expect(text.startsWith("Hale: Maya & Liam's week")).toBe(true);
+    // `Hale: ` is gone (docs/voice.md rule 2): it is a broadcast header on a thread the
+    // parent already knows is Hale's. The possessive header is what opens the message now.
+    expect(text.startsWith("Maya & Liam's week")).toBe(true);
+    expect(text).not.toContain('Hale:');
     expect(text).toContain('reply YES');
   });
 
@@ -211,7 +224,11 @@ describe('SMS — segment budget + GSM-7 output', () => {
     const text = sms(undecidable, 'first_name');
     expect(text).not.toContain('reply YES');
     expect(text).not.toContain('drafted for your calendar');
-    expect(text).not.toContain('All on your calendar.');
+    // Re-pinned as the fact stated positively: the placed line is now a three-member pool,
+    // so "does not contain this one literal" would pass on two thirds of the weeks it is
+    // meant to catch. What is true is that a week with something pending and nothing
+    // approvable ENDS WITH THE WEEK — no closing line at all.
+    for (const placed of PLACED_LINES) expect(text, placed).not.toContain(placed);
   });
 });
 
@@ -302,12 +319,59 @@ describe('multi-child headers (email subject)', () => {
 describe('quiet week (0 items)', () => {
   const quiet = payload({ children: [], items: [] });
 
-  it('SMS offers the IDEAS reply and uses the "Your" subject', () => {
+  it('SMS asks exactly one question, names no event, and teaches no dead keyword', () => {
     const text = sms(quiet, 'generic');
-    expect(text).toContain('A quiet week');
-    expect(text).toContain('Reply IDEAS');
     expect(text).toContain('Your week');
     expect(smsSegments(text)).toBe(1);
+    // Re-pinned from `toContain('A quiet week')`: the quiet ask is a three-member pool, so
+    // the invariant is the SHAPE — one question, nothing on the calendar named, and a
+    // question a bare YES cannot answer, because the approvals resolver claims a family-
+    // wide YES and this week has nothing drafted for it to resolve.
+    expect((text.match(/\?/g) ?? []).length).toBe(1);
+    expect(bareYesNoQuestions(text)).toEqual([]);
+    expect(text).not.toMatch(/Mon|Tue|Wed|Thu|Fri|Sat:|Sun/);
+    // `Reply IDEAS` is GONE: there is no handler for IDEAS anywhere in lib/channel, so it
+    // was vocabulary Hale taught and could not honour (rule 10).
+    expect(text).not.toContain('IDEAS');
+  });
+
+  it('SMS rotates the quiet ask week to week, and never repeats two weeks running', () => {
+    const weeks = ['2026-07-13', '2026-07-20', '2026-07-27', '2026-08-03'].map(
+      (weekStart) => sms(payload({ children: [], items: [], weekStart }), 'generic'),
+    );
+    for (let i = 1; i < weeks.length; i++) {
+      expect(weeks[i], `week ${i}`).not.toBe(weeks[i - 1]);
+    }
+  });
+
+  it('SMS uses the composed week framing when it clears the same bar the pool does', () => {
+    const framed = payload({
+      children: [],
+      items: [],
+      weekStart: '2026-07-20',
+      voice: {
+        greeting: 'Hi',
+        weekFraming: 'Nothing booked yet - what would make this one feel easier?',
+        itemLines: {},
+        signOff: 'See you Sunday',
+      },
+    });
+    const text = sms(framed, 'generic');
+    expect(text).toContain('what would make this one feel easier?');
+    expect(smsSegments(text)).toBe(1);
+    expect(foldWeeklyVoice('Nothing booked yet - what would make this one feel easier?', 1).outcome).toBe(
+      'voiced',
+    );
+    // And refuses one that breaks the slot's own question rule, rather than shipping a
+    // model sentence that asks twice on a surface where a bare YES is already claimed.
+    expect(foldWeeklyVoice('Two questions? Really two?', 1).outcome).toBe('refused_by_fold');
+    expect(foldWeeklyVoice('A statement with no question.', 1).outcome).toBe('refused_by_fold');
+    expect(foldWeeklyVoice(null, 1).outcome).toBe('no_voice');
+    // A character GSM-7 cannot carry is refused too — gsmSafe would silently fold it, and
+    // a silent fold is a sentence nobody reviewed.
+    expect(foldWeeklyVoice('A quiet week \u2014 what would suit Saturday?', 1).outcome).toBe(
+      'refused_by_fold',
+    );
   });
 
   it('email subject is "Your week ahead" and carries the reply invitation', () => {
@@ -327,10 +391,40 @@ describe('all-placed week (items > 0, pending == 0)', () => {
     ],
   });
 
-  it('SMS closes with "All on your calendar." and asks for nothing', () => {
+  it('SMS closes with one of the placed lines and contains ZERO questions', () => {
     const text = sms(placed, 'first_name');
-    expect(text).toContain('All on your calendar.');
+    // Re-pinned from the single literal: the week that asks nothing is a three-member
+    // pool, and the invariant is that it asks NOTHING — zero "?", not one.
+    expect(text).not.toContain('?');
+    expect(PLACED_LINES.some((line) => text.includes(line)), text).toBe(true);
     expect(text).not.toContain('need your OK');
+  });
+
+  it('SMS rotates the placed line week to week', () => {
+    const weeks = ['2026-07-13', '2026-07-20', '2026-07-27'].map((weekStart) =>
+      sms(payload({ ...placed, weekStart }), 'first_name'),
+    );
+    for (let i = 1; i < weeks.length; i++) {
+      expect(weeks[i], `week ${i}`).not.toBe(weeks[i - 1]);
+    }
+  });
+
+  it('SMS uses the composed sign-off when there is one, and never one that asks', () => {
+    const text = sms(
+      payload({
+        ...placed,
+        voice: {
+          greeting: 'Hi',
+          weekFraming: 'A full one',
+          itemLines: {},
+          signOff: "That's the lot - nothing needs you.",
+        },
+      }),
+      'first_name',
+    );
+    expect(text).toContain("That's the lot - nothing needs you.");
+    expect(text).not.toContain('?');
+    expect(foldWeeklyVoice('Anything else you want moved?', 0).outcome).toBe('refused_by_fold');
   });
 });
 

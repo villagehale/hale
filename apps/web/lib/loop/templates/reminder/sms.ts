@@ -2,7 +2,7 @@ import { smsSegments } from '~/lib/channel/sms-segments';
 import type { RenderedContent } from '~/lib/channel/types';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { gsmSafe } from '../weekly-plan/core';
-import { eventLine, whenLead } from './core';
+import { eventLine, whenLeadFor } from './core';
 import type { ReminderPayload } from './payload';
 
 /**
@@ -63,16 +63,54 @@ function trimmedFirstLine(lead: string, lines: readonly string[], deepLink: stri
   return render(ELLIPSIS);
 }
 
+/**
+ * Whether the composed line made it onto the wire. Same reason the weekly fold names its
+ * outcome: "no voice was composed" and "a voice was composed and the glance budget refused
+ * it" are different facts about the voice stage.
+ */
+export type ReminderVoiceOutcome = 'voiced' | 'no_voice' | 'refused_by_fold';
+
+/**
+ * The reminder's own voice fold, exported so the outcome is assertable.
+ *
+ * `payload.voice.line` is composed at the evening converge tick from the SAME redacted
+ * view this renderer draws on — teen-gated, sensitive-genericized, name-leveled — so it
+ * needs no second privacy gate here. payload.ts called it "email-only" and the SMS
+ * renderer simply ignored it; reading it is a read of a field that is already there.
+ *
+ * THE FOLD IS ONE SEGMENT, not the two-segment ceiling. A reminder is a GLANCE: the
+ * module header promises it targets one segment and only the overflow paths spend a
+ * second. A human sentence is worth having when there is room for it in the glance, and
+ * is not worth doubling the message for — so the line rides only when the whole thing
+ * still fits one, and the deterministic budget is otherwise untouched.
+ */
+export function foldReminderVoice(
+  body: string,
+  composed: string | null | undefined,
+): { text: string; outcome: ReminderVoiceOutcome } {
+  const trimmed = composed?.trim() ?? '';
+  if (trimmed === '') return { text: body, outcome: 'no_voice' };
+  const voiced = gsmSafe(`${body} ${trimmed}`);
+  return smsSegments(voiced) <= 1
+    ? { text: voiced, outcome: 'voiced' }
+    : { text: body, outcome: 'refused_by_fold' };
+}
+
 export function renderReminderSms(
   payload: ReminderPayload,
   level: ChildNameLevel,
   now: Date,
+  familyId: string,
 ): RenderedContent {
-  const lead = whenLead(payload.offset);
+  const lead = whenLeadFor(payload.offset, familyId, payload.events[0]?.startsAt, payload.timeZone);
   const lines = payload.events.map((event) =>
     eventLine(event, payload.children, level, now, payload.timeZone),
   );
   const inline = gsmSafe(`${lead}: ${lines.join(LINE_SEP)}`);
-  const text = smsSegments(inline) <= 1 ? inline : cappedText(lead, lines, payload.deepLink);
-  return { kind: 'sms', text };
+  if (smsSegments(inline) > 1) {
+    // Already over the glance on the facts alone — the voice has no room by definition,
+    // and the overflow paths own the two-segment ceiling.
+    return { kind: 'sms', text: cappedText(lead, lines, payload.deepLink) };
+  }
+  return { kind: 'sms', text: foldReminderVoice(inline, payload.voice?.line).text };
 }

@@ -4,6 +4,7 @@ import { smsSegments } from '~/lib/channel/sms-segments';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { loopTemplateRenderer } from '../registry';
 import type { ReminderChild, ReminderEventView, ReminderPayload } from './payload';
+import { foldReminderVoice } from './sms';
 
 /**
  * VIL-223 · D1 — the reminder per-channel renderers, exercised through the registry
@@ -71,10 +72,25 @@ function email(p: ReminderPayload, level: ChildNameLevel) {
 const batch = payload({ offset: '-P1D', events: [apptAt10, swimAt430] });
 const single = payload({ offset: '-PT1H', events: [swimAt430], deepLink: null });
 
+/**
+ * The lead is POOLED — three ways of saying each distance, rotating once per the event's
+ * own family-local day, because a family with something on every day reads this string
+ * every single day. The EMAIL subject keeps the unpooled first member: a subject line that
+ * varied per day would make a reminder thread unrecognisable in a mailbox.
+ *
+ * Restated here rather than imported, deliberately: these words are the spec, and a copy
+ * change to them should be a diff a reviewer reads in two places.
+ */
+const TOMORROW_LEADS = /^(?:Tomorrow|Coming up tomorrow|On for tomorrow): /;
+const HOUR_LEADS = /^(?:In an hour|An hour from now|Just about an hour away): /;
+
 describe('T-24h batch — Tomorrow lead, every event listed', () => {
   it('sms folds to GSM-7 (em-dash → hyphen), one segment, no link (fits the budget)', () => {
     const text = sms(batch, 'first_name');
-    expect(text).toBe('Tomorrow: an appointment at 10:00, Maya - Swim class at 4:30');
+    expect(text).toMatch(TOMORROW_LEADS);
+    expect(text.replace(TOMORROW_LEADS, '')).toBe(
+      'an appointment at 10:00, Maya - Swim class at 4:30',
+    );
     expect(smsSegments(text)).toBe(1);
     expect(text).not.toContain('http');
   });
@@ -95,7 +111,8 @@ describe('T-24h batch — Tomorrow lead, every event listed', () => {
 describe('T-1h single — In an hour lead, glanceable, no links anywhere (rule #6)', () => {
   it('sms is one segment and carries no url', () => {
     const text = sms(single, 'first_name');
-    expect(text).toBe('In an hour: Maya - Swim class at 4:30');
+    expect(text).toMatch(HOUR_LEADS);
+    expect(text.replace(HOUR_LEADS, '')).toBe('Maya - Swim class at 4:30');
     expect(smsSegments(text)).toBe(1);
     expect(text).not.toContain('http');
   });
@@ -155,7 +172,8 @@ describe('SMS segment budget', () => {
     const text = sms(p, 'first_name');
 
     expect(smsSegments(text)).toBeLessThanOrEqual(2);
-    expect(text.startsWith('In an hour: Parent teacher interview')).toBe(true);
+    expect(text).toMatch(HOUR_LEADS);
+    expect(text.replace(HOUR_LEADS, '').startsWith('Parent teacher interview')).toBe(true);
     expect(text.endsWith('...')).toBe(true); // says it was cut rather than just stopping
     expect(text).not.toContain('http'); // rule #6 — no link on the T-1h ping
   });
@@ -218,16 +236,65 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
     expect(e.html).toContain(`Maya ${EM_DASH} Swim class`);
   });
 
-  it('SMS ignores the voice (email-only) — its deterministic budget is kept', () => {
+  /**
+   * VIL-353/v5: the SMS no longer ignores it. payload.ts called this field "email-only"
+   * and the renderer simply did not read it — the composition had already happened, at no
+   * extra cost, and a human sentence was being thrown away on the surface a parent
+   * actually reads. It now rides, behind a fold measured at ONE segment.
+   */
+  it('SMS carries the composed line when it fits inside the glance', () => {
     const p = payload({ offset: '-P1D', events: [swimAt430], voice: { line: VOICE } });
-    expect(sms(p, 'first_name')).not.toContain(VOICE);
+    const text = sms(p, 'first_name');
+    expect(text).toContain(VOICE);
+    expect(smsSegments(text)).toBe(1);
+    // The facts stay slot-injected and keep their place ahead of it.
+    expect(text).toMatch(TOMORROW_LEADS);
+    expect(text).toContain('Swim class at 4:30');
+    expect(foldReminderVoice('Tomorrow: Maya - Swim class at 4:30', VOICE).outcome).toBe('voiced');
+  });
+
+  it('gives up the VOICE rather than the glance, and says which happened', () => {
+    // THE FOLD IS ONE SEGMENT, not the two-segment ceiling: a reminder is a glance, and a
+    // human sentence is not worth doubling the message for. "No voice was composed" and
+    // "a voice was composed and refused" are different facts about the voice stage, so
+    // the fold returns which.
+    const wordy = `${VOICE} and there is a whole paragraph of it after that, easily enough to push this reminder past the one segment it promises to fit inside`;
+    const p = payload({ offset: '-P1D', events: [swimAt430], voice: { line: wordy } });
+    const text = sms(p, 'first_name');
+    expect(text).not.toContain(wordy);
+    expect(smsSegments(text)).toBe(1);
+    expect(foldReminderVoice('Tomorrow: Maya - Swim class at 4:30', wordy).outcome).toBe(
+      'refused_by_fold',
+    );
+    expect(foldReminderVoice('Tomorrow: Maya - Swim class at 4:30', null).outcome).toBe('no_voice');
+  });
+
+  it('reads a different lead on a different day, and never a different fact', () => {
+    // The pool exists because a family with something on every day reads this string every
+    // single day. The occasion is the EVENT's own local day, not the render clock, so the
+    // same reminder does not change wording depending on when the job happened to run.
+    const days = ['2026-07-25', '2026-07-26', '2026-07-27', '2026-07-28'].map(
+      (day) =>
+        sms(
+          payload({
+            offset: '-P1D',
+            events: [ev({ title: 'Swim class', startsAt: `${day}T20:30:00Z` })],
+          }),
+          'first_name',
+        ).split(':')[0] as string,
+    );
+    for (let i = 1; i < days.length; i++) {
+      expect(days[i], `day ${i}`).not.toBe(days[i - 1]);
+    }
+    // Every member names the same distance in time — the fact never moves.
+    for (const lead of days) expect(lead.toLowerCase(), lead).toContain('tomorrow');
   });
 });
 
 describe('registry routing by templateKey', () => {
   it('routes a reminder message to the reminder renderer', () => {
     const r = loopTemplateRenderer.render(msg(batch), 'sms', 'first_name');
-    expect(r.kind === 'sms' && r.text.startsWith('Tomorrow')).toBe(true);
+    expect(r.kind === 'sms' && TOMORROW_LEADS.test(r.text)).toBe(true);
   });
 
   it('still routes a weekly_plan message to its own renderer (not the reminder one)', () => {

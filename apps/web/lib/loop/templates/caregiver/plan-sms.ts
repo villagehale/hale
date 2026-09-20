@@ -48,12 +48,16 @@ function joinNames(names: readonly string[]): string {
   return `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
 }
 
-/** "this week for Mia and Leo", or the bare "this week" when nothing in scope names a
- * child (a family-wide week — a holiday, a visit). */
+/** "This week for Mia and Leo", or the bare "This week" when nothing in scope names a
+ * child (a family-wide week — a holiday, a visit).
+ *
+ * SENTENCE CASE, because it now opens the message: it used to sit after a `Hale: ` label,
+ * which is the one context where a lowercase opener reads right (docs/voice.md rules 2
+ * and 4). */
 function header(items: readonly WeekPlanItem[], children: readonly CaregiverChild[]): string {
   const referenced = new Set(items.flatMap((i) => i.childIds));
   const names = children.filter((c) => referenced.has(c.id)).map((c) => c.name);
-  return names.length === 0 ? 'this week' : `this week for ${joinNames([...new Set(names)])}`;
+  return names.length === 0 ? 'This week' : `This week for ${joinNames([...new Set(names)])}`;
 }
 
 /** One item as "Tue 4:15 gymnastics at Stouffville Leisure Centre" — day and time dropped
@@ -71,7 +75,11 @@ function itemLine(item: WeekPlanItem): string {
 
 export function renderCaregiverPlanSms(payload: CaregiverPlanPayload): RenderedContent {
   const lines = itemsChronological(payload.items).map(itemLine);
-  const send = (body: string) => gsmSafe(`Hale: ${header(payload.items, payload.children)}${HEADER_SEP}${body}`);
+  // NO `Hale: ` PREFIX (docs/voice.md rule 2): a caregiver who accepted an invite is in
+  // a thread with Hale and knows who is texting. The header survives only where the
+  // recipient has no way to know — party/guest-copy.ts.
+  const send = (body: string) =>
+    gsmSafe(`${header(payload.items, payload.children)}${HEADER_SEP}${body}`);
 
   const full = send(lines.join(ITEM_SEP));
   if (smsSegments(full) <= SEGMENT_CAP) return { kind: 'sms', text: full };
