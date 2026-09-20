@@ -74,13 +74,17 @@ export function coParentScopeConfirm(name: string, language: ReplyLanguage): str
 
 /**
  * THE ONE MESSAGE. Who asked (by name — see {@link inviterNameIsAffordable}), what Hale
- * is, what saying yes gets them, and how to stop. The opt-out rides on the first message
+ * DOES, what saying yes gets them, and how to stop. The opt-out rides on the first message
  * a stranger ever gets from us, in the language it is written in.
+ *
+ * IT NO LONGER SAYS "assistant" (docs/voice.md rule 3), and the two twins lose the word
+ * together: this file has full FR parity and a register change applied to one language is
+ * a product that sounds like two.
  */
 export function coParentInviteBody(inviterName: string, language: ReplyLanguage): string {
   return language === 'fr'
-    ? `Bonjour - ${inviterName} vous a ajouté comme co-parent sur Hale. Je suis l'assistant qui garde le fil de la semaine de leur famille. Dites oui et vous verrez toute leur semaine et pourrez m'écrire n'importe quand. Répondez OUI pour accepter. Répondez ARRET à tout moment.`
-    : `Hi - ${inviterName} added you as their co-parent on Hale. I'm the assistant that keeps their family's week straight. Say yes and you'll see their whole week and can text me anything, anytime. Reply YES to accept. Reply STOP anytime.`;
+    ? `Bonjour - ${inviterName} vous a ajouté comme co-parent sur Hale. Je garde le fil de la semaine de leur famille. Dites oui et vous verrez toute leur semaine et pourrez m'écrire n'importe quand. Répondez OUI pour accepter. Répondez ARRET à tout moment.`
+    : `Hi - ${inviterName} added you as their co-parent on Hale. I keep their family's week straight. Say yes and you'll see their whole week and can text me anything, anytime. Reply YES to accept. Reply STOP anytime.`;
 }
 
 /** Said to the parent once the invite is on its way. */
