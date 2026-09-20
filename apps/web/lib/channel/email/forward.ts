@@ -12,6 +12,7 @@ import type { EmailInboundConfig } from './config';
 import {
   familyForForwardToken,
   forwardAnswerAddress,
+  forwardClaimKey,
   mintForwardRef,
 } from './forward-address';
 import {
@@ -52,9 +53,13 @@ import { honourEmailUnsubscribe } from './unsubscribe';
  *   5. THE FAMILY-KEYED LIMIT, before the claim, so a throttled forward costs nothing and
  *      leaves no row claiming it was handled.
  *   6. THE LEDGER CLAIM, before any spend, any ask and any insert. This is the
- *      idempotency: the same partial unique index the reply door uses, so a Resend
- *      redelivery cannot buy a second ask — and, once PR2 lands, cannot buy a second
- *      model call or a second summary.
+ *      idempotency, and it is the ONE rule this door does not inherit: the key is
+ *      (FAMILY, Message-ID), not the Message-ID alone. A Resend redelivery of one
+ *      household's forward still cannot buy a second ask — and, once PR2 lands, cannot
+ *      buy a second model call or a second summary — while a newsletter forwarded by two
+ *      households is two documents, because on this door the id belongs to the school
+ *      rather than to either family. `forwardClaimKey` (forward-address.ts) is where
+ *      that difference is argued; the reply door's global rule is untouched.
  *   7. The `.ref` decides ANSWER from DOCUMENT. The address is the state machine.
  *
  * TWO MACHINE-MAIL POLICIES, and the line between them is the BRANCH, not the door.
@@ -317,11 +322,18 @@ async function answerableParent(
 }
 
 /**
- * THE CLAIM, and the whole of this door's idempotency. Same partial unique index as the
- * reply door (`provider_message_id` where `direction = 'in'`), so exactly one delivery of
- * a Message-ID wins the right — and the duty — to act on it.
+ * THE CLAIM, and the whole of this door's idempotency. Keyed on (FAMILY, Message-ID) —
+ * {@link forwardClaimKey}, which is where the difference from the reply door is argued —
+ * so exactly one delivery of one household's copy wins the right, and the duty, to act
+ * on it, while a second household presenting the same third-party id gets its own.
  *
- * `body` is NULL here, and it is the one place this door departs from the inbound
+ * `provider_message_id` is therefore NULL on a forward row, and that is deliberate
+ * rather than an omission: the column means "the provider's id for THIS message", the
+ * reply door's global partial unique index is built on exactly that meaning, and a
+ * third party's id filed there is what made two households look like one delivery. The
+ * id itself is not lost — it is inside the claim key, and on the held document.
+ *
+ * `body` is NULL too, and it is the one place this door departs from the inbound
  * convention. The reply door stores the parent's own instruction because the approvals
  * path treats it as the legal instrument of a decision. A forwarded body is a third
  * party's document: it lives in `email_forwards_pending` while a decision is pending and
@@ -339,14 +351,15 @@ async function claim(
       channel: 'email',
       direction: 'in',
       category: 'forwarded_mail',
-      providerMessageId: args.event.messageId,
+      providerMessageId: null,
+      dedupeKey: forwardClaimKey(args.familyId, args.event.messageId),
       status: 'delivered',
       body: null,
       sentAt: args.event.receivedAt,
     })
     .onConflictDoNothing({
-      target: schema.channelMessages.providerMessageId,
-      where: sql`${schema.channelMessages.direction} = 'in' AND ${schema.channelMessages.providerMessageId} IS NOT NULL`,
+      target: schema.channelMessages.dedupeKey,
+      where: sql`${schema.channelMessages.dedupeKey} IS NOT NULL`,
     })
     .returning({ id: schema.channelMessages.id });
   if (!row) return false;
@@ -464,7 +477,12 @@ async function document(
     await tx
       .insert(schema.emailForwardsPending)
       .values({ ...held, senderId: sender.id })
-      .onConflictDoNothing({ target: schema.emailForwardsPending.providerMessageId });
+      .onConflictDoNothing({
+        target: [
+          schema.emailForwardsPending.familyId,
+          schema.emailForwardsPending.providerMessageId,
+        ],
+      });
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,
       actor: input.parent.userId,
@@ -745,5 +763,10 @@ async function hold(
   await database
     .insert(schema.emailForwardsPending)
     .values(values)
-    .onConflictDoNothing({ target: schema.emailForwardsPending.providerMessageId });
+    .onConflictDoNothing({
+      target: [
+        schema.emailForwardsPending.familyId,
+        schema.emailForwardsPending.providerMessageId,
+      ],
+    });
 }

@@ -1,6 +1,6 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -17,6 +17,7 @@ import {
   revokeForwardToken,
 } from './forward-address';
 import { type EmailForwardDeps, routeEmailForward } from './forward';
+import { FORWARD_SUBJECT_MAX } from './forward-copy';
 import { PENDING_FORWARD_TTL_MS, sweepExpiredForwards } from './forward-purge';
 import { UNSUBSCRIBABLE_STREAMS } from './streams';
 import {
@@ -26,6 +27,8 @@ import {
   routeEmailInbound,
 } from './inbound';
 import type { ResendTransport } from '~/lib/channel/resend-transport';
+import { forwardAddressHandler } from '~/lib/channel/router/handlers';
+import type { HandlerContext } from '~/lib/channel/router/route';
 
 /**
  * THE FORWARDING DOOR against the real DDL, driven through the SHIPPED router.
@@ -65,9 +68,14 @@ let parentEmail: string;
 let token: string;
 let sent: Array<Parameters<ResendTransport['send']>[0]>;
 let counted: EmailInboundOutcome[];
+/** Every content fetch this test made. The pre-fetch dedupe exists to SAVE one of these
+ * on a redelivery, and the only way to see it work is to count them. */
+let fetches: string[];
 /** The pglite instance is shared across the file (booted in hooks, per the flake rule),
- * so every Message-ID has to be unique across tests: the pre-fetch dedupe and the
- * `email_forwards_pending` unique index are both global by design. */
+ * so every Message-ID is made unique across tests. The door's own keys are family-scoped
+ * (forward-address.ts `forwardClaimKey`), but the reply door's pre-fetch dedupe is still
+ * global — and one test below deliberately reuses an id across two households, which is
+ * only a fair test while no other test has spent it. */
 let nonce = 0;
 
 function authPass(domain: string): string {
@@ -94,11 +102,18 @@ function inboundDeps(args: RouteArgs): EmailInboundDeps {
   const domain = from.slice(from.lastIndexOf('@') + 1).replace(/[>\s]/g, '');
   return {
     database: db.database,
-    content: () =>
-      FakeContentReader.ok({
+    content: () => {
+      const reader = FakeContentReader.ok({
         text: args.text ?? FORWARDED,
         headers: { 'authentication-results': authPass(domain), ...args.headers },
-      }),
+      });
+      return {
+        fetch: async (emailId) => {
+          fetches.push(emailId);
+          return reader.fetch(emailId);
+        },
+      };
+    },
     limiter: args.limiter ?? new FakeRateLimiter(),
     enqueue: async (job) => {
       queued.push(job);
@@ -211,6 +226,7 @@ beforeEach(async () => {
   token = (await mintForwardToken(db.database, family.familyId)).token;
   sent = [];
   counted = [];
+  fetches = [];
   nonce += 1;
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 9).toString('base64'));
   vi.stubEnv('F14_FAMILY_ALLOWLIST', family.familyId);
@@ -659,6 +675,41 @@ describe('the forwarding door · an instruction needs a person', () => {
 });
 
 describe('the forwarding door · the ask and the ref it hands out', () => {
+  /**
+   * A CRAFTED BANNER, all the way through the shipped router. The unit twin
+   * (forward-copy.test.ts) pins the sentence; this pins that the value reaching it is
+   * still the banner's — that no caller composes the ask from the raw subject instead.
+   */
+  it('repeats a hostile subject line clamped, on one line, and inside its own quotes', async () => {
+    const hostile = [
+      '---------- Forwarded message ---------',
+      'From: Bayview School <office@bcs.on.ca>',
+      'Date: Tue, 3 Jun 2026 at 09:12',
+      `Subject: R\u00e9union \u200b\u202e "urgente" ${'tr\u00e8s important pour la rentr\u00e9e '.repeat(40)}`,
+      'To: Sam <sam@example.com>',
+      '',
+      'The spring concert is on June 18 at 6pm in the gym.',
+    ].join('\n');
+
+    expect(await route({ to: forwardAddress(token, CONFIG), text: hostile })).toBe(
+      'forward_sender_pending',
+    );
+
+    // The ask is the FIRST line of the outbound body; the lines under it are Hale's own
+    // CASL footer (reply-send.ts). The subject may not add one of its own.
+    const body = sent[0]?.text as string;
+    const askLine = body.split('\n')[0] as string;
+    expect(askLine).toContain('from bcs.on.ca');
+    expect(askLine).toContain('Reply YES');
+    expect(body).not.toMatch(/[\u200b\u202e]/);
+    // Exactly one quoted span, and it is the sender's: the subject could not close it.
+    expect(askLine.split('"')).toHaveLength(3);
+    const quoted = askLine.slice(askLine.indexOf('"') + 1, askLine.lastIndexOf('"'));
+    expect(quoted.length).toBeLessThanOrEqual(FORWARD_SUBJECT_MAX);
+    // The accents survive — this is email, and they are what the subject said.
+    expect(quoted.startsWith('R\u00e9union')).toBe(true);
+  });
+
   it('THE DOMAIN IS CLAIMED BEFORE THE ASK, so the ref a parent is handed always resolves', async () => {
     // The orphan this forbids: two first forwards from one new domain racing, both
     // sending an ask, one of the two refs never reaching the database — and that
@@ -763,6 +814,107 @@ describe('the forwarding address · minted once, revoked once', () => {
   });
 });
 
+/**
+ * THE WAY IN. Until this handler existed, `mintForwardToken` had no production caller —
+ * a whole rung with no door, reachable only by hand SQL, and a live probe nobody could
+ * run. Driven here against the real DDL and the SHIPPED handler, because the questions
+ * are all about what is really in the database afterwards: which token came back, that a
+ * second ask does not mint a second one, and that a turn-off really nulls the column
+ * rather than answering as if it had.
+ */
+describe('a parent asking for their forwarding address, in the thread', () => {
+  function turn(body: string, familyId = family.familyId): HandlerContext {
+    return {
+      familyId,
+      parentUserId: family.parentUserId,
+      conversationId: randomUUID(),
+      body,
+      send: async () => ({ providerMessageId: 'prov-1', channel: 'sms' as const }),
+      now: NOW,
+      resolved: null,
+      openQuestions: async () => [],
+      inboundChannelMessageId: randomUUID(),
+    };
+  }
+  const handler = () => forwardAddressHandler({ error: () => {} });
+
+  beforeEach(() => {
+    vi.stubEnv('RESEND_API_KEY', 're_test');
+    vi.stubEnv('RESEND_INBOUND_WEBHOOK_SECRET', 'whsec_test');
+    vi.stubEnv('HALE_INBOUND_EMAIL_DOMAIN', CONFIG.inboundDomain);
+    vi.stubEnv('HALE_INBOUND_AUTHSERV_ID', MX);
+  });
+
+  it('hands back the address that actually works, and mints at most one per family', async () => {
+    // A family with no token yet, so the mint is real rather than a read-back.
+    const fresh = await seedFamily(db.database, 'Fresh Family');
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', `${family.familyId},${fresh.familyId}`);
+
+    const verdict = await handler().handle(db.database, turn("what's my forwarding address", fresh.familyId));
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'address_sent' });
+
+    const [row] = await db.database
+      .select({ token: schema.families.inboundForwardToken })
+      .from(schema.families)
+      .where(eq(schema.families.id, fresh.familyId));
+    const minted = row?.token as string;
+    expect(minted).toMatch(/^[0-9a-f]{30}$/);
+    expect((verdict as { reply: string }).reply).toContain(forwardAddress(minted, CONFIG));
+
+    // THE ADDRESS IS LIVE — the point of the whole handler. A document forwarded to the
+    // address this reply just handed out reaches that family's door.
+    expect(
+      await route({ to: forwardAddress(minted, CONFIG), messageId: '<handed-out@bcs.on.ca>' }),
+    ).toBe('forward_sender_pending');
+
+    // Asked twice is the same address, not a second credential.
+    await handler().handle(db.database, turn('forwarding address', fresh.familyId));
+    const [again] = await db.database
+      .select({ token: schema.families.inboundForwardToken })
+      .from(schema.families)
+      .where(eq(schema.families.id, fresh.familyId));
+    expect(again?.token).toBe(minted);
+  });
+
+  it('turns it off for real, and does not call nothing a success', async () => {
+    const off = await handler().handle(db.database, turn('turn off my forwarding address'));
+    expect(off).toMatchObject({ claimed: true, outcome: 'revoked' });
+    expect(await familyForForwardToken(db.database, token)).toBeNull();
+    expect(await route({ to: forwardAddress(token, CONFIG) })).toBe('forward_unknown_token');
+
+    const twice = await handler().handle(db.database, turn('turn off my forwarding address'));
+    expect(twice).toMatchObject({ claimed: true, outcome: 'not_configured' });
+    expect(await verbs()).toContain('email_forward_address_revoked');
+  });
+
+  it('DECLINES a household the forwarding door is still dark for, rather than handing out a dead address', async () => {
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', '');
+    expect(await handler().handle(db.database, turn('forwarding address'))).toEqual({
+      claimed: false,
+    });
+    const [row] = await db.database
+      .select({ token: schema.families.inboundForwardToken })
+      .from(schema.families)
+      .where(eq(schema.families.id, family.familyId));
+    expect(row?.token).toBe(token);
+
+    // The undo is NOT gated, for the connector pair's reason: a family may always close
+    // a door they were given, whatever the flag says today.
+    expect(
+      await handler().handle(db.database, turn('turn off my forwarding address')),
+    ).toMatchObject({ claimed: true, outcome: 'revoked' });
+  });
+
+  it('answers a French parent in French, and leaves everybody else to the coach', async () => {
+    const verdict = await handler().handle(
+      db.database,
+      turn('bonjour, quelle est mon adresse de transfert'),
+    );
+    expect((verdict as { reply: string }).reply).toContain('Transférez votre courrier');
+    expect(await handler().handle(db.database, turn('yes'))).toEqual({ claimed: false });
+  });
+});
+
 describe('the forwarding door · two families, one school', () => {
   it('do not share a rate-limit bucket at either gate', async () => {
     const other = await seedFamily(db.database, 'Other Family');
@@ -791,6 +943,57 @@ describe('the forwarding door · two families, one school', () => {
     const forward = keys.filter(([routeName]) => routeName === 'email-forward');
     expect(new Set(inbound.map(([, key]) => key)).size).toBe(2);
     expect(forward.map(([, key]) => key)).toEqual([family.familyId, other.familyId]);
+  });
+
+  /**
+   * ONE NEWSLETTER, TWO HOUSEHOLDS — the door's identity rule, proven against the real
+   * indexes.
+   *
+   * A Message-ID on THIS door belongs to a third party, so two families can legitimately
+   * present the same one: the school sends one newsletter and both parents forward it.
+   * Under the reply door's global rule the second household was dropped in silence — no
+   * row, no ask, no refusal — which is rule #11's exact shape.
+   */
+  it('each get their own question about the SAME Message-ID, and neither claims it twice', async () => {
+    const other = await seedFamily(db.database, 'Other Family');
+    const otherToken = (await mintForwardToken(db.database, other.familyId)).token;
+    vi.stubEnv('F14_FAMILY_ALLOWLIST', `${family.familyId},${other.familyId}`);
+
+    const shared = '-one-newsletter@bcs.on.ca';
+    const first = await route({ to: forwardAddress(token, CONFIG), messageId: shared });
+    const second = await route({ to: forwardAddress(otherToken, CONFIG), messageId: shared });
+
+    expect([first, second]).toEqual(['forward_sender_pending', 'forward_sender_pending']);
+    expect(sent).toHaveLength(2);
+
+    // Each household holds its own copy of the document and its own pending sender.
+    const heldBoth = await db.database
+      .select({ familyId: schema.emailForwardsPending.familyId })
+      .from(schema.emailForwardsPending)
+      .where(
+        inArray(schema.emailForwardsPending.familyId, [family.familyId, other.familyId]),
+      );
+    expect(heldBoth.map((row) => row.familyId).sort()).toEqual(
+      [family.familyId, other.familyId].sort(),
+    );
+    const senderRows = await db.database
+      .select({ familyId: schema.familyForwardSenders.familyId })
+      .from(schema.familyForwardSenders)
+      .where(
+        inArray(schema.familyForwardSenders.familyId, [family.familyId, other.familyId]),
+      );
+    expect(senderRows).toHaveLength(2);
+
+    // And the claim is still a claim: a redelivery of the FIRST family's own message
+    // buys nothing — no second ask, no second ledger row for that household, and not
+    // even the content fetch, because the pre-fetch dedupe asks the family-scoped
+    // question too.
+    const before = fetches.length;
+    const again = await route({ to: forwardAddress(token, CONFIG), messageId: shared });
+    expect(again).toBe('duplicate');
+    expect(fetches.length).toBe(before);
+    expect(sent).toHaveLength(2);
+    expect(await inboundRows()).toHaveLength(1);
   });
 });
 

@@ -81,9 +81,13 @@ CREATE TABLE IF NOT EXISTS "email_forwards_pending" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint
 
--- One held forward per message, belt and braces beside the channel_messages claim.
-CREATE UNIQUE INDEX IF NOT EXISTS "email_forwards_pending_provider_msg_uniq"
-	ON "email_forwards_pending" ("provider_message_id");--> statement-breakpoint
+-- One held forward per FAMILY per message, belt and braces beside the channel_messages
+-- claim -- and keyed the same way, because it has to be. The Message-ID on this door is
+-- the school's, not a household's: one newsletter reaches every family on the list, so a
+-- global key would let the first household to forward it silently swallow the second's
+-- copy. (family_id, provider_message_id) is what this door means by "the same forward".
+CREATE UNIQUE INDEX IF NOT EXISTS "email_forwards_pending_family_provider_msg_uniq"
+	ON "email_forwards_pending" ("family_id","provider_message_id");--> statement-breakpoint
 
 -- The sweep's whole working set: the oldest held forwards first.
 CREATE INDEX IF NOT EXISTS "email_forwards_pending_created_idx"

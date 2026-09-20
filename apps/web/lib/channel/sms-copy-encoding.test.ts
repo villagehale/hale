@@ -41,6 +41,11 @@ import {
 } from '~/lib/channel/connect/detect';
 import { CONNECTOR_CONNECTED_TEXT } from '~/lib/channel/connect/text-connect';
 import {
+  forwardAddressReply,
+  forwardRevokeReply,
+  matchForwardAddressRequest,
+} from '~/lib/channel/email/forward-request';
+import {
   ANSWER_UNAVAILABLE_REPLY,
   ANSWER_UNAVAILABLE_REPLY_BY_LANGUAGE,
   DIRECT_ACCESS_EYE_REPLY,
@@ -548,6 +553,55 @@ describe('the disconnect receipts stay one GSM-7 segment and say what Google sti
   it('honours the instruction the connected receipt gives', () => {
     expect(CONNECTOR_CONNECTED_TEXT.gcal).toContain('disconnect my calendar');
     expect(matchConnectorDisconnectRequest('disconnect my calendar')).toBe('gcal');
+  });
+});
+
+/**
+ * THE FORWARDING ADDRESS REPLY — the one deterministic line that hands a parent a
+ * credential, and the receipts that turn it off again (VIL-352).
+ *
+ * TWO segments rather than one, and the ceiling is argued in forward-request.ts: the
+ * address alone is 56 characters, and the sentence beside it has to say that an unknown
+ * sender is ASKED about rather than read, or a parent sets up a mail filter believing
+ * Hale is already reading everything. The receipts carry no address and are held to one.
+ */
+describe('the forwarding address reply stays GSM-7 and carries the whole address', () => {
+  const ADDRESS = `hale+${'a'.repeat(30)}@mail.villagehale.com`;
+
+  it.each(['en', 'fr'] as const)('%s', (language) => {
+    const body = forwardAddressReply(language, ADDRESS);
+    expect({
+      encoding: smsEncoding(body),
+      overBudget: smsSegments(body) > 2,
+      carriesWholeAddress: body.includes(ADDRESS),
+    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeAddress: true });
+  });
+
+  it.each([
+    ['en', 'revoked'],
+    ['en', 'not_configured'],
+    ['fr', 'revoked'],
+    ['fr', 'not_configured'],
+  ] as const)('the %s %s receipt is one segment', (language, outcome) => {
+    const body = forwardRevokeReply(language, outcome);
+    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+      encoding: 'gsm7',
+      segments: 1,
+    });
+  });
+
+  /** The words Hale's own replies teach have to be words that work — the same check the
+   * connected receipt gets, because both sentences tell a parent what to text. */
+  it('honours the instructions its own copy gives', () => {
+    for (const language of ['en', 'fr'] as const) {
+      expect(matchForwardAddressRequest(forwardAddressReply(language, ADDRESS))).not.toBe(
+        'turn_off',
+      );
+    }
+    expect(forwardRevokeReply('en', 'revoked')).toContain('forwarding address');
+    expect(matchForwardAddressRequest('forwarding address')).toBe('address');
+    expect(forwardRevokeReply('fr', 'revoked')).toContain('adresse de transfert');
+    expect(matchForwardAddressRequest('adresse de transfert')).toBe('address');
   });
 });
 

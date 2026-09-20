@@ -184,6 +184,34 @@ export async function revokeForwardToken(database: Database, familyId: string): 
 }
 
 /**
+ * WHAT MAKES A FORWARD THE SAME FORWARD — and why this door cannot borrow the reply
+ * door's answer.
+ *
+ * On the reply door a Message-ID is the parent's own envelope handle: one household
+ * wrote it, so `provider_message_id` alone is a sound identity and the global partial
+ * unique index on `channel_messages` is the claim. Here the Message-ID belongs to a
+ * THIRD PARTY. A school sends one newsletter with one id and every family it reaches can
+ * forward that same id, so the global rule reads two households' documents as one
+ * delivery and drops the second in silence — no row, no ask, no refusal (rule #11).
+ *
+ * The identity on this door is therefore (FAMILY, Message-ID), and this is that key. It
+ * is spent on `channel_messages.dedupe_key` — the column that already means "natural
+ * identity of a message, e.g. family+week+template", under its own global unique index —
+ * rather than on `provider_message_id`, which stays NULL on a forward row. Two reasons,
+ * and they are the same reason twice:
+ *   - the reply door's global rule is left exactly as it is, for every other door that
+ *     leans on it (the SMS door, the voice recording, the email reply itself). Narrowing
+ *     a live index would have made three unrelated inbound legs' `ON CONFLICT` stop
+ *     inferring it.
+ *   - a forward row carrying a third party's id in the column that means "the provider's
+ *     id for THIS message" is the category error the drop grew out of. The id is still
+ *     on the row, inside the key, and the held document carries it too.
+ */
+export function forwardClaimKey(familyId: string, providerMessageId: string): string {
+  return `email_forward:${familyId}:${providerMessageId}`;
+}
+
+/**
  * The family behind a token, or null for one that was never minted or has been revoked.
  *
  * The token is re-checked over the returned row rather than trusted to the predicate —

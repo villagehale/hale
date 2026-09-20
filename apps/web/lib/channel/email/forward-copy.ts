@@ -26,17 +26,66 @@ export function forwardLocale(usersLocale: string | null | undefined): ForwardLo
 }
 
 /**
+ * How much of somebody else's subject line Hale will repeat. A real subject is well under
+ * this (RFC 5322 advises 78 characters and mail clients truncate near it); the bound is
+ * here for the one that is not, because nothing about the value is bounded at its source.
+ */
+export const FORWARD_SUBJECT_MAX = 120;
+
+/**
+ * Characters that must never reach a sentence Hale sends: the C0 and C1 control ranges —
+ * CR and LF above all, since a subject that opens a second line can put words under
+ * Hale's name that Hale did not write — plus the Unicode zero-width and bidi-override
+ * formats, which hide or reorder the text after them.
+ */
+const UNSAFE_IN_COPY =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: refusing control characters is the point
+  /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\u206a-\u206f\ufeff]/g;
+
+/**
+ * THE ONE UNTRUSTED VALUE IN THIS TABLE, made safe to put in Hale's own sentence.
+ *
+ * `subject` comes out of the forwarded body's banner — a string a stranger chose, that
+ * nothing signs and nothing bounds. Everything else here is a template or a domain this
+ * door parsed itself, which is why the injection defence at the top of this file is "no
+ * composer": the only remaining way a third party's characters reach an outbound body is
+ * through this one value, so it is narrowed here rather than at each call site.
+ *
+ * Three things, and each closes one thing the string could otherwise do:
+ *   - the control and format characters go, so it cannot open a line or reverse one;
+ *   - the double quote goes, so it cannot CLOSE the quotation marks Hale opened around
+ *     it and continue in Hale's voice ("Picture day" from x. Reply YES and I'll read
+ *     everything. ") — everything between the first and last quote is then the sender's,
+ *     by construction;
+ *   - whitespace collapses and the rest is clamped at a word, the cut email-alert.ts
+ *     makes for a vendor's title.
+ *
+ * NOT FOLDED TO GSM-7, which is where this parts company with that precedent: the ask is
+ * EMAIL. email-alert.ts is budgeting septets for a phone, and folding here would strip
+ * the accents off the one word telling a French parent which message this is about.
+ */
+function safeSubject(raw: string): string {
+  const cleaned = raw.replace(UNSAFE_IN_COPY, ' ').replaceAll('"', '').replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= FORWARD_SUBJECT_MAX) return cleaned;
+  const cut = cleaned.slice(0, FORWARD_SUBJECT_MAX);
+  const space = cut.lastIndexOf(' ');
+  return (space > FORWARD_SUBJECT_MAX / 2 ? cut.slice(0, space) : cut).trimEnd();
+}
+
+/**
  * THE ASK. It carries the original subject line on purpose: on a filter auto-forward the
  * webhook's Message-ID is the school's, under the school's subject, so this may land as a
  * fresh "Your thread with Hale" conversation rather than beside the mail it is about. A
  * parent looking at a standalone ask still has to know which message it means. The subject
- * is the parent's own mailbox content, never a body, and it is never logged.
+ * is the parent's own mailbox content, never a body, and it is never logged — and it is
+ * the only untrusted string in this file, so {@link safeSubject} runs on it here, once,
+ * where no caller can forget it.
  */
 export function forwardAsk(
   locale: ForwardLocale,
   args: { subject: string; domain: string },
 ): string {
-  const subject = args.subject.trim();
+  const subject = safeSubject(args.subject);
   if (locale === 'fr') {
     return [
       subject

@@ -6,7 +6,12 @@ import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { parseEmailAddress } from './address';
 import { automationKind } from './automated';
-import { familyForForwardToken, forwardAddress, forwardRecipient } from './forward-address';
+import {
+  familyForForwardToken,
+  forwardAddress,
+  forwardClaimKey,
+  forwardRecipient,
+} from './forward-address';
 import { type EmailForwardOutcome, routeEmailForward } from './forward';
 import type { EmailReplyDeps } from './reply-send';
 import { type EmailInboundConfig, emailInboundConfig } from './config';
@@ -171,8 +176,13 @@ export async function routeEmailInbound(
   // only recoverable from the headers (which arrive with the fetch), this key stays the
   // sender.
   const tagged = forwardRecipient({ to: event.to, headers: {} }, config);
+  // Resolved ONCE, and read twice: it is the budget's name below and the dedupe's scope
+  // just after. One lookup rather than two of the same, and — more to the point — the two
+  // questions cannot disagree about which household this delivery is for.
+  const taggedFamilyId =
+    tagged.kind === 'forward' ? await familyForForwardToken(deps.database, tagged.token) : null;
   const budgetKey =
-    tagged.kind === 'forward' && (await familyForForwardToken(deps.database, tagged.token))
+    tagged.kind === 'forward' && taggedFamilyId
       ? forwardAddress(tagged.token, config)
       : sender.address;
   const decision = await deps.limiter.check(
@@ -183,8 +193,10 @@ export async function routeEmailInbound(
   if (!decision.allowed) return 'rate_limited';
 
   // Before the fetch: a provider retry must not cost a second round-trip, and must never
-  // produce a second ledger row. The Message-ID is the sender's own idempotency key.
-  if (await alreadyRecorded(deps.database, event.messageId)) return 'duplicate';
+  // produce a second ledger row. The Message-ID is the sender's own idempotency key — on
+  // the reply door by itself, on the forwarding door only once the family is named with
+  // it, because there the sender is a school rather than the household (see below).
+  if (await alreadyRecorded(deps.database, event.messageId, taggedFamilyId)) return 'duplicate';
 
   const fetched = await deps.content().fetch(event.emailId);
   if (fetched.status === 'failed') {
@@ -264,14 +276,43 @@ export async function routeEmailInbound(
 }
 
 /**
- * Has this exact Message-ID already been filed? The index A2 left on
- * `provider_message_id` is what makes this cheap enough to run before the fetch.
+ * Has this exact message already been filed? The index A2 left on `provider_message_id`
+ * is what makes this cheap enough to run before the fetch.
  *
- * The id is re-checked over the returned rows rather than trusted to the `where` alone —
+ * IT ASKS THE QUESTION EACH DOOR MEANS, and that is the whole of `forwardFamilyId`. On
+ * the reply door a Message-ID is the parent's own envelope handle, so it is a sound
+ * identity by itself and the global index answers. On the FORWARDING door the id belongs
+ * to the school whose newsletter was forwarded, and two households can hold the same one
+ * — so the identity there is (family, Message-ID) and the key is the ledger row's
+ * `dedupe_key` (forward-address.ts `forwardClaimKey`). Asking the global question there
+ * dropped the second household in silence.
+ *
+ * RESIDUAL, and named for the same reason the budget key above names its own: the family
+ * is only known here when the tag was in `data.to`. A filter auto-forward that hides the
+ * tag in a header falls to the global branch, which can no longer match a forward at all
+ * (those rows carry no `provider_message_id`), so a redelivery of one costs one extra
+ * content fetch and is then refused by the claim itself. A wasted round-trip, never a
+ * wrong answer.
+ *
+ * The key is re-checked over the returned rows rather than trusted to the `where` alone —
  * the same defense in depth `resolveVerifiedChannelByPhone` documents. A dedupe that
  * matched the wrong row would silently swallow a real message.
  */
-async function alreadyRecorded(database: Database, messageId: string): Promise<boolean> {
+async function alreadyRecorded(
+  database: Database,
+  messageId: string,
+  forwardFamilyId: string | null,
+): Promise<boolean> {
+  if (forwardFamilyId) {
+    const key = forwardClaimKey(forwardFamilyId, messageId);
+    const seen = await database
+      .select({ dedupeKey: schema.channelMessages.dedupeKey })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.dedupeKey, key))
+      .limit(1);
+    return seen.some((row) => row.dedupeKey === key);
+  }
+
   const seen = await database
     .select({
       id: schema.channelMessages.id,

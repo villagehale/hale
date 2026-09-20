@@ -92,8 +92,14 @@ export const emailForwardsPending = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    // One held forward per message, belt and braces beside the channel_messages claim.
-    providerMsgUniq: uniqueIndex('email_forwards_pending_provider_msg_uniq').on(
+    // One held forward per FAMILY per message, belt and braces beside the
+    // channel_messages claim — and keyed the same way, because it has to be. A
+    // Message-ID here is the school's, not a household's: one newsletter reaches every
+    // family on the list, so a global key would let the first household to forward it
+    // silently swallow the second's copy. (family_id, provider_message_id) is what the
+    // door means by "the same forward" — forward-address.ts `forwardClaimKey`.
+    providerMsgUniq: uniqueIndex('email_forwards_pending_family_provider_msg_uniq').on(
+      table.familyId,
       table.providerMessageId,
     ),
     createdIdx: index('email_forwards_pending_created_idx').on(table.createdAt),

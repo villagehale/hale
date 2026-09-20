@@ -18,6 +18,17 @@ import {
 } from '~/lib/channel/connect/detect';
 import { offerConnectorLink } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
+import { emailInboundConfig } from '~/lib/channel/email/config';
+import {
+  forwardAddress,
+  mintForwardToken,
+  revokeForwardToken,
+} from '~/lib/channel/email/forward-address';
+import {
+  forwardAddressReply,
+  forwardRevokeReply,
+  matchForwardAddressRequest,
+} from '~/lib/channel/email/forward-request';
 import { replyLanguage } from '~/lib/channel/language';
 import { type EmailCaptureDeps, handleEmailCaptureReply } from '~/lib/channel/email-capture/reply';
 import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
@@ -352,6 +363,77 @@ export function connectorDisconnectHandler(
         claimed: true,
         outcome: outcome.status,
         reply: connectorRevokeReply(replyLanguage(ctx.body), provider, outcome.status),
+      };
+    },
+  };
+}
+
+/**
+ * "what's my forwarding address" — the door that opens the forwarding door.
+ *
+ * WHY IT EXISTS AT ALL. `mintForwardToken` shipped with no production caller, so a family
+ * could only get a forwarding address by hand SQL: a rung of the product nobody could
+ * reach, and a live probe nobody could run. The thread is the natural way in — a parent
+ * asks for it the way they ask for a calendar link, and the answer is the REAL address
+ * minted this turn rather than a composed sentence about one. That is the same thing the
+ * connector link buys, closed the same way.
+ *
+ * A COMMAND, never an answer. Both halves of its matcher (email/forward-request.ts)
+ * require the noun, so it cannot claim a bare YES or NO and never consults the open
+ * questions — there is no question of its own for a bare word to be answering.
+ *
+ * THE MINT IS F14-GATED AND THE UNDO IS NOT, and that asymmetry is the point rather than
+ * an oversight. The forwarding door itself refuses a household the flag has not armed
+ * (`forward_family_dark`), so handing one an address would be handing out a credential
+ * that silently does nothing — a promise the next forward breaks. Turning one OFF is the
+ * opposite: a family may always close a door they were given, whatever the flag says
+ * today, which is exactly why the connector disconnect is ungated too.
+ *
+ * Rule #11, every way out named: `address_sent`; `revoked`; `not_configured` (nothing of
+ * theirs to turn off — never a false success); and two DECLINES that say why in the log
+ * rather than in a promise — the dark household above, and `leg_not_configured`, where
+ * the inbound email leg has no domain to build an address out of and the coach takes the
+ * turn.
+ */
+export function forwardAddressHandler(
+  log: Pick<Console, 'error'> = console,
+): DeterministicHandler {
+  return {
+    name: 'forward_address',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const ask = matchForwardAddressRequest(ctx.body);
+      if (!ask) return { claimed: false };
+      const language = replyLanguage(ctx.body);
+
+      if (ask === 'turn_off') {
+        const revoked = await revokeForwardToken(database, ctx.familyId);
+        const outcome = revoked ? 'revoked' : 'not_configured';
+        return { claimed: true, outcome, reply: forwardRevokeReply(language, outcome) };
+      }
+
+      if (!f14EnabledFor(ctx.familyId)) {
+        // The id and the named outcome only, never the body (rule #1).
+        log.error(
+          { familyId: ctx.familyId, outcome: 'family_dark' },
+          'forward address: asked for by a household the forwarding door is dark for',
+        );
+        return { claimed: false };
+      }
+
+      const config = emailInboundConfig();
+      if (!config) {
+        log.error(
+          { familyId: ctx.familyId, outcome: 'leg_not_configured' },
+          'forward address: asked for while the inbound email leg is unprovisioned',
+        );
+        return { claimed: false };
+      }
+
+      const { token } = await mintForwardToken(database, ctx.familyId);
+      return {
+        claimed: true,
+        outcome: 'address_sent',
+        reply: forwardAddressReply(language, forwardAddress(token, config)),
       };
     },
   };

@@ -66,6 +66,7 @@ import {
   emailAlertAddHandler,
   emailCaptureHandler,
   eveningCheckInHandler,
+  forwardAddressHandler,
   founderWelcomeHandler,
   healthReplyHandler,
   nameCaptureHandler,
@@ -342,6 +343,10 @@ export function defaultHandlers(): DeterministicHandler[] {
     // two matchers are disjoint by construction (connect/detect.ts), so neither can
     // shadow the other wherever they sit. It is here so the pair reads as a pair.
     connectorDisconnectHandler(),
+    // Beside the connector pair, and free for their reason: all three matchers require a
+    // noun no other handler's vocabulary contains, and detect.test.ts / the forwarding
+    // matcher's own table assert the three are disjoint over the whole phrase list.
+    forwardAddressHandler(),
     founderWelcomeHandler(defaultFounderReplyDeps()),
     // Owns the co-parent scope question and declines every reading of it — see the
     // handler's own note. Listed so the router never resolves a kind nobody owns.
