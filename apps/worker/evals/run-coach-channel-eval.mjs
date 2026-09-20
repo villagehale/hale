@@ -479,7 +479,7 @@ const FIXTURE_WEB_PICK = {
  */
 const spotPage = (name) => readFileSync(join(SPOTS_FIXTURES, `${name}.html`), 'utf8');
 
-function toSmsReply(raw, children, planOffer, referral) {
+function toSmsReply(raw, children, planOffer, referral, nearby) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
   const redacted = redactTeenNames(flattened, children, NOW);
@@ -490,9 +490,48 @@ function toSmsReply(raw, children, planOffer, referral) {
     children,
     NOW,
   );
-  if (!suffix) return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  if (!suffix) {
+    const fittedAlone = fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+    const clause = fittedAlone === null ? null : nearbyClause(fittedAlone, nearby);
+    return clause === null ? fittedAlone : `${fittedAlone} ${clause}`;
+  }
   const fitted = fitToBudget(dropDuplicateOffer(redacted, suffix), MAX_REPLY_SEGMENTS, suffix);
   return `${fitted} ${suffix}`;
+}
+
+/**
+ * Mirrors `nearbyClause` in reply.ts. Hale composes it and the model never sees it, so
+ * the eval's job is not to grade the sentence — it is to prove the GATE, that the count
+ * lands only on a reply that names its subject and names no other offered activity.
+ *
+ * NO FIXTURE SETS `nearby` YET. The pair that would (one at k>=3, one at k=2) needs one
+ * live run to mint its cached samples, and the machine had no outbound network when this
+ * shipped. The mirror lands anyway, because a harness that claims to mirror `toSmsReply`
+ * and silently omits one of its branches is worse than an unexercised branch: it would
+ * grade a reply production would have changed. The same seam IS covered end to end,
+ * model-free, by lib/__journey__/review-reaches-the-next-parent.test.ts.
+ */
+function nearbyClause(fittedBody, nearby) {
+  if (!nearby) return null;
+  const haystack = [fittedBody.toLowerCase()];
+  if (!mentionsActivity(haystack, nearby.title)) return null;
+  if ((nearby.otherTitles ?? []).some((title) => mentionsActivity(haystack, title))) return null;
+  return nearby.clause;
+}
+
+/** Mirrors `distinctiveWords` / `mentionsActivity` in followup/screen.ts. */
+const NEARBY_GENERIC_WORDS = new Set(['with', 'from', 'this', 'that', 'your', 'our']);
+function mentionsActivity(bodies, title) {
+  const words = [
+    ...new Set(
+      String(title)
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((word) => word.length >= 4 && !NEARBY_GENERIC_WORDS.has(word)),
+    ),
+  ];
+  if (words.length === 0) return false;
+  return bodies.some((body) => words.some((word) => body.includes(word)));
 }
 
 // ── replicated: apps/web/lib/channel/coach/tools.ts buildChannelCoachTools ──
@@ -1797,6 +1836,7 @@ async function main() {
         children,
         calls.find((call) => call.tool === 'offer_full_plan')?.offer,
         forward ? `${forward} ${FIXTURE_REFERRAL_LINK}` : undefined,
+        fixture.nearby,
       );
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.

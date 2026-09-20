@@ -281,6 +281,31 @@ function refuseMismatchedWeekday(
  * a birthday party), and `title_not_matched` is Hale finding it and the model rewording
  * it — two different problems with two different fixes.
  */
+/**
+ * THE TURN'S OFFER LEDGER — one array, two readers.
+ *
+ * `record` is what `search_village` reports into; `read` is what `propose_calendar_add`
+ * matches a title against, and what the runtime asks for the nearby count. One object
+ * rather than two arrays, because two would be two answers to "what did Hale offer this
+ * turn" and the first divergence is a count attached to the wrong activity.
+ */
+export interface TurnOfferLedger {
+  record(offers: readonly OfferedCandidate[]): void;
+  read(): readonly OfferedCandidate[];
+}
+
+export function createTurnOfferLedger(): TurnOfferLedger {
+  const offered: OfferedCandidate[] = [];
+  return {
+    record(offers) {
+      offered.push(...offers);
+    },
+    read() {
+      return offered;
+    },
+  };
+}
+
 export type OfferMatch =
   | { outcome: 'offered_this_turn'; candidateId: string }
   | { outcome: 'not_offered_this_turn' }

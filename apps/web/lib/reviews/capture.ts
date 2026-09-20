@@ -10,7 +10,7 @@ import {
 } from '~/lib/channel/followup/ask-open';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
-import { matchAreaKey, normalizeFsa } from '~/lib/village/intros/matcher';
+import { familyAreaKey } from './aggregate';
 import { type ReviewSubject, type SubjectUnresolved, resolveReviewSubject } from './subject';
 import type { VerdictReader } from './verdict';
 
@@ -338,7 +338,7 @@ async function captureReply(
     return;
   }
 
-  const areaKey = await readAreaKey(database, ask.familyId);
+  const areaKey = await familyAreaKey(database, ask.familyId);
   if (areaKey === null) {
     // `area_key` is how "near you" is decided, and an area that is not FSA-shaped is a
     // city of three million. There is no honest value to stamp, so nothing is read.
@@ -483,15 +483,3 @@ async function readPlacement(
   return row ?? null;
 }
 
-/** The coarse area the count is pooled over — `matchAreaKey` over `normalizeFsa`, reused
- * rather than re-decided, because the intros lane already settled what "a family near
- * you" means. Null when the family's area is not FSA-shaped. */
-async function readAreaKey(database: Database, familyId: string): Promise<string | null> {
-  const [family] = await database
-    .select({ areaCoarse: schema.families.areaCoarse })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId))
-    .limit(1);
-  const fsa = normalizeFsa(family?.areaCoarse ?? null);
-  return fsa === null ? null : matchAreaKey(fsa);
-}

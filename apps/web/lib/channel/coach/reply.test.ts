@@ -422,3 +422,69 @@ describe('the referral block', () => {
     );
   });
 });
+
+/**
+ * THE NEARBY COUNT — Hale-composed, never seen by the model, appended after the fit.
+ *
+ * Every gate here fails closed, and the reason is the one the SMS coach has no other
+ * defence for: this surface has no fact lint, so a count the model could reword or move
+ * is a count that can end up attached to the wrong activity.
+ */
+describe('the nearby count', () => {
+  const now = new Date('2026-07-30T12:00:00.000Z');
+  const NEARBY = {
+    clause: '3 families near you say Riverdale storytime is worth it.',
+    title: 'Riverdale storytime',
+    otherTitles: ['Wychwood swim'],
+  };
+
+  it('appends it verbatim when the reply names that activity and no other', () => {
+    const reply = toSmsReply('Riverdale storytime runs Saturdays at 10.', {
+      children: [],
+      now,
+      nearby: NEARBY,
+    });
+
+    expect(reply).toBe(
+      'Riverdale storytime runs Saturdays at 10. 3 families near you say Riverdale storytime is worth it.',
+    );
+  });
+
+  it('says nothing when the reply names the OTHER offered activity', () => {
+    const reply = toSmsReply('Wychwood swim runs Saturdays at 10.', {
+      children: [],
+      now,
+      nearby: NEARBY,
+    });
+
+    expect(reply).toBe('Wychwood swim runs Saturdays at 10.');
+  });
+
+  it('says nothing when the reply names both — a count cannot say which it is about', () => {
+    const reply = toSmsReply('Riverdale storytime is Saturday, Wychwood swim is Sunday.', {
+      children: [],
+      now,
+      nearby: NEARBY,
+    });
+
+    expect(reply).not.toContain('families near you');
+  });
+
+  it('says nothing when the reply names neither', () => {
+    const reply = toSmsReply('I will look into it.', { children: [], now, nearby: NEARBY });
+
+    expect(reply).toBe('I will look into it.');
+  });
+
+  /** After the fit, and un-trimmed at the ceiling: the whole reason it travels
+   * separately from the answer. */
+  it('survives the two-segment trim that takes the end off the answer', () => {
+    const long = `Riverdale storytime runs Saturdays at 10. ${'They also have a craft table and a singalong. '.repeat(6)}`;
+    const reply = toSmsReply(long, { children: [], now, nearby: NEARBY });
+
+    expect(reply.endsWith(NEARBY.clause)).toBe(true);
+    // The control: the answer itself WAS trimmed, so the clause survived a real trim
+    // rather than a message that happened to fit.
+    expect(reply.length).toBeLessThan(long.length + NEARBY.clause.length);
+  });
+});
