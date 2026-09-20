@@ -97,7 +97,7 @@ export function departureNoticeReaders(
  * business deciding who hears about it. Sorted so a household that somehow holds two
  * primary seats picks the same one on every retry rather than racing the heap.
  */
-async function stayingParent(database: Database, familyId: string): Promise<string | null> {
+export async function stayingParent(database: Database, familyId: string): Promise<string | null> {
   const rows = await database
     .select({
       familyId: schema.familyMembers.familyId,
@@ -181,7 +181,8 @@ export async function tellStayingParent(
     return `gate_refused:${verdict.reason}`;
   }
 
-  const message = CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE[await parentLanguage(database, parentUserId)];
+  const language = await parentLanguage(database, parentUserId);
+  const message = CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE[language];
 
   // CLAIM FIRST, by the insert rather than by the read above: two erasure requests
   // racing the same departure both pass a read and only one wins the unique index.
@@ -250,7 +251,11 @@ export async function tellStayingParent(
     targetTable: 'channel_messages',
     targetId: claimed.id,
     // Nothing that identifies either parent, on the standing rule this whole lane keeps.
-    after: { language: CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en === message ? 'en' : 'fr' },
+    // The language that was CHOSEN, not one re-derived by comparing the rendered message
+    // against the English constant: that comparison answered "is this string identical to
+    // the EN copy", so any change to how the body is built — a name, a suffix, a second
+    // sentence — would have silently relabelled every row `fr`.
+    after: { language },
   });
 
   return 'sent';

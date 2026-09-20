@@ -8,8 +8,9 @@ import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
 import { runEveningCheckInSweep } from '~/lib/channel/checkin/sweep';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
 import { runVillageIntroSweep } from '~/lib/village/intros/run';
+import { runDepartureNoticeRedrive } from '~/lib/channel/coparent/departure-redrive';
 import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
-import { welcomeCardRedrivePorts } from '~/lib/channel/twilio/deps';
+import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/twilio/deps';
 
 // Node runtime: the sweep reaches the voice client and the channel seam, neither of
 // which runs on the edge runtime.
@@ -52,12 +53,13 @@ export const maxDuration = 300;
  * rather than a preference (20:00 local, see EVENING_CHECK_IN_HOUR_LOCAL), so in any
  * given hour it selects a single band of timezones and does nothing for everyone else.
  *
- * THE 08:00 CONTACT-CARD RE-DRIVE rides here last of all, and it is the one leg that
- * carries no dark-launch flag of its own. It is not a class of message: it is the card
- * `sendWelcomeContactCard` already owed a family whose intake landed inside quiet hours,
- * and the only thing this route adds is a second chance to leave. It reaches the same
- * function, spends the same key, and writes the same audit verb — see
- * lib/channel/intake/welcome-card-redrive.ts.
+ * THE 08:00 RE-DRIVES ride here last of all — the contact card a family's intake owed
+ * them, and the departure notice a co-parent's erasure owed the parent who stayed. They
+ * are one leg in two halves and not two mechanisms: the same local hour, the same
+ * staleness bound and the same per-run cap, all read from lib/channel/redrive-slot.ts.
+ * Neither carries a dark-launch flag of its own, because neither is a class of message —
+ * each is a send another module already owed and quiet hours deferred, reaching the same
+ * function, spending the same key and writing the same audit verb.
  *
  * THE FOLLOW-UP SWEEP rides here for the same reason and runs LAST, which is also its
  * priority. It is the only stage that asks about something already over, so it is the
@@ -74,6 +76,9 @@ export const GET = cronRoute('nudge', async () => {
     const eveningCheckIns = await runEveningCheckInSweep(db());
     const activityFollowUps = await runActivityFollowUpSweep(db());
     const welcomeCards = await runWelcomeCardRedrive(db(), { ports: welcomeCardRedrivePorts() });
+    const departureNotices = await runDepartureNoticeRedrive(db(), {
+      ports: departureNoticePorts(db()),
+    });
     return NextResponse.json(
       {
         ok: true,
@@ -84,6 +89,7 @@ export const GET = cronRoute('nudge', async () => {
         eveningCheckIns,
         activityFollowUps,
         welcomeCards,
+        departureNotices,
       },
       { status: 200 },
     );

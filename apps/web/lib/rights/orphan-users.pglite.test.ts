@@ -1,13 +1,17 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { departCoParent } from '~/lib/channel/coparent/depart';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { runDeletionSweep } from './delete';
-import { runOrphanUserSweep, selectOrphanedUsers } from './orphan-users';
+import {
+  ORPHAN_USER_SWEEP_ENABLED_ENV,
+  runOrphanUserSweep,
+  selectOrphanedUsers,
+} from './orphan-users';
 
 /**
  * VIL-355 follow-up · item 3 — the account nobody can reach and nothing will ever
@@ -37,9 +41,15 @@ afterAll(async () => {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  // ARMED. Everything below asserts what the sweep DOES; the observe-only default is
+  // its own test, and leaving it on by accident here would make every one of them pass
+  // against a sweep that writes nothing.
+  vi.stubEnv(ORPHAN_USER_SWEEP_ENABLED_ENV, 'true');
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users cascade');
 });
 
@@ -108,6 +118,11 @@ async function seedUser(
     codeHash: `code-${seq}`,
     expiresAt: new Date(NOW.getTime() + 600_000),
   });
+  // The FIFTH user-scoped table, and the one the sweep must leave standing: a CASL
+  // suppression that a right-to-erasure may not quietly turn back on.
+  await db.database
+    .insert(schema.emailOptOuts)
+    .values({ userId, emailType: 'daily_digest', optedOutAt: NOW });
   return { userId, phone };
 }
 
@@ -149,6 +164,8 @@ describe('the orphan-user sweep', () => {
       scopedRowsDeleted: 4,
       identitiesAnonymised: 1,
       sweptWithoutTrail: 0,
+      observedOnly: 0,
+      emailSuppressionRetained: 1,
     });
     // The orphan: no live channel, nothing user-scoped, no identity.
     const [channel] = await db.database
@@ -197,6 +214,74 @@ describe('the orphan-user sweep', () => {
     expect(seatedChannel?.revokedAt).toBeNull();
   });
 
+  /**
+   * M2 · the default. Everything this sweep does is irreversible, and its FIRST tick is
+   * its largest — every historically departed co-parent at once. So off it selects and
+   * counts exactly what it would close, and writes nothing.
+   */
+  it('counts what it WOULD close and writes nothing until it is armed', async () => {
+    vi.stubEnv(ORPHAN_USER_SWEEP_ENABLED_ENV, '');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const familyId = await seedFamily();
+    await seedUser(familyId, { role: 'primary_parent' });
+    const orphan = await seedUser(familyId);
+
+    const observed = await runOrphanUserSweep(db.database, NOW);
+
+    expect(observed).toEqual({
+      swept: 0,
+      channelsRevoked: 0,
+      consentWithdrawn: 0,
+      scopedRowsDeleted: 0,
+      identitiesAnonymised: 0,
+      sweptWithoutTrail: 0,
+      observedOnly: 1,
+      emailSuppressionRetained: 0,
+    });
+    // Row for row, the account is exactly as it was.
+    expect(await identity(orphan.userId)).toMatchObject({ name: 'Sam' });
+    expect(await userScopedRowCount(orphan.userId)).toBe(4);
+    const [channel] = await db.database
+      .select({ revokedAt: schema.parentChannels.revokedAt })
+      .from(schema.parentChannels)
+      .where(eq(schema.parentChannels.userId, orphan.userId));
+    expect(channel?.revokedAt).toBeNull();
+    expect(
+      await db.database
+        .select({ id: schema.auditLog.id })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, 'orphan_user_erased')),
+    ).toEqual([]);
+
+    // THE POSITIVE CONTROL: armed, the same account on the same tick is closed — so the
+    // zeroes above are the flag's doing and not an empty fixture's.
+    vi.stubEnv(ORPHAN_USER_SWEEP_ENABLED_ENV, 'true');
+    expect(await runOrphanUserSweep(db.database, NOW)).toMatchObject({
+      swept: 1,
+      observedOnly: 0,
+    });
+    expect(await identity(orphan.userId)).toMatchObject({ name: null });
+  });
+
+  /**
+   * M1 · the fifth user-scoped table. `email_opt_outs` hangs off `users.id` with no
+   * family column, exactly like the four the sweep empties, and it is the one that must
+   * survive: deleting a suppression can only ever make a later send look lawful.
+   */
+  it('leaves the CASL email suppression standing, and says that it did', async () => {
+    const familyId = await seedFamily();
+    const orphan = await seedUser(familyId);
+
+    const summary = await runOrphanUserSweep(db.database, NOW);
+
+    expect(summary).toMatchObject({ swept: 1, emailSuppressionRetained: 1 });
+    const kept = await db.database
+      .select({ emailType: schema.emailOptOuts.emailType })
+      .from(schema.emailOptOuts)
+      .where(eq(schema.emailOptOuts.userId, orphan.userId));
+    expect(kept).toEqual([{ emailType: 'daily_digest' }]);
+  });
+
   it('runs to a fixed point — a second pass finds nothing left to do', async () => {
     const familyId = await seedFamily();
     await seedUser(familyId, { role: 'primary_parent' });
@@ -212,6 +297,8 @@ describe('the orphan-user sweep', () => {
       scopedRowsDeleted: 0,
       identitiesAnonymised: 0,
       sweptWithoutTrail: 0,
+      observedOnly: 0,
+      emailSuppressionRetained: 0,
     });
   });
 
@@ -259,6 +346,8 @@ describe('the orphan-user sweep', () => {
       identitiesAnonymised: 1,
       // The departure left their household standing, so the audit row has a home.
       sweptWithoutTrail: 0,
+      observedOnly: 0,
+      emailSuppressionRetained: 1,
     });
     expect(await identity(leaving.userId)).toEqual({
       email: null,

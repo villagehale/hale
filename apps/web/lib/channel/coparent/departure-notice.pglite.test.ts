@@ -27,6 +27,12 @@ import {
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
+/** The 13+ child whose name a parent-facing text may not carry by default (rule #1). */
+const TEEN_NAME = 'Noor';
+/** Their younger sibling — under the teen gate, and still nobody this message names. */
+const SIBLING_NAME = 'Wren';
+/** The parent who left. Their name is not the staying parent's to be handed either. */
+const DEPARTED_NAME = 'Sam';
 /** 10:12 in America/Toronto (EDT, UTC-4) — inside the sendable window. */
 const MORNING = new Date('2026-09-16T14:12:00.000Z');
 /** 23:12 local, the same evening. */
@@ -86,7 +92,11 @@ async function seedHousehold(options: { locale?: string; watchConsent?: boolean 
     .returning({ id: schema.users.id });
   const [departed] = await db.database
     .insert(schema.users)
-    .values({ externalAuthId: `sms:go-${households}`, name: 'Sam', timezone: 'America/Toronto' })
+    .values({
+      externalAuthId: `sms:go-${households}`,
+      name: DEPARTED_NAME,
+      timezone: 'America/Toronto',
+    })
     .returning({ id: schema.users.id });
   const stayingUserId = staying?.id as string;
   const departedUserId = departed?.id as string;
@@ -94,6 +104,13 @@ async function seedHousehold(options: { locale?: string; watchConsent?: boolean 
   await db.database.insert(schema.familyMembers).values([
     { familyId, userId: stayingUserId, role: 'primary_parent' },
     { familyId, userId: departedUserId, role: 'co_parent' },
+  ]);
+  // A 13+ child and a younger sibling, in EVERY departure fixture. Nothing in this lane
+  // reads them, and that is exactly the claim rule #1 needs a witness for: a household
+  // with no children in it cannot fail a test about a child's name reaching a parent.
+  await db.database.insert(schema.children).values([
+    { familyId, name: TEEN_NAME, dateOfBirth: '2012-03-04', dobPrecision: 'exact' },
+    { familyId, name: SIBLING_NAME, dateOfBirth: '2022-06-01', dobPrecision: 'exact' },
   ]);
   await db.database.insert(schema.parentChannels).values([
     {
@@ -193,8 +210,8 @@ describe('telling the parent who stayed', () => {
       transport.sent[0]?.body.includes(OPT_OUT_LINE) ||
         transport.sent[0]?.body.includes(OPT_OUT_SHORT),
     ).toBe(true);
-    // Nobody is named — not the parent who left, not a child.
-    expect(transport.sent[0]?.body).not.toContain('Sam');
+    // Nobody is named — see the dedicated wire test below for the whole household.
+    expect(transport.sent[0]?.body).not.toContain(DEPARTED_NAME);
 
     expect(await noticeRows(household.familyId)).toEqual([
       {
@@ -301,6 +318,59 @@ describe('telling the parent who stayed', () => {
     ]);
   });
 
+  /**
+   * HARD RULE #1, ON THE WIRE — the only place the claim can be checked.
+   *
+   * The copy constants name nobody and a regex over them says so, but a regex over a
+   * constant cannot see a runtime concatenation at the CALL SITE, which is where a name
+   * would actually get added: the message is composed here and handed straight to
+   * `transport.send`. So the assertion is on the bytes the provider was given, for a
+   * household that really holds a 13+ child (whose content is redacted from parents by
+   * default) and a younger sibling — and in BOTH languages, because the two bodies are
+   * built by the same lookup and a leak would ride whichever one was rendered.
+   */
+  it('puts no child name and no parent name on the wire, in either language', async () => {
+    const english = await seedHousehold();
+    const french = await seedHousehold({ locale: 'fr-CA' });
+    const transport = new FakeTransport();
+    for (const household of [english, french]) {
+      await departCoParent(db.database, {
+        familyId: household.familyId,
+        actorUserId: household.departedUserId,
+        now: MORNING,
+      });
+      expect(
+        await tellStayingParent(
+          db.database,
+          { familyId: household.familyId, departedUserId: household.departedUserId, now: MORNING },
+          ports(transport).ports,
+        ),
+      ).toBe('sent');
+    }
+
+    expect(transport.sent).toHaveLength(2);
+    // THE POSITIVE CONTROL: the names really are in this household, so an assertion that
+    // passes below is passing on the message rather than on an empty fixture.
+    const seeded = await db.database
+      .select({ name: schema.children.name })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, english.familyId));
+    expect(seeded.map((c) => c.name).sort()).toEqual([TEEN_NAME, SIBLING_NAME].sort());
+
+    for (const sent of transport.sent) {
+      for (const name of [TEEN_NAME, SIBLING_NAME, DEPARTED_NAME]) {
+        expect(sent.body).not.toContain(name);
+      }
+    }
+    // Both languages really were rendered — otherwise the loop above proves one body.
+    expect(transport.sent.map((s) => s.body).join('\n')).toContain(
+      CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.fr,
+    );
+    expect(transport.sent.map((s) => s.body).join('\n')).toContain(
+      CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en,
+    );
+  });
+
   it('writes the French sentence to a parent whose account is in French', async () => {
     const household = await seedHousehold({ locale: 'fr-CA' });
     await departCoParent(db.database, {
@@ -317,6 +387,14 @@ describe('telling the parent who stayed', () => {
     );
 
     expect(transport.sent[0]?.body).toContain(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.fr);
+    // The audit row records the language that was CHOSEN. It used to be re-derived by
+    // comparing the rendered body against the EN constant, so any change to how the
+    // message is built relabelled every row — including the English ones.
+    const [audit] = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'co_parent_departure_notice_sent'));
+    expect(audit?.after).toEqual({ language: 'fr' });
   });
 
   /**

@@ -17,6 +17,7 @@ const runNudgeCronMock = vi.fn();
 const runSittingReminderCronMock = vi.fn();
 const runFirstReplyRecoveryCronMock = vi.fn();
 const runWelcomeCardRedriveMock = vi.fn();
+const runDepartureNoticeRedriveMock = vi.fn();
 const dbMock = vi.fn();
 
 vi.mock('~/lib/db', () => ({ db: () => dbMock() }));
@@ -54,10 +55,13 @@ vi.mock('~/lib/channel/intake/first-reply-recovery', () => ({
   runFirstReplyRecoveryCron: (...a: unknown[]) => runFirstReplyRecoveryCronMock(...a),
 }));
 // The nudge route's other riders each read a dark-launch flag and return before they
-// touch a handle; the 08:00 card re-drive deliberately has none (it finishes an intake
-// step a family already earned), so it is the one that would reach the stub db here.
+// touch a handle; the two 08:00 re-drives deliberately have none (each finishes a send
+// another module already owed), so they are the ones that would reach the stub db here.
 vi.mock('~/lib/channel/intake/welcome-card-redrive', () => ({
   runWelcomeCardRedrive: (...a: unknown[]) => runWelcomeCardRedriveMock(...a),
+}));
+vi.mock('~/lib/channel/coparent/departure-redrive', () => ({
+  runDepartureNoticeRedrive: (...a: unknown[]) => runDepartureNoticeRedriveMock(...a),
 }));
 
 const SECRET = 'cron-secret-xyz';
@@ -95,6 +99,7 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });
     runNudgeCronMock.mockReset().mockResolvedValue({ enabled: false, evaluated: 0 });
     runWelcomeCardRedriveMock.mockReset().mockResolvedValue({ held: 0, due: 0, sent: 0 });
+    runDepartureNoticeRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
     runSittingReminderCronMock
       .mockReset()
       .mockResolvedValue({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
@@ -163,8 +168,14 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
         {},
         expect.objectContaining({ ports: expect.anything() }),
       );
+      expect(runDepartureNoticeRedriveMock).toHaveBeenCalledTimes(1);
+      expect(runDepartureNoticeRedriveMock).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ ports: expect.anything() }),
+      );
     } else {
       expect(runWelcomeCardRedriveMock).not.toHaveBeenCalled();
+      expect(runDepartureNoticeRedriveMock).not.toHaveBeenCalled();
     }
   });
 });

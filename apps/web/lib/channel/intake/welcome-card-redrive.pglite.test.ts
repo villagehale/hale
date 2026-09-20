@@ -6,11 +6,11 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { FakeTransport } from './transport';
 import {
-  MAX_REDRIVE_FAMILIES_PER_RUN,
-  WELCOME_CARD_REDRIVE_HOUR_LOCAL,
-  isWelcomeCardRedriveSlot,
-  runWelcomeCardRedrive,
-} from './welcome-card-redrive';
+  MAX_REDRIVE_PER_RUN,
+  REDRIVE_HOUR_LOCAL,
+  isRedriveSlot,
+} from '~/lib/channel/redrive-slot';
+import { runWelcomeCardRedrive } from './welcome-card-redrive';
 import {
   CONTACT_CARD_URL,
   WELCOME_CARD_BODY,
@@ -152,7 +152,7 @@ describe('the 08:00 re-drive of a contact card quiet hours held', () => {
    * the same accident twice.
    */
   it('serves the longest-held families first and COUNTS the overflow its cap defers', async () => {
-    const over = MAX_REDRIVE_FAMILIES_PER_RUN + 1;
+    const over = MAX_REDRIVE_PER_RUN + 1;
     const families = await db.database
       .insert(schema.families)
       .values(
@@ -198,10 +198,10 @@ describe('the 08:00 re-drive of a contact card quiet hours held', () => {
     expect(result).toMatchObject({
       held: over,
       due: over,
-      sent: MAX_REDRIVE_FAMILIES_PER_RUN,
+      sent: MAX_REDRIVE_PER_RUN,
       deferred: 1,
     });
-    expect(transport.sent).toHaveLength(MAX_REDRIVE_FAMILIES_PER_RUN);
+    expect(transport.sent).toHaveLength(MAX_REDRIVE_PER_RUN);
     // The one left over is the one held SHORTEST — nothing claimed for them, so the
     // next tick still owes them their card.
     const shortest = families[0]?.id as string;
@@ -211,12 +211,12 @@ describe('the 08:00 re-drive of a contact card quiet hours held', () => {
   });
 
   it('matches the whole 08:00 local HOUR, not the minute the cron happens to fire', () => {
-    expect(WELCOME_CARD_REDRIVE_HOUR_LOCAL).toBe(8);
-    expect(isWelcomeCardRedriveSlot(MORNING_0812, 'America/Toronto')).toBe(true);
-    expect(isWelcomeCardRedriveSlot(MORNING_0859, 'America/Toronto')).toBe(true);
-    expect(isWelcomeCardRedriveSlot(MORNING_0745, 'America/Toronto')).toBe(false);
+    expect(REDRIVE_HOUR_LOCAL).toBe(8);
+    expect(isRedriveSlot(MORNING_0812, 'America/Toronto')).toBe(true);
+    expect(isRedriveSlot(MORNING_0859, 'America/Toronto')).toBe(true);
+    expect(isRedriveSlot(MORNING_0745, 'America/Toronto')).toBe(false);
     // The parent's OWN clock: 08:12 Toronto is 05:12 in Vancouver.
-    expect(isWelcomeCardRedriveSlot(MORNING_0812, 'America/Vancouver')).toBe(false);
+    expect(isRedriveSlot(MORNING_0812, 'America/Vancouver')).toBe(false);
   });
 
   it('sends the held card exactly once at the 08:00 tick, on the same key and verb', async () => {

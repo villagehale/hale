@@ -1,9 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
-import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import { localParts } from '~/lib/loop/prefs';
+import {
+  MAX_REDRIVE_PER_RUN,
+  REDRIVE_MAX_AGE_MS,
+  isRedriveSlot,
+  redriveParentTimeZone,
+} from '~/lib/channel/redrive-slot';
 import {
   WELCOME_CARD_TEMPLATE_KEY,
   type WelcomeCardPorts,
@@ -29,39 +32,6 @@ import {
  * kind would mean asking the outbound chokepoint about watch consent that does not exist
  * yet — the exact reason the card reads the quiet window by hand (outbound-gate.ts).
  */
-
-/**
- * The local hour the held card goes out in — the hour the quiet window ENDS, read off
- * {@link PROACTIVE_QUIET_HOURS} rather than typed again, so a change to the floor moves
- * the re-drive with it.
- *
- * The cron fires hourly, so this matches the whole HOUR (the house rule: an exact-minute
- * match silently drops every family whose tick landed a minute late — nudge/run.ts).
- */
-export const WELCOME_CARD_REDRIVE_HOUR_LOCAL = Number(PROACTIVE_QUIET_HOURS.end.slice(0, 2));
-
-/**
- * How stale a held card may be and still be worth sending.
- *
- * An introduction is only an introduction for so long: a vCard arriving a fortnight after
- * the conversation it belonged to is a stranger's number texting a contact card out of
- * nowhere. It also bounds the scan — without it, every family this sweep can never serve
- * (no number, revoked channel) is re-read on every tick for the life of the product.
- */
-export const WELCOME_CARD_REDRIVE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-/**
- * How many held cards one tick will send, so an hourly cron leg cannot turn into a
- * hundreds-of-MMS run. The overflow is DEFERRED, not dropped: it is counted, logged and
- * still owed, and {@link selectHeldWelcomeCards} reads oldest-held first so the families
- * this cap leaves behind are the ones who have waited least.
- */
-export const MAX_REDRIVE_FAMILIES_PER_RUN = 100;
-
-/** Whether `now` sits in this family's re-drive hour, on the PARENT's own clock. */
-export function isWelcomeCardRedriveSlot(now: Date, timeZone: string): boolean {
-  return Math.floor(localParts(now, timeZone).minutes / 60) === WELCOME_CARD_REDRIVE_HOUR_LOCAL;
-}
 
 export interface WelcomeCardRedriveDeps {
   ports: WelcomeCardPorts;
@@ -139,7 +109,7 @@ export async function selectHeldWelcomeCards(
         isNull(schema.channelMessages.dedupeKey),
         gte(
           schema.channelMessages.createdAt,
-          new Date(now.getTime() - WELCOME_CARD_REDRIVE_MAX_AGE_MS),
+          new Date(now.getTime() - REDRIVE_MAX_AGE_MS),
         ),
       ),
     )
@@ -159,15 +129,6 @@ export async function selectHeldWelcomeCards(
   return [...byFamily.values()];
 }
 
-/** The parent's wall clock, off their own users row — the same reader the card uses. */
-async function parentTimeZone(database: Database, parentUserId: string): Promise<string> {
-  const rows = await database
-    .select({ id: schema.users.id, timezone: schema.users.timezone })
-    .from(schema.users)
-    .where(eq(schema.users.id, parentUserId));
-  return rows.find((row) => row.id === parentUserId)?.timezone ?? DEFAULT_TIMEZONE;
-}
-
 export async function runWelcomeCardRedrive(
   database: Database,
   deps: WelcomeCardRedriveDeps,
@@ -181,19 +142,19 @@ export async function runWelcomeCardRedrive(
 
   const due: Array<HeldCard & { phoneE164: string | null }> = [];
   for (const card of owed) {
-    if (!isWelcomeCardRedriveSlot(now, await parentTimeZone(database, card.parentUserId))) continue;
+    if (!isRedriveSlot(now, await redriveParentTimeZone(database, card.parentUserId))) continue;
     due.push({ ...card, phoneE164: await resolvePhone(database, card.parentUserId) });
   }
   result.due = due.length;
-  result.deferred = Math.max(0, due.length - MAX_REDRIVE_FAMILIES_PER_RUN);
+  result.deferred = Math.max(0, due.length - MAX_REDRIVE_PER_RUN);
   if (result.deferred > 0) {
     console.warn(
-      { deferred: result.deferred, cap: MAX_REDRIVE_FAMILIES_PER_RUN },
+      { deferred: result.deferred, cap: MAX_REDRIVE_PER_RUN },
       'welcome card re-drive: more held cards than one run sends - the rest keep their place',
     );
   }
 
-  for (const card of due.slice(0, MAX_REDRIVE_FAMILIES_PER_RUN)) {
+  for (const card of due.slice(0, MAX_REDRIVE_PER_RUN)) {
     if (card.phoneE164 === null) {
       // NOT claimed and NOT written off: the family is still owed the card if they ever
       // re-enroll, and the reason this tick sent nothing is a count rather than silence.

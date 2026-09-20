@@ -35,6 +35,12 @@ import { POLICY_VERSION } from '../consent.js';
  * and `acceptInvite` both write the seat and the channel in ONE transaction, so a
  * half-built member never exists to be seen.
  *
+ * IT IS OBSERVE-ONLY UNTIL IT IS ARMED ({@link orphanUserSweepEnabled}). Every other
+ * sweep in this product can be wrong for an hour; this one cannot be wrong at all, and
+ * its FIRST tick is its largest — every co-parent who ever departed and every caregiver
+ * whose grant was revoked, all at once. So off by default it selects and counts exactly
+ * what it would close and writes nothing, and the number is in the summary and the log.
+ *
  * IT NEEDS NO DONE-MARKER COLUMN. The work it does is exactly what makes a row stop
  * matching {@link selectOrphanedUsers}: no live channel, no identity, no user-scoped
  * rows. A second pass is a no-op because there is nothing left to do, not because a flag
@@ -67,6 +73,22 @@ export interface OrphanSweepSummary {
    * person erased with no trail is a different fact from one erased with one.
    */
   sweptWithoutTrail: number;
+  /**
+   * Accounts this run WOULD have closed and did not, because the sweep is observe-only.
+   *
+   * The OFF state's whole output, and the reason it is a count rather than a silence:
+   * `swept: 0` on its own reads identically to "there was nothing to do", which is the
+   * one thing the founder needs to be able to tell apart before arming this.
+   */
+  observedOnly: number;
+  /**
+   * `email_opt_outs` rows this run left standing, for the people it swept.
+   *
+   * A kept thing, counted, on the discipline `departCoParent` set: a tally that reports
+   * only what was destroyed lets a deliberate retention read as an oversight. See
+   * {@link USER_SCOPED_TABLES}.
+   */
+  emailSuppressionRetained: number;
 }
 
 export function emptyOrphanSweepSummary(): OrphanSweepSummary {
@@ -77,7 +99,29 @@ export function emptyOrphanSweepSummary(): OrphanSweepSummary {
     scopedRowsDeleted: 0,
     identitiesAnonymised: 0,
     sweptWithoutTrail: 0,
+    observedOnly: 0,
+    emailSuppressionRetained: 0,
   };
+}
+
+export const ORPHAN_USER_SWEEP_ENABLED_ENV = 'ORPHAN_USER_SWEEP_ENABLED';
+
+/**
+ * Whether the sweep may WRITE. Off by default, and off is the whole point.
+ *
+ * Everything this sweep does is irreversible — a name, an address and a sign-in identity
+ * set to null — and its first production tick does not meet a handful of accounts, it
+ * meets every co-parent who ever departed and every caregiver whose grant was revoked
+ * since the product existed. So the default is observe-only: the candidates are selected
+ * and counted exactly as they would be, the count is logged, and nothing is written, so
+ * the founder can read one night's number before the first row changes.
+ *
+ * STRICT equality on the literal 'true', the house rule: `vercel env add` from a piped
+ * `echo` stores a TRAILING NEWLINE, so a value that prints as `true` is really `'true\n'`
+ * and a truthiness check reads that as ON.
+ */
+export function orphanUserSweepEnabled(): boolean {
+  return process.env[ORPHAN_USER_SWEEP_ENABLED_ENV] === 'true';
 }
 
 export interface OrphanedUser {
@@ -91,10 +135,20 @@ export interface OrphanedUser {
   familyId: string | null;
 }
 
-/** The four tables keyed on `users.id` with no family column of their own, so nothing a
- * family cascade will ever reach. Kept as one list because every place below has to
- * agree about it — and because a fifth such table added later is a one-line change here
- * rather than a silent survivor. */
+/**
+ * The tables keyed on `users.id` with no family column of their own — nothing a family
+ * cascade will ever reach — whose rows this sweep DELETES. One list because every place
+ * below has to agree about it.
+ *
+ * IT IS NOT EVERY USER-SCOPED TABLE, and the difference is the point. `email_opt_outs`
+ * is keyed on `user_id` alone too, and it is KEPT: it is a suppression record, and the
+ * only thing deleting one can ever do is make a future send lawful-looking that was not.
+ * CASL's withdrawal of consent does not expire, so the row is evidence the unsubscribe
+ * was honoured, in the same class as the revoked `parent_channels` row and the
+ * `caregiver_invites` row that `departCoParent` keeps for the same reason. Named here
+ * rather than absent (rule #11), and `emailSuppressionRetained` in the summary is what
+ * says so out loud. `email_sends` is the sibling ledger and is kept on the same grounds.
+ */
 const USER_SCOPED_TABLES = [
   schema.channelSigninTokens,
   schema.phoneVerifications,
@@ -278,6 +332,15 @@ async function sweepOne(
       result.scopedRowsDeleted += removed.length;
     }
 
+    // Counted, not deleted — see USER_SCOPED_TABLES for why a suppression record is the
+    // one user-scoped row an erasure must leave alone.
+    result.emailSuppressionRetained = (
+      await tx
+        .select({ id: schema.emailOptOuts.id })
+        .from(schema.emailOptOuts)
+        .where(eq(schema.emailOptOuts.userId, userId))
+    ).length;
+
     // ANONYMISED, not deleted — the channel row below them is the CASL evidence, and it
     // cascades from this row. What goes is everything that names a person: the address,
     // the name, and the sign-in identity (which for an SMS account is a blind index of
@@ -324,7 +387,23 @@ export async function runOrphanUserSweep(
   strandedUserIds: readonly string[] = [],
 ): Promise<OrphanSweepSummary> {
   const total = emptyOrphanSweepSummary();
-  for (const orphan of await selectOrphanedUsers(database, strandedUserIds)) {
+  const candidates = await selectOrphanedUsers(database, strandedUserIds);
+
+  if (!orphanUserSweepEnabled()) {
+    // OBSERVE ONLY. The selection ran in full — the same predicate, over the same rows —
+    // and the write did not. Counts only, never an id of the person the row is about
+    // (rule #1), which is also why this is the whole of the OFF state's output.
+    total.observedOnly = candidates.length;
+    if (candidates.length > 0) {
+      console.info(
+        { observedOnly: candidates.length, flag: ORPHAN_USER_SWEEP_ENABLED_ENV },
+        'orphan sweep: observe-only - accounts that WOULD be closed, nothing written',
+      );
+    }
+    return total;
+  }
+
+  for (const orphan of candidates) {
     const one = await sweepOne(database, orphan, now);
     total.swept += one.swept;
     total.channelsRevoked += one.channelsRevoked;
@@ -332,6 +411,7 @@ export async function runOrphanUserSweep(
     total.scopedRowsDeleted += one.scopedRowsDeleted;
     total.identitiesAnonymised += one.identitiesAnonymised;
     total.sweptWithoutTrail += one.sweptWithoutTrail;
+    total.emailSuppressionRetained += one.emailSuppressionRetained;
   }
   if (total.sweptWithoutTrail > 0) {
     // The missing audit rows, said out loud where they can still be read (rule #11).
