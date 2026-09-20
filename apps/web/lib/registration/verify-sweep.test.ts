@@ -113,6 +113,37 @@ describe('runRegistrationVerifySweep — confirmed', () => {
   });
 });
 
+describe('runRegistrationVerifySweep — an inferred field is not evidence (VIL-347)', () => {
+  // Both rows are the same Markham cycle on the same page, stored as the course pages
+  // publish it; the page prints one unlabelled Aug 11, which the pairing rule reads as
+  // the resident morning. The ONLY difference is the program domain — and the dataset
+  // marks the swim row's head start as carried from the REC: Programs course pages,
+  // because no swim course page for this cycle is checked in. No dep is injected here on
+  // purpose: the lookup is the production one, so this fails if the wiring is dropped.
+  const tiered = (programDomain: string, id: string) =>
+    storedWindow({
+      id,
+      programDomain: programDomain as StoredWindow['programDomain'],
+      residentOpenAt: new Date('2026-08-11T06:30:00-04:00'),
+      openAt: new Date('2026-08-12T06:30:00-04:00'),
+    });
+
+  it('confirms the tier for the domain that was read, and not for the one that inferred it', async () => {
+    const h = harness({
+      loadWindows: async () => [tiered('rec_program', 'win-markham-rec'), tiered('swim', 'win-markham-swim')],
+    });
+
+    const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
+    const outcomeFor = (id: string) => summary.rows.find((r) => r.windowId === id)?.outcome;
+
+    expect(outcomeFor('win-markham-rec')).toEqual({
+      kind: 'confirmed',
+      fields: ['previewAt', 'residentOpenAt'],
+    });
+    expect(outcomeFor('win-markham-swim')).toEqual({ kind: 'confirmed', fields: ['previewAt'] });
+  });
+});
+
 describe('runRegistrationVerifySweep — a discrepancy NEVER writes', () => {
   it('does not touch the row, not even verified_at, and raises a digest line', async () => {
     const h = harness({

@@ -628,7 +628,7 @@ describe('caregiver · after they are in', () => {
 
     const outcome = await text(fake, transport, deps, GRAN_PHONE, 'STOP');
 
-    expect(outcome).toEqual({ status: 'stopped' });
+    expect(outcome).toEqual({ status: 'stopped', ack: 'sent' });
     expect(auditActions(fake)).toContain('caregiver_invite_refused');
     expect(inserts(fake, schema.familyMembers).some((r) => r.role === 'grandparent')).toBe(false);
   });
@@ -646,7 +646,7 @@ describe('caregiver · after they are in', () => {
 
     const outcome = await text(fake, transport, deps, GRAN_PHONE, 'STOP');
 
-    expect(outcome).toEqual({ status: 'stopped' });
+    expect(outcome).toEqual({ status: 'stopped', ack: 'sent' });
     // The withdrawal is recorded against the CAREGIVER. Which channel row the update
     // touches is decided by a `where user_id = …` the in-memory fake does not evaluate;
     // the user the revocation was aimed at is the decision under test here.
@@ -736,7 +736,7 @@ describe('a number with an invite in flight finishes its OWN intake', () => {
 
     // Their yes is SWALLOWED: the machine reads the open conversation first, so an
     // answer to the invite is read as an answer to intake's own question.
-    expect(await text(fake, transport, deps, GRAN_PHONE, 'yes')).toEqual({ status: 'helped' });
+    expect(await text(fake, transport, deps, GRAN_PHONE, 'yes')).toEqual({ status: 'helped', ack: 'sent' });
     const provisioned = await text(fake, transport, deps, GRAN_PHONE, "Mia's 2, M5V 2T6");
     expect(provisioned.status).toBe('provisioned');
 

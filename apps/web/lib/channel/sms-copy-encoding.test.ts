@@ -34,8 +34,11 @@ import {
   intakeConnectorOffer,
 } from '~/lib/channel/intake/copy';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
-import { connectorOfferReply } from '~/lib/channel/connect/copy';
-import { matchConnectorRequest } from '~/lib/channel/connect/detect';
+import { connectorOfferReply, connectorRevokeReply } from '~/lib/channel/connect/copy';
+import {
+  matchConnectorDisconnectRequest,
+  matchConnectorRequest,
+} from '~/lib/channel/connect/detect';
 import { CONNECTOR_CONNECTED_TEXT } from '~/lib/channel/connect/text-connect';
 import {
   ANSWER_UNAVAILABLE_REPLY,
@@ -120,6 +123,7 @@ const SMS_COPY_SOURCES = [
   // here and cannot be: that file's whole job includes a fold table of the characters
   // GSM-7 lacks.
   'lib/integrations/email-alert-offer.ts',
+  'lib/loop/templates/calendar-invite/sms.ts',
   'lib/format/labels.ts',
   // Not copy itself, but SPLICED into copy: the intake consent ask now carries the
   // privacy URL from here, so a typographic character in a policy path would ride out
@@ -479,6 +483,75 @@ describe('the connector receipt stays one GSM-7 segment and says how to undo it'
     expect(CONNECTOR_CONNECTED_TEXT.gcal).toContain('disconnect my calendar');
     // Gmail is the alarming one: the promise has to be bounded out loud.
     expect(CONNECTOR_CONNECTED_TEXT.gmail).toContain('Nothing else.');
+  });
+});
+
+/**
+ * THE DISCONNECT RECEIPTS, both twins, all three outcomes.
+ *
+ * Two gates in one suite. The alphabet, because the French twins carry the accents
+ * GSM-7 does have and one circumflex would halve the segment (70 characters instead of
+ * 160) on the longest sentence Hale sends about custody. And the CONTENT, because the
+ * removal URL is the only defence against the failure this copy exists for: a parent
+ * who disconnects by text, checks their Google account, sees Hale still listed and
+ * concludes nothing happened. Hale does not call Google's revoke endpoint, so a receipt
+ * that dropped that clause would be claiming something untrue.
+ *
+ * The French 'revoked' twin has SIX characters of headroom at the longest provider
+ * noun. That is not slack — it is the reason this suite renders the copy rather than
+ * scanning the file: a word added in review is a second segment on every French
+ * disconnect, forever.
+ */
+describe('the disconnect receipts stay one GSM-7 segment and say what Google still holds', () => {
+  const OUTCOMES = ['revoked', 'not_connected', 'revoke_failed'] as const;
+  const PROVIDERS = ['gcal', 'gmail', 'gdrive'] as const;
+  const RENDERED = (['en', 'fr'] as const).flatMap((language) =>
+    OUTCOMES.flatMap((outcome) =>
+      PROVIDERS.map(
+        (provider) =>
+          [
+            `${language}/${outcome}/${provider}`,
+            connectorRevokeReply(language, provider, outcome),
+          ] as const,
+      ),
+    ),
+  );
+
+  it.each(RENDERED)('%s', (_name, body) => {
+    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+      encoding: 'gsm7',
+      segments: 1,
+    });
+  });
+
+  it.each(['en', 'fr'] as const)('the %s revoked twin carries the removal URL', (language) => {
+    for (const provider of PROVIDERS) {
+      expect(connectorRevokeReply(language, provider, 'revoked')).toContain(
+        'myaccount.google.com/permissions',
+      );
+    }
+    // Positive control for the absence below: the revoked twin really is the one that
+    // carries it, so "the others do not" is a fact about them.
+    expect(connectorRevokeReply(language, 'gcal', 'not_connected')).not.toContain(
+      'myaccount.google.com',
+    );
+  });
+
+  /** The failure twin exists in French, and is not the English one. `failureReply()`
+   * takes no language, so without a local twin the French parent would read an English
+   * sentence at the worst moment of the turn. */
+  it('answers a failed disconnect in the language the parent wrote in', () => {
+    const en = connectorRevokeReply('en', 'gcal', 'revoke_failed');
+    const fr = connectorRevokeReply('fr', 'gcal', 'revoke_failed');
+    expect(fr).not.toBe(en);
+    expect(fr).toContain('rien');
+    expect(en).toContain('nothing was changed');
+  });
+
+  /** The words Hale's own connected receipt teaches have to be words that work. */
+  it('honours the instruction the connected receipt gives', () => {
+    expect(CONNECTOR_CONNECTED_TEXT.gcal).toContain('disconnect my calendar');
+    expect(matchConnectorDisconnectRequest('disconnect my calendar')).toBe('gcal');
   });
 });
 

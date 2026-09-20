@@ -73,13 +73,31 @@ function fakeDb(selectRows: unknown[]) {
   return { database: database as unknown as Database, cap };
 }
 
+/** The custody descriptor as a deployment with nothing declared writes it. */
+const UNNAMED_CUSTODY = {
+  holder: 'hale',
+  store: 'integrations.oauth_tokens_encrypted',
+  envelope: 'aes-256-gcm',
+  key: 'APP_ENCRYPTION_KEY',
+  region: 'unnamed',
+};
+
 describe('integrations store', () => {
   const prev = process.env.APP_ENCRYPTION_KEY;
+  const prevRegion = process.env.DATA_RESIDENCY_REGION;
+  const prevConnectorId = process.env.GOOGLE_CONNECTOR_CLIENT_ID;
+  const prevConnectorSecret = process.env.GOOGLE_CONNECTOR_CLIENT_SECRET;
   beforeEach(() => {
     process.env.APP_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+    process.env.DATA_RESIDENCY_REGION = '';
+    process.env.GOOGLE_CONNECTOR_CLIENT_ID = '';
+    process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = '';
   });
   afterEach(() => {
     process.env.APP_ENCRYPTION_KEY = prev;
+    process.env.DATA_RESIDENCY_REGION = prevRegion;
+    process.env.GOOGLE_CONNECTOR_CLIENT_ID = prevConnectorId;
+    process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = prevConnectorSecret;
   });
 
   it('stores tokens ENCRYPTED, never as plaintext (rule #1)', async () => {
@@ -96,8 +114,63 @@ describe('integrations store', () => {
     expect(cap.audit?.actionTaken).toBe('integration_connected');
     expect(cap.audit?.familyId).toBe(FAMILY);
     expect(cap.audit?.actor).toBe(USER);
-    expect(cap.audit?.after).toEqual({ provider: 'gcal' });
+    expect(cap.audit?.after).toEqual({
+      provider: 'gcal',
+      custody: UNNAMED_CUSTODY,
+      oauthClient: 'signin_project',
+    });
     expect(JSON.stringify(cap.audit)).not.toContain('secret');
+  });
+
+  /**
+   * CUSTODY AS DATA, and the two environmental facts it reads.
+   *
+   * The trail sentence a parent sees ("Hale keeps its keys encrypted and never hands
+   * them to another service") is only honest if the row behind it says which key,
+   * which column and which region. Both reads happen at WRITE time, so a row records
+   * what the deployment was when it stored that token.
+   */
+  it('records where the keys live and which Google project granted them', async () => {
+    process.env.DATA_RESIDENCY_REGION = 'ca-central-1';
+    process.env.GOOGLE_CONNECTOR_CLIENT_ID = 'connector-id.apps.googleusercontent.com';
+    process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = 'connector-secret';
+    const { database, cap } = fakeDb([]);
+
+    await saveConnection(database, { familyId: FAMILY, userId: USER, provider: 'gcal', scopes: ['s'], tokens: TOKENS });
+
+    expect(cap.audit?.after).toEqual({
+      provider: 'gcal',
+      custody: { ...UNNAMED_CUSTODY, region: 'ca-central-1' },
+      oauthClient: 'connector_project',
+    });
+  });
+
+  /**
+   * Rule #1, against the real ciphertext rather than a fixture: the row that DESCRIBES
+   * the vault must not leak what is in it. Scanned for the tokens, for the encryption
+   * key itself, and for the client secret that was set while the row was written.
+   */
+  it('carries no substring of the tokens, the key or the client secret into the audit row', async () => {
+    process.env.GOOGLE_CONNECTOR_CLIENT_ID = 'connector-id.apps.googleusercontent.com';
+    process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = 'connector-secret';
+    const { database, cap } = fakeDb([]);
+
+    await saveConnection(database, { familyId: FAMILY, userId: USER, provider: 'gcal', scopes: ['s'], tokens: TOKENS });
+
+    const row = JSON.stringify(cap.audit);
+    for (const leak of [
+      TOKENS.accessToken,
+      TOKENS.refreshToken as string,
+      process.env.APP_ENCRYPTION_KEY as string,
+      'connector-secret',
+      'connector-id.apps.googleusercontent.com',
+    ]) {
+      expect(row).not.toContain(leak);
+    }
+    // Positive control: the row really is the connect row, so the absences above are
+    // absences from something rather than from nothing.
+    expect(row).toContain('integration_connected');
+    expect(row).toContain('APP_ENCRYPTION_KEY');
   });
 
   /** The caller's handle on THIS connect. The integration row is upserted, so its id
@@ -144,7 +217,7 @@ describe('integrations store', () => {
 
   it('revoke purges the tokens, marks the row revoked, and returns the revoked count', async () => {
     const { database, cap } = fakeDb([]);
-    const revoked = await revokeConnection(database, FAMILY, USER, 'gcal');
+    const revoked = await revokeConnection(database, FAMILY, USER, 'gcal', 'settings');
     expect(revoked).toBe(1);
     expect(cap.updated?.oauthTokensEncrypted).toBeNull();
     expect(cap.updated?.status).toBe('revoked');
@@ -152,7 +225,29 @@ describe('integrations store', () => {
     expect(cap.audit?.actionTaken).toBe('integration_revoked');
     expect(cap.audit?.familyId).toBe(FAMILY);
     expect(cap.audit?.actor).toBe(USER);
-    expect(cap.audit?.after).toEqual({ provider: 'gcal' });
+    expect(cap.audit?.after).toEqual({
+      provider: 'gcal',
+      custody: UNNAMED_CUSTODY,
+      via: 'settings',
+    });
+  });
+
+  /**
+   * ONE VERB, TWO SURFACES. A texted disconnect and a Settings click are the same act
+   * on the same grant and read as the same sentence on the trail; which surface asked
+   * is a field, not a second verb nobody would remember to curate.
+   */
+  it('tags the disconnect with the surface that asked for it, off the same verb', async () => {
+    const { database, cap } = fakeDb([]);
+
+    await revokeConnection(database, FAMILY, USER, 'gcal', 'sms');
+
+    expect(cap.audit?.actionTaken).toBe('integration_revoked');
+    expect(cap.audit?.after).toEqual({
+      provider: 'gcal',
+      custody: UNNAMED_CUSTODY,
+      via: 'sms',
+    });
   });
 
   it('revoke of a non-matching connection returns 0 and writes NO audit row (never a false success)', async () => {
@@ -161,7 +256,7 @@ describe('integrations store', () => {
     // empty. The caller must learn nothing was revoked, and no audit row is minted
     // (rule #6 rows only for real state changes).
     cap.revokedRows = [];
-    const revoked = await revokeConnection(database, FAMILY, USER, 'gcal');
+    const revoked = await revokeConnection(database, FAMILY, USER, 'gcal', 'sms');
     expect(revoked).toBe(0);
     expect(cap.audit).toBeUndefined();
   });

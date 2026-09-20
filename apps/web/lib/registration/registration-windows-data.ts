@@ -34,6 +34,11 @@ import type { Municipality, ProgramDomain } from '@hale/db';
  * date shown to a family we matched as a resident, who gets the printed resident date.
  */
 
+/** The three dated fields a row carries. Named once here because two different
+ * questions are asked of them — which weekday the source printed beside one, and which
+ * of them this row did not read off its own source. */
+export type RegistrationWindowDateField = 'previewAt' | 'residentOpenAt' | 'openAt';
+
 export type PublishedWeekday =
   | 'Monday'
   | 'Tuesday'
@@ -61,7 +66,18 @@ export interface RegistrationWindowSeed {
   notes: string | null;
   /** Weekdays the SOURCE printed beside each date. Seed-only (never persisted) — a
    * build-time guard against a prior-year date carried forward. */
-  publishedWeekdays: Partial<Record<'previewAt' | 'residentOpenAt' | 'openAt', PublishedWeekday>>;
+  publishedWeekdays: Partial<Record<RegistrationWindowDateField, PublishedWeekday>>;
+  /**
+   * Fields this row did NOT read off its own source — carried from a sibling row of the
+   * same published cycle. Seed-only, like `publishedWeekdays`, and ABSENT is the ordinary
+   * case: every field was read off `sourceUrl`.
+   *
+   * It exists because "inferred" is a different claim from "verified", and a sentence in
+   * `notes` is a claim nothing can act on. The weekly re-verify sweep reads this and
+   * refuses to count an inferred field as confirmed evidence, so a page that is silent
+   * about the field can never quietly launder the inference into a confirmation.
+   */
+  inferredFields?: readonly RegistrationWindowDateField[];
 }
 
 const VERIFIED_AT = '2026-07-30T00:00:00-04:00';
@@ -201,25 +217,38 @@ const TORONTO_FALL_2026 = {
 /**
  * Markham runs ONE combined cycle covering fall programs, swim lessons and winter-break
  * camps, so the published dates are recorded once per domain a family might search by.
- * Markham publishes no resident/non-resident tier anywhere on the page — the fields stay
- * null rather than 0, because "not published" is a different claim from "no head start".
+ *
+ * VIL-347 — the city page prints ONE unlabelled date ("Register starting Aug. 11"), and
+ * for four weeks these rows read it as the date for everyone. Markham's own course pages
+ * tier it: the Aug 11 morning is the RESIDENT one and everybody else registers Aug 12.
+ * The city page is still the `sourceUrl` (it is the page a parent is sent to), so the
+ * mislabel it prints is handled in the comparison rather than by pointing this row at a
+ * single course; see `compareWindow`'s unlabelled-single-date rule.
  */
 const MARKHAM_FALL_2026 = {
   municipality: 'markham',
   cycleLabel: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
   previewAt: '2026-08-03T00:00:00-04:00',
-  residentOpenAt: null,
-  openAt: '2026-08-11T06:30:00-04:00',
-  residentPriorityDays: null,
+  residentOpenAt: '2026-08-11T06:30:00-04:00',
+  openAt: '2026-08-12T06:30:00-04:00',
+  residentPriorityDays: 1,
   waitlistResponseHours: 48,
   ageMinMonths: null,
   ageMaxMonths: null,
   sourceUrl: MARKHAM_REGISTRATION,
   verifiedAt: VERIFIED_AT,
   notes:
-    'Published as "Preview starting Aug, 3" and "Register starting Aug. 11 at 6:30 AM" (the comma is a typo in the source). No preview time is published, so it is the start of that day. Waitlist: "You will have 48 hours to decide". The string "non-resident" appears nowhere on Markham\'s registration page — treat the resident fields as not published, not as confirmed absent. One combined cycle covers fall programs, swim lessons and winter-break camps.',
+    'Published as "Preview starting Aug, 3" and "Register starting Aug. 11 at 6:30 AM" (the comma is a typo in the source). No preview time is published, so it is the start of that day. Waitlist: "You will have 48 hours to decide". The registration page prints that one date unlabelled and the string "non-resident" appears nowhere on it, but Markham\'s own PerfectMind course pages for this cycle tier it — "ResidentsRegistrationDateValue":"2026-08-11T06:30:00" and "PublicRegistrationStartDateValue":"2026-08-12T06:30:00" on both checked-in fixtures (lib/channel/spots/fixtures/open-window-markham.html, "Chess: Preschool", categories "REC: Programs - Specialty 1 - Resident / - Non-Resident"; and open-window-open-markham.html, "LEGO: Preschool", "REC: Programs - Variety 1"). One combined cycle covers fall programs, swim lessons and winter-break camps. Both fixtures are REC: Programs courses, so the head start is READ for rec_program and INFERRED for swim and camp on the strength of the shared cycle label — carried in `inferredFields` on those two rows, not just in this sentence.',
   publishedWeekdays: {},
 } as const satisfies Omit<RegistrationWindowSeed, 'programDomain'>;
+
+/**
+ * Markham's one-day head start is read off two REC: Programs course pages of this cycle.
+ * No swim or camp course page for it is checked in, so those two rows carry the tier on
+ * the strength of the shared cycle label — an inference, named where the sweep can act on
+ * it. Pull a live swim or camp course page for the cycle into the fixtures and this goes.
+ */
+const MARKHAM_INFERRED_TIER = ['residentOpenAt'] as const;
 
 /** Burlington registers fall+winter youth, fall swim and fall+winter aquatic leadership
  * on one identical schedule; only the cycle label differs. */
@@ -410,8 +439,8 @@ export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
 
   // ── Markham ──────────────────────────────────────────────────────────────────
   { ...MARKHAM_FALL_2026, programDomain: 'rec_program' },
-  { ...MARKHAM_FALL_2026, programDomain: 'swim' },
-  { ...MARKHAM_FALL_2026, programDomain: 'camp' },
+  { ...MARKHAM_FALL_2026, programDomain: 'swim', inferredFields: MARKHAM_INFERRED_TIER },
+  { ...MARKHAM_FALL_2026, programDomain: 'camp', inferredFields: MARKHAM_INFERRED_TIER },
 
   // ── Vaughan ──────────────────────────────────────────────────────────────────
   // Vaughan registers swim lessons on their OWN dates, two days after general programs —

@@ -87,7 +87,18 @@ export interface ScheduledReminder {
   fireAt: Date;
 }
 
-export type SuppressReason = 'started' | 'missed' | 'interacted';
+export type SuppressReason =
+  | 'started'
+  | 'missed'
+  | 'interacted'
+  /**
+   * The recipient may not see this event any more — a caregiver seat whose event turned
+   * out to be a teenager's or health-flagged, or one whose membership is gone. Written by
+   * the fire path rather than the converge, because scope is a question about the LIVE
+   * row and a child has a birthday between the two (VIL-241 · M6). Not 'cancelled': the
+   * event is perfectly real, it is the disclosure that is not allowed.
+   */
+  | 'out_of_scope';
 
 export type ReminderDecision =
   | { action: 'fire' }

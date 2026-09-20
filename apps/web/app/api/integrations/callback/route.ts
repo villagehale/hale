@@ -9,7 +9,12 @@ import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { db } from '~/lib/db';
 import { resolveUserIdForUser } from '~/lib/family';
 import { type ConnectState, verifyConnectState } from '~/lib/integrations/connect-state';
-import { CONNECTOR_SCOPES, exchangeCodeForTokens } from '~/lib/integrations/google-oauth';
+import { appBaseUrl } from '~/lib/cron/email-compliance';
+import {
+  CONNECTOR_SCOPES,
+  connectorRedirectUri,
+  exchangeCodeForTokens,
+} from '~/lib/integrations/google-oauth';
 import { saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
@@ -41,7 +46,11 @@ export const runtime = 'nodejs';
  */
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  const origin = process.env.APP_URL ?? url.origin;
+  // The same one host the consent was minted against (google-oauth connectorRedirectUri),
+  // never the request's origin: Google returns to the registered redirect_uri, so the
+  // only host that can legitimately be here is this one, and reading it from the request
+  // would only let a proxy or an alias decide where the parent lands next.
+  const origin = appBaseUrl();
   // Before the state is verified we can't know the surface — web is the safe
   // default (an unverifiable state never reached another flow anyway).
   const back = (status: string, surface?: ConnectState['surface'], provider?: string) => {
@@ -99,7 +108,7 @@ export async function GET(req: NextRequest) {
   try {
     const tokens = await exchangeCodeForTokens({
       code,
-      redirectUri: `${origin}/api/integrations/callback`,
+      redirectUri: connectorRedirectUri(),
     });
     // Granular consent lets the user deselect the scope, and a provider bug could
     // broaden it: the grant must contain EXACTLY what this connector needs and

@@ -112,4 +112,20 @@ describe('loadToldCheckpointRefs', () => {
 
     expect([...refs].sort()).toEqual([REF, 'school_records_ispa:*:2026']);
   });
+
+  /**
+   * A household with a co-parent is told once and its ledger holds TWO rows — the key is
+   * unique per message, so each copy carries the recipient after a `#`
+   * (channel/nudge/run.ts dedupeKeyFor). The ref is parsed by splitting on colons into
+   * exactly three parts, so a reader that did not strip the qualifier would drop both
+   * rows and this family would be told the same checkpoint every week forever.
+   */
+  it('reads the marker off a per-recipient copy, and collapses the pair to one fact', async () => {
+    const database = readingDb([
+      { dedupeKey: `${checkpointToldKey(FAMILY, REF)}#user-1` },
+      { dedupeKey: `${checkpointToldKey(FAMILY, REF)}#user-2` },
+    ]);
+
+    expect([...(await loadToldCheckpointRefs(database, FAMILY))]).toEqual([REF]);
+  });
 });

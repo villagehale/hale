@@ -237,6 +237,23 @@ describe('GET /api/integrations/callback — the text surface', () => {
     expect(location(res)).toBe('https://app.example.com/settings?connect=gcal');
     expect(noticeMock).not.toHaveBeenCalled();
   });
+
+  /** The other half of the redirect_uri pin (connect-route.test.ts holds the first):
+   * the exchange sends the SAME string the consent was minted with. Google matches
+   * the two, so a leg that read the request's own origin would fail here the moment
+   * a preview host, an alias or a proxy header differed from the registered one. */
+  it('exchanges the code against exactly connectorRedirectUri()', async () => {
+    const { connectorRedirectUri } = await import('./google-oauth');
+
+    await callCallback(await textState('gcal'));
+
+    expect(exchangeMock.mock.calls[0]?.[0]).toMatchObject({
+      redirectUri: connectorRedirectUri(),
+    });
+    expect(exchangeMock.mock.calls[0]?.[0]).toMatchObject({
+      redirectUri: 'https://app.example.com/api/integrations/callback',
+    });
+  });
 });
 
 describe('GET /api/integrations/callback — granted-scope validation', () => {

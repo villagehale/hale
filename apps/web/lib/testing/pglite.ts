@@ -179,3 +179,25 @@ export async function seedChild(
   if (!child) throw new Error('seedChild: children insert returned no row');
   return child.id;
 }
+
+/**
+ * A connected provider for this family — the row a connector alert's snapshots and cursor
+ * hang off.
+ *
+ * Needed by every test that reaches `calendar_event_snapshots`: its `integration_id` is a
+ * cascading foreign key (that cascade IS the erasure path, rule #1), so a fabricated uuid
+ * is rejected by the real DDL exactly as it would be in production.
+ */
+export async function seedIntegration(
+  database: Database,
+  familyId: string,
+  userId: string | null,
+  provider: 'gcal' | 'gmail' | 'gdrive' = 'gcal',
+): Promise<string> {
+  const [row] = await database
+    .insert(schema.integrations)
+    .values({ familyId, userId, provider, status: 'active' })
+    .returning({ id: schema.integrations.id });
+  if (!row) throw new Error('seedIntegration: integrations insert returned no row');
+  return row.id;
+}
