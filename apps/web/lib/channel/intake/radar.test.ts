@@ -99,6 +99,23 @@ describe('createRadarComposer', () => {
     expect(payload.message).toContain('Aug 11');
     expect(payload.itemCount).toBe(2);
     expect(payload.followUpNeeded).toBe(false);
+    // VIL-360 · the D23 anchor the caller stamps on the ledger row. Read off the
+    // DECISION, so a composer that paraphrased the pick away still leaves a family
+    // anchorable - the weekend-ness of the send is enforced by `placements`, not by
+    // whether the sentence led with it.
+    expect(payload.weekendPickOffered).toBe(true);
+  });
+
+  it('offers no weekend-pick anchor when there was no pick to offer', async () => {
+    const db = makeFakeDb();
+
+    const payload = await composer(db).compose({
+      familyId: FAMILY_ID,
+      children: [MAYA],
+      areaCoarse: 'L7G',
+    });
+
+    expect(payload.weekendPickOffered).toBe(false);
   });
 
   it('never writes the watch question — the state machine appends it', async () => {

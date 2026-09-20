@@ -35,20 +35,17 @@ import { weekWindow } from '~/lib/plan/spine';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
-import {
-  type Nudge,
-  type NudgeDecision,
-  type NudgeSkipCounts,
-  type WeekdayCareContext,
-  decideNudge,
-} from './nudge-decide';
-import { loadWeekdayCare, weekdayCareEnabled } from '~/lib/care/weekday';
+import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
+import type { WeekdayCareContext } from '~/lib/care/weekday';
+import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
 import {
   type FamilyTextRecipient,
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import { composeNudgeMessage } from './nudge-voice';
+import { proactiveNudgeTemplateKey } from './shell';
+import { weekdayCareDedupeKey } from '~/lib/channel/weekday-care/key';
 
 /**
  * VIL-239 · M4 — the 48-hour proactive nudge, swept hourly.
@@ -329,6 +326,13 @@ export function dedupeKeyFor(
       // Per WEEK like the swap, not per candidate: the sessions recur, and a key per
       // row would text a family a different library every day of the week.
       return `nudge:${familyId}:weekday_dropin:${weekWindow(now, timeZone).startKey}:${parentUserId}`;
+    case 'weekday_care':
+      // Per CHILD and forever, with no week in it: this question is asked once per
+      // household ever, and the child id is what the answer is filed against. MINTED BY
+      // THE PARSER'S OWN MODULE, because the answer path reads the child back out of
+      // this string — a sender and a reader holding two copies of one shape is how a
+      // question quietly stops being answerable.
+      return weekdayCareDedupeKey(familyId, nudge.childId, parentUserId);
     default:
       return assertNever(nudge);
   }
@@ -585,7 +589,7 @@ async function runForFamily(
       parentUserId: recipient.parentUserId,
       channel: 'sms',
       category: 'nudge',
-      templateKey: `proactive_nudge:${nudge.kind}`,
+      templateKey: proactiveNudgeTemplateKey(nudge.kind),
       dedupeKey,
       status: acceptedStatus('sms'),
       providerMessageId,
@@ -787,9 +791,7 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
       loadSuppressedCheckpointRefs(database, familyId),
     loadClaimedWindowIds: (database, familyId) => loadClaimedWindowIds(database, familyId),
     loadRecipients: (database, familyId) => loadFamilyTextRecipients(database, familyId),
-    loadWeekdayCareContext: async (database, familyId) => ({
-      stated: await loadWeekdayCare(database, familyId),
-    }),
+    loadWeekdayCareContext,
     weather: createOpenMeteoWeather(),
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),

@@ -43,17 +43,32 @@ afterEach(async () => {
 
 const NOW = new Date('2026-09-14T14:00:00.000Z');
 
-async function seedFamily(): Promise<{ familyId: string; childId: string }> {
+let seq = 0;
+
+async function seedFamily(): Promise<{
+  familyId: string;
+  childId: string;
+  parentUserId: string;
+}> {
+  seq += 1;
   const [family] = await db.database
     .insert(schema.families)
     .values({ displayName: 'Ana + kids', provinceOrState: 'ON' })
     .returning({ id: schema.families.id });
   const familyId = family?.id as string;
+  const [user] = await db.database
+    .insert(schema.users)
+    .values({ externalAuthId: `sms:care-${seq}`, name: 'Ana', timezone: 'America/Toronto' })
+    .returning({ id: schema.users.id });
+  const parentUserId = user?.id as string;
+  await db.database
+    .insert(schema.familyMembers)
+    .values({ familyId, userId: parentUserId, role: 'primary_parent' });
   const [child] = await db.database
     .insert(schema.children)
     .values({ familyId, name: 'Mia', dateOfBirth: '2024-03-02' })
     .returning({ id: schema.children.id });
-  return { familyId, childId: child?.id as string };
+  return { familyId, childId: child?.id as string, parentUserId };
 }
 
 describe('loadWeekdayCare', () => {

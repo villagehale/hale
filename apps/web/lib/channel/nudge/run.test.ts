@@ -5,7 +5,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
-import type { WeekdayCareContext } from './nudge-decide.js';
+import type { WeekdayCareContext } from '~/lib/care/weekday';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import { NUDGE_OPT_OUT } from './nudge-voice.js';
@@ -202,7 +202,8 @@ function harness(
       return new Set([...told, ...(options.doneCheckpoints ?? [])]);
     },
     loadClaimedWindowIds: async () => options.claimedWindowIds ?? new Set<string>(),
-    loadWeekdayCareContext: async () => options.weekdayCare ?? { stated: [] },
+    loadWeekdayCareContext: async () =>
+      options.weekdayCare ?? { stated: [], askedBefore: false, weekendFindSent: false },
     weather: { getDailyOutlook: async () => options.weather ?? [] },
     buildGate: () => ({
       channelEnrolled: async (parentUserId) =>
@@ -1006,9 +1007,9 @@ describe('runNudgeCron — the weekday drop-in', () => {
   ];
 
   const AT_HOME: WeekdayCareContext = {
-    stated: [
-      { childId: 'child-1', care: 'home', provider: null, validFrom: FRIDAY_10AM },
-    ],
+    stated: [{ childId: 'child-1', care: 'home', provider: null, validFrom: FRIDAY_10AM }],
+    askedBefore: true,
+    weekendFindSent: true,
   };
 
   function armed() {
@@ -1063,11 +1064,13 @@ describe('runNudgeCron — the weekday drop-in', () => {
 
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
-    expect(result.skips).toEqual({ care_unstated: 1 });
+    // BOTH weekday legs report, and they report different things: the find has no fact
+    // to act on, and the ask has no weekend find of Hale's own to anchor on (D23).
+    expect(result.skips).toEqual({ care_unstated: 1, no_weekend_find_sent: 1 });
     const audit = h.writes.find((w) => w.table === schema.auditLog);
     expect(audit?.payload.after).toMatchObject({
       reason: 'nothing_worth_saying',
-      skips: { care_unstated: 1 },
+      skips: { care_unstated: 1, no_weekend_find_sent: 1 },
     });
   });
 
@@ -1084,5 +1087,124 @@ describe('runNudgeCron — the weekday drop-in', () => {
 
     expect(result.sent).toBe(0);
     expect(result.skips).toEqual({});
+  });
+});
+
+/**
+ * VIL-360 · the ask, on the rail.
+ *
+ * What only the sweep can show: the send-idempotency key it gets, the sentence that
+ * actually reaches a transport, and the teen gate that runs at the SOURCE — before any
+ * decide sees a name (`splitByStage`).
+ */
+describe('runNudgeCron — the weekday-care ask', () => {
+  const CIVIC: RadarCandidate[] = [
+    {
+      id: 'civic-1',
+      title: 'EarlyON drop-in',
+      venueName: 'Armour Heights',
+      ageRange: null,
+      priceLevel: 'free',
+      indoorOutdoor: 'indoor',
+      eventDate: '2026-08-04',
+      seasons: null,
+      childId: null,
+      confidence: 0.9,
+      source: 'civic_registry',
+    },
+  ];
+
+  /** Asked nothing yet, sent a weekend find, said nothing back. */
+  const UNASKED: WeekdayCareContext = {
+    stated: [],
+    askedBefore: false,
+    weekendFindSent: true,
+  };
+
+  /** Two years old on FRIDAY_10AM. */
+  const TODDLER: NudgeChildRow = {
+    id: 'child-mia',
+    name: 'Mia',
+    dateOfBirth: '2024-06-01',
+    dobPrecision: 'exact',
+  };
+  /** Fifteen. Never nameable over this channel (rule #1). */
+  const TEEN: NudgeChildRow = {
+    id: 'teen-ava',
+    name: 'Ava',
+    dateOfBirth: '2011-03-04',
+    dobPrecision: 'exact',
+  };
+
+  const NO_REGION = [family({ areaCoarse: null })];
+
+  function ask(children: NudgeChildRow[]) {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('WEEKDAY_CARE_ENABLED', 'true');
+    return harness({
+      families: NO_REGION,
+      children,
+      candidates: CIVIC,
+      weekdayCare: UNASKED,
+    });
+  }
+
+  it('sends the one sentence, keyed per child and forever', async () => {
+    const h = ask([TODDLER]);
+
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result.sent).toBe(1);
+    expect(h.transport.sent[0]?.body).toContain(
+      'Those are all weekend finds. Is Mia home with you during the week, or at daycare?',
+    );
+    const write = h.writes.find((w) => w.table === schema.channelMessages);
+    expect(write?.payload.templateKey).toBe('proactive_nudge:weekday_care');
+    // The CHILD is in the key, and no week is: the answer is filed against this id, and
+    // the question is asked once per household ever.
+    expect(write?.payload.dedupeKey).toBe('nudge:fam-1:weekday_care:child-mia:user-1');
+  });
+
+  it('never twice — a re-fired cron does not ask again', async () => {
+    const h = ask([TODDLER]);
+
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    const again = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(again).toMatchObject({ sent: 0, deduped: 1 });
+  });
+
+  /**
+   * THE TEEN PAIR'S OTHER HALF. The decide's own suite proves the ask picks the toddler
+   * when it is handed both; this proves the 13+ child never reaches it at all, because
+   * `splitByStage` strips the name at the source.
+   */
+  it('names the toddler and never the teenager', async () => {
+    const h = ask([TEEN, TODDLER]);
+
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    const body = h.transport.sent[0]?.body ?? '';
+    expect(body).toContain('Mia');
+    expect(body).not.toContain('Ava');
+  });
+
+  it('a teen-only household is never asked', async () => {
+    const h = ask([TEEN]);
+
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result.sent).toBe(0);
+    expect(result.skips.no_eligible_child).toBe(1);
+  });
+
+  it('is deterministic: no model is asked to write a question', async () => {
+    const h = ask([TODDLER]);
+
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    // Byte-for-byte the reviewed sentence, plus whatever shell the gate appended - not
+    // a paraphrase of it.
+    expect(h.transport.sent[0]?.body.startsWith('Those are all weekend finds.')).toBe(true);
   });
 });

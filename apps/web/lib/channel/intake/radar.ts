@@ -77,6 +77,22 @@ export interface RadarInput {
   areaCoarse: string | null;
 }
 
+/**
+ * VIL-360 · the `channel_messages.template_key` stamped on the intake radar's first
+ * text WHEN it carried a weekend pick.
+ *
+ * The radar's messages are otherwise anonymous — the transcript is the record — but
+ * this one row is the D23 anchor for the weekday-care ask: "those are all weekend
+ * finds" is only sayable to a family Hale actually sent one to, and the weather swap
+ * (the other anchor) is rare by construction. Without the stamp the ask fires for
+ * nobody.
+ *
+ * FORWARD-ONLY. A household onboarded before this shipped has a null `template_key` on
+ * its first text, and nothing back-fills it: re-deriving the claim from a row whose
+ * body was deliberately never stored would be a guess.
+ */
+export const INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY = 'intake:radar:weekend_pick';
+
 export interface RadarPayload {
   message: string;
   /** How many real, grounded items the message is built from. Zero means Hale said so. */
@@ -97,6 +113,19 @@ export interface RadarPayload {
    * nothing here writes it. Same discipline, same reason, as `checkpointTold`.
    */
   firstFindPromised: boolean;
+  /**
+   * VIL-360 · true when the DECISION this message was composed from carried a weekend
+   * pick, so the caller can stamp {@link INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY} on the
+   * row that carried it.
+   *
+   * Read off the decision rather than off the composed text, unlike `checkpointTold`
+   * and `firstFindPromised`. Those two mark a family as TOLD something and must be
+   * earned by words that survived composition, because being wrong suppresses a future
+   * message. This one only ever unlocks a QUESTION, later, about the kind of thing Hale
+   * sends — and the weekend-ness of that send is enforced by `placements` whether the
+   * composer led with it or not.
+   */
+  weekendPickOffered: boolean;
 }
 
 export interface RadarComposer {
@@ -343,6 +372,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           (decision.checkpoint ? 1 : 0),
         followUpNeeded: decision.followUpNeeded,
         checkpointTold,
+        weekendPickOffered: decision.weekendPick !== null,
         // Earned by the SENT TEXT, exactly as the told-marker above now is: the composer
         // is handed the beat as one fact among several and may leave it out, and a debt
         // recorded for words nobody read puts this family in the overdue column for a

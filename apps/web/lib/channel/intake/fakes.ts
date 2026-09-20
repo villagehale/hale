@@ -60,6 +60,7 @@ export const fakeRadar: RadarComposer = {
       itemCount: 0,
       followUpNeeded: false,
       checkpointTold: null,
+      weekendPickOffered: false,
       firstFindPromised: false,
     };
   },

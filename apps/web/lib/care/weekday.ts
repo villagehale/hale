@@ -1,5 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
+import { CONSUMED_SEND_STATUSES, SENT_STATUSES } from '~/lib/channel/ledger';
+import { proactiveNudgeTemplateKey } from '~/lib/channel/nudge/shell';
 
 /**
  * HOW THIS HOUSEHOLD'S WEEKDAYS ARE COVERED — the fact, its flag, and its one
@@ -41,6 +44,13 @@ export const WEEKDAY_CARE_FACT_WRITER = 'weekday-care-reply';
 export type WeekdayCare = 'home' | 'daycare' | 'starting_soon';
 
 const WEEKDAY_CARE_VALUES: readonly WeekdayCare[] = ['home', 'daycare', 'starting_soon'];
+
+/** The ledger row that proves this household has been asked. Its own constant because
+ * the send stamps it and three readers query for it. */
+export const WEEKDAY_CARE_ASK_TEMPLATE_KEY = proactiveNudgeTemplateKey('weekday_care');
+
+/** The weather swap's row — one of the two D23 anchors. */
+const WEATHER_SWAP_TEMPLATE_KEY = proactiveNudgeTemplateKey('weather_swap');
 
 export interface WeekdayCareFact {
   childId: string;
@@ -120,4 +130,73 @@ export async function loadWeekdayCare(
     if (parsed === null) return [];
     return [{ childId: row.childId, ...parsed, validFrom: row.validFrom }];
   });
+}
+
+/**
+ * WHAT THE WEEKDAY LEGS KNOW ABOUT THIS HOUSEHOLD — the facts it has stated, and the
+ * two ledger questions the ask's preconditions rest on.
+ */
+export interface WeekdayCareContext {
+  /** Every live, writer-pinned weekday-care fact. Empty means "nobody has told us",
+   * never "they said no". */
+  stated: readonly WeekdayCareFact[];
+  /** Has this ask ever gone out to this family? */
+  askedBefore: boolean;
+  /** Has Hale ever sent this family a weekend find? */
+  weekendFindSent: boolean;
+}
+
+type SendStatus = (typeof CONSUMED_SEND_STATUSES)[number];
+
+async function anySendWith(
+  database: Database,
+  familyId: string,
+  templateKeys: readonly string[],
+  statuses: readonly SendStatus[],
+): Promise<boolean> {
+  const rows = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, familyId),
+        eq(schema.channelMessages.direction, 'out'),
+        inArray(schema.channelMessages.templateKey, [...templateKeys]),
+        inArray(schema.channelMessages.status, [...statuses]),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * The whole weekday-care picture for one family, in three reads.
+ *
+ * THE TWO STATUS SETS ARE DIFFERENT, AND THAT IS THE DESIGN.
+ *
+ * `askedBefore` counts a FAILED send, because the dedupe key it consumed is permanent:
+ * an ask that read as unasked would be re-decided on every tick and then swallowed by
+ * `dedupeActive` (which does count `failed`), so the family would show as `deduped`
+ * forever and never as `already_asked`. One ask per household ever means one ATTEMPT.
+ *
+ * `weekendFindSent` does NOT, because it is a claim about what the parent has read.
+ * "Those are all weekend finds" is false if the only weekend find Hale ever composed
+ * never reached the phone, and D23 does not let Hale anchor a question on a send that
+ * did not happen.
+ */
+export async function loadWeekdayCareContext(
+  database: Database,
+  familyId: string,
+): Promise<WeekdayCareContext> {
+  const [stated, askedBefore, weekendFindSent] = await Promise.all([
+    loadWeekdayCare(database, familyId),
+    anySendWith(database, familyId, [WEEKDAY_CARE_ASK_TEMPLATE_KEY], CONSUMED_SEND_STATUSES),
+    anySendWith(
+      database,
+      familyId,
+      [WEATHER_SWAP_TEMPLATE_KEY, INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY],
+      SENT_STATUSES,
+    ),
+  ]);
+  return { stated, askedBefore, weekendFindSent };
 }
