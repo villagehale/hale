@@ -5,6 +5,7 @@ import type { Database } from '@hale/db';
 import { recordAgentRun } from '~/lib/agent-run';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
+import { type SynthesisCronResult, runMemorySynthesis } from '~/lib/memory/synthesis';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
 import { buildCronGuardDeps } from './guards';
 import { buildDistillTools, buildInferenceTools } from './inference-tools';
@@ -27,8 +28,20 @@ import { loadInferMemorySkill } from './skill';
 const MAX_STEPS = 8;
 const MAX_TOKENS = 1024;
 
+/** What ONE family's agent leg needs. */
 export interface InferenceDeps {
   client: AgentClient;
+}
+
+/**
+ * What the whole window needs: the agent leg's client, plus the deterministic
+ * memory-integrity pass that rides the same slot (VIL-354). Injected for the same
+ * reason the client is — and NON-nullable, because "the pass did not run" is not an
+ * outcome this cron is allowed to have silently. Observing without closing is the
+ * pass's own `applied: false`, never a withheld dependency (rule #11).
+ */
+export interface InferenceCronDeps extends InferenceDeps {
+  synthesize: typeof runMemorySynthesis;
 }
 
 export interface InferenceResult {
@@ -43,6 +56,10 @@ export function defaultInferenceDeps(): InferenceDeps {
   // budget bounds each request so one stall cannot eat the window (audit P1-7).
   anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return { client: anthropicClient };
+}
+
+export function defaultInferenceCronDeps(): InferenceCronDeps {
+  return { ...defaultInferenceDeps(), synthesize: runMemorySynthesis };
 }
 
 export async function runInferenceForFamily(
@@ -123,6 +140,8 @@ export interface InferenceCronResult {
     | { familyId: string; result: InferenceResult }
     | { familyId: string; error: string }
   >;
+  /** The memory-integrity pass, which runs whether or not the agent leg does. */
+  synthesis: SynthesisCronResult;
   /** Present when the provider pre-flight cancelled the window (VIL-255). */
   aborted?: AbortedWindow;
 }
@@ -139,12 +158,20 @@ export interface InferenceCronResult {
  */
 export async function runInferenceCron(
   database: Database,
-  deps: InferenceDeps = defaultInferenceDeps(),
+  deps: InferenceCronDeps = defaultInferenceCronDeps(),
   now: Date = new Date(),
 ): Promise<InferenceCronResult> {
   const familyIds = await selectFamiliesForRun(database, MAX_FAMILIES_PER_RUN.inference);
+
+  // BEFORE the agent leg, so the inferencer's memory snapshot reads a tidied family
+  // rather than the duplicates it is about to reason over — and OUTSIDE the provider
+  // pre-flight below, deliberately: the pass makes zero model calls, so inheriting the
+  // LLM kill switch would stop memory-integrity work because Anthropic's balance is
+  // low. No provider, no provider gate.
+  const synthesis = await deps.synthesize(database, familyIds, now);
+
   if (familyIds.length === 0) {
-    return { processed: 0, results: [] };
+    return { processed: 0, results: [], synthesis };
   }
 
   const preflight = await providerPreflight(database, 'memory_inference', deps.client, now);
@@ -152,6 +179,7 @@ export async function runInferenceCron(
     return {
       processed: 0,
       results: [],
+      synthesis,
       aborted: { ...preflight.abort, skipped: familyIds.length },
     };
   }
@@ -166,5 +194,5 @@ export async function runInferenceCron(
     }
   }
 
-  return { processed: familyIds.length, results };
+  return { processed: familyIds.length, results, synthesis };
 }

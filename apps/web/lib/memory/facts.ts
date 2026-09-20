@@ -17,6 +17,10 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
  * what makes this the only correct way in rather than the polite one: a writer that
  * skips the supersede now fails loudly instead of quietly leaving Hale holding two
  * contradictory truths.
+ *
+ * `writeFact` and `closeFacts` below are the COMPLETE set of writers to `valid_until`:
+ * grep the repo and every other mention of the column is an `IS NULL` read filter.
+ * Keeping it that way is what lets every reader say "live" by one predicate.
  */
 
 /** A fact below this confidence is a hunch. Hunches are refused, never written. */
@@ -116,6 +120,65 @@ export async function writeFact(writer: FactWriter, write: FactWrite): Promise<F
   }
 
   return { factId, supersededFactIds };
+}
+
+/** What a close actually did. The ids asked for but NOT closed are the caller's
+ *  outcome to name — a race or a second run in the same night, never a silent
+ *  success (rule #11). */
+export interface CloseResult {
+  closedFactIds: string[];
+  alreadyClosedFactIds: string[];
+}
+
+export interface FactClose {
+  factIds: string[];
+  closedAt: Date;
+  /** The row that replaces these, or null when nothing does — a retirement rather
+   *  than a merge. Written verbatim, so a merge leaves a followable chain. */
+  supersededBy: string | null;
+}
+
+/**
+ * Ends the live interval of facts named BY ID — the second and last way `valid_until`
+ * is ever written. `writeFact` closes by IDENTITY (family, child, type, key) because a
+ * new value is arriving; this closes rows a caller has already elected, with nothing
+ * arriving to take their place.
+ *
+ * They are not folded together. The supersede/insert/back-stamp ordering above exists
+ * because an insert is coming, and a by-id close has no insert to order against;
+ * sharing one statement would mean an argument that switches the WHERE clause, which
+ * is two functions wearing one name.
+ *
+ * `valid_until IS NULL` in the WHERE is what makes the pass idempotent without a
+ * marker column: a retired row stays retired, at the instant it was first retired, so
+ * running twice in one night cannot walk a retirement date forward. The `greatest()`
+ * clamp is the same one `writeFact` uses — an out-of-order close must not end an
+ * interval before it opened. Call inside a transaction when the close shares one with
+ * an audit row (rule #6).
+ */
+export async function closeFacts(writer: FactWriter, close: FactClose): Promise<CloseResult> {
+  if (close.factIds.length === 0) return { closedFactIds: [], alreadyClosedFactIds: [] };
+
+  const closed = await writer
+    .update(schema.familyMemoryFacts)
+    .set({
+      validUntil: sql`greatest(${schema.familyMemoryFacts.validFrom}, ${close.closedAt})`,
+      supersededBy: close.supersededBy,
+    })
+    .where(
+      and(
+        inArray(schema.familyMemoryFacts.id, close.factIds),
+        isNull(schema.familyMemoryFacts.validUntil),
+      ),
+    )
+    .returning({ id: schema.familyMemoryFacts.id });
+
+  const closedFactIds = closed.map((row) => row.id);
+  const closedSet = new Set(closedFactIds);
+  return {
+    closedFactIds,
+    alreadyClosedFactIds: close.factIds.filter((id) => !closedSet.has(id)),
+  };
 }
 
 /**
