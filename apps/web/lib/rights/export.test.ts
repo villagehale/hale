@@ -67,6 +67,15 @@ function fakeDb(args: {
     lastAnsweredAt: Date | null;
   };
   checkInNotes?: { notedOn: string; note: string; expiresAt: Date }[];
+  activityReviews?: {
+    subjectSource: 'place' | 'civic_venue';
+    subjectRef: string;
+    areaKey: string;
+    childAgeBand: string | null;
+    verdict: string;
+    tags: string[];
+    createdAt: Date;
+  }[];
 }) {
   const whereFamilyIds: unknown[] = [];
 
@@ -118,9 +127,15 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue(args.checkInNotes ?? []) };
   });
 
+  const activityReviewsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.activityReviews ?? []) };
+  });
+
   // Route each select to the right terminal by call order: family, children,
   // members, the village-saves join, this parent's assistant grants, the registration
-  // preparation join, the watched spots, then the evening check-in prefs and notes.
+  // preparation join, the watched spots, the evening check-in prefs and notes, then the
+  // household's activity verdicts.
   let selectCall = 0;
   const select = vi.fn(() => {
     const which = selectCall++;
@@ -132,7 +147,8 @@ function fakeDb(args: {
     if (which === 5) return { from: () => ({ innerJoin: () => ({ where: preparationsWhere }) }) };
     if (which === 6) return { from: () => ({ where: watchesWhere }) };
     if (which === 7) return { from: () => ({ where: checkInPrefsWhere }) };
-    return { from: () => ({ where: checkInNotesWhere }) };
+    if (which === 8) return { from: () => ({ where: checkInNotesWhere }) };
+    return { from: () => ({ where: activityReviewsWhere }) };
   });
 
   const values = vi.fn().mockResolvedValue(undefined);
@@ -396,12 +412,12 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Nine scoped selects (family, children, members, village saves, this parent's
-    // assistant grants, the registration preparations, the watched spots and the
-    // evening check-in prefs and notes) each recorded a where-condition; none was
-    // left unscoped. (The condition objects are opaque Drizzle SQL, so we assert on
-    // arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(9);
+    // Ten scoped selects (family, children, members, village saves, this parent's
+    // assistant grants, the registration preparations, the watched spots, the evening
+    // check-in prefs and notes, and the activity verdicts) each recorded a
+    // where-condition; none was left unscoped. (The condition objects are opaque
+    // Drizzle SQL, so we assert on arity — every select passed through a where.)
+    expect(spies.whereFamilyIds).toHaveLength(10);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 
@@ -446,6 +462,50 @@ describe('assembleFamilyExport', () => {
         },
       ],
     });
+  });
+
+  /**
+   * FAMILY-SCOPED, unlike the day notes above, and the export test is where that choice
+   * is pinned: a verdict is a household's position on a public venue with no free text,
+   * no child name and no teen or sensitive placement behind it, so there is nothing in
+   * the row a co-parent may not see.
+   */
+  it("includes the household's activity verdicts, with no sentence in them", async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      activityReviews: [
+        {
+          subjectSource: 'place',
+          subjectRef: 'places/riverdale-library',
+          areaKey: 'M4K',
+          childAgeBand: 'toddler',
+          verdict: 'worth_it',
+          tags: ['hard_parking'],
+          createdAt: new Date('2026-09-16T00:30:00.000Z'),
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.activityReviews).toEqual([
+      {
+        subjectSource: 'place',
+        subjectRef: 'places/riverdale-library',
+        areaKey: 'M4K',
+        childAgeBand: 'toddler',
+        verdict: 'worth_it',
+        tags: ['hard_parking'],
+        createdAt: '2026-09-16T00:30:00.000Z',
+      },
+    ]);
+    // There is no field for the parent's own sentence, and there must never be one.
+    expect(JSON.stringify(doc.activityReviews)).not.toContain('note');
   });
 
   it('says a household has never been asked rather than implying a default', async () => {

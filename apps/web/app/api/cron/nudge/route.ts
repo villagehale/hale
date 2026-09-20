@@ -11,6 +11,9 @@ import { runVillageIntroSweep } from '~/lib/village/intros/run';
 import { runDepartureNoticeRedrive } from '~/lib/channel/coparent/departure-redrive';
 import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
 import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/twilio/deps';
+import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
+import { runReviewCapture, reviewVerdictClient } from '~/lib/reviews/capture';
+import { createVerdictReader } from '~/lib/reviews/verdict';
 
 // Node runtime: the sweep reaches the voice client and the channel seam, neither of
 // which runs on the edge runtime.
@@ -61,6 +64,14 @@ export const maxDuration = 300;
  * each is a send another module already owed and quiet hours deferred, reaching the same
  * function, spending the same key and writing the same audit verb.
  *
+ * THE REVIEW CAPTURE runs after every one of them, and it is the only stage that neither
+ * interrupts a parent nor discharges a debt: it sends nothing at all, it only reads what
+ * came back to an ask another leg already made. So its failure must not cost a send, and
+ * last is where that is true. It carries its own dark-launch flag
+ * (ACTIVITY_REVIEWS_ENABLED) on top of F14's and the ask's, because arming the messaging
+ * surface for a household must not silently start contributing that household's opinions
+ * to other families' recommendations.
+ *
  * THE FOLLOW-UP SWEEP rides here for the same reason and runs LAST, which is also its
  * priority. It is the only stage that asks about something already over, so it is the
  * one whose deferral costs a family nothing — and running after the others means a
@@ -79,6 +90,11 @@ export const GET = cronRoute('nudge', async () => {
     const departureNotices = await runDepartureNoticeRedrive(db(), {
       ports: departureNoticePorts(db()),
     });
+    const reviewCapture = await runReviewCapture(db(), {
+      askOpen: activityFollowupAskOpen,
+      verdict: createVerdictReader(reviewVerdictClient),
+      now: new Date(),
+    });
     return NextResponse.json(
       {
         ok: true,
@@ -90,6 +106,7 @@ export const GET = cronRoute('nudge', async () => {
         activityFollowUps,
         welcomeCards,
         departureNotices,
+        reviewCapture,
       },
       { status: 200 },
     );

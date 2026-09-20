@@ -11,6 +11,25 @@ import { SENT_STATUSES } from '~/lib/channel/ledger';
 export const ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY = 'followup:activity';
 
 /**
+ * The dedupe key the ask is claimed under — and the ONLY thing on the outbound row that
+ * says WHICH placement Hale asked about.
+ *
+ * A builder and a reader rather than two template literals, because the capture pass
+ * reads back what the sweep wrote: with the format stated twice, renaming it would stop
+ * capture silently rather than fail a build.
+ */
+export function activityFollowupAskDedupeKey(familyEventId: string): string {
+  return `${ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY}:${familyEventId}`;
+}
+
+/** The placement id inside a key this module built, or null for anything else. */
+export function familyEventIdFromAskDedupeKey(dedupeKey: string | null): string | null {
+  if (!dedupeKey) return null;
+  const prefix = `${ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY}:`;
+  return dedupeKey.startsWith(prefix) ? dedupeKey.slice(prefix.length) || null : null;
+}
+
+/**
  * "How did Mia get on at swim?" — OPEN while that is Hale's last word to this parent.
  *
  * WHY IT HAS TO EXIST AT ALL. The ask has been going out since VIL-231 and has never

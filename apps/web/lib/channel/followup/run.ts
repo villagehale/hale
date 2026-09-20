@@ -7,6 +7,10 @@ import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY,
+  activityFollowupAskDedupeKey,
+} from '~/lib/channel/followup/ask-open';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import {
   type OutboundGatePorts,
@@ -577,8 +581,8 @@ async function runActivityFollowups(
               await deps.loadInboundSince(database, family.familyId, event.startsAt),
               event.title,
             ),
-          templateKey: 'followup:activity',
-          dedupeKey: `followup:activity:${event.eventId}`,
+          templateKey: ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY,
+          dedupeKey: activityFollowupAskDedupeKey(event.eventId),
           now,
         });
         if (!tally(result, outcome)) continue;
