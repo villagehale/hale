@@ -222,12 +222,13 @@ const DRAFT_INPUT = {
   sourceConfidence: 0.92,
   matchedEventRef: null,
   title: 'Swim Level 2',
+  location: 'the Leisure Centre',
   now: NOW,
 };
 
 describe('bookingDraft', () => {
-  it('accepts a clean confirmation - the POSITIVE CONTROL for the four refusals below', () => {
-    // Without this, four absence assertions pass on a function that refuses everything.
+  it('accepts a clean confirmation - the POSITIVE CONTROL for the five refusals below', () => {
+    // Without this, five absence assertions pass on a function that refuses everything.
     expect(bookingDraft(DRAFT_INPUT)).toEqual({
       ok: true,
       draft: {
@@ -240,7 +241,7 @@ describe('bookingDraft', () => {
     });
   });
 
-  it('names each of the four refusals separately, never one bucket for all of them', () => {
+  it('names each of the five refusals separately, never one bucket for all of them', () => {
     // A discriminated union rather than `| null`, so the cron summary can say WHICH floor
     // a confirmation fell at (rule #11).
     expect(bookingDraft({ ...DRAFT_INPUT, kind: 'new_event' })).toEqual({
@@ -260,6 +261,15 @@ describe('bookingDraft', () => {
         sourceConfidence: BOOKING_CONFIDENCE_FLOOR - 0.01,
       }),
     ).toEqual({ ok: false, reason: 'below_confidence' });
+    // The renderer substitutes its OWN words when a vendor's title sanitises to nothing,
+    // and those words are the object of a sentence, not the name of a class. Booking them
+    // would have Hale ask "how did a spot go?" four days later - and the offer path has
+    // already refused this same email on the same emptiness, so the row would outlive a
+    // CTA that was never printed.
+    expect(bookingDraft({ ...DRAFT_INPUT, title: '' })).toEqual({
+      ok: false,
+      reason: 'no_title',
+    });
   });
 
   it('refuses a first session already in the past, and an unparseable one', () => {
@@ -352,6 +362,38 @@ describe('the booking write', () => {
     // MUTATION: move the write above `ports.transport.send` and both of these go red.
     await expect(bookingRows()).resolves.toHaveLength(0);
     await expect(offerRows()).resolves.toHaveLength(0);
+  });
+
+  it('writes NO row for a receipt whose class has no name, and still sends the text', async () => {
+    // `Reminder:` is a vendor label and nothing else, so `sanitizedTitle` leaves nothing
+    // behind it. The text goes out in Hale's own words; the row does not exist to be
+    // asked about.
+    const h = harness({ classification: classified({ title: 'Reminder:' }) });
+    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'no_title' });
+
+    await expect(bookingRows()).resolves.toHaveLength(0);
+    await expect(offerRows()).resolves.toHaveLength(0);
+    expect(h.transport.sent).toHaveLength(1);
+    // No row behind it, so no question in front of it.
+    expect(h.transport.sent[0]?.body).not.toContain('?');
+  });
+
+  it("folds the row's place through the same one function the offer row uses", async () => {
+    // The brief's rule for this row is that its strings go through the fold the wire uses:
+    // they reach a parent later, in a reminder. Asserted as an EQUALITY with the offer row
+    // rather than against a hand-copied expectation, so the two can never drift apart.
+    const h = harness({
+      classification: classified({
+        location:
+          'the \u201cRiverside\u201d Leisure Centre \u2014 Pool 2, 1200 Lakeshore Road West, Brookfield',
+      }),
+    });
+    await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'recorded' });
+
+    const [booking] = await bookingRows();
+    const [offer] = await offerRows();
+    expect(booking?.location).toBe(offer?.location);
+    expect((booking?.location ?? '').length).toBeLessThanOrEqual(60);
   });
 
   it('is idempotent on (connection, message): a re-fired sweep records nothing twice', async () => {
@@ -457,6 +499,56 @@ describe('record_failed', () => {
     const audit = await auditRows();
     expect(audit.filter((row) => row.actionTaken === 'email_alert_sent')).toHaveLength(1);
     expect(audit.filter((row) => row.actionTaken === 'activity_booking_recorded')).toHaveLength(0);
+  });
+  it('is the BOOKING write and never the audit: a row that exists is never reported as missing', async () => {
+    // `record_failed` says, in its own definition, "the text went, the row did not", and
+    // the console line says the ask will not happen. Both are lies if what threw was the
+    // audit insert AFTER the row landed - the ask WILL happen, off a booking the summary
+    // counted as absent. So the audit sits outside the booking's catch and a failure
+    // there propagates, exactly as the alert's own audit row already does.
+    const brokenAudit = new Proxy(db.database, {
+      get(target, prop, receiver) {
+        if (prop !== 'insert') return Reflect.get(target, prop, receiver);
+        return (table: unknown) => {
+          const builder = target.insert(table as Parameters<typeof target.insert>[0]);
+          if (table !== schema.auditLog) return builder;
+          return new Proxy(builder, {
+            get(inner, key, innerReceiver) {
+              if (key !== 'values') return Reflect.get(inner, key, innerReceiver);
+              return (row: { actionTaken?: string }) => {
+                if (row.actionTaken === 'activity_booking_recorded') {
+                  throw new Error('audit insert exploded');
+                }
+                return (inner as typeof builder).values(
+                  row as Parameters<typeof builder.values>[0],
+                );
+              };
+            },
+          });
+        };
+      },
+    });
+
+    const h = harness();
+    await expect(
+      alertParentForEmail(
+        brokenAudit,
+        {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          integrationId: INTEGRATION,
+          messageId: 'm1',
+          envelope: ENVELOPE,
+          timeZone: 'America/Toronto',
+          now: NOW,
+        },
+        h.ports,
+      ),
+    ).rejects.toThrow('audit insert exploded');
+
+    // THE FAR-SIDE ARTIFACT: the row is there. Reporting `record_failed` here would have
+    // been a counter saying the opposite of the table.
+    await expect(bookingRows()).resolves.toHaveLength(1);
   });
 });
 

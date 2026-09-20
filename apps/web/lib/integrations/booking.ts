@@ -32,7 +32,15 @@ export const BOOKING_CONFIDENCE_FLOOR = 0.7;
  */
 export type BookingDraftResult =
   | { ok: true; draft: BookingDraft }
-  | { ok: false; reason: 'not_a_booking' | 'teen_content' | 'no_first_session' | 'below_confidence' };
+  | {
+      ok: false;
+      reason:
+        | 'not_a_booking'
+        | 'teen_content'
+        | 'no_first_session'
+        | 'below_confidence'
+        | 'no_title';
+    };
 
 export interface BookingDraft {
   /** The sender's bare domain — never the display name, never the local part. */
@@ -56,16 +64,21 @@ export interface BookingDraft {
  * discipline as `emailAlertOfferDraft`: one pure function, two readers, so what the text
  * said and what the row holds can never disagree.
  *
- * FOUR FLOORS, and they are subtractions rather than checks:
+ * FIVE FLOORS, and they are subtractions rather than checks:
  *   · Not a `booking_confirmation` → there is no receipt here.
  *   · `teenContent` → NO ROW AT ALL. The pipeline has already genericised the title, so
  *     there is no activity left to record; recording the generic one would let a
  *     follow-up ask about a 13+ child's activity in four days' time on the strength of a
  *     title Hale deliberately erased (rule #1). The absence of the row IS the absence of
  *     the follow-up — the same construction `emailAlertOfferDraft` uses.
- *   · No concrete FUTURE first session → nothing to remind about and nothing to ask about.
  *   · Below {@link BOOKING_CONFIDENCE_FLOOR} → a wrong extraction here costs a strange
  *     question on a Tuesday, not a wrong sentence today.
+ *   · NO NAME → no row. A vendor title that survives sanitising as nothing leaves the
+ *     renderer printing Hale's own words ("a spot"), which are the object of a sentence
+ *     and not the name of a class; booking them asks "how did a spot go?" four days
+ *     later. `emailAlertOfferDraft` refuses the same email on the same emptiness, so this
+ *     floor is also what keeps a row from outliving a CTA that was never printed.
+ *   · No concrete FUTURE first session → nothing to remind about and nothing to ask about.
  */
 export function bookingDraft(input: {
   kind: ExtractionKind;
@@ -74,12 +87,14 @@ export function bookingDraft(input: {
   teenContent: boolean;
   sourceConfidence: number;
   matchedEventRef: CorrelatedEventRef | null;
-  /** THE TITLE THE TEXT SAID — the renderer's own `title || GENERIC_TITLE[kind]`, passed
-   * in rather than re-folded here. A second copy of that fold would be a booking titled
-   * differently from the message that announced it, and it is also what makes this string
-   * non-empty by construction: the renderer substitutes its own words when the vendor's
-   * title survives sanitising as nothing at all. */
+  /** THE VENDOR'S OWN NAME FOR THE CLASS, through the renderer's `sanitizedTitle` and
+   * NOT through its `|| GENERIC_TITLE[kind]` fallback — folded by the caller rather than
+   * re-folded here, because a second copy of that fold is a booking titled differently
+   * from the message that announced it. Empty is a refusal, not a substitution. */
   title: string;
+  /** The place, through the SAME fold the offer row keeps (`gsm7`, clamped), for the same
+   * reason: this string reaches a parent later, in a reminder. */
+  location: string | null;
   now: Date;
 }): BookingDraftResult {
   if (input.kind !== 'booking_confirmation') return { ok: false, reason: 'not_a_booking' };
@@ -87,6 +102,7 @@ export function bookingDraft(input: {
   if (input.sourceConfidence < BOOKING_CONFIDENCE_FLOOR) {
     return { ok: false, reason: 'below_confidence' };
   }
+  if (input.title === '') return { ok: false, reason: 'no_title' };
   const firstSessionAt = instant(input.event.newTime);
   if (firstSessionAt === null || firstSessionAt.getTime() <= input.now.getTime()) {
     return { ok: false, reason: 'no_first_session' };
@@ -97,7 +113,7 @@ export function bookingDraft(input: {
       providerHost: senderHost(input.from),
       title: input.title,
       firstSessionAt,
-      location: input.event.location,
+      location: input.location,
       eventId:
         input.matchedEventRef?.table === 'family_events' ? input.matchedEventRef.id : null,
     },

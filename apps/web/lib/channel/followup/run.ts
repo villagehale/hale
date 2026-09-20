@@ -801,8 +801,15 @@ async function readDueActivities(
     // A booking binds no child, for the reason the offer path gives: `childRef` is
     // suggestive and never a binding, and a guess here would be a guess handed to the
     // teen age gate. A teen's confirmation writes no booking row at all, which is what
-    // makes this null safe rather than permissive.
+    // makes the null safe rather than permissive.
     childId: null,
+    // `sensitive` is a column `family_events` carries and `activity_bookings` does not, so
+    // a booking reaches `isPrivateEvent` as an ordinary class and that screen can only
+    // ever pass it. Said plainly rather than implied: a health-flavoured receipt that
+    // clears triage IS asked about. The bound is that it goes to the parent who already
+    // received a text naming the same title, and the voice is handed that title and
+    // nothing else - and closing it properly needs a sensitivity signal the extraction
+    // contract does not carry today, not a default invented here.
     sensitive: false,
   }));
   // Oldest first across BOTH sources: with one slot a day, the item closest to falling

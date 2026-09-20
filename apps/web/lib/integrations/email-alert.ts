@@ -124,6 +124,8 @@ export const BOOKING_OUTCOMES = [
   'teen_content',
   'no_first_session',
   'below_confidence',
+  // The vendor named no class Hale can repeat. The text still went, in Hale's own words.
+  'no_title',
   'record_failed',
 ] as const;
 
@@ -440,15 +442,20 @@ async function recordBooking(
     teenContent: extraction.teenContent,
     sourceConfidence: extraction.sourceConfidence,
     matchedEventRef: extraction.matchedEventRef,
-    // The string the TEXT said, through the renderer's own fold and its own fallback, so
-    // the row and the message can never name the class differently.
-    title: renderedTitle(extraction.event.title, extraction.kind),
+    // The VENDOR's own name for the class, through the renderer's own fold — so the row
+    // and the message can never name the class differently — but NOT through its
+    // `|| GENERIC_TITLE` fallback: those words are the object of the sentence, not a name,
+    // and `bookingDraft` refuses an email that leaves nothing behind them.
+    title: sanitizedTitle(extraction.event.title),
+    // The same fold the offer row's place goes through, and the same function.
+    location: foldedPlace(extraction.event.location),
     now: input.now,
   });
   if (!draft.ok) return draft.reason;
 
+  let recorded: Awaited<ReturnType<typeof recordActivityBooking>>;
   try {
-    const { outcome, bookingId } = await recordActivityBooking(database, {
+    recorded = await recordActivityBooking(database, {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
       integrationId: input.integrationId,
@@ -456,19 +463,6 @@ async function recordBooking(
       channelMessageId: input.channelMessageId,
       draft: draft.draft,
     });
-    // Rule #6, and only for the pass that actually wrote it: a conflicted redrive changed
-    // nothing, and audit_log is append-only, so a second row would be a second claim.
-    if (bookingId !== null) {
-      await database.insert(schema.auditLog).values({
-        familyId: input.familyId,
-        actor: 'system',
-        actionTaken: 'activity_booking_recorded',
-        targetTable: 'activity_bookings',
-        targetId: bookingId,
-        after: { offered: input.message.endsWith(BOOKING_CTA) },
-      });
-    }
-    return outcome;
   } catch (err) {
     // The CLASS only — a rejection here can carry a title or an address in its message
     // (rule #1).
@@ -478,6 +472,26 @@ async function recordBooking(
     );
     return 'record_failed';
   }
+
+  // Rule #6, and only for the pass that actually wrote it: a conflicted redrive changed
+  // nothing, and audit_log is append-only, so a second row would be a second claim.
+  //
+  // OUTSIDE the catch above, deliberately. `record_failed` means "the text went, the row
+  // did not"; a failure here is the opposite — the row is there and the ask WILL happen —
+  // so reporting it as a missing booking would be a counter saying the opposite of the
+  // table. It propagates instead, exactly as this module's own `email_alert_sent` audit
+  // already does.
+  if (recorded.bookingId !== null) {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'activity_booking_recorded',
+      targetTable: 'activity_bookings',
+      targetId: recorded.bookingId,
+      after: { offered: input.message.endsWith(BOOKING_CTA) },
+    });
+  }
+  return recorded.outcome;
 }
 
 /** The title the renderer put on the wire: the vendor's own, folded, or Hale's words when
@@ -660,15 +674,25 @@ export function emailAlertOfferDraft(input: {
   if (startsAt === null || startsAt.getTime() <= input.now.getTime()) return null;
   const title = sanitizedTitle(input.event.title);
   if (title === '') return null;
-  // The extraction's own place, folded and clamped like everything else this file keeps:
-  // the row's strings reach a wire later, in a reminder. Unlike {@link venue}, a digit is
-  // allowed — a room number on your own calendar is the useful half of an address, and
-  // that rule is about what goes out in a text, not about what the family holds.
-  const place = clamp(gsm7(input.event.location ?? ''), TITLE_MAX);
+  const place = foldedPlace(input.event.location);
   // The EFFECTIVE kind on the row too, so a dark booking is a `new_event` offer in the
   // ledger exactly as it is on the wire — and so a lit one is the thing `stampBookingEvent`
   // can recognise when the parent says yes.
-  return { kind, title, startsAt, location: place === '' ? null : place };
+  return { kind, title, startsAt, location: place };
+}
+
+/**
+ * The place as a ROW keeps it — folded and clamped like everything else this file writes
+ * down, because these strings reach a wire later, in a reminder or in an ask.
+ *
+ * ONE function, read by the offer row and by the booking row, so the two rows born from
+ * one email can never hold the place differently. Unlike {@link venue} a digit is allowed:
+ * a room number on your own calendar is the useful half of an address, and that rule is
+ * about what goes out in a text rather than about what the family holds.
+ */
+function foldedPlace(location: string | null): string | null {
+  const place = clamp(gsm7(location ?? ''), TITLE_MAX);
+  return place === '' ? null : place;
 }
 
 /** WHICH time field is the occasion, per kind. A move's destination, a new date's date,
