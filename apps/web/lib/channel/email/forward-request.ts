@@ -10,22 +10,40 @@ import type { ReplyLanguage } from '~/lib/channel/language';
  * where this product lives — a parent asks for their address the way they ask for a
  * calendar link, and Hale answers with the real thing rather than a sentence about one.
  *
- * WHY THIS MATCHER IS NOUN-ANCHORED WHERE connect/detect.ts IS VERB-ANCHORED, which is
- * the one place the two grammars deliberately part. That matcher needs a connect VERB in
- * front of its noun, and refuses a leading auxiliary, because "calendar" is a word a
- * family uses ten times a week about the thing on the fridge — so a bare noun, and any
- * question about one, is usually about its CONTENTS. "Forwarding address" is not a thing
- * in a household's world at all: it names a credential this product issues and nothing
- * else. So the noun alone is the evidence, and "what's my forwarding address" — the way
- * every parent will actually ask — is claimed rather than sent to the coach.
+ * WHY THIS MATCHER IS NOUN-ANCHORED WHERE connect/detect.ts IS VERB-ANCHORED, and what
+ * that costs. That matcher needs a connect VERB in front of its noun because "calendar"
+ * is a word a family uses ten times a week about the thing on the fridge, so a bare noun
+ * is usually about its CONTENTS. "Forwarding address" is rare enough that "what's my
+ * forwarding address", with no verb at all, is how every parent will actually ask, and
+ * has to be claimed. But the phrase is NOT one this product owns, and the first cut of
+ * this matcher assumed it was: Canada Post forwards mail, a camp has a forwarding
+ * address, and "stop forwarding" is an ordinary sentence about an ordinary inbox. Reading
+ * the bare word `forwarding` as a turn-off instruction made five natural sentences revoke
+ * a live credential.
+ *
+ * So the noun is evidence only when all three of these hold, and each is its own
+ * subtraction below — the discipline connect/detect.ts's disconnect half already keeps:
+ *
+ *  - THE WHOLE NOUN, never the bare word: "forwarding address" / "adresse de transfert",
+ *    never `forwarding` or `transfert` alone ({@link ADDRESS_NOUN}, which BOTH halves now
+ *    read). That word belongs to the daycare's emails and the school portal at least as
+ *    often as it belongs to us.
+ *  - THE TEXTER'S OWN: a third-person possessive in front of the noun makes it somebody
+ *    else's — "email the forms to THEIR forwarding address" ({@link SOMEBODY_ELSES}).
+ *  - THE ASK ENDS THERE: a sentence that keeps going past the noun is ABOUT the address,
+ *    not a request for one — "my forwarding address FOR MAIL is changing next month"
+ *    ({@link ENDS_THE_ASK}).
+ *
+ * Each subtraction costs some honest ask one coach turn, and buys back a write or a
+ * revoke that nobody asked for. That is the direction this matcher always errs in.
  *
  * The two halves below are disjoint BY CONSTRUCTION, the same way the connector pair is:
  * every verb the turn-off half reads is inside the asking half's {@link NEGATION} class,
  * so no body can be claimed by both and their order can never matter.
  *
- * IT READS NO BARE WORD. Both halves require the noun, so this handler can never claim a
- * YES or a NO that belongs to somebody else's open question, and it never consults the
- * open-question list — there is nothing for it to be an answer to.
+ * IT READS NO BARE WORD. Both halves require the whole noun, so this handler can never
+ * claim a YES or a NO that belongs to somebody else's open question, and it never
+ * consults the open-question list — there is nothing for it to be an answer to.
  */
 
 /** Mail, as a parent names the thing they forward. */
@@ -42,7 +60,36 @@ const ADDRESS_NOUN = [
   'adresse\\s+pour\\s+(?:transf[ée]rer|faire\\s+suivre)',
 ].join('|');
 
-const ADDRESS_PATTERN = new RegExp(`\\b(?:${ADDRESS_NOUN})\\b`, 'i');
+/**
+ * NOT THIS PARENT'S ADDRESS. A third-person possessive in front of the noun hands it to
+ * somebody else — "the camp said to email the forms to THEIR forwarding address", "the
+ * camp's forwarding address is different from ours" — and the only address this handler
+ * can answer with is the family's own.
+ *
+ * Tested against the WHOLE BODY rather than written as a lookbehind on the patterns
+ * below, because a lookbehind is defeated by one word: in "their EMAIL forwarding
+ * address" the noun can still be reached from the right of the possessive. Second person
+ * is deliberately absent — in this thread "your forwarding address" is addressed to Hale,
+ * and Hale's is the one being asked for.
+ */
+const SOMEBODY_ELSES = new RegExp(
+  `(?:\\b(?:their|his|her|its|leur|leurs|son|sa|ses)|['’]s)\\s+(?:${MAIL}\\s+)?(?:${ADDRESS_NOUN})\\b`,
+  'i',
+);
+
+/**
+ * THE ASK ENDS AT THE NOUN — an allow-list, not a list of banned tails, because the tails
+ * that mean "this sentence is about an address" are open-ended ("for mail", "on the
+ * school portal", "of the newsletter", "de la garderie") while the words that may follow
+ * a real ask are a closed handful.
+ *
+ * A request stops at the credential and is then punctuated, or trails off with one of the
+ * politeness words a parent adds. Anything else is a clause, and a clause means the
+ * address is the subject of a sentence rather than the object of an ask.
+ */
+const ENDS_THE_ASK = String.raw`(?=\s*(?:[.,;:!?)]|$)|\s+(?:again|please|pls|svp|encore)\b)`;
+
+const ADDRESS_PATTERN = new RegExp(`\\b(?:${ADDRESS_NOUN})\\b${ENDS_THE_ASK}`, 'i');
 
 /**
  * The other way a parent asks for the same thing, without ever naming the noun: "what
@@ -51,7 +98,7 @@ const ADDRESS_PATTERN = new RegExp(`\\b(?:${ADDRESS_NOUN})\\b`, 'i');
  * "I forwarded you the school email" must both fall through to the coach.
  */
 const WHERE_DO_I_FORWARD = new RegExp(
-  `\\b(?:what|which|where)(?:'?s)?\\s+(?:${MAIL}|address)?\\s*(?:do|can|should|may)?\\s*(?:i|we)\\s+forward\\s+(?:${MAIL}\\s+)?to\\b`,
+  `\\b(?:what|which|where)(?:'?s)?\\s+(?:${MAIL}|address)?\\s*(?:do|can|should|may)?\\s*(?:i|we)\\s+forward\\s+(?:${MAIL}\\s+)?to\\b${ENDS_THE_ASK}`,
   'i',
 );
 
@@ -79,8 +126,23 @@ const NEGATION = new RegExp(
  * themselves. */
 const TURN_OFF_NEGATION = /\b(?:don['’]?t|do not|never|ne\s+pas|jamais)\b/i;
 
+/**
+ * THE WHOLE NOUN HERE TOO, and this line is the blocker VIL-352 round 4 found.
+ *
+ * The alternation used to end `|forwarding|transferts?`, so an explicit turn-off verb in
+ * front of the bare word was enough to delete a live token: "can you stop forwarding me
+ * these emails from the daycare", "should I turn off forwarding on the school portal",
+ * "I need to delete the forwarding rule in gmail". Every one of those is a sentence about
+ * somebody else's inbox, and every one of them revoked. The asking half was already
+ * anchored on the full noun; this half simply was not, and the doc above claimed
+ * otherwise.
+ *
+ * The price is that "turn off forwarding" — an honest instruction — now costs one coach
+ * turn. That is the right side to be wrong on when the other side is a destroyed
+ * credential, and it is the same call connect/detect.ts's disconnect half makes.
+ */
 const TURN_OFF_PATTERN = new RegExp(
-  `\\b${TURN_OFF_VERB}(?:\\s+(?:my|our|the|mon|ma|notre|le|la|les))?\\s+(?:${ADDRESS_NOUN}|forwarding|transferts?)\\b`,
+  `\\b${TURN_OFF_VERB}(?:\\s+(?:my|our|the|mon|ma|notre|le|la|les))?\\s+(?:${ADDRESS_NOUN})\\b${ENDS_THE_ASK}`,
   'i',
 );
 
@@ -90,6 +152,7 @@ const TURN_OFF_PATTERN = new RegExp(
 export type ForwardAddressAsk = 'address' | 'turn_off';
 
 export function matchForwardAddressRequest(body: string): ForwardAddressAsk | null {
+  if (SOMEBODY_ELSES.test(body)) return null;
   if (!TURN_OFF_NEGATION.test(body) && TURN_OFF_PATTERN.test(body)) return 'turn_off';
   if (NEGATION.test(body)) return null;
   return ADDRESS_PATTERN.test(body) || WHERE_DO_I_FORWARD.test(body) ? 'address' : null;
