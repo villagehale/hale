@@ -42,6 +42,8 @@ import {
 import { CONNECTOR_CONNECTED_TEXT } from '~/lib/channel/connect/text-connect';
 import {
   forwardAddressReply,
+  forwardRevokeAskReply,
+  forwardRevokeDeclinedReply,
   forwardRevokeReply,
   matchForwardAddressRequest,
 } from '~/lib/channel/email/forward-request';
@@ -594,14 +596,37 @@ describe('the forwarding address reply stays GSM-7 and carries the whole address
     });
   });
 
-  /** The words Hale's own replies teach have to be words that work — the same check the
-   * connected receipt gets, because both sentences tell a parent what to text. */
+  it.each(['en', 'fr'] as const)('the %s confirm ask is one segment', (language) => {
+    const body = forwardRevokeAskReply(language);
+    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+      encoding: 'gsm7',
+      segments: 1,
+    });
+  });
+
+  it.each(['en', 'fr'] as const)('the %s declined receipt is one segment', (language) => {
+    const body = forwardRevokeDeclinedReply(language);
+    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+      encoding: 'gsm7',
+      segments: 1,
+    });
+  });
+
+  /**
+   * The words Hale's own replies teach have to be words that work — the same check the
+   * connected receipt gets, because both sentences tell a parent what to text.
+   *
+   * THE ADDRESS REPLY NOW READS AS `turn_off` WHEN IT IS ECHOED BACK, and that is the
+   * point of round 6 rather than a regression of the old `not.toBe('turn_off')` pin. Its
+   * closing line quotes the command, so the taught words are words the matcher hears —
+   * and what a turn-off reads as is now a QUESTION, not a revoke, so an echo costs one
+   * text instead of a credential.
+   */
   it('honours the instructions its own copy gives', () => {
-    for (const language of ['en', 'fr'] as const) {
-      expect(matchForwardAddressRequest(forwardAddressReply(language, ADDRESS))).not.toBe(
-        'turn_off',
-      );
-    }
+    expect(forwardAddressReply('en', ADDRESS)).toContain('turn off my forwarding address');
+    expect(matchForwardAddressRequest('turn off my forwarding address')).toBe('turn_off');
+    expect(forwardAddressReply('fr', ADDRESS)).toContain('désactiver mon adresse de transfert');
+    expect(matchForwardAddressRequest('désactiver mon adresse de transfert')).toBe('turn_off');
     expect(forwardRevokeReply('en', 'revoked')).toContain('forwarding address');
     expect(matchForwardAddressRequest('forwarding address')).toBe('address');
     expect(forwardRevokeReply('fr', 'revoked')).toContain('adresse de transfert');

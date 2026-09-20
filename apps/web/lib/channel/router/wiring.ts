@@ -58,6 +58,7 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
 import { eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
+import { forwardRevokeQuestion } from '~/lib/channel/email/forward-request';
 import {
   approvalHandler,
   coParentAssentHandler,
@@ -747,6 +748,10 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
         askedAt: offer.askedAt,
       }));
     },
+    // The forwarding-address revoke confirm (VIL-352 round 6), read through the lane's own
+    // ledger reader — the evening check-in's discipline for the same reason, with the
+    // fifteen-minute window applied inside it so a lapsed confirm is never listed.
+    forwardAddressRevoke: (database, input) => forwardRevokeQuestion(database, input),
   });
 }
 

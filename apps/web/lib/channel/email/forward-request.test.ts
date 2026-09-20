@@ -7,14 +7,24 @@ import {
 import {
   type ForwardAddressAsk,
   forwardAddressReply,
+  forwardRevokeAskReply,
+  forwardRevokeDeclinedReply,
   forwardRevokeReply,
   matchForwardAddressRequest,
 } from './forward-request';
 
 /**
  * THE MATCHER, as a table — the shape connect/detect.test.ts keeps, for the same reason:
- * a claim here either hands out a credential or takes one away, so every phrasing that
- * does and does not earn one is written down rather than reasoned about.
+ * a claim here either hands out a credential or opens the question that takes one away,
+ * so every phrasing that does and does not earn one is written down rather than reasoned
+ * about.
+ *
+ * WHAT `turn_off` MEANS CHANGED IN ROUND 6, and the table is the place to say it. It used
+ * to mean REVOKE NOW; it now means ASK FIRST (D17 — hard-to-reverse always needs an
+ * unambiguous go), so the six hypotheticals below are listed as claims rather than hunted
+ * out of the regex. A question nobody answers costs one text; a regex that tries to tell
+ * "should I turn off my forwarding address?" from "turn off my forwarding address" is the
+ * thing five rounds could not close.
  */
 
 const ADDRESS = `hale+${'a'.repeat(30)}@mail.villagehale.com`;
@@ -37,6 +47,15 @@ const CLAIMS: ReadonlyArray<[string, ForwardAddressAsk]> = [
   ['please turn off my email forwarding address', 'turn_off'],
   ['désactiver mon adresse de transfert', 'turn_off'],
   ['supprime mon adresse de transfert', 'turn_off'],
+  // The six the round-5 verifier found. Each one OPENS the question now, and none of
+  // them revokes anything — see forward-revoke.pglite.test.ts, which drives all six
+  // through the shipped chain and reads the column back afterwards.
+  ['what happens if I turn off my forwarding address?', 'turn_off'],
+  ['if I turn off my forwarding address, will you still read them?', 'turn_off'],
+  ["I didn't turn off my forwarding address, did the emails stop?", 'turn_off'],
+  ["I'm thinking about turning off my forwarding address", 'turn_off'],
+  ['should I turn off my forwarding address?', 'turn_off'],
+  ['what if I turn off my forwarding address', 'turn_off'],
 ];
 
 /**
@@ -77,6 +96,17 @@ const DECLINES: readonly string[] = [
   "the camp's forwarding address is different from ours",
   'my forwarding address for mail is changing next month because we are moving',
   'what email do I forward to grandma',
+  // A STATEMENT, not an ask (round 6). Each of these ended at the noun and so cleared
+  // every guard the asking half had — and each one MINTED a token and handed a parent a
+  // credential in answer to a sentence that was telling Hale something. A request has an
+  // ask shape: a question, or an imperative addressed to Hale, or the bare noun on its
+  // own. A declarative never mints.
+  'I already set up a canada post forwarding address.',
+  'the school has a new forwarding address.',
+  'We already have a forwarding address.',
+  'I set up a filter to my forwarding address.',
+  'Sam is asking about the forwarding address.',
+  "J'ai configuré une adresse de transfert.",
 ];
 
 describe('asking for the forwarding address', () => {
@@ -152,5 +182,71 @@ describe('what Hale texts back', () => {
   it('does not claim the old address bounces, because it does not', () => {
     expect(forwardRevokeReply('en', 'revoked')).toContain('is ignored');
     expect(forwardRevokeReply('en', 'revoked')).not.toMatch(/bounce/i);
+  });
+
+  /**
+   * THE CLOSING LINE TEACHES WORDS THE MATCHER HEARS (round 6).
+   *
+   * It used to say "Tell me any time to turn the address off." — a sentence no half of
+   * this matcher reads, so a parent who did exactly what it said reached the coach. The
+   * line now quotes the command, and the command is last so that a parent who copies the
+   * whole line back still lands on it.
+   */
+  it('closes with a turn-off instruction that the turn-off half actually reads', () => {
+    for (const [language, taught] of [
+      ['en', 'turn off my forwarding address'],
+      ['fr', 'désactiver mon adresse de transfert'],
+    ] as const) {
+      const reply = forwardAddressReply(language, ADDRESS);
+      expect(reply).toContain(taught);
+      expect(matchForwardAddressRequest(taught)).toBe('turn_off');
+      // The WHOLE line, as a phone's "reply with quote" would send it back.
+      const line = reply.slice(reply.lastIndexOf('. ') + 2);
+      expect(matchForwardAddressRequest(line)).toBe('turn_off');
+    }
+  });
+});
+
+/**
+ * THE CONFIRM TURN (round 6, D17). Revoking is hard to reverse — a new token is a
+ * DIFFERENT address the parent has to go and re-enter in their mail filter — so the
+ * turn-off half asks rather than acts, and this is the sentence it asks with.
+ */
+describe('the confirm ask, and the receipt for a no', () => {
+  it('is one GSM-7 segment in both languages and says what would be lost', () => {
+    for (const language of ['en', 'fr'] as const) {
+      const body = forwardRevokeAskReply(language);
+      expect({ language, encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+        language,
+        encoding: 'gsm7',
+        segments: 1,
+      });
+    }
+    expect(forwardRevokeAskReply('en')).toContain('would be ignored');
+    expect(forwardRevokeAskReply('fr')).toContain('serait ignoré');
+    expect(forwardRevokeAskReply('en')).not.toBe(forwardRevokeAskReply('fr'));
+  });
+
+  it('prints the keyword it is solicited on, in the language it asks in', () => {
+    expect(forwardRevokeAskReply('en')).toContain('Reply YES');
+    expect(forwardRevokeAskReply('fr')).toContain('OUI');
+  });
+
+  it('never claims anything happened - it is a question, not a receipt', () => {
+    expect(forwardRevokeAskReply('en')).not.toMatch(/Done|is off|turned off/);
+    expect(forwardRevokeAskReply('fr')).not.toMatch(/Fait|désactivée/);
+  });
+
+  it('answers a NO in one segment, and says the address is still on', () => {
+    for (const language of ['en', 'fr'] as const) {
+      const body = forwardRevokeDeclinedReply(language);
+      expect({ language, encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+        language,
+        encoding: 'gsm7',
+        segments: 1,
+      });
+    }
+    expect(forwardRevokeDeclinedReply('en')).toContain('still on');
+    expect(forwardRevokeDeclinedReply('fr')).toContain('active');
   });
 });

@@ -1,3 +1,6 @@
+import { type Database, schema } from '@hale/db';
+import { and, desc, eq, gt, inArray } from 'drizzle-orm';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
 import type { ReplyLanguage } from '~/lib/channel/language';
 
 /**
@@ -37,13 +40,40 @@ import type { ReplyLanguage } from '~/lib/channel/language';
  * Each subtraction costs some honest ask one coach turn, and buys back a write or a
  * revoke that nobody asked for. That is the direction this matcher always errs in.
  *
- * The two halves below are disjoint BY CONSTRUCTION, the same way the connector pair is:
+ * AND THEN A FOURTH, WHICH IS NOT A SUBTRACTION FROM THE NOUN BUT A REQUIREMENT ON THE
+ * SENTENCE: an ask has an ASK SHAPE ({@link ASKS_FOR_ONE}). The three guards above all
+ * ask what the NOUN is doing, and a declarative clears every one of them — "I already set
+ * up a canada post forwarding address.", "the school has a new forwarding address." both
+ * end at the noun, own it in the first person or no person, and each one MINTED a token
+ * and handed a parent a credential in answer to a sentence that was telling Hale
+ * something. A request is a question, an imperative addressed to Hale, or the bare noun
+ * on its own; a statement is none of those.
+ *
+ * THE TWO HALVES ARE NOT SYMMETRICAL ANY MORE, and that is round 6 (D17). The asking half
+ * still ACTS — it mints and hands over an address, which a parent can simply ignore. The
+ * turn-off half no longer does: it opens a confirm question ({@link forwardRevokeAskReply})
+ * and the revoke happens only when that question is answered yes. Revoking is
+ * hard-to-reverse — a new token is a DIFFERENT address the parent has to go and re-enter
+ * in their mail filter — and D17's rule for hard-to-reverse is an unambiguous go.
+ *
+ * WHICH IS WHY THE HYPOTHETICALS ARE NO LONGER THIS MATCHER'S PROBLEM. Rounds 4 and 5 each
+ * closed one named false positive and each time the next reader found another in the same
+ * class: "what happens if I turn off my forwarding address?", "should I turn off my
+ * forwarding address?", "I didn't turn off my forwarding address, did the emails stop?".
+ * A regex over natural language cannot be closed against that, and every attempt bought
+ * one more tail rule. Under the confirm turn all of them cost exactly one text nobody has
+ * to answer, so the matcher is allowed to be generous about them — while the noun anchor
+ * and the third-party guard, which keep somebody ELSE'S forwarding out of this lane
+ * entirely, stay exactly as they are.
+ *
+ * The two halves are still disjoint BY CONSTRUCTION, the same way the connector pair is:
  * every verb the turn-off half reads is inside the asking half's {@link NEGATION} class,
  * so no body can be claimed by both and their order can never matter.
  *
- * IT READS NO BARE WORD. Both halves require the whole noun, so this handler can never
- * claim a YES or a NO that belongs to somebody else's open question, and it never
- * consults the open-question list — there is nothing for it to be an answer to.
+ * IT READS NO BARE WORD. Both halves require the whole noun, so a YES or a NO can never
+ * be claimed by the MATCHER. The handler does read a bare affirmative now — but only as
+ * the answer to the confirm question above, and only when nothing else at all is open
+ * (handlers.ts `forwardAddressHandler`).
  */
 
 /** Mail, as a parent names the thing they forward. */
@@ -90,6 +120,60 @@ const SOMEBODY_ELSES = new RegExp(
 const ENDS_THE_ASK = String.raw`(?=\s*(?:[.,;:!?)]|$)|\s+(?:again|please|pls|svp|encore)\b)`;
 
 const ADDRESS_PATTERN = new RegExp(`\\b(?:${ADDRESS_NOUN})\\b${ENDS_THE_ASK}`, 'i');
+
+/** What a parent opens with before they get to the ask. Stripped so a greeting cannot
+ * hide the interrogative behind it — "bonjour, quelle est mon adresse de transfert". */
+const GREETING = String.raw`(?:h(?:i|ello|ey|iya)|good\s+(?:morning|afternoon|evening)|bonjour|salut|allo|coucou|ok(?:ay)?|hale)\b[\s,!.:-]*`;
+
+/**
+ * A QUESTION, at the start of the message or of a clause inside it.
+ *
+ * Clause-start rather than anywhere, because a wh-word loose in a sentence is usually
+ * subordinate ("I set up a filter so I know WHERE the mail goes"), and clause-start
+ * rather than message-start only, because a greeting and a comma are how half of these
+ * arrive. `what(?:'s)?` spells its own contraction: "whats" is one word to `\b`.
+ */
+const INTERROGATIVE_LEAD = new RegExp(
+  `(?:^|[.,;:!?]\\s*)(?:${GREETING})?(?:what(?:['’]?s)?|which|where|how|can|could|do|may|quel(?:le)?s?|o[uù]|comment|est-ce|avez|pouvez|peux|puis)\\b`,
+  'i',
+);
+
+/**
+ * AN IMPERATIVE ADDRESSED TO HALE, or the want that stands in for one.
+ *
+ * `send|text|give|share|resend` only with an object pronoun after them, because "forward
+ * the invite to grandma" is an instruction about somebody else's mail and this lane must
+ * never read one. `forward` is deliberately absent from the verb list for the same
+ * reason.
+ */
+const ASK_VERB =
+  /\b(?:(?:send|text|give|share|resend)\s+(?:me|us)|(?:i|we)\s+(?:want|need)|je\s+veux|j['’]?ai\s+besoin|envoyez?[-\s]moi|donnez?[-\s]moi)\b/i;
+
+/** The whole message IS the noun — "forwarding address", the way a parent who has been
+ * told to text it writes it. A determiner and one politeness word are allowed; anything
+ * else makes it a sentence, and a sentence has to be shaped like an ask. */
+const BARE_NOUN_ONLY = new RegExp(
+  `^\\s*(?:${GREETING})?(?:(?:my|our|the|mon|ma|notre|le|la|les)\\s+)?(?:${ADDRESS_NOUN})\\s*[.!?]*\\s*(?:(?:again|please|pls|svp|encore)\\s*[.!?]*\\s*)?$`,
+  'i',
+);
+
+/**
+ * IS THIS SENTENCE ASKING FOR ONE — the guard that stops a statement minting a credential.
+ *
+ * Four shapes, and a declarative is none of them. The residual cost is honest: "Do you
+ * know if the school has a new forwarding address?" is a question about somebody else's
+ * address that no possessive marks, and it still mints. That is one address handed to the
+ * family it belongs to, which the reply then explains — the cheap side of this matcher's
+ * standing trade, and the same side every other guard here errs on.
+ */
+function asksForOne(body: string): boolean {
+  return (
+    INTERROGATIVE_LEAD.test(body) ||
+    ASK_VERB.test(body) ||
+    BARE_NOUN_ONLY.test(body) ||
+    /\?\s*$/.test(body)
+  );
+}
 
 /**
  * The other way a parent asks for the same thing, without ever naming the noun: "what
@@ -146,16 +230,23 @@ const TURN_OFF_PATTERN = new RegExp(
   'i',
 );
 
-/** What a parent plainly asked about their forwarding address, or null — and null is the
- * safe answer, because null costs one coach turn while a wrong claim either hands out a
- * credential nobody asked for or takes one away. */
+/**
+ * What a parent plainly said about their forwarding address, or null.
+ *
+ * `turn_off` MEANS "ASKED ABOUT TURNING IT OFF", not "turn it off" — the confirm turn is
+ * what the handler does with it. Null is still the safe answer: it costs one coach turn,
+ * while a wrong `address` hands out a credential nobody asked for.
+ */
 export type ForwardAddressAsk = 'address' | 'turn_off';
 
 export function matchForwardAddressRequest(body: string): ForwardAddressAsk | null {
   if (SOMEBODY_ELSES.test(body)) return null;
   if (!TURN_OFF_NEGATION.test(body) && TURN_OFF_PATTERN.test(body)) return 'turn_off';
   if (NEGATION.test(body)) return null;
-  return ADDRESS_PATTERN.test(body) || WHERE_DO_I_FORWARD.test(body) ? 'address' : null;
+  // WHERE_DO_I_FORWARD is interrogative by construction — every word of it is a question
+  // word — so it carries its own ask shape and is not asked for one twice.
+  if (WHERE_DO_I_FORWARD.test(body)) return 'address';
+  return ADDRESS_PATTERN.test(body) && asksForOne(body) ? 'address' : null;
 }
 
 /**
@@ -178,11 +269,20 @@ export function matchForwardAddressRequest(body: string): ForwardAddressAsk | nu
  * THE RECEIPT NEVER OVERCLAIMS. Revoking nulls the token, so mail sent to the old address
  * resolves no family and is dropped — it is not bounced, and Hale does not say it is.
  */
+/**
+ * THE CLOSING LINE QUOTES THE COMMAND, and the command goes LAST.
+ *
+ * It used to read "Tell me any time to turn the address off." — a sentence neither half
+ * of the matcher above reads, so a parent doing exactly what Hale told them to do reached
+ * the coach. A reply that teaches words has to teach words that work. The command sits at
+ * the end of the line so that a parent who copies the whole line back still lands on it:
+ * {@link ENDS_THE_ASK} is satisfied by the full stop, and by nothing that would follow.
+ */
 const ADDRESS_BY_LANGUAGE: Record<ReplyLanguage, (address: string) => string> = {
   en: (address) =>
-    `Forward mail to ${address} and I'll read it. From a sender you haven't okayed, I ask you first - nothing is read until you say yes. Tell me any time to turn the address off.`,
+    `Forward mail to ${address} and I'll read it. From a sender you haven't okayed, I ask you first - nothing is read until you say yes. Any time, text turn off my forwarding address.`,
   fr: (address) =>
-    `Transférez votre courrier à ${address} et je le lirai. D'un expéditeur que vous n'avez pas approuvé, je vous demande d'abord - rien n'est lu avant votre oui. Dites-moi quand vous voulez pour désactiver l'adresse.`,
+    `Transférez votre courrier à ${address} et je le lirai. D'un expéditeur que vous n'avez pas approuvé, je vous demande d'abord - rien n'est lu avant votre oui. Quand vous voulez, textez désactiver mon adresse de transfert.`,
 };
 
 /** The whole reply, address included — composed here and nowhere else, so the sentence
@@ -210,4 +310,141 @@ const REVOKE_BY_LANGUAGE: Record<ReplyLanguage, Record<ForwardRevokeOutcome, str
 
 export function forwardRevokeReply(language: ReplyLanguage, outcome: ForwardRevokeOutcome): string {
   return REVOKE_BY_LANGUAGE[language][outcome];
+}
+
+/**
+ * THE CONFIRM ASK — the whole of round 6 in one sentence (D17).
+ *
+ * It says the COST before it asks for the go, because that is the half a parent cannot
+ * work out for themselves: nulling the token does not bounce anything, it makes mail sent
+ * to the old address resolve no family and stop. It prints "Reply YES" verbatim, which is
+ * why this kind is `solicited` on the open-question list — and it offers SILENCE as the
+ * other answer rather than a keyword, because the safe outcome must be the free one.
+ *
+ * It promises nothing in the past tense. A question that reads like a receipt is the
+ * failure this replaces.
+ */
+const REVOKE_ASK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'Turn off your forwarding address? Mail sent to it would be ignored from then on. Reply YES to turn it off, or ignore this.',
+  fr: "Désactiver votre adresse de transfert? Le courrier qui y arrive serait ignoré. Répondez OUI pour la désactiver, ou ignorez ce message.",
+};
+
+export function forwardRevokeAskReply(language: ReplyLanguage): string {
+  return REVOKE_ASK_BY_LANGUAGE[language];
+}
+
+/**
+ * THE NO, ANSWERED — and it is answered rather than passed over for a reason that is not
+ * manners.
+ *
+ * The confirm question is derived from the message ledger and closes when Hale next
+ * speaks (see {@link forwardRevokeQuestion}). A NO that produced no outbound would leave
+ * the question STANDING for the rest of its window, so the parent's next unrelated
+ * "yeah, sounds good" would land on a revoke they had just declined. Saying one sentence
+ * is what closes it.
+ */
+const REVOKE_DECLINED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+  en: 'Okay - your forwarding address is still on.',
+  fr: 'Entendu - votre adresse de transfert reste active.',
+};
+
+export function forwardRevokeDeclinedReply(language: ReplyLanguage): string {
+  return REVOKE_DECLINED_BY_LANGUAGE[language];
+}
+
+// ── the confirm question, derived from the ledger ────────────────────────────
+
+/** The name the ask's own outbound row carries, so the reader below can recognise Hale's
+ * own voice later. Without it there is no question, and a YES goes nowhere. */
+export const FORWARD_REVOKE_ASK_TEMPLATE_KEY = 'forward_address:revoke_ask';
+
+/**
+ * How long the confirm stands. FIFTEEN MINUTES — the connector sign-in link's window
+ * (connect/offer.ts), and for its reason: it is the span in which "the thing Hale just
+ * asked me" is still one identifiable thing. Long enough for a parent to put the kettle
+ * on, short enough that a YES typed hours later, at whatever Hale has said since, cannot
+ * reach back and delete a credential.
+ */
+export const FORWARD_REVOKE_ASK_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * THE STANDING CONFIRM, or null — the open question behind the turn-off half.
+ *
+ * NO ROW AND NO COLUMN BEHIND IT, the evening check-in's and the registration ladder's
+ * pattern (checkin/reply.ts, registration/sequence/prepare-reply.ts), for their reason:
+ * both facts are already in `channel_messages`. When the ask went out is the row's own
+ * `created_at`; whether it is still the question is whether anything has gone out since.
+ * A stored `pending` flag would be a second answer to that, and every other sender in the
+ * product would have to remember to clear it.
+ *
+ * THE LAST-WORD RULE IS ALSO WHAT CLOSES IT. The revoke receipt, and the receipt for a no,
+ * are both outbounds — so answering the question is what ends it, with no second write and
+ * no row to leave half-resolved. The direction it fails in is the safe one: any other
+ * message Hale sends in the window closes the question too, and a YES then revokes
+ * nothing.
+ *
+ * PER PARENT, like the intro opt-in and the co-parent scope question: the confirm went to
+ * one phone, and a co-parent who never saw it must not be able to spend it.
+ *
+ * SENT_STATUSES rather than the dedupe set, for the reason the check-in reader gives: a
+ * send that failed never reached the phone, and a question nobody was asked is not open.
+ */
+export async function forwardRevokeQuestion(
+  database: Database,
+  input: { familyId: string; parentUserId: string; now: Date },
+): Promise<{ id: string; askedAt: Date } | null> {
+  const [ask] = await database
+    .select({ id: schema.channelMessages.id, createdAt: schema.channelMessages.createdAt })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, input.familyId),
+        eq(schema.channelMessages.parentUserId, input.parentUserId),
+        eq(schema.channelMessages.direction, 'out'),
+        eq(schema.channelMessages.templateKey, FORWARD_REVOKE_ASK_TEMPLATE_KEY),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        gt(
+          schema.channelMessages.createdAt,
+          new Date(input.now.getTime() - FORWARD_REVOKE_ASK_TTL_MS),
+        ),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.createdAt))
+    .limit(1);
+  if (!ask) return null;
+
+  const [newer] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, input.parentUserId),
+        eq(schema.channelMessages.direction, 'out'),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        gt(schema.channelMessages.createdAt, ask.createdAt),
+      ),
+    )
+    .limit(1);
+  return newer ? null : { id: ask.id, askedAt: ask.createdAt };
+}
+
+/**
+ * Rule #6 for the ASK itself — Hale proposed destroying a credential, and that is a thing
+ * the trail has to be able to say.
+ *
+ * Written from `afterSend`, against the outbound row that carried the question, so an ask
+ * the transport refused leaves no record of a question nobody was asked (the MEM-10
+ * send-time discipline). The row names no token and no address.
+ */
+export async function recordForwardRevokeAsked(
+  database: Database,
+  input: { familyId: string; channelMessageId: string },
+): Promise<void> {
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: 'email_forward_address_revoke_asked',
+    targetTable: 'channel_messages',
+    targetId: input.channelMessageId,
+  });
 }

@@ -17,6 +17,11 @@ import {
   revokeForwardToken,
 } from './forward-address';
 import { type EmailForwardDeps, routeEmailForward } from './forward';
+import {
+  FORWARD_REVOKE_ASK_TEMPLATE_KEY,
+  forwardRevokeAskReply,
+  forwardRevokeReply,
+} from './forward-request';
 import { FORWARD_SUBJECT_MAX } from './forward-copy';
 import { PENDING_FORWARD_TTL_MS, sweepExpiredForwards } from './forward-purge';
 import { UNSUBSCRIBABLE_STREAMS } from './streams';
@@ -876,15 +881,38 @@ describe('a parent asking for their forwarding address, in the thread', () => {
     expect(again?.token).toBe(minted);
   });
 
-  it('turns it off for real, and does not call nothing a success', async () => {
+  /**
+   * ROUND 6 (D17): the turn-off half ASKS, it does not act. The address is still live
+   * after this turn, and the whole answer half — the standing question, the YES that
+   * spends it and the co-parent who cannot — is driven through the real router in
+   * forward-revoke.pglite.test.ts, because the question is derived from the ledger the
+   * router writes.
+   */
+  it('asks before it turns anything off, and the address is still live afterwards', async () => {
     const off = await handler().handle(db.database, turn('turn off my forwarding address'));
-    expect(off).toMatchObject({ claimed: true, outcome: 'revoked' });
-    expect(await familyForForwardToken(db.database, token)).toBeNull();
-    expect(await route({ to: forwardAddress(token, CONFIG) })).toBe('forward_unknown_token');
+    expect(off).toMatchObject({
+      claimed: true,
+      outcome: 'revoke_ask_sent',
+      reply: forwardRevokeAskReply('en'),
+      templateKey: FORWARD_REVOKE_ASK_TEMPLATE_KEY,
+    });
+    expect(await familyForForwardToken(db.database, token)).toBe(family.familyId);
+    expect(await route({ to: forwardAddress(token, CONFIG) })).toBe('forward_sender_pending');
+    expect(await verbs()).not.toContain('email_forward_address_revoked');
+  });
 
-    const twice = await handler().handle(db.database, turn('turn off my forwarding address'));
-    expect(twice).toMatchObject({ claimed: true, outcome: 'not_configured' });
-    expect(await verbs()).toContain('email_forward_address_revoked');
+  it('does not ask a family with nothing to turn off - it says so, and opens no question', async () => {
+    const fresh = await seedFamily(db.database, 'Nothing To Revoke');
+    const nothing = await handler().handle(
+      db.database,
+      turn('turn off my forwarding address', fresh.familyId),
+    );
+    expect(nothing).toMatchObject({
+      claimed: true,
+      outcome: 'not_configured',
+      reply: forwardRevokeReply('en', 'not_configured'),
+    });
+    expect((nothing as { templateKey?: string }).templateKey).toBeUndefined();
   });
 
   it('DECLINES a household the forwarding door is still dark for, rather than handing out a dead address', async () => {
@@ -899,10 +927,11 @@ describe('a parent asking for their forwarding address, in the thread', () => {
     expect(row?.token).toBe(token);
 
     // The undo is NOT gated, for the connector pair's reason: a family may always close
-    // a door they were given, whatever the flag says today.
+    // a door they were given, whatever the flag says today. What the flag never gets to
+    // do is stop the QUESTION either.
     expect(
       await handler().handle(db.database, turn('turn off my forwarding address')),
-    ).toMatchObject({ claimed: true, outcome: 'revoked' });
+    ).toMatchObject({ claimed: true, outcome: 'revoke_ask_sent' });
   });
 
   it('answers a French parent in French, and leaves everybody else to the coach', async () => {

@@ -184,6 +184,7 @@ export const AUDIT_VERBS = [
   'calendar_alert_sent',
   // ── the forwarding door (VIL-352) ───────────────────────────────────────
   'email_forward_address_minted',
+  'email_forward_address_revoke_asked',
   'email_forward_address_revoked',
   'email_forward_received',
   'email_forward_sender_asked',
@@ -605,6 +606,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   email_forward_address_minted: {
     sentence: 'your forwarding address was set up',
     family: 'done',
+  },
+  // THE ASK IS ITS OWN ROW because it is its own decision (round 6, D17). Hale proposing
+  // to destroy a credential is a thing that happened whether or not the parent said yes,
+  // and a trail that showed only the revokes could not answer "why did Hale think I
+  // wanted that" for the asks nobody answered.
+  email_forward_address_revoke_asked: {
+    sentence: 'Hale asked whether to turn off your forwarding address',
+    family: 'awaiting',
   },
   email_forward_address_revoked: {
     sentence: 'you turned off your forwarding address',

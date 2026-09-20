@@ -158,6 +158,27 @@ export async function mintForwardToken(
 }
 
 /**
+ * Is there a live address to turn off?
+ *
+ * Read BEFORE the confirm question is asked (handlers.ts), and the read is what keeps the
+ * question honest in both directions: a family with nothing to revoke gets the
+ * `not_configured` sentence straight away instead of being asked to confirm destroying
+ * something they do not have — and, more than manners, no open question is minted, so a
+ * bare affirmative in that household stays unambiguous.
+ *
+ * It answers only whether the column is set. Nothing here returns the token: a caller
+ * that needs the address mints it.
+ */
+export async function hasForwardToken(database: Database, familyId: string): Promise<boolean> {
+  const rows = await database
+    .select({ token: schema.families.inboundForwardToken })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return Boolean(rows[0]?.token);
+}
+
+/**
  * Revokes the family's forwarding address by nulling the token, so every copy of it a
  * school's filter holds resolves nothing. One audit row (rule #6), and only when a live
  * token was actually cleared — the `revokeIcsToken` shape. Returns whether one was.
