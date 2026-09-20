@@ -59,6 +59,7 @@ export const CHECK_IN_ACK_TEMPLATE_KEY = 'checkin:ack';
  * here would make a pool rename look like a ledger change.
  */
 const LATER_ASK_POOL_NAME = 'checkin:later';
+const ANCHORED_ASK_POOL_NAME = 'checkin:anchored';
 const NOTED_ACK_POOL_NAME = 'checkin:ack';
 
 /** What the question calls the children when it cannot name them. */
@@ -125,6 +126,30 @@ const LATER_ASK_POOL: ReadonlyArray<(phrase: string) => string> = [
 assertPoolSize(LATER_ASK_POOL, LATER_ASK_POOL_NAME);
 
 /**
+ * The same evening, when Hale SAW something — "How did swim go?".
+ *
+ * THE SLOT IS THE ACTIVITY, NOT A CHILD. The caller has already decided that this title
+ * is nameable: it is a child's own row, the family put it there rather than Hale, it is
+ * not a teen's and not sensitive, and it started earlier today (sweep.ts holds the six
+ * subtractions and counts each refusal separately). What arrives here is a title that may
+ * be said out loud.
+ *
+ * A SEPARATE POOL RATHER THAN A SLOT IN THE ONE ABOVE, because the sentences genuinely
+ * differ: "How did today go with Mia and Leo?" asks about a day and "How did swim go?"
+ * asks about a thing, and grafting the second onto the first's framings produces English
+ * nobody would text. It has its own pool NAME too, so an anchored evening and a plain one
+ * do not advance in lockstep.
+ */
+const ANCHORED_ASK_POOL: ReadonlyArray<(activity: string) => string> = [
+  (activity) => `How did ${activity} go? One line is plenty.`,
+  (activity) => `How was ${activity}? Even a word helps.`,
+  (activity) => `What did you make of ${activity} today?`,
+  (activity) => `What was ${activity} like?`,
+  (activity) => `What stood out about ${activity}?`,
+];
+assertPoolSize(ANCHORED_ASK_POOL, ANCHORED_ASK_POOL_NAME);
+
+/**
  * The question, named where it fits and generic where it does not.
  *
  * THE FOLD IS MEASURED, NOT GUESSED. A maximum name length would be a second copy of the
@@ -138,19 +163,49 @@ assertPoolSize(LATER_ASK_POOL, LATER_ASK_POOL_NAME);
  * cure. It is also the positive control that the pool work did not eat the one message
  * that must not vary.
  */
+export interface CheckInAsk {
+  /** What goes on the wire, before the opt-out line rides on it. */
+  body: string;
+  /**
+   * Whether the activity the caller offered was actually named.
+   *
+   * RETURNED RATHER THAN INFERRED (rule #11): the caller counts a refusal, and "there was
+   * something and it would not fit" must never be indistinguishable from "there was
+   * nothing to say". A caller that had to substring-match the body for the title would be
+   * guessing at its own composer.
+   */
+  anchored: boolean;
+}
+
 export function composeCheckInAsk(input: {
   first: boolean;
   childNames: readonly string[];
+  /** The activity this evening's question may name, or null. Already subtracted by the
+   * caller: a teen's, a sensitive, a Hale-placed or a family-wide row never arrives. */
+  todayActivity: string | null;
   /** Whose rotation this is. */
   familyId: string;
   /** The family-local day number — `nightlyOccasion(now, timeZone)`. */
   occasion: number;
-}): string {
+}): CheckInAsk {
+  if (!input.first && input.todayActivity !== null) {
+    const anchored = pickVariant(
+      ANCHORED_ASK_POOL,
+      ANCHORED_ASK_POOL_NAME,
+      input.familyId,
+      input.occasion,
+    )(input.todayActivity);
+    // Compose then measure, the same trade the names make below: family_events titles are
+    // freeform, so a title long enough to split the message gives up the ANCHOR rather
+    // than the segment. Falling through to the day form is not a degraded message — it is
+    // the message this lane shipped with.
+    if (fitsOneSegment(anchored)) return { body: anchored, anchored: true };
+  }
   const write = input.first
     ? firstCheckInAsk
     : pickVariant(LATER_ASK_POOL, LATER_ASK_POOL_NAME, input.familyId, input.occasion);
   const named = write(childPhrase(input.childNames));
-  return fitsOneSegment(named) ? named : write(GENERIC_CHILD_PHRASE);
+  return { body: fitsOneSegment(named) ? named : write(GENERIC_CHILD_PHRASE), anchored: false };
 }
 
 /**

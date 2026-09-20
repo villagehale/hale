@@ -25,14 +25,35 @@ const ACKS = [CHECK_IN_WEEKLY_ACK, CHECK_IN_OFF_ACK, CHECK_IN_DAILY_ACK, CHECK_I
 
 const FAMILY = 'fam-c0ffee';
 
+type AskInput = {
+  first?: boolean;
+  childNames?: readonly string[];
+  todayActivity?: string | null;
+  familyId?: string;
+  occasion?: number;
+};
+
+function ask(input: AskInput = {}) {
+  return composeCheckInAsk({
+    first: input.first ?? false,
+    childNames: input.childNames ?? ['Mia', 'Leo'],
+    todayActivity: input.todayActivity ?? null,
+    familyId: input.familyId ?? FAMILY,
+    occasion: input.occasion ?? 0,
+  });
+}
+
 /** Every member of the later-evening pool, read through the production entry point rather
  * than off the array: the rotation visits all five in five steps (variant.test.ts), so
  * five consecutive occasions ARE the pool, and a member the composer can never reach is
  * not in this list. */
 function laterAsks(childNames: readonly string[] = ['Mia', 'Leo']): string[] {
-  return [0, 1, 2, 3, 4].map((occasion) =>
-    composeCheckInAsk({ first: false, childNames, familyId: FAMILY, occasion }),
-  );
+  return [0, 1, 2, 3, 4].map((occasion) => ask({ childNames, occasion }).body);
+}
+
+/** The anchored pool, the same way. */
+function anchoredAsks(todayActivity = 'swim'): string[] {
+  return [0, 1, 2, 3, 4].map((occasion) => ask({ todayActivity, occasion }).body);
 }
 
 const notedAcks = (language: 'en' | 'fr') =>
@@ -44,14 +65,7 @@ describe('the evening asks', () => {
     // message that must not vary: the first ask is once in a lifetime, so it has no
     // repetition to cure, and it is the only one that teaches the keywords.
     for (const occasion of [0, 1, 2, 3, 4, 5]) {
-      expect(
-        composeCheckInAsk({
-          first: true,
-          childNames: ['Mia', 'Leo'],
-          familyId: FAMILY,
-          occasion,
-        }),
-      ).toBe(
+      expect(ask({ first: true, occasion }).body).toBe(
         "Quick one before the day's gone: how did today go with Mia and Leo? One line is plenty. Reply LESS for weekly, or NO to skip these.",
       );
     }
@@ -67,18 +81,8 @@ describe('the evening asks', () => {
     // the rotation exists for, asserted where a parent would feel it.
     for (const familyId of [FAMILY, 'fam-0de1', 'fam-9a7b']) {
       for (let day = 200; day < 240; day++) {
-        const tonight = composeCheckInAsk({
-          first: false,
-          childNames: ['Mia'],
-          familyId,
-          occasion: day,
-        });
-        const tomorrow = composeCheckInAsk({
-          first: false,
-          childNames: ['Mia'],
-          familyId,
-          occasion: day + 1,
-        });
+        const tonight = ask({ childNames: ['Mia'], familyId, occasion: day }).body;
+        const tomorrow = ask({ childNames: ['Mia'], familyId, occasion: day + 1 }).body;
         expect(tomorrow, `${familyId} day=${day}`).not.toBe(tonight);
       }
     }
@@ -98,12 +102,10 @@ describe('the evening asks', () => {
     const long = ['Alexandrina', 'Bartholomew', 'Constantina'];
     // The names fit the short asks and not the first one, so the SAME family gets named on
     // an ordinary evening and unnamed on their first — measured, never guessed.
-    for (const ask of laterAsks(long)) {
-      expect(ask, ask).toContain('Alexandrina');
+    for (const body of laterAsks(long)) {
+      expect(body, body).toContain('Alexandrina');
     }
-    expect(
-      composeCheckInAsk({ first: true, childNames: long, familyId: FAMILY, occasion: 0 }),
-    ).toContain(GENERIC_CHILD_PHRASE);
+    expect(ask({ first: true, childNames: long }).body).toContain(GENERIC_CHILD_PHRASE);
   });
 
   it('refuse a name Hale cannot spell on the wire', () => {
@@ -112,14 +114,11 @@ describe('the evening asks', () => {
 
   it('fit one GSM-7 segment with the full opt-out line on them', () => {
     const bodies = [
-      composeCheckInAsk({
-        first: true,
-        childNames: ['Mia', 'Leo'],
-        familyId: FAMILY,
-        occasion: 0,
-      }),
-      composeCheckInAsk({ first: true, childNames: [], familyId: FAMILY, occasion: 0 }),
+      ask({ first: true }).body,
+      ask({ first: true, childNames: [] }).body,
       ...laterAsks(),
+      ...anchoredAsks(),
+      ...anchoredAsks('Stouffville gymnastics'),
       ...laterAsks([]),
       ...laterAsks(['Alexandrina', 'Bartholomew', 'Constantina']),
       CHECK_IN_STEP_DOWN,
@@ -135,9 +134,9 @@ describe('the evening asks', () => {
     // D14's two halves. The second is mechanical BECAUSE of readCadenceWord: a whole-string
     // "no" is read as cadence OFF before anything else looks at the reply, so a parent
     // answering "Did she make it to swim?" honestly unsubscribes from the evening.
-    for (const ask of [...laterAsks(), ...laterAsks([])]) {
-      expect((ask.match(/\?/g) ?? []).length, ask).toBe(1);
-      expect(bareYesNoQuestions(ask), ask).toEqual([]);
+    for (const body of [...laterAsks(), ...laterAsks([]), ...anchoredAsks()]) {
+      expect((body.match(/\?/g) ?? []).length, body).toBe(1);
+      expect(bareYesNoQuestions(body), body).toEqual([]);
     }
     // The mutation control: the shape rule 11 forbids, which must be caught.
     expect(bareYesNoQuestions('Did Mia make it to swim today?')).toEqual([
@@ -156,6 +155,69 @@ describe('the evening asks', () => {
     const pairs = nearDuplicatePairs(faked);
     expect(pairs).toHaveLength(1);
     expect(pairs[0]?.overlap).toBeGreaterThanOrEqual(NEAR_DUPLICATE_THRESHOLD);
+  });
+});
+
+describe('the anchored ask', () => {
+  it('names what Hale saw, in five different ways, and says that it did', () => {
+    const bodies = anchoredAsks('swim');
+    expect(new Set(bodies).size).toBe(5);
+    for (const body of bodies) {
+      expect(body, body).toContain('swim');
+      // The children are NOT named alongside it: the activity is the specific thing, and
+      // naming both is two subjects in a nine-word question.
+      expect(body, body).not.toContain('Mia');
+    }
+    expect(ask({ todayActivity: 'swim' }).anchored).toBe(true);
+    expect(ask({ todayActivity: null }).anchored).toBe(false);
+  });
+
+  it('is never the first question a household is ever asked', () => {
+    // The first ask prints the keywords and is one pinned sentence. An anchor offered on
+    // that evening is ignored, and the composer says so rather than quietly using it.
+    const first = ask({ first: true, todayActivity: 'swim' });
+    expect(first.anchored).toBe(false);
+    expect(first.body).not.toContain('swim');
+  });
+
+  it('gives up the ANCHOR rather than the segment, and reports which', () => {
+    // family_events titles are freeform. A title long enough to split the message falls
+    // back to the day question — which is not a degraded message, it is the one this lane
+    // shipped with — and `anchored: false` is what lets the sweep count it as a budget
+    // refusal rather than as a quiet day.
+    const huge = ask({ todayActivity: 'x'.repeat(200) });
+    expect(huge.anchored).toBe(false);
+    expect(smsSegments(withOptOut(huge.body, 'full'))).toBe(1);
+    expect(huge.body).toContain('Mia and Leo');
+  });
+
+  it('asks exactly one thing, and nothing a bare yes or no answers', () => {
+    for (const body of [...anchoredAsks('swim'), ...anchoredAsks('Stouffville gymnastics')]) {
+      expect((body.match(/\?/g) ?? []).length, body).toBe(1);
+      expect(bareYesNoQuestions(body), body).toEqual([]);
+    }
+  });
+
+  it('is five framings and not one framing five ways', () => {
+    // JUDGED ON THE FRAMING, with a short activity in the slot. Every member carries the
+    // same fact by design — the site's own calibration note says as much of the two
+    // openings that share a registration date — so a long title would swamp the word sets
+    // with words the members are SUPPOSED to share and measure the title, not the copy.
+    expect(nearDuplicatePairs(anchoredAsks('swim'))).toEqual([]);
+  });
+
+  it('does not move in lockstep with the day question', () => {
+    // Its own pool name: a household whose Tuesday is anchored and whose Wednesday is not
+    // should not read the same framing twice in a row from two different pools.
+    const sample = Array.from({ length: 60 }, (_, i) => `anchor-${i}`);
+    const differ = sample.filter((familyId) => {
+      const anchoredIndex = anchoredAsks('swim').indexOf(
+        ask({ todayActivity: 'swim', familyId, occasion: 4 }).body,
+      );
+      const plainIndex = laterAsks().indexOf(ask({ familyId, occasion: 4 }).body);
+      return anchoredIndex !== plainIndex;
+    });
+    expect(differ.length).toBeGreaterThanOrEqual(36);
   });
 });
 
@@ -191,8 +253,8 @@ describe('the acknowledgments', () => {
     // The positive control: the words themselves are still printed on EVERY member, or
     // this test would pass on a pool where four evenings in five stopped telling parents
     // how to leave.
-    for (const ack of notedAcks('en')) expect(ack, ack).toContain('NO');
-    for (const ack of notedAcks('fr')) expect(ack, ack).toContain('NO');
+    for (const body of notedAcks('en')) expect(body, body).toContain('NO');
+    for (const body of notedAcks('fr')) expect(body, body).toContain('NO');
     expect(CHECK_IN_STEP_DOWN).toContain('DAILY');
   });
 
@@ -211,25 +273,25 @@ describe('the noted-ack pool', () => {
       expect(CHECK_IN_NOTED_ACK_POOL[language]).toHaveLength(5);
       expect(new Set(notedAcks(language)).size, language).toBe(5);
     }
-    expect(
-      notedAcks('en').filter((ack) => (notedAcks('fr') as string[]).includes(ack)),
-    ).toEqual([]);
+    expect(notedAcks('en').filter((ack) => (notedAcks('fr') as string[]).includes(ack))).toEqual(
+      [],
+    );
   });
 
   it('never asks anything', () => {
     // An ack is Hale's last word after a parent's diary line. A question here would be a
     // second ask on a lane whose keywords a bare answer already claims (rule 11) — which
     // is why this pool carries ZERO "?" where the ask pools carry exactly one.
-    for (const ack of [...notedAcks('en'), ...notedAcks('fr')]) {
-      expect(ack, ack).not.toContain('?');
-      expect(bareYesNoQuestions(ack), ack).toEqual([]);
+    for (const body of [...notedAcks('en'), ...notedAcks('fr')]) {
+      expect(body, body).not.toContain('?');
+      expect(bareYesNoQuestions(body), body).toEqual([]);
     }
   });
 
   it('opens with none of the words rule 3 bans', () => {
     // *noted* as a bare opener is on the list, and this lane was the last place using it.
-    for (const ack of notedAcks('en')) {
-      expect(ack, ack).not.toMatch(/^(?:Noted|Filed|Logged|Processed)\b/);
+    for (const body of notedAcks('en')) {
+      expect(body, body).not.toMatch(/^(?:Noted|Filed|Logged|Processed)\b/);
     }
   });
 
@@ -237,10 +299,10 @@ describe('the noted-ack pool', () => {
     // The ack rides a REPLY, which carries no CASL line — so this is the conservative
     // bound rather than the real one, and it stays that way so a member can never be
     // moved onto a proactive path and split in two.
-    for (const ack of [...notedAcks('en'), ...notedAcks('fr')]) {
-      const wire = withOptOut(ack, 'full');
-      expect(isGsm7(wire), ack).toBe(true);
-      expect(smsSegments(wire), ack).toBe(1);
+    for (const body of [...notedAcks('en'), ...notedAcks('fr')]) {
+      const wire = withOptOut(body, 'full');
+      expect(isGsm7(wire), body).toBe(true);
+      expect(smsSegments(wire), body).toBe(1);
     }
   });
 
@@ -255,13 +317,8 @@ describe('the noted-ack pool', () => {
     // offset, a household would read the same pairing every evening of their life.
     const sample = Array.from({ length: 60 }, (_, i) => `pairing-${i}`);
     const differentIndex = sample.filter((familyId) => {
-      const ask = composeCheckInAsk({
-        first: false,
-        childNames: ['Mia'],
-        familyId,
-        occasion: 9,
-      });
-      const askIndex = laterAsks(['Mia']).indexOf(ask);
+      const tonight = ask({ childNames: ['Mia'], familyId, occasion: 9 }).body;
+      const askIndex = laterAsks(['Mia']).indexOf(tonight);
       const ackIndex = CHECK_IN_NOTED_ACK_POOL.en.indexOf(checkInNotedAck('en', familyId, 9));
       return askIndex !== ackIndex;
     });

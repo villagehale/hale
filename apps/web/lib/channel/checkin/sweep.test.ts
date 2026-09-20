@@ -6,8 +6,10 @@ import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import type { CheckInState } from './cadence';
 import { CHECK_IN_ASK_TEMPLATE_KEY, CHECK_IN_STEP_DOWN } from './copy';
 import {
+  CHECK_IN_ANCHOR_ENABLED_ENV,
   type EveningCheckInDeps,
   MAX_CHECK_INS_PER_RUN,
+  type TodayActivity,
   runEveningCheckInSweep,
 } from './sweep';
 
@@ -32,6 +34,7 @@ const database = {} as Database;
 afterEach(() => {
   delete process.env[F14_ENABLED_ENV];
   delete process.env[F14_ALLOWLIST_ENV];
+  delete process.env[CHECK_IN_ANCHOR_ENABLED_ENV];
 });
 
 interface Overrides {
@@ -41,6 +44,7 @@ interface Overrides {
   alreadySent?: boolean;
   registrationStanding?: boolean;
   children?: string[];
+  today?: TodayActivity | (() => Promise<TodayActivity>);
 }
 
 function harness(overrides: Overrides = {}) {
@@ -56,6 +60,10 @@ function harness(overrides: Overrides = {}) {
       { familyId: FAMILY, parentUserId: PARENT, timeZone: overrides.timeZone ?? 'America/Toronto' },
     ],
     loadNamableChildren: async () => overrides.children ?? ['Mia', 'Leo'],
+    readTodayActivity: async () => {
+      const today = overrides.today ?? { anchor: null, reason: 'no_event_today' as const };
+      return typeof today === 'function' ? today() : today;
+    },
     readState: async () => ({
       cadence: 'daily' as const,
       silentStreak: 0,
@@ -385,5 +393,141 @@ describe('the ladder, end to end', () => {
     const result = await runEveningCheckInSweep(database, deps, EVENING);
     expect(result.skipped.cadence_off).toBe(1);
     expect(sent).toEqual([]);
+  });
+});
+
+/**
+ * THE ANCHOR'S OUTCOMES — the counting, and the flag.
+ *
+ * WHICH ROWS may be named is the reader's business and is pinned over real Postgres in
+ * sweep.pglite.test.ts, through the production wiring, because a fake reader can never
+ * fail on a bug inside the real one. What is pinned HERE is the part the sweep owns: that
+ * an outcome is counted for every household it asked, that "there was nothing" and "there
+ * was something Hale would not say" are different numbers, and that the flag is read the
+ * one way that survives a trailing newline.
+ */
+describe('the activity anchor', () => {
+  const asked = (overrides: Parameters<typeof harness>[0] = {}) => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    return harness({
+      state: { lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000), silentStreak: 0 },
+      ...overrides,
+    });
+  };
+
+  it('names the activity and counts it, once the flag is armed', async () => {
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    const { deps, sent, threaded } = asked({ today: { anchor: 'swim' } });
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    expect(result.anchor.anchored).toBe(1);
+    expect(sent[0]?.body).toContain('swim');
+    // The thread the coach re-reads carries the composed sentence, never the wire body.
+    expect(threaded[0]).toContain('swim');
+    expect(threaded[0]).not.toContain(OPT_OUT_LINE);
+  });
+
+  it("is off until the flag says exactly 'true', and a trailing newline is not 'true'", async () => {
+    // `vercel env add` from a piped echo stores 'true\n'. A truthiness check would read
+    // that as ON and start naming calendar rows in an unprompted nightly text.
+    for (const value of [undefined, '', 'false', 'TRUE', '1', 'true\n', ' true']) {
+      if (value === undefined) delete process.env[CHECK_IN_ANCHOR_ENABLED_ENV];
+      else process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = value;
+      const { deps, sent } = asked({ today: { anchor: 'swim' } });
+      const result = await runEveningCheckInSweep(database, deps, EVENING);
+      expect(result.anchor.flag_off, JSON.stringify(value)).toBe(1);
+      expect(result.anchor.anchored, JSON.stringify(value)).toBe(0);
+      // Off is not degraded: it is the day question, which is the shipped message.
+      expect(sent[0]?.body, JSON.stringify(value)).toContain('Mia and Leo');
+      expect(sent[0]?.body, JSON.stringify(value)).not.toContain('swim');
+    }
+    // The positive control, or every assertion above would pass on a flag nothing reads.
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    const armed = asked({ today: { anchor: 'swim' } });
+    expect((await runEveningCheckInSweep(database, armed.deps, EVENING)).anchor.anchored).toBe(1);
+  });
+
+  it('counts each refusal as itself and never as another one', async () => {
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    for (const reason of [
+      'no_event_today',
+      'private_event',
+      'placement_lane',
+      'no_child',
+      'not_gsm7',
+    ] as const) {
+      const { deps, sent } = asked({ today: { anchor: null, reason } });
+      const result = await runEveningCheckInSweep(database, deps, EVENING);
+      expect(result.anchor[reason], reason).toBe(1);
+      expect(result.anchor.anchored, reason).toBe(0);
+      expect(result.anchor.no_event_today, reason).toBe(reason === 'no_event_today' ? 1 : 0);
+      expect(sent[0]?.body, reason).toContain('Mia and Leo');
+    }
+  });
+
+  it('counts a title the budget refused as over_segment, not as a quiet day', async () => {
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    const { deps, sent } = asked({ today: { anchor: 'x'.repeat(200) } });
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    expect(result.anchor.over_segment).toBe(1);
+    expect(result.anchor.anchored).toBe(0);
+    expect(result.anchor.no_event_today).toBe(0);
+    expect(sent[0]?.body).toContain('Mia and Leo');
+  });
+
+  it('still asks when the read throws, and says the read threw', async () => {
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    const { deps, sent } = asked({
+      today: async () => {
+        throw new Error('calendar read exploded');
+      },
+    });
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    expect(result.anchor.read_failed).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("does not anchor a household's first ever question, and says so", async () => {
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    process.env[F14_ENABLED_ENV] = 'true';
+    const { deps, sent } = harness({ today: { anchor: 'swim' } });
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    expect(result.anchor.first_ask).toBe(1);
+    expect(result.anchor.anchored).toBe(0);
+    expect(sent[0]?.body).toContain("Quick one before the day's gone");
+  });
+
+  it('counts nothing for the step-down notice, which asks nothing', async () => {
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    process.env[F14_ENABLED_ENV] = 'true';
+    const { deps, sent } = harness({
+      state: {
+        cadence: 'daily',
+        lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000),
+        silentStreak: 2,
+      },
+      today: { anchor: 'swim' },
+    });
+    const result = await runEveningCheckInSweep(database, deps, EVENING);
+    expect(result.steppedDownToWeekly).toBe(1);
+    expect(Object.values(result.anchor).reduce((a, b) => a + b, 0)).toBe(0);
+    expect(sent[0]?.body).toBe(`${CHECK_IN_STEP_DOWN}\n\n${OPT_OUT_LINE}`);
+  });
+
+  it('never reads the calendar for a household it is not going to ask', async () => {
+    // The read joins the names read on the same side of the gate: a family already asked,
+    // or over budget, must not cost a read of what their children did today.
+    process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
+    process.env[F14_ENABLED_ENV] = 'true';
+    let reads = 0;
+    const { deps } = harness({
+      hold: 'frequency_cap',
+      today: async () => {
+        reads += 1;
+        return { anchor: 'swim' };
+      },
+    });
+    await runEveningCheckInSweep(database, deps, EVENING);
+    expect(reads).toBe(0);
   });
 });
