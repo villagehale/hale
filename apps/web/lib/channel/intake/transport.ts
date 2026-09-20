@@ -1,4 +1,5 @@
 import type { MessageTransport } from '~/lib/channel/transport-address';
+import type { IntakeKeyword } from './keywords';
 
 /**
  * VIL-237 · M2 — the raw two-way SMS transport, deliberately smaller than the loop's
@@ -29,6 +30,22 @@ export interface InboundMessage {
   /** The pipe the message arrived on. Absent means 'sms' — the historical transport
    * every pre-WhatsApp caller and fixture assumes; the webhook always sets it. */
   transport?: MessageTransport;
+  /**
+   * VIL-348 — the provider's OWN keyword handling already matched this message AND
+   * already replied to the sender, so Hale's acknowledgment would be the second one.
+   *
+   * `null` is the ordinary case and it is a NAMED absence, not an unknown (rule #11):
+   * it means the provider answered nothing and the whole reply is Hale's to send.
+   * Provider-neutral like the rest of this interface — the field says what happened,
+   * not which vendor's parameter carried it.
+   *
+   * ONLY THE ACKNOWLEDGMENT IS SUPPRESSED. Every consent write, every audit row and
+   * every ledger row still happens: the provider's list is not Hale's ledger, and a
+   * STOP that revokes nothing on our side because a carrier answered it first is the
+   * CASL failure this field exists to avoid. What it buys is that a parent who asked
+   * to be left alone gets one confirmation rather than two.
+   */
+  providerAnsweredKeyword?: IntakeKeyword | null;
 }
 
 /** What one `send` carries. `mediaUrls`, when present, must be non-empty absolute

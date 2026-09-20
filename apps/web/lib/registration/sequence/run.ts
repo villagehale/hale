@@ -53,6 +53,7 @@ import {
   dueLeg,
   legIsUrgent,
   openLegWindows,
+  openTimeIsPublished,
   waitlistDeadline,
 } from './schedule.js';
 import {
@@ -317,6 +318,18 @@ const PREP_FATES: readonly PrepFate[] = [
   'unbound',
 ];
 
+/**
+ * Why a leg that WAS due did not go out (VIL-347). Not a hold — nothing is deferred and
+ * no later tick will send it — and not `quiet`, which means nothing was due at all.
+ *
+ * `open_time_unpublished`: the go leg is a claim about a minute, and this window's
+ * source published only a date, so there is no minute to claim. See
+ * `openTimeIsPublished`.
+ */
+export type SequenceSkipReason = 'open_time_unpublished';
+
+const SKIP_REASONS: readonly SequenceSkipReason[] = ['open_time_unpublished'];
+
 export interface SequenceRunResult {
   /** False when neither the flag nor the allowlist armed the sweep (D21). */
   enabled: boolean;
@@ -337,6 +350,13 @@ export interface SequenceRunResult {
   refused: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
+  /**
+   * Legs that were DUE and deliberately not sent, by reason (VIL-347). Its own count
+   * beside `held`, because a hold is a deferral the next tick resolves and this is a
+   * message that will never go: a non-zero here is a town whose published data cannot
+   * support the leg, which is a data signal, not a delivery one (rule #11).
+   */
+  skipped: Record<SequenceSkipReason, number>;
   /**
    * VIL-338 · every fate a send-time course read produced, by name. A degraded reading
    * is never folded into `failed` (nothing broke) or into `sent` alone (the parent got a
@@ -369,6 +389,10 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     refused: 0,
     failed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
+    skipped: Object.fromEntries(SKIP_REASONS.map((reason) => [reason, 0])) as Record<
+      SequenceSkipReason,
+      number
+    >,
     prep: Object.fromEntries(PREP_FATES.map((fate) => [fate, 0])) as Record<PrepFate, number>,
     read: 0,
     readSkipped: 0,
@@ -530,6 +554,13 @@ type LegTally = LegReadEffects & {
   /** One entry per recipient the gate held, so two parents held for two different
    * reasons are counted as two different reasons. */
   held: ProactiveHoldReason[];
+  /**
+   * VIL-347 · the leg was DUE and was composed for nobody, because the window's own
+   * published data cannot support the sentence. A property of the SEQUENCE, like
+   * `quiet`, rather than a per-recipient count: the window is read before the household
+   * is, so the answer is the same for one parent and for two.
+   */
+  skipped?: SequenceSkipReason;
 };
 
 function emptyTally(overrides: Partial<LegTally> = {}): LegTally {
@@ -651,6 +682,19 @@ async function runLegForSequence(
     now,
   );
   if (leg === null) return emptyTally({ quiet: true });
+  // VIL-347 · THE 23:45 TEXT. The go leg is the one rung that names a MINUTE, and it
+  // spends the quiet-hours exemption to do it. Where the town published a date and no
+  // hour the row holds the start of that local day, and fifteen minutes before it is
+  // 23:45 the night before — a text at the hour the exemption exists to protect, naming
+  // a midnight nobody printed. The battle plan already carried the date that evening, so
+  // what is lost is a sentence that was never true.
+  //
+  // DECIDED BEFORE THE HOUSEHOLD IS READ, above the recipient fan-out: there is no
+  // honest version of this leg for anybody, so it is composed for nobody and sent to
+  // nobody rather than held for each parent in turn.
+  if (leg === 'go' && !openTimeIsPublished(anchor, sequence.timeZone)) {
+    return emptyTally({ skipped: 'open_time_unpublished' });
+  }
 
   // BOTH NUMBERS. The sequence row carries one parent id — the seat that was claimed —
   // and it is the ladder's owner, never its audience: one household, one registration
@@ -1098,6 +1142,7 @@ export async function runRegistrationSequenceCron(
       if (outcome.noFit) result.noFit += 1;
       // The reading is per SEQUENCE (one course page, one leg) and the sending is per
       // RECIPIENT, so the two are added differently and deliberately.
+      if (outcome.skipped) result.skipped[outcome.skipped] += 1;
       if (outcome.quiet) result.quiet += 1;
       result.sent += outcome.sent;
       result.deduped += outcome.deduped;

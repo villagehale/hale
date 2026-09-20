@@ -1455,6 +1455,105 @@ describe('VIL-338 · the bound course is read at send time', () => {
 });
 
 /**
+ * VIL-347 · THE 23:45 TEXT. Oakville publishes a non-resident DATE and no hour ("14 days
+ * after Oakville resident registration begins"), so the row stores the start of that
+ * local day — the date-only rule every such row follows. The go leg fires fifteen
+ * minutes before its anchor and is one of the two legs exempt from quiet hours, so a
+ * start-of-day anchor put "registration opens 12:00 a.m." on a parent's phone at 23:45
+ * the night before: a minute nobody published, at the hour the exemption exists to
+ * protect, four and three-quarter hours after the battle plan said the same thing.
+ */
+describe('a town that published a date and no hour (VIL-347)', () => {
+  /** Oakville's non-resident open as the row stores it: 2026-08-25, 00:00 Toronto. */
+  const START_OF_DAY = new Date('2026-08-25T04:00:00.000Z');
+  /** The same morning with the hour the Town actually prints for residents, 7 a.m. */
+  const SEVEN_AM = new Date('2026-08-25T11:00:00.000Z');
+  /** A two-parent household throughout: the window is unreadable for the HOUSEHOLD, so
+   * the decision has to be made once, above the fan-out, rather than once per number. */
+  const BOTH_PARENTS: FamilyTextRecipient[] = [
+    { parentUserId: 'user-1', timeZone: TZ, role: 'primary_parent' },
+    { parentUserId: 'user-2', timeZone: TZ, role: 'co_parent' },
+  ];
+  const NUMBERS = { 'user-1': '+14165550100', 'user-2': '+16475550199' };
+  const goTickFor = (openAt: Date) => new Date(openAt.getTime() - GO_LEAD_MINUTES * 60_000);
+  const oakville = (openAt: Date) =>
+    live({
+      window: win({
+        id: 'w-oakville',
+        municipality: 'oakville',
+        openAt,
+        sourceUrl:
+          'https://www.oakville.ca/parks-recreation-culture/programs-activities/registered-programs/',
+      }),
+    });
+
+  it('says nothing at 23:45 rather than naming a midnight nobody published', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      sequences: [oakville(START_OF_DAY)],
+      recipients: BOTH_PARENTS,
+      phones: NUMBERS,
+    });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, goTickFor(START_OF_DAY));
+
+    expect(h.transport.sent).toEqual([]);
+    expect(result.sent).toBe(0);
+    // ONE, not one per parent: the window's data is the household's fact, so the leg is
+    // composed for nobody rather than held twice.
+    expect(result.skipped.open_time_unpublished).toBe(1);
+    // Named, never folded into the bucket that means "nothing was due" (rule #11): a leg
+    // WAS due, and Hale declined to send it. Nor into `held`, which is a deferral the
+    // next tick can resolve.
+    expect(result.quiet).toBe(0);
+    expect(result.held).toEqual({
+      not_enrolled: 0,
+      no_watch_consent: 0,
+      frequency_cap: 0,
+      quiet_hours: 0,
+    });
+  });
+
+  it('still sends the go leg to both parents where the town DID print the hour', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      sequences: [oakville(SEVEN_AM)],
+      recipients: BOTH_PARENTS,
+      phones: NUMBERS,
+    });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, goTickFor(SEVEN_AM));
+
+    expect(result.sent).toBe(2);
+    expect(result.skipped.open_time_unpublished).toBe(0);
+    expect(h.transport.sent.map((sent) => sent.to)).toEqual([
+      '+14165550100',
+      '+16475550199',
+    ]);
+    for (const body of h.transport.bodies()) expect(body).toContain('7:00');
+  });
+
+  it('leaves the evening-before plan alone — it names a date, not a minute', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      sequences: [oakville(START_OF_DAY)],
+      recipients: BOTH_PARENTS,
+      phones: NUMBERS,
+    });
+
+    // 19:00 Toronto on 24 Aug, the battle-plan slot.
+    const result = await runRegistrationSequenceCron(
+      db(),
+      h.deps,
+      new Date('2026-08-24T23:00:00.000Z'),
+    );
+
+    expect(result.sent).toBe(2);
+    expect(result.skipped.open_time_unpublished).toBe(0);
+  });
+});
+
+/**
  * THE GAP THE 2026-09-17 AUDIT FOUND. The site promises a co-parent "the same radar and
  * reminders, on their own number", and the loop kept it — the weekly plan and the event
  * reminders both select `['primary_parent', 'co_parent']`. This ladder did not: it

@@ -1348,7 +1348,7 @@ describe('intake · CASL keywords', () => {
     await text(fake, transport, deps, 'hi');
     const result = await text(fake, transport, deps, 'STOP');
 
-    expect(result).toEqual({ status: 'stopped' });
+    expect(result).toEqual({ status: 'stopped', ack: 'sent' });
     expect(transport.bodies().at(-1)).toBe(STOP_ACK);
     expect(inserts(fake, schema.families)).toHaveLength(0);
   });
@@ -1359,7 +1359,7 @@ describe('intake · CASL keywords', () => {
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
 
     const result = await text(fake, transport, deps, 'unsubscribe');
-    expect(result).toEqual({ status: 'stopped' });
+    expect(result).toEqual({ status: 'stopped', ack: 'sent' });
 
     const revoke = fake.writes.find(
       (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
@@ -1383,7 +1383,7 @@ describe('intake · CASL keywords', () => {
 
     // The unsubscribe is the thing that must survive: an undeliverable courtesy line is
     // not a reason to leave a parent subscribed and the conversation open.
-    expect(result).toEqual({ status: 'stopped' });
+    expect(result).toEqual({ status: 'stopped', ack: 'sent' });
     const closed = fake.writes.find(
       (w) =>
         w.op === 'update' && w.table === schema.smsIntakeSessions && w.payload.state === 'stopped',
@@ -1518,7 +1518,7 @@ describe('intake · CASL keywords', () => {
 
     const result = await text(fake, transport, deps, 'START');
 
-    expect(result).toEqual({ status: 'restarted' });
+    expect(result).toEqual({ status: 'restarted', ack: 'sent' });
     expect(transport.bodies().at(-1)).toBe(START_ACK_BY_LANGUAGE.en);
     expect(fake.rows(schema.parentChannels).filter((r) => r.revokedAt === null)).toHaveLength(1);
   });
@@ -1540,7 +1540,7 @@ describe('intake · CASL keywords', () => {
 
     const result = await text(fake, transport, deps, 'HELP');
 
-    expect(result).toEqual({ status: 'helped' });
+    expect(result).toEqual({ status: 'helped', ack: 'sent' });
     expect(transport.bodies().at(-1)).toBe(HELP_REPLY);
     const ack = fake.rows(schema.channelMessages).find((r) => r.direction === 'out');
     expect(ack).toMatchObject({
@@ -1560,7 +1560,7 @@ describe('intake · CASL keywords', () => {
     const result = await text(fake, transport, deps, 'HELP');
 
     // Positive control: the reply itself still goes out.
-    expect(result).toEqual({ status: 'helped' });
+    expect(result).toEqual({ status: 'helped', ack: 'sent' });
     expect(transport.bodies().at(-1)).toBe(HELP_REPLY);
     expect(fake.rows(schema.channelMessages)).toHaveLength(0);
   });
@@ -1594,7 +1594,7 @@ describe('intake · CASL keywords', () => {
     const { fake, transport, deps } = harness({});
     await text(fake, transport, deps, 'hi');
     const helped = await text(fake, transport, deps, 'HELP');
-    expect(helped).toEqual({ status: 'helped' });
+    expect(helped).toEqual({ status: 'helped', ack: 'sent' });
     expect(transport.bodies().at(-1)).toBe(HELP_REPLY);
 
     // Still mid-intake: the next real answer still provisions.
@@ -1610,7 +1610,7 @@ describe('intake · CASL keywords', () => {
     });
     await text(fake, transport, deps, 'hi');
     const helped = await text(fake, transport, deps, 'qwerty asdf');
-    expect(helped).toEqual({ status: 'helped' });
+    expect(helped).toEqual({ status: 'helped', ack: 'sent' });
     expect(transport.bodies().at(-1)).toBe(UNREADABLE_INTAKE_REPLY);
     expect(transport.bodies().at(-1)).not.toBe(HELP_REPLY);
 
@@ -1626,7 +1626,7 @@ describe('intake · CASL keywords', () => {
     await text(fake, transport, deps, 'STOP');
 
     const restarted = await text(fake, transport, deps, 'START');
-    expect(restarted).toEqual({ status: 'restarted' });
+    expect(restarted).toEqual({ status: 'restarted', ack: 'sent' });
 
     const channels = inserts(fake, schema.parentChannels);
     expect(channels).toHaveLength(2); // a NEW row, never an un-revoke of the old one
@@ -1680,7 +1680,7 @@ describe('intake · guards', () => {
 
     const result = await text(fake, transport, deps, 'ARRET');
 
-    expect(result).toEqual({ status: 'stopped' });
+    expect(result).toEqual({ status: 'stopped', ack: 'sent' });
     expect(transport.bodies().at(-1)).toBe(STOP_ACK_BY_LANGUAGE.fr);
     const revoke = fake.writes.find(
       (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
@@ -1831,7 +1831,7 @@ describe('intake · the French CASL keywords', () => {
 
     const result = await text(fake, transport, deps, 'ARRÊT');
 
-    expect(result).toEqual({ status: 'stopped' });
+    expect(result).toEqual({ status: 'stopped', ack: 'sent' });
     expect(transport.bodies().at(-1)).toBe(STOP_ACK_BY_LANGUAGE.fr);
     // The legal half: the same revocation and the same withdrawal record an English STOP
     // writes. A French unsubscribe that only answered politely would be the CASL failure.
@@ -1848,7 +1848,7 @@ describe('intake · the French CASL keywords', () => {
   it('answers AIDE with the French capability line and HELP with the English one', async () => {
     const fr = harness({});
     await text(fr.fake, fr.transport, fr.deps, 'hi');
-    expect(await text(fr.fake, fr.transport, fr.deps, 'AIDE')).toEqual({ status: 'helped' });
+    expect(await text(fr.fake, fr.transport, fr.deps, 'AIDE')).toEqual({ status: 'helped', ack: 'sent' });
     expect(fr.transport.bodies().at(-1)).toBe(HELP_REPLY_BY_LANGUAGE.fr);
 
     const en = harness({});
@@ -1865,7 +1865,7 @@ describe('intake · the French CASL keywords', () => {
 
     const restarted = await text(fake, transport, deps, 'DEBUT');
 
-    expect(restarted).toEqual({ status: 'restarted' });
+    expect(restarted).toEqual({ status: 'restarted', ack: 'sent' });
     expect(transport.bodies().at(-1)).toBe(START_ACK_BY_LANGUAGE.fr);
     // Re-consent is the keyword itself, and the record has to hold what was actually sent.
     const consents = inserts(fake, schema.consentRecords).filter(
@@ -2275,5 +2275,166 @@ describe('intake · the connector offer on the consent turn', () => {
     const offerBody = h.transport.bodies().at(-1) as string;
     const [calendarUrl, gmailUrl] = offerBody.match(/https:\/\/\S+/g) as RegExpMatchArray;
     expect(offerBody).toBe(intakeConnectorOffer('fr', calendarUrl as string, gmailUrl as string));
+  });
+});
+
+/**
+ * VIL-348 — WHO ANSWERS THE KEYWORD.
+ *
+ * The provider's own opt-out handling may match STOP/START/HELP, reply to the sender
+ * itself, and forward the inbound tagged with which one it answered. Nothing in Hale can
+ * see whether that handling is configured — the comment that claimed to know went false
+ * three days after it was written — so the machine has to be right under either answer,
+ * and both are pinned here.
+ *
+ * THE LEDGER IS NEVER SUPPRESSED. Only Hale's own acknowledgment is: a provider's opt-out
+ * list is not Hale's consent record, and a STOP that revoked nothing because a carrier
+ * answered it first is the CASL failure the extra text is not.
+ */
+describe('intake · the provider answered the keyword first (VIL-348)', () => {
+  async function enrolled() {
+    const h = harness({});
+    await text(h.fake, h.transport, h.deps, 'hi');
+    await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    return h;
+  }
+
+  const revoked = (fake: FakeDb) =>
+    fake.writes.find(
+      (w) => w.op === 'update' && w.table === schema.parentChannels && w.payload.revokedAt,
+    );
+  const withdrawal = (fake: FakeDb) =>
+    inserts(fake, schema.consentRecords).find(
+      (c) => c.consentType === 'sms_service_messages' && c.granted === false,
+    );
+  /** How many outbound rows the ledger holds. Counted rather than matched on the body:
+   * an outbound row stores `body: null` by design (rule #1), so only the COUNT can tell
+   * a suppressed send from one that was ledgered as if it had gone. */
+  const outRows = (fake: FakeDb) =>
+    inserts(fake, schema.channelMessages).filter((m) => m.direction === 'out').length;
+
+  it('does every consent write and sends nothing when the provider already confirmed the STOP', async () => {
+    const { fake, transport, deps } = await enrolled();
+    const sentBefore = transport.sent.length;
+    const outBefore = outRows(fake);
+
+    const result = await handleInboundSms(
+      fake.db,
+      transport.inbound(PHONE, 'ARRET', { providerAnsweredKeyword: 'stop' }),
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'stopped', ack: 'provider_answered' });
+    expect(transport.sent).toHaveLength(sentBefore);
+    expect(revoked(fake)).toBeDefined();
+    expect(withdrawal(fake)).toBeDefined();
+    // A suppressed send must not be ledgered as sent: no new outbound row, and therefore
+    // no line in the parent's receipts for a message Hale never put on the wire.
+    expect(outRows(fake)).toBe(outBefore);
+  });
+
+  // The positive control for the three suppression cases — absence tests fail open, so
+  // the same ARRET with nothing on the inbound has to produce the ack and its row.
+  it('answers the same ARRET itself when the provider answered nothing', async () => {
+    const { fake, transport, deps } = await enrolled();
+    const outBefore = outRows(fake);
+
+    const result = await handleInboundSms(fake.db, transport.inbound(PHONE, 'ARRET'), deps);
+
+    expect(result).toEqual({ status: 'stopped', ack: 'sent' });
+    expect(transport.bodies().at(-1)).toBe(STOP_ACK_BY_LANGUAGE.fr);
+    expect(outRows(fake)).toBe(outBefore + 1);
+    expect(revoked(fake)).toBeDefined();
+    expect(withdrawal(fake)).toBeDefined();
+  });
+
+  it('suppresses only the matching keyword — a STOP tag on an AIDE is not an answer to it', async () => {
+    const { fake, transport, deps } = await enrolled();
+
+    const result = await handleInboundSms(
+      fake.db,
+      transport.inbound(PHONE, 'AIDE', { providerAnsweredKeyword: 'stop' }),
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'helped', ack: 'sent' });
+    expect(transport.bodies().at(-1)).toBe(HELP_REPLY_BY_LANGUAGE.fr);
+  });
+
+  it('stays quiet on an AIDE the provider already answered, and keeps the conversation open', async () => {
+    const { fake, transport, deps } = await enrolled();
+    const sentBefore = transport.sent.length;
+
+    const result = await handleInboundSms(
+      fake.db,
+      transport.inbound(PHONE, 'AIDE', { providerAnsweredKeyword: 'help' }),
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'helped', ack: 'provider_answered' });
+    expect(transport.sent).toHaveLength(sentBefore);
+    // The turn still completed: a carrier retry of this exact message is a duplicate,
+    // not a second HELP.
+    const retry = await handleInboundSms(
+      fake.db,
+      transport.inbound(PHONE, 'AIDE', { providerAnsweredKeyword: 'help' }),
+      deps,
+    );
+    expect(retry).toEqual({ status: 'helped', ack: 'provider_answered' });
+  });
+
+  it('re-enrols on a DEBUT the provider already answered, and says nothing itself', async () => {
+    const { fake, transport, deps } = await enrolled();
+    await text(fake, transport, deps, 'ARRET');
+    const sentBefore = transport.sent.length;
+    const outBefore = outRows(fake);
+
+    const result = await handleInboundSms(
+      fake.db,
+      transport.inbound(PHONE, 'DEBUT', { providerAnsweredKeyword: 'start' }),
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'restarted', ack: 'provider_answered' });
+    expect(transport.sent).toHaveLength(sentBefore);
+    expect(outRows(fake)).toBe(outBefore);
+    const consents = inserts(fake, schema.consentRecords).filter(
+      (c) => c.consentType === 'sms_service_messages' && c.granted === true,
+    );
+    expect(consents.at(-1)?.evidence).toMatchObject({ verbatimReply: 'DEBUT' });
+  });
+
+  /**
+   * THE STOP → DEBUT ASYMMETRY. An opt-out list that holds STOP but not DEBUT keeps
+   * refusing every send to this number — 21610 — although Hale has just re-enrolled its
+   * owner. Before this ticket the refusal threw out of the START branch, so the webhook
+   * 500'd and Twilio retried it into the same wall, AFTER the consent write had landed.
+   * Hale cannot fix the list from here; what it can do is not lie about the outcome.
+   */
+  it('names a re-enrolment the provider refuses to deliver, instead of 500ing the webhook', async () => {
+    const { fake, transport, deps } = await enrolled();
+    await text(fake, transport, deps, 'ARRET');
+    const outBefore = outRows(fake);
+
+    const result = await handleInboundSms(fake.db, transport.inbound(PHONE, 'DEBUT'), {
+      ...deps,
+      transport: refusingTransport(new TwilioSendError('21610', 400)),
+    });
+
+    expect(result).toEqual({ status: 'restarted', ack: 'provider_refused' });
+    // No row claiming an acknowledgment nobody received.
+    expect(outRows(fake)).toBe(outBefore);
+  });
+
+  it('positive control: a provider OUTAGE on the same ack still fails the turn', async () => {
+    const { fake, transport, deps } = await enrolled();
+    await text(fake, transport, deps, 'ARRET');
+
+    await expect(
+      handleInboundSms(fake.db, transport.inbound(PHONE, 'DEBUT'), {
+        ...deps,
+        transport: refusingTransport(new TwilioSendError('20500', 503)),
+      }),
+    ).rejects.toBeInstanceOf(TwilioSendError);
   });
 });
