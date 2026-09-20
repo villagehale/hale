@@ -97,6 +97,11 @@ const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/,
  */
 const SMS_COPY_SOURCES = [
   'lib/channel/router/copy.ts',
+  // VIL-353's nightly lane. Its own copy.test.ts measures segments by hand, which only
+  // ever covers the strings somebody remembered to list there; this scan is what makes a
+  // new pool member with a curly apostrophe in it a failing test rather than a doubled
+  // carrier bill on every evening, forever.
+  'lib/channel/checkin/copy.ts',
   'lib/channel/intake/copy.ts',
   'lib/channel/intake/adult-learn.ts',
   'lib/channel/intake/official-page.ts',

@@ -12,6 +12,7 @@ import {
 } from '~/lib/channel/outbound-gate';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import { nightlyOccasion } from '~/lib/channel/variant';
 import { readinessQuestion } from '~/lib/registration/sequence/prepare-reply';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -287,6 +288,11 @@ async function runForFamily(
       : composeCheckInAsk({
           first: decision.first,
           childNames: await deps.loadNamableChildren(database, family.familyId, now),
+          // Which of the five ways of asking this household reads tonight. The rotation
+          // steps once per family-local day, so no family reads the same sentence two
+          // evenings running (variant.ts).
+          familyId: family.familyId,
+          occasion: nightlyOccasion(now, family.timeZone),
         });
 
   const to = await deps.resolveSendablePhone(database, family.parentUserId);

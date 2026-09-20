@@ -245,7 +245,40 @@ describe('what goes out', () => {
       state: { lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000), silentStreak: 0 },
     });
     await runEveningCheckInSweep(database, deps, EVENING);
-    expect(sent[0]?.body.startsWith('How did today go with Mia and Leo?')).toBe(true);
+    // Which of the five it is belongs to the rotation (copy.test.ts owns the members).
+    // What belongs HERE is that the sweep asked the LATER question and not the first one:
+    // the keywords are printed once in a lifetime, and printing them again would teach a
+    // parent an opt-out they have already been offered.
+    const body = sent[0]?.body ?? '';
+    expect(body).toContain('Mia and Leo');
+    expect(body).not.toContain('Reply LESS for weekly');
+    expect(body).not.toContain("Quick one before the day's gone");
+  });
+
+  it('asks a different one of the five the next evening', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    // The property a pool exists for, through the sweep rather than through the composer:
+    // the occasion is derived from the family's own clock inside runForFamily, so a sweep
+    // that stopped passing it — or passed a constant — reads identically two nights
+    // running and nothing else in this file would notice.
+    const bodies = [0, 1, 2, 3, 4, 5].map(() => '');
+    for (const [index, dayOffset] of [0, 1, 2, 3, 4, 5].entries()) {
+      const { deps, sent } = harness({
+        state: { lastAskedAt: new Date(EVENING.getTime() - 24 * 3_600_000), silentStreak: 0 },
+      });
+      await runEveningCheckInSweep(
+        database,
+        deps,
+        new Date(EVENING.getTime() + dayOffset * 24 * 3_600_000),
+      );
+      bodies[index] = sent[0]?.body ?? '';
+    }
+    for (let i = 1; i < bodies.length; i++) {
+      expect(bodies[i], `evening ${i}`).not.toBe(bodies[i - 1]);
+    }
+    // Five members, so the sixth evening comes back round to the first — the rotation,
+    // not a stream of new sentences.
+    expect(bodies[5]).toBe(bodies[0]);
   });
 
   it('never names a teenager', async () => {
@@ -254,11 +287,13 @@ describe('what goes out', () => {
     // already dropped at the source, so the sentence cannot leak the name back.
     const { deps, sent } = harness({ children: ['Mia'] });
     await runEveningCheckInSweep(database, deps, EVENING);
-    expect(sent[0]?.body).toContain('with Mia?');
+    // Named, whichever of the five tonight is — the slot is the same in every member.
+    expect(sent[0]?.body).toContain('Mia');
+    expect(sent[0]?.body).not.toContain('Noah');
 
     const teensOnly = harness({ children: [] });
     await runEveningCheckInSweep(database, teensOnly.deps, EVENING);
-    expect(teensOnly.sent[0]?.body).toContain('with the kids?');
+    expect(teensOnly.sent[0]?.body).toContain('the kids');
   });
 });
 

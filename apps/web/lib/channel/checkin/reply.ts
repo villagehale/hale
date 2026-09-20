@@ -9,15 +9,16 @@ import {
   readCheckInState,
   recordCheckInAnswer,
 } from './cadence';
+import { nightlyOccasion } from '~/lib/channel/variant';
 import {
   CHECK_IN_ACK_TEMPLATE_KEY,
   CHECK_IN_ASK_TEMPLATE_KEY,
   CHECK_IN_DAILY_ACK,
-  CHECK_IN_NOTED_ACK,
   CHECK_IN_NOT_KEPT_ACK,
   CHECK_IN_OFF_ACK,
   CHECK_IN_STEP_DOWN_TEMPLATE_KEY,
   CHECK_IN_WEEKLY_ACK,
+  checkInNotedAck,
 } from './copy';
 import { isNotKept, storeCheckInNote } from './notes';
 import { asksHaleForSomething } from './request';
@@ -119,7 +120,10 @@ export async function handleEveningCheckInReply(
     await recordCheckInAnswer(tx, { familyId: input.familyId, cadence: null, now: input.now });
     await auditAnswer(tx, input, { stored: true });
   });
-  return { status: 'note_stored', reply: CHECK_IN_NOTED_ACK[language] };
+  return {
+    status: 'note_stored',
+    reply: checkInNotedAck(language, input.familyId, nightlyOccasion(input.now, input.timeZone)),
+  };
 }
 
 const CADENCE_ACK: Record<CheckInCadence, Record<ReplyLanguage, string>> = {
