@@ -136,6 +136,9 @@ export function municipalityForCity(city: string | null): Municipality | null {
 /** The session fields the selection actually turns on. */
 export interface CivicSessionForFamily {
   id: string;
+  /** The registry venue this session runs at — carried through to the candidate so a
+   * verdict about it can be pooled at venue grain (see `ProjectedCivicCandidate`). */
+  venueId: string;
   title: string;
   summary: string | null;
   recurrence: string;
@@ -160,6 +163,16 @@ export interface CivicSessionForFamily {
 
 export interface ProjectedCivicCandidate {
   title: string;
+  /**
+   * The `civic_venues` row behind this pick, stamped onto the candidate.
+   *
+   * IT IS THE ONLY SHARED IDENTITY A CIVIC ROW HAS. `source_url` is one dataset page
+   * for every EarlyON centre in Toronto and one page per library OCCURRENCE, so it is
+   * either too coarse to be an identity or too fine to ever be one. The venue row is
+   * global and uniquely keyed, so two families offered the same centre carry the same
+   * string and two different centres never collide.
+   */
+  civicVenueId: string;
   kind: string;
   summary: string;
   eventDate: string;
@@ -266,6 +279,7 @@ export function selectCivicSessions(
 
     projected.push({
       title: session.title,
+      civicVenueId: session.venueId,
       kind: session.venueKind === 'library_branch' ? 'library' : 'drop_in',
       summary: summaryFor(session, when.label),
       eventDate: when.day,
@@ -415,6 +429,7 @@ export async function projectCivicCandidates(
       isCancelled: schema.civicSessions.isCancelled,
       confidence: schema.civicSessions.confidence,
       sourceUrl: schema.civicSessions.sourceUrl,
+      venueId: schema.civicVenues.id,
       venueName: schema.civicVenues.name,
       venueAddress: schema.civicVenues.address,
       venueCity: schema.civicVenues.city,
@@ -476,6 +491,7 @@ export async function projectCivicCandidates(
           lng: pick.lng,
           venueName: pick.venueName,
           venueAddress: pick.venueAddress,
+          civicVenueId: pick.civicVenueId,
           // Free by policy at every source in this layer — and the radar's
           // free-first ordering reads exactly this field.
           priceLevel: 'free',

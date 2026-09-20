@@ -1,7 +1,7 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildAskHaleTools } from './tools';
+import { buildAskHaleTools, searchVillageTool } from './tools';
 
 /**
  * search_village must recall only the CURRENT, in-season, unexpired discovery run:
@@ -64,6 +64,8 @@ function candidate(overrides: Record<string, unknown>): Record<string, unknown> 
     seasons: null,
     eventDate: '2026-07-11',
     venueName: 'Wychwood Barns',
+    placeId: null,
+    civicVenueId: null,
     supersededAt: null,
     discoveredAt: NOW,
     ...overrides,
@@ -250,5 +252,98 @@ describe('search_village — the standing option when nothing is offerable', () 
 
     expect(result.candidates).toEqual([]);
     expect(result.standingOption).toBeNull();
+  });
+});
+
+/**
+ * WHAT THE PROCESS LEARNS, AND WHAT THE MODEL DOES NOT.
+ *
+ * Provenance travels beside the offer on a turn-scoped callback, never inside it. The
+ * first case is the pin that keeps it that way: an id added to `OfferableActivity` would
+ * be the obvious shortcut, and it is wrong for three recorded reasons (an optional
+ * attribute on a non-strict tool is routinely skipped, `inputExamples` are cached
+ * outside message protections, and widening this surface costs measured tool reach).
+ */
+describe('the offer ledger beside the offer', () => {
+  const toddler = { dateOfBirth: '2023-03-01' };
+
+  it('leaves the model-visible offer shape exactly as it was — field for field', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+
+    const result = await search([
+      candidate({ id: 'cand-1', title: 'Saturday storytime', placeId: 'places/abc' }),
+    ]);
+
+    expect(result.candidates).toEqual([
+      {
+        title: 'Saturday storytime',
+        kind: 'class',
+        summary: 'a warm local option',
+        venue: 'Wychwood Barns',
+        when: 'Sat, Jul 11',
+      },
+    ]);
+  });
+
+  it('reports the row behind every candidate it just offered', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const offered: unknown[] = [];
+
+    const tool = searchVillageTool(
+      fakeDb(
+        [
+          candidate({ id: 'cand-1', title: 'Saturday storytime', placeId: 'places/abc' }),
+          candidate({
+            id: 'cand-2',
+            title: 'EarlyON drop-in',
+            placeId: null,
+            civicVenueId: 'venue-9',
+          }),
+        ],
+        [toddler],
+      ),
+      (offers) => offered.push(...offers),
+    );
+    await invokeTool(tool, {}, { familyId: FAMILY_ID, actor: 'user-1' }, guardDeps);
+
+    expect(offered).toEqual([
+      {
+        title: 'Saturday storytime',
+        candidateId: 'cand-1',
+        placeId: 'places/abc',
+        civicVenueId: null,
+      },
+      {
+        title: 'EarlyON drop-in',
+        candidateId: 'cand-2',
+        placeId: null,
+        civicVenueId: 'venue-9',
+      },
+    ]);
+  });
+
+  it('reports nothing for a find still being verified — it was never offered', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const offered: unknown[] = [];
+
+    const tool = searchVillageTool(
+      fakeDb(
+        [candidate({ id: 'cand-1', title: 'Unplaced find', venueName: null, placeId: 'p-1' })],
+        [toddler],
+      ),
+      (offers) => offered.push(...offers),
+    );
+    const result = (await invokeTool(
+      tool,
+      {},
+      { familyId: FAMILY_ID, actor: 'user-1' },
+      guardDeps,
+    )) as VillageToolResult;
+
+    expect(result.inVerification).toBe(1);
+    expect(offered).toEqual([]);
   });
 });

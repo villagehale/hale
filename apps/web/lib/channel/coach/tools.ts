@@ -12,7 +12,7 @@ import { type ReferralShare, shareReferralLinkTool } from '~/lib/channel/referra
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { type SpotWatchPorts, watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
-import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
+import { EXAMPLE_CHILD_ID, type OfferedCandidate } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
@@ -103,6 +103,22 @@ export interface ChannelCoachToolArgs {
   /** The shared Village read (coach/tools.ts `searchVillageTool`), or null in a test
    * that is not exercising it. */
   villageTool: RegisteredTool | null;
+  /**
+   * What `search_village` OFFERED this turn, read back when the parent asks for one of
+   * them to be added — see {@link matchOfferedTitle}.
+   *
+   * A READER RATHER THAN A TOOL ARGUMENT, and that is the whole design. The obvious
+   * shape is an opaque `ref` on the offer and a `sourceRef` on `propose_calendar_add`'s
+   * input, and three recorded things say no: an optional attribute on a non-strict tool
+   * is skipped by the model routinely, ids in `inputExamples` are an explicit hazard on
+   * this surface (see the comment on those examples below), and widening a verb's schema
+   * here is the same class of change as the eleventh verb that cost measured tool reach.
+   * A provenance the model may silently drop is a provenance that fails open.
+   *
+   * Absent where nothing offered anything; the add then carries no `sourceRef`, which is
+   * the truth about a dentist the parent named themselves.
+   */
+  offeredThisTurn?: () => readonly OfferedCandidate[];
   /**
    * The live web-search lane and the family facts phase 0 needs, or null in a test that
    * is not exercising them. The two travel together on purpose: a finder with no reader
@@ -248,6 +264,36 @@ function refuseMismatchedWeekday(
     tool,
   });
   if (violation) throw new Error(violation);
+}
+
+/**
+ * WHICH OFFERED CANDIDATE THIS ADD IS, or why it is none of them.
+ *
+ * EXACT, on the normalised title, and the strictness is the feature. A fuzzy match here
+ * decides which VENUE a future verdict lands on, and a wrong hit sends one family's
+ * opinion of one place to another family about a different one — the harm the whole
+ * review pool exists to avoid. `.trim()` and a case fold are the only liberties taken,
+ * because they are the only two differences the same string can pick up on the way
+ * through a model.
+ *
+ * A miss is the ordinary case at first and it is NAMED rather than bucketed (rule #11):
+ * `not_offered_this_turn` is a parent asking for something Hale never found (a dentist,
+ * a birthday party), and `title_not_matched` is Hale finding it and the model rewording
+ * it — two different problems with two different fixes.
+ */
+export type OfferMatch =
+  | { outcome: 'offered_this_turn'; candidateId: string }
+  | { outcome: 'not_offered_this_turn' }
+  | { outcome: 'title_not_matched' };
+
+export function matchOfferedTitle(
+  offers: readonly OfferedCandidate[],
+  title: string,
+): OfferMatch {
+  if (offers.length === 0) return { outcome: 'not_offered_this_turn' };
+  const wanted = title.trim().toLowerCase();
+  const hit = offers.find((offer) => offer.title.trim().toLowerCase() === wanted);
+  return hit ? { outcome: 'offered_this_turn', candidateId: hit.candidateId } : { outcome: 'title_not_matched' };
 }
 
 export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTool[] {
@@ -450,6 +496,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       const startsAt = zonedLocalInstant(input.date, input.time, timeZone);
       claimDraftBudget();
 
+      const matched = matchOfferedTitle(args.offeredThisTurn?.() ?? [], input.title);
+      // Counted, never returned: the model's copy of this result must not gain a field,
+      // and `title_not_matched` is the number that decides whether a cross-turn lookup
+      // is ever worth paying for. No title and no id in the line (rule #1).
+      console.info(
+        { familyId, provenance: matched.outcome },
+        'texted calendar add: candidate provenance',
+      );
       const payload: CalendarPlacementPayload = {
         title: input.title,
         startsAt: startsAt.toISOString(),
@@ -457,6 +511,9 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         location: input.location ?? null,
         childId: input.childId ?? null,
         privacySensitive: false,
+        ...(matched.outcome === 'offered_this_turn'
+          ? { sourceRef: { table: 'village_candidates', id: matched.candidateId } }
+          : {}),
       };
       const actionId = await mint({
         familyId,

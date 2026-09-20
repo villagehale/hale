@@ -34,7 +34,7 @@ import { MINT_FETCH_TIMEOUT_MS } from '~/lib/channel/spots/tool';
 import { type AgentContext, type LoadAgentContextInput, loadAgentContext } from '~/lib/coach/context';
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
-import { searchVillageTool } from '~/lib/coach/tools';
+import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { createFetchBody } from '~/lib/registration/verify-sweep';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
@@ -398,12 +398,18 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
         DEFAULT_TIMEZONE,
         now,
       ),
-    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch) =>
-      buildChannelCoachTools({
+    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch) => {
+      // THE TURN'S OFFER LEDGER — what `search_village` named, so that what
+      // `propose_calendar_add` places can record where it came from. Turn-scoped like
+      // the four callbacks beside it, and never shown to the model: a placement should
+      // carry what placed it, and the process already holds the row.
+      const offered: OfferedCandidate[] = [];
+      return buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database, turn.now),
         draftPort: productionChannelDraftPort(database, anthropicClient(), turn.now),
-        villageTool: searchVillageTool(database),
+        villageTool: searchVillageTool(database, (offers) => offered.push(...offers)),
+        offeredThisTurn: () => offered,
         // The second activity source. Same key, same fail-closed resolver shape as the
         // loop's — a turn that could reach Anthropic for the loop and not for the search
         // is not a state worth being able to represent.
@@ -431,7 +437,8 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
         onPromise,
         onWatch,
         now: turn.now,
-      }),
+      });
+    },
     guardDeps: buildGuardDeps(database),
     runAgent,
     recordRun: async (run) => {

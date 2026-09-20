@@ -820,6 +820,13 @@
       "when": 1781469613000,
       "tag": "0119_co_parent_departed_category",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1781469616000,
+      "tag": "0122_village_candidate_civic_venue",
+      "breakpoints": true
     }
   ]
 }

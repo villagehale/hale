@@ -24,6 +24,7 @@ const TZ = 'America/Toronto';
 
 const session = (over: Partial<CivicSessionForFamily> = {}): CivicSessionForFamily => ({
   id: 'sess-1',
+  venueId: 'venue-armour-heights',
   title: 'Family Storytime',
   summary: null,
   recurrence: 'occurrence',
@@ -379,5 +380,54 @@ describe('municipalityForCity', () => {
     expect(municipalityForCity('Bradford West Gwillimbury')).toBeNull();
     expect(municipalityForCity('Cannington')).toBeNull();
     expect(municipalityForCity(null)).toBeNull();
+  });
+});
+
+/**
+ * THE IDENTITY A CIVIC PICK CARRIES.
+ *
+ * `source_url` cannot be one and the two ingests fail it in opposite directions: every
+ * EarlyON session in Toronto carries the single open.toronto.ca dataset page, and a
+ * library event carries a per-occurrence url. The venue row is the thing that is both
+ * shared and venue-grain, so it is what the pick carries.
+ */
+describe('the venue a civic pick came from', () => {
+  it('stamps the registry venue id on every projected candidate', () => {
+    const picks = selectCivicSessions([session()], TODDLER, null, NOW, TZ);
+
+    expect(picks.map((pick) => pick.civicVenueId)).toEqual(['venue-armour-heights']);
+  });
+
+  it('keeps two EarlyON centres apart even when they share one dataset url', () => {
+    const DATASET = 'https://open.toronto.ca/dataset/earlyon-child-and-family-centres/';
+    const picks = selectCivicSessions(
+      [
+        session({
+          id: 'sess-a',
+          venueId: 'venue-jane-finch',
+          title: 'EarlyON drop-in',
+          venueName: 'Jane/Finch EarlyON',
+          sourceUrl: DATASET,
+          venueKind: 'earlyon_centre',
+        }),
+        session({
+          id: 'sess-b',
+          venueId: 'venue-riverdale',
+          title: 'EarlyON drop-in',
+          venueName: 'Riverdale EarlyON',
+          sourceUrl: DATASET,
+          venueKind: 'earlyon_centre',
+        }),
+      ],
+      TODDLER,
+      null,
+      NOW,
+      TZ,
+    );
+
+    expect(new Set(picks.map((pick) => pick.civicVenueId)).size).toBe(2);
+    // The positive control on the same rows: the url they would have collided on IS
+    // the same string, so the distinctness above is the venue id doing the work.
+    expect(new Set(picks.map((pick) => pick.sourceUrl)).size).toBe(1);
   });
 });

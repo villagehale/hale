@@ -120,13 +120,32 @@ async function standingOptionForFamily(
 }
 
 /** One activity Hale may actually put in front of a parent. Every field is non-null
- * by construction — an offer a parent cannot turn up to is not an offer. */
+ * by construction — an offer a parent cannot turn up to is not an offer.
+ *
+ * NO ID, AND THAT IS LOAD-BEARING. Provenance travels beside the offer, never through
+ * it: an id the model can see is an id the model can invent, reword or attach to the
+ * wrong pick, and `inputExamples` on this surface are cached outside the protections
+ * message content gets (rule #1). See {@link OfferedCandidate}. */
 interface OfferableActivity {
   title: string;
   kind: string;
   summary: string;
   venue: string;
   when: string;
+}
+
+/**
+ * The same offer as the PROCESS sees it — the row behind each candidate the tool just
+ * emitted, so whatever places one can record what placed it.
+ *
+ * `title` is the exact string the model was handed, which is what makes an EXACT match
+ * possible downstream instead of a fuzzy one. A guess is not an identity.
+ */
+export interface OfferedCandidate {
+  title: string;
+  candidateId: string;
+  placeId: string | null;
+  civicVenueId: string | null;
 }
 
 /**
@@ -153,7 +172,16 @@ interface OfferableActivity {
  * never be offered, and counting it would have Hale promise to come back about a find it
  * must never mention (rule #1).
  */
-export function searchVillageTool(database: Database): RegisteredTool {
+export function searchVillageTool(
+  database: Database,
+  /**
+   * Told about every candidate this call OFFERED — the `onDraft`/`onOffer` shape, and
+   * for the same reason: the tool's return value belongs to the model and this does
+   * not. Absent on the surfaces that place nothing (the app's Ask, a parity test), so
+   * there is no path that collects a provenance nobody will use.
+   */
+  onOffered?: (offers: readonly OfferedCandidate[]) => void,
+): RegisteredTool {
   return defineTool({
     name: 'search_village',
     description:
@@ -191,7 +219,9 @@ export function searchVillageTool(database: Database): RegisteredTool {
             c.summary.toLowerCase().includes(needle),
         );
 
+      const rowsById = new Map(currentRunRows.map((row) => [row.id, row]));
       const candidates: OfferableActivity[] = [];
+      const offered: OfferedCandidate[] = [];
       let inVerification = 0;
       for (const view of views) {
         if (view.teenAttributed) continue;
@@ -207,7 +237,20 @@ export function searchVillageTool(database: Database): RegisteredTool {
           venue,
           when: formatCalendarDayLabel(view.eventDate, now),
         });
+        const row = rowsById.get(view.id);
+        if (row) {
+          offered.push({
+            title: view.title,
+            candidateId: row.id,
+            placeId: row.placeId,
+            civicVenueId: row.civicVenueId,
+          });
+        }
       }
+      // EXACTLY the rows that went out as `candidates` — never the in-verification
+      // count and never a teen-attributed row, which has no venue and no date and must
+      // not be nameable at all (rule #1).
+      onOffered?.(offered);
 
       // Nothing this family could turn up to. `inVerification` is deliberately NOT part
       // of the condition: a parent asking about tomorrow is empty-handed the moment

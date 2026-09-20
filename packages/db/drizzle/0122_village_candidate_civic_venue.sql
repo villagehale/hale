@@ -1,0 +1,14 @@
+-- The registry venue a civic candidate was projected from, so a verdict about it can
+-- be aggregated at VENUE grain across families.
+--
+-- `source_url` cannot do this job and the two civic sources fail it in opposite
+-- directions: every EarlyON session carries the one open.toronto.ca dataset page, so
+-- three families rating three different centres would read as three families rating
+-- all of them; a library event carries a per-OCCURRENCE url, so three families would
+-- have to attend the same instance of a weekly storytime to count as three. The venue
+-- row is the thing that is actually shared — global, with UNIQUE (system, external_id).
+--
+-- Nullable and no FK on purpose: `civic_venues` is a global registry with its own
+-- supersession lifecycle, and both a null and a stale id read the same way downstream
+-- ("no shared identity"). Pre-existing rows stay null, which is the truth about them.
+ALTER TABLE "village_candidates" ADD COLUMN IF NOT EXISTS "civic_venue_id" uuid;
