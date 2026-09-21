@@ -8,6 +8,7 @@ import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import type { ComposeAsideInput, VoicePass } from '~/lib/channel/voice-pass/compose';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
@@ -105,8 +106,18 @@ const TRIAGED_OUT: SentinelClassification = {
   usage: { triage: { promptTokens: 1, completionTokens: 1 }, extract: null },
 };
 
+
+/** The voice pass, DARK by default — the flag is unset in tests, so every existing
+ * assertion below is byte-identical to what this lane sends today. `aside` is a required
+ * port (rule #11), so a test that forgot it would not compile rather than silently
+ * exercise a lane with no pass at all. */
+function darkAside(): VoicePass {
+  return { async compose() { return { status: 'no_aside', reason: 'lane_dark', refusals: [] }; } };
+}
+
 interface Harness {
   ports: EmailAlertPorts;
+  asideCalls: ComposeAsideInput[];
   transport: FakeTransport;
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
   classifyCalls: number;
@@ -116,6 +127,7 @@ function harness(
   over: {
     classification?: SentinelClassification;
     classifyThrows?: boolean;
+    aside?: VoicePass;
     verdict?: Awaited<ReturnType<EmailAlertPorts['gate']>>;
     phone?: string | null;
     sendThrows?: TwilioSendError;
@@ -127,6 +139,7 @@ function harness(
     transport,
     threaded,
     classifyCalls: 0,
+    asideCalls: [],
     ports: {
       classify: async () => {
         h.classifyCalls += 1;
@@ -147,6 +160,12 @@ function harness(
         return 'conv-1';
       },
       timeZone: async () => 'America/Toronto',
+      aside: {
+        compose: async (input) => {
+          h.asideCalls.push(input);
+          return await (over.aside ?? darkAside()).compose(input);
+        },
+      },
     },
   };
   return h;
@@ -1511,6 +1530,7 @@ describe('the going count in the alert path', () => {
       alert: 'sent',
       booking: 'recorded',
       going: 'shown',
+      aside: { outcome: 'lane_dark', refusals: [] },
     });
     expect(h.transport.sent[0]?.body).toContain('with two other Hale families');
 
@@ -1521,6 +1541,7 @@ describe('the going count in the alert path', () => {
       kind: 'booking_confirmation',
       teenContent: false,
       othersCount: 2,
+      aside: false,
     });
     const trail = JSON.stringify(sent?.after);
     for (const leak of ['brookfield', 'Swim Level 2', FIRST_SESSION]) {
@@ -1561,6 +1582,7 @@ describe('the going count in the alert path', () => {
       kind: 'booking_confirmation',
       teenContent: false,
       othersCount: null,
+      aside: false,
     });
   });
 
@@ -1617,7 +1639,12 @@ describe('the going count in the alert path', () => {
     await otherFamilyBooked('Other B');
     const h = harness({ classification: receipt() });
     const { sql, out } = await statementsDuring(() => alertPair(h, 'm1', { envelope: RECEIPT }));
-    expect(out).toEqual({ alert: 'sent', booking: 'booked_dark', going: null });
+    expect(out).toEqual({
+      alert: 'sent',
+      booking: 'booked_dark',
+      going: null,
+      aside: { outcome: 'lane_dark', refusals: [] },
+    });
     expect(sql.some((text) => text.includes(COUNT_QUERY))).toBe(false);
   });
 
@@ -1641,6 +1668,7 @@ describe('the going count in the alert path', () => {
       alert: 'sent',
       booking: 'teen_attributed',
       going: 'teen_attributed',
+      aside: { outcome: 'lane_dark', refusals: [] },
     });
     expect(h.transport.sent[0]?.body).not.toContain('Hale families');
   });
@@ -1692,4 +1720,106 @@ describe('the going count in the alert path', () => {
     );
     return { familyId: household.familyId, result, body: h.transport.sent[0]?.body ?? '' };
   }
+});
+
+/**
+ * THE VOICE PASS, ON THIS LANE.
+ *
+ * Everything above this block runs with the pass DARK, which is the dark-merge proof: not
+ * one existing assertion changed when the hook went in. These cases arm it with a scripted
+ * composer and check the three things a hook at this boundary can get wrong — the thread
+ * disagreeing with the wire, a Haiku call paid for a text nobody received, and the audit
+ * row learning something it is not allowed to know.
+ */
+describe('the voice pass', () => {
+  /** A composer that always ships the same clause, and counts how often it was asked. */
+  function speaking(clause = 'Third one in the last day.'): { pass: VoicePass; calls: number } {
+    const s = {
+      calls: 0,
+      pass: {
+        async compose(input: ComposeAsideInput) {
+          s.calls += 1;
+          return { status: 'aside' as const, body: `${clause} ${input.core}` };
+        },
+      },
+    };
+    return s;
+  }
+
+  it('sends and THREADS the same assembled string, and the wire is that plus the opt-out', async () => {
+    const speaker = speaking();
+    const h = harness({ aside: speaker.pass });
+    expect(await alert(h)).toBe('sent');
+
+    const wire = h.transport.sent[0]?.body ?? '';
+    const threaded = h.threaded[0]?.body ?? '';
+    // The hazard this exists for: `threadMessage` deliberately carries the COMPOSED
+    // sentence rather than the wire body, so a maker reading that comment can assemble
+    // for the wire and leave the thread on the core - and the coach would then answer
+    // next turn against a message the parent never read.
+    expect(threaded).toMatch(/^Third one in the last day\. /);
+    expect(wire).toBe(`${threaded}\n\n${OPT_OUT_LINE}`);
+    expect(threaded).toContain('Riverside Pool');
+    expect(speaker.calls).toBe(1);
+  });
+
+  it('records the aside as a BOOLEAN on the audit row, with no clause in it', async () => {
+    const h = harness({ aside: speaking('Short notice, that one.').pass });
+    expect(await alert(h)).toBe('sent');
+    const row = (await auditRows()).find((r) => r.actionTaken === 'email_alert_sent');
+    const after = row?.after as Record<string, unknown>;
+    expect(after.aside).toBe(true);
+    // Paired positive control: the fields that were always there are still there, so this
+    // is not passing against an audit row that lost its payload.
+    expect(after.kind).toBe('cancellation');
+    expect(after.teenContent).toBe(false);
+    expect(JSON.stringify(after)).not.toContain('Short notice');
+  });
+
+  it('records false when the pass declined, and leaves the body alone', async () => {
+    const h = harness();
+    expect(await alert(h)).toBe('sent');
+    const row = (await auditRows()).find((r) => r.actionTaken === 'email_alert_sent');
+    expect((row?.after as Record<string, unknown>).aside).toBe(false);
+    expect(h.threaded[0]?.body).toBe(h.transport.sent[0]?.body?.split('\n\n')[0]);
+  });
+
+  it('costs ONE aside call when two sweeps race the same message', async () => {
+    // The hook sits after the CLAIM. Above it, the race loser pays for a Haiku call and
+    // writes an agent_runs row for a text nobody received - which corrupts the exact
+    // cost-per-alert number this feature has to be able to answer.
+    const speaker = speaking();
+    const a = harness({ aside: speaker.pass });
+    const b = harness({ aside: speaker.pass });
+    const [first, second] = await Promise.all([alert(a, 'race-1'), alert(b, 'race-1')]);
+    expect([first, second].sort()).toEqual(['already_sent', 'sent']);
+    expect(speaker.calls).toBe(1);
+  });
+
+  it('costs ZERO aside calls when the gate allowed a parent with no number', async () => {
+    const speaker = speaking();
+    const h = harness({ aside: speaker.pass, phone: null });
+    expect(await alert(h)).toBe('no_send_target');
+    expect(speaker.calls).toBe(0);
+    expect(h.asideCalls).toHaveLength(0);
+  });
+
+  it('hands the pass the count the gate took, and only when it is at least one', async () => {
+    const h = harness({ verdict: { allowed: true, optOut: 'full', priorSendsInWindow: 2 } });
+    await alert(h, 'count-2');
+    expect(h.asideCalls[0]?.priorAlertsToHousehold24h).toBe(2);
+    const first = harness({ verdict: { allowed: true, optOut: 'full', priorSendsInWindow: 0 } });
+    await alert(first, 'count-0');
+    expect(first.asideCalls[0]?.priorAlertsToHousehold24h).toBeNull();
+  });
+
+  it('reports what the pass did on the result, for the sweep to tally', async () => {
+    const shipped = await alertPair(harness({ aside: speaking().pass }), 'tally-1');
+    expect(shipped.aside).toEqual({ outcome: 'aside', refusals: [] });
+    const dark = await alertPair(harness(), 'tally-2');
+    expect(dark.aside).toEqual({ outcome: 'lane_dark', refusals: [] });
+    // `null` is "never reached", which is a different fact from any of the eight.
+    const unreachable = await alertPair(harness({ phone: null }), 'tally-3');
+    expect(unreachable.aside).toBeNull();
+  });
 });

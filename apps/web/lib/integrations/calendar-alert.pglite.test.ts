@@ -6,6 +6,7 @@ import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
+import type { ComposeAsideInput, VoicePass } from '~/lib/channel/voice-pass/compose';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
   CALENDAR_ALERT_MAX_PER_SWEEP,
@@ -63,8 +64,18 @@ const TIMED: CalendarChange = {
   end: { dateTime: '2026-09-17T21:00:00.000Z' },
 };
 
+
+/** The voice pass, DARK by default — the flag is unset in tests, so every existing
+ * assertion below is byte-identical to what this lane sends today. `aside` is a required
+ * port (rule #11), so a test that forgot it would not compile rather than silently
+ * exercise a lane with no pass at all. */
+function darkAside(): VoicePass {
+  return { async compose() { return { status: 'no_aside', reason: 'lane_dark', refusals: [] }; } };
+}
+
 interface Harness {
   ports: CalendarAlertPorts;
+  asideCalls: ComposeAsideInput[];
   transport: FakeTransport;
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
   /** Every parent the sweep asked the clock for — one read per sweep at most, and none
@@ -75,6 +86,7 @@ interface Harness {
 function harness(
   over: {
     verdict?: Awaited<ReturnType<CalendarAlertPorts['gate']>>;
+    aside?: VoicePass;
     phone?: string | null;
     sendThrows?: TwilioSendError;
   } = {},
@@ -82,10 +94,12 @@ function harness(
   const transport = new FakeTransport();
   const threaded: Harness['threaded'] = [];
   const timeZoneReads: string[] = [];
+  const asideCalls: ComposeAsideInput[] = [];
   return {
     transport,
     threaded,
     timeZoneReads,
+    asideCalls,
     ports: {
       gate: async () => over.verdict ?? { allowed: true, optOut: 'full', priorSendsInWindow: 0 },
       resolvePhone: async () => (over.phone === undefined ? PHONE : over.phone),
@@ -103,6 +117,12 @@ function harness(
       timeZone: async (parentUserId) => {
         timeZoneReads.push(parentUserId);
         return 'America/Toronto';
+      },
+      aside: {
+        compose: async (input) => {
+          asideCalls.push(input);
+          return await (over.aside ?? darkAside()).compose(input);
+        },
       },
     },
   };
@@ -1052,7 +1072,11 @@ describe('a change the gate held is offered again', () => {
     // thing that can produce this text.
     const daylight = harness();
     const later = await sweepBoth(daylight, { changes: [], now: new Date('2026-09-17T16:00:00.000Z') });
-    expect(later).toEqual({ changes: [], reoffers: ['sent'] });
+    expect(later).toEqual({
+      changes: [],
+      reoffers: ['sent'],
+      asides: [{ outcome: 'lane_dark', refusals: [] }],
+    });
     expect(daylight.transport.sent).toHaveLength(1);
     expect(daylight.transport.sent[0]?.body).toContain(
       'Cartwheels Gym is on your calendar for Thursday, Sep 17, 4:15-5:00 p.m.',
@@ -1377,7 +1401,7 @@ describe('the memory itself', () => {
 
   it('costs one query and no clock read on a quiet calendar with nothing owed', async () => {
     const h = harness();
-    await expect(sweepBoth(h, { changes: [] })).resolves.toEqual({ changes: [], reoffers: [] });
+    await expect(sweepBoth(h, { changes: [] })).resolves.toEqual({ changes: [], reoffers: [], asides: [] });
     expect(h.timeZoneReads).toEqual([]);
   });
 });
@@ -1580,5 +1604,80 @@ describe('the gate registration', () => {
     // calendar spend the inbox's budget.
     expect(PROACTIVE_CATEGORY.calendar_alert).toBe('calendar_alert');
     expect(PROACTIVE_CAP.calendar_alert).toEqual({ max: 3, windowHours: 24 });
+  });
+});
+
+/**
+ * THE VOICE PASS, ON THIS LANE — the sibling of the email lane's block, same three
+ * hazards. Everything above here runs with the pass DARK, which is the dark-merge proof.
+ */
+describe('the voice pass', () => {
+  function speaking(clause = 'Third one in the last day.'): { pass: VoicePass; calls: number } {
+    const s = {
+      calls: 0,
+      pass: {
+        async compose(input: ComposeAsideInput) {
+          s.calls += 1;
+          return { status: 'aside' as const, body: `${input.core} ${clause}` };
+        },
+      },
+    };
+    return s;
+  }
+
+  it('sends and THREADS the same assembled string, and the wire is that plus the opt-out', async () => {
+    const speaker = speaking();
+    const h = harness({ aside: speaker.pass });
+    expect(await sweep(h)).toEqual(['sent']);
+    const wire = h.transport.sent[0]?.body ?? '';
+    const threaded = h.threaded[0]?.body ?? '';
+    expect(threaded).toMatch(/ Third one in the last day\.$/);
+    expect(wire).toBe(`${threaded}\n\n${OPT_OUT_LINE}`);
+    expect(speaker.calls).toBe(1);
+  });
+
+  it('records the aside as a BOOLEAN on the audit row, with no clause in it', async () => {
+    const h = harness({ aside: speaking('Short notice, that one.').pass });
+    expect(await sweep(h)).toEqual(['sent']);
+    const row = (await auditRows()).find((r) => r.actionTaken === 'calendar_alert_sent');
+    const after = row?.after as Record<string, unknown>;
+    expect(after.aside).toBe(true);
+    // The positive control beside the negative one.
+    expect(after.status).toBe('confirmed');
+    expect(after.instances).toBe(1);
+    expect(JSON.stringify(after)).not.toContain('Short notice');
+  });
+
+  it('costs ONE aside call when two sweeps race the same change', async () => {
+    const speaker = speaking();
+    const a = harness({ aside: speaker.pass });
+    const b = harness({ aside: speaker.pass });
+    const [first, second] = await Promise.all([sweep(a), sweep(b)]);
+    expect([first[0], second[0]].sort()).toEqual(['already_sent', 'sent']);
+    expect(speaker.calls).toBe(1);
+  });
+
+  it('costs ZERO aside calls when the gate allowed a parent with no number', async () => {
+    const speaker = speaking();
+    const h = harness({ aside: speaker.pass, phone: null });
+    expect(await sweep(h)).toEqual(['no_send_target']);
+    expect(speaker.calls).toBe(0);
+  });
+
+  it('never claims a matched occasion, and never an ask, on this lane', async () => {
+    const h = harness();
+    await sweep(h);
+    expect(h.asideCalls[0]?.matchedAKnownOccasion).toBe(false);
+    expect(h.asideCalls[0]?.ctaSuffix).toBeNull();
+    expect(h.asideCalls[0]?.teenContent).toBe(false);
+  });
+
+  it('reports the asides beside the two positional lists, one per text that reached it', async () => {
+    const shipped = await sweepBoth(harness({ aside: speaking().pass }));
+    expect(shipped.asides).toEqual([{ outcome: 'aside', refusals: [] }]);
+    // A change that never reached the pass contributes NOTHING, rather than an eighth
+    // outcome meaning "not applicable" (rule #11).
+    const unreachable = await sweepBoth(harness({ phone: null }));
+    expect(unreachable.asides).toEqual([]);
   });
 });

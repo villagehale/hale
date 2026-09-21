@@ -11,6 +11,12 @@ import {
 import { withOptOut } from '~/lib/channel/opt-out';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  type AsideTally,
+  type VoicePass,
+  asideTally,
+  priorAlertsForAside,
+} from '~/lib/channel/voice-pass/compose';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { formatDayHeading } from '~/lib/format/datetime';
 import type {
@@ -186,6 +192,16 @@ export interface EmailAlertResult {
    * rule #1 wants readable in both flag states.
    */
   going: GoingOutcome | null;
+  /**
+   * What the VOICE PASS did to this alert's sentence, or `null` for an envelope that
+   * never reached it — dark, held, claimed by a concurrent sweep, no sendable number.
+   *
+   * Null is "the pass never got that far", exactly as `booking: null` is, and it is NOT
+   * an eighth outcome name meaning the same thing: a feature whose whole justification is
+   * marginal has to report what it did AND what it declined to do, and a zero nobody can
+   * tell apart from "never ran" is the silent no-op rule #11 exists to stop.
+   */
+  aside: AsideTally | null;
 }
 
 /** At most this many messages per connection per sweep reach the classifier, newest
@@ -215,6 +231,14 @@ export interface EmailAlertPorts {
   threadMessage: typeof threadProactiveMessage;
   /** The parent's wall clock — the zone every time in the message is rendered in. */
   timeZone(parentUserId: string): Promise<string>;
+  /**
+   * THE VOICE PASS. Non-nullable (rule #11): the lane does not take a `VoicePass | null`
+   * and quietly skip, because a dependency withheld is a no-op nobody can count. Every
+   * absence — the flag, the teen branch, a missing key, a refusal — comes back as a named
+   * outcome on {@link EmailAlertResult.aside}, and every one of them leaves `message`
+   * byte-identical to what this lane sends today.
+   */
+  aside: VoicePass;
 }
 
 export interface EmailAlertInput {
@@ -244,13 +268,13 @@ export async function alertParentForEmail(
   ports: EmailAlertPorts,
 ): Promise<EmailAlertResult> {
   const { familyId, parentUserId, integrationId, messageId, now } = input;
-  if (!f14EnabledFor(familyId)) return { alert: 'dark', booking: null, going: null };
+  if (!f14EnabledFor(familyId)) return { alert: 'dark', booking: null, going: null, aside: null };
 
   const dedupeKey = emailAlertDedupeKey(integrationId, messageId);
   // Read BEFORE the classifier, not only via the claim below: a re-fired sweep over a
   // mailbox it has already read must cost nothing, and the claim happens after two model
   // calls have already been paid for.
-  if (await dedupeActive(dedupeKey, database)) return { alert: 'already_sent', booking: null, going: null };
+  if (await dedupeActive(dedupeKey, database)) return { alert: 'already_sent', booking: null, going: null, aside: null };
 
   let classification: SentinelClassification;
   try {
@@ -272,12 +296,12 @@ export async function alertParentForEmail(
       { familyId, err: err instanceof Error ? err.constructor.name : 'unknown' },
       'email alert: the sentinel could not read this message - no text, and the key is unspent',
     );
-    return { alert: 'classifier_failed', booking: null, going: null };
+    return { alert: 'classifier_failed', booking: null, going: null, aside: null };
   }
 
   const extraction = classification.extraction;
   if (classification.status !== 'classified' || extraction === null) {
-    return { alert: 'not_parenting', booking: null, going: null };
+    return { alert: 'not_parenting', booking: null, going: null, aside: null };
   }
 
   // ONE read of the flag per envelope, threaded into every call below rather than read
@@ -326,7 +350,7 @@ export async function alertParentForEmail(
       { familyId },
       'email alert: a receipt for a class this sweep already read the cancellation of - staying quiet',
     );
-    return { alert: 'cancelled_in_sweep', booking: null, going: null };
+    return { alert: 'cancelled_in_sweep', booking: null, going: null, aside: null };
   }
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
@@ -350,7 +374,7 @@ export async function alertParentForEmail(
       status: holdStatus(verdict.reason),
     });
     console.warn({ familyId, reason: verdict.reason }, 'email alert: held by the outbound gate');
-    return { alert: `gate_refused:${verdict.reason}`, booking: null, going: null };
+    return { alert: `gate_refused:${verdict.reason}`, booking: null, going: null, aside: null };
   }
 
   // THE BOOKING DECISION MOVES AHEAD OF THE SENTENCE (R3), and its result is reused by the
@@ -365,7 +389,7 @@ export async function alertParentForEmail(
   // dark-booked family's sweep must never read other families' bookings for a sentence
   // that cannot exist.
   const counted = await readGoingFor(database, familyId, draft);
-  const { body: message, going } = renderEmailAlert({
+  const { body: renderedBody, going } = renderEmailAlert({
     from: input.envelope.from,
     kind: extraction.kind,
     event: extraction.event,
@@ -376,6 +400,9 @@ export async function alertParentForEmail(
     timeZone: input.timeZone,
     now,
   });
+  // ONE VARIABLE, reassigned by the voice pass below, because the wire and the thread must
+  // not disagree about what the parent was sent.
+  let message = renderedBody;
   // The same pure decision the sentence above just made. Two calls of one function rather
   // than a flag threaded between them: the CTA and the row it promises cannot disagree.
   const offer = emailAlertOfferDraft({
@@ -404,7 +431,7 @@ export async function alertParentForEmail(
     })
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
-  if (!claimed) return { alert: 'already_sent', booking: null, going: null };
+  if (!claimed) return { alert: 'already_sent', booking: null, going: null, aside: null };
 
   const to = await ports.resolvePhone(database, parentUserId);
   if (!to) {
@@ -420,8 +447,32 @@ export async function alertParentForEmail(
       { familyId, parentUserId },
       'email alert: the gate allowed a parent with no sendable number',
     );
-    return { alert: 'no_send_target', booking: null, going: null };
+    return { alert: 'no_send_target', booking: null, going: null, aside: null };
   }
+
+  // THE VOICE PASS, and it sits HERE for a reason that is money rather than taste: after
+  // the claim, so a concurrent sweep's race loser has not paid for a Haiku call and
+  // written an `agent_runs` row for a text nobody received; after the send-target check,
+  // so a parent the gate allowed and the phone table cannot reach has not either. Both of
+  // those corrupt the exact cost-per-alert number the migration in this ticket exists to
+  // answer. It is the check-in sweep's own discipline — "a family already asked, or over
+  // budget, must not cost a read" — applied one boundary further down.
+  //
+  // ONE VARIABLE, reassigned, because the wire and the thread must not disagree about
+  // what the parent was sent.
+  const asideOutcome = await ports.aside.compose({
+    familyId,
+    lane: 'email_alert',
+    core: message,
+    teenContent: extraction.teenContent,
+    priorAlertsToHousehold24h: priorAlertsForAside(verdict.priorSendsInWindow),
+    matchedAKnownOccasion: extraction.matchedEventRef !== null,
+    // The lane's OWN ending, read off the same `offer` the CTA was — two calls of one
+    // function rather than a flag threaded between them. A booking receipt ends in a
+    // different sentence from every other kind, and it ends in a question mark.
+    ctaSuffix: emailAlertCtaSuffix(offer),
+  });
+  if (asideOutcome.status === 'aside') message = asideOutcome.body;
 
   let providerMessageId: string;
   try {
@@ -436,7 +487,7 @@ export async function alertParentForEmail(
       .set({ status: 'failed', errorCode: code })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error({ familyId, code }, 'email alert: the provider refused the text');
-    return { alert: 'send_failed', booking: null, going: null };
+    return { alert: 'send_failed', booking: null, going: null, aside: null };
   }
 
   await database
@@ -504,10 +555,14 @@ export async function alertParentForEmail(
     // their trail saying their booking was counted into a text to another family would tell
     // them another Hale family is in their child's class - the same disclosure, in reverse,
     // to a household that was never asked.
+    // A BOOLEAN, never the clause. An audit row is immutable, PIPEDA-exportable and has
+    // none of the redaction a content read gets, so what is recorded is that the sentence
+    // was worded with an aside — not what the aside said.
     after: {
       kind: extraction.kind,
       teenContent: extraction.teenContent,
       othersCount: going?.shown ? going.others : null,
+      aside: asideOutcome.status === 'aside',
     },
   });
 
@@ -515,6 +570,7 @@ export async function alertParentForEmail(
     alert: 'sent',
     booking,
     going: going === null ? null : goingOutcome(going),
+    aside: asideTally(asideOutcome),
   };
 }
 
@@ -765,20 +821,20 @@ export async function alertParentForGmailSweep(
 ): Promise<readonly EmailAlertResult[]> {
   const { parentUserId, envelopes } = input;
   if (parentUserId === null) {
-    return envelopes.map(() => ({ alert: 'no_parent_user', booking: null, going: null }));
+    return envelopes.map(() => ({ alert: 'no_parent_user', booking: null, going: null, aside: null }));
   }
-  if (input.seeding) return envelopes.map(() => ({ alert: 'seeding_run', booking: null, going: null }));
+  if (input.seeding) return envelopes.map(() => ({ alert: 'seeding_run', booking: null, going: null, aside: null }));
 
   const outcomes: EmailAlertResult[] = [];
   const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];
   for (const envelope of envelopes) {
     if (envelope.receivedAt === undefined)
-      outcomes.push({ alert: 'no_received_at', booking: null, going: null });
+      outcomes.push({ alert: 'no_received_at', booking: null, going: null, aside: null });
     else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
   }
   dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
   for (let i = EMAIL_ALERT_MAX_PER_SWEEP; i < dated.length; i += 1) {
-    outcomes.push({ alert: 'over_sweep_cap', booking: null, going: null });
+    outcomes.push({ alert: 'over_sweep_cap', booking: null, going: null, aside: null });
   }
 
   const considered = dated.slice(0, EMAIL_ALERT_MAX_PER_SWEEP);
@@ -972,6 +1028,20 @@ const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | n
  * nothing in this product reads yet. The REPLIES to this sentence do have a French twin,
  * because by then the parent has written (email-alert-offer.ts). */
 const OFFER_CTA = 'Reply YES and it goes on your week.';
+
+/**
+ * The exact trailing sentence {@link renderEmailAlert} appended, or null when it appended
+ * none — which is exactly when `emailAlertOfferDraft` returned null.
+ *
+ * The voice pass needs it for three answers at once: whether the core ends in an ask,
+ * which capitals are Hale's own boilerplate rather than the vendor's facts, and what text
+ * a restatement is measured against. Read off the DRAFT rather than off the kind, because
+ * a booking receipt ends in {@link BOOKING_CTA} and everything else in {@link OFFER_CTA},
+ * and a second copy of that choice would be a second place it could drift.
+ */
+export function emailAlertCtaSuffix(offer: EmailAlertOfferDraft | null): string | null {
+  return offer === null ? null : CTA[offer.kind];
+}
 
 /**
  * The booking's own ending. A receipt has already told the parent they are in, so

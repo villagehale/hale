@@ -120,6 +120,12 @@ export const agentNameEnum = pgEnum('agent_name', [
   // per-minute carrier cost on top, so averaging it into any other name produces a
   // number that describes neither surface.
   'voice-turn',
+  // The voice pass's aside — a per-alert Haiku call whose whole justification is
+  // marginal, so its cost and its failure rate have to be answerable from the database
+  // rather than from a cron log. It is the one composer in the repo that exists to add a
+  // clause somebody might not miss, and "what did it cost and how often was it refused"
+  // is the question that decides whether it stays.
+  'voice-pass',
 ]);
 
 export const agentRunStatusEnum = pgEnum('agent_run_status', [

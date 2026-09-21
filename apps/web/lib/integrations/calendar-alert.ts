@@ -12,6 +12,12 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  type AsideTally,
+  type VoicePass,
+  asideTally,
+  priorAlertsForAside,
+} from '~/lib/channel/voice-pass/compose';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
 
@@ -159,6 +165,16 @@ export interface CalendarAlertSweep {
   changes: readonly CalendarAlertOutcome[];
   /** One per pending snapshot this sweep picked back up, oldest debt first. */
   reoffers: readonly CalendarAlertOutcome[];
+  /**
+   * What the VOICE PASS did, one entry per text that actually reached it, in send order.
+   *
+   * NOT positional, unlike the two lists above, and that is the point: the pass runs
+   * after the claim and after the send-target check, so a change held by the gate or lost
+   * to a concurrent sweep produces no entry at all. Empty for a dark sweep and for a
+   * sweep that alerted nobody — which is a different fact from a sweep where the pass ran
+   * and declined, and the summary counts both (rule #11).
+   */
+  asides: readonly AsideTally[];
 }
 
 /** At most this many ALERTABLE texts per connection per sweep, oldest debt first and then
@@ -244,6 +260,10 @@ export interface CalendarAlertPorts {
   threadMessage: typeof threadProactiveMessage;
   /** The parent's wall clock — the zone every time in the message is rendered in. */
   timeZone(parentUserId: string): Promise<string>;
+  /** THE VOICE PASS. Non-nullable (rule #11) — see the email lane's note on the same
+   * field. This lane is dark until `VOICE_PASS_LANES` names it, and `lane_dark` is a
+   * counted outcome rather than a withheld dependency. */
+  aside: VoicePass;
 }
 
 export interface CalendarAlertInput {
@@ -307,10 +327,12 @@ export async function alertParentForCalendarChanges(
   ports: CalendarAlertPorts,
 ): Promise<CalendarAlertSweep> {
   const { familyId, parentUserId, integrationId, changes, now } = input;
-  if (parentUserId === null) return { changes: changes.map(() => 'no_parent_user'), reoffers: [] };
+  if (parentUserId === null) {
+    return { changes: changes.map(() => 'no_parent_user'), reoffers: [], asides: [] };
+  }
   if (input.seeding) {
     await rememberOnly(database, input, parentUserId, ports);
-    return { changes: changes.map(() => 'seeding_run'), reoffers: [] };
+    return { changes: changes.map(() => 'seeding_run'), reoffers: [], asides: [] };
   }
   // The flag is a pure function of the family id, so nothing above it costs a query and a
   // dark sweep of an empty page is the cheapest thing this module does. A dark sweep with
@@ -320,7 +342,7 @@ export async function alertParentForCalendarChanges(
   // or name a "was" nobody was ever told.
   if (!f14EnabledFor(familyId)) {
     await rememberOnly(database, input, parentUserId, ports);
-    return { changes: changes.map(() => 'dark'), reoffers: [] };
+    return { changes: changes.map(() => 'dark'), reoffers: [], asides: [] };
   }
 
   // ONE read for both halves of the memory: what Hale last said about the events in this
@@ -331,7 +353,9 @@ export async function alertParentForCalendarChanges(
   const debts = memory
     .filter((row): row is PendingSnapshot => isPending(row) && !arrived.has(row.eventId))
     .sort((a, b) => a.pendingSince.getTime() - b.pendingSince.getTime());
-  if (changes.length === 0 && debts.length === 0) return { changes: [], reoffers: [] };
+  if (changes.length === 0 && debts.length === 0) {
+    return { changes: [], reoffers: [], asides: [] };
+  }
 
   const priorByEvent = new Map(memory.map((row) => [row.eventId, row]));
   const timeZone = await ports.timeZone(parentUserId);
@@ -397,16 +421,22 @@ export async function alertParentForCalendarChanges(
       (a, b) => a.startMs - b.startMs,
     ),
   ];
+  const asides: AsideTally[] = [];
   for (const [rank, offer] of offers.entries()) {
-    const outcome =
-      rank < CALENDAR_ALERT_MAX_PER_SWEEP
-        ? await sendOffer(database, input, parentUserId, offer, ports)
-        : 'over_sweep_cap';
+    let outcome: CalendarAlertOutcome = 'over_sweep_cap';
+    if (rank < CALENDAR_ALERT_MAX_PER_SWEEP) {
+      const sent = await sendOffer(database, input, parentUserId, offer, ports);
+      outcome = sent.outcome;
+      // Only the texts that reached the pass. A hold, a claim race and a missing number
+      // all return before it, and an entry for one of those would be a count of asides
+      // that never happened.
+      if (sent.aside !== null) asides.push(sent.aside);
+    }
     settle(offer, outcome, writes, now);
   }
 
   await writeSnapshots(database, integrationId, writes, now);
-  return { changes: changeOutcomes, reoffers: reofferOutcomes };
+  return { changes: changeOutcomes, reoffers: reofferOutcomes, asides };
 }
 
 /**
@@ -454,11 +484,14 @@ async function sendOffer(
   parentUserId: string,
   offer: Offer,
   ports: CalendarAlertPorts,
-): Promise<CalendarAlertOutcome> {
+): Promise<{ outcome: CalendarAlertOutcome; aside: AsideTally | null }> {
   const { familyId, now } = input;
   const lead = offer.group[0];
   if (lead === undefined) throw new Error('sendOffer: an offer with no instances');
-  if (await dedupeActive(offer.dedupeKey, database)) return 'already_sent';
+  /** `aside: null` is "the pass was never reached", the same shape and the same reason as
+   * the email lane's. */
+  const without = (outcome: CalendarAlertOutcome) => ({ outcome, aside: null });
+  if (await dedupeActive(offer.dedupeKey, database)) return without('already_sent');
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'calendar_alert', now });
   if (!verdict.allowed) {
@@ -497,10 +530,10 @@ async function sendOffer(
       { familyId, reason: verdict.reason, owedSince: offer.pendingSince?.toISOString() ?? null },
       'calendar alert: held by the outbound gate',
     );
-    return `gate_refused:${verdict.reason}`;
+    return without(`gate_refused:${verdict.reason}`);
   }
 
-  const message = offer.render();
+  let message = offer.render();
 
   // CLAIM FIRST, by the insert rather than by a read a concurrent sweep can race.
   const [claimed] = await database
@@ -518,7 +551,7 @@ async function sendOffer(
     })
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
-  if (!claimed) return 'already_sent';
+  if (!claimed) return without('already_sent');
 
   const to = await ports.resolvePhone(database, parentUserId);
   if (!to) {
@@ -533,8 +566,28 @@ async function sendOffer(
       { familyId, parentUserId },
       'calendar alert: the gate allowed a parent with no sendable number',
     );
-    return 'no_send_target';
+    return without('no_send_target');
   }
+
+  // THE VOICE PASS — after the claim and after the send-target check, for the reason the
+  // email lane states at the same boundary: a Haiku call paid for a text nobody received
+  // corrupts the cost-per-alert number this feature has to be able to answer.
+  //
+  // `ctaSuffix` is null because this lane appends no ask today. The guard still derives
+  // `after_an_ask` from the core itself, so a calendar sentence that one day ends in a
+  // question keeps the rule without this line being remembered.
+  const asideOutcome = await ports.aside.compose({
+    familyId,
+    lane: 'calendar_alert',
+    core: message,
+    // The calendar is the parent's OWN, and a 13+ child's entries never reach this sweep
+    // as content the way a mailbox does - there is no teen branch on this lane to gate.
+    teenContent: false,
+    priorAlertsToHousehold24h: priorAlertsForAside(verdict.priorSendsInWindow),
+    matchedAKnownOccasion: false,
+    ctaSuffix: null,
+  });
+  if (asideOutcome.status === 'aside') message = asideOutcome.body;
 
   let providerMessageId: string;
   try {
@@ -549,7 +602,7 @@ async function sendOffer(
       .set({ status: 'failed', errorCode: code })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.error({ familyId, code }, 'calendar alert: the provider refused the text');
-    return 'send_failed';
+    return without('send_failed');
   }
 
   await database
@@ -574,10 +627,12 @@ async function sendOffer(
       allDay: lead.span.allDay,
       instances: offer.group.length,
       moved: lead.previous !== null,
+      // A boolean, never the clause — the email lane's note applies word for word.
+      aside: asideOutcome.status === 'aside',
     },
   });
 
-  return 'sent';
+  return { outcome: 'sent', aside: asideTally(asideOutcome) };
 }
 
 /**

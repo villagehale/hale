@@ -10,6 +10,7 @@ const NO_ALERTS = {
   calendarAlerts: [] as const,
   calendarDroppedNoId: 0,
   travelDetections: [] as const,
+  asides: [] as const,
 };
 
 const FAMILY_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -120,16 +121,16 @@ describe('runConnectorSync', () => {
           ? {
               ...NO_ALERTS,
               emailAlerts: [
-                { alert: 'sent', booking: 'recorded', going: null },
-                { alert: 'not_parenting', booking: null, going: null },
-                { alert: 'not_parenting', booking: null, going: null },
+                { alert: 'sent', booking: 'recorded', going: null, aside: null },
+                { alert: 'not_parenting', booking: null, going: null, aside: null },
+                { alert: 'not_parenting', booking: null, going: null, aside: null },
               ] as const,
             }
           : {
               ...NO_ALERTS,
               emailAlerts: [
-                { alert: 'dark', booking: null, going: null },
-                { alert: 'gate_refused:quiet_hours', booking: null, going: null },
+                { alert: 'dark', booking: null, going: null, aside: null },
+                { alert: 'gate_refused:quiet_hours', booking: null, going: null, aside: null },
               ] as const,
             },
     });
@@ -159,10 +160,10 @@ describe('runConnectorSync', () => {
       syncOne: async () => ({
         ...NO_ALERTS,
         emailAlerts: [
-          { alert: 'sent', booking: 'recorded', going: null },
-          { alert: 'sent', booking: 'teen_content', going: null },
-          { alert: 'sent', booking: 'booked_dark', going: null },
-          { alert: 'dark', booking: null, going: null },
+          { alert: 'sent', booking: 'recorded', going: null, aside: null },
+          { alert: 'sent', booking: 'teen_content', going: null, aside: null },
+          { alert: 'sent', booking: 'booked_dark', going: null, aside: null },
+          { alert: 'dark', booking: null, going: null, aside: null },
         ] as const,
       }),
     });
@@ -192,6 +193,7 @@ describe('runConnectorSync', () => {
           alert: 'sent' as const,
           booking: 'recorded' as const,
           going,
+          aside: null,
         })).concat([{ alert: 'dark', booking: null, going: null }] as never),
       }),
     });
@@ -227,7 +229,7 @@ describe('runConnectorSync', () => {
                 'pending_outside_window',
               ] as const,
             }
-          : { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null, going: null }] as const },
+          : { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null, going: null, aside: null }] as const },
     });
 
     expect(summary.calendarAlerts).toMatchObject({
@@ -263,7 +265,7 @@ describe('runConnectorSync', () => {
                 'no_child_evidence',
                 'not_booking_shaped',
               ] as const,
-              emailAlerts: [{ alert: 'sent', booking: null, going: null }] as const,
+              emailAlerts: [{ alert: 'sent', booking: null, going: null, aside: null }] as const,
             }
           : { ...NO_ALERTS, travelDetections: ['no_child_evidence', 'dark'] as const },
     });
@@ -309,7 +311,7 @@ describe('runConnectorSync', () => {
       buildDeps: () => ({}) as never,
       syncOne: async (connection) => {
         if (connection.id === 'i2') throw new Error('boom');
-        return { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null, going: null }] as const };
+        return { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null, going: null, aside: null }] as const };
       },
     });
     expect(summary.emailAlerts.sent).toBe(1);
@@ -337,5 +339,65 @@ describe('googleGetFetch', () => {
     } finally {
       globalThis.fetch = original;
     }
+  });
+});
+
+/**
+ * THE ASIDE TALLY REACHES A HUMAN.
+ *
+ * Rule #11's shape, not a log line: a feature whose whole justification is marginal has
+ * to report what it did AND what it declined to do, and a count of zero nobody can tell
+ * apart from "never ran" is the silent no-op. `asides.lane_dark` being a NUMBER on a dark
+ * deploy is what the live probe asserts before a single model call is made.
+ */
+describe('the voice pass tally', () => {
+  it('folds every connection asides into one histogram that sums to the texts it saw', async () => {
+    const summary = await runConnectorSync({
+      listConnections: async () => [conn('i1', FAMILY_A), conn('i2', FAMILY_B)],
+      decryptTokens: decryptOk,
+      loadChildNames: async () => [],
+      buildDeps: () => ({}) as never,
+      syncOne: async (connection) =>
+        connection.id === 'i1'
+          ? {
+              ...NO_ALERTS,
+              asides: [
+                { outcome: 'aside' as const, refusals: [] },
+                { outcome: 'empty' as const, refusals: [] },
+                {
+                  outcome: 'refused' as const,
+                  refusals: ['too_many_segments' as const, 'solicits_reply' as const],
+                },
+              ],
+            }
+          : { ...NO_ALERTS, asides: [{ outcome: 'lane_dark' as const, refusals: [] }] },
+    });
+
+    // The mutation: drop the field from one lane's return and this sum is 3, not 4.
+    const total = Object.values(summary.asides).reduce((a, b) => a + b, 0);
+    expect(total).toBe(4);
+    expect(summary.asides.aside).toBe(1);
+    expect(summary.asides.empty).toBe(1);
+    expect(summary.asides.refused).toBe(1);
+    expect(summary.asides.lane_dark).toBe(1);
+    expect(summary.asideRefusals.too_many_segments).toBe(1);
+    expect(summary.asideRefusals.solicits_reply).toBe(1);
+  });
+
+  it('reports every key from zero, so dark reads as a number rather than an absence', async () => {
+    const summary = await runConnectorSync({
+      listConnections: async () => [],
+      decryptTokens: decryptOk,
+      loadChildNames: async () => [],
+      buildDeps: () => ({}) as never,
+      syncOne: async () => NO_ALERTS,
+    });
+    expect(summary.asides.lane_dark).toBe(0);
+    expect(summary.asides.aside).toBe(0);
+    expect(summary.asideRefusals.too_many_segments).toBe(0);
+    // Eight outcome buckets and thirteen refusals, every one present. A key that only
+    // appears once it is non-zero is a key nobody can graph.
+    expect(Object.keys(summary.asides)).toHaveLength(8);
+    expect(Object.keys(summary.asideRefusals)).toHaveLength(13);
   });
 });

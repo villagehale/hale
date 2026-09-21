@@ -24,6 +24,10 @@ import {
   emptyEmailAlertCounts,
 } from '~/lib/integrations/email-alert';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
+import { type AsideOutcomeName, createVoicePass } from '~/lib/channel/voice-pass/compose';
+import type { AsideRefusal } from '~/lib/channel/voice-pass/guard';
+import { voiceClient } from '~/lib/loop/voice/compose';
+import { loadCronSkill } from './skill';
 import { decryptTokens } from '~/lib/integrations/token-vault';
 import {
   type ActiveConnectorConnection,
@@ -126,6 +130,22 @@ export interface ConnectorSyncSummary {
    * beside `trip_written` is the precision trade, counted once per email rather than
    * re-counted hourly by a send sweep. `dark` is this feature's own flag, never F14's. */
   travelDetections: TravelDetectCounts;
+  /**
+   * One count per named VOICE PASS outcome, over every alert that reached the pass at all
+   * (rule #11). `aside` is a bucket like the other seven, so these sum to the number of
+   * texts the pass saw.
+   *
+   * `asides.lane_dark` is what proves the feature is WIRED on a dark deploy: a number,
+   * not an absence, and the difference between "dark" and "never ran" is the whole reason
+   * this line exists rather than a log.
+   */
+  asides: Record<AsideOutcomeName, number>;
+  /**
+   * One count per named refusal, over the clauses the guard threw away. The one worth
+   * reading is `too_many_segments`: sitting near 100% it says the aside never fits in
+   * practice and the feature is off without anyone having turned it off.
+   */
+  asideRefusals: Record<AsideRefusal, number>;
 }
 
 /**
@@ -146,6 +166,11 @@ export async function runConnectorSync(
   const calendarAlerts = emptyCalendarAlertCounts();
   const travelDetections = emptyTravelDetectCounts();
   let calendarDroppedNoId = 0;
+  // Every key present from zero, the way the alert counts are, so a summary reads the
+  // same shape whether the pass ran or not — an absent key and a zero are the same
+  // number to a reader and two different facts to an operator.
+  const asides = emptyAsideCounts();
+  const asideRefusals = emptyAsideRefusalCounts();
 
   for (const connection of connections) {
     try {
@@ -182,6 +207,10 @@ export async function runConnectorSync(
       for (const outcome of result.calendarAlerts) calendarAlerts[outcome] += 1;
       for (const outcome of result.travelDetections) travelDetections[outcome] += 1;
       calendarDroppedNoId += result.calendarDroppedNoId;
+      for (const tally of result.asides) {
+        asides[tally.outcome] += 1;
+        for (const refusal of tally.refusals) asideRefusals[refusal] += 1;
+      }
     } catch {
       // Isolate: a failure here must not stop the remaining connections.
     }
@@ -194,7 +223,53 @@ export async function runConnectorSync(
     calendarAlerts,
     calendarDroppedNoId,
     travelDetections,
+    asides,
+    asideRefusals,
   };
+}
+
+/** Every aside outcome at zero. Listed rather than derived from a union, because a
+ * `Record` over the union is what forces this list to be updated when a new outcome is
+ * named — the same reason PROACTIVE_CAP is a Record. */
+const ASIDE_OUTCOMES: readonly AsideOutcomeName[] = [
+  'aside',
+  'lane_dark',
+  'teen_redacted',
+  'client_unavailable',
+  'skill_unavailable',
+  'model_failed',
+  'empty',
+  'refused',
+];
+
+const ASIDE_REFUSALS: readonly AsideRefusal[] = [
+  'over_char_cap',
+  'not_gsm7_printable',
+  'carries_digit',
+  'carries_link',
+  'asks_a_question',
+  'solicits_reply',
+  'addresses_the_parent',
+  'echoes_a_reply_word',
+  'invented_capital',
+  'after_an_ask',
+  'echoes_the_core',
+  'too_many_segments',
+  'no_terminator',
+];
+
+export function emptyAsideCounts(): Record<AsideOutcomeName, number> {
+  return Object.fromEntries(ASIDE_OUTCOMES.map((name) => [name, 0])) as Record<
+    AsideOutcomeName,
+    number
+  >;
+}
+
+export function emptyAsideRefusalCounts(): Record<AsideRefusal, number> {
+  return Object.fromEntries(ASIDE_REFUSALS.map((name) => [name, 0])) as Record<
+    AsideRefusal,
+    number
+  >;
 }
 
 /** Wire the real DB + queue into the sync deps. */
@@ -324,6 +399,14 @@ function proactiveSendPorts(database: Database): CalendarAlertPorts {
     // The SAME reader the gate judges quiet hours with, so the hour in the text and the
     // hour the gate refused at can never disagree.
     timeZone: (parentUserId) => buildOutboundGatePorts(database).parentTimeZone(parentUserId),
+    // THE VOICE PASS, wired in the one copy of these ports for the reason the comment
+    // above gives about `gate:` — two literals would be two places a lane could end up
+    // pointed at something that is not this.
+    aside: createVoicePass({
+      database,
+      client: voiceClient,
+      loadSkill: () => loadCronSkill('alert-aside'),
+    }),
   };
 }
 

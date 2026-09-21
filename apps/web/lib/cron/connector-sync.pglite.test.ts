@@ -131,7 +131,7 @@ describe('connectorSyncDeps — the email alert wiring', () => {
       seeding: true,
       envelopes: [envelope('m1')],
     });
-    expect(outcomes).toEqual([{ alert: 'seeding_run', booking: null, going: null }]);
+    expect(outcomes).toEqual([{ alert: 'seeding_run', booking: null, going: null, aside: null }]);
   });
 
   it('keys the dedupe read on THIS connection and THIS message id', async () => {
@@ -157,7 +157,7 @@ describe('connectorSyncDeps — the email alert wiring', () => {
       seeding: false,
       envelopes: [envelope('m1')],
     });
-    expect(outcomes).toEqual([{ alert: 'already_sent', booking: null, going: null }]);
+    expect(outcomes).toEqual([{ alert: 'already_sent', booking: null, going: null, aside: null }]);
   });
 });
 
@@ -168,7 +168,11 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
       seeding: false,
       changes: [change('ev1'), change('ev2')],
     });
-    expect(sweep).toEqual({ changes: ['no_parent_user', 'no_parent_user'], reoffers: [] });
+    expect(sweep).toEqual({
+      changes: ['no_parent_user', 'no_parent_user'],
+      reoffers: [],
+      asides: [],
+    });
   });
 
   it("passes the sweep's SEEDING flag through, so a first sync stays silent", async () => {
@@ -177,7 +181,7 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
       seeding: true,
       changes: [change('ev1')],
     });
-    expect(sweep).toEqual({ changes: ['seeding_run'], reoffers: [] });
+    expect(sweep).toEqual({ changes: ['seeding_run'], reoffers: [], asides: [] });
   });
 
   it('keys the dedupe read on THIS connection, THIS event and Google\'s own stamp', async () => {
@@ -199,7 +203,7 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
 
     await expect(
       calendarAlertPort()({ connection: conn, seeding: false, changes: [moved] }),
-    ).resolves.toEqual({ changes: ['already_sent'], reoffers: [] });
+    ).resolves.toEqual({ changes: ['already_sent'], reoffers: [], asides: [] });
     // ...and the SAME event with a new stamp is a new key, so a move is heard. The
     // concrete outcome rather than `not.toEqual('already_sent')`: an absence assertion
     // passes just as happily on a wiring that stopped producing outcomes at all. This
@@ -210,6 +214,6 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
         seeding: false,
         changes: [{ ...moved, updated: '2026-09-17T15:40:00.000Z' }],
       }),
-    ).resolves.toEqual({ changes: ['gate_refused:not_enrolled'], reoffers: [] });
+    ).resolves.toEqual({ changes: ['gate_refused:not_enrolled'], reoffers: [], asides: [] });
   });
 });

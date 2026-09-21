@@ -5,6 +5,7 @@ import type {
   CalendarAlertSweep,
   CalendarChange,
 } from './calendar-alert';
+import type { AsideTally } from '~/lib/channel/voice-pass/compose';
 import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
 import type { TravelDetectOutcome } from '~/lib/travel/detect';
 import type { ConnectorProvider } from './google-oauth';
@@ -127,6 +128,22 @@ export interface SyncConnectionResult {
    * trip was written down — and a bucket that means two things is the counter rule #11
    * exists to prevent. */
   travelDetections: readonly TravelDetectOutcome[];
+  /**
+   * Every aside outcome this connection's alerts produced, in send order, across both
+   * lanes.
+   *
+   * A PLAIN FIELD beside the two lists above and `calendarDroppedNoId`, not a stateful
+   * port with a `drain()`: `proactiveSendPorts()` is built INSIDE each alert sweep, once
+   * per connection rather than once per run, so a port that accumulated would either
+   * under-report or have to be hoisted into `connectorSyncDeps` — a lifetime change to
+   * the one object whose single copy that file's own comment defends. A returned array
+   * has no lifetime.
+   *
+   * Empty for the providers and the runs that reached no alert. A feature whose whole
+   * justification is marginal has to be able to say what it did and did not do, and a
+   * count of zero nobody can tell apart from "never ran" is the silent no-op (rule #11).
+   */
+  asides: readonly AsideTally[];
 }
 
 const GONE = 410;
@@ -164,6 +181,7 @@ export async function syncConnection(
   let calendarAlerts: readonly CalendarAlertOutcome[] = [];
   let calendarDroppedNoId = 0;
   let travelDetections: readonly TravelDetectOutcome[] = [];
+  const asides: AsideTally[] = [];
   try {
     const accessToken = await ensureFreshToken(connection, deps);
     const result = await runProviderSync(connection, accessToken, deps.googleFetch);
@@ -195,6 +213,12 @@ export async function syncConnection(
           seeding,
           envelopes,
         });
+        // The envelopes that actually reached the pass. `aside: null` is "never got that
+        // far", exactly as `booking: null` is, so it is dropped rather than counted as an
+        // eighth outcome that would mean something else (rule #11).
+        for (const outcome of emailAlerts) {
+          if (outcome.aside !== null) asides.push(outcome.aside);
+        }
       } catch (err) {
         // The class only: an alert-path rejection can carry a subject line (rule #1).
         console.error(
@@ -212,6 +236,7 @@ export async function syncConnection(
           alert: 'alert_failed' as const,
           booking: null,
           going: null,
+          aside: null,
         }));
       }
       // THE TRAVEL PASS, after the alert pass and behind its OWN boundary, for exactly the
@@ -247,6 +272,7 @@ export async function syncConnection(
         // lists are kept apart inside the alert module because only the first one is
         // positional; a re-offer answers no change on this page (rule #11).
         calendarAlerts = [...sweep.changes, ...sweep.reoffers];
+        asides.push(...sweep.asides);
       } catch (err) {
         // The class only: an alert-path rejection can carry an event title (rule #1).
         console.error(
@@ -270,7 +296,7 @@ export async function syncConnection(
     );
     await deps.markError(connection.id, code);
   }
-  return { emailAlerts, calendarAlerts, calendarDroppedNoId, travelDetections };
+  return { emailAlerts, calendarAlerts, calendarDroppedNoId, travelDetections, asides };
 }
 
 /** Refresh + persist an expiring access token; returns the token to use for this

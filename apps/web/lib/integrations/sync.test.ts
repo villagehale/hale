@@ -87,11 +87,11 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
     },
     alertGmailEnvelopes: async (batch) => {
       cap.alerted.push(batch);
-      return batch.envelopes.map(() => ({ alert: 'dark' as const, booking: null, going: null }));
+      return batch.envelopes.map(() => ({ alert: 'dark' as const, booking: null, going: null, aside: null }));
     },
     alertCalendarChanges: async (batch) => {
       cap.calendarAlerted.push(batch);
-      return { changes: batch.changes.map(() => 'dark' as const), reoffers: [] };
+      return { changes: batch.changes.map(() => 'dark' as const), reoffers: [], asides: [] };
     },
     detectTravelBookings: async (batch) => {
       cap.travelDetected.push(batch);
@@ -499,6 +499,7 @@ describe('syncConnection — Calendar', () => {
       alertCalendarChanges: async () => ({
         changes: ['outside_window'] as const,
         reoffers: ['sent', 'pending_expired'] as const,
+        asides: [],
       }),
     });
     const result = await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
@@ -696,7 +697,7 @@ describe('syncConnection — the gmail alert hand-off', () => {
     // already saved — otherwise a slow alert pass would re-enqueue the whole batch next run.
     const ok = stubDeps({ googleFetch: mailbox('1789000000000') });
     const result = await syncConnection(connection('gmail', { historyId: '9002' }), ok.deps);
-    expect(result.emailAlerts).toEqual([{ alert: 'dark', booking: null, going: null }]);
+    expect(result.emailAlerts).toEqual([{ alert: 'dark', booking: null, going: null, aside: null }]);
     expect(ok.cap.cursor).toEqual({ historyId: '9100' });
   });
 
@@ -722,7 +723,7 @@ describe('syncConnection — the gmail alert hand-off', () => {
     // The PAIR, with a null booking and not a booking outcome: the alert pass threw, so
     // the booking decision was never reached, which is a different fact from a booking
     // that was refused (rule #11).
-    expect(thrown.emailAlerts).toEqual([{ alert: 'alert_failed', booking: null, going: null }]);
+    expect(thrown.emailAlerts).toEqual([{ alert: 'alert_failed', booking: null, going: null, aside: null }]);
     expect(cap.errored).toBe(false);
     expect(cap.cursor).toEqual({ historyId: '9100' });
     // The ingest half is untouched: the message still reached the queue.
@@ -760,8 +761,42 @@ describe('syncConnection — the gmail alert hand-off', () => {
     // ingest still happened — the whole point of a boundary of its own.
     expect(cap.errored).toBe(false);
     expect(cap.cursor).toEqual({ historyId: '9100' });
-    expect(thrown.emailAlerts).toEqual([{ alert: 'dark', booking: null, going: null }]);
+    expect(thrown.emailAlerts).toEqual([{ alert: 'dark', booking: null, going: null, aside: null }]);
     expect(cap.enqueued).toHaveLength(1);
+  });
+
+  describe('the aside tally leaves the connection', () => {
+    it('carries both lanes asides out beside the two alert lists', async () => {
+      const { deps } = stubDeps({
+        googleFetch: mailbox('1789000000000'),
+        alertGmailEnvelopes: async (batch) =>
+          batch.envelopes.map(() => ({
+            alert: 'sent' as const,
+            booking: null,
+            going: null,
+            aside: { outcome: 'aside' as const, refusals: [] },
+          })),
+      });
+      const result = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+      expect(result.asides).toEqual([{ outcome: 'aside', refusals: [] }]);
+    });
+
+    it('drops the envelopes that never reached the pass rather than counting them', async () => {
+      // `aside: null` is "never got that far", the same fact `booking: null` carries. An
+      // eighth outcome name meaning the same thing would be a bucket that means two things.
+      const { deps } = stubDeps({
+        googleFetch: mailbox('1789000000000'),
+        alertGmailEnvelopes: async (batch) =>
+          batch.envelopes.map(() => ({
+            alert: 'no_send_target' as const,
+            booking: null,
+            going: null,
+            aside: null,
+          })),
+      });
+      const result = await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+      expect(result.asides).toEqual([]);
+    });
   });
 });
 

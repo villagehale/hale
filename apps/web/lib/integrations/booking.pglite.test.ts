@@ -28,6 +28,7 @@ import {
   handleEmailAlertOfferReply,
   loadOpenEmailAlertOffers,
 } from './email-alert-offer';
+import type { VoicePass } from '~/lib/channel/voice-pass/compose';
 
 /**
  * THE BOOKING — the decision, the write, and the two things that must not happen.
@@ -147,12 +148,23 @@ function harness(
     byMessage?: Record<string, SentinelClassification>;
   } = {},
 ): Harness {
+
+/** The voice pass, DARK: the flag is unset in tests, so the lane sends exactly what it
+ * sends today. Required rather than optional (rule #11) — a test that forgot it would not
+ * compile rather than quietly exercise a lane with no pass wired at all. */
+const darkAside: VoicePass = {
+  async compose() {
+    return { status: 'no_aside', reason: 'lane_dark', refusals: [] };
+  },
+};
+
   const transport = new FakeTransport();
   const threaded: Harness['threaded'] = [];
   return {
     transport,
     threaded,
     ports: {
+      aside: darkAside,
       classify: async (envelope) => {
         const base = over.byMessage?.[envelope.messageId] ?? over.classification ?? classified();
         if (!over.correlate || base.extraction === null) return base;
@@ -194,7 +206,16 @@ function harness(
   };
 }
 
-function alert(h: Harness, messageId = 'm1', now = NOW) {
+/** THE THREE AXES THIS FILE IS ABOUT, and only those. The lane also answers a fourth — what
+ * the voice pass did to the sentence — and every case here runs with that pass dark, so
+ * projecting it away keeps a booking assertion a booking assertion rather than a
+ * four-way literal that has to be edited whenever a fifth axis appears. */
+async function alert(h: Harness, messageId = 'm1', now = NOW) {
+  const { alert: outcome, booking, going } = await alertPair(h, messageId, now);
+  return { alert: outcome, booking, going };
+}
+
+function alertPair(h: Harness, messageId = 'm1', now = NOW) {
   return alertParentForEmail(
     db.database,
     {
@@ -718,7 +739,16 @@ describe('a cancellation the same sweep has already read', () => {
     });
   }
 
-  function sweep(h: Harness) {
+  /** The three axes again — see {@link alert}. */
+  async function sweep(h: Harness) {
+    return (await sweepFull(h)).map(({ alert: outcome, booking, going }) => ({
+      alert: outcome,
+      booking,
+      going,
+    }));
+  }
+
+  function sweepFull(h: Harness) {
     return alertParentForGmailSweep(
       db.database,
       {
@@ -947,7 +977,14 @@ describe('record_failed', () => {
         },
         h.ports,
       ),
-    ).resolves.toEqual({ alert: 'sent', booking: 'record_failed', going: 'going_dark' });
+      // The ONE case here that reads the whole result rather than the three axes {@link
+      // alert} projects: the pass ran above the write, so its tally is on the record.
+    ).resolves.toEqual({
+      alert: 'sent',
+      booking: 'record_failed',
+      going: 'going_dark',
+      aside: { outcome: 'lane_dark', refusals: [] },
+    });
 
     await expect(bookingRows()).resolves.toHaveLength(0);
     expect(h.threaded).toHaveLength(1);

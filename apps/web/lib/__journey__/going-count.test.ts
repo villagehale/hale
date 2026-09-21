@@ -202,6 +202,10 @@ function alertPorts(
 ): EmailAlertPorts {
   const recorded = recordedModel(RECORDINGS, pipelineClient);
   return {
+    // The voice pass, DARK: this journey is about the going clause the RENDERER writes, so
+    // the lane has to send the core byte for byte. Required rather than optional (rule
+    // #11) — a journey that forgot it would not compile.
+    aside: { async compose() { return { status: 'no_aside', reason: 'lane_dark', refusals: [] }; } },
     classify: async (envelope, familyTimezone) =>
       classifyChildEventEmail(envelope, {
         client: recorded.client(),
@@ -329,6 +333,10 @@ describe('the third family into the class hears a number', () => {
       kind: 'booking_confirmation',
       teenContent: false,
       othersCount: 2,
+      // The voice pass is dark in this journey, so the boolean it contributes is false —
+      // asserted rather than omitted, because this row's rule is enums and flags ONLY and
+      // a subset match would pass with the clause itself sitting beside the count.
+      aside: false,
     });
 
     // ── THE FOURTH-AXIS ASSERTION: THE COUNTED HOUSEHOLDS WERE NEVER TOLD ────

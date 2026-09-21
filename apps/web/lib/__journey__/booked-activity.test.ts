@@ -29,6 +29,7 @@ import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
 import type { FamilyChildRef } from '~/lib/sentinel';
 import { recordedModel } from '~/lib/testing/recorded-model';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import type { VoicePass } from '~/lib/channel/voice-pass/compose';
 
 /**
  * A REGISTRATION RECEIPT, END TO END — the receipt arrives, the text goes, the parent says
@@ -200,9 +201,20 @@ async function seed(): Promise<void> {
  * The real alert ports: the REAL sentinel over a recorded model, the REAL gate, the REAL
  * phone read, the REAL thread. Only the wire and Gmail's body endpoint are stand-ins.
  */
+
+/** The voice pass, DARK: the flag is unset in tests, so the lane sends exactly what it
+ * sends today. Required rather than optional (rule #11) — a test that forgot it would not
+ * compile rather than quietly exercise a lane with no pass wired at all. */
+const darkAside: VoicePass = {
+  async compose() {
+    return { status: 'no_aside', reason: 'lane_dark', refusals: [] };
+  },
+};
+
 function alertPorts(transport: FakeTransport): EmailAlertPorts {
   const recorded = recordedModel(RECORDINGS, pipelineClient);
   return {
+    aside: darkAside,
     classify: async (envelope, familyTimezone) =>
       classifyChildEventEmail(envelope, {
         client: recorded.client(),
@@ -294,7 +306,14 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
       alertPorts(transport),
     );
 
-    expect(outcomes).toEqual([{ alert: 'sent', booking: 'recorded', going: 'going_dark' }]);
+    expect(outcomes).toEqual([
+      {
+        alert: 'sent',
+        booking: 'recorded',
+        going: 'going_dark',
+        aside: { outcome: 'lane_dark', refusals: [] },
+      },
+    ]);
     expect(transport.sent).toHaveLength(1);
     const text = transport.sent[0]?.body ?? '';
     // The provider is the subject, the first session is named, and the one question is
