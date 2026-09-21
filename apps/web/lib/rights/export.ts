@@ -87,6 +87,23 @@ export interface FamilyExportDocument {
     releasedReason: string | null;
   }[];
   /**
+   * The places this family holds, read out of a provider's own confirmation email. A
+   * booking is a fact about the family that Hale HOLDS and acts on a week later - it is
+   * what makes the "how did it go?" ask happen - so a right-to-access copy without it
+   * would omit something Hale does on their behalf. The host and not the address, on the
+   * same reasoning as the block above; no confirmation number, no amount, no child,
+   * because the table has no column for any of them.
+   */
+  activityBookings: {
+    title: string;
+    firstSessionAt: string;
+    providerHost: string;
+    addedToCalendar: boolean;
+    /** Set when the provider called the class off, so the copy does not read as a place
+     * the family still holds. */
+    cancelledAt: string | null;
+  }[];
+  /**
    * VIL-353 · the evening check-in: how often this household is asked how the day went,
    * and what THIS parent wrote back.
    *
@@ -292,6 +309,28 @@ export async function assembleFamilyExport(
     releasedReason: row.releasedReason,
   }));
 
+  const bookingRows = await database
+    .select({
+      title: schema.activityBookings.title,
+      firstSessionAt: schema.activityBookings.firstSessionAt,
+      providerHost: schema.activityBookings.providerHost,
+      eventId: schema.activityBookings.eventId,
+      cancelledAt: schema.activityBookings.cancelledAt,
+    })
+    .from(schema.activityBookings)
+    .where(eq(schema.activityBookings.familyId, familyId))
+    .orderBy(schema.activityBookings.firstSessionAt);
+  const activityBookings = bookingRows.map((row) => ({
+    title: row.title,
+    firstSessionAt: row.firstSessionAt.toISOString(),
+    providerHost: row.providerHost,
+    addedToCalendar: row.eventId !== null,
+    // The provider called it off. Without this a right-to-access copy reads as a place the
+    // family still holds — a fact about them that stopped being true, and the one Hale
+    // itself stopped acting on when it closed the row.
+    cancelledAt: row.cancelledAt?.toISOString() ?? null,
+  }));
+
   const [checkInPrefs] = await database
     .select({
       cadence: schema.familyCheckInPrefs.cadence,
@@ -350,6 +389,7 @@ export async function assembleFamilyExport(
     assistantConnections,
     registrationPreparation,
     watchedSpots,
+    activityBookings,
     eveningCheckIn,
     trail,
   };

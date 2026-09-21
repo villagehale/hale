@@ -183,6 +183,8 @@ export const AUDIT_VERBS = [
   'followup_daycare_asked',
   'email_alert_sent',
   'email_alert_event_added',
+  'activity_booking_recorded',
+  'activity_booking_cancelled',
   'calendar_alert_sent',
   // ── the forwarding door (VIL-352) ───────────────────────────────────────
   'email_forward_address_minted',
@@ -600,6 +602,20 @@ const VERBS: Record<AuditVerb, Verb> = {
   email_alert_event_added: {
     sentence: 'you put something from your email on your week',
     family: 'done',
+  },
+  // A provider's receipt, written down so Hale can check back on it. 'note', not 'done':
+  // Hale did not put the family in the class and must not read as though it had - it
+  // noticed, and the noticing is what the trail records.
+  activity_booking_recorded: {
+    sentence: 'Hale noted a class you signed up for',
+    family: 'note',
+  },
+  // The provider called it off, so Hale stopped holding it - and stopped planning to ask
+  // how it went. 'note' for the same reason as the row above: Hale did not cancel
+  // anything, it read an email that said the class was cancelled.
+  activity_booking_cancelled: {
+    sentence: 'Hale closed a class the provider cancelled',
+    family: 'note',
   },
   // Same shape, different connector. The sentence names the calendar for the same reason
   // the one above names the inbox: the row is the receipt for Hale having read it.
@@ -1199,6 +1215,7 @@ const TARGET_NOUNS: Record<string, string> = {
   family_memory_facts: 'something I remembered',
   village_candidates: 'village suggestion',
   consent_records: 'consent',
+  activity_bookings: 'a class you signed up for',
   teen_access_grants: 'teen privacy request',
   conversations: 'Hale',
   messages: 'Hale',

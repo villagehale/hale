@@ -827,6 +827,13 @@
       "when": 1781469614000,
       "tag": "0120_email_forward_rung",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1781469615000,
+      "tag": "0121_activity_bookings",
+      "breakpoints": true
     }
   ]
 }

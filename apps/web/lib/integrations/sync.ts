@@ -5,7 +5,7 @@ import type {
   CalendarAlertSweep,
   CalendarChange,
 } from './calendar-alert';
-import type { EmailAlertOutcome, GmailAlertEnvelope } from './email-alert';
+import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
 import type { ConnectorProvider } from './google-oauth';
 import type { ActiveConnectorConnection } from './store';
 import {
@@ -69,7 +69,7 @@ export interface SyncDeps {
    * envelope and leaves the connection healthy, because a bug in Hale's alert path is not
    * a broken mailbox and must not stop the ingest.
    */
-  alertGmailEnvelopes: (input: GmailAlertBatch) => Promise<readonly EmailAlertOutcome[]>;
+  alertGmailEnvelopes: (input: GmailAlertBatch) => Promise<readonly EmailAlertResult[]>;
   /**
    * The same contract for the calendar's raw changes (lib/integrations/calendar-alert.ts),
    * and non-nullable for the same reason: "nothing is wired to alert" is a decision a
@@ -103,7 +103,7 @@ export interface CalendarAlertBatch {
 /** What one connection's sync produced beyond its enqueues. Each list is empty for the
  * providers it does not belong to, and for a run that failed before the alert step. */
 export interface SyncConnectionResult {
-  emailAlerts: readonly EmailAlertOutcome[];
+  emailAlerts: readonly EmailAlertResult[];
   calendarAlerts: readonly CalendarAlertOutcome[];
   /** Calendar items this run could not key at all, because Google sent no `id`. They have
    * no alert outcome — they never reached the alert path — and a drop with no number
@@ -142,7 +142,7 @@ export async function syncConnection(
   connection: ActiveConnectorConnection,
   deps: SyncDeps,
 ): Promise<SyncConnectionResult> {
-  let emailAlerts: readonly EmailAlertOutcome[] = [];
+  let emailAlerts: readonly EmailAlertResult[] = [];
   let calendarAlerts: readonly CalendarAlertOutcome[] = [];
   let calendarDroppedNoId = 0;
   try {
@@ -185,7 +185,9 @@ export async function syncConnection(
           },
           'connector sync: the email alert pass threw - the mailbox is fine, the alert is not',
         );
-        emailAlerts = envelopes.map(() => 'alert_failed' as const);
+        // The PAIR, with a null booking: the alert pass threw, so the booking decision
+        // was never reached - which is a different fact from a booking that was refused.
+        emailAlerts = envelopes.map(() => ({ alert: 'alert_failed' as const, booking: null }));
       }
     }
     if (result.calendar) {

@@ -1,0 +1,16 @@
+{
+  "value": {
+    "kind": "booking_confirmation",
+    "event": {
+      "title": "Swim Level 3",
+      "child_ref": "child-leo",
+      "original_time": null,
+      "new_time": "2026-09-08T16:30:00-04:00",
+      "location": "Sunnybrook pool"
+    },
+    "source_confidence": 0.95,
+    "quote_evidence": "Great news - Leo's spot in Level 3 is confirmed for our fall session.",
+    "teen_content": false
+  },
+  "latencyMs": 2380
+}

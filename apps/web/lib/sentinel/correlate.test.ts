@@ -60,6 +60,25 @@ describe('correlateExtraction', () => {
     expect(match).toEqual({ table: 'family_events', id: 'fe-1' });
   });
 
+  // The blocker, and the reason this test exists ahead of the feature: a
+  // booking_confirmation that correlates is a booking the family ALREADY holds, and the
+  // whole of the duplicate-suppression downstream (emailAlertOfferDraft's fifth
+  // condition) is reachable only through this ref. Against the if-chain this returned
+  // null unconditionally, so a receipt for a class already on the calendar would have
+  // been offered a second time and placed twice.
+  it('matches a booking_confirmation to the family_events row it duplicates, at its stated time', () => {
+    const match = correlateExtraction(
+      {
+        kind: 'booking_confirmation',
+        title: 'Swim lessons Level 2',
+        originalTime: null,
+        newTime: '2026-08-01T15:00:00Z',
+      },
+      CANDIDATES,
+    );
+    expect(match).toEqual({ table: 'family_events', id: 'fe-1' });
+  });
+
   it('returns null for a genuinely new occasion with no title/time overlap', () => {
     const match = correlateExtraction(
       { kind: 'new_event', title: "Leo's birthday party", originalTime: null, newTime: '2026-08-10T15:00:00Z' },

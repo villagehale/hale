@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CAP, PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
+import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { TwilioSendError } from '~/lib/channel/twilio/transport';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
@@ -16,6 +17,7 @@ import {
   type EmailAlertOutcome,
   type EmailAlertPorts,
   type EmailAlertRenderInput,
+  type EmailAlertResult,
   type GmailAlertEnvelope,
   alertParentForEmail,
   alertParentForGmailSweep,
@@ -63,9 +65,13 @@ const ENVELOPE = {
 };
 
 function classified(
-  over: Partial<ExtractedEvent> & { kind?: ExtractionKind; teenContent?: boolean } = {},
+  over: Partial<ExtractedEvent> & {
+    kind?: ExtractionKind;
+    teenContent?: boolean;
+    teenAttributed?: boolean;
+  } = {},
 ): SentinelClassification {
-  const { kind = 'cancellation', teenContent = false, ...event } = over;
+  const { kind = 'cancellation', teenContent = false, teenAttributed = false, ...event } = over;
   return {
     status: 'classified',
     familyId: family.familyId,
@@ -83,6 +89,7 @@ function classified(
       sourceConfidence: 0.9,
       quoteEvidence: 'the pool is closed this Saturday',
       teenContent,
+      teenAttributed,
       matchedEventRef: null,
     },
     usage: { triage: { promptTokens: 1, completionTokens: 1 }, extract: null },
@@ -144,7 +151,11 @@ function harness(
   return h;
 }
 
-function alert(h: Harness, messageId = 'm1') {
+function alertPair(
+  h: Harness,
+  messageId = 'm1',
+  over: Partial<Parameters<typeof alertParentForEmail>[1]> = {},
+): Promise<EmailAlertResult> {
   return alertParentForEmail(
     db.database,
     {
@@ -153,11 +164,20 @@ function alert(h: Harness, messageId = 'm1') {
       integrationId: INTEGRATION,
       messageId,
       envelope: ENVELOPE,
+      cancelledThisSweep: new Set<string>(),
       timeZone: 'America/Toronto',
       now: NOW,
+      ...over,
     },
     h.ports,
   );
+}
+
+/** The ALERT axis alone, which is what nearly every test in this file is about. The
+ * BOOKING axis is a second, independent answer with its own describe and its own reads —
+ * kept apart here so a change to one never silently rewrites the other's assertions. */
+async function alert(h: Harness, messageId = 'm1'): Promise<EmailAlertOutcome> {
+  return (await alertPair(h, messageId)).alert;
 }
 
 function ledgerRows() {
@@ -365,6 +385,13 @@ describe('alertParentForGmailSweep', () => {
     h: Harness,
     over: Partial<Parameters<typeof alertParentForGmailSweep>[1]> = {},
   ): Promise<readonly EmailAlertOutcome[]> {
+    return sweepPairs(h, over).then((results) => results.map((r) => r.alert));
+  }
+
+  function sweepPairs(
+    h: Harness,
+    over: Partial<Parameters<typeof alertParentForGmailSweep>[1]> = {},
+  ): Promise<readonly EmailAlertResult[]> {
     return alertParentForGmailSweep(
       db.database,
       {
@@ -452,6 +479,9 @@ describe('the text itself', () => {
     },
     teenContent: false,
     matchedEventRef: null,
+    // DARK by default, so every frame below is asserted against the behaviour every
+    // family has today. The booking frame's own describe arms it explicitly.
+    booked: false,
     timeZone: 'America/Toronto',
     now: NOW,
   };
@@ -928,33 +958,134 @@ describe('the text itself', () => {
       'new_event',
       'reminder_only',
       'unclear',
+      'booking_confirmation',
     ];
     for (const kind of kinds) {
       for (const teenContent of [false, true]) {
-        for (const from of [
-          `"${nasty}" <${'a'.repeat(60)}@${'d'.repeat(60)}.example>`,
-          `${'x'.repeat(200)}@${'y'.repeat(80)}.example`,
-          'no-at-sign-at-all',
-          '',
-        ]) {
-          const body = renderEmailAlert({
-            ...RENDER,
-            from,
-            kind,
-            teenContent,
-            event: {
-              title: nasty,
-              childRef: null,
-              originalTime: '2027-01-05T13:00:00.000Z',
-              newTime: '2027-01-06T13:00:00.000Z',
-              location: 'somewhere',
-            },
-          });
-          expect(isPrintableGsm7Basic(body)).toBe(true);
-          expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBeLessThanOrEqual(2);
+        // BOTH flag states, because the booking frame and its longer CTA only exist in
+        // one of them: a bound proved dark is a bound proved on the old sentence.
+        for (const booked of [false, true]) {
+          for (const from of [
+            `"${nasty}" <${'a'.repeat(60)}@${'d'.repeat(60)}.example>`,
+            `${'x'.repeat(200)}@${'y'.repeat(80)}.example`,
+            'no-at-sign-at-all',
+            '',
+          ]) {
+            const body = renderEmailAlert({
+              ...RENDER,
+              from,
+              kind,
+              teenContent,
+              booked,
+              event: {
+                title: nasty,
+                childRef: null,
+                originalTime: '2027-01-05T13:00:00.000Z',
+                newTime: '2027-01-06T13:00:00.000Z',
+                location: 'somewhere',
+              },
+            });
+            expect(isPrintableGsm7Basic(body)).toBe(true);
+            expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBeLessThanOrEqual(2);
+          }
         }
       }
     }
+  });
+});
+
+/**
+ * THE BOOKING SENTENCE — a provider's receipt, and the one question it may end on.
+ *
+ * Two things are being pinned here and they are not the same thing. The FRAME says what
+ * the email said and nothing more, which is a claim-taxonomy question. The CTA is a
+ * question asked if and only if a row will exist behind it, which is #649's question. The
+ * tests below keep them apart on purpose, because the way this ships wrong is a frame
+ * that carries the question itself.
+ */
+describe('the booking frame', () => {
+  const BOOKING: EmailAlertRenderInput = {
+    from: 'Riverside Pool <info@riverside.example>',
+    kind: 'booking_confirmation',
+    teenContent: false,
+    matchedEventRef: null,
+    booked: true,
+    timeZone: 'America/Toronto',
+    now: NOW,
+    event: {
+      title: 'Swim Level 2',
+      childRef: null,
+      originalTime: null,
+      newTime: '2026-09-26T13:00:00.000Z',
+      location: 'the Leisure Centre',
+    },
+  };
+
+  it('relays the provider as the subject, names the first session, and ends on the one ask', () => {
+    expect(renderEmailAlert(BOOKING)).toBe(
+      "Riverside Pool says you're in for Swim Level 2 - first one Saturday, Sep 26 at 9:00 a.m." +
+        ' at the Leisure Centre. Want it on your calendar?',
+    );
+  });
+
+  it('carries NO question in the frame - only the CTA slot may ask one', () => {
+    // The class is already on the family's calendar, so `emailAlertOfferDraft` refuses and
+    // no CTA is appended. What is left IS the composed frame, and it must not ask
+    // anything: a question with no offer row behind it is #649 verbatim, and after the
+    // correlation fix this is the most common draft-null booking there is.
+    const tracked = renderEmailAlert({
+      ...BOOKING,
+      matchedEventRef: { table: 'family_events', id: randomUUID() },
+    });
+    expect(tracked).toBe(
+      "Riverside Pool says you're in for Swim Level 2 - first one Saturday, Sep 26 at 9:00 a.m." +
+        ' at the Leisure Centre.',
+    );
+    expect(tracked).not.toContain('?');
+    // MUTATION: move 'Want it on your calendar?' inside `compose` and this goes red,
+    // while the happy-path assertion above stays green. That asymmetry is the test.
+    expect(renderEmailAlert(BOOKING).match(/\?/g)).toHaveLength(1);
+  });
+
+  it('asserts no row Hale does not hold - the claim taxonomy, with its mutation', () => {
+    // SCHEDULED_ASSERTION matches "you're registered", "is confirmed", "is on your
+    // calendar". "you're in for" and "Want it on your calendar?" clear it, and the
+    // email-alert path runs no `refuseUnbackedSend`, so this file is the only gate.
+    expect(extractStateClaims(renderEmailAlert(BOOKING))).toEqual([]);
+
+    // THE MUTATION, as an executable control rather than a note: the same sentence with
+    // the banned wording DOES produce a claim. Without it this is an absence test, and
+    // absence tests fail open.
+    const banned = "Riverside Pool says you're registered for Swim Level 2.";
+    expect(extractStateClaims(banned).map((claim) => claim.kind)).toEqual(['scheduled_event']);
+  });
+
+  it('renders byte-identically to a new_event while the flag is off', () => {
+    // The WHOLE claim of the dark state, asserted rather than narrated. Same extraction,
+    // same instant, same everything: dark, a booking IS a new_event on the wire.
+    const dark = renderEmailAlert({ ...BOOKING, booked: false });
+    const asNewEvent = renderEmailAlert({ ...BOOKING, kind: 'new_event', booked: false });
+    expect(dark).toBe(asNewEvent);
+    expect(dark).toBe(
+      'Riverside Pool has Swim Level 2 at the Leisure Centre on Saturday, Sep 26 at 9:00 a.m.' +
+        ' Reply YES and it goes on your week.',
+    );
+  });
+
+  it('says only what it has when the receipt named no first session', () => {
+    const undated = renderEmailAlert({
+      ...BOOKING,
+      event: { ...BOOKING.event, newTime: null, location: null },
+    });
+    // No instant means no offer (`emailAlertOfferDraft`'s concrete-time condition), so no
+    // CTA either - the sentence stops where the evidence does.
+    expect(undated).toBe("Riverside Pool says you're in for Swim Level 2.");
+  });
+
+  it('keeps the teen text category-only, as every other kind does', () => {
+    expect(renderEmailAlert({ ...BOOKING, teenContent: true })).toBe(
+      "Swim Level 2. I've kept the details out of this text.",
+    );
   });
 });
 
@@ -963,6 +1094,7 @@ const RENDER_FOR_OFFER = {
   kind: 'new_event' as ExtractionKind,
   teenContent: false,
   matchedEventRef: null,
+  booked: false,
   timeZone: 'America/Toronto',
   now: NOW,
 };

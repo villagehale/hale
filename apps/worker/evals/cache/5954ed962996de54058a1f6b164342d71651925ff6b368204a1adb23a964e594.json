@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.95,
+    "rationale": "Daycare closure notification affecting a specific dated day (Wednesday) — a change to child's weekly routine that requires parental action/awareness."
+  },
+  "latencyMs": 1155
+}

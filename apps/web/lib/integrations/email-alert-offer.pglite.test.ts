@@ -240,6 +240,94 @@ describe('a YES puts the occasion on the family week', () => {
     });
   });
 
+  it('stamps the placed event onto the booking born from the same email', async () => {
+    // Two rows from ONE email, so the (connection, message) pair addresses both and no
+    // third id crosses the router. This is what turns "the parent said yes" into "the
+    // follow-up reader will defer to the placement reader, or not".
+    const integrationId = randomUUID();
+    const messageId = randomUUID();
+    const channelMessageId = await sentAlert();
+    await seedOffer({ integrationId, messageId, kind: 'booking_confirmation', channelMessageId });
+    await db.database.insert(schema.activityBookings).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId,
+      messageId,
+      providerHost: 'recreation.brookfield.example.ca',
+      title: TITLE,
+      firstSessionAt: STARTS_AT,
+      channelMessageId,
+    });
+
+    await expect(reply('yes')).resolves.toMatchObject({ claimed: true, outcome: 'added' });
+
+    const [placed] = await events();
+    const [booking] = await db.database
+      .select()
+      .from(schema.activityBookings)
+      .where(eq(schema.activityBookings.familyId, family.familyId));
+    expect(placed?.id).toBeDefined();
+    expect(booking?.eventId).toBe(placed?.id);
+  });
+
+  it('leaves the booking alive with a NULL event when the parent says no', async () => {
+    // A parent who keeps their own calendar is still booked. The absence of a stamp is
+    // the absence of a calendar row, never the absence of the class.
+    const integrationId = randomUUID();
+    const messageId = randomUUID();
+    const channelMessageId = await sentAlert();
+    await seedOffer({ integrationId, messageId, kind: 'booking_confirmation', channelMessageId });
+    await db.database.insert(schema.activityBookings).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId,
+      messageId,
+      providerHost: 'recreation.brookfield.example.ca',
+      title: TITLE,
+      firstSessionAt: STARTS_AT,
+      channelMessageId,
+    });
+
+    await expect(reply('no')).resolves.toMatchObject({ claimed: true, outcome: 'declined' });
+
+    await expect(events()).resolves.toHaveLength(0);
+    const rows = await db.database
+      .select()
+      .from(schema.activityBookings)
+      .where(eq(schema.activityBookings.familyId, family.familyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.eventId).toBeNull();
+  });
+
+  it('logs rather than swallows a booking offer that placed with no booking to stamp', async () => {
+    // `no_booking` is the ordinary answer for the other five kinds. For a
+    // `booking_confirmation` it is an inconsistency - the same post-send stretch wrote
+    // both rows - and the consequence is that the follow-up ask will never happen, which
+    // is exactly the kind of silence rule #11 forbids. Never a throw: the parent's event
+    // is already placed and the receipt is already owed.
+    const logged = vi.spyOn(console, 'error');
+    await seedOffer({ kind: 'booking_confirmation' });
+
+    await expect(reply('yes')).resolves.toMatchObject({ claimed: true, outcome: 'added' });
+
+    await expect(events()).resolves.toHaveLength(1);
+    expect(logged).toHaveBeenCalledWith(
+      expect.objectContaining({ familyId: family.familyId }),
+      expect.stringContaining('no booking row to stamp'),
+    );
+  });
+
+  it('says nothing for a new_event offer with no booking - the CONTROL for the log above', async () => {
+    // Without this, the assertion above passes on an implementation that logs for every
+    // placement, which would make the inconsistency invisible in the noise.
+    const logged = vi.spyOn(console, 'error');
+    await seedOffer();
+
+    await expect(reply('yes')).resolves.toMatchObject({ claimed: true, outcome: 'added' });
+
+    expect(logged).not.toHaveBeenCalled();
+  });
+
   it('closes the offer only once the receipt has actually gone', async () => {
     // The MEM-10 discipline. A turn that placed the event and then failed to answer must
     // leave the question standing, so the redrive finds it.

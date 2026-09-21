@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.92,
+    "rationale": "School event with specific date (Sept 11), time, and location — direct child's school activity"
+  },
+  "latencyMs": 1092
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.95,
+    "rationale": "Newsletter subscription confirmation, not a dated child event or appointment"
+  },
+  "latencyMs": 964
+}

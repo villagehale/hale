@@ -120,6 +120,75 @@ describe('classifyChildEventEmail — routing', () => {
 
     expect(result.extraction?.matchedEventRef).toEqual({ table: 'family_events', id: 'fe-9' });
   });
+
+  it('carries a booking_confirmation through, and correlates it against its first session', async () => {
+    // The sixth kind has to survive the pipeline whole AND reach the correlation, because
+    // the ref is the only thing that stops a class the family already holds being offered
+    // a second time. A kind that parses but never correlates is the silent version of
+    // this feature shipping broken.
+    const fetchBody = vi.fn().mockResolvedValue('body');
+    const client = scriptedClient(
+      { child_related: true, confidence: 0.9, rationale: 'registration receipt' },
+      {
+        kind: 'booking_confirmation',
+        event: {
+          title: 'Swim Level 2',
+          original_time: null,
+          new_time: '2026-08-01T14:00:00Z',
+          location: 'the Leisure Centre',
+          child_ref: null,
+        },
+        source_confidence: 0.92,
+        quote_evidence: "You're registered for Swim Level 2.",
+      },
+    );
+
+    const result = await classifyChildEventEmail(ENVELOPE, {
+      client,
+      children: [YOUNG_CHILD],
+      fetchBody,
+      correlationCandidates: [
+        { ref: { table: 'family_events', id: 'fe-9' }, title: 'Swim lessons', startsAt: '2026-08-01T14:00:00Z' },
+      ],
+    });
+
+    expect(result.extraction?.kind).toBe('booking_confirmation');
+    expect(result.extraction?.event.title).toBe('Swim Level 2');
+    expect(result.extraction?.matchedEventRef).toEqual({ table: 'family_events', id: 'fe-9' });
+  });
+
+  it('genericises a teen-attributed booking_confirmation to its own standalone line', async () => {
+    // A 13+ child's registration receipt: the title is replaced before anything
+    // downstream sees it, which is why no booking row can ever be written from one.
+    const fetchBody = vi.fn().mockResolvedValue('body');
+    const client = scriptedClient(
+      { child_related: true, confidence: 0.9, rationale: 'registration receipt' },
+      {
+        kind: 'booking_confirmation',
+        event: {
+          title: 'Grade 9 counselling group - Maya',
+          original_time: null,
+          new_time: '2026-08-01T14:00:00Z',
+          location: null,
+          child_ref: 'child-teen',
+        },
+        source_confidence: 0.9,
+        quote_evidence: 'quote',
+        teen_content: true,
+      },
+    );
+
+    const result = await classifyChildEventEmail(ENVELOPE, {
+      client,
+      children: [TEEN_CHILD],
+      fetchBody,
+      correlationCandidates: [],
+    });
+
+    expect(result.extraction?.teenContent).toBe(true);
+    expect(result.extraction?.event.title).toBe('A registration notice');
+    expect(result.extraction?.quoteEvidence).toBeNull();
+  });
 });
 
 describe('classifyChildEventEmail — teen-content backstop (rule #1)', () => {

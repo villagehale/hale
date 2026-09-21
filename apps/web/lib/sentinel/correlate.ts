@@ -70,15 +70,25 @@ function hoursBetween(a: string, b: string): number {
 /**
  * The extraction's relevant time to correlate against: cancellation/reschedule
  * match the EXISTING occasion's original time (that's the row being changed);
- * new_event tries its stated time (catching an invite that duplicates a
- * placement already tracked); reminder_only/unclear have nothing concrete
- * enough to correlate and are never attempted.
+ * new_event and booking_confirmation try their stated time (catching an invite
+ * or a receipt that duplicates a placement already tracked); reminder_only/
+ * unclear have nothing concrete enough to correlate and are never attempted.
+ *
+ * A RECORD RATHER THAN AN IF-CHAIN, and that is the point of it. The chain ended
+ * in a silent `return null`, so a kind added to the union simply never correlated
+ * — which for `booking_confirmation` meant the family-already-tracks-it
+ * suppression (emailAlertOfferDraft's fifth condition) could never fire, and a
+ * class the family already holds would be offered again and placed twice. This
+ * shape makes the NEXT kind a compile error instead of a silent null.
  */
-function targetTime(input: CorrelationInput): string | null {
-  if (input.kind === 'new_event') return input.newTime;
-  if (input.kind === 'cancellation' || input.kind === 'reschedule') return input.originalTime;
-  return null;
-}
+const TARGET_TIME: Record<ExtractionKind, (input: CorrelationInput) => string | null> = {
+  new_event: (input) => input.newTime,
+  booking_confirmation: (input) => input.newTime,
+  cancellation: (input) => input.originalTime,
+  reschedule: (input) => input.originalTime,
+  reminder_only: () => null,
+  unclear: () => null,
+};
 
 /**
  * Best matching known occasion for `input`, or null when none clears both the
@@ -89,7 +99,7 @@ export function correlateExtraction(
   input: CorrelationInput,
   candidates: readonly CorrelationCandidate[],
 ): CorrelatedEventRef | null {
-  const target = targetTime(input);
+  const target = TARGET_TIME[input.kind](input);
   if (!target) return null;
 
   let best: { ref: CorrelatedEventRef; score: number; deltaHours: number } | null = null;

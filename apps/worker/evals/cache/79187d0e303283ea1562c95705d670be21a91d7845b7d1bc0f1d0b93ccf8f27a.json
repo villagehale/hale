@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.7,
+    "rationale": "From daycare mentioning Leo's room with a vague heads-up about an upcoming change; plausibly a schedule update or event notice, though snippet lacks specifics."
+  },
+  "latencyMs": 1249
+}

@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "Playdate",
+      "child_ref": null,
+      "original_time": null,
+      "new_time": "2026-07-25T15:00:00-04:00",
+      "location": "Riverside Park"
+    },
+    "kind": "new_event",
+    "source_confidence": 0.8,
+    "quote_evidence": "would love to set up a playdate at Riverside Park this Saturday, July 25th at 3:00 PM if you're free",
+    "teen_content": false
+  },
+  "latencyMs": 2687
+}

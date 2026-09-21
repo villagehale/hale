@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.98,
+    "rationale": "Swimming lesson cancellation for named child (Léo) with specific date and time (Saturday, July 25, 10:00 AM)"
+  },
+  "latencyMs": 1012
+}
