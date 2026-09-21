@@ -90,26 +90,41 @@ export interface ComposeVoiceArgs<TVoice> {
   maxTokens: number;
 }
 
+/**
+ * WHICH failure degraded the voice — four different problems with four different
+ * fixes. 'parse' and 'invented' are the model's ANSWER being wrong (a prompt/skill
+ * problem, and 'invented' is the one that means fabrication); 'unavailable' is the CALL
+ * not coming back at all (an availability problem); 'skill_load' is the instructions
+ * missing from the deploy, which no amount of prompt work fixes.
+ *
+ * Named rather than folded into `degraded` for rule #11's second half: a caller
+ * counting fabrications must not count an outage among them, which is exactly what a
+ * single boolean forces it to do.
+ */
+export type VoiceDegradation = 'parse' | 'invented' | 'unavailable' | 'skill_load';
+
 export interface ComposedVoice<TVoice> {
   /** The composed voice, or null when the stage degraded to the deterministic copy. */
   voice: TVoice | null;
   /** True when the model call/parse/lint failed and the caller must render deterministically. */
   degraded: boolean;
+  /** Why it degraded, or null when the voice shipped. */
+  reason: VoiceDegradation | null;
 }
 
-/** Parse the answer, then lint every voice string against the fact slots. Returns null
- * (degrade) on a broken parse OR any invented time/link, logging which (never PII). */
+/** Parse the answer, then lint every voice string against the fact slots. Degrades on a
+ * broken parse OR any invented time/link, naming which (never PII). */
 function validateVoice<TVoice>(
   args: ComposeVoiceArgs<TVoice>,
   answer: string | null,
-): TVoice | null {
+): { voice: TVoice; reason: null } | { voice: null; reason: VoiceDegradation } {
   const voice = args.parse(answer);
   if (!voice) {
     console.error(
       { familyId: args.familyId, voice: args.traceName },
       'voice: model answer failed to parse — sending deterministic copy',
     );
-    return null;
+    return { voice: null, reason: 'parse' };
   }
   for (const text of args.voiceStrings(voice)) {
     const invented = findInventedFacts(text, args.factSlots);
@@ -118,10 +133,10 @@ function validateVoice<TVoice>(
         { familyId: args.familyId, voice: args.traceName, invented },
         'voice: model invented a fact not in slots — sending deterministic copy',
       );
-      return null;
+      return { voice: null, reason: 'invented' };
     }
   }
-  return voice;
+  return { voice, reason: null };
 }
 
 export async function composeVoice<TVoice>(
@@ -152,7 +167,7 @@ export async function composeVoice<TVoice>(
         });
         trace.recordGeneration(`${args.traceName}-compose`, { model: modelUsed, usage: result.usage });
 
-        const voice = validateVoice(args, result.answer);
+        const { voice, reason } = validateVoice(args, result.answer);
         await recordAgentRun(args.database, {
           familyId: args.familyId,
           agentName: args.agentName,
@@ -164,7 +179,7 @@ export async function composeVoice<TVoice>(
           status: voice ? 'completed' : 'failed',
           langfuseTraceId: trace.traceId,
         });
-        return { voice, degraded: voice === null };
+        return { voice, degraded: voice === null, reason };
       },
     );
   } catch (err) {
@@ -174,6 +189,6 @@ export async function composeVoice<TVoice>(
       { err, familyId: args.familyId, voice: args.traceName },
       'voice: compose call failed — sending deterministic copy',
     );
-    return { voice: null, degraded: true };
+    return { voice: null, degraded: true, reason: 'unavailable' };
   }
 }
