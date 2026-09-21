@@ -249,6 +249,23 @@ function betweenCyclesLine(absence: RegistrationAbsence): string {
   return `${townLabel(absence.cycleRef.municipality)} ${absence.cycleRef.cycleLabel} registration already opened ${absence.lastOpenedAtLocal} - ${next} are not posted yet.`;
 }
 
+/**
+ * The same two facts as {@link betweenCyclesLine}, minus the half that is now
+ * misleading. A cycle that opened five days ago is not a season that has gone, and "the
+ * next dates are not posted yet" invites a parent to wait for a cycle they should be
+ * registering for today.
+ *
+ * It claims a TOWN, a CYCLE and a DATE, and nothing else — never "there's still room"
+ * and never "before it fills" (R7). Hale has not read the page; the registration layer
+ * states that boundary for itself (registration/sequence/shortlist.ts).
+ *
+ * No trailing full stop: `lastOpenedAtLocal` already ends in "a.m."/"p.m." with its own
+ * period (formatWhenPhrase, lib/format/datetime.ts).
+ */
+function stillOpenLine(absence: RegistrationAbsence): string {
+  return `${townLabel(absence.cycleRef.municipality)} ${absence.cycleRef.cycleLabel} registration opened ${absence.lastOpenedAtLocal}`;
+}
+
 /** How many blocks the render may spend, and the same ceiling the skill is written to.
  * Not a segment budget — {@link MAX_PAYLOAD_SEGMENTS} is the arithmetic one — but the
  * copy contract: three sentences, read on a phone, one hand holding a toddler. When all
@@ -315,15 +332,25 @@ export function renderRadarDeterministically(decision: RadarDecision): string {
     // The absence LEADS when it is the only real thing known about this family: it is
     // a fact about their town, and the same cascade that puts a registration date ahead
     // of a drop-in puts it ahead of the mapping line.
-    return absence
-      ? `${betweenCyclesLine(absence)} ${MAPPING_ONLY} ${FIRST_FIND_BEAT}`
-      : `${MAPPING_NOW} ${FIRST_FIND_BEAT}`;
+    if (absence) {
+      const lead = absence.stillOpen ? stillOpenLine(absence) : betweenCyclesLine(absence);
+      return `${lead} ${MAPPING_ONLY} ${FIRST_FIND_BEAT}`;
+    }
+    return `${MAPPING_NOW} ${FIRST_FIND_BEAT}`;
   }
   // One real fact, and room for the absence that matters: a family who got the pick is
   // owed the registration answer — with its reason when there is one — and everyone
   // else is owed the promise of a pick.
   if (blocks.length === 1) {
-    blocks.push(pick ? (absence ? betweenCyclesLine(absence) : NO_WINDOW) : STILL_LEARNING);
+    blocks.push(
+      pick
+        ? absence
+          ? absence.stillOpen
+            ? stillOpenLine(absence)
+            : betweenCyclesLine(absence)
+          : NO_WINDOW
+        : STILL_LEARNING,
+    );
   }
   return blocks.slice(0, MAX_BLOCKS).join('\n\n');
 }

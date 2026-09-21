@@ -63,6 +63,9 @@ function candidate(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
     childId: null,
     confidence: 0.8,
     source: null,
+    sourceUrl: null,
+    access: null,
+    whenLabel: null,
     ...overrides,
   };
 }

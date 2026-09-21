@@ -141,22 +141,97 @@ export function latestPastCycle(input: {
   const latest = past[0];
   if (!latest) return null;
 
-  // Every label the DATASET holds for this town and domain, not just the past ones: a
-  // cycle with a row is published, and publishing it is exactly what ends the wait.
-  const knownCycleLabels = new Set(
-    input.windows
+  return { ...latest, knownCycleLabels: knownCycleLabelsFor(input.windows, latest.window) };
+}
+
+/**
+ * Every label the DATASET holds for this town and domain, not just the past ones: a
+ * cycle with a row is published, and publishing it is exactly what ends the wait.
+ *
+ * Taken over the WHOLE fetched set, never a filtered one — which is why it is a
+ * function rather than a line inside the scan above. {@link stillOpenCycle} narrows by
+ * age band before it scans, and a published cycle is published whether or not this
+ * child fits it: computed over the narrowed set, a season already on the page would
+ * come back as one the sweep is still waiting for.
+ */
+function knownCycleLabelsFor(
+  windows: readonly RegistrationWindow[],
+  of: RegistrationWindow,
+): ReadonlySet<string> {
+  return new Set(
+    windows
       .filter(
         (window) =>
-          window.municipality === latest.window.municipality &&
-          window.programDomain === latest.window.programDomain,
+          window.municipality === of.municipality && window.programDomain === of.programDomain,
       )
       .map((window) => window.cycleLabel),
   );
-  return { ...latest, knownCycleLabels };
 }
 
-/** Whether a child's age sits inside the band, allowing `slack` months either side. */
-function inBand(ageMonths: number, min: number | null, max: number | null, slack: number): boolean {
+/**
+ * How long after a municipal open the page is still where a parent should be sent.
+ *
+ * Three weeks: the same horizon the civic projection already calls this week's news
+ * (FORWARD_WINDOW_DAYS, lib/civic/project.ts), and past it the popular classes are gone
+ * and the between-cycles sentence is the honest one. The dataset has NO close date —
+ * `open_at` is the only required instant (registration-windows.ts) — so this bound is
+ * the whole of what stops "opened in March" from reading as news in September.
+ */
+export const OPEN_NOW_MAX_AGE_DAYS = 21;
+
+/**
+ * The most recent cycle these municipalities opened that a child of THIS family could
+ * still act on: inside `maxAgeDays`, and admitting at least one child under the
+ * matcher's own ±6 tolerance ({@link AGE_TOLERANCE_MONTHS}). Null when none does.
+ *
+ * Banded where {@link latestPastCycle} is not, and for the reason that one gives for
+ * not being: it answers "did this town open anything", which is a claim about a
+ * CALENDAR; this answers "can I sign my kid up right now", which is a claim about a
+ * PROGRAM FOR THIS CHILD. A two-year-old's family whose town most recently opened
+ * after-school care would otherwise be told nothing, while the town's rec-program
+ * cycle — open, in band, a few days older — sat unnamed.
+ *
+ * It scans EVERY past open inside the bound rather than band-filtering one winner, and
+ * it is not a second rung: the caller uses whichever row it returns to build the ONE
+ * registration absence, so a town never gets two cycles in a stranger's first text.
+ */
+export function stillOpenCycle(input: {
+  windows: readonly RegistrationWindow[];
+  postal: string;
+  childrenAgesMonths: readonly number[];
+  now: Date;
+  maxAgeDays: number;
+}): PastRegistrationCycle | null {
+  if (input.childrenAgesMonths.length === 0) return null;
+  const earliest = input.now.getTime() - input.maxAgeDays * 24 * 60 * 60 * 1000;
+  const inBound = input.windows.filter((window) => {
+    if (
+      !input.childrenAgesMonths.some((age) =>
+        inBand(age, window.ageMinMonths, window.ageMaxMonths, AGE_TOLERANCE_MONTHS),
+      )
+    ) {
+      return false;
+    }
+    const { opensForFamilyAt } = resolveFamilyOpen(window, input.postal);
+    return opensForFamilyAt.getTime() >= earliest;
+  });
+  // Delegated rather than re-sorted: the most-recent-first order and its
+  // municipality/cycle tie-breaks live in ONE place, so the two scans can never pick a
+  // different winner out of the same rows for a reason nobody wrote down.
+  const winner = latestPastCycle({ windows: inBound, postal: input.postal, now: input.now });
+  if (winner === null) return null;
+  return { ...winner, knownCycleLabels: knownCycleLabelsFor(input.windows, winner.window) };
+}
+
+/** Whether a child's age sits inside the band, allowing `slack` months either side.
+ * Exported so a caller can name the children a band admits without a second copy of
+ * the rule (sequence/shortlist.ts is already the second copy). */
+export function inBand(
+  ageMonths: number,
+  min: number | null,
+  max: number | null,
+  slack: number,
+): boolean {
   if (min !== null && ageMonths < min - slack) return false;
   if (max !== null && ageMonths > max + slack) return false;
   return true;

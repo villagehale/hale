@@ -7,9 +7,11 @@ import type { HealthChild } from '~/lib/health/match';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import {
+  OPEN_NOW_MAX_AGE_DAYS,
   latestPastCycle,
   matchRegistrationWindows,
   resolveMunicipalities,
+  stillOpenCycle,
 } from '~/lib/registration/match-registration-windows';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import type { ExtractedChild } from './extract';
@@ -259,6 +261,14 @@ export async function readCandidates(database: Database, familyId: string): Prom
       // an unread column on this hot path is a field the next reader assumes is
       // checked.
       source: schema.villageCandidates.source,
+      // WHERE THE ROW'S OWN PAGE IS, and what a parent does when they get there. Both
+      // are rendered only off a `civic_registry` row (radar-decide accessFor): that
+      // source's url is the venue's own and its access mode is what the feed published,
+      // while an LLM row's url "is often guessed" (village/discover.ts). Selected
+      // beside `source` because the decision cannot apply that rule without all three.
+      sourceUrl: schema.villageCandidates.sourceUrl,
+      access: schema.villageCandidates.access,
+      whenLabel: schema.villageCandidates.whenLabel,
     })
     .from(schema.villageCandidates)
     .where(
@@ -329,6 +339,21 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       // already opened is between cycles, not off the radar, and that is a different
       // sentence. Null for a town that has published nothing.
       const pastCycle = area ? latestPastCycle({ windows: windowRows, postal: area, now }) : null;
+      // …and the same rows again, read as NEWS: the most recent cycle inside the age
+      // bound that a child of THIS family could still act on. No new query - one more
+      // pass over rows already in memory - and never a second rung: the decision uses
+      // whichever row this returns to build the ONE registration absence.
+      const openNow = area
+        ? stillOpenCycle({
+            windows: windowRows,
+            postal: area,
+            childrenAgesMonths: children
+              .map((child) => child.ageMonths)
+              .filter((age): age is number => age !== null),
+            now,
+            maxAgeDays: OPEN_NOW_MAX_AGE_DAYS,
+          })
+        : null;
 
       // THE FIRST FIND IS PRE-CONSENT — the watch offer rides on this very message
       // (machine.ts appends WATCH_OFFER to it), so health-checkpoint content may not:
@@ -346,6 +371,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           candidates,
           windows,
           pastCycle,
+          stillOpenCycle: openNow,
           weather,
           teenChildIds: roster.teenChildIds,
           healthChildren: roster.healthChildren,

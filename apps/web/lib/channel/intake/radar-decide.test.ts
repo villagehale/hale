@@ -57,6 +57,9 @@ function candidate(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
     childId: null,
     confidence: 0.8,
     source: null,
+    sourceUrl: null,
+    access: null,
+    whenLabel: null,
     ...overrides,
   };
 }
@@ -118,6 +121,7 @@ function decide(input: {
   areaCoarse?: string | null;
   suppressedCheckpointRefs?: Set<string>;
   pastCycle?: PastRegistrationCycle | null;
+  stillOpenCycle?: PastRegistrationCycle | null;
   now?: Date;
 }) {
   return decideRadar({
@@ -130,6 +134,7 @@ function decide(input: {
     areaCoarse: input.areaCoarse ?? null,
     suppressedCheckpointRefs: input.suppressedCheckpointRefs ?? new Set(),
     pastCycle: input.pastCycle ?? null,
+    stillOpenCycle: input.stillOpenCycle ?? null,
     now: input.now ?? FRIDAY,
     timeZone: TZ,
   });
@@ -627,6 +632,8 @@ describe('decideRadar — registration absence (between cycles)', () => {
       },
       lastOpenedAtLocal: 'Sep 1, 7:00 a.m.',
       nextCycleLabel: 'Winter 2027',
+      // No still-open cycle was handed in, so the rung keeps its history tense.
+      stillOpen: null,
     });
   });
 
@@ -727,5 +734,197 @@ describe('weekdayOf', () => {
     // Saturday and a Monday.
     expect(weekdayOf('2026-10-31')).toBe(6);
     expect(weekdayOf('2026-11-02')).toBe(1);
+  });
+});
+
+/**
+ * The SAME rung, read as news rather than as history.
+ *
+ * Today a Toronto parent who texts while the city's fall registration is open and its
+ * page is live is told their season has gone. The fix is a TENSE on the absence, not a
+ * fourth rung: an open-now fact that could exist without its absence row would delete
+ * the town sentence Hale states correctly today in every state where the tail is held.
+ * As a field on the absence, that deletion cannot be constructed.
+ */
+describe('decideRadar — the open-now tense on the absence', () => {
+  const TORONTO_URL =
+    'https://www.toronto.ca/news/city-of-toronto-releases-listings-for-fall-recreation-activities/';
+  const TORONTO_FALL = win({
+    municipality: 'toronto' as Municipality,
+    cycleLabel: 'Fall 2026',
+    openAt: new Date('2026-09-15T11:00:00.000Z'),
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: TORONTO_URL,
+  });
+  const FIVE_DAYS_AFTER = new Date('2026-09-20T15:00:00.000Z');
+
+  it('keeps the town, the cycle and the date, and adds the page a parent can act on', () => {
+    const decision = decide({
+      children: [child({ name: 'Maya', ageMonths: 30 })],
+      windows: [],
+      pastCycle: past(TORONTO_FALL),
+      stillOpenCycle: past(TORONTO_FALL),
+      now: FIVE_DAYS_AFTER,
+    });
+    expect(decision.registrationAbsence).toEqual({
+      cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
+      lastOpenedAtLocal: 'Sep 15, 7:00 a.m.',
+      nextCycleLabel: 'Winter 2027',
+      stillOpen: { registerUrl: TORONTO_URL, kidNames: ['Maya'] },
+    });
+  });
+
+  it('leaves the tense off when the cycle is past the age bound — nothing main says is lost', () => {
+    const decision = decide({
+      children: [child({ name: 'Maya', ageMonths: 30 })],
+      windows: [],
+      pastCycle: past(TORONTO_FALL),
+      stillOpenCycle: null,
+      now: FIVE_DAYS_AFTER,
+    });
+    expect(decision.registrationAbsence?.stillOpen).toBeNull();
+    expect(decision.registrationAbsence?.cycleRef.cycleLabel).toBe('Fall 2026');
+    expect(decision.registrationAbsence?.lastOpenedAtLocal).toBe('Sep 15, 7:00 a.m.');
+  });
+
+  /**
+   * M1's consequence at the decision boundary: when the two scans disagree, the parent
+   * gets the MORE USEFUL true fact about their town rather than the most recent one —
+   * and still exactly ONE cycle, never two.
+   */
+  it('builds the one absence from the still-open cycle when it is not the most recent', () => {
+    const newerTeenOnly = win({
+      municipality: 'toronto' as Municipality,
+      programDomain: 'after_school_care' as ProgramDomain,
+      cycleLabel: 'After-School 2026',
+      openAt: new Date('2026-09-18T11:00:00.000Z'),
+    });
+    const decision = decide({
+      children: [child({ name: 'Maya', ageMonths: 30 })],
+      windows: [],
+      pastCycle: past(newerTeenOnly),
+      stillOpenCycle: past(TORONTO_FALL),
+      now: FIVE_DAYS_AFTER,
+    });
+    expect(decision.registrationAbsence?.cycleRef.cycleLabel).toBe('Fall 2026');
+    expect(decision.registrationAbsence?.stillOpen?.registerUrl).toBe(TORONTO_URL);
+  });
+
+  /** R6, restated where the names are attached: only children the band admits. */
+  it('names only the children the still-open cycle actually admits', () => {
+    const banded = win({
+      municipality: 'toronto' as Municipality,
+      cycleLabel: 'Fall 2026',
+      openAt: new Date('2026-09-15T11:00:00.000Z'),
+      ageMinMonths: 36,
+      ageMaxMonths: 72,
+    });
+    const decision = decide({
+      children: [
+        child({ name: 'Maya', ageMonths: 48 }),
+        child({ name: 'Leo', ageMonths: 168 }),
+      ],
+      windows: [],
+      pastCycle: past(banded),
+      stillOpenCycle: past(banded),
+      now: FIVE_DAYS_AFTER,
+    });
+    expect(decision.registrationAbsence?.stillOpen?.kidNames).toEqual(['Maya']);
+  });
+
+  it('says nothing about an absence, open or not, when a date IS coming up', () => {
+    const decision = decide({
+      windows: [match()],
+      pastCycle: past(TORONTO_FALL),
+      stillOpenCycle: past(TORONTO_FALL),
+      now: FIVE_DAYS_AFTER,
+    });
+    expect(decision.registrationLine).not.toBeNull();
+    expect(decision.registrationAbsence).toBeNull();
+  });
+});
+
+/**
+ * The link and the browsable-listings fact the upcoming rung never carried. `source_url`
+ * is NOT NULL and `verified_at` is NOT NULL precisely so a row can never be a guess, and
+ * `preview_at` already means "when programs become browsable".
+ */
+describe('decideRadar — the registration line carries its page', () => {
+  it('carries the matched window’s own page and says the listings are not up yet', () => {
+    const decision = decide({ windows: [match()] });
+    expect(decision.registrationLine?.registerUrl).toBe('https://www.markham.ca/example');
+    expect(decision.registrationLine?.previewUp).toBe(false);
+  });
+
+  it('says the listings are up once the preview instant has passed', () => {
+    const previewed = win({ previewAt: new Date('2026-07-01T04:00:00.000Z') });
+    const decision = decide({ windows: [match({ window: previewed })] });
+    expect(decision.registrationLine?.previewUp).toBe(true);
+  });
+
+  it('does not call a future preview browsable', () => {
+    const previewed = win({ previewAt: new Date('2026-08-05T04:00:00.000Z') });
+    const decision = decide({ windows: [match({ window: previewed })] });
+    expect(decision.registrationLine?.previewUp).toBe(false);
+  });
+});
+
+/**
+ * What a parent DOES about the pick, and where. 'unknown' is the honest answer for
+ * every model-discovered candidate and for any civic row written before the column
+ * existed — and it renders as NO action line at all, never as a guess (R4).
+ */
+describe('decideRadar — what the weekend pick says to do about itself', () => {
+  const civic = (over: Partial<RadarCandidate> = {}) =>
+    candidate({
+      source: 'civic_registry',
+      eventDate: SATURDAY_DATE,
+      sourceUrl: 'https://www.torontopubliclibrary.ca/events/abc',
+      access: 'drop_in',
+      whenLabel: '9:30 a.m.-11:00 a.m.',
+      ...over,
+    });
+
+  it('carries the access, the time and the verified page of a civic row', () => {
+    const decision = decide({ candidates: [civic()] });
+    expect(decision.weekendPick?.access).toBe('drop_in');
+    expect(decision.weekendPick?.when).toBe('9:30 a.m.-11:00 a.m.');
+    expect(decision.weekendPick?.verifiedUrl).toBe(
+      'https://www.torontopubliclibrary.ca/events/abc',
+    );
+  });
+
+  it('carries register_at_venue where the source said a sign-up comes first', () => {
+    const decision = decide({ candidates: [civic({ access: 'register_at_venue' })] });
+    expect(decision.weekendPick?.access).toBe('register_at_venue');
+  });
+
+  /** R1 — a model-supplied source URL "is often guessed" (village/discover.ts). */
+  it('withholds an LLM row’s url, access and time even when the row has one', () => {
+    const decision = decide({
+      candidates: [
+        civic({ source: 'web_grounded', access: null, whenLabel: null }),
+      ],
+    });
+    expect(decision.weekendPick?.access).toBe('unknown');
+    expect(decision.weekendPick?.when).toBeNull();
+    expect(decision.weekendPick?.verifiedUrl).toBeNull();
+  });
+
+  /** R4 — a civic row projected before the column existed is UNKNOWN, never a guess. */
+  it('reads a pre-migration civic row as unknown rather than as a drop-in', () => {
+    const decision = decide({ candidates: [civic({ access: null, whenLabel: null })] });
+    expect(decision.weekendPick?.access).toBe('unknown');
+    expect(decision.weekendPick?.when).toBeNull();
+    // The page is still the venue's own, and R1 is about WHO wrote the url.
+    expect(decision.weekendPick?.verifiedUrl).toBe(
+      'https://www.torontopubliclibrary.ca/events/abc',
+    );
+  });
+
+  it('carries no url when the row has none', () => {
+    const decision = decide({ candidates: [civic({ sourceUrl: null })] });
+    expect(decision.weekendPick?.verifiedUrl).toBeNull();
   });
 });

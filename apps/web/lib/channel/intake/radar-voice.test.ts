@@ -35,6 +35,9 @@ const PICK_ONLY: RadarDecision = {
     day: 'saturday',
     kidNames: ['Maya', 'Leo'],
     whyFacts: ['free', 'outdoor', 'the forecast looks dry'],
+    access: 'unknown',
+    when: null,
+    verifiedUrl: null,
   },
   registrationLine: null,
   registrationAbsence: null,
@@ -51,6 +54,8 @@ const BOTH: RadarDecision = {
     kidNames: ['Maya'],
     residentNote: 'residents can register first',
     ageApproximate: false,
+    registerUrl: 'https://www.markham.ca/example',
+    previewUp: false,
   },
 };
 
@@ -83,6 +88,7 @@ const BETWEEN_CYCLES: RadarDecision = {
     cycleRef: { municipality: 'halton_hills', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
     lastOpenedAtLocal: 'Sep 1, 7:00 a.m.',
     nextCycleLabel: 'Winter 2027',
+    stillOpen: null,
   },
 };
 
@@ -93,6 +99,7 @@ const PICK_BETWEEN_CYCLES: RadarDecision = {
     cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
     lastOpenedAtLocal: 'Sep 8, 7:00 a.m.',
     nextCycleLabel: null,
+    stillOpen: null,
   },
 };
 
@@ -396,6 +403,7 @@ describe('the between-cycles absence', () => {
         },
         lastOpenedAtLocal: 'Sep 15, 2025, 11:30 a.m.',
         nextCycleLabel: 'Winter 2027',
+        stillOpen: null,
       },
     };
     const message = renderRadarDeterministically(richest);
@@ -412,6 +420,115 @@ describe('the between-cycles absence', () => {
 
   it('is grounded, question-free and ASCII in every between-cycles shape', () => {
     for (const decision of [BETWEEN_CYCLES, PICK_BETWEEN_CYCLES]) {
+      const message = renderRadarDeterministically(decision);
+      expect(usableRadarMessage(message, decision)).toBe(true);
+      expect(message).not.toContain(WATCH_OFFER);
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range check IS the assertion
+      expect(message).toMatch(/^[\x0A\x20-\x7E]*$/);
+    }
+  });
+});
+
+/**
+ * The open-now TENSE on the same rung. A cycle that opened five days ago is not a
+ * season that has gone, and "the next dates are not posted yet" invites a parent to
+ * wait for a cycle they should be registering for today.
+ */
+describe('the still-open absence', () => {
+  const STILL_OPEN: RadarDecision = {
+    ...NOTHING,
+    registrationAbsence: {
+      cycleRef: { municipality: 'toronto', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
+      lastOpenedAtLocal: 'Sep 15, 7:00 a.m.',
+      nextCycleLabel: 'Winter 2027',
+      stillOpen: {
+        registerUrl:
+          'https://www.toronto.ca/news/city-of-toronto-releases-listings-for-fall-recreation-activities/',
+        kidNames: ['Maya'],
+      },
+    },
+  };
+  const PICK_STILL_OPEN: RadarDecision = {
+    ...PICK_ONLY,
+    registrationAbsence: STILL_OPEN.registrationAbsence,
+  };
+
+  it('claims a town, a cycle and a date — and drops the sentence that says they missed it', () => {
+    const message = renderRadarDeterministically(STILL_OPEN);
+    expect(message).toContain('Toronto Fall 2026 registration opened Sep 15, 7:00 a.m.');
+    expect(message).not.toContain('already');
+    expect(message).not.toContain('not posted yet');
+    expect(message).not.toContain('Winter 2027');
+  });
+
+  /** R7 — Hale has never read the page, so it may never speak about what is left on it. */
+  it('never claims availability, spots or urgency', () => {
+    for (const decision of [STILL_OPEN, PICK_STILL_OPEN]) {
+      const message = renderRadarDeterministically(decision).toLowerCase();
+      for (const claim of ['still room', 'spots', 'spaces left', 'fills up', 'before it', 'hurry']) {
+        expect(message).not.toContain(claim);
+      }
+    }
+  });
+
+  /**
+   * R3 — whatever the composer is eventually told about the tense, the LINK is not part
+   * of it. The model writes words; the shell writes the one URL, and the fact lint is
+   * what makes that a guarantee rather than an intention.
+   */
+  it('never puts the page in front of the model, in the context or in the slots', () => {
+    expect(JSON.stringify(radarVoiceContext(STILL_OPEN))).not.toContain('http');
+    expect(radarFactSlots(STILL_OPEN).join(' ')).not.toContain('http');
+  });
+
+  /**
+   * THE POSITIVE CONTROL for the unflagged half (B2). Past the age bound the decision
+   * carries no `stillOpen`, and the render must be what main sends today, to the byte.
+   * Without this, "the season has gone" could be silently deleted from every town.
+   */
+  it('is byte-identical to the between-cycles render once the cycle is no longer open', () => {
+    const gone: RadarDecision = {
+      ...STILL_OPEN,
+      registrationAbsence: { ...STILL_OPEN.registrationAbsence!, stillOpen: null },
+    };
+    expect(renderRadarDeterministically(gone)).toBe(
+      [
+        'Toronto Fall 2026 registration already opened Sep 15, 7:00 a.m. - Winter 2027 dates are not posted yet.',
+        "I'm mapping what's near you now - nothing to point you to yet.",
+        'Your first weekend find lands in a day or two.',
+      ].join(' '),
+    );
+  });
+
+  /**
+   * R10, as an invariant rather than a case: whenever the decision knows a cycle this
+   * town opened, the sent body names the town AND the date it opened — in every shape
+   * and in both tenses. This is what stops a rung that did not render from erasing the
+   * one true thing Hale knows about a stranger's town.
+   */
+  it('names the town and the date it opened in every shape that knows one', () => {
+    // Every shape the INTAKE composer can produce with an absence in it. The checkpoint
+    // rung is not among them: radar.ts forces `checkpoint: null` on this surface,
+    // because the first find is pre-consent and health content may not ride it. (A
+    // checkpoint WITHOUT a pick already drops the absence for STILL_LEARNING on main,
+    // in both tenses alike — pre-existing, unreachable here, and not this change's.)
+    const shapes: RadarDecision[] = [
+      BETWEEN_CYCLES,
+      PICK_BETWEEN_CYCLES,
+      STILL_OPEN,
+      PICK_STILL_OPEN,
+    ];
+    for (const decision of shapes) {
+      const absence = decision.registrationAbsence;
+      if (!absence) throw new Error('every R10 shape must carry an absence');
+      const message = renderRadarDeterministically(decision);
+      expect(message).toContain(townLabel(absence.cycleRef.municipality));
+      expect(message).toContain(absence.lastOpenedAtLocal);
+    }
+  });
+
+  it('is grounded, question-free, ASCII and inside the budget in both tenses', () => {
+    for (const decision of [STILL_OPEN, PICK_STILL_OPEN]) {
       const message = renderRadarDeterministically(decision);
       expect(usableRadarMessage(message, decision)).toBe(true);
       expect(message).not.toContain(WATCH_OFFER);

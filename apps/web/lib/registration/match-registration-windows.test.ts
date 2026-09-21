@@ -2,11 +2,14 @@ import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import {
   AGE_TOLERANCE_MONTHS,
+  OPEN_NOW_MAX_AGE_DAYS,
+  inBand,
   latestPastCycle,
   matchRegistrationWindows,
   type RegistrationMatch,
   resolveFamilyOpen,
   resolveMunicipalities,
+  stillOpenCycle,
 } from './match-registration-windows.js';
 import { REGISTRATION_WINDOWS } from './registration-windows-data.js';
 import { toRegistrationWindowRow } from './registration-windows.js';
@@ -565,5 +568,191 @@ describe('latestPastCycle', () => {
 
   it('is null outside the covered municipalities', () => {
     expect(latestPastCycle({ windows: [win()], postal: 'X9X 9X9', now: AFTER_FALL })).toBeNull();
+  });
+});
+
+/**
+ * The same rows, read as NEWS rather than as history.
+ *
+ * `latestPastCycle` answers "did this town open anything", which is a claim about a
+ * CALENDAR and is deliberately unbanded. `stillOpenCycle` answers "can I sign my kid up
+ * right now", which is a claim about a PROGRAM FOR THIS CHILD — so it is banded on the
+ * matcher's own predicate, and bounded by how long a municipal page is still where a
+ * parent should be sent.
+ */
+describe('stillOpenCycle', () => {
+  const TORONTO = 'M5V 3A8';
+  /** Five days after Toronto's Fall 2026 resident morning (2026-09-15T07:00-04:00). */
+  const FIVE_DAYS_AFTER = new Date('2026-09-20T15:00:00.000Z');
+
+  function torontoRows(): RegistrationWindow[] {
+    return REGISTRATION_WINDOWS.filter((seed) => seed.municipality === 'toronto').map((seed) =>
+      win(toRegistrationWindowRow(seed)),
+    );
+  }
+
+  it("names the cycle a Toronto parent could register for this afternoon, with the city's own page", () => {
+    const open = stillOpenCycle({
+      windows: torontoRows(),
+      postal: TORONTO,
+      childrenAgesMonths: [30],
+      now: FIVE_DAYS_AFTER,
+      maxAgeDays: OPEN_NOW_MAX_AGE_DAYS,
+    });
+    expect(open).not.toBeNull();
+    expect(open?.window.municipality).toBe('toronto');
+    expect(open?.window.cycleLabel).toBe('Fall 2026');
+    expect(open?.window.sourceUrl).toBe(
+      'https://www.toronto.ca/news/city-of-toronto-releases-listings-for-fall-recreation-activities/',
+    );
+    // The RESIDENT morning is the one a Toronto FSA already went past.
+    expect(open?.openedForFamilyAt).toEqual(new Date('2026-09-15T11:00:00.000Z'));
+  });
+
+  it('goes quiet past the age bound while the town calendar claim survives', () => {
+    const past = new Date(
+      new Date('2026-09-15T11:00:00.000Z').getTime() +
+        (OPEN_NOW_MAX_AGE_DAYS + 1) * 24 * 60 * 60 * 1000,
+    );
+    const rows = torontoRows();
+    expect(
+      stillOpenCycle({
+        windows: rows,
+        postal: TORONTO,
+        childrenAgesMonths: [30],
+        now: past,
+        maxAgeDays: OPEN_NOW_MAX_AGE_DAYS,
+      }),
+    ).toBeNull();
+    // The positive control: the row is still there, and latestPastCycle still finds it.
+    expect(latestPastCycle({ windows: rows, postal: TORONTO, now: past })?.window.cycleLabel).toBe(
+      'Fall 2026',
+    );
+  });
+
+  /**
+   * M1. `latestPastCycle` returns ONE row across every domain and is unbanded, so the
+   * most recent open can be a cycle no child in the household could enter. Scanning
+   * every past open inside the bound is what stops a two-year-old's family being told
+   * about the teen after-school cycle — or told nothing at all.
+   */
+  it('passes over a newer cycle no child fits, for an older one they do', () => {
+    const newerTeenOnly = win({
+      id: 'w-teen',
+      municipality: 'toronto' as Municipality,
+      programDomain: 'after_school_care' as ProgramDomain,
+      cycleLabel: 'After-School 2026',
+      openAt: new Date('2026-09-18T11:00:00.000Z'),
+      ageMinMonths: 120,
+      ageMaxMonths: 180,
+    });
+    const olderAllAges = win({
+      id: 'w-all',
+      municipality: 'toronto' as Municipality,
+      cycleLabel: 'Fall 2026',
+      openAt: new Date('2026-09-14T11:00:00.000Z'),
+      ageMinMonths: null,
+      ageMaxMonths: null,
+    });
+    const windows = [newerTeenOnly, olderAllAges];
+
+    expect(
+      latestPastCycle({ windows, postal: TORONTO, now: FIVE_DAYS_AFTER })?.window.cycleLabel,
+    ).toBe('After-School 2026');
+    expect(
+      stillOpenCycle({
+        windows,
+        postal: TORONTO,
+        childrenAgesMonths: [30],
+        now: FIVE_DAYS_AFTER,
+        maxAgeDays: OPEN_NOW_MAX_AGE_DAYS,
+      })?.window.cycleLabel,
+    ).toBe('Fall 2026');
+  });
+
+  /** R6 — no child in the band, on the matcher's own tolerance, is no open-now. */
+  it('stays null when no child in the household could enter the only open cycle', () => {
+    const teenOnly = win({
+      municipality: 'toronto' as Municipality,
+      cycleLabel: 'After-School 2026',
+      openAt: new Date('2026-09-18T11:00:00.000Z'),
+      ageMinMonths: 120,
+      ageMaxMonths: 180,
+    });
+    expect(
+      stillOpenCycle({
+        windows: [teenOnly],
+        postal: TORONTO,
+        childrenAgesMonths: [48],
+        now: FIVE_DAYS_AFTER,
+        maxAgeDays: OPEN_NOW_MAX_AGE_DAYS,
+      }),
+    ).toBeNull();
+  });
+
+  it('admits a child inside the matcher’s own tolerance, exactly as a match does', () => {
+    const band = win({
+      municipality: 'toronto' as Municipality,
+      openAt: new Date('2026-09-18T11:00:00.000Z'),
+      ageMinMonths: 36,
+      ageMaxMonths: 72,
+    });
+    const at = (ageMonths: number) =>
+      stillOpenCycle({
+        windows: [band],
+        postal: TORONTO,
+        childrenAgesMonths: [ageMonths],
+        now: FIVE_DAYS_AFTER,
+        maxAgeDays: OPEN_NOW_MAX_AGE_DAYS,
+      });
+    expect(at(36 - AGE_TOLERANCE_MONTHS)).not.toBeNull();
+    expect(at(36 - AGE_TOLERANCE_MONTHS - 1)).toBeNull();
+    expect(at(72 + AGE_TOLERANCE_MONTHS)).not.toBeNull();
+    expect(at(72 + AGE_TOLERANCE_MONTHS + 1)).toBeNull();
+  });
+
+  it('claims nothing for an FSA outside the covered set', () => {
+    expect(
+      stillOpenCycle({
+        windows: torontoRows(),
+        postal: 'H2X 1Y4',
+        childrenAgesMonths: [30],
+        now: FIVE_DAYS_AFTER,
+        maxAgeDays: OPEN_NOW_MAX_AGE_DAYS,
+      }),
+    ).toBeNull();
+  });
+
+  it('claims nothing for a family with no children on file', () => {
+    expect(
+      stillOpenCycle({
+        windows: torontoRows(),
+        postal: TORONTO,
+        childrenAgesMonths: [],
+        now: FIVE_DAYS_AFTER,
+        maxAgeDays: OPEN_NOW_MAX_AGE_DAYS,
+      }),
+    ).toBeNull();
+  });
+});
+
+/**
+ * Exported so the decision can name the children a still-open cycle admits WITHOUT a
+ * second copy of the band rule (sequence/shortlist.ts is already the second copy, and
+ * a third is how the two readers of one band start disagreeing).
+ */
+describe('inBand', () => {
+  it('is inclusive at both published edges and at the slack either side', () => {
+    expect(inBand(36, 36, 72, 0)).toBe(true);
+    expect(inBand(72, 36, 72, 0)).toBe(true);
+    expect(inBand(35, 36, 72, 0)).toBe(false);
+    expect(inBand(30, 36, 72, AGE_TOLERANCE_MONTHS)).toBe(true);
+    expect(inBand(29, 36, 72, AGE_TOLERANCE_MONTHS)).toBe(false);
+  });
+
+  it('treats a null edge as unbounded on that side', () => {
+    expect(inBand(240, null, null, 0)).toBe(true);
+    expect(inBand(1, 36, null, 0)).toBe(false);
+    expect(inBand(600, null, 72, 0)).toBe(false);
   });
 });

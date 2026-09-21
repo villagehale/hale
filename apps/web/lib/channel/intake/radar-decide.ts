@@ -1,3 +1,4 @@
+import type { CandidateAccess } from '@hale/db';
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
@@ -6,7 +7,7 @@ import type {
   PastRegistrationCycle,
   RegistrationMatch,
 } from '~/lib/registration/match-registration-windows';
-import { AGE_TOLERANCE_MONTHS } from '~/lib/registration/match-registration-windows';
+import { AGE_TOLERANCE_MONTHS, inBand } from '~/lib/registration/match-registration-windows';
 import { type Season, seasonOf } from '~/lib/village/visibility';
 import { type DailyOutlook, isOutdoorFriendly } from '~/lib/weather/open-meteo';
 
@@ -48,6 +49,12 @@ export const CLEARLY_BETTER_MARGIN = 2;
  * phone; a fourth clause is cost without comprehension. */
 const MAX_WHY_FACTS = 3;
 
+/** The one `village_candidates.source` whose url and time are the VENUE's own words.
+ * Spelled here rather than imported from lib/civic/project so the decision stage does
+ * not pull the whole projection (and its database client) into its graph; the civic
+ * projection's own test pins the two against each other. */
+const CIVIC_REGISTRY_SOURCE = 'civic_registry';
+
 export interface RadarChild {
   /** The name the parent gave, or null when they described a child without naming one. */
   name: string | null;
@@ -78,6 +85,15 @@ export interface RadarCandidate {
    * and never on an LLM-discovered row.
    */
   source: string | null;
+  /** The row's own page, or null. Only ever RENDERED from a `civic_registry` row — see
+   * {@link WeekendPick.verifiedUrl} for the rule and the reason. */
+  sourceUrl: string | null;
+  /** What a parent DOES about this one (village_candidates.access, a
+   * {@link CandidateAccess}), or null on a row whose source was never asked. */
+  access: string | null;
+  /** When it runs, in the source's own words, already ASCII-folded. Null on every
+   * model-discovered row. */
+  whenLabel: string | null;
 }
 
 export interface WeekendPick {
@@ -89,6 +105,19 @@ export interface WeekendPick {
   /** EVERY fact the composer may state about this pick. If it is not here, it is not
    * true — the composer has nothing else to work from. */
   whyFacts: string[];
+  /** The parent's next move, from the row's own `access`. 'unknown' is the honest
+   * answer for every model-discovered candidate and for any civic row written before
+   * the column existed — and it renders as NO action line at all, never as a guess. */
+  access: CandidateAccess | 'unknown';
+  /** The session's own time, in the source's words, ASCII-folded. Null when the row
+   * carries none (every model-discovered row). NEVER handed to the composer: the fact
+   * lint rejects a clock time the model was not given, and this one is deliberately not
+   * given (R3). */
+  when: string | null;
+  /** The row's `source_url`, and only when `source === 'civic_registry'` — the one
+   * discovery source whose URL is the venue's own rather than a model's guess
+   * ("A model-supplied source URL ... is often guessed", village/discover.ts). */
+  verifiedUrl: string | null;
 }
 
 export interface RegistrationLine {
@@ -100,6 +129,14 @@ export interface RegistrationLine {
   residentNote: string | null;
   /** True when the match rests on the ±6-month tolerance — the copy should hedge. */
   ageApproximate: boolean;
+  /** The municipal page, from the matched window's `source_url` (NOT NULL alongside a
+   * NOT NULL `verified_at`, so a row can never be a guess). */
+  registerUrl: string;
+  /** Whether the listings are up. `registration_windows.preview_at` is "when programs
+   * become browsable", so this is the difference between a page worth opening today and
+   * a date to set an alarm for. Most rows publish no preview, so false is the common
+   * path — never a guess that they are up. */
+  previewUp: boolean;
 }
 
 /**
@@ -121,6 +158,23 @@ export interface RegistrationAbsence {
   /** The cycle the weekly verify sweep is watching for, or null when none is
    * registered — and then nothing names a season Hale has not been told about. */
   nextCycleLabel: string | null;
+  /**
+   * The SAME cycle read as news rather than as history: it opened inside
+   * OPEN_NOW_MAX_AGE_DAYS and a child of this family is inside its published band, so
+   * the municipal page is still where a parent should be sent.
+   *
+   * A FIELD and not a sibling rung, deliberately. The 2026-09-16 defect was one null
+   * meaning two things and the fix for it was a second type; the fix for THIS is the
+   * opposite shape. An open-now fact that could exist without its absence row could
+   * delete the town sentence Hale sends correctly today, in every state where the
+   * appended line is held. As a field it cannot.
+   *
+   * It carries the URL because DECIDE is where the one URL is chosen (R2), and
+   * `radarVoiceContext` forwards only a boolean from it — the model never sees a link.
+   * `kidNames` is the R6 band check made readable at the boundary rather than
+   * re-derived: it is never rendered, and no branch of the action line names a child.
+   */
+  stillOpen: { registerUrl: string; kidNames: string[] } | null;
 }
 
 /**
@@ -166,6 +220,11 @@ export interface DecideRadarInput {
    * was matched over (lib/registration latestPastCycle). Null for a town that has
    * published nothing — and then the silence really is a silence. */
   pastCycle: PastRegistrationCycle | null;
+  /** The most recent cycle this family's town opened that a child of theirs could still
+   * act on (lib/registration stillOpenCycle), or null. Read over the SAME rows
+   * `pastCycle` was, and used to choose WHICH row the one absence is built from — never
+   * to add a second rung. */
+  stillOpenCycle: PastRegistrationCycle | null;
   /** Empty when the outlook is unavailable — then no weather claim is made at all. */
   weather: readonly DailyOutlook[];
   /** Candidates attributed to these children never leave the building (rule #1). */
@@ -479,6 +538,9 @@ function decideRegistration(input: DecideRadarInput): RegistrationLine | null {
         ? 'residents can register first'
         : null,
     ageApproximate: match.ageApproximate,
+    registerUrl: match.window.sourceUrl,
+    previewUp:
+      match.window.previewAt !== null && match.window.previewAt.getTime() <= input.now.getTime(),
   };
 }
 
@@ -492,7 +554,11 @@ function decideRegistrationAbsence(
   registration: RegistrationLine | null,
 ): RegistrationAbsence | null {
   if (registration !== null) return null;
-  const past = input.pastCycle;
+  // ONE rung, built from whichever row is the more useful true fact about this town:
+  // the cycle their child could still enter if there is one, otherwise the most recent
+  // cycle the town opened at all. Never two cycles in a stranger's first text.
+  const stillOpen = input.stillOpenCycle;
+  const past = stillOpen ?? input.pastCycle;
   if (past === null) return null;
   const next = nextWatchedCycle(
     past.window.municipality,
@@ -510,6 +576,28 @@ function decideRegistrationAbsence(
       formatWhenPhrase(past.openedForFamilyAt, input.timeZone, input.now),
     ),
     nextCycleLabel: next === null ? null : asciiCopy(next),
+    stillOpen:
+      stillOpen === null
+        ? null
+        : {
+            registerUrl: stillOpen.window.sourceUrl,
+            // The matcher's OWN band predicate, on its own tolerance — not a second
+            // copy of the rule that could come to disagree with the scan that admitted
+            // this cycle in the first place (R6).
+            kidNames: input.children
+              .filter(
+                (child) =>
+                  child.ageMonths !== null &&
+                  inBand(
+                    child.ageMonths,
+                    stillOpen.window.ageMinMonths,
+                    stillOpen.window.ageMaxMonths,
+                    AGE_TOLERANCE_MONTHS,
+                  ),
+              )
+              .map((child) => child.name)
+              .filter((name): name is string => typeof name === 'string' && name.trim().length > 0),
+          },
   };
 }
 
@@ -577,6 +665,33 @@ function decideWeekendPick(input: DecideRadarInput): WeekendPick | null {
     day: chosen.day,
     kidNames: namesOf(input.children, chosen.coverage),
     whyFacts: whyFactsFor(chosen),
+    ...accessFor(chosen.candidate),
+  };
+}
+
+/**
+ * What a parent DOES about this candidate, and where — mapped HERE rather than in the
+ * reader, so a row whose source was never asked the question lands on 'unknown' at the
+ * one boundary that decides what may be said out loud.
+ *
+ * Three rows arrive with nothing to say: an LLM-discovered one (the model is never
+ * asked, because a guess here sends a family to a door that turns them away), a civic
+ * one projected before the columns existed, and any row a future adapter writes without
+ * them. All three are 'unknown', which renders as no action line at all (R4).
+ *
+ * The URL is narrower still: only a `civic_registry` row's, because that one is the
+ * venue's own, while "a model-supplied source URL ... is often guessed"
+ * (lib/village/discover.ts). A row with a url and the wrong source has no url here (R1).
+ */
+function accessFor(candidate: RadarCandidate): Pick<WeekendPick, 'access' | 'when' | 'verifiedUrl'> {
+  const civic = candidate.source === CIVIC_REGISTRY_SOURCE;
+  return {
+    access:
+      candidate.access === 'drop_in' || candidate.access === 'register_at_venue'
+        ? candidate.access
+        : 'unknown',
+    when: civic ? candidate.whenLabel : null,
+    verifiedUrl: civic ? candidate.sourceUrl : null,
   };
 }
 
