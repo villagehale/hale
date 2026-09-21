@@ -185,9 +185,15 @@ export async function syncConnection(
           },
           'connector sync: the email alert pass threw - the mailbox is fine, the alert is not',
         );
-        // The PAIR, with a null booking: the alert pass threw, so the booking decision
-        // was never reached - which is a different fact from a booking that was refused.
-        emailAlerts = envelopes.map(() => ({ alert: 'alert_failed' as const, booking: null }));
+        // THE TRIPLE, with a null booking and a null going: the alert pass threw, so
+        // neither the booking decision nor the count was ever reached - which is a
+        // different fact from a booking that was refused or a count that was below the
+        // floor.
+        emailAlerts = envelopes.map(() => ({
+          alert: 'alert_failed' as const,
+          booking: null,
+          going: null,
+        }));
       }
     }
     if (result.calendar) {

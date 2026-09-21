@@ -78,7 +78,7 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
     },
     alertGmailEnvelopes: async (batch) => {
       cap.alerted.push(batch);
-      return batch.envelopes.map(() => ({ alert: 'dark' as const, booking: null }));
+      return batch.envelopes.map(() => ({ alert: 'dark' as const, booking: null, going: null }));
     },
     alertCalendarChanges: async (batch) => {
       cap.calendarAlerted.push(batch);
@@ -683,7 +683,7 @@ describe('syncConnection — the gmail alert hand-off', () => {
     // already saved — otherwise a slow alert pass would re-enqueue the whole batch next run.
     const ok = stubDeps({ googleFetch: mailbox('1789000000000') });
     const result = await syncConnection(connection('gmail', { historyId: '9002' }), ok.deps);
-    expect(result.emailAlerts).toEqual([{ alert: 'dark', booking: null }]);
+    expect(result.emailAlerts).toEqual([{ alert: 'dark', booking: null, going: null }]);
     expect(ok.cap.cursor).toEqual({ historyId: '9100' });
   });
 
@@ -709,7 +709,7 @@ describe('syncConnection — the gmail alert hand-off', () => {
     // The PAIR, with a null booking and not a booking outcome: the alert pass threw, so
     // the booking decision was never reached, which is a different fact from a booking
     // that was refused (rule #11).
-    expect(thrown.emailAlerts).toEqual([{ alert: 'alert_failed', booking: null }]);
+    expect(thrown.emailAlerts).toEqual([{ alert: 'alert_failed', booking: null, going: null }]);
     expect(cap.errored).toBe(false);
     expect(cap.cursor).toEqual({ historyId: '9100' });
     // The ingest half is untouched: the message still reached the queue.

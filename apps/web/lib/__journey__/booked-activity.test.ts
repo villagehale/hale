@@ -294,7 +294,7 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
       alertPorts(transport),
     );
 
-    expect(outcomes).toEqual([{ alert: 'sent', booking: 'recorded' }]);
+    expect(outcomes).toEqual([{ alert: 'sent', booking: 'recorded', going: 'going_dark' }]);
     expect(transport.sent).toHaveLength(1);
     const text = transport.sent[0]?.body ?? '';
     // The provider is the subject, the first session is named, and the one question is
