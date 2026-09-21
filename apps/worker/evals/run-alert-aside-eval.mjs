@@ -40,6 +40,16 @@
 // sender-anchored, day-anchored or reader-anchored ordinal a 1, as it does any ordinal
 // written below two.
 //
+// AND THE PRIMARY GATE'S SAMPLE IS SMALL, WHICH IS THE PRODUCT RATHER THAN AN OVERSIGHT.
+// The pairwise and edge checks measure only the clauses that SHIP, and this composer's
+// first instruction is that saying nothing is usually right, so a green run leaves two or
+// three bodies to compare. Two things follow, and a reader should hold both: a template
+// across two bodies is still a template and this gate still sees it, but an absence of one
+// across two bodies is weak evidence. The corpus cannot be widened by labelling more
+// fixtures `clause` - that would be asking the model to chirp, which is the failure the
+// restraint arm exists to catch. The real widening is more ALERT SHAPES that genuinely
+// license a remark, and there are two of them today.
+//
 // WHY THE CORPUS IS LABELLED THREE WAYS AND NOT TWO. On most alerts BOTH answers are
 // right: the skill's own first rule is that saying nothing is usually correct, so a label
 // that read "a clause is expected here" on every non-restraint fixture would be asserting
