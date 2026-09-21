@@ -4,7 +4,11 @@ import { cityRecLine } from '~/lib/channel/rec-morning';
 import { type DailyOutlook, fakeWeather } from '~/lib/weather/open-meteo';
 import { WATCH_OFFER } from './copy.js';
 import { makeFakeDb } from './fakes.js';
-import { checkpointSurvivedCompose, createRadarComposer } from './radar.js';
+import {
+  checkpointSurvivedCompose,
+  createRadarComposer,
+  weekendPickSurvivedCompose,
+} from './radar.js';
 
 /** The rec-morning lane's Toronto line: a different answer, from a different module,
  * that the radar must never recite back as though it had checked this family. Pinned to
@@ -99,10 +103,10 @@ describe('createRadarComposer', () => {
     expect(payload.message).toContain('Aug 11');
     expect(payload.itemCount).toBe(2);
     expect(payload.followUpNeeded).toBe(false);
-    // VIL-360 · the D23 anchor the caller stamps on the ledger row. Read off the
-    // DECISION, so a composer that paraphrased the pick away still leaves a family
-    // anchorable - the weekend-ness of the send is enforced by `placements`, not by
-    // whether the sentence led with it.
+    // VIL-360 · the D23 anchor the caller stamps on the ledger row - earned by the
+    // TEXT, exactly as the told-marker beside it is. "Those are all weekend finds"
+    // points at what this message SAID, so a compose that dropped the pick leaves
+    // nothing for the ask to point at.
     expect(payload.weekendPickOffered).toBe(true);
   });
 
@@ -435,5 +439,41 @@ describe('checkpointSurvivedCompose — the told-marker is earned by the text (r
     expect(
       checkpointSurvivedCompose('I will text you about your kids this month.', TASK),
     ).toBe(false);
+  });
+});
+
+/**
+ * VIL-360 · THE D23 ANCHOR IS EARNED BY THE TEXT.
+ *
+ * The weekday-care ask says "Those are all weekend finds" and points at this message.
+ * That is a DEICTIC claim about what the parent read, and the register rule's whole
+ * corollary is that an anchor Hale cannot check is the same defect as an inference Hale
+ * should not make. The composer samples at temperature 1 and the launch-day P0 above
+ * records that it CAN drop a decided block, so the decision alone is not the artefact -
+ * the sentence is. Wrong in the other direction costs nothing but an ask that never
+ * fires; wrong in this one is Hale telling a family what it just sent them.
+ */
+describe('weekendPickSurvivedCompose', () => {
+  const TITLE = 'Riverdale Farm morning drop-in';
+
+  it('passes when a distinctive word of the pick survives composition', () => {
+    expect(
+      weekendPickSurvivedCompose('Saturday at Riverdale Farm looks like the one.', TITLE),
+    ).toBe(true);
+  });
+
+  it('fails when the compose dropped the pick entirely', () => {
+    expect(
+      weekendPickSurvivedCompose(
+        'Got it - I am mapping what is near you now. More in a day or two.',
+        TITLE,
+      ),
+    ).toBe(false);
+  });
+
+  it('generic words alone cannot fake a find', () => {
+    expect(weekendPickSurvivedCompose('I will text you about your kids this week.', TITLE)).toBe(
+      false,
+    );
   });
 });

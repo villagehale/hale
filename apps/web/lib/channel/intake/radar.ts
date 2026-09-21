@@ -36,6 +36,28 @@ const CHECKPOINT_STOPWORDS = new Set([
  * the rung entirely cannot.
  */
 export function checkpointSurvivedCompose(message: string, task: string): boolean {
+  return phraseSurvivedCompose(message, task);
+}
+
+/**
+ * VIL-360 · whether the composed message actually carries the decided weekend pick —
+ * the same rule, because it answers the same question about a different block.
+ *
+ * The weekday-care ask says "Those are all weekend finds" and points AT THIS MESSAGE.
+ * D23's corollary is that the anchor must be a specific artefact Hale can check, and
+ * the artefact is the sentence the parent read, not the decision behind it: the
+ * composer samples at temperature 1 and the P0 below records that it can drop a
+ * decided block. Failing this costs an ask that never fires; passing it wrongly is
+ * Hale telling a family what it just sent them.
+ */
+export function weekendPickSurvivedCompose(message: string, title: string): boolean {
+  return phraseSurvivedCompose(message, title);
+}
+
+/** One rule, two callers: a distinctive word (or age phrase) of the decided block
+ * survives in the text. A second copy is how the two markers start disagreeing about
+ * what counts as having been said. */
+function phraseSurvivedCompose(message: string, task: string): boolean {
   const text = message.toLowerCase();
   const agePhrases = task.toLowerCase().match(/\d+[\s-]?(?:month|year|week)/g) ?? [];
   if (agePhrases.some((phrase) => text.includes(phrase.replace(/[\s-]/g, ' ')) || text.includes(phrase.replace(/[\s-]/g, '-')) || text.includes(phrase))) {
@@ -118,12 +140,12 @@ export interface RadarPayload {
    * pick, so the caller can stamp {@link INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY} on the
    * row that carried it.
    *
-   * Read off the decision rather than off the composed text, unlike `checkpointTold`
-   * and `firstFindPromised`. Those two mark a family as TOLD something and must be
-   * earned by words that survived composition, because being wrong suppresses a future
-   * message. This one only ever unlocks a QUESTION, later, about the kind of thing Hale
-   * sends — and the weekend-ness of that send is enforced by `placements` whether the
-   * composer led with it or not.
+   * Earned by the COMPOSED TEXT, exactly as `checkpointTold` and `firstFindPromised`
+   * are, and for a reason of its own. What this flag unlocks is a deictic claim — the
+   * ask says "those are all weekend finds" and points at this very message — and D23's
+   * corollary is that such an anchor must be a specific artefact Hale can check.
+   * `placements` guarantees that a pick which was NAMED was a weekend one; it cannot
+   * make a message that named nothing into a find.
    */
   weekendPickOffered: boolean;
 }
@@ -364,6 +386,20 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         );
       }
 
+      // Earned by the TEXT for the told-marker's reason, one paragraph up, and for one
+      // of its own: this flag is what lets the weekday-care ask say "those are all
+      // weekend finds" about THIS send (D23). A stamp on a message that named no find
+      // is an anchor pointing at nothing.
+      const weekendPickOffered =
+        decision.weekendPick !== null &&
+        weekendPickSurvivedCompose(message, decision.weekendPick.candidateRef.title);
+      if (decision.weekendPick && !weekendPickOffered) {
+        console.warn(
+          'radar compose dropped the decided weekend pick from the text; NOT stamping the D23 anchor',
+          { candidateId: decision.weekendPick.candidateRef.id },
+        );
+      }
+
       return {
         message,
         itemCount:
@@ -372,7 +408,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           (decision.checkpoint ? 1 : 0),
         followUpNeeded: decision.followUpNeeded,
         checkpointTold,
-        weekendPickOffered: decision.weekendPick !== null,
+        weekendPickOffered,
         // Earned by the SENT TEXT, exactly as the told-marker above now is: the composer
         // is handed the beat as one fact among several and may leave it out, and a debt
         // recorded for words nobody read puts this family in the overdue column for a
