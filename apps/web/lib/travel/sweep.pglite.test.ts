@@ -537,11 +537,43 @@ describe('a trip closes exactly once', () => {
     // still leave this household counted as a failure every tick, forever.
     expect(second.sent).toBe(0);
     expect(second.failed).toBe(0);
+    expect(second.alreadyClaimed).toBe(1);
     expect(h.sent).toHaveLength(1);
     const rows = (await ledgerRows(family.familyId)).filter(
       (row) => row.dedupeKey === travelBriefDedupeKey(trip),
     );
     expect(rows).toHaveLength(1);
+  });
+
+  /**
+   * THE CRASH GAP, NAMED. A tick that sends and then dies before the close leaves a ledger
+   * row behind an OPEN trip, and every tick for the rest of the week hits the cost guard
+   * and stops. Nothing is sent twice — that is the property that matters and it is
+   * asserted here — but a bare return made a whole week of it invisible except as `due`
+   * minus `sent`, which is the shape rule #11 forbids.
+   *
+   * It also pins the ORDER: the dedupe read runs before the gate, so this household is
+   * counted as already claimed rather than as held by the weekly cap their own first text
+   * spent.
+   */
+  it('names the tick that finds the send already claimed, rather than returning silently', async () => {
+    const family = await seedFamily();
+    const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+    const h = harness();
+    expect((await run(h)).sent).toBe(1);
+
+    // Exactly the state a crash between `transport.send` and the close leaves behind.
+    await database
+      .update(schema.familyTrips)
+      .set({ closedAt: null, closedReason: null, briefChannelMessageId: null })
+      .where(eq(schema.familyTrips.id, trip));
+
+    const second = await run(h);
+    expect(second.due).toBe(1);
+    expect(second.sent).toBe(0);
+    expect(second.alreadyClaimed).toBe(1);
+    expect(second.held.frequency_cap).toBe(0);
+    expect(h.sent).toHaveLength(1);
   });
 
   /**

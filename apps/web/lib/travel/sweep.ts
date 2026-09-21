@@ -117,6 +117,15 @@ export interface TravelBriefResult {
   refusedAtRender: number;
   /** No phone, no recipient — a broken row, not a hold. */
   unsendable: number;
+  /**
+   * A SEND FOR THIS TRIP ALREADY EXISTS AND THE TRIP IS STILL OPEN. Either the cost guard
+   * found the row — a tick that sent and then died before the close, which leaves the
+   * trip open for up to seven days until `overtaken` takes it — or the claim's unique
+   * index did, which is a concurrent tick mid-send. One text still goes out either way;
+   * this is the counter that says so, because `due` minus `sent` with nothing behind it is
+   * the silent early return rule #11 forbids.
+   */
+  alreadyClaimed: number;
   /** `starts_on` passed while the trip was still open. Counted at the write that closes
    * it. */
   overtaken: number;
@@ -143,6 +152,7 @@ export function emptyTravelBriefResult(enabled: boolean): TravelBriefResult {
     noPicks: 0,
     refusedAtRender: 0,
     unsendable: 0,
+    alreadyClaimed: 0,
     overtaken: 0,
     failed: 0,
   };
@@ -280,8 +290,13 @@ async function briefOne(
   now: Date,
 ): Promise<void> {
   const dedupeKey = travelBriefDedupeKey(trip.id);
-  // The cost guard. The claim below is the correctness one.
-  if (await deps.dedupeActive(dedupeKey, database)) return;
+  // The cost guard, and it runs BEFORE the gate so a trip that already has its text costs
+  // no consent read. A row here behind an OPEN trip is the crash gap: a tick that sent and
+  // died before the close. Named rather than returned silently -- see `alreadyClaimed`.
+  if (await deps.dedupeActive(dedupeKey, database)) {
+    result.alreadyClaimed += 1;
+    return;
+  }
 
   const verdict = await assertProactiveSendAllowed(
     {
@@ -400,7 +415,12 @@ async function briefOne(
     })
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
-  if (!claimed) return;
+  if (!claimed) {
+    // The other tick won the unique index and is mid-send. Same fact, same counter: this
+    // tick sends nothing and the trip stays open for the one that did.
+    result.alreadyClaimed += 1;
+    return;
+  }
 
   const to = await deps.resolvePhone(database, trip.parentUserId);
   if (!to) {
