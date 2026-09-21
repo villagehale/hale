@@ -8,6 +8,7 @@ import {
 } from '~/lib/integrations/calendar-alert';
 import {
   type EmailAlertRenderInput,
+  emailAlertCtaSuffix,
   emailAlertOfferDraft,
   renderEmailAlert,
 } from '~/lib/integrations/email-alert';
@@ -125,10 +126,12 @@ describe('the eval corpus is still what the lanes render', () => {
         // against and what `after_an_ask` reads, so it has to be the lane's own answer
         // and it has to really be the core's tail.
         const offer = emailAlertOfferDraft(input);
-        expect(fixture.ctaSuffix === null).toBe(offer === null);
-        if (fixture.ctaSuffix !== null) {
-          expect(fixture.core.endsWith(fixture.ctaSuffix)).toBe(true);
-        }
+        // THE LANE'S OWN ANSWER, byte for byte — not merely "some suffix of the core". An
+        // earlier spelling asserted null-ness plus `core.endsWith(ctaSuffix)`, which a
+        // fixture carrying a TAIL of the CTA ("goes on your week.") satisfies perfectly,
+        // and the guard would then build its allowed-capital set against a short string and
+        // call the CTA's own `Reply` an invented capital.
+        expect(fixture.ctaSuffix).toBe(emailAlertCtaSuffix(offer));
         expect(fixture.matchedAKnownOccasion).toBe(fixture.render.matchedEventRef !== null);
       });
     } else {

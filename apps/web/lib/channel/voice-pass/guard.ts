@@ -31,7 +31,8 @@ import { isPrintableGsm7Basic, smsSegments } from '../sms-segments';
  * nothing themselves, so `apps/worker/evals/run-alert-aside-eval.mjs` can `tsImport` this
  * file REAL rather than replicating it — the drift `run-followup-voice-eval.mjs` accepts
  * because its composer sits behind `~/` and the tsx loader cannot resolve one.
- * `guard.alias-free.test.ts` fails on a `~/` here.
+ * The alias assertion lives in `guard.test.ts`: it greps this file for `~/` and fails on a
+ * hit.
  */
 
 export type AsideLane = 'email_alert' | 'calendar_alert';
@@ -372,8 +373,10 @@ function echoesAReplyWord(clause: string): boolean {
  * closed class of function words — a parent's name is never in it and never will be — so
  * the carve-out keeps catching "Mia's" and stops catching "That's".
  *
- * That is the honest limit: a bare invented name in position one ("Busy Saturday over
- * there.") is caught by the judge and not by this rule.
+ * That is the honest limit: a bare invented name in POSITION ONE — the brief's own example
+ * is "Saturday looks busy." — is caught by the judge and not by this rule. ("Busy Saturday
+ * over there." is not that case: its invented capital sits in position two, and this rule
+ * does catch it.)
  */
 /** Openers whose trailing `'s` is the verb `is`, never a possessive. A closed class of
  * function words, which is why naming them is safe where naming nouns would not be. */
