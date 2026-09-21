@@ -1,0 +1,11 @@
+{
+  "value": {
+    "destination_city": "Halifax",
+    "destination_region": "Nova Scotia",
+    "start_date": "2026-10-23",
+    "end_date": "2026-10-26",
+    "child_evidence": "child_fare",
+    "confidence": 0.9
+  },
+  "stopReason": "tool_use"
+}

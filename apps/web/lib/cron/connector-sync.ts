@@ -47,6 +47,14 @@ import {
   type SyncDeps,
   syncConnection,
 } from '~/lib/integrations/sync';
+import { productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import {
+  type TravelDetectCounts,
+  type TravelDetectPorts,
+  detectTravelBookingsForSweep,
+  emptyTravelDetectCounts,
+} from '~/lib/travel/detect';
+import { extractTravelBooking } from '~/lib/travel/extract';
 import { HOT_QUEUE_EXPIRE_SECONDS } from './drain';
 
 /**
@@ -106,6 +114,11 @@ export interface ConnectorSyncSummary {
    * no alert outcome to count — they never reached the alert path — so without this line
    * a page of un-keyable items reads as a quiet week (rule #11). */
   calendarDroppedNoId: number;
+  /** One count per named travel-detect outcome (rule #11). Its own tally, and the surface
+   * the founder reads Decision #1's miss rate off week to week: `no_child_evidence`
+   * beside `trip_written` is the precision trade, counted once per email rather than
+   * re-counted hourly by a send sweep. `dark` is this feature's own flag, never F14's. */
+  travelDetections: TravelDetectCounts;
 }
 
 /**
@@ -123,6 +136,7 @@ export async function runConnectorSync(
   const emailAlerts = emptyEmailAlertCounts();
   const bookings = emptyBookingCounts();
   const calendarAlerts = emptyCalendarAlertCounts();
+  const travelDetections = emptyTravelDetectCounts();
   let calendarDroppedNoId = 0;
 
   for (const connection of connections) {
@@ -155,6 +169,7 @@ export async function runConnectorSync(
         if (outcome.booking !== null) bookings[outcome.booking] += 1;
       }
       for (const outcome of result.calendarAlerts) calendarAlerts[outcome] += 1;
+      for (const outcome of result.travelDetections) travelDetections[outcome] += 1;
       calendarDroppedNoId += result.calendarDroppedNoId;
     } catch {
       // Isolate: a failure here must not stop the remaining connections.
@@ -166,6 +181,7 @@ export async function runConnectorSync(
     bookings,
     calendarAlerts,
     calendarDroppedNoId,
+    travelDetections,
   };
 }
 
@@ -183,6 +199,7 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
     saveTokens: (id, tokens) => saveConnectionTokensById(database, id, tokens),
     alertGmailEnvelopes: (batch) => alertGmailSweep(database, batch),
     alertCalendarChanges: (batch) => alertCalendarSweep(database, batch),
+    detectTravelBookings: (batch) => detectTravelSweep(database, batch),
   };
   return {
     listConnections: () => listActiveConnectorConnections(database),
@@ -209,6 +226,56 @@ function alertGmailSweep(database: Database, batch: GmailAlertBatch) {
     },
     emailAlertPorts(database, batch.connection.familyId, batch.accessToken),
   );
+}
+
+/**
+ * The sweep's half of the travel detection: one connection's Gmail envelopes, the real
+ * skill-backed extractor, and the real Gmail body reader bound to this run's token.
+ *
+ * NO outbound chokepoint here and no transport at all — this pass writes a row and two
+ * kinds of audit line, and the text about it is a different sweep an hour or a week later.
+ */
+function detectTravelSweep(database: Database, batch: GmailAlertBatch) {
+  return detectTravelBookingsForSweep(
+    database,
+    {
+      familyId: batch.connection.familyId,
+      parentUserId: batch.connection.userId,
+      integrationId: batch.connection.id,
+      seeding: batch.seeding,
+      envelopes: batch.envelopes,
+      now: new Date(),
+    },
+    travelDetectPorts(database, batch.connection.familyId, batch.accessToken),
+  );
+}
+
+/** The real ports. The children's names are read ONCE per connection rather than once per
+ * envelope, the `emailAlertPorts` discipline. */
+function travelDetectPorts(
+  database: Database,
+  familyId: string,
+  accessToken: string,
+): TravelDetectPorts {
+  const reader = productionActivityFamilyReader();
+  return {
+    fetchBody: (messageId) => fetchGmailMessageBody(messageId, accessToken, googleGetFetch),
+    extract: (input) => extractTravelBooking(input, pipelineClient()),
+    // FIRST NAMES ONLY, and only the children's — the whole family context this lane's
+    // one model call is handed.
+    childFirstNames: async () => {
+      const rows = await database
+        .select({ name: schema.children.name })
+        .from(schema.children)
+        .where(eq(schema.children.familyId, familyId));
+      return rows.map((row) => row.name.trim()).filter((name) => name !== '');
+    },
+    // WIDER than the list above, and deliberately: the parse-boundary refusal asks whether
+    // the model wrote a member of this household into the city column, and there is no
+    // member — child or parent — whose name belongs there.
+    householdNames: () => reader.householdNames(database, familyId),
+    timeZone: (parentUserId) => buildOutboundGatePorts(database).parentTimeZone(parentUserId),
+  };
 }
 
 /** The sweep's half of the calendar alert: one connection's raw changes, the real

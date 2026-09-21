@@ -1,0 +1,11 @@
+{
+  "value": {
+    "destination_city": null,
+    "destination_region": null,
+    "start_date": "2026-08-14",
+    "end_date": "2026-08-18",
+    "child_evidence": "none",
+    "confidence": 0.3
+  },
+  "stopReason": "tool_use"
+}

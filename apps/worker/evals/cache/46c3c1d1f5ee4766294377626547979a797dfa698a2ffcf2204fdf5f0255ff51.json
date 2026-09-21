@@ -1,0 +1,11 @@
+{
+  "value": {
+    "destination_city": "Chicago",
+    "destination_region": "Illinois",
+    "start_date": "2026-04-21",
+    "end_date": "2026-04-23",
+    "child_evidence": "none",
+    "confidence": 0.95
+  },
+  "stopReason": "tool_use"
+}
