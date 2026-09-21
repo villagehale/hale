@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The clause \"Third one in the last day.\" is precisely accurate: priorAlertsToHousehold24h is 2, making this the third alert in the rolling 24-hour window. The phrasing matches the required register exactly—\"one\" refers to this type of text alert, \"in the last day\" states the rolling window plainly, and the ordinal is expressed as a word. The observation is true, plain, and worth the room as a third-person remark about the occasion (a pile-up of cancellations to the household). It adds nothing the message already says, makes no claim to action, uses no second-person address, contains no invented specifics, and fits naturally after the message without creating any reply obligation."
-  }
-}

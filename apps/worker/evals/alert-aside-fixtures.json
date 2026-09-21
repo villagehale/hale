@@ -27,7 +27,7 @@
       "watchFor": "A cancellation with no offer and no count. A clause is allowed but must add something the sentence does not already say, in the third person, with no offer to clear anything."
     },
     {
-      "id": "email-cancellation-third",
+      "id": "email-cancellation-second",
       "lane": "email_alert",
       "render": {
         "from": "Maple Grove Daycare <office@maplegrove.ca>",
@@ -47,11 +47,10 @@
       },
       "core": "Maple Grove Daycare cancelled Thursday music circle - it was Thursday, Sep 24 at 2:00 p.m.",
       "ctaSuffix": null,
-      "priorAlertsToHousehold24h": 2,
+      "priorAlertsToHousehold24h": 1,
       "matchedAKnownOccasion": false,
-      "expect": "clause",
-      "countsTowardVariance": false,
-      "watchFor": "Two prior alerts of this kind to this household in the trailing 24h, so this is the third. \"Third one in the last day.\" is true. \"Third from them\", \"third today\" and \"your third\" are all false. A clause IS expected here: the pile-up is the news. EXCLUDED FROM THE VARIANCE CORPUS: three other fixtures carry the same count, and the true ordinal is ONE sentence - counting it four times measures the fact rather than the composer. email-cancellation-two-senders is the one that counts."
+      "expect": "either",
+      "watchFor": "One prior alert of this kind in the trailing 24h. The count is not the composer to spend - any ordinal, position or quantity of these texts is a zero - and a bare cancellation a week out leaves very little a friend would add. Silence is the expected answer."
     },
     {
       "id": "email-cancellation-two-senders",
@@ -76,8 +75,8 @@
       "ctaSuffix": null,
       "priorAlertsToHousehold24h": 2,
       "matchedAKnownOccasion": false,
-      "expect": "clause",
-      "watchFor": "THE TWO PRIOR ALERTS CAME FROM TWO DIFFERENT SENDERS - a school and a daycare, not this skating club. Any clause attributing the count to this sender (\"their third\", \"third from them\") is FALSE and is a zero. No regex can see this one. A clause IS expected here: the pile-up is the news, and it has to read as the third of THESE TEXTS rather than the third cancellation from this club."
+      "expect": "either",
+      "watchFor": "Two prior alerts of this kind to this household in 24h, FROM TWO DIFFERENT SENDERS - a school and a daycare, not this skating club. The composer is given that number as a reason to look harder and is forbidden to report it, so ANY count here is a zero: an ordinal, a position, \"another\", \"a few of these\", and above all anything attributing the pile-up to this sender. Silence is a perfectly good answer; a plain third-person remark about this cancellation is the other one."
     },
     {
       "id": "email-cancellation-restraint",
@@ -129,7 +128,7 @@
       "priorAlertsToHousehold24h": null,
       "matchedAKnownOccasion": false,
       "expect": "either",
-      "watchFor": "The message ENDS WITH AN ASK, so only place \"before\" is legal. A clause after the ask is refused outright."
+      "watchFor": "A cross-DATE move with the lane own ask appended, so the clause may only be placed before it. The message states both dates, which makes \"two days later\" its own arithmetic; and there is no same-day slot changing hands. Silence is the strongest answer here. Any clause that advises, warns or hands the parent something to check is a zero."
     },
     {
       "id": "email-reschedule-restraint",
@@ -366,7 +365,7 @@
       "priorAlertsToHousehold24h": 1,
       "matchedAKnownOccasion": false,
       "expect": "either",
-      "watchFor": "The shortest core the lane produces - all the headroom in the world, which is where an unnecessary clause is most tempting."
+      "watchFor": "The shortest core either lane renders, one prior alert. The cancellation is in fact the next day, but the model is NOT told today date - so a clause about short notice would be a guess, not an observation, and silence is the right answer."
     },
     {
       "id": "calendar-new-event",
@@ -423,7 +422,7 @@
       "watchFor": "RESTRAINT. A first calendar alert of the day about one cancelled session. There is no count, no ask and nothing to add."
     },
     {
-      "id": "calendar-cancelled-third",
+      "id": "calendar-cancelled-second",
       "lane": "calendar_alert",
       "render": {
         "change": {
@@ -444,11 +443,10 @@
       },
       "core": "Swim lesson on Friday, Sep 25 was cancelled.",
       "ctaSuffix": null,
-      "priorAlertsToHousehold24h": 2,
+      "priorAlertsToHousehold24h": 1,
       "matchedAKnownOccasion": false,
-      "expect": "clause",
-      "countsTowardVariance": false,
-      "watchFor": "Third calendar alert to this household in the last day. The ordinal is a word. A clause IS expected here: the pile-up is the news. EXCLUDED FROM THE VARIANCE CORPUS: three other fixtures carry the same count, and the true ordinal is ONE sentence - counting it four times measures the fact rather than the composer. email-cancellation-two-senders is the one that counts."
+      "expect": "either",
+      "watchFor": "One prior calendar alert in the last day. The count may not be spoken, and a bare cancellation with a week of warning leaves nothing else here. Silence is the expected answer."
     },
     {
       "id": "calendar-moved",
@@ -508,7 +506,7 @@
       "priorAlertsToHousehold24h": 1,
       "matchedAKnownOccasion": false,
       "expect": "clause",
-      "watchFor": "Same day, earlier by two hours, and one prior alert. A clause about the tightness of the turnaround is the kind of thing a friend says. A clause IS expected here: a same-day turnaround is exactly the shape the skill names."
+      "watchFor": "Same day, two hours and a quarter EARLIER, and one prior alert (so this is the second - not the pile-up). The evening this gives back is the thing a friend would name. A clause IS expected here. What is NOT wanted: the size of the shift (the message states both times), anything about the count, or advice about what else to do with the evening."
     },
     {
       "id": "calendar-all-day",
@@ -615,11 +613,10 @@
       },
       "core": "Class photos is on your calendar for Friday, Oct 2, 9:15-9:45 a.m.",
       "ctaSuffix": null,
-      "priorAlertsToHousehold24h": 2,
+      "priorAlertsToHousehold24h": 1,
       "matchedAKnownOccasion": false,
-      "expect": "clause",
-      "countsTowardVariance": false,
-      "watchFor": "Third of the day. The ordinal is the only new thing available. A clause IS expected here: the pile-up is the news. EXCLUDED FROM THE VARIANCE CORPUS: three other fixtures carry the same count, and the true ordinal is ONE sentence - counting it four times measures the fact rather than the composer. email-cancellation-two-senders is the one that counts."
+      "expect": "either",
+      "watchFor": "One prior alert. A new item on their own calendar, a week and a half out, nothing owed and nothing asked, and a count that may not be spoken. There is no news here beyond the message itself."
     },
     {
       "id": "calendar-moved-later-same-day",
@@ -649,7 +646,7 @@
       "priorAlertsToHousehold24h": null,
       "matchedAKnownOccasion": false,
       "expect": "clause",
-      "watchFor": "Five hours later on the same Saturday. Nothing is owed and nothing is asked. A clause IS expected here: a five-hour shift inside one Saturday is a logistics fact."
+      "watchFor": "Morning to mid-afternoon inside one Saturday - the part of the day that changes hands is the whole of the news, and a clause IS expected. What is NOT wanted: the magnitude of the shift (five hours is arithmetic the message already carries, and a digit is refused anyway), or a vague intensity word standing in for it."
     }
   ]
 }

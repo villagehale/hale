@@ -24,6 +24,17 @@
 // percentages are the door (any clause that invites a reply is a hard zero, always) and
 // the restraint arm (the fixtures whose right answer is no clause at all).
 //
+// WHAT THE CORPUS DOES NOT ASK FOR, and why it is the interesting part of this file. The
+// count the outbound gate hands over (priorAlertsToHousehold24h) is the one specific fact
+// this stage has that the message does not, and three live records in a row showed it
+// cannot be spoken by a model: handed the sentence, the composer returned it verbatim on
+// every count fixture (a constant with an API bill); handed the rule instead, it wrote
+// "Third cancellation in the last day." twice byte-identically and "in as many days" for a
+// 24-hour window - false, plausible, and passed by the judge. One fact with one true
+// wording is copy, and copy belongs in code. So the skill now spends the count as a reason
+// to LOOK rather than as a thing to say, and this corpus grades that: any clause that
+// states a count is a judge 1.
+//
 // WHY THE CORPUS IS LABELLED THREE WAYS AND NOT TWO. On most alerts BOTH answers are
 // right: the skill's own first rule is that saying nothing is usually correct, so a label
 // that read "a clause is expected here" on every non-restraint fixture would be asserting
@@ -84,16 +95,23 @@ const MIN_SAMPLE_WORDS = 3;
 const EDGE_WORDS = 2;
 
 /**
- * Two rates, one number, and they measure different halves of the same 80%.
- *
- * SENDABLE: of the clauses the model actually wrote, this many must survive the guard.
- * Not 100%, and the asymmetry is the point — a refused aside is today's message, which
- * ships either way.
- *
- * SPOKE: of the `clause` fixtures, this many must produce a sendable clause. Without it a
- * model that answered "" to everything would pass every other gate in this file.
+ * SPOKE: of the `clause` fixtures, this many must produce a sendable clause. This is the
+ * brief's bar, and without it a model that answered "" to everything would pass every
+ * other gate in this file.
  */
 const MIN_RATE = 0.8;
+
+/**
+ * AND THE REFUSALS ARE COUNTED, NOT RATED. An earlier cut gated the guard's refusals as a
+ * share of the clauses the model wrote, which sounds like the same thing and is not: the
+ * denominator is the model's own decision, so as the skill got more restrained the same
+ * ONE refused clause went from a fifth of the corpus to a third of it and failed a suite
+ * that had improved. A refusal costs a parent nothing here - the reviewed sentence ships
+ * either way - so what is worth gating is the absolute number, and one in twenty-four is
+ * the model reaching on a shape the skill told it to leave alone, which is the guard doing
+ * its job rather than a defect. A corpus full of them would be a different report.
+ */
+const MAX_REFUSED_CLAUSES = 1;
 
 /**
  * SIX OF TWENTY-FOUR — the founder's restraint bar, as a property of the CORPUS rather
@@ -163,22 +181,28 @@ const JUDGE_SYSTEM = [
   'specific notes on what right and wrong look like here. Score 1-5.',
   'A 5 is one true, plain thing a friend who knew the schedule would have said out loud,',
   'in the third person, that the message does not already say. Short. No greeting, no hype.',
-  'WHAT THE COUNT MEANS, because a clause that gets this wrong is FALSE however well it',
-  'reads: priorAlertsToHousehold24h is how many texts of this same kind Hale has already',
-  'sent this HOUSEHOLD in the trailing 24 hours. It is NOT per sender - two different',
-  'schools is two - so "their third" or "the third from them" is false. It is NOT a',
-  'calendar day - the window rolls across midnight - so "today" or "this morning" is false.',
-  'It is NOT about the reader - the household is counted, not the parent holding the phone',
-  '- so "you have had three" is false. THE CORRECT FORM IS "Third one in the last day." -',
-  '"one" means one of these texts, "in the last day" is the rolling window stated plainly,',
-  'and the ordinal is a word because a digit is refused. That sentence is the register the',
-  'product decided on; do not mark it down for phrasing, only for being false or unearned.',
+  'THE COUNT MAY NOT BE SPOKEN AT ALL, and a clause that states it is a 1 however well it',
+  'reads. priorAlertsToHousehold24h is how many texts of this same kind Hale already sent',
+  'this HOUSEHOLD in the trailing 24 hours; the composer is given it as a reason to look',
+  'harder at the message, and is forbidden to report it. So ANY ordinal, position, count or',
+  'quantity of these texts is a 1 - third, another, a few of these, a run of them. Three',
+  'live records settled this: the count is one fact with one true wording, so a composer',
+  'either returns the same sentence every time or invents a false one, and every false form',
+  'reached a parent looking perfectly plausible - an ordinal hung on the cancellation (that',
+  'club\'s third, which never happened), "in as many days" for a 24-hour window, "today"',
+  'for a window that rolls across midnight, "you have had three" for a household count.',
   'TWO THINGS THAT ARE BY DESIGN AND ARE NOT FAULTS. (1) When the message ends in an ask,',
   'the clause is placed BEFORE it - that is the only legal placement there, and it is what',
   'keeps the ask last. Never mark a clause down merely for sitting in front of an ask.',
   '(2) The clause is a remark, not information: a plain third-person observation about the',
   'occasion is the whole point. Judge whether it is TRUE and worth the room, not whether it',
-  'is actionable.',
+  'is actionable. (3) When a time MOVES INSIDE ONE DAY, naming which part of that day now',
+  'changes hands - the evening it opens, the morning it gives back - is a shape the skill',
+  'names as worth saying, and it is not a fault for being short or for being a sentence that',
+  'would also fit another same-day move. Mark it down only if it is false, or if it is the',
+  'measurement the message already states said again in fewer words. Do NOT ask for the',
+  'SIZE of the shift: the message carries both instants, so an arithmetic magnitude is a',
+  'restatement, and a digit is refused outright before you ever see the clause.',
   'A LOW score is any of: a clause that leaves the parent something to reply to, or offers',
   'to do anything, or uses the literal words "you" or "your" (a third-person observation is',
   'not an address, however sympathetic); anything false about the count above;',
@@ -206,11 +230,40 @@ const JUDGE_SYSTEM = [
 const BROKEN_ASIDE =
   "Just say YES and I'll put it on your week 2nite \u{1F642} Third one in the last day.";
 
+/**
+ * THE PARROT GATE CANNOT SEE A QUOTED RUN THAT WRAPS, and nothing else would ever say so.
+ *
+ * `skillSampleSentences` harvests double-quoted runs with `/"([^"\n]+)"/g`, which cannot
+ * cross a newline. When this skill's examples were wrapped by the 90-column house margin,
+ * three of the four false-ordinal traps were invisible to the gate, the ready-to-ship
+ * ordinal it exists to catch was invisible too, and the fragment BETWEEN two half-quotes
+ * was harvested as a sample instead. The suite was green by a formatting accident.
+ *
+ * So the runner refuses to grade a skill whose quoted examples it cannot read. Keep each
+ * quoted example on one line, however long the line gets.
+ */
+async function assertQuotedExamplesAreHarvestable() {
+  const source = (await readFile(SKILL_PATH, 'utf8')).replace(/```[\s\S]*?```/g, '\n');
+  const wrapped = source
+    .split('\n')
+    .map((line, index) => ({ line, number: index + 1 }))
+    .filter(({ line }) => (line.match(/"/g) ?? []).length % 2 === 1);
+  if (wrapped.length === 0) return;
+  console.error(
+    'alert-aside eval: these lines of the skill open a double quote they do not close, so',
+  );
+  console.error('the parrot half of the variation gate cannot see the example on them:');
+  for (const { line, number } of wrapped) console.error(`  ${number}: ${line}`);
+  process.exit(2);
+}
+
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const getClient = lazyAnthropic();
   const cost = makeCost();
+
+  await assertQuotedExamplesAreHarvestable();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const guard = await tsImport(GUARD_SRC, import.meta.url);
@@ -298,17 +351,23 @@ async function main() {
   // An empty clause is not copy anybody reads and a refused one never left the building,
   // so neither may stand in for variety.
   const shippedResults = results.filter((r) => r.shipped);
-  // AND NEITHER MAY A SECOND COPY OF ONE FACT. `countsTowardVariance: false` is
-  // run-intro-voice-eval's own device, for its own reason: a fixture whose wording is
-  // decided by the FIXTURE rather than by the model measures the fixture. Four alerts
-  // carrying priorAlertsToHousehold24h: 2 license exactly one true sentence between them
-  // - every sender-anchored, day-anchored and reader-anchored ordinal is false - so a
-  // corpus that scored all four would be measuring an arithmetic fact, not a composer.
-  // One of them counts and the rest are excluded by name in the fixture file.
+  // AND EVERY ONE OF THEM IS MEASURED. An earlier cut of this runner excluded three of its
+  // four count fixtures by a `countsTowardVariance: false` flag in the corpus, added after
+  // this gate caught the model writing one sentence for all four. A gate whose inputs may
+  // be dropped when it fails is not a gate. (intro-voice's use of that flag is a different
+  // thing: there the FIXTURE hands the model the sentence to react to, so the wording was
+  // never the model's to choose.)
   //
-  // THAT EXCLUSION IS ITSELF A FINDING, and it is printed below rather than buried: a
-  // clause with one true form is a CONSTANT, and a constant does not need a model.
-  const measured = shippedResults.filter((r) => r.fixture.countsTowardVariance !== false);
+  // THE CORPUS WAS THE DEFECT, NOT THE GATE. "Two prior alerts of this kind in the last 24
+  // hours" has exactly one answer, so asking it on four fixtures measured one arithmetic
+  // fact four times and asked a composer for four different ways to say a thing with one
+  // true form. Two live records showed both halves of that: with a ready-made ordinal in
+  // the skill the model returned it verbatim four times, and with the ordinal described
+  // rather than quoted it wrote two byte-identical clauses and hung a third on the
+  // sender's event. The corpus now asks the count ONCE - on the two-senders fixture, the
+  // one where getting it wrong is a judge zero no regex could see - and spends the other
+  // three on a count of one, where the right answer is silence.
+  const measured = shippedResults;
   // HALF THE CORPUS SHOWING A DIFFERENT OPENING, which is intake-voice's bar and its
   // reasoning: a low bar a skill offering a real range clears easily and a skill offering
   // one shape cannot. Computed rather than a literal, because how many clauses ship is the
@@ -378,12 +437,9 @@ async function main() {
     `other refusals:          ${otherRefused.length}  (each one costs today's message nothing - it ships as written)`,
   );
   console.log(
-    `sendable once written:   ${shippedResults.length}/${written.length} = ${(sendableRate * 100).toFixed(0)}%  (>= ${MIN_RATE * 100}% required)`,
+    `refused by the guard:    ${written.length - shippedResults.length}  (<= ${MAX_REFUSED_CLAUSES} required; sendable ${shippedResults.length}/${written.length} = ${(sendableRate * 100).toFixed(0)}%, reported not gated)`,
   );
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
-  console.log(
-    `held out of variance:    ${shippedResults.length - measured.length}  (a second copy of one true ordinal - see the runner; a clause with one true form is a constant, and a constant does not need a model)`,
-  );
   for (const line of variationLines(variation)) console.log(line);
 
   console.log('\n--- cost telemetry ---');
@@ -397,7 +453,7 @@ async function main() {
     chirped.length === 0 &&
     judgeFails.length === 0 &&
     spokeRate >= MIN_RATE &&
-    sendableRate >= MIN_RATE &&
+    written.length - shippedResults.length <= MAX_REFUSED_CLAUSES &&
     variation.passed;
 
   console.log('\n--- gate ---');

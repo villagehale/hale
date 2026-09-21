@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The clause \"Afternoon slot instead of the morning\" is a plain third-person observation that names the true shift in which part of the day the class now occupies. It identifies what changed hands (from morning to afternoon) without restating the message's specific times, without magnitude arithmetic, without a digit, and without genericness. It fits the watchFor instruction perfectly: it states the part of the day that changes hands as the whole of the news, is appropriately short, and is placed correctly after the message. A friend knowing the schedule would say exactly this."
+  }
+}

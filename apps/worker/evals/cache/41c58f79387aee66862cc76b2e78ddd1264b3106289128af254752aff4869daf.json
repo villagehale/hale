@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The clause accurately states \"This is the third one in the last day.\" The ordinal is correctly rendered as a word (\"third\"). The count of priorAlertsToHousehold24h is 2, making this alert the third one in the rolling 24-hour window. The clause is a plain third-person observation about the occasion (the pile-up of alerts is news), placed appropriately after the message, and adds true information that the message itself does not contain. It contains no address to the parent, no invented specifics, no padding or hype, and is neither generic nor restating what is already said."
-  }
-}

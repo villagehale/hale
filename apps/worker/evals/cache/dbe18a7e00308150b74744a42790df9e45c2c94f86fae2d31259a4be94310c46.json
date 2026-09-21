@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The clause \"Third one in the last day.\" is factually correct: priorAlertsToHousehold24h is 2, making this the third alert in the rolling 24-hour window. The phrasing is plain and in the required register—ordinal as a word, \"one\" for the text unit, \"in the last day\" for the rolling window. It's a true, plain observation a friend would make about the occasion (the pile-up of cancellations). It doesn't address the reader, doesn't claim there's nothing left to do, doesn't restate the message, contains no invented specifics, and is placed after the message as legally allowed. It's specific to this situation (multiple alerts, not generic), concise, and adds earned information about the household's experience."
-  }
-}

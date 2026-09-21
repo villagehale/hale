@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The clause \"Third one in the last day.\" is accurate and well-formed. It correctly uses the ordinal as a word (\"Third\"), properly references the rolling 24-hour window (\"in the last day\"), and counts the alert as one of these messages to the household (not per sender, not per calendar day, not per reader). The priorAlertsToHousehold24h is 2, making this the third alert in that window. The clause is a plain third-person observation about the occasion—that this is the third such alert—which is the only new information available and exactly what the watchFor fixture calls for. It is placed after the message, which is correct for alerts that do not end in an ask. It adds no hype, no invented specifics, no second sentence, and leaves nothing for the parent to reply to."
-  }
-}
