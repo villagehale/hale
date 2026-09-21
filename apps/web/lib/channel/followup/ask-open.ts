@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, gt, inArray } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm';
 import { askStillStanding } from '~/lib/channel/checkin/cadence';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 
@@ -34,6 +34,14 @@ export const ACTIVITY_FOLLOWUP_ASK_TEMPLATE_KEY = 'followup:activity';
  * function. A last-word rule alone would leave the question standing for days against a
  * household Hale happens not to text again, and a Thursday "sure" would be filed as an
  * answer to Monday's swim.
+ *
+ * `now` IS THE WHOLE STATE OF THE LEDGER IT MAY SEE, not just the clock the lapse is
+ * measured on. Every row it reads is bounded by it, so the answer to "was Hale waiting?"
+ * is the same one minute later and a month later. At route time that changes nothing —
+ * nothing is newer than the turn being routed. It is everything to a reader looking BACK:
+ * the router persists Hale's own reply seconds after the parent's text, so an unbounded
+ * read would find that reply, call the question closed, and every answered ask in
+ * production would look like one nobody replied to.
  */
 export async function activityFollowupAskOpen(
   database: Database,
@@ -52,6 +60,7 @@ export async function activityFollowupAskOpen(
         // consumed the key but never reached the phone, and a question nobody was asked
         // is not open.
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        lte(schema.channelMessages.createdAt, sql`${input.now.toISOString()}::timestamptz`),
       ),
     )
     .orderBy(desc(schema.channelMessages.createdAt))
@@ -67,6 +76,7 @@ export async function activityFollowupAskOpen(
         eq(schema.channelMessages.direction, 'out'),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
         gt(schema.channelMessages.createdAt, ask.createdAt),
+        lte(schema.channelMessages.createdAt, sql`${input.now.toISOString()}::timestamptz`),
       ),
     )
     .limit(1);

@@ -229,6 +229,47 @@ describe('the ask as a listed open question, through the production reader', () 
     ).toBeNull();
   });
 
+  it('answers as of `now` — a reply Hale has since answered was still an answer', async () => {
+    const seeded = await seedFamily();
+    await seedAsk(seeded);
+    const answeredAt = new Date(ASKED_AT.getTime() + 10 * 60_000);
+    // Hale's own reply to the parent, five seconds after they wrote back. The router
+    // persists one on EVERY coach turn, so by the time an hourly pass looks back at the
+    // ask there is always something newer than it — and a reader that answered as of the
+    // read rather than as of `now` would call every answered ask closed.
+    await db.database.insert(schema.channelMessages).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      status: 'queued',
+      createdAt: new Date(answeredAt.getTime() + 5_000),
+    });
+
+    expect(
+      await activityFollowupAskOpen(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        now: answeredAt,
+      }),
+    ).toEqual({ id: expect.any(String), askedAt: ASKED_AT });
+  });
+
+  it('reads the ask that was standing at `now`, not tomorrow night’s', async () => {
+    const seeded = await seedFamily();
+    await seedAsk(seeded);
+    await seedAsk(seeded, { createdAt: new Date(ASKED_AT.getTime() + 2 * 60 * 60_000) });
+
+    expect(
+      await activityFollowupAskOpen(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        now: new Date(ASKED_AT.getTime() + 30 * 60_000),
+      }),
+    ).toEqual({ id: expect.any(String), askedAt: ASKED_AT });
+  });
+
   it('does not stand for the co-parent — the question went to one phone', async () => {
     const seeded = await seedFamily();
     await seedAsk(seeded);
