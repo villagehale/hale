@@ -419,6 +419,59 @@ describe('the weekday-care arc', () => {
     expect(transport.sent).toEqual([]);
   });
 
+  /**
+   * THE SAME REFUSAL WHEN THE WORD DID NOT CHANGE — the shape a comparison on the care
+   * VALUE could not see, over the real readers rather than a pair of fakes. A family
+   * that MOVES daycare says "daycare" twice, and the send that came out of that named
+   * the place the parent had just said their child left, spending the once-per-child
+   * key on it forever.
+   *
+   * The second half is what makes the refusal a deferral rather than a loss: the key is
+   * unspent, so the newer answer is asked about when ITS own window opens.
+   */
+  it('does not ask about the daycare a family has left, and asks about the new one later', async () => {
+    await seedWeekendFind();
+    await runNudgeCron(db.database, nudgeDeps(new FakeTransport()), FRIDAY);
+
+    const saidFirst = new Date(FRIDAY.getTime() + 20 * 60_000);
+    expect(await answer("she's at Little Sprouts now", saidFirst)).toBe('recorded');
+    const movedAt = new Date(saidFirst.getTime() + 2 * 24 * 3_600_000);
+    await recordWeekdayCare(db.database, {
+      familyId,
+      parentUserId,
+      childId: toddlerId,
+      care: 'daycare',
+      provider: 'Bright Horizons',
+      now: movedAt,
+    });
+
+    vi.stubEnv(FOLLOWUP_ASKS_ENABLED_ENV, 'true');
+    // Day 4: the FIRST answer's window is open and the second's is not.
+    const early = new FakeTransport();
+    const swept = await runFollowupSweep(
+      db.database,
+      followupDeps(early),
+      new Date(saidFirst.getTime() + 4 * 24 * 3_600_000),
+    );
+
+    expect(swept.daycareAsked).toBe(0);
+    expect(swept.skipped.care_changed).toBe(1);
+    expect(early.sent).toEqual([]);
+
+    // Day 6 from the move: the second answer's own window is open, and the key it needs
+    // was never spent.
+    const later = new FakeTransport();
+    const after = await runFollowupSweep(
+      db.database,
+      followupDeps(later),
+      new Date(movedAt.getTime() + 6 * 24 * 3_600_000),
+    );
+
+    expect(after.daycareAsked).toBe(1);
+    expect(later.sent[0]?.body).toContain('Bright Horizons');
+    expect(later.sent[0]?.body).not.toContain('Little Sprouts');
+  });
+
   it('keeps every claim it makes about the session on a row it can point at', async () => {
     // The whole weekday branch rests on `village_candidates.source`, and the reader is
     // the only thing that carries it off the row. If the column stopped being selected,
